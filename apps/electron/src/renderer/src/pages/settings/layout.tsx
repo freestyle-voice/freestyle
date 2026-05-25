@@ -58,7 +58,7 @@ const navItems = [
 export default function SettingsLayout(): React.JSX.Element {
   const navigate = useNavigate();
 
-  // Keyboard shortcuts: Cmd/Ctrl+1-5 for nav
+  // Keyboard shortcuts: Cmd/Ctrl+1-7 for nav
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;

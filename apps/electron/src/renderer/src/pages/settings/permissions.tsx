@@ -10,12 +10,18 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type PermissionStatus = "unknown" | "granted" | "denied" | "not-determined";
+type PermissionStatus =
+  | "unknown"
+  | "granted"
+  | "denied"
+  | "restricted"
+  | "not-determined";
 
 const STATUS_LABELS: Record<PermissionStatus, string> = {
   unknown: "Checking...",
   granted: "Granted",
   denied: "Denied",
+  restricted: "Restricted",
   "not-determined": "Not Requested",
 };
 

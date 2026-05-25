@@ -8,6 +8,7 @@ import { serve } from "@hono/node-server";
 import {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   Menu,
   nativeImage,
@@ -449,6 +450,48 @@ function showSettingsWindow(): void {
   settingsWindow.focus();
 }
 
+async function checkForUpdatesFromMenu(): Promise<void> {
+  if (is.dev) {
+    dialog.showMessageBox({
+      type: "info",
+      title: "Check for Updates",
+      message: "Update checking is not available in development mode.",
+    });
+    return;
+  }
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    const latest = result?.updateInfo?.version;
+    if (latest && latest !== app.getVersion()) {
+      const { response } = await dialog.showMessageBox({
+        type: "info",
+        title: "Update Available",
+        message: `A new version (v${latest}) is available.`,
+        detail: `You are currently running v${app.getVersion()}.`,
+        buttons: ["Download", "Later"],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (response === 0) {
+        autoUpdater.downloadUpdate();
+      }
+    } else {
+      dialog.showMessageBox({
+        type: "info",
+        title: "No Updates",
+        message: "You are running the latest version.",
+        detail: `Current version: v${app.getVersion()}`,
+      });
+    }
+  } catch {
+    dialog.showMessageBox({
+      type: "error",
+      title: "Update Check Failed",
+      message: "Unable to check for updates. Please try again later.",
+    });
+  }
+}
+
 function createTray(): void {
   const trayImage = nativeImage.createFromPath(trayIconPath);
   // Mark as template so macOS adapts to menu bar light/dark
@@ -461,6 +504,10 @@ function createTray(): void {
     {
       label: "Settings",
       click: () => showSettingsWindow(),
+    },
+    {
+      label: "Check for Updates...",
+      click: () => checkForUpdatesFromMenu(),
     },
     { type: "separator" },
     {
@@ -505,6 +552,11 @@ app.whenReady().then(() => {
                 label: "Settings",
                 accelerator: "CommandOrControl+,",
                 click: () => showSettingsWindow(),
+              },
+              { type: "separator" as const },
+              {
+                label: "Check for Updates...",
+                click: () => checkForUpdatesFromMenu(),
               },
               { type: "separator" as const },
               { role: "hide" as const },

@@ -41,5 +41,6 @@ jobs:
           version: ${{ inputs.version }}
           force: ${{ inputs.force }}
           merge_target: ${{ inputs.merge_target }}
+          publish_repo: self
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

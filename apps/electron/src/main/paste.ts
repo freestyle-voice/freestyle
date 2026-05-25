@@ -33,9 +33,17 @@ export async function pasteIntoFocusedApp(text: string): Promise<void> {
   const prior = clipboard.readText();
   clipboard.writeText(text);
 
-  try {
-    await new Promise((r) => setTimeout(r, 15));
+  // Verify the clipboard write actually took effect before pasting.
+  // Electron's clipboard API is synchronous on the main thread, but a
+  // short spin-wait guards against external clipboard managers that may
+  // overwrite the value immediately after our write.
+  for (let i = 0; i < 5; i++) {
+    if (clipboard.readText() === text) break;
+    await new Promise((r) => setTimeout(r, 10));
+    clipboard.writeText(text);
+  }
 
+  try {
     switch (process.platform) {
       case "darwin":
         await pasteMac();
@@ -48,7 +56,10 @@ export async function pasteIntoFocusedApp(text: string): Promise<void> {
         break;
     }
 
-    await new Promise((r) => setTimeout(r, 80));
+    // Wait long enough for the target app to read the clipboard content.
+    // The paste command returns once the keystroke is *sent*, not once the
+    // app has consumed it. 150ms is conservative enough for most apps.
+    await new Promise((r) => setTimeout(r, 150));
   } finally {
     clipboard.writeText(prior);
   }

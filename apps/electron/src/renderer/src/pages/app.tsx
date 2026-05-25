@@ -12,7 +12,7 @@ const SVG_HEIGHT = 28;
 
 /** Shared style for right-side text content in the pill */
 const pillTextStyle: React.CSSProperties = {
-  color: "#a1a1aa",
+  color: "var(--muted-foreground)",
   fontSize: 13,
   flex: 1,
   overflow: "hidden",
@@ -444,7 +444,7 @@ export default function AppPage(): React.JSX.Element {
           .glow-recording { animation: glow-pulse-green 2s ease-in-out infinite; }
           .glow-transcribing { animation: glow-pulse-blue 1.5s ease-in-out infinite; }
           .glow-error { animation: glow-pulse-red 1.5s ease-in-out infinite; }
-          .glow-idle { box-shadow: 0 0 6px 2px rgba(161,161,170,0.05); transition: box-shadow 300ms ease; }
+          .glow-idle { box-shadow: 0 0 6px 2px rgba(0,0,0,0.05); transition: box-shadow 300ms ease; }
           @keyframes shimmer {
             0% { background-position: 100% center; }
             100% { background-position: 0% center; }
@@ -453,9 +453,9 @@ export default function AppPage(): React.JSX.Element {
             font-style: italic;
             background: linear-gradient(
               90deg,
-              #71717a calc(50% - 40px),
-              #d4d4d8,
-              #71717a calc(50% + 40px)
+              var(--muted-foreground) calc(50% - 40px),
+              var(--foreground),
+              var(--muted-foreground) calc(50% + 40px)
             );
             background-size: 250% 100%;
             background-clip: text;
@@ -479,9 +479,9 @@ export default function AppPage(): React.JSX.Element {
               height: 48,
               padding: "0 10px",
               borderRadius: 28,
-              background: "#27272a",
-              color: "#fafafa",
-              border: "1px solid rgba(161,161,170,0.15)",
+              background: "var(--card)",
+              color: "var(--foreground)",
+              border: "1px solid var(--border)",
               fontFamily: "'DM Sans', sans-serif",
               fontSize: 14,
               fontWeight: 500,
@@ -543,7 +543,7 @@ export default function AppPage(): React.JSX.Element {
                   style={{
                     flex: 1,
                     fontSize: 12,
-                    color: "#d4d4d8",
+                    color: "var(--foreground)",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
@@ -572,7 +572,7 @@ export default function AppPage(): React.JSX.Element {
                         y1={SVG_HEIGHT / 2 + 1}
                         x2={x}
                         y2={SVG_HEIGHT / 2 - 1}
-                        stroke="#a1a1aa"
+                        stroke="var(--muted-foreground)"
                         strokeWidth={barWidth}
                         strokeLinecap="round"
                         style={{ opacity: 0.5 }}
@@ -588,7 +588,7 @@ export default function AppPage(): React.JSX.Element {
                   letterSpacing: "0.06em",
                   opacity: 0.6,
                   flexShrink: 0,
-                  color: "#a1a1aa",
+                  color: "var(--muted-foreground)",
                   paddingRight: 6,
                 }}
               >

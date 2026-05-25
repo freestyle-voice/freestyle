@@ -13,6 +13,7 @@ import {
   Mic,
   Monitor,
   Moon,
+  RefreshCw,
   Sun,
   Volume2,
   VolumeOff,
@@ -103,6 +104,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [autoUpdate, setAutoUpdate] = useState(true);
 
   const handleHotkeyRecorded = useCallback((accelerator: string) => {
     setHotkey(accelerator);
@@ -188,6 +190,12 @@ export default function GeneralSettingsPage(): React.JSX.Element {
       })
       .catch(() => {});
 
+    // Auto-update setting
+    window.api
+      ?.getAutoUpdate()
+      .then((v) => setAutoUpdate(v))
+      .catch(() => {});
+
     // Auto-updater events
     const removeAvail = window.api?.onUpdateAvailable((info) => {
       setUpdateAvailable(info.version);
@@ -242,6 +250,11 @@ export default function GeneralSettingsPage(): React.JSX.Element {
   const handlePillPositionChange = useCallback((value: string) => {
     setPillPosition(value);
     window.api?.setPillPosition(value);
+  }, []);
+
+  const handleAutoUpdateToggle = useCallback((enabled: boolean) => {
+    setAutoUpdate(enabled);
+    window.api?.setAutoUpdate(enabled);
   }, []);
 
   const handleSoundToggle = useCallback((enabled: boolean) => {
@@ -301,6 +314,32 @@ export default function GeneralSettingsPage(): React.JSX.Element {
           )}
         </div>
       )}
+
+      {/* ── Auto Update toggle ──────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <RefreshCw className="text-muted-foreground h-4 w-4 shrink-0" />
+          <span className="text-sm font-medium">Automatic updates</span>
+          <span className="text-muted-foreground text-xs">
+            Automatically download updates in the background
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => handleAutoUpdateToggle(!autoUpdate)}
+          className={cn(
+            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+            autoUpdate ? "bg-primary" : "bg-muted",
+          )}
+        >
+          <span
+            className={cn(
+              "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+              autoUpdate ? "translate-x-5" : "translate-x-0",
+            )}
+          />
+        </button>
+      </div>
 
       {/* ── Recording ─────────────────────────────────────────── */}
       <div className="space-y-5">

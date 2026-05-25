@@ -35,6 +35,9 @@ declare global {
       onUpdateDownloaded: (
         callback: (info: { version: string }) => void,
       ) => () => void;
+      // Auto-update setting
+      getAutoUpdate: () => Promise<boolean>;
+      setAutoUpdate: (enabled: boolean) => void;
       // Context-aware dictation
       getFrontmostApp: () => Promise<string | null>;
       // Pill position

@@ -77,6 +77,11 @@ const api = {
     ipcRenderer.on("updater:downloaded", handler);
     return () => ipcRenderer.removeListener("updater:downloaded", handler);
   },
+  // Auto-update setting
+  getAutoUpdate: (): Promise<boolean> =>
+    ipcRenderer.invoke("settings:auto-update"),
+  setAutoUpdate: (enabled: boolean): void =>
+    ipcRenderer.send("settings:set-auto-update", enabled),
   // Context-aware dictation
   getFrontmostApp: (): Promise<string | null> =>
     ipcRenderer.invoke("system:frontmost-app"),

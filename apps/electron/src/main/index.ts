@@ -10,6 +10,7 @@ import {
   BrowserWindow,
   ipcMain,
   Menu,
+  Notification,
   nativeImage,
   net,
   protocol,
@@ -32,6 +33,34 @@ const DEFAULT_PORT = 4649;
 const APP_WIDTH = 440;
 const APP_HEIGHT = 120;
 const APP_BOTTOM_MARGIN = 0;
+
+// ---------------------------------------------------------------------------
+// settings.json helpers — single source for read/write of the lightweight
+// JSON file the main process uses for settings it needs before the server
+// is available (pillPosition, onboardingComplete, autoUpdate).
+// ---------------------------------------------------------------------------
+
+function readSettings(): Record<string, unknown> {
+  try {
+    const settingsPath = join(app.getPath("userData"), "settings.json");
+    return JSON.parse(require("node:fs").readFileSync(settingsPath, "utf-8"));
+  } catch {
+    return {};
+  }
+}
+
+function writeSettings(patch: Record<string, unknown>): void {
+  try {
+    const settingsPath = join(app.getPath("userData"), "settings.json");
+    const data = { ...readSettings(), ...patch };
+    require("node:fs").writeFileSync(
+      settingsPath,
+      JSON.stringify(data, null, 2),
+    );
+  } catch {
+    // ignore
+  }
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let httpServer: any = null;
@@ -138,16 +167,7 @@ function getAppWindowPosition(): { x: number; y: number } {
   const { width, height } = primaryDisplay.workAreaSize;
 
   // Read pill position preference
-  let position = "bottom-center";
-  try {
-    const settingsPath = join(app.getPath("userData"), "settings.json");
-    const data = JSON.parse(
-      require("node:fs").readFileSync(settingsPath, "utf-8"),
-    );
-    if (data.pillPosition) position = data.pillPosition;
-  } catch {
-    // default
-  }
+  const position = (readSettings().pillPosition as string) || "bottom-center";
 
   const margin = 20;
   switch (position) {
@@ -246,16 +266,7 @@ function createSettingsWindow(): void {
   });
 
   // Check if onboarding is complete to decide initial route
-  let onboardingDone = false;
-  try {
-    const settingsPath = join(app.getPath("userData"), "settings.json");
-    const data = JSON.parse(
-      require("node:fs").readFileSync(settingsPath, "utf-8"),
-    );
-    onboardingDone = data.onboardingComplete === true;
-  } catch {
-    // file doesn't exist = not done
-  }
+  let onboardingDone = readSettings().onboardingComplete === true;
 
   // Also consider onboarding done if the DB has any configured models
   // (existing users who never went through onboarding)
@@ -589,36 +600,11 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("onboarding:complete", () => {
-    try {
-      const settingsPath = join(app.getPath("userData"), "settings.json");
-      const data = JSON.parse(
-        require("node:fs").readFileSync(settingsPath, "utf-8"),
-      );
-      return data.onboardingComplete === true;
-    } catch {
-      return false;
-    }
+    return readSettings().onboardingComplete === true;
   });
 
   ipcMain.on("onboarding:set-complete", () => {
-    try {
-      const settingsPath = join(app.getPath("userData"), "settings.json");
-      let data: Record<string, unknown> = {};
-      try {
-        data = JSON.parse(
-          require("node:fs").readFileSync(settingsPath, "utf-8"),
-        );
-      } catch {
-        // file doesn't exist yet
-      }
-      data.onboardingComplete = true;
-      require("node:fs").writeFileSync(
-        settingsPath,
-        JSON.stringify(data, null, 2),
-      );
-    } catch {
-      // ignore
-    }
+    writeSettings({ onboardingComplete: true });
   });
 
   // IPC: hotkey recording via main process (captures keys the DOM can't see, e.g. fn/globe)
@@ -801,24 +787,63 @@ app.whenReady().then(() => {
 
   createAppWindow();
 
+  // -- Auto-update helpers --
+  const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+  let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
+
+  function startUpdateCheckInterval(): void {
+    if (updateCheckTimer) return;
+    updateCheckTimer = setInterval(() => {
+      autoUpdater.checkForUpdates().catch(() => {});
+    }, UPDATE_CHECK_INTERVAL_MS);
+  }
+
   // -- Auto-updater with IPC notifications --
+  // Track the version we already notified about so periodic checks don't
+  // spam the user with repeat notifications every 5 minutes.
+  let notifiedVersion: string | null = null;
+
   if (!is.dev) {
-    autoUpdater.autoDownload = false;
+    const autoUpdateEnabled = readSettings().autoUpdate !== false;
+    autoUpdater.autoDownload = autoUpdateEnabled;
     autoUpdater.autoInstallOnAppQuit = true;
 
     autoUpdater.on("update-available", (info) => {
       settingsWindow?.webContents.send("updater:available", {
         version: info.version,
       });
+      // Only show a native notification once per discovered version
+      if (Notification.isSupported() && notifiedVersion !== info.version) {
+        notifiedVersion = info.version;
+        const note = new Notification({
+          title: "Freestyle Update Available",
+          body: autoUpdater.autoDownload
+            ? `Version ${info.version} is downloading…`
+            : `Version ${info.version} is available. Open settings to download.`,
+        });
+        note.on("click", () => showSettingsWindow());
+        note.show();
+      }
     });
 
     autoUpdater.on("update-downloaded", (info) => {
       settingsWindow?.webContents.send("updater:downloaded", {
         version: info.version,
       });
+      if (Notification.isSupported()) {
+        const note = new Notification({
+          title: "Update Ready to Install",
+          body: `Version ${info.version} has been downloaded. Restart to update.`,
+        });
+        note.on("click", () => showSettingsWindow());
+        note.show();
+      }
     });
 
     autoUpdater.checkForUpdatesAndNotify();
+
+    // Always start periodic background checking regardless of auto-update setting
+    startUpdateCheckInterval();
   }
 
   ipcMain.on("updater:download", () => {
@@ -843,6 +868,18 @@ app.whenReady().then(() => {
     }
   });
 
+  // -- Auto-update setting IPC --
+  ipcMain.handle("settings:auto-update", () => {
+    return readSettings().autoUpdate !== false;
+  });
+
+  ipcMain.on("settings:set-auto-update", (_event, enabled: boolean) => {
+    writeSettings({ autoUpdate: enabled });
+    if (!is.dev) {
+      autoUpdater.autoDownload = enabled;
+    }
+  });
+
   // -- Context-aware dictation: get frontmost app + browser context --
   ipcMain.handle("system:frontmost-app", async () => {
     try {
@@ -863,36 +900,11 @@ app.whenReady().then(() => {
 
   // -- Pill position setting --
   ipcMain.handle("settings:pill-position", () => {
-    try {
-      const settingsPath = join(app.getPath("userData"), "settings.json");
-      const data = JSON.parse(
-        require("node:fs").readFileSync(settingsPath, "utf-8"),
-      );
-      return data.pillPosition ?? "bottom-center";
-    } catch {
-      return "bottom-center";
-    }
+    return (readSettings().pillPosition as string) ?? "bottom-center";
   });
 
   ipcMain.on("settings:set-pill-position", (_event, position: string) => {
-    try {
-      const settingsPath = join(app.getPath("userData"), "settings.json");
-      let data: Record<string, unknown> = {};
-      try {
-        data = JSON.parse(
-          require("node:fs").readFileSync(settingsPath, "utf-8"),
-        );
-      } catch {
-        // file doesn't exist
-      }
-      data.pillPosition = position;
-      require("node:fs").writeFileSync(
-        settingsPath,
-        JSON.stringify(data, null, 2),
-      );
-    } catch {
-      // ignore
-    }
+    writeSettings({ pillPosition: position });
   });
 
   // Fix MacKeyServer binary permissions / codesign before first use

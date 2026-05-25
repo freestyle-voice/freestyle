@@ -283,8 +283,9 @@ export default function OnboardingPage(): React.JSX.Element {
                       Default Hotkey: Alt + Space
                     </div>
                     <p className="text-muted-foreground text-xs">
-                      Hold to record, release to transcribe. You can change this
-                      in Settings later.
+                      {process.platform === "win32"
+                        ? "Press once to start recording, press again to stop and transcribe. You can change this in Settings later."
+                        : "Hold to record, release to transcribe. You can change this in Settings later."}
                     </p>
                   </div>
                 </div>

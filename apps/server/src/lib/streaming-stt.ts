@@ -135,12 +135,13 @@ export function openStreamingSession(opts: {
 /**
  * Check if a model supports realtime streaming transcription.
  * Only OpenAI's gpt-4o-transcribe variants support the Realtime API.
- * whisper-1 does NOT support streaming.
+ * On Windows, WinKeyServer and Realtime API are unavailable so streaming is disabled.
  */
 export function supportsStreaming(
   providerId: string,
   modelId: string,
 ): boolean {
+  if (process.platform === "win32") return false;
   if (providerId !== "openai") return false;
   const short = modelId.includes("/") ? modelId.split("/").pop()! : modelId;
   return short.includes("transcribe");

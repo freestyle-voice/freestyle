@@ -195,21 +195,22 @@ export default function AppPage(): React.JSX.Element {
       goIdle();
       return;
     }
-    // Add the exit animation class — CSS handles everything
+    const pill = wrapper.firstElementChild as HTMLElement | null;
+    if (pill) {
+      // Step 1: instantly hide text, collapse pill to orb size
+      for (let i = 1; i < pill.children.length; i++) {
+        (pill.children[i] as HTMLElement).style.display = "none";
+      }
+      pill.style.minWidth = "52px";
+      pill.style.maxWidth = "52px";
+      pill.style.justifyContent = "center";
+      pill.style.gap = "0";
+    }
+    // Step 2: shrink the centered orb+pill away (CSS animation)
     wrapper.classList.add("pill-exit");
-    // After the animation finishes, go to idle (hides window).
-    // Do NOT remove pill-exit class here — the animation's
-    // fill-mode:forwards holds opacity:0/scale:0, and removing
-    // the class would flash the pill back before the window hides.
-    // The class is cleaned up in startRecording on next use.
+
     exitTimerRef.current = setTimeout(() => {
       exitTimerRef.current = null;
-      // ONLY hide the window. Do NOT change React state here.
-      // Any setState would trigger a re-render that changes the DOM
-      // (unmounts orb, changes glow class, shows idle text) and since
-      // IPC window.hide() is async, that re-render paints as a blip
-      // before the window actually hides.
-      // State is reset in startRecording on the next hotkey press.
       window.api.hidePill();
     }, EXIT_ANIM_MS + 50);
   }, [goIdle]);
@@ -222,8 +223,19 @@ export default function AppPage(): React.JSX.Element {
       clearTimeout(exitTimerRef.current);
       exitTimerRef.current = null;
     }
+    // Reset exit animation state
     if (pillRef.current) {
       pillRef.current.classList.remove("pill-exit");
+      const pill = pillRef.current.firstElementChild as HTMLElement | null;
+      if (pill) {
+        pill.style.minWidth = "";
+        pill.style.maxWidth = "";
+        pill.style.justifyContent = "";
+        pill.style.gap = "";
+        for (let i = 1; i < pill.children.length; i++) {
+          (pill.children[i] as HTMLElement).style.display = "";
+        }
+      }
     }
     wantsMicRef.current = true;
     setMessage("");
@@ -507,33 +519,14 @@ export default function AppPage(): React.JSX.Element {
           .glow-error { animation: glow-pulse-red 1.5s ease-in-out infinite; }
           .glow-idle { box-shadow: 0 0 6px 2px rgba(161,161,170,0.05); transition: box-shadow 300ms ease; }
 
-          /* Exit: collapse to orb, then shrink away */
-          @keyframes pill-exit-wrapper {
+          /* Exit: orb+pill shrink to zero */
+          @keyframes pill-exit-shrink {
             0%   { transform: scale(1); opacity: 1; }
-            50%  { transform: scale(1); opacity: 1; }
             100% { transform: scale(0); opacity: 0; }
           }
-          @keyframes pill-exit-inner {
-            0%   { min-width: 200px !important; max-width: 420px; }
-            50%  { min-width: 52px !important;  max-width: 52px; }
-            100% { min-width: 52px !important;  max-width: 52px; }
-          }
-          @keyframes pill-exit-text {
-            0%   { opacity: 1; }
-            30%  { opacity: 0; }
-            100% { opacity: 0; }
-          }
           .pill-exit {
-            animation: pill-exit-wrapper ${EXIT_ANIM_MS}ms ease-in forwards !important;
+            animation: pill-exit-shrink ${EXIT_ANIM_MS}ms ease-in forwards !important;
             pointer-events: none;
-          }
-          .pill-exit > div {
-            animation: pill-exit-inner ${EXIT_ANIM_MS}ms ease-in-out forwards !important;
-            overflow: hidden;
-            justify-content: center;
-          }
-          .pill-exit > div > *:not(:first-child) {
-            animation: pill-exit-text ${EXIT_ANIM_MS}ms ease-out forwards !important;
           }
         `}
       </style>

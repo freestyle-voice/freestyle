@@ -15,10 +15,12 @@ on:
       merge_target:
         description: Target branch to merge into
         required: false
+        default: "main"
 
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   release:

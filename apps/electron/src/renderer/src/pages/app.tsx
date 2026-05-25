@@ -29,8 +29,8 @@ type PillState =
   | "transcribing"
   | "error";
 
-const EXIT_COLLAPSE_MS = 80; // pill collapses to orb
-const EXIT_SHRINK_MS = 150; // orb shrinks to zero
+const EXIT_COLLAPSE_MS = 100; // pill collapses to orb
+const EXIT_SHRINK_MS = 100; // orb shrinks to zero
 
 // ---------------------------------------------------------------------------
 // Sound system — generates short sine-wave tones via Web Audio API.

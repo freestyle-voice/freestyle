@@ -1,6 +1,9 @@
 {
   "name": "@freestyle/electron",
   "version": "1.0.0",
+  "description": "Voice-to-text that works everywhere",
+  "author": "freestyle-voice",
+  "homepage": "https://github.com/freestyle-voice/freestyle",
   "main": "./out/main/index.js",
   "scripts": {
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",

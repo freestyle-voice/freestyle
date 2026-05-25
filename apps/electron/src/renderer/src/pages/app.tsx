@@ -2,7 +2,6 @@ import { Orb } from "@renderer/components/ui/orb";
 import { getApiBase } from "@renderer/lib/api";
 import { Recorder } from "@renderer/lib/recorder";
 import { Streamer } from "@renderer/lib/streamer";
-import { Mic } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const BARS = 14;
@@ -454,7 +453,13 @@ export default function AppPage(): React.JSX.Element {
           .glow-idle { box-shadow: 0 0 6px 2px rgba(161,161,170,0.05); transition: box-shadow 300ms ease; }
         `}
       </style>
-      <div className={glowState} style={{ borderRadius: 28 }}>
+      <div
+        className={glowState}
+        style={{
+          borderRadius: 28,
+          visibility: state === "idle" ? "hidden" : "visible",
+        }}
+      >
         <div
           className="inline-flex items-center gap-3"
           style={
@@ -590,17 +595,9 @@ export default function AppPage(): React.JSX.Element {
             <span style={pillTextStyle}>{message || "Error"}</span>
           )}
 
-          {state === "idle" && (
-            <div
-              className="inline-flex items-center gap-2"
-              style={{ padding: "0 8px" }}
-            >
-              <Mic size={17} style={{ opacity: 0.5, color: "#a1a1aa" }} />
-              <span style={{ opacity: 0.5, color: "#a1a1aa" }}>
-                Hold hotkey to record
-              </span>
-            </div>
-          )}
+          {/* idle: render nothing — the pill window is hidden when idle, so any
+               content here would only flash during the race between showPill()
+               and the hotkey:down IPC reaching the renderer. */}
         </div>
       </div>
     </div>

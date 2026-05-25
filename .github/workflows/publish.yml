@@ -42,20 +42,6 @@ jobs:
           token: ${{ steps.token.outputs.token }}
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: "package.json"
-          cache: "pnpm"
-
-      - name: Install Craft
-        run: |
-          CRAFT_URL=$(curl -fsSL https://api.github.com/repos/getsentry/craft/releases/latest \
-            | jq -r '.assets[] | select(.name == "craft") | .browser_download_url')
-          sudo curl -fsSL -o /usr/local/bin/craft "$CRAFT_URL"
-          sudo chmod +x /usr/local/bin/craft
-
       - name: Wait for CI on release branch
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
@@ -64,22 +50,96 @@ jobs:
           echo "Waiting for CI on $BRANCH..."
           RUN_ID=$(gh run list --branch "$BRANCH" --workflow "Build & Test" --limit 1 --json databaseId --jq '.[0].databaseId')
           if [ -z "$RUN_ID" ]; then
-            echo "::error::No CI run found for $BRANCH"
+            echo "::warning::No CI run found for $BRANCH, checking main..."
+            RUN_ID=$(gh run list --branch main --workflow "Build & Test" --limit 1 --json databaseId --jq '.[0].databaseId')
+          fi
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::No CI run found"
             exit 1
           fi
           gh run watch "$RUN_ID" --exit-status
 
-      - name: Publish with Craft
+      - name: Download build artifacts
         env:
-          GITHUB_API_TOKEN: ${{ steps.token.outputs.token }}
-        run: craft publish ${{ steps.version.outputs.version }} --no-input --no-status-check
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BRANCH="release/${VERSION}"
+          mkdir -p artifacts
+
+          # Find the latest successful Build & Test run
+          RUN_ID=$(gh run list --branch "$BRANCH" --workflow "Build & Test" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(gh run list --branch main --workflow "Build & Test" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          fi
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::No successful Build & Test run found"
+            exit 1
+          fi
+
+          echo "Downloading artifacts from run $RUN_ID..."
+          gh run download "$RUN_ID" --dir artifacts/ || true
+
+          echo "Downloaded artifacts:"
+          find artifacts/ -type f | head -30
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Collect all release assets
+          ASSETS=()
+          for f in $(find artifacts/ -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.exe" -o -name "*.msi" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.snap" -o -name "*.yml" -o -name "*.blockmap" \)); do
+            ASSETS+=("$f")
+          done
+
+          echo "Creating release ${VERSION} with ${#ASSETS[@]} assets..."
+
+          # Generate release notes from commits since last tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(git log --pretty=format:"- %s" "${PREV_TAG}..HEAD" -- | head -50)
+          else
+            NOTES="Initial release"
+          fi
+
+          gh release create "${VERSION}" \
+            --title "${VERSION}" \
+            --notes "${NOTES}" \
+            --target "release/${VERSION}" \
+            "${ASSETS[@]}"
+
+      - name: Merge release branch into main
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BRANCH="release/${VERSION}"
+
+          # Create and merge a PR to bring the release changes into main
+          PR_URL=$(gh pr create --base main --head "$BRANCH" \
+            --title "release: merge ${VERSION} release branch" \
+            --body "Auto-merge release branch after publishing ${VERSION}." 2>/dev/null || echo "")
+
+          if [ -n "$PR_URL" ]; then
+            PR_NUM=$(echo "$PR_URL" | grep -oP '\d+$')
+            # Wait briefly for CI, then merge
+            sleep 10
+            gh pr merge "$PR_NUM" --merge --admin \
+              --subject "release: merge ${VERSION} release branch" || \
+            gh pr merge "$PR_NUM" --squash --admin \
+              --subject "release: merge ${VERSION} release branch" || \
+            echo "::warning::Could not auto-merge release PR. Please merge manually: ${PR_URL}"
+          fi
 
       - name: Close issue on success
         if: success()
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
         run: |
-          gh issue close ${{ github.event.issue.number }} --comment "Published ${{ steps.version.outputs.version }}."
+          gh issue close ${{ github.event.issue.number }} --comment "Published ${{ steps.version.outputs.version }}. [Release page](https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.version }})"
 
       - name: Handle failure
         if: failure()

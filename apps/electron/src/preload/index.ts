@@ -27,6 +27,8 @@ const api = {
     ipcRenderer.invoke("permissions:check-accessibility"),
   openAccessibilitySettings: (): void =>
     ipcRenderer.send("permissions:open-accessibility"),
+  openMicSettings: (): void =>
+    ipcRenderer.send("permissions:open-mic-settings"),
   getOnboardingComplete: (): Promise<boolean> =>
     ipcRenderer.invoke("onboarding:complete"),
   setOnboardingComplete: (): void =>
@@ -98,6 +100,15 @@ const api = {
       callback(error);
     ipcRenderer.on("hotkey:error", handler);
     return () => ipcRenderer.removeListener("hotkey:error", handler);
+  },
+  // Fullscreen state
+  onFullscreenChanged: (
+    callback: (isFullscreen: boolean) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, isFullscreen: boolean): void =>
+      callback(isFullscreen);
+    ipcRenderer.on("fullscreen:changed", handler);
+    return () => ipcRenderer.removeListener("fullscreen:changed", handler);
   },
 };
 

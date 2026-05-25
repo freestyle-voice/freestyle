@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   Check,
   ChevronRight,
+  ExternalLink,
   Eye,
   EyeOff,
   Keyboard,
@@ -58,6 +59,7 @@ export default function OnboardingPage(): React.JSX.Element {
   const [needsKey, setNeedsKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [apiKeys, setApiKeys] = useState<Set<string>>(new Set());
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Load permissions
   useEffect(() => {
@@ -69,6 +71,10 @@ export default function OnboardingPage(): React.JSX.Element {
       ?.checkAccessibilityPermission()
       .then(setAccessibilityStatus)
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    return window.api?.onFullscreenChanged(setIsFullscreen);
   }, []);
 
   // Load models
@@ -93,9 +99,20 @@ export default function OnboardingPage(): React.JSX.Element {
     if (status) setMicStatus(status);
   }, []);
 
+  const openMicSettings = useCallback(() => {
+    window.api?.openMicSettings();
+    const interval = setInterval(async () => {
+      const mic = await window.api?.checkMicPermission();
+      if (mic === "granted") {
+        setMicStatus("granted");
+        clearInterval(interval);
+      }
+    }, 1000);
+    setTimeout(() => clearInterval(interval), 30000);
+  }, []);
+
   const openAccessibility = useCallback(() => {
     window.api?.openAccessibilitySettings();
-    // Poll for accessibility status since user needs to toggle it in System Settings
     const interval = setInterval(async () => {
       const ok = await window.api?.checkAccessibilityPermission();
       if (ok) {
@@ -171,11 +188,12 @@ export default function OnboardingPage(): React.JSX.Element {
 
   return (
     <div className="bg-background flex h-screen flex-col">
-      {/* Drag region for macOS traffic lights */}
-      <div
-        className="h-9 shrink-0"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      />
+      {!isFullscreen && (
+        <div
+          className="h-9 shrink-0"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        />
+      )}
       <div className="flex flex-1 items-center justify-center">
         <div className="w-full max-w-md space-y-8 px-6">
           {/* Logo */}
@@ -237,6 +255,16 @@ export default function OnboardingPage(): React.JSX.Element {
                   </div>
                   {micStatus === "granted" ? (
                     <Check className="text-primary h-5 w-5 shrink-0" />
+                  ) : micStatus === "denied" &&
+                    navigator.userAgent.includes("Mac") ? (
+                    <button
+                      type="button"
+                      onClick={openMicSettings}
+                      className="bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium"
+                    >
+                      Open Settings
+                      <ExternalLink className="h-3 w-3" />
+                    </button>
                   ) : (
                     <button
                       type="button"

@@ -34,6 +34,7 @@ export default function PermissionsPage(): React.JSX.Element {
   const accessibilityPollRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
+  const micPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMac = navigator.userAgent.includes("Mac");
 
   const checkAll = useCallback(async () => {
@@ -58,12 +59,32 @@ export default function PermissionsPage(): React.JSX.Element {
     return () => {
       if (accessibilityPollRef.current)
         clearInterval(accessibilityPollRef.current);
+      if (micPollRef.current) clearInterval(micPollRef.current);
     };
   }, [checkAll]);
 
   const requestMic = useCallback(async () => {
     const status = await window.api?.requestMicPermission();
     if (status) setMicStatus(status as PermissionStatus);
+  }, []);
+
+  const openMicSettings = useCallback(() => {
+    window.api?.openMicSettings();
+    if (micPollRef.current) clearInterval(micPollRef.current);
+    micPollRef.current = setInterval(async () => {
+      const mic = await window.api?.checkMicPermission();
+      if (mic === "granted") {
+        setMicStatus("granted");
+        if (micPollRef.current) clearInterval(micPollRef.current);
+        micPollRef.current = null;
+      }
+    }, 1000);
+    setTimeout(() => {
+      if (micPollRef.current) {
+        clearInterval(micPollRef.current);
+        micPollRef.current = null;
+      }
+    }, 30000);
   }, []);
 
   const openAccessibility = useCallback(() => {
@@ -152,13 +173,22 @@ export default function PermissionsPage(): React.JSX.Element {
             </div>
             {micStatus === "granted" ? (
               <Check className="text-primary h-5 w-5 shrink-0" />
+            ) : micStatus === "denied" && isMac ? (
+              <button
+                type="button"
+                onClick={openMicSettings}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 flex shrink-0 items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium"
+              >
+                Open Settings
+                <ExternalLink className="h-3 w-3" />
+              </button>
             ) : (
               <button
                 type="button"
                 onClick={requestMic}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 rounded px-3 py-1.5 text-xs font-medium"
               >
-                {micStatus === "denied" ? "Re-request" : "Allow"}
+                Allow
               </button>
             )}
           </div>

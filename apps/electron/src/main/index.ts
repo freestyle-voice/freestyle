@@ -241,6 +241,14 @@ function createSettingsWindow(): void {
     settingsWindow = null;
   });
 
+  settingsWindow.on("enter-full-screen", () => {
+    settingsWindow?.webContents.send("fullscreen:changed", true);
+  });
+
+  settingsWindow.on("leave-full-screen", () => {
+    settingsWindow?.webContents.send("fullscreen:changed", false);
+  });
+
   settingsWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
     return { action: "deny" };

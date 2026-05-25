@@ -59,6 +59,7 @@ export default function OnboardingPage(): React.JSX.Element {
   const [needsKey, setNeedsKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [apiKeys, setApiKeys] = useState<Set<string>>(new Set());
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Load permissions
   useEffect(() => {
@@ -70,6 +71,10 @@ export default function OnboardingPage(): React.JSX.Element {
       ?.checkAccessibilityPermission()
       .then(setAccessibilityStatus)
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    return window.api?.onFullscreenChanged(setIsFullscreen);
   }, []);
 
   // Load models
@@ -183,11 +188,12 @@ export default function OnboardingPage(): React.JSX.Element {
 
   return (
     <div className="bg-background flex h-screen flex-col">
-      {/* Drag region for macOS traffic lights */}
-      <div
-        className="h-9 shrink-0"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      />
+      {!isFullscreen && (
+        <div
+          className="h-9 shrink-0"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        />
+      )}
       <div className="flex flex-1 items-center justify-center">
         <div className="w-full max-w-md space-y-8 px-6">
           {/* Logo */}

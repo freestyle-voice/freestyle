@@ -22,7 +22,7 @@ import {
   Shield,
   Sliders,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router";
 
 const navItems = [
@@ -57,6 +57,7 @@ const navItems = [
 
 export default function SettingsLayout(): React.JSX.Element {
   const navigate = useNavigate();
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Keyboard shortcuts: Cmd/Ctrl+1-7 for nav
   useEffect(() => {
@@ -72,14 +73,19 @@ export default function SettingsLayout(): React.JSX.Element {
     return () => window.removeEventListener("keydown", handler);
   }, [navigate]);
 
+  useEffect(() => {
+    return window.api?.onFullscreenChanged(setIsFullscreen);
+  }, []);
+
   return (
     <SidebarProvider className="bg-background h-screen">
       <Sidebar collapsible="none" className="border-sidebar-border border-r">
-        {/* Drag region for macOS traffic lights */}
-        <div
-          className="h-9 shrink-0"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        />
+        {!isFullscreen && (
+          <div
+            className="h-9 shrink-0"
+            style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+          />
+        )}
         <SidebarHeader className="flex flex-row items-center gap-2.5 px-4 py-2">
           <img
             src={markLight}
@@ -128,11 +134,12 @@ export default function SettingsLayout(): React.JSX.Element {
         </SidebarContent>
       </Sidebar>
       <SidebarInset className="flex-1 overflow-auto">
-        {/* Drag region for the content area */}
-        <div
-          className="h-9 shrink-0"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        />
+        {!isFullscreen && (
+          <div
+            className="h-9 shrink-0"
+            style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+          />
+        )}
         <div className="px-6 pb-6">
           <Outlet />
         </div>

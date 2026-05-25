@@ -45,6 +45,9 @@ declare global {
       onHotkeyError: (
         callback: (error: { message: string }) => void,
       ) => () => void;
+      onFullscreenChanged: (
+        callback: (isFullscreen: boolean) => void,
+      ) => () => void;
     };
   }
 }

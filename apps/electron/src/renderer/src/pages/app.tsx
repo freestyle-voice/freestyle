@@ -207,6 +207,10 @@ export default function AppPage(): React.JSX.Element {
     // The class is cleaned up in startRecording on next use.
     exitTimerRef.current = setTimeout(() => {
       exitTimerRef.current = null;
+      // Hide the window FIRST via direct IPC, before React re-renders.
+      // This prevents the idle-state DOM changes (orb unmount, glow
+      // class change) from being visible for a frame.
+      window.api.hidePill();
       setState("idle");
       setMessage("");
       setPartialText("");

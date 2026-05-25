@@ -29,7 +29,7 @@ type PillState =
   | "transcribing"
   | "error";
 
-const EXIT_ANIM_MS = 400;
+const EXIT_ANIM_MS = 200;
 
 // ---------------------------------------------------------------------------
 // Sound system — generates short sine-wave tones via Web Audio API.
@@ -507,14 +507,33 @@ export default function AppPage(): React.JSX.Element {
           .glow-error { animation: glow-pulse-red 1.5s ease-in-out infinite; }
           .glow-idle { box-shadow: 0 0 6px 2px rgba(161,161,170,0.05); transition: box-shadow 300ms ease; }
 
-          /* Exit animation: smooth shrink + fade */
-          @keyframes pill-exit-anim {
-            0%   { transform: scale(1);   opacity: 1; }
-            100% { transform: scale(0);   opacity: 0; }
+          /* Exit: collapse to orb, then shrink away */
+          @keyframes pill-exit-wrapper {
+            0%   { transform: scale(1); opacity: 1; }
+            50%  { transform: scale(1); opacity: 1; }
+            100% { transform: scale(0); opacity: 0; }
+          }
+          @keyframes pill-exit-inner {
+            0%   { min-width: 200px !important; max-width: 420px; }
+            50%  { min-width: 52px !important;  max-width: 52px; }
+            100% { min-width: 52px !important;  max-width: 52px; }
+          }
+          @keyframes pill-exit-text {
+            0%   { opacity: 1; }
+            30%  { opacity: 0; }
+            100% { opacity: 0; }
           }
           .pill-exit {
-            animation: pill-exit-anim ${EXIT_ANIM_MS}ms ease-in forwards !important;
+            animation: pill-exit-wrapper ${EXIT_ANIM_MS}ms ease-in forwards !important;
             pointer-events: none;
+          }
+          .pill-exit > div {
+            animation: pill-exit-inner ${EXIT_ANIM_MS}ms ease-in-out forwards !important;
+            overflow: hidden;
+            justify-content: center;
+          }
+          .pill-exit > div > *:not(:first-child) {
+            animation: pill-exit-text ${EXIT_ANIM_MS}ms ease-out forwards !important;
           }
         `}
       </style>

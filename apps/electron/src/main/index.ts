@@ -542,11 +542,10 @@ app.whenReady().then(() => {
   });
 
   // IPC: paste text at cursor
+  // Note: we do NOT hide the pill here — the renderer controls pill
+  // visibility via the dismiss animation → idle → pill:hide flow.
+  // Hiding here would kill the exit animation.
   ipcMain.handle("paste:text", async (_event, text: string) => {
-    // Hide the pill first, then paste into the focused app
-    hidePill();
-    // Small delay for safety before pasting
-    await new Promise((r) => setTimeout(r, 50));
     await pasteIntoFocusedApp(text);
   });
 

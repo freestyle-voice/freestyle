@@ -233,17 +233,10 @@ export default function AppPage(): React.JSX.Element {
     dismissTimerRef.current = setTimeout(() => {
       dismissTimerRef.current = null;
       if (pillRef.current) {
-        pillRef.current.style.transition = "";
-        pillRef.current.style.transform = "";
-        pillRef.current.style.opacity = "";
-        pillRef.current.style.minWidth = "";
-        pillRef.current.style.padding = "";
-        // Reset children styles
+        pillRef.current.style.cssText = "";
         const kids = pillRef.current.children;
         for (let i = 1; i < kids.length; i++) {
-          const child = kids[i] as HTMLElement;
-          child.style.transition = "";
-          child.style.opacity = "";
+          (kids[i] as HTMLElement).style.cssText = "";
         }
       }
       setState("idle");
@@ -261,17 +254,13 @@ export default function AppPage(): React.JSX.Element {
       dismissTimerRef.current = null;
     }
     cancelAnimationFrame(dismissRafRef.current);
-    if (pillRef.current) {
-      pillRef.current.style.transition = "";
-      pillRef.current.style.transform = "";
-      pillRef.current.style.opacity = "";
-      pillRef.current.style.minWidth = "";
-      pillRef.current.style.padding = "";
-      const kids = pillRef.current.children;
+    // Reset any dismiss animation inline styles
+    const el = pillRef.current;
+    if (el) {
+      el.style.cssText = "";
+      const kids = el.children;
       for (let i = 1; i < kids.length; i++) {
-        const child = kids[i] as HTMLElement;
-        child.style.transition = "";
-        child.style.opacity = "";
+        (kids[i] as HTMLElement).style.cssText = "";
       }
     }
     wantsMicRef.current = true;

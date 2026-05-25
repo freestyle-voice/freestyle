@@ -15,6 +15,9 @@ const DictionaryPage = lazy(
 const FormatsPage = lazy(() => import("@renderer/pages/settings/formats"));
 const HistoryPage = lazy(() => import("@renderer/pages/settings/history"));
 const FeedbackPage = lazy(() => import("@renderer/pages/settings/feedback"));
+const PermissionsPage = lazy(
+  () => import("@renderer/pages/settings/permissions"),
+);
 
 export default function App(): React.JSX.Element {
   return (
@@ -31,6 +34,7 @@ export default function App(): React.JSX.Element {
           <Route path="formats" element={<FormatsPage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="feedback" element={<FeedbackPage />} />
+          <Route path="permissions" element={<PermissionsPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

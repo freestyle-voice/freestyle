@@ -29,9 +29,6 @@ type PillState =
   | "transcribing"
   | "error";
 
-const EXIT_COLLAPSE_MS = 100; // pill collapses to orb
-const EXIT_SHRINK_MS = 100; // orb shrinks to zero
-
 // ---------------------------------------------------------------------------
 // Sound system — generates short sine-wave tones via Web Audio API.
 // Sounds can be muted globally via the `sound_enabled` setting.
@@ -102,7 +99,6 @@ export default function AppPage(): React.JSX.Element {
   const wantsMicRef = useRef(false);
   const appContextRef = useRef<string | null>(null);
   const micWarmedUp = useRef(false); // true after first successful getUserMedia
-  const pillRef = useRef<HTMLDivElement>(null);
 
   const getInputVolume = useCallback(() => volumeRef.current, []);
 
@@ -170,84 +166,14 @@ export default function AppPage(): React.JSX.Element {
     setElapsed(0);
   }, []);
 
-  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Hide the pill window without changing React state (avoids blip).
-  // State is reset in startRecording on next use.
-  const goIdle = useCallback(() => {
-    if (exitTimerRef.current) {
-      clearTimeout(exitTimerRef.current);
-      exitTimerRef.current = null;
-    }
+  // Hide the pill immediately
+  const hidePill = useCallback(() => {
     window.api.hidePill();
   }, []);
-
-  // Exit animation: add a CSS class that runs a @keyframes animation.
-  // No JS timing, no double-rAF, no inline style manipulation.
-  // animation-fill-mode: forwards holds the final state (opacity: 0)
-  // so there's no flash-back.
-  const finishAndHide = useCallback(() => {
-    if (exitTimerRef.current) {
-      clearTimeout(exitTimerRef.current);
-      exitTimerRef.current = null;
-    }
-    const wrapper = pillRef.current;
-    if (!wrapper) {
-      goIdle();
-      return;
-    }
-    const pill = wrapper.firstElementChild as HTMLElement | null;
-    if (pill) {
-      // Instantly hide text
-      for (let i = 1; i < pill.children.length; i++) {
-        (pill.children[i] as HTMLElement).style.display = "none";
-      }
-      // Spin the orb during the entire exit
-      const orbContainer = pill.firstElementChild as HTMLElement | null;
-      if (orbContainer) orbContainer.classList.add("pill-exit-spin");
-      // Collapse pill to orb width (100ms transition)
-      pill.style.transition = `min-width ${EXIT_COLLAPSE_MS}ms ease-out, max-width ${EXIT_COLLAPSE_MS}ms ease-out, gap ${EXIT_COLLAPSE_MS}ms ease-out`;
-      pill.style.minWidth = "52px";
-      pill.style.maxWidth = "52px";
-      pill.style.justifyContent = "center";
-      pill.style.gap = "0";
-    }
-    // Start shrink after collapse finishes
-    setTimeout(() => {
-      wrapper.classList.add("pill-exit");
-    }, EXIT_COLLAPSE_MS);
-
-    exitTimerRef.current = setTimeout(() => {
-      exitTimerRef.current = null;
-      window.api.hidePill();
-    }, EXIT_COLLAPSE_MS + EXIT_SHRINK_MS);
-  }, [goIdle]);
 
   // -- Start recording --
   const startRecording = useCallback(async () => {
     if (wantsMicRef.current) return; // Already recording
-    // Cancel any pending exit animation
-    if (exitTimerRef.current) {
-      clearTimeout(exitTimerRef.current);
-      exitTimerRef.current = null;
-    }
-    // Reset exit animation state
-    if (pillRef.current) {
-      pillRef.current.classList.remove("pill-exit");
-      const pill = pillRef.current.firstElementChild as HTMLElement | null;
-      if (pill) {
-        pill.style.transition = "";
-        pill.style.minWidth = "";
-        pill.style.maxWidth = "";
-        pill.style.justifyContent = "";
-        pill.style.gap = "";
-        const orbContainer = pill.firstElementChild as HTMLElement | null;
-        if (orbContainer) orbContainer.classList.remove("pill-exit-spin");
-        for (let i = 1; i < pill.children.length; i++) {
-          (pill.children[i] as HTMLElement).style.display = "";
-        }
-      }
-    }
     wantsMicRef.current = true;
     setMessage("");
     setPartialText("");
@@ -316,7 +242,7 @@ export default function AppPage(): React.JSX.Element {
             if (text.trim()) {
               await window.api.pasteText(text);
             }
-            finishAndHide();
+            hidePill();
           },
           onError: (msg) => {
             // Clean up on streaming error
@@ -325,7 +251,7 @@ export default function AppPage(): React.JSX.Element {
             recorderRef.current.cancel();
             setState("error");
             setMessage(msg);
-            setTimeout(() => goIdle(), 2000);
+            setTimeout(() => hidePill(), 2000);
           },
         });
         streamerRef.current = streamer;
@@ -341,9 +267,9 @@ export default function AppPage(): React.JSX.Element {
       wantsMicRef.current = false;
       setState("error");
       setMessage(err instanceof Error ? err.message : "Mic access denied");
-      setTimeout(() => goIdle(), 2000);
+      setTimeout(() => hidePill(), 2000);
     }
-  }, [startVisualization, finishAndHide, goIdle]);
+  }, [startVisualization, hidePill]);
 
   // -- Commit: stop recording and transcribe --
   const commitRecording = useCallback(async () => {
@@ -384,7 +310,7 @@ export default function AppPage(): React.JSX.Element {
       if (recorderRef.current.isRecording()) {
         wavBlob = await recorderRef.current.stop();
       } else {
-        goIdle();
+        hidePill();
         return;
       }
 
@@ -412,13 +338,13 @@ export default function AppPage(): React.JSX.Element {
       if (text.trim()) {
         await window.api.pasteText(text);
       }
-      finishAndHide();
+      hidePill();
     } catch (err) {
       setState("error");
       setMessage(err instanceof Error ? err.message : "Transcription failed");
-      setTimeout(() => goIdle(), 2000);
+      setTimeout(() => hidePill(), 2000);
     }
-  }, [useStreaming, stopVisualization, finishAndHide, goIdle]);
+  }, [useStreaming, stopVisualization, hidePill]);
 
   const cancelRecording = useCallback(() => {
     wantsMicRef.current = false;
@@ -446,11 +372,6 @@ export default function AppPage(): React.JSX.Element {
   // Track state in a ref so event handlers don't need state in their deps
   const stateRef = useRef(state);
   stateRef.current = state;
-
-  // Note: pill hiding is done via direct window.api.hidePill() calls
-  // in finishAndHide/goIdle, NOT via a state-change useEffect.
-  // This avoids the blip caused by React re-rendering between
-  // setState("idle") and the async IPC window hide.
 
   // Hold-to-record: hotkey down = start, hotkey up = commit
   useEffect(() => {
@@ -530,25 +451,10 @@ export default function AppPage(): React.JSX.Element {
           .glow-error { animation: glow-pulse-red 1.5s ease-in-out infinite; }
           .glow-idle { box-shadow: 0 0 6px 2px rgba(161,161,170,0.05); transition: box-shadow 300ms ease; }
 
-          /* Exit: orb+pill shrink to zero */
-          @keyframes pill-exit-shrink {
-            0%   { transform: scale(1); opacity: 1; }
-            100% { transform: scale(0); opacity: 0; }
-          }
-          @keyframes orb-spin {
-            0%   { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-          .pill-exit {
-            animation: pill-exit-shrink ${EXIT_SHRINK_MS}ms ease-in forwards !important;
-            pointer-events: none;
-          }
-          .pill-exit-spin {
-            animation: orb-spin ${EXIT_COLLAPSE_MS + EXIT_SHRINK_MS}ms linear forwards !important;
-          }
+
         `}
       </style>
-      <div ref={pillRef} className={glowState} style={{ borderRadius: 28 }}>
+      <div className={glowState} style={{ borderRadius: 28 }}>
         <div
           className="inline-flex items-center gap-3"
           style={

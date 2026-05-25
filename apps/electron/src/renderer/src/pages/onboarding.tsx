@@ -255,7 +255,8 @@ export default function OnboardingPage(): React.JSX.Element {
                   </div>
                   {micStatus === "granted" ? (
                     <Check className="text-primary h-5 w-5 shrink-0" />
-                  ) : micStatus === "denied" ? (
+                  ) : micStatus === "denied" &&
+                    navigator.userAgent.includes("Mac") ? (
                     <button
                       type="button"
                       onClick={openMicSettings}

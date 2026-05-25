@@ -159,10 +159,15 @@ export default function AppPage(): React.JSX.Element {
     setElapsed(0);
   }, []);
 
-  // Play the closing iris animation, then go to idle (which hides the window)
+  // Play the closing animation, then go to idle (which hides the window)
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const dismissPill = useCallback(() => {
+    // Clear any pending dismiss
+    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     setState("dismissing");
-    setTimeout(() => {
+    dismissTimerRef.current = setTimeout(() => {
+      dismissTimerRef.current = null;
       setState("idle");
       setMessage("");
       setPartialText("");
@@ -172,6 +177,11 @@ export default function AppPage(): React.JSX.Element {
   // -- Start recording --
   const startRecording = useCallback(async () => {
     if (wantsMicRef.current) return; // Already recording
+    // Cancel any pending dismiss animation
+    if (dismissTimerRef.current) {
+      clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = null;
+    }
     wantsMicRef.current = true;
     setMessage("");
     setPartialText("");
@@ -477,36 +487,32 @@ export default function AppPage(): React.JSX.Element {
         `}
       </style>
       <div className={glowState} style={{ borderRadius: 28 }}>
-        {/* Dismiss animation: orb-only pill that shrinks and fades */}
-        {isDismissing ? (
-          <div
-            ref={(el) => {
-              if (!el) return;
-              // Force reflow then apply the shrink+fade
-              el.getBoundingClientRect();
-              requestAnimationFrame(() => {
-                el.style.width = "48px";
-                el.style.minWidth = "48px";
-                el.style.transform = "scale(0.5)";
-                el.style.opacity = "0";
-              });
-            }}
-            style={
-              {
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: 48,
-                width: 200,
-                minWidth: 200,
-                borderRadius: 28,
-                background: "#27272a",
-                border: "1px solid rgba(161,161,170,0.15)",
-                transition: `width ${DISMISS_MS}ms ease-in-out, min-width ${DISMISS_MS}ms ease-in-out, transform ${DISMISS_MS}ms ease-in-out, opacity ${DISMISS_MS * 0.6}ms ease-in ${DISMISS_MS * 0.4}ms`,
-                WebkitAppRegion: "no-drag",
-              } as React.CSSProperties
-            }
-          >
+        <div
+          className="inline-flex items-center gap-3"
+          style={
+            {
+              height: 48,
+              padding: "0 10px",
+              borderRadius: 28,
+              background: "#27272a",
+              color: "#fafafa",
+              border: "1px solid rgba(161,161,170,0.15)",
+              fontFamily: "'DM Sans', sans-serif",
+              fontSize: 14,
+              fontWeight: 500,
+              minWidth: 200,
+              maxWidth: 420,
+              WebkitAppRegion: "no-drag",
+              transition: isDismissing
+                ? `transform ${DISMISS_MS}ms ease-in-out, opacity ${DISMISS_MS}ms ease-in-out`
+                : "none",
+              transform: isDismissing ? "scale(0.6)" : "scale(1)",
+              opacity: isDismissing ? 0 : 1,
+            } as React.CSSProperties
+          }
+        >
+          {/* Persistent orb — never unmounts, only props change */}
+          {state !== "idle" && state !== "dismissing" && (
             <div
               style={{
                 width: 32,
@@ -517,215 +523,176 @@ export default function AppPage(): React.JSX.Element {
               }}
             >
               <Orb
-                colors={["#8AB62A", "#6B8F12"]}
-                agentState={null}
+                colors={
+                  state === "error"
+                    ? ["#DD6E4E", "#B85C3A"]
+                    : state === "transcribing"
+                      ? ["#60A5FA", "#3B82F6"]
+                      : state === "initializing"
+                        ? ["#FBBF24", "#F59E0B"]
+                        : ["#8AB62A", "#6B8F12"]
+                }
+                agentState={
+                  state === "initializing"
+                    ? "talking"
+                    : state === "recording"
+                      ? "listening"
+                      : state === "transcribing"
+                        ? "talking"
+                        : null
+                }
+                getInputVolume={
+                  state === "recording" ? getInputVolume : undefined
+                }
                 className="h-full w-full"
               />
             </div>
-          </div>
-        ) : (
-          <div
-            className="inline-flex items-center gap-3"
-            style={
-              {
-                height: 48,
-                padding: "0 10px",
-                borderRadius: 28,
-                background: "#27272a",
-                color: "#fafafa",
-                border: "1px solid rgba(161,161,170,0.15)",
-                fontFamily: "'DM Sans', sans-serif",
-                fontSize: 14,
-                fontWeight: 500,
-                minWidth: 200,
-                maxWidth: 420,
-                WebkitAppRegion: "no-drag",
-              } as React.CSSProperties
-            }
-          >
-            {/* Persistent orb — never unmounts, only props change */}
-            {state !== "idle" && (
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  flexShrink: 0,
-                }}
-              >
-                <Orb
-                  colors={
-                    state === "error"
-                      ? ["#DD6E4E", "#B85C3A"]
-                      : state === "transcribing"
-                        ? ["#60A5FA", "#3B82F6"]
-                        : state === "initializing"
-                          ? ["#FBBF24", "#F59E0B"]
-                          : ["#8AB62A", "#6B8F12"]
-                  }
-                  agentState={
-                    state === "initializing"
-                      ? "talking"
-                      : state === "recording"
-                        ? "listening"
-                        : state === "transcribing"
-                          ? "talking"
-                          : null
-                  }
-                  getInputVolume={
-                    state === "recording" ? getInputVolume : undefined
-                  }
-                  className="h-full w-full"
-                />
-              </div>
-            )}
+          )}
 
-            {/* Right-side content changes per state */}
-            {state === "initializing" && (
-              <span
-                style={{
-                  flex: 1,
-                  fontSize: 13,
-                  color: "#a1a1aa",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <span style={{ opacity: 0.7 }}>Listening...</span>
-              </span>
-            )}
+          {/* Right-side content changes per state */}
+          {state === "initializing" && (
+            <span
+              style={{
+                flex: 1,
+                fontSize: 13,
+                color: "#a1a1aa",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span style={{ opacity: 0.7 }}>Listening...</span>
+            </span>
+          )}
 
-            {state === "recording" && (
-              <>
-                {partialText ? (
-                  <span
-                    style={{
-                      flex: 1,
-                      fontSize: 12,
-                      color: "#d4d4d8",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      direction: "rtl",
-                      textAlign: "left",
-                    }}
-                  >
-                    {partialText}
-                  </span>
-                ) : (
-                  <svg
-                    ref={barsSvgRef}
-                    width={SVG_WIDTH}
-                    height={SVG_HEIGHT}
-                    viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-                    style={{ display: "block", flex: 1 }}
-                    role="img"
-                    aria-label="Audio levels"
-                  >
-                    {Array.from({ length: BARS }, (_, i) => {
-                      const x = gap * (i + 0.5);
-                      return (
-                        <line
-                          key={i}
-                          x1={x}
-                          y1={SVG_HEIGHT / 2 + 1}
-                          x2={x}
-                          y2={SVG_HEIGHT / 2 - 1}
-                          stroke="#a1a1aa"
-                          strokeWidth={barWidth}
-                          strokeLinecap="round"
-                          style={{ opacity: 0.5 }}
-                        />
-                      );
-                    })}
-                  </svg>
-                )}
+          {state === "recording" && (
+            <>
+              {partialText ? (
                 <span
-                  className="mono"
                   style={{
-                    fontSize: 11,
-                    letterSpacing: "0.06em",
-                    opacity: 0.6,
-                    flexShrink: 0,
-                    color: "#a1a1aa",
-                    paddingRight: 6,
+                    flex: 1,
+                    fontSize: 12,
+                    color: "#d4d4d8",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    direction: "rtl",
+                    textAlign: "left",
                   }}
                 >
-                  {formatTimer(elapsed)}
+                  {partialText}
                 </span>
-              </>
-            )}
-
-            {state === "transcribing" && (
+              ) : (
+                <svg
+                  ref={barsSvgRef}
+                  width={SVG_WIDTH}
+                  height={SVG_HEIGHT}
+                  viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
+                  style={{ display: "block", flex: 1 }}
+                  role="img"
+                  aria-label="Audio levels"
+                >
+                  {Array.from({ length: BARS }, (_, i) => {
+                    const x = gap * (i + 0.5);
+                    return (
+                      <line
+                        key={i}
+                        x1={x}
+                        y1={SVG_HEIGHT / 2 + 1}
+                        x2={x}
+                        y2={SVG_HEIGHT / 2 - 1}
+                        stroke="#a1a1aa"
+                        strokeWidth={barWidth}
+                        strokeLinecap="round"
+                        style={{ opacity: 0.5 }}
+                      />
+                    );
+                  })}
+                </svg>
+              )}
               <span
+                className="mono"
                 style={{
+                  fontSize: 11,
+                  letterSpacing: "0.06em",
+                  opacity: 0.6,
+                  flexShrink: 0,
                   color: "#a1a1aa",
-                  fontSize: 13,
-                  flex: 1,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  paddingRight: 8,
+                  paddingRight: 6,
                 }}
               >
-                {partialText ? partialText.slice(-30) : "Transcribing..."}
+                {formatTimer(elapsed)}
               </span>
-            )}
+            </>
+          )}
 
-            {state === "pasted" && (
-              <span
+          {state === "transcribing" && (
+            <span
+              style={{
+                color: "#a1a1aa",
+                fontSize: 13,
+                flex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                paddingRight: 8,
+              }}
+            >
+              {partialText ? partialText.slice(-30) : "Transcribing..."}
+            </span>
+          )}
+
+          {state === "pasted" && (
+            <span
+              style={{
+                color: "#a1a1aa",
+                fontSize: 13,
+                flex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                paddingRight: 8,
+              }}
+            >
+              <Check
+                size={14}
                 style={{
-                  color: "#a1a1aa",
-                  fontSize: 13,
-                  flex: 1,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  paddingRight: 8,
+                  color: "#8AB62A",
+                  display: "inline",
+                  verticalAlign: "middle",
+                  marginRight: 4,
                 }}
-              >
-                <Check
-                  size={14}
-                  style={{
-                    color: "#8AB62A",
-                    display: "inline",
-                    verticalAlign: "middle",
-                    marginRight: 4,
-                  }}
-                />
-                {message || "Pasted"}
-              </span>
-            )}
+              />
+              {message || "Pasted"}
+            </span>
+          )}
 
-            {state === "error" && (
-              <span
-                style={{
-                  color: "#a1a1aa",
-                  fontSize: 13,
-                  flex: 1,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  paddingRight: 8,
-                }}
-              >
-                {message || "Error"}
-              </span>
-            )}
+          {state === "error" && (
+            <span
+              style={{
+                color: "#a1a1aa",
+                fontSize: 13,
+                flex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                paddingRight: 8,
+              }}
+            >
+              {message || "Error"}
+            </span>
+          )}
 
-            {state === "idle" && (
-              <div
-                className="inline-flex items-center gap-2"
-                style={{ padding: "0 8px" }}
-              >
-                <Mic size={17} style={{ opacity: 0.5, color: "#a1a1aa" }} />
-                <span style={{ opacity: 0.5, color: "#a1a1aa" }}>
-                  Hold hotkey to record
-                </span>
-              </div>
-            )}
-          </div>
-        )}
+          {state === "idle" && (
+            <div
+              className="inline-flex items-center gap-2"
+              style={{ padding: "0 8px" }}
+            >
+              <Mic size={17} style={{ opacity: 0.5, color: "#a1a1aa" }} />
+              <span style={{ opacity: 0.5, color: "#a1a1aa" }}>
+                Hold hotkey to record
+              </span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -171,17 +171,14 @@ export default function AppPage(): React.JSX.Element {
 
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Go back to idle immediately (for errors, edge cases)
+  // Hide the pill window without changing React state (avoids blip).
+  // State is reset in startRecording on next use.
   const goIdle = useCallback(() => {
     if (exitTimerRef.current) {
       clearTimeout(exitTimerRef.current);
       exitTimerRef.current = null;
     }
-    // Don't remove pill-exit here — fill-mode:forwards holds the
-    // invisible state. Class is cleaned up in startRecording.
-    setState("idle");
-    setMessage("");
-    setPartialText("");
+    window.api.hidePill();
   }, []);
 
   // Exit animation: add a CSS class that runs a @keyframes animation.
@@ -207,13 +204,13 @@ export default function AppPage(): React.JSX.Element {
     // The class is cleaned up in startRecording on next use.
     exitTimerRef.current = setTimeout(() => {
       exitTimerRef.current = null;
-      // Hide the window FIRST via direct IPC, before React re-renders.
-      // This prevents the idle-state DOM changes (orb unmount, glow
-      // class change) from being visible for a frame.
+      // ONLY hide the window. Do NOT change React state here.
+      // Any setState would trigger a re-render that changes the DOM
+      // (unmounts orb, changes glow class, shows idle text) and since
+      // IPC window.hide() is async, that re-render paints as a blip
+      // before the window actually hides.
+      // State is reset in startRecording on the next hotkey press.
       window.api.hidePill();
-      setState("idle");
-      setMessage("");
-      setPartialText("");
     }, EXIT_ANIM_MS + 50);
   }, [goIdle]);
 
@@ -338,7 +335,7 @@ export default function AppPage(): React.JSX.Element {
       recorderRef.current.cancel();
       streamerRef.current?.cancel();
       streamerRef.current = null;
-      setState("idle");
+      window.api.hidePill();
       return;
     }
 
@@ -406,9 +403,7 @@ export default function AppPage(): React.JSX.Element {
     streamerRef.current?.cancel();
     streamerRef.current = null;
     recorderRef.current.cancel();
-    setState("idle");
-    setMessage("");
-    setPartialText("");
+    window.api.hidePill();
   }, [stopVisualization]);
 
   // Load sound preference from server settings
@@ -429,14 +424,10 @@ export default function AppPage(): React.JSX.Element {
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  // Hide the pill whenever we return to idle (covers all exit paths)
-  const prevStateRef = useRef(state);
-  useEffect(() => {
-    if (state === "idle" && prevStateRef.current !== "idle") {
-      window.api.hidePill();
-    }
-    prevStateRef.current = state;
-  }, [state]);
+  // Note: pill hiding is done via direct window.api.hidePill() calls
+  // in finishAndHide/goIdle, NOT via a state-change useEffect.
+  // This avoids the blip caused by React re-rendering between
+  // setState("idle") and the async IPC window hide.
 
   // Hold-to-record: hotkey down = start, hotkey up = commit
   useEffect(() => {

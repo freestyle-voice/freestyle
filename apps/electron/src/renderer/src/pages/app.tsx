@@ -31,22 +31,24 @@ const TONE_PRESETS: Record<TonePreset, { freq: number; ms: number }> = {
   ready: { freq: 600, ms: 80 },
 };
 
-function playTone(preset: TonePreset, volume = 0.15): void {
+async function playTone(preset: TonePreset, volume = 0.3): Promise<void> {
   if (!_soundEnabled) return;
   const { freq, ms } = TONE_PRESETS[preset];
   try {
     const ctx = new AudioContext();
+    // Resume context in case Chromium's autoplay policy suspended it
+    if (ctx.state === "suspended") await ctx.resume();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "sine";
     osc.frequency.value = freq;
-    gain.gain.value = volume;
+    gain.gain.setValueAtTime(volume, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + ms / 1000);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
     osc.stop(ctx.currentTime + ms / 1000);
-    setTimeout(() => ctx.close(), ms + 100);
+    setTimeout(() => ctx.close(), ms + 200);
   } catch {
     // ignore audio errors
   }

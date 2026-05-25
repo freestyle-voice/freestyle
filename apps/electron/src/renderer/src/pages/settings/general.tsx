@@ -13,7 +13,6 @@ import {
   Mic,
   Monitor,
   Moon,
-  Replace,
   Sun,
   Volume2,
   VolumeOff,
@@ -254,120 +253,44 @@ export default function GeneralSettingsPage(): React.JSX.Element {
         </p>
       </div>
 
-      {/* Appearance */}
-      <div className="space-y-3">
-        <div>
-          <h2 className="text-sm font-medium">Appearance</h2>
-          <p className="text-muted-foreground text-sm">
-            Choose your preferred theme.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {themeOptions.map((option) => (
+      {/* ── Recording ─────────────────────────────────────────── */}
+      <div className="space-y-5">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Recording
+        </h2>
+
+        {/* Hotkey */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Hotkey</label>
+          {recorderState === "idle" ? (
             <button
-              key={option.value}
               type="button"
-              onClick={() => handleThemeChange(option.value)}
-              className={cn(
-                "flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm transition-colors",
-                theme === option.value
-                  ? "border-primary bg-accent text-accent-foreground font-medium"
-                  : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground",
-              )}
+              onClick={startHotkeyRecording}
+              className="border-border hover:bg-secondary flex w-full items-center gap-3 rounded-lg border px-4 py-3 transition-colors"
             >
-              <option.icon className="h-4 w-4" />
-              {option.label}
+              <Keyboard className="text-muted-foreground h-4 w-4 shrink-0" />
+              <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
+              <span className="text-muted-foreground ml-auto text-xs">
+                Click to change
+              </span>
             </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Microphone */}
-      <div className="space-y-3">
-        <div>
-          <h2 className="text-sm font-medium">Microphone</h2>
-          <p className="text-muted-foreground text-sm">
-            Select your audio input device.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Mic className="text-muted-foreground h-4 w-4 shrink-0" />
-          <select
-            value={selectedDevice}
-            onChange={(e) => handleDeviceChange(e.target.value)}
-            className="border-border bg-card text-foreground w-full max-w-sm appearance-auto rounded-lg border px-3 py-2 pr-8 text-sm"
-          >
-            <option value="">System default</option>
-            {devices.map((d) => (
-              <option key={d.deviceId} value={d.deviceId}>
-                {d.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Hotkey */}
-      <div className="space-y-3">
-        <div>
-          <h2 className="text-sm font-medium">Hotkey</h2>
-          <p className="text-muted-foreground text-sm">
-            Global shortcut to toggle the transcription pill.
-          </p>
-        </div>
-
-        {recorderState === "idle" ? (
-          <button
-            type="button"
-            onClick={startHotkeyRecording}
-            className="border-border hover:bg-secondary flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors"
-          >
-            <Keyboard className="text-muted-foreground h-4 w-4 shrink-0" />
-            <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
-            <span className="text-muted-foreground ml-auto text-xs">
-              Click to change
-            </span>
-          </button>
-        ) : recorderState === "recording" ? (
-          <div className="border-primary/60 bg-primary/5 flex items-center justify-between rounded-lg border px-4 py-3">
-            <div className="flex items-center gap-3">
-              <Keyboard className="text-primary h-4 w-4 shrink-0" />
-              {liveKeys.length > 0 ? (
-                <>
-                  <KeyComboDisplay keys={liveKeys} variant="dim" />
-                  <span className="text-muted-foreground animate-pulse text-xs">
-                    + press a key
+          ) : recorderState === "recording" ? (
+            <div className="border-primary/60 bg-primary/5 flex items-center justify-between rounded-lg border px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Keyboard className="text-primary h-4 w-4 shrink-0" />
+                {liveKeys.length > 0 ? (
+                  <>
+                    <KeyComboDisplay keys={liveKeys} variant="dim" />
+                    <span className="text-muted-foreground animate-pulse text-xs">
+                      + press a key
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground animate-pulse text-sm">
+                    Press a key combination...
                   </span>
-                </>
-              ) : (
-                <span className="text-muted-foreground animate-pulse text-sm">
-                  Press a key combination...
-                </span>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={cancelHotkeyRecording}
-              className="border-border hover:bg-secondary rounded-md border px-3 py-1.5 text-xs"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          /* captured */
-          <div className="border-primary/60 bg-primary/5 flex items-center justify-between rounded-lg border px-4 py-3">
-            <div className="flex items-center gap-3">
-              <Keyboard className="text-primary h-4 w-4 shrink-0" />
-              <KeyComboDisplay keys={capturedKeys} variant="recording" />
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={saveHotkeyRecording}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-3 py-1.5 text-xs font-medium"
-              >
-                Save
-              </button>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={cancelHotkeyRecording}
@@ -376,99 +299,101 @@ export default function GeneralSettingsPage(): React.JSX.Element {
                 Cancel
               </button>
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* Language */}
-      <div className="space-y-3">
-        <div>
-          <h2 className="text-sm font-medium">Language</h2>
-          <p className="text-muted-foreground text-sm">
-            Set a language hint for the transcription model.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Languages className="text-muted-foreground h-4 w-4 shrink-0" />
-          <select
-            value={language}
-            onChange={(e) => handleLanguageChange(e.target.value)}
-            className="border-border bg-card text-foreground w-full max-w-sm appearance-auto rounded-lg border px-3 py-2 pr-8 text-sm"
-          >
-            <option value="auto">Auto-detect</option>
-            <option value="en">English</option>
-            <option value="es">Spanish</option>
-            <option value="fr">French</option>
-            <option value="de">German</option>
-            <option value="it">Italian</option>
-            <option value="pt">Portuguese</option>
-            <option value="nl">Dutch</option>
-            <option value="ru">Russian</option>
-            <option value="zh">Chinese</option>
-            <option value="ja">Japanese</option>
-            <option value="ko">Korean</option>
-            <option value="ar">Arabic</option>
-            <option value="hi">Hindi</option>
-            <option value="pl">Polish</option>
-            <option value="tr">Turkish</option>
-            <option value="sv">Swedish</option>
-            <option value="da">Danish</option>
-            <option value="no">Norwegian</option>
-            <option value="fi">Finnish</option>
-            <option value="uk">Ukrainian</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Pill Position */}
-      <div className="space-y-3">
-        <div>
-          <h2 className="text-sm font-medium">Widget Position</h2>
-          <p className="text-muted-foreground text-sm">
-            Choose where the transcription widget appears on screen.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Replace className="text-muted-foreground h-4 w-4 shrink-0" />
-          <div className="flex flex-wrap gap-2">
-            {[
-              { value: "bottom-center", label: "Bottom Center" },
-              { value: "bottom-right", label: "Bottom Right" },
-              { value: "top-center", label: "Top Center" },
-              { value: "top-right", label: "Top Right" },
-            ].map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => handlePillPositionChange(opt.value)}
-                className={cn(
-                  "rounded-lg border px-3 py-1.5 text-xs transition-colors",
-                  pillPosition === opt.value
-                    ? "border-primary bg-accent text-accent-foreground font-medium"
-                    : "border-border text-muted-foreground hover:bg-secondary",
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Sound */}
-      <div className="space-y-3">
-        <div>
-          <h2 className="text-sm font-medium">Sound</h2>
-          <p className="text-muted-foreground text-sm">
-            Audio feedback when recording starts and stops.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {soundEnabled ? (
-            <Volume2 className="text-muted-foreground h-4 w-4 shrink-0" />
           ) : (
-            <VolumeOff className="text-muted-foreground h-4 w-4 shrink-0" />
+            /* captured */
+            <div className="border-primary/60 bg-primary/5 flex items-center justify-between rounded-lg border px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Keyboard className="text-primary h-4 w-4 shrink-0" />
+                <KeyComboDisplay keys={capturedKeys} variant="recording" />
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={saveHotkeyRecording}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-3 py-1.5 text-xs font-medium"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelHotkeyRecording}
+                  className="border-border hover:bg-secondary rounded-md border px-3 py-1.5 text-xs"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           )}
+        </div>
+
+        {/* Microphone + Language side by side */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Microphone</label>
+            <div className="flex items-center gap-2">
+              <Mic className="text-muted-foreground h-4 w-4 shrink-0" />
+              <select
+                value={selectedDevice}
+                onChange={(e) => handleDeviceChange(e.target.value)}
+                className="border-border bg-card text-foreground w-full appearance-auto rounded-lg border px-3 py-2 text-sm"
+              >
+                <option value="">System default</option>
+                {devices.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Language</label>
+            <div className="flex items-center gap-2">
+              <Languages className="text-muted-foreground h-4 w-4 shrink-0" />
+              <select
+                value={language}
+                onChange={(e) => handleLanguageChange(e.target.value)}
+                className="border-border bg-card text-foreground w-full appearance-auto rounded-lg border px-3 py-2 text-sm"
+              >
+                <option value="auto">Auto-detect</option>
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="it">Italian</option>
+                <option value="pt">Portuguese</option>
+                <option value="nl">Dutch</option>
+                <option value="ru">Russian</option>
+                <option value="zh">Chinese</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="ar">Arabic</option>
+                <option value="hi">Hindi</option>
+                <option value="pl">Polish</option>
+                <option value="tr">Turkish</option>
+                <option value="sv">Swedish</option>
+                <option value="da">Danish</option>
+                <option value="no">Norwegian</option>
+                <option value="fi">Finnish</option>
+                <option value="uk">Ukrainian</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Sound toggle - inline row */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {soundEnabled ? (
+              <Volume2 className="text-muted-foreground h-4 w-4 shrink-0" />
+            ) : (
+              <VolumeOff className="text-muted-foreground h-4 w-4 shrink-0" />
+            )}
+            <span className="text-sm font-medium">Sound feedback</span>
+            <span className="text-muted-foreground text-xs">
+              Play tones on record start/stop
+            </span>
+          </div>
           <button
             type="button"
             onClick={() => handleSoundToggle(!soundEnabled)}
@@ -484,44 +409,103 @@ export default function GeneralSettingsPage(): React.JSX.Element {
               )}
             />
           </button>
-          <span className="text-sm text-muted-foreground">
-            {soundEnabled ? "On" : "Off"}
-          </span>
         </div>
       </div>
 
-      {/* Update notification */}
-      {updateAvailable && (
-        <div className="border-primary/30 bg-primary/5 flex items-center justify-between rounded-lg border px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Download className="text-primary h-4 w-4" />
-            <span className="text-sm">
-              {updateDownloaded
-                ? `Version ${updateAvailable} ready to install`
-                : `Version ${updateAvailable} available`}
-            </span>
+      {/* ── Display ───────────────────────────────────────────── */}
+      <div className="space-y-5">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Display
+        </h2>
+
+        {/* Appearance + Widget Position side by side */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Theme</label>
+            <div className="flex gap-2">
+              {themeOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => handleThemeChange(option.value)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs transition-colors",
+                    theme === option.value
+                      ? "border-primary bg-accent text-accent-foreground font-medium"
+                      : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground",
+                  )}
+                >
+                  <option.icon className="h-3.5 w-3.5" />
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </div>
-          {updateDownloaded ? (
-            <button
-              type="button"
-              onClick={() => window.api?.installUpdate()}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium"
-            >
-              Restart & Update
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setDownloading(true);
-                window.api?.downloadUpdate();
-              }}
-              disabled={downloading}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium disabled:opacity-50"
-            >
-              {downloading ? "Downloading..." : "Download"}
-            </button>
-          )}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Widget Position</label>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { value: "bottom-center", label: "Bottom Center" },
+                { value: "bottom-right", label: "Bottom Right" },
+                { value: "top-center", label: "Top Center" },
+                { value: "top-right", label: "Top Right" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => handlePillPositionChange(opt.value)}
+                  className={cn(
+                    "rounded-lg border px-2.5 py-1.5 text-xs transition-colors",
+                    pillPosition === opt.value
+                      ? "border-primary bg-accent text-accent-foreground font-medium"
+                      : "border-border text-muted-foreground hover:bg-secondary",
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Updates ────────────────────────────────────────────── */}
+      {updateAvailable && (
+        <div className="space-y-5">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Updates
+          </h2>
+          <div className="border-primary/30 bg-primary/5 flex items-center justify-between rounded-lg border px-4 py-3">
+            <div className="flex items-center gap-2">
+              <Download className="text-primary h-4 w-4" />
+              <span className="text-sm">
+                {updateDownloaded
+                  ? `Version ${updateAvailable} ready to install`
+                  : `Version ${updateAvailable} available`}
+              </span>
+            </div>
+            {updateDownloaded ? (
+              <button
+                type="button"
+                onClick={() => window.api?.installUpdate()}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium"
+              >
+                Restart & Update
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setDownloading(true);
+                  window.api?.downloadUpdate();
+                }}
+                disabled={downloading}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium disabled:opacity-50"
+              >
+                {downloading ? "Downloading..." : "Download"}
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

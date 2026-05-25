@@ -1,6 +1,9 @@
 # Publish workflow — runs when the "accepted" label is added to a
-# Craft publish request issue.  Downloads build artifacts from the
-# CI run on the release branch and creates a GitHub Release.
+# Craft publish request issue.  Runs `craft publish` which downloads
+# build artifacts, creates a GitHub Release, uploads assets, merges
+# the release branch back into main, and cleans up.
+#
+# Modeled on getsentry/outpost's working publish workflow.
 
 name: Publish
 on:
@@ -17,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Publish release
     environment: production
+    timeout-minutes: 15
     steps:
       - name: Generate GitHub App token
         id: token
@@ -27,11 +31,12 @@ jobs:
 
       - name: Parse version from issue title
         id: version
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
         run: |
-          TITLE="${{ github.event.issue.title }}"
-          VERSION=$(echo "$TITLE" | grep -oP '\d+\.\d+\.\d+(-\S+)?$' || true)
-          if [ -z "$VERSION" ]; then
-            echo "::error::Could not parse version from issue title: $TITLE"
+          VERSION=$(echo "$ISSUE_TITLE" | grep -oP '@\K[^\s]+$')
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::Could not parse version from issue title: $ISSUE_TITLE"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -41,6 +46,11 @@ jobs:
           ref: release/${{ steps.version.outputs.version }}
           token: ${{ steps.token.outputs.token }}
           fetch-depth: 0
+
+      - name: Set git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - uses: pnpm/action-setup@v4
 
@@ -60,31 +70,35 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
         run: |
-          BRANCH="release/${{ steps.version.outputs.version }}"
-          echo "Waiting for CI on $BRANCH..."
-          RUN_ID=$(gh run list --branch "$BRANCH" --workflow "Build & Test" --limit 1 --json databaseId --jq '.[0].databaseId')
-          if [ -z "$RUN_ID" ]; then
-            echo "::error::No CI run found for $BRANCH"
+          branch="release/${{ steps.version.outputs.version }}"
+          echo "Waiting for CI on $branch..."
+          run_id=$(gh run list --workflow "Build & Test" --branch "$branch" --json databaseId --jq '.[0].databaseId')
+          if [[ -z "$run_id" || "$run_id" == "null" ]]; then
+            echo "::error::No CI run found for branch $branch"
             exit 1
           fi
-          gh run watch "$RUN_ID" --exit-status
+          gh run watch "$run_id" --exit-status
 
       - name: Publish with Craft
+        run: craft publish "${{ steps.version.outputs.version }}" --no-input --no-status-check
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_API_TOKEN: ${{ steps.token.outputs.token }}
-        run: craft publish ${{ steps.version.outputs.version }} --no-input --no-status-check
 
       - name: Close issue on success
         if: success()
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
         run: |
-          gh issue close ${{ github.event.issue.number }} --comment "Published ${{ steps.version.outputs.version }}."
+          gh issue close "${{ github.event.issue.number }}" \
+            --comment "Published **${{ steps.version.outputs.version }}** successfully.
+          [Workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
 
       - name: Handle failure
         if: failure()
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
         run: |
-          gh issue comment ${{ github.event.issue.number }} --body "Publish failed. See [run logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
-          gh issue edit ${{ github.event.issue.number }} --remove-label accepted
+          gh issue comment "${{ github.event.issue.number }}" \
+            --body "Publish failed. See [run logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          gh issue edit "${{ github.event.issue.number }}" --remove-label accepted

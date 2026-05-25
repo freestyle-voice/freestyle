@@ -85,7 +85,6 @@ function formatTimer(ms: number): string {
 
 export default function AppPage(): React.JSX.Element {
   const [state, setState] = useState<PillState>("idle");
-  const [dismissActive, setDismissActive] = useState(false); // true = apply scale+fade
   const [elapsed, setElapsed] = useState(0);
   const [message, setMessage] = useState("");
   const [partialText, setPartialText] = useState("");
@@ -103,6 +102,7 @@ export default function AppPage(): React.JSX.Element {
   const wantsMicRef = useRef(false);
   const appContextRef = useRef<string | null>(null);
   const micWarmedUp = useRef(false); // true after first successful getUserMedia
+  const pillRef = useRef<HTMLDivElement>(null); // for dismiss animation DOM manipulation
 
   const getInputVolume = useCallback(() => volumeRef.current, []);
 
@@ -170,35 +170,40 @@ export default function AppPage(): React.JSX.Element {
     setElapsed(0);
   }, []);
 
-  // Play the closing animation, then go to idle (which hides the window).
-  // Two-phase: setState("dismissing") renders at full size, then the useEffect
-  // below sets dismissActive=true which applies scale(0.6)+opacity(0) via CSS
-  // transition. This ensures the browser has a "from" frame to transition from.
+  // Dismiss animation: shrink + fade the pill via direct DOM manipulation,
+  // then go to idle (which hides the window). Uses the DOM directly to
+  // guarantee two separate paint frames (React state batching defeats CSS
+  // transitions because 'from' and 'to' values land in the same frame).
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dismissPill = useCallback(() => {
     if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-    setDismissActive(false); // reset so next render is at full size
     setState("dismissing");
-    // The useEffect below handles phase 2
+    const el = pillRef.current;
+    if (el) {
+      // Ensure the transition property is set and the 'from' frame is painted
+      el.style.transition = `transform ${DISMISS_MS}ms ease-in-out, opacity ${DISMISS_MS}ms ease-in-out`;
+      el.style.transform = "scale(1)";
+      el.style.opacity = "1";
+      // Force the browser to paint the current frame
+      el.getBoundingClientRect();
+      // Now apply the 'to' values — the browser will animate between the two
+      el.style.transform = "scale(0.6)";
+      el.style.opacity = "0";
+    }
+    dismissTimerRef.current = setTimeout(() => {
+      dismissTimerRef.current = null;
+      // Reset inline styles so next show starts clean
+      if (pillRef.current) {
+        pillRef.current.style.transition = "";
+        pillRef.current.style.transform = "";
+        pillRef.current.style.opacity = "";
+      }
+      setState("idle");
+      setMessage("");
+      setPartialText("");
+    }, DISMISS_MS);
   }, []);
-
-  // Phase 2: after "dismissing" renders at full size, apply the shrink+fade
-  useEffect(() => {
-    if (state !== "dismissing") return;
-    // Use rAF to ensure the "full size" frame is painted first
-    const raf = requestAnimationFrame(() => {
-      setDismissActive(true);
-      dismissTimerRef.current = setTimeout(() => {
-        dismissTimerRef.current = null;
-        setDismissActive(false);
-        setState("idle");
-        setMessage("");
-        setPartialText("");
-      }, DISMISS_MS);
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [state]);
 
   // -- Start recording --
   const startRecording = useCallback(async () => {
@@ -208,22 +213,34 @@ export default function AppPage(): React.JSX.Element {
       clearTimeout(dismissTimerRef.current);
       dismissTimerRef.current = null;
     }
-    setDismissActive(false);
+    // Reset any inline dismiss styles so the pill appears at full size
+    if (pillRef.current) {
+      pillRef.current.style.transition = "";
+      pillRef.current.style.transform = "";
+      pillRef.current.style.opacity = "";
+    }
     wantsMicRef.current = true;
     setMessage("");
     setPartialText("");
 
+    // Capture frontmost app in parallel with mic acquisition (don't block on it)
+    window.api
+      ?.getFrontmostApp()
+      .then((app) => {
+        appContextRef.current = app;
+      })
+      .catch(() => {
+        appContextRef.current = null;
+      });
+
     // Show initializing only on the very first press (mic not yet warmed up)
-    if (!micWarmedUp.current) {
+    const isFirstPress = !micWarmedUp.current;
+    if (isFirstPress) {
       setState("initializing");
     } else {
       setState("recording");
       playTone("start");
     }
-
-    // Capture frontmost app NOW (before mic dialog or any focus change)
-    appContextRef.current =
-      (await window.api?.getFrontmostApp().catch(() => null)) ?? null;
 
     try {
       // Start the recorder (captures audio for REST transcription)
@@ -235,10 +252,10 @@ export default function AppPage(): React.JSX.Element {
       }
 
       // Mark mic as warmed up after first successful acquisition
-      if (!micWarmedUp.current) {
+      if (isFirstPress) {
         micWarmedUp.current = true;
-        setState("recording");
         playTone("start");
+        setState("recording");
       }
 
       // Start timer
@@ -515,6 +532,7 @@ export default function AppPage(): React.JSX.Element {
       </style>
       <div className={glowState} style={{ borderRadius: 28 }}>
         <div
+          ref={pillRef}
           className="inline-flex items-center gap-3"
           style={
             {
@@ -530,9 +548,6 @@ export default function AppPage(): React.JSX.Element {
               minWidth: 200,
               maxWidth: 420,
               WebkitAppRegion: "no-drag",
-              transition: `transform ${DISMISS_MS}ms ease-in-out, opacity ${DISMISS_MS}ms ease-in-out`,
-              transform: dismissActive ? "scale(0.6)" : "scale(1)",
-              opacity: dismissActive ? 0 : 1,
             } as React.CSSProperties
           }
         >

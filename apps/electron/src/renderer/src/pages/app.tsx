@@ -27,6 +27,7 @@ type PillState =
   | "initializing"
   | "recording"
   | "transcribing"
+  | "done"
   | "error";
 
 // ---------------------------------------------------------------------------
@@ -166,16 +167,36 @@ export default function AppPage(): React.JSX.Element {
     setElapsed(0);
   }, []);
 
+  const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Go back to idle and let the hide-pill effect handle window visibility
   const goIdle = useCallback(() => {
+    if (doneTimerRef.current) clearTimeout(doneTimerRef.current);
     setState("idle");
     setMessage("");
     setPartialText("");
   }, []);
 
+  // Show a brief "done" state (green orb, no text) then hide.
+  // Gives the user a 600ms visual confirmation that the paste worked.
+  const finishAndHide = useCallback(() => {
+    if (doneTimerRef.current) clearTimeout(doneTimerRef.current);
+    setState("done");
+    setMessage("");
+    setPartialText("");
+    doneTimerRef.current = setTimeout(() => {
+      doneTimerRef.current = null;
+      setState("idle");
+    }, 600);
+  }, []);
+
   // -- Start recording --
   const startRecording = useCallback(async () => {
     if (wantsMicRef.current) return; // Already recording
+    if (doneTimerRef.current) {
+      clearTimeout(doneTimerRef.current);
+      doneTimerRef.current = null;
+    }
     wantsMicRef.current = true;
     setMessage("");
     setPartialText("");
@@ -244,7 +265,7 @@ export default function AppPage(): React.JSX.Element {
             if (text.trim()) {
               await window.api.pasteText(text);
             }
-            goIdle();
+            finishAndHide();
           },
           onError: (msg) => {
             // Clean up on streaming error
@@ -271,7 +292,7 @@ export default function AppPage(): React.JSX.Element {
       setMessage(err instanceof Error ? err.message : "Mic access denied");
       setTimeout(() => goIdle(), 2000);
     }
-  }, [startVisualization, goIdle]);
+  }, [startVisualization, finishAndHide, goIdle]);
 
   // -- Commit: stop recording and transcribe --
   const commitRecording = useCallback(async () => {
@@ -340,13 +361,13 @@ export default function AppPage(): React.JSX.Element {
       if (text.trim()) {
         await window.api.pasteText(text);
       }
-      goIdle();
+      finishAndHide();
     } catch (err) {
       setState("error");
       setMessage(err instanceof Error ? err.message : "Transcription failed");
       setTimeout(() => goIdle(), 2000);
     }
-  }, [useStreaming, stopVisualization, goIdle]);
+  }, [useStreaming, stopVisualization, finishAndHide, goIdle]);
 
   const cancelRecording = useCallback(() => {
     wantsMicRef.current = false;
@@ -393,7 +414,12 @@ export default function AppPage(): React.JSX.Element {
       // Allow starting from idle, or from terminal states that the pill
       // may still be displaying (transcribing/pasted/error) when the
       // user presses the hotkey again before the auto-dismiss fires.
-      if (s === "idle" || s === "transcribing" || s === "error") {
+      if (
+        s === "idle" ||
+        s === "transcribing" ||
+        s === "done" ||
+        s === "error"
+      ) {
         startRecording();
       }
     });
@@ -431,9 +457,11 @@ export default function AppPage(): React.JSX.Element {
         ? "glow-recording"
         : state === "transcribing"
           ? "glow-transcribing"
-          : state === "error"
-            ? "glow-error"
-            : "glow-idle";
+          : state === "done"
+            ? "glow-done"
+            : state === "error"
+              ? "glow-error"
+              : "glow-idle";
 
   return (
     <div
@@ -461,6 +489,7 @@ export default function AppPage(): React.JSX.Element {
           .glow-initializing { animation: glow-pulse-amber 1s ease-in-out infinite; }
           .glow-recording { animation: glow-pulse-green 2s ease-in-out infinite; }
           .glow-transcribing { animation: glow-pulse-blue 1.5s ease-in-out infinite; }
+          .glow-done { box-shadow: 0 0 10px 3px rgba(138,182,42,0.15); transition: box-shadow 200ms ease; }
           .glow-error { animation: glow-pulse-red 1.5s ease-in-out infinite; }
           .glow-idle { box-shadow: 0 0 6px 2px rgba(161,161,170,0.05); transition: box-shadow 300ms ease; }
         `}
@@ -596,6 +625,8 @@ export default function AppPage(): React.JSX.Element {
               {partialText ? partialText.slice(-30) : "Transcribing..."}
             </span>
           )}
+
+          {state === "done" && <span style={pillTextStyle}>Done</span>}
 
           {state === "error" && (
             <span style={pillTextStyle}>{message || "Error"}</span>

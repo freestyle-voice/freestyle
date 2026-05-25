@@ -15,6 +15,8 @@ import {
   Moon,
   Replace,
   Sun,
+  Volume2,
+  VolumeOff,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useState } from "react";
@@ -97,6 +99,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
   const [hotkey, setHotkey] = useState("Alt+Space");
   const [language, setLanguage] = useState("auto");
   const [pillPosition, setPillPosition] = useState("bottom-center");
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -166,6 +169,12 @@ export default function GeneralSettingsPage(): React.JSX.Element {
       ?.getPillPosition()
       .then(setPillPosition)
       .catch(() => {});
+    fetch(`${getApiBase()}/api/settings/sound_enabled`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.value === "false") setSoundEnabled(false);
+      })
+      .catch(() => {});
 
     // Auto-updater events
     const removeAvail = window.api?.onUpdateAvailable((info) => {
@@ -221,6 +230,15 @@ export default function GeneralSettingsPage(): React.JSX.Element {
   const handlePillPositionChange = useCallback((value: string) => {
     setPillPosition(value);
     window.api?.setPillPosition(value);
+  }, []);
+
+  const handleSoundToggle = useCallback((enabled: boolean) => {
+    setSoundEnabled(enabled);
+    fetch(`${getApiBase()}/api/settings/sound_enabled`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: String(enabled) }),
+    }).catch(() => {});
   }, []);
 
   // Build display keys for current recorder state
@@ -434,6 +452,41 @@ export default function GeneralSettingsPage(): React.JSX.Element {
               </button>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Sound */}
+      <div className="space-y-3">
+        <div>
+          <h2 className="text-sm font-medium">Sound</h2>
+          <p className="text-muted-foreground text-sm">
+            Audio feedback when recording starts and stops.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {soundEnabled ? (
+            <Volume2 className="text-muted-foreground h-4 w-4 shrink-0" />
+          ) : (
+            <VolumeOff className="text-muted-foreground h-4 w-4 shrink-0" />
+          )}
+          <button
+            type="button"
+            onClick={() => handleSoundToggle(!soundEnabled)}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+              soundEnabled ? "bg-primary" : "bg-muted",
+            )}
+          >
+            <span
+              className={cn(
+                "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                soundEnabled ? "translate-x-5" : "translate-x-0",
+              )}
+            />
+          </button>
+          <span className="text-sm text-muted-foreground">
+            {soundEnabled ? "On" : "Off"}
+          </span>
         </div>
       </div>
 

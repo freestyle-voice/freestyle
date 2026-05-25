@@ -82,7 +82,6 @@ jobs:
           path: |
             apps/electron/dist/*.AppImage
             apps/electron/dist/*.deb
-            apps/electron/dist/*.snap
             apps/electron/dist/*.yml
           if-no-files-found: warn
 

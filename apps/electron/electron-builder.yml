@@ -30,17 +30,15 @@ mac:
 dmg:
   artifactName: ${productName}-${version}.${ext}
 linux:
+  executableName: freestyle
   target:
     - AppImage
-    - snap
     - deb
   maintainer: freestyle
   category: Utility
 appImage:
   artifactName: ${productName}-${version}.${ext}
 deb:
-  artifactName: ${productName}-${version}.${ext}
-snap:
   artifactName: ${productName}-${version}.${ext}
 npmRebuild: false
 publish:

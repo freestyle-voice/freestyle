@@ -9,10 +9,31 @@ const BARS = 14;
 const RISE = 0.55;
 const FALL = 0.22;
 
-type PillState = "idle" | "recording" | "transcribing" | "pasted" | "error";
+type PillState =
+  | "idle"
+  | "initializing"
+  | "recording"
+  | "transcribing"
+  | "pasted"
+  | "error";
 
-// Audio feedback: short sine tones for recording start/stop
-function playTone(freq: number, durationMs: number, volume = 0.15): void {
+// ---------------------------------------------------------------------------
+// Sound system — generates short sine-wave tones via Web Audio API.
+// Sounds can be muted globally via the `sound_enabled` setting.
+// ---------------------------------------------------------------------------
+
+let _soundEnabled = true; // cached; updated from settings on mount
+
+type TonePreset = "start" | "stop" | "ready";
+const TONE_PRESETS: Record<TonePreset, { freq: number; ms: number }> = {
+  start: { freq: 880, ms: 100 },
+  stop: { freq: 660, ms: 100 },
+  ready: { freq: 600, ms: 80 },
+};
+
+function playTone(preset: TonePreset, volume = 0.15): void {
+  if (!_soundEnabled) return;
+  const { freq, ms } = TONE_PRESETS[preset];
   try {
     const ctx = new AudioContext();
     const osc = ctx.createOscillator();
@@ -20,15 +41,12 @@ function playTone(freq: number, durationMs: number, volume = 0.15): void {
     osc.type = "sine";
     osc.frequency.value = freq;
     gain.gain.value = volume;
-    gain.gain.exponentialRampToValueAtTime(
-      0.001,
-      ctx.currentTime + durationMs / 1000,
-    );
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + ms / 1000);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
-    osc.stop(ctx.currentTime + durationMs / 1000);
-    setTimeout(() => ctx.close(), durationMs + 100);
+    osc.stop(ctx.currentTime + ms / 1000);
+    setTimeout(() => ctx.close(), ms + 100);
   } catch {
     // ignore audio errors
   }
@@ -128,11 +146,9 @@ export default function AppPage(): React.JSX.Element {
   const startRecording = useCallback(async () => {
     if (wantsMicRef.current) return; // Already recording
     wantsMicRef.current = true;
-    setState("recording");
+    setState("initializing");
     setMessage("");
     setPartialText("");
-    // Audio feedback: ascending tone on start
-    playTone(880, 100);
 
     // Capture frontmost app NOW (before mic dialog or any focus change)
     appContextRef.current =
@@ -146,6 +162,10 @@ export default function AppPage(): React.JSX.Element {
         recorderRef.current.cancel();
         return;
       }
+
+      // Mic acquired — transition to recording and play feedback sound
+      setState("recording");
+      playTone("start");
 
       // Start timer
       startTimeRef.current = Date.now();
@@ -223,7 +243,7 @@ export default function AppPage(): React.JSX.Element {
     wantsMicRef.current = false;
     stopVisualization();
     // Audio feedback: descending tone on stop
-    playTone(660, 100);
+    playTone("stop");
 
     // Skip recordings shorter than 1 second (likely accidental trigger)
     const recordingDuration = Date.now() - startTimeRef.current;
@@ -316,6 +336,20 @@ export default function AppPage(): React.JSX.Element {
     setPartialText("");
   }, [stopVisualization]);
 
+  // Load sound preference from server settings
+  useEffect(() => {
+    window.api
+      ?.getServerPort()
+      .then((port) =>
+        fetch(`http://localhost:${port}/api/settings/sound_enabled`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (data?.value === "false") _soundEnabled = false;
+          }),
+      )
+      .catch(() => {});
+  }, []);
+
   // Track state in a ref so event handlers don't need state in their deps
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -337,7 +371,10 @@ export default function AppPage(): React.JSX.Element {
       }
     });
     const removeUp = window.api.onHotkeyUp(() => {
-      if (stateRef.current === "recording") {
+      if (
+        stateRef.current === "recording" ||
+        stateRef.current === "initializing"
+      ) {
         commitRecording();
       }
     });
@@ -363,15 +400,17 @@ export default function AppPage(): React.JSX.Element {
 
   // Animated glow uses CSS animation via a class
   const glowState =
-    state === "recording"
-      ? "glow-recording"
-      : state === "transcribing"
-        ? "glow-transcribing"
-        : state === "pasted"
-          ? "glow-pasted"
-          : state === "error"
-            ? "glow-error"
-            : "glow-idle";
+    state === "initializing"
+      ? "glow-initializing"
+      : state === "recording"
+        ? "glow-recording"
+        : state === "transcribing"
+          ? "glow-transcribing"
+          : state === "pasted"
+            ? "glow-pasted"
+            : state === "error"
+              ? "glow-error"
+              : "glow-idle";
 
   return (
     <div
@@ -380,6 +419,10 @@ export default function AppPage(): React.JSX.Element {
     >
       <style>
         {`
+          @keyframes glow-pulse-amber {
+            0%, 100% { box-shadow: 0 0 8px 2px rgba(251,191,36,0.12), 0 0 16px 4px rgba(251,191,36,0.05); }
+            50% { box-shadow: 0 0 12px 3px rgba(251,191,36,0.22), 0 0 20px 5px rgba(251,191,36,0.09); }
+          }
           @keyframes glow-pulse-green {
             0%, 100% { box-shadow: 0 0 8px 2px rgba(138,182,42,0.12), 0 0 16px 4px rgba(138,182,42,0.05); }
             50% { box-shadow: 0 0 12px 3px rgba(138,182,42,0.20), 0 0 20px 5px rgba(138,182,42,0.08); }
@@ -392,6 +435,7 @@ export default function AppPage(): React.JSX.Element {
             0%, 100% { box-shadow: 0 0 8px 2px rgba(221,110,78,0.12); }
             50% { box-shadow: 0 0 12px 3px rgba(221,110,78,0.20); }
           }
+          .glow-initializing { animation: glow-pulse-amber 1s ease-in-out infinite; }
           .glow-recording { animation: glow-pulse-green 2s ease-in-out infinite; }
           .glow-transcribing { animation: glow-pulse-blue 1.5s ease-in-out infinite; }
           .glow-pasted { box-shadow: 0 0 10px 3px rgba(138,182,42,0.12); transition: box-shadow 300ms ease; }
@@ -436,14 +480,18 @@ export default function AppPage(): React.JSX.Element {
                     ? ["#DD6E4E", "#B85C3A"]
                     : state === "transcribing"
                       ? ["#60A5FA", "#3B82F6"]
-                      : ["#8AB62A", "#6B8F12"]
+                      : state === "initializing"
+                        ? ["#FBBF24", "#F59E0B"]
+                        : ["#8AB62A", "#6B8F12"]
                 }
                 agentState={
-                  state === "recording"
-                    ? "listening"
-                    : state === "transcribing"
-                      ? "talking"
-                      : null
+                  state === "initializing"
+                    ? "talking"
+                    : state === "recording"
+                      ? "listening"
+                      : state === "transcribing"
+                        ? "talking"
+                        : null
                 }
                 getInputVolume={
                   state === "recording" ? getInputVolume : undefined
@@ -454,6 +502,19 @@ export default function AppPage(): React.JSX.Element {
           )}
 
           {/* Right-side content changes per state */}
+          {state === "initializing" && (
+            <span
+              style={{
+                flex: 1,
+                fontSize: 13,
+                color: "#a1a1aa",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span style={{ opacity: 0.7 }}>Listening...</span>
+            </span>
+          )}
+
           {state === "recording" && (
             <>
               {partialText ? (

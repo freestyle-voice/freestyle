@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   Check,
   ChevronRight,
+  ExternalLink,
   Eye,
   EyeOff,
   Keyboard,
@@ -93,9 +94,20 @@ export default function OnboardingPage(): React.JSX.Element {
     if (status) setMicStatus(status);
   }, []);
 
+  const openMicSettings = useCallback(() => {
+    window.api?.openMicSettings();
+    const interval = setInterval(async () => {
+      const mic = await window.api?.checkMicPermission();
+      if (mic === "granted") {
+        setMicStatus("granted");
+        clearInterval(interval);
+      }
+    }, 1000);
+    setTimeout(() => clearInterval(interval), 30000);
+  }, []);
+
   const openAccessibility = useCallback(() => {
     window.api?.openAccessibilitySettings();
-    // Poll for accessibility status since user needs to toggle it in System Settings
     const interval = setInterval(async () => {
       const ok = await window.api?.checkAccessibilityPermission();
       if (ok) {
@@ -237,6 +249,15 @@ export default function OnboardingPage(): React.JSX.Element {
                   </div>
                   {micStatus === "granted" ? (
                     <Check className="text-primary h-5 w-5 shrink-0" />
+                  ) : micStatus === "denied" ? (
+                    <button
+                      type="button"
+                      onClick={openMicSettings}
+                      className="bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium"
+                    >
+                      Open Settings
+                      <ExternalLink className="h-3 w-3" />
+                    </button>
                   ) : (
                     <button
                       type="button"

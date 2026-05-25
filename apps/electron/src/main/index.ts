@@ -640,6 +640,14 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.on("permissions:open-mic-settings", () => {
+    if (process.platform === "darwin") {
+      shell.openExternal(
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+      );
+    }
+  });
+
   ipcMain.handle("onboarding:complete", () => {
     try {
       const settingsPath = join(app.getPath("userData"), "settings.json");

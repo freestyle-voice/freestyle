@@ -27,6 +27,8 @@ const api = {
     ipcRenderer.invoke("permissions:check-accessibility"),
   openAccessibilitySettings: (): void =>
     ipcRenderer.send("permissions:open-accessibility"),
+  openMicSettings: (): void =>
+    ipcRenderer.send("permissions:open-mic-settings"),
   getOnboardingComplete: (): Promise<boolean> =>
     ipcRenderer.invoke("onboarding:complete"),
   setOnboardingComplete: (): void =>

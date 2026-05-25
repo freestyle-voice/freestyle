@@ -10,9 +10,7 @@ import {
   supportsStreaming,
 } from "../lib/streaming-stt.js";
 
-const stream = new Hono();
-
-stream.get(
+const stream = new Hono().get(
   "/",
   upgradeWebSocket(() => {
     let upstream: StreamSession | null = null;
@@ -111,8 +109,8 @@ stream.get(
                   const db = getDb();
                   db.prepare(
                     `INSERT INTO transcription_history
-                     (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, input_tokens, output_tokens, cost_usd)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                       (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, input_tokens, output_tokens, cost_usd)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                   ).run(
                     rawText,
                     finalText !== rawText ? finalText : null,
@@ -135,8 +133,8 @@ stream.get(
                   const db = getDb();
                   db.prepare(
                     `INSERT INTO transcription_history
-                     (raw_text, voice_provider, voice_model, duration_ms)
-                     VALUES (?, ?, ?, ?)`,
+                       (raw_text, voice_provider, voice_model, duration_ms)
+                       VALUES (?, ?, ?, ?)`,
                   ).run(
                     rawText,
                     voiceDefaults!.provider,

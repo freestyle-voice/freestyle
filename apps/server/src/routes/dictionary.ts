@@ -6,8 +6,6 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 
-const dictionary = new Hono();
-
 interface DictionaryRow {
   id: number;
   key: string;
@@ -17,108 +15,97 @@ interface DictionaryRow {
   updated_at: string;
 }
 
-// List entries (paginated, searchable, sortable)
-dictionary.get("/", (c) => {
-  const db = getDb();
-  const limit = Math.min(Number(c.req.query("limit") || 50), 200);
-  const offset = Number(c.req.query("offset") || 0);
-  const search = c.req.query("search")?.trim() || "";
-  const orderByParam = c.req.query("orderBy") || "-created_at";
+const dictionary = new Hono()
+  .get("/", (c) => {
+    const db = getDb();
+    const limit = Math.min(Number(c.req.query("limit") || 50), 200);
+    const offset = Number(c.req.query("offset") || 0);
+    const search = c.req.query("search")?.trim() || "";
+    const orderByParam = c.req.query("orderBy") || "-created_at";
 
-  const desc = orderByParam.startsWith("-");
-  const column = desc ? orderByParam.slice(1) : orderByParam;
-  const allowedColumns = new Set(["created_at", "updated_at", "key"]);
-  const orderColumn = allowedColumns.has(column) ? column : "created_at";
-  const orderDir = desc ? "DESC" : "ASC";
+    const desc = orderByParam.startsWith("-");
+    const column = desc ? orderByParam.slice(1) : orderByParam;
+    const allowedColumns = new Set(["created_at", "updated_at", "key"]);
+    const orderColumn = allowedColumns.has(column) ? column : "created_at";
+    const orderDir = desc ? "DESC" : "ASC";
 
-  let rows: DictionaryRow[];
-  let countRow: { count: number };
+    let rows: DictionaryRow[];
+    let countRow: { count: number };
 
-  if (search) {
-    const pattern = `%${search}%`;
-    rows = db
-      .prepare(
-        `SELECT * FROM dictionary WHERE key LIKE ? OR value LIKE ? ORDER BY ${orderColumn} ${orderDir} LIMIT ? OFFSET ?`,
-      )
-      .all(pattern, pattern, limit, offset) as unknown as DictionaryRow[];
+    if (search) {
+      const pattern = `%${search}%`;
+      rows = db
+        .prepare(
+          `SELECT * FROM dictionary WHERE key LIKE ? OR value LIKE ? ORDER BY ${orderColumn} ${orderDir} LIMIT ? OFFSET ?`,
+        )
+        .all(pattern, pattern, limit, offset) as unknown as DictionaryRow[];
 
-    countRow = db
-      .prepare(
-        "SELECT COUNT(*) as count FROM dictionary WHERE key LIKE ? OR value LIKE ?",
-      )
-      .get(pattern, pattern) as { count: number };
-  } else {
-    rows = db
-      .prepare(
-        `SELECT * FROM dictionary ORDER BY ${orderColumn} ${orderDir} LIMIT ? OFFSET ?`,
-      )
-      .all(limit, offset) as unknown as DictionaryRow[];
+      countRow = db
+        .prepare(
+          "SELECT COUNT(*) as count FROM dictionary WHERE key LIKE ? OR value LIKE ?",
+        )
+        .get(pattern, pattern) as { count: number };
+    } else {
+      rows = db
+        .prepare(
+          `SELECT * FROM dictionary ORDER BY ${orderColumn} ${orderDir} LIMIT ? OFFSET ?`,
+        )
+        .all(limit, offset) as unknown as DictionaryRow[];
 
-    countRow = db
-      .prepare("SELECT COUNT(*) as count FROM dictionary")
-      .get() as unknown as { count: number };
-  }
+      countRow = db
+        .prepare("SELECT COUNT(*) as count FROM dictionary")
+        .get() as unknown as { count: number };
+    }
 
-  return c.json({
-    items: rows,
-    total: countRow.count,
-    limit,
-    offset,
-  });
-});
+    return c.json({
+      items: rows,
+      total: countRow.count,
+      limit,
+      offset,
+    });
+  })
+  .get("/all", (c) => {
+    const db = getDb();
+    const rows = db
+      .prepare("SELECT key, value FROM dictionary ORDER BY length(key) DESC")
+      .all() as { key: string; value: string }[];
+    return c.json(rows);
+  })
+  .get("/:id", (c) => {
+    const db = getDb();
+    const id = Number(c.req.param("id"));
+    const row = db.prepare("SELECT * FROM dictionary WHERE id = ?").get(id) as
+      | DictionaryRow
+      | undefined;
 
-// Get all entries (for replacement engine - no pagination)
-dictionary.get("/all", (c) => {
-  const db = getDb();
-  const rows = db
-    .prepare("SELECT key, value FROM dictionary ORDER BY length(key) DESC")
-    .all() as { key: string; value: string }[];
-  return c.json(rows);
-});
+    if (!row) return c.json({ error: "Not found" }, 404);
+    return c.json(row);
+  })
+  .post("/", zValidator("json", createDictionarySchema), async (c) => {
+    const db = getDb();
+    const body = c.req.valid("json");
 
-// Get a single entry
-dictionary.get("/:id", (c) => {
-  const db = getDb();
-  const id = Number(c.req.param("id"));
-  const row = db.prepare("SELECT * FROM dictionary WHERE id = ?").get(id) as
-    | DictionaryRow
-    | undefined;
+    try {
+      const result = db
+        .prepare(`INSERT INTO dictionary (key, value) VALUES (?, ?)`)
+        .run(body.key.trim().toLowerCase(), body.value.trim());
 
-  if (!row) return c.json({ error: "Not found" }, 404);
-  return c.json(row);
-});
-
-// Create entry
-dictionary.post("/", zValidator("json", createDictionarySchema), async (c) => {
-  const db = getDb();
-  const body = c.req.valid("json");
-
-  try {
-    const result = db
-      .prepare(`INSERT INTO dictionary (key, value) VALUES (?, ?)`)
-      .run(body.key.trim().toLowerCase(), body.value.trim());
-
-    return c.json(
-      {
-        id: result.lastInsertRowid,
-        key: body.key.trim().toLowerCase(),
-        value: body.value.trim(),
-      },
-      201,
-    );
-  } catch {
-    return c.json(
-      { error: "A dictionary entry with this key already exists" },
-      409,
-    );
-  }
-});
-
-// Update entry
-dictionary.put(
-  "/:id",
-  zValidator("json", updateDictionarySchema),
-  async (c) => {
+      return c.json(
+        {
+          id: result.lastInsertRowid,
+          key: body.key.trim().toLowerCase(),
+          value: body.value.trim(),
+        },
+        201,
+      );
+    } catch {
+      return c.json(
+        { error: "A dictionary entry with this key already exists" },
+        409,
+      );
+    }
+  })
+  .put("/:id", zValidator("json", updateDictionarySchema), async (c) => {
     const db = getDb();
     const id = Number(c.req.param("id"));
     const body = c.req.valid("json");
@@ -143,58 +130,51 @@ dictionary.put(
         409,
       );
     }
-  },
-);
+  })
+  .delete("/:id", (c) => {
+    const db = getDb();
+    const id = Number(c.req.param("id"));
+    db.prepare("DELETE FROM dictionary WHERE id = ?").run(id);
+    return c.json({ ok: true });
+  })
+  .get("/export/json", (c) => {
+    const db = getDb();
+    const rows = db
+      .prepare("SELECT key, value FROM dictionary ORDER BY key ASC")
+      .all() as { key: string; value: string }[];
+    return c.json(rows);
+  })
+  .post("/import", async (c) => {
+    const db = getDb();
+    const body = await c.req.json<{ key: string; value: string }[]>();
 
-// Delete entry
-dictionary.delete("/:id", (c) => {
-  const db = getDb();
-  const id = Number(c.req.param("id"));
-  db.prepare("DELETE FROM dictionary WHERE id = ?").run(id);
-  return c.json({ ok: true });
-});
-
-// Export all entries as JSON
-dictionary.get("/export/json", (c) => {
-  const db = getDb();
-  const rows = db
-    .prepare("SELECT key, value FROM dictionary ORDER BY key ASC")
-    .all() as { key: string; value: string }[];
-  return c.json(rows);
-});
-
-// Import entries from JSON array
-dictionary.post("/import", async (c) => {
-  const db = getDb();
-  const body = await c.req.json<{ key: string; value: string }[]>();
-
-  if (!Array.isArray(body)) {
-    return c.json(
-      { error: "Expected a JSON array of {key, value} objects" },
-      400,
-    );
-  }
-
-  let imported = 0;
-  let skipped = 0;
-  const insertStmt = db.prepare(
-    "INSERT OR IGNORE INTO dictionary (key, value) VALUES (?, ?)",
-  );
-
-  for (const entry of body) {
-    if (entry.key?.trim() && entry.value?.trim()) {
-      const result = insertStmt.run(
-        entry.key.trim().toLowerCase(),
-        entry.value.trim(),
+    if (!Array.isArray(body)) {
+      return c.json(
+        { error: "Expected a JSON array of {key, value} objects" },
+        400,
       );
-      if (result.changes > 0) imported++;
-      else skipped++;
-    } else {
-      skipped++;
     }
-  }
 
-  return c.json({ imported, skipped });
-});
+    let imported = 0;
+    let skipped = 0;
+    const insertStmt = db.prepare(
+      "INSERT OR IGNORE INTO dictionary (key, value) VALUES (?, ?)",
+    );
+
+    for (const entry of body) {
+      if (entry.key?.trim() && entry.value?.trim()) {
+        const result = insertStmt.run(
+          entry.key.trim().toLowerCase(),
+          entry.value.trim(),
+        );
+        if (result.changes > 0) imported++;
+        else skipped++;
+      } else {
+        skipped++;
+      }
+    }
+
+    return c.json({ imported, skipped });
+  });
 
 export default dictionary;

@@ -14,30 +14,29 @@ import transcribe from "./routes/transcribe.js";
 // Initialize Sentry as early as possible
 initSentry();
 
-const app = new Hono();
+const app = new Hono()
+  // Allow requests from the Electron renderer (skip for WebSocket upgrades)
+  .use("*", async (c, next) => {
+    // Don't apply CORS to WebSocket upgrade requests
+    if (c.req.header("upgrade")?.toLowerCase() === "websocket") {
+      return next();
+    }
+    return cors()(c, next);
+  })
+  .get("/", (c) => {
+    return c.text("Freestyle API");
+  })
+  // Mount routes
+  .route("/api/settings", settings)
+  .route("/api/keys", apiKeys)
+  .route("/api/models", models)
+  .route("/api/transcribe", transcribe)
+  .route("/api/history", history)
+  .route("/api/dictionary", dictionary)
+  .route("/api/formats", formats)
+  .route("/api/feedback", feedback)
+  .route("/stream", stream);
 
-// Allow requests from the Electron renderer (skip for WebSocket upgrades)
-app.use("*", async (c, next) => {
-  // Don't apply CORS to WebSocket upgrade requests
-  if (c.req.header("upgrade")?.toLowerCase() === "websocket") {
-    return next();
-  }
-  return cors()(c, next);
-});
-
-app.get("/", (c) => {
-  return c.text("Freestyle API");
-});
-
-// Mount routes
-app.route("/api/settings", settings);
-app.route("/api/keys", apiKeys);
-app.route("/api/models", models);
-app.route("/api/transcribe", transcribe);
-app.route("/api/history", history);
-app.route("/api/dictionary", dictionary);
-app.route("/api/formats", formats);
-app.route("/api/feedback", feedback);
-app.route("/stream", stream);
+export type AppType = typeof app;
 
 export default app;

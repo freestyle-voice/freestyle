@@ -7,9 +7,7 @@ import {
   getDefaultModels,
 } from "../lib/providers.js";
 
-const transcribeRoute = new Hono();
-
-transcribeRoute.post("/", async (c) => {
+const transcribeRoute = new Hono().post("/", async (c) => {
   const start = Date.now();
 
   // Get audio from request body
@@ -92,8 +90,8 @@ transcribeRoute.post("/", async (c) => {
   try {
     db.prepare(
       `INSERT INTO transcription_history
-       (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, input_tokens, output_tokens, cost_usd)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, input_tokens, output_tokens, cost_usd)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       rawText,
       pp.cleaned !== rawText ? pp.cleaned : null,

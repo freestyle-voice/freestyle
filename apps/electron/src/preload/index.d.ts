@@ -14,6 +14,7 @@ declare global {
       requestMicPermission: () => Promise<string>;
       checkAccessibilityPermission: () => Promise<boolean>;
       openAccessibilitySettings: () => void;
+      openMicSettings: () => void;
       getOnboardingComplete: () => Promise<boolean>;
       setOnboardingComplete: () => void;
       startHotkeyRecording: () => void;
@@ -43,6 +44,9 @@ declare global {
       // Hotkey error notifications
       onHotkeyError: (
         callback: (error: { message: string }) => void,
+      ) => () => void;
+      onFullscreenChanged: (
+        callback: (isFullscreen: boolean) => void,
       ) => () => void;
     };
   }

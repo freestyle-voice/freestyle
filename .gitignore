@@ -40,3 +40,4 @@ Thumbs.db
 
 .turbo
 apps/electron/tsconfig.web.tsbuildinfo
+apps/electron/tsconfig.node.tsbuildinfo

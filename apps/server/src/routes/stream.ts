@@ -6,6 +6,7 @@ import { getDefaultModels } from "../lib/providers.js";
 import {
   getApiKeyForProvider,
   openStreamingSession,
+  type StreamSession,
   supportsStreaming,
 } from "../lib/streaming-stt.js";
 
@@ -14,80 +15,86 @@ const stream = new Hono();
 stream.get(
   "/",
   upgradeWebSocket(() => {
-    let upstream: ReturnType<typeof openStreamingSession> | null = null;
+    let upstream: StreamSession | null = null;
     let closed = false;
-    const startTime = Date.now();
+    let sessionStartTime = Date.now();
     let voiceDefaults: { provider: string; model_id: string } | null = null;
     let appContext: string | null = null;
 
-    return {
-      onOpen(_event, ws) {
-        const defaults = getDefaultModels();
-        if (!defaults.voice) {
-          ws.send(
-            JSON.stringify({
-              type: "error",
-              message: "No voice model configured",
-            }),
-          );
-          ws.close();
-          return;
-        }
-        voiceDefaults = defaults.voice;
-
-        const apiKey = getApiKeyForProvider(defaults.voice.provider);
-        if (!apiKey) {
-          ws.send(
-            JSON.stringify({
-              type: "error",
-              message: `No API key for ${defaults.voice.provider}`,
-            }),
-          );
-          ws.close();
-          return;
-        }
-
-        const modelShort = defaults.voice.model_id.includes("/")
-          ? defaults.voice.model_id.split("/").pop()!
-          : defaults.voice.model_id;
-
-        const canStream = supportsStreaming(
-          defaults.voice.provider,
-          defaults.voice.model_id,
-        );
-
+    function connectUpstream(ws: {
+      send: (data: string) => void;
+      close: () => void;
+    }): void {
+      const defaults = getDefaultModels();
+      if (!defaults.voice) {
         ws.send(
           JSON.stringify({
-            type: "config",
-            model: modelShort,
-            streaming: canStream,
+            type: "error",
+            message: "No voice model configured",
           }),
         );
+        ws.close();
+        return;
+      }
+      voiceDefaults = defaults.voice;
 
-        if (!canStream) {
-          ws.close();
-          return;
-        }
+      const apiKey = getApiKeyForProvider(defaults.voice.provider);
+      if (!apiKey) {
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: `No API key for ${defaults.voice.provider}`,
+          }),
+        );
+        ws.close();
+        return;
+      }
 
-        try {
-          upstream = openStreamingSession({
-            apiKey,
-            model: modelShort,
-            callbacks: {
-              onReady: (model) => {
-                ws.send(JSON.stringify({ type: "session.ready", model }));
-              },
-              onPartial: (text) => {
-                ws.send(JSON.stringify({ type: "partial", text }));
-              },
-              onFinal: async (rawText) => {
-                const durationMs = Date.now() - startTime;
+      const modelShort = defaults.voice.model_id.includes("/")
+        ? defaults.voice.model_id.split("/").pop()!
+        : defaults.voice.model_id;
 
-                const pp = await postProcess(rawText, appContext);
+      const canStream = supportsStreaming(
+        defaults.voice.provider,
+        defaults.voice.model_id,
+      );
+
+      ws.send(
+        JSON.stringify({
+          type: "config",
+          model: modelShort,
+          streaming: canStream,
+        }),
+      );
+
+      if (!canStream) {
+        ws.close();
+        return;
+      }
+
+      upstream = openStreamingSession({
+        apiKey,
+        model: modelShort,
+        callbacks: {
+          onReady: (model) => {
+            ws.send(JSON.stringify({ type: "session.ready", model }));
+          },
+          onPartial: (text) => {
+            ws.send(JSON.stringify({ type: "partial", text }));
+          },
+          onFinal: (rawText) => {
+            const durationMs = Date.now() - sessionStartTime;
+
+            // Send raw text immediately so the client can paste without waiting
+            ws.send(JSON.stringify({ type: "final", text: rawText }));
+
+            // Run post-processing in the background for history
+            postProcess(rawText, appContext)
+              .then((pp) => {
                 const finalText = pp.cleaned;
-
-                ws.send(JSON.stringify({ type: "final", text: finalText }));
-
+                if (finalText !== rawText) {
+                  ws.send(JSON.stringify({ type: "cleaned", text: finalText }));
+                }
                 try {
                   const db = getDb();
                   db.prepare(
@@ -109,33 +116,48 @@ stream.get(
                 } catch (err) {
                   console.error("Failed to save history:", err);
                 }
+              })
+              .catch((err) => {
+                console.error("Post-processing failed:", err);
+                try {
+                  const db = getDb();
+                  db.prepare(
+                    `INSERT INTO transcription_history
+                     (raw_text, voice_provider, voice_model, duration_ms)
+                     VALUES (?, ?, ?, ?)`,
+                  ).run(
+                    rawText,
+                    voiceDefaults!.provider,
+                    voiceDefaults!.model_id,
+                    durationMs,
+                  );
+                } catch {}
+              });
+          },
+          onError: (message) => {
+            ws.send(JSON.stringify({ type: "error", message }));
+            upstream = null;
+          },
+          onClose: () => {
+            upstream = null;
+            if (!closed) {
+              try {
+                connectUpstream(ws);
+              } catch {}
+            }
+          },
+        },
+      });
+    }
 
-                cleanup();
-              },
-              onError: (message) => {
-                ws.send(JSON.stringify({ type: "error", message }));
-                cleanup();
-              },
-              onClose: () => {
-                if (!closed) cleanup();
-              },
-            },
-          });
+    return {
+      onOpen(_event, ws) {
+        try {
+          connectUpstream(ws);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           ws.send(JSON.stringify({ type: "error", message }));
           ws.close();
-        }
-
-        function cleanup(): void {
-          if (closed) return;
-          closed = true;
-          try {
-            upstream?.close();
-          } catch {}
-          try {
-            ws.close();
-          } catch {}
         }
       },
 
@@ -158,37 +180,42 @@ stream.get(
           return;
         }
 
-        if (msg.type === "context") {
-          appContext = msg.context ?? null;
-        } else if (msg.type === "commit") {
-          upstream?.commit();
-        } else if (msg.type === "cancel") {
-          closed = true;
-          try {
-            upstream?.close();
-          } catch {}
-          try {
-            ws.close();
-          } catch {}
+        switch (msg.type) {
+          case "context":
+            appContext = msg.context ?? null;
+            break;
+          case "start":
+            sessionStartTime = Date.now();
+            appContext = null;
+            if (!upstream) {
+              try {
+                connectUpstream(ws);
+              } catch {}
+            }
+            break;
+          case "commit":
+            upstream?.commit();
+            break;
+          case "cancel":
+            upstream?.cancel();
+            break;
         }
       },
 
       onClose() {
-        if (!closed) {
-          closed = true;
-          try {
-            upstream?.close();
-          } catch {}
-        }
+        closed = true;
+        try {
+          upstream?.close();
+        } catch {}
+        upstream = null;
       },
 
       onError() {
-        if (!closed) {
-          closed = true;
-          try {
-            upstream?.close();
-          } catch {}
-        }
+        closed = true;
+        try {
+          upstream?.close();
+        } catch {}
+        upstream = null;
       },
     };
   }),

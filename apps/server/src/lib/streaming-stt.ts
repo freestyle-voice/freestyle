@@ -5,7 +5,7 @@ import { getDb } from "./db.js";
 export interface StreamCallbacks {
   onReady: (model: string) => void;
   onPartial: (text: string) => void;
-  onFinal: (text: string) => void | Promise<void>;
+  onFinal: (text: string) => void;
   onError: (message: string) => void;
   onClose: () => void;
 }
@@ -13,6 +13,7 @@ export interface StreamCallbacks {
 export interface StreamSession {
   sendAudio(chunk: ArrayBuffer): void;
   commit(): void;
+  cancel(): void;
   close(): void;
 }
 
@@ -21,7 +22,6 @@ const REALTIME_URL = "wss://api.openai.com/v1/realtime?intent=transcription";
 /**
  * Opens a streaming transcription session via OpenAI's Realtime API.
  * Supports models like gpt-4o-transcribe, gpt-4o-mini-transcribe.
- * Falls back gracefully if the model doesn't support streaming.
  */
 export function openStreamingSession(opts: {
   apiKey: string;
@@ -79,6 +79,7 @@ export function openStreamingSession(opts: {
         const text =
           typeof evt.transcript === "string" ? evt.transcript : partialText;
         callbacks.onFinal(text.trim());
+        partialText = "";
         return;
       }
       case "error": {
@@ -115,6 +116,12 @@ export function openStreamingSession(opts: {
       if (ws.readyState !== WebSocket.OPEN) return;
       ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
     },
+    cancel(): void {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      // Clear the audio buffer without triggering a transcription
+      ws.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+      partialText = "";
+    },
     close(): void {
       if (ws.readyState <= WebSocket.OPEN) ws.close();
     },
@@ -132,7 +139,6 @@ export function supportsStreaming(
 ): boolean {
   if (providerId !== "openai") return false;
   const short = modelId.includes("/") ? modelId.split("/").pop()! : modelId;
-  // whisper-1 doesn't support streaming, gpt-4o-transcribe variants do
   return short.includes("transcribe");
 }
 

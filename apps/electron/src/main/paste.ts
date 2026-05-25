@@ -20,7 +20,6 @@ async function pasteWindows(): Promise<void> {
 }
 
 async function pasteLinux(): Promise<void> {
-  // Try xdotool first (X11), fall back to wtype (Wayland)
   try {
     await execAsync("xdotool key ctrl+v");
   } catch {
@@ -35,7 +34,7 @@ export async function pasteIntoFocusedApp(text: string): Promise<void> {
   clipboard.writeText(text);
 
   try {
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 15));
 
     switch (process.platform) {
       case "darwin":
@@ -49,7 +48,7 @@ export async function pasteIntoFocusedApp(text: string): Promise<void> {
         break;
     }
 
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 80));
   } finally {
     clipboard.writeText(prior);
   }

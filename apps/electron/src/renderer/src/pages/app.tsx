@@ -29,8 +29,9 @@ type PillState =
   | "transcribing"
   | "error";
 
-const EXIT_COLLAPSE_MS = 40; // pill collapses to orb
-const EXIT_SHRINK_MS = 180; // orb shrinks to zero (overlaps with collapse)
+const EXIT_PAUSE_MS = 30; // pause after text removed before collapse starts
+const EXIT_COLLAPSE_MS = 50; // pill collapses to orb
+const EXIT_SHRINK_MS = 150; // orb shrinks to zero
 
 // ---------------------------------------------------------------------------
 // Sound system — generates short sine-wave tones via Web Audio API.
@@ -202,23 +203,31 @@ export default function AppPage(): React.JSX.Element {
       for (let i = 1; i < pill.children.length; i++) {
         (pill.children[i] as HTMLElement).style.display = "none";
       }
-      // Collapse pill to orb width (40ms transition)
-      pill.style.transition = `min-width ${EXIT_COLLAPSE_MS}ms ease-out, max-width ${EXIT_COLLAPSE_MS}ms ease-out, gap ${EXIT_COLLAPSE_MS}ms ease-out`;
+      // Collapse pill to orb width with a short delay so the user
+      // sees the text vanish, then the pill closes around the orb
+      pill.style.transition = [
+        `min-width ${EXIT_COLLAPSE_MS}ms ease-out ${EXIT_PAUSE_MS}ms`,
+        `max-width ${EXIT_COLLAPSE_MS}ms ease-out ${EXIT_PAUSE_MS}ms`,
+        `gap ${EXIT_COLLAPSE_MS}ms ease-out ${EXIT_PAUSE_MS}ms`,
+      ].join(", ");
       pill.style.minWidth = "52px";
       pill.style.maxWidth = "52px";
       pill.style.justifyContent = "center";
       pill.style.gap = "0";
     }
-    // Start shrink simultaneously — the ease-in curve means the first
-    // ~40ms of the 180ms shrink is barely perceptible (only ~5% scale
-    // change), so the collapse visually completes before the shrink
-    // becomes noticeable. No gap, no separate setTimeout.
-    wrapper.classList.add("pill-exit");
+    // Start shrink after pause + collapse
+    const shrinkDelay = EXIT_PAUSE_MS + EXIT_COLLAPSE_MS;
+    setTimeout(() => {
+      wrapper.classList.add("pill-exit");
+    }, shrinkDelay);
 
-    exitTimerRef.current = setTimeout(() => {
-      exitTimerRef.current = null;
-      window.api.hidePill();
-    }, EXIT_SHRINK_MS + 50);
+    exitTimerRef.current = setTimeout(
+      () => {
+        exitTimerRef.current = null;
+        window.api.hidePill();
+      },
+      shrinkDelay + EXIT_SHRINK_MS + 50,
+    );
   }, [goIdle]);
 
   // -- Start recording --

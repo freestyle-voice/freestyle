@@ -2,9 +2,8 @@
  * AudioWorklet processor that buffers, downsamples and encodes audio
  * to 16 kHz PCM16 chunks ready to send over the wire.
  *
- * The main thread sends { type: 'init', sampleRate: number } once to
- * configure the resampling ratio.  After that the worklet posts
- * Int16Array buffers (~80 ms each) as transferable ArrayBuffers.
+ * Uses the AudioWorkletGlobalScope `sampleRate` to compute the
+ * downsampling ratio.  Posts ~80 ms Int16Array buffers as transferables.
  */
 
 const PROCESSOR_CODE = `
@@ -14,15 +13,10 @@ const TARGET_CHUNK_MS = 80;
 class PCMProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.ratio = 1;
+    // sampleRate is a global in AudioWorkletGlobalScope
+    this.ratio = sampleRate / TARGET_RATE;
     this.targetChunkSamples = (TARGET_RATE * TARGET_CHUNK_MS) / 1000;
     this.buf = new Float32Array(0);
-
-    this.port.onmessage = (e) => {
-      if (e.data && e.data.type === 'init') {
-        this.ratio = e.data.sampleRate / TARGET_RATE;
-      }
-    };
   }
 
   process(inputs) {

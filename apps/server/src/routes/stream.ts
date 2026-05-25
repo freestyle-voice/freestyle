@@ -104,7 +104,7 @@ stream.get(
             postProcess(rawText, appContext)
               .then((pp) => {
                 const finalText = pp.cleaned;
-                if (finalText !== rawText) {
+                if (finalText !== rawText && !closed) {
                   ws.send(JSON.stringify({ type: "cleaned", text: finalText }));
                 }
                 try {

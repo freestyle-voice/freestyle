@@ -90,7 +90,7 @@ export default function AppPage(): React.JSX.Element {
   const [elapsed, setElapsed] = useState(0);
   const [message, setMessage] = useState("");
   const [partialText, setPartialText] = useState("");
-  const [useStreaming, setUseStreaming] = useState(false);
+  const useStreamingRef = useRef(false);
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
@@ -112,7 +112,7 @@ export default function AppPage(): React.JSX.Element {
     if (!streamerRef.current) {
       streamerRef.current = new Streamer(getApiBase(), {
         onConfig: (config) => {
-          setUseStreaming(config.streaming);
+          useStreamingRef.current = config.streaming;
         },
         onReady: () => {},
         onPartial: (text) => setPartialText(text),
@@ -235,7 +235,7 @@ export default function AppPage(): React.JSX.Element {
     try {
       // When streaming is active, skip MediaRecorder entirely — the
       // Streamer accumulates PCM16 and can produce a WAV if needed.
-      const stream = useStreaming
+      const stream = useStreamingRef.current
         ? await recorderRef.current.acquireStream()
         : await recorderRef.current.start();
 
@@ -289,7 +289,7 @@ export default function AppPage(): React.JSX.Element {
     }
 
     // If streaming mode is active, commit via WebSocket
-    if (useStreaming && streamerRef.current) {
+    if (useStreamingRef.current && streamerRef.current) {
       setState("transcribing");
       recorderRef.current.cancel();
       streamerRef.current.commit();
@@ -345,7 +345,7 @@ export default function AppPage(): React.JSX.Element {
       setMessage(err instanceof Error ? err.message : "Transcription failed");
       setTimeout(() => hidePill(), 2000);
     }
-  }, [useStreaming, stopVisualization, hidePill]);
+  }, [stopVisualization, hidePill]);
 
   const cancelRecording = useCallback(() => {
     wantsMicRef.current = false;
@@ -448,6 +448,24 @@ export default function AppPage(): React.JSX.Element {
           .glow-transcribing { animation: glow-pulse-blue 1.5s ease-in-out infinite; }
           .glow-error { animation: glow-pulse-red 1.5s ease-in-out infinite; }
           .glow-idle { box-shadow: 0 0 6px 2px rgba(161,161,170,0.05); transition: box-shadow 300ms ease; }
+          @keyframes shimmer {
+            0% { background-position: 100% center; }
+            100% { background-position: 0% center; }
+          }
+          .shimmer-text {
+            font-style: italic;
+            background: linear-gradient(
+              90deg,
+              #71717a calc(50% - 40px),
+              #d4d4d8,
+              #71717a calc(50% + 40px)
+            );
+            background-size: 250% 100%;
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            animation: shimmer 2s linear infinite;
+          }
         `}
       </style>
       <div
@@ -517,7 +535,7 @@ export default function AppPage(): React.JSX.Element {
           {/* Right-side content changes per state */}
           {state === "initializing" && (
             <span style={pillTextStyle}>
-              <span style={{ opacity: 0.7 }}>Listening...</span>
+              <span className="shimmer-text">Listening...</span>
             </span>
           )}
 
@@ -584,7 +602,11 @@ export default function AppPage(): React.JSX.Element {
 
           {state === "transcribing" && (
             <span style={pillTextStyle}>
-              {partialText ? partialText.slice(-30) : "Transcribing..."}
+              {partialText ? (
+                partialText.slice(-30)
+              ) : (
+                <span className="shimmer-text">Transcribing...</span>
+              )}
             </span>
           )}
 

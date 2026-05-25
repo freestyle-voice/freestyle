@@ -48,6 +48,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Build server (generates type declarations)
+        run: pnpm --filter @freestyle/server build
+
       - name: Typecheck electron (web)
         working-directory: apps/electron
         run: pnpm run typecheck:web

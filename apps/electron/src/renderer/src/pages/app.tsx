@@ -29,7 +29,8 @@ type PillState =
   | "transcribing"
   | "error";
 
-const EXIT_ANIM_MS = 200;
+const EXIT_COLLAPSE_MS = 35; // pill collapses to orb
+const EXIT_SHRINK_MS = 170; // orb shrinks to zero
 
 // ---------------------------------------------------------------------------
 // Sound system — generates short sine-wave tones via Web Audio API.
@@ -197,22 +198,29 @@ export default function AppPage(): React.JSX.Element {
     }
     const pill = wrapper.firstElementChild as HTMLElement | null;
     if (pill) {
-      // Step 1: instantly hide text, collapse pill to orb size
+      // Step 1: instantly hide text
       for (let i = 1; i < pill.children.length; i++) {
         (pill.children[i] as HTMLElement).style.display = "none";
       }
+      // Step 2: smoothly collapse pill to orb width over 35ms
+      pill.style.transition = `min-width ${EXIT_COLLAPSE_MS}ms ease-out, max-width ${EXIT_COLLAPSE_MS}ms ease-out, gap ${EXIT_COLLAPSE_MS}ms ease-out`;
       pill.style.minWidth = "52px";
       pill.style.maxWidth = "52px";
       pill.style.justifyContent = "center";
       pill.style.gap = "0";
     }
-    // Step 2: shrink the centered orb+pill away (CSS animation)
-    wrapper.classList.add("pill-exit");
+    // Step 3: after collapse, shrink orb+pill away
+    setTimeout(() => {
+      wrapper.classList.add("pill-exit");
+    }, EXIT_COLLAPSE_MS);
 
-    exitTimerRef.current = setTimeout(() => {
-      exitTimerRef.current = null;
-      window.api.hidePill();
-    }, EXIT_ANIM_MS + 50);
+    exitTimerRef.current = setTimeout(
+      () => {
+        exitTimerRef.current = null;
+        window.api.hidePill();
+      },
+      EXIT_COLLAPSE_MS + EXIT_SHRINK_MS + 50,
+    );
   }, [goIdle]);
 
   // -- Start recording --
@@ -228,6 +236,7 @@ export default function AppPage(): React.JSX.Element {
       pillRef.current.classList.remove("pill-exit");
       const pill = pillRef.current.firstElementChild as HTMLElement | null;
       if (pill) {
+        pill.style.transition = "";
         pill.style.minWidth = "";
         pill.style.maxWidth = "";
         pill.style.justifyContent = "";
@@ -525,7 +534,7 @@ export default function AppPage(): React.JSX.Element {
             100% { transform: scale(0); opacity: 0; }
           }
           .pill-exit {
-            animation: pill-exit-shrink ${EXIT_ANIM_MS}ms ease-in forwards !important;
+            animation: pill-exit-shrink ${EXIT_SHRINK_MS}ms ease-in forwards !important;
             pointer-events: none;
           }
         `}

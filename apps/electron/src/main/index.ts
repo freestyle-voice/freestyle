@@ -708,8 +708,8 @@ app.whenReady().then(() => {
       uiohookKeyNames[code] = name;
     }
   }
-  // Fn/Globe key on macOS (not in UiohookKey)
-  uiohookKeyNames[0x0e36] = "Fn";
+  // Fn/Globe key on macOS — libuiohook reports keycode 0
+  uiohookKeyNames[0] = "Fn";
 
   // Modifier keycodes to skip during recording
   const modifierKeycodes = new Set<number>([
@@ -721,7 +721,7 @@ app.whenReady().then(() => {
     UiohookKey.MetaRight,
     UiohookKey.Shift,
     UiohookKey.ShiftRight,
-    0x0e36, // Fn/Globe key on macOS
+    0, // Fn/Globe key on macOS (libuiohook reports keycode 0)
   ]);
 
   ipcMain.on("hotkey-record:start", () => {

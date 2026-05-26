@@ -32,8 +32,8 @@ const KEY_MAP: Record<string, number> = {
   down: UiohookKey.ArrowDown,
   left: UiohookKey.ArrowLeft,
   right: UiohookKey.ArrowRight,
-  // Fn/Globe key on macOS — not in UiohookKey, raw scan code 0x0E36
-  fn: 0x0e36,
+  // Fn/Globe key on macOS — libuiohook reports keycode 0 for this key
+  fn: 0,
 };
 
 // Build the map from UiohookKey at runtime — iterate all entries to
@@ -91,7 +91,7 @@ function parseAccelerator(accel: string): HotkeyConfig {
       mods.has("commandorcontrol") ||
       mods.has("cmdorctrl"),
     shift: mods.has("shift"),
-    keycode: KEY_MAP[keyPart] ?? 0,
+    keycode: KEY_MAP[keyPart] ?? -1,
   };
 }
 
@@ -104,6 +104,7 @@ function isValidAccelerator(accel: string): boolean {
 }
 
 function matchesHotkey(e: UiohookKeyboardEvent, cfg: HotkeyConfig): boolean {
+  if (cfg.keycode < 0) return false;
   if (e.keycode !== cfg.keycode) return false;
   if (cfg.alt !== e.altKey) return false;
   if (cfg.ctrl !== e.ctrlKey) return false;
@@ -173,7 +174,7 @@ export function registerHotkey(
   pressed = false;
   const resolved = accel && isValidAccelerator(accel) ? accel : DEFAULT_HOTKEY;
   config = parseAccelerator(resolved);
-  if (config.keycode === 0) {
+  if (config.keycode < 0) {
     console.warn(`[hotkey] Unknown key in accelerator "${resolved}"`);
     config = parseAccelerator(DEFAULT_HOTKEY);
   }

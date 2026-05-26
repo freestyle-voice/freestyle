@@ -1,14 +1,12 @@
 import { encodeWavFromFloat32 } from "./wav";
 
 const TARGET_RATE = 16000;
-const RELEASE_DELAY_MS = 30_000;
 
 export class Recorder {
   private stream: MediaStream | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private chunks: Blob[] = [];
   private mimeType = "";
-  private releaseTimer: ReturnType<typeof setTimeout> | null = null;
 
   private hasLiveStream(): boolean {
     return (
@@ -25,7 +23,6 @@ export class Recorder {
    * avoid the costly getUserMedia() round-trip on repeated calls.
    */
   async acquireStream(deviceId?: string | null): Promise<MediaStream> {
-    this.cancelScheduledRelease();
     this.chunks = [];
     this.mediaRecorder = null;
 
@@ -115,24 +112,8 @@ export class Recorder {
 
   /** Stop all mic tracks so the OS mic indicator turns off. */
   releaseStream(): void {
-    this.cancelScheduledRelease();
     for (const t of this.stream?.getTracks() ?? []) t.stop();
     this.stream = null;
-  }
-
-  /** Release the mic stream after a delay so rapid re-recordings stay fast. */
-  scheduleRelease(delayMs = RELEASE_DELAY_MS): void {
-    this.cancelScheduledRelease();
-    this.releaseTimer = setTimeout(() => {
-      this.releaseStream();
-    }, delayMs);
-  }
-
-  cancelScheduledRelease(): void {
-    if (this.releaseTimer !== null) {
-      clearTimeout(this.releaseTimer);
-      this.releaseTimer = null;
-    }
   }
 
   /** Full cleanup — release the mic stream. Call on unmount only. */

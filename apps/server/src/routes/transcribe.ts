@@ -90,46 +90,52 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     );
   }
 
+  const durationMs = Date.now() - start;
+
   if (!rawText.trim()) {
     return c.json({
       raw: "",
       cleaned: "",
       model: defaults.voice.model_id,
-      durationMs: Date.now() - start,
+      durationMs,
     });
   }
 
-  // Step 2: LLM post-processing + dictionary replacements
+  // Post-process (LLM cleanup + dictionary), then return immediately.
+  // DB save runs in the background after the response is sent.
   const pp = await postProcess(rawText, appContext);
-  const durationMs = Date.now() - start;
+  const voiceProvider = defaults.voice.provider;
+  const voiceModel = defaults.voice.model_id;
 
-  // Save to history
-  try {
-    db.prepare(
-      `INSERT INTO transcription_history
-         (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      rawText,
-      pp.cleaned !== rawText ? pp.cleaned : null,
-      defaults.voice.provider,
-      defaults.voice.model_id,
-      pp.llmProvider,
-      pp.llmModel,
-      durationMs,
-      audioDurationMs,
-      pp.inputTokens,
-      pp.outputTokens,
-      pp.costUsd,
-    );
-  } catch (err) {
-    console.error("Failed to save history:", err);
-  }
+  // Fire-and-forget: save to history without blocking the response
+  Promise.resolve()
+    .then(() => {
+      db.prepare(
+        `INSERT INTO transcription_history
+           (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        rawText,
+        pp.cleaned !== rawText ? pp.cleaned : null,
+        voiceProvider,
+        voiceModel,
+        pp.llmProvider,
+        pp.llmModel,
+        Date.now() - start,
+        audioDurationMs,
+        pp.inputTokens,
+        pp.outputTokens,
+        pp.costUsd,
+      );
+    })
+    .catch((err) => {
+      console.error("Failed to save history:", err);
+    });
 
   return c.json({
     raw: rawText,
     cleaned: pp.cleaned,
-    model: defaults.voice.model_id,
+    model: voiceModel,
     durationMs,
   });
 });

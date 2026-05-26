@@ -101,6 +101,9 @@ const api = {
     ipcRenderer.on("hotkey:error", handler);
     return () => ipcRenderer.removeListener("hotkey:error", handler);
   },
+  // Debug: forward renderer logs to main process console (dev only)
+  debugLog: (...args: unknown[]): void =>
+    ipcRenderer.send("debug:log", ...args),
   // Audio level stream — pill broadcasts per-frame mic amplitude (0..1) so
   // other windows (the Today tutorial demo) can render a live waveform.
   sendAudioLevel: (level: number): void =>

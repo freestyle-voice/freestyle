@@ -670,6 +670,13 @@ app.whenReady().then(async () => {
     hidePill();
   });
 
+  // IPC: forward renderer debug logs to the main process console (dev only)
+  if (is.dev) {
+    ipcMain.on("debug:log", (_event, ...args: unknown[]) => {
+      console.log("[renderer]", ...args);
+    });
+  }
+
   // IPC: fan out per-frame audio levels from the pill to other windows
   // (e.g. the Today tutorial demo) so they can render a live waveform.
   ipcMain.on("audio:level", (_event, level: number) => {

@@ -121,7 +121,7 @@ export default function AppPage(): React.JSX.Element {
         onPartial: (text) => setPartialText(text),
         onFinal: async (text) => {
           if (import.meta.env.DEV)
-            console.log("[rec] onFinal, state:", stateRef.current);
+            window.api.debugLog("[rec] onFinal, state:", stateRef.current);
           wantsMicRef.current = false;
           stopVisualization();
           recorderRef.current.cancel();
@@ -137,7 +137,12 @@ export default function AppPage(): React.JSX.Element {
         },
         onError: (msg) => {
           if (import.meta.env.DEV)
-            console.log("[rec] onError:", msg, "state:", stateRef.current);
+            window.api.debugLog(
+              "[rec] onError:",
+              msg,
+              "state:",
+              stateRef.current,
+            );
           // Only tear down during an active recording or transcription.
           // Connection-time errors (no API key, no model, WS close) can
           // fire during "initializing" or "idle" and must not kill the UI.
@@ -247,7 +252,7 @@ export default function AppPage(): React.JSX.Element {
 
   // Hide the pill and reset to idle so the next show starts clean
   const hidePill = useCallback(() => {
-    if (import.meta.env.DEV) console.log("[rec] hidePill called");
+    if (import.meta.env.DEV) window.api.debugLog("[rec] hidePill called");
     setState("idle");
     setPartialText("");
     setMessage("");
@@ -261,7 +266,7 @@ export default function AppPage(): React.JSX.Element {
     pendingCommitRef.current = false;
     setMessage("");
     setPartialText("");
-    if (import.meta.env.DEV) console.log("[rec] startRecording");
+    if (import.meta.env.DEV) window.api.debugLog("[rec] startRecording");
 
     window.api
       ?.getFrontmostApp()
@@ -290,10 +295,11 @@ export default function AppPage(): React.JSX.Element {
       const stream = useStreamingRef.current
         ? await recorderRef.current.acquireStream()
         : await recorderRef.current.start();
-      if (import.meta.env.DEV) console.log("[rec] stream acquired");
+      if (import.meta.env.DEV) window.api.debugLog("[rec] stream acquired");
 
       if (!wantsMicRef.current) {
-        if (import.meta.env.DEV) console.log("[rec] abort: wantsMic=false");
+        if (import.meta.env.DEV)
+          window.api.debugLog("[rec] abort: wantsMic=false");
         recorderRef.current.cancel();
         recorderRef.current.releaseStream();
         return;
@@ -303,7 +309,8 @@ export default function AppPage(): React.JSX.Element {
       // treat as an aborted press: release the mic and hide the pill
       // without flashing the recording state or playing a tone.
       if (pendingCommitRef.current) {
-        if (import.meta.env.DEV) console.log("[rec] abort: pendingCommit");
+        if (import.meta.env.DEV)
+          window.api.debugLog("[rec] abort: pendingCommit");
         pendingCommitRef.current = false;
         recorderRef.current.cancel();
         recorderRef.current.releaseStream();
@@ -312,7 +319,7 @@ export default function AppPage(): React.JSX.Element {
         return;
       }
 
-      if (import.meta.env.DEV) console.log("[rec] → recording");
+      if (import.meta.env.DEV) window.api.debugLog("[rec] → recording");
       playTone("start");
       setState("recording");
       startTimeRef.current = Date.now();

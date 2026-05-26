@@ -20,8 +20,10 @@
   "packageManager": "pnpm@10.32.1",
   "pnpm": {
     "onlyBuiltDependencies": [
+      "audify",
       "electron",
-      "esbuild"
+      "esbuild",
+      "uiohook-napi"
     ]
   }
 }

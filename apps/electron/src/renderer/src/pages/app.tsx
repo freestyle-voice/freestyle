@@ -104,6 +104,8 @@ export default function AppPage(): React.JSX.Element {
   const wantsMicRef = useRef(false);
   const appContextRef = useRef<string | null>(null);
   const micWarmedUp = useRef(false);
+  const pendingCommitRef = useRef(false);
+  const commitRef = useRef<() => void>(() => {});
 
   const getInputVolume = useCallback(() => volumeRef.current, []);
 
@@ -220,6 +222,7 @@ export default function AppPage(): React.JSX.Element {
   const startRecording = useCallback(async () => {
     if (wantsMicRef.current) return;
     wantsMicRef.current = true;
+    pendingCommitRef.current = false;
     setMessage("");
     setPartialText("");
 
@@ -261,6 +264,12 @@ export default function AppPage(): React.JSX.Element {
         micWarmedUp.current = true;
         playTone("start");
         setState("recording");
+      }
+
+      if (pendingCommitRef.current) {
+        pendingCommitRef.current = false;
+        commitRef.current();
+        return;
       }
 
       startTimeRef.current = Date.now();
@@ -363,6 +372,7 @@ export default function AppPage(): React.JSX.Element {
       setTimeout(() => hidePill(), 2000);
     }
   }, [stopVisualization, hidePill]);
+  commitRef.current = commitRecording;
 
   const cancelRecording = useCallback(() => {
     wantsMicRef.current = false;
@@ -397,11 +407,10 @@ export default function AppPage(): React.JSX.Element {
       }
     });
     const removeUp = window.api.onHotkeyUp(() => {
-      if (
-        stateRef.current === "recording" ||
-        stateRef.current === "initializing"
-      ) {
+      if (stateRef.current === "recording") {
         commitRecording();
+      } else if (stateRef.current === "initializing") {
+        pendingCommitRef.current = true;
       }
     });
     return () => {

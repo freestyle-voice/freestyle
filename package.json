@@ -22,8 +22,7 @@
     "onlyBuiltDependencies": [
       "audify",
       "electron",
-      "esbuild",
-      "uiohook-napi"
+      "esbuild"
     ]
   }
 }

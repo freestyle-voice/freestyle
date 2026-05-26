@@ -76,10 +76,9 @@ mcpServer.tool(
   "View a single formatting rule by ID",
   idParam,
   async ({ id }) => {
-    const { data } = await call(formats, "GET", "/?limit=200");
-    const row = data.items?.find((r: any) => r.id === id);
-    if (!row) return error(`Format rule #${id} not found`);
-    return text(row);
+    const { data, ok } = await call(formats, "GET", `/${id}`);
+    if (!ok) return error(`Format rule #${id} not found`);
+    return text(data);
   },
 );
 

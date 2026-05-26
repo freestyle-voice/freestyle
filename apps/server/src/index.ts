@@ -6,6 +6,7 @@ import dictionary from "./routes/dictionary.js";
 import feedback from "./routes/feedback.js";
 import formats from "./routes/formats.js";
 import history from "./routes/history.js";
+import mcp from "./routes/mcp.js";
 import models from "./routes/models.js";
 import settings from "./routes/settings.js";
 import stream from "./routes/stream.js";
@@ -38,6 +39,7 @@ const app = new Hono()
   .route("/api/dictionary", dictionary)
   .route("/api/formats", formats)
   .route("/api/feedback", feedback)
+  .route("/mcp", mcp)
   .route("/stream", stream);
 
 export type AppType = typeof app;

@@ -59,6 +59,16 @@ const formats = new Hono()
       offset,
     });
   })
+  .get("/:id{[0-9]+}", (c) => {
+    const db = getDb();
+    const id = Number(c.req.param("id"));
+    const row = db.prepare("SELECT * FROM format_rules WHERE id = ?").get(id) as
+      | FormatRow
+      | undefined;
+
+    if (!row) return c.json({ error: "Not found" }, 404);
+    return c.json(row);
+  })
   .get("/match", (c) => {
     const db = getDb();
     const context = c.req.query("context") ?? "";

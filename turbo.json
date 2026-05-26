@@ -4,7 +4,8 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "build/**"]
+      "outputs": ["dist/**", "build/**", "dist-bin/**"],
+      "env": ["FOSSILIZE_PLATFORMS"]
     },
     "dev": {
       "dependsOn": ["^build"],

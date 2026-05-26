@@ -20,7 +20,8 @@ artifactProvider:
         - "linux-builds"
         - "mac-builds"
         - "windows-builds"
+        - "cli-binaries"
 
 targets:
   - name: github
-    includeNames: /^.*\.(dmg|zip|exe|msi|AppImage|deb|snap|blockmap)$|^latest.*\.yml$/
+    includeNames: /^.*\.(dmg|zip|exe|msi|AppImage|deb|snap|blockmap)$|^latest.*\.yml$|^freestyle-.*/

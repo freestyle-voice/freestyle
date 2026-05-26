@@ -1,0 +1,36 @@
+{
+  "name": "@freestyle/cli",
+  "version": "0.0.2",
+  "type": "module",
+  "license": "FSL-1.1-ALv2",
+  "bin": {
+    "freestyle": "./dist/bin.cjs"
+  },
+  "main": "./dist/bin.cjs",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx src/bin.ts",
+    "build": "tsx script/bundle.ts",
+    "build:sea": "tsx script/build.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@freestyle/server": "workspace:*",
+    "@freestyle/validations": "workspace:*",
+    "@hono/node-server": "^2.0.4",
+    "@stricli/auto-complete": "^1.2.4",
+    "@stricli/core": "^1.2.4",
+    "@types/node": "latest",
+    "chalk": "^5.4.1",
+    "esbuild": "^0.25.0",
+    "fossilize": "^0.7.0",
+    "hono": "^4.12.22",
+    "tsx": "^4.22.3",
+    "typescript": "^5.9.3"
+  }
+}

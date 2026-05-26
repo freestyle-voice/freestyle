@@ -55,6 +55,10 @@ jobs:
         working-directory: apps/electron
         run: pnpm run typecheck:web
 
+      - name: Typecheck CLI
+        working-directory: apps/cli
+        run: pnpm run typecheck
+
   build-linux:
     name: Build (Linux)
     needs: [lint, typecheck]
@@ -126,6 +130,39 @@ jobs:
             apps/electron/dist/*.zip
             apps/electron/dist/latest*.yml
             apps/electron/dist/*.blockmap
+          if-no-files-found: warn
+
+  build-cli:
+    name: Build CLI Binaries
+    needs: [lint, typecheck]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: "package.json"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build server
+        run: pnpm --filter @freestyle/server build
+
+      - name: Build CLI native binaries
+        working-directory: apps/cli
+        run: pnpm run build:sea
+        env:
+          FOSSILIZE_PLATFORMS: linux-x64,linux-arm64,darwin-x64,darwin-arm64,win-x64
+          # TODO: add FOSSILIZE_SIGN + APPLE_* secrets for macOS codesigning
+
+      - name: Upload CLI binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-binaries
+          path: apps/cli/dist-bin/freestyle-*
           if-no-files-found: warn
 
   build-windows:

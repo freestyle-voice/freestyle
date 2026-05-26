@@ -16,4 +16,9 @@ cd apps/electron
 pnpm version "$NEW_VERSION" --no-git-tag-version
 cd ../..
 
+# Bump the CLI app version
+cd apps/cli
+pnpm version "$NEW_VERSION" --no-git-tag-version
+cd ../..
+
 echo "Version bump complete"

@@ -77,27 +77,34 @@ export interface PostProcessResult {
 /**
  * Run LLM cleanup and dictionary replacements on transcribed text.
  * Returns the cleaned text plus metadata for history tracking.
+ *
+ * When `previousText` is provided, the raw transcription is appended to it
+ * and the combined text is sent through post-processing as a whole.  This
+ * is used for the re-record flow where the user presses the hotkey again
+ * while the first transcription is still being processed.
  */
 export async function postProcess(
   rawText: string,
   appContext: string | null,
+  previousText?: string,
 ): Promise<PostProcessResult> {
   const db = getDb();
   const defaults = getDefaultModels();
-  let cleaned = rawText;
   let inputTokens = 0;
   let outputTokens = 0;
   let llmProvider: string | null = null;
   let llmModel: string | null = null;
   let costUsd = 0;
 
-  // If the raw text is purely filler words / punctuation, treat as empty
+  // If the raw text is purely filler words / punctuation, treat as empty.
+  // When there's previousText we still want to return it even if the new
+  // chunk was empty.
   const stripped = rawText
     .replace(/\b(um+|uh+|ah+|er+|hm+|hmm+|mm+|mhm+|you know|i mean)\b/gi, "")
     .replace(/[.…,!?\-–—\s]+/g, "");
   if (!stripped) {
     return {
-      cleaned: "",
+      cleaned: previousText?.trim() || "",
       llmProvider: null,
       llmModel: null,
       inputTokens: 0,
@@ -105,6 +112,15 @@ export async function postProcess(
       costUsd: 0,
     };
   }
+
+  // When appending to a previous transcription, combine the already-
+  // processed text with the new raw transcription so the LLM can
+  // produce a cohesive result.
+  const textToProcess = previousText
+    ? `${previousText.trim()} ${rawText.trim()}`
+    : rawText;
+
+  let cleaned = textToProcess;
 
   // LLM cleanup
   const llmSetting = db
@@ -114,20 +130,29 @@ export async function postProcess(
 
   if (llmEnabled && defaults.llm) {
     const contextHint = getContextHint(appContext, db);
-    const systemPrompt = `You clean up raw voice transcriptions with minimal edits.
-${contextHint ? `\nContext: ${contextHint}\n` : ""}
-Allowed edits:
-1. Remove filler words (um, uh, like, you know, basically, so, I mean)
-2. Remove repeated words and false starts — keep the final intended version
-3. Fix punctuation, capitalization, and minor grammar
-4. Convert spoken numbers/dates to written form when natural
+    const appendNote = previousText
+      ? `\nNote: The text below is a continuation — the first part was already cleaned and the second part is newly transcribed. Clean up the entire combined text so it reads as one cohesive piece.\n`
+      : "";
+
+    const systemPrompt = `You clean up raw voice transcriptions into polished, ready-to-send text.
+${contextHint ? `\nContext: ${contextHint}\n` : ""}${appendNote}
+Edits you MUST apply:
+1. Remove filler words (um, uh, like, you know, basically, so, I mean, right, actually, literally)
+2. Remove false starts, repeated words, and self-corrections — keep only the final intended version
+3. Fix punctuation, capitalization, and grammar
+4. Convert spoken numbers, dates, and units to their written form (e.g. "three hundred dollars" → "$300")
+5. Clean up spoken artifacts: "dot" → ".", "at sign" / "at" in emails → "@", "slash" → "/", "hashtag" → "#", "dash" → "-"
+6. Smooth awkward phrasing caused by speech-to-text without changing the meaning
+7. Break run-on sentences into proper sentences where the speaker clearly intended a pause
+8. Ensure the text reads naturally as written communication
 
 Rules:
-- Keep the speaker's exact words and sentence structure
-- NEVER rephrase, summarize, or rewrite
-- NEVER add words the speaker did not say
-- NEVER explain your edits or include commentary
-- If only filler words or silence, return an empty string
+- Preserve the speaker's meaning and tone faithfully
+- Do NOT add information the speaker did not convey
+- Do NOT summarize or omit content — keep everything the speaker said
+- Do NOT add greetings, sign-offs, or filler the speaker didn't say
+- Do NOT explain your edits or include any commentary
+- If the input is only filler words or silence, return an empty string
 
 IMPORTANT: Your entire response must be the cleaned text and nothing else. No quotes, no explanations, no reasoning, no prefixes.`;
 
@@ -139,7 +164,7 @@ IMPORTANT: Your entire response must be the cleaned text and nothing else. No qu
       const result = await generateText({
         model: chatModel,
         system: systemPrompt,
-        prompt: rawText,
+        prompt: textToProcess,
       });
       let llmText = result.text.trim();
       inputTokens = result.usage?.inputTokens ?? 0;
@@ -149,13 +174,13 @@ IMPORTANT: Your entire response must be the cleaned text and nothing else. No qu
 
       // Guard: if the LLM leaked reasoning/commentary, extract the
       // actual cleaned text.
-      if (llmText.includes("\n") && llmText.length > rawText.length * 2) {
+      if (llmText.includes("\n") && llmText.length > textToProcess.length * 2) {
         const quoted = llmText.match(/"([^"]+)"[^"]*$/);
         if (quoted) {
           llmText = quoted[1];
         } else {
           const lines = llmText.split("\n").filter((l) => l.trim());
-          llmText = lines[lines.length - 1]?.trim() ?? rawText;
+          llmText = lines[lines.length - 1]?.trim() ?? textToProcess;
         }
       }
 
@@ -163,7 +188,7 @@ IMPORTANT: Your entire response must be the cleaned text and nothing else. No qu
       if (
         llmText.startsWith('"') &&
         llmText.endsWith('"') &&
-        !rawText.startsWith('"')
+        !textToProcess.startsWith('"')
       ) {
         llmText = llmText.slice(1, -1);
       }

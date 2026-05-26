@@ -103,7 +103,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
   // Post-process (LLM cleanup + dictionary), then return immediately.
   // DB save runs in the background after the response is sent.
-  const pp = await postProcess(rawText, appContext);
+  // When x-previous-text is provided, combine with new transcription.
+  const previousText = c.req.header("x-previous-text") ?? undefined;
+  const pp = await postProcess(rawText, appContext, previousText);
   const voiceProvider = defaults.voice.provider;
   const voiceModel = defaults.voice.model_id;
 

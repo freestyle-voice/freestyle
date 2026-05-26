@@ -85,12 +85,40 @@ function formatTimer(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+// ---------------------------------------------------------------------------
+// Pill inner content — extracted so it can be rendered in both the main pill
+// and the background transcribing pill during re-record.
+// ---------------------------------------------------------------------------
+
+const pillInnerStyle: React.CSSProperties = {
+  height: 48,
+  padding: "0 10px",
+  borderRadius: 28,
+  background: "var(--card)",
+  color: "var(--foreground)",
+  border: "1px solid var(--border)",
+  fontFamily: "'DM Sans', sans-serif",
+  fontSize: 14,
+  fontWeight: 500,
+  minWidth: 200,
+  maxWidth: 420,
+  WebkitAppRegion: "no-drag",
+} as React.CSSProperties;
+
 export default function AppPage(): React.JSX.Element {
   const [state, setState] = useState<PillState>("idle");
   const [elapsed, setElapsed] = useState(0);
   const [message, setMessage] = useState("");
   const [partialText, setPartialText] = useState("");
   const useStreamingRef = useRef(false);
+
+  // Re-record state: when the user presses the hotkey during transcription,
+  // we start a new recording while the previous transcription finishes in
+  // the background.  The finished text is stored here so it can be combined
+  // with the new transcription.
+  const [isReRecording, setIsReRecording] = useState(false);
+  const previousTextRef = useRef<string | null>(null);
+  const reRecordingRef = useRef(false);
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
@@ -123,6 +151,14 @@ export default function AppPage(): React.JSX.Element {
         onFinal: async (text) => {
           if (sessionIdRef.current === 0) return;
 
+          // If the user started a re-recording while we were transcribing,
+          // store the text instead of pasting — it will be combined with the
+          // new transcription when that finishes.
+          if (reRecordingRef.current) {
+            previousTextRef.current = text.trim() || null;
+            return;
+          }
+
           wantsMicRef.current = false;
           sessionIdRef.current = 0;
           stopVisualization();
@@ -134,8 +170,31 @@ export default function AppPage(): React.JSX.Element {
           }
           hidePill();
         },
+        onCleaned: (text) => {
+          // If the user is re-recording, update previousText with the
+          // cleaned version so the final combine uses the best text.
+          if (reRecordingRef.current) {
+            if (text.trim()) {
+              previousTextRef.current = text.trim();
+            }
+            return;
+          }
+
+          // Normal flow: paste the cleaned text (replaces the raw text
+          // that was already pasted by onFinal).
+          if (text.trim()) {
+            window.api.pasteText(text);
+          }
+        },
         onError: (msg) => {
           if (sessionIdRef.current === 0) return;
+
+          // If re-recording, don't hide — let the recording continue
+          if (reRecordingRef.current) {
+            previousTextRef.current = null;
+            return;
+          }
+
           wantsMicRef.current = false;
           sessionIdRef.current = 0;
           stopVisualization();
@@ -244,89 +303,112 @@ export default function AppPage(): React.JSX.Element {
     setState("idle");
     setPartialText("");
     setMessage("");
+    setIsReRecording(false);
+    reRecordingRef.current = false;
+    previousTextRef.current = null;
     window.api.hidePill();
   }, []);
 
   // -- Start recording --
-  const startRecording = useCallback(async () => {
-    if (wantsMicRef.current) return;
-    wantsMicRef.current = true;
-    pendingCommitRef.current = false;
-    setMessage("");
-    setPartialText("");
+  // When `forReRecord` is true, we're starting a new recording while the
+  // previous transcription is still in progress.
+  const startRecording = useCallback(
+    async (forReRecord = false) => {
+      if (wantsMicRef.current) return;
+      wantsMicRef.current = true;
+      pendingCommitRef.current = false;
+      setMessage("");
+      setPartialText("");
 
-    window.api
-      ?.getFrontmostApp()
-      .then((app) => {
-        appContextRef.current = app;
-        if (app) {
-          try {
-            getStreamer().setContext(app);
-          } catch {}
-        }
-      })
-      .catch(() => {
-        appContextRef.current = null;
-      });
-
-    setState("initializing");
-
-    try {
-      // When streaming is active, skip MediaRecorder entirely — the
-      // Streamer accumulates PCM16 and can produce a WAV if needed.
-      const stream = useStreamingRef.current
-        ? await recorderRef.current.acquireStream()
-        : await recorderRef.current.start();
-
-      if (!wantsMicRef.current) {
-        recorderRef.current.cancel();
-        recorderRef.current.releaseStream();
-        return;
+      if (forReRecord) {
+        reRecordingRef.current = true;
+        setIsReRecording(true);
+      } else {
+        reRecordingRef.current = false;
+        setIsReRecording(false);
+        previousTextRef.current = null;
       }
 
-      // User already released the hotkey while mic was initializing —
-      // treat as an aborted press: release the mic and hide the pill
-      // without flashing the recording state or playing a tone.
-      if (pendingCommitRef.current) {
-        pendingCommitRef.current = false;
-        recorderRef.current.cancel();
-        recorderRef.current.releaseStream();
-        streamerRef.current?.cancel();
-        hidePill();
-        return;
+      window.api
+        ?.getFrontmostApp()
+        .then((app) => {
+          appContextRef.current = app;
+          if (app) {
+            try {
+              getStreamer().setContext(app);
+            } catch {}
+          }
+        })
+        .catch(() => {
+          appContextRef.current = null;
+        });
+
+      // When re-recording, skip the initializing state — go straight to
+      // recording so the UI doesn't flash the amber "Listening..." pill
+      // on top of the blue transcribing pill.
+      if (!forReRecord) {
+        setState("initializing");
       }
-
-      sessionIdRef.current++;
-      playTone("start");
-      setState("recording");
-      startTimeRef.current = Date.now();
-      timerRef.current = window.setInterval(() => {
-        if (!wantsMicRef.current) return;
-        setElapsed(Date.now() - startTimeRef.current);
-      }, 100);
-
-      startVisualization(stream);
 
       try {
-        await getStreamer().startCapture(
-          stream,
-          analyserCtxRef.current ?? undefined,
-        );
-      } catch {}
-    } catch (err) {
-      wantsMicRef.current = false;
-      pendingCommitRef.current = false;
-      recorderRef.current.releaseStream();
-      setState("error");
-      setMessage(err instanceof Error ? err.message : "Mic access denied");
-      setTimeout(() => hidePill(), 2000);
-    }
-  }, [startVisualization, hidePill, getStreamer]);
+        const stream = useStreamingRef.current
+          ? await recorderRef.current.acquireStream()
+          : await recorderRef.current.start();
+
+        if (!wantsMicRef.current) {
+          recorderRef.current.cancel();
+          recorderRef.current.releaseStream();
+          return;
+        }
+
+        if (pendingCommitRef.current) {
+          pendingCommitRef.current = false;
+          recorderRef.current.cancel();
+          recorderRef.current.releaseStream();
+          streamerRef.current?.cancel();
+          if (!forReRecord) {
+            hidePill();
+          }
+          return;
+        }
+
+        sessionIdRef.current++;
+        playTone("start");
+        setState("recording");
+        startTimeRef.current = Date.now();
+        timerRef.current = window.setInterval(() => {
+          if (!wantsMicRef.current) return;
+          setElapsed(Date.now() - startTimeRef.current);
+        }, 100);
+
+        startVisualization(stream);
+
+        try {
+          await getStreamer().startCapture(
+            stream,
+            analyserCtxRef.current ?? undefined,
+          );
+        } catch {}
+      } catch (err) {
+        wantsMicRef.current = false;
+        pendingCommitRef.current = false;
+        recorderRef.current.releaseStream();
+        if (!forReRecord) {
+          setState("error");
+          setMessage(err instanceof Error ? err.message : "Mic access denied");
+          setTimeout(() => hidePill(), 2000);
+        }
+      }
+    },
+    [startVisualization, hidePill, getStreamer],
+  );
 
   // -- Commit: stop recording and transcribe --
   const commitRecording = useCallback(async () => {
     wantsMicRef.current = false;
-    sessionIdRef.current = 0;
+    const wasReRecording = reRecordingRef.current;
+    reRecordingRef.current = false;
+    setIsReRecording(false);
     stopVisualization();
     playTone("stop");
 
@@ -335,16 +417,32 @@ export default function AppPage(): React.JSX.Element {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
       streamerRef.current?.cancel();
-      hidePill();
+      // If this was a re-record that was too short, and we already have
+      // previousText from the first transcription, paste that instead.
+      if (wasReRecording && previousTextRef.current?.trim()) {
+        sessionIdRef.current = 0;
+        const text = previousTextRef.current;
+        previousTextRef.current = null;
+        await window.api.pasteText(text);
+        window.api?.sendTranscriptionDone();
+        hidePill();
+        return;
+      }
+      if (!wasReRecording) {
+        hidePill();
+      }
       return;
     }
+
+    const prevText = previousTextRef.current;
+    previousTextRef.current = null;
 
     // If streaming mode is active, commit via WebSocket
     if (useStreamingRef.current && streamerRef.current) {
       setState("transcribing");
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
-      streamerRef.current.commit();
+      streamerRef.current.commit(prevText ?? undefined);
       return;
     }
 
@@ -352,9 +450,6 @@ export default function AppPage(): React.JSX.Element {
     streamerRef.current?.cancel();
 
     try {
-      // Prefer the Streamer's pre-encoded WAV (already 16kHz PCM16,
-      // no decode/resample overhead).  Fall back to MediaRecorder path
-      // only when the Streamer has no accumulated audio.
       let wavBlob: Blob | null = streamerRef.current?.getWavBlob() ?? null;
 
       if (!wavBlob && recorderRef.current.isRecording()) {
@@ -363,6 +458,12 @@ export default function AppPage(): React.JSX.Element {
 
       if (!wavBlob) {
         recorderRef.current.releaseStream();
+        // If we had previous text, paste it
+        if (prevText?.trim()) {
+          sessionIdRef.current = 0;
+          await window.api.pasteText(prevText);
+          window.api?.sendTranscriptionDone();
+        }
         hidePill();
         return;
       }
@@ -376,6 +477,7 @@ export default function AppPage(): React.JSX.Element {
       };
       if (appContextRef.current)
         headers["x-app-context"] = appContextRef.current;
+      if (prevText) headers["x-previous-text"] = prevText;
 
       const res = await fetch(`${getApiBase()}/api/transcribe`, {
         method: "POST",
@@ -394,6 +496,7 @@ export default function AppPage(): React.JSX.Element {
         console.log("[app] transcribe response:", JSON.stringify(data));
       }
 
+      sessionIdRef.current = 0;
       if (text.trim()) {
         await window.api.pasteText(text);
         window.api?.sendTranscriptionDone();
@@ -409,6 +512,9 @@ export default function AppPage(): React.JSX.Element {
   const cancelRecording = useCallback(() => {
     wantsMicRef.current = false;
     sessionIdRef.current = 0;
+    reRecordingRef.current = false;
+    setIsReRecording(false);
+    previousTextRef.current = null;
     stopVisualization();
     streamerRef.current?.cancel();
     recorderRef.current.cancel();
@@ -435,8 +541,11 @@ export default function AppPage(): React.JSX.Element {
   useEffect(() => {
     const removeDown = window.api.onHotkeyDown(() => {
       const s = stateRef.current;
-      if (s === "idle" || s === "transcribing" || s === "error") {
-        startRecording();
+      if (s === "idle" || s === "error") {
+        startRecording(false);
+      } else if (s === "transcribing") {
+        // Re-record: start a new recording while transcription finishes
+        startRecording(true);
       }
     });
     const removeUp = window.api.onHotkeyUp(() => {
@@ -535,153 +644,197 @@ export default function AppPage(): React.JSX.Element {
             color: transparent;
             animation: shimmer 2s linear infinite;
           }
+          @keyframes slide-up-in {
+            from {
+              opacity: 0;
+              transform: translateY(8px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+          .pill-slide-up {
+            animation: slide-up-in 250ms ease-out both;
+          }
         `}
       </style>
-      <div
-        className={glowState}
-        style={{
-          borderRadius: 28,
-          visibility: state === "idle" ? "hidden" : "visible",
-        }}
-      >
-        <div
-          className="inline-flex items-center gap-3"
-          style={
-            {
-              height: 48,
-              padding: "0 10px",
+
+      <div style={{ position: "relative" }}>
+        {/* Background transcribing pill — visible during re-record */}
+        {isReRecording && (
+          <div
+            className="glow-transcribing"
+            style={{
               borderRadius: 28,
-              background: "var(--card)",
-              color: "var(--foreground)",
-              border: "1px solid var(--border)",
-              fontFamily: "'DM Sans', sans-serif",
-              fontSize: 14,
-              fontWeight: 500,
-              minWidth: 200,
-              maxWidth: 420,
-              WebkitAppRegion: "no-drag",
-            } as React.CSSProperties
-          }
-        >
-          {/* Orb — conditionally rendered per state */}
-          {state !== "idle" && (
+              position: "absolute",
+              bottom: -6,
+              left: 8,
+              right: 8,
+              opacity: 0.55,
+              transform: "scale(0.95)",
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          >
             <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                overflow: "hidden",
-                flexShrink: 0,
-              }}
+              className="inline-flex items-center gap-3"
+              style={pillInnerStyle}
             >
-              <Orb
-                colors={
-                  state === "error"
-                    ? ["#DD6E4E", "#B85C3A"]
-                    : state === "transcribing"
-                      ? ["#60A5FA", "#3B82F6"]
-                      : state === "initializing"
-                        ? ["#FBBF24", "#F59E0B"]
-                        : ["#8AB62A", "#6B8F12"]
-                }
-                agentState={
-                  state === "initializing"
-                    ? "talking"
-                    : state === "recording"
-                      ? "listening"
-                      : state === "transcribing"
-                        ? "talking"
-                        : null
-                }
-                getInputVolume={
-                  state === "recording" ? getInputVolume : undefined
-                }
-                className="h-full w-full"
-              />
-            </div>
-          )}
-
-          {/* Right-side content changes per state */}
-          {state === "initializing" && (
-            <span style={pillTextStyle}>
-              <span className="shimmer-text">Listening...</span>
-            </span>
-          )}
-
-          {state === "recording" && (
-            <>
-              {partialText ? (
-                <span
-                  style={{
-                    flex: 1,
-                    fontSize: 12,
-                    color: "var(--foreground)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    direction: "rtl",
-                    textAlign: "left",
-                  }}
-                >
-                  {partialText}
-                </span>
-              ) : (
-                <svg
-                  ref={barsSvgRef}
-                  width={SVG_WIDTH}
-                  height={SVG_HEIGHT}
-                  viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-                  style={{ display: "block", flex: 1 }}
-                  role="img"
-                  aria-label="Audio levels"
-                >
-                  {Array.from({ length: BARS }, (_, i) => {
-                    const x = gap * (i + 0.5);
-                    return (
-                      <line
-                        key={i}
-                        x1={x}
-                        y1={SVG_HEIGHT / 2 + 1}
-                        x2={x}
-                        y2={SVG_HEIGHT / 2 - 1}
-                        stroke="var(--muted-foreground)"
-                        strokeWidth={barWidth}
-                        strokeLinecap="round"
-                        style={{ opacity: 0.5 }}
-                      />
-                    );
-                  })}
-                </svg>
-              )}
-              <span
-                className="mono"
+              <div
                 style={{
-                  fontSize: 11,
-                  letterSpacing: "0.06em",
-                  opacity: 0.6,
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  overflow: "hidden",
                   flexShrink: 0,
-                  color: "var(--muted-foreground)",
-                  paddingRight: 6,
                 }}
               >
-                {formatTimer(elapsed)}
-              </span>
-            </>
-          )}
-
-          {state === "transcribing" && (
-            <span style={pillTextStyle}>
-              {partialText ? (
-                partialText.slice(-30)
-              ) : (
+                <Orb
+                  colors={["#60A5FA", "#3B82F6"]}
+                  agentState="talking"
+                  className="h-full w-full"
+                />
+              </div>
+              <span style={pillTextStyle}>
                 <span className="shimmer-text">Transcribing...</span>
-              )}
-            </span>
-          )}
+              </span>
+            </div>
+          </div>
+        )}
 
-          {state === "error" && (
-            <span style={pillTextStyle}>{message || "Error"}</span>
-          )}
+        {/* Primary pill */}
+        <div
+          className={`${glowState}${isReRecording ? " pill-slide-up" : ""}`}
+          style={{
+            borderRadius: 28,
+            visibility: state === "idle" ? "hidden" : "visible",
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
+          <div
+            className="inline-flex items-center gap-3"
+            style={pillInnerStyle}
+          >
+            {state !== "idle" && (
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  overflow: "hidden",
+                  flexShrink: 0,
+                }}
+              >
+                <Orb
+                  colors={
+                    state === "error"
+                      ? ["#DD6E4E", "#B85C3A"]
+                      : state === "transcribing"
+                        ? ["#60A5FA", "#3B82F6"]
+                        : state === "initializing"
+                          ? ["#FBBF24", "#F59E0B"]
+                          : ["#8AB62A", "#6B8F12"]
+                  }
+                  agentState={
+                    state === "initializing"
+                      ? "talking"
+                      : state === "recording"
+                        ? "listening"
+                        : state === "transcribing"
+                          ? "talking"
+                          : null
+                  }
+                  getInputVolume={
+                    state === "recording" ? getInputVolume : undefined
+                  }
+                  className="h-full w-full"
+                />
+              </div>
+            )}
+
+            {state === "initializing" && (
+              <span style={pillTextStyle}>
+                <span className="shimmer-text">Listening...</span>
+              </span>
+            )}
+
+            {state === "recording" && (
+              <>
+                {partialText ? (
+                  <span
+                    style={{
+                      flex: 1,
+                      fontSize: 12,
+                      color: "var(--foreground)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      direction: "rtl",
+                      textAlign: "left",
+                    }}
+                  >
+                    {partialText}
+                  </span>
+                ) : (
+                  <svg
+                    ref={barsSvgRef}
+                    width={SVG_WIDTH}
+                    height={SVG_HEIGHT}
+                    viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
+                    style={{ display: "block", flex: 1 }}
+                    role="img"
+                    aria-label="Audio levels"
+                  >
+                    {Array.from({ length: BARS }, (_, i) => {
+                      const x = gap * (i + 0.5);
+                      return (
+                        <line
+                          key={i}
+                          x1={x}
+                          y1={SVG_HEIGHT / 2 + 1}
+                          x2={x}
+                          y2={SVG_HEIGHT / 2 - 1}
+                          stroke="var(--muted-foreground)"
+                          strokeWidth={barWidth}
+                          strokeLinecap="round"
+                          style={{ opacity: 0.5 }}
+                        />
+                      );
+                    })}
+                  </svg>
+                )}
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: "0.06em",
+                    opacity: 0.6,
+                    flexShrink: 0,
+                    color: "var(--muted-foreground)",
+                    paddingRight: 6,
+                  }}
+                >
+                  {formatTimer(elapsed)}
+                </span>
+              </>
+            )}
+
+            {state === "transcribing" && (
+              <span style={pillTextStyle}>
+                {partialText ? (
+                  partialText.slice(-30)
+                ) : (
+                  <span className="shimmer-text">Transcribing...</span>
+                )}
+              </span>
+            )}
+
+            {state === "error" && (
+              <span style={pillTextStyle}>{message || "Error"}</span>
+            )}
+          </div>
         </div>
       </div>
     </div>

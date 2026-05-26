@@ -19,6 +19,7 @@ const stream = new Hono().get(
     let voiceDefaults: { provider: string; model_id: string } | null = null;
     let appContext: string | null = null;
     let audioDurationMs = 0;
+    let previousText: string | null = null;
 
     function connectUpstream(ws: {
       send: (data: string) => void;
@@ -108,11 +109,19 @@ const stream = new Hono().get(
               return;
             }
 
-            // Send raw text immediately so the client can paste without waiting
-            ws.send(JSON.stringify({ type: "final", text: rawText }));
+            // Send raw text immediately so the client can paste without waiting.
+            // When appending to a previous transcription, combine them for the
+            // client so it can paste the full text right away.
+            const combinedRaw = previousText
+              ? `${previousText.trim()} ${rawText.trim()}`
+              : rawText;
+            ws.send(JSON.stringify({ type: "final", text: combinedRaw }));
 
-            // Run post-processing in the background for history
-            postProcess(rawText, appContext)
+            // Run post-processing in the background for history.
+            // Pass previousText so the LLM can produce a cohesive result.
+            const prevForPP = previousText;
+            previousText = null;
+            postProcess(rawText, appContext, prevForPP ?? undefined)
               .then((pp) => {
                 const finalText = pp.cleaned;
                 if (finalText !== rawText && !closed) {
@@ -194,7 +203,12 @@ const stream = new Hono().get(
         }
 
         // Text data = JSON command
-        let msg: { type: string; context?: string; audioDurationMs?: number };
+        let msg: {
+          type: string;
+          context?: string;
+          audioDurationMs?: number;
+          previousText?: string;
+        };
         try {
           msg = JSON.parse(
             typeof event.data === "string"
@@ -222,6 +236,9 @@ const stream = new Hono().get(
           case "commit":
             if (msg.audioDurationMs && msg.audioDurationMs > 0) {
               audioDurationMs = msg.audioDurationMs;
+            }
+            if (msg.previousText) {
+              previousText = msg.previousText;
             }
             upstream?.commit();
             break;

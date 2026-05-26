@@ -529,7 +529,7 @@ mcpServer.tool(
 
 const transport = new StreamableHTTPTransport();
 
-const mcp = new Hono().all("/*", async (c) => {
+const mcp = new Hono().all("/", async (c) => {
   if (!mcpServer.isConnected()) {
     await mcpServer.connect(transport);
   }

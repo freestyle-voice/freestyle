@@ -328,7 +328,7 @@ function HistoryCard({
     setTimeout(() => setCopied(false), 1500);
   }, [text]);
 
-  const wps = wordsPerSec(text, entry.audio_duration_ms);
+  const wps = wordsPerSec(text, entry.audio_duration_ms || entry.duration_ms);
 
   return (
     <div className="border-border group rounded-lg border px-4 py-3">

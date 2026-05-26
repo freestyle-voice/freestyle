@@ -9,9 +9,10 @@ import {
   Cpu,
   FileText,
   MessageSquare,
+  Shield,
   Sliders,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router";
 
 type NavItem = {
@@ -39,17 +40,24 @@ const navItems: NavItem[] = [
   { to: "/settings/models", label: "Models", icon: Cpu, shortcut: "5" },
   { to: "/settings", label: "Settings", icon: Sliders, shortcut: "6" },
   {
+    to: "/settings/permissions",
+    label: "Permissions",
+    icon: Shield,
+    shortcut: "7",
+  },
+  {
     to: "/settings/feedback",
     label: "Feedback",
     icon: MessageSquare,
-    shortcut: "7",
+    shortcut: "8",
   },
 ];
 
 export default function AppShell(): React.JSX.Element {
   const navigate = useNavigate();
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Cmd/Ctrl+1..7 jumps between sidebar items
+  // Cmd/Ctrl+1..8 jumps between sidebar items
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
@@ -63,6 +71,10 @@ export default function AppShell(): React.JSX.Element {
     return () => window.removeEventListener("keydown", handler);
   }, [navigate]);
 
+  useEffect(() => {
+    return window.api?.onFullscreenChanged(setIsFullscreen);
+  }, []);
+
   return (
     <div className="bg-background flex h-screen">
       <aside
@@ -70,7 +82,12 @@ export default function AppShell(): React.JSX.Element {
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
         {/* Brand row — top padding leaves space for macOS traffic lights */}
-        <div className="flex items-center gap-2.5 px-3.5 pt-[44px] pb-6">
+        <div
+          className={cn(
+            "flex items-center gap-2.5 px-3.5 pb-6",
+            isFullscreen ? "pt-4" : "pt-[44px]",
+          )}
+        >
           <img
             src={markLight}
             alt="Freestyle"

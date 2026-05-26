@@ -40,6 +40,10 @@ export default function App(): React.JSX.Element {
           <Route path="/today" element={<TodayPage />} />
           <Route element={<PagePad />}>
             <Route path="/settings" element={<GeneralSettingsPage />} />
+            <Route
+              path="/settings/general"
+              element={<Navigate to="/settings" replace />}
+            />
             <Route path="/settings/models" element={<ModelsPage />} />
             <Route path="/settings/dictionary" element={<DictionaryPage />} />
             <Route path="/settings/formats" element={<FormatsPage />} />

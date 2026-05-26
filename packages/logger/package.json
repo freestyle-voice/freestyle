@@ -1,0 +1,17 @@
+{
+  "name": "@freestyle/logger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "main": "./src/index.ts",
+  "dependencies": {
+    "winston": "^3.19.0"
+  }
+}

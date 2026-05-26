@@ -21,6 +21,7 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@freestyle/logger": "workspace:*",
     "@freestyle/server": "workspace:*",
     "@freestyle/validations": "workspace:*",
     "@hono/node-server": "^2.0.4",

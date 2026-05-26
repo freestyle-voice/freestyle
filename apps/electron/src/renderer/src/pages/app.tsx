@@ -106,6 +106,7 @@ export default function AppPage(): React.JSX.Element {
   const wantsMicRef = useRef(false);
   const appContextRef = useRef<string | null>(null);
   const pendingCommitRef = useRef(false);
+  const sessionIdRef = useRef(0);
 
   const getInputVolume = useCallback(() => volumeRef.current, []);
 
@@ -120,17 +121,21 @@ export default function AppPage(): React.JSX.Element {
         onReady: () => {},
         onPartial: (text) => setPartialText(text),
         onFinal: async (text) => {
+          // Ignore stale finals from previous sessions / reconnects
+          const sid = sessionIdRef.current;
           if (import.meta.env.DEV)
-            window.api.debugLog("[rec] onFinal, state:", stateRef.current);
-          const s = stateRef.current;
-          if (s !== "recording" && s !== "transcribing") return;
+            window.api.debugLog(
+              "[rec] onFinal sid:",
+              sid,
+              "state:",
+              stateRef.current,
+            );
+          if (sid === 0) return;
           wantsMicRef.current = false;
+          sessionIdRef.current = 0;
           stopVisualization();
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
-          if (import.meta.env.DEV) {
-            console.log("[app] onFinal:", JSON.stringify(text));
-          }
           if (text.trim()) {
             await window.api.pasteText(text);
             window.api?.sendTranscriptionDone();
@@ -138,19 +143,13 @@ export default function AppPage(): React.JSX.Element {
           hidePill();
         },
         onError: (msg) => {
+          // Ignore connection-time errors and stale errors from previous sessions
+          const sid = sessionIdRef.current;
           if (import.meta.env.DEV)
-            window.api.debugLog(
-              "[rec] onError:",
-              msg,
-              "state:",
-              stateRef.current,
-            );
-          // Only tear down during an active recording or transcription.
-          // Connection-time errors (no API key, no model, WS close) can
-          // fire during "initializing" or "idle" and must not kill the UI.
-          const s = stateRef.current;
-          if (s !== "recording" && s !== "transcribing") return;
+            window.api.debugLog("[rec] onError sid:", sid, "msg:", msg);
+          if (sid === 0) return;
           wantsMicRef.current = false;
+          sessionIdRef.current = 0;
           stopVisualization();
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
@@ -322,6 +321,7 @@ export default function AppPage(): React.JSX.Element {
       }
 
       if (import.meta.env.DEV) window.api.debugLog("[rec] → recording");
+      sessionIdRef.current++;
       playTone("start");
       setState("recording");
       startTimeRef.current = Date.now();
@@ -351,6 +351,7 @@ export default function AppPage(): React.JSX.Element {
   // -- Commit: stop recording and transcribe --
   const commitRecording = useCallback(async () => {
     wantsMicRef.current = false;
+    sessionIdRef.current = 0;
     stopVisualization();
     playTone("stop");
 
@@ -432,6 +433,7 @@ export default function AppPage(): React.JSX.Element {
 
   const cancelRecording = useCallback(() => {
     wantsMicRef.current = false;
+    sessionIdRef.current = 0;
     stopVisualization();
     streamerRef.current?.cancel();
     recorderRef.current.cancel();

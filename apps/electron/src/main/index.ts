@@ -700,17 +700,16 @@ app.whenReady().then(() => {
     [UiohookKey.ArrowRight]: "Right",
   };
 
-  // Add A-Z and 0-9 to the reverse map
-  for (let i = 0; i < 26; i++) {
-    const code = (UiohookKey as Record<string, number>)[
-      String.fromCharCode(65 + i)
-    ];
-    if (code) uiohookKeyNames[code] = String.fromCharCode(65 + i);
+  // Build reverse map from all UiohookKey entries
+  const ukObj = UiohookKey as Record<string, number>;
+  for (const [name, code] of Object.entries(ukObj)) {
+    if (typeof code !== "number") continue;
+    if (!(code in uiohookKeyNames)) {
+      uiohookKeyNames[code] = name;
+    }
   }
-  for (let i = 0; i < 10; i++) {
-    const code = (UiohookKey as Record<string, number>)[String(i)];
-    if (code) uiohookKeyNames[code] = String(i);
-  }
+  // Fn/Globe key on macOS (not in UiohookKey)
+  uiohookKeyNames[0x0e36] = "Fn";
 
   // Modifier keycodes to skip during recording
   const modifierKeycodes = new Set<number>([
@@ -722,6 +721,7 @@ app.whenReady().then(() => {
     UiohookKey.MetaRight,
     UiohookKey.Shift,
     UiohookKey.ShiftRight,
+    0x0e36, // Fn/Globe key on macOS
   ]);
 
   ipcMain.on("hotkey-record:start", () => {

@@ -32,30 +32,19 @@ const KEY_MAP: Record<string, number> = {
   down: UiohookKey.ArrowDown,
   left: UiohookKey.ArrowLeft,
   right: UiohookKey.ArrowRight,
+  // Fn/Globe key on macOS — not in UiohookKey, raw scan code 0x0E36
+  fn: 0x0e36,
 };
 
-// Add letters a-z → UiohookKey.A..Z (scan codes are not sequential)
-for (let i = 0; i < 26; i++) {
-  const letter = String.fromCharCode(65 + i); // 'A'..'Z'
-  const code = (UiohookKey as Record<string, number>)[letter];
-  if (code !== undefined) {
-    KEY_MAP[letter.toLowerCase()] = code;
-  }
-}
-
-// Add digits 0-9
-for (let i = 0; i < 10; i++) {
-  const code = (UiohookKey as Record<string, number>)[String(i)];
-  if (code !== undefined) {
-    KEY_MAP[String(i)] = code;
-  }
-}
-
-// Add F1-F24
-for (let i = 1; i <= 24; i++) {
-  const code = (UiohookKey as Record<string, number>)[`F${i}`];
-  if (code !== undefined) {
-    KEY_MAP[`f${i}`] = code;
+// Build the map from UiohookKey at runtime — iterate all entries to
+// avoid issues with numeric property keys ("0".."9") and ensure every
+// key the library knows about is mapped.
+const ukObj = UiohookKey as Record<string, number>;
+for (const [name, code] of Object.entries(ukObj)) {
+  if (typeof code !== "number") continue;
+  const lower = name.toLowerCase();
+  if (!(lower in KEY_MAP)) {
+    KEY_MAP[lower] = code;
   }
 }
 

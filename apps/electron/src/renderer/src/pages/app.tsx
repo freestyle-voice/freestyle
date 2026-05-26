@@ -124,6 +124,7 @@ export default function AppPage(): React.JSX.Element {
   // `deferredCommitRef` holds a callback to execute the deferred commit
   // once the first result arrives.
   const [isReRecording, setIsReRecording] = useState(false);
+  const isReRecordingRef = useRef(false);
   const previousTextRef = useRef<string | null>(null);
   const awaitingFirstResultRef = useRef(false);
   const deferredCommitRef = useRef<((prevText: string) => void) | null>(null);
@@ -335,6 +336,7 @@ export default function AppPage(): React.JSX.Element {
     setPartialText("");
     setMessage("");
     setIsReRecording(false);
+    isReRecordingRef.current = false;
     sessionIdRef.current = 0;
     previousTextRef.current = null;
     awaitingFirstResultRef.current = false;
@@ -354,8 +356,10 @@ export default function AppPage(): React.JSX.Element {
       setPartialText("");
 
       if (forReRecord) {
+        isReRecordingRef.current = true;
         setIsReRecording(true);
       } else {
+        isReRecordingRef.current = false;
         setIsReRecording(false);
         previousTextRef.current = null;
         awaitingFirstResultRef.current = false;
@@ -425,6 +429,7 @@ export default function AppPage(): React.JSX.Element {
       } catch (err) {
         wantsMicRef.current = false;
         pendingCommitRef.current = false;
+        isReRecordingRef.current = false;
         setIsReRecording(false);
         awaitingFirstResultRef.current = false;
         deferredCommitRef.current = null;
@@ -440,7 +445,8 @@ export default function AppPage(): React.JSX.Element {
   // -- Commit: stop recording and transcribe --
   const commitRecording = useCallback(async () => {
     wantsMicRef.current = false;
-    const wasReRecording = isReRecording;
+    const wasReRecording = isReRecordingRef.current;
+    isReRecordingRef.current = false;
     setIsReRecording(false);
     stopVisualization();
     playTone("stop");
@@ -551,11 +557,12 @@ export default function AppPage(): React.JSX.Element {
       setMessage(err instanceof Error ? err.message : "Transcription failed");
       setTimeout(() => hidePill(), 2000);
     }
-  }, [stopVisualization, hidePill, isReRecording]);
+  }, [stopVisualization, hidePill]);
 
   const cancelRecording = useCallback(() => {
     wantsMicRef.current = false;
     sessionIdRef.current = 0;
+    isReRecordingRef.current = false;
     setIsReRecording(false);
     previousTextRef.current = null;
     awaitingFirstResultRef.current = false;

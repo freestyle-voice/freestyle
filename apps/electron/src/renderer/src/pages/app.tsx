@@ -324,6 +324,7 @@ export default function AppPage(): React.JSX.Element {
 
       const headers: Record<string, string> = {
         "Content-Type": "audio/wav",
+        "x-audio-duration-ms": String(recordingDuration),
       };
       if (appContextRef.current)
         headers["x-app-context"] = appContextRef.current;

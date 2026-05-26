@@ -98,8 +98,11 @@ export class Streamer {
   }
 
   commit(): void {
+    const audioDurationMs = Math.round(
+      (this.pcmSampleCount / TARGET_RATE) * 1000,
+    );
     this.stopCapture();
-    this.sendJSON({ type: "commit" });
+    this.sendJSON({ type: "commit", audioDurationMs });
   }
 
   cancel(): void {

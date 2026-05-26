@@ -1,3 +1,7 @@
+import * as Sentry from "@sentry/electron/renderer";
+
+Sentry.init({});
+
 import "./globals.css";
 
 import { TooltipProvider } from "@renderer/components/ui/tooltip";

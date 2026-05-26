@@ -563,43 +563,40 @@ export default function AppPage(): React.JSX.Element {
             } as React.CSSProperties
           }
         >
-          {/* Orb — conditionally rendered per state */}
-          {state !== "idle" && (
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                overflow: "hidden",
-                flexShrink: 0,
-              }}
-            >
-              <Orb
-                colors={
-                  state === "error"
-                    ? ["#DD6E4E", "#B85C3A"]
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "50%",
+              overflow: "hidden",
+              flexShrink: 0,
+            }}
+          >
+            <Orb
+              colors={
+                state === "error"
+                  ? ["#DD6E4E", "#B85C3A"]
+                  : state === "transcribing"
+                    ? ["#60A5FA", "#3B82F6"]
+                    : state === "initializing"
+                      ? ["#FBBF24", "#F59E0B"]
+                      : ["#8AB62A", "#6B8F12"]
+              }
+              agentState={
+                state === "initializing"
+                  ? "talking"
+                  : state === "recording"
+                    ? "listening"
                     : state === "transcribing"
-                      ? ["#60A5FA", "#3B82F6"]
-                      : state === "initializing"
-                        ? ["#FBBF24", "#F59E0B"]
-                        : ["#8AB62A", "#6B8F12"]
-                }
-                agentState={
-                  state === "initializing"
-                    ? "talking"
-                    : state === "recording"
-                      ? "listening"
-                      : state === "transcribing"
-                        ? "talking"
-                        : null
-                }
-                getInputVolume={
-                  state === "recording" ? getInputVolume : undefined
-                }
-                className="h-full w-full"
-              />
-            </div>
-          )}
+                      ? "talking"
+                      : null
+              }
+              getInputVolume={
+                state === "recording" ? getInputVolume : undefined
+              }
+              className="h-full w-full"
+            />
+          </div>
 
           {/* Right-side content changes per state */}
           {state === "initializing" && (

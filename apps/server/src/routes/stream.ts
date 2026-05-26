@@ -96,11 +96,18 @@ const stream = new Hono().get(
           onFinal: (rawText) => {
             const durationMs = Date.now() - sessionStartTime;
 
+            console.log(
+              `[stream] onFinal: rawText=${JSON.stringify(rawText)}, audioDurationMs=${audioDurationMs}, durationMs=${durationMs}`,
+            );
+
+            // Skip empty transcriptions entirely — don't send to client
+            if (!rawText?.trim()) {
+              ws.send(JSON.stringify({ type: "final", text: "" }));
+              return;
+            }
+
             // Send raw text immediately so the client can paste without waiting
             ws.send(JSON.stringify({ type: "final", text: rawText }));
-
-            // Nothing to save or post-process for empty transcriptions
-            if (!rawText) return;
 
             // Run post-processing in the background for history
             postProcess(rawText, appContext)

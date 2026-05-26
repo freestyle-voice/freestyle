@@ -121,6 +121,7 @@ export default function AppPage(): React.JSX.Element {
         onFinal: async (text) => {
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
+          console.log("[app] onFinal:", JSON.stringify(text));
           if (text.trim()) {
             await window.api.pasteText(text);
             window.api?.sendTranscriptionDone();
@@ -350,6 +351,7 @@ export default function AppPage(): React.JSX.Element {
 
       const data = await res.json();
       const text = data.cleaned || data.raw || "";
+      console.log("[app] transcribe response:", JSON.stringify(data));
 
       if (text.trim()) {
         await window.api.pasteText(text);

@@ -37,6 +37,7 @@ const PASTE_SETTLE_MS: Record<string, number> = {
 };
 
 export async function pasteIntoFocusedApp(text: string): Promise<void> {
+  console.log("[paste] text:", JSON.stringify(text));
   if (!text?.trim()) return;
 
   const prior = clipboard.readText();

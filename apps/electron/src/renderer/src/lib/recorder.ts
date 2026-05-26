@@ -8,14 +8,26 @@ export class Recorder {
   private chunks: Blob[] = [];
   private mimeType = "";
 
+  private hasLiveStream(): boolean {
+    return (
+      this.stream?.getTracks().every((t) => t.readyState === "live") ?? false
+    );
+  }
+
   /**
    * Acquire the microphone stream without starting a MediaRecorder.
    * Use this when the Streamer handles audio capture and you only
    * need the stream for visualization.
+   *
+   * Reuses the existing stream when its tracks are still live to
+   * avoid the costly getUserMedia() round-trip on repeated calls.
    */
   async acquireStream(deviceId?: string | null): Promise<MediaStream> {
     this.chunks = [];
     this.mediaRecorder = null;
+
+    if (this.hasLiveStream()) return this.stream!;
+
     const processing = {
       echoCancellation: false,
       noiseSuppression: false,
@@ -80,8 +92,6 @@ export class Recorder {
     mr.stop();
     await done;
 
-    for (const t of this.stream?.getTracks() ?? []) t.stop();
-    this.stream = null;
     this.mediaRecorder = null;
 
     const blob = new Blob(this.chunks, {
@@ -91,14 +101,20 @@ export class Recorder {
     return wav;
   }
 
+  /** Stop the MediaRecorder but keep the mic stream alive for reuse. */
   cancel(): void {
     if (this.mediaRecorder?.state === "recording") {
       this.mediaRecorder.stop();
     }
-    for (const t of this.stream?.getTracks() ?? []) t.stop();
-    this.stream = null;
     this.mediaRecorder = null;
     this.chunks = [];
+  }
+
+  /** Full cleanup — release the mic stream. Call on unmount only. */
+  destroy(): void {
+    this.cancel();
+    for (const t of this.stream?.getTracks() ?? []) t.stop();
+    this.stream = null;
   }
 }
 

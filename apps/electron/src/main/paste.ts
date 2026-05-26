@@ -27,8 +27,17 @@ async function pasteLinux(): Promise<void> {
   }
 }
 
+// Time the target app needs to read the clipboard after the simulated
+// keystroke lands.  AppleScript/PowerShell return once the keystroke is
+// *sent*, not consumed, so we must wait before restoring.
+const PASTE_SETTLE_MS: Record<string, number> = {
+  darwin: 500,
+  win32: 600,
+  linux: 300,
+};
+
 export async function pasteIntoFocusedApp(text: string): Promise<void> {
-  if (!text) return;
+  if (!text?.trim()) return;
 
   const prior = clipboard.readText();
   clipboard.writeText(text);
@@ -56,10 +65,8 @@ export async function pasteIntoFocusedApp(text: string): Promise<void> {
         break;
     }
 
-    // Wait long enough for the target app to read the clipboard content.
-    // The paste command returns once the keystroke is *sent*, not once the
-    // app has consumed it. 150ms is conservative enough for most apps.
-    await new Promise((r) => setTimeout(r, 150));
+    const settleMs = PASTE_SETTLE_MS[process.platform] ?? 500;
+    await new Promise((r) => setTimeout(r, settleMs));
   } finally {
     clipboard.writeText(prior);
   }

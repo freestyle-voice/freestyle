@@ -32,12 +32,16 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   // Get context header (JSON with app, url, title)
   const appContext = c.req.header("x-app-context") ?? null;
 
-  // Audio duration: prefer client-supplied header, fall back to WAV byte length
-  const audioDurationHeader = c.req.header("x-audio-duration-ms");
-  let audioDurationMs = audioDurationHeader ? Number(audioDurationHeader) : 0;
-  if (!audioDurationMs && audioData.length > 44) {
+  // Audio duration: compute from WAV byte length (most accurate), fall back
+  // to the client-supplied header which includes mic-init overhead.
+  let audioDurationMs = 0;
+  if (audioData.length > 44) {
     // 16kHz 16-bit mono PCM = 32000 bytes/sec → 32 bytes/ms
     audioDurationMs = Math.round((audioData.length - 44) / 32);
+  }
+  if (!audioDurationMs) {
+    const h = c.req.header("x-audio-duration-ms");
+    if (h) audioDurationMs = Number(h) || 0;
   }
 
   // Get configured models

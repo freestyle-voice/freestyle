@@ -63,16 +63,21 @@ export class Streamer {
     this.pcmSampleCount = 0;
     this.sendJSON({ type: "start" });
 
+    // Adopt the shared AudioContext when provided and still open.
     if (sharedCtx && sharedCtx.state !== "closed") {
       if (this.ctx && this.ctx !== sharedCtx) {
         try {
           this.ctx.close();
         } catch {}
+        this.workletReady = false;
+        this.workletNode = null;
       }
       this.ctx = sharedCtx;
     }
     if (!this.ctx || this.ctx.state === "closed") {
       this.ctx = new AudioContext();
+      this.workletReady = false;
+      this.workletNode = null;
     }
     if (this.ctx.state === "suspended") await this.ctx.resume();
 
@@ -81,8 +86,19 @@ export class Streamer {
       this.workletReady = true;
     }
 
+    // Disconnect previous source if leftover from a prior session.
+    try {
+      this.source?.disconnect();
+    } catch {}
+
     this.source = this.ctx.createMediaStreamSource(stream);
-    this.workletNode = new AudioWorkletNode(this.ctx, "pcm-processor");
+
+    // Reuse the existing worklet node when the AudioContext hasn't changed.
+    if (!this.workletNode) {
+      this.workletNode = new AudioWorkletNode(this.ctx, "pcm-processor");
+      this.workletNode.connect(this.ctx.destination);
+    }
+
     this.workletNode.port.onmessage = (e: MessageEvent) => {
       if (!this.capturing) return;
       const chunk = e.data as ArrayBuffer;
@@ -94,7 +110,6 @@ export class Streamer {
       this.pcmSampleCount += pcm16.length;
     };
     this.source.connect(this.workletNode);
-    this.workletNode.connect(this.ctx.destination);
   }
 
   commit(): void {
@@ -125,6 +140,7 @@ export class Streamer {
   destroy(): void {
     this.destroyed = true;
     this.stopCapture();
+    this.workletNode = null;
     if (this.ws && this.ws.readyState <= WebSocket.OPEN) this.ws.close();
     this.ws = null;
     if (this.ctx) {
@@ -138,15 +154,12 @@ export class Streamer {
 
   // ------- internals -------
 
+  /** Disconnect the source to stop audio flow, but keep the worklet alive. */
   private stopCapture(): void {
     this.capturing = false;
     try {
-      this.workletNode?.disconnect();
-    } catch {}
-    try {
       this.source?.disconnect();
     } catch {}
-    this.workletNode = null;
     this.source = null;
   }
 

@@ -99,6 +99,9 @@ const stream = new Hono().get(
             // Send raw text immediately so the client can paste without waiting
             ws.send(JSON.stringify({ type: "final", text: rawText }));
 
+            // Nothing to save or post-process for empty transcriptions
+            if (!rawText) return;
+
             // Run post-processing in the background for history
             postProcess(rawText, appContext)
               .then((pp) => {

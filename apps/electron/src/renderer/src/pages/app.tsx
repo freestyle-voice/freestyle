@@ -400,10 +400,11 @@ export default function AppPage(): React.JSX.Element {
     };
   }, [startRecording, commitRecording]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount — fully release mic + audio resources
   useEffect(() => {
     return () => {
       cancelRecording();
+      recorderRef.current.destroy();
       streamerRef.current?.destroy();
       streamerRef.current = null;
     };

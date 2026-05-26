@@ -589,6 +589,8 @@ export default function AppPage(): React.JSX.Element {
                 borderRadius: "50%",
                 overflow: "hidden",
                 flexShrink: 0,
+                border: "1.5px solid rgba(255, 255, 255, 0.15)",
+                background: "transparent",
               }}
             >
               <Orb

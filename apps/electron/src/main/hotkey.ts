@@ -137,6 +137,12 @@ export function startHook(): void {
     }
     if (!config || !callbacks) return;
     if (pressed) return; // ignore key repeat
+    // Debug: log events near the configured keycode
+    if (config.keycode <= 0 || e.keycode === config.keycode) {
+      console.log(
+        `[hotkey] keydown code=${e.keycode} cfg=${config.keycode} alt=${e.altKey}/${config.alt} ctrl=${e.ctrlKey}/${config.ctrl} meta=${e.metaKey}/${config.meta} shift=${e.shiftKey}/${config.shift}`,
+      );
+    }
     if (!matchesHotkey(e, config)) return;
     pressed = true;
     callbacks.onDown();

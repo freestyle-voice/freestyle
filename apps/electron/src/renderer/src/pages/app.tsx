@@ -122,6 +122,8 @@ export default function AppPage(): React.JSX.Element {
         onFinal: async (text) => {
           if (import.meta.env.DEV)
             window.api.debugLog("[rec] onFinal, state:", stateRef.current);
+          const s = stateRef.current;
+          if (s !== "recording" && s !== "transcribing") return;
           wantsMicRef.current = false;
           stopVisualization();
           recorderRef.current.cancel();

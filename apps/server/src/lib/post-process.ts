@@ -91,6 +91,24 @@ export async function postProcess(
   let llmModel: string | null = null;
   let costUsd = 0;
 
+  // If the raw text is purely filler words / punctuation, treat as empty
+  const stripped = rawText
+    .replace(
+      /\b(um+|uh+|ah+|er+|hm+|hmm+|mm+|mhm+|like|you know|basically|so|well|yeah|okay|ok|right|i mean)\b/gi,
+      "",
+    )
+    .replace(/[.…,!?\-–—\s]+/g, "");
+  if (!stripped) {
+    return {
+      cleaned: "",
+      llmProvider: null,
+      llmModel: null,
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+    };
+  }
+
   // LLM cleanup
   const llmSetting = db
     .prepare("SELECT value FROM settings WHERE key = 'llm_cleanup'")
@@ -125,11 +143,16 @@ Output ONLY the cleaned text. No explanations, no quotes, no prefixes.`;
         system: systemPrompt,
         prompt: rawText,
       });
-      cleaned = result.text;
+      const llmText = result.text;
       inputTokens = result.usage?.inputTokens ?? 0;
       outputTokens = result.usage?.outputTokens ?? 0;
       llmProvider = defaults.llm.provider;
       llmModel = defaults.llm.model_id;
+
+      // Detect LLM meta-commentary for empty/filler-only input
+      const isPlaceholder =
+        /^\s*[[(* ]/.test(llmText) && /[\])*]\s*$/.test(llmText);
+      cleaned = isPlaceholder ? "" : llmText;
     } catch (err) {
       console.error("LLM cleanup failed:", err);
     }

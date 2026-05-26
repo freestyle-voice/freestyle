@@ -1,6 +1,7 @@
-import * as Sentry from "@sentry/electron/renderer";
+import { init as electronRendererInit } from "@sentry/electron/renderer";
+import { init as reactInit } from "@sentry/react";
 
-Sentry.init({});
+electronRendererInit({}, reactInit);
 
 import "./globals.css";
 

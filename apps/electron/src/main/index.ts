@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/electron/main";
 
 Sentry.init({
   dsn: "https://b7ed8a9e5051cfe650f0f26ca2482b4b@o4509750817325057.ingest.us.sentry.io/4511454571528192",
+  enabled: process.env.NODE_ENV === "production",
 });
 
 import { spawnSync } from "node:child_process";

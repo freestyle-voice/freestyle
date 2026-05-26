@@ -124,7 +124,7 @@ const stream = new Hono().get(
             postProcess(rawText, appContext, prevForPP ?? undefined)
               .then((pp) => {
                 const finalText = pp.cleaned;
-                if (finalText !== rawText && !closed) {
+                if (finalText !== combinedRaw && !closed) {
                   ws.send(JSON.stringify({ type: "cleaned", text: finalText }));
                 }
                 try {
@@ -134,8 +134,8 @@ const stream = new Hono().get(
                        (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                   ).run(
-                    rawText,
-                    finalText !== rawText ? finalText : null,
+                    combinedRaw,
+                    finalText !== combinedRaw ? finalText : null,
                     voiceDefaults!.provider,
                     voiceDefaults!.model_id,
                     pp.llmProvider,
@@ -159,7 +159,7 @@ const stream = new Hono().get(
                        (raw_text, voice_provider, voice_model, duration_ms, audio_duration_ms)
                        VALUES (?, ?, ?, ?, ?)`,
                   ).run(
-                    rawText,
+                    combinedRaw,
                     voiceDefaults!.provider,
                     voiceDefaults!.model_id,
                     durationMs,

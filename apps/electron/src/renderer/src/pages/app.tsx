@@ -392,12 +392,12 @@ export default function AppPage(): React.JSX.Element {
       } catch (err) {
         wantsMicRef.current = false;
         pendingCommitRef.current = false;
+        reRecordingRef.current = false;
+        setIsReRecording(false);
         recorderRef.current.releaseStream();
-        if (!forReRecord) {
-          setState("error");
-          setMessage(err instanceof Error ? err.message : "Mic access denied");
-          setTimeout(() => hidePill(), 2000);
-        }
+        setState("error");
+        setMessage(err instanceof Error ? err.message : "Mic access denied");
+        setTimeout(() => hidePill(), 2000);
       }
     },
     [startVisualization, hidePill, getStreamer],
@@ -425,12 +425,8 @@ export default function AppPage(): React.JSX.Element {
         previousTextRef.current = null;
         await window.api.pasteText(text);
         window.api?.sendTranscriptionDone();
-        hidePill();
-        return;
       }
-      if (!wasReRecording) {
-        hidePill();
-      }
+      hidePill();
       return;
     }
 

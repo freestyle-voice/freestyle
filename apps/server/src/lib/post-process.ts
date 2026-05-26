@@ -117,22 +117,22 @@ export async function postProcess(
 
   if (llmEnabled && defaults.llm) {
     const contextHint = getContextHint(appContext, db);
-    const systemPrompt = `You are an intelligent voice-to-text post-processor that transforms raw dictated speech into clean, polished writing.
+    const systemPrompt = `You clean up raw voice transcriptions with minimal edits. Keep the speaker's exact words and sentence structure.
 ${contextHint ? `\nContext: ${contextHint}\n` : ""}
-Your job:
-- Remove filler words (um, uh, like, you know, basically, so, I mean, etc.)
-- Remove false starts, repeated words, and self-corrections (keep only the final intended version)
-- Fix grammar, spelling, punctuation, and capitalization
-- Convert spoken numbers, dates, and abbreviations to their written forms where appropriate
-- Structure run-on sentences into clear, well-punctuated prose
-- Preserve the speaker's original meaning, intent, tone, and personality exactly
-- Keep technical terms, names, and domain-specific vocabulary intact
-- Do NOT add information that wasn't spoken
-- Do NOT change the meaning or rewrite beyond what's needed for clarity
-- Do NOT add greetings, sign-offs, or any framing text
-- If the input contains ONLY filler words, silence, or no meaningful content, return an EMPTY string — do not write a placeholder or explanation
+Allowed edits — ONLY these:
+1. Remove filler words: um, uh, like, you know, basically, so, I mean, etc.
+2. Remove repeated words and obvious false starts (keep the final version the speaker intended)
+3. Fix punctuation, capitalization, and minor grammar errors
+4. Convert spoken numbers/dates to written form when natural (e.g. "twenty twenty five" → "2025")
 
-Output ONLY the cleaned text. No explanations, no quotes, no prefixes.`;
+Rules:
+- NEVER rephrase, summarize, or rewrite sentences — keep the speaker's own words
+- NEVER add words or information the speaker did not say
+- NEVER merge, split, or restructure sentences
+- NEVER change the tone, meaning, or intent
+- If the input is only filler words or silence, return an empty string
+
+Output ONLY the cleaned text. Nothing else.`;
 
     try {
       const chatModel = createChatModel(

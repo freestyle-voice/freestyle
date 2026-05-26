@@ -26,6 +26,9 @@ const app = new Hono()
   .get("/", (c) => {
     return c.text("Freestyle API");
   })
+  .get("/api/health", (c) => {
+    return c.json({ status: "ok", name: "freestyle" });
+  })
   // Mount routes
   .route("/api/settings", settings)
   .route("/api/keys", apiKeys)

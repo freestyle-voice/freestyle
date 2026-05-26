@@ -110,11 +110,16 @@ export class Recorder {
     this.chunks = [];
   }
 
+  /** Stop all mic tracks so the OS mic indicator turns off. */
+  releaseStream(): void {
+    for (const t of this.stream?.getTracks() ?? []) t.stop();
+    this.stream = null;
+  }
+
   /** Full cleanup — release the mic stream. Call on unmount only. */
   destroy(): void {
     this.cancel();
-    for (const t of this.stream?.getTracks() ?? []) t.stop();
-    this.stream = null;
+    this.releaseStream();
   }
 }
 

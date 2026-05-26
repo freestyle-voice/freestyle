@@ -103,7 +103,7 @@ export default function AppPage(): React.JSX.Element {
   const timerRef = useRef<number>(0);
   const wantsMicRef = useRef(false);
   const appContextRef = useRef<string | null>(null);
-  const micWarmedUp = useRef(false);
+  const pendingCommitRef = useRef(false);
 
   const getInputVolume = useCallback(() => volumeRef.current, []);
 
@@ -119,6 +119,8 @@ export default function AppPage(): React.JSX.Element {
         onPartial: (text) => setPartialText(text),
         onFinal: async (text) => {
           recorderRef.current.cancel();
+          recorderRef.current.releaseStream();
+          console.log("[app] onFinal:", JSON.stringify(text));
           if (text.trim()) {
             await window.api.pasteText(text);
             window.api?.sendTranscriptionDone();
@@ -127,6 +129,7 @@ export default function AppPage(): React.JSX.Element {
         },
         onError: (msg) => {
           recorderRef.current.cancel();
+          recorderRef.current.releaseStream();
           setState("error");
           setMessage(msg);
           setTimeout(() => hidePill(), 2000);
@@ -218,6 +221,7 @@ export default function AppPage(): React.JSX.Element {
   const startRecording = useCallback(async () => {
     if (wantsMicRef.current) return;
     wantsMicRef.current = true;
+    pendingCommitRef.current = false;
     setMessage("");
     setPartialText("");
 
@@ -235,13 +239,7 @@ export default function AppPage(): React.JSX.Element {
         appContextRef.current = null;
       });
 
-    const isFirstPress = !micWarmedUp.current;
-    if (isFirstPress) {
-      setState("initializing");
-    } else {
-      setState("recording");
-      playTone("start");
-    }
+    setState("initializing");
 
     try {
       // When streaming is active, skip MediaRecorder entirely — the
@@ -252,15 +250,24 @@ export default function AppPage(): React.JSX.Element {
 
       if (!wantsMicRef.current) {
         recorderRef.current.cancel();
+        recorderRef.current.releaseStream();
         return;
       }
 
-      if (isFirstPress) {
-        micWarmedUp.current = true;
-        playTone("start");
-        setState("recording");
+      // User already released the hotkey while mic was initializing —
+      // treat as an aborted press: release the mic and hide the pill
+      // without flashing the recording state or playing a tone.
+      if (pendingCommitRef.current) {
+        pendingCommitRef.current = false;
+        recorderRef.current.cancel();
+        recorderRef.current.releaseStream();
+        streamerRef.current?.cancel();
+        hidePill();
+        return;
       }
 
+      playTone("start");
+      setState("recording");
       startTimeRef.current = Date.now();
       timerRef.current = window.setInterval(() => {
         if (!wantsMicRef.current) return;
@@ -277,6 +284,8 @@ export default function AppPage(): React.JSX.Element {
       } catch {}
     } catch (err) {
       wantsMicRef.current = false;
+      pendingCommitRef.current = false;
+      recorderRef.current.releaseStream();
       setState("error");
       setMessage(err instanceof Error ? err.message : "Mic access denied");
       setTimeout(() => hidePill(), 2000);
@@ -292,6 +301,7 @@ export default function AppPage(): React.JSX.Element {
     const recordingDuration = Date.now() - startTimeRef.current;
     if (recordingDuration < 1000) {
       recorderRef.current.cancel();
+      recorderRef.current.releaseStream();
       streamerRef.current?.cancel();
       hidePill();
       return;
@@ -301,6 +311,7 @@ export default function AppPage(): React.JSX.Element {
     if (useStreamingRef.current && streamerRef.current) {
       setState("transcribing");
       recorderRef.current.cancel();
+      recorderRef.current.releaseStream();
       streamerRef.current.commit();
       return;
     }
@@ -319,11 +330,13 @@ export default function AppPage(): React.JSX.Element {
       }
 
       if (!wavBlob) {
+        recorderRef.current.releaseStream();
         hidePill();
         return;
       }
 
       recorderRef.current.cancel();
+      recorderRef.current.releaseStream();
 
       const headers: Record<string, string> = {
         "Content-Type": "audio/wav",
@@ -345,6 +358,7 @@ export default function AppPage(): React.JSX.Element {
 
       const data = await res.json();
       const text = data.cleaned || data.raw || "";
+      console.log("[app] transcribe response:", JSON.stringify(data));
 
       if (text.trim()) {
         await window.api.pasteText(text);
@@ -363,6 +377,7 @@ export default function AppPage(): React.JSX.Element {
     stopVisualization();
     streamerRef.current?.cancel();
     recorderRef.current.cancel();
+    recorderRef.current.releaseStream();
     hidePill();
   }, [stopVisualization, hidePill]);
 
@@ -390,11 +405,10 @@ export default function AppPage(): React.JSX.Element {
       }
     });
     const removeUp = window.api.onHotkeyUp(() => {
-      if (
-        stateRef.current === "recording" ||
-        stateRef.current === "initializing"
-      ) {
+      if (stateRef.current === "recording") {
         commitRecording();
+      } else if (stateRef.current === "initializing") {
+        pendingCommitRef.current = true;
       }
     });
     return () => {

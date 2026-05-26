@@ -3,6 +3,7 @@ import * as Sentry from "@sentry/electron/main";
 Sentry.init({
   dsn: "https://b7ed8a9e5051cfe650f0f26ca2482b4b@o4509750817325057.ingest.us.sentry.io/4511454571528192",
   enabled: process.env.NODE_ENV === "production",
+  skipOpenTelemetrySetup: true,
 });
 
 import { execFile, spawnSync } from "node:child_process";
@@ -49,12 +50,19 @@ const APP_BOTTOM_MARGIN = 0;
 // is available (pillPosition, onboardingComplete, autoUpdate).
 // ---------------------------------------------------------------------------
 
+let settingsCache: Record<string, unknown> | null = null;
+
 function readSettings(): Record<string, unknown> {
+  if (settingsCache) return settingsCache;
   try {
     const settingsPath = join(app.getPath("userData"), "settings.json");
-    return JSON.parse(require("node:fs").readFileSync(settingsPath, "utf-8"));
+    settingsCache = JSON.parse(
+      require("node:fs").readFileSync(settingsPath, "utf-8"),
+    );
+    return settingsCache!;
   } catch {
-    return {};
+    settingsCache = {};
+    return settingsCache;
   }
 }
 
@@ -66,6 +74,7 @@ function writeSettings(patch: Record<string, unknown>): void {
       settingsPath,
       JSON.stringify(data, null, 2),
     );
+    settingsCache = data;
   } catch {
     // ignore
   }
@@ -882,10 +891,9 @@ app.whenReady().then(() => {
   // Set database path for the server before any API calls
   process.env.FREESTYLE_DB_PATH = join(app.getPath("userData"), "freestyle.db");
 
-  // Start the Hono HTTP server with WebSocket support
-  const wss = new WebSocketServer({ noServer: true });
-
+  // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
   function startServer(port: number): void {
+    const wss = new WebSocketServer({ noServer: true });
     httpServer = serve(
       {
         fetch: server.fetch,
@@ -910,7 +918,24 @@ app.whenReady().then(() => {
     });
   }
 
-  startServer(DEFAULT_PORT);
+  // Check if a Freestyle server is already running on the default port.
+  // Run in the background so tray + window creation are not delayed.
+  net
+    .fetch(`http://localhost:${DEFAULT_PORT}/api/health`)
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data: { status?: string; name?: string } | null) => {
+      if (data?.status === "ok" && data?.name === "freestyle") {
+        serverPort = DEFAULT_PORT;
+        console.log(
+          `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
+        );
+      } else {
+        startServer(DEFAULT_PORT);
+      }
+    })
+    .catch(() => {
+      startServer(DEFAULT_PORT);
+    });
 
   createTray();
 

@@ -340,7 +340,7 @@ vec2 hash2(vec2 p) {
 float noise2D(vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
-    
+
     vec2 u = f * f * (3.0 - 2.0 * f);
     float n = mix(
         mix(dot(hash2(i + vec2(0.0, 0.0)), f - vec2(0.0, 0.0)),
@@ -458,11 +458,11 @@ void main() {
             color.a = max(color.a, ovalColor.a); // Max alpha
         }
     }
-    
+
     // Calculate both noisy rings
     float ringRadius1 = sharpRing(decomposed, uTime * 0.1);
     float ringRadius2 = smoothRing(decomposed, uTime * 0.1);
-    
+
     // Adjust rings based on input volume (reduced for flatter appearance)
     float inputRadius1 = radius + uInputVolume * 0.2;
     float inputRadius2 = radius + uInputVolume * 0.15;
@@ -472,9 +472,9 @@ void main() {
     // Blend both rings
     float ringAlpha1 = (inputRadius2 >= ringRadius1) ? opacity1 : 0.0;
     float ringAlpha2 = smoothstep(ringRadius2 - 0.05, ringRadius2 + 0.05, inputRadius1) * opacity2;
-    
+
     float totalRingAlpha = max(ringAlpha1, ringAlpha2);
-    
+
     // Apply screen blend mode for combined rings
     vec3 ringColor = vec3(1.0); // White ring color
     color.rgb = 1.0 - (1.0 - color.rgb) * (1.0 - ringColor * totalRingAlpha);

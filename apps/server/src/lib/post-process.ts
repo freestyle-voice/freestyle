@@ -147,16 +147,13 @@ IMPORTANT: Your entire response must be the cleaned text and nothing else. No qu
       llmProvider = defaults.llm.provider;
       llmModel = defaults.llm.model_id;
 
-      // Guard: if the LLM leaked reasoning/commentary, try to extract
-      // just the cleaned text.  A compliant response is a single line
-      // (or short paragraph) without meta-commentary.
+      // Guard: if the LLM leaked reasoning/commentary, extract the
+      // actual cleaned text.
       if (llmText.includes("\n") && llmText.length > rawText.length * 2) {
-        // Look for a quoted final result
         const quoted = llmText.match(/"([^"]+)"[^"]*$/);
         if (quoted) {
           llmText = quoted[1];
         } else {
-          // Fall back to the last non-empty line
           const lines = llmText.split("\n").filter((l) => l.trim());
           llmText = lines[lines.length - 1]?.trim() ?? rawText;
         }

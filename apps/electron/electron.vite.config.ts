@@ -22,5 +22,13 @@ export default defineConfig({
       },
     },
     plugins: [react(), tailwindcss()],
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve("src/renderer/index.html"),
+          pill: resolve("src/renderer/pill.html"),
+        },
+      },
+    },
   },
 });

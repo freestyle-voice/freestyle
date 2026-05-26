@@ -29,8 +29,7 @@ type PillState =
   | "error";
 
 // ---------------------------------------------------------------------------
-// Sound system — single persistent AudioContext, avoids creating a new one
-// per tone.
+// Sound system
 // ---------------------------------------------------------------------------
 
 let _soundEnabled = true;
@@ -85,9 +84,12 @@ function formatTimer(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+function dbg(msg: string): void {
+  window.api.debugLog(msg);
+}
+
 // ---------------------------------------------------------------------------
-// Pill inner content — extracted so it can be rendered in both the main pill
-// and the background transcribing pill during re-record.
+// Pill inner style — shared between primary and background pills.
 // ---------------------------------------------------------------------------
 
 const pillInnerStyle: React.CSSProperties = {
@@ -112,22 +114,22 @@ export default function AppPage(): React.JSX.Element {
   const [partialText, setPartialText] = useState("");
   const useStreamingRef = useRef(false);
 
-  // Re-record state: when the user presses the hotkey during transcription,
-  // we start a new recording while the previous transcription finishes in
-  // the background.
+  // Re-record state.
   //
-  // `awaitingFirstResultRef` is true when we've committed the second
-  // recording but the first transcription result hasn't arrived yet.
-  // When it's true, onFinal stores the first result AND immediately
-  // sends the deferred second commit with that text as previousText.
+  // `sessionIdRef` is the single source of truth for which commit "owns"
+  // the current session.  Every `startRecording` increments it.  After an
+  // async boundary (fetch, onFinal), a commit checks whether the session
+  // is still the one it started — if not, it's been superseded and must
+  // NOT paste or hide.  Instead it stores its result in `previousTextRef`
+  // for the newer session to pick up.
   //
-  // `deferredCommitRef` holds a callback to execute the deferred commit
-  // once the first result arrives.
+  // `commitSessionRef` records the sessionId that the currently in-flight
+  // commit belongs to.  It's set at the start of commitRecording and
+  // checked after every await.
   const [isReRecording, setIsReRecording] = useState(false);
   const isReRecordingRef = useRef(false);
   const previousTextRef = useRef<string | null>(null);
-  const awaitingFirstResultRef = useRef(false);
-  const deferredCommitRef = useRef<((prevText: string) => void) | null>(null);
+  const commitSessionRef = useRef(0);
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
@@ -147,8 +149,14 @@ export default function AppPage(): React.JSX.Element {
 
   const getInputVolume = useCallback(() => volumeRef.current, []);
 
+  /** Returns true if `mySession` is still the active session. */
+  const isCurrentSession = useCallback(
+    (mySession: number) => sessionIdRef.current === mySession && mySession > 0,
+    [],
+  );
+
   // -- Lazy singleton Streamer --
-  // biome-ignore lint/correctness/useExhaustiveDependencies: singleton must only be created once; hidePill is itself a stable useCallback declared below
+  // biome-ignore lint/correctness/useExhaustiveDependencies: singleton must only be created once
   const getStreamer = useCallback((): Streamer => {
     if (!streamerRef.current) {
       streamerRef.current = new Streamer(getApiBase(), {
@@ -158,38 +166,38 @@ export default function AppPage(): React.JSX.Element {
         onReady: () => {},
         onPartial: (text) => setPartialText(text),
         onFinal: async (text) => {
-          window.api.debugLog(
-            `[onFinal] text=${JSON.stringify(text?.slice(0, 60))}, sessionId=${sessionIdRef.current}, wantsMic=${wantsMicRef.current}, awaitingFirst=${awaitingFirstResultRef.current}, isReRec=${isReRecordingRef.current}, hasDeferred=${!!deferredCommitRef.current}`,
+          const sid = sessionIdRef.current;
+          dbg(
+            `[onFinal] text=${JSON.stringify(text?.slice(0, 50))}, sid=${sid}, commitSid=${commitSessionRef.current}, wantsMic=${wantsMicRef.current}`,
           );
-          if (sessionIdRef.current === 0) return;
+          if (sid === 0) return;
 
-          if (awaitingFirstResultRef.current) {
-            window.api.debugLog(
-              "[onFinal] PATH: awaiting first → deferred commit",
-            );
-            awaitingFirstResultRef.current = false;
-            const stored = text.trim() || null;
-            previousTextRef.current = stored;
-
-            const deferred = deferredCommitRef.current;
-            deferredCommitRef.current = null;
-            if (deferred && stored) {
-              deferred(stored);
-            } else if (deferred) {
-              deferred("");
-            }
-            return;
-          }
-
+          // If the user is still recording a re-record, just store.
           if (wantsMicRef.current) {
-            window.api.debugLog("[onFinal] PATH: still recording → store");
+            dbg("[onFinal] → user still recording, storing");
             previousTextRef.current = text.trim() || null;
             return;
           }
 
-          window.api.debugLog("[onFinal] PATH: normal → paste and hide");
-          wantsMicRef.current = false;
+          // If this result belongs to a superseded commit (a newer
+          // session started since this commit was sent), store the
+          // result for the newer session and don't paste/hide.
+          if (
+            commitSessionRef.current !== 0 &&
+            sid !== commitSessionRef.current
+          ) {
+            dbg(
+              `[onFinal] → superseded (commit owns ${commitSessionRef.current}), storing`,
+            );
+            previousTextRef.current = text.trim() || null;
+            return;
+          }
+
+          // Normal path — this is the final result.
+          dbg("[onFinal] → paste and hide");
           sessionIdRef.current = 0;
+          commitSessionRef.current = 0;
+          wantsMicRef.current = false;
           stopVisualization();
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
@@ -200,16 +208,13 @@ export default function AppPage(): React.JSX.Element {
           hidePill();
         },
         onCleaned: (text) => {
-          window.api.debugLog(
-            `[onCleaned] sessionId=${sessionIdRef.current}, wantsMic=${wantsMicRef.current}, awaitingFirst=${awaitingFirstResultRef.current}`,
+          dbg(
+            `[onCleaned] sid=${sessionIdRef.current}, wantsMic=${wantsMicRef.current}`,
           );
-          // Guard: if the session was cancelled, ignore late arrivals
           if (sessionIdRef.current === 0) return;
 
-          if (wantsMicRef.current || awaitingFirstResultRef.current) {
-            if (text.trim()) {
-              previousTextRef.current = text.trim();
-            }
+          if (wantsMicRef.current) {
+            if (text.trim()) previousTextRef.current = text.trim();
             return;
           }
 
@@ -218,22 +223,19 @@ export default function AppPage(): React.JSX.Element {
           }
         },
         onError: (msg) => {
-          window.api.debugLog(
-            `[onError] msg=${msg}, sessionId=${sessionIdRef.current}, wantsMic=${wantsMicRef.current}`,
+          dbg(
+            `[onError] msg=${msg}, sid=${sessionIdRef.current}, wantsMic=${wantsMicRef.current}`,
           );
           if (sessionIdRef.current === 0) return;
 
           if (wantsMicRef.current) {
             previousTextRef.current = null;
-            awaitingFirstResultRef.current = false;
-            deferredCommitRef.current = null;
             return;
           }
 
-          wantsMicRef.current = false;
           sessionIdRef.current = 0;
-          awaitingFirstResultRef.current = false;
-          deferredCommitRef.current = null;
+          commitSessionRef.current = 0;
+          wantsMicRef.current = false;
           stopVisualization();
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
@@ -246,14 +248,13 @@ export default function AppPage(): React.JSX.Element {
     return streamerRef.current;
   }, []);
 
-  // -- Audio visualization (from a MediaStream) --
+  // -- Audio visualization --
   const startVisualization = useCallback((stream: MediaStream) => {
     if (!analyserCtxRef.current || analyserCtxRef.current.state === "closed") {
       analyserCtxRef.current = new AudioContext();
     }
     const ctx = analyserCtxRef.current;
 
-    // Disconnect previous nodes to avoid leaking them on the AudioContext
     try {
       audioSourceRef.current?.disconnect();
     } catch {}
@@ -274,9 +275,7 @@ export default function AppPage(): React.JSX.Element {
     let lastIpcTime = 0;
 
     const update = () => {
-      if (!wantsMicRef.current) {
-        return;
-      }
+      if (!wantsMicRef.current) return;
       analyser.getByteFrequencyData(dataArray);
       const raw: number[] = [];
       let totalSum = 0;
@@ -292,13 +291,11 @@ export default function AppPage(): React.JSX.Element {
       barsRef.current = smoothBars(barsRef.current, raw);
       const volume = Math.min(1, (totalSum / BARS) * 2.5);
       volumeRef.current = volume;
-      // Throttle IPC to ~10fps to reduce main-process event-loop pressure
       const now = performance.now();
       if (now - lastIpcTime >= 100) {
         lastIpcTime = now;
         window.api?.sendAudioLevel(volume);
       }
-      // Direct DOM update — avoids 60fps React re-renders (rerender-use-ref-transient-values)
       const svg = barsSvgRef.current;
       if (svg) {
         const lines = svg.querySelectorAll("line");
@@ -320,7 +317,6 @@ export default function AppPage(): React.JSX.Element {
     rafRef.current = 0;
     clearInterval(timerRef.current);
     timerRef.current = 0;
-    // Disconnect audio nodes to prevent accumulation on the AudioContext
     try {
       audioSourceRef.current?.disconnect();
     } catch {}
@@ -329,37 +325,34 @@ export default function AppPage(): React.JSX.Element {
     } catch {}
     audioSourceRef.current = null;
     analyserNodeRef.current = null;
-    // Don't close analyserCtxRef — we reuse it across sessions
     barsRef.current = new Array(BARS).fill(0);
     volumeRef.current = 0;
     setElapsed(0);
   }, []);
 
-  // Hide the pill and reset to idle so the next show starts clean
+  // Hide the pill and reset ALL state so the next show starts clean.
   const hidePill = useCallback(() => {
-    window.api.debugLog("[hidePill] called");
+    dbg("[hidePill]");
     setState("idle");
     setPartialText("");
     setMessage("");
     setIsReRecording(false);
     isReRecordingRef.current = false;
+    wantsMicRef.current = false;
     sessionIdRef.current = 0;
+    commitSessionRef.current = 0;
     previousTextRef.current = null;
-    awaitingFirstResultRef.current = false;
-    deferredCommitRef.current = null;
     window.api.hidePill();
   }, []);
 
   // -- Start recording --
-  // When `forReRecord` is true, we're starting a new recording while the
-  // previous transcription is still in progress.
   const startRecording = useCallback(
     async (forReRecord = false) => {
-      window.api.debugLog(
-        `[startRecording] forReRecord=${forReRecord}, wantsMic=${wantsMicRef.current}, sessionId=${sessionIdRef.current}`,
+      dbg(
+        `[startRecording] forReRecord=${forReRecord}, wantsMic=${wantsMicRef.current}, sid=${sessionIdRef.current}`,
       );
       if (wantsMicRef.current) {
-        window.api.debugLog("[startRecording] SKIP: wantsMic already true");
+        dbg("[startRecording] SKIP: wantsMic already true");
         return;
       }
       wantsMicRef.current = true;
@@ -374,8 +367,6 @@ export default function AppPage(): React.JSX.Element {
         isReRecordingRef.current = false;
         setIsReRecording(false);
         previousTextRef.current = null;
-        awaitingFirstResultRef.current = false;
-        deferredCommitRef.current = null;
       }
 
       window.api
@@ -392,9 +383,6 @@ export default function AppPage(): React.JSX.Element {
           appContextRef.current = null;
         });
 
-      // When re-recording, skip the initializing state — go straight to
-      // recording so the UI doesn't flash the amber "Listening..." pill
-      // on top of the blue transcribing pill.
       if (!forReRecord) {
         setState("initializing");
       }
@@ -415,13 +403,12 @@ export default function AppPage(): React.JSX.Element {
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
           streamerRef.current?.cancel();
-          if (!forReRecord) {
-            hidePill();
-          }
+          if (!forReRecord) hidePill();
           return;
         }
 
         sessionIdRef.current++;
+        dbg(`[startRecording] session started: sid=${sessionIdRef.current}`);
         playTone("start");
         setState("recording");
         startTimeRef.current = Date.now();
@@ -443,8 +430,6 @@ export default function AppPage(): React.JSX.Element {
         pendingCommitRef.current = false;
         isReRecordingRef.current = false;
         setIsReRecording(false);
-        awaitingFirstResultRef.current = false;
-        deferredCommitRef.current = null;
         recorderRef.current.releaseStream();
         setState("error");
         setMessage(err instanceof Error ? err.message : "Mic access denied");
@@ -457,9 +442,13 @@ export default function AppPage(): React.JSX.Element {
   // -- Commit: stop recording and transcribe --
   const commitRecording = useCallback(async () => {
     const wasReRecording = isReRecordingRef.current;
-    window.api.debugLog(
-      `[commitRecording] wasReRec=${wasReRecording}, wantsMic=${wantsMicRef.current}, sessionId=${sessionIdRef.current}, prevText=${!!previousTextRef.current}, awaitFirst=${awaitingFirstResultRef.current}`,
+    const mySession = sessionIdRef.current;
+    commitSessionRef.current = mySession;
+
+    dbg(
+      `[commitRecording] wasReRec=${wasReRecording}, sid=${mySession}, wantsMic=${wantsMicRef.current}, hasPrevText=${!!previousTextRef.current}`,
     );
+
     wantsMicRef.current = false;
     isReRecordingRef.current = false;
     setIsReRecording(false);
@@ -468,22 +457,18 @@ export default function AppPage(): React.JSX.Element {
 
     const recordingDuration = Date.now() - startTimeRef.current;
     if (recordingDuration < 1000) {
-      window.api.debugLog("[commitRecording] short recording (<1s)");
+      dbg("[commitRecording] short (<1s)");
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
       streamerRef.current?.cancel();
       if (wasReRecording && previousTextRef.current?.trim()) {
-        // Short re-record with first result already available — paste it.
-        sessionIdRef.current = 0;
         const text = previousTextRef.current;
         previousTextRef.current = null;
-        awaitingFirstResultRef.current = false;
-        deferredCommitRef.current = null;
+        sessionIdRef.current = 0;
+        commitSessionRef.current = 0;
         await window.api.pasteText(text);
         window.api?.sendTranscriptionDone();
       }
-      // If the first result hasn't arrived yet, onFinal will
-      // see wantsMicRef=false and paste when it does arrive.
       hidePill();
       return;
     }
@@ -491,30 +476,18 @@ export default function AppPage(): React.JSX.Element {
     const prevText = previousTextRef.current;
     previousTextRef.current = null;
 
-    // If streaming mode is active, commit via WebSocket
+    // --- Streaming path ---
     if (useStreamingRef.current && streamerRef.current) {
       setState("transcribing");
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
-
-      if (wasReRecording && !prevText) {
-        window.api.debugLog("[commitRecording] streaming: deferring commit");
-        awaitingFirstResultRef.current = true;
-        deferredCommitRef.current = (firstText: string) => {
-          window.api.debugLog(
-            `[deferredCommit] firing, hasText=${!!firstText}`,
-          );
-          streamerRef.current?.commit(firstText || undefined);
-        };
-      } else {
-        window.api.debugLog(
-          `[commitRecording] streaming: immediate commit, hasPrev=${!!prevText}`,
-        );
-        streamerRef.current.commit(prevText ?? undefined);
-      }
+      dbg(`[commitRecording] streaming commit, hasPrev=${!!prevText}`);
+      streamerRef.current.commit(prevText ?? undefined);
+      // onFinal will handle paste/hide, using sessionId checks.
       return;
     }
 
+    // --- REST path ---
     setState("transcribing");
     streamerRef.current?.cancel();
 
@@ -529,6 +502,7 @@ export default function AppPage(): React.JSX.Element {
         recorderRef.current.releaseStream();
         if (prevText?.trim()) {
           sessionIdRef.current = 0;
+          commitSessionRef.current = 0;
           await window.api.pasteText(prevText);
           window.api?.sendTranscriptionDone();
         }
@@ -539,9 +513,6 @@ export default function AppPage(): React.JSX.Element {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
 
-      // For the REST path, if the first result hasn't arrived yet we
-      // must wait for it.  This is only possible in streaming mode
-      // which already returned above, so prevText is reliable here.
       const headers: Record<string, string> = {
         "Content-Type": "audio/wav",
         "x-audio-duration-ms": String(recordingDuration),
@@ -556,6 +527,25 @@ export default function AppPage(): React.JSX.Element {
         headers,
       });
 
+      // ---- After async: check if we're still the active session ----
+      if (!isCurrentSession(mySession)) {
+        // A newer session started while we were waiting for the API.
+        // Store our result for the newer session to combine with.
+        dbg(
+          `[commitRecording] REST response arrived but superseded (my=${mySession}, current=${sessionIdRef.current})`,
+        );
+        if (res.ok) {
+          try {
+            const data = await res.json();
+            const text = data.cleaned || data.raw || "";
+            if (text.trim()) {
+              previousTextRef.current = text.trim();
+            }
+          } catch {}
+        }
+        return;
+      }
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Request failed" }));
         throw new Error(err.error || `HTTP ${res.status}`);
@@ -564,30 +554,36 @@ export default function AppPage(): React.JSX.Element {
       const data = await res.json();
       const text = data.cleaned || data.raw || "";
       if (import.meta.env.DEV) {
-        console.log("[app] transcribe response:", JSON.stringify(data));
+        dbg(
+          `[commitRecording] REST response: ${JSON.stringify(text?.slice(0, 50))}`,
+        );
       }
 
       sessionIdRef.current = 0;
+      commitSessionRef.current = 0;
       if (text.trim()) {
         await window.api.pasteText(text);
         window.api?.sendTranscriptionDone();
       }
       hidePill();
     } catch (err) {
-      setState("error");
-      setMessage(err instanceof Error ? err.message : "Transcription failed");
-      setTimeout(() => hidePill(), 2000);
+      // Only show error if we're still the active session
+      if (isCurrentSession(mySession)) {
+        setState("error");
+        setMessage(err instanceof Error ? err.message : "Transcription failed");
+        setTimeout(() => hidePill(), 2000);
+      }
     }
-  }, [stopVisualization, hidePill]);
+  }, [stopVisualization, hidePill, isCurrentSession]);
 
   const cancelRecording = useCallback(() => {
+    dbg("[cancelRecording]");
     wantsMicRef.current = false;
     sessionIdRef.current = 0;
+    commitSessionRef.current = 0;
     isReRecordingRef.current = false;
     setIsReRecording(false);
     previousTextRef.current = null;
-    awaitingFirstResultRef.current = false;
-    deferredCommitRef.current = null;
     stopVisualization();
     streamerRef.current?.cancel();
     recorderRef.current.cancel();
@@ -595,7 +591,7 @@ export default function AppPage(): React.JSX.Element {
     hidePill();
   }, [stopVisualization, hidePill]);
 
-  // Load sound preference from server settings
+  // Load sound preference
   useEffect(() => {
     getClient()
       .api.settings[":key"].$get({ param: { key: "sound_enabled" } })
@@ -606,17 +602,14 @@ export default function AppPage(): React.JSX.Element {
       .catch(() => {});
   }, []);
 
-  // Track state in a ref so event handlers don't need state in their deps
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  // Hold-to-record: hotkey down = start, hotkey up = commit
+  // Hotkey handlers
   useEffect(() => {
     const removeDown = window.api.onHotkeyDown(() => {
       const s = stateRef.current;
-      window.api.debugLog(
-        `[hotkeyDown] state=${s}, wantsMic=${wantsMicRef.current}`,
-      );
+      dbg(`[hotkeyDown] state=${s}, wantsMic=${wantsMicRef.current}`);
       if (s === "idle" || s === "error") {
         startRecording(false);
       } else if (s === "transcribing") {
@@ -624,7 +617,7 @@ export default function AppPage(): React.JSX.Element {
       }
     });
     const removeUp = window.api.onHotkeyUp(() => {
-      window.api.debugLog(
+      dbg(
         `[hotkeyUp] state=${stateRef.current}, wantsMic=${wantsMicRef.current}`,
       );
       if (stateRef.current === "recording") {
@@ -634,8 +627,7 @@ export default function AppPage(): React.JSX.Element {
       }
     });
     const removeCancel = window.api.onPillCancel(() => {
-      const s = stateRef.current;
-      if (s !== "idle") {
+      if (stateRef.current !== "idle") {
         cancelRecording();
       }
     });
@@ -646,16 +638,12 @@ export default function AppPage(): React.JSX.Element {
     };
   }, [startRecording, commitRecording, cancelRecording]);
 
-  // Cleanup on unmount — fully release mic + audio resources.
-  // Use a ref to avoid StrictMode double-invoke calling cancelRecording
-  // on the simulated unmount (which hides the pill spuriously).
+  // Cleanup on unmount
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      // Delay cleanup slightly so StrictMode's immediate remount
-      // can cancel it before resources are destroyed.
       setTimeout(() => {
         if (!mountedRef.current) {
           cancelRecording();
@@ -746,7 +734,6 @@ export default function AppPage(): React.JSX.Element {
       </style>
 
       <div style={{ position: "relative" }}>
-        {/* Background transcribing pill — visible during re-record */}
         {isReRecording && (
           <div
             className="glow-transcribing"
@@ -788,7 +775,6 @@ export default function AppPage(): React.JSX.Element {
           </div>
         )}
 
-        {/* Primary pill */}
         <div
           className={`${glowState}${isReRecording ? " pill-slide-up" : ""}`}
           style={{

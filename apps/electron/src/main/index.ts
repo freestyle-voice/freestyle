@@ -175,6 +175,7 @@ function getAppWindowPosition(): { x: number; y: number } {
 function createAppWindow(): void {
   const { x, y } = getAppWindowPosition();
 
+  winToggleActive = false;
   mainWindow = new BrowserWindow({
     width: APP_WIDTH,
     height: APP_HEIGHT,
@@ -715,14 +716,11 @@ app.whenReady().then(() => {
       }
       keyListener = null;
     }
-    if (process.platform === "win32") {
-      globalShortcut.unregisterAll();
-      winToggleActive = false;
-    }
-
     // GlobalKeyboardListener requires WinKeyServer.exe which isn't shipped on Windows.
     // Hotkey recording is not supported on Windows — cancel and re-register.
     if (process.platform === "win32") {
+      globalShortcut.unregisterAll();
+      winToggleActive = false;
       settingsWindow?.webContents.send("hotkey-record:cancel");
       registerHotkey(currentHotkeyAccel ?? undefined);
       return;

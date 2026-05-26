@@ -54,6 +54,29 @@ function parseAccelerator(accel: string): HotkeyConfig {
   const keyPart = parts[parts.length - 1];
   const mods = new Set(parts.slice(0, -1));
 
+  // Handle stale "KeyNN" format from previous recording sessions where
+  // the raw keycode was stored (e.g. "Key11" = keycode 11 = digit 0).
+  const keyMatch = keyPart.match(/^key(\d+)$/);
+  if (keyMatch) {
+    const rawCode = Number.parseInt(keyMatch[1], 10);
+    return {
+      alt: mods.has("alt") || mods.has("option"),
+      ctrl:
+        mods.has("ctrl") ||
+        mods.has("control") ||
+        mods.has("commandorcontrol") ||
+        mods.has("cmdorctrl"),
+      meta:
+        mods.has("meta") ||
+        mods.has("super") ||
+        mods.has("command") ||
+        mods.has("commandorcontrol") ||
+        mods.has("cmdorctrl"),
+      shift: mods.has("shift"),
+      keycode: rawCode,
+    };
+  }
+
   return {
     alt: mods.has("alt") || mods.has("option"),
     ctrl:

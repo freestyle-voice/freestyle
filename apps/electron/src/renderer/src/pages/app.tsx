@@ -793,7 +793,7 @@ export default function AppPage(): React.JSX.Element {
             style={{
               borderRadius: 28,
               position: "absolute",
-              bottom: -10,
+              bottom: -18,
               left: "50%",
               transform: "translateX(-50%) scale(0.87)",
               opacity: 0.95,

@@ -116,6 +116,7 @@ export default function AppPage(): React.JSX.Element {
 
   const [isReRecording, setIsReRecording] = useState(false);
   const isReRecordingRef = useRef(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
@@ -379,6 +380,7 @@ export default function AppPage(): React.JSX.Element {
     setMessage("");
     setIsReRecording(false);
     isReRecordingRef.current = false;
+    setPendingCount(0);
     wantsMicRef.current = false;
     pillActiveRef.current = false;
     cancelledRef.current = false;
@@ -524,10 +526,7 @@ export default function AppPage(): React.JSX.Element {
     };
     if (appContextRef.current) headers["x-app-context"] = appContextRef.current;
 
-    // Always grab raw transcription text.  Post-processing is done
-    // once on the combined result in drainQueue — this avoids
-    // individual LLM cleanup that would hide corrections like
-    // "scratch that" from the final post-processing pass.
+    setPendingCount((c) => c + 1);
     const transcribePromise = fetch(`${getApiBase()}/api/transcribe`, {
       method: "POST",
       body: wavBlob,
@@ -538,7 +537,8 @@ export default function AppPage(): React.JSX.Element {
         const data = await res.json();
         return (data.raw || "").trim();
       })
-      .catch(() => "");
+      .catch(() => "")
+      .finally(() => setPendingCount((c) => Math.max(0, c - 1)));
 
     // Push to queue
     queueRef.current.push({ promise: transcribePromise });
@@ -631,16 +631,25 @@ export default function AppPage(): React.JSX.Element {
   const gap = SVG_WIDTH / BARS;
   const barWidth = Math.min(gap * 0.55, 5);
 
-  const glowState =
+  // Flare only on the topmost pill.
+  const topGlow =
     state === "initializing"
       ? "glow-initializing"
       : state === "recording"
         ? "glow-recording"
-        : state === "transcribing"
+        : state === "transcribing" && !isReRecording
           ? "glow-transcribing"
           : state === "error"
             ? "glow-error"
             : "glow-idle";
+
+  // Right-side badge: timer during recording, xN during transcribing.
+  const badge =
+    state === "recording"
+      ? formatTimer(elapsed)
+      : state === "transcribing" && pendingCount > 0
+        ? `x${pendingCount}`
+        : null;
 
   return (
     <div
@@ -692,16 +701,17 @@ export default function AppPage(): React.JSX.Element {
       </style>
 
       <div style={{ position: "relative" }}>
+        {/* Background stacked pill — visible during re-record.
+            No flare, slightly scaled down for depth effect. */}
         {isReRecording && (
           <div
-            className="glow-transcribing"
             style={{
               borderRadius: 28,
               position: "absolute",
-              bottom: -14,
+              bottom: -10,
               left: "50%",
-              transform: "translateX(-50%) scale(0.92)",
-              opacity: 0.5,
+              transform: "translateX(-50%) scale(0.97)",
+              opacity: 0.45,
               pointerEvents: "none",
               zIndex: 0,
               width: "100%",
@@ -729,12 +739,28 @@ export default function AppPage(): React.JSX.Element {
               <span style={pillTextStyle}>
                 <span className="shimmer-text">Transcribing...</span>
               </span>
+              {pendingCount > 0 && (
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: "0.06em",
+                    opacity: 0.6,
+                    flexShrink: 0,
+                    color: "var(--muted-foreground)",
+                    paddingRight: 6,
+                  }}
+                >
+                  x{pendingCount}
+                </span>
+              )}
             </div>
           </div>
         )}
 
+        {/* Primary (topmost) pill — gets the flare */}
         <div
-          className={`${glowState}${isReRecording ? " pill-slide-up" : ""}`}
+          className={`${topGlow}${isReRecording ? " pill-slide-up" : ""}`}
           style={{
             borderRadius: 28,
             visibility: state === "idle" ? "hidden" : "visible",
@@ -834,19 +860,6 @@ export default function AppPage(): React.JSX.Element {
                     })}
                   </svg>
                 )}
-                <span
-                  className="mono"
-                  style={{
-                    fontSize: 11,
-                    letterSpacing: "0.06em",
-                    opacity: 0.6,
-                    flexShrink: 0,
-                    color: "var(--muted-foreground)",
-                    paddingRight: 6,
-                  }}
-                >
-                  {formatTimer(elapsed)}
-                </span>
               </>
             )}
 
@@ -862,6 +875,23 @@ export default function AppPage(): React.JSX.Element {
 
             {state === "error" && (
               <span style={pillTextStyle}>{message || "Error"}</span>
+            )}
+
+            {/* Right-side badge: timer or xN counter */}
+            {badge && (
+              <span
+                className="mono"
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.06em",
+                  opacity: 0.6,
+                  flexShrink: 0,
+                  color: "var(--muted-foreground)",
+                  paddingRight: 6,
+                }}
+              >
+                {badge}
+              </span>
             )}
           </div>
         </div>

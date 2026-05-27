@@ -736,9 +736,9 @@ export default function AppPage(): React.JSX.Element {
     <div
       className={`flex h-screen w-screen justify-center select-none ${
         pillAlign === "start"
-          ? "items-start pt-2"
+          ? "items-start pt-1"
           : pillAlign === "end"
-            ? "items-end pb-2"
+            ? "items-end pb-1"
             : "items-center"
       }`}
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}

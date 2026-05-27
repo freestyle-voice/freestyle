@@ -196,7 +196,7 @@ function getAppWindowPosition(): { x: number; y: number } {
   // Read pill position preference
   const position = (readSettings().pillPosition as string) || "bottom-center";
 
-  const margin = 20;
+  const margin = 10;
   switch (position) {
     case "top-center":
       return { x: Math.round((width - APP_WIDTH) / 2), y: margin };

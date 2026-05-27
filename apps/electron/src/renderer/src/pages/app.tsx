@@ -497,9 +497,13 @@ export default function AppPage(): React.JSX.Element {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
       streamerRef.current?.cancel();
-      // If queue is empty (no previous recordings), just hide.
-      if (queueRef.current.length === 0) {
+      // Only hide if nothing else is in-flight (no queue entries and
+      // no active drain processing previous results).
+      if (queueRef.current.length === 0 && !drainingRef.current) {
         hidePill();
+      } else {
+        // Go back to transcribing — the drain will handle paste/hide.
+        setState("transcribing");
       }
       return;
     }
@@ -692,11 +696,11 @@ export default function AppPage(): React.JSX.Element {
             color: transparent;
             animation: shimmer 2s linear infinite;
           }
-          @keyframes slide-up-in {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
+          @keyframes fade-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
           }
-          .pill-slide-up { animation: slide-up-in 250ms ease-out both; }
+          .pill-fade-in { animation: fade-in 200ms ease-out both; }
         `}
       </style>
 
@@ -760,7 +764,7 @@ export default function AppPage(): React.JSX.Element {
 
         {/* Primary (topmost) pill — gets the flare */}
         <div
-          className={`${topGlow}${isReRecording ? " pill-slide-up" : ""}`}
+          className={`${topGlow}${isReRecording ? " pill-fade-in" : ""}`}
           style={{
             borderRadius: 28,
             visibility: state === "idle" ? "hidden" : "visible",

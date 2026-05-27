@@ -98,13 +98,13 @@ const pillInnerStyle: React.CSSProperties = {
   WebkitAppRegion: "no-drag",
 } as React.CSSProperties;
 
-// ---------------------------------------------------------------------------
-// Transcription queue entry.  Each recording produces one of these.
-// The `promise` resolves with the transcribed (and individually
-// post-processed) text once the server responds.
-// ---------------------------------------------------------------------------
+interface TranscribeResult {
+  raw: string;
+  cleaned: string;
+}
+
 interface QueueEntry {
-  promise: Promise<string>;
+  promise: Promise<TranscribeResult>;
 }
 
 export default function AppPage(): React.JSX.Element {
@@ -117,6 +117,7 @@ export default function AppPage(): React.JSX.Element {
   const [isReRecording, setIsReRecording] = useState(false);
   const isReRecordingRef = useRef(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [pillLabel, setPillLabel] = useState("Transcribing...");
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
@@ -171,48 +172,59 @@ export default function AppPage(): React.JSX.Element {
       return;
     }
 
+    // If the user started recording again while we were awaiting,
+    // stash results and exit — next commitRecording will re-drain.
     if (wantsMicRef.current || queueRef.current.length > 0) {
       const resolved = results
-        .filter((t) => t.trim())
-        .map((t) => ({ promise: Promise.resolve(t) }));
+        .filter((r) => r.raw.trim())
+        .map((r) => ({ promise: Promise.resolve(r) }));
       queueRef.current = [...resolved, ...queueRef.current];
       drainingRef.current = false;
       return;
     }
 
-    const nonEmpty = results.filter((t) => t.trim());
+    const nonEmpty = results.filter((r) => r.raw.trim());
     if (nonEmpty.length === 0) {
       drainingRef.current = false;
       hidePill();
       return;
     }
 
-    const combined = nonEmpty.join(" ");
-    dbg(
-      `[drainQueue] post-processing ${nonEmpty.length} result(s) via /api/post-process`,
-    );
     let finalText: string;
-    try {
-      const res = await fetch(`${getApiBase()}/api/post-process`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: combined,
-          appContext: appContextRef.current,
-        }),
-      });
-      if (!pillActiveRef.current) {
-        drainingRef.current = false;
-        return;
-      }
-      if (res.ok) {
-        const data = await res.json();
-        finalText = data.cleaned || combined;
-      } else {
+
+    if (nonEmpty.length === 1) {
+      // Single recording — use the already-post-processed cleaned text.
+      finalText = nonEmpty[0].cleaned.trim() || nonEmpty[0].raw.trim();
+      dbg("[drainQueue] single result, using cleaned text");
+    } else {
+      // Multiple recordings — stitch raw texts and post-process together.
+      const combined = nonEmpty.map((r) => r.raw).join(" ");
+      dbg(
+        `[drainQueue] stitching ${nonEmpty.length} results, calling /api/post-process`,
+      );
+      setPillLabel("Processing...");
+      try {
+        const res = await fetch(`${getApiBase()}/api/post-process`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: combined,
+            appContext: appContextRef.current,
+          }),
+        });
+        if (!pillActiveRef.current) {
+          drainingRef.current = false;
+          return;
+        }
+        if (res.ok) {
+          const data = await res.json();
+          finalText = data.cleaned || combined;
+        } else {
+          finalText = combined;
+        }
+      } catch {
         finalText = combined;
       }
-    } catch {
-      finalText = combined;
     }
 
     if (!pillActiveRef.current) {
@@ -222,7 +234,7 @@ export default function AppPage(): React.JSX.Element {
 
     if (wantsMicRef.current || queueRef.current.length > 0) {
       queueRef.current = [
-        { promise: Promise.resolve(finalText) },
+        { promise: Promise.resolve({ raw: finalText, cleaned: finalText }) },
         ...queueRef.current,
       ];
       drainingRef.current = false;
@@ -368,6 +380,7 @@ export default function AppPage(): React.JSX.Element {
     setIsReRecording(false);
     isReRecordingRef.current = false;
     setPendingCount(0);
+    setPillLabel("Transcribing...");
     wantsMicRef.current = false;
     pillActiveRef.current = false;
     queueRef.current = [];
@@ -390,6 +403,7 @@ export default function AppPage(): React.JSX.Element {
       pendingCommitRef.current = false;
       setMessage("");
       setPartialText("");
+      setPillLabel("Transcribing...");
 
       if (forReRecord) {
         isReRecordingRef.current = true;
@@ -514,25 +528,31 @@ export default function AppPage(): React.JSX.Element {
       return;
     }
 
-    // Build the transcription promise
+    // Skip post-processing on subsequent recordings — the raw texts
+    // will be stitched and post-processed together in drainQueue.
+    const isSubsequent = queueRef.current.length > 0 || drainingRef.current;
     const headers: Record<string, string> = {
       "Content-Type": "audio/wav",
       "x-audio-duration-ms": String(recordingDuration),
     };
     if (appContextRef.current) headers["x-app-context"] = appContextRef.current;
+    if (isSubsequent) headers["x-skip-post-process"] = "true";
 
     setPendingCount((c) => c + 1);
-    const transcribePromise = fetch(`${getApiBase()}/api/transcribe`, {
-      method: "POST",
-      body: wavBlob,
-      headers,
-    })
+    const empty: TranscribeResult = { raw: "", cleaned: "" };
+    const transcribePromise: Promise<TranscribeResult> = fetch(
+      `${getApiBase()}/api/transcribe`,
+      { method: "POST", body: wavBlob, headers },
+    )
       .then(async (res) => {
-        if (!res.ok) return "";
+        if (!res.ok) return empty;
         const data = await res.json();
-        return (data.raw || "").trim();
+        return {
+          raw: (data.raw || "").trim(),
+          cleaned: (data.cleaned || data.raw || "").trim(),
+        };
       })
-      .catch(() => "");
+      .catch(() => empty);
 
     // Push to queue
     queueRef.current.push({ promise: transcribePromise });
@@ -861,7 +881,7 @@ export default function AppPage(): React.JSX.Element {
                 {partialText ? (
                   partialText.slice(-30)
                 ) : (
-                  <span className="shimmer-text">Transcribing...</span>
+                  <span className="shimmer-text">{pillLabel}</span>
                 )}
               </span>
             )}

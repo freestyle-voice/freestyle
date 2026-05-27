@@ -101,13 +101,43 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     });
   }
 
-  // Post-process (LLM cleanup + dictionary), then return immediately.
-  // DB save runs in the background after the response is sent.
-  // When x-previous-text is provided, combine with new transcription.
-  const previousText = c.req.header("x-previous-text") ?? undefined;
-  const pp = await postProcess(rawText, appContext, previousText);
   const voiceProvider = defaults.voice.provider;
   const voiceModel = defaults.voice.model_id;
+  const skipPostProcess = c.req.header("x-skip-post-process") === "true";
+
+  if (skipPostProcess) {
+    // Caller will handle post-processing (e.g. stitching multiple
+    // recordings and running /api/post-process on the combined text).
+    // Still save raw text to history.
+    Promise.resolve()
+      .then(() => {
+        db.prepare(
+          `INSERT INTO transcription_history
+             (raw_text, voice_provider, voice_model, duration_ms, audio_duration_ms)
+             VALUES (?, ?, ?, ?, ?)`,
+        ).run(
+          rawText,
+          voiceProvider,
+          voiceModel,
+          Date.now() - start,
+          audioDurationMs,
+        );
+      })
+      .catch((err) => {
+        console.error("Failed to save history:", err);
+      });
+
+    return c.json({
+      raw: rawText,
+      cleaned: rawText,
+      model: voiceModel,
+      durationMs,
+    });
+  }
+
+  // Post-process (LLM cleanup + dictionary), then return immediately.
+  const previousText = c.req.header("x-previous-text") ?? undefined;
+  const pp = await postProcess(rawText, appContext, previousText);
 
   // Fire-and-forget: save to history without blocking the response
   Promise.resolve()

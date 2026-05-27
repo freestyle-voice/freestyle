@@ -15,6 +15,7 @@ import {
   Moon,
   RefreshCw,
   Sun,
+  Trash2,
   Volume2,
   VolumeOff,
 } from "lucide-react";
@@ -255,6 +256,17 @@ export default function GeneralSettingsPage(): React.JSX.Element {
   const handleAutoUpdateToggle = useCallback((enabled: boolean) => {
     setAutoUpdate(enabled);
     window.api?.setAutoUpdate(enabled);
+  }, []);
+
+  const clearHistory = useCallback(async () => {
+    if (
+      !confirm(
+        "Clear all transcription history? This permanently deletes every saved session.",
+      )
+    ) {
+      return;
+    }
+    await getClient().api.history.$delete();
   }, []);
 
   const handleSoundToggle = useCallback((enabled: boolean) => {
@@ -597,6 +609,29 @@ export default function GeneralSettingsPage(): React.JSX.Element {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* ── Data ──────────────────────────────────────────────── */}
+      <div className="space-y-5">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Data
+        </h2>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Trash2 className="text-muted-foreground h-4 w-4 shrink-0" />
+            <span className="text-sm font-medium">Transcription history</span>
+            <span className="text-muted-foreground text-xs">
+              Permanently delete every saved session
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={clearHistory}
+            className="border-destructive/40 text-destructive hover:bg-destructive/10 cursor-pointer rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
+          >
+            Clear history
+          </button>
         </div>
       </div>
     </div>

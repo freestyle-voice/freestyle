@@ -91,7 +91,15 @@ const history = new Hono()
           COALESCE(SUM(input_tokens), 0) as total_input_tokens,
           COALESCE(SUM(output_tokens), 0) as total_output_tokens,
           COALESCE(SUM(cost_usd), 0) as total_cost_usd,
-          COALESCE(AVG(duration_ms), 0) as avg_duration_ms
+          COALESCE(AVG(duration_ms), 0) as avg_duration_ms,
+          COALESCE(SUM(
+            CASE
+              WHEN length(trim(COALESCE(cleaned_text, raw_text))) = 0 THEN 0
+              ELSE length(trim(COALESCE(cleaned_text, raw_text)))
+                - length(replace(trim(COALESCE(cleaned_text, raw_text)), ' ', ''))
+                + 1
+            END
+          ), 0) as total_words
         FROM transcription_history`,
       )
       .get() as {
@@ -101,6 +109,7 @@ const history = new Hono()
       total_output_tokens: number;
       total_cost_usd: number;
       avg_duration_ms: number;
+      total_words: number;
     };
 
     // Use localtime to match the user's timezone for "today" boundary

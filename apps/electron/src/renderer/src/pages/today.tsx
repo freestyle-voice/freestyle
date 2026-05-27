@@ -659,7 +659,7 @@ function TimelineNode({ entry }: { entry: HistoryEntry }): React.JSX.Element {
             {audioSec}s · {words} wds
           </span>
         </div>
-        <p className="serif text-foreground m-0 text-[17px] leading-[1.5]">
+        <p className="text-foreground m-0 text-[15px] leading-[1.55]">
           “{text}”
         </p>
       </div>

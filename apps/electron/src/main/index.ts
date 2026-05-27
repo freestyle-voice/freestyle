@@ -1,8 +1,9 @@
 import * as Sentry from "@sentry/electron/main";
+import { app as _app } from "electron";
 
 Sentry.init({
   dsn: "https://b7ed8a9e5051cfe650f0f26ca2482b4b@o4509750817325057.ingest.us.sentry.io/4511454571528192",
-  release: `freestyle@${process.env.npm_package_version ?? "0.0.0"}`,
+  release: `freestyle@${_app.getVersion()}`,
   environment: process.env.NODE_ENV ?? "development",
   enabled: process.env.NODE_ENV === "production",
   skipOpenTelemetrySetup: true,
@@ -1361,11 +1362,15 @@ app.on("window-all-closed", () => {
   }
 });
 
-// Gracefully shut down the HTTP server before quitting
-app.on("before-quit", () => {
+// Gracefully shut down the HTTP server and flush Sentry before quitting
+let isQuitting = false;
+app.on("before-quit", (event) => {
+  if (isQuitting) return;
+  isQuitting = true;
+  event.preventDefault();
   if (httpServer) {
     httpServer.close();
     httpServer = null;
   }
-  Sentry.close(2000);
+  Sentry.close(2000).finally(() => app.exit(0));
 });

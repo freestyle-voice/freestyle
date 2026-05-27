@@ -16,6 +16,7 @@ import transcribe from "./routes/transcribe.js";
 initSentry();
 
 const app = new Hono()
+  // CORS for renderer requests (skip WebSocket upgrades)
   .use("*", async (c, next) => {
     if (c.req.header("upgrade")?.toLowerCase() === "websocket") {
       return next();

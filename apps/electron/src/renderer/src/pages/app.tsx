@@ -213,9 +213,7 @@ export default function AppPage(): React.JSX.Element {
 
           // Normal path — this is the final result.
           dbg("[onFinal] → paste and hide");
-          sessionIdRef.current = 0;
-          commitSessionRef.current = 0;
-          wantsMicRef.current = false;
+          const mySid = sid;
           stopVisualization();
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
@@ -223,7 +221,10 @@ export default function AppPage(): React.JSX.Element {
             await window.api.pasteText(text);
             window.api?.sendTranscriptionDone();
           }
-          hidePill();
+          // A new session may have started during the paste await.
+          if (isCurrentSession(mySid)) {
+            hidePill();
+          }
         },
         onCleaned: (text) => {
           dbg(
@@ -487,12 +488,12 @@ export default function AppPage(): React.JSX.Element {
       if (wasReRecording && previousTextRef.current?.trim()) {
         const text = previousTextRef.current;
         previousTextRef.current = null;
-        sessionIdRef.current = 0;
-        commitSessionRef.current = 0;
         await window.api.pasteText(text);
         window.api?.sendTranscriptionDone();
       }
-      hidePill();
+      if (isCurrentSession(mySession)) {
+        hidePill();
+      }
       return;
     }
 
@@ -542,12 +543,12 @@ export default function AppPage(): React.JSX.Element {
       if (!wavBlob) {
         recorderRef.current.releaseStream();
         if (prevText?.trim()) {
-          sessionIdRef.current = 0;
-          commitSessionRef.current = 0;
           await window.api.pasteText(prevText);
           window.api?.sendTranscriptionDone();
         }
-        hidePill();
+        if (isCurrentSession(mySession)) {
+          hidePill();
+        }
         return;
       }
 
@@ -625,13 +626,18 @@ export default function AppPage(): React.JSX.Element {
         );
       }
 
-      sessionIdRef.current = 0;
-      commitSessionRef.current = 0;
       if (text.trim()) {
         await window.api.pasteText(text);
         window.api?.sendTranscriptionDone();
       }
-      hidePill();
+      // A new session may have started during the paste await.
+      if (isCurrentSession(mySession)) {
+        hidePill();
+      } else {
+        dbg(
+          `[commitRecording] skipping hidePill, new session started during paste`,
+        );
+      }
     } catch (err) {
       // Only show error if we're still the active session
       if (isCurrentSession(mySession)) {

@@ -169,7 +169,6 @@ export default function DictionaryPage(): React.JSX.Element {
       } catch {
         // ignore
       }
-      // Reset input so same file can be re-imported
       if (importRef.current) importRef.current.value = "";
     },
     [loadData],
@@ -177,273 +176,379 @@ export default function DictionaryPage(): React.JSX.Element {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <p className="text-muted-foreground text-sm">Loading dictionary...</p>
+      <div className="flex h-full items-center justify-center">
+        <p className="text-muted-foreground text-sm">Loading dictionary…</p>
       </div>
     );
   }
 
+  const isEmpty = total === 0 && !search;
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Dictionary</h1>
-        <p className="text-muted-foreground mt-1">
-          Define shortcuts that automatically expand in your transcriptions.
-          When a key phrase is detected, it gets replaced with its value.
-        </p>
-      </div>
-
-      {/* Search + Actions */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(0);
-            }}
-            placeholder="Search dictionary..."
-            className="border-border bg-card text-foreground w-full rounded-lg border py-2 pl-9 pr-3 text-sm"
-          />
-        </div>
-        <button
-          type="button"
-          onClick={exportJson}
-          className="border-border hover:bg-secondary rounded-lg border p-2"
-          title="Export as JSON"
-        >
-          <Download size={16} className="text-muted-foreground" />
-        </button>
-        <button
-          type="button"
-          onClick={() => importRef.current?.click()}
-          className="border-border hover:bg-secondary rounded-lg border p-2"
-          title="Import from JSON"
-        >
-          <Upload size={16} className="text-muted-foreground" />
-        </button>
-        <input
-          ref={importRef}
-          type="file"
-          accept=".json"
-          className="hidden"
-          onChange={handleImport}
+    <div
+      className="flex h-full min-h-0 flex-col"
+      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+    >
+      <div className="h-9 shrink-0" />
+      <div
+        className="flex-1 overflow-auto px-12 pb-12"
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
+        <PageHeader
+          title="Dictionary"
+          subtitle="Shortcuts that expand as you speak. Say the key, get the value."
         />
+
+        {isEmpty && !showForm ? (
+          <EmptyState
+            onAdd={() => {
+              resetForm();
+              setShowForm(true);
+            }}
+          />
+        ) : (
+          <>
+            {/* Search + Actions */}
+            <div className="mb-5 flex items-center gap-2.5">
+              <div className="border-border bg-card flex flex-1 items-center gap-2 rounded-lg border px-3 py-2">
+                <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(0);
+                  }}
+                  placeholder="Search dictionary…"
+                  className="placeholder:text-muted-foreground/80 text-foreground flex-1 bg-transparent text-[13px] outline-none"
+                />
+                <span className="mono text-muted-foreground text-[10px]">
+                  ⌘ K
+                </span>
+              </div>
+              <ToolbarButton onClick={exportJson} title="Export as JSON">
+                <Download size={13} />
+                Export
+              </ToolbarButton>
+              <ToolbarButton
+                onClick={() => importRef.current?.click()}
+                title="Import from JSON"
+              >
+                <Upload size={13} />
+                Import
+              </ToolbarButton>
+              <input
+                ref={importRef}
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={handleImport}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  resetForm();
+                  setShowForm(true);
+                }}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-2 text-[12.5px] font-medium"
+              >
+                <Plus size={13} />
+                Add entry
+              </button>
+            </div>
+
+            {/* Add/Edit form */}
+            {showForm && (
+              <form
+                onSubmit={handleSubmit(saveEntry)}
+                className="border-border bg-card mb-6 rounded-[12px] border px-[18px] py-4"
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
+                    {editingId ? "Edit entry" : "New entry"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={resetForm}
+                    className="text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
+                  <FormField
+                    label="Key · phrase to detect"
+                    error={formErrors.key?.message}
+                  >
+                    <input
+                      type="text"
+                      {...register("key")}
+                      placeholder='e.g. "my address"'
+                      className={cn(
+                        "border-border bg-background w-full rounded-[7px] border px-[11px] py-2 text-[13px] outline-none",
+                        formErrors.key && "border-destructive",
+                      )}
+                    />
+                  </FormField>
+                  <FormField
+                    label="Value · replacement text"
+                    error={formErrors.value?.message}
+                  >
+                    <textarea
+                      {...register("value")}
+                      placeholder='e.g. "847 Mission Street, Apt 4, SF…"'
+                      rows={2}
+                      className={cn(
+                        "border-border bg-background w-full resize-none rounded-[7px] border px-[11px] py-2 text-[13px] outline-none",
+                        formErrors.value && "border-destructive",
+                      )}
+                    />
+                  </FormField>
+                </div>
+                {formError && (
+                  <p className="text-destructive mt-3 text-xs">{formError}</p>
+                )}
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={resetForm}
+                    className="border-border text-secondary-foreground/80 hover:text-foreground cursor-pointer rounded-md border px-3 py-1.5 text-[12.5px] font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer rounded-md px-3 py-1.5 text-[12.5px] font-medium"
+                  >
+                    {editingId ? "Update" : "Add entry"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Entries list */}
+            {entries.length === 0 ? (
+              <NoSearchResults search={search} />
+            ) : (
+              <div className="border-border bg-card overflow-hidden rounded-[12px] border">
+                {entries.map((entry, i) => (
+                  <EntryRow
+                    key={entry.id}
+                    entry={entry}
+                    isLast={i === entries.length - 1}
+                    onEdit={startEdit}
+                    onDelete={deleteEntry}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Footer · count + pagination */}
+            {total > 0 && (
+              <div className="mt-3.5 flex items-center justify-between">
+                <span className="mono text-muted-foreground text-[11px] tracking-[0.04em]">
+                  {total} {total === 1 ? "entry" : "entries"}
+                </span>
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.max(0, p - 1))}
+                      disabled={page === 0}
+                      className={cn(
+                        "rounded p-1",
+                        page === 0
+                          ? "text-muted-foreground/40 cursor-not-allowed"
+                          : "text-muted-foreground hover:text-foreground cursor-pointer",
+                      )}
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span className="mono text-muted-foreground px-2 text-[11px]">
+                      {page + 1} / {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPage((p) => Math.min(totalPages - 1, p + 1))
+                      }
+                      disabled={page >= totalPages - 1}
+                      className={cn(
+                        "rounded p-1",
+                        page >= totalPages - 1
+                          ? "text-muted-foreground/40 cursor-not-allowed"
+                          : "text-muted-foreground hover:text-foreground cursor-pointer",
+                      )}
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Subcomponents
+// ---------------------------------------------------------------------------
+
+function PageHeader({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: string;
+}): React.JSX.Element {
+  return (
+    <div className="mb-7">
+      <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
+        <span className="serif-italic text-primary">{title}</span>
+        <span>. </span>
+      </h1>
+      {subtitle && (
+        <p className="text-muted-foreground mt-2.5 max-w-[580px] text-[14px] leading-[1.5]">
+          {subtitle}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ToolbarButton({
+  onClick,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="border-border text-secondary-foreground/80 hover:text-foreground flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-2 text-[12.5px] font-medium"
+    >
+      {children}
+    </button>
+  );
+}
+
+function FormField({
+  label,
+  error,
+  children,
+}: {
+  label: string;
+  error?: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div>
+      <div className="mono text-muted-foreground mb-1.5 text-[10px] uppercase tracking-[0.16em]">
+        {label}
+      </div>
+      {children}
+      {error && <p className="text-destructive mt-1 text-xs">{error}</p>}
+    </div>
+  );
+}
+
+function EntryRow({
+  entry,
+  isLast,
+  onEdit,
+  onDelete,
+}: {
+  entry: DictionaryEntry;
+  isLast: boolean;
+  onEdit: (entry: DictionaryEntry) => void;
+  onDelete: (id: number) => void;
+}): React.JSX.Element {
+  return (
+    <div
+      className={cn(
+        "group grid items-center gap-3.5 px-5 py-3.5",
+        !isLast && "border-border/60 border-b",
+      )}
+      style={{ gridTemplateColumns: "minmax(120px, 180px) 1fr 90px 70px" }}
+    >
+      <span
+        className="mono text-foreground border-border bg-background justify-self-start truncate rounded-md border px-2 py-[3px] text-[12.5px] font-medium"
+        title={entry.key}
+      >
+        {entry.key}
+      </span>
+      <span className="text-secondary-foreground line-clamp-2 text-[13px] leading-[1.4]">
+        {entry.value}
+      </span>
+      <span className="mono text-muted-foreground text-right text-[11px]">
+        {entry.usage_count > 0 ? `${entry.usage_count}× used` : "—"}
+      </span>
+      <div className="flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
         <button
           type="button"
-          onClick={() => {
-            resetForm();
-            setShowForm(true);
-          }}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
+          onClick={() => onEdit(entry)}
+          className="text-muted-foreground hover:text-foreground cursor-pointer rounded p-1"
+          title="Edit"
         >
-          <Plus size={16} />
-          Add
+          <Pencil size={13} />
+        </button>
+        <button
+          type="button"
+          onClick={() => onDelete(entry.id)}
+          className="text-muted-foreground hover:text-destructive cursor-pointer rounded p-1"
+          title="Delete"
+        >
+          <Trash2 size={13} />
         </button>
       </div>
+    </div>
+  );
+}
 
-      {/* Add/Edit Form */}
-      {showForm && (
-        <form
-          onSubmit={handleSubmit(saveEntry)}
-          className="border-border bg-card rounded-lg border p-4"
-        >
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-medium">
-              {editingId ? "Edit Entry" : "New Entry"}
-            </h3>
-            <button
-              type="button"
-              onClick={resetForm}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          <div className="space-y-3">
-            <div>
-              <label
-                htmlFor="dict-key"
-                className="text-muted-foreground mb-1 block text-xs"
-              >
-                Key (phrase to detect)
-              </label>
-              <input
-                id="dict-key"
-                type="text"
-                {...register("key")}
-                placeholder='e.g. "my address"'
-                className={cn(
-                  "border-border bg-background w-full rounded-lg border px-3 py-2 text-sm",
-                  formErrors.key && "border-destructive",
-                )}
-              />
-              {formErrors.key && (
-                <p className="text-destructive mt-1 text-xs">
-                  {formErrors.key.message}
-                </p>
-              )}
-            </div>
-            <div>
-              <label
-                htmlFor="dict-value"
-                className="text-muted-foreground mb-1 block text-xs"
-              >
-                Value (replacement text)
-              </label>
-              <textarea
-                id="dict-value"
-                {...register("value")}
-                placeholder="e.g. 123 Main St, Springfield, IL 62701"
-                rows={2}
-                className={cn(
-                  "border-border bg-background w-full resize-none rounded-lg border px-3 py-2 text-sm",
-                  formErrors.value && "border-destructive",
-                )}
-              />
-              {formErrors.value && (
-                <p className="text-destructive mt-1 text-xs">
-                  {formErrors.value.message}
-                </p>
-              )}
-            </div>
-            {formError && (
-              <p className="text-destructive text-xs">{formError}</p>
-            )}
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={resetForm}
-                className="border-border hover:bg-secondary rounded-lg border px-3 py-1.5 text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg px-3 py-1.5 text-sm font-medium"
-              >
-                {editingId ? "Update" : "Add"}
-              </button>
-            </div>
-          </div>
-        </form>
-      )}
+function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
+  return (
+    <div className="border-border bg-card mt-4 rounded-[14px] border border-dashed px-9 py-[52px] text-center">
+      <div className="bg-accent mx-auto mb-[18px] inline-flex h-16 w-16 items-center justify-center rounded-2xl">
+        <Book className="text-primary h-7 w-7" />
+      </div>
+      <h2 className="serif text-foreground m-0 text-[32px] font-medium leading-none">
+        Nothing in the book yet.
+      </h2>
+      <p className="text-muted-foreground mx-auto mt-2.5 max-w-[440px] text-[14px] leading-[1.55]">
+        Add a phrase you say often, like{" "}
+        <span className="mono border-border bg-background text-foreground rounded-[5px] border px-[7px] py-[2px] text-[12px]">
+          my address
+        </span>{" "}
+        — and Freestyle expands it inline.
+      </p>
+      <button
+        type="button"
+        onClick={onAdd}
+        className="bg-primary text-primary-foreground hover:bg-primary/90 mt-[22px] inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3.5 py-2 text-[12.5px] font-medium"
+      >
+        <Plus size={13} />
+        Add your first entry
+      </button>
+    </div>
+  );
+}
 
-      {/* Entries list */}
-      {entries.length === 0 && !search ? (
-        <div className="border-border rounded-lg border border-dashed px-4 py-8 text-center">
-          <Book className="text-muted-foreground mx-auto mb-2 h-8 w-8" />
-          <p className="text-muted-foreground text-sm">
-            No dictionary entries yet. Add one to get started.
-          </p>
-          <p className="text-muted-foreground mt-1 text-xs">
-            Example: key &quot;my address&quot; &rarr; value &quot;123 Main St,
-            Springfield&quot;
-          </p>
-        </div>
-      ) : entries.length === 0 && search ? (
-        <p className="text-muted-foreground py-4 text-center text-sm">
-          No entries match &quot;{search}&quot;
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {entries.map((entry) => (
-            <div
-              key={entry.id}
-              className="border-border group rounded-lg border px-4 py-3"
-            >
-              <div className="flex items-start gap-3">
-                <div className="bg-primary/10 text-primary flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
-                  <Book size={14} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{entry.key}</span>
-                    <span className="text-muted-foreground text-xs">
-                      &rarr;
-                    </span>
-                  </div>
-                  <p className="text-muted-foreground mt-0.5 line-clamp-2 text-sm">
-                    {entry.value}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                {entry.usage_count > 0 && (
-                  <span className="text-muted-foreground text-[10px]">
-                    Used {entry.usage_count}{" "}
-                    {entry.usage_count === 1 ? "time" : "times"}
-                  </span>
-                )}
-                <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                  <button
-                    type="button"
-                    onClick={() => startEdit(entry)}
-                    className="text-muted-foreground hover:text-foreground flex items-center gap-1 rounded px-2 py-1 text-xs"
-                    title="Edit"
-                  >
-                    <Pencil size={12} />
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => deleteEntry(entry.id)}
-                    className="text-muted-foreground hover:text-destructive flex items-center gap-1 rounded px-2 py-1 text-xs"
-                    title="Delete"
-                  >
-                    <Trash2 size={12} />
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Pagination */}
-      {total > 0 && (
-        <div className="flex items-center justify-between pt-2">
-          <span className="text-muted-foreground text-xs">
-            {total} {total === 1 ? "entry" : "entries"}
-          </span>
-          {totalPages > 1 && (
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                disabled={page === 0}
-                className={cn(
-                  "rounded p-1",
-                  page === 0
-                    ? "text-muted-foreground/40"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <span className="text-muted-foreground px-2 text-xs">
-                {page + 1} / {totalPages}
-              </span>
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                disabled={page >= totalPages - 1}
-                className={cn(
-                  "rounded p-1",
-                  page >= totalPages - 1
-                    ? "text-muted-foreground/40"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+function NoSearchResults({ search }: { search: string }): React.JSX.Element {
+  return (
+    <div className="text-muted-foreground py-10 text-center">
+      <span className="serif-italic text-[20px]">
+        {search
+          ? `nothing matches "${search}".`
+          : "no entries — add one to start."}
+      </span>
     </div>
   );
 }

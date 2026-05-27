@@ -796,7 +796,7 @@ export default function AppPage(): React.JSX.Element {
               bottom: -10,
               left: "50%",
               transform: "translateX(-50%) scale(0.97)",
-              opacity: 0.45,
+              opacity: 0.85,
               pointerEvents: "none",
               zIndex: 0,
               width: "100%",

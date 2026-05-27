@@ -182,9 +182,9 @@ static int open_input_devices(int *fds, int max_fds) {
         if (fd < 0) continue;
 
         /* Check if device has keyboard capability */
-        unsigned long evbits = 0;
-        if (ioctl(fd, EVIOCGBIT(0, sizeof(evbits)), &evbits) >= 0) {
-            if (evbits & (1 << EV_KEY)) {
+        unsigned long evbits[1] = {0};
+        if (ioctl(fd, EVIOCGBIT(0, sizeof(evbits)), evbits) >= 0) {
+            if (evbits[0] & (1UL << EV_KEY)) {
                 fds[count++] = fd;
                 continue;
             }

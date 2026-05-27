@@ -7,7 +7,7 @@
  *
  * Compile:
  *   swiftc -O macos-key-listener.swift -o macos-key-listener \
- *     -framework Cocoa -framework Carbon
+ *     -framework Cocoa
  */
 
 import Cocoa

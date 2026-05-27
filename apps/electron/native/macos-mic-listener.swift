@@ -85,8 +85,13 @@ func getInputDevices() -> [AudioDeviceID] {
         )
         guard sizeStatus == noErr, streamSize > 0 else { return false }
 
-        let bufferListPtr = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: 1)
-        defer { bufferListPtr.deallocate() }
+        // AudioBufferList is variable-length; allocate the exact size reported
+        let bufferListRaw = UnsafeMutableRawPointer.allocate(
+            byteCount: Int(streamSize),
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        defer { bufferListRaw.deallocate() }
+        let bufferListPtr = bufferListRaw.bindMemory(to: AudioBufferList.self, capacity: 1)
 
         let streamStatus = AudioObjectGetPropertyData(
             deviceID,

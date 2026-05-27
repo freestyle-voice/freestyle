@@ -27,6 +27,8 @@ export class MicListener {
   private destroyed = false;
   private currentState: MicState = "unknown";
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Track active mic PIDs on Windows for accurate state transitions */
+  private activePids = new Set<string>();
 
   constructor(options: MicListenerOptions = {}) {
     this.options = options;
@@ -69,7 +71,6 @@ export class MicListener {
     try {
       this.process = spawn(binaryPath, args, {
         stdio: ["pipe", "pipe", "pipe"],
-        detached: process.platform !== "win32",
       });
     } catch (err) {
       this.options.onError?.(
@@ -87,7 +88,6 @@ export class MicListener {
     try {
       this.process = spawn("pactl", ["subscribe"], {
         stdio: ["pipe", "pipe", "pipe"],
-        detached: true,
       });
     } catch {
       if (process.env.NODE_ENV !== "production") {
@@ -184,11 +184,14 @@ export class MicListener {
       this.updateState("inactive");
     }
     // Windows: MIC_START <pid> / MIC_STOP <pid>
-    else if (line.startsWith("MIC_START")) {
+    else if (line.startsWith("MIC_START ")) {
+      const pid = line.slice(10).trim();
+      if (pid) this.activePids.add(pid);
       this.updateState("active");
-    } else if (line.startsWith("MIC_STOP")) {
-      // Could track per-PID state, but for now just report simple active/inactive
-      this.updateState("inactive");
+    } else if (line.startsWith("MIC_STOP ")) {
+      const pid = line.slice(9).trim();
+      if (pid) this.activePids.delete(pid);
+      this.updateState(this.activePids.size > 0 ? "active" : "inactive");
     }
   }
 

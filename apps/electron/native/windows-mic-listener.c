@@ -25,6 +25,7 @@
 
 static DWORD g_excludePid = 0;
 static volatile BOOL g_running = TRUE;
+static DWORD g_mainThreadId = 0;
 
 /* ======================================================================== *
  * IAudioSessionEvents implementation
@@ -235,9 +236,13 @@ static void MonitorDevice(IMMDevice *pDevice) {
             hr = pEnum->lpVtbl->GetSession(pEnum, i, &pCtl);
             if (SUCCEEDED(hr) && pCtl) {
                 RegisterSessionEventsOnControl(pCtl);
+                /* Release our reference — the registered callback holds its own */
+                pCtl->lpVtbl->Release(pCtl);
             }
         }
+        pEnum->lpVtbl->Release(pEnum);
     }
+    /* Don't release pMgr — session notifications require it alive */
 }
 
 /* ======================================================================== *
@@ -247,14 +252,14 @@ static void MonitorDevice(IMMDevice *pDevice) {
 BOOL WINAPI ConsoleHandler(DWORD signal) {
     if (signal == CTRL_C_EVENT || signal == CTRL_BREAK_EVENT || signal == CTRL_CLOSE_EVENT) {
         g_running = FALSE;
-        PostThreadMessage(GetCurrentThreadId(), WM_QUIT, 0, 0);
+        PostThreadMessage(g_mainThreadId, WM_QUIT, 0, 0);
         return TRUE;
     }
     return FALSE;
 }
 
 static DWORD WINAPI StdinMonitorThread(LPVOID param) {
-    DWORD mainThreadId = (DWORD)(DWORD_PTR)param;
+    (void)param;
     char buf[64];
     HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
 
@@ -263,7 +268,7 @@ static DWORD WINAPI StdinMonitorThread(LPVOID param) {
         BOOL ok = ReadFile(hStdin, buf, sizeof(buf), &bytesRead, NULL);
         if (!ok || bytesRead == 0) {
             g_running = FALSE;
-            PostThreadMessage(mainThreadId, WM_QUIT, 0, 0);
+            PostThreadMessage(g_mainThreadId, WM_QUIT, 0, 0);
             break;
         }
     }
@@ -282,7 +287,10 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+    g_mainThreadId = GetCurrentThreadId();
+
+    /* STA required for WASAPI session notification callbacks */
+    HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     if (FAILED(hr)) {
         fprintf(stderr, "CoInitializeEx failed (0x%08lx)\n", (unsigned long)hr);
         return 1;
@@ -319,8 +327,7 @@ int main(int argc, char *argv[]) {
 
     SetConsoleCtrlHandler(ConsoleHandler, TRUE);
 
-    DWORD mainThreadId = GetCurrentThreadId();
-    HANDLE hThread = CreateThread(NULL, 0, StdinMonitorThread, (LPVOID)(DWORD_PTR)mainThreadId, 0, NULL);
+    HANDLE hThread = CreateThread(NULL, 0, StdinMonitorThread, NULL, 0, NULL);
     if (hThread) CloseHandle(hThread);
 
     printf("READY\n");

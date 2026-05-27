@@ -348,8 +348,8 @@ static int paste_via_portal(int use_shift, const char *restore_token) {
 static const char *terminal_classes[] = {
     "konsole", "gnome-terminal", "terminal", "kitty", "alacritty",
     "terminator", "xterm", "urxvt", "rxvt", "tilix", "terminology",
-    "wezterm", "foot", "st", "yakuake", "ghostty", "guake", "tilda",
-    "hyper", "tabby", "sakura", "warp", "termius", NULL
+    "wezterm", "foot", "st-256color", "st-", "yakuake", "ghostty",
+    "guake", "tilda", "hyper", "tabby", "sakura", "warp", "termius", NULL
 };
 
 static int is_terminal(const char *wm_class) {

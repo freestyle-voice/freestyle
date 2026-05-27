@@ -4,8 +4,7 @@
  * Wraps the platform-specific native key listener binary. Spawns the binary
  * as a child process and parses its stdout for key events.
  *
- * Replaces the node-global-key-listener npm package with purpose-built
- * native binaries that provide:
+ * Uses purpose-built native binaries that provide:
  *   - macOS: Globe/Fn key + modifier detection via Cocoa/CGEvent
  *   - Windows: True push-to-talk via WH_KEYBOARD_LL hook
  *   - Linux: /dev/input event monitoring for X11 and Wayland
@@ -42,6 +41,41 @@ function formatHotkeyForBinary(hotkey: string): string {
   return hotkey;
 }
 
+/**
+ * Parse an Electron-style hotkey accelerator into its constituent parts
+ * for matching against macOS key listener events.
+ */
+function parseHotkeyParts(hotkey: string): {
+  modifiers: Set<string>;
+  key: string | null;
+} {
+  const parts = hotkey.split("+").map((p) => p.trim().toLowerCase());
+  const key = parts.length > 0 ? parts[parts.length - 1] : null;
+  const modifiers = new Set<string>();
+
+  for (let i = 0; i < parts.length - 1; i++) {
+    const mod = parts[i];
+    if (mod === "alt" || mod === "option") modifiers.add("option");
+    else if (
+      mod === "ctrl" ||
+      mod === "control" ||
+      mod === "commandorcontrol" ||
+      mod === "cmdorctrl"
+    )
+      modifiers.add("control");
+    else if (mod === "shift") modifiers.add("shift");
+    else if (
+      mod === "meta" ||
+      mod === "super" ||
+      mod === "command" ||
+      mod === "cmd"
+    )
+      modifiers.add("command");
+  }
+
+  return { modifiers, key };
+}
+
 export class NativeKeyListener {
   private process: ChildProcess | null = null;
   private options: KeyListenerOptions;
@@ -50,6 +84,10 @@ export class NativeKeyListener {
   private restartAttempts = 0;
   private static readonly MAX_RESTART_ATTEMPTS = 5;
   private static readonly RESTART_DELAY_MS = 2000;
+
+  // macOS modifier tracking for hotkey matching
+  private macModState = new Set<string>();
+  private macHotkeyActive = false;
 
   constructor(options: KeyListenerOptions) {
     this.options = options;
@@ -87,8 +125,6 @@ export class NativeKeyListener {
     try {
       this.process = spawn(binaryPath, args, {
         stdio: ["pipe", "pipe", "pipe"],
-        // Detach on Unix so the child gets its own process group
-        detached: process.platform !== "win32",
       });
     } catch (err) {
       this.options.onError?.(
@@ -134,38 +170,111 @@ export class NativeKeyListener {
   }
 
   private handleLine(line: string): void {
+    // Windows/Linux binaries emit KEY_DOWN/KEY_UP directly
     switch (line) {
       case "READY":
         this.restartAttempts = 0;
         this.options.onReady?.();
-        break;
+        return;
       case "KEY_DOWN":
         this.options.onKeyDown();
-        break;
+        return;
       case "KEY_UP":
         this.options.onKeyUp();
-        break;
-      case "FN_DOWN":
-        // On macOS, if the hotkey is Fn/Globe, treat FN_DOWN as KEY_DOWN
-        if (this.isFnHotkey()) {
-          this.options.onKeyDown();
+        return;
+    }
+
+    // macOS-specific event handling
+    if (process.platform !== "darwin") return;
+
+    const hotkey = this.options.hotkey.toLowerCase();
+
+    // Fn/Globe key
+    if (line === "FN_DOWN" && (hotkey === "fn" || hotkey === "globe")) {
+      this.options.onKeyDown();
+      return;
+    }
+    if (line === "FN_UP" && (hotkey === "fn" || hotkey === "globe")) {
+      this.options.onKeyUp();
+      return;
+    }
+
+    // Right modifier keys (e.g., RIGHT_MOD_DOWN:RightOption)
+    if (line.startsWith("RIGHT_MOD_DOWN:")) {
+      const modName = line.slice(15); // e.g., "RightOption"
+      this.macModState.add(modName.toLowerCase());
+      this.checkMacHotkeyMatch();
+      return;
+    }
+    if (line.startsWith("RIGHT_MOD_UP:")) {
+      const modName = line.slice(13);
+      this.macModState.delete(modName.toLowerCase());
+      if (this.macHotkeyActive) {
+        this.macHotkeyActive = false;
+        this.options.onKeyUp();
+      }
+      return;
+    }
+
+    // General modifier release (e.g., MODIFIER_UP:option)
+    if (line.startsWith("MODIFIER_UP:")) {
+      const modName = line.slice(12).toLowerCase();
+      // Remove any right-side modifier that matches this category
+      for (const key of [...this.macModState]) {
+        if (key.includes(modName)) {
+          this.macModState.delete(key);
         }
-        break;
-      case "FN_UP":
-        if (this.isFnHotkey()) {
-          this.options.onKeyUp();
-        }
-        break;
-      default:
-        // Handle RIGHT_MOD_DOWN/UP, MODIFIER_UP, MOUSE_BUTTON_DOWN/UP
-        // These are forwarded as-is for future use (hotkey recording, etc.)
-        break;
+      }
+      if (this.macHotkeyActive) {
+        this.macHotkeyActive = false;
+        this.options.onKeyUp();
+      }
+      return;
     }
   }
 
-  private isFnHotkey(): boolean {
+  /**
+   * Check if the current macOS modifier state matches the configured hotkey.
+   * Handles hotkeys like "Alt+Space" by checking if the modifier component
+   * (e.g., Alt = Option) is pressed. For modifier-only hotkeys like
+   * "RightOption", checks direct match.
+   */
+  private checkMacHotkeyMatch(): void {
+    if (this.macHotkeyActive) return;
+
     const hotkey = this.options.hotkey.toLowerCase();
-    return hotkey === "fn" || hotkey === "globe";
+
+    // Direct right-modifier hotkey (e.g., hotkey is literally "RightOption")
+    if (this.macModState.has(hotkey)) {
+      this.macHotkeyActive = true;
+      this.options.onKeyDown();
+      return;
+    }
+
+    // Parse compound hotkey and check if modifiers match
+    const { modifiers } = parseHotkeyParts(this.options.hotkey);
+    if (modifiers.size === 0) return;
+
+    // Map macOS modifier names to categories
+    const modCategoryMap: Record<string, string> = {
+      rightoption: "option",
+      rightcommand: "command",
+      rightcontrol: "control",
+      rightshift: "shift",
+    };
+
+    const activeCategories = new Set<string>();
+    for (const mod of this.macModState) {
+      const category = modCategoryMap[mod];
+      if (category) activeCategories.add(category);
+    }
+
+    // Check if all required modifiers are active
+    const allModsMatch = [...modifiers].every((m) => activeCategories.has(m));
+    if (allModsMatch) {
+      this.macHotkeyActive = true;
+      this.options.onKeyDown();
+    }
   }
 
   private scheduleRestart(): void {
@@ -213,14 +322,24 @@ export class NativeKeyListener {
    */
   updateHotkey(hotkey: string): void {
     this.options.hotkey = hotkey;
-    const wasDestroyed = this.destroyed;
-    this.stop();
-    this.destroyed = wasDestroyed;
-    if (!this.destroyed) {
-      this.destroyed = false;
-      this.restartAttempts = 0;
-      this.start();
+    // Stop without permanently destroying
+    this.destroyed = false;
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
     }
+    if (this.process) {
+      try {
+        this.process.kill("SIGTERM");
+      } catch {
+        // Process may already be dead
+      }
+      this.process = null;
+    }
+    this.macModState.clear();
+    this.macHotkeyActive = false;
+    this.restartAttempts = 0;
+    this.start();
   }
 
   get isRunning(): boolean {

@@ -11,10 +11,19 @@ function execAsync(cmd: string): Promise<void> {
 function execFileAsync(path: string, args: string[] = []): Promise<number> {
   return new Promise((resolve, reject) => {
     execFile(path, args, (err) => {
-      if (err && "code" in err && typeof err.code === "number") {
-        resolve(err.code);
-      } else if (err) {
-        reject(err);
+      if (err) {
+        // Node's ExecFileException stores exit code in .code (number) or .status
+        const exitCode =
+          typeof (err as { status?: unknown }).status === "number"
+            ? (err as { status: number }).status
+            : typeof err.code === "number"
+              ? err.code
+              : undefined;
+        if (exitCode !== undefined) {
+          resolve(exitCode);
+        } else {
+          reject(err);
+        }
       } else {
         resolve(0);
       }

@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const BARS = 14;
 const RISE = 0.55;
 const FALL = 0.22;
-const SVG_WIDTH = 140;
+const SVG_WIDTH = 130;
 const SVG_HEIGHT = 28;
 
 type PillState =
@@ -71,8 +71,11 @@ function formatTimer(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+const PILL_WIDTH = 240;
+
 const pillInnerStyle: React.CSSProperties = {
   height: 48,
+  width: PILL_WIDTH,
   padding: "0 10px",
   borderRadius: 28,
   background: "var(--card)",
@@ -81,8 +84,6 @@ const pillInnerStyle: React.CSSProperties = {
   fontFamily: "'DM Sans', sans-serif",
   fontSize: 14,
   fontWeight: 500,
-  minWidth: 200,
-  maxWidth: 420,
   WebkitAppRegion: "no-drag",
 } as React.CSSProperties;
 
@@ -698,7 +699,7 @@ export default function AppPage(): React.JSX.Element {
       width={SVG_WIDTH}
       height={SVG_HEIGHT}
       viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-      style={{ display: "block", flex: 1 }}
+      style={{ display: "block", flexShrink: 0 }}
       role="img"
       aria-label="Audio levels"
     >
@@ -824,42 +825,40 @@ export default function AppPage(): React.JSX.Element {
             className="inline-flex items-center gap-3"
             style={pillInnerStyle}
           >
-            {state !== "idle" && (
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  flexShrink: 0,
-                }}
-              >
-                <Orb
-                  colors={
-                    state === "error"
-                      ? ["#DD6E4E", "#B85C3A"]
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                overflow: "hidden",
+                flexShrink: 0,
+              }}
+            >
+              <Orb
+                colors={
+                  state === "error"
+                    ? ["#DD6E4E", "#B85C3A"]
+                    : state === "transcribing"
+                      ? ["#60A5FA", "#3B82F6"]
+                      : state === "initializing"
+                        ? ["#FBBF24", "#F59E0B"]
+                        : ["#8AB62A", "#6B8F12"]
+                }
+                agentState={
+                  state === "initializing"
+                    ? "talking"
+                    : state === "recording"
+                      ? "listening"
                       : state === "transcribing"
-                        ? ["#60A5FA", "#3B82F6"]
-                        : state === "initializing"
-                          ? ["#FBBF24", "#F59E0B"]
-                          : ["#8AB62A", "#6B8F12"]
-                  }
-                  agentState={
-                    state === "initializing"
-                      ? "talking"
-                      : state === "recording"
-                        ? "listening"
-                        : state === "transcribing"
-                          ? "talking"
-                          : null
-                  }
-                  getInputVolume={
-                    state === "recording" ? getInputVolume : undefined
-                  }
-                  className="h-full w-full"
-                />
-              </div>
-            )}
+                        ? "talking"
+                        : null
+                }
+                getInputVolume={
+                  state === "recording" ? getInputVolume : undefined
+                }
+                className="h-full w-full"
+              />
+            </div>
 
             {showBars && renderBars(barsSvgRef)}
 

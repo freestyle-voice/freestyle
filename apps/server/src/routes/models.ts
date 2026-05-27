@@ -103,6 +103,22 @@ const BUILTIN_VOICE_MODELS: AvailableModel[] = [
     family: "elevenlabs",
     type: "voice",
   },
+  {
+    provider_id: "elevenlabs",
+    provider_name: "ElevenLabs",
+    model_id: "elevenlabs/scribe_v2",
+    model_name: "Scribe V2",
+    family: "elevenlabs",
+    type: "voice",
+  },
+  {
+    provider_id: "elevenlabs",
+    provider_name: "ElevenLabs",
+    model_id: "elevenlabs/scribe_v2_realtime",
+    model_name: "Scribe V2 Realtime",
+    family: "elevenlabs",
+    type: "voice",
+  },
 ];
 
 // In-memory cache for models.dev data

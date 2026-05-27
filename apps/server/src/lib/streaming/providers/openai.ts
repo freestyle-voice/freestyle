@@ -1,6 +1,5 @@
 import { Buffer } from "node:buffer";
 import { createOpenAI } from "@ai-sdk/openai";
-import { experimental_transcribe as transcribe } from "ai";
 import WebSocket from "ws";
 import type {
   StreamingSessionOptions,
@@ -9,6 +8,8 @@ import type {
   TranscribeResult,
   TranscriptionProvider,
 } from "../types.js";
+import { stripProviderPrefix } from "../types.js";
+import { transcribeWithAiSdk } from "../utils.js";
 
 const REALTIME_URL = "wss://api.openai.com/v1/realtime?intent=transcription";
 
@@ -16,28 +17,11 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "openai";
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
-    const provider = createOpenAI({ apiKey: opts.apiKey });
-    const short = opts.model.includes("/")
-      ? opts.model.slice(opts.model.indexOf("/") + 1)
-      : opts.model;
-    const model = provider.transcription(short);
-    const result = await transcribe({
-      model,
-      audio: opts.audio,
-      ...(opts.language && opts.language !== "auto"
-        ? { language: opts.language }
-        : {}),
-    });
-    return {
-      text: result.text,
-      segments: result.segments,
-      durationInSeconds: result.durationInSeconds,
-    };
+    return transcribeWithAiSdk(opts, createOpenAI);
   }
 
   supportsStreaming(modelId: string): boolean {
-    const short = modelId.includes("/") ? modelId.split("/").pop()! : modelId;
-    return short.includes("transcribe");
+    return stripProviderPrefix(modelId).includes("transcribe");
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {

@@ -43,3 +43,8 @@ export interface TranscriptionProvider {
   supportsStreaming(modelId: string): boolean;
   openStreamingSession?(opts: StreamingSessionOptions): StreamSession;
 }
+
+export function stripProviderPrefix(modelId: string): string {
+  const idx = modelId.indexOf("/");
+  return idx >= 0 ? modelId.slice(idx + 1) : modelId;
+}

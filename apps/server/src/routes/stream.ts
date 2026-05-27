@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { postProcess } from "../lib/post-process.js";
 import { getDefaultModels } from "../lib/providers.js";
+import { stripProviderPrefix } from "../lib/streaming/types.js";
 import {
   getApiKeyForProvider,
   openStreamingSession,
@@ -49,9 +50,7 @@ const stream = new Hono().get(
         return;
       }
 
-      const modelShort = defaults.voice.model_id.includes("/")
-        ? defaults.voice.model_id.split("/").pop()!
-        : defaults.voice.model_id;
+      const modelShort = stripProviderPrefix(defaults.voice.model_id);
 
       const canStream = supportsStreaming(
         defaults.voice.provider,

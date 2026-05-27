@@ -4,6 +4,8 @@ import { createGroq } from "@ai-sdk/groq";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 import { getDb } from "./db.js";
+import { stripProviderPrefix } from "./streaming/types.js";
+import { getApiKeyForProvider } from "./streaming-stt.js";
 
 const LOCAL_PROVIDERS = new Set(["local-llm"]);
 
@@ -59,14 +61,6 @@ function findFactory(providerId: string) {
   return null;
 }
 
-function getApiKey(providerId: string): string | null {
-  const db = getDb();
-  const row = db
-    .prepare("SELECT key FROM api_keys WHERE provider = ?")
-    .get(providerId) as { key: string } | undefined;
-  return row?.key ?? null;
-}
-
 interface DefaultModels {
   voice: { provider: string; model_id: string; model_name: string } | null;
   llm: { provider: string; model_id: string; model_name: string } | null;
@@ -100,7 +94,7 @@ export function createChatModel(
   modelId: string,
 ): LanguageModel {
   const isLocal = LOCAL_PROVIDERS.has(providerId);
-  const apiKey = isLocal ? "local" : getApiKey(providerId);
+  const apiKey = isLocal ? "local" : getApiKeyForProvider(providerId);
   if (!apiKey)
     throw new Error(`No API key configured for provider: ${providerId}`);
 
@@ -112,8 +106,5 @@ export function createChatModel(
     throw new Error(`Provider ${providerId} does not support chat`);
   }
 
-  const shortId = modelId.includes("/")
-    ? modelId.slice(modelId.indexOf("/") + 1)
-    : modelId;
-  return provider.chat(shortId);
+  return provider.chat(stripProviderPrefix(modelId));
 }

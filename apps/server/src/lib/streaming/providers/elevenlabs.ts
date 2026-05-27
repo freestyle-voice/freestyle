@@ -1,6 +1,5 @@
 import { Buffer } from "node:buffer";
 import { createElevenLabs } from "@ai-sdk/elevenlabs";
-import { experimental_transcribe as transcribe } from "ai";
 import WebSocket from "ws";
 import type {
   StreamingSessionOptions,
@@ -9,19 +8,24 @@ import type {
   TranscribeResult,
   TranscriptionProvider,
 } from "../types.js";
+import { stripProviderPrefix } from "../types.js";
+import { transcribeWithAiSdk } from "../utils.js";
 
 const ELEVENLABS_STT_URL = "wss://api.elevenlabs.io/v1/speech-to-text/realtime";
 const ELEVENLABS_TOKEN_URL =
   "https://api.elevenlabs.io/v1/speech-to-text/realtime/token";
 
-async function getSingleUseToken(apiKey: string): Promise<string> {
+async function getSingleUseToken(
+  apiKey: string,
+  modelId: string,
+): Promise<string> {
   const res = await fetch(ELEVENLABS_TOKEN_URL, {
     method: "POST",
     headers: {
       "xi-api-key": apiKey,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ model_id: "scribe_v2_realtime" }),
+    body: JSON.stringify({ model_id: modelId }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -38,38 +42,22 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "elevenlabs";
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
-    const provider = createElevenLabs({ apiKey: opts.apiKey });
-    const short = opts.model.includes("/")
-      ? opts.model.slice(opts.model.indexOf("/") + 1)
-      : opts.model;
-    const model = provider.transcription(short);
-    const result = await transcribe({
-      model,
-      audio: opts.audio,
-      ...(opts.language && opts.language !== "auto"
-        ? { language: opts.language }
-        : {}),
-    });
-    return {
-      text: result.text,
-      segments: result.segments,
-      durationInSeconds: result.durationInSeconds,
-    };
+    return transcribeWithAiSdk(opts, createElevenLabs);
   }
 
   supportsStreaming(modelId: string): boolean {
-    const short = modelId.includes("/") ? modelId.split("/").pop()! : modelId;
-    return short.includes("realtime");
+    return stripProviderPrefix(modelId).includes("realtime");
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
     const { apiKey, model, callbacks } = opts;
     let partialText = "";
     let ws: WebSocket | null = null;
+    const pendingChunks: ArrayBuffer[] = [];
 
-    const short = model.includes("/") ? model.split("/").pop()! : model;
+    const short = stripProviderPrefix(model);
 
-    getSingleUseToken(apiKey)
+    getSingleUseToken(apiKey, short)
       .then((token) => {
         const params = new URLSearchParams({
           model_id: short,
@@ -81,6 +69,11 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
         ws = new WebSocket(`${ELEVENLABS_STT_URL}?${params}`);
 
         ws.on("open", () => {
+          for (const chunk of pendingChunks) {
+            const b64 = Buffer.from(chunk).toString("base64");
+            ws!.send(JSON.stringify({ audio_base64: b64 }));
+          }
+          pendingChunks.length = 0;
           callbacks.onReady(short);
         });
 
@@ -127,7 +120,10 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
 
     return {
       sendAudio(chunk: ArrayBuffer): void {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          pendingChunks.push(chunk);
+          return;
+        }
         const b64 = Buffer.from(chunk).toString("base64");
         ws.send(JSON.stringify({ audio_base64: b64 }));
       },
@@ -136,11 +132,12 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
         ws.send(JSON.stringify({ type: "commit" }));
       },
       cancel(): void {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-        ws.close();
+        pendingChunks.length = 0;
+        if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
         partialText = "";
       },
       close(): void {
+        pendingChunks.length = 0;
         if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
       },
     };

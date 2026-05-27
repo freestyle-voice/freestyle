@@ -1,5 +1,4 @@
 import { createDeepgram } from "@ai-sdk/deepgram";
-import { experimental_transcribe as transcribe } from "ai";
 import WebSocket from "ws";
 import type {
   StreamingSessionOptions,
@@ -8,6 +7,8 @@ import type {
   TranscribeResult,
   TranscriptionProvider,
 } from "../types.js";
+import { stripProviderPrefix } from "../types.js";
+import { transcribeWithAiSdk } from "../utils.js";
 
 const DEEPGRAM_LISTEN_URL = "wss://api.deepgram.com/v1/listen";
 
@@ -15,23 +16,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "deepgram";
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
-    const provider = createDeepgram({ apiKey: opts.apiKey });
-    const short = opts.model.includes("/")
-      ? opts.model.slice(opts.model.indexOf("/") + 1)
-      : opts.model;
-    const model = provider.transcription(short);
-    const result = await transcribe({
-      model,
-      audio: opts.audio,
-      ...(opts.language && opts.language !== "auto"
-        ? { language: opts.language }
-        : {}),
-    });
-    return {
-      text: result.text,
-      segments: result.segments,
-      durationInSeconds: result.durationInSeconds,
-    };
+    return transcribeWithAiSdk(opts, createDeepgram);
   }
 
   supportsStreaming(_modelId: string): boolean {
@@ -42,7 +27,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
     const { apiKey, model, callbacks } = opts;
     let partialText = "";
 
-    const short = model.includes("/") ? model.split("/").pop()! : model;
+    const short = stripProviderPrefix(model);
 
     const params = new URLSearchParams({
       model: short,
@@ -107,7 +92,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       },
       commit(): void {
         if (ws.readyState !== WebSocket.OPEN) return;
-        ws.send(JSON.stringify({ type: "CloseStream" }));
+        ws.send(JSON.stringify({ type: "Finalize" }));
       },
       cancel(): void {
         if (ws.readyState !== WebSocket.OPEN) return;

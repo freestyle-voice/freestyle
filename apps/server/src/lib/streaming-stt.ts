@@ -1,5 +1,6 @@
 import { getDb } from "./db.js";
 import { getProvider, supportsStreaming } from "./streaming/registry.js";
+import type { StreamCallbacks, StreamSession } from "./streaming/types.js";
 
 export { supportsStreaming } from "./streaming/registry.js";
 export type { StreamCallbacks, StreamSession } from "./streaming/types.js";
@@ -9,8 +10,8 @@ export function openStreamingSession(opts: {
   apiKey: string;
   model: string;
   prompt?: string;
-  callbacks: import("./streaming/types.js").StreamCallbacks;
-}): import("./streaming/types.js").StreamSession {
+  callbacks: StreamCallbacks;
+}): StreamSession {
   const { providerId, apiKey, model, prompt, callbacks } = opts;
 
   const provider = getProvider(providerId);

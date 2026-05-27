@@ -1,7 +1,10 @@
-import { init as electronRendererInit } from "@sentry/electron/renderer";
-import { init as reactInit } from "@sentry/react";
-
-electronRendererInit({}, reactInit);
+if (import.meta.env.PROD) {
+  import("@sentry/electron/renderer").then(({ init: electronRendererInit }) => {
+    import("@sentry/react").then(({ init: reactInit }) => {
+      electronRendererInit({}, reactInit);
+    });
+  });
+}
 
 import "./globals.css";
 

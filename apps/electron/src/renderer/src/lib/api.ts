@@ -6,7 +6,7 @@ let resolvedPort: number = DEFAULT_PORT;
 let initialized = false;
 
 export function getApiBase(): string {
-  return `http://localhost:${resolvedPort}`;
+  return `http://127.0.0.1:${resolvedPort}`;
 }
 
 export async function initApiBase(): Promise<void> {

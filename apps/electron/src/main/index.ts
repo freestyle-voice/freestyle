@@ -699,11 +699,6 @@ app.whenReady().then(async () => {
     await pasteIntoFocusedApp(text);
   });
 
-  // IPC: debug log forwarding from renderer to main console
-  ipcMain.on("debug:log", (_event, ...args: unknown[]) => {
-    console.log("[renderer]", ...args);
-  });
-
   // IPC: hide the pill window on request from renderer
   ipcMain.on("pill:hide", () => {
     hidePill();

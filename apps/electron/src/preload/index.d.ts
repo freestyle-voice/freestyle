@@ -49,8 +49,6 @@ declare global {
       onHotkeyError: (
         callback: (error: { message: string }) => void,
       ) => () => void;
-      // Debug logging
-      debugLog: (...args: unknown[]) => void;
       // Audio level stream
       sendAudioLevel: (level: number) => void;
       onAudioLevel: (callback: (level: number) => void) => () => void;

@@ -123,9 +123,6 @@ const api = {
     ipcRenderer.on("transcription:done", handler);
     return () => ipcRenderer.removeListener("transcription:done", handler);
   },
-  // Debug logging (forwards renderer logs to main process console)
-  debugLog: (...args: unknown[]): void =>
-    ipcRenderer.send("debug:log", ...args),
   // Fullscreen state
   onFullscreenChanged: (
     callback: (isFullscreen: boolean) => void,

@@ -91,16 +91,12 @@ const stream = new Hono().get(
         prompt,
         callbacks: {
           onReady: (model) => {
-            console.log(`[stream] onReady: model=${model}`);
             ws.send(JSON.stringify({ type: "session.ready", model }));
           },
           onPartial: (text) => {
             ws.send(JSON.stringify({ type: "partial", text }));
           },
           onFinal: (rawText) => {
-            console.log(
-              `[stream] onFinal received: ${JSON.stringify(rawText?.slice(0, 80))}`,
-            );
             const durationMs = Date.now() - sessionStartTime;
 
             if (process.env.NODE_ENV !== "production") {
@@ -184,12 +180,10 @@ const stream = new Hono().get(
               });
           },
           onError: (message) => {
-            console.error(`[stream] onError: ${message}`);
             ws.send(JSON.stringify({ type: "error", message }));
             upstream = null;
           },
           onClose: () => {
-            console.log("[stream] onClose: upstream session closed");
             upstream = null;
             if (!closed) {
               try {
@@ -214,18 +208,10 @@ const stream = new Hono().get(
 
       onMessage(event, ws) {
         const data = event.data;
-        console.log(
-          `[stream] onMessage: type=${typeof data}, constructor=${data?.constructor?.name}, isAB=${data instanceof ArrayBuffer}, len=${(data as ArrayBuffer)?.byteLength ?? (data as string)?.length ?? "?"}`,
-        );
         const isBinary =
           data instanceof ArrayBuffer ||
           ArrayBuffer.isView(data) ||
           (typeof Buffer !== "undefined" && Buffer.isBuffer(data));
-        if (!isBinary && typeof data !== "string") {
-          console.log(
-            `[stream] onMessage: unexpected data type=${typeof data}, constructor=${data?.constructor?.name}`,
-          );
-        }
         if (isBinary) {
           const buf =
             data instanceof ArrayBuffer
@@ -273,7 +259,6 @@ const stream = new Hono().get(
             }
             break;
           case "commit":
-            console.log(`[stream] commit received, upstream=${!!upstream}`);
             if (msg.audioDurationMs && msg.audioDurationMs > 0) {
               audioDurationMs = msg.audioDurationMs;
             }

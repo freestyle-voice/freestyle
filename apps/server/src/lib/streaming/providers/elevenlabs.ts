@@ -62,10 +62,8 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
 
     const short = stripProviderPrefix(model);
 
-    console.log(`[elevenlabs] openStreamingSession: model=${short}`);
     getSingleUseToken(apiKey)
       .then((token) => {
-        console.log("[elevenlabs] token acquired, opening WebSocket");
         const params = new URLSearchParams({
           model_id: short,
           token,
@@ -76,9 +74,6 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
         ws = new WebSocket(`${ELEVENLABS_STT_URL}?${params}`);
 
         ws.on("open", () => {
-          console.log(
-            `[elevenlabs] WebSocket open, flushing ${pendingChunks.length} pending chunks`,
-          );
           for (const chunk of pendingChunks) {
             ws!.send(
               audioChunkMessage(Buffer.from(chunk).toString("base64"), false),
@@ -99,11 +94,6 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
           } catch {
             return;
           }
-
-          console.log(
-            `[elevenlabs] message: ${msg.message_type}`,
-            msg.text?.slice(0, 50) ?? msg.error ?? "",
-          );
 
           switch (msg.message_type) {
             case "session_started":
@@ -142,7 +132,6 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
         });
       })
       .catch((err) => {
-        console.error("[elevenlabs] session setup failed:", err);
         callbacks.onError(err instanceof Error ? err.message : String(err));
         callbacks.onClose();
       });
@@ -158,9 +147,6 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
         );
       },
       commit(): void {
-        console.log(
-          `[elevenlabs] commit: ws=${!!ws}, readyState=${ws?.readyState}`,
-        );
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
         ws.send(audioChunkMessage("", true));
       },

@@ -2,8 +2,8 @@
  * Persistent WebSocket-based audio streamer for real-time STT.
  *
  * A single Streamer instance stays alive across recording sessions.
- * The WebSocket to the server (and through it the OpenAI Realtime
- * upstream) remains open, eliminating reconnection overhead on each
+ * The WebSocket to the server (and through it the upstream STT
+ * provider) remains open, eliminating reconnection overhead on each
  * hotkey press.  Recording sessions are delimited by startCapture /
  * commit / cancel rather than connect / disconnect.
  */
@@ -53,32 +53,13 @@ export class Streamer {
     this.sendJSON({ type: "context", context });
   }
 
-  async startCapture(
-    stream: MediaStream,
-    sharedCtx?: AudioContext,
-  ): Promise<void> {
-    window.api?.debugLog(
-      "[streamer] startCapture called, sharedCtx=",
-      !!sharedCtx,
-    );
+  async startCapture(stream: MediaStream): Promise<void> {
     this.capturing = true;
     this.pendingChunks = [];
     this.pcmChunks = [];
     this.pcmSampleCount = 0;
-    this.audioChunksSent = 0;
     this.sendJSON({ type: "start" });
 
-    // Adopt the shared AudioContext when provided and still open.
-    if (sharedCtx && sharedCtx.state !== "closed") {
-      if (this.ctx && this.ctx !== sharedCtx) {
-        try {
-          this.ctx.close();
-        } catch {}
-        this.workletReady = false;
-        this.workletNode = null;
-      }
-      this.ctx = sharedCtx;
-    }
     if (!this.ctx || this.ctx.state === "closed") {
       this.ctx = new AudioContext();
       this.workletReady = false;
@@ -87,35 +68,26 @@ export class Streamer {
     if (this.ctx.state === "suspended") await this.ctx.resume();
 
     if (!this.workletReady) {
-      window.api?.debugLog("[streamer] loading AudioWorklet module...");
       await this.ctx.audioWorklet.addModule(getPCMProcessorUrl());
       this.workletReady = true;
-      window.api?.debugLog("[streamer] AudioWorklet module loaded");
     }
 
-    // Disconnect previous source if leftover from a prior session.
     try {
       this.source?.disconnect();
     } catch {}
 
     this.source = this.ctx.createMediaStreamSource(stream);
 
-    // Reuse the existing worklet node when the AudioContext hasn't changed.
     if (!this.workletNode) {
       this.workletNode = new AudioWorkletNode(this.ctx, "pcm-processor");
       this.workletNode.connect(this.ctx.destination);
     }
 
-    window.api?.debugLog(
-      "[streamer] connecting source -> worklet, capturing=",
-      this.capturing,
-    );
     this.workletNode.port.onmessage = (e: MessageEvent) => {
       if (!this.capturing) return;
       const chunk = e.data as ArrayBuffer;
       this.sendAudio(chunk);
 
-      // Accumulate for REST fallback
       const pcm16 = new Int16Array(chunk);
       this.pcmChunks.push(pcm16);
       this.pcmSampleCount += pcm16.length;
@@ -126,9 +98,6 @@ export class Streamer {
   commit(): void {
     const audioDurationMs = Math.round(
       (this.pcmSampleCount / TARGET_RATE) * 1000,
-    );
-    window.api?.debugLog(
-      `[streamer] commit: ${this.audioChunksSent} chunks sent, ${audioDurationMs}ms audio, pcmSamples=${this.pcmSampleCount}`,
     );
     this.stopCapture();
     this.sendJSON({ type: "commit", audioDurationMs });
@@ -168,7 +137,6 @@ export class Streamer {
 
   // ------- internals -------
 
-  /** Disconnect the source to stop audio flow, but keep the worklet alive. */
   private stopCapture(): void {
     this.capturing = false;
     try {
@@ -177,24 +145,11 @@ export class Streamer {
     this.source = null;
   }
 
-  private audioChunksSent = 0;
-
   private sendAudio(chunk: ArrayBuffer): void {
     if (this.ws?.readyState === WebSocket.OPEN && this.sessionReady) {
       this.ws.send(chunk);
-      this.audioChunksSent++;
-      if (this.audioChunksSent % 50 === 1) {
-        window.api?.debugLog(
-          `[streamer] sent ${this.audioChunksSent} audio chunks (${chunk.byteLength} bytes each), sessionReady=${this.sessionReady}`,
-        );
-      }
     } else {
       this.pendingChunks.push(chunk);
-      if (this.pendingChunks.length % 50 === 1) {
-        window.api?.debugLog(
-          `[streamer] queued ${this.pendingChunks.length} chunks (ws=${this.ws?.readyState}, sessionReady=${this.sessionReady})`,
-        );
-      }
     }
   }
 

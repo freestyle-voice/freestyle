@@ -44,7 +44,10 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "elevenlabs";
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
-    return transcribeWithAiSdk(opts, createElevenLabs);
+    const model = stripProviderPrefix(opts.model).endsWith("_realtime")
+      ? opts.model.replace(/_realtime$/, "")
+      : opts.model;
+    return transcribeWithAiSdk({ ...opts, model }, createElevenLabs);
   }
 
   supportsStreaming(_modelId: string): boolean {

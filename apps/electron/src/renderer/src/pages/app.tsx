@@ -141,6 +141,10 @@ export default function AppPage(): React.JSX.Element {
 
   const queueRef = useRef<QueueEntry[]>([]);
   const drainingRef = useRef(false);
+  const streamResolverRef = useRef<((r: TranscribeResult) => void) | null>(
+    null,
+  );
+  const streamFinalTextRef = useRef("");
 
   const getInputVolume = useCallback(() => volumeRef.current, []);
 
@@ -252,8 +256,26 @@ export default function AppPage(): React.JSX.Element {
         },
         onReady: () => {},
         onPartial: () => {},
-        onFinal: async () => {},
-        onCleaned: () => {},
+        onFinal: (text) => {
+          const resolver = streamResolverRef.current;
+          if (!resolver) return;
+          streamFinalTextRef.current = text;
+          setTimeout(() => {
+            if (streamResolverRef.current === resolver) {
+              streamResolverRef.current = null;
+              resolver({ raw: text, cleaned: text });
+            }
+          }, 3000);
+        },
+        onCleaned: (text) => {
+          const resolver = streamResolverRef.current;
+          if (!resolver) return;
+          streamResolverRef.current = null;
+          resolver({
+            raw: streamFinalTextRef.current || text,
+            cleaned: text,
+          });
+        },
         onError: (msg) => {
           if (!pillActiveRef.current) return;
           if (wantsMicRef.current) return;
@@ -417,6 +439,7 @@ export default function AppPage(): React.JSX.Element {
     pillActiveRef.current = false;
     queueRef.current = [];
     drainingRef.current = false;
+    streamResolverRef.current = null;
     stopVisualization();
     window.api.hidePill();
   }, [stopVisualization]);
@@ -551,6 +574,28 @@ export default function AppPage(): React.JSX.Element {
     setState("transcribing");
     startBarAnimation("speaking");
 
+    const empty: TranscribeResult = { raw: "", cleaned: "" };
+
+    if (useStreamingRef.current && streamerRef.current) {
+      recorderRef.current.cancel();
+      recorderRef.current.releaseStream();
+
+      setPendingCount((c) => c + 1);
+      const transcribePromise = new Promise<TranscribeResult>((resolve) => {
+        streamResolverRef.current = resolve;
+        setTimeout(() => {
+          if (streamResolverRef.current === resolve) {
+            streamResolverRef.current = null;
+            resolve(empty);
+          }
+        }, 30000);
+      });
+      streamerRef.current.commit();
+      queueRef.current.push({ promise: transcribePromise });
+      drainQueue();
+      return;
+    }
+
     let wavBlob: Blob | null = streamerRef.current?.getWavBlob() ?? null;
     if (!wavBlob && recorderRef.current.isRecording()) {
       wavBlob = await recorderRef.current.stop();
@@ -576,7 +621,6 @@ export default function AppPage(): React.JSX.Element {
     if (isSubsequent) headers["x-skip-post-process"] = "true";
 
     setPendingCount((c) => c + 1);
-    const empty: TranscribeResult = { raw: "", cleaned: "" };
     const transcribePromise: Promise<TranscribeResult> = fetch(
       `${getApiBase()}/api/transcribe`,
       { method: "POST", body: wavBlob, headers },

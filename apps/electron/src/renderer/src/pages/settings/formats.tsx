@@ -328,12 +328,10 @@ function FormatRuleCard({
     <div className="group flex items-start gap-3 px-4 py-3">
       <FileText className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{rule.label}</span>
-          <span className="bg-secondary text-muted-foreground rounded px-1.5 py-0.5 font-mono text-[10px]">
-            {rule.app_pattern.length > 40
-              ? `${rule.app_pattern.slice(0, 40)}...`
-              : rule.app_pattern}
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="shrink-0 text-sm font-medium">{rule.label}</span>
+          <span className="bg-secondary text-muted-foreground truncate rounded px-1.5 py-0.5 font-mono text-[10px]">
+            {rule.app_pattern}
           </span>
         </div>
         <p className="text-muted-foreground mt-0.5 line-clamp-2 text-xs">

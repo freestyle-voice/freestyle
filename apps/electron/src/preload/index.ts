@@ -19,6 +19,11 @@ const api = {
     ipcRenderer.on("hotkey:up", handler);
     return () => ipcRenderer.removeListener("hotkey:up", handler);
   },
+  onPillCancel: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("pill:cancel", handler);
+    return () => ipcRenderer.removeListener("pill:cancel", handler);
+  },
   checkMicPermission: (): Promise<string> =>
     ipcRenderer.invoke("permissions:check-mic"),
   requestMicPermission: (): Promise<string> =>

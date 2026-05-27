@@ -8,6 +8,7 @@ import formats from "./routes/formats.js";
 import history from "./routes/history.js";
 import mcp from "./routes/mcp.js";
 import models from "./routes/models.js";
+import postProcessRoute from "./routes/post-process-route.js";
 import settings from "./routes/settings.js";
 import stream from "./routes/stream.js";
 import transcribe from "./routes/transcribe.js";
@@ -38,6 +39,7 @@ const app = new Hono()
   .route("/api/history", history)
   .route("/api/dictionary", dictionary)
   .route("/api/formats", formats)
+  .route("/api/post-process", postProcessRoute)
   .route("/api/feedback", feedback)
   .route("/mcp", mcp)
   .route("/stream", stream);

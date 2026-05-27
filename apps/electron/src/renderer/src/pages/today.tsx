@@ -222,7 +222,7 @@ export default function TodayPage(): React.JSX.Element {
       </div>
 
       {/* Right rail — day summary */}
-      <aside className="border-border bg-sidebar hidden min-[750px]:flex w-[280px] shrink-0 flex-col gap-7 border-l px-7 pt-[44px] pb-9 overflow-auto">
+      <aside className="border-border bg-sidebar hidden lg:flex w-[280px] shrink-0 flex-col gap-7 border-l px-7 pt-[44px] pb-9 overflow-auto">
         <section>
           <RailLabel>In numbers</RailLabel>
           <RailStat

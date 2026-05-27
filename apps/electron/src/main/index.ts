@@ -341,6 +341,19 @@ function showPill(): void {
     mainWindow.setPosition(x, y);
     mainWindow.showInactive();
   }
+
+  // On Windows, register Escape as a global shortcut while the pill
+  // is visible so the user can cancel recording/transcription.
+  // (On macOS/Linux, Escape is detected via the GlobalKeyboardListener.)
+  if (process.platform === "win32") {
+    if (!globalShortcut.isRegistered("Escape")) {
+      globalShortcut.register("Escape", () => {
+        if (mainWindow?.isVisible()) {
+          mainWindow.webContents.send("pill:cancel");
+        }
+      });
+    }
+  }
 }
 
 // -- Async helper: run a command without blocking the main thread --
@@ -511,6 +524,12 @@ async function getLinuxFrontmostApp(): Promise<string | null> {
 function hidePill(): void {
   if (mainWindow?.isVisible()) {
     mainWindow.hide();
+  }
+  // Unregister Escape shortcut when pill is hidden (Windows only)
+  if (process.platform === "win32") {
+    try {
+      globalShortcut.unregister("Escape");
+    } catch {}
   }
 }
 
@@ -1278,6 +1297,12 @@ function registerHotkey(hotkey?: string): void {
     e: IGlobalKeyEvent,
     isDown: IGlobalKeyDownMap,
   ): boolean | undefined => {
+    // Escape cancels recording/transcription when the pill is visible
+    if (e.name === "ESCAPE" && e.state === "DOWN" && mainWindow?.isVisible()) {
+      mainWindow?.webContents.send("pill:cancel");
+      return undefined;
+    }
+
     if (e.name !== triggerKey) return undefined;
 
     if (e.state === "DOWN" && !hotkeyPressed) {

@@ -175,7 +175,7 @@ export default function HistoryPage(): React.JSX.Element {
 
       {/* Stats cards */}
       {stats && (
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <StatCard
             label="Total Sessions"
             value={String(stats.total_sessions)}

@@ -84,14 +84,12 @@ export async function postProcess(
 ): Promise<PostProcessResult> {
   const db = getDb();
   const defaults = getDefaultModels();
-  let cleaned = rawText;
   let inputTokens = 0;
   let outputTokens = 0;
   let llmProvider: string | null = null;
   let llmModel: string | null = null;
   let costUsd = 0;
 
-  // If the raw text is purely filler words / punctuation, treat as empty
   const stripped = rawText
     .replace(/\b(um+|uh+|ah+|er+|hm+|hmm+|mm+|mhm+|you know|i mean)\b/gi, "")
     .replace(/[.…,!?\-–—\s]+/g, "");
@@ -106,6 +104,8 @@ export async function postProcess(
     };
   }
 
+  let cleaned = rawText;
+
   // LLM cleanup
   const llmSetting = db
     .prepare("SELECT value FROM settings WHERE key = 'llm_cleanup'")
@@ -114,20 +114,25 @@ export async function postProcess(
 
   if (llmEnabled && defaults.llm) {
     const contextHint = getContextHint(appContext, db);
-    const systemPrompt = `You clean up raw voice transcriptions with minimal edits.
+    const systemPrompt = `You clean up raw voice transcriptions into polished, ready-to-send text.
 ${contextHint ? `\nContext: ${contextHint}\n` : ""}
-Allowed edits:
-1. Remove filler words (um, uh, like, you know, basically, so, I mean)
-2. Remove repeated words and false starts — keep the final intended version
-3. Fix punctuation, capitalization, and minor grammar
-4. Convert spoken numbers/dates to written form when natural
+Edits you MUST apply:
+1. Remove filler words (um, uh, like, you know, basically, so, I mean, right, actually, literally)
+2. Remove false starts, repeated words, and self-corrections — keep only the final intended version
+3. Fix punctuation, capitalization, and grammar
+4. Convert spoken numbers, dates, and units to their written form (e.g. "three hundred dollars" → "$300")
+5. Clean up spoken artifacts: "dot" → ".", "at sign" / "at" in emails → "@", "slash" → "/", "hashtag" → "#", "dash" → "-"
+6. Smooth awkward phrasing caused by speech-to-text without changing the meaning
+7. Break run-on sentences into proper sentences where the speaker clearly intended a pause
+8. Ensure the text reads naturally as written communication
 
 Rules:
-- Keep the speaker's exact words and sentence structure
-- NEVER rephrase, summarize, or rewrite
-- NEVER add words the speaker did not say
-- NEVER explain your edits or include commentary
-- If only filler words or silence, return an empty string
+- Preserve the speaker's meaning and tone faithfully
+- Do NOT add information the speaker did not convey
+- Do NOT summarize or omit content — keep everything the speaker said
+- Do NOT add greetings, sign-offs, or filler the speaker didn't say
+- Do NOT explain your edits or include any commentary
+- If the input is only filler words or silence, return an empty string
 
 IMPORTANT: Your entire response must be the cleaned text and nothing else. No quotes, no explanations, no reasoning, no prefixes.`;
 

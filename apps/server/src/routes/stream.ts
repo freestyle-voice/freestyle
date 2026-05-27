@@ -108,10 +108,8 @@ const stream = new Hono().get(
               return;
             }
 
-            // Send raw text immediately so the client can paste without waiting
             ws.send(JSON.stringify({ type: "final", text: rawText }));
 
-            // Run post-processing in the background for history
             postProcess(rawText, appContext)
               .then((pp) => {
                 const finalText = pp.cleaned;
@@ -194,7 +192,11 @@ const stream = new Hono().get(
         }
 
         // Text data = JSON command
-        let msg: { type: string; context?: string; audioDurationMs?: number };
+        let msg: {
+          type: string;
+          context?: string;
+          audioDurationMs?: number;
+        };
         try {
           msg = JSON.parse(
             typeof event.data === "string"

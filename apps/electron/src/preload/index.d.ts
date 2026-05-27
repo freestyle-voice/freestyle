@@ -10,6 +10,7 @@ declare global {
       getServerPort: () => Promise<number>;
       onHotkeyDown: (callback: () => void) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;
+      onPillCancel: (callback: () => void) => () => void;
       checkMicPermission: () => Promise<string>;
       requestMicPermission: () => Promise<string>;
       checkAccessibilityPermission: () => Promise<boolean>;

@@ -213,8 +213,19 @@ const stream = new Hono().get(
       },
 
       onMessage(event, ws) {
-        if (event.data instanceof ArrayBuffer) {
-          upstream?.sendAudio(event.data);
+        const data = event.data;
+        if (
+          data instanceof ArrayBuffer ||
+          (typeof Buffer !== "undefined" && Buffer.isBuffer(data))
+        ) {
+          const ab =
+            data instanceof ArrayBuffer
+              ? data
+              : ((data as Buffer).buffer.slice(
+                  (data as Buffer).byteOffset,
+                  (data as Buffer).byteOffset + (data as Buffer).byteLength,
+                ) as ArrayBuffer);
+          upstream?.sendAudio(ab);
           return;
         }
 

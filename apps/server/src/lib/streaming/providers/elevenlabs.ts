@@ -123,7 +123,11 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
             case "auth_error":
             case "quota_exceeded":
             case "rate_limited":
+            case "commit_throttled":
             case "transcriber_error":
+            case "input_error":
+            case "chunk_size_exceeded":
+            case "insufficient_audio_activity":
               callbacks.onError(msg.error ?? "ElevenLabs error");
               return;
           }

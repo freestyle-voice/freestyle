@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { postProcess } from "../lib/post-process.js";
 import { getDefaultModels } from "../lib/providers.js";
-import { captureException } from "../lib/sentry.js";
+import { captureException, metrics } from "../lib/sentry.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import { getApiKeyForProvider } from "../lib/streaming-stt.js";
 
@@ -91,6 +91,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     }
   } catch (err) {
     captureException(err);
+    metrics.count("transcription.error", 1, {
+      attributes: { provider: defaults.voice.provider },
+    });
     return c.json(
       {
         error: "Transcription failed",
@@ -101,6 +104,22 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   }
 
   const durationMs = Date.now() - start;
+
+  const tags = {
+    provider: defaults.voice.provider,
+    model: defaults.voice.model_id,
+  };
+  metrics.count("transcription.count", 1, { attributes: tags });
+  metrics.distribution("transcription.latency", durationMs, {
+    unit: "millisecond",
+    attributes: tags,
+  });
+  if (audioDurationMs > 0) {
+    metrics.distribution("transcription.audio_duration", audioDurationMs, {
+      unit: "millisecond",
+      attributes: tags,
+    });
+  }
 
   if (!rawText.trim()) {
     return c.json({

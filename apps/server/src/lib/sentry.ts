@@ -27,4 +27,6 @@ export function captureException(err: unknown): void {
   Sentry.captureException(err);
 }
 
+export const metrics = Sentry.metrics;
+
 export { Sentry };

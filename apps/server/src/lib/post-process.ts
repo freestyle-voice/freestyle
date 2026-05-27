@@ -2,7 +2,7 @@ import { generateText } from "ai";
 import { getModelCost } from "../routes/models.js";
 import { getDb } from "./db.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
-import { captureException } from "./sentry.js";
+import { captureException, metrics } from "./sentry.js";
 
 /** Build a context string from the raw x-app-context header for matching */
 function buildMatchContext(rawContext: string | null): string {
@@ -83,6 +83,7 @@ export async function postProcess(
   rawText: string,
   appContext: string | null,
 ): Promise<PostProcessResult> {
+  const ppStart = Date.now();
   const db = getDb();
   const defaults = getDefaultModels();
   let inputTokens = 0;
@@ -177,6 +178,7 @@ IMPORTANT: Your entire response must be the cleaned text and nothing else. No qu
       cleaned = llmText;
     } catch (err) {
       captureException(err);
+      metrics.count("post_process.llm_error", 1);
       console.error("LLM cleanup failed:", err);
     }
   }
@@ -228,6 +230,11 @@ IMPORTANT: Your entire response must be the cleaned text and nothing else. No qu
       // ignore pricing errors
     }
   }
+
+  metrics.distribution("post_process.latency", Date.now() - ppStart, {
+    unit: "millisecond",
+    attributes: llmModel ? { model: llmModel } : undefined,
+  });
 
   return { cleaned, llmProvider, llmModel, inputTokens, outputTokens, costUsd };
 }

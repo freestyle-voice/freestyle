@@ -10,7 +10,6 @@ const FALL = 0.22;
 const SVG_WIDTH = 140;
 const SVG_HEIGHT = 28;
 
-/** Shared style for right-side text content in the pill */
 const pillTextStyle: React.CSSProperties = {
   color: "var(--muted-foreground)",
   fontSize: 13,
@@ -29,16 +28,14 @@ type PillState =
   | "error";
 
 // ---------------------------------------------------------------------------
-// Sound system
+// Sound
 // ---------------------------------------------------------------------------
 
 let _soundEnabled = true;
 let _toneCtx: AudioContext | null = null;
 
 function getToneCtx(): AudioContext {
-  if (!_toneCtx || _toneCtx.state === "closed") {
-    _toneCtx = new AudioContext();
-  }
+  if (!_toneCtx || _toneCtx.state === "closed") _toneCtx = new AudioContext();
   return _toneCtx;
 }
 
@@ -64,9 +61,7 @@ async function playTone(preset: TonePreset, volume = 0.3): Promise<void> {
     gain.connect(ctx.destination);
     osc.start();
     osc.stop(ctx.currentTime + ms / 1000);
-  } catch {
-    // ignore audio errors
-  }
+  } catch {}
 }
 
 function smoothBars(prev: number[], next: number[]): number[] {
@@ -88,10 +83,6 @@ function dbg(msg: string): void {
   window.api.debugLog(msg);
 }
 
-// ---------------------------------------------------------------------------
-// Pill inner style — shared between primary and background pills.
-// ---------------------------------------------------------------------------
-
 const pillInnerStyle: React.CSSProperties = {
   height: 48,
   padding: "0 10px",
@@ -107,6 +98,15 @@ const pillInnerStyle: React.CSSProperties = {
   WebkitAppRegion: "no-drag",
 } as React.CSSProperties;
 
+// ---------------------------------------------------------------------------
+// Transcription queue entry.  Each recording produces one of these.
+// The `promise` resolves with the transcribed (and individually
+// post-processed) text once the server responds.
+// ---------------------------------------------------------------------------
+interface QueueEntry {
+  promise: Promise<string>;
+}
+
 export default function AppPage(): React.JSX.Element {
   const [state, setState] = useState<PillState>("idle");
   const [elapsed, setElapsed] = useState(0);
@@ -114,31 +114,8 @@ export default function AppPage(): React.JSX.Element {
   const [partialText, setPartialText] = useState("");
   const useStreamingRef = useRef(false);
 
-  // Re-record state.
-  //
-  // `sessionIdRef` is the single source of truth for which commit "owns"
-  // the current session.  Every `startRecording` increments it.  After an
-  // async boundary (fetch, onFinal), a commit checks whether the session
-  // is still the one it started — if not, it's been superseded and must
-  // NOT paste or hide.  Instead it stores its result in `previousTextRef`
-  // for the newer session to pick up.
-  //
-  // `commitSessionRef` records the sessionId that the currently in-flight
-  // commit belongs to.  It's set at the start of commitRecording and
-  // checked after every await.
-  //
-  // `resolvePreviousTextRef` holds a Promise resolve function.  When a
-  // re-record commit needs the first result but it hasn't arrived yet,
-  // it awaits a promise.  The superseded commit resolves it when its
-  // fetch returns, delivering the text.
   const [isReRecording, setIsReRecording] = useState(false);
   const isReRecordingRef = useRef(false);
-  const previousTextRef = useRef<string | null>(null);
-  const commitSessionRef = useRef(0);
-  const pillActiveRef = useRef(false);
-  const resolvePreviousTextRef = useRef<((text: string | null) => void) | null>(
-    null,
-  );
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
@@ -154,18 +131,103 @@ export default function AppPage(): React.JSX.Element {
   const wantsMicRef = useRef(false);
   const appContextRef = useRef<string | null>(null);
   const pendingCommitRef = useRef(false);
-  const sessionIdRef = useRef(0);
+  const pillActiveRef = useRef(false);
+
+  // ---- Transcription queue ----
+  // Each commitRecording pushes a QueueEntry.  The drainQueue function
+  // waits for all entries, stitches the results, post-processes if
+  // needed, then pastes.  No session-id coordination required.
+  const queueRef = useRef<QueueEntry[]>([]);
+  const drainingRef = useRef(false);
+  const cancelledRef = useRef(false);
 
   const getInputVolume = useCallback(() => volumeRef.current, []);
 
-  /** Returns true if `mySession` is still the active session. */
-  const isCurrentSession = useCallback(
-    (mySession: number) => sessionIdRef.current === mySession && mySession > 0,
-    [],
-  );
+  // ---- Queue drain ----
+  const drainQueue = useCallback(async () => {
+    if (drainingRef.current) return;
+    drainingRef.current = true;
 
-  // -- Lazy singleton Streamer --
-  // biome-ignore lint/correctness/useExhaustiveDependencies: singleton must only be created once
+    // Keep draining as long as there are entries.  New entries may be
+    // pushed while we're awaiting, so re-check after each batch.
+    while (queueRef.current.length > 0 && !cancelledRef.current) {
+      // Snapshot the current queue and clear it so new recordings
+      // can push fresh entries while we await.
+      const batch = [...queueRef.current];
+      queueRef.current = [];
+
+      dbg(`[drainQueue] waiting for ${batch.length} result(s)`);
+      const results = await Promise.all(batch.map((e) => e.promise));
+
+      if (cancelledRef.current) break;
+
+      // If more entries arrived while we were awaiting, loop again
+      // to include them in the final stitch.
+      if (queueRef.current.length > 0) {
+        // Put the resolved results back as immediately-resolved entries
+        // so the next iteration can combine everything.
+        const resolved = results
+          .filter((t) => t.trim())
+          .map((t) => ({ promise: Promise.resolve(t) }));
+        queueRef.current = [...resolved, ...queueRef.current];
+        continue;
+      }
+
+      // All results are in.  Stitch and paste.
+      const nonEmpty = results.filter((t) => t.trim());
+      if (nonEmpty.length === 0 || cancelledRef.current) break;
+
+      let finalText: string;
+      if (nonEmpty.length === 1) {
+        finalText = nonEmpty[0];
+      } else {
+        // Multiple recordings — stitch and re-post-process.
+        const combined = nonEmpty.join(" ");
+        dbg(
+          `[drainQueue] stitching ${nonEmpty.length} results, calling /api/post-process`,
+        );
+        try {
+          const res = await fetch(`${getApiBase()}/api/post-process`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: combined,
+              appContext: appContextRef.current,
+            }),
+          });
+          if (cancelledRef.current) break;
+          if (res.ok) {
+            const data = await res.json();
+            finalText = data.cleaned || combined;
+          } else {
+            finalText = combined;
+          }
+        } catch {
+          finalText = combined;
+        }
+      }
+
+      if (cancelledRef.current) break;
+
+      dbg(`[drainQueue] pasting final text (${finalText.length} chars)`);
+      await window.api.pasteText(finalText);
+      window.api?.sendTranscriptionDone();
+    }
+
+    drainingRef.current = false;
+
+    // If not cancelled and no new entries arrived, we're done — hide.
+    if (!cancelledRef.current && queueRef.current.length === 0) {
+      // Only hide if the user isn't currently recording another segment
+      if (!wantsMicRef.current) {
+        dbg("[drainQueue] done, hiding pill");
+        hidePill();
+      }
+    }
+  }, []);
+
+  // ---- Streamer (lazy singleton) ----
+  // biome-ignore lint/correctness/useExhaustiveDependencies: singleton
   const getStreamer = useCallback((): Streamer => {
     if (!streamerRef.current) {
       streamerRef.current = new Streamer(getApiBase(), {
@@ -174,90 +236,22 @@ export default function AppPage(): React.JSX.Element {
         },
         onReady: () => {},
         onPartial: (text) => setPartialText(text),
-        onFinal: async (text) => {
-          const sid = sessionIdRef.current;
-          dbg(
-            `[onFinal] text=${JSON.stringify(text?.slice(0, 50))}, sid=${sid}, commitSid=${commitSessionRef.current}, wantsMic=${wantsMicRef.current}, active=${pillActiveRef.current}`,
-          );
-          if (!pillActiveRef.current) return;
-
-          // If the user is still recording a re-record, just store.
-          if (wantsMicRef.current) {
-            dbg("[onFinal] → user still recording, storing");
-            const stored = text.trim() || null;
-            previousTextRef.current = stored;
-            if (resolvePreviousTextRef.current) {
-              resolvePreviousTextRef.current(stored);
-              resolvePreviousTextRef.current = null;
-            }
-            return;
-          }
-
-          // If this result belongs to a superseded commit (a newer
-          // session started since this commit was sent), store the
-          // result for the newer session and don't paste/hide.
-          if (
-            commitSessionRef.current !== 0 &&
-            sid !== commitSessionRef.current
-          ) {
-            dbg(
-              `[onFinal] → superseded (commit owns ${commitSessionRef.current}), storing`,
-            );
-            const stored = text.trim() || null;
-            previousTextRef.current = stored;
-            if (resolvePreviousTextRef.current) {
-              resolvePreviousTextRef.current(stored);
-              resolvePreviousTextRef.current = null;
-            }
-            return;
-          }
-
-          // Normal path — this is the final result.
-          dbg("[onFinal] → paste and hide");
-          const mySid = sid;
-          stopVisualization();
-          recorderRef.current.cancel();
-          recorderRef.current.releaseStream();
-          if (text.trim()) {
-            await window.api.pasteText(text);
-            window.api?.sendTranscriptionDone();
-          }
-          // A new session may have started during the paste await.
-          if (isCurrentSession(mySid)) {
-            hidePill();
-          }
+        onFinal: async (_text) => {
+          dbg(`[onFinal] active=${pillActiveRef.current}`);
+          // Streaming onFinal is not used in the queue model for the
+          // REST path.  For streaming mode it would need to resolve a
+          // promise — but the current user is on REST, so this is a
+          // no-op safety net.  The queue handles everything.
         },
-        onCleaned: (text) => {
-          dbg(
-            `[onCleaned] active=${pillActiveRef.current}, wantsMic=${wantsMicRef.current}`,
-          );
-          if (!pillActiveRef.current) return;
-
-          if (wantsMicRef.current) {
-            if (text.trim()) previousTextRef.current = text.trim();
-            return;
-          }
-
-          if (text.trim()) {
-            window.api.pasteText(text);
-          }
+        onCleaned: (_text) => {
+          dbg(`[onCleaned] active=${pillActiveRef.current}`);
+          // Cleaned results are handled by the transcribe endpoint
+          // response directly.  No action needed here.
         },
         onError: (msg) => {
-          dbg(
-            `[onError] msg=${msg}, active=${pillActiveRef.current}, wantsMic=${wantsMicRef.current}`,
-          );
+          dbg(`[onError] msg=${msg}, active=${pillActiveRef.current}`);
           if (!pillActiveRef.current) return;
-
-          if (wantsMicRef.current) {
-            previousTextRef.current = null;
-            return;
-          }
-
-          commitSessionRef.current = 0;
-          wantsMicRef.current = false;
-          stopVisualization();
-          recorderRef.current.cancel();
-          recorderRef.current.releaseStream();
+          if (wantsMicRef.current) return;
           setState("error");
           setMessage(msg);
           setTimeout(() => hidePill(), 2000);
@@ -267,13 +261,12 @@ export default function AppPage(): React.JSX.Element {
     return streamerRef.current;
   }, []);
 
-  // -- Audio visualization --
+  // ---- Visualization ----
   const startVisualization = useCallback((stream: MediaStream) => {
     if (!analyserCtxRef.current || analyserCtxRef.current.state === "closed") {
       analyserCtxRef.current = new AudioContext();
     }
     const ctx = analyserCtxRef.current;
-
     try {
       audioSourceRef.current?.disconnect();
     } catch {}
@@ -300,9 +293,7 @@ export default function AppPage(): React.JSX.Element {
       let totalSum = 0;
       for (let i = 0; i < BARS; i++) {
         let sum = 0;
-        for (let j = 0; j < sliceSize; j++) {
-          sum += dataArray[i * sliceSize + j];
-        }
+        for (let j = 0; j < sliceSize; j++) sum += dataArray[i * sliceSize + j];
         const val = sum / sliceSize / 255;
         raw.push(val);
         totalSum += val;
@@ -349,9 +340,7 @@ export default function AppPage(): React.JSX.Element {
     setElapsed(0);
   }, []);
 
-  // Hide the pill and reset ALL state so the next show starts clean.
-  // Note: sessionIdRef is NOT reset — it monotonically increases so
-  // that stale async callbacks can never collide with a new session.
+  // ---- Hide pill ----
   const hidePill = useCallback(() => {
     dbg("[hidePill]");
     setState("idle");
@@ -361,20 +350,17 @@ export default function AppPage(): React.JSX.Element {
     isReRecordingRef.current = false;
     wantsMicRef.current = false;
     pillActiveRef.current = false;
-    commitSessionRef.current = 0;
-    previousTextRef.current = null;
-    if (resolvePreviousTextRef.current) {
-      resolvePreviousTextRef.current(null);
-      resolvePreviousTextRef.current = null;
-    }
+    cancelledRef.current = false;
+    queueRef.current = [];
+    drainingRef.current = false;
     window.api.hidePill();
   }, []);
 
-  // -- Start recording --
+  // ---- Start recording ----
   const startRecording = useCallback(
     async (forReRecord = false) => {
       dbg(
-        `[startRecording] forReRecord=${forReRecord}, wantsMic=${wantsMicRef.current}, sid=${sessionIdRef.current}`,
+        `[startRecording] forReRec=${forReRecord}, wantsMic=${wantsMicRef.current}`,
       );
       if (wantsMicRef.current) {
         dbg("[startRecording] SKIP: wantsMic already true");
@@ -382,6 +368,7 @@ export default function AppPage(): React.JSX.Element {
       }
       wantsMicRef.current = true;
       pillActiveRef.current = true;
+      cancelledRef.current = false;
       pendingCommitRef.current = false;
       setMessage("");
       setPartialText("");
@@ -392,7 +379,6 @@ export default function AppPage(): React.JSX.Element {
       } else {
         isReRecordingRef.current = false;
         setIsReRecording(false);
-        previousTextRef.current = null;
       }
 
       window.api
@@ -409,9 +395,7 @@ export default function AppPage(): React.JSX.Element {
           appContextRef.current = null;
         });
 
-      if (!forReRecord) {
-        setState("initializing");
-      }
+      if (!forReRecord) setState("initializing");
 
       try {
         const stream = useStreamingRef.current
@@ -423,7 +407,6 @@ export default function AppPage(): React.JSX.Element {
           recorderRef.current.releaseStream();
           return;
         }
-
         if (pendingCommitRef.current) {
           pendingCommitRef.current = false;
           recorderRef.current.cancel();
@@ -433,8 +416,6 @@ export default function AppPage(): React.JSX.Element {
           return;
         }
 
-        sessionIdRef.current++;
-        dbg(`[startRecording] session started: sid=${sessionIdRef.current}`);
         playTone("start");
         setState("recording");
         startTimeRef.current = Date.now();
@@ -444,7 +425,6 @@ export default function AppPage(): React.JSX.Element {
         }, 100);
 
         startVisualization(stream);
-
         try {
           await getStreamer().startCapture(
             stream,
@@ -465,16 +445,13 @@ export default function AppPage(): React.JSX.Element {
     [startVisualization, hidePill, getStreamer],
   );
 
-  // -- Commit: stop recording and transcribe --
+  // ---- Commit recording ----
+  // Fires a transcription request and pushes the result promise into the
+  // queue.  Does NOT paste or hide — the queue drain handles that.
   const commitRecording = useCallback(async () => {
-    const wasReRecording = isReRecordingRef.current;
-    const mySession = sessionIdRef.current;
-    commitSessionRef.current = mySession;
-
     dbg(
-      `[commitRecording] wasReRec=${wasReRecording}, sid=${mySession}, wantsMic=${wantsMicRef.current}, hasPrevText=${!!previousTextRef.current}`,
+      `[commitRecording] wantsMic=${wantsMicRef.current}, queueLen=${queueRef.current.length}`,
     );
-
     wantsMicRef.current = false;
     isReRecordingRef.current = false;
     setIsReRecording(false);
@@ -483,185 +460,68 @@ export default function AppPage(): React.JSX.Element {
 
     const recordingDuration = Date.now() - startTimeRef.current;
     if (recordingDuration < 1000) {
-      dbg("[commitRecording] short (<1s)");
+      dbg("[commitRecording] short (<1s), skipping");
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
       streamerRef.current?.cancel();
-      if (wasReRecording && previousTextRef.current?.trim()) {
-        const text = previousTextRef.current;
-        previousTextRef.current = null;
-        await window.api.pasteText(text);
-        window.api?.sendTranscriptionDone();
-      }
-      if (isCurrentSession(mySession)) {
+      // If queue is empty (no previous recordings), just hide.
+      if (queueRef.current.length === 0) {
         hidePill();
       }
       return;
     }
 
-    let prevText = previousTextRef.current;
-    previousTextRef.current = null;
-
-    // --- Streaming path ---
-    if (useStreamingRef.current && streamerRef.current) {
-      setState("transcribing");
-      recorderRef.current.cancel();
-      recorderRef.current.releaseStream();
-
-      // If the first result hasn't arrived yet, wait for it.
-      if (wasReRecording && !prevText) {
-        dbg("[commitRecording] streaming: waiting for first result...");
-        prevText = await new Promise<string | null>((resolve) => {
-          if (previousTextRef.current) {
-            const t = previousTextRef.current;
-            previousTextRef.current = null;
-            resolve(t);
-            return;
-          }
-          resolvePreviousTextRef.current = resolve;
-        });
-        dbg(
-          `[commitRecording] streaming: got first result, len=${prevText?.length ?? 0}`,
-        );
-        if (!isCurrentSession(mySession)) return;
-      }
-
-      dbg(`[commitRecording] streaming commit, hasPrev=${!!prevText}`);
-      streamerRef.current.commit(prevText ?? undefined);
-      return;
-    }
-
-    // --- REST path ---
     setState("transcribing");
-    streamerRef.current?.cancel();
 
-    try {
-      let wavBlob: Blob | null = streamerRef.current?.getWavBlob() ?? null;
-
-      if (!wavBlob && recorderRef.current.isRecording()) {
-        wavBlob = await recorderRef.current.stop();
-      }
-
-      if (!wavBlob) {
-        recorderRef.current.releaseStream();
-        if (prevText?.trim()) {
-          await window.api.pasteText(prevText);
-          window.api?.sendTranscriptionDone();
-        }
-        if (isCurrentSession(mySession)) {
-          hidePill();
-        }
-        return;
-      }
-
-      recorderRef.current.cancel();
-      recorderRef.current.releaseStream();
-
-      // If this is a re-record and the first result hasn't arrived yet,
-      // wait for the superseded commit to deliver it.
-      if (wasReRecording && !prevText) {
-        dbg("[commitRecording] REST: waiting for first result...");
-        prevText = await new Promise<string | null>((resolve) => {
-          // If the first result already landed while we were getting
-          // the WAV blob, grab it now.
-          if (previousTextRef.current) {
-            const t = previousTextRef.current;
-            previousTextRef.current = null;
-            resolve(t);
-            return;
-          }
-          resolvePreviousTextRef.current = resolve;
-        });
-        dbg(
-          `[commitRecording] REST: got first result, len=${prevText?.length ?? 0}`,
-        );
-
-        // Re-check session after the wait
-        if (!isCurrentSession(mySession)) return;
-      }
-
-      const headers: Record<string, string> = {
-        "Content-Type": "audio/wav",
-        "x-audio-duration-ms": String(recordingDuration),
-      };
-      if (appContextRef.current)
-        headers["x-app-context"] = appContextRef.current;
-      if (prevText) headers["x-previous-text"] = prevText;
-
-      const res = await fetch(`${getApiBase()}/api/transcribe`, {
-        method: "POST",
-        body: wavBlob,
-        headers,
-      });
-
-      // ---- After async: check if we're still the active session ----
-      if (!isCurrentSession(mySession)) {
-        dbg(
-          `[commitRecording] superseded (my=${mySession}, cur=${sessionIdRef.current})`,
-        );
-        let resultText: string | null = null;
-        if (res.ok) {
-          try {
-            const data = await res.json();
-            resultText = (data.cleaned || data.raw || "").trim() || null;
-          } catch {}
-        }
-        // Store the result AND wake up the newer commit if it's waiting.
-        previousTextRef.current = resultText;
-        if (resolvePreviousTextRef.current) {
-          resolvePreviousTextRef.current(resultText);
-          resolvePreviousTextRef.current = null;
-        }
-        return;
-      }
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Request failed" }));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
-      const text = data.cleaned || data.raw || "";
-      if (import.meta.env.DEV) {
-        dbg(
-          `[commitRecording] REST response: ${JSON.stringify(text?.slice(0, 50))}`,
-        );
-      }
-
-      if (text.trim()) {
-        await window.api.pasteText(text);
-        window.api?.sendTranscriptionDone();
-      }
-      // A new session may have started during the paste await.
-      if (isCurrentSession(mySession)) {
-        hidePill();
-      } else {
-        dbg(
-          `[commitRecording] skipping hidePill, new session started during paste`,
-        );
-      }
-    } catch (err) {
-      // Only show error if we're still the active session
-      if (isCurrentSession(mySession)) {
-        setState("error");
-        setMessage(err instanceof Error ? err.message : "Transcription failed");
-        setTimeout(() => hidePill(), 2000);
-      }
+    // Get the audio blob
+    let wavBlob: Blob | null = streamerRef.current?.getWavBlob() ?? null;
+    if (!wavBlob && recorderRef.current.isRecording()) {
+      wavBlob = await recorderRef.current.stop();
     }
-  }, [stopVisualization, hidePill, isCurrentSession]);
+    recorderRef.current.cancel();
+    recorderRef.current.releaseStream();
 
+    if (!wavBlob) {
+      if (queueRef.current.length === 0) hidePill();
+      return;
+    }
+
+    // Build the transcription promise
+    const headers: Record<string, string> = {
+      "Content-Type": "audio/wav",
+      "x-audio-duration-ms": String(recordingDuration),
+    };
+    if (appContextRef.current) headers["x-app-context"] = appContextRef.current;
+
+    const transcribePromise = fetch(`${getApiBase()}/api/transcribe`, {
+      method: "POST",
+      body: wavBlob,
+      headers,
+    })
+      .then(async (res) => {
+        if (!res.ok) return "";
+        const data = await res.json();
+        return (data.cleaned || data.raw || "").trim();
+      })
+      .catch(() => "");
+
+    // Push to queue
+    queueRef.current.push({ promise: transcribePromise });
+    dbg(`[commitRecording] pushed to queue, len=${queueRef.current.length}`);
+
+    // Start draining if not already draining
+    drainQueue();
+  }, [stopVisualization, hidePill, drainQueue]);
+
+  // ---- Cancel ----
   const cancelRecording = useCallback(() => {
     dbg("[cancelRecording]");
+    cancelledRef.current = true;
     wantsMicRef.current = false;
     pillActiveRef.current = false;
-    commitSessionRef.current = 0;
     isReRecordingRef.current = false;
     setIsReRecording(false);
-    previousTextRef.current = null;
-    if (resolvePreviousTextRef.current) {
-      resolvePreviousTextRef.current(null);
-      resolvePreviousTextRef.current = null;
-    }
+    queueRef.current = [];
     stopVisualization();
     streamerRef.current?.cancel();
     recorderRef.current.cancel();
@@ -669,7 +529,7 @@ export default function AppPage(): React.JSX.Element {
     hidePill();
   }, [stopVisualization, hidePill]);
 
-  // Load sound preference
+  // ---- Sound preference ----
   useEffect(() => {
     getClient()
       .api.settings[":key"].$get({ param: { key: "sound_enabled" } })
@@ -683,7 +543,7 @@ export default function AppPage(): React.JSX.Element {
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  // Hotkey handlers
+  // ---- Hotkey handlers ----
   useEffect(() => {
     const removeDown = window.api.onHotkeyDown(() => {
       const s = stateRef.current;
@@ -705,9 +565,7 @@ export default function AppPage(): React.JSX.Element {
       }
     });
     const removeCancel = window.api.onPillCancel(() => {
-      if (stateRef.current !== "idle") {
-        cancelRecording();
-      }
+      if (stateRef.current !== "idle") cancelRecording();
     });
     return () => {
       removeDown();
@@ -716,7 +574,7 @@ export default function AppPage(): React.JSX.Element {
     };
   }, [startRecording, commitRecording, cancelRecording]);
 
-  // Cleanup on unmount
+  // ---- Cleanup on unmount ----
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -734,7 +592,7 @@ export default function AppPage(): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cancelRecording]);
 
-  // -- Render --
+  // ---- Render ----
   const gap = SVG_WIDTH / BARS;
   const barWidth = Math.min(gap * 0.55, 5);
 
@@ -783,12 +641,7 @@ export default function AppPage(): React.JSX.Element {
           }
           .shimmer-text {
             font-style: italic;
-            background: linear-gradient(
-              90deg,
-              var(--muted-foreground) calc(50% - 40px),
-              var(--foreground),
-              var(--muted-foreground) calc(50% + 40px)
-            );
+            background: linear-gradient(90deg, var(--muted-foreground) calc(50% - 40px), var(--foreground), var(--muted-foreground) calc(50% + 40px));
             background-size: 250% 100%;
             background-clip: text;
             -webkit-background-clip: text;
@@ -796,18 +649,10 @@ export default function AppPage(): React.JSX.Element {
             animation: shimmer 2s linear infinite;
           }
           @keyframes slide-up-in {
-            from {
-              opacity: 0;
-              transform: translateY(8px);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
           }
-          .pill-slide-up {
-            animation: slide-up-in 250ms ease-out both;
-          }
+          .pill-slide-up { animation: slide-up-in 250ms ease-out both; }
         `}
       </style>
 

@@ -25,7 +25,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 
 // ---------------------------------------------------------------------------
@@ -155,6 +155,9 @@ export default function ModelsPage(): React.JSX.Element {
   const [localLlmError, setLocalLlmError] = useState<string | null>(null);
   const [localLlmModels, setLocalLlmModels] = useState<string[]>([]);
 
+  const pairCardRef = useRef<HTMLDivElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
   // API Key dialog form
   const apiKeyForm = useForm<ApiKeyInput>({
     resolver: zodResolver(apiKeySchema),
@@ -219,6 +222,22 @@ export default function ModelsPage(): React.JSX.Element {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Close the inline picker when mousedown lands outside both the pair card
+  // (which holds the Change triggers) and the picker itself. Wrapping refs on
+  // each let onClick still toggle the picker via the trigger button.
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (pairCardRef.current?.contains(target)) return;
+      if (pickerRef.current?.contains(target)) return;
+      setPickerOpen(null);
+      setPickerSearch("");
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [pickerOpen]);
 
   // -------------------------------------------------------------------------
   // Derived state
@@ -495,33 +514,39 @@ export default function ModelsPage(): React.JSX.Element {
       />
       <div className="space-y-7">
         {hasAnyProvider && (
-          <PairCard
-            voice={defaultVoice}
-            llm={defaultLlm}
-            llmCleanup={llmCleanup}
-            onToggleCleanup={setCleanupOn}
-            onChangeVoice={() => openPicker("voice")}
-            onChangeLlm={() => openPicker("llm")}
-            pickerOpen={pickerOpen}
-          />
+          <div ref={pairCardRef}>
+            <PairCard
+              voice={defaultVoice}
+              llm={defaultLlm}
+              llmCleanup={llmCleanup}
+              onToggleCleanup={setCleanupOn}
+              onChangeVoice={() => openPicker("voice")}
+              onChangeLlm={() => openPicker("llm")}
+              pickerOpen={pickerOpen}
+            />
+          </div>
         )}
 
         {/* Inline picker — appears below the pair card */}
         {pickerOpen && (
-          <ModelPicker
-            type={pickerOpen}
-            modelsByProvider={
-              pickerOpen === "voice"
-                ? voiceModelsByProvider
-                : llmModelsByProvider
-            }
-            currentDefault={pickerOpen === "voice" ? defaultVoice : defaultLlm}
-            search={pickerSearch}
-            setSearch={setPickerSearch}
-            keyProviders={keyProviders}
-            onSelect={(m) => selectModel(m, pickerOpen)}
-            onClose={closePicker}
-          />
+          <div ref={pickerRef}>
+            <ModelPicker
+              type={pickerOpen}
+              modelsByProvider={
+                pickerOpen === "voice"
+                  ? voiceModelsByProvider
+                  : llmModelsByProvider
+              }
+              currentDefault={
+                pickerOpen === "voice" ? defaultVoice : defaultLlm
+              }
+              search={pickerSearch}
+              setSearch={setPickerSearch}
+              keyProviders={keyProviders}
+              onSelect={(m) => selectModel(m, pickerOpen)}
+              onClose={closePicker}
+            />
+          </div>
         )}
 
         {/* Local LLM toggle + config — only shown when cleanup is on */}
@@ -921,7 +946,7 @@ function ModelPicker({
             if (filtered.length === 0) return null;
             return (
               <div key={providerId}>
-                <div className="bg-secondary/50 border-border/50 text-muted-foreground sticky top-0 border-b px-5 py-1.5 text-[10px] font-semibold uppercase tracking-wider">
+                <div className="border-border bg-card text-muted-foreground sticky top-0 z-10 border-b px-5 py-1.5 text-[10px] font-semibold uppercase tracking-wider">
                   {providerName}
                   {!keyProviders.has(providerId) && (
                     <span className="text-destructive ml-2 normal-case tracking-normal">

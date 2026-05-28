@@ -41,7 +41,7 @@ import { pasteIntoFocusedApp } from "./paste";
 
 const DEFAULT_PORT = 4649;
 const APP_WIDTH = 396;
-const APP_HEIGHT = 56;
+const APP_HEIGHT = 60;
 const APP_BOTTOM_MARGIN = 0;
 
 // ---------------------------------------------------------------------------
@@ -146,22 +146,27 @@ function getAppWindowPosition(): { x: number; y: number } {
   // Read pill position preference
   const position = (readSettings().pillPosition as string) || "bottom-center";
 
-  const sideMargin = 10;
-  const edgeMargin = 0;
+  // The pill (216px) is centered inside the window (396px), so there's
+  // ~90px of transparent padding on each side. Offset right-side positions
+  // so the pill visually aligns near the screen edge.
+  const pillInset = Math.round((APP_WIDTH - 216) / 2); // ~90px
+  const rightMargin = 16 - pillInset; // net ~-74px, pulls window right
+  const bottomMargin = 4; // room for glow below the pill
+  const topMargin = 4;
   switch (position) {
     case "top-center":
-      return { x: Math.round((width - APP_WIDTH) / 2), y: edgeMargin };
+      return { x: Math.round((width - APP_WIDTH) / 2), y: topMargin };
     case "top-right":
-      return { x: width - APP_WIDTH - sideMargin, y: edgeMargin };
+      return { x: width - APP_WIDTH - rightMargin, y: topMargin };
     case "bottom-right":
       return {
-        x: width - APP_WIDTH - sideMargin,
-        y: height - APP_HEIGHT - edgeMargin,
+        x: width - APP_WIDTH - rightMargin,
+        y: height - APP_HEIGHT - bottomMargin,
       };
     default:
       return {
         x: Math.round((width - APP_WIDTH) / 2),
-        y: height - APP_HEIGHT - edgeMargin,
+        y: height - APP_HEIGHT - bottomMargin,
       };
   }
 }

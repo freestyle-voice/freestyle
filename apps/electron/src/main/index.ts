@@ -294,7 +294,6 @@ function showPill(): void {
 
   // On Windows, register Escape as a global shortcut while the pill
   // is visible so the user can cancel recording/transcription.
-  // (On macOS/Linux, Escape is detected via the GlobalKeyboardListener.)
   if (process.platform === "win32") {
     if (!globalShortcut.isRegistered("Escape")) {
       globalShortcut.register("Escape", () => {

@@ -12,7 +12,7 @@ files:
 asarUnpack:
   - resources/**
 extraResources:
-  - from: "resources/bin/${os}-${arch}"
+  - from: "resources/bin/${platform}-${arch}"
     to: "bin"
     filter:
       - "**/*"

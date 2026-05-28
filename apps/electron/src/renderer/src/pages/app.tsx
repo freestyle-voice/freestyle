@@ -811,12 +811,25 @@ export default function AppPage(): React.JSX.Element {
             to { opacity: 1; }
           }
           .pill-fade-in { animation: fade-in 200ms ease-out both; }
+          @keyframes stack-slide-down {
+            from { opacity: 0; transform: translateX(-50%) scale(0.87) translateY(-8px); }
+            to   { opacity: 0.95; transform: translateX(-50%) scale(0.87) translateY(0); }
+          }
+          @keyframes stack-slide-up {
+            from { opacity: 0; transform: translateX(-50%) scale(0.87) translateY(8px); }
+            to   { opacity: 0.95; transform: translateX(-50%) scale(0.87) translateY(0); }
+          }
+          .stack-enter-down { animation: stack-slide-down 100ms ease-out both; }
+          .stack-enter-up   { animation: stack-slide-up 100ms ease-out both; }
         `}
       </style>
 
       <div style={{ position: "relative" }}>
         {isReRecording && (
           <div
+            className={
+              pillAlign === "end" ? "stack-enter-up" : "stack-enter-down"
+            }
             style={{
               borderRadius: 25,
               position: "absolute",

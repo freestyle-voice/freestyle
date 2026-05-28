@@ -144,7 +144,6 @@ export default function AppPage(): React.JSX.Element {
   const streamResolverRef = useRef<((r: TranscribeResult) => void) | null>(
     null,
   );
-  const streamFinalTextRef = useRef("");
 
   const getInputVolume = useCallback(() => volumeRef.current, []);
 
@@ -259,23 +258,10 @@ export default function AppPage(): React.JSX.Element {
         onFinal: (text) => {
           const resolver = streamResolverRef.current;
           if (!resolver) return;
-          streamFinalTextRef.current = text;
-          setTimeout(() => {
-            if (streamResolverRef.current === resolver) {
-              streamResolverRef.current = null;
-              resolver({ raw: text, cleaned: text });
-            }
-          }, 3000);
-        },
-        onCleaned: (text) => {
-          const resolver = streamResolverRef.current;
-          if (!resolver) return;
           streamResolverRef.current = null;
-          resolver({
-            raw: streamFinalTextRef.current || text,
-            cleaned: text,
-          });
+          resolver({ raw: text, cleaned: text });
         },
+        onCleaned: () => {},
         onError: (msg) => {
           if (!pillActiveRef.current) return;
           if (wantsMicRef.current) return;

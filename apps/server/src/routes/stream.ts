@@ -99,12 +99,6 @@ const stream = new Hono().get(
           onFinal: (rawText) => {
             const durationMs = Date.now() - sessionStartTime;
 
-            if (process.env.NODE_ENV !== "production") {
-              console.log(
-                `[stream] onFinal: rawText=${JSON.stringify(rawText)}, audioDurationMs=${audioDurationMs}, durationMs=${durationMs}`,
-              );
-            }
-
             const streamTags = {
               provider: voiceDefaults!.provider,
               model: voiceDefaults!.model_id,
@@ -129,13 +123,10 @@ const stream = new Hono().get(
               return;
             }
 
-            ws.send(JSON.stringify({ type: "final", text: rawText }));
-
             postProcess(rawText, appContext)
               .then((pp) => {
-                const finalText = pp.cleaned;
-                if (finalText !== rawText && !closed) {
-                  ws.send(JSON.stringify({ type: "cleaned", text: finalText }));
+                if (!closed) {
+                  ws.send(JSON.stringify({ type: "final", text: pp.cleaned }));
                 }
                 try {
                   const db = getDb();
@@ -145,7 +136,7 @@ const stream = new Hono().get(
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                   ).run(
                     rawText,
-                    finalText !== rawText ? finalText : null,
+                    pp.cleaned !== rawText ? pp.cleaned : null,
                     voiceDefaults!.provider,
                     voiceDefaults!.model_id,
                     pp.llmProvider,
@@ -162,7 +153,9 @@ const stream = new Hono().get(
               })
               .catch((err) => {
                 captureException(err);
-                console.error("Post-processing failed:", err);
+                if (!closed) {
+                  ws.send(JSON.stringify({ type: "final", text: rawText }));
+                }
                 try {
                   const db = getDb();
                   db.prepare(

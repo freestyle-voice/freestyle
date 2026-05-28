@@ -45,10 +45,7 @@ export function Orb({
         gl={{
           alpha: true,
           antialias: true,
-          premultipliedAlpha: false,
-        }}
-        onCreated={({ gl: renderer }) => {
-          renderer.setClearColor(0x000000, 0);
+          premultipliedAlpha: true,
         }}
       >
         <Scene
@@ -148,9 +145,7 @@ function Scene({
     const apply = () => {
       if (!circleRef.current) return;
       const isDark = document.documentElement.classList.contains("dark");
-      const u = circleRef.current.material.uniforms;
-      u.uInverted.value = isDark ? 1 : 0;
-      u.uBgColor.value.set(isDark ? 0x1e1c16 : 0xfbf8ee);
+      circleRef.current.material.uniforms.uInverted.value = isDark ? 1 : 0;
     };
 
     apply();
@@ -249,8 +244,6 @@ function Scene({
       uInputVolume: new Uniform(0),
       uOutputVolume: new Uniform(0),
       uOpacity: new Uniform(0),
-      // Background color matches --card for areas with low blob coverage
-      uBgColor: new Uniform(isDark ? new Color(0x1e1c16) : new Color(0xfbf8ee)),
     };
   }, [perlinNoiseTexture, offsets]);
 
@@ -305,7 +298,6 @@ uniform vec3 uColor2;
 uniform float uInputVolume;
 uniform float uOutputVolume;
 uniform float uOpacity;
-uniform vec3 uBgColor;
 uniform sampler2D uPerlinTexture;
 varying vec2 vUv;
 
@@ -424,9 +416,8 @@ void main() {
     float noise = flow(decomposed, radius * 0.03 - uAnimation * 0.2) - 0.5;
     theta += noise * mix(0.08, 0.25, uOutputVolume);
 
-    // Initialize the base color to white with zero coverage
+    // Initialize the base color to white
     vec4 color = vec4(1.0, 1.0, 1.0, 1.0);
-    float blobCoverage = 0.0; // Tracks how much blob content covers this pixel
 
     // Original parameters for the ovals in polar coordinates
     float originalCenters[7] = float[7](0.0, 0.5 * PI, 1.0 * PI, 1.5 * PI, 2.0 * PI, 2.5 * PI, 3.0 * PI);
@@ -464,7 +455,6 @@ void main() {
             // Blend the oval color with the existing color
             color.rgb = mix(color.rgb, ovalColor.rgb, ovalColor.a);
             color.a = max(color.a, ovalColor.a); // Max alpha
-            blobCoverage = max(blobCoverage, ovalColor.a);
         }
     }
 
@@ -488,22 +478,18 @@ void main() {
     vec3 ringColor = vec3(1.0); // White ring color
     color.rgb = 1.0 - (1.0 - color.rgb) * (1.0 - ringColor * totalRingAlpha);
 
-    // Compute content alpha from blob and ring coverage
-    float contentAlpha = max(blobCoverage, totalRingAlpha);
-
-    // Define colours to ramp against greyscale
-    vec3 color1 = uBgColor;    // Background (matches --card)
-    vec3 color2 = uColor1;     // Darker accent
-    vec3 color3 = uColor2;     // Lighter accent
-    vec3 color4 = uBgColor;    // Background (matches --card)
+    // Define colours to ramp against greyscale (could increase the amount of colours in the ramp)
+    vec3 color1 = vec3(0.0, 0.0, 0.0); // Black
+    vec3 color2 = uColor1; // Darker Color
+    vec3 color3 = uColor2; // Lighter Color
+    vec3 color4 = vec3(1.0, 1.0, 1.0); // White
 
     // Convert grayscale color to the color ramp
     float luminance = mix(color.r, 1.0 - color.r, uInverted);
-    color.rgb = colorRamp(luminance, color1, color2, color3, color4);
+    color.rgb = colorRamp(luminance, color1, color2, color3, color4); // Apply the color ramp
 
-    // Areas with no blob/ring content become transparent so the
-    // pill's --card background shows through naturally
-    color.a = contentAlpha * uOpacity;
+    // Apply fade-in opacity
+    color.a *= uOpacity;
 
     gl_FragColor = color;
 }

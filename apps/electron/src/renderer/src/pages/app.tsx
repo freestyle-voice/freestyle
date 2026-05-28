@@ -7,8 +7,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const BARS = 14;
 const RISE = 0.55;
 const FALL = 0.22;
-const SVG_WIDTH = 130;
-const SVG_HEIGHT = 28;
+const SVG_WIDTH = 117;
+const SVG_HEIGHT = 25;
 
 type PillState =
   | "idle"
@@ -71,30 +71,30 @@ function formatTimer(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-const PILL_WIDTH = 240;
+const PILL_WIDTH = 216;
 
 const pillInnerStyle: React.CSSProperties = {
-  height: 48,
+  height: 43,
   width: PILL_WIDTH,
-  padding: "0 10px",
-  borderRadius: 28,
+  padding: "0 9px",
+  borderRadius: 25,
   background: "var(--card)",
   color: "var(--foreground)",
   border: "1px solid var(--border)",
   fontFamily: "'DM Sans', sans-serif",
-  fontSize: 14,
+  fontSize: 13,
   fontWeight: 500,
   WebkitAppRegion: "no-drag",
 } as React.CSSProperties;
 
 const pillTextStyle: React.CSSProperties = {
   color: "var(--muted-foreground)",
-  fontSize: 13,
+  fontSize: 12,
   flex: 1,
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-  paddingRight: 8,
+  paddingRight: 7,
 };
 
 interface TranscribeResult {
@@ -818,7 +818,7 @@ export default function AppPage(): React.JSX.Element {
         {isReRecording && (
           <div
             style={{
-              borderRadius: 28,
+              borderRadius: 25,
               position: "absolute",
               ...(pillAlign === "end" ? { top: -18 } : { bottom: -18 }),
               left: "50%",
@@ -830,13 +830,13 @@ export default function AppPage(): React.JSX.Element {
             }}
           >
             <div
-              className="inline-flex items-center gap-3"
+              className="inline-flex items-center gap-2.5"
               style={pillInnerStyle}
             >
               <div
                 style={{
-                  width: 32,
-                  height: 32,
+                  width: 29,
+                  height: 29,
                   borderRadius: "50%",
                   overflow: "hidden",
                   flexShrink: 0,
@@ -855,12 +855,12 @@ export default function AppPage(): React.JSX.Element {
                 <span
                   className="mono"
                   style={{
-                    fontSize: 11,
+                    fontSize: 10,
                     letterSpacing: "0.06em",
                     opacity: 0.6,
                     flexShrink: 0,
                     color: "var(--muted-foreground)",
-                    paddingRight: 6,
+                    paddingRight: 5,
                   }}
                 >
                   x{pendingCount}
@@ -873,20 +873,20 @@ export default function AppPage(): React.JSX.Element {
         <div
           className={`${topGlow}${isReRecording ? " pill-fade-in" : ""}`}
           style={{
-            borderRadius: 28,
+            borderRadius: 25,
             visibility: state === "idle" ? "hidden" : "visible",
             position: "relative",
             zIndex: 1,
           }}
         >
           <div
-            className="inline-flex items-center gap-3"
+            className="inline-flex items-center gap-2.5"
             style={pillInnerStyle}
           >
             <div
               style={{
-                width: 32,
-                height: 32,
+                width: 29,
+                height: 29,
                 borderRadius: "50%",
                 overflow: "hidden",
                 flexShrink: 0,
@@ -928,12 +928,12 @@ export default function AppPage(): React.JSX.Element {
               <span
                 className="mono"
                 style={{
-                  fontSize: 11,
+                  fontSize: 10,
                   letterSpacing: "0.06em",
                   opacity: 0.6,
                   flexShrink: 0,
                   color: "var(--muted-foreground)",
-                  paddingRight: 6,
+                  paddingRight: 5,
                 }}
               >
                 {badge}

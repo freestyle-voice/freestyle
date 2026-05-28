@@ -147,9 +147,9 @@ function getAppWindowPosition(): { x: number; y: number } {
   const position = (readSettings().pillPosition as string) || "bottom-center";
 
   // The pill is aligned inside the window via CSS (justify-center or
-  // justify-end). Position the window so it sits flush against the
-  // screen edge. For right-side positions, place the window's right
-  // edge at the screen's right edge.
+  // justify-end). Push bottom positions 10px past the work area edge
+  // so the pill sits closer to the dock/taskbar.
+  const bottomOverlap = 10;
   switch (position) {
     case "top-center":
       return { x: Math.round((width - APP_WIDTH) / 2), y: 0 };
@@ -158,12 +158,12 @@ function getAppWindowPosition(): { x: number; y: number } {
     case "bottom-right":
       return {
         x: width - APP_WIDTH,
-        y: height - APP_HEIGHT,
+        y: height - APP_HEIGHT + bottomOverlap,
       };
     default:
       return {
         x: Math.round((width - APP_WIDTH) / 2),
-        y: height - APP_HEIGHT,
+        y: height - APP_HEIGHT + bottomOverlap,
       };
   }
 }

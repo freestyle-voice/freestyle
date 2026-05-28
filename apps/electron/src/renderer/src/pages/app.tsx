@@ -111,6 +111,7 @@ export default function AppPage(): React.JSX.Element {
   const [elapsed, setElapsed] = useState(0);
   const [message, setMessage] = useState("");
   const [pillAlign, setPillAlign] = useState<"start" | "center" | "end">("end");
+  const [pillSide, setPillSide] = useState<"center" | "right">("center");
   const useStreamingRef = useRef(false);
 
   const [isReRecording, setIsReRecording] = useState(false);
@@ -651,6 +652,7 @@ export default function AppPage(): React.JSX.Element {
         if (pos?.startsWith("top")) setPillAlign("start");
         else if (pos?.startsWith("bottom") || !pos) setPillAlign("end");
         else setPillAlign("center");
+        setPillSide(pos?.endsWith("right") ? "right" : "center");
       })
       .catch(() => {});
   }, []);
@@ -761,7 +763,9 @@ export default function AppPage(): React.JSX.Element {
 
   return (
     <div
-      className="flex h-screen w-screen justify-center items-end select-none"
+      className={`flex h-screen w-screen items-end select-none ${
+        pillSide === "right" ? "justify-end pr-4" : "justify-center"
+      }`}
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
       <style>
@@ -884,7 +888,7 @@ export default function AppPage(): React.JSX.Element {
         )}
 
         <div
-          className={`${topGlow}${isReRecording ? " pill-fade-in" : ""}`}
+          className={topGlow}
           style={{
             borderRadius: 25,
             visibility: state === "idle" ? "hidden" : "visible",

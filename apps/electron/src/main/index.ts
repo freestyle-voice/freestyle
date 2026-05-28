@@ -146,28 +146,18 @@ function getAppWindowPosition(): { x: number; y: number } {
   // Read pill position preference
   const position = (readSettings().pillPosition as string) || "bottom-center";
 
-  // The pill (216px) is centered within the window (396px), leaving
-  // ~90px of transparent space on each side. For right-side positions,
-  // place the window so the pill's right edge sits 16px from the screen
-  // edge — but keep the window fully on-screen to avoid OS clamping.
-  const pillHalf = Math.round((APP_WIDTH - 216) / 2); // ~90px transparent padding
-  const rightEdgeGap = 16; // desired gap between pill right edge and screen edge
-  // x so that pill right edge = width - rightEdgeGap:
-  //   pillRight = x + APP_WIDTH/2 + 216/2 = x + 198 + 108 = x + 306
-  //   x + 306 = width - rightEdgeGap  =>  x = width - 306 - rightEdgeGap
-  // But ensure x + APP_WIDTH <= width (window stays on screen)
-  const xRight = Math.min(
-    width - APP_WIDTH,
-    width - rightEdgeGap - pillHalf - 216,
-  );
+  // The pill is aligned inside the window via CSS (justify-center or
+  // justify-end). Position the window so it sits flush against the
+  // screen edge. For right-side positions, place the window's right
+  // edge at the screen's right edge.
   switch (position) {
     case "top-center":
       return { x: Math.round((width - APP_WIDTH) / 2), y: 0 };
     case "top-right":
-      return { x: xRight, y: 0 };
+      return { x: width - APP_WIDTH, y: 0 };
     case "bottom-right":
       return {
-        x: xRight,
+        x: width - APP_WIDTH,
         y: height - APP_HEIGHT,
       };
     default:

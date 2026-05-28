@@ -40,8 +40,8 @@ import { MicListener } from "./mic-listener";
 import { pasteIntoFocusedApp } from "./paste";
 
 const DEFAULT_PORT = 4649;
-const APP_WIDTH = 396;
-const APP_HEIGHT = 80;
+const APP_WIDTH = 260;
+const APP_HEIGHT = 68;
 const APP_BOTTOM_MARGIN = 0;
 
 // ---------------------------------------------------------------------------
@@ -149,7 +149,7 @@ function getAppWindowPosition(): { x: number; y: number } {
   // The pill is aligned inside the window via CSS (justify-center or
   // justify-end). Push bottom positions 10px past the work area edge
   // so the pill sits closer to the dock/taskbar.
-  const bottomOverlap = 10;
+  const bottomOverlap = 14;
   switch (position) {
     case "top-center":
       return { x: Math.round((width - APP_WIDTH) / 2), y: 0 };

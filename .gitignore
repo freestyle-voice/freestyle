@@ -44,3 +44,6 @@ apps/electron/tsconfig.node.tsbuildinfo
 
 # Compiled native binaries (built locally and in CI)
 apps/electron/resources/bin/
+
+# Downloaded whisper.cpp binaries
+apps/electron/resources/whisper/

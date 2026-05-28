@@ -5,21 +5,24 @@ import {
   localLlmConfigSchema,
 } from "@freestyle/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { getClient } from "@renderer/lib/api";
+import { getApiBase, getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
 import {
   AlertTriangle,
   Check,
   ChevronRight,
   Cpu,
+  Download,
   Eye,
   EyeOff,
+  HardDrive,
   Key,
   Loader2,
   Mic,
   Monitor,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
   Sparkles,
   Trash2,
@@ -55,11 +58,50 @@ interface ApiKeyEntry {
   created_at: string;
 }
 
+interface WhisperModelDownloadState {
+  model: string;
+  fileName: string;
+  sizeBytes: number;
+  displayName: string;
+  status: "not_downloaded" | "downloading" | "verifying" | "ready" | "error";
+  downloadProgress?: {
+    bytesDownloaded: number;
+    bytesTotal: number;
+    percent: number;
+    speedBps: number;
+  };
+  error?: string;
+}
+
+interface WhisperModelDef {
+  id: string;
+  displayName: string;
+  sizeBytes: number;
+  ramRequired: string;
+  speed: string;
+  quality: string;
+}
+
+interface WhisperStatus {
+  binaryAvailable: boolean;
+  serverBinaryAvailable: boolean;
+  serverRunning: boolean;
+  modelsDir: string;
+  models: WhisperModelDownloadState[];
+  modelDefinitions: WhisperModelDef[];
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const VOICE_PROVIDERS = ["openai", "groq", "deepgram", "elevenlabs"];
+const VOICE_PROVIDERS = [
+  "openai",
+  "groq",
+  "deepgram",
+  "elevenlabs",
+  "local-whisper",
+];
 const LLM_PROVIDERS = [
   "openai",
   "anthropic",
@@ -79,6 +121,7 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   mistral: "Mistral",
   openrouter: "OpenRouter",
   "local-llm": "Local LLM",
+  "local-whisper": "Local Whisper",
 };
 
 /** Editorial empty-state suggestions — surfaced when no providers exist. */
@@ -140,6 +183,11 @@ export default function ModelsPage(): React.JSX.Element {
   // Delete confirmation
   const [deleteProvider, setDeleteProvider] = useState<string | null>(null);
   const [deleteBlockedBy, setDeleteBlockedBy] = useState<string[]>([]);
+
+  // Local Whisper
+  const [whisperStatus, setWhisperStatus] = useState<WhisperStatus | null>(
+    null,
+  );
 
   // Local LLM
   const [useLocalLlm, setUseLocalLlm] = useState(false);
@@ -219,9 +267,46 @@ export default function ModelsPage(): React.JSX.Element {
     }
   }, [localLlmForm.setValue]);
 
+  const loadWhisperStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${getApiBase()}/api/whisper/status`);
+      if (res.ok) {
+        const data: WhisperStatus = await res.json();
+        setWhisperStatus(data);
+        return data;
+      }
+    } catch (err) {
+      console.error("Failed to load whisper status:", err);
+    }
+    return null;
+  }, []);
+
   useEffect(() => {
     loadData();
-  }, [loadData]);
+    loadWhisperStatus();
+  }, [loadData, loadWhisperStatus]);
+
+  // Poll whisper status while a download is active
+  useEffect(() => {
+    const hasActiveDownload = whisperStatus?.models.some(
+      (m) => m.status === "downloading" || m.status === "verifying",
+    );
+    if (!hasActiveDownload) return;
+    const interval = setInterval(() => {
+      loadWhisperStatus().then((data) => {
+        // If download just finished, reload available models
+        if (
+          data &&
+          !data.models.some(
+            (m) => m.status === "downloading" || m.status === "verifying",
+          )
+        ) {
+          loadData();
+        }
+      });
+    }, 500);
+    return () => clearInterval(interval);
+  }, [whisperStatus, loadWhisperStatus, loadData]);
 
   // Close the inline picker when mousedown lands outside both the pair card
   // (which holds the Change triggers) and the picker itself. Wrapping refs on
@@ -267,8 +352,9 @@ export default function ModelsPage(): React.JSX.Element {
     for (const m of list) {
       if (m.type !== type) continue;
       if (!allowed.includes(m.provider_id)) continue;
-      // Local LLM has its own dedicated section, not the cloud picker
+      // Local LLM and Local Whisper have their own dedicated sections
       if (type === "llm" && m.provider_id === "local-llm") continue;
+      if (type === "voice" && m.provider_id === "local-whisper") continue;
       let entry = map.get(m.provider_id);
       if (!entry) {
         entry = {
@@ -311,6 +397,7 @@ export default function ModelsPage(): React.JSX.Element {
     async (model: AvailableModel, type: "voice" | "llm") => {
       if (
         model.provider_id !== "local-llm" &&
+        model.provider_id !== "local-whisper" &&
         !keyProviders.has(model.provider_id)
       ) {
         setPendingModel(model);
@@ -501,6 +588,7 @@ export default function ModelsPage(): React.JSX.Element {
   }
 
   const hasAnyProvider = apiKeys.length > 0;
+  const isLocalWhisperActive = defaultVoice?.provider === "local-whisper";
 
   // -------------------------------------------------------------------------
   // Render
@@ -548,6 +636,47 @@ export default function ModelsPage(): React.JSX.Element {
             />
           </div>
         )}
+
+        {/* Local Whisper section */}
+        <LocalWhisperSection
+          whisperStatus={whisperStatus}
+          isActive={isLocalWhisperActive}
+          defaultVoice={defaultVoice}
+          onDownload={async (modelId: string) => {
+            await fetch(
+              `${getApiBase()}/api/whisper/models/${modelId}/download`,
+              { method: "POST" },
+            );
+            loadWhisperStatus();
+          }}
+          onCancel={async (modelId: string) => {
+            await fetch(
+              `${getApiBase()}/api/whisper/models/${modelId}/cancel`,
+              { method: "POST" },
+            );
+            loadWhisperStatus();
+          }}
+          onDelete={async (modelId: string) => {
+            await fetch(`${getApiBase()}/api/whisper/models/${modelId}`, {
+              method: "DELETE",
+            });
+            loadWhisperStatus();
+            loadData();
+          }}
+          onSelect={async (modelId: string, modelName: string) => {
+            await getClient().api.models.configured.$post({
+              json: {
+                provider: "local-whisper",
+                model_id: `local-whisper/${modelId}`,
+                model_name: modelName,
+                type: "voice",
+                is_default: true,
+              },
+            });
+            loadData();
+          }}
+          onRefresh={loadWhisperStatus}
+        />
 
         {/* Local LLM toggle + config — only shown when cleanup is on */}
         {llmCleanup && hasAnyProvider && (
@@ -976,6 +1105,218 @@ function ModelPicker({
               </div>
             );
           },
+        )}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LocalWhisperSection — Local voice model download and management
+// ---------------------------------------------------------------------------
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(0)} KB`;
+  if (bytes < 1_000_000_000) return `${(bytes / 1_000_000).toFixed(0)} MB`;
+  return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+}
+
+function formatSpeed(bps: number): string {
+  if (bps < 1_000_000) return `${(bps / 1_000).toFixed(0)} KB/s`;
+  return `${(bps / 1_000_000).toFixed(1)} MB/s`;
+}
+
+function LocalWhisperSection({
+  whisperStatus,
+  isActive,
+  defaultVoice,
+  onDownload,
+  onCancel,
+  onDelete,
+  onSelect,
+  onRefresh,
+}: {
+  whisperStatus: WhisperStatus | null;
+  isActive: boolean;
+  defaultVoice: ConfiguredModel | undefined;
+  onDownload: (modelId: string) => Promise<void>;
+  onCancel: (modelId: string) => Promise<void>;
+  onDelete: (modelId: string) => Promise<void>;
+  onSelect: (modelId: string, modelName: string) => Promise<void>;
+  onRefresh: () => void;
+}): React.JSX.Element {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <HardDrive className="text-muted-foreground h-3.5 w-3.5" />
+          <span
+            className="mono text-muted-foreground text-[10px] uppercase"
+            style={{ letterSpacing: "0.14em" }}
+          >
+            Local Voice Models
+          </span>
+          {isActive && (
+            <span
+              className="mono bg-primary text-primary-foreground rounded-full px-1.5 py-[2px] text-[9px]"
+              style={{ letterSpacing: "0.12em" }}
+            >
+              ACTIVE
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="text-muted-foreground hover:text-foreground p-1"
+          title="Refresh status"
+        >
+          <RefreshCw size={13} />
+        </button>
+      </div>
+
+      <p className="text-muted-foreground text-[12.5px] leading-relaxed">
+        Run speech-to-text locally with whisper.cpp. Audio never leaves your
+        device. Download a model to get started.
+      </p>
+
+      <div className="border-border bg-card overflow-hidden rounded-[12px] border">
+        {whisperStatus?.modelDefinitions.map((def) => {
+          const state = whisperStatus.models.find((m) => m.model === def.id);
+          const status = state?.status ?? "not_downloaded";
+          const isSelected =
+            defaultVoice?.provider === "local-whisper" &&
+            defaultVoice?.model_id === `local-whisper/${def.id}`;
+
+          return (
+            <div
+              key={def.id}
+              className={cn(
+                "border-border flex items-center gap-3 border-b px-4 py-3 last:border-b-0",
+                isSelected && "bg-primary/5",
+              )}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-foreground text-[13px] font-medium">
+                    {def.displayName}
+                  </span>
+                  <span className="text-muted-foreground text-[11px]">
+                    {formatBytes(def.sizeBytes)}
+                  </span>
+                  {isSelected && (
+                    <Check size={13} className="text-primary shrink-0" />
+                  )}
+                </div>
+                <div className="text-muted-foreground mt-0.5 flex gap-2 text-[11px]">
+                  <span>{def.speed}</span>
+                  <span>·</span>
+                  <span>{def.quality}</span>
+                  <span>·</span>
+                  <span>{def.ramRequired}</span>
+                </div>
+
+                {/* Download progress bar */}
+                {status === "downloading" && state?.downloadProgress && (
+                  <div className="mt-2 space-y-1">
+                    <div className="bg-secondary h-1.5 w-full overflow-hidden rounded-full">
+                      <div
+                        className="bg-primary h-full rounded-full transition-all"
+                        style={{ width: `${state.downloadProgress.percent}%` }}
+                      />
+                    </div>
+                    <div className="text-muted-foreground flex justify-between text-[10px]">
+                      <span>
+                        {formatBytes(state.downloadProgress.bytesDownloaded)} /{" "}
+                        {formatBytes(state.downloadProgress.bytesTotal)}
+                      </span>
+                      <span>
+                        {state.downloadProgress.speedBps > 0 &&
+                          formatSpeed(state.downloadProgress.speedBps)}
+                        {state.downloadProgress.percent > 0 &&
+                          ` · ${state.downloadProgress.percent}%`}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Error message */}
+                {status === "error" && state?.error && (
+                  <div className="text-destructive mt-1 text-[11px]">
+                    {state.error}
+                  </div>
+                )}
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex shrink-0 items-center gap-1.5">
+                {status === "not_downloaded" && (
+                  <button
+                    type="button"
+                    onClick={() => onDownload(def.id)}
+                    className="border-border hover:bg-secondary flex items-center gap-1.5 rounded-[7px] border px-2.5 py-1.5 text-[11.5px] font-medium"
+                  >
+                    <Download size={12} />
+                    Download
+                  </button>
+                )}
+
+                {status === "downloading" && (
+                  <button
+                    type="button"
+                    onClick={() => onCancel(def.id)}
+                    className="border-border hover:bg-secondary flex items-center gap-1.5 rounded-[7px] border px-2.5 py-1.5 text-[11.5px] font-medium"
+                  >
+                    <X size={12} />
+                    Cancel
+                  </button>
+                )}
+
+                {status === "error" && (
+                  <button
+                    type="button"
+                    onClick={() => onDownload(def.id)}
+                    className="border-border hover:bg-secondary flex items-center gap-1.5 rounded-[7px] border px-2.5 py-1.5 text-[11.5px] font-medium"
+                  >
+                    <RefreshCw size={12} />
+                    Retry
+                  </button>
+                )}
+
+                {status === "ready" && !isSelected && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onSelect(def.id, `${def.displayName} (Local)`)
+                    }
+                    className="bg-foreground text-background hover:bg-foreground/90 rounded-[7px] px-2.5 py-1.5 text-[11.5px] font-medium"
+                  >
+                    Use
+                  </button>
+                )}
+
+                {status === "ready" && (
+                  <button
+                    type="button"
+                    onClick={() => onDelete(def.id)}
+                    className="text-muted-foreground hover:text-destructive hover:bg-secondary rounded p-1.5"
+                    title="Delete model"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {!whisperStatus && (
+          <div className="px-4 py-6 text-center">
+            <Loader2 className="text-muted-foreground mx-auto h-5 w-5 animate-spin" />
+            <p className="text-muted-foreground mt-2 text-[12px]">
+              Loading whisper status...
+            </p>
+          </div>
         )}
       </div>
     </section>

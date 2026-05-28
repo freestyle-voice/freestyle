@@ -18,6 +18,11 @@ extraResources:
       - "**/*"
 win:
   executableName: Freestyle
+  extraResources:
+    - from: "resources/whisper/win32-x64"
+      to: "whisper/win32-x64"
+      filter:
+        - "**/*"
 nsis:
   artifactName: ${productName}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -33,6 +38,11 @@ mac:
     NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
+  extraResources:
+    - from: "resources/whisper/darwin-${arch}"
+      to: "whisper/darwin-${arch}"
+      filter:
+        - "**/*"
 dmg:
   artifactName: ${productName}-${version}.${ext}
 linux:
@@ -42,6 +52,11 @@ linux:
     - deb
   maintainer: freestyle
   category: Utility
+  extraResources:
+    - from: "resources/whisper/linux-x64"
+      to: "whisper/linux-x64"
+      filter:
+        - "**/*"
 appImage:
   artifactName: ${productName}-${version}.${ext}
 deb:

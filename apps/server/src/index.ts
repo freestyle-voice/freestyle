@@ -12,6 +12,7 @@ import postProcessRoute from "./routes/post-process-route.js";
 import settings from "./routes/settings.js";
 import stream from "./routes/stream.js";
 import transcribe from "./routes/transcribe.js";
+import whisper from "./routes/whisper.js";
 
 initSentry();
 
@@ -42,6 +43,7 @@ const app = new Hono()
   .route("/api/formats", formats)
   .route("/api/post-process", postProcessRoute)
   .route("/api/feedback", feedback)
+  .route("/api/whisper", whisper)
   .route("/mcp", mcp)
   .route("/stream", stream);
 

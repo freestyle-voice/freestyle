@@ -17,7 +17,7 @@ const ELEVENLABS_TOKEN_URL =
 
 // Issue an intermediate commit every N milliseconds during recording
 // to prevent ElevenLabs's recognition window from discarding older audio.
-const AUTO_COMMIT_INTERVAL_MS = 10_000;
+const AUTO_COMMIT_INTERVAL_MS = 5_000;
 
 function audioChunkMessage(b64: string, commit: boolean): string {
   return JSON.stringify({

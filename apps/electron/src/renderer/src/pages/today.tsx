@@ -730,23 +730,19 @@ function RailStat({
 
 function UsageBar({ label, pct }: UsageBucket): React.JSX.Element {
   return (
-    <div className="mb-1.5 flex items-center gap-2.5">
-      <span
-        className="mono text-foreground text-[10.5px] tracking-[0.1em] uppercase shrink-0 truncate"
-        style={{ width: 92 }}
-        title={label}
-      >
-        {label}
-      </span>
-      <div className="bg-background h-1 flex-1 overflow-hidden rounded-full">
+    <div className="mb-3">
+      <div className="flex items-center justify-between mb-1">
+        <span className="mono text-foreground text-[10.5px] tracking-[0.1em] uppercase">
+          {label}
+        </span>
+        <span className="mono text-muted-foreground text-[10.5px]">{pct}%</span>
+      </div>
+      <div className="bg-background h-1 w-full overflow-hidden rounded-full">
         <div
           className="bg-primary h-full rounded-full"
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="mono text-muted-foreground w-[30px] text-right text-[10.5px]">
-        {pct}%
-      </span>
     </div>
   );
 }

@@ -86,7 +86,7 @@ const stream = new Hono().get(
         attributes: { provider: defaults.voice.provider },
       });
 
-      const session = openStreamingSession({
+      upstream = openStreamingSession({
         providerId: defaults.voice.provider,
         apiKey,
         model: defaults.voice.model_id,
@@ -177,10 +177,9 @@ const stream = new Hono().get(
           },
           onError: (message) => {
             ws.send(JSON.stringify({ type: "error", message }));
-            if (upstream === session) upstream = null;
+            upstream = null;
           },
           onClose: () => {
-            if (upstream !== session) return;
             upstream = null;
             if (!closed && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
               reconnectAttempts++;
@@ -191,7 +190,6 @@ const stream = new Hono().get(
           },
         },
       });
-      upstream = session;
     }
 
     return {
@@ -247,23 +245,17 @@ const stream = new Hono().get(
           case "context":
             appContext = msg.context ?? null;
             break;
-          case "start": {
+          case "start":
             sessionStartTime = Date.now();
             audioDurationMs = 0;
             appContext = null;
             reconnectAttempts = 0;
-            const stale = upstream;
-            upstream = null;
-            if (stale) {
+            if (!upstream) {
               try {
-                stale.close();
+                connectUpstream(ws);
               } catch {}
             }
-            try {
-              connectUpstream(ws);
-            } catch {}
             break;
-          }
           case "commit":
             if (msg.audioDurationMs && msg.audioDurationMs > 0) {
               audioDurationMs = msg.audioDurationMs;

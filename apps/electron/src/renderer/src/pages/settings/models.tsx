@@ -1180,6 +1180,26 @@ function LocalWhisperSection({
         device. Download a model to get started.
       </p>
 
+      {whisperStatus && !whisperStatus.binaryAvailable && (
+        <div className="border-destructive/30 bg-destructive/5 flex items-start gap-2.5 rounded-[10px] border px-4 py-3">
+          <AlertTriangle className="text-destructive mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div className="text-[12px] leading-relaxed">
+            <span className="text-foreground font-medium">
+              whisper.cpp binary not found.
+            </span>{" "}
+            <span className="text-muted-foreground">
+              Run{" "}
+              <code className="bg-secondary rounded px-1 py-0.5 text-[11px]">
+                pnpm download:whisper-cpp
+              </code>{" "}
+              in the electron app directory, or download it from the{" "}
+              <span className="text-foreground/80">whisper.cpp releases</span>{" "}
+              page.
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="border-border bg-card overflow-hidden rounded-[12px] border">
         {whisperStatus?.modelDefinitions.map((def) => {
           const state = whisperStatus.models.find((m) => m.model === def.id);

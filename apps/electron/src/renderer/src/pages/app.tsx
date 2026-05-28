@@ -617,7 +617,19 @@ export default function AppPage(): React.JSX.Element {
       { method: "POST", body: wavBlob, headers },
     )
       .then(async (res) => {
-        if (!res.ok) return empty;
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          const msg =
+            body?.error ||
+            body?.detail ||
+            `Transcription failed (${res.status})`;
+          if (pillActiveRef.current && !wantsMicRef.current) {
+            setState("error");
+            setMessage(msg);
+            setTimeout(() => hidePill(), 3000);
+          }
+          return empty;
+        }
         const data = await res.json();
         return {
           raw: (data.raw || "").trim(),

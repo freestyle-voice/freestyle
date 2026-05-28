@@ -25,7 +25,12 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
     const { apiKey, model, callbacks } = opts;
+
+    // accumulatedText holds all finalized utterances so far.
+    // partialText holds the in-progress text for the current utterance.
+    let accumulatedText = "";
     let partialText = "";
+    let commitRequested = false;
 
     const short = stripProviderPrefix(model);
 
@@ -69,11 +74,28 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       if (!transcript) return;
 
       if (msg.is_final) {
-        callbacks.onFinal(transcript.trim());
+        const segment = transcript.trim();
+        if (segment) {
+          accumulatedText = accumulatedText
+            ? `${accumulatedText} ${segment}`
+            : segment;
+        }
         partialText = "";
+
+        // If the user already committed (released hotkey), send the
+        // final accumulated result now that Deepgram has flushed.
+        if (commitRequested) {
+          callbacks.onFinal(accumulatedText);
+        } else {
+          // Show accumulated progress as partial preview
+          callbacks.onPartial(accumulatedText);
+        }
       } else {
         partialText = transcript;
-        callbacks.onPartial(partialText);
+        const preview = accumulatedText
+          ? `${accumulatedText} ${partialText}`.trim()
+          : partialText;
+        callbacks.onPartial(preview);
       }
     });
 
@@ -91,12 +113,19 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
         ws.send(chunk);
       },
       commit(): void {
-        if (ws.readyState !== WebSocket.OPEN) return;
+        commitRequested = true;
+        if (ws.readyState !== WebSocket.OPEN) {
+          callbacks.onFinal(accumulatedText || partialText);
+          return;
+        }
+        // Finalize flushes remaining audio; the is_final response
+        // handler above will call onFinal with the full accumulated text.
         ws.send(JSON.stringify({ type: "Finalize" }));
       },
       cancel(): void {
         if (ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify({ type: "CloseStream" }));
+        accumulatedText = "";
         partialText = "";
       },
       close(): void {

@@ -826,18 +826,16 @@ export default function AppPage(): React.JSX.Element {
         style={{
           position: "relative",
           marginBottom: pillAlign === "end" ? 8 : "auto",
-          marginTop: pillAlign === "start" ? 8 : "auto",
+          marginTop: pillAlign === "start" ? 22 : "auto",
         }}
       >
         {isReRecording && (
           <div
-            className={
-              pillAlign === "end" ? "stack-enter-up" : "stack-enter-down"
-            }
+            className="stack-enter-up"
             style={{
               borderRadius: 25,
               position: "absolute",
-              ...(pillAlign === "end" ? { top: -18 } : { bottom: -18 }),
+              top: -18,
               left: "50%",
               transform: "translateX(-50%) scale(0.87)",
               opacity: 0.95,

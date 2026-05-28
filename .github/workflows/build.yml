@@ -75,7 +75,7 @@ jobs:
         run: pnpm --filter @freestyle/server build
 
       - name: Install native build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxext-dev libglib2.0-dev libgio2.0-cil-dev
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxext-dev libglib2.0-dev
 
       - name: Build electron (Linux)
         working-directory: apps/electron

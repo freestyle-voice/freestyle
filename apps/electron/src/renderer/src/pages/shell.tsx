@@ -8,7 +8,6 @@ import {
   Clock,
   Cpu,
   FileText,
-  MessageSquare,
   Shield,
   Sliders,
 } from "lucide-react";
@@ -44,12 +43,6 @@ const navItems: NavItem[] = [
     label: "Permissions",
     icon: Shield,
     shortcut: "7",
-  },
-  {
-    to: "/settings/feedback",
-    label: "Feedback",
-    icon: MessageSquare,
-    shortcut: "8",
   },
 ];
 

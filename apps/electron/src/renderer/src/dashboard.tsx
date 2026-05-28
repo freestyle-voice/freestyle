@@ -13,7 +13,6 @@ import { initApiBase } from "@renderer/lib/api";
 import NotFoundPage from "@renderer/pages/not-found";
 import OnboardingPage from "@renderer/pages/onboarding";
 import DictionaryPage from "@renderer/pages/settings/dictionary";
-import FeedbackPage from "@renderer/pages/settings/feedback";
 import FormatsPage from "@renderer/pages/settings/formats";
 import GeneralSettingsPage from "@renderer/pages/settings/general";
 import HistoryPage from "@renderer/pages/settings/history";
@@ -64,7 +63,6 @@ initApiBase().then(() => {
                   />
                   <Route path="/settings/formats" element={<FormatsPage />} />
                   <Route path="/settings/history" element={<HistoryPage />} />
-                  <Route path="/settings/feedback" element={<FeedbackPage />} />
                   <Route
                     path="/settings/permissions"
                     element={<PermissionsPage />}

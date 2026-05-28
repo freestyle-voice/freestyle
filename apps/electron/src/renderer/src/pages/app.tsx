@@ -821,8 +821,8 @@ export default function AppPage(): React.JSX.Element {
       <div
         style={{
           position: "relative",
-          marginBottom: pillAlign === "end" ? 4 : "auto",
-          marginTop: pillAlign === "start" ? 4 : "auto",
+          marginBottom: pillAlign === "end" ? 8 : "auto",
+          marginTop: pillAlign === "start" ? 8 : "auto",
         }}
       >
         {isReRecording && (

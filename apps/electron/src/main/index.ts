@@ -41,7 +41,7 @@ import { pasteIntoFocusedApp } from "./paste";
 
 const DEFAULT_PORT = 4649;
 const APP_WIDTH = 396;
-const APP_HEIGHT = 60;
+const APP_HEIGHT = 64;
 const APP_BOTTOM_MARGIN = 0;
 
 // ---------------------------------------------------------------------------
@@ -151,8 +151,8 @@ function getAppWindowPosition(): { x: number; y: number } {
   // so the pill visually aligns near the screen edge.
   const pillInset = Math.round((APP_WIDTH - 216) / 2); // ~90px
   const rightMargin = 16 - pillInset; // net ~-74px, pulls window right
-  const bottomMargin = 4; // room for glow below the pill
-  const topMargin = 4;
+  const bottomMargin = -4; // push window closer to screen edge
+  const topMargin = -4;
   switch (position) {
     case "top-center":
       return { x: Math.round((width - APP_WIDTH) / 2), y: topMargin };

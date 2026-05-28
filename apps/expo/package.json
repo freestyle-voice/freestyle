@@ -1,7 +1,10 @@
 {
   "name": "@freestyle/expo",
+  "version": "0.1.0",
+  "description": "Freestyle mobile app — voice-to-text that works everywhere",
+  "author": "freestyle-voice",
+  "homepage": "https://github.com/freestyle-voice/freestyle",
   "main": "expo-router/entry",
-  "version": "1.0.0",
   "dependencies": {
     "@expo/ui": "~56.0.14",
     "@freestyle/validations": "workspace:*",

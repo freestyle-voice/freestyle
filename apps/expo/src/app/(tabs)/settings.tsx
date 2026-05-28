@@ -1,11 +1,14 @@
+import Constants from "expo-constants";
 import { useRouter } from "expo-router";
-import { Icon } from "@/components/icon";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Icon } from "@/components/icon";
 import { ThemedText } from "@/components/themed-text";
 import { Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+
+const appVersion = Constants.expoConfig?.version ?? "0.1.0";
 
 interface SettingsItemProps {
   icon: React.ReactNode;
@@ -26,10 +29,7 @@ function SettingsItem({ icon, title, subtitle, onPress }: SettingsItemProps) {
       onPress={onPress}
     >
       <View
-        style={[
-          styles.iconContainer,
-          { backgroundColor: theme.primaryLight },
-        ]}
+        style={[styles.iconContainer, { backgroundColor: theme.primaryLight }]}
       >
         {icon}
       </View>
@@ -122,7 +122,7 @@ export default function SettingsScreen() {
 
         <View style={styles.footer}>
           <ThemedText type="small" themeColor="textTertiary">
-            Freestyle v1.0.0
+            Freestyle v{appVersion}
           </ThemedText>
         </View>
       </ScrollView>

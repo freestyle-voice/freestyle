@@ -2,16 +2,24 @@
   "expo": {
     "name": "Freestyle",
     "slug": "freestyle-app",
-    "version": "1.0.0",
+    "description": "Voice-to-text that works everywhere. Speak naturally, get polished text.",
+    "version": "0.1.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "freestyleapp",
+    "scheme": "freestyle",
     "userInterfaceStyle": "automatic",
+    "owner": "freestyle-voice",
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.freestyle.app",
+      "supportsTablet": false,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Freestyle needs microphone access to transcribe your voice."
+        "NSMicrophoneUsageDescription": "Freestyle needs microphone access to transcribe your voice.",
+        "CFBundleDisplayName": "Freestyle",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -23,7 +31,7 @@
       },
       "permissions": ["RECORD_AUDIO"],
       "package": "com.freestyle.app",
-      "predictiveBackGestureEnabled": false
+      "versionCode": 1
     },
     "web": {
       "output": "static",
@@ -53,6 +61,17 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": ""
+      },
+      "router": {
+        "origin": false
+      }
+    },
+    "updates": {
+      "url": ""
     }
   }
 }

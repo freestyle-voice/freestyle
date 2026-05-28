@@ -1,4 +1,4 @@
-import { getSetting, getDefaultModel } from "./db";
+import { getDefaultModel, getSetting } from "./db";
 import { getApiKey } from "./storage";
 
 export interface TranscriptionResult {
@@ -67,18 +67,34 @@ export async function transcribeAudio(
   };
 }
 
+function getAudioMimeType(uri: string): { type: string; name: string } {
+  const lower = uri.toLowerCase();
+  if (lower.endsWith(".wav"))
+    return { type: "audio/wav", name: "recording.wav" };
+  if (lower.endsWith(".mp4") || lower.endsWith(".m4a"))
+    return { type: "audio/m4a", name: "recording.m4a" };
+  if (lower.endsWith(".webm"))
+    return { type: "audio/webm", name: "recording.webm" };
+  if (lower.endsWith(".ogg"))
+    return { type: "audio/ogg", name: "recording.ogg" };
+  if (lower.endsWith(".3gp"))
+    return { type: "audio/3gpp", name: "recording.3gp" };
+  return { type: "audio/m4a", name: "recording.m4a" };
+}
+
 function createFileFormData(
   fieldName: string,
   audioUri: string,
   additionalFields?: Record<string, string>,
 ): FormData {
   const formData = new FormData();
+  const { type, name } = getAudioMimeType(audioUri);
 
   // React Native FormData requires { uri, type, name } objects for file uploads
   formData.append(fieldName, {
     uri: audioUri,
-    type: "audio/wav",
-    name: "recording.wav",
+    type,
+    name,
   } as any);
 
   if (additionalFields) {
@@ -143,9 +159,7 @@ async function transcribeGroq(
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(
-      `Groq transcription failed: ${response.status} ${errText}`,
-    );
+    throw new Error(`Groq transcription failed: ${response.status} ${errText}`);
   }
 
   const result = await response.json();
@@ -161,8 +175,7 @@ async function transcribeDeepgram(
   const params = new URLSearchParams({ model });
   if (language) params.set("language", language);
 
-  // Deepgram expects raw audio body, not FormData.
-  // We'll use fetch with the file URI -- React Native can stream files directly.
+  const { type } = getAudioMimeType(audioUri);
   const fileResponse = await fetch(audioUri);
   const audioBlob = await fileResponse.blob();
 
@@ -172,7 +185,7 @@ async function transcribeDeepgram(
       method: "POST",
       headers: {
         Authorization: `Token ${apiKey}`,
-        "Content-Type": "audio/wav",
+        "Content-Type": type,
       },
       body: audioBlob,
     },

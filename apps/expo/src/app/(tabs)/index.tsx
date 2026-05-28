@@ -1,20 +1,14 @@
-import * as Clipboard from "expo-clipboard";
-import * as Haptics from "expo-haptics";
 import {
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
   useAudioRecorder,
   useAudioRecorderState,
-  RecordingPresets,
-  AudioModule,
-  setAudioModeAsync,
 } from "expo-audio";
+import * as Clipboard from "expo-clipboard";
+import * as Haptics from "expo-haptics";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  Share,
-  StyleSheet,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, Share, StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -33,14 +27,6 @@ import { transcribeAudio } from "@/lib/transcribe";
 
 type RecordState = "idle" | "recording" | "transcribing" | "result" | "error";
 
-const RECORDING_OPTIONS = {
-  ...RecordingPresets.HIGH_QUALITY,
-  extension: ".m4a",
-  sampleRate: 16000,
-  numberOfChannels: 1,
-  bitRate: 128000,
-};
-
 const MIN_RECORDING_MS = 500;
 
 export default function RecordScreen() {
@@ -52,7 +38,7 @@ export default function RecordScreen() {
   const recordStartTime = useRef(0);
   const isRecordingRef = useRef(false);
 
-  const recorder = useAudioRecorder(RECORDING_OPTIONS);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 100);
 
   const pulseScale = useSharedValue(1);

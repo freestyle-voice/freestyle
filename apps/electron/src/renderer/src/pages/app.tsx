@@ -113,6 +113,7 @@ export default function AppPage(): React.JSX.Element {
   const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
   const [pillSide, setPillSide] = useState<"center" | "right">("center");
   const useStreamingRef = useRef(false);
+  const sessionStreamingRef = useRef(false);
 
   const [isReRecording, setIsReRecording] = useState(false);
   const isReRecordingRef = useRef(false);
@@ -479,7 +480,8 @@ export default function AppPage(): React.JSX.Element {
       }
 
       try {
-        const stream = useStreamingRef.current
+        sessionStreamingRef.current = useStreamingRef.current;
+        const stream = sessionStreamingRef.current
           ? await recorderRef.current.acquireStream()
           : await recorderRef.current.start();
 
@@ -569,7 +571,7 @@ export default function AppPage(): React.JSX.Element {
 
     const empty: TranscribeResult = { raw: "", cleaned: "" };
 
-    if (useStreamingRef.current && streamerRef.current) {
+    if (sessionStreamingRef.current && streamerRef.current) {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
 

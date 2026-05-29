@@ -26,12 +26,15 @@ export type DownloadStatus =
   | "ready"
   | "error";
 
+export type DownloadPhase = "building_binary" | "downloading_model";
+
 export interface ModelDownloadState {
   model: string;
   fileName: string;
   sizeBytes: number;
   displayName: string;
   status: DownloadStatus;
+  phase?: DownloadPhase;
   downloadProgress?: {
     bytesDownloaded: number;
     bytesTotal: number;
@@ -43,6 +46,7 @@ export interface ModelDownloadState {
 
 interface ActiveDownload {
   controller: AbortController;
+  phase: DownloadPhase;
   bytesDownloaded: number;
   bytesTotal: number;
   speedBps: number;
@@ -92,6 +96,7 @@ export function getModelStatus(modelId: string): ModelDownloadState | null {
       sizeBytes: model.sizeBytes,
       displayName: model.displayName,
       status: "downloading",
+      phase: active.phase,
       downloadProgress: {
         bytesDownloaded: active.bytesDownloaded,
         bytesTotal: active.bytesTotal,
@@ -144,8 +149,9 @@ export async function downloadModel(modelId: string): Promise<void> {
   const controller = new AbortController();
   const active: ActiveDownload = {
     controller,
+    phase: "building_binary",
     bytesDownloaded: 0,
-    bytesTotal: model.sizeBytes,
+    bytesTotal: 0,
     speedBps: 0,
     startedAt: Date.now(),
     lastUpdate: Date.now(),
@@ -159,6 +165,13 @@ export async function downloadModel(modelId: string): Promise<void> {
     active.error = err instanceof Error ? err.message : String(err);
     throw err;
   }
+
+  active.phase = "downloading_model";
+  active.bytesTotal = model.sizeBytes;
+  active.bytesDownloaded = 0;
+  active.speedBps = 0;
+  active.lastUpdate = Date.now();
+  active.lastBytes = 0;
 
   ensureModelsDir();
 
@@ -285,7 +298,11 @@ export async function ensureBinariesDownloaded(): Promise<void> {
   if (isBinaryAvailable()) return;
 
   if (binaryDownloadPromise) return binaryDownloadPromise;
-  binaryDownloadPromise = buildFromSource().finally(() => {
+  const task =
+    process.platform === "win32"
+      ? downloadWindowsBinaries()
+      : buildFromSource();
+  binaryDownloadPromise = task.finally(() => {
     binaryDownloadPromise = null;
   });
   return binaryDownloadPromise;
@@ -416,4 +433,64 @@ async function buildFromSource(): Promise<void> {
   }
 
   console.log("[whisper] Build complete");
+}
+
+async function downloadWindowsBinaries(): Promise<void> {
+  const binDir = getBinDir();
+  if (!existsSync(binDir)) mkdirSync(binDir, { recursive: true });
+
+  const version = "1.8.4";
+  const archiveUrl = `https://github.com/ggml-org/whisper.cpp/releases/download/v${version}/whisper-bin-x64.zip`;
+  const tmpZip = join(binDir, "whisper-bin.zip");
+
+  console.log("[whisper] Downloading pre-built Windows binaries...");
+
+  const res = await fetch(archiveUrl, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`Failed to download whisper binaries: HTTP ${res.status}`);
+  }
+
+  const fileStream = createWriteStream(tmpZip);
+  const reader = res.body.getReader();
+  const nodeStream = new Readable({
+    async read() {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          this.push(null);
+          return;
+        }
+        this.push(Buffer.from(value));
+      } catch (err) {
+        this.destroy(err instanceof Error ? err : new Error(String(err)));
+      }
+    },
+  });
+  await pipeline(nodeStream, fileStream);
+
+  const { execFileSync } = await import("node:child_process");
+  try {
+    execFileSync(
+      "powershell",
+      [
+        "-Command",
+        `Expand-Archive -Force -Path '${tmpZip}' -DestinationPath '${binDir}'`,
+      ],
+      { stdio: "pipe", timeout: 30_000 },
+    );
+  } catch {
+    try {
+      unlinkSync(tmpZip);
+    } catch {}
+    throw new Error("Failed to extract whisper binaries.");
+  }
+
+  try {
+    unlinkSync(tmpZip);
+  } catch {}
+
+  console.log("[whisper] Windows binaries downloaded");
 }

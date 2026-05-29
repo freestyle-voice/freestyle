@@ -64,6 +64,7 @@ interface WhisperModelDownloadState {
   sizeBytes: number;
   displayName: string;
   status: "not_downloaded" | "downloading" | "verifying" | "ready" | "error";
+  phase?: "building_binary" | "downloading_model";
   downloadProgress?: {
     bytesDownloaded: number;
     bytesTotal: number;
@@ -1245,29 +1246,46 @@ function LocalWhisperSection({
                   <span>{def.ramRequired}</span>
                 </div>
 
-                {/* Download progress bar */}
-                {status === "downloading" && state?.downloadProgress && (
-                  <div className="mt-2 space-y-1">
-                    <div className="bg-secondary h-1.5 w-full overflow-hidden rounded-full">
-                      <div
-                        className="bg-primary h-full rounded-full transition-all"
-                        style={{ width: `${state.downloadProgress.percent}%` }}
-                      />
+                {/* Build phase — indeterminate progress */}
+                {status === "downloading" &&
+                  state?.phase === "building_binary" && (
+                    <div className="mt-2 space-y-1">
+                      <div className="bg-secondary h-1.5 w-full overflow-hidden rounded-full">
+                        <div className="bg-primary h-full w-full animate-pulse rounded-full" />
+                      </div>
+                      <div className="text-muted-foreground text-[10px]">
+                        Building whisper.cpp — this may take a minute…
+                      </div>
                     </div>
-                    <div className="text-muted-foreground flex justify-between text-[10px]">
-                      <span>
-                        {formatBytes(state.downloadProgress.bytesDownloaded)} /{" "}
-                        {formatBytes(state.downloadProgress.bytesTotal)}
-                      </span>
-                      <span>
-                        {state.downloadProgress.speedBps > 0 &&
-                          formatSpeed(state.downloadProgress.speedBps)}
-                        {state.downloadProgress.percent > 0 &&
-                          ` · ${state.downloadProgress.percent}%`}
-                      </span>
+                  )}
+
+                {/* Download phase — byte progress bar */}
+                {status === "downloading" &&
+                  state?.phase === "downloading_model" &&
+                  state.downloadProgress && (
+                    <div className="mt-2 space-y-1">
+                      <div className="bg-secondary h-1.5 w-full overflow-hidden rounded-full">
+                        <div
+                          className="bg-primary h-full rounded-full transition-all"
+                          style={{
+                            width: `${state.downloadProgress.percent}%`,
+                          }}
+                        />
+                      </div>
+                      <div className="text-muted-foreground flex justify-between text-[10px]">
+                        <span>
+                          {formatBytes(state.downloadProgress.bytesDownloaded)}{" "}
+                          / {formatBytes(state.downloadProgress.bytesTotal)}
+                        </span>
+                        <span>
+                          {state.downloadProgress.speedBps > 0 &&
+                            formatSpeed(state.downloadProgress.speedBps)}
+                          {state.downloadProgress.percent > 0 &&
+                            ` · ${state.downloadProgress.percent}%`}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
                 {/* Error message */}
                 {status === "error" && state?.error && (

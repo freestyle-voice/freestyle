@@ -382,11 +382,11 @@ async function buildFromSource(): Promise<void> {
 
   try {
     mkdirSync(buildDir, { recursive: true });
-    execFileSync("cmake", ["..", "-DCMAKE_BUILD_TYPE=Release"], {
-      cwd: buildDir,
-      stdio: "pipe",
-      timeout: 60_000,
-    });
+    execFileSync(
+      "cmake",
+      ["..", "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_SHARED_LIBS=OFF"],
+      { cwd: buildDir, stdio: "pipe", timeout: 60_000 },
+    );
     execFileSync("cmake", ["--build", ".", "--config", "Release", "-j"], {
       cwd: buildDir,
       stdio: "pipe",
@@ -403,7 +403,7 @@ async function buildFromSource(): Promise<void> {
     process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli";
   const serverName =
     process.platform === "win32" ? "whisper-server.exe" : "whisper-server";
-  const { copyFileSync, chmodSync } = await import("node:fs");
+  const { copyFileSync, chmodSync, readdirSync } = await import("node:fs");
 
   const builtBin = join(buildDir, "bin", binaryName);
   const builtServer = join(buildDir, "bin", serverName);
@@ -417,6 +417,34 @@ async function buildFromSource(): Promise<void> {
     copyFileSync(builtServer, join(binDir, serverName));
     if (process.platform !== "win32")
       chmodSync(join(binDir, serverName), 0o755);
+  }
+
+  // Copy shared libraries (.dylib / .so) next to the binaries
+  const libDirs = [join(buildDir, "src"), join(buildDir, "ggml", "src")];
+  for (const libDir of libDirs) {
+    if (!existsSync(libDir)) continue;
+    for (const file of readdirSync(libDir)) {
+      if (
+        file.endsWith(".dylib") ||
+        (file.endsWith(".so") && file.includes("lib"))
+      ) {
+        copyFileSync(join(libDir, file), join(binDir, file));
+      }
+    }
+  }
+
+  // Fix rpath on macOS so the binary finds libs in its own directory
+  if (process.platform === "darwin") {
+    for (const bin of [binaryName, serverName]) {
+      const binPath = join(binDir, bin);
+      if (!existsSync(binPath)) continue;
+      try {
+        execFileSync("install_name_tool", ["-add_rpath", binDir, binPath], {
+          stdio: "pipe",
+          timeout: 10_000,
+        });
+      } catch {}
+    }
   }
 
   // Clean up source

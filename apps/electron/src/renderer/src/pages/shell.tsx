@@ -38,12 +38,6 @@ const navItems: NavItem[] = [
   },
   { to: "/settings/models", label: "Models", icon: Cpu, shortcut: "5" },
   { to: "/settings", label: "Settings", icon: Sliders, shortcut: "6" },
-  {
-    to: "/settings/permissions",
-    label: "Permissions",
-    icon: Shield,
-    shortcut: "7",
-  },
 ];
 
 export default function AppShell(): React.JSX.Element {
@@ -144,7 +138,7 @@ export default function AppShell(): React.JSX.Element {
         </nav>
       </aside>
 
-      <main className="flex-1 overflow-auto">
+      <main className="min-w-0 flex-1 overflow-auto">
         <Outlet />
       </main>
     </div>

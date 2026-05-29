@@ -9,9 +9,9 @@ Sentry.init({
   skipOpenTelemetrySetup: true,
 });
 
-import { execFile, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, realpathSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import server from "@freestyle/server";
@@ -32,19 +32,16 @@ import {
   Tray,
 } from "electron";
 import { autoUpdater } from "electron-updater";
-import type {
-  IGlobalKeyDownMap,
-  IGlobalKeyEvent,
-} from "node-global-key-listener";
-import { GlobalKeyboardListener } from "node-global-key-listener";
 import { WebSocketServer } from "ws";
 import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
+import { NativeKeyListener } from "./key-listener";
+import { MicListener } from "./mic-listener";
 import { pasteIntoFocusedApp } from "./paste";
 
 const DEFAULT_PORT = 4649;
-const APP_WIDTH = 440;
-const APP_HEIGHT = 120;
+const APP_WIDTH = 260;
+const APP_HEIGHT = 90;
 const APP_BOTTOM_MARGIN = 0;
 
 // ---------------------------------------------------------------------------
@@ -89,61 +86,11 @@ let serverPort = DEFAULT_PORT;
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-let keyListener: GlobalKeyboardListener | null = null;
+let keyListener: NativeKeyListener | null = null;
 let hotkeyPressed = false;
 let winToggleActive = false;
 let currentHotkeyAccel: string | null = null;
-
-/**
- * Ensure the MacKeyServer binary from node-global-key-listener is executable
- * and ad-hoc signed. Without a stable cdhash the macOS TCC subsystem cannot
- * persist Accessibility grants — the user approves access but it never sticks.
- * Also strips quarantine/provenance xattrs and sets the execute bit.
- *
- * This mirrors the postinstall script but runs at app launch as a safety net
- * (e.g. the binary was replaced by a package manager update).
- */
-function ensureMacKeyServerExecutable(): void {
-  if (process.platform !== "darwin") return;
-  try {
-    const pkgPath = require.resolve("node-global-key-listener/package.json");
-    const candidate = join(dirname(pkgPath), "bin", "MacKeyServer");
-    if (!existsSync(candidate)) return;
-    const binPath = realpathSync(candidate);
-
-    // Set execute bit if missing
-    try {
-      if (!(statSync(binPath).mode & 0o111)) {
-        chmodSync(binPath, 0o755);
-        console.log("[hotkey] Set execute permission on MacKeyServer.");
-      }
-    } catch (err) {
-      console.warn("[hotkey] chmod failed:", err);
-    }
-
-    // Strip quarantine / provenance xattrs (best-effort)
-    for (const attr of ["com.apple.quarantine", "com.apple.provenance"]) {
-      spawnSync("xattr", ["-d", attr, binPath], { stdio: "ignore" });
-    }
-
-    // Ad-hoc codesign so TCC grants persist (stable cdhash)
-    const result = spawnSync(
-      "codesign",
-      ["--sign", "-", "--force", "--preserve-metadata=entitlements", binPath],
-      { stdio: ["ignore", "pipe", "pipe"] },
-    );
-    if (result.status === 0) {
-      console.log("[hotkey] Ad-hoc signed MacKeyServer binary.");
-    } else {
-      console.warn(
-        `[hotkey] codesign failed (exit ${result.status}):`,
-        result.stderr?.toString().trim(),
-      );
-    }
-  } catch (err) {
-    console.warn("[hotkey] Could not fix MacKeyServer permissions:", err);
-  }
-}
+let micListener: MicListener | null = null;
 
 // Register a custom app:// protocol that serves the renderer files.
 // All non-file paths fall back to index.html so BrowserRouter works in production.
@@ -199,21 +146,25 @@ function getAppWindowPosition(): { x: number; y: number } {
   // Read pill position preference
   const position = (readSettings().pillPosition as string) || "bottom-center";
 
-  const margin = 10;
+  // The pill is aligned inside the window via CSS (justify-center or
+  // justify-end). Push bottom positions 10px past the work area edge
+  // so the pill sits closer to the dock/taskbar.
+  const bottomOverlap = 14;
+  const topOverlap = 0;
   switch (position) {
     case "top-center":
-      return { x: Math.round((width - APP_WIDTH) / 2), y: margin };
+      return { x: Math.round((width - APP_WIDTH) / 2), y: topOverlap };
     case "top-right":
-      return { x: width - APP_WIDTH - margin, y: margin };
+      return { x: width - APP_WIDTH, y: topOverlap };
     case "bottom-right":
       return {
-        x: width - APP_WIDTH - margin,
-        y: height - APP_HEIGHT - margin,
+        x: width - APP_WIDTH,
+        y: height - APP_HEIGHT + bottomOverlap,
       };
     default:
       return {
         x: Math.round((width - APP_WIDTH) / 2),
-        y: height - APP_HEIGHT - APP_BOTTOM_MARGIN,
+        y: height - APP_HEIGHT + bottomOverlap,
       };
   }
 }
@@ -266,6 +217,8 @@ function createSettingsWindow(): void {
   settingsWindow = new BrowserWindow({
     width: 800,
     height: 560,
+    minWidth: 720,
+    minHeight: 480,
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
@@ -345,7 +298,6 @@ function showPill(): void {
 
   // On Windows, register Escape as a global shortcut while the pill
   // is visible so the user can cancel recording/transcription.
-  // (On macOS/Linux, Escape is detected via the GlobalKeyboardListener.)
   if (process.platform === "win32") {
     if (!globalShortcut.isRegistered("Escape")) {
       globalShortcut.register("Escape", () => {
@@ -770,155 +722,29 @@ app.whenReady().then(async () => {
     writeSettings({ onboardingComplete: true });
   });
 
-  // IPC: hotkey recording via main process (captures keys the DOM can't see, e.g. fn/globe)
-  let recordingListener: GlobalKeyboardListener | null = null;
+  // IPC: hotkey recording via main process
+  // Note: Hotkey recording currently uses the renderer's keyboard events
+  // (the settings page captures keydown in the DOM). The native binary
+  // doesn't need a separate "recording" mode -- the renderer handles it.
+  // We still support the IPC protocol for pausing/resuming the primary listener.
+  let recordingActive = false;
 
   ipcMain.on("hotkey-record:start", () => {
-    // Kill any existing recording listener
-    if (recordingListener) {
-      try {
-        recordingListener.kill();
-      } catch {
-        /* ignore */
-      }
-      recordingListener = null;
-    }
+    recordingActive = true;
 
     // Pause the active hotkey listener so it doesn't fire during recording
     if (keyListener) {
-      try {
-        keyListener.kill();
-      } catch {
-        /* ignore */
-      }
+      keyListener.stop();
       keyListener = null;
     }
-    // GlobalKeyboardListener requires WinKeyServer.exe which isn't shipped on Windows.
-    // Hotkey recording is not supported on Windows — cancel and re-register.
     if (process.platform === "win32") {
       globalShortcut.unregisterAll();
       winToggleActive = false;
-      settingsWindow?.webContents.send("hotkey-record:cancel");
-      registerHotkey(currentHotkeyAccel ?? undefined);
-      return;
     }
-
-    // Ensure binary is executable / signed before starting recording listener
-    ensureMacKeyServerExecutable();
-
-    try {
-      recordingListener = new GlobalKeyboardListener();
-    } catch (err) {
-      console.error("[hotkey] Failed to create recording listener:", err);
-      Sentry.captureException(err);
-      settingsWindow?.webContents.send("hotkey-record:cancel");
-      settingsWindow?.webContents.send("hotkey:error", {
-        message:
-          "Could not start the key listener for recording. " +
-          "Please check Accessibility permissions in System Settings.",
-      });
-      // Re-register the primary hotkey listener
-      registerHotkey(currentHotkeyAccel ?? undefined);
-      return;
-    }
-
-    recordingListener.addListener(
-      (e: IGlobalKeyEvent, isDown: IGlobalKeyDownMap) => {
-        if (e.state !== "DOWN") return;
-
-        // Build the key event payload
-        const modifiers: string[] = [];
-        const isMac = process.platform === "darwin";
-        if (isDown["LEFT META"] || isDown["RIGHT META"]) {
-          modifiers.push(isMac ? "Command" : "Control");
-        }
-        if (isDown["LEFT CTRL"] || isDown["RIGHT CTRL"])
-          modifiers.push("Control");
-        if (isDown["LEFT ALT"] || isDown["RIGHT ALT"]) modifiers.push("Alt");
-        if (isDown["LEFT SHIFT"] || isDown["RIGHT SHIFT"])
-          modifiers.push("Shift");
-        // Deduplicate (e.g. Control from both Meta and Ctrl on non-Mac)
-        const uniqueModifiers = [...new Set(modifiers)];
-
-        // Skip if only a modifier key was pressed
-        const modifierNames = [
-          "LEFT META",
-          "RIGHT META",
-          "LEFT CTRL",
-          "RIGHT CTRL",
-          "LEFT ALT",
-          "RIGHT ALT",
-          "LEFT SHIFT",
-          "RIGHT SHIFT",
-        ];
-        if (modifierNames.includes(e.name ?? "")) {
-          // Send partial modifier state to renderer
-          settingsWindow?.webContents.send(
-            "hotkey-record:modifiers",
-            uniqueModifiers,
-          );
-          return;
-        }
-
-        // Map node-global-key-listener key names to our accelerator format
-        const keyMap: Record<string, string> = {
-          SPACE: "Space",
-          RETURN: "Return",
-          ESCAPE: "Escape",
-          TAB: "Tab",
-          BACKSPACE: "Backspace",
-          DELETE: "Delete",
-          "UP ARROW": "Up",
-          "DOWN ARROW": "Down",
-          "LEFT ARROW": "Left",
-          "RIGHT ARROW": "Right",
-          FN: "Fn",
-        };
-
-        const keyName = e.name ?? "";
-
-        // Escape cancels recording
-        if (keyName === "ESCAPE") {
-          settingsWindow?.webContents.send("hotkey-record:cancel");
-          try {
-            recordingListener?.kill();
-          } catch {
-            /* ignore */
-          }
-          recordingListener = null;
-          // Re-register the hotkey listener
-          registerHotkey(currentHotkeyAccel ?? undefined);
-          return;
-        }
-
-        const mappedKey = keyMap[keyName] || keyName;
-
-        // Send the captured combo to the renderer
-        settingsWindow?.webContents.send("hotkey-record:captured", {
-          modifiers: uniqueModifiers,
-          key: mappedKey,
-        });
-
-        // Stop listening after capture (hotkey re-registered when user saves/cancels via hotkey-record:stop)
-        try {
-          recordingListener?.kill();
-        } catch {
-          /* ignore */
-        }
-        recordingListener = null;
-      },
-    );
   });
 
   ipcMain.on("hotkey-record:stop", () => {
-    if (recordingListener) {
-      try {
-        recordingListener.kill();
-      } catch {
-        /* ignore */
-      }
-      recordingListener = null;
-    }
+    recordingActive = false;
     // Re-register the hotkey listener
     registerHotkey(currentHotkeyAccel ?? undefined);
   });
@@ -1095,13 +921,26 @@ app.whenReady().then(async () => {
 
   ipcMain.on("settings:set-pill-position", (_event, position: string) => {
     writeSettings({ pillPosition: position });
+    // Reposition the window and notify the renderer for CSS alignment
+    if (mainWindow) {
+      const { x, y } = getAppWindowPosition();
+      mainWindow.setPosition(x, y);
+    }
+    mainWindow?.webContents.send("settings:pill-position-changed", position);
   });
 
-  // Fix MacKeyServer binary permissions / codesign before first use
-  ensureMacKeyServerExecutable();
-
-  // Register hold-to-record hotkey via node-global-key-listener
+  // Register hold-to-record hotkey via native platform binary
   registerHotkey();
+
+  // Start microphone activity monitoring
+  micListener = new MicListener({
+    excludePid: process.pid,
+    onStateChange: (state) => {
+      mainWindow?.webContents.send("mic:activity-changed", state);
+      settingsWindow?.webContents.send("mic:activity-changed", state);
+    },
+  });
+  micListener.start();
 
   // Listen for hotkey changes from the settings UI
   ipcMain.on("hotkey:update", (_event, newHotkey: string) => {
@@ -1111,95 +950,6 @@ app.whenReady().then(async () => {
 
 const DEFAULT_HOTKEY = "Alt+Space";
 
-// Map Electron accelerator parts to node-global-key-listener key names
-type HotkeyParts = { modifiers: Set<string>; key: string };
-
-function parseAccelerator(accel: string): HotkeyParts {
-  const parts = accel.split("+").map((p) => p.trim());
-  const key = parts[parts.length - 1];
-  const modifiers = new Set<string>();
-
-  for (let i = 0; i < parts.length - 1; i++) {
-    const mod = parts[i].toLowerCase();
-    if (mod === "alt" || mod === "option") {
-      modifiers.add("LEFT ALT");
-      modifiers.add("RIGHT ALT");
-    } else if (mod === "ctrl" || mod === "control") {
-      modifiers.add("LEFT CTRL");
-      modifiers.add("RIGHT CTRL");
-    } else if (mod === "shift") {
-      modifiers.add("LEFT SHIFT");
-      modifiers.add("RIGHT SHIFT");
-    } else if (
-      mod === "meta" ||
-      mod === "super" ||
-      mod === "command" ||
-      mod === "commandorcontrol" ||
-      mod === "cmdorctrl"
-    ) {
-      modifiers.add("LEFT META");
-      modifiers.add("RIGHT META");
-    }
-  }
-
-  // Map the key part to node-global-key-listener name
-  const keyMap: Record<string, string> = {
-    space: "SPACE",
-    enter: "RETURN",
-    return: "RETURN",
-    escape: "ESCAPE",
-    tab: "TAB",
-    backspace: "BACKSPACE",
-    delete: "DELETE",
-    up: "UP ARROW",
-    down: "DOWN ARROW",
-    left: "LEFT ARROW",
-    right: "RIGHT ARROW",
-    fn: "FN",
-  };
-
-  const mappedKey = keyMap[key.toLowerCase()] || key.toUpperCase();
-
-  return { modifiers, key: mappedKey };
-}
-
-// Check if the required modifier keys are held down
-function modifiersMatch(
-  modifiers: Set<string>,
-  isDown: IGlobalKeyDownMap,
-): boolean {
-  if (modifiers.size === 0) return true;
-
-  // Group modifiers by type (left/right variants)
-  const groups: string[][] = [];
-  const seen = new Set<string>();
-
-  for (const mod of modifiers) {
-    if (seen.has(mod)) continue;
-    // Find the paired variant
-    if (mod.startsWith("LEFT ")) {
-      const right = `RIGHT ${mod.slice(5)}`;
-      groups.push([mod, right]);
-      seen.add(mod);
-      seen.add(right);
-    } else if (mod.startsWith("RIGHT ")) {
-      const left = `LEFT ${mod.slice(6)}`;
-      groups.push([left, mod]);
-      seen.add(mod);
-      seen.add(left);
-    } else {
-      groups.push([mod]);
-      seen.add(mod);
-    }
-  }
-
-  // Each group must have at least one key held
-  return groups.every((group) =>
-    group.some((k) => isDown[k as keyof IGlobalKeyDownMap]),
-  );
-}
-
-// Validate that an accelerator string is safe
 function isValidAccelerator(accel: string): boolean {
   if (!accel || typeof accel !== "string") return false;
   if (!/^[\x20-\x7E]+$/.test(accel)) return false;
@@ -1232,11 +982,7 @@ function loadHotkeyFromDB(): string | undefined {
 function registerHotkey(hotkey?: string): void {
   // Tear down previous listener
   if (keyListener) {
-    try {
-      keyListener.kill();
-    } catch {
-      /* ignore */
-    }
+    keyListener.stop();
     keyListener = null;
   }
   hotkeyPressed = false;
@@ -1252,17 +998,53 @@ function registerHotkey(hotkey?: string): void {
   const accel = hotkey && isValidAccelerator(hotkey) ? hotkey : DEFAULT_HOTKEY;
   currentHotkeyAccel = accel;
 
-  // Windows: WinKeyServer.exe is not reliably available, fall back to
-  // Electron's globalShortcut in toggle mode (press once to start, press again to stop).
-  if (process.platform === "win32") {
+  // Try native key listener binary first (all platforms)
+  keyListener = new NativeKeyListener({
+    hotkey: accel,
+    onKeyDown: () => {
+      if (!hotkeyPressed) {
+        hotkeyPressed = true;
+        showPill();
+        mainWindow?.webContents.send("hotkey:down");
+        settingsWindow?.webContents.send("hotkey:down");
+      }
+    },
+    onKeyUp: () => {
+      if (hotkeyPressed) {
+        hotkeyPressed = false;
+        mainWindow?.webContents.send("hotkey:up");
+        settingsWindow?.webContents.send("hotkey:up");
+      }
+    },
+    onError: (error) => {
+      console.error("[hotkey] Native key listener error:", error);
+    },
+    onReady: () => {
+      if (process.env.NODE_ENV !== "production") {
+        console.log(`[hotkey] Native key listener ready for "${accel}"`);
+      }
+    },
+  });
+
+  const started = keyListener.start();
+
+  if (!started) {
+    console.warn(
+      "[hotkey] Native key listener unavailable, falling back to Electron globalShortcut (toggle mode).",
+    );
+    keyListener = null;
+
+    // Fallback: Electron's globalShortcut in toggle mode (all platforms)
     const registered = globalShortcut.register(accel, () => {
       if (!winToggleActive) {
         winToggleActive = true;
         showPill();
         mainWindow?.webContents.send("hotkey:down");
+        settingsWindow?.webContents.send("hotkey:down");
       } else {
         winToggleActive = false;
         mainWindow?.webContents.send("hotkey:up");
+        settingsWindow?.webContents.send("hotkey:up");
       }
     });
     if (!registered) {
@@ -1272,82 +1054,18 @@ function registerHotkey(hotkey?: string): void {
       mainWindow?.webContents.send("hotkey:error", errorPayload);
       settingsWindow?.webContents.send("hotkey:error", errorPayload);
     }
-    return;
-  }
-
-  const { modifiers, key: triggerKey } = parseAccelerator(accel);
-
-  try {
-    keyListener = new GlobalKeyboardListener();
-  } catch (err) {
-    console.error("[hotkey] Failed to create GlobalKeyboardListener:", err);
-    Sentry.captureException(err);
-    keyListener = null;
-    const errorPayload = {
-      message:
-        "Could not start the global key listener. " +
-        "Please check that Accessibility permissions are granted in " +
-        "System Settings > Privacy & Security > Accessibility.",
-    };
-    mainWindow?.webContents.send("hotkey:error", errorPayload);
-    settingsWindow?.webContents.send("hotkey:error", errorPayload);
-    return;
-  }
-
-  const listener = (
-    e: IGlobalKeyEvent,
-    isDown: IGlobalKeyDownMap,
-  ): boolean | undefined => {
-    // Escape cancels recording/transcription when the pill is visible
-    if (e.name === "ESCAPE" && e.state === "DOWN" && mainWindow?.isVisible()) {
-      mainWindow?.webContents.send("pill:cancel");
-      return undefined;
-    }
-
-    if (e.name !== triggerKey) return undefined;
-
-    if (e.state === "DOWN" && !hotkeyPressed) {
-      // Check modifiers match
-      if (!modifiersMatch(modifiers, isDown)) return undefined;
-
-      hotkeyPressed = true;
-      showPill();
-      mainWindow?.webContents.send("hotkey:down");
-      settingsWindow?.webContents.send("hotkey:down");
-      // Suppress the key event so other apps don't receive it
-      return true;
-    } else if (e.state === "UP" && hotkeyPressed) {
-      hotkeyPressed = false;
-      mainWindow?.webContents.send("hotkey:up");
-      settingsWindow?.webContents.send("hotkey:up");
-      return true;
-    }
-
-    return undefined;
-  };
-
-  try {
-    keyListener.addListener(listener);
-  } catch (err) {
-    console.error("[hotkey] Failed to add key listener:", err);
-    keyListener = null;
-    const errorPayload = {
-      message: "Failed to register the hotkey listener.",
-    };
-    mainWindow?.webContents.send("hotkey:error", errorPayload);
-    settingsWindow?.webContents.send("hotkey:error", errorPayload);
   }
 }
 
-// Clean up key listener on quit
+// Clean up key listener and mic listener on quit
 app.on("will-quit", () => {
   if (keyListener) {
-    try {
-      keyListener.kill();
-    } catch {
-      /* ignore */
-    }
+    keyListener.stop();
     keyListener = null;
+  }
+  if (micListener) {
+    micListener.stop();
+    micListener = null;
   }
   if (process.platform === "win32") {
     globalShortcut.unregisterAll();

@@ -41,3 +41,6 @@ Thumbs.db
 .turbo
 apps/electron/tsconfig.web.tsbuildinfo
 apps/electron/tsconfig.node.tsbuildinfo
+
+# Compiled native binaries (built locally and in CI)
+apps/electron/resources/bin/

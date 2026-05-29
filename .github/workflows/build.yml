@@ -74,6 +74,9 @@ jobs:
       - name: Build server
         run: pnpm --filter @freestyle/server build
 
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxext-dev libglib2.0-dev
+
       - name: Build electron (Linux)
         working-directory: apps/electron
         run: pnpm run build:linux
@@ -146,6 +149,9 @@ jobs:
 
       - name: Build server
         run: pnpm --filter @freestyle/server build
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Build electron (Windows)
         working-directory: apps/electron

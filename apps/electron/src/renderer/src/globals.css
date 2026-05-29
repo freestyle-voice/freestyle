@@ -134,12 +134,14 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   html,
   body,
   #root {
     height: 100%;
     margin: 0;
   }
+
   body {
     @apply text-foreground;
     background: transparent;
@@ -150,8 +152,13 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
   ::selection {
     background-color: rgba(107, 143, 18, 0.25);
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
   }
 }
 
@@ -170,4 +177,55 @@
 
 .mono {
   font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+
+@layer components {
+  .responsive-route-pad {
+    padding: 2.25rem 3rem;
+  }
+
+  .responsive-page-scroll {
+    padding-inline: 3rem;
+    padding-bottom: 3rem;
+  }
+
+  .responsive-standalone-pad {
+    padding-inline: 1.5rem;
+  }
+
+  .dictionary-entry-row {
+    grid-template-columns: minmax(120px, 180px) minmax(0, 1fr) 90px 70px;
+  }
+
+  @media (max-width: 1080px) {
+    .responsive-route-pad {
+      padding: 2rem;
+    }
+
+    .responsive-page-scroll {
+      padding-inline: 2rem;
+      padding-bottom: 2rem;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .dictionary-entry-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+  }
+
+  @media (max-width: 820px) {
+    .responsive-route-pad {
+      padding: 1.5rem 1rem;
+    }
+
+    .responsive-page-scroll {
+      padding-inline: 1rem;
+      padding-bottom: 1.5rem;
+    }
+
+    .responsive-standalone-pad {
+      padding-inline: 1rem;
+    }
+  }
 }

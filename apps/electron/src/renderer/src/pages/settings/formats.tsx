@@ -131,13 +131,10 @@ export default function FormatsPage(): React.JSX.Element {
     >
       <div className="h-9 shrink-0" />
       <div
-        className="flex-1 overflow-auto px-12 pb-12"
+        className="responsive-page-scroll flex-1 overflow-auto"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
-        <PageHeader
-          title="Formats"
-          subtitle="Per-app instructions sent to the LLM. Match by app name, URL, or page title — case-insensitive, pipe-separated."
-        />
+        <PageHeader title="Formats" />
 
         {/* Action bar */}
         <div className="mb-5 flex items-center justify-between">

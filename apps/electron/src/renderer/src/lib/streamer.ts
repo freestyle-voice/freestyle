@@ -2,8 +2,8 @@
  * Persistent WebSocket-based audio streamer for real-time STT.
  *
  * A single Streamer instance stays alive across recording sessions.
- * The WebSocket to the server (and through it the OpenAI Realtime
- * upstream) remains open, eliminating reconnection overhead on each
+ * The WebSocket to the server (and through it the upstream STT
+ * provider) remains open, eliminating reconnection overhead on each
  * hotkey press.  Recording sessions are delimited by startCapture /
  * commit / cancel rather than connect / disconnect.
  */
@@ -53,27 +53,13 @@ export class Streamer {
     this.sendJSON({ type: "context", context });
   }
 
-  async startCapture(
-    stream: MediaStream,
-    sharedCtx?: AudioContext,
-  ): Promise<void> {
+  async startCapture(stream: MediaStream): Promise<void> {
     this.capturing = true;
     this.pendingChunks = [];
     this.pcmChunks = [];
     this.pcmSampleCount = 0;
     this.sendJSON({ type: "start" });
 
-    // Adopt the shared AudioContext when provided and still open.
-    if (sharedCtx && sharedCtx.state !== "closed") {
-      if (this.ctx && this.ctx !== sharedCtx) {
-        try {
-          this.ctx.close();
-        } catch {}
-        this.workletReady = false;
-        this.workletNode = null;
-      }
-      this.ctx = sharedCtx;
-    }
     if (!this.ctx || this.ctx.state === "closed") {
       this.ctx = new AudioContext();
       this.workletReady = false;
@@ -86,14 +72,12 @@ export class Streamer {
       this.workletReady = true;
     }
 
-    // Disconnect previous source if leftover from a prior session.
     try {
       this.source?.disconnect();
     } catch {}
 
     this.source = this.ctx.createMediaStreamSource(stream);
 
-    // Reuse the existing worklet node when the AudioContext hasn't changed.
     if (!this.workletNode) {
       this.workletNode = new AudioWorkletNode(this.ctx, "pcm-processor");
       this.workletNode.connect(this.ctx.destination);
@@ -104,7 +88,6 @@ export class Streamer {
       const chunk = e.data as ArrayBuffer;
       this.sendAudio(chunk);
 
-      // Accumulate for REST fallback
       const pcm16 = new Int16Array(chunk);
       this.pcmChunks.push(pcm16);
       this.pcmSampleCount += pcm16.length;
@@ -154,7 +137,6 @@ export class Streamer {
 
   // ------- internals -------
 
-  /** Disconnect the source to stop audio flow, but keep the worklet alive. */
   private stopCapture(): void {
     this.capturing = false;
     try {

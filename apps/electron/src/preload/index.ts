@@ -97,6 +97,14 @@ const api = {
     ipcRenderer.invoke("settings:pill-position"),
   setPillPosition: (position: string): void =>
     ipcRenderer.send("settings:set-pill-position", position),
+  onPillPositionChanged: (
+    callback: (position: string) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, position: string): void => callback(position);
+    ipcRenderer.on("settings:pill-position-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("settings:pill-position-changed", handler);
+  },
   // Hotkey error notifications
   onHotkeyError: (
     callback: (error: { message: string }) => void,
@@ -131,6 +139,17 @@ const api = {
       callback(isFullscreen);
     ipcRenderer.on("fullscreen:changed", handler);
     return () => ipcRenderer.removeListener("fullscreen:changed", handler);
+  },
+  // Microphone activity detection
+  onMicActivityChanged: (
+    callback: (state: "active" | "inactive" | "unknown") => void,
+  ): (() => void) => {
+    const handler = (
+      _: unknown,
+      state: "active" | "inactive" | "unknown",
+    ): void => callback(state);
+    ipcRenderer.on("mic:activity-changed", handler);
+    return () => ipcRenderer.removeListener("mic:activity-changed", handler);
   },
 };
 

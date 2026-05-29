@@ -1,6 +1,6 @@
 {
   "name": "@freestyle/electron",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Voice-to-text that works everywhere",
   "author": "freestyle-voice",
   "homepage": "https://github.com/freestyle-voice/freestyle",
@@ -10,13 +10,15 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "electron-vite preview",
+    "compile:native": "node scripts/compile-native.js",
+    "predev": "npm run compile:native",
     "dev": "electron-vite dev",
-    "build": "npm run typecheck && electron-vite build",
-    "postinstall": "electron-builder install-app-deps && node scripts/fix-keylistener.mjs",
+    "build": "npm run typecheck && npm run compile:native && electron-vite build",
+    "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
-    "build:win": "electron-vite build && electron-builder --win --publish never",
-    "build:mac": "electron-vite build && electron-builder --mac --publish never",
-    "build:linux": "electron-vite build && electron-builder --linux --publish never"
+    "build:win": "npm run compile:native && electron-vite build && electron-builder --win --publish never",
+    "build:mac": "npm run compile:native && electron-vite build && electron-builder --mac --publish never",
+    "build:linux": "npm run compile:native && electron-vite build && electron-builder --linux --publish never"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
@@ -35,7 +37,6 @@
     "hono": "^4.12.22",
     "lucide-react": "^1.16.0",
     "next-themes": "^0.4.6",
-    "node-global-key-listener": "^0.3.0",
     "radix-ui": "^1.4.3",
     "react-hook-form": "^7.76.1",
     "react-hotkeys-hook": "^5.3.2",

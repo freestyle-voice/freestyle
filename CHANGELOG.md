@@ -1,4 +1,33 @@
 # Changelog
+## 0.0.7
+
+### New Features ✨
+
+- Replace shell-based hotkey, paste, and mic detection with native platform binaries by @MathurAditya724 in [#50](https://github.com/freestyle-voice/freestyle/pull/50)
+- Unified transcription provider factory with streaming support by @MathurAditya724 in [#48](https://github.com/freestyle-voice/freestyle/pull/48)
+- Improve post-processing and add re-record during transcription by @MathurAditya724 in [#47](https://github.com/freestyle-voice/freestyle/pull/47)
+
+### Bug Fixes 🐛
+
+- Remove redundant subtext from formats page by @Akshatshukla-25 in [#69](https://github.com/freestyle-voice/freestyle/pull/69)
+- Streaming pipeline — process before sending, resolve immediately by @MathurAditya724 in [#68](https://github.com/freestyle-voice/freestyle/pull/68)
+- Opaque sticky headers and click-outside on model dropdowns by @tigerisaac in [#64](https://github.com/freestyle-voice/freestyle/pull/64)
+- Remove scrollbar from today page timeline by @srirae in [#62](https://github.com/freestyle-voice/freestyle/pull/62)
+- Wire streaming WebSocket commit flow for real-time transcription by @MathurAditya724 in [#61](https://github.com/freestyle-voice/freestyle/pull/61)
+- Rewrite ElevenLabs WebSocket streaming to match actual API spec by @MathurAditya724 in [#60](https://github.com/freestyle-voice/freestyle/pull/60)
+- Implement proper Sentry instrumentation for errors, traces, and telemetry by @MathurAditya724 in [#57](https://github.com/freestyle-voice/freestyle/pull/57)
+
+### Documentation 📚
+
+- Replace 'open source' with 'source-available' in README by @MathurAditya724 in [#59](https://github.com/freestyle-voice/freestyle/pull/59)
+
+### Other
+
+- Remove design folder by @matteo8p in [#67](https://github.com/freestyle-voice/freestyle/pull/67)
+- Update the models and settings page by @matteo8p in [#65](https://github.com/freestyle-voice/freestyle/pull/65)
+- [UI] Dictionary and formats page redesign by @matteo8p in [#54](https://github.com/freestyle-voice/freestyle/pull/54)
+- [UI] New history page design by @matteo8p in [#51](https://github.com/freestyle-voice/freestyle/pull/51)
+
 ## 0.0.6
 
 ### Bug Fixes 🐛

@@ -7,8 +7,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const BARS = 14;
 const RISE = 0.55;
 const FALL = 0.22;
-const SVG_WIDTH = 130;
-const SVG_HEIGHT = 28;
+const SVG_WIDTH = 117;
+const SVG_HEIGHT = 25;
 
 type PillState =
   | "idle"
@@ -71,30 +71,30 @@ function formatTimer(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-const PILL_WIDTH = 240;
+const PILL_WIDTH = 216;
 
 const pillInnerStyle: React.CSSProperties = {
-  height: 48,
+  height: 43,
   width: PILL_WIDTH,
-  padding: "0 10px",
-  borderRadius: 28,
+  padding: "0 9px",
+  borderRadius: 25,
   background: "var(--card)",
   color: "var(--foreground)",
   border: "1px solid var(--border)",
   fontFamily: "'DM Sans', sans-serif",
-  fontSize: 14,
+  fontSize: 13,
   fontWeight: 500,
   WebkitAppRegion: "no-drag",
 } as React.CSSProperties;
 
 const pillTextStyle: React.CSSProperties = {
   color: "var(--muted-foreground)",
-  fontSize: 13,
+  fontSize: 12,
   flex: 1,
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-  paddingRight: 8,
+  paddingRight: 7,
 };
 
 interface TranscribeResult {
@@ -110,7 +110,8 @@ export default function AppPage(): React.JSX.Element {
   const [state, setState] = useState<PillState>("idle");
   const [elapsed, setElapsed] = useState(0);
   const [message, setMessage] = useState("");
-  const [pillAlign, setPillAlign] = useState<"start" | "center" | "end">("end");
+  const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
+  const [pillSide, setPillSide] = useState<"center" | "right">("center");
   const useStreamingRef = useRef(false);
 
   const [isReRecording, setIsReRecording] = useState(false);
@@ -141,6 +142,9 @@ export default function AppPage(): React.JSX.Element {
 
   const queueRef = useRef<QueueEntry[]>([]);
   const drainingRef = useRef(false);
+  const streamResolverRef = useRef<((r: TranscribeResult) => void) | null>(
+    null,
+  );
 
   const getInputVolume = useCallback(() => volumeRef.current, []);
 
@@ -252,7 +256,12 @@ export default function AppPage(): React.JSX.Element {
         },
         onReady: () => {},
         onPartial: () => {},
-        onFinal: async () => {},
+        onFinal: (text) => {
+          const resolver = streamResolverRef.current;
+          if (!resolver) return;
+          streamResolverRef.current = null;
+          resolver({ raw: text, cleaned: text });
+        },
         onCleaned: () => {},
         onError: (msg) => {
           if (!pillActiveRef.current) return;
@@ -417,6 +426,7 @@ export default function AppPage(): React.JSX.Element {
     pillActiveRef.current = false;
     queueRef.current = [];
     drainingRef.current = false;
+    streamResolverRef.current = null;
     stopVisualization();
     window.api.hidePill();
   }, [stopVisualization]);
@@ -488,10 +498,7 @@ export default function AppPage(): React.JSX.Element {
 
         startListening(stream);
         try {
-          await getStreamer().startCapture(
-            stream,
-            analyserCtxRef.current ?? undefined,
-          );
+          await getStreamer().startCapture(stream);
         } catch {}
       } catch (err) {
         wantsMicRef.current = false;
@@ -535,7 +542,7 @@ export default function AppPage(): React.JSX.Element {
     freqDataRef.current = null;
 
     const recordingDuration = Date.now() - startTimeRef.current;
-    if (recordingDuration < 1000) {
+    if (recordingDuration < 500) {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
       streamerRef.current?.cancel();
@@ -550,6 +557,28 @@ export default function AppPage(): React.JSX.Element {
 
     setState("transcribing");
     startBarAnimation("speaking");
+
+    const empty: TranscribeResult = { raw: "", cleaned: "" };
+
+    if (useStreamingRef.current && streamerRef.current) {
+      recorderRef.current.cancel();
+      recorderRef.current.releaseStream();
+
+      setPendingCount((c) => c + 1);
+      const transcribePromise = new Promise<TranscribeResult>((resolve) => {
+        streamResolverRef.current = resolve;
+        setTimeout(() => {
+          if (streamResolverRef.current === resolve) {
+            streamResolverRef.current = null;
+            resolve(empty);
+          }
+        }, 30000);
+      });
+      streamerRef.current.commit();
+      queueRef.current.push({ promise: transcribePromise });
+      drainQueue();
+      return;
+    }
 
     let wavBlob: Blob | null = streamerRef.current?.getWavBlob() ?? null;
     if (!wavBlob && recorderRef.current.isRecording()) {
@@ -576,7 +605,6 @@ export default function AppPage(): React.JSX.Element {
     if (isSubsequent) headers["x-skip-post-process"] = "true";
 
     setPendingCount((c) => c + 1);
-    const empty: TranscribeResult = { raw: "", cleaned: "" };
     const transcribePromise: Promise<TranscribeResult> = fetch(
       `${getApiBase()}/api/transcribe`,
       { method: "POST", body: wavBlob, headers },
@@ -610,6 +638,11 @@ export default function AppPage(): React.JSX.Element {
   }, [stopVisualization, hidePill]);
 
   // ---- Preferences ----
+  const applyPillPosition = useCallback((pos: string | null | undefined) => {
+    setPillAlign(pos?.startsWith("top") ? "start" : "end");
+    setPillSide(pos?.endsWith("right") ? "right" : "center");
+  }, []);
+
   useEffect(() => {
     getClient()
       .api.settings[":key"].$get({ param: { key: "sound_enabled" } })
@@ -620,13 +653,13 @@ export default function AppPage(): React.JSX.Element {
       .catch(() => {});
     window.api
       ?.getPillPosition()
-      .then((pos) => {
-        if (pos?.startsWith("top")) setPillAlign("start");
-        else if (pos?.startsWith("bottom") || !pos) setPillAlign("end");
-        else setPillAlign("center");
-      })
+      .then(applyPillPosition)
       .catch(() => {});
-  }, []);
+
+    // Listen for live position changes from the settings UI
+    const remove = window.api?.onPillPositionChanged(applyPillPosition);
+    return () => remove?.();
+  }, [applyPillPosition]);
 
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -734,38 +767,34 @@ export default function AppPage(): React.JSX.Element {
 
   return (
     <div
-      className={`flex h-screen w-screen justify-center select-none ${
-        pillAlign === "start"
-          ? "items-start pt-1"
-          : pillAlign === "end"
-            ? "items-end pb-1"
-            : "items-center"
-      }`}
+      className={`flex h-screen w-screen select-none ${
+        pillAlign === "start" ? "items-start" : "items-end"
+      } ${pillSide === "right" ? "justify-end pr-3" : "justify-center"}`}
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
       <style>
         {`
           @keyframes glow-pulse-amber {
-            0%, 100% { box-shadow: 0 0 8px 2px rgba(251,191,36,0.12), 0 0 16px 4px rgba(251,191,36,0.05); }
-            50% { box-shadow: 0 0 12px 3px rgba(251,191,36,0.22), 0 0 20px 5px rgba(251,191,36,0.09); }
+            0%, 100% { box-shadow: 0 0 6px 2px rgba(251,191,36,0.12), 0 0 13px 3px rgba(251,191,36,0.05); }
+            50% { box-shadow: 0 0 10px 2px rgba(251,191,36,0.22), 0 0 16px 4px rgba(251,191,36,0.09); }
           }
           @keyframes glow-pulse-green {
-            0%, 100% { box-shadow: 0 0 8px 2px rgba(138,182,42,0.12), 0 0 16px 4px rgba(138,182,42,0.05); }
-            50% { box-shadow: 0 0 12px 3px rgba(138,182,42,0.20), 0 0 20px 5px rgba(138,182,42,0.08); }
+            0%, 100% { box-shadow: 0 0 6px 2px rgba(138,182,42,0.12), 0 0 13px 3px rgba(138,182,42,0.05); }
+            50% { box-shadow: 0 0 10px 2px rgba(138,182,42,0.20), 0 0 16px 4px rgba(138,182,42,0.08); }
           }
           @keyframes glow-pulse-blue {
-            0%, 100% { box-shadow: 0 0 8px 2px rgba(96,165,250,0.14), 0 0 16px 4px rgba(96,165,250,0.06); }
-            50% { box-shadow: 0 0 12px 3px rgba(96,165,250,0.22), 0 0 20px 5px rgba(96,165,250,0.09); }
+            0%, 100% { box-shadow: 0 0 6px 2px rgba(96,165,250,0.14), 0 0 13px 3px rgba(96,165,250,0.06); }
+            50% { box-shadow: 0 0 10px 2px rgba(96,165,250,0.22), 0 0 16px 4px rgba(96,165,250,0.09); }
           }
           @keyframes glow-pulse-red {
-            0%, 100% { box-shadow: 0 0 8px 2px rgba(221,110,78,0.12); }
-            50% { box-shadow: 0 0 12px 3px rgba(221,110,78,0.20); }
+            0%, 100% { box-shadow: 0 0 6px 2px rgba(221,110,78,0.12); }
+            50% { box-shadow: 0 0 10px 2px rgba(221,110,78,0.20); }
           }
           .glow-initializing { animation: glow-pulse-amber 1s ease-in-out infinite; }
           .glow-recording { animation: glow-pulse-green 2s ease-in-out infinite; }
           .glow-transcribing { animation: glow-pulse-blue 1.5s ease-in-out infinite; }
           .glow-error { animation: glow-pulse-red 1.5s ease-in-out infinite; }
-          .glow-idle { box-shadow: 0 0 6px 2px rgba(0,0,0,0.05); transition: box-shadow 300ms ease; }
+          .glow-idle { box-shadow: 0 0 5px 2px rgba(0,0,0,0.05); transition: box-shadow 300ms ease; }
           @keyframes shimmer {
             0% { background-position: 100% center; }
             100% { background-position: 0% center; }
@@ -779,21 +808,35 @@ export default function AppPage(): React.JSX.Element {
             color: transparent;
             animation: shimmer 2s linear infinite;
           }
-          @keyframes fade-in {
-            from { opacity: 0; }
-            to { opacity: 1; }
+          @keyframes stack-slide-down {
+            from { opacity: 0; transform: translateX(-50%) scale(0.87) translateY(-8px); }
+            to   { opacity: 0.95; transform: translateX(-50%) scale(0.87) translateY(0); }
           }
-          .pill-fade-in { animation: fade-in 200ms ease-out both; }
+          @keyframes stack-slide-up {
+            from { opacity: 0; transform: translateX(-50%) scale(0.87) translateY(8px); }
+            to   { opacity: 0.95; transform: translateX(-50%) scale(0.87) translateY(0); }
+          }
+          .stack-enter-down { animation: stack-slide-down 100ms ease-out both; }
+          .stack-enter-up   { animation: stack-slide-up 100ms ease-out both; }
         `}
       </style>
 
-      <div style={{ position: "relative" }}>
+      <div
+        style={{
+          position: "relative",
+          marginBottom: pillAlign === "end" ? 8 : "auto",
+          marginTop: pillAlign === "start" ? 8 : "auto",
+        }}
+      >
         {isReRecording && (
           <div
+            className={
+              pillAlign === "end" ? "stack-enter-up" : "stack-enter-down"
+            }
             style={{
-              borderRadius: 28,
+              borderRadius: 25,
               position: "absolute",
-              bottom: -18,
+              ...(pillAlign === "end" ? { top: -18 } : { bottom: -18 }),
               left: "50%",
               transform: "translateX(-50%) scale(0.87)",
               opacity: 0.95,
@@ -803,13 +846,13 @@ export default function AppPage(): React.JSX.Element {
             }}
           >
             <div
-              className="inline-flex items-center gap-3"
+              className="inline-flex items-center gap-2.5"
               style={pillInnerStyle}
             >
               <div
                 style={{
-                  width: 32,
-                  height: 32,
+                  width: 29,
+                  height: 29,
                   borderRadius: "50%",
                   overflow: "hidden",
                   flexShrink: 0,
@@ -828,12 +871,12 @@ export default function AppPage(): React.JSX.Element {
                 <span
                   className="mono"
                   style={{
-                    fontSize: 11,
+                    fontSize: 10,
                     letterSpacing: "0.06em",
                     opacity: 0.6,
                     flexShrink: 0,
                     color: "var(--muted-foreground)",
-                    paddingRight: 6,
+                    paddingRight: 5,
                   }}
                 >
                   x{pendingCount}
@@ -844,22 +887,22 @@ export default function AppPage(): React.JSX.Element {
         )}
 
         <div
-          className={`${topGlow}${isReRecording ? " pill-fade-in" : ""}`}
+          className={topGlow}
           style={{
-            borderRadius: 28,
+            borderRadius: 25,
             visibility: state === "idle" ? "hidden" : "visible",
             position: "relative",
             zIndex: 1,
           }}
         >
           <div
-            className="inline-flex items-center gap-3"
+            className="inline-flex items-center gap-2.5"
             style={pillInnerStyle}
           >
             <div
               style={{
-                width: 32,
-                height: 32,
+                width: 29,
+                height: 29,
                 borderRadius: "50%",
                 overflow: "hidden",
                 flexShrink: 0,
@@ -901,12 +944,12 @@ export default function AppPage(): React.JSX.Element {
               <span
                 className="mono"
                 style={{
-                  fontSize: 11,
+                  fontSize: 10,
                   letterSpacing: "0.06em",
                   opacity: 0.6,
                   flexShrink: 0,
                   color: "var(--muted-foreground)",
-                  paddingRight: 6,
+                  paddingRight: 5,
                 }}
               >
                 {badge}

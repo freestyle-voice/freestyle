@@ -45,6 +45,9 @@ declare global {
       // Pill position
       getPillPosition: () => Promise<string>;
       setPillPosition: (position: string) => void;
+      onPillPositionChanged: (
+        callback: (position: string) => void,
+      ) => () => void;
       // Hotkey error notifications
       onHotkeyError: (
         callback: (error: { message: string }) => void,
@@ -58,6 +61,10 @@ declare global {
       // Fullscreen state
       onFullscreenChanged: (
         callback: (isFullscreen: boolean) => void,
+      ) => () => void;
+      // Microphone activity detection
+      onMicActivityChanged: (
+        callback: (state: "active" | "inactive" | "unknown") => void,
       ) => () => void;
     };
   }

@@ -195,7 +195,7 @@ export default function OnboardingPage(): React.JSX.Element {
         />
       )}
       <div className="flex flex-1 items-center justify-center">
-        <div className="w-full max-w-md space-y-8 px-6">
+        <div className="responsive-standalone-pad w-full max-w-md space-y-8">
           {/* Logo */}
           <div className="flex flex-col items-center gap-3">
             <img

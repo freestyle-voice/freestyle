@@ -17,7 +17,6 @@ import FormatsPage from "@renderer/pages/settings/formats";
 import GeneralSettingsPage from "@renderer/pages/settings/general";
 import HistoryPage from "@renderer/pages/settings/history";
 import ModelsPage from "@renderer/pages/settings/models";
-import PermissionsPage from "@renderer/pages/settings/permissions";
 import AppShell from "@renderer/pages/shell";
 import TodayPage from "@renderer/pages/today";
 import { ThemeProvider } from "next-themes";
@@ -27,7 +26,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router";
 
 function PagePad(): React.JSX.Element {
   return (
-    <div className="px-12 py-9">
+    <div className="responsive-route-pad">
       <Outlet />
     </div>
   );
@@ -65,7 +64,7 @@ initApiBase().then(() => {
                   <Route path="/settings/history" element={<HistoryPage />} />
                   <Route
                     path="/settings/permissions"
-                    element={<PermissionsPage />}
+                    element={<Navigate to="/settings" replace />}
                   />
                 </Route>
               </Route>

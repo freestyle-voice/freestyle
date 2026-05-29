@@ -175,7 +175,7 @@ export default function HistoryPage(): React.JSX.Element {
     >
       <div className="h-9 shrink-0" />
       <div
-        className="flex-1 overflow-auto px-12 pb-12"
+        className="responsive-page-scroll flex-1 overflow-auto"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         <PageHeader title="History" />

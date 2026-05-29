@@ -1,4 +1,4 @@
-import { Platform, StyleSheet, Text, type TextProps } from "react-native";
+import { StyleSheet, Text, type TextProps } from "react-native";
 
 import { Fonts, type ThemeColor } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
@@ -12,7 +12,8 @@ export type ThemedTextProps = TextProps & {
     | "subtitle"
     | "link"
     | "linkPrimary"
-    | "code";
+    | "code"
+    | "eyebrow";
   themeColor?: ThemeColor;
 };
 
@@ -34,8 +35,15 @@ export function ThemedText({
         type === "smallBold" && styles.smallBold,
         type === "subtitle" && styles.subtitle,
         type === "link" && styles.link,
-        type === "linkPrimary" && styles.linkPrimary,
+        type === "linkPrimary" && [
+          styles.linkPrimary,
+          { color: theme.primary },
+        ],
         type === "code" && styles.code,
+        type === "eyebrow" && [
+          styles.eyebrow,
+          { color: theme.mutedForeground },
+        ],
         style,
       ]}
       {...rest}
@@ -47,39 +55,49 @@ const styles = StyleSheet.create({
   small: {
     fontSize: 14,
     lineHeight: 20,
-    fontWeight: "500",
+    fontWeight: "400",
   },
   smallBold: {
     fontSize: 14,
     lineHeight: 20,
-    fontWeight: "700",
+    fontWeight: "600",
   },
   default: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: "500",
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: "400",
   },
   title: {
-    fontSize: 48,
-    fontWeight: "600",
-    lineHeight: 52,
+    fontSize: 32,
+    fontWeight: "400",
+    fontStyle: "italic",
+    fontFamily: Fonts?.serif,
   },
   subtitle: {
     fontSize: 24,
-    lineHeight: 32,
-    fontWeight: "700",
+    lineHeight: 30,
+    fontWeight: "400",
+    fontStyle: "italic",
+    fontFamily: Fonts?.serif,
   },
   link: {
-    lineHeight: 30,
+    lineHeight: 22,
     fontSize: 14,
   },
   linkPrimary: {
-    lineHeight: 30,
+    lineHeight: 22,
     fontSize: 14,
   },
   code: {
     fontFamily: Fonts?.mono,
-    fontWeight: Platform.select({ android: "700" }) ?? "500",
+    fontWeight: "500",
     fontSize: 12,
+  },
+  eyebrow: {
+    fontFamily: Fonts?.mono,
+    fontWeight: "600",
+    fontSize: 10,
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
   },
 });

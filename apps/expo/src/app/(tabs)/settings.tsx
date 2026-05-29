@@ -5,7 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Icon } from "@/components/icon";
 import { ThemedText } from "@/components/themed-text";
-import { Spacing } from "@/constants/theme";
+import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 
 const appVersion = Constants.expoConfig?.version ?? "0.1.0";
@@ -22,24 +22,23 @@ function SettingsItem({ icon, title, subtitle, onPress }: SettingsItemProps) {
 
   return (
     <Pressable
-      style={[
-        styles.settingsItem,
-        { backgroundColor: theme.cardBackground, borderColor: theme.border },
-      ]}
+      style={[styles.settingsItem, { borderBottomColor: `${theme.border}99` }]}
       onPress={onPress}
     >
       <View
-        style={[styles.iconContainer, { backgroundColor: theme.primaryLight }]}
+        style={[styles.iconContainer, { backgroundColor: `${theme.accent}99` }]}
       >
         {icon}
       </View>
       <View style={styles.itemContent}>
         <ThemedText style={styles.itemTitle}>{title}</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText
+          style={[styles.itemSubtitle, { color: theme.mutedForeground }]}
+        >
           {subtitle}
         </ThemedText>
       </View>
-      <Icon name="chevronRight" size={18} color={theme.textTertiary} />
+      <Icon name="chevronRight" size={16} color={theme.mutedForeground} />
     </Pressable>
   );
 }
@@ -53,76 +52,125 @@ export default function SettingsScreen() {
       style={[styles.container, { backgroundColor: theme.background }]}
     >
       <View style={styles.header}>
-        <ThemedText type="subtitle">Settings</ThemedText>
+        <ThemedText
+          style={[
+            styles.title,
+            { fontFamily: Fonts?.serif, color: theme.primary },
+          ]}
+        >
+          Settings.
+        </ThemedText>
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
         <ThemedText
-          type="small"
-          themeColor="textSecondary"
-          style={styles.sectionHeader}
+          style={[
+            styles.sectionLabel,
+            { color: theme.mutedForeground, fontFamily: Fonts?.mono },
+          ]}
         >
-          Configuration
+          CONFIGURATION
         </ThemedText>
 
-        <SettingsItem
-          icon={<Icon name="key" size={18} color={theme.primary} />}
-          title="API Keys"
-          subtitle="Configure provider API keys"
-          onPress={() => router.push("/settings/api-keys")}
-        />
-        <SettingsItem
-          icon={<Icon name="cpu" size={18} color={theme.primary} />}
-          title="Models"
-          subtitle="Voice and LLM model selection"
-          onPress={() => router.push("/settings/models")}
-        />
-        <SettingsItem
-          icon={<Icon name="languages" size={18} color={theme.primary} />}
-          title="General"
-          subtitle="Language, cleanup, and preferences"
-          onPress={() => router.push("/settings/general")}
-        />
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.cardBackground,
+              borderColor: theme.border,
+            },
+          ]}
+        >
+          <SettingsItem
+            icon={<Icon name="key" size={16} color={theme.accentForeground} />}
+            title="API Keys"
+            subtitle="Configure provider credentials"
+            onPress={() => router.push("/settings/api-keys")}
+          />
+          <SettingsItem
+            icon={<Icon name="cpu" size={16} color={theme.accentForeground} />}
+            title="Models"
+            subtitle="Voice and LLM model selection"
+            onPress={() => router.push("/settings/models")}
+          />
+          <SettingsItem
+            icon={
+              <Icon name="languages" size={16} color={theme.accentForeground} />
+            }
+            title="General"
+            subtitle="Language and preferences"
+            onPress={() => router.push("/settings/general")}
+          />
+        </View>
 
         <ThemedText
-          type="small"
-          themeColor="textSecondary"
-          style={styles.sectionHeader}
+          style={[
+            styles.sectionLabel,
+            { color: theme.mutedForeground, fontFamily: Fonts?.mono },
+          ]}
         >
-          Personalization
+          PERSONALIZATION
         </ThemedText>
 
-        <SettingsItem
-          icon={<Icon name="book" size={18} color={theme.primary} />}
-          title="Dictionary"
-          subtitle="Custom word replacements"
-          onPress={() => router.push("/settings/dictionary")}
-        />
-        <SettingsItem
-          icon={<Icon name="file" size={18} color={theme.primary} />}
-          title="Formats"
-          subtitle="Context-aware formatting rules"
-          onPress={() => router.push("/settings/formats")}
-        />
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.cardBackground,
+              borderColor: theme.border,
+            },
+          ]}
+        >
+          <SettingsItem
+            icon={<Icon name="book" size={16} color={theme.accentForeground} />}
+            title="Dictionary"
+            subtitle="Custom word replacements"
+            onPress={() => router.push("/settings/dictionary")}
+          />
+          <SettingsItem
+            icon={<Icon name="file" size={16} color={theme.accentForeground} />}
+            title="Formats"
+            subtitle="Context-aware formatting rules"
+            onPress={() => router.push("/settings/formats")}
+          />
+        </View>
 
         <ThemedText
-          type="small"
-          themeColor="textSecondary"
-          style={styles.sectionHeader}
+          style={[
+            styles.sectionLabel,
+            { color: theme.mutedForeground, fontFamily: Fonts?.mono },
+          ]}
         >
-          Support
+          SUPPORT
         </ThemedText>
 
-        <SettingsItem
-          icon={<Icon name="message" size={18} color={theme.primary} />}
-          title="Feedback"
-          subtitle="Report bugs or request features"
-          onPress={() => router.push("/settings/feedback")}
-        />
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: theme.cardBackground,
+              borderColor: theme.border,
+            },
+          ]}
+        >
+          <SettingsItem
+            icon={
+              <Icon name="message" size={16} color={theme.accentForeground} />
+            }
+            title="Feedback"
+            subtitle="Report bugs or request features"
+            onPress={() => router.push("/settings/feedback")}
+          />
+        </View>
 
         <View style={styles.footer}>
-          <ThemedText type="small" themeColor="textTertiary">
-            Freestyle v{appVersion}
+          <ThemedText
+            style={[
+              styles.footerText,
+              { color: theme.mutedForeground, fontFamily: Fonts?.mono },
+            ]}
+          >
+            FREESTYLE v{appVersion.toUpperCase()}
           </ThemedText>
         </View>
       </ScrollView>
@@ -139,32 +187,41 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.three,
     paddingBottom: Spacing.three,
   },
+  title: {
+    fontSize: 32,
+    fontWeight: "400",
+    fontStyle: "italic",
+  },
   list: {
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.six,
   },
-  sectionHeader: {
-    marginTop: Spacing.three,
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    marginTop: Spacing.four,
     marginBottom: Spacing.two,
     paddingHorizontal: Spacing.one,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    fontSize: 11,
-    fontWeight: "600",
+  },
+  sectionCard: {
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    overflow: "hidden",
   },
   settingsItem: {
     flexDirection: "row",
     alignItems: "center",
-    padding: Spacing.three,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: Spacing.two,
+    paddingHorizontal: Spacing.three + 2,
+    paddingVertical: Spacing.three,
     gap: Spacing.three,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   iconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 32,
+    height: 32,
+    borderRadius: Radius.md,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -173,10 +230,18 @@ const styles = StyleSheet.create({
   },
   itemTitle: {
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "500",
+  },
+  itemSubtitle: {
+    fontSize: 12.5,
+    marginTop: 1,
   },
   footer: {
     alignItems: "center",
     paddingTop: Spacing.five,
+  },
+  footerText: {
+    fontSize: 10,
+    letterSpacing: 1.2,
   },
 });

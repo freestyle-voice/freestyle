@@ -72,30 +72,37 @@ function getAudioMimeType(uri: string): { type: string; name: string } {
   if (lower.endsWith(".wav"))
     return { type: "audio/wav", name: "recording.wav" };
   if (lower.endsWith(".mp4") || lower.endsWith(".m4a"))
-    return { type: "audio/m4a", name: "recording.m4a" };
+    return { type: "audio/mp4", name: "recording.m4a" };
   if (lower.endsWith(".webm"))
     return { type: "audio/webm", name: "recording.webm" };
   if (lower.endsWith(".ogg"))
     return { type: "audio/ogg", name: "recording.ogg" };
   if (lower.endsWith(".3gp"))
     return { type: "audio/3gpp", name: "recording.3gp" };
-  return { type: "audio/m4a", name: "recording.m4a" };
+  return { type: "audio/mp4", name: "recording.m4a" };
 }
 
-function createFileFormData(
+/**
+ * Read a local file URI into a Blob, then build a FormData with it.
+ * RN 0.85 (new architecture) requires actual Blob objects in FormData,
+ * not the legacy {uri, type, name} pattern.
+ */
+async function createFileFormData(
   fieldName: string,
   audioUri: string,
   additionalFields?: Record<string, string>,
-): FormData {
-  const formData = new FormData();
+): Promise<FormData> {
   const { type, name } = getAudioMimeType(audioUri);
 
-  // React Native FormData requires { uri, type, name } objects for file uploads
-  formData.append(fieldName, {
-    uri: audioUri,
-    type,
-    name,
-  } as any);
+  // fetch() on a local file:// URI returns the file contents as a Response
+  const fileResponse = await fetch(audioUri);
+  const audioBlob = await fileResponse.blob();
+
+  // Create a properly typed blob
+  const typedBlob = new Blob([audioBlob], { type });
+
+  const formData = new FormData();
+  formData.append(fieldName, typedBlob, name);
 
   if (additionalFields) {
     for (const [key, value] of Object.entries(additionalFields)) {
@@ -115,7 +122,7 @@ async function transcribeOpenAI(
   const fields: Record<string, string> = { model };
   if (language) fields.language = language;
 
-  const formData = createFileFormData("file", audioUri, fields);
+  const formData = await createFileFormData("file", audioUri, fields);
 
   const response = await fetch(
     "https://api.openai.com/v1/audio/transcriptions",
@@ -146,7 +153,7 @@ async function transcribeGroq(
   const fields: Record<string, string> = { model };
   if (language) fields.language = language;
 
-  const formData = createFileFormData("file", audioUri, fields);
+  const formData = await createFileFormData("file", audioUri, fields);
 
   const response = await fetch(
     "https://api.groq.com/openai/v1/audio/transcriptions",
@@ -208,7 +215,9 @@ async function transcribeElevenLabs(
   model: string,
   _language?: string,
 ): Promise<string> {
-  const formData = createFileFormData("file", audioUri, { model_id: model });
+  const formData = await createFileFormData("file", audioUri, {
+    model_id: model,
+  });
 
   const response = await fetch(
     "https://api.elevenlabs.io/v1/audio/transcriptions",

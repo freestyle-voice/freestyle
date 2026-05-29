@@ -8,9 +8,14 @@ export default function SettingsLayout() {
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: theme.background },
-        headerTintColor: theme.text,
+        headerTintColor: theme.primary,
+        headerTitleStyle: {
+          fontWeight: "500",
+          fontSize: 16,
+          color: theme.text,
+        },
         headerShadowVisible: false,
-        headerBackTitle: "Settings",
+        headerBackTitle: "Back",
       }}
     >
       <Stack.Screen name="api-keys" options={{ title: "API Keys" }} />

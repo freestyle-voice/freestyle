@@ -1,26 +1,19 @@
+import { AudioModule } from "expo-audio";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { Icon } from "@/components/icon";
 import { useCallback, useState } from "react";
-import {
-  Alert,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
+import { Icon } from "@/components/icon";
 import { ThemedText } from "@/components/themed-text";
-import { Spacing } from "@/constants/theme";
+import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { AudioModule } from "expo-audio";
 import { addModelConfig, setSetting } from "@/lib/db";
 import {
-  setApiKey,
   PROVIDERS,
-  VOICE_MODELS,
   type ProviderId,
+  setApiKey,
+  VOICE_MODELS,
 } from "@/lib/storage";
 
 type Step = "welcome" | "provider" | "apikey" | "mic" | "done";
@@ -169,7 +162,11 @@ export default function OnboardingScreen() {
                     {provider.description}
                   </ThemedText>
                 </View>
-                <Icon name="chevronRight" size={18} color={theme.textTertiary} />
+                <Icon
+                  name="chevronRight"
+                  size={18}
+                  color={theme.textTertiary}
+                />
               </Pressable>
             ))}
           </View>
@@ -332,21 +329,23 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   iconCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 80,
+    height: 80,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: Spacing.two,
   },
   welcomeTitle: {
     fontSize: 36,
+    fontWeight: "400",
+    fontStyle: "italic",
     textAlign: "center",
   },
   welcomeSubtitle: {
-    fontSize: 16,
+    fontSize: 15,
     textAlign: "center",
-    lineHeight: 24,
+    lineHeight: 23,
     paddingHorizontal: Spacing.four,
   },
   stepHeader: {
@@ -355,7 +354,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.four,
   },
   stepDesc: {
-    fontSize: 15,
+    fontSize: 14,
     lineHeight: 22,
   },
   providerList: {
@@ -366,14 +365,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     padding: Spacing.three,
-    borderRadius: 12,
+    borderRadius: 11,
     borderWidth: 1,
     gap: Spacing.three,
   },
   providerIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: Radius.lg,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -381,11 +380,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   apiKeyInput: {
-    borderRadius: 12,
+    borderRadius: Radius.lg,
     borderWidth: 1,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.three,
-    fontSize: 15,
+    fontSize: 13,
   },
   buttonRow: {
     flexDirection: "row",
@@ -398,17 +397,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: Spacing.two,
     paddingVertical: Spacing.three,
-    borderRadius: 14,
+    borderRadius: Radius.xl,
   },
   primaryButtonText: {
-    color: "#FFF",
-    fontSize: 16,
-    fontWeight: "600",
+    color: "#FBF8EE",
+    fontSize: 15,
+    fontWeight: "500",
   },
   secondaryButton: {
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
-    borderRadius: 14,
+    borderRadius: Radius.xl,
     alignItems: "center",
     justifyContent: "center",
   },

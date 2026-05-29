@@ -17,9 +17,10 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 import { Icon } from "@/components/icon";
 import { ThemedText } from "@/components/themed-text";
-import { Spacing } from "@/constants/theme";
+import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { addHistoryEntry } from "@/lib/db";
 import { postProcess } from "@/lib/post-process";
@@ -79,10 +80,10 @@ export default function RecordScreen() {
 
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      buttonScale.value = withTiming(0.9, { duration: 100 });
+      buttonScale.value = withTiming(0.92, { duration: 100 });
       pulseScale.value = withRepeat(
         withSequence(
-          withTiming(1.6, { duration: 1000 }),
+          withTiming(1.5, { duration: 1200 }),
           withTiming(1, { duration: 0 }),
         ),
         -1,
@@ -122,7 +123,6 @@ export default function RecordScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
       await recorder.stop();
-
       const uri = recorder.uri;
       if (!uri) {
         setState("idle");
@@ -130,7 +130,6 @@ export default function RecordScreen() {
       }
 
       const transcription = await transcribeAudio(uri);
-
       if (!transcription.raw.trim()) {
         setState("idle");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -189,35 +188,43 @@ export default function RecordScreen() {
     state === "idle"
       ? "Hold to record"
       : state === "recording"
-        ? "Recording... release to transcribe"
+        ? "Release to transcribe"
         : state === "transcribing"
           ? "Transcribing..."
-          : state === "error"
-            ? "Error"
-            : "";
+          : "";
+
+  const orbColor =
+    state === "recording"
+      ? theme.danger
+      : state === "transcribing"
+        ? "#60A5FA"
+        : theme.primary;
 
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.background }]}
     >
       <View style={styles.content}>
+        {/* Header */}
         <View style={styles.header}>
-          <ThemedText type="subtitle" style={styles.title}>
-            Freestyle
-          </ThemedText>
-          <ThemedText themeColor="textSecondary" style={styles.subtitle}>
-            Voice to text
+          <ThemedText
+            style={[
+              styles.title,
+              { fontFamily: Fonts?.serif, color: theme.primary },
+            ]}
+          >
+            Freestyle.
           </ThemedText>
         </View>
 
+        {/* Visualizer area */}
         {state === "recording" && (
           <View style={styles.visualizer}>
-            {Array.from({ length: 12 }).map((_, i) => {
-              const durationSec = recorderState.durationMillis / 1000;
-              const activity = Math.min(1, durationSec / 2);
+            {Array.from({ length: 14 }).map((_, i) => {
+              const activity = Math.min(1, recorderState.durationMillis / 2000);
               const barHeight = Math.max(
-                8,
-                activity * 48 * (0.3 + Math.random() * 0.7) + 8,
+                4,
+                activity * 24 * (0.3 + Math.random() * 0.7) + 4,
               );
               return (
                 <View
@@ -226,8 +233,7 @@ export default function RecordScreen() {
                     styles.visualizerBar,
                     {
                       height: barHeight,
-                      backgroundColor: theme.primary,
-                      opacity: 0.5 + activity * 0.5,
+                      backgroundColor: theme.mutedForeground,
                     },
                   ]}
                 />
@@ -236,10 +242,11 @@ export default function RecordScreen() {
           </View>
         )}
 
+        {/* Result card */}
         {(state === "result" || state === "error") && (
           <View
             style={[
-              styles.resultContainer,
+              styles.resultCard,
               {
                 backgroundColor: theme.cardBackground,
                 borderColor: theme.border,
@@ -247,17 +254,25 @@ export default function RecordScreen() {
             ]}
           >
             <View style={styles.resultHeader}>
-              <ThemedText type="small" themeColor="textSecondary">
-                {state === "error" ? "Error" : "Transcription"}
+              <ThemedText
+                style={[
+                  styles.eyebrow,
+                  { color: theme.mutedForeground, fontFamily: Fonts?.mono },
+                ]}
+              >
+                {state === "error" ? "ERROR" : "TRANSCRIPTION"}
               </ThemedText>
               <Pressable onPress={handleDismiss} hitSlop={12}>
-                <Icon name="close" size={18} color={theme.textSecondary} />
+                <Icon name="close" size={16} color={theme.mutedForeground} />
               </Pressable>
             </View>
 
             <ScrollView style={styles.resultScroll}>
               <ThemedText
-                style={[state === "error" && { color: theme.danger }]}
+                style={[
+                  styles.resultText,
+                  state === "error" && { color: theme.danger },
+                ]}
               >
                 {state === "error" ? errorMessage : transcript}
               </ThemedText>
@@ -268,33 +283,41 @@ export default function RecordScreen() {
                 <Pressable
                   style={[
                     styles.actionButton,
-                    { backgroundColor: theme.primaryLight },
+                    { backgroundColor: theme.primary },
                   ]}
                   onPress={handleCopy}
                 >
-                  <Icon name="copy" size={16} color={theme.primary} />
-                  <ThemedText style={{ color: theme.primary, fontSize: 14 }}>
-                    {copied ? "Copied!" : "Copy"}
+                  <ThemedText style={styles.actionButtonText}>
+                    {copied ? "Copied" : "Copy"}
                   </ThemedText>
                 </Pressable>
 
                 <Pressable
                   style={[
-                    styles.actionButton,
-                    { backgroundColor: theme.backgroundElement },
+                    styles.actionButtonOutline,
+                    { borderColor: theme.border },
                   ]}
                   onPress={handleShare}
                 >
-                  <Icon name="share" size={16} color={theme.text} />
-                  <ThemedText style={{ fontSize: 14 }}>Share</ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.actionButtonTextOutline,
+                      { color: theme.text },
+                    ]}
+                  >
+                    Share
+                  </ThemedText>
                 </Pressable>
               </View>
             )}
           </View>
         )}
 
+        {/* Mic section */}
         <View style={styles.micSection}>
-          <ThemedText themeColor="textSecondary" style={styles.statusText}>
+          <ThemedText
+            style={[styles.statusText, { color: theme.mutedForeground }]}
+          >
             {statusText}
           </ThemedText>
 
@@ -303,7 +326,10 @@ export default function RecordScreen() {
               <Animated.View
                 style={[
                   styles.pulseRing,
-                  { borderColor: theme.primary },
+                  {
+                    borderColor: orbColor,
+                    backgroundColor: `${orbColor}10`,
+                  },
                   pulseStyle,
                 ]}
               />
@@ -316,21 +342,19 @@ export default function RecordScreen() {
                 style={[
                   styles.micButton,
                   {
-                    backgroundColor:
-                      state === "recording" ? theme.danger : theme.primary,
-                    opacity: state === "transcribing" ? 0.5 : 1,
+                    backgroundColor: orbColor,
+                    opacity: state === "transcribing" ? 0.6 : 1,
                   },
                 ]}
               >
-                <Icon name="mic" size={32} color="#FFFFFF" />
+                <Icon name="mic" size={28} color={theme.primaryForeground} />
               </Pressable>
             </Animated.View>
           </View>
 
           {state === "transcribing" && (
             <ThemedText
-              themeColor="textSecondary"
-              style={styles.processingText}
+              style={[styles.processingText, { color: theme.mutedForeground }]}
             >
               Processing your voice...
             </ThemedText>
@@ -352,44 +376,51 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: "center",
-    paddingTop: Spacing.five,
+    paddingTop: Spacing.six,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "700",
-  },
-  subtitle: {
-    marginTop: Spacing.one,
-    fontSize: 15,
+    fontSize: 36,
+    fontWeight: "400",
+    fontStyle: "italic",
   },
   visualizer: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
-    height: 64,
+    gap: 3,
+    height: 32,
   },
   visualizerBar: {
-    width: 4,
+    width: 3,
     borderRadius: 2,
-    minHeight: 8,
+    minHeight: 4,
   },
-  resultContainer: {
+  resultCard: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: Radius.xl,
     borderWidth: 1,
-    padding: Spacing.three,
+    padding: Spacing.four,
     marginVertical: Spacing.three,
-    maxHeight: 300,
+    maxHeight: 320,
   },
   resultHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: Spacing.two,
+    marginBottom: Spacing.three,
+  },
+  eyebrow: {
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
   },
   resultScroll: {
     flex: 1,
+  },
+  resultText: {
+    fontSize: 16,
+    lineHeight: 25,
   },
   actionRow: {
     flexDirection: "row",
@@ -397,12 +428,24 @@ const styles = StyleSheet.create({
     marginTop: Spacing.three,
   },
   actionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.one,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    borderRadius: 12,
+    borderRadius: Radius.md,
+  },
+  actionButtonText: {
+    color: "#FBF8EE",
+    fontSize: 12.5,
+    fontWeight: "500",
+  },
+  actionButtonOutline: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+  },
+  actionButtonTextOutline: {
+    fontSize: 12.5,
+    fontWeight: "500",
   },
   micSection: {
     alignItems: "center",
@@ -410,8 +453,8 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   statusText: {
-    fontSize: 14,
-    textAlign: "center",
+    fontSize: 13,
+    fontWeight: "500",
   },
   micButtonContainer: {
     width: 80,
@@ -427,16 +470,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   micButton: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
   },
   processingText: {
     fontSize: 13,

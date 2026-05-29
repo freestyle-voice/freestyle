@@ -1,23 +1,18 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { useCallback, useEffect, useState } from "react";
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import { FlatList, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
 import { Icon } from "@/components/icon";
 import { ThemedText } from "@/components/themed-text";
-import { Spacing } from "@/constants/theme";
+import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import {
+  deleteHistoryEntry,
   getHistory,
   getHistoryStats,
-  deleteHistoryEntry,
   type HistoryEntry,
   type HistoryStats,
 } from "@/lib/db";
@@ -95,19 +90,26 @@ export default function HistoryScreen() {
         onPress={() => setExpandedId(isExpanded ? null : item.id)}
       >
         <View style={styles.entryHeader}>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText
+            style={[
+              styles.entryTime,
+              { color: theme.mutedForeground, fontFamily: Fonts?.mono },
+            ]}
+          >
             {formatTimeAgo(item.created_at)}
           </ThemedText>
           <View style={styles.entryMeta}>
             <ThemedText
-              type="small"
-              themeColor="textTertiary"
-              style={styles.modelBadge}
+              style={[
+                styles.modelBadge,
+                {
+                  color: theme.accentForeground,
+                  backgroundColor: theme.accent,
+                  fontFamily: Fonts?.mono,
+                },
+              ]}
             >
-              {item.voice_model.split("/").pop()}
-            </ThemedText>
-            <ThemedText type="small" themeColor="textTertiary">
-              {formatDuration(item.duration_ms)}
+              {item.voice_model.split("/").pop()?.toUpperCase()}
             </ThemedText>
           </View>
         </View>
@@ -122,26 +124,25 @@ export default function HistoryScreen() {
         {isExpanded && (
           <View style={styles.entryActions}>
             <Pressable
-              style={[
-                styles.entryAction,
-                { backgroundColor: theme.primaryLight },
-              ]}
+              style={[styles.entryAction, { backgroundColor: theme.primary }]}
               onPress={() => handleCopy(displayText)}
             >
-              <Icon name="copy" size={14} color={theme.primary} />
-              <ThemedText style={{ color: theme.primary, fontSize: 13 }}>
-                Copy
-              </ThemedText>
+              <ThemedText style={styles.entryActionText}>Copy</ThemedText>
             </Pressable>
             <Pressable
               style={[
                 styles.entryAction,
-                { backgroundColor: theme.dangerLight },
+                {
+                  borderColor: `${theme.danger}60`,
+                  borderWidth: 1,
+                  backgroundColor: "transparent",
+                },
               ]}
               onPress={() => handleDelete(item.id)}
             >
-              <Icon name="trash" size={14} color={theme.danger} />
-              <ThemedText style={{ color: theme.danger, fontSize: 13 }}>
+              <ThemedText
+                style={[styles.entryActionText, { color: theme.danger }]}
+              >
                 Delete
               </ThemedText>
             </Pressable>
@@ -156,7 +157,14 @@ export default function HistoryScreen() {
       style={[styles.container, { backgroundColor: theme.background }]}
     >
       <View style={styles.header}>
-        <ThemedText type="subtitle">History</ThemedText>
+        <ThemedText
+          style={[
+            styles.title,
+            { fontFamily: Fonts?.serif, color: theme.primary },
+          ]}
+        >
+          History.
+        </ThemedText>
       </View>
 
       {stats && stats.total_sessions > 0 && (
@@ -164,48 +172,69 @@ export default function HistoryScreen() {
           <View
             style={[
               styles.statCard,
-              { backgroundColor: theme.backgroundElement },
+              {
+                backgroundColor: theme.cardBackground,
+                borderColor: theme.border,
+              },
             ]}
           >
             <ThemedText
-              type="small"
-              themeColor="textSecondary"
+              style={[
+                styles.eyebrow,
+                { color: theme.mutedForeground, fontFamily: Fonts?.mono },
+              ]}
             >
-              Sessions
+              SESSIONS
             </ThemedText>
-            <ThemedText style={styles.statValue}>
+            <ThemedText
+              style={[styles.statValue, { fontFamily: Fonts?.serif }]}
+            >
               {stats.total_sessions}
             </ThemedText>
           </View>
           <View
             style={[
               styles.statCard,
-              { backgroundColor: theme.backgroundElement },
+              {
+                backgroundColor: theme.cardBackground,
+                borderColor: theme.border,
+              },
             ]}
           >
             <ThemedText
-              type="small"
-              themeColor="textSecondary"
+              style={[
+                styles.eyebrow,
+                { color: theme.mutedForeground, fontFamily: Fonts?.mono },
+              ]}
             >
-              Today
+              TODAY
             </ThemedText>
-            <ThemedText style={styles.statValue}>
+            <ThemedText
+              style={[styles.statValue, { fontFamily: Fonts?.serif }]}
+            >
               {stats.today_sessions}
             </ThemedText>
           </View>
           <View
             style={[
               styles.statCard,
-              { backgroundColor: theme.backgroundElement },
+              {
+                backgroundColor: theme.cardBackground,
+                borderColor: theme.border,
+              },
             ]}
           >
             <ThemedText
-              type="small"
-              themeColor="textSecondary"
+              style={[
+                styles.eyebrow,
+                { color: theme.mutedForeground, fontFamily: Fonts?.mono },
+              ]}
             >
-              Time saved
+              TIME
             </ThemedText>
-            <ThemedText style={styles.statValue}>
+            <ThemedText
+              style={[styles.statValue, { fontFamily: Fonts?.serif }]}
+            >
               {Math.round(stats.total_duration_ms / 1000)}s
             </ThemedText>
           </View>
@@ -216,16 +245,16 @@ export default function HistoryScreen() {
         style={[
           styles.searchContainer,
           {
-            backgroundColor: theme.backgroundElement,
+            backgroundColor: theme.cardBackground,
             borderColor: theme.border,
           },
         ]}
       >
-        <Icon name="search" size={16} color={theme.textTertiary} />
+        <Icon name="search" size={14} color={theme.mutedForeground} />
         <TextInput
           style={[styles.searchInput, { color: theme.text }]}
           placeholder="Search transcriptions..."
-          placeholderTextColor={theme.textTertiary}
+          placeholderTextColor={theme.mutedForeground}
           value={search}
           onChangeText={setSearch}
         />
@@ -238,18 +267,18 @@ export default function HistoryScreen() {
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Icon name="clock" size={48} color={theme.textTertiary} />
+            <View style={[styles.emptyIcon, { backgroundColor: theme.accent }]}>
+              <Icon name="clock" size={28} color={theme.primary} />
+            </View>
             <ThemedText
-              themeColor="textSecondary"
-              style={styles.emptyText}
+              style={[styles.emptyTitle, { fontFamily: Fonts?.serif }]}
             >
               No transcriptions yet
             </ThemedText>
             <ThemedText
-              themeColor="textTertiary"
-              style={styles.emptySubtext}
+              style={[styles.emptySubtext, { color: theme.mutedForeground }]}
             >
-              Go to the Record tab and start dictating
+              Hold the mic button to start dictating
             </ThemedText>
           </View>
         }
@@ -267,6 +296,11 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.three,
     paddingBottom: Spacing.two,
   },
+  title: {
+    fontSize: 32,
+    fontWeight: "400",
+    fontStyle: "italic",
+  },
   statsRow: {
     flexDirection: "row",
     paddingHorizontal: Spacing.four,
@@ -275,14 +309,22 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    borderRadius: 12,
-    padding: Spacing.two,
-    alignItems: "center",
+    borderRadius: 11,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+  },
+  eyebrow: {
+    fontSize: 10,
+    fontWeight: "600",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    marginBottom: 4,
   },
   statValue: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginTop: 2,
+    fontSize: 28,
+    fontWeight: "400",
+    fontStyle: "italic",
   },
   searchContainer: {
     flexDirection: "row",
@@ -291,13 +333,13 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.three,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    borderRadius: 12,
+    borderRadius: Radius.lg,
     gap: Spacing.two,
     borderWidth: 1,
   },
   searchInput: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 13,
     paddingVertical: 2,
   },
   list: {
@@ -305,9 +347,9 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.six,
   },
   entryCard: {
-    borderRadius: 12,
+    borderRadius: Radius.xl,
     borderWidth: 1,
-    padding: Spacing.three,
+    padding: Spacing.three + 2,
     marginBottom: Spacing.two,
   },
   entryHeader: {
@@ -316,17 +358,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: Spacing.two,
   },
+  entryTime: {
+    fontSize: 11,
+    letterSpacing: 0.5,
+  },
   entryMeta: {
     flexDirection: "row",
     gap: Spacing.two,
     alignItems: "center",
   },
   modelBadge: {
-    fontSize: 11,
+    fontSize: 9,
+    letterSpacing: 1.2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+    overflow: "hidden",
   },
   entryText: {
     fontSize: 15,
-    lineHeight: 22,
+    lineHeight: 23,
   },
   entryActions: {
     flexDirection: "row",
@@ -334,12 +385,14 @@ const styles = StyleSheet.create({
     marginTop: Spacing.three,
   },
   entryAction: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.one,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one + 2,
-    borderRadius: 8,
+    paddingVertical: 6,
+    borderRadius: Radius.md,
+  },
+  entryActionText: {
+    color: "#FBF8EE",
+    fontSize: 12.5,
+    fontWeight: "500",
   },
   emptyState: {
     alignItems: "center",
@@ -347,9 +400,17 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.six,
     gap: Spacing.three,
   },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: "600",
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: "400",
+    fontStyle: "italic",
   },
   emptySubtext: {
     fontSize: 14,

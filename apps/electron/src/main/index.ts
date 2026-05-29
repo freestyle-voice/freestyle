@@ -210,6 +210,13 @@ function createAppWindow(): void {
     return { action: "deny" };
   });
 
+  mainWindow.webContents.on("console-message", (_event, level, message) => {
+    if (message.startsWith("[debug]")) {
+      const prefix = level === 3 ? "[pill:error]" : "[pill]";
+      console.log(prefix, message);
+    }
+  });
+
   mainWindow.loadURL(getPillURL());
 }
 

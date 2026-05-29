@@ -1,9 +1,12 @@
 import { getDb } from "./db.js";
 import { getProvider, supportsStreaming } from "./streaming/registry.js";
 import type { StreamCallbacks, StreamSession } from "./streaming/types.js";
+import { WHISPER_PROVIDER_ID } from "./whisper/constants.js";
 
 export { supportsStreaming } from "./streaming/registry.js";
 export type { StreamCallbacks, StreamSession } from "./streaming/types.js";
+
+const LOCAL_STT_PROVIDERS = new Set([WHISPER_PROVIDER_ID]);
 
 export function openStreamingSession(opts: {
   providerId: string;
@@ -31,6 +34,8 @@ export function openStreamingSession(opts: {
 }
 
 export function getApiKeyForProvider(providerId: string): string | null {
+  if (LOCAL_STT_PROVIDERS.has(providerId)) return "local";
+
   const db = getDb();
   const row = db
     .prepare("SELECT key FROM api_keys WHERE provider = ?")

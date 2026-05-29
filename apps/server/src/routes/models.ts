@@ -1,5 +1,10 @@
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import {
+  WHISPER_MODELS,
+  WHISPER_PROVIDER_ID,
+} from "../lib/whisper/constants.js";
+import { getModelStatus } from "../lib/whisper/models.js";
 
 interface AvailableModel {
   provider_id: string;
@@ -52,6 +57,20 @@ async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
 
 // Speech-to-text model families from models.dev
 const STT_FAMILIES = new Set(["whisper", "deepgram"]);
+
+// Local Whisper voice models (generated from constants)
+const LOCAL_WHISPER_VOICE_MODELS: AvailableModel[] = WHISPER_MODELS.map(
+  (m) => ({
+    provider_id: WHISPER_PROVIDER_ID,
+    provider_name: "Local Whisper",
+    model_id: `${WHISPER_PROVIDER_ID}/${m.id}`,
+    model_name: `${m.displayName} (Local)`,
+    family: "whisper-local",
+    type: "voice" as const,
+    cost_input: 0,
+    cost_output: 0,
+  }),
+);
 
 // Hardcoded transcription models for providers missing from models.dev registry
 const BUILTIN_VOICE_MODELS: AvailableModel[] = [
@@ -245,6 +264,15 @@ const models = new Hono()
 
       // Add builtin voice models
       available.push(...BUILTIN_VOICE_MODELS);
+
+      // Add local whisper voice models (only those that are downloaded)
+      for (const whisperModel of LOCAL_WHISPER_VOICE_MODELS) {
+        const modelId = whisperModel.model_id.split("/")[1];
+        const status = getModelStatus(modelId);
+        if (status?.status === "ready") {
+          available.push(whisperModel);
+        }
+      }
 
       try {
         const localModels = await fetchLocalLlmModels();

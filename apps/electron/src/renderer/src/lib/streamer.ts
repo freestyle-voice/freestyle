@@ -27,6 +27,7 @@ export class Streamer {
   private sessionReady = false;
   private pendingChunks: ArrayBuffer[] = [];
   private destroyed = false;
+  private streamingSupported = false;
   private readonly callbacks: StreamerCallbacks;
   private readonly wsUrl: string;
 
@@ -54,6 +55,9 @@ export class Streamer {
   }
 
   async startCapture(stream: MediaStream): Promise<void> {
+    if (!this.ws || this.ws.readyState > WebSocket.OPEN) {
+      this.openWebSocket();
+    }
     this.capturing = true;
     this.pendingChunks = [];
     this.pcmChunks = [];
@@ -189,8 +193,9 @@ export class Streamer {
       }
       switch (msg.type) {
         case "config":
+          this.streamingSupported = msg.streaming ?? false;
           this.callbacks.onConfig({
-            streaming: msg.streaming ?? false,
+            streaming: this.streamingSupported,
             model: msg.model ?? "",
           });
           break;
@@ -219,7 +224,7 @@ export class Streamer {
     ws.addEventListener("close", () => {
       this.sessionReady = false;
       this.pendingChunks = [];
-      if (!this.destroyed) {
+      if (!this.destroyed && this.streamingSupported) {
         setTimeout(() => {
           if (!this.destroyed) this.openWebSocket();
         }, 1000);

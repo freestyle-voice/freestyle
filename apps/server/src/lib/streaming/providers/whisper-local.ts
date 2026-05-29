@@ -33,17 +33,22 @@ export class WhisperLocalTranscriptionProvider
       await ensureBinariesDownloaded();
     }
 
+    // Prefer whisper-server (model stays loaded in memory, much faster)
+    if (isServerRunning() || isServerBinaryAvailable()) {
+      try {
+        await ensureServerRunning(modelId);
+        return await transcribeViaServer(opts.audio, getServerPort());
+      } catch {
+        // Fall through to CLI
+      }
+    }
+
     if (isBinaryAvailable()) {
       return transcribeWithWhisper({
         audio: opts.audio,
         modelId,
         language: opts.language,
       });
-    }
-
-    if (isServerBinaryAvailable() || isServerRunning()) {
-      await ensureServerRunning(modelId);
-      return transcribeViaServer(opts.audio, getServerPort());
     }
 
     throw new Error(

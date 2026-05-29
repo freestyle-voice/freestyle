@@ -11,6 +11,7 @@ export interface WhisperModelDef {
   ramRequired: string;
   speed: string;
   quality: string;
+  quantized: boolean;
   url: string;
 }
 
@@ -25,7 +26,19 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     ramRequired: "~1 GB",
     speed: "Fastest",
     quality: "Basic",
+    quantized: false,
     url: `${HF_BASE}/ggml-tiny.bin`,
+  },
+  {
+    id: "tiny-q5_1",
+    fileName: "ggml-tiny-q5_1.bin",
+    displayName: "Tiny Q5",
+    sizeBytes: 31_000_000,
+    ramRequired: "~1 GB",
+    speed: "Fastest",
+    quality: "Basic",
+    quantized: true,
+    url: `${HF_BASE}/ggml-tiny-q5_1.bin`,
   },
   {
     id: "base",
@@ -35,7 +48,19 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     ramRequired: "~1 GB",
     speed: "Fast",
     quality: "Good",
+    quantized: false,
     url: `${HF_BASE}/ggml-base.bin`,
+  },
+  {
+    id: "base-q5_1",
+    fileName: "ggml-base-q5_1.bin",
+    displayName: "Base Q5",
+    sizeBytes: 57_000_000,
+    ramRequired: "~1 GB",
+    speed: "Very Fast",
+    quality: "Good",
+    quantized: true,
+    url: `${HF_BASE}/ggml-base-q5_1.bin`,
   },
   {
     id: "small",
@@ -45,7 +70,19 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     ramRequired: "~2 GB",
     speed: "Medium",
     quality: "Better",
+    quantized: false,
     url: `${HF_BASE}/ggml-small.bin`,
+  },
+  {
+    id: "small-q5_1",
+    fileName: "ggml-small-q5_1.bin",
+    displayName: "Small Q5",
+    sizeBytes: 181_000_000,
+    ramRequired: "~2 GB",
+    speed: "Fast",
+    quality: "Better",
+    quantized: true,
+    url: `${HF_BASE}/ggml-small-q5_1.bin`,
   },
   {
     id: "medium",
@@ -55,7 +92,19 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     ramRequired: "~5 GB",
     speed: "Slow",
     quality: "High",
+    quantized: false,
     url: `${HF_BASE}/ggml-medium.bin`,
+  },
+  {
+    id: "medium-q5_0",
+    fileName: "ggml-medium-q5_0.bin",
+    displayName: "Medium Q5",
+    sizeBytes: 539_000_000,
+    ramRequired: "~3 GB",
+    speed: "Medium",
+    quality: "High",
+    quantized: true,
+    url: `${HF_BASE}/ggml-medium-q5_0.bin`,
   },
   {
     id: "large",
@@ -65,6 +114,7 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     ramRequired: "~6 GB",
     speed: "Slow",
     quality: "Best",
+    quantized: false,
     url: `${HF_BASE}/ggml-large-v3-turbo.bin`,
   },
 ];

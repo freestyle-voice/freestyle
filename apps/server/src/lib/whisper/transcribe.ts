@@ -50,6 +50,12 @@ export async function transcribeWithWhisper(
       wavPath,
       "--output-json-full",
       "--no-prints",
+      "--no-fallback",
+      "--beam-size",
+      "1",
+      "--best-of",
+      "1",
+      "--no-timestamps",
     ];
 
     if (opts.language && opts.language !== "auto") {

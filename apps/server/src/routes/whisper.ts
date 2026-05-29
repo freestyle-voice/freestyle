@@ -1,9 +1,15 @@
 import { Hono } from "hono";
+import { getDefaultModels } from "../lib/providers.js";
+import { stripProviderPrefix } from "../lib/streaming/types.js";
 import {
   isBinaryAvailable,
   isServerBinaryAvailable,
 } from "../lib/whisper/binary.js";
-import { getModelsDir, WHISPER_MODELS } from "../lib/whisper/constants.js";
+import {
+  getModelsDir,
+  WHISPER_MODELS,
+  WHISPER_PROVIDER_ID,
+} from "../lib/whisper/constants.js";
 import {
   cancelDownload,
   clearDownloadError,
@@ -13,7 +19,12 @@ import {
   getModelStatus,
   isBinaryDownloading,
 } from "../lib/whisper/models.js";
-import { isServerRunning, stopServer } from "../lib/whisper/server.js";
+import {
+  isServerFailed,
+  isServerRunning,
+  startInBackground,
+  stopServer,
+} from "../lib/whisper/server.js";
 
 const whisper = new Hono()
   .get("/status", (c) => {
@@ -22,6 +33,7 @@ const whisper = new Hono()
       binaryDownloading: isBinaryDownloading(),
       serverBinaryAvailable: isServerBinaryAvailable(),
       serverRunning: isServerRunning(),
+      serverFailed: isServerFailed(),
       modelsDir: getModelsDir(),
       models: getAllModelStatuses(),
       modelDefinitions: WHISPER_MODELS.map((m) => ({
@@ -31,6 +43,7 @@ const whisper = new Hono()
         ramRequired: m.ramRequired,
         speed: m.speed,
         quality: m.quality,
+        quantized: m.quantized,
       })),
     });
   })
@@ -66,9 +79,39 @@ const whisper = new Hono()
     const deleted = deleteModel(modelId);
     return c.json({ ok: deleted });
   })
+  .post("/server/start", async (c) => {
+    const body = await c.req
+      .json<{ modelId?: string }>()
+      .catch(() => ({ modelId: undefined }));
+    let modelId = body.modelId;
+
+    if (!modelId) {
+      const defaults = getDefaultModels();
+      if (defaults.voice?.provider === WHISPER_PROVIDER_ID) {
+        modelId = stripProviderPrefix(defaults.voice.model_id);
+      }
+    }
+
+    if (!modelId) {
+      return c.json({ error: "No model specified" }, 400);
+    }
+
+    startInBackground(modelId);
+    return c.json({ ok: true });
+  })
   .post("/server/stop", async (c) => {
     await stopServer();
     return c.json({ ok: true });
   });
 
 export default whisper;
+
+export function autoStartWhisperServer(): void {
+  const defaults = getDefaultModels();
+  if (defaults.voice?.provider !== WHISPER_PROVIDER_ID) return;
+  if (!isBinaryAvailable() && !isServerBinaryAvailable()) return;
+
+  const modelId = stripProviderPrefix(defaults.voice.model_id);
+  console.log("[whisper] Auto-starting server for model:", modelId);
+  startInBackground(modelId);
+}

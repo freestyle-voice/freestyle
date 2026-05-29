@@ -1068,6 +1068,9 @@ app.on("will-quit", () => {
   if (process.platform === "win32") {
     globalShortcut.unregisterAll();
   }
+  fetch(`http://127.0.0.1:${serverPort}/api/whisper/server/stop`, {
+    method: "POST",
+  }).catch(() => {});
 });
 
 // Keep app running in background when windows are closed (tray stays active)

@@ -81,6 +81,7 @@ interface WhisperModelDef {
   ramRequired: string;
   speed: string;
   quality: string;
+  quantized: boolean;
 }
 
 interface WhisperStatus {
@@ -88,6 +89,7 @@ interface WhisperStatus {
   binaryDownloading: boolean;
   serverBinaryAvailable: boolean;
   serverRunning: boolean;
+  serverFailed: boolean;
   modelsDir: string;
   models: WhisperModelDownloadState[];
   modelDefinitions: WhisperModelDef[];
@@ -677,6 +679,11 @@ export default function ModelsPage(): React.JSX.Element {
                 is_default: true,
               },
             });
+            fetch(`${getApiBase()}/api/whisper/server/start`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ modelId }),
+            }).catch(() => {});
             loadData();
           }}
           onRefresh={loadWhisperStatus}
@@ -1234,6 +1241,14 @@ function LocalWhisperSection({
                   <span className="text-muted-foreground text-[11px]">
                     {formatBytes(def.sizeBytes)}
                   </span>
+                  {def.quantized && (
+                    <span
+                      className="mono bg-primary/10 text-primary rounded-full px-1.5 py-[1px] text-[9px]"
+                      style={{ letterSpacing: "0.08em" }}
+                    >
+                      FASTER
+                    </span>
+                  )}
                   {isSelected && (
                     <Check size={13} className="text-primary shrink-0" />
                   )}

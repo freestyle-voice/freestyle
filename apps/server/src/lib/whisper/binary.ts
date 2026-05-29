@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { accessSync, constants } from "node:fs";
 import { join } from "node:path";
 import {
@@ -7,17 +8,28 @@ import {
   getServerBinaryName,
 } from "./constants.js";
 
+function findInPath(name: string): string | null {
+  try {
+    const cmd = process.platform === "win32" ? "where" : "which";
+    const result = execFileSync(cmd, [name], {
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 3000,
+    });
+    const path = result.toString().trim().split("\n")[0];
+    if (path) return path;
+  } catch {}
+  return null;
+}
+
 function findExecutable(name: string | null): string | null {
   if (!name) return null;
 
-  // Check user-local download dir first (~/.cache/freestyle/whisper-bin/)
   const localPath = join(getBinDir(), name);
   try {
     accessSync(localPath, constants.X_OK);
     return localPath;
   } catch {}
 
-  // Then check bundled resources dir
   const resourcesDir = getResourcesDir();
   const bundledPath = join(resourcesDir, name);
   try {
@@ -25,11 +37,14 @@ function findExecutable(name: string | null): string | null {
     return bundledPath;
   } catch {}
 
-  return null;
+  return findInPath(name);
 }
 
 export function findWhisperBinary(): string | null {
-  return findExecutable(getBinaryName());
+  const primary = findExecutable(getBinaryName());
+  if (primary) return primary;
+  // Homebrew installs as "whisper-cpp" not "whisper-cli"
+  return findInPath("whisper-cpp");
 }
 
 export function findWhisperServer(): string | null {

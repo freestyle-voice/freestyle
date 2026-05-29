@@ -11,7 +11,6 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
-  getBinaryRelease,
   getBinDir,
   getModelPath,
   getModelsDir,
@@ -286,37 +285,38 @@ export async function ensureBinariesDownloaded(): Promise<void> {
   if (isBinaryAvailable()) return;
 
   if (binaryDownloadPromise) return binaryDownloadPromise;
-  binaryDownloadPromise = downloadBinaries().finally(() => {
+  binaryDownloadPromise = buildFromSource().finally(() => {
     binaryDownloadPromise = null;
   });
   return binaryDownloadPromise;
 }
 
-async function downloadBinaries(): Promise<void> {
-  const release = getBinaryRelease();
-  if (!release) {
-    throw new Error(
-      `No whisper.cpp binary available for ${process.platform}-${process.arch}`,
-    );
-  }
+async function buildFromSource(): Promise<void> {
+  const { execFileSync } = await import("node:child_process");
 
   const binDir = getBinDir();
   if (!existsSync(binDir)) mkdirSync(binDir, { recursive: true });
 
-  const archiveUrl = release.archive;
-  const tmpZip = join(binDir, "whisper-download.zip");
+  const srcDir = join(binDir, "whisper.cpp-src");
+  const buildDir = join(srcDir, "build");
 
-  console.log("[whisper] Downloading binaries from", archiveUrl);
+  const version = "1.7.5";
+  const tarballUrl = `https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v${version}.tar.gz`;
+  const tarPath = join(binDir, `whisper-${version}.tar.gz`);
 
-  const res = await fetch(archiveUrl, {
+  console.log("[whisper] Downloading whisper.cpp source...");
+
+  const res = await fetch(tarballUrl, {
     redirect: "follow",
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(60_000),
   });
   if (!res.ok || !res.body) {
-    throw new Error(`Failed to download whisper binaries: HTTP ${res.status}`);
+    throw new Error(
+      `Failed to download whisper.cpp source: HTTP ${res.status}`,
+    );
   }
 
-  const fileStream = createWriteStream(tmpZip);
+  const fileStream = createWriteStream(tarPath);
   const reader = res.body.getReader();
   const nodeStream = new Readable({
     async read() {
@@ -334,35 +334,86 @@ async function downloadBinaries(): Promise<void> {
   });
   await pipeline(nodeStream, fileStream);
 
-  console.log("[whisper] Extracting binaries to", binDir);
+  console.log("[whisper] Extracting source...");
 
-  const { execFileSync } = await import("node:child_process");
+  if (existsSync(srcDir)) {
+    const { rmSync } = await import("node:fs");
+    rmSync(srcDir, { recursive: true, force: true });
+  }
+  mkdirSync(srcDir, { recursive: true });
+
   try {
-    execFileSync("unzip", ["-o", "-j", tmpZip, "-d", binDir], {
-      stdio: "pipe",
-    });
+    execFileSync(
+      "tar",
+      ["xzf", tarPath, "-C", srcDir, "--strip-components=1"],
+      {
+        stdio: "pipe",
+        timeout: 30_000,
+      },
+    );
   } catch {
-    try {
-      unlinkSync(tmpZip);
-    } catch {}
     throw new Error(
-      "Failed to extract whisper binaries. Ensure 'unzip' is installed.",
+      "Failed to extract whisper.cpp source. Ensure 'tar' is installed.",
     );
   }
 
   try {
-    unlinkSync(tmpZip);
+    unlinkSync(tarPath);
   } catch {}
 
-  if (process.platform !== "win32") {
-    const { chmodSync } = await import("node:fs");
-    for (const bin of release.binaries) {
-      const binPath = join(binDir, bin);
-      if (existsSync(binPath)) {
-        chmodSync(binPath, 0o755);
-      }
-    }
+  console.log("[whisper] Building whisper.cpp (this may take a minute)...");
+
+  try {
+    mkdirSync(buildDir, { recursive: true });
+    execFileSync("cmake", ["..", "-DCMAKE_BUILD_TYPE=Release"], {
+      cwd: buildDir,
+      stdio: "pipe",
+      timeout: 60_000,
+    });
+    execFileSync("cmake", ["--build", ".", "--config", "Release", "-j"], {
+      cwd: buildDir,
+      stdio: "pipe",
+      timeout: 300_000,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Failed to build whisper.cpp. Ensure cmake and a C/C++ compiler are installed.\n${msg}`,
+    );
   }
 
-  console.log("[whisper] Binaries downloaded successfully");
+  const binaryName =
+    process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli";
+  const serverName =
+    process.platform === "win32" ? "whisper-server.exe" : "whisper-server";
+  const { copyFileSync, chmodSync } = await import("node:fs");
+
+  const builtBin = join(buildDir, "bin", binaryName);
+  const builtServer = join(buildDir, "bin", serverName);
+
+  if (existsSync(builtBin)) {
+    copyFileSync(builtBin, join(binDir, binaryName));
+    if (process.platform !== "win32")
+      chmodSync(join(binDir, binaryName), 0o755);
+  }
+  if (existsSync(builtServer)) {
+    copyFileSync(builtServer, join(binDir, serverName));
+    if (process.platform !== "win32")
+      chmodSync(join(binDir, serverName), 0o755);
+  }
+
+  // Clean up source
+  try {
+    const { rmSync } = await import("node:fs");
+    rmSync(srcDir, { recursive: true, force: true });
+  } catch {}
+
+  const { isBinaryAvailable } = await import("./binary.js");
+  if (!isBinaryAvailable()) {
+    throw new Error(
+      "whisper.cpp build completed but binary not found. Check build output.",
+    );
+  }
+
+  console.log("[whisper] Build complete");
 }

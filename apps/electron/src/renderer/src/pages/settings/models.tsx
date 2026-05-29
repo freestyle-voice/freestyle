@@ -1203,7 +1203,7 @@ function LocalWhisperSection({
         <div className="border-border bg-card flex items-center gap-2.5 rounded-[10px] border px-4 py-3">
           <Loader2 className="text-primary h-3.5 w-3.5 shrink-0 animate-spin" />
           <span className="text-muted-foreground text-[12px]">
-            Downloading whisper.cpp binary…
+            Building whisper.cpp from source — this may take a minute…
           </span>
         </div>
       )}

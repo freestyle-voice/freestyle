@@ -99,7 +99,10 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
     return transcribeWithAiSdk({ ...opts, model }, createElevenLabs);
   }
 
-  supportsStreaming(_modelId: string): boolean {
+  supportsStreaming(modelId: string): boolean {
+    const short = stripProviderPrefix(modelId);
+    // Scribe v1 has no realtime WebSocket model; use batch /api/transcribe instead.
+    if (short === "scribe_v1" || short.startsWith("scribe_v1_")) return false;
     return true;
   }
 

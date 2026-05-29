@@ -86,7 +86,6 @@ async function doStart(modelId: string): Promise<void> {
     String(WHISPER_SERVER_PORT),
     "--host",
     "127.0.0.1",
-    "--convert",
   ];
 
   const proc = spawn(serverBinary, args, {

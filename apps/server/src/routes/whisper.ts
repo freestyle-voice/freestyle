@@ -107,11 +107,30 @@ const whisper = new Hono()
 export default whisper;
 
 export function autoStartWhisperServer(): void {
-  const defaults = getDefaultModels();
-  if (defaults.voice?.provider !== WHISPER_PROVIDER_ID) return;
-  if (!isBinaryAvailable() && !isServerBinaryAvailable()) return;
+  try {
+    const defaults = getDefaultModels();
+    if (defaults.voice?.provider !== WHISPER_PROVIDER_ID) return;
 
-  const modelId = stripProviderPrefix(defaults.voice.model_id);
-  console.log("[whisper] Auto-starting server for model:", modelId);
-  startInBackground(modelId);
+    const hasCli = isBinaryAvailable();
+    const hasServer = isServerBinaryAvailable();
+    if (!hasCli && !hasServer) return;
+
+    const modelId = stripProviderPrefix(defaults.voice.model_id);
+
+    if (!hasServer) {
+      if (process.env.NODE_ENV !== "production") {
+        console.log(
+          "[whisper] whisper-server binary not found, skipping auto-start (CLI will be used)",
+        );
+      }
+      return;
+    }
+
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[whisper] Auto-starting server for model:", modelId);
+    }
+    startInBackground(modelId);
+  } catch {
+    // DB not ready or other init issue — silently skip
+  }
 }

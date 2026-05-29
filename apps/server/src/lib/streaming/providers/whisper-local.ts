@@ -34,6 +34,12 @@ export class WhisperLocalTranscriptionProvider
       await ensureBinariesDownloaded();
     }
 
+    if (isDev) {
+      console.log(
+        `[whisper] transcribe: serverRunning=${isServerRunning()} serverBinary=${isServerBinaryAvailable()} cli=${isBinaryAvailable()}`,
+      );
+    }
+
     if (isServerRunning()) {
       try {
         const t0 = Date.now();

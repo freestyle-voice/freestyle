@@ -36,9 +36,13 @@ export function startInBackground(modelId: string): void {
   restartCount = 0;
   autoRestart = true;
 
-  ensureServerRunning(modelId).catch((err) => {
-    console.error("[whisper] Background server start failed:", err.message);
-  });
+  ensureServerRunning(modelId)
+    .then(() => {
+      console.log("[whisper] Server ready on port", WHISPER_SERVER_PORT);
+    })
+    .catch((err) => {
+      console.error("[whisper] Background server start failed:", err.message);
+    });
 }
 
 export async function ensureServerRunning(modelId: string): Promise<void> {

@@ -3,7 +3,7 @@ import Foundation
 /// Shared configuration and data bridge between the main Freestyle app
 /// and the keyboard extension, using App Groups UserDefaults.
 struct SharedConfig {
-    static let appGroupIdentifier = "group.com.freestyle.app.shared"
+    static let appGroupIdentifier = "group.com.freestylevoice.app.shared"
 
     private static var sharedDefaults: UserDefaults? {
         UserDefaults(suiteName: appGroupIdentifier)

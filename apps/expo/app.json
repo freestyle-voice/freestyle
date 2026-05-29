@@ -14,7 +14,7 @@
     "owner": "freestyle-voice",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.freestyle.app",
+      "bundleIdentifier": "com.freestylevoice.app",
       "supportsTablet": false,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Freestyle needs microphone access to transcribe your voice.",
@@ -30,7 +30,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "permissions": ["RECORD_AUDIO"],
-      "package": "com.freestyle.app",
+      "package": "com.freestylevoice.app",
       "versionCode": 1
     },
     "web": {

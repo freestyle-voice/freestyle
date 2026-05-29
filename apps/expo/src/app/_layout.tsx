@@ -8,7 +8,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useState } from "react";
 import { useColorScheme } from "react-native";
 
-import { initDatabase, getSetting } from "@/lib/db";
+import { getSetting, initDatabase } from "@/lib/db";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -20,7 +20,13 @@ export default function RootLayout() {
   useEffect(() => {
     async function prepare() {
       try {
-        await initDatabase();
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("DB init timeout after 10s")),
+            10000,
+          ),
+        );
+        await Promise.race([initDatabase(), timeout]);
         const onboarded = await getSetting("onboarding_complete");
         setHasOnboarded(onboarded === "true");
       } catch (err) {
@@ -28,11 +34,16 @@ export default function RootLayout() {
         setHasOnboarded(false);
       } finally {
         setIsReady(true);
-        await SplashScreen.hideAsync();
       }
     }
     prepare();
   }, []);
+
+  useEffect(() => {
+    if (isReady) {
+      SplashScreen.hideAsync();
+    }
+  }, [isReady]);
 
   if (!isReady || hasOnboarded === null) return null;
 

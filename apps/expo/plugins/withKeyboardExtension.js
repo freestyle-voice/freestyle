@@ -17,7 +17,7 @@ const fs = require("fs");
 const path = require("path");
 
 const KEYBOARD_EXTENSION_NAME = "FreestyleKeyboard";
-const APP_GROUP_IDENTIFIER = "group.com.freestyle.app.shared";
+const APP_GROUP_IDENTIFIER = "group.com.freestylevoice.app.shared";
 const KEYBOARD_BUNDLE_ID_SUFFIX = ".keyboard";
 
 function withKeyboardExtension(config) {
@@ -47,7 +47,8 @@ function withKeyboardXcodeProject(config) {
   return withXcodeProject(config, async (mod) => {
     const xcodeProject = mod.modResults;
     const projectRoot = mod.modRequest.projectRoot;
-    const mainBundleId = config.ios?.bundleIdentifier ?? "com.freestyle.app";
+    const mainBundleId =
+      config.ios?.bundleIdentifier ?? "com.freestylevoice.app";
     const keyboardBundleId = mainBundleId + KEYBOARD_BUNDLE_ID_SUFFIX;
 
     const iosDir = path.join(projectRoot, "ios");
@@ -119,12 +120,20 @@ function withKeyboardXcodeProject(config) {
     const mainGroupId = xcodeProject.getFirstProject().firstProject.mainGroup;
     xcodeProject.addToPbxGroup(group.uuid, mainGroupId);
 
-    // Add source files to the target's compile sources.
-    // Pass just the filename -- the group's path (FreestyleKeyboard/)
-    // is prepended automatically by the xcode module.
-    for (const file of sourceFiles) {
-      xcodeProject.addSourceFile(file, { target: target.uuid }, group.uuid);
-    }
+    // Add source files to the extension target's compile sources.
+    // NOTE: xcodeProject.addSourceFile() has a known bug where it does not
+    // reliably add files to non-primary targets' PBXSourcesBuildPhase.
+    // Instead, we use addBuildPhase() which correctly creates the build
+    // phase with all source files included.
+    const extensionSourceFiles = sourceFiles.map(
+      (f) => `${KEYBOARD_EXTENSION_NAME}/${f}`,
+    );
+    xcodeProject.addBuildPhase(
+      extensionSourceFiles,
+      "PBXSourcesBuildPhase",
+      "Sources",
+      target.uuid,
+    );
 
     // Configure build settings
     const configurations = xcodeProject.pbxXCBuildConfigurationSection();
@@ -149,20 +158,24 @@ function withKeyboardXcodeProject(config) {
       }
     }
 
-    // Add target dependency from the main app to the keyboard extension.
-    // This ensures the extension is built when the main app is built.
-    // The addTarget call with type "app_extension" already registers the
-    // product. We do NOT use addBuildPhase to embed the .appex because
-    // the xcode module's PBXCopyFilesBuildPhase creates an orphaned file
-    // reference that breaks CocoaPods' post-install validation.
-    //
-    // The embedding is handled automatically by Xcode when the extension
-    // target exists as a dependency with the app_extension product type.
+    // Add a target dependency so the extension is built with the main app.
+    // addTarget("app_extension") already creates a CopyFiles build phase
+    // that embeds the .appex into PlugIns, so we only need the dependency.
     const mainTarget = xcodeProject.getFirstTarget();
     if (mainTarget && target) {
-      xcodeProject.addTargetDependency(mainTarget.firstTarget.uuid, [
-        target.uuid,
-      ]);
+      const objects = xcodeProject.hash.project.objects;
+
+      // The xcode module's addTargetDependency() silently no-ops if the
+      // PBXTargetDependency / PBXContainerItemProxy sections don't already
+      // exist in the project. Initialize them so the method works.
+      if (!objects.PBXContainerItemProxy) {
+        objects.PBXContainerItemProxy = {};
+      }
+      if (!objects.PBXTargetDependency) {
+        objects.PBXTargetDependency = {};
+      }
+
+      xcodeProject.addTargetDependency(mainTarget.uuid, [target.uuid]);
     }
 
     return mod;

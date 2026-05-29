@@ -83,26 +83,24 @@ function getAudioMimeType(uri: string): { type: string; name: string } {
 }
 
 /**
- * Read a local file URI into a Blob, then build a FormData with it.
- * RN 0.85 (new architecture) requires actual Blob objects in FormData,
- * not the legacy {uri, type, name} pattern.
+ * Build a FormData with a local audio file for upload.
+ * React Native's FormData accepts {uri, type, name} objects directly --
+ * the Blob constructor doesn't support wrapping ArrayBuffers/Blobs in RN.
  */
-async function createFileFormData(
+function createFileFormData(
   fieldName: string,
   audioUri: string,
   additionalFields?: Record<string, string>,
-): Promise<FormData> {
+): FormData {
   const { type, name } = getAudioMimeType(audioUri);
 
-  // fetch() on a local file:// URI returns the file contents as a Response
-  const fileResponse = await fetch(audioUri);
-  const audioBlob = await fileResponse.blob();
-
-  // Create a properly typed blob
-  const typedBlob = new Blob([audioBlob], { type });
-
   const formData = new FormData();
-  formData.append(fieldName, typedBlob, name);
+  // RN-specific: FormData accepts a {uri, type, name} object as the file value
+  formData.append(fieldName, {
+    uri: audioUri,
+    type,
+    name,
+  } as unknown as Blob);
 
   if (additionalFields) {
     for (const [key, value] of Object.entries(additionalFields)) {
@@ -122,7 +120,7 @@ async function transcribeOpenAI(
   const fields: Record<string, string> = { model };
   if (language) fields.language = language;
 
-  const formData = await createFileFormData("file", audioUri, fields);
+  const formData = createFileFormData("file", audioUri, fields);
 
   const response = await fetch(
     "https://api.openai.com/v1/audio/transcriptions",
@@ -153,7 +151,7 @@ async function transcribeGroq(
   const fields: Record<string, string> = { model };
   if (language) fields.language = language;
 
-  const formData = await createFileFormData("file", audioUri, fields);
+  const formData = createFileFormData("file", audioUri, fields);
 
   const response = await fetch(
     "https://api.groq.com/openai/v1/audio/transcriptions",
@@ -182,9 +180,17 @@ async function transcribeDeepgram(
   const params = new URLSearchParams({ model });
   if (language) params.set("language", language);
 
-  const { type } = getAudioMimeType(audioUri);
+  const { type, name } = getAudioMimeType(audioUri);
+
+  // Deepgram accepts raw audio in the request body.
+  // Use RN's FormData-style file object with XMLHttpRequest to send raw bytes,
+  // or read the file as base64 and convert. The simplest RN-compatible approach
+  // is to use FormData with a single file field (Deepgram also accepts multipart).
+  // However, Deepgram's /listen endpoint expects raw audio, not multipart.
+  // We use fetch with the RN {uri, type, name} pattern via a Blob-like workaround.
   const fileResponse = await fetch(audioUri);
-  const audioBlob = await fileResponse.blob();
+  const arrayBuffer = await fileResponse.arrayBuffer();
+  const uint8 = new Uint8Array(arrayBuffer);
 
   const response = await fetch(
     `https://api.deepgram.com/v1/listen?${params.toString()}`,
@@ -194,7 +200,7 @@ async function transcribeDeepgram(
         Authorization: `Token ${apiKey}`,
         "Content-Type": type,
       },
-      body: audioBlob,
+      body: uint8,
     },
   );
 
@@ -215,7 +221,7 @@ async function transcribeElevenLabs(
   model: string,
   _language?: string,
 ): Promise<string> {
-  const formData = await createFileFormData("file", audioUri, {
+  const formData = createFileFormData("file", audioUri, {
     model_id: model,
   });
 

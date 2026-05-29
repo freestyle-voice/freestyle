@@ -5,7 +5,7 @@
  * This module is iOS-only. On Android it's a no-op.
  *
  * The keyboard extension (native Swift) reads from:
- *   UserDefaults(suiteName: "group.com.freestyle.app.shared")
+ *   UserDefaults(suiteName: "group.com.freestylevoice.app.shared")
  *
  * The main app writes to the same suite after any settings change.
  *
@@ -18,7 +18,7 @@ import { Platform } from "react-native";
 import { getAllDictionaryEntries, getDefaultModel, getSetting } from "./db";
 import { getApiKey, PROVIDERS } from "./storage";
 
-const APP_GROUP_ID = "group.com.freestyle.app.shared";
+const APP_GROUP_ID = "group.com.freestylevoice.app.shared";
 
 /**
  * Sync all settings from the main app to the App Group UserDefaults.

@@ -54,6 +54,48 @@ export interface HotkeyCombo {
 
 const MODIFIER_ORDER = ["Control", "Command", "Alt", "Shift"];
 
+/** macOS: compound keys (Alt+Space) via DOM; Fn/right-mod via native IPC */
+const USE_DOM_CAPTURE = IS_MAC;
+
+const DOM_MODIFIER_KEYS = new Set([
+  "Control",
+  "Meta",
+  "Alt",
+  "Shift",
+  "Command",
+  "Option",
+]);
+
+function modifiersFromEvent(e: KeyboardEvent): string[] {
+  const mods: string[] = [];
+  if (e.ctrlKey) mods.push("Control");
+  if (e.metaKey) mods.push(IS_MAC ? "Command" : "Control");
+  if (e.altKey) mods.push("Alt");
+  if (e.shiftKey) mods.push("Shift");
+  return MODIFIER_ORDER.filter((m) => mods.includes(m));
+}
+
+function domKeyFromEvent(e: KeyboardEvent): string | null {
+  const code = e.code;
+  if (code.startsWith("Key")) return code.slice(3);
+  if (code.startsWith("Digit")) return code.slice(5);
+  if (code === "Space") return "Space";
+  if (code === "Backspace") return "Backspace";
+  if (code === "Delete") return "Delete";
+  if (code === "Escape") return "Escape";
+  if (code === "Tab") return "Tab";
+  if (code === "Enter") return "Return";
+  if (code.startsWith("Arrow")) return code.slice(5);
+  if (code.startsWith("F") && /^F\d+$/.test(code)) return code;
+  if (e.key.length === 1 && e.key !== " ") return e.key.toUpperCase();
+  if (e.key === " ") return "Space";
+  return e.key.length === 1 ? e.key : null;
+}
+
+function isDomModifierKey(e: KeyboardEvent): boolean {
+  return DOM_MODIFIER_KEYS.has(e.key) || e.key === "Option";
+}
+
 export function comboToAccelerator(combo: HotkeyCombo): string | null {
   if (!combo.key) return null;
   return [...combo.modifiers, combo.key].join("+");
@@ -139,18 +181,18 @@ export function useHotkeyRecorder(
   }, []);
 
   const saveRecording = useCallback(() => {
-    if (capturedCombo?.key) {
-      const accel = comboToAccelerator(capturedCombo);
-      if (accel) onRecordRef.current(accel);
+    const accel = capturedCombo?.key ? comboToAccelerator(capturedCombo) : null;
+    if (accel) {
+      onRecordRef.current(accel);
     }
-    // Signal main process to re-register the hotkey listener
-    window.api?.stopHotkeyRecording();
+    // Re-register the global listener with the new accelerator (single IPC)
+    window.api?.stopHotkeyRecording(accel ?? undefined);
     setState("idle");
     setLiveModifiers([]);
     setCapturedCombo(null);
   }, [capturedCombo]);
 
-  // Listen for IPC events from main process
+  // Global capture: native listener (all platforms) + DOM on macOS for Alt+Space etc.
   useEffect(() => {
     if (state !== "recording" || !window.api) return;
 
@@ -176,6 +218,38 @@ export function useHotkeyRecorder(
       removeCancel();
     };
   }, [state]);
+
+  useEffect(() => {
+    if (state !== "recording" || !USE_DOM_CAPTURE) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (e.key === "Escape") {
+        cancelRecording();
+        return;
+      }
+
+      const modifiers = modifiersFromEvent(e);
+
+      if (isDomModifierKey(e)) {
+        setLiveModifiers(modifiers);
+        return;
+      }
+
+      const key = domKeyFromEvent(e);
+      if (!key) return;
+
+      setCapturedCombo({ modifiers, key });
+      setLiveModifiers([]);
+      setState("captured");
+      window.api?.pauseHotkeyRecording();
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [state, cancelRecording]);
 
   // Stop main process recording when component unmounts during recording
   useEffect(() => {

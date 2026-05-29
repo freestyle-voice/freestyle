@@ -24,6 +24,7 @@ static BOOL g_requireAlt = FALSE;
 static BOOL g_requireShift = FALSE;
 static BOOL g_requireWin = FALSE;
 static BOOL g_useModifiersOnly = FALSE;
+static BOOL g_record_mode = FALSE;
 static BOOL g_ctrlDown = FALSE;
 static BOOL g_altDown = FALSE;
 static BOOL g_shiftDown = FALSE;
@@ -80,6 +81,82 @@ static BOOL AreRequiredModifiersPressed(void) {
     if (g_requireShift && !g_shiftDown) return FALSE;
     if (g_requireWin && !(g_leftWinDown || g_rightWinDown)) return FALSE;
     return TRUE;
+}
+
+static void EmitRecordModifiers(void) {
+    char buf[256] = "";
+    int len = 0;
+
+    if (g_ctrlDown) {
+        len += snprintf(buf + len, sizeof(buf) - len, "%sControl", len ? "," : "");
+    }
+    if (g_altDown) {
+        len += snprintf(buf + len, sizeof(buf) - len, "%sAlt", len ? "," : "");
+    }
+    if (g_shiftDown) {
+        len += snprintf(buf + len, sizeof(buf) - len, "%sShift", len ? "," : "");
+    }
+    if (g_leftWinDown || g_rightWinDown) {
+        len += snprintf(buf + len, sizeof(buf) - len, "%sSuper", len ? "," : "");
+    }
+
+    printf("RECORD_MODIFIERS:%s\n", buf);
+    fflush(stdout);
+}
+
+static const char* VkToRecordKeyName(DWORD vk) {
+    if (vk == VK_SPACE) return "Space";
+    if (vk == VK_RETURN) return "Return";
+    if (vk == VK_ESCAPE) return "Escape";
+    if (vk == VK_TAB) return "Tab";
+    if (vk == VK_BACK) return "Backspace";
+    if (vk == VK_DELETE) return "Delete";
+    if (vk == VK_UP) return "Up";
+    if (vk == VK_DOWN) return "Down";
+    if (vk == VK_LEFT) return "Left";
+    if (vk == VK_RIGHT) return "Right";
+    if (vk == VK_HOME) return "Home";
+    if (vk == VK_END) return "End";
+    if (vk == VK_PRIOR) return "PageUp";
+    if (vk == VK_NEXT) return "PageDown";
+    if (vk == VK_INSERT) return "Insert";
+    if (vk == VK_PAUSE) return "Pause";
+    if (vk == VK_SCROLL) return "ScrollLock";
+    if (vk == VK_CAPITAL) return "CapsLock";
+    if (vk == VK_NUMLOCK) return "NumLock";
+    if (vk == VK_RMENU) return "RightAlt";
+    if (vk == VK_RCONTROL) return "RightControl";
+    if (vk == VK_RSHIFT) return "RightShift";
+    if (vk == VK_RWIN) return "RightSuper";
+    if (vk == VK_OEM_3) return "`";
+    if (vk == VK_OEM_MINUS) return "-";
+    if (vk == VK_OEM_PLUS) return "=";
+    if (vk == VK_OEM_4) return "[";
+    if (vk == VK_OEM_6) return "]";
+    if (vk == VK_OEM_5) return "\\";
+    if (vk == VK_OEM_1) return ";";
+    if (vk == VK_OEM_7) return "'";
+    if (vk == VK_OEM_COMMA) return ",";
+    if (vk == VK_OEM_PERIOD) return ".";
+    if (vk == VK_OEM_2) return "/";
+    if (vk >= VK_F1 && vk <= VK_F24) {
+        static char fkey[8];
+        snprintf(fkey, sizeof(fkey), "F%lu", (unsigned long)(vk - VK_F1 + 1));
+        return fkey;
+    }
+    if (vk >= 'A' && vk <= 'Z') {
+        static char letter[2];
+        letter[0] = (char)vk;
+        letter[1] = '\0';
+        return letter;
+    }
+    if (vk >= '0' && vk <= '9') {
+        static char digit[2];
+        digit[0] = (char)vk;
+        digit[1] = '\0';
+        return digit;
+    }
+    return NULL;
 }
 
 DWORD ParseKeyCode(const char* keyName) {
@@ -158,6 +235,45 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
         BOOL isUp = (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
         BOOL isModifierEvent = IsCtrlVk(kbd->vkCode) || IsAltVk(kbd->vkCode) ||
                                IsShiftVk(kbd->vkCode) || IsWinVk(kbd->vkCode);
+
+        if (g_record_mode && isDown) {
+            if (kbd->vkCode == VK_ESCAPE) {
+                printf("RECORD_CANCEL\n");
+                fflush(stdout);
+                return CallNextHookEx(g_hook, nCode, wParam, lParam);
+            }
+
+            if (isModifierEvent) {
+                UpdateModifierState(kbd->vkCode, TRUE);
+                SyncModifierState(kbd->vkCode);
+
+                if (kbd->vkCode == VK_RMENU || kbd->vkCode == VK_RCONTROL ||
+                    kbd->vkCode == VK_RSHIFT || kbd->vkCode == VK_RWIN) {
+                    const char* keyName = VkToRecordKeyName(kbd->vkCode);
+                    if (keyName) {
+                        printf("RECORD_KEY:%s\n", keyName);
+                        fflush(stdout);
+                    }
+                    return CallNextHookEx(g_hook, nCode, wParam, lParam);
+                }
+
+                EmitRecordModifiers();
+                return CallNextHookEx(g_hook, nCode, wParam, lParam);
+            }
+
+            const char* keyName = VkToRecordKeyName(kbd->vkCode);
+            if (keyName) {
+                EmitRecordModifiers();
+                printf("RECORD_KEY:%s\n", keyName);
+                fflush(stdout);
+            }
+            return CallNextHookEx(g_hook, nCode, wParam, lParam);
+        }
+
+        if (g_record_mode && isUp && isModifierEvent) {
+            UpdateModifierState(kbd->vkCode, FALSE);
+            return CallNextHookEx(g_hook, nCode, wParam, lParam);
+        }
 
         if ((isDown || isUp) && isModifierEvent) {
             UpdateModifierState(kbd->vkCode, isDown);
@@ -288,27 +404,36 @@ static DWORD WINAPI StdinMonitorThread(LPVOID param) {
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <key>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <key> | %s --record\n", argv[0], argv[0]);
         fprintf(stderr, "Examples:\n");
         fprintf(stderr, "  %s `                        (backtick)\n", argv[0]);
         fprintf(stderr, "  %s F8                       (function key)\n", argv[0]);
         fprintf(stderr, "  %s CommandOrControl+F11     (with modifier)\n", argv[0]);
         fprintf(stderr, "  %s Ctrl+Shift+Space         (multiple modifiers)\n", argv[0]);
+        fprintf(stderr, "  %s --record                 (hotkey rebinding mode)\n", argv[0]);
         return 1;
     }
 
-    g_targetVk = ParseCompoundHotkey(argv[1]);
+    if (_stricmp(argv[1], "--record") == 0) {
+        g_record_mode = TRUE;
+        fprintf(stderr, "Hotkey recording mode\n");
+    } else {
+        g_targetVk = ParseCompoundHotkey(argv[1]);
+    }
+
+    if (!g_record_mode) {
     if (g_targetVk == 0 && (g_requireCtrl || g_requireAlt || g_requireShift || g_requireWin)) {
         g_useModifiersOnly = TRUE;
     }
 
-    if (g_targetVk == 0 && !g_useModifiersOnly) {
-        fprintf(stderr, "Error: Invalid key '%s'\n", argv[1]);
-        return 1;
-    }
+        if (g_targetVk == 0 && !g_useModifiersOnly) {
+            fprintf(stderr, "Error: Invalid key '%s'\n", argv[1]);
+            return 1;
+        }
 
-    fprintf(stderr, "Listening for: %s (VK=0x%02X, Ctrl=%d, Alt=%d, Shift=%d, Win=%d, ModOnly=%d)\n",
-            argv[1], g_targetVk, g_requireCtrl, g_requireAlt, g_requireShift, g_requireWin, g_useModifiersOnly);
+        fprintf(stderr, "Listening for: %s (VK=0x%02X, Ctrl=%d, Alt=%d, Shift=%d, Win=%d, ModOnly=%d)\n",
+                argv[1], g_targetVk, g_requireCtrl, g_requireAlt, g_requireShift, g_requireWin, g_useModifiersOnly);
+    }
 
     SetConsoleCtrlHandler(ConsoleHandler, TRUE);
 

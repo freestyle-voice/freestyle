@@ -7,6 +7,9 @@ const api = {
     ipcRenderer.invoke("paste:text", text),
   updateHotkey: (hotkey: string): void =>
     ipcRenderer.send("hotkey:update", hotkey),
+  reloadHotkey: (): void => ipcRenderer.send("hotkey:reload"),
+  setHotkeyMode: (mode: "hold" | "toggle"): void =>
+    ipcRenderer.send("hotkey:set-mode", mode),
   hidePill: (): void => ipcRenderer.send("pill:hide"),
   getServerPort: (): Promise<number> => ipcRenderer.invoke("server:port"),
   onHotkeyDown: (callback: () => void): (() => void) => {
@@ -39,7 +42,10 @@ const api = {
   setOnboardingComplete: (): void =>
     ipcRenderer.send("onboarding:set-complete"),
   startHotkeyRecording: (): void => ipcRenderer.send("hotkey-record:start"),
-  stopHotkeyRecording: (): void => ipcRenderer.send("hotkey-record:stop"),
+  pauseHotkeyRecording: (): void =>
+    ipcRenderer.send("hotkey-record:pause-recorder"),
+  stopHotkeyRecording: (hotkey?: string): void =>
+    ipcRenderer.send("hotkey-record:stop", hotkey),
   onHotkeyRecordModifiers: (
     callback: (modifiers: string[]) => void,
   ): (() => void) => {

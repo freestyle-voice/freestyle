@@ -87,6 +87,7 @@ export class NativeKeyListener {
 
   // macOS modifier tracking for hotkey matching
   private macModState = new Set<string>();
+  private macFlagState = new Set<string>();
   private macHotkeyActive = false;
 
   constructor(options: KeyListenerOptions) {
@@ -219,17 +220,75 @@ export class NativeKeyListener {
     // General modifier release (e.g., MODIFIER_UP:option)
     if (line.startsWith("MODIFIER_UP:")) {
       const modName = line.slice(12).toLowerCase();
+      this.macFlagState.delete(modName);
       // Remove any right-side modifier that matches this category
       for (const key of [...this.macModState]) {
         if (key.includes(modName)) {
           this.macModState.delete(key);
         }
       }
-      if (this.macHotkeyActive) {
-        this.macHotkeyActive = false;
-        this.options.onKeyUp();
-      }
+      this.checkMacCompoundRelease();
       return;
+    }
+
+    // Left/right modifier flags (e.g., Alt+Space)
+    if (line.startsWith("FLAGS:")) {
+      const raw = line.slice(6);
+      this.macFlagState = new Set(
+        raw
+          ? raw
+              .split(",")
+              .map((s) => s.trim().toLowerCase())
+              .filter(Boolean)
+          : [],
+      );
+      this.checkMacCompoundRelease();
+      return;
+    }
+
+    if (line.startsWith("KEY_DOWN:")) {
+      this.handleMacKeyEvent(line.slice(9), true);
+      return;
+    }
+
+    if (line.startsWith("KEY_UP:")) {
+      this.handleMacKeyEvent(line.slice(9), false);
+      return;
+    }
+  }
+
+  /** End compound hotkey when a required modifier is released (e.g. Option on Alt+Space). */
+  private checkMacCompoundRelease(): void {
+    if (!this.macHotkeyActive) return;
+
+    const { modifiers, key: hotkeyKey } = parseHotkeyParts(this.options.hotkey);
+    if (!hotkeyKey) return;
+    const keyLower = hotkeyKey.toLowerCase();
+    if (keyLower === "fn" || keyLower === "globe") return;
+
+    const allModsMatch = [...modifiers].every((m) => this.macFlagState.has(m));
+    if (!allModsMatch) {
+      this.macHotkeyActive = false;
+      this.options.onKeyUp();
+    }
+  }
+
+  /** Match compound hotkeys like Alt+Space using modifier flags + key events. */
+  private handleMacKeyEvent(key: string, down: boolean): void {
+    const { modifiers, key: hotkeyKey } = parseHotkeyParts(this.options.hotkey);
+    if (!hotkeyKey || hotkeyKey.toLowerCase() !== key.toLowerCase()) return;
+
+    const allModsMatch = [...modifiers].every((m) => this.macFlagState.has(m));
+    if (!allModsMatch) return;
+
+    if (down) {
+      if (!this.macHotkeyActive) {
+        this.macHotkeyActive = true;
+        this.options.onKeyDown();
+      }
+    } else if (this.macHotkeyActive) {
+      this.macHotkeyActive = false;
+      this.options.onKeyUp();
     }
   }
 
@@ -243,6 +302,7 @@ export class NativeKeyListener {
     if (this.macHotkeyActive) return;
 
     const hotkey = this.options.hotkey.toLowerCase();
+    const { modifiers, key: hotkeyKey } = parseHotkeyParts(this.options.hotkey);
 
     // Direct right-modifier hotkey (e.g., hotkey is literally "RightOption")
     if (this.macModState.has(hotkey)) {
@@ -251,8 +311,12 @@ export class NativeKeyListener {
       return;
     }
 
-    // Parse compound hotkey and check if modifiers match
-    const { modifiers } = parseHotkeyParts(this.options.hotkey);
+    // Compound hotkeys (Alt+Space, etc.) use FLAGS + KEY_DOWN — not modifier-only match
+    if (hotkeyKey) {
+      const keyLower = hotkeyKey.toLowerCase();
+      if (keyLower !== "fn" && keyLower !== "globe") return;
+    }
+
     if (modifiers.size === 0) return;
 
     // Map macOS modifier names to categories
@@ -337,6 +401,7 @@ export class NativeKeyListener {
       this.process = null;
     }
     this.macModState.clear();
+    this.macFlagState.clear();
     this.macHotkeyActive = false;
     this.restartAttempts = 0;
     this.start();

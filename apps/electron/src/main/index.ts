@@ -35,6 +35,8 @@ import { autoUpdater } from "electron-updater";
 import { WebSocketServer } from "ws";
 import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
+import { HotkeyRecorder } from "./hotkey-recorder";
+import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
 import { MicListener } from "./mic-listener";
 import { pasteIntoFocusedApp } from "./paste";
@@ -90,7 +92,9 @@ let keyListener: NativeKeyListener | null = null;
 let hotkeyPressed = false;
 let winToggleActive = false;
 let currentHotkeyAccel: string | null = null;
+let hotkeyActivationMode: "hold" | "toggle" = "hold";
 let micListener: MicListener | null = null;
+let hotkeyRecorder: HotkeyRecorder | null = null;
 
 // Register a custom app:// protocol that serves the renderer files.
 // All non-file paths fall back to index.html so BrowserRouter works in production.
@@ -722,16 +726,13 @@ app.whenReady().then(async () => {
     writeSettings({ onboardingComplete: true });
   });
 
-  // IPC: hotkey recording via main process
-  // Note: Hotkey recording currently uses the renderer's keyboard events
-  // (the settings page captures keydown in the DOM). The native binary
-  // doesn't need a separate "recording" mode -- the renderer handles it.
-  // We still support the IPC protocol for pausing/resuming the primary listener.
-  let recordingActive = false;
+  // IPC: hotkey recording — global native listener + renderer DOM on macOS
+  function stopHotkeyRecorderProcess(): void {
+    hotkeyRecorder?.stop();
+    hotkeyRecorder = null;
+  }
 
   ipcMain.on("hotkey-record:start", () => {
-    recordingActive = true;
-
     // Pause the active hotkey listener so it doesn't fire during recording
     if (keyListener) {
       keyListener.stop();
@@ -741,12 +742,37 @@ app.whenReady().then(async () => {
       globalShortcut.unregisterAll();
       winToggleActive = false;
     }
+
+    stopHotkeyRecorderProcess();
+    const target =
+      settingsWindow?.webContents ?? mainWindow?.webContents ?? null;
+    if (!target) return;
+
+    hotkeyRecorder = new HotkeyRecorder({
+      onModifiers: () => {},
+      onCaptured: () => {},
+      onCancel: () => {
+        stopHotkeyRecorderProcess();
+        registerHotkey(currentHotkeyAccel ?? undefined);
+      },
+      onError: (message) => {
+        console.warn("[hotkey-recorder]", message);
+      },
+    });
+    hotkeyRecorder.start(target);
   });
 
-  ipcMain.on("hotkey-record:stop", () => {
-    recordingActive = false;
-    // Re-register the hotkey listener
-    registerHotkey(currentHotkeyAccel ?? undefined);
+  ipcMain.on("hotkey-record:pause-recorder", () => {
+    stopHotkeyRecorderProcess();
+  });
+
+  ipcMain.on("hotkey-record:stop", (_event, hotkey?: string) => {
+    stopHotkeyRecorderProcess();
+    registerHotkey(
+      typeof hotkey === "string" && hotkey.length > 0
+        ? hotkey
+        : (currentHotkeyAccel ?? undefined),
+    );
   });
 
   // Set database path for the server before any API calls
@@ -930,6 +956,7 @@ app.whenReady().then(async () => {
   });
 
   // Register hold-to-record hotkey via native platform binary
+  hotkeyActivationMode = loadHotkeyModeFromDB();
   registerHotkey();
 
   // Start microphone activity monitoring
@@ -945,6 +972,17 @@ app.whenReady().then(async () => {
   // Listen for hotkey changes from the settings UI
   ipcMain.on("hotkey:update", (_event, newHotkey: string) => {
     registerHotkey(newHotkey);
+  });
+
+  ipcMain.on("hotkey:reload", () => {
+    hotkeyActivationMode = loadHotkeyModeFromDB();
+    registerHotkey(currentHotkeyAccel ?? undefined);
+  });
+
+  ipcMain.on("hotkey:set-mode", (_event, mode: string) => {
+    hotkeyActivationMode = mode === "toggle" ? "toggle" : "hold";
+    hotkeyPressed = false;
+    registerHotkey(currentHotkeyAccel ?? undefined);
   });
 });
 
@@ -979,6 +1017,62 @@ function loadHotkeyFromDB(): string | undefined {
   return undefined;
 }
 
+function loadHotkeyModeFromDB(): "hold" | "toggle" {
+  try {
+    const dbPath = process.env.FREESTYLE_DB_PATH;
+    if (dbPath) {
+      const { DatabaseSync } = require("node:sqlite");
+      const db = new DatabaseSync(dbPath);
+      const row = db
+        .prepare("SELECT value FROM settings WHERE key = 'hotkey_mode'")
+        .get() as { value: string } | undefined;
+      db.close();
+      if (row?.value === "toggle") return "toggle";
+    }
+  } catch {
+    // Ignore errors
+  }
+  return "hold";
+}
+
+function sendHotkeyDown(): void {
+  showPill();
+  mainWindow?.webContents.send("hotkey:down");
+  settingsWindow?.webContents.send("hotkey:down");
+}
+
+function sendHotkeyUp(): void {
+  mainWindow?.webContents.send("hotkey:up");
+  settingsWindow?.webContents.send("hotkey:up");
+}
+
+function handleNativeHotkeyDown(): void {
+  if (hotkeyActivationMode === "toggle") {
+    if (!hotkeyPressed) {
+      hotkeyPressed = true;
+      sendHotkeyDown();
+    } else {
+      hotkeyPressed = false;
+      sendHotkeyUp();
+    }
+    return;
+  }
+
+  if (!hotkeyPressed) {
+    hotkeyPressed = true;
+    sendHotkeyDown();
+  }
+}
+
+function handleNativeHotkeyUp(): void {
+  if (hotkeyActivationMode === "toggle") return;
+
+  if (hotkeyPressed) {
+    hotkeyPressed = false;
+    sendHotkeyUp();
+  }
+}
+
 function registerHotkey(hotkey?: string): void {
   // Tear down previous listener
   if (keyListener) {
@@ -995,27 +1089,16 @@ function registerHotkey(hotkey?: string): void {
     hotkey = loadHotkeyFromDB();
   }
 
-  const accel = hotkey && isValidAccelerator(hotkey) ? hotkey : DEFAULT_HOTKEY;
+  const normalized =
+    hotkey && isValidAccelerator(hotkey) ? normalizeAccelerator(hotkey) : null;
+  const accel = normalized ?? DEFAULT_HOTKEY;
   currentHotkeyAccel = accel;
 
   // Try native key listener binary first (all platforms)
   keyListener = new NativeKeyListener({
     hotkey: accel,
-    onKeyDown: () => {
-      if (!hotkeyPressed) {
-        hotkeyPressed = true;
-        showPill();
-        mainWindow?.webContents.send("hotkey:down");
-        settingsWindow?.webContents.send("hotkey:down");
-      }
-    },
-    onKeyUp: () => {
-      if (hotkeyPressed) {
-        hotkeyPressed = false;
-        mainWindow?.webContents.send("hotkey:up");
-        settingsWindow?.webContents.send("hotkey:up");
-      }
-    },
+    onKeyDown: handleNativeHotkeyDown,
+    onKeyUp: handleNativeHotkeyUp,
     onError: (error) => {
       console.error("[hotkey] Native key listener error:", error);
     },
@@ -1034,18 +1117,9 @@ function registerHotkey(hotkey?: string): void {
     );
     keyListener = null;
 
-    // Fallback: Electron's globalShortcut in toggle mode (all platforms)
+    // Fallback: Electron globalShortcut (uses same hold/toggle handlers above)
     const registered = globalShortcut.register(accel, () => {
-      if (!winToggleActive) {
-        winToggleActive = true;
-        showPill();
-        mainWindow?.webContents.send("hotkey:down");
-        settingsWindow?.webContents.send("hotkey:down");
-      } else {
-        winToggleActive = false;
-        mainWindow?.webContents.send("hotkey:up");
-        settingsWindow?.webContents.send("hotkey:up");
-      }
+      handleNativeHotkeyDown();
     });
     if (!registered) {
       const errorPayload = {

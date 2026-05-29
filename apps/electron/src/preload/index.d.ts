@@ -6,6 +6,8 @@ declare global {
     api: {
       pasteText: (text: string) => Promise<void>;
       updateHotkey: (hotkey: string) => void;
+      reloadHotkey: () => void;
+      setHotkeyMode: (mode: "hold" | "toggle") => void;
       hidePill: () => void;
       getServerPort: () => Promise<number>;
       onHotkeyDown: (callback: () => void) => () => void;
@@ -19,7 +21,8 @@ declare global {
       getOnboardingComplete: () => Promise<boolean>;
       setOnboardingComplete: () => void;
       startHotkeyRecording: () => void;
-      stopHotkeyRecording: () => void;
+      pauseHotkeyRecording: () => void;
+      stopHotkeyRecording: (hotkey?: string) => void;
       onHotkeyRecordModifiers: (
         callback: (modifiers: string[]) => void,
       ) => () => void;

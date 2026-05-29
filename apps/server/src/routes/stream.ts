@@ -58,15 +58,6 @@ const stream = new Hono().get(
         defaults.voice.model_id,
       );
 
-      console.log(
-        "[stream] provider:",
-        defaults.voice.provider,
-        "model:",
-        defaults.voice.model_id,
-        "canStream:",
-        canStream,
-      );
-
       ws.send(
         JSON.stringify({
           type: "config",
@@ -76,7 +67,6 @@ const stream = new Hono().get(
       );
 
       if (!canStream) {
-        console.log("[stream] streaming not supported, closing WS");
         ws.close();
         return;
       }

@@ -27,42 +27,20 @@ export class WhisperLocalTranscriptionProvider
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
     const modelId = stripProviderPrefix(opts.model);
-    console.log(
-      "[whisper-local] transcribe modelId:",
-      modelId,
-      "audioSize:",
-      opts.audio.length,
-    );
-    console.log(
-      "[whisper-local] binaryAvailable:",
-      isBinaryAvailable(),
-      "serverBinaryAvailable:",
-      isServerBinaryAvailable(),
-      "serverRunning:",
-      isServerRunning(),
-    );
 
     if (isBinaryAvailable()) {
-      console.log("[whisper-local] using whisper-cli");
-      const result = await transcribeWithWhisper({
+      return transcribeWithWhisper({
         audio: opts.audio,
         modelId,
         language: opts.language,
       });
-      console.log(
-        "[whisper-local] whisper-cli result:",
-        JSON.stringify(result.text).slice(0, 200),
-      );
-      return result;
     }
 
     if (isServerBinaryAvailable() || isServerRunning()) {
-      console.log("[whisper-local] using whisper-server fallback");
       await ensureServerRunning(modelId);
       return transcribeViaServer(opts.audio, getServerPort());
     }
 
-    console.error("[whisper-local] no binary found");
     throw new Error(
       "whisper.cpp binary not found. Run 'pnpm download:whisper-cpp' in the electron app directory.",
     );

@@ -55,16 +55,7 @@ export class Streamer {
   }
 
   async startCapture(stream: MediaStream): Promise<void> {
-    console.log(
-      "[streamer] startCapture, ws state:",
-      this.ws?.readyState,
-      "sessionReady:",
-      this.sessionReady,
-      "streamingSupported:",
-      this.streamingSupported,
-    );
     if (!this.ws || this.ws.readyState > WebSocket.OPEN) {
-      console.log("[streamer] reconnecting WS");
       this.openWebSocket();
     }
     this.capturing = true;
@@ -122,14 +113,6 @@ export class Streamer {
   }
 
   getWavBlob(): Blob | null {
-    console.log(
-      "[streamer] getWavBlob, pcmSampleCount:",
-      this.pcmSampleCount,
-      "pcmChunks:",
-      this.pcmChunks.length,
-      "capturing:",
-      this.capturing,
-    );
     if (this.pcmSampleCount === 0) return null;
     const blob = encodeWavFromInt16(
       this.pcmChunks,

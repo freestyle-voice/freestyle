@@ -39,14 +39,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   }
 
   const defaults = getDefaultModels();
-  console.log(
-    "[transcribe] provider:",
-    defaults.voice?.provider,
-    "model:",
-    defaults.voice?.model_id,
-  );
   if (!defaults.voice) {
-    console.error("[transcribe] no voice model configured");
     return c.json(
       {
         error: "No voice model configured. Go to Settings > Models to add one.",
@@ -64,15 +57,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   const language = langSetting?.value || undefined;
 
   const provider = getProvider(defaults.voice.provider);
-  console.log(
-    "[transcribe] resolved provider:",
-    provider?.providerId ?? "null",
-  );
   if (!provider) {
-    console.error(
-      "[transcribe] unsupported provider:",
-      defaults.voice.provider,
-    );
     return c.json(
       {
         error: `Unsupported transcription provider: ${defaults.voice.provider}`,
@@ -82,7 +67,6 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   }
 
   const apiKey = getApiKeyForProvider(defaults.voice.provider);
-  console.log("[transcribe] apiKey:", apiKey ? "(present)" : "null");
   if (!apiKey) {
     return c.json(
       {
@@ -93,10 +77,6 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   }
 
   try {
-    console.log(
-      "[transcribe] calling provider.transcribe, audioData size:",
-      audioData.length,
-    );
     const result = await provider.transcribe({
       audio: audioData,
       model: defaults.voice.model_id,
@@ -104,9 +84,12 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       ...(language ? { language } : {}),
     });
     rawText = result.text;
-    console.log("[transcribe] rawText:", JSON.stringify(rawText).slice(0, 200));
+    if (process.env.NODE_ENV !== "production") {
+      console.log(
+        `[transcribe] rawText=${JSON.stringify(rawText)}, audioDurationMs=${audioDurationMs}`,
+      );
+    }
   } catch (err) {
-    console.error("[transcribe] provider.transcribe threw:", err);
     captureException(err);
     metrics.count("transcription.error", 1, {
       attributes: { provider: defaults.voice.provider },

@@ -252,28 +252,18 @@ export default function AppPage(): React.JSX.Element {
     if (!streamerRef.current) {
       streamerRef.current = new Streamer(getApiBase(), {
         onConfig: (config) => {
-          console.log("[app] onConfig:", config);
           useStreamingRef.current = config.streaming;
         },
-        onReady: () => {
-          console.log("[app] onReady");
-        },
-        onPartial: (text) => {
-          console.log("[app] onPartial:", text.slice(0, 80));
-        },
+        onReady: () => {},
+        onPartial: () => {},
         onFinal: (text) => {
-          console.log("[app] onFinal:", text.slice(0, 120));
           const resolver = streamResolverRef.current;
-          if (!resolver) {
-            console.warn("[app] onFinal but no resolver");
-            return;
-          }
+          if (!resolver) return;
           streamResolverRef.current = null;
           resolver({ raw: text, cleaned: text });
         },
         onCleaned: () => {},
         onError: (msg) => {
-          console.error("[app] onError:", msg);
           if (!pillActiveRef.current) return;
           const resolver = streamResolverRef.current;
           if (resolver) {
@@ -579,15 +569,7 @@ export default function AppPage(): React.JSX.Element {
 
     const empty: TranscribeResult = { raw: "", cleaned: "" };
 
-    console.log(
-      "[app] commitRecording, useStreaming:",
-      useStreamingRef.current,
-      "hasStreamer:",
-      !!streamerRef.current,
-    );
-
     if (useStreamingRef.current && streamerRef.current) {
-      console.log("[app] commit via streaming path");
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
 
@@ -596,7 +578,6 @@ export default function AppPage(): React.JSX.Element {
         streamResolverRef.current = resolve;
         setTimeout(() => {
           if (streamResolverRef.current === resolve) {
-            console.warn("[app] streaming commit timed out after 30s");
             streamResolverRef.current = null;
             resolve(empty);
           }
@@ -608,30 +589,18 @@ export default function AppPage(): React.JSX.Element {
       return;
     }
 
-    console.log("[app] commit via batch (REST) path");
     let wavBlob: Blob | null = streamerRef.current?.getWavBlob() ?? null;
-    console.log(
-      "[app] getWavBlob:",
-      wavBlob ? `${wavBlob.size} bytes` : "null",
-    );
     if (!wavBlob && recorderRef.current.isRecording()) {
-      console.log("[app] falling back to MediaRecorder.stop()");
       wavBlob = await recorderRef.current.stop();
-      console.log(
-        "[app] MediaRecorder blob:",
-        wavBlob ? `${wavBlob.size} bytes` : "null",
-      );
     }
     recorderRef.current.cancel();
     recorderRef.current.releaseStream();
 
     if (!pillActiveRef.current) {
-      console.log("[app] pill no longer active, aborting");
       return;
     }
 
     if (!wavBlob) {
-      console.log("[app] no wav blob, hiding pill");
       if (queueRef.current.length === 0 && !drainingRef.current) hidePill();
       return;
     }
@@ -644,17 +613,14 @@ export default function AppPage(): React.JSX.Element {
     if (appContextRef.current) headers["x-app-context"] = appContextRef.current;
     if (isSubsequent) headers["x-skip-post-process"] = "true";
 
-    console.log("[app] POSTing to /api/transcribe, blob size:", wavBlob.size);
     setPendingCount((c) => c + 1);
     const transcribePromise: Promise<TranscribeResult> = fetch(
       `${getApiBase()}/api/transcribe`,
       { method: "POST", body: wavBlob, headers },
     )
       .then(async (res) => {
-        console.log("[app] /api/transcribe response:", res.status);
         if (!res.ok) {
           const body = await res.json().catch(() => null);
-          console.error("[app] transcribe error body:", body);
           const msg =
             body?.error ||
             body?.detail ||
@@ -667,19 +633,12 @@ export default function AppPage(): React.JSX.Element {
           return empty;
         }
         const data = await res.json();
-        console.log(
-          "[app] transcribe result:",
-          JSON.stringify(data).slice(0, 200),
-        );
         return {
           raw: (data.raw || "").trim(),
           cleaned: (data.cleaned || data.raw || "").trim(),
         };
       })
-      .catch((err) => {
-        console.error("[app] transcribe fetch error:", err);
-        return empty;
-      });
+      .catch(() => empty);
 
     queueRef.current.push({ promise: transcribePromise });
     drainQueue();

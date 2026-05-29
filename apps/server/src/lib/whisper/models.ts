@@ -7,9 +7,12 @@ import {
   statSync,
   unlinkSync,
 } from "node:fs";
+import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
+  getBinaryRelease,
+  getBinDir,
   getModelPath,
   getModelsDir,
   getWhisperModel,
@@ -139,6 +142,8 @@ export async function downloadModel(modelId: string): Promise<void> {
 
   if (isModelDownloaded(model)) return;
 
+  await ensureBinariesDownloaded();
+
   ensureModelsDir();
 
   const controller = new AbortController();
@@ -259,4 +264,96 @@ export function getDownloadedModelPath(modelId: string): string | null {
   if (!model) return null;
   if (!isModelDownloaded(model)) return null;
   return getModelPath(model);
+}
+
+// ---------------------------------------------------------------------------
+// Binary download
+// ---------------------------------------------------------------------------
+
+let binaryDownloadPromise: Promise<void> | null = null;
+
+export async function ensureBinariesDownloaded(): Promise<void> {
+  const { isBinaryAvailable } = await import("./binary.js");
+  if (isBinaryAvailable()) return;
+
+  if (binaryDownloadPromise) return binaryDownloadPromise;
+  binaryDownloadPromise = downloadBinaries().finally(() => {
+    binaryDownloadPromise = null;
+  });
+  return binaryDownloadPromise;
+}
+
+async function downloadBinaries(): Promise<void> {
+  const release = getBinaryRelease();
+  if (!release) {
+    throw new Error(
+      `No whisper.cpp binary available for ${process.platform}-${process.arch}`,
+    );
+  }
+
+  const binDir = getBinDir();
+  if (!existsSync(binDir)) mkdirSync(binDir, { recursive: true });
+
+  const archiveUrl = release.archive;
+  const tmpZip = join(binDir, "whisper-download.zip");
+
+  console.log("[whisper] Downloading binaries from", archiveUrl);
+
+  const res = await fetch(archiveUrl, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`Failed to download whisper binaries: HTTP ${res.status}`);
+  }
+
+  const fileStream = createWriteStream(tmpZip);
+  const reader = res.body.getReader();
+  const nodeStream = new Readable({
+    async read() {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          this.push(null);
+          return;
+        }
+        this.push(Buffer.from(value));
+      } catch (err) {
+        this.destroy(err instanceof Error ? err : new Error(String(err)));
+      }
+    },
+  });
+  await pipeline(nodeStream, fileStream);
+
+  console.log("[whisper] Extracting binaries to", binDir);
+
+  const { execFileSync } = await import("node:child_process");
+  try {
+    execFileSync("unzip", ["-o", "-j", tmpZip, "-d", binDir], {
+      stdio: "pipe",
+    });
+  } catch {
+    try {
+      unlinkSync(tmpZip);
+    } catch {}
+    throw new Error(
+      "Failed to extract whisper binaries. Ensure 'unzip' is installed.",
+    );
+  }
+
+  try {
+    unlinkSync(tmpZip);
+  } catch {}
+
+  if (process.platform !== "win32") {
+    const { chmodSync } = await import("node:fs");
+    for (const bin of release.binaries) {
+      const binPath = join(binDir, bin);
+      if (existsSync(binPath)) {
+        chmodSync(binPath, 0o755);
+      }
+    }
+  }
+
+  console.log("[whisper] Binaries downloaded successfully");
 }

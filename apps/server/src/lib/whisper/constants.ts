@@ -124,4 +124,39 @@ export function getResourcesDir(): string {
   );
 }
 
+export function getBinDir(): string {
+  return join(homedir(), ".cache", "freestyle", "whisper-bin");
+}
+
+interface BinaryReleaseDef {
+  archive: string;
+  binaries: string[];
+}
+
+const WHISPER_BIN_VERSION = "v1.7.5";
+const WHISPER_BIN_BASE = `https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_BIN_VERSION}`;
+
+const BINARY_RELEASES: Record<string, BinaryReleaseDef> = {
+  "darwin-arm64": {
+    archive: `${WHISPER_BIN_BASE}/whisper-${WHISPER_BIN_VERSION}-bin-macos-arm64.zip`,
+    binaries: ["whisper-cli", "whisper-server"],
+  },
+  "darwin-x64": {
+    archive: `${WHISPER_BIN_BASE}/whisper-${WHISPER_BIN_VERSION}-bin-macos-x86_64.zip`,
+    binaries: ["whisper-cli", "whisper-server"],
+  },
+  "linux-x64": {
+    archive: `${WHISPER_BIN_BASE}/whisper-${WHISPER_BIN_VERSION}-bin-ubuntu-x86_64.zip`,
+    binaries: ["whisper-cli", "whisper-server"],
+  },
+  "win32-x64": {
+    archive: `${WHISPER_BIN_BASE}/whisper-${WHISPER_BIN_VERSION}-bin-win-x86_64.zip`,
+    binaries: ["whisper-cli.exe", "whisper-server.exe"],
+  },
+};
+
+export function getBinaryRelease(): BinaryReleaseDef | null {
+  return BINARY_RELEASES[`${process.platform}-${process.arch}`] ?? null;
+}
+
 export const WHISPER_SERVER_PORT = 8178;

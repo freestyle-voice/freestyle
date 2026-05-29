@@ -7,7 +7,6 @@ import { getProvider } from "../lib/streaming/registry.js";
 import { getApiKeyForProvider } from "../lib/streaming-stt.js";
 
 const transcribeRoute = new Hono().post("/", async (c) => {
-  console.log("[debug:transcribe] POST /api/transcribe received");
   const start = Date.now();
 
   const contentType = c.req.header("content-type") ?? "";
@@ -40,14 +39,6 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   }
 
   const defaults = getDefaultModels();
-  console.log(
-    "[debug:transcribe] provider:",
-    defaults.voice?.provider,
-    "model:",
-    defaults.voice?.model_id,
-    "audioSize:",
-    audioData.length,
-  );
   if (!defaults.voice) {
     return c.json(
       {
@@ -86,7 +77,6 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   }
 
   try {
-    console.log("[debug:transcribe] calling provider.transcribe()");
     const result = await provider.transcribe({
       audio: audioData,
       model: defaults.voice.model_id,
@@ -94,13 +84,12 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       ...(language ? { language } : {}),
     });
     rawText = result.text;
-    console.log(
-      "[debug:transcribe] success, text:",
-      JSON.stringify(rawText).slice(0, 150),
-    );
+    if (process.env.NODE_ENV !== "production") {
+      console.log(
+        `[transcribe] rawText=${JSON.stringify(rawText)}, audioDurationMs=${audioDurationMs}`,
+      );
+    }
   } catch (err) {
-    console.error("[debug:transcribe] error:", err);
-
     captureException(err);
     metrics.count("transcription.error", 1, {
       attributes: { provider: defaults.voice.provider },

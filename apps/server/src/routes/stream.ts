@@ -58,13 +58,6 @@ const stream = new Hono().get(
         defaults.voice.model_id,
       );
 
-      console.log(
-        "[debug:stream] connectUpstream provider:",
-        defaults.voice.provider,
-        "canStream:",
-        canStream,
-      );
-
       ws.send(
         JSON.stringify({
           type: "config",
@@ -253,7 +246,6 @@ const stream = new Hono().get(
             appContext = msg.context ?? null;
             break;
           case "start":
-            console.log("[debug:stream] start msg, upstream:", !!upstream);
             sessionStartTime = Date.now();
             audioDurationMs = 0;
             appContext = null;
@@ -265,12 +257,6 @@ const stream = new Hono().get(
             }
             break;
           case "commit":
-            console.log(
-              "[debug:stream] commit msg, upstream:",
-              !!upstream,
-              "audioDurationMs:",
-              msg.audioDurationMs,
-            );
             if (msg.audioDurationMs && msg.audioDurationMs > 0) {
               audioDurationMs = msg.audioDurationMs;
             }

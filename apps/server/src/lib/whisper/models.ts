@@ -1,9 +1,14 @@
 import { Buffer } from "node:buffer";
+import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
+  copyFileSync,
   createWriteStream,
   existsSync,
   mkdirSync,
+  readdirSync,
   renameSync,
+  rmSync,
   statSync,
   unlinkSync,
 } from "node:fs";
@@ -15,6 +20,7 @@ import {
   getModelPath,
   getModelsDir,
   getWhisperModel,
+  WHISPER_CPP_VERSION,
   WHISPER_MODELS,
   type WhisperModelDef,
 } from "./constants.js";
@@ -72,6 +78,21 @@ function isModelDownloaded(model: WhisperModelDef): boolean {
   return stat.size >= model.sizeBytes * 0.95;
 }
 
+function baseModelState(
+  modelId: string,
+  model: WhisperModelDef,
+): Pick<
+  ModelDownloadState,
+  "model" | "fileName" | "sizeBytes" | "displayName"
+> {
+  return {
+    model: modelId,
+    fileName: model.fileName,
+    sizeBytes: model.sizeBytes,
+    displayName: model.displayName,
+  };
+}
+
 export function getModelStatus(modelId: string): ModelDownloadState | null {
   const model = getWhisperModel(modelId);
   if (!model) return null;
@@ -80,10 +101,7 @@ export function getModelStatus(modelId: string): ModelDownloadState | null {
 
   if (active?.error) {
     return {
-      model: modelId,
-      fileName: model.fileName,
-      sizeBytes: model.sizeBytes,
-      displayName: model.displayName,
+      ...baseModelState(modelId, model),
       status: "error",
       error: active.error,
     };
@@ -91,10 +109,7 @@ export function getModelStatus(modelId: string): ModelDownloadState | null {
 
   if (active) {
     return {
-      model: modelId,
-      fileName: model.fileName,
-      sizeBytes: model.sizeBytes,
-      displayName: model.displayName,
+      ...baseModelState(modelId, model),
       status: "downloading",
       phase: active.phase,
       downloadProgress: {
@@ -110,22 +125,10 @@ export function getModelStatus(modelId: string): ModelDownloadState | null {
   }
 
   if (isModelDownloaded(model)) {
-    return {
-      model: modelId,
-      fileName: model.fileName,
-      sizeBytes: model.sizeBytes,
-      displayName: model.displayName,
-      status: "ready",
-    };
+    return { ...baseModelState(modelId, model), status: "ready" };
   }
 
-  return {
-    model: modelId,
-    fileName: model.fileName,
-    sizeBytes: model.sizeBytes,
-    displayName: model.displayName,
-    status: "not_downloaded",
-  };
+  return { ...baseModelState(modelId, model), status: "not_downloaded" };
 }
 
 export function getAllModelStatuses(): ModelDownloadState[] {
@@ -146,12 +149,15 @@ export async function downloadModel(modelId: string): Promise<void> {
 
   if (isModelDownloaded(model)) return;
 
+  const { isBinaryAvailable } = await import("./binary.js");
+  const needsBinary = !isBinaryAvailable();
+
   const controller = new AbortController();
   const active: ActiveDownload = {
     controller,
-    phase: "building_binary",
+    phase: needsBinary ? "building_binary" : "downloading_model",
     bytesDownloaded: 0,
-    bytesTotal: 0,
+    bytesTotal: needsBinary ? 0 : model.sizeBytes,
     speedBps: 0,
     startedAt: Date.now(),
     lastUpdate: Date.now(),
@@ -159,19 +165,21 @@ export async function downloadModel(modelId: string): Promise<void> {
   };
   activeDownloads.set(modelId, active);
 
-  try {
-    await ensureBinariesDownloaded();
-  } catch (err) {
-    active.error = err instanceof Error ? err.message : String(err);
-    throw err;
-  }
+  if (needsBinary) {
+    try {
+      await ensureBinariesDownloaded();
+    } catch (err) {
+      active.error = err instanceof Error ? err.message : String(err);
+      throw err;
+    }
 
-  active.phase = "downloading_model";
-  active.bytesTotal = model.sizeBytes;
-  active.bytesDownloaded = 0;
-  active.speedBps = 0;
-  active.lastUpdate = Date.now();
-  active.lastBytes = 0;
+    active.phase = "downloading_model";
+    active.bytesTotal = model.sizeBytes;
+    active.bytesDownloaded = 0;
+    active.speedBps = 0;
+    active.lastUpdate = Date.now();
+    active.lastBytes = 0;
+  }
 
   ensureModelsDir();
 
@@ -198,35 +206,7 @@ export async function downloadModel(modelId: string): Promise<void> {
     }
 
     const fileStream = createWriteStream(tempPath);
-    const reader = res.body.getReader();
-
-    const nodeStream = new Readable({
-      async read() {
-        try {
-          const { done, value } = await reader.read();
-          if (done) {
-            this.push(null);
-            return;
-          }
-          active.bytesDownloaded += value.byteLength;
-
-          const now = Date.now();
-          const elapsed = now - active.lastUpdate;
-          if (elapsed >= 500) {
-            const bytesDelta = active.bytesDownloaded - active.lastBytes;
-            active.speedBps = Math.round((bytesDelta / elapsed) * 1000);
-            active.lastUpdate = now;
-            active.lastBytes = active.bytesDownloaded;
-          }
-
-          this.push(Buffer.from(value));
-        } catch (err) {
-          this.destroy(err instanceof Error ? err : new Error(String(err)));
-        }
-      },
-    });
-
-    await pipeline(nodeStream, fileStream);
+    await pipeline(webBodyToReadable(res.body, active), fileStream);
 
     renameSync(tempPath, destPath);
     activeDownloads.delete(modelId);
@@ -284,7 +264,7 @@ export function getDownloadedModelPath(modelId: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Binary download
+// Binary acquisition
 // ---------------------------------------------------------------------------
 
 let binaryDownloadPromise: Promise<void> | null = null;
@@ -309,17 +289,14 @@ export async function ensureBinariesDownloaded(): Promise<void> {
 }
 
 async function buildFromSource(): Promise<void> {
-  const { execFileSync } = await import("node:child_process");
-
   const binDir = getBinDir();
   if (!existsSync(binDir)) mkdirSync(binDir, { recursive: true });
 
   const srcDir = join(binDir, "whisper.cpp-src");
   const buildDir = join(srcDir, "build");
 
-  const version = "1.7.5";
-  const tarballUrl = `https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v${version}.tar.gz`;
-  const tarPath = join(binDir, `whisper-${version}.tar.gz`);
+  const tarballUrl = `https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v${WHISPER_CPP_VERSION}.tar.gz`;
+  const tarPath = join(binDir, `whisper-${WHISPER_CPP_VERSION}.tar.gz`);
 
   console.log("[whisper] Downloading whisper.cpp source...");
 
@@ -334,27 +311,11 @@ async function buildFromSource(): Promise<void> {
   }
 
   const fileStream = createWriteStream(tarPath);
-  const reader = res.body.getReader();
-  const nodeStream = new Readable({
-    async read() {
-      try {
-        const { done, value } = await reader.read();
-        if (done) {
-          this.push(null);
-          return;
-        }
-        this.push(Buffer.from(value));
-      } catch (err) {
-        this.destroy(err instanceof Error ? err : new Error(String(err)));
-      }
-    },
-  });
-  await pipeline(nodeStream, fileStream);
+  await pipeline(webBodyToReadable(res.body), fileStream);
 
   console.log("[whisper] Extracting source...");
 
   if (existsSync(srcDir)) {
-    const { rmSync } = await import("node:fs");
     rmSync(srcDir, { recursive: true, force: true });
   }
   mkdirSync(srcDir, { recursive: true });
@@ -363,10 +324,7 @@ async function buildFromSource(): Promise<void> {
     execFileSync(
       "tar",
       ["xzf", tarPath, "-C", srcDir, "--strip-components=1"],
-      {
-        stdio: "pipe",
-        timeout: 30_000,
-      },
+      { stdio: "pipe", timeout: 30_000 },
     );
   } catch {
     throw new Error(
@@ -399,44 +357,30 @@ async function buildFromSource(): Promise<void> {
     );
   }
 
-  const binaryName =
-    process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli";
-  const serverName =
-    process.platform === "win32" ? "whisper-server.exe" : "whisper-server";
-  const { copyFileSync, chmodSync, readdirSync } = await import("node:fs");
+  const binaryName = "whisper-cli";
+  const serverName = "whisper-server";
 
-  const builtBin = join(buildDir, "bin", binaryName);
-  const builtServer = join(buildDir, "bin", serverName);
-
-  if (existsSync(builtBin)) {
-    copyFileSync(builtBin, join(binDir, binaryName));
-    if (process.platform !== "win32")
-      chmodSync(join(binDir, binaryName), 0o755);
-  }
-  if (existsSync(builtServer)) {
-    copyFileSync(builtServer, join(binDir, serverName));
-    if (process.platform !== "win32")
-      chmodSync(join(binDir, serverName), 0o755);
+  for (const name of [binaryName, serverName]) {
+    const builtPath = join(buildDir, "bin", name);
+    if (existsSync(builtPath)) {
+      copyFileSync(builtPath, join(binDir, name));
+      chmodSync(join(binDir, name), 0o755);
+    }
   }
 
-  // Copy shared libraries (.dylib / .so) next to the binaries
   const libDirs = [join(buildDir, "src"), join(buildDir, "ggml", "src")];
   for (const libDir of libDirs) {
     if (!existsSync(libDir)) continue;
     for (const file of readdirSync(libDir)) {
-      if (
-        file.endsWith(".dylib") ||
-        (file.endsWith(".so") && file.includes("lib"))
-      ) {
+      if (file.endsWith(".dylib") || /\.so(\.\d+)*$/.test(file)) {
         copyFileSync(join(libDir, file), join(binDir, file));
       }
     }
   }
 
-  // Fix rpath on macOS so the binary finds libs in its own directory
   if (process.platform === "darwin") {
-    for (const bin of [binaryName, serverName]) {
-      const binPath = join(binDir, bin);
+    for (const name of [binaryName, serverName]) {
+      const binPath = join(binDir, name);
       if (!existsSync(binPath)) continue;
       try {
         execFileSync("install_name_tool", ["-add_rpath", binDir, binPath], {
@@ -447,9 +391,7 @@ async function buildFromSource(): Promise<void> {
     }
   }
 
-  // Clean up source
   try {
-    const { rmSync } = await import("node:fs");
     rmSync(srcDir, { recursive: true, force: true });
   } catch {}
 
@@ -467,8 +409,7 @@ async function downloadWindowsBinaries(): Promise<void> {
   const binDir = getBinDir();
   if (!existsSync(binDir)) mkdirSync(binDir, { recursive: true });
 
-  const version = "1.8.4";
-  const archiveUrl = `https://github.com/ggml-org/whisper.cpp/releases/download/v${version}/whisper-bin-x64.zip`;
+  const archiveUrl = `https://github.com/ggml-org/whisper.cpp/releases/download/v${WHISPER_CPP_VERSION}/whisper-bin-x64.zip`;
   const tmpZip = join(binDir, "whisper-bin.zip");
 
   console.log("[whisper] Downloading pre-built Windows binaries...");
@@ -482,24 +423,8 @@ async function downloadWindowsBinaries(): Promise<void> {
   }
 
   const fileStream = createWriteStream(tmpZip);
-  const reader = res.body.getReader();
-  const nodeStream = new Readable({
-    async read() {
-      try {
-        const { done, value } = await reader.read();
-        if (done) {
-          this.push(null);
-          return;
-        }
-        this.push(Buffer.from(value));
-      } catch (err) {
-        this.destroy(err instanceof Error ? err : new Error(String(err)));
-      }
-    },
-  });
-  await pipeline(nodeStream, fileStream);
+  await pipeline(webBodyToReadable(res.body), fileStream);
 
-  const { execFileSync } = await import("node:child_process");
   try {
     execFileSync(
       "powershell",
@@ -521,4 +446,45 @@ async function downloadWindowsBinaries(): Promise<void> {
   } catch {}
 
   console.log("[whisper] Windows binaries downloaded");
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function webBodyToReadable(
+  body: ReadableStream<Uint8Array>,
+  progress?: {
+    bytesDownloaded: number;
+    lastUpdate: number;
+    lastBytes: number;
+    speedBps: number;
+  },
+): Readable {
+  const reader = body.getReader();
+  return new Readable({
+    async read() {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          this.push(null);
+          return;
+        }
+        if (progress) {
+          progress.bytesDownloaded += value.byteLength;
+          const now = Date.now();
+          const elapsed = now - progress.lastUpdate;
+          if (elapsed >= 500) {
+            const bytesDelta = progress.bytesDownloaded - progress.lastBytes;
+            progress.speedBps = Math.round((bytesDelta / elapsed) * 1000);
+            progress.lastUpdate = now;
+            progress.lastBytes = progress.bytesDownloaded;
+          }
+        }
+        this.push(Buffer.from(value));
+      } catch (err) {
+        this.destroy(err instanceof Error ? err : new Error(String(err)));
+      }
+    },
+  });
 }

@@ -21,7 +21,7 @@ const ROOT = join(__dirname, "..");
 
 // whisper.cpp release tag to download
 const WHISPER_VERSION = "v1.7.5";
-const GITHUB_BASE = `https://github.com/ggerganov/whisper.cpp/releases/download/${WHISPER_VERSION}`;
+const GITHUB_BASE = `https://github.com/ggml-org/whisper.cpp/releases/download/${WHISPER_VERSION}`;
 
 // Map of platform-arch to download info
 const PLATFORMS = {

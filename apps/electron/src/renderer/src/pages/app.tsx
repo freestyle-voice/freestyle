@@ -151,16 +151,6 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- Queue drain ----
   const drainQueue = useCallback(async () => {
-    console.log(
-      "[debug] drainQueue called, draining:",
-      drainingRef.current,
-      "queueLen:",
-      queueRef.current.length,
-      "wantsMic:",
-      wantsMicRef.current,
-      "pillActive:",
-      pillActiveRef.current,
-    );
     if (drainingRef.current) return;
     drainingRef.current = true;
 
@@ -169,25 +159,14 @@ export default function AppPage(): React.JSX.Element {
     }
 
     if (!pillActiveRef.current || queueRef.current.length === 0) {
-      console.log(
-        "[debug] drainQueue early exit, pillActive:",
-        pillActiveRef.current,
-        "queueLen:",
-        queueRef.current.length,
-      );
       drainingRef.current = false;
       return;
     }
 
     const batch = [...queueRef.current];
     queueRef.current = [];
-    console.log("[debug] drainQueue processing batch of", batch.length);
 
     const results = await Promise.all(batch.map((e) => e.promise));
-    console.log(
-      "[debug] drainQueue results:",
-      results.map((r) => r.raw.slice(0, 50)),
-    );
 
     if (!pillActiveRef.current) {
       drainingRef.current = false;
@@ -274,28 +253,18 @@ export default function AppPage(): React.JSX.Element {
     if (!streamerRef.current) {
       streamerRef.current = new Streamer(getApiBase(), {
         onConfig: (config) => {
-          console.log("[debug] streamer onConfig:", config);
           useStreamingRef.current = config.streaming;
         },
-        onReady: () => {
-          console.log("[debug] streamer onReady");
-        },
-        onPartial: (text) => {
-          console.log("[debug] streamer onPartial:", text.slice(0, 60));
-        },
+        onReady: () => {},
+        onPartial: () => {},
         onFinal: (text) => {
-          console.log("[debug] streamer onFinal:", text.slice(0, 100));
           const resolver = streamResolverRef.current;
-          if (!resolver) {
-            console.warn("[debug] onFinal but no resolver!");
-            return;
-          }
+          if (!resolver) return;
           streamResolverRef.current = null;
           resolver({ raw: text, cleaned: text });
         },
         onCleaned: () => {},
         onError: (msg) => {
-          console.error("[debug] streamer onError:", msg);
           if (!pillActiveRef.current) return;
           const resolver = streamResolverRef.current;
           if (resolver) {
@@ -471,10 +440,6 @@ export default function AppPage(): React.JSX.Element {
   // ---- Start recording ----
   const startRecording = useCallback(
     async (forReRecord = false) => {
-      console.log(
-        "[app] startRecording, useStreaming:",
-        useStreamingRef.current,
-      );
       if (wantsMicRef.current) {
         return;
       }
@@ -512,12 +477,6 @@ export default function AppPage(): React.JSX.Element {
 
       try {
         sessionStreamingRef.current = useStreamingRef.current;
-        console.log(
-          "[debug] startRecording sessionStreaming:",
-          sessionStreamingRef.current,
-          "useStreaming:",
-          useStreamingRef.current,
-        );
         const stream = sessionStreamingRef.current
           ? await recorderRef.current.acquireStream()
           : await recorderRef.current.start();
@@ -608,17 +567,7 @@ export default function AppPage(): React.JSX.Element {
 
     const empty: TranscribeResult = { raw: "", cleaned: "" };
 
-    console.log(
-      "[debug] commitRecording sessionStreaming:",
-      sessionStreamingRef.current,
-      "useStreaming:",
-      useStreamingRef.current,
-      "hasStreamer:",
-      !!streamerRef.current,
-    );
-
     if (sessionStreamingRef.current && streamerRef.current) {
-      console.log("[debug] -> streaming commit path");
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
 
@@ -627,7 +576,6 @@ export default function AppPage(): React.JSX.Element {
         streamResolverRef.current = resolve;
         setTimeout(() => {
           if (streamResolverRef.current === resolve) {
-            console.warn("[debug] streaming commit timed out after 30s");
             streamResolverRef.current = null;
             resolve(empty);
           }
@@ -639,32 +587,18 @@ export default function AppPage(): React.JSX.Element {
       return;
     }
 
-    console.log("[debug] -> batch commit path");
     let wavBlob: Blob | null = streamerRef.current?.getWavBlob() ?? null;
-    console.log(
-      "[debug] getWavBlob:",
-      wavBlob ? `${wavBlob.size}b` : "null",
-      "isRecording:",
-      recorderRef.current.isRecording(),
-    );
     if (!wavBlob && recorderRef.current.isRecording()) {
-      console.log("[debug] falling back to MediaRecorder");
       wavBlob = await recorderRef.current.stop();
-      console.log(
-        "[debug] MediaRecorder blob:",
-        wavBlob ? `${wavBlob.size}b` : "null",
-      );
     }
     recorderRef.current.cancel();
     recorderRef.current.releaseStream();
 
     if (!pillActiveRef.current) {
-      console.log("[debug] pill inactive, aborting");
       return;
     }
 
     if (!wavBlob) {
-      console.log("[debug] no wavBlob, hiding");
       if (queueRef.current.length === 0 && !drainingRef.current) hidePill();
       return;
     }
@@ -677,14 +611,12 @@ export default function AppPage(): React.JSX.Element {
     if (appContextRef.current) headers["x-app-context"] = appContextRef.current;
     if (isSubsequent) headers["x-skip-post-process"] = "true";
 
-    console.log("[debug] POSTing /api/transcribe, size:", wavBlob.size);
     setPendingCount((c) => c + 1);
     const transcribePromise: Promise<TranscribeResult> = fetch(
       `${getApiBase()}/api/transcribe`,
       { method: "POST", body: wavBlob, headers },
     )
       .then(async (res) => {
-        console.log("[debug] transcribe response:", res.status);
         if (!res.ok) {
           const body = await res.json().catch(() => null);
           const msg =
@@ -699,19 +631,12 @@ export default function AppPage(): React.JSX.Element {
           return empty;
         }
         const data = await res.json();
-        console.log(
-          "[debug] transcribe result:",
-          JSON.stringify(data).slice(0, 200),
-        );
         return {
           raw: (data.raw || "").trim(),
           cleaned: (data.cleaned || data.raw || "").trim(),
         };
       })
-      .catch((err) => {
-        console.error("[debug] transcribe fetch error:", err);
-        return empty;
-      });
+      .catch(() => empty);
 
     queueRef.current.push({ promise: transcribePromise });
     drainQueue();

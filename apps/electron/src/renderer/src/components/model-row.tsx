@@ -9,6 +9,8 @@ export const PROVIDER_FILTER_MARKS: Record<string, string> = {
   mistral: "M",
 };
 
+export const MODEL_ROW_PAGE_SIZE = 20;
+
 export function ProviderModelHeader({
   providerId,
   providerName,
@@ -106,5 +108,26 @@ export function LlmModelRow({
         )}
       </div>
     </div>
+  );
+}
+
+export function ShowMoreModelRowsButton({
+  hiddenCount,
+  onClick,
+}: {
+  hiddenCount: number;
+  onClick: () => void;
+}): React.JSX.Element | null {
+  if (hiddenCount <= 0) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-muted-foreground hover:bg-secondary hover:text-foreground flex w-full items-center justify-center border-t border-border px-5 py-3 text-[12.5px] font-medium"
+    >
+      Show {Math.min(hiddenCount, MODEL_ROW_PAGE_SIZE)} more
+      {hiddenCount > MODEL_ROW_PAGE_SIZE ? ` (${hiddenCount} hidden)` : ""}
+    </button>
   );
 }

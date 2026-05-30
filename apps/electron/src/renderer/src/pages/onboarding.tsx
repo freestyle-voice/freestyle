@@ -4,7 +4,9 @@ import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
 import {
   LlmModelRow,
+  MODEL_ROW_PAGE_SIZE,
   ProviderModelHeader,
+  ShowMoreModelRowsButton,
 } from "@renderer/components/model-row";
 import { Toggle, VoiceRow } from "@renderer/components/voice-row";
 import { getApiBase, getClient } from "@renderer/lib/api";
@@ -82,6 +84,9 @@ export default function OnboardingPage(): React.JSX.Element {
   });
   const [showLlmKey, setShowLlmKey] = useState(false);
   const [needsLlmKey, setNeedsLlmKey] = useState(false);
+  const [llmVisibleModelCounts, setLlmVisibleModelCounts] = useState<
+    Record<string, number>
+  >({});
 
   // Load permissions
   useEffect(() => {
@@ -366,6 +371,17 @@ export default function OnboardingPage(): React.JSX.Element {
     list.push(m);
     llmsByProvider.set(m.provider_id, list);
   }
+  const visibleLlmCountFor = (providerId: string) =>
+    llmVisibleModelCounts[providerId] ?? MODEL_ROW_PAGE_SIZE;
+  const showMoreLlmsFor = (providerId: string, total: number) => {
+    setLlmVisibleModelCounts((prev) => ({
+      ...prev,
+      [providerId]: Math.min(
+        (prev[providerId] ?? MODEL_ROW_PAGE_SIZE) + MODEL_ROW_PAGE_SIZE,
+        total,
+      ),
+    }));
+  };
 
   const hasModelSelected =
     selectedModel !== null || selectedWhisperDefId !== null;
@@ -734,6 +750,8 @@ export default function OnboardingPage(): React.JSX.Element {
                           const providerName =
                             PROVIDER_DISPLAY_NAMES[providerId] ?? providerId;
                           const hasKey = apiKeys.has(providerId);
+                          const visibleCount = visibleLlmCountFor(providerId);
+                          const visibleModels = models.slice(0, visibleCount);
                           return (
                             <div key={providerId}>
                               <ProviderModelHeader
@@ -741,7 +759,7 @@ export default function OnboardingPage(): React.JSX.Element {
                                 providerName={providerName}
                                 hasKey={hasKey}
                               />
-                              {models.map((model, index) => (
+                              {visibleModels.map((model, index) => (
                                 <LlmModelRow
                                   key={`${providerId}:${model.model_id}`}
                                   name={model.model_name}
@@ -757,6 +775,14 @@ export default function OnboardingPage(): React.JSX.Element {
                                   onSelect={() => selectLlm(model)}
                                 />
                               ))}
+                              <ShowMoreModelRowsButton
+                                hiddenCount={
+                                  models.length - visibleModels.length
+                                }
+                                onClick={() =>
+                                  showMoreLlmsFor(providerId, models.length)
+                                }
+                              />
                             </div>
                           );
                         },

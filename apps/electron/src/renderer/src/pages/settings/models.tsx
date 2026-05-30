@@ -7,8 +7,10 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   LlmModelRow,
+  MODEL_ROW_PAGE_SIZE,
   PROVIDER_FILTER_MARKS,
   ProviderModelHeader,
+  ShowMoreModelRowsButton,
 } from "@renderer/components/model-row";
 import { Toggle, VoiceRow } from "@renderer/components/voice-row";
 import { getApiBase, getClient } from "@renderer/lib/api";
@@ -1214,6 +1216,9 @@ function LlmPicker({
   onSelectLocalModel: (modelName: string) => Promise<void>;
 }): React.JSX.Element {
   const [filter, setFilter] = useState("all");
+  const [visibleModelCounts, setVisibleModelCounts] = useState<
+    Record<string, number>
+  >({});
   const q = search.toLowerCase();
   const providerEntries = [...modelsByProvider.entries()];
   const providerFilters: PickerFilter[] = [
@@ -1260,6 +1265,17 @@ function LlmPicker({
       models.map((model) => ({ model, providerId, providerName })),
   );
   const isEmpty = !showLocal && visibleProviderGroups.length === 0;
+  const visibleCountFor = (providerId: string) =>
+    visibleModelCounts[providerId] ?? MODEL_ROW_PAGE_SIZE;
+  const showMoreFor = (providerId: string, total: number) => {
+    setVisibleModelCounts((prev) => ({
+      ...prev,
+      [providerId]: Math.min(
+        (prev[providerId] ?? MODEL_ROW_PAGE_SIZE) + MODEL_ROW_PAGE_SIZE,
+        total,
+      ),
+    }));
+  };
 
   return (
     <ModelPickerShell
@@ -1389,33 +1405,42 @@ function LlmPicker({
       )}
 
       {filter === "all"
-        ? visibleProviderGroups.map(({ providerId, providerName, models }) => (
-            <div key={providerId}>
-              <ProviderModelHeader
-                providerId={providerId}
-                providerName={providerName}
-                hasKey={keyProviders.has(providerId)}
-              />
-              {models.map((model, index) => {
-                const isActive =
-                  currentDefault?.model_id === model.model_id &&
-                  currentDefault?.provider === model.provider_id;
-                return (
-                  <LlmModelRow
-                    key={model.model_id}
-                    name={model.model_name}
-                    providerName={providerName}
-                    modelId={model.model_id}
-                    selected={isActive}
-                    hasKey={keyProviders.has(providerId)}
-                    first={index === 0}
-                    onSelect={() => onSelectCloud(model)}
-                  />
-                );
-              })}
-            </div>
-          ))
+        ? visibleProviderGroups.map(({ providerId, providerName, models }) => {
+            const visibleCount = visibleCountFor(providerId);
+            const visibleModels = models.slice(0, visibleCount);
+            return (
+              <div key={providerId}>
+                <ProviderModelHeader
+                  providerId={providerId}
+                  providerName={providerName}
+                  hasKey={keyProviders.has(providerId)}
+                />
+                {visibleModels.map((model, index) => {
+                  const isActive =
+                    currentDefault?.model_id === model.model_id &&
+                    currentDefault?.provider === model.provider_id;
+                  return (
+                    <LlmModelRow
+                      key={model.model_id}
+                      name={model.model_name}
+                      providerName={providerName}
+                      modelId={model.model_id}
+                      selected={isActive}
+                      hasKey={keyProviders.has(providerId)}
+                      first={index === 0}
+                      onSelect={() => onSelectCloud(model)}
+                    />
+                  );
+                })}
+                <ShowMoreModelRowsButton
+                  hiddenCount={models.length - visibleModels.length}
+                  onClick={() => showMoreFor(providerId, models.length)}
+                />
+              </div>
+            );
+          })
         : visibleModels.map(({ providerId, providerName, model }, index) => {
+            if (index >= visibleCountFor(providerId)) return null;
             const isActive =
               currentDefault?.model_id === model.model_id &&
               currentDefault?.provider === model.provider_id;
@@ -1427,11 +1452,19 @@ function LlmPicker({
                 modelId={model.model_id}
                 selected={isActive}
                 hasKey={keyProviders.has(providerId)}
-                first={!showLocal && index === 0}
+                first={index === 0}
                 onSelect={() => onSelectCloud(model)}
               />
             );
           })}
+      {filter !== "all" &&
+        visibleProviderGroups.map(({ providerId, models }) => (
+          <ShowMoreModelRowsButton
+            key={`${providerId}:more`}
+            hiddenCount={models.length - visibleCountFor(providerId)}
+            onClick={() => showMoreFor(providerId, models.length)}
+          />
+        ))}
     </ModelPickerShell>
   );
 }

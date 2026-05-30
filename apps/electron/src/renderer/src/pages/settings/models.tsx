@@ -18,14 +18,13 @@ import {
   Eye,
   EyeOff,
   Key,
+  Laptop,
   Loader2,
   Mic,
-  Monitor,
   Pencil,
   Plus,
   RefreshCw,
   Search,
-  Shield,
   Sparkles,
   Target,
   Trash2,
@@ -1259,11 +1258,11 @@ function formatSpeed(bps: number): string {
 const VOICE_FILTERS: {
   id: string;
   label: string;
-  icon?: typeof Shield;
+  icon?: typeof Laptop;
 }[] = [
   { id: "all", label: "All" },
   { id: "cloud", label: "Cloud", icon: Cloud },
-  { id: "private", label: "On-device", icon: Shield },
+  { id: "private", label: "On-device", icon: Laptop },
   { id: "fast", label: "Fastest", icon: Zap },
   { id: "accurate", label: "Most accurate", icon: Target },
   { id: "free", label: "No usage cost", icon: CircleDollarSign },
@@ -1725,7 +1724,7 @@ function LlmPicker({
         {/* On-device group — connect a local server, then pick a model */}
         <div>
           <div className="border-border bg-card sticky top-0 z-10 flex items-center gap-2 border-b px-5 py-2">
-            <Monitor className="text-primary h-3 w-3" />
+            <Laptop className="text-primary h-3 w-3" />
             <span
               className="mono text-foreground text-[10px] uppercase"
               style={{ letterSpacing: "0.14em" }}
@@ -2058,7 +2057,7 @@ function LocalProviderRow({
         !first && "border-border border-t",
       )}
     >
-      <Shield className="text-primary h-[15px] w-[15px] shrink-0" />
+      <Laptop className="text-primary h-[15px] w-[15px] shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="text-foreground text-[13.5px] font-semibold">
           On-device · whisper.cpp

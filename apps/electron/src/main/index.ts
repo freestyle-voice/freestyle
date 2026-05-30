@@ -567,6 +567,22 @@ function createTray(): void {
       label: "Check for Updates...",
       click: () => checkForUpdatesFromMenu(),
     },
+    ...(is.dev
+      ? [
+          { type: "separator" as const },
+          {
+            label: "Reset Onboarding",
+            click: () => {
+              writeSettings({ onboardingComplete: false });
+              if (settingsWindow) {
+                settingsWindow.loadURL(getDashboardURL("/onboarding"));
+              } else {
+                showSettingsWindow();
+              }
+            },
+          },
+        ]
+      : []),
     { type: "separator" },
     {
       label: "Quit",
@@ -620,6 +636,24 @@ app.whenReady().then(async () => {
                 label: "Check for Updates...",
                 click: () => checkForUpdatesFromMenu(),
               },
+              ...(is.dev
+                ? [
+                    { type: "separator" as const },
+                    {
+                      label: "Reset Onboarding",
+                      click: () => {
+                        writeSettings({ onboardingComplete: false });
+                        if (settingsWindow) {
+                          settingsWindow.loadURL(
+                            getDashboardURL("/onboarding"),
+                          );
+                        } else {
+                          showSettingsWindow();
+                        }
+                      },
+                    },
+                  ]
+                : []),
               { type: "separator" as const },
               { role: "hide" as const },
               { role: "hideOthers" as const },
@@ -646,26 +680,6 @@ app.whenReady().then(async () => {
       role: "window",
       submenu: [{ role: "minimize" }, { role: "close" }],
     },
-    ...(is.dev
-      ? [
-          {
-            label: "Dev",
-            submenu: [
-              {
-                label: "Reset Onboarding",
-                click: () => {
-                  writeSettings({ onboardingComplete: false });
-                  if (settingsWindow) {
-                    settingsWindow.loadURL(getDashboardURL("/onboarding"));
-                  } else {
-                    showSettingsWindow();
-                  }
-                },
-              },
-            ],
-          },
-        ]
-      : []),
   ]);
   Menu.setApplicationMenu(appMenu);
 

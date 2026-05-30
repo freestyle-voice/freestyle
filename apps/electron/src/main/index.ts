@@ -224,8 +224,8 @@ function createAppWindow(): void {
 
 function createSettingsWindow(): void {
   settingsWindow = new BrowserWindow({
-    width: 800,
-    height: 560,
+    width: 1152,
+    height: 648,
     minWidth: 720,
     minHeight: 480,
     show: false,

@@ -495,6 +495,17 @@ function hidePill(): void {
   }
 }
 
+function resetOnboarding(): void {
+  writeSettings({ onboardingComplete: false });
+  if (settingsWindow) {
+    settingsWindow.loadURL(getDashboardURL("/onboarding"));
+    settingsWindow.show();
+    settingsWindow.focus();
+  } else {
+    showSettingsWindow();
+  }
+}
+
 function showSettingsWindow(): void {
   if (!settingsWindow) {
     createSettingsWindow();
@@ -572,16 +583,7 @@ function createTray(): void {
           { type: "separator" as const },
           {
             label: "Reset Onboarding",
-            click: () => {
-              writeSettings({ onboardingComplete: false });
-              if (settingsWindow) {
-                settingsWindow.loadURL(getDashboardURL("/onboarding"));
-                settingsWindow.show();
-                settingsWindow.focus();
-              } else {
-                showSettingsWindow();
-              }
-            },
+            click: resetOnboarding,
           },
         ]
       : []),
@@ -643,18 +645,7 @@ app.whenReady().then(async () => {
                     { type: "separator" as const },
                     {
                       label: "Reset Onboarding",
-                      click: () => {
-                        writeSettings({ onboardingComplete: false });
-                        if (settingsWindow) {
-                          settingsWindow.loadURL(
-                            getDashboardURL("/onboarding"),
-                          );
-                          settingsWindow.show();
-                          settingsWindow.focus();
-                        } else {
-                          showSettingsWindow();
-                        }
-                      },
+                      click: resetOnboarding,
                     },
                   ]
                 : []),

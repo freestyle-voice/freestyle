@@ -286,6 +286,11 @@ export default function OnboardingPage(): React.JSX.Element {
   ]);
 
   const finishSetup = useCallback(async () => {
+    if (llmCleanup && selectedLlm && needsLlmKey) {
+      const valid = await llmKeyForm.trigger();
+      if (!valid) return;
+    }
+
     setSaving(true);
 
     try {
@@ -293,8 +298,6 @@ export default function OnboardingPage(): React.JSX.Element {
 
       if (llmCleanup && selectedLlm) {
         if (needsLlmKey) {
-          const valid = await llmKeyForm.trigger();
-          if (!valid) return;
           const keyData = llmKeyForm.getValues();
           if (keyData.key.trim()) {
             await client.api.keys.$post({
@@ -303,6 +306,7 @@ export default function OnboardingPage(): React.JSX.Element {
                 key: keyData.key.trim(),
               },
             });
+            setApiKeys((prev) => new Set([...prev, keyData.provider]));
           }
         }
 

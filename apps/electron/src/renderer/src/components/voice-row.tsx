@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 
 export function Meter({ value }: { value?: number }): React.JSX.Element | null {
-  if (!value) return null;
+  if (value == null) return null;
   return (
     <span className="inline-flex items-center gap-[3px]">
       {[1, 2, 3, 4, 5].map((i) => (
@@ -120,6 +120,11 @@ export function VoiceRow({
             {item.provider}
           </span>
           {item.selected && <Check size={15} className="text-primary" />}
+          {item.note && (
+            <span className="text-primary whitespace-nowrap text-[11px] font-medium">
+              {item.note}
+            </span>
+          )}
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-4">

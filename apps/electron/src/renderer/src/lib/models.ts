@@ -92,3 +92,170 @@ export function formatSpeed(bps: number): string {
   if (bps < 1_000_000) return `${(bps / 1_000).toFixed(0)} KB/s`;
   return `${(bps / 1_000_000).toFixed(1)} MB/s`;
 }
+
+export interface VoiceItem {
+  key: string;
+  kind: "local" | "cloud";
+  name: string;
+  provider: string;
+  modelId: string;
+  speed?: number;
+  quality?: number;
+  quantized?: boolean;
+  note?: string;
+  selected: boolean;
+  defId?: string;
+  sizeBytes?: number;
+  ram?: string;
+  state?: WhisperModelDownloadState;
+  status?: WhisperModelDownloadState["status"];
+  cost?: number;
+  streaming?: boolean;
+  hasKey?: boolean;
+  available?: AvailableModel;
+}
+
+export const VOICE_META: Record<
+  string,
+  {
+    speed: number;
+    quality: number;
+    cost?: number;
+    streaming?: boolean;
+    note?: string;
+  }
+> = {
+  "groq/whisper-large-v3-turbo": {
+    speed: 5,
+    quality: 3,
+    cost: 0.04,
+    streaming: true,
+    note: "Fastest \u00b7 cheapest",
+  },
+  "openai/gpt-4o-transcribe": {
+    speed: 3,
+    quality: 5,
+    cost: 0.18,
+    note: "Most accurate",
+  },
+  "openai/gpt-4o-mini-transcribe": { speed: 4, quality: 4, cost: 0.12 },
+  "openai/whisper-1": { speed: 3, quality: 3, cost: 0.06 },
+  "deepgram/nova-3": {
+    speed: 4,
+    quality: 4,
+    cost: 0.26,
+    streaming: true,
+    note: "Low-latency streaming",
+  },
+  "deepgram/nova-2": { speed: 4, quality: 3, cost: 0.22, streaming: true },
+  "elevenlabs/scribe_v1": {
+    speed: 3,
+    quality: 4,
+    cost: 0.4,
+    note: "99 languages",
+  },
+  "elevenlabs/scribe_v2": { speed: 3, quality: 4, cost: 0.4 },
+  "elevenlabs/scribe_v2_realtime": {
+    speed: 4,
+    quality: 4,
+    cost: 0.4,
+    streaming: true,
+  },
+};
+
+export const SPEED_RANK: Record<string, number> = {
+  Fastest: 5,
+  "Very Fast": 5,
+  Fast: 4,
+  Medium: 3,
+  Slow: 2,
+};
+
+export const QUALITY_RANK: Record<string, number> = {
+  Basic: 1,
+  Good: 2,
+  Better: 3,
+  High: 4,
+  Best: 5,
+};
+
+export const LOCAL_VOICE_NOTES: Record<string, string> = {
+  base: "Great everyday pick",
+  "base-q5_1": "Great everyday pick, smaller",
+  large: "Best quality, still fast",
+  "medium-q5_0": "High quality, modest size",
+};
+
+export function buildVoiceItems(
+  available: AvailableModel[],
+  whisperStatus: WhisperStatus | null,
+  ctx: {
+    selectedModelId?: string;
+    selectedProvider?: string;
+    selectedWhisperModelId?: string;
+    keyProviders: Set<string>;
+  },
+): VoiceItem[] {
+  const local: VoiceItem[] = (whisperStatus?.modelDefinitions ?? []).map(
+    (def) => {
+      const state = whisperStatus?.models.find((m) => m.model === def.id);
+      const modelId = `local-whisper/${def.id}`;
+      return {
+        key: modelId,
+        kind: "local",
+        name: `Whisper ${def.displayName}`,
+        provider: "On-device",
+        modelId,
+        speed: SPEED_RANK[def.speed] ?? 3,
+        quality: QUALITY_RANK[def.quality] ?? 3,
+        quantized: def.quantized,
+        note: LOCAL_VOICE_NOTES[def.id],
+        defId: def.id,
+        sizeBytes: def.sizeBytes,
+        ram: def.ramRequired,
+        state,
+        status: state?.status ?? "not_downloaded",
+        selected:
+          ctx.selectedWhisperModelId === def.id ||
+          (ctx.selectedProvider === "local-whisper" &&
+            ctx.selectedModelId === modelId),
+      };
+    },
+  );
+
+  const seen = new Set<string>();
+  const cloud: VoiceItem[] = [];
+  for (const m of available) {
+    if (m.type !== "voice") continue;
+    if (m.provider_id === "local-whisper") continue;
+    if (!VOICE_PROVIDERS.includes(m.provider_id)) continue;
+    if (seen.has(m.model_id)) continue;
+    seen.add(m.model_id);
+    const meta = VOICE_META[m.model_id];
+    cloud.push({
+      key: m.model_id,
+      kind: "cloud",
+      name: m.model_name,
+      provider: displayProviderName(m.provider_id, m.provider_name),
+      modelId: m.model_id,
+      speed: meta?.speed,
+      quality: meta?.quality,
+      cost: meta?.cost,
+      streaming: meta?.streaming,
+      note: meta?.note,
+      hasKey: ctx.keyProviders.has(m.provider_id),
+      available: m,
+      selected:
+        ctx.selectedProvider === m.provider_id &&
+        ctx.selectedModelId === m.model_id,
+    });
+  }
+
+  cloud.sort((a, b) => {
+    const am = VOICE_META[a.modelId] ? 0 : 1;
+    const bm = VOICE_META[b.modelId] ? 0 : 1;
+    return am - bm;
+  });
+
+  return [...local, ...cloud];
+}

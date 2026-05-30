@@ -5,15 +5,15 @@ import {
   localLlmConfigSchema,
 } from "@freestyle/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Toggle, VoiceRow } from "@renderer/components/voice-row";
 import { getApiBase, getClient } from "@renderer/lib/api";
 import {
   type AvailableModel,
-  type WhisperModelDownloadState,
+  buildVoiceItems,
   displayProviderName,
-  formatBytes,
-  formatSpeed,
   LLM_PROVIDERS,
   VOICE_PROVIDERS,
+  type VoiceItem,
   type WhisperStatus,
 } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
@@ -24,7 +24,6 @@ import {
   CircleDollarSign,
   Cloud,
   Cpu,
-  Download,
   Eye,
   EyeOff,
   Key,
@@ -33,12 +32,10 @@ import {
   Mic,
   Pencil,
   Plus,
-  RefreshCw,
   Search,
   Sparkles,
   Target,
   Trash2,
-  Wifi,
   WifiOff,
   X,
   Zap,
@@ -64,114 +61,9 @@ interface ApiKeyEntry {
   created_at: string;
 }
 
-/**
- * A single row in the unified voice picker — local (whisper.cpp) and cloud
- * models share one shape so they live in one list. `local` carries download
- * state; `cloud` carries pricing/streaming and a key flag.
- */
-interface VoiceItem {
-  key: string;
-  kind: "local" | "cloud";
-  name: string;
-  provider: string;
-  modelId: string;
-  speed?: number;
-  quality?: number;
-  quantized?: boolean;
-  note?: string;
-  selected: boolean;
-  // local
-  defId?: string;
-  sizeBytes?: number;
-  ram?: string;
-  state?: WhisperModelDownloadState;
-  status?: WhisperModelDownloadState["status"];
-  // cloud
-  cost?: number;
-  streaming?: boolean;
-  hasKey?: boolean;
-  available?: AvailableModel;
-}
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-/**
- * Curated speed/quality/pricing for the voice models we surface. Speed and
- * quality are 1–5 meters; cost is an approximate $/hr of audio. Models not
- * listed here still appear in the picker, just without meters.
- */
-const VOICE_META: Record<
-  string,
-  {
-    speed: number;
-    quality: number;
-    cost?: number;
-    streaming?: boolean;
-    note?: string;
-  }
-> = {
-  "groq/whisper-large-v3-turbo": {
-    speed: 5,
-    quality: 3,
-    cost: 0.04,
-    streaming: true,
-    note: "Fastest · cheapest",
-  },
-  "openai/gpt-4o-transcribe": {
-    speed: 3,
-    quality: 5,
-    cost: 0.18,
-    note: "Most accurate",
-  },
-  "openai/gpt-4o-mini-transcribe": { speed: 4, quality: 4, cost: 0.12 },
-  "openai/whisper-1": { speed: 3, quality: 3, cost: 0.06 },
-  "deepgram/nova-3": {
-    speed: 4,
-    quality: 4,
-    cost: 0.26,
-    streaming: true,
-    note: "Low-latency streaming",
-  },
-  "deepgram/nova-2": { speed: 4, quality: 3, cost: 0.22, streaming: true },
-  "elevenlabs/scribe_v1": {
-    speed: 3,
-    quality: 4,
-    cost: 0.4,
-    note: "99 languages",
-  },
-  "elevenlabs/scribe_v2": { speed: 3, quality: 4, cost: 0.4 },
-  "elevenlabs/scribe_v2_realtime": {
-    speed: 4,
-    quality: 4,
-    cost: 0.4,
-    streaming: true,
-  },
-};
-
-/** whisper.cpp speed/quality come as words — map them onto 1–5 meters. */
-const SPEED_RANK: Record<string, number> = {
-  Fastest: 5,
-  "Very Fast": 5,
-  Fast: 4,
-  Medium: 3,
-  Slow: 2,
-};
-const QUALITY_RANK: Record<string, number> = {
-  Basic: 1,
-  Good: 2,
-  Better: 3,
-  High: 4,
-  Best: 5,
-};
-
-/** Short editorial notes for on-device models, keyed by whisper def id. */
-const LOCAL_VOICE_NOTES: Record<string, string> = {
-  base: "Great everyday pick",
-  "base-q5_1": "Great everyday pick, smaller",
-  large: "Best quality, still fast",
-  "medium-q5_0": "High quality, modest size",
-};
 /** Editorial empty-state suggestions — surfaced when no providers exist. */
 const RECOMMENDED_PROVIDERS = [
   {
@@ -411,7 +303,7 @@ export default function ModelsPage(): React.JSX.Element {
   }
 
   // Unified voice list: on-device (whisper.cpp) first, then cloud — one list.
-  const voiceItems = buildVoiceItems(available, whisperStatus, {
+  const voiceItems = buildSettingsVoiceItems(available, whisperStatus, {
     defaultVoice,
     keyProviders,
   });
@@ -834,10 +726,10 @@ export default function ModelsPage(): React.JSX.Element {
 }
 
 // ---------------------------------------------------------------------------
-// buildVoiceItems — merge on-device (whisper.cpp) + cloud into one list
+// buildVoiceItems — thin wrapper around shared helper to pass settings-page ctx
 // ---------------------------------------------------------------------------
 
-function buildVoiceItems(
+function buildSettingsVoiceItems(
   available: AvailableModel[],
   whisperStatus: WhisperStatus | null,
   ctx: {
@@ -845,70 +737,11 @@ function buildVoiceItems(
     keyProviders: Set<string>;
   },
 ): VoiceItem[] {
-  const { defaultVoice, keyProviders } = ctx;
-
-  const local: VoiceItem[] = (whisperStatus?.modelDefinitions ?? []).map(
-    (def) => {
-      const state = whisperStatus?.models.find((m) => m.model === def.id);
-      const modelId = `local-whisper/${def.id}`;
-      return {
-        key: modelId,
-        kind: "local",
-        name: `Whisper ${def.displayName}`,
-        provider: "On-device",
-        modelId,
-        speed: SPEED_RANK[def.speed] ?? 3,
-        quality: QUALITY_RANK[def.quality] ?? 3,
-        quantized: def.quantized,
-        note: LOCAL_VOICE_NOTES[def.id],
-        defId: def.id,
-        sizeBytes: def.sizeBytes,
-        ram: def.ramRequired,
-        state,
-        status: state?.status ?? "not_downloaded",
-        selected:
-          defaultVoice?.provider === "local-whisper" &&
-          defaultVoice?.model_id === modelId,
-      };
-    },
-  );
-
-  const seen = new Set<string>();
-  const cloud: VoiceItem[] = [];
-  for (const m of available) {
-    if (m.type !== "voice") continue;
-    if (m.provider_id === "local-whisper") continue;
-    if (!VOICE_PROVIDERS.includes(m.provider_id)) continue;
-    if (seen.has(m.model_id)) continue;
-    seen.add(m.model_id);
-    const meta = VOICE_META[m.model_id];
-    cloud.push({
-      key: m.model_id,
-      kind: "cloud",
-      name: m.model_name,
-      provider: displayName(m.provider_id, m.provider_name),
-      modelId: m.model_id,
-      speed: meta?.speed,
-      quality: meta?.quality,
-      cost: meta?.cost,
-      streaming: meta?.streaming,
-      note: meta?.note,
-      hasKey: keyProviders.has(m.provider_id),
-      available: m,
-      selected:
-        defaultVoice?.provider === m.provider_id &&
-        defaultVoice?.model_id === m.model_id,
-    });
-  }
-
-  // Curated (meta'd) cloud models first so the strongest picks read at the top.
-  cloud.sort((a, b) => {
-    const am = VOICE_META[a.modelId] ? 0 : 1;
-    const bm = VOICE_META[b.modelId] ? 0 : 1;
-    return am - bm;
+  return buildVoiceItems(available, whisperStatus, {
+    selectedModelId: ctx.defaultVoice?.model_id,
+    selectedProvider: ctx.defaultVoice?.provider,
+    keyProviders: ctx.keyProviders,
   });
-
-  return [...local, ...cloud];
 }
 
 // ---------------------------------------------------------------------------
@@ -1141,34 +974,6 @@ function Eyebrow({
   );
 }
 
-function Toggle({
-  on,
-  onChange,
-}: {
-  on: boolean;
-  onChange: (next: boolean) => void;
-}): React.JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!on)}
-      className={cn(
-        "relative h-[22px] w-10 shrink-0 rounded-full border transition-colors",
-        on ? "bg-primary border-primary/80" : "bg-secondary border-border",
-      )}
-      aria-pressed={on}
-    >
-      <span
-        className={cn(
-          "absolute top-[1px] block h-[18px] w-[18px] rounded-full transition-transform",
-          on ? "bg-primary-foreground" : "bg-muted-foreground/70",
-        )}
-        style={{ transform: on ? "translateX(19px)" : "translateX(2px)" }}
-      />
-    </button>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Bytes / speed formatting (shared by the voice picker rows)
 // ---------------------------------------------------------------------------
@@ -1303,256 +1108,6 @@ function VoicePicker({
         )}
       </div>
     </section>
-  );
-}
-
-function Meter({ value }: { value?: number }): React.JSX.Element | null {
-  if (!value) return null;
-  return (
-    <span className="inline-flex items-center gap-[3px]">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <span
-          key={i}
-          className={cn(
-            "h-[5px] w-[5px] rounded-full",
-            i <= value ? "bg-primary" : "bg-border",
-          )}
-        />
-      ))}
-    </span>
-  );
-}
-
-function StatPair({
-  icon: Icon,
-  label,
-  accent,
-}: {
-  icon: typeof Zap;
-  label: string;
-  accent?: boolean;
-}): React.JSX.Element {
-  return (
-    <span className="text-muted-foreground inline-flex items-center gap-1.5 whitespace-nowrap text-[11.5px]">
-      <Icon className={cn("h-3 w-3", accent ? "text-primary" : "")} />
-      {label}
-    </span>
-  );
-}
-
-function VoiceRow({
-  item,
-  first,
-  onSelectCloud,
-  onSelectLocal,
-  onDownload,
-  onCancel,
-  onDelete,
-}: {
-  item: VoiceItem;
-  first: boolean;
-  onSelectCloud: (m: AvailableModel) => void;
-  onSelectLocal: (defId: string, name: string) => void;
-  onDownload: (defId: string) => void;
-  onCancel: (defId: string) => void;
-  onDelete: (defId: string) => void;
-}): React.JSX.Element {
-  const local = item.kind === "local";
-  const status = item.status ?? "not_downloaded";
-  const downloading =
-    local && (status === "downloading" || status === "verifying");
-  const ghostBtn =
-    "border-border hover:bg-secondary flex items-center gap-1.5 rounded-[8px] border px-3 py-2 text-[12.5px] font-medium";
-  const solidBtn =
-    "bg-foreground text-background hover:bg-foreground/90 rounded-[8px] px-3.5 py-2 text-[12.5px] font-medium";
-
-  return (
-    <div
-      className={cn(
-        "group grid grid-cols-[1fr_auto] items-center gap-4 px-5 py-4",
-        !first && "border-border border-t",
-        item.selected && "bg-primary/[0.06]",
-      )}
-    >
-      <div className="min-w-0">
-        {/* title row */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-foreground whitespace-nowrap text-[14px] font-semibold">
-            {item.name}
-          </span>
-          <span className="text-muted-foreground whitespace-nowrap text-[12px]">
-            {item.provider}
-          </span>
-          {item.selected && <Check size={15} className="text-primary" />}
-        </div>
-
-        {/* stat strip */}
-        <div className="mt-2 flex flex-wrap items-center gap-4">
-          {item.speed != null && (
-            <span className="inline-flex items-center gap-1.5">
-              <Zap className="text-muted-foreground h-3 w-3" />
-              <Meter value={item.speed} />
-            </span>
-          )}
-          {item.quality != null && (
-            <span className="inline-flex items-center gap-1.5">
-              <Target className="text-muted-foreground h-3 w-3" />
-              <Meter value={item.quality} />
-            </span>
-          )}
-          {local ? (
-            <>
-              {item.sizeBytes != null && (
-                <StatPair icon={Download} label={formatBytes(item.sizeBytes)} />
-              )}
-              {item.ram && <StatPair icon={Cpu} label={`${item.ram} RAM`} />}
-            </>
-          ) : (
-            <>
-              {item.cost != null && (
-                <StatPair
-                  icon={CircleDollarSign}
-                  label={`$${item.cost.toFixed(2)}/hr`}
-                />
-              )}
-              {item.streaming && (
-                <StatPair icon={Wifi} label="Streaming" accent />
-              )}
-            </>
-          )}
-        </div>
-
-        {/* error (local) */}
-        {local && status === "error" && item.state?.error && (
-          <div className="text-destructive mt-1.5 text-[11.5px]">
-            {item.state.error}
-          </div>
-        )}
-
-        {/* download progress (local) */}
-        {downloading && (
-          <div className="mt-2.5 space-y-1">
-            <div className="bg-secondary h-[5px] w-full overflow-hidden rounded-full">
-              {item.state?.phase === "building_binary" ? (
-                <div className="bg-primary h-full w-full animate-pulse rounded-full" />
-              ) : (
-                <div
-                  className="bg-primary h-full rounded-full transition-all"
-                  style={{
-                    width: `${item.state?.downloadProgress?.percent ?? 0}%`,
-                  }}
-                />
-              )}
-            </div>
-            <div className="text-muted-foreground mono flex justify-between text-[10px]">
-              {item.state?.phase === "building_binary" ? (
-                <span>Building whisper.cpp — this may take a minute…</span>
-              ) : item.state?.downloadProgress ? (
-                <>
-                  <span>
-                    {formatBytes(item.state.downloadProgress.bytesDownloaded)} /{" "}
-                    {formatBytes(item.state.downloadProgress.bytesTotal)}
-                  </span>
-                  <span>
-                    {item.state.downloadProgress.speedBps > 0 &&
-                      formatSpeed(item.state.downloadProgress.speedBps)}
-                    {item.state.downloadProgress.percent > 0 &&
-                      ` · ${item.state.downloadProgress.percent}%`}
-                  </span>
-                </>
-              ) : (
-                <span>Verifying…</span>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* action */}
-      <div className="flex shrink-0 items-center gap-1.5 justify-self-end">
-        {item.selected ? (
-          <span
-            className="mono text-primary"
-            style={{ fontSize: 10, letterSpacing: "0.14em" }}
-          >
-            SELECTED
-          </span>
-        ) : local ? (
-          <>
-            {status === "ready" && (
-              <>
-                <button
-                  type="button"
-                  onClick={() =>
-                    item.defId && onSelectLocal(item.defId, item.name)
-                  }
-                  className={solidBtn}
-                >
-                  Use
-                </button>
-                <button
-                  type="button"
-                  onClick={() => item.defId && onDelete(item.defId)}
-                  className="text-muted-foreground hover:text-destructive hover:bg-secondary rounded p-1.5 opacity-0 transition-opacity group-hover:opacity-100"
-                  title="Delete model"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </>
-            )}
-            {status === "not_downloaded" && (
-              <button
-                type="button"
-                onClick={() => item.defId && onDownload(item.defId)}
-                className={ghostBtn}
-              >
-                <Download size={13} />
-                {item.sizeBytes != null
-                  ? formatBytes(item.sizeBytes)
-                  : "Download"}
-              </button>
-            )}
-            {downloading && (
-              <button
-                type="button"
-                onClick={() => item.defId && onCancel(item.defId)}
-                className={ghostBtn}
-              >
-                <X size={12} />
-                Cancel
-              </button>
-            )}
-            {status === "error" && (
-              <button
-                type="button"
-                onClick={() => item.defId && onDownload(item.defId)}
-                className={ghostBtn}
-              >
-                <RefreshCw size={12} />
-                Retry
-              </button>
-            )}
-          </>
-        ) : item.hasKey ? (
-          <button
-            type="button"
-            onClick={() => item.available && onSelectCloud(item.available)}
-            className={solidBtn}
-          >
-            Use
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => item.available && onSelectCloud(item.available)}
-            className={ghostBtn}
-          >
-            <Key size={12} />
-            Add key
-          </button>
-        )}
-      </div>
-    </div>
   );
 }
 

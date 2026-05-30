@@ -2,6 +2,12 @@ import { apiKeySchema } from "@freestyle/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
+import {
+  LlmModelRow,
+  MODEL_ROW_PAGE_SIZE,
+  ProviderModelHeader,
+  ShowMoreModelRowsButton,
+} from "@renderer/components/model-row";
 import { Toggle, VoiceRow } from "@renderer/components/voice-row";
 import { getApiBase, getClient } from "@renderer/lib/api";
 import {
@@ -78,6 +84,9 @@ export default function OnboardingPage(): React.JSX.Element {
   });
   const [showLlmKey, setShowLlmKey] = useState(false);
   const [needsLlmKey, setNeedsLlmKey] = useState(false);
+  const [llmVisibleModelCounts, setLlmVisibleModelCounts] = useState<
+    Record<string, number>
+  >({});
 
   // Load permissions
   useEffect(() => {
@@ -362,6 +371,17 @@ export default function OnboardingPage(): React.JSX.Element {
     list.push(m);
     llmsByProvider.set(m.provider_id, list);
   }
+  const visibleLlmCountFor = (providerId: string) =>
+    llmVisibleModelCounts[providerId] ?? MODEL_ROW_PAGE_SIZE;
+  const showMoreLlmsFor = (providerId: string, total: number) => {
+    setLlmVisibleModelCounts((prev) => ({
+      ...prev,
+      [providerId]: Math.min(
+        (prev[providerId] ?? MODEL_ROW_PAGE_SIZE) + MODEL_ROW_PAGE_SIZE,
+        total,
+      ),
+    }));
+  };
 
   const hasModelSelected =
     selectedModel !== null || selectedWhisperDefId !== null;
@@ -371,6 +391,7 @@ export default function OnboardingPage(): React.JSX.Element {
     !saving;
 
   const currentStepIndex = STEPS.indexOf(step);
+  const wideModelStep = step === "voice-model" || step === "llm-cleanup";
 
   return (
     <div className="flex h-screen flex-col">
@@ -384,7 +405,12 @@ export default function OnboardingPage(): React.JSX.Element {
         className="flex min-h-0 flex-1 flex-col items-center overflow-auto py-8"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
-        <div className="responsive-standalone-pad my-auto w-full max-w-md space-y-8">
+        <div
+          className={cn(
+            "responsive-standalone-pad my-auto w-full space-y-8",
+            wideModelStep ? "max-w-2xl" : "max-w-md",
+          )}
+        >
           {/* Logo — welcome step only */}
           {step === "welcome" && (
             <div className="flex flex-col items-center gap-3">
@@ -589,25 +615,27 @@ export default function OnboardingPage(): React.JSX.Element {
               </div>
 
               {/* Voice model list */}
-              <div className="border-border max-h-[340px] overflow-y-auto rounded-[14px] border">
-                {voiceItems.length === 0 && (
-                  <div className="flex items-center gap-2 px-5 py-6">
-                    <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-                    <span className="text-muted-foreground text-sm">
-                      Loading models...
-                    </span>
-                  </div>
-                )}
-                {voiceItems.map((item, i) => (
-                  <VoiceRow
-                    key={item.key}
-                    item={item}
-                    first={i === 0}
-                    onSelectCloud={selectCloudModel}
-                    onSelectLocal={selectLocalModel}
-                    onDownload={downloadWhisperModel}
-                  />
-                ))}
+              <div className="border-border overflow-hidden rounded-[14px] border">
+                <div className="max-h-[340px] overflow-y-auto [scrollbar-gutter:stable]">
+                  {voiceItems.length === 0 && (
+                    <div className="flex items-center gap-2 px-5 py-6">
+                      <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+                      <span className="text-muted-foreground text-sm">
+                        Loading models...
+                      </span>
+                    </div>
+                  )}
+                  {voiceItems.map((item, i) => (
+                    <VoiceRow
+                      key={item.key}
+                      item={item}
+                      first={i === 0}
+                      onSelectCloud={selectCloudModel}
+                      onSelectLocal={selectLocalModel}
+                      onDownload={downloadWhisperModel}
+                    />
+                  ))}
+                </div>
               </div>
 
               {/* API key input */}
@@ -715,46 +743,59 @@ export default function OnboardingPage(): React.JSX.Element {
               {/* LLM model picker — shown when cleanup is enabled */}
               {llmCleanup && (
                 <>
-                  <div className="border-border max-h-[280px] overflow-y-auto rounded-[14px] border">
-                    {[...llmsByProvider.entries()].map(
-                      ([providerId, models]) => (
-                        <div key={providerId}>
-                          <div className="border-border bg-card text-muted-foreground sticky top-0 z-10 border-b px-5 py-1.5 text-[10px] font-semibold uppercase tracking-wider">
-                            {PROVIDER_DISPLAY_NAMES[providerId] ?? providerId}
-                            {!apiKeys.has(providerId) && (
-                              <span className="text-destructive ml-2 normal-case tracking-normal">
-                                (no API key)
-                              </span>
-                            )}
-                          </div>
-                          {models.map((model) => (
-                            <button
-                              key={model.model_id}
-                              type="button"
-                              onClick={() => selectLlm(model)}
-                              className={cn(
-                                "hover:bg-secondary/60 flex w-full items-center gap-2 px-5 py-2 text-left text-[13px]",
-                                selectedLlm?.model_id === model.model_id &&
-                                  "bg-primary/5",
-                              )}
-                            >
-                              <span className="flex-1">{model.model_name}</span>
-                              {selectedLlm?.model_id === model.model_id && (
-                                <Check size={14} className="text-primary" />
-                              )}
-                            </button>
-                          ))}
+                  <div className="border-border overflow-hidden rounded-[14px] border">
+                    <div className="max-h-[280px] overflow-y-auto [scrollbar-gutter:stable]">
+                      {[...llmsByProvider.entries()].map(
+                        ([providerId, models]) => {
+                          const providerName =
+                            PROVIDER_DISPLAY_NAMES[providerId] ?? providerId;
+                          const hasKey = apiKeys.has(providerId);
+                          const visibleCount = visibleLlmCountFor(providerId);
+                          const visibleModels = models.slice(0, visibleCount);
+                          return (
+                            <div key={providerId}>
+                              <ProviderModelHeader
+                                providerId={providerId}
+                                providerName={providerName}
+                                hasKey={hasKey}
+                              />
+                              {visibleModels.map((model, index) => (
+                                <LlmModelRow
+                                  key={`${providerId}:${model.model_id}`}
+                                  name={model.model_name}
+                                  providerName={providerName}
+                                  modelId={model.model_id}
+                                  selected={
+                                    selectedLlm?.provider_id ===
+                                      model.provider_id &&
+                                    selectedLlm?.model_id === model.model_id
+                                  }
+                                  hasKey={hasKey}
+                                  first={index === 0}
+                                  onSelect={() => selectLlm(model)}
+                                />
+                              ))}
+                              <ShowMoreModelRowsButton
+                                hiddenCount={
+                                  models.length - visibleModels.length
+                                }
+                                onClick={() =>
+                                  showMoreLlmsFor(providerId, models.length)
+                                }
+                              />
+                            </div>
+                          );
+                        },
+                      )}
+                      {llmModels.length === 0 && (
+                        <div className="flex items-center gap-2 px-5 py-6">
+                          <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+                          <span className="text-muted-foreground text-sm">
+                            Loading models...
+                          </span>
                         </div>
-                      ),
-                    )}
-                    {llmModels.length === 0 && (
-                      <div className="flex items-center gap-2 px-5 py-6">
-                        <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-                        <span className="text-muted-foreground text-sm">
-                          Loading models...
-                        </span>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
 
                   {/* LLM API key input */}

@@ -5,6 +5,13 @@ import {
   localLlmConfigSchema,
 } from "@freestyle/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  LlmModelRow,
+  MODEL_ROW_PAGE_SIZE,
+  PROVIDER_FILTER_MARKS,
+  ProviderModelHeader,
+  ShowMoreModelRowsButton,
+} from "@renderer/components/model-row";
 import { Toggle, VoiceRow } from "@renderer/components/voice-row";
 import { getApiBase, getClient } from "@renderer/lib/api";
 import {
@@ -19,7 +26,6 @@ import {
 import { cn } from "@renderer/lib/utils";
 import {
   AlertTriangle,
-  Check,
   ChevronRight,
   CircleDollarSign,
   Cloud,
@@ -29,6 +35,7 @@ import {
   Key,
   Laptop,
   Loader2,
+  type LucideIcon,
   Mic,
   Pencil,
   Plus,
@@ -975,18 +982,113 @@ function Eyebrow({
 }
 
 // ---------------------------------------------------------------------------
-// Bytes / speed formatting (shared by the voice picker rows)
+// Picker shell - shared chrome for voice and LLM model pickers
 // ---------------------------------------------------------------------------
+
+type PickerFilter = {
+  id: string;
+  label: string;
+  icon?: LucideIcon;
+  mark?: string;
+};
+
+function ModelPickerShell({
+  icon: Icon,
+  title,
+  filters,
+  activeFilter,
+  onFilterChange,
+  headerAccessory,
+  banner,
+  empty,
+  emptyText = "No models match this filter.",
+  children,
+  onClose,
+}: {
+  icon: typeof Mic;
+  title: string;
+  filters: PickerFilter[];
+  activeFilter: string;
+  onFilterChange: (id: string) => void;
+  headerAccessory?: React.ReactNode;
+  banner?: React.ReactNode;
+  empty?: boolean;
+  emptyText?: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}): React.JSX.Element {
+  return (
+    <section className="border-border bg-card overflow-hidden rounded-[14px] border shadow-[0_24px_50px_-34px_rgba(20,12,4,0.4)]">
+      <header className="border-border flex min-w-0 flex-wrap items-center gap-2.5 border-b px-5 py-3.5">
+        <Icon className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+        <span
+          className="mono text-foreground min-w-0 flex-1 truncate text-[11px] uppercase"
+          style={{ letterSpacing: "0.14em" }}
+        >
+          {title}
+        </span>
+        {headerAccessory ?? <div className="flex-1" />}
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-muted-foreground hover:text-foreground shrink-0"
+          aria-label="Close picker"
+        >
+          <X size={16} />
+        </button>
+      </header>
+
+      <div className="border-border flex flex-wrap items-center gap-2 border-b px-5 py-3">
+        {filters.map((f) => {
+          const on = activeFilter === f.id;
+          const FilterIcon = f.icon;
+          return (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => onFilterChange(f.id)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors",
+                on
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border text-muted-foreground hover:bg-secondary/60",
+              )}
+            >
+              {FilterIcon && <FilterIcon className="h-3 w-3" />}
+              {f.mark && (
+                <span
+                  className="border-current/35 inline-flex h-4 min-w-4 items-center justify-center rounded-full border px-1 text-[8px] font-semibold leading-none"
+                  aria-hidden="true"
+                >
+                  {f.mark}
+                </span>
+              )}
+              {f.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {banner}
+
+      <div className="max-h-[440px] overflow-y-auto">
+        {empty ? (
+          <div className="text-muted-foreground px-5 py-10 text-center text-[13px]">
+            {emptyText}
+          </div>
+        ) : (
+          children
+        )}
+      </div>
+    </section>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // VoicePicker — unified on-device + cloud list with filter chips & meters
 // ---------------------------------------------------------------------------
 
-const VOICE_FILTERS: {
-  id: string;
-  label: string;
-  icon?: typeof Laptop;
-}[] = [
+const VOICE_FILTERS: PickerFilter[] = [
   { id: "all", label: "All" },
   { id: "cloud", label: "Cloud", icon: Cloud },
   { id: "private", label: "On-device", icon: Laptop },
@@ -1034,80 +1136,38 @@ function VoicePicker({
   const list = applyVoiceFilter(items, filter);
 
   return (
-    <section className="border-border bg-card overflow-hidden rounded-[14px] border shadow-[0_24px_50px_-34px_rgba(20,12,4,0.4)]">
-      <header className="border-border flex items-center gap-2.5 border-b px-5 py-3.5">
-        <Mic className="text-muted-foreground h-3.5 w-3.5" />
-        <span
-          className="mono text-foreground text-[11px] uppercase"
-          style={{ letterSpacing: "0.14em" }}
-        >
-          Choose a voice model
-        </span>
-        <div className="flex-1" />
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-muted-foreground hover:text-foreground"
-          aria-label="Close picker"
-        >
-          <X size={16} />
-        </button>
-      </header>
-
-      {/* filter chips */}
-      <div className="border-border flex flex-wrap items-center gap-2 border-b px-5 py-3">
-        {VOICE_FILTERS.map((f) => {
-          const on = filter === f.id;
-          const Icon = f.icon;
-          return (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => setFilter(f.id)}
-              className={cn(
-                "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors",
-                on
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border text-muted-foreground hover:bg-secondary/60",
-              )}
-            >
-              {Icon && <Icon className="h-3 w-3" />}
-              {f.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {binaryDownloading && (
-        <div className="border-border flex items-center gap-2.5 border-b px-5 py-3">
-          <Loader2 className="text-primary h-3.5 w-3.5 shrink-0 animate-spin" />
-          <span className="text-muted-foreground text-[12px]">
-            Building whisper.cpp from source — this may take a minute…
-          </span>
-        </div>
-      )}
-
-      <div className="max-h-[440px] overflow-y-auto">
-        {list.length === 0 ? (
-          <div className="text-muted-foreground px-5 py-10 text-center text-[13px]">
-            No models match this filter.
+    <ModelPickerShell
+      icon={Mic}
+      title="Choose a voice model"
+      filters={VOICE_FILTERS}
+      activeFilter={filter}
+      onFilterChange={setFilter}
+      banner={
+        binaryDownloading ? (
+          <div className="border-border flex items-center gap-2.5 border-b px-5 py-3">
+            <Loader2 className="text-primary h-3.5 w-3.5 shrink-0 animate-spin" />
+            <span className="text-muted-foreground text-[12px]">
+              Building whisper.cpp from source — this may take a minute…
+            </span>
           </div>
-        ) : (
-          list.map((item, i) => (
-            <VoiceRow
-              key={item.key}
-              item={item}
-              first={i === 0}
-              onSelectCloud={onSelectCloud}
-              onSelectLocal={onSelectLocal}
-              onDownload={onDownload}
-              onCancel={onCancel}
-              onDelete={onDelete}
-            />
-          ))
-        )}
-      </div>
-    </section>
+        ) : undefined
+      }
+      empty={list.length === 0}
+      onClose={onClose}
+    >
+      {list.map((item, i) => (
+        <VoiceRow
+          key={item.key}
+          item={item}
+          first={i === 0}
+          onSelectCloud={onSelectCloud}
+          onSelectLocal={onSelectLocal}
+          onDownload={onDownload}
+          onCancel={onCancel}
+          onDelete={onDelete}
+        />
+      ))}
+    </ModelPickerShell>
   );
 }
 
@@ -1155,7 +1215,21 @@ function LlmPicker({
   onClearLocalStatus: () => void;
   onSelectLocalModel: (modelName: string) => Promise<void>;
 }): React.JSX.Element {
+  const [filter, setFilter] = useState("all");
+  const [visibleModelCounts, setVisibleModelCounts] = useState<
+    Record<string, number>
+  >({});
   const q = search.toLowerCase();
+  const providerEntries = [...modelsByProvider.entries()];
+  const providerFilters: PickerFilter[] = [
+    { id: "all", label: "All" },
+    { id: "local-llm", label: "On-device", icon: Laptop },
+    ...providerEntries.map(([providerId, { providerName }]) => ({
+      id: providerId,
+      label: providerName,
+      mark: PROVIDER_FILTER_MARKS[providerId],
+    })),
+  ];
 
   // On-device rows: discovered models ∪ the current default (so a previously
   // chosen local model still shows as selected before the user re-tests).
@@ -1166,39 +1240,67 @@ function LlmPicker({
   const localList = [...localNames].filter(
     (n) => !q || n.toLowerCase().includes(q),
   );
+  const showLocal = filter === "all" || filter === "local-llm";
+  const visibleProviderEntries =
+    filter === "all"
+      ? providerEntries
+      : filter === "local-llm"
+        ? []
+        : providerEntries.filter(([providerId]) => providerId === filter);
+  const visibleProviderGroups = visibleProviderEntries
+    .map(([providerId, { providerName, models }]) => {
+      const filtered = q
+        ? models.filter(
+            (m) =>
+              m.model_name.toLowerCase().includes(q) ||
+              m.model_id.toLowerCase().includes(q) ||
+              providerName.toLowerCase().includes(q),
+          )
+        : models;
+      return { providerId, providerName, models: filtered };
+    })
+    .filter(({ models }) => models.length > 0);
+  const visibleModels = visibleProviderGroups.flatMap(
+    ({ providerId, providerName, models }) =>
+      models.map((model) => ({ model, providerId, providerName })),
+  );
+  const isEmpty = !showLocal && visibleProviderGroups.length === 0;
+  const visibleCountFor = (providerId: string) =>
+    visibleModelCounts[providerId] ?? MODEL_ROW_PAGE_SIZE;
+  const showMoreFor = (providerId: string, total: number) => {
+    setVisibleModelCounts((prev) => ({
+      ...prev,
+      [providerId]: Math.min(
+        (prev[providerId] ?? MODEL_ROW_PAGE_SIZE) + MODEL_ROW_PAGE_SIZE,
+        total,
+      ),
+    }));
+  };
 
   return (
-    <section className="border-border bg-card overflow-hidden rounded-[14px] border shadow-[0_24px_50px_-34px_rgba(20,12,4,0.4)]">
-      <header className="border-border flex items-center gap-2.5 border-b px-5 py-3.5">
-        <Sparkles className="text-muted-foreground h-3.5 w-3.5" />
-        <span
-          className="mono text-foreground text-[11px] uppercase"
-          style={{ letterSpacing: "0.14em" }}
-        >
-          Pick an LLM model
-        </span>
-        <div className="border-border bg-background ml-3 flex flex-1 items-center gap-2 rounded-md border px-2.5 py-1">
+    <ModelPickerShell
+      icon={Sparkles}
+      title="Pick an LLM model"
+      filters={providerFilters}
+      activeFilter={filter}
+      onFilterChange={setFilter}
+      headerAccessory={
+        <div className="border-border bg-background order-last flex w-full flex-none items-center gap-2 rounded-md border px-2.5 py-1 sm:order-none sm:ml-3 sm:min-w-0 sm:flex-1">
           <Search className="text-muted-foreground h-3.5 w-3.5" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search…"
-            className="placeholder:text-muted-foreground/70 flex-1 border-none bg-transparent text-[12.5px] outline-none"
+            className="placeholder:text-muted-foreground/70 min-w-0 flex-1 border-none bg-transparent text-[12.5px] outline-none"
           />
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-muted-foreground hover:text-foreground"
-          aria-label="Close picker"
-        >
-          <X size={16} />
-        </button>
-      </header>
-
-      <div className="max-h-[440px] overflow-y-auto">
-        {/* On-device group — connect a local server, then pick a model */}
+      }
+      empty={isEmpty}
+      onClose={onClose}
+    >
+      {/* On-device group - connect a local server, then pick a model */}
+      {showLocal && (
         <div>
           <div className="border-border bg-card sticky top-0 z-10 flex items-center gap-2 border-b px-5 py-2">
             <Laptop className="text-primary h-3 w-3" />
@@ -1220,10 +1322,12 @@ function LlmPicker({
             <div className="flex items-center gap-2">
               <input
                 type="text"
-                {...localForm.register("url", { onChange: onClearLocalStatus })}
+                {...localForm.register("url", {
+                  onChange: onClearLocalStatus,
+                })}
                 placeholder="http://localhost:11434"
                 className={cn(
-                  "border-border bg-background flex-1 rounded-md border px-3 py-2 text-[13px]",
+                  "border-border bg-background min-w-0 flex-1 rounded-md border px-3 py-2 text-[13px]",
                   localForm.formState.errors.url && "border-destructive",
                 )}
               />
@@ -1284,70 +1388,84 @@ function LlmPicker({
                 currentDefault?.provider === "local-llm" &&
                 currentDefault?.model_id === modelId;
               return (
-                <button
+                <LlmModelRow
                   key={name}
-                  type="button"
-                  onClick={() => onSelectLocalModel(name)}
-                  className={cn(
-                    "hover:bg-secondary/60 flex w-full items-center gap-2 px-5 py-2 text-left text-[13px]",
-                    isActive && "bg-primary/5",
-                  )}
-                >
-                  <span className="flex-1 truncate">{name}</span>
-                  {isActive && <Check size={14} className="text-primary" />}
-                </button>
+                  name={name}
+                  providerName="On-device"
+                  modelId={modelId}
+                  selected={isActive}
+                  hasKey
+                  first={false}
+                  onSelect={() => onSelectLocalModel(name)}
+                />
               );
             })
           )}
         </div>
+      )}
 
-        {/* Cloud groups — one section per provider */}
-        {[...modelsByProvider.entries()].map(
-          ([providerId, { providerName, models }]) => {
-            const filtered = q
-              ? models.filter(
-                  (m) =>
-                    m.model_name.toLowerCase().includes(q) ||
-                    m.model_id.toLowerCase().includes(q) ||
-                    providerName.toLowerCase().includes(q),
-                )
-              : models;
-            if (filtered.length === 0) return null;
+      {filter === "all"
+        ? visibleProviderGroups.map(({ providerId, providerName, models }) => {
+            const visibleCount = visibleCountFor(providerId);
+            const visibleModels = models.slice(0, visibleCount);
             return (
               <div key={providerId}>
-                <div className="border-border bg-card text-muted-foreground sticky top-0 z-10 border-b px-5 py-1.5 text-[10px] font-semibold uppercase tracking-wider">
-                  {providerName}
-                  {!keyProviders.has(providerId) && (
-                    <span className="text-destructive ml-2 normal-case tracking-normal">
-                      (no API key)
-                    </span>
-                  )}
-                </div>
-                {filtered.slice(0, 20).map((model) => {
+                <ProviderModelHeader
+                  providerId={providerId}
+                  providerName={providerName}
+                  hasKey={keyProviders.has(providerId)}
+                />
+                {visibleModels.map((model, index) => {
                   const isActive =
                     currentDefault?.model_id === model.model_id &&
                     currentDefault?.provider === model.provider_id;
                   return (
-                    <button
+                    <LlmModelRow
                       key={model.model_id}
-                      type="button"
-                      onClick={() => onSelectCloud(model)}
-                      className={cn(
-                        "hover:bg-secondary/60 flex w-full items-center gap-2 px-5 py-2 text-left text-[13px]",
-                        isActive && "bg-primary/5",
-                      )}
-                    >
-                      <span className="flex-1">{model.model_name}</span>
-                      {isActive && <Check size={14} className="text-primary" />}
-                    </button>
+                      name={model.model_name}
+                      providerName={providerName}
+                      modelId={model.model_id}
+                      selected={isActive}
+                      hasKey={keyProviders.has(providerId)}
+                      first={index === 0}
+                      onSelect={() => onSelectCloud(model)}
+                    />
                   );
                 })}
+                <ShowMoreModelRowsButton
+                  hiddenCount={models.length - visibleModels.length}
+                  onClick={() => showMoreFor(providerId, models.length)}
+                />
               </div>
             );
-          },
-        )}
-      </div>
-    </section>
+          })
+        : visibleModels.map(({ providerId, providerName, model }, index) => {
+            if (index >= visibleCountFor(providerId)) return null;
+            const isActive =
+              currentDefault?.model_id === model.model_id &&
+              currentDefault?.provider === model.provider_id;
+            return (
+              <LlmModelRow
+                key={`${providerId}:${model.model_id}`}
+                name={model.model_name}
+                providerName={providerName}
+                modelId={model.model_id}
+                selected={isActive}
+                hasKey={keyProviders.has(providerId)}
+                first={index === 0}
+                onSelect={() => onSelectCloud(model)}
+              />
+            );
+          })}
+      {filter !== "all" &&
+        visibleProviderGroups.map(({ providerId, models }) => (
+          <ShowMoreModelRowsButton
+            key={`${providerId}:more`}
+            hiddenCount={models.length - visibleCountFor(providerId)}
+            onClick={() => showMoreFor(providerId, models.length)}
+          />
+        ))}
+    </ModelPickerShell>
   );
 }
 

@@ -7,65 +7,34 @@ class KeyboardViewController: UIInputViewController {
     private let recorder = AudioRecorder()
     private let transcriptionService = TranscriptionService()
     private var isCurrentlyRecording = false
-    private var recordingStartTime: Date?
+    private var isUppercase = true
     private var pulseTimer: Timer?
 
-    // MARK: - Colors (Freestyle palette)
+    // MARK: - UI refs
 
-    private var primaryColor: UIColor {
-        traitCollection.userInterfaceStyle == .dark
-            ? UIColor(red: 0.541, green: 0.714, blue: 0.165, alpha: 1)   // #8AB62A
-            : UIColor(red: 0.420, green: 0.561, blue: 0.071, alpha: 1)   // #6B8F12
-    }
+    private var keyButtons: [UIButton] = []
+    private var micButton: UIButton!
+    private var micPulseView: UIView!
+    private var statusBanner: UIView!
+    private var statusLabel: UILabel!
+    private var shiftButton: UIButton!
+    private var deleteButton: UIButton!
+    private var spaceButton: UIButton!
+    private var returnButton: UIButton!
+    private var nextKbButton: UIButton!
+    private var rowStacks: [UIStackView] = []
 
-    private var backgroundColor: UIColor {
-        traitCollection.userInterfaceStyle == .dark
-            ? UIColor(red: 0.086, green: 0.078, blue: 0.059, alpha: 1)   // #16140F
-            : UIColor(red: 0.957, green: 0.941, blue: 0.894, alpha: 1)   // #F4F0E4
-    }
-
-    private var cardColor: UIColor {
-        traitCollection.userInterfaceStyle == .dark
-            ? UIColor(red: 0.118, green: 0.110, blue: 0.086, alpha: 1)   // #1E1C16
-            : UIColor(red: 0.984, green: 0.973, blue: 0.933, alpha: 1)   // #FBF8EE
-    }
-
-    private var borderColor: UIColor {
-        traitCollection.userInterfaceStyle == .dark
-            ? UIColor(red: 0.227, green: 0.212, blue: 0.176, alpha: 1)   // #3A362D
-            : UIColor(red: 0.839, green: 0.804, blue: 0.722, alpha: 1)   // #D6CDB8
-    }
-
-    private var textColor: UIColor {
-        traitCollection.userInterfaceStyle == .dark
-            ? UIColor(red: 0.925, green: 0.906, blue: 0.839, alpha: 1)   // #ECE7D6
-            : UIColor(red: 0.086, green: 0.078, blue: 0.059, alpha: 1)   // #16140F
-    }
-
-    private var mutedColor: UIColor {
-        traitCollection.userInterfaceStyle == .dark
-            ? UIColor(red: 0.620, green: 0.592, blue: 0.498, alpha: 1)   // #9E977F
-            : UIColor(red: 0.482, green: 0.455, blue: 0.380, alpha: 1)   // #7B7461
-    }
-
-    private let dangerColor = UIColor(red: 0.867, green: 0.431, blue: 0.306, alpha: 1) // #DD6E4E
-
-    // MARK: - UI Elements
-
-    private let micButton = UIButton(type: .custom)
-    private let micPulseView = UIView()
-    private let statusLabel = UILabel()
-    private let transcriptLabel = UILabel()
-    private let nextKeyboardButton = UIButton(type: .system)
-    private let deleteButton = UIButton(type: .system)
-    private let returnButton = UIButton(type: .system)
-    private let spaceButton = UIButton(type: .system)
+    private let qwertyRows: [[String]] = [
+        ["q","w","e","r","t","y","u","i","o","p"],
+        ["a","s","d","f","g","h","j","k","l"],
+        ["z","x","c","v","b","n","m"],
+    ]
 
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        setupUI()
+        buildKeyboard()
     }
 
     override func viewWillLayoutSubviews() {
@@ -73,9 +42,9 @@ class KeyboardViewController: UIInputViewController {
         applyTheme()
     }
 
-    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-        super.traitCollectionDidChange(previousTraitCollection)
-        if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+    override func traitCollectionDidChange(_ prev: UITraitCollection?) {
+        super.traitCollectionDidChange(prev)
+        if traitCollection.hasDifferentColorAppearance(comparedTo: prev) {
             applyTheme()
         }
     }
@@ -83,209 +52,299 @@ class KeyboardViewController: UIInputViewController {
     override func textWillChange(_ textInput: UITextInput?) {}
     override func textDidChange(_ textInput: UITextInput?) {}
 
-    // MARK: - UI Setup
+    // MARK: - Build
 
-    private func setupUI() {
-        guard let inputView = inputView else { return }
-        inputView.translatesAutoresizingMaskIntoConstraints = false
+    private func buildKeyboard() {
+        guard let iv = inputView else { return }
 
-        let heightConstraint = inputView.heightAnchor.constraint(equalToConstant: 280)
-        heightConstraint.priority = .init(999)
-        heightConstraint.isActive = true
+        let h = iv.heightAnchor.constraint(equalToConstant: 300)
+        h.priority = .init(999)
+        h.isActive = true
 
-        // Main container
-        let container = UIView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        inputView.addSubview(container)
+        let wrapper = UIView()
+        wrapper.translatesAutoresizingMaskIntoConstraints = false
+        iv.addSubview(wrapper)
         NSLayoutConstraint.activate([
-            container.topAnchor.constraint(equalTo: inputView.topAnchor),
-            container.leadingAnchor.constraint(equalTo: inputView.leadingAnchor),
-            container.trailingAnchor.constraint(equalTo: inputView.trailingAnchor),
-            container.bottomAnchor.constraint(equalTo: inputView.bottomAnchor),
+            wrapper.topAnchor.constraint(equalTo: iv.topAnchor),
+            wrapper.leadingAnchor.constraint(equalTo: iv.leadingAnchor),
+            wrapper.trailingAnchor.constraint(equalTo: iv.trailingAnchor),
+            wrapper.bottomAnchor.constraint(equalTo: iv.bottomAnchor),
         ])
 
-        // --- Top area: transcript + status ---
-        let topArea = UIView()
-        topArea.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(topArea)
+        // -- Status banner (hidden by default, shown during recording/transcribing) --
+        statusBanner = UIView()
+        statusBanner.translatesAutoresizingMaskIntoConstraints = false
+        statusBanner.isHidden = true
+        statusBanner.layer.cornerRadius = 8
+        wrapper.addSubview(statusBanner)
 
-        transcriptLabel.translatesAutoresizingMaskIntoConstraints = false
-        transcriptLabel.numberOfLines = 2
-        transcriptLabel.font = .systemFont(ofSize: 15, weight: .regular)
-        transcriptLabel.textAlignment = .center
-        transcriptLabel.text = ""
-        topArea.addSubview(transcriptLabel)
-
+        statusLabel = UILabel()
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
-        statusLabel.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
+        statusLabel.font = .systemFont(ofSize: 13, weight: .medium)
         statusLabel.textAlignment = .center
-        statusLabel.text = "TAP MIC TO DICTATE"
-        topArea.addSubview(statusLabel)
+        statusBanner.addSubview(statusLabel)
 
         NSLayoutConstraint.activate([
-            topArea.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
-            topArea.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
-            topArea.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
-            topArea.heightAnchor.constraint(equalToConstant: 56),
-
-            transcriptLabel.topAnchor.constraint(equalTo: topArea.topAnchor),
-            transcriptLabel.leadingAnchor.constraint(equalTo: topArea.leadingAnchor),
-            transcriptLabel.trailingAnchor.constraint(equalTo: topArea.trailingAnchor),
-
-            statusLabel.bottomAnchor.constraint(equalTo: topArea.bottomAnchor),
-            statusLabel.centerXAnchor.constraint(equalTo: topArea.centerXAnchor),
+            statusBanner.topAnchor.constraint(equalTo: wrapper.topAnchor, constant: 4),
+            statusBanner.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: 4),
+            statusBanner.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor, constant: -4),
+            statusBanner.heightAnchor.constraint(equalToConstant: 32),
+            statusLabel.centerXAnchor.constraint(equalTo: statusBanner.centerXAnchor),
+            statusLabel.centerYAnchor.constraint(equalTo: statusBanner.centerYAnchor),
         ])
 
-        // --- Center: Mic button with pulse ring ---
-        let micContainer = UIView()
-        micContainer.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(micContainer)
-
-        micPulseView.translatesAutoresizingMaskIntoConstraints = false
-        micPulseView.layer.cornerRadius = 36
-        micPulseView.alpha = 0
-        micContainer.addSubview(micPulseView)
-
-        micButton.translatesAutoresizingMaskIntoConstraints = false
-        micButton.layer.cornerRadius = 30
-        micButton.clipsToBounds = true
-
-        let micConfig = UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
-        let micImage = UIImage(systemName: "mic.fill", withConfiguration: micConfig)
-        micButton.setImage(micImage, for: .normal)
-        micButton.tintColor = .white
-        micButton.addTarget(self, action: #selector(micButtonTapped), for: .touchUpInside)
-        micContainer.addSubview(micButton)
+        // -- Keyboard rows --
+        let keyboardStack = UIStackView()
+        keyboardStack.translatesAutoresizingMaskIntoConstraints = false
+        keyboardStack.axis = .vertical
+        keyboardStack.spacing = 6
+        keyboardStack.alignment = .center
+        wrapper.addSubview(keyboardStack)
 
         NSLayoutConstraint.activate([
-            micContainer.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            micContainer.topAnchor.constraint(equalTo: topArea.bottomAnchor, constant: 8),
-            micContainer.widthAnchor.constraint(equalToConstant: 72),
-            micContainer.heightAnchor.constraint(equalToConstant: 72),
-
-            micPulseView.centerXAnchor.constraint(equalTo: micContainer.centerXAnchor),
-            micPulseView.centerYAnchor.constraint(equalTo: micContainer.centerYAnchor),
-            micPulseView.widthAnchor.constraint(equalToConstant: 72),
-            micPulseView.heightAnchor.constraint(equalToConstant: 72),
-
-            micButton.centerXAnchor.constraint(equalTo: micContainer.centerXAnchor),
-            micButton.centerYAnchor.constraint(equalTo: micContainer.centerYAnchor),
-            micButton.widthAnchor.constraint(equalToConstant: 60),
-            micButton.heightAnchor.constraint(equalToConstant: 60),
+            keyboardStack.topAnchor.constraint(equalTo: statusBanner.bottomAnchor, constant: 4),
+            keyboardStack.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor, constant: 3),
+            keyboardStack.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor, constant: -3),
         ])
 
-        // --- Bottom row: key buttons ---
-        let bottomRow = UIStackView()
-        bottomRow.translatesAutoresizingMaskIntoConstraints = false
-        bottomRow.axis = .horizontal
-        bottomRow.spacing = 5
-        bottomRow.distribution = .fill
-        bottomRow.alignment = .fill
-        container.addSubview(bottomRow)
+        // Row 1-3: letter keys
+        for (rowIdx, row) in qwertyRows.enumerated() {
+            let rowStack = UIStackView()
+            rowStack.axis = .horizontal
+            rowStack.spacing = 5
+            rowStack.distribution = .fillEqually
+
+            if rowIdx == 2 {
+                // Row 3: shift + letters + delete
+                let outerStack = UIStackView()
+                outerStack.axis = .horizontal
+                outerStack.spacing = 5
+                outerStack.alignment = .fill
+
+                shiftButton = makeSpecialKey(symbol: "shift", width: 40)
+                shiftButton.addTarget(self, action: #selector(shiftTapped), for: .touchUpInside)
+                outerStack.addArrangedSubview(shiftButton)
+
+                for ch in row {
+                    let btn = makeLetterKey(ch)
+                    rowStack.addArrangedSubview(btn)
+                    keyButtons.append(btn)
+                }
+                outerStack.addArrangedSubview(rowStack)
+
+                deleteButton = makeSpecialKey(symbol: "delete.left", width: 40)
+                deleteButton.addTarget(self, action: #selector(deleteTapped), for: .touchUpInside)
+                let longPress = UILongPressGestureRecognizer(target: self, action: #selector(deleteLongPress(_:)))
+                longPress.minimumPressDuration = 0.3
+                deleteButton.addGestureRecognizer(longPress)
+                outerStack.addArrangedSubview(deleteButton)
+
+                outerStack.translatesAutoresizingMaskIntoConstraints = false
+                keyboardStack.addArrangedSubview(outerStack)
+                outerStack.widthAnchor.constraint(equalTo: keyboardStack.widthAnchor).isActive = true
+                rowStacks.append(outerStack)
+            } else {
+                for ch in row {
+                    let btn = makeLetterKey(ch)
+                    rowStack.addArrangedSubview(btn)
+                    keyButtons.append(btn)
+                }
+                rowStack.translatesAutoresizingMaskIntoConstraints = false
+                keyboardStack.addArrangedSubview(rowStack)
+                let widthMultiplier: CGFloat = rowIdx == 1 ? 0.88 : 1.0
+                rowStack.widthAnchor.constraint(equalTo: keyboardStack.widthAnchor, multiplier: widthMultiplier).isActive = true
+                rowStacks.append(rowStack)
+            }
+        }
+
+        // Row 4: bottom row
+        let bottomStack = UIStackView()
+        bottomStack.axis = .horizontal
+        bottomStack.spacing = 5
+        bottomStack.alignment = .fill
+        bottomStack.translatesAutoresizingMaskIntoConstraints = false
 
         // Globe
-        configureKeyButton(nextKeyboardButton, symbolName: "globe", fontSize: 16)
-        nextKeyboardButton.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
-        nextKeyboardButton.widthAnchor.constraint(equalToConstant: 44).isActive = true
-        bottomRow.addArrangedSubview(nextKeyboardButton)
+        nextKbButton = makeSpecialKey(symbol: "globe", width: 40)
+        nextKbButton.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
+        bottomStack.addArrangedSubview(nextKbButton)
+
+        // Mic button
+        micButton = UIButton(type: .custom)
+        micButton.translatesAutoresizingMaskIntoConstraints = false
+        let micCfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
+        micButton.setImage(UIImage(systemName: "mic.fill", withConfiguration: micCfg), for: .normal)
+        micButton.tintColor = .white
+        micButton.layer.cornerRadius = 10
+        micButton.addTarget(self, action: #selector(micTapped), for: .touchUpInside)
+        micButton.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        bottomStack.addArrangedSubview(micButton)
 
         // Space
+        spaceButton = UIButton(type: .system)
         spaceButton.setTitle("space", for: .normal)
         spaceButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .regular)
         spaceButton.layer.cornerRadius = 10
-        spaceButton.layer.borderWidth = 0.5
-        spaceButton.addTarget(self, action: #selector(spacePressed), for: .touchUpInside)
-        bottomRow.addArrangedSubview(spaceButton)
-
-        // Delete
-        configureKeyButton(deleteButton, symbolName: "delete.left", fontSize: 16)
-        deleteButton.addTarget(self, action: #selector(deletePressed), for: .touchUpInside)
-        deleteButton.widthAnchor.constraint(equalToConstant: 44).isActive = true
-        bottomRow.addArrangedSubview(deleteButton)
+        spaceButton.addTarget(self, action: #selector(spaceTapped), for: .touchUpInside)
+        bottomStack.addArrangedSubview(spaceButton)
 
         // Return
+        returnButton = UIButton(type: .system)
         returnButton.setTitle("return", for: .normal)
         returnButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .regular)
         returnButton.layer.cornerRadius = 10
-        returnButton.layer.borderWidth = 0.5
-        returnButton.addTarget(self, action: #selector(returnPressed), for: .touchUpInside)
+        returnButton.addTarget(self, action: #selector(returnTapped), for: .touchUpInside)
         returnButton.widthAnchor.constraint(equalToConstant: 76).isActive = true
-        bottomRow.addArrangedSubview(returnButton)
+        bottomStack.addArrangedSubview(returnButton)
 
-        NSLayoutConstraint.activate([
-            bottomRow.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 4),
-            bottomRow.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -4),
-            bottomRow.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6),
-            bottomRow.heightAnchor.constraint(equalToConstant: 44),
-        ])
+        keyboardStack.addArrangedSubview(bottomStack)
+        bottomStack.widthAnchor.constraint(equalTo: keyboardStack.widthAnchor).isActive = true
+
+        // Mic pulse (behind mic button, added to wrapper so it's not clipped)
+        micPulseView = UIView()
+        micPulseView.translatesAutoresizingMaskIntoConstraints = false
+        micPulseView.layer.cornerRadius = 10
+        micPulseView.alpha = 0
+        micPulseView.isUserInteractionEnabled = false
+        wrapper.insertSubview(micPulseView, belowSubview: keyboardStack)
 
         applyTheme()
+        updateShiftAppearance()
     }
 
-    private func configureKeyButton(_ button: UIButton, symbolName: String, fontSize: CGFloat) {
-        let config = UIImage.SymbolConfiguration(pointSize: fontSize, weight: .regular)
-        let image = UIImage(systemName: symbolName, withConfiguration: config)
-        button.setImage(image, for: .normal)
-        button.layer.cornerRadius = 10
-        button.layer.borderWidth = 0.5
+    // MARK: - Key Factories
+
+    private func makeLetterKey(_ letter: String) -> UIButton {
+        let btn = UIButton(type: .system)
+        btn.setTitle(letter.uppercased(), for: .normal)
+        btn.titleLabel?.font = .systemFont(ofSize: 22, weight: .regular)
+        btn.layer.cornerRadius = 6
+        btn.layer.shadowColor = UIColor.black.cgColor
+        btn.layer.shadowOffset = CGSize(width: 0, height: 1)
+        btn.layer.shadowOpacity = 0.15
+        btn.layer.shadowRadius = 0.5
+        btn.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        btn.addTarget(self, action: #selector(letterTapped(_:)), for: .touchUpInside)
+        return btn
     }
+
+    private func makeSpecialKey(symbol: String, width: CGFloat) -> UIButton {
+        let btn = UIButton(type: .system)
+        let cfg = UIImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+        btn.setImage(UIImage(systemName: symbol, withConfiguration: cfg), for: .normal)
+        btn.layer.cornerRadius = 6
+        btn.layer.shadowColor = UIColor.black.cgColor
+        btn.layer.shadowOffset = CGSize(width: 0, height: 1)
+        btn.layer.shadowOpacity = 0.12
+        btn.layer.shadowRadius = 0.5
+        btn.widthAnchor.constraint(equalToConstant: width).isActive = true
+        btn.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        return btn
+    }
+
+    // MARK: - Theme
 
     private func applyTheme() {
-        inputView?.backgroundColor = backgroundColor
+        let dark = traitCollection.userInterfaceStyle == .dark
+        let bg: UIColor = dark ? .init(white: 0.13, alpha: 1) : .init(red: 0.82, green: 0.82, blue: 0.84, alpha: 1)
+        let keyBg: UIColor = dark ? .init(white: 0.26, alpha: 1) : .white
+        let specialBg: UIColor = dark ? .init(white: 0.18, alpha: 1) : .init(red: 0.68, green: 0.70, blue: 0.73, alpha: 1)
+        let textCol: UIColor = dark ? .white : .black
+        let mutedCol: UIColor = dark ? .init(white: 0.6, alpha: 1) : .init(white: 0.4, alpha: 1)
+        let olive: UIColor = dark
+            ? UIColor(red: 0.541, green: 0.714, blue: 0.165, alpha: 1)
+            : UIColor(red: 0.420, green: 0.561, blue: 0.071, alpha: 1)
 
-        statusLabel.textColor = mutedColor
-        transcriptLabel.textColor = textColor
+        inputView?.backgroundColor = bg
 
-        micButton.backgroundColor = isCurrentlyRecording ? dangerColor : primaryColor
+        // Letter keys
+        for btn in keyButtons {
+            btn.backgroundColor = keyBg
+            btn.setTitleColor(textCol, for: .normal)
+        }
+
+        // Special keys
+        for btn in [shiftButton, deleteButton, nextKbButton] {
+            btn?.backgroundColor = specialBg
+            btn?.tintColor = textCol
+        }
+
+        // Space + return
+        spaceButton.backgroundColor = keyBg
+        spaceButton.setTitleColor(textCol, for: .normal)
+        returnButton.backgroundColor = specialBg
+        returnButton.setTitleColor(textCol, for: .normal)
+
+        // Mic
+        micButton.backgroundColor = isCurrentlyRecording
+            ? UIColor(red: 0.867, green: 0.431, blue: 0.306, alpha: 1)
+            : olive
         micPulseView.backgroundColor = isCurrentlyRecording
-            ? dangerColor.withAlphaComponent(0.15)
-            : primaryColor.withAlphaComponent(0.15)
+            ? UIColor(red: 0.867, green: 0.431, blue: 0.306, alpha: 0.2)
+            : olive.withAlphaComponent(0.2)
 
-        let keyBg = cardColor
-        let keyBorder = borderColor.cgColor
-        let keyText = textColor
+        // Banner
+        statusBanner.backgroundColor = dark ? .init(white: 0.2, alpha: 1) : .init(white: 0.92, alpha: 1)
+        statusLabel.textColor = mutedCol
+    }
 
-        for btn in [nextKeyboardButton, deleteButton] {
-            btn.backgroundColor = keyBg
-            btn.tintColor = keyText
-            btn.layer.borderColor = keyBorder
-        }
+    // MARK: - Key Actions
 
-        for btn in [spaceButton, returnButton] {
-            btn.backgroundColor = keyBg
-            btn.setTitleColor(keyText, for: .normal)
-            btn.layer.borderColor = keyBorder
+    @objc private func letterTapped(_ sender: UIButton) {
+        guard let letter = sender.titleLabel?.text else { return }
+        let text = isUppercase ? letter : letter.lowercased()
+        textDocumentProxy.insertText(text)
+        if isUppercase {
+            isUppercase = false
+            updateShiftAppearance()
         }
     }
 
-    // MARK: - Pulse Animation
+    @objc private func shiftTapped() {
+        isUppercase.toggle()
+        updateShiftAppearance()
+    }
 
-    private func startPulse() {
-        micPulseView.alpha = 1
-        pulseTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.micPulseView.transform = .identity
-            self.micPulseView.alpha = 0.6
-            UIView.animate(withDuration: 1.0, delay: 0, options: [.curveEaseOut]) {
-                self.micPulseView.transform = CGAffineTransform(scaleX: 1.35, y: 1.35)
-                self.micPulseView.alpha = 0
+    @objc private func deleteTapped() {
+        textDocumentProxy.deleteBackward()
+    }
+
+    private var deleteRepeatTimer: Timer?
+
+    @objc private func deleteLongPress(_ gesture: UILongPressGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            deleteRepeatTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
+                self?.textDocumentProxy.deleteBackward()
             }
-        }
-        pulseTimer?.fire()
-    }
-
-    private func stopPulse() {
-        pulseTimer?.invalidate()
-        pulseTimer = nil
-        UIView.animate(withDuration: 0.2) {
-            self.micPulseView.alpha = 0
-            self.micPulseView.transform = .identity
+        case .ended, .cancelled:
+            deleteRepeatTimer?.invalidate()
+            deleteRepeatTimer = nil
+        default: break
         }
     }
 
-    // MARK: - Actions
+    @objc private func spaceTapped() {
+        textDocumentProxy.insertText(" ")
+    }
 
-    @objc private func micButtonTapped() {
+    @objc private func returnTapped() {
+        textDocumentProxy.insertText("\n")
+    }
+
+    private func updateShiftAppearance() {
+        let symbol = isUppercase ? "shift.fill" : "shift"
+        let cfg = UIImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+        shiftButton.setImage(UIImage(systemName: symbol, withConfiguration: cfg), for: .normal)
+        for btn in keyButtons {
+            let current = btn.titleLabel?.text ?? ""
+            btn.setTitle(isUppercase ? current.uppercased() : current.lowercased(), for: .normal)
+        }
+    }
+
+    // MARK: - Mic / Dictation
+
+    @objc private func micTapped() {
         if isCurrentlyRecording {
             stopAndTranscribe()
         } else {
@@ -295,37 +354,30 @@ class KeyboardViewController: UIInputViewController {
 
     private func startRecording() {
         guard isFullAccessGranted else {
-            statusLabel.text = "ENABLE FULL ACCESS IN SETTINGS"
-            transcriptLabel.text = "Settings → Keyboard → Freestyle → Allow Full Access"
+            showBanner("Enable Full Access in Settings → Keyboard → Freestyle")
             return
         }
 
         guard SharedConfig.isOnboardingComplete else {
-            statusLabel.text = "SETUP REQUIRED"
-            transcriptLabel.text = "Open the Freestyle app to configure your API key."
+            showBanner("Open the Freestyle app to set up your API key")
             return
         }
 
         do {
             try recorder.startRecording()
             isCurrentlyRecording = true
-            recordingStartTime = Date()
 
-            UIView.animate(withDuration: 0.2) {
-                self.micButton.backgroundColor = self.dangerColor
-                self.micButton.transform = CGAffineTransform(scaleX: 0.92, y: 0.92)
+            UIView.animate(withDuration: 0.15) {
+                self.micButton.backgroundColor = UIColor(red: 0.867, green: 0.431, blue: 0.306, alpha: 1)
+                self.micButton.transform = CGAffineTransform(scaleX: 0.9, y: 0.9)
             } completion: { _ in
-                UIView.animate(withDuration: 0.1) {
-                    self.micButton.transform = .identity
-                }
+                UIView.animate(withDuration: 0.1) { self.micButton.transform = .identity }
             }
 
             startPulse()
-            statusLabel.text = "RECORDING — TAP TO STOP"
-            transcriptLabel.text = ""
+            showBanner("Recording — tap mic to stop")
         } catch {
-            statusLabel.text = "MIC ACCESS DENIED"
-            transcriptLabel.text = error.localizedDescription
+            showBanner("Microphone access denied")
         }
     }
 
@@ -334,43 +386,35 @@ class KeyboardViewController: UIInputViewController {
             isCurrentlyRecording = false
             stopPulse()
             applyTheme()
-            statusLabel.text = "NO AUDIO RECORDED"
             return
         }
 
         isCurrentlyRecording = false
         stopPulse()
-
-        UIView.animate(withDuration: 0.2) {
-            self.micButton.backgroundColor = self.primaryColor
-        }
-
-        statusLabel.text = "TRANSCRIBING..."
+        applyTheme()
+        showBanner("Transcribing...")
         micButton.isEnabled = false
-        micButton.alpha = 0.6
+        micButton.alpha = 0.5
 
         Task {
             do {
                 let result = try await transcriptionService.transcribe(audioURL: audioURL)
-
                 await MainActor.run {
                     let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !text.isEmpty {
                         self.textDocumentProxy.insertText(text)
-                        self.transcriptLabel.text = text
-                        self.statusLabel.text = "INSERTED ✓"
+                        self.showBanner("Inserted ✓")
                     } else {
-                        self.statusLabel.text = "NO SPEECH DETECTED"
+                        self.showBanner("No speech detected")
                     }
                     self.micButton.isEnabled = true
                     self.micButton.alpha = 1
+                    self.hideBannerAfterDelay()
                 }
-
                 try? FileManager.default.removeItem(at: audioURL)
             } catch {
                 await MainActor.run {
-                    self.statusLabel.text = "ERROR"
-                    self.transcriptLabel.text = error.localizedDescription
+                    self.showBanner("Error: \(error.localizedDescription)")
                     self.micButton.isEnabled = true
                     self.micButton.alpha = 1
                 }
@@ -378,25 +422,55 @@ class KeyboardViewController: UIInputViewController {
         }
     }
 
-    @objc private func spacePressed() {
-        textDocumentProxy.insertText(" ")
+    // MARK: - Banner
+
+    private func showBanner(_ text: String) {
+        statusLabel.text = text
+        statusBanner.isHidden = false
+        statusBanner.alpha = 0
+        UIView.animate(withDuration: 0.15) { self.statusBanner.alpha = 1 }
     }
 
-    @objc private func deletePressed() {
-        textDocumentProxy.deleteBackward()
+    private func hideBannerAfterDelay() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let self, !self.isCurrentlyRecording else { return }
+            UIView.animate(withDuration: 0.2) { self.statusBanner.alpha = 0 } completion: { _ in
+                self.statusBanner.isHidden = true
+            }
+        }
     }
 
-    @objc private func returnPressed() {
-        textDocumentProxy.insertText("\n")
+    // MARK: - Pulse
+
+    private func startPulse() {
+        // Position pulse behind mic button
+        if let micFrame = micButton.superview?.convert(micButton.frame, to: inputView) {
+            micPulseView.frame = micFrame.insetBy(dx: -6, dy: -6)
+            micPulseView.layer.cornerRadius = micPulseView.frame.height / 2
+        }
+        micPulseView.alpha = 1
+        pulseTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.micPulseView.transform = .identity
+            self.micPulseView.alpha = 0.5
+            UIView.animate(withDuration: 0.8, delay: 0, options: .curveEaseOut) {
+                self.micPulseView.transform = CGAffineTransform(scaleX: 1.4, y: 1.4)
+                self.micPulseView.alpha = 0
+            }
+        }
+        pulseTimer?.fire()
+    }
+
+    private func stopPulse() {
+        pulseTimer?.invalidate()
+        pulseTimer = nil
+        micPulseView.alpha = 0
+        micPulseView.transform = .identity
     }
 
     // MARK: - Helpers
 
-    private var isFullAccessGranted: Bool {
-        return super.hasFullAccess
-    }
+    private var isFullAccessGranted: Bool { super.hasFullAccess }
 
-    deinit {
-        pulseTimer?.invalidate()
-    }
+    deinit { pulseTimer?.invalidate() }
 }

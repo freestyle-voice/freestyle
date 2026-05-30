@@ -381,22 +381,24 @@ export default function OnboardingPage(): React.JSX.Element {
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         <div className="responsive-standalone-pad my-auto w-full max-w-md space-y-8">
-          {/* Logo */}
-          <div className="flex flex-col items-center gap-3">
-            <img
-              src={markLight}
-              alt="Freestyle"
-              className="block h-12 w-12 dark:hidden"
-            />
-            <img
-              src={markDark}
-              alt="Freestyle"
-              className="hidden h-12 w-12 dark:block"
-            />
-            <h1 className="serif text-2xl font-bold tracking-tight">
-              Freestyle
-            </h1>
-          </div>
+          {/* Logo — welcome step only */}
+          {step === "welcome" && (
+            <div className="flex flex-col items-center gap-3">
+              <img
+                src={markLight}
+                alt="Freestyle"
+                className="block h-12 w-12 dark:hidden"
+              />
+              <img
+                src={markDark}
+                alt="Freestyle"
+                className="hidden h-12 w-12 dark:block"
+              />
+              <h1 className="serif text-2xl font-bold tracking-tight">
+                Freestyle
+              </h1>
+            </div>
+          )}
 
           {/* Step: Welcome */}
           {step === "welcome" && (

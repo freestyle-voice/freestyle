@@ -31,7 +31,10 @@ declare global {
       ) => () => void;
       onHotkeyRecordCancel: (callback: () => void) => () => void;
       // Auto-updater
-      checkForUpdate: () => Promise<string | null>;
+      checkForUpdate: () => Promise<{
+        version: string;
+        downloadState: string;
+      } | null>;
       downloadUpdate: () => void;
       installUpdate: () => void;
       onUpdateAvailable: (
@@ -39,6 +42,10 @@ declare global {
       ) => () => void;
       onUpdateDownloaded: (
         callback: (info: { version: string }) => void,
+      ) => () => void;
+      onUpdateDownloading: (callback: () => void) => () => void;
+      onUpdateError: (
+        callback: (info: { message: string }) => void,
       ) => () => void;
       // Auto-update setting
       getAutoUpdate: () => Promise<boolean>;

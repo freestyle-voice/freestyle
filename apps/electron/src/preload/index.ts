@@ -70,8 +70,10 @@ const api = {
     return () => ipcRenderer.removeListener("hotkey-record:cancel", handler);
   },
   // Auto-updater
-  checkForUpdate: (): Promise<string | null> =>
-    ipcRenderer.invoke("updater:check"),
+  checkForUpdate: (): Promise<{
+    version: string;
+    downloadState: string;
+  } | null> => ipcRenderer.invoke("updater:check"),
   downloadUpdate: (): void => ipcRenderer.send("updater:download"),
   installUpdate: (): void => ipcRenderer.send("updater:install"),
   onUpdateAvailable: (
@@ -89,6 +91,19 @@ const api = {
       callback(info);
     ipcRenderer.on("updater:downloaded", handler);
     return () => ipcRenderer.removeListener("updater:downloaded", handler);
+  },
+  onUpdateDownloading: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("updater:downloading", handler);
+    return () => ipcRenderer.removeListener("updater:downloading", handler);
+  },
+  onUpdateError: (
+    callback: (info: { message: string }) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, info: { message: string }): void =>
+      callback(info);
+    ipcRenderer.on("updater:error", handler);
+    return () => ipcRenderer.removeListener("updater:error", handler);
   },
   // Auto-update setting
   getAutoUpdate: (): Promise<boolean> =>

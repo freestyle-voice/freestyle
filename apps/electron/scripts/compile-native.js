@@ -130,7 +130,7 @@ function compileWindows() {
     if (!ok) {
       console.log("  MSVC not found, trying MinGW gcc...");
       const gccLibs = bin.libs.map((l) => `-l${l.replace(".lib", "")}`);
-      ok = run("gcc", ["-O2", src, "-o", out, ...gccLibs]);
+      ok = run("gcc", ["-O2", "-static-libgcc", src, "-o", out, ...gccLibs]);
     }
 
     if (!ok) {

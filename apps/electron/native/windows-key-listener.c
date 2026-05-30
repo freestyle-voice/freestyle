@@ -202,11 +202,15 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
                     printf("KEY_DOWN\n");
                     fflush(stdout);
                 }
+                /* Suppress the key event so Windows doesn't process it
+                   (e.g. Alt+Space would otherwise open the system window menu) */
+                if (g_isKeyDown) return 1;
             } else if (isUp) {
                 if (g_isKeyDown) {
                     g_isKeyDown = FALSE;
                     printf("KEY_UP\n");
                     fflush(stdout);
+                    return 1;
                 }
             }
         }

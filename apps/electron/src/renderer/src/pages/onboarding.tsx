@@ -3,6 +3,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
 import { getApiBase, getClient } from "@renderer/lib/api";
+import {
+  type AvailableModel,
+  CLOUD_VOICE_PROVIDERS,
+  formatBytes,
+  formatSpeed,
+  PROVIDER_DISPLAY_NAMES,
+  type WhisperStatus,
+} from "@renderer/lib/models";
 import { Recorder } from "@renderer/lib/recorder";
 import { cn } from "@renderer/lib/utils";
 import {
@@ -17,6 +25,7 @@ import {
   Keyboard,
   Loader2,
   Mic,
+  RefreshCw,
   Shield,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -27,73 +36,10 @@ type Step = "welcome" | "permissions" | "voice-model" | "test-run";
 
 const STEPS: Step[] = ["welcome", "permissions", "voice-model", "test-run"];
 
-interface AvailableModel {
-  provider_id: string;
-  provider_name: string;
-  model_id: string;
-  model_name: string;
-  type: "voice" | "llm";
-}
-
-interface WhisperModelDef {
-  id: string;
-  displayName: string;
-  sizeBytes: number;
-  ramRequired: string;
-  speed: string;
-  quality: string;
-  quantized: boolean;
-}
-
-interface WhisperModelDownloadState {
-  model: string;
-  status: "not_downloaded" | "downloading" | "verifying" | "ready" | "error";
-  phase?: "building_binary" | "downloading_model";
-  downloadProgress?: {
-    bytesDownloaded: number;
-    bytesTotal: number;
-    percent: number;
-    speedBps: number;
-  };
-  error?: string;
-}
-
-interface WhisperStatus {
-  binaryAvailable: boolean;
-  binaryDownloading: boolean;
-  serverBinaryAvailable: boolean;
-  serverRunning: boolean;
-  serverFailed: boolean;
-  modelsDir: string;
-  models: WhisperModelDownloadState[];
-  modelDefinitions: WhisperModelDef[];
-}
-
-const VOICE_PROVIDERS = ["openai", "groq", "deepgram", "elevenlabs"];
-
-const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
-  openai: "OpenAI",
-  groq: "Groq",
-  deepgram: "Deepgram",
-  elevenlabs: "ElevenLabs",
-  "local-whisper": "Local Whisper",
-};
-
 type ModelSource = "cloud" | "local";
 
 const IS_MAC =
   typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(0)} KB`;
-  if (bytes < 1_000_000_000) return `${(bytes / 1_000_000).toFixed(0)} MB`;
-  return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
-}
-
-function formatSpeed(bps: number): string {
-  if (bps < 1_000_000) return `${(bps / 1_000).toFixed(0)} KB/s`;
-  return `${(bps / 1_000_000).toFixed(1)} MB/s`;
-}
 
 export default function OnboardingPage(): React.JSX.Element {
   const navigate = useNavigate();
@@ -260,6 +206,11 @@ export default function OnboardingPage(): React.JSX.Element {
   );
 
   const saveModelAndContinue = useCallback(async () => {
+    if (needsKey && selectedModel) {
+      const valid = await apiKeyForm.trigger();
+      if (!valid) return;
+    }
+
     setSaving(true);
 
     try {
@@ -335,15 +286,16 @@ export default function OnboardingPage(): React.JSX.Element {
     setTestError("");
     startTimeRef.current = Date.now();
 
+    const recorder = new Recorder();
+    recorderRef.current = recorder;
     try {
-      const recorder = new Recorder();
-      recorderRef.current = recorder;
       await recorder.start();
     } catch (err) {
       setTestState("error");
       setTestError(
         err instanceof Error ? err.message : "Could not access microphone",
       );
+      recorder.destroy();
       recorderRef.current = null;
     }
   }, []);
@@ -409,7 +361,7 @@ export default function OnboardingPage(): React.JSX.Element {
   }, []);
 
   const voiceModels = available.filter(
-    (m) => m.type === "voice" && VOICE_PROVIDERS.includes(m.provider_id),
+    (m) => m.type === "voice" && CLOUD_VOICE_PROVIDERS.includes(m.provider_id),
   );
 
   const modelsByProvider = new Map<string, AvailableModel[]>();
@@ -590,7 +542,10 @@ export default function OnboardingPage(): React.JSX.Element {
                 <div className="border-border bg-secondary inline-flex rounded-md border p-[3px]">
                   <button
                     type="button"
-                    onClick={() => setModelSource("cloud")}
+                    onClick={() => {
+                      setModelSource("cloud");
+                      setSelectedWhisperModel(null);
+                    }}
                     className={cn(
                       "flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-[12px] transition-colors",
                       modelSource === "cloud"
@@ -602,7 +557,11 @@ export default function OnboardingPage(): React.JSX.Element {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setModelSource("local")}
+                    onClick={() => {
+                      setModelSource("local");
+                      setSelectedModel(null);
+                      setNeedsKey(false);
+                    }}
                     className={cn(
                       "flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-[12px] transition-colors",
                       modelSource === "local"
@@ -804,14 +763,24 @@ export default function OnboardingPage(): React.JSX.Element {
                           </div>
 
                           <div className="flex shrink-0 items-center gap-1.5">
-                            {status === "not_downloaded" && (
+                            {(status === "not_downloaded" ||
+                              status === "error") && (
                               <button
                                 type="button"
                                 onClick={() => downloadWhisperModel(def.id)}
                                 className="border-border hover:bg-secondary flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-medium"
                               >
-                                <Download size={12} />
-                                Download
+                                {status === "error" ? (
+                                  <>
+                                    <RefreshCw size={12} />
+                                    Retry
+                                  </>
+                                ) : (
+                                  <>
+                                    <Download size={12} />
+                                    Download
+                                  </>
+                                )}
                               </button>
                             )}
                             {status === "downloading" && (

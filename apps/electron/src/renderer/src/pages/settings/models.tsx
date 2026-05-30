@@ -6,6 +6,16 @@ import {
 } from "@freestyle/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { getApiBase, getClient } from "@renderer/lib/api";
+import {
+  type AvailableModel,
+  type WhisperModelDownloadState,
+  displayProviderName,
+  formatBytes,
+  formatSpeed,
+  LLM_PROVIDERS,
+  VOICE_PROVIDERS,
+  type WhisperStatus,
+} from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
 import {
   AlertTriangle,
@@ -40,15 +50,6 @@ import { useForm } from "react-hook-form";
 // Types
 // ---------------------------------------------------------------------------
 
-interface AvailableModel {
-  provider_id: string;
-  provider_name: string;
-  model_id: string;
-  model_name: string;
-  family: string;
-  type: "voice" | "llm";
-}
-
 interface ConfiguredModel {
   id: number;
   provider: string;
@@ -61,43 +62,6 @@ interface ConfiguredModel {
 interface ApiKeyEntry {
   provider: string;
   created_at: string;
-}
-
-interface WhisperModelDownloadState {
-  model: string;
-  fileName: string;
-  sizeBytes: number;
-  displayName: string;
-  status: "not_downloaded" | "downloading" | "verifying" | "ready" | "error";
-  phase?: "building_binary" | "downloading_model";
-  downloadProgress?: {
-    bytesDownloaded: number;
-    bytesTotal: number;
-    percent: number;
-    speedBps: number;
-  };
-  error?: string;
-}
-
-interface WhisperModelDef {
-  id: string;
-  displayName: string;
-  sizeBytes: number;
-  ramRequired: string;
-  speed: string;
-  quality: string;
-  quantized: boolean;
-}
-
-interface WhisperStatus {
-  binaryAvailable: boolean;
-  binaryDownloading: boolean;
-  serverBinaryAvailable: boolean;
-  serverRunning: boolean;
-  serverFailed: boolean;
-  modelsDir: string;
-  models: WhisperModelDownloadState[];
-  modelDefinitions: WhisperModelDef[];
 }
 
 /**
@@ -128,39 +92,9 @@ interface VoiceItem {
   hasKey?: boolean;
   available?: AvailableModel;
 }
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-const VOICE_PROVIDERS = [
-  "openai",
-  "groq",
-  "deepgram",
-  "elevenlabs",
-  "local-whisper",
-];
-const LLM_PROVIDERS = [
-  "openai",
-  "anthropic",
-  "google",
-  "groq",
-  "mistral",
-  "local-llm",
-];
-
-const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
-  openai: "OpenAI",
-  anthropic: "Anthropic",
-  google: "Google",
-  groq: "Groq",
-  deepgram: "Deepgram",
-  elevenlabs: "ElevenLabs",
-  mistral: "Mistral",
-  openrouter: "OpenRouter",
-  "local-llm": "Local LLM",
-  "local-whisper": "Local Whisper",
-};
 
 /**
  * Curated speed/quality/pricing for the voice models we surface. Speed and
@@ -238,7 +172,6 @@ const LOCAL_VOICE_NOTES: Record<string, string> = {
   large: "Best quality, still fast",
   "medium-q5_0": "High quality, modest size",
 };
-
 /** Editorial empty-state suggestions — surfaced when no providers exist. */
 const RECOMMENDED_PROVIDERS = [
   {
@@ -260,7 +193,7 @@ const RECOMMENDED_PROVIDERS = [
 ];
 
 function displayName(providerId: string, fallback?: string): string {
-  return PROVIDER_DISPLAY_NAMES[providerId] ?? fallback ?? providerId;
+  return displayProviderName(providerId, fallback);
 }
 
 type PickerType = "voice" | "llm" | null;
@@ -1239,17 +1172,6 @@ function Toggle({
 // ---------------------------------------------------------------------------
 // Bytes / speed formatting (shared by the voice picker rows)
 // ---------------------------------------------------------------------------
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(0)} KB`;
-  if (bytes < 1_000_000_000) return `${(bytes / 1_000_000).toFixed(0)} MB`;
-  return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
-}
-
-function formatSpeed(bps: number): string {
-  if (bps < 1_000_000) return `${(bps / 1_000).toFixed(0)} KB/s`;
-  return `${(bps / 1_000_000).toFixed(1)} MB/s`;
-}
 
 // ---------------------------------------------------------------------------
 // VoicePicker — unified on-device + cloud list with filter chips & meters

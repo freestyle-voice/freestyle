@@ -17,6 +17,11 @@ interface AvailableModel {
   cost_output?: number;
 }
 
+const DEPRECATED_STATUS = "deprecated";
+const REGISTRY_FETCH_TIMEOUT_MS = 3000;
+const UNSUITABLE_CLEANUP_MODEL_PATTERN =
+  /guard|safeguard|safety|moderation|classif(?:y|ier|ication)?|embed(?:ding)?|image/i;
+
 async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
   const db = getDb();
   const urlRow = db
@@ -149,7 +154,9 @@ async function fetchModelsFromRegistry(): Promise<Record<string, unknown>> {
     return modelsCache.data as Record<string, unknown>;
   }
 
-  const res = await fetch("https://models.dev/api.json");
+  const res = await fetch("https://models.dev/api.json", {
+    signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
+  });
   if (!res.ok) {
     throw new Error(`Failed to fetch models.dev: ${res.status}`);
   }
@@ -162,21 +169,21 @@ async function fetchModelsFromRegistry(): Promise<Record<string, unknown>> {
  * Look up per-token cost from models.dev registry.
  * Returns { inputCostPerToken, outputCostPerToken } or null if not found.
  * Costs in the registry are per-million tokens.
+ * Provider is taken from the models.dev provider key, not parsed from model ID.
  */
 export async function getModelCost(
+  providerId: string,
   modelId: string,
 ): Promise<{ input: number; output: number } | null> {
   try {
     const registry = await fetchModelsFromRegistry();
-    // modelId is like "openai/gpt-4o" or "anthropic/claude-sonnet-4-20250514"
-    const parts = modelId.split("/");
-    const providerId = parts[0];
-    const shortId = parts.slice(1).join("/");
 
     const provider = registry[providerId] as RegistryProvider | undefined;
     if (!provider?.models) return null;
 
-    // Try exact match first, then try matching by short ID
+    const shortId = modelId.startsWith(`${providerId}/`)
+      ? modelId.slice(providerId.length + 1)
+      : modelId;
     const model = provider.models[modelId] ?? provider.models[shortId] ?? null;
     if (!model?.cost) return null;
 
@@ -189,12 +196,43 @@ export async function getModelCost(
   }
 }
 
+export async function isCleanupModelSupported(
+  providerId: string,
+  modelId: string,
+): Promise<boolean> {
+  if (providerId === "local-llm") return true;
+
+  try {
+    const registry = await fetchModelsFromRegistry();
+    const provider = registry[providerId] as RegistryProvider | undefined;
+    if (!provider?.models) return false;
+
+    const shortId = modelId.startsWith(`${providerId}/`)
+      ? modelId.slice(providerId.length + 1)
+      : modelId;
+    const model = provider.models[modelId] ?? provider.models[shortId] ?? null;
+    if (!model) return false;
+
+    const inputMods = model.modalities?.input ?? [];
+    const outputMods = model.modalities?.output ?? [];
+    return (
+      model.status !== DEPRECATED_STATUS &&
+      inputMods.includes("text") &&
+      outputMods.includes("text") &&
+      isCleanupSuitableModel(model)
+    );
+  } catch {
+    return true;
+  }
+}
+
 interface RegistryModel {
   id: string;
   name: string;
   family?: string;
   modalities?: { input?: string[]; output?: string[] };
   cost?: { input?: number; output?: number };
+  status?: string;
   [key: string]: unknown;
 }
 
@@ -203,6 +241,11 @@ interface RegistryProvider {
   name: string;
   models?: Record<string, RegistryModel>;
   [key: string]: unknown;
+}
+
+function isCleanupSuitableModel(model: RegistryModel): boolean {
+  const searchable = [model.id, model.name, model.family ?? ""].join(" ");
+  return !UNSUITABLE_CLEANUP_MODEL_PATTERN.test(searchable);
 }
 
 const models = new Hono()
@@ -219,6 +262,8 @@ const models = new Hono()
         if (!provider.models) continue;
 
         for (const [, model] of Object.entries(provider.models)) {
+          if (model.status === DEPRECATED_STATUS) continue;
+
           const family = model.family ?? "";
           const inputMods = model.modalities?.input ?? [];
           const outputMods = model.modalities?.output ?? [];
@@ -247,7 +292,7 @@ const models = new Hono()
             });
           }
 
-          if (isLLM && !isSTT) {
+          if (isLLM && isCleanupSuitableModel(model)) {
             available.push({
               provider_id: providerId,
               provider_name: provider.name ?? providerId,

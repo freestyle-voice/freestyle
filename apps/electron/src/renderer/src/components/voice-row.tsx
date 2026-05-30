@@ -1,0 +1,296 @@
+import type { AvailableModel, VoiceItem } from "@renderer/lib/models";
+import { formatBytes, formatSpeed } from "@renderer/lib/models";
+import { cn } from "@renderer/lib/utils";
+import {
+  Check,
+  CircleDollarSign,
+  Cpu,
+  Download,
+  Key,
+  RefreshCw,
+  Target,
+  Trash2,
+  Wifi,
+  X,
+  Zap,
+} from "lucide-react";
+
+export function Meter({ value }: { value?: number }): React.JSX.Element | null {
+  if (value == null) return null;
+  return (
+    <span className="inline-flex items-center gap-[3px]">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span
+          key={i}
+          className={cn(
+            "h-[5px] w-[5px] rounded-full",
+            i <= value ? "bg-primary" : "bg-border",
+          )}
+        />
+      ))}
+    </span>
+  );
+}
+
+export function StatPair({
+  icon: Icon,
+  label,
+  accent,
+}: {
+  icon: typeof Zap;
+  label: string;
+  accent?: boolean;
+}): React.JSX.Element {
+  return (
+    <span className="text-muted-foreground inline-flex items-center gap-1.5 whitespace-nowrap text-[11.5px]">
+      <Icon className={cn("h-3 w-3", accent ? "text-primary" : "")} />
+      {label}
+    </span>
+  );
+}
+
+export function Toggle({
+  on,
+  onChange,
+}: {
+  on: boolean;
+  onChange: (next: boolean) => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!on)}
+      className={cn(
+        "relative h-[22px] w-10 shrink-0 rounded-full border transition-colors",
+        on ? "bg-primary border-primary/80" : "bg-secondary border-border",
+      )}
+      aria-pressed={on}
+    >
+      <span
+        className={cn(
+          "absolute top-[1px] block h-[18px] w-[18px] rounded-full transition-transform",
+          on ? "bg-primary-foreground" : "bg-muted-foreground/70",
+        )}
+        style={{ transform: on ? "translateX(19px)" : "translateX(2px)" }}
+      />
+    </button>
+  );
+}
+
+export function VoiceRow({
+  item,
+  first,
+  onSelectCloud,
+  onSelectLocal,
+  onDownload,
+  onCancel,
+  onDelete,
+}: {
+  item: VoiceItem;
+  first: boolean;
+  onSelectCloud: (m: AvailableModel) => void;
+  onSelectLocal: (defId: string, name: string) => void;
+  onDownload: (defId: string) => void;
+  onCancel?: (defId: string) => void;
+  onDelete?: (defId: string) => void;
+}): React.JSX.Element {
+  const local = item.kind === "local";
+  const status = item.status ?? "not_downloaded";
+  const downloading =
+    local && (status === "downloading" || status === "verifying");
+  const ghostBtn =
+    "border-border hover:bg-secondary flex items-center gap-1.5 rounded-[8px] border px-3 py-2 text-[12.5px] font-medium";
+  const solidBtn =
+    "bg-foreground text-background hover:bg-foreground/90 rounded-[8px] px-3.5 py-2 text-[12.5px] font-medium";
+
+  return (
+    <div
+      className={cn(
+        "group grid grid-cols-[1fr_auto] items-center gap-4 px-5 py-4",
+        !first && "border-border border-t",
+        item.selected && "bg-primary/[0.06]",
+      )}
+    >
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-foreground whitespace-nowrap text-[14px] font-semibold">
+            {item.name}
+          </span>
+          <span className="text-muted-foreground whitespace-nowrap text-[12px]">
+            {item.provider}
+          </span>
+          {item.selected && <Check size={15} className="text-primary" />}
+          {item.note && (
+            <span className="text-primary whitespace-nowrap text-[11px] font-medium">
+              {item.note}
+            </span>
+          )}
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-4">
+          {item.speed != null && (
+            <span className="inline-flex items-center gap-1.5">
+              <Zap className="text-muted-foreground h-3 w-3" />
+              <Meter value={item.speed} />
+            </span>
+          )}
+          {item.quality != null && (
+            <span className="inline-flex items-center gap-1.5">
+              <Target className="text-muted-foreground h-3 w-3" />
+              <Meter value={item.quality} />
+            </span>
+          )}
+          {local ? (
+            <>
+              {item.sizeBytes != null && (
+                <StatPair icon={Download} label={formatBytes(item.sizeBytes)} />
+              )}
+              {item.ram && <StatPair icon={Cpu} label={`${item.ram} RAM`} />}
+            </>
+          ) : (
+            <>
+              {item.cost != null && (
+                <StatPair
+                  icon={CircleDollarSign}
+                  label={`$${item.cost.toFixed(2)}/hr`}
+                />
+              )}
+              {item.streaming && (
+                <StatPair icon={Wifi} label="Streaming" accent />
+              )}
+            </>
+          )}
+        </div>
+
+        {local && status === "error" && item.state?.error && (
+          <div className="text-destructive mt-1.5 text-[11.5px]">
+            {item.state.error}
+          </div>
+        )}
+
+        {downloading && (
+          <div className="mt-2.5 space-y-1">
+            <div className="bg-secondary h-[5px] w-full overflow-hidden rounded-full">
+              {item.state?.phase === "building_binary" ? (
+                <div className="bg-primary h-full w-full animate-pulse rounded-full" />
+              ) : (
+                <div
+                  className="bg-primary h-full rounded-full transition-all"
+                  style={{
+                    width: `${item.state?.downloadProgress?.percent ?? 0}%`,
+                  }}
+                />
+              )}
+            </div>
+            <div className="text-muted-foreground mono flex justify-between text-[10px]">
+              {item.state?.phase === "building_binary" ? (
+                <span>Building whisper.cpp — this may take a minute…</span>
+              ) : item.state?.downloadProgress ? (
+                <>
+                  <span>
+                    {formatBytes(item.state.downloadProgress.bytesDownloaded)} /{" "}
+                    {formatBytes(item.state.downloadProgress.bytesTotal)}
+                  </span>
+                  <span>
+                    {item.state.downloadProgress.speedBps > 0 &&
+                      formatSpeed(item.state.downloadProgress.speedBps)}
+                    {item.state.downloadProgress.percent > 0 &&
+                      ` \u00b7 ${item.state.downloadProgress.percent}%`}
+                  </span>
+                </>
+              ) : (
+                <span>Verifying…</span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1.5 justify-self-end">
+        {item.selected ? (
+          <span
+            className="mono text-primary"
+            style={{ fontSize: 10, letterSpacing: "0.14em" }}
+          >
+            SELECTED
+          </span>
+        ) : local ? (
+          <>
+            {status === "ready" && (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    item.defId && onSelectLocal(item.defId, item.name)
+                  }
+                  className={solidBtn}
+                >
+                  Use
+                </button>
+                {onDelete && (
+                  <button
+                    type="button"
+                    onClick={() => item.defId && onDelete(item.defId)}
+                    className="text-muted-foreground hover:text-destructive hover:bg-secondary rounded p-1.5 opacity-0 transition-opacity group-hover:opacity-100"
+                    title="Delete model"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </>
+            )}
+            {status === "not_downloaded" && (
+              <button
+                type="button"
+                onClick={() => item.defId && onDownload(item.defId)}
+                className={ghostBtn}
+              >
+                <Download size={13} />
+                {item.sizeBytes != null
+                  ? formatBytes(item.sizeBytes)
+                  : "Download"}
+              </button>
+            )}
+            {downloading && onCancel && (
+              <button
+                type="button"
+                onClick={() => item.defId && onCancel(item.defId)}
+                className={ghostBtn}
+              >
+                <X size={12} />
+                Cancel
+              </button>
+            )}
+            {status === "error" && (
+              <button
+                type="button"
+                onClick={() => item.defId && onDownload(item.defId)}
+                className={ghostBtn}
+              >
+                <RefreshCw size={12} />
+                Retry
+              </button>
+            )}
+          </>
+        ) : item.hasKey ? (
+          <button
+            type="button"
+            onClick={() => item.available && onSelectCloud(item.available)}
+            className={solidBtn}
+          >
+            Use
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => item.available && onSelectCloud(item.available)}
+            className={ghostBtn}
+          >
+            <Key size={12} />
+            Add key
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

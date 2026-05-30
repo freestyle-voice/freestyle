@@ -18,6 +18,7 @@
     "@ai-sdk/elevenlabs": "^2.0.33",
     "@ai-sdk/google": "^3.0.79",
     "@ai-sdk/groq": "^3.0.39",
+    "@ai-sdk/mistral": "^3.0.37",
     "@ai-sdk/openai": "^3.0.65",
     "@freestyle/validations": "workspace:*",
     "@hono/mcp": "^0.3.0",

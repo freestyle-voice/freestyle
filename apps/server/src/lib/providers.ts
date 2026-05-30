@@ -1,13 +1,20 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createGroq } from "@ai-sdk/groq";
+import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 import { getDb } from "./db.js";
-import { stripProviderPrefix } from "./streaming/types.js";
 import { getApiKeyForProvider } from "./streaming-stt.js";
 
 const LOCAL_PROVIDERS = new Set(["local-llm"]);
+const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
+  "openai",
+  "anthropic",
+  "google",
+  "mistral",
+  "local-llm",
+]);
 
 const PROVIDER_FACTORIES: Record<
   string,
@@ -29,6 +36,10 @@ const PROVIDER_FACTORIES: Record<
   },
   google: (apiKey) => {
     const p = createGoogleGenerativeAI({ apiKey });
+    return { chat: (m) => p.chat(m) };
+  },
+  mistral: (apiKey) => {
+    const p = createMistral({ apiKey });
     return { chat: (m) => p.chat(m) };
   },
   "local-llm": () => {
@@ -59,6 +70,16 @@ function findFactory(providerId: string) {
     if (providerId.startsWith(key)) return factory;
   }
   return null;
+}
+
+function getChatModelId(providerId: string, modelId: string): string {
+  if (
+    PROVIDER_PREFIXED_CHAT_MODELS.has(providerId) &&
+    modelId.startsWith(`${providerId}/`)
+  ) {
+    return modelId.slice(providerId.length + 1);
+  }
+  return modelId;
 }
 
 interface DefaultModels {
@@ -106,5 +127,5 @@ export function createChatModel(
     throw new Error(`Provider ${providerId} does not support chat`);
   }
 
-  return provider.chat(stripProviderPrefix(modelId));
+  return provider.chat(getChatModelId(providerId, modelId));
 }

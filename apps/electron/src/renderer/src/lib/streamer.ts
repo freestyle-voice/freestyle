@@ -112,6 +112,7 @@ export class Streamer {
     this.sendJSON({ type: "cancel" });
   }
 
+  // Destructive: clears the internal PCM buffer after encoding. Can only be called once per session.
   getWavBlob(): Blob | null {
     if (this.pcmSampleCount === 0) return null;
     const blob = encodeWavFromInt16(

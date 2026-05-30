@@ -17,6 +17,7 @@ const stream = new Hono().get(
   upgradeWebSocket(() => {
     let upstream: StreamSession | null = null;
     let closed = false;
+    let streamingUnsupported = false;
     let sessionStartTime = Date.now();
     let voiceDefaults: { provider: string; model_id: string } | null = null;
     let appContext: string | null = null;
@@ -176,12 +177,24 @@ const stream = new Hono().get(
               });
           },
           onError: (message) => {
+            streamingUnsupported = true;
+            ws.send(
+              JSON.stringify({
+                type: "config",
+                streaming: false,
+                model: stripProviderPrefix(defaults.voice!.model_id),
+              }),
+            );
             ws.send(JSON.stringify({ type: "error", message }));
             upstream = null;
           },
           onClose: () => {
             upstream = null;
-            if (!closed && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            if (
+              !closed &&
+              !streamingUnsupported &&
+              reconnectAttempts < MAX_RECONNECT_ATTEMPTS
+            ) {
               reconnectAttempts++;
               try {
                 connectUpstream(ws);
@@ -250,7 +263,7 @@ const stream = new Hono().get(
             audioDurationMs = 0;
             appContext = null;
             reconnectAttempts = 0;
-            if (!upstream) {
+            if (!upstream && !streamingUnsupported) {
               try {
                 connectUpstream(ws);
               } catch {}

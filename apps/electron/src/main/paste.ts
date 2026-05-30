@@ -12,9 +12,10 @@ function execFileAsync(path: string, args: string[] = []): Promise<number> {
   return new Promise((resolve, reject) => {
     execFile(path, args, (err) => {
       if (err) {
+        const status = (err as { status?: unknown }).status;
         const exitCode =
-          typeof (err as { status?: unknown }).status === "number"
-            ? (err as unknown as { status: number }).status
+          typeof status === "number"
+            ? status
             : typeof err.code === "number"
               ? err.code
               : undefined;

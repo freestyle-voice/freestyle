@@ -39,6 +39,7 @@ static int g_requireAlt = 0;
 static int g_requireShift = 0;
 static int g_requireMeta = 0;
 static int g_modifiersOnly = 0;
+static int g_record_mode = 0;
 
 /* Tracked modifier state */
 static int g_ctrlDown = 0;
@@ -200,18 +201,125 @@ static void handle_signal(int sig) {
     g_running = 0;
 }
 
+static void emit_record_modifiers(void) {
+    char buf[256] = "";
+    int len = 0;
+
+    if (g_ctrlDown) {
+        len += snprintf(buf + len, sizeof(buf) - len, "%sControl", len ? "," : "");
+    }
+    if (g_altDown) {
+        len += snprintf(buf + len, sizeof(buf) - len, "%sAlt", len ? "," : "");
+    }
+    if (g_shiftDown) {
+        len += snprintf(buf + len, sizeof(buf) - len, "%sShift", len ? "," : "");
+    }
+    if (g_metaDown) {
+        len += snprintf(buf + len, sizeof(buf) - len, "%sSuper", len ? "," : "");
+    }
+
+    printf("RECORD_MODIFIERS:%s\n", buf);
+    fflush(stdout);
+}
+
+static const char *keycode_to_record_name(int code) {
+    if (code == KEY_SPACE) return "Space";
+    if (code == KEY_TAB) return "Tab";
+    if (code == KEY_ESC) return "Escape";
+    if (code == KEY_ENTER) return "Return";
+    if (code == KEY_BACKSPACE) return "Backspace";
+    if (code == KEY_DELETE) return "Delete";
+    if (code == KEY_UP) return "Up";
+    if (code == KEY_DOWN) return "Down";
+    if (code == KEY_LEFT) return "Left";
+    if (code == KEY_RIGHT) return "Right";
+    if (code == KEY_HOME) return "Home";
+    if (code == KEY_END) return "End";
+    if (code == KEY_PAGEUP) return "PageUp";
+    if (code == KEY_PAGEDOWN) return "PageDown";
+    if (code == KEY_CAPSLOCK) return "CapsLock";
+    if (code == KEY_PAUSE) return "Pause";
+    if (code == KEY_INSERT) return "Insert";
+    if (code == KEY_RIGHTALT) return "RightAlt";
+    if (code == KEY_RIGHTCTRL) return "RightControl";
+    if (code == KEY_RIGHTSHIFT) return "RightShift";
+    if (code == KEY_RIGHTMETA) return "RightSuper";
+    if (code >= KEY_F1 && code <= KEY_F12) {
+        static char fkey[8];
+        snprintf(fkey, sizeof(fkey), "F%d", code - KEY_F1 + 1);
+        return fkey;
+    }
+    if (code >= KEY_F13 && code <= KEY_F24) {
+        static char fkey[8];
+        snprintf(fkey, sizeof(fkey), "F%d", code - KEY_F13 + 13);
+        return fkey;
+    }
+    if (code >= KEY_A && code <= KEY_Z) {
+        static char letter[2];
+        letter[0] = 'A' + (code - KEY_A);
+        letter[1] = '\0';
+        return letter;
+    }
+    if (code >= KEY_0 && code <= KEY_9) {
+        static char digit[2];
+        digit[0] = '0' + (code - KEY_0);
+        digit[1] = '\0';
+        return digit;
+    }
+    return NULL;
+}
+
+static void handle_record_event(int code, int pressed) {
+    if (!pressed) return;
+
+    if (code == KEY_ESC) {
+        printf("RECORD_CANCEL\n");
+        fflush(stdout);
+        return;
+    }
+
+    int is_mod = is_ctrl(code) || is_alt(code) || is_shift(code) || is_meta(code);
+    if (is_mod) {
+        update_modifier(code, 1);
+        if (code == KEY_RIGHTALT || code == KEY_RIGHTCTRL ||
+            code == KEY_RIGHTSHIFT || code == KEY_RIGHTMETA) {
+            const char *keyName = keycode_to_record_name(code);
+            if (keyName) {
+                printf("RECORD_KEY:%s\n", keyName);
+                fflush(stdout);
+            }
+            return;
+        }
+        emit_record_modifiers();
+        return;
+    }
+
+    const char *keyName = keycode_to_record_name(code);
+    if (keyName) {
+        emit_record_modifiers();
+        printf("RECORD_KEY:%s\n", keyName);
+        fflush(stdout);
+    }
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <hotkey>\n", argv[0]);
-        fprintf(stderr, "Examples: %s \"Alt+Space\"  |  %s F8\n", argv[0], argv[0]);
+        fprintf(stderr, "Usage: %s <hotkey> | %s --record\n", argv[0], argv[0]);
+        fprintf(stderr, "Examples: %s \"Alt+Space\"  |  %s F8  |  %s --record\n",
+                argv[0], argv[0], argv[0]);
         return 1;
     }
 
-    parse_hotkey(argv[1]);
+    if (strcasecmp(argv[1], "--record") == 0) {
+        g_record_mode = 1;
+        fprintf(stderr, "Hotkey recording mode\n");
+    } else {
+        parse_hotkey(argv[1]);
 
-    if (g_targetKey == 0 && !g_modifiersOnly) {
-        fprintf(stderr, "Error: Invalid hotkey '%s'\n", argv[1]);
-        return 1;
+        if (g_targetKey == 0 && !g_modifiersOnly) {
+            fprintf(stderr, "Error: Invalid hotkey '%s'\n", argv[1]);
+            return 1;
+        }
     }
 
     signal(SIGTERM, handle_signal);
@@ -234,8 +342,12 @@ int main(int argc, char *argv[]) {
     pollfds[nfds].fd = STDIN_FILENO;
     pollfds[nfds].events = POLLIN | POLLHUP;
 
-    fprintf(stderr, "Listening for: %s (key=%d, Ctrl=%d, Alt=%d, Shift=%d, Meta=%d, ModOnly=%d) on %d device(s)\n",
-            argv[1], g_targetKey, g_requireCtrl, g_requireAlt, g_requireShift, g_requireMeta, g_modifiersOnly, nfds);
+    if (!g_record_mode) {
+        fprintf(stderr, "Listening for: %s (key=%d, Ctrl=%d, Alt=%d, Shift=%d, Meta=%d, ModOnly=%d) on %d device(s)\n",
+                argv[1], g_targetKey, g_requireCtrl, g_requireAlt, g_requireShift, g_requireMeta, g_modifiersOnly, nfds);
+    } else {
+        fprintf(stderr, "Recording hotkeys on %d device(s)\n", nfds);
+    }
 
     printf("READY\n");
     fflush(stdout);
@@ -265,6 +377,12 @@ int main(int argc, char *argv[]) {
                 if (!pressed && !released) continue; /* skip autorepeat */
 
                 int code = ev.code;
+
+                if (g_record_mode) {
+                    handle_record_event(code, pressed);
+                    continue;
+                }
+
                 int is_mod = is_ctrl(code) || is_alt(code) || is_shift(code) || is_meta(code);
 
                 if (is_mod) {

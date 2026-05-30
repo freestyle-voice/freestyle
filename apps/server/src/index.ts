@@ -11,8 +11,11 @@ import postProcessRoute from "./routes/post-process-route.js";
 import settings from "./routes/settings.js";
 import stream from "./routes/stream.js";
 import transcribe from "./routes/transcribe.js";
+import whisper, { autoStartWhisperServer } from "./routes/whisper.js";
 
 initSentry();
+
+setTimeout(() => autoStartWhisperServer(), 1000);
 
 const app = new Hono()
   // CORS for renderer requests (skip WebSocket upgrades)
@@ -40,6 +43,8 @@ const app = new Hono()
   .route("/api/dictionary", dictionary)
   .route("/api/formats", formats)
   .route("/api/post-process", postProcessRoute)
+
+  .route("/api/whisper", whisper)
   .route("/mcp", mcp)
   .route("/stream", stream);
 

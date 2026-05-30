@@ -113,6 +113,7 @@ export default function AppPage(): React.JSX.Element {
   const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
   const [pillSide, setPillSide] = useState<"center" | "right">("center");
   const useStreamingRef = useRef(false);
+  const sessionStreamingRef = useRef(false);
 
   const [isReRecording, setIsReRecording] = useState(false);
   const isReRecordingRef = useRef(false);
@@ -265,6 +266,11 @@ export default function AppPage(): React.JSX.Element {
         onCleaned: () => {},
         onError: (msg) => {
           if (!pillActiveRef.current) return;
+          const resolver = streamResolverRef.current;
+          if (resolver) {
+            streamResolverRef.current = null;
+            resolver({ raw: "", cleaned: "" });
+          }
           if (wantsMicRef.current) return;
           setState("error");
           setMessage(msg);
@@ -470,7 +476,8 @@ export default function AppPage(): React.JSX.Element {
       }
 
       try {
-        const stream = useStreamingRef.current
+        sessionStreamingRef.current = useStreamingRef.current;
+        const stream = sessionStreamingRef.current
           ? await recorderRef.current.acquireStream()
           : await recorderRef.current.start();
 
@@ -560,7 +567,7 @@ export default function AppPage(): React.JSX.Element {
 
     const empty: TranscribeResult = { raw: "", cleaned: "" };
 
-    if (useStreamingRef.current && streamerRef.current) {
+    if (sessionStreamingRef.current && streamerRef.current) {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
 
@@ -610,7 +617,19 @@ export default function AppPage(): React.JSX.Element {
       { method: "POST", body: wavBlob, headers },
     )
       .then(async (res) => {
-        if (!res.ok) return empty;
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          const msg =
+            body?.error ||
+            body?.detail ||
+            `Transcription failed (${res.status})`;
+          if (pillActiveRef.current && !wantsMicRef.current) {
+            setState("error");
+            setMessage(msg);
+            setTimeout(() => hidePill(), 3000);
+          }
+          return empty;
+        }
         const data = await res.json();
         return {
           raw: (data.raw || "").trim(),

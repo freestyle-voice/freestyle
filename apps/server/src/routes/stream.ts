@@ -21,6 +21,8 @@ const stream = new Hono().get(
     let voiceDefaults: { provider: string; model_id: string } | null = null;
     let appContext: string | null = null;
     let audioDurationMs = 0;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 3;
 
     function connectUpstream(ws: {
       send: (data: string) => void;
@@ -91,6 +93,7 @@ const stream = new Hono().get(
         prompt,
         callbacks: {
           onReady: (model) => {
+            reconnectAttempts = 0;
             ws.send(JSON.stringify({ type: "session.ready", model }));
           },
           onPartial: (text) => {
@@ -178,7 +181,8 @@ const stream = new Hono().get(
           },
           onClose: () => {
             upstream = null;
-            if (!closed) {
+            if (!closed && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+              reconnectAttempts++;
               try {
                 connectUpstream(ws);
               } catch {}
@@ -245,6 +249,7 @@ const stream = new Hono().get(
             sessionStartTime = Date.now();
             audioDurationMs = 0;
             appContext = null;
+            reconnectAttempts = 0;
             if (!upstream) {
               try {
                 connectUpstream(ws);

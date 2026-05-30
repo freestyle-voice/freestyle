@@ -107,6 +107,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
   const [autoUpdate, setAutoUpdate] = useState(true);
 
   // Permissions
@@ -293,14 +294,29 @@ export default function GeneralSettingsPage(): React.JSX.Element {
     const removeAvail = window.api?.onUpdateAvailable((info) => {
       setUpdateAvailable(info.version);
     });
+    const removeDownloading = window.api?.onUpdateDownloading(() => {
+      setDownloading(true);
+      setUpdateError(null);
+    });
     const removeDownloaded = window.api?.onUpdateDownloaded(() => {
       setUpdateDownloaded(true);
       setDownloading(false);
     });
+    const removeError = window.api?.onUpdateError((info) => {
+      setDownloading(false);
+      setUpdateError(info.message);
+    });
     window.api
       ?.checkForUpdate()
-      .then((v) => {
-        if (v) setUpdateAvailable(v);
+      .then((result) => {
+        if (result) {
+          setUpdateAvailable(result.version);
+          if (result.downloadState === "downloading") {
+            setDownloading(true);
+          } else if (result.downloadState === "downloaded") {
+            setUpdateDownloaded(true);
+          }
+        }
       })
       .catch(() => {});
 
@@ -308,7 +324,9 @@ export default function GeneralSettingsPage(): React.JSX.Element {
 
     return () => {
       removeAvail?.();
+      removeDownloading?.();
       removeDownloaded?.();
+      removeError?.();
       if (micPollRef.current) clearInterval(micPollRef.current);
       if (accessibilityPollRef.current)
         clearInterval(accessibilityPollRef.current);
@@ -423,6 +441,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
                 type="button"
                 onClick={() => {
                   setDownloading(true);
+                  setUpdateError(null);
                   window.api?.downloadUpdate();
                 }}
                 disabled={downloading}
@@ -430,6 +449,11 @@ export default function GeneralSettingsPage(): React.JSX.Element {
               >
                 {downloading ? "Downloading..." : "Download"}
               </button>
+            )}
+            {updateError && (
+              <span className="text-destructive w-full text-xs">
+                {updateError}
+              </span>
             )}
           </div>
         )}

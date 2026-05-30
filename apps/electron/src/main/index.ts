@@ -877,6 +877,7 @@ app.whenReady().then(async () => {
   // Track the version we already notified about so periodic checks don't
   // spam the user with repeat notifications every 5 minutes.
   let notifiedVersion: string | null = null;
+  let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 
   if (!is.dev) {
     const autoUpdateEnabled = readSettings().autoUpdate !== false;
@@ -887,6 +888,10 @@ app.whenReady().then(async () => {
       settingsWindow?.webContents.send("updater:available", {
         version: info.version,
       });
+      if (autoUpdater.autoDownload) {
+        updateDownloadState = "downloading";
+        settingsWindow?.webContents.send("updater:downloading");
+      }
       // Only show a native notification once per discovered version
       if (Notification.isSupported() && notifiedVersion !== info.version) {
         notifiedVersion = info.version;
@@ -902,6 +907,7 @@ app.whenReady().then(async () => {
     });
 
     autoUpdater.on("update-downloaded", (info) => {
+      updateDownloadState = "downloaded";
       settingsWindow?.webContents.send("updater:downloaded", {
         version: info.version,
       });
@@ -915,6 +921,15 @@ app.whenReady().then(async () => {
       }
     });
 
+    autoUpdater.on("error", (err) => {
+      if (updateDownloadState === "downloading") {
+        updateDownloadState = "idle";
+      }
+      settingsWindow?.webContents.send("updater:error", {
+        message: err?.message ?? "Update failed",
+      });
+    });
+
     autoUpdater.checkForUpdatesAndNotify();
 
     // Always start periodic background checking regardless of auto-update setting
@@ -922,10 +937,12 @@ app.whenReady().then(async () => {
   }
 
   ipcMain.on("updater:download", () => {
+    updateDownloadState = "downloading";
     autoUpdater.downloadUpdate();
   });
 
   ipcMain.on("updater:install", () => {
+    isUpdaterQuitting = true;
     autoUpdater.quitAndInstall();
   });
 
@@ -937,7 +954,7 @@ app.whenReady().then(async () => {
       if (!latest) return null;
       // Only report an update when the remote version is actually newer
       if (latest === app.getVersion()) return null;
-      return latest;
+      return { version: latest, downloadState: updateDownloadState };
     } catch {
       return null;
     }
@@ -1193,11 +1210,10 @@ app.on("window-all-closed", () => {
 });
 
 // Gracefully shut down the HTTP server and flush Sentry before quitting
+let isUpdaterQuitting = false;
 let isQuitting = false;
-app.on("before-quit", (event) => {
-  if (isQuitting) return;
-  isQuitting = true;
-  event.preventDefault();
+
+function cleanupBeforeQuit(): void {
   fetch(`http://127.0.0.1:${serverPort}/api/whisper/server/stop`, {
     method: "POST",
   }).catch(() => {});
@@ -1205,5 +1221,16 @@ app.on("before-quit", (event) => {
     httpServer.close();
     httpServer = null;
   }
+}
+
+app.on("before-quit", (event) => {
+  if (isUpdaterQuitting) {
+    cleanupBeforeQuit();
+    return;
+  }
+  if (isQuitting) return;
+  isQuitting = true;
+  event.preventDefault();
+  cleanupBeforeQuit();
   Sentry.close(2000).finally(() => app.exit(0));
 });

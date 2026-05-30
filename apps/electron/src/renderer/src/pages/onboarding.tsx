@@ -13,7 +13,6 @@ import {
 } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
 import {
-  AlertTriangle,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -707,12 +706,17 @@ export default function OnboardingPage(): React.JSX.Element {
               {/* LLM model picker — shown when cleanup is enabled */}
               {llmCleanup && (
                 <>
-                  <div className="border-border max-h-52 overflow-y-auto rounded-lg border">
+                  <div className="border-border max-h-[280px] overflow-y-auto rounded-[14px] border">
                     {[...llmsByProvider.entries()].map(
                       ([providerId, models]) => (
                         <div key={providerId}>
-                          <div className="text-muted-foreground bg-secondary/50 sticky top-0 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider">
+                          <div className="border-border bg-card text-muted-foreground sticky top-0 z-10 border-b px-5 py-1.5 text-[10px] font-semibold uppercase tracking-wider">
                             {PROVIDER_DISPLAY_NAMES[providerId] ?? providerId}
+                            {!apiKeys.has(providerId) && (
+                              <span className="text-destructive ml-2 normal-case tracking-normal">
+                                (no API key)
+                              </span>
+                            )}
                           </div>
                           {models.map((model) => (
                             <button
@@ -720,7 +724,7 @@ export default function OnboardingPage(): React.JSX.Element {
                               type="button"
                               onClick={() => selectLlm(model)}
                               className={cn(
-                                "hover:bg-secondary flex w-full items-center gap-2 px-3 py-2 text-left text-sm",
+                                "hover:bg-secondary/60 flex w-full items-center gap-2 px-5 py-2 text-left text-[13px]",
                                 selectedLlm?.model_id === model.model_id &&
                                   "bg-primary/5",
                               )}
@@ -735,8 +739,8 @@ export default function OnboardingPage(): React.JSX.Element {
                       ),
                     )}
                     {llmModels.length === 0 && (
-                      <div className="flex items-center gap-2 px-3 py-4">
-                        <AlertTriangle className="text-muted-foreground h-4 w-4" />
+                      <div className="flex items-center gap-2 px-5 py-6">
+                        <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
                         <span className="text-muted-foreground text-sm">
                           Loading models...
                         </span>

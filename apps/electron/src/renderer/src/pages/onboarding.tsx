@@ -370,7 +370,7 @@ export default function OnboardingPage(): React.JSX.Element {
 
   return (
     <div
-      className="bg-background flex h-screen flex-col overflow-auto"
+      className="flex h-screen flex-col overflow-auto"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
       {!isFullscreen && <div className="h-9 shrink-0" />}

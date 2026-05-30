@@ -824,7 +824,7 @@ export default function OnboardingPage(): React.JSX.Element {
 
         {/* Step progress indicator */}
         {step !== "welcome" && (
-          <div className="mt-8 flex shrink-0 items-center gap-2">
+          <div className="mt-8 mb-4 flex shrink-0 items-center gap-2">
             {STEPS.map((s, i) => (
               <div
                 key={s}

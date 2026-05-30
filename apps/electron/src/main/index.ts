@@ -576,6 +576,8 @@ function createTray(): void {
               writeSettings({ onboardingComplete: false });
               if (settingsWindow) {
                 settingsWindow.loadURL(getDashboardURL("/onboarding"));
+                settingsWindow.show();
+                settingsWindow.focus();
               } else {
                 showSettingsWindow();
               }
@@ -647,6 +649,8 @@ app.whenReady().then(async () => {
                           settingsWindow.loadURL(
                             getDashboardURL("/onboarding"),
                           );
+                          settingsWindow.show();
+                          settingsWindow.focus();
                         } else {
                           showSettingsWindow();
                         }

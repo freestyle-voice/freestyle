@@ -376,7 +376,10 @@ export default function OnboardingPage(): React.JSX.Element {
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         />
       )}
-      <div className="flex min-h-0 flex-1 flex-col items-center overflow-auto py-8">
+      <div
+        className="flex min-h-0 flex-1 flex-col items-center overflow-auto py-8"
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
         <div className="responsive-standalone-pad my-auto w-full max-w-md space-y-8">
           {/* Logo */}
           <div className="flex flex-col items-center gap-3">

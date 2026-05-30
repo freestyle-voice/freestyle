@@ -1,4 +1,24 @@
 # Changelog
+## 0.0.8
+
+### New Features ✨
+
+- Implement full onboarding flow by @MathurAditya724 in [#87](https://github.com/freestyle-voice/freestyle/pull/87)
+- Add local whisper.cpp voice model support by @MathurAditya724 in [#75](https://github.com/freestyle-voice/freestyle/pull/75)
+
+### Bug Fixes 🐛
+
+- Fallback to REST transcription when OpenAI Realtime API is unsupported by @udaykakade25 in [#92](https://github.com/freestyle-voice/freestyle/pull/92)
+- Cleanup LLM model selection and provider handling by @shikhargen in [#86](https://github.com/freestyle-voice/freestyle/pull/86)
+- Refactor UsageBar to stacked label/bar layout by @udaykakade25 in [#76](https://github.com/freestyle-voice/freestyle/pull/76)
+- Make ui reponsive in all pages by @shikhargen in [#77](https://github.com/freestyle-voice/freestyle/pull/77)
+- Resolve stacked pill content getting cut off by window bounds by @MathurAditya724 in [#72](https://github.com/freestyle-voice/freestyle/pull/72)
+
+### Other
+
+- Redesign model picker page (plus a couple other small things) by @matteo8p in [#91](https://github.com/freestyle-voice/freestyle/pull/91)
+- Fix/hotkey rebinding by @tigerisaac in [#85](https://github.com/freestyle-voice/freestyle/pull/85)
+
 ## 0.0.7
 
 ### New Features ✨

@@ -42,8 +42,8 @@ import { MicListener } from "./mic-listener";
 import { pasteIntoFocusedApp } from "./paste";
 
 const DEFAULT_PORT = 4649;
-const APP_WIDTH = 260;
-const APP_HEIGHT = 90;
+const APP_WIDTH = 480;
+const APP_HEIGHT = 360;
 const APP_BOTTOM_MARGIN = 0;
 
 // ---------------------------------------------------------------------------

@@ -55,7 +55,7 @@ export interface HotkeyCombo {
 const MODIFIER_ORDER = ["Control", "Command", "Alt", "Shift"];
 
 /** macOS: compound keys (Alt+Space) via DOM; Fn/right-mod via native IPC */
-const USE_DOM_CAPTURE = IS_MAC;
+const USE_DOM_CAPTURE = true;
 
 const DOM_MODIFIER_KEYS = new Set([
   "Control",

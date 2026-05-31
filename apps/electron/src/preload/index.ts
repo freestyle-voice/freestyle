@@ -110,6 +110,11 @@ const api = {
     ipcRenderer.invoke("settings:auto-update"),
   setAutoUpdate: (enabled: boolean): void =>
     ipcRenderer.send("settings:set-auto-update", enabled),
+  // Launch at startup setting
+  getLaunchAtStartup: (): Promise<boolean> =>
+    ipcRenderer.invoke("settings:launch-at-startup"),
+  setLaunchAtStartup: (enabled: boolean): void =>
+    ipcRenderer.send("settings:set-launch-at-startup", enabled),
   // Context-aware dictation
   getFrontmostApp: (): Promise<string | null> =>
     ipcRenderer.invoke("system:frontmost-app"),

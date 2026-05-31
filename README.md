@@ -10,13 +10,13 @@
   <a href="https://github.com/freestyle-voice/freestyle/releases/latest"><img src="https://img.shields.io/github/v/release/freestyle-voice/freestyle?style=for-the-badge&sort=semver&color=blue" alt="Release" /></a>
   <a href="https://github.com/freestyle-voice/freestyle/releases/latest"><img src="https://img.shields.io/badge/Download-Latest-brightgreen.svg?style=for-the-badge" alt="Download" /></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey?style=for-the-badge" alt="Platform" />
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-FSL--1.1--ALv2-blue.svg?style=for-the-badge" alt="License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License" /></a>
   <a href="https://discord.gg/Fmgt5yZCDu"><img src="https://img.shields.io/badge/Discord-Join%20Server-5865F2.svg?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
 Freestyle is the dictation app that converts your voice into text. Hold down a hotkey, talk, and clean text will appear wherever your cursor is. Speak 4X faster than you type. 
 
-Freestyle is free and local first, ensuring your dictations are private and never leaves your device. 
+Freestyle is free, open source, and local first, ensuring your dictations are private and never leaves your device. 
 
 ### Features
 
@@ -24,7 +24,7 @@ Freestyle is free and local first, ensuring your dictations are private and neve
 - **Choose your model provider** — OpenAI, Groq, Anthropic, Google, Deepgram, ElevenLabs. Bring your own API key. 
 - **Transcription cleaning** — grammer and punctuation cleanup via post-processing. No more "um, oh, but".
 - **Dictionary** — custom phrase replacements applied after transcription. (ex. `"type script"` → `TypeScript`).
-- **Contextual correction** — reformat your text based on where you're typing. Automatically format emails into email format. 
+- **Contextual correction** — reformat your text based on where you're typing. Automatically format emails into email format.
 
 <p align="center">
   <img src="media/home-page-demo.png" alt="Freestyle" width="800" />
@@ -47,4 +47,4 @@ Consider joining our [Discord server]((https://discord.gg/Fmgt5yZCDu))! That's w
 
 ## License
 
-[FSL-1.1-ALv2](LICENSE)
+[MIT](LICENSE)

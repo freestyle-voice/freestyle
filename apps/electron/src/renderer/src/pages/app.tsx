@@ -163,7 +163,7 @@ export default function AppPage(): React.JSX.Element {
     drainingRef.current = true;
 
     try {
-      while (recordingActiveRef.current && pillActiveRef.current) {
+      while (wantsMicRef.current && pillActiveRef.current) {
         await new Promise((r) => setTimeout(r, 100));
       }
 
@@ -180,7 +180,7 @@ export default function AppPage(): React.JSX.Element {
         return;
       }
 
-      if (recordingActiveRef.current || queueRef.current.length > 0) {
+      if (wantsMicRef.current || queueRef.current.length > 0) {
         const resolved = results
           .filter((r) => r.raw.trim())
           .map((r) => ({ promise: Promise.resolve(r) }));
@@ -234,7 +234,7 @@ export default function AppPage(): React.JSX.Element {
         return;
       }
 
-      if (recordingActiveRef.current || queueRef.current.length > 0) {
+      if (wantsMicRef.current || queueRef.current.length > 0) {
         queueRef.current = [
           { promise: Promise.resolve({ raw: finalText, cleaned: finalText }) },
           ...queueRef.current,
@@ -242,11 +242,15 @@ export default function AppPage(): React.JSX.Element {
         return;
       }
 
-      await window.api.pasteText(finalText);
+      try {
+        await window.api.pasteText(finalText);
+      } catch (err) {
+        console.error("[pill] paste failed:", err);
+      }
       window.api.sendTranscriptionDone();
 
       if (
-        !recordingActiveRef.current &&
+        !wantsMicRef.current &&
         queueRef.current.length === 0 &&
         pillActiveRef.current
       ) {

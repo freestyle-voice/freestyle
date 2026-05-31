@@ -5,6 +5,7 @@ import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 import { getDb } from "./db.js";
+import { reconcileUnsupportedMlxVoiceDefault } from "./mlx-asr/reconcile.js";
 import { getApiKeyForProvider } from "./streaming-stt.js";
 
 const LOCAL_PROVIDERS = new Set(["local-llm"]);
@@ -88,6 +89,7 @@ interface DefaultModels {
 }
 
 export function getDefaultModels(): DefaultModels {
+  reconcileUnsupportedMlxVoiceDefault();
   const db = getDb();
   const voice = db
     .prepare(

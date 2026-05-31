@@ -45,5 +45,11 @@ apps/electron/tsconfig.node.tsbuildinfo
 # Compiled native binaries (built locally and in CI)
 apps/electron/resources/bin/
 
+# Local MLX ASR worker build artifacts
+/.venv-mlx-asr/
+/build/mlx_asr_worker/
+apps/electron/resources/mlx-asr/*
+!apps/electron/resources/mlx-asr/.gitkeep
+
 # Downloaded whisper.cpp binaries
 apps/electron/resources/whisper/

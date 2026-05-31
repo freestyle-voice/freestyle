@@ -5,6 +5,7 @@ import {
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { applyMlxAsrRetentionPolicy } from "../lib/mlx-asr/server.js";
 
 const settings = new Hono()
   .get("/", (c) => {
@@ -41,6 +42,10 @@ const settings = new Hono()
       `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
     ).run(key, String(body.value));
+
+    if (key === "mlx_asr_keep_alive_minutes") {
+      applyMlxAsrRetentionPolicy();
+    }
 
     return c.json({ key, value: body.value });
   })

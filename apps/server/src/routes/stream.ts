@@ -259,7 +259,7 @@ const stream = new Hono().get(
 
         let msg: {
           type: string;
-          context?: string;
+          context?: string | null;
           audioDurationMs?: number;
         };
         try {
@@ -279,7 +279,7 @@ const stream = new Hono().get(
           case "start":
             sessionStartTime = Date.now();
             audioDurationMs = 0;
-            appContext = null;
+            appContext = msg.context ?? null;
             pendingAudioChunks = [];
             reconnectAttempts = 0;
             if (upstream) {
@@ -305,6 +305,9 @@ const stream = new Hono().get(
           case "commit":
             if (msg.audioDurationMs && msg.audioDurationMs > 0) {
               audioDurationMs = msg.audioDurationMs;
+            }
+            if (msg.context !== undefined) {
+              appContext = msg.context;
             }
             upstream?.commit();
             break;

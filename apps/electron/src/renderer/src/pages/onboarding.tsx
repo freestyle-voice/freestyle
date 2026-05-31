@@ -14,6 +14,7 @@ import {
   type AvailableModel,
   buildVoiceItems,
   LLM_PROVIDERS,
+  type MlxAsrStatus,
   PROVIDER_DISPLAY_NAMES,
   type WhisperStatus,
 } from "@renderer/lib/models";
@@ -62,6 +63,8 @@ export default function OnboardingPage(): React.JSX.Element {
   const [selectedWhisperDefId, setSelectedWhisperDefId] = useState<
     string | null
   >(null);
+  const [selectedMlxDefId, setSelectedMlxDefId] = useState<string | null>(null);
+  const [mlxStatus, setMlxStatus] = useState<MlxAsrStatus | null>(null);
   const apiKeyForm = useForm<{ provider: string; key: string }>({
     resolver: zodResolver(apiKeySchema),
     defaultValues: { provider: "", key: "" },
@@ -140,9 +143,25 @@ export default function OnboardingPage(): React.JSX.Element {
     return null;
   }, []);
 
+  const loadMlxStatus = useCallback(async (refresh = false) => {
+    try {
+      const url = refresh
+        ? `${getApiBase()}/api/mlx-asr/status?refresh=1`
+        : `${getApiBase()}/api/mlx-asr/status`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data: MlxAsrStatus = await res.json();
+        setMlxStatus(data);
+        return data;
+      }
+    } catch {}
+    return null;
+  }, []);
+
   useEffect(() => {
     loadWhisperStatus();
-  }, [loadWhisperStatus]);
+    if (IS_MAC) loadMlxStatus();
+  }, [loadWhisperStatus, loadMlxStatus]);
 
   // Poll whisper status while a download is active
   useEffect(() => {
@@ -157,6 +176,17 @@ export default function OnboardingPage(): React.JSX.Element {
     }, 500);
     return () => clearInterval(interval);
   }, [whisperStatus, loadWhisperStatus]);
+
+  useEffect(() => {
+    const hasActiveDownload = mlxStatus?.models?.some(
+      (m) => m.status === "downloading" || m.status === "verifying",
+    );
+    if (!hasActiveDownload) return;
+    const interval = setInterval(() => {
+      loadMlxStatus();
+    }, 500);
+    return () => clearInterval(interval);
+  }, [mlxStatus, loadMlxStatus]);
 
   const requestMic = useCallback(async () => {
     const status = await window.api?.requestMicPermission();
@@ -196,6 +226,7 @@ export default function OnboardingPage(): React.JSX.Element {
     (model: AvailableModel) => {
       setSelectedModel(model);
       setSelectedWhisperDefId(null);
+      setSelectedMlxDefId(null);
       if (!apiKeys.has(model.provider_id)) {
         setNeedsKey(true);
         apiKeyForm.reset({ provider: model.provider_id, key: "" });
@@ -206,11 +237,20 @@ export default function OnboardingPage(): React.JSX.Element {
     [apiKeys, apiKeyForm],
   );
 
-  const selectLocalModel = useCallback((defId: string, _name: string) => {
-    setSelectedWhisperDefId(defId);
-    setSelectedModel(null);
-    setNeedsKey(false);
-  }, []);
+  const selectLocalModel = useCallback(
+    (defId: string, _name: string, engine?: "whisper" | "mlx") => {
+      if (engine === "mlx") {
+        setSelectedMlxDefId(defId);
+        setSelectedWhisperDefId(null);
+      } else {
+        setSelectedWhisperDefId(defId);
+        setSelectedMlxDefId(null);
+      }
+      setSelectedModel(null);
+      setNeedsKey(false);
+    },
+    [],
+  );
 
   const selectLlm = useCallback(
     (model: AvailableModel) => {
@@ -233,6 +273,27 @@ export default function OnboardingPage(): React.JSX.Element {
       loadWhisperStatus();
     },
     [loadWhisperStatus],
+  );
+
+  const downloadMlxModel = useCallback(
+    async (modelId: string) => {
+      await fetch(`${getApiBase()}/api/mlx-asr/models/${modelId}/download`, {
+        method: "POST",
+      });
+      loadMlxStatus();
+    },
+    [loadMlxStatus],
+  );
+
+  const downloadLocalModel = useCallback(
+    (modelId: string, engine?: "whisper" | "mlx") => {
+      if (engine === "mlx") {
+        void downloadMlxModel(modelId);
+        return;
+      }
+      void downloadWhisperModel(modelId);
+    },
+    [downloadMlxModel, downloadWhisperModel],
   );
 
   const saveVoiceAndContinue = useCallback(async () => {
@@ -269,6 +330,26 @@ export default function OnboardingPage(): React.JSX.Element {
             is_default: true,
           },
         });
+      } else if (selectedMlxDefId && mlxStatus) {
+        const def = mlxStatus.modelDefinitions.find(
+          (d) => d.id === selectedMlxDefId,
+        );
+        if (def) {
+          await client.api.models.configured.$post({
+            json: {
+              provider: "local-mlx",
+              model_id: `local-mlx/${def.id}`,
+              model_name: def.displayName,
+              type: "voice",
+              is_default: true,
+            },
+          });
+          fetch(`${getApiBase()}/api/mlx-asr/server/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ modelId: selectedMlxDefId }),
+          }).catch(() => {});
+        }
       } else if (selectedWhisperDefId && whisperStatus) {
         const def = whisperStatus.modelDefinitions.find(
           (d) => d.id === selectedWhisperDefId,
@@ -300,9 +381,11 @@ export default function OnboardingPage(): React.JSX.Element {
   }, [
     selectedModel,
     selectedWhisperDefId,
+    selectedMlxDefId,
     needsKey,
     apiKeyForm,
     whisperStatus,
+    mlxStatus,
   ]);
 
   const finishSetup = useCallback(async () => {
@@ -355,11 +438,15 @@ export default function OnboardingPage(): React.JSX.Element {
     }
   }, [llmCleanup, selectedLlm, needsLlmKey, llmKeyForm, navigate]);
 
-  const allVoiceItems = buildVoiceItems(available, whisperStatus, {
+  const allVoiceItems = buildVoiceItems(available, whisperStatus, mlxStatus, {
     selectedModelId: selectedModel?.model_id,
     selectedProvider:
       selectedModel?.provider_id ??
-      (selectedWhisperDefId ? "local-whisper" : undefined),
+      (selectedWhisperDefId
+        ? "local-whisper"
+        : selectedMlxDefId
+          ? "local-mlx"
+          : undefined),
     selectedWhisperModelId: selectedWhisperDefId ?? undefined,
     keyProviders: apiKeys,
   });
@@ -395,7 +482,9 @@ export default function OnboardingPage(): React.JSX.Element {
   };
 
   const hasModelSelected =
-    selectedModel !== null || selectedWhisperDefId !== null;
+    selectedModel !== null ||
+    selectedWhisperDefId !== null ||
+    selectedMlxDefId !== null;
   const canAdvanceFromModel =
     hasModelSelected &&
     (!needsKey || apiKeyForm.watch("key").trim()) &&
@@ -660,7 +749,16 @@ export default function OnboardingPage(): React.JSX.Element {
                       first={i === 0}
                       onSelectCloud={selectCloudModel}
                       onSelectLocal={selectLocalModel}
-                      onDownload={downloadWhisperModel}
+                      onDownload={downloadLocalModel}
+                      onRetryLocal={(defId, engine) => {
+                        if (engine === "mlx") {
+                          void loadMlxStatus(true).then((data) => {
+                            if (data?.canRun) void downloadMlxModel(defId);
+                          });
+                        } else {
+                          downloadWhisperModel(defId);
+                        }
+                      }}
                     />
                   ))}
                 </div>

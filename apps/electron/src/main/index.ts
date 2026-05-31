@@ -1242,6 +1242,9 @@ function cleanupBeforeQuit(): void {
   fetch(`http://127.0.0.1:${serverPort}/api/whisper/server/stop`, {
     method: "POST",
   }).catch(() => {});
+  fetch(`http://127.0.0.1:${serverPort}/api/mlx-asr/server/stop`, {
+    method: "POST",
+  }).catch(() => {});
   if (httpServer) {
     httpServer.close();
     httpServer = null;

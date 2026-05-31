@@ -44,6 +44,22 @@ export interface WhisperStatus {
   modelDefinitions: WhisperModelDef[];
 }
 
+export interface MlxAsrStatus {
+  platformSupported: boolean;
+  pythonAvailable: boolean;
+  pythonPath: string | null;
+  workerPath: string | null;
+  mlxAudioInstalled: boolean;
+  canRun: boolean;
+  blockedReason: string | null;
+  serverRunning: boolean;
+  serverFailed: boolean;
+  keepAliveMinutes: number;
+  models: WhisperModelDownloadState[];
+  modelDefinitions: WhisperModelDef[];
+  setupHint: string | null;
+}
+
 export const CLOUD_VOICE_PROVIDERS = [
   "openai",
   "groq",
@@ -51,7 +67,11 @@ export const CLOUD_VOICE_PROVIDERS = [
   "elevenlabs",
 ];
 
-export const VOICE_PROVIDERS = [...CLOUD_VOICE_PROVIDERS, "local-whisper"];
+export const VOICE_PROVIDERS = [
+  ...CLOUD_VOICE_PROVIDERS,
+  "local-whisper",
+  "local-mlx",
+];
 
 export const LLM_PROVIDERS = [
   "openai",
@@ -73,6 +93,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   openrouter: "OpenRouter",
   "local-llm": "Local LLM",
   "local-whisper": "Local Whisper",
+  "local-mlx": "Local MLX (Qwen3)",
 };
 
 export function displayProviderName(
@@ -96,6 +117,8 @@ export function formatSpeed(bps: number): string {
 export interface VoiceItem {
   key: string;
   kind: "local" | "cloud";
+  /** Which on-device engine powers this row (whisper.cpp vs MLX Qwen3). */
+  localEngine?: "whisper" | "mlx";
   name: string;
   provider: string;
   modelId: string;
@@ -184,11 +207,15 @@ export const LOCAL_VOICE_NOTES: Record<string, string> = {
   "base-q5_1": "Great everyday pick, smaller",
   large: "Best quality, still fast",
   "medium-q5_0": "High quality, modest size",
+  "qwen3-0.6b-5bit": "Fast · low memory · great for testing",
+  "qwen3-0.6b-8bit": "Balanced quality and size",
+  "qwen3-1.7b-8bit": "Best MLX accuracy",
 };
 
 export function buildVoiceItems(
   available: AvailableModel[],
   whisperStatus: WhisperStatus | null,
+  mlxStatus: MlxAsrStatus | null,
   ctx: {
     selectedModelId?: string;
     selectedProvider?: string;
@@ -196,13 +223,14 @@ export function buildVoiceItems(
     keyProviders: Set<string>;
   },
 ): VoiceItem[] {
-  const local: VoiceItem[] = (whisperStatus?.modelDefinitions ?? []).map(
+  const whisperLocal: VoiceItem[] = (whisperStatus?.modelDefinitions ?? []).map(
     (def) => {
       const state = whisperStatus?.models.find((m) => m.model === def.id);
       const modelId = `local-whisper/${def.id}`;
       return {
         key: modelId,
         kind: "local",
+        localEngine: "whisper",
         name: `Whisper ${def.displayName}`,
         provider: "On-device",
         modelId,
@@ -223,11 +251,59 @@ export function buildVoiceItems(
     },
   );
 
+  const mlxLocal: VoiceItem[] =
+    mlxStatus?.platformSupported === false
+      ? []
+      : (mlxStatus?.modelDefinitions ?? []).map((def) => {
+          const modelId = `local-mlx/${def.id}`;
+          const canRun = mlxStatus?.canRun ?? false;
+          const state = mlxStatus?.models?.find((m) => m.model === def.id);
+          const fallbackState: WhisperModelDownloadState | undefined = canRun
+            ? {
+                model: def.id,
+                sizeBytes: def.sizeBytes,
+                displayName: def.displayName,
+                status: "not_downloaded",
+              }
+            : {
+                model: def.id,
+                sizeBytes: def.sizeBytes,
+                displayName: def.displayName,
+                status: "error" as const,
+                error:
+                  mlxStatus?.blockedReason ??
+                  mlxStatus?.setupHint ??
+                  "MLX setup required",
+              };
+          const resolvedState = state ?? fallbackState;
+          return {
+            key: modelId,
+            kind: "local",
+            localEngine: "mlx",
+            name: def.displayName,
+            provider: "On-device · MLX",
+            modelId,
+            speed: SPEED_RANK[def.speed] ?? 4,
+            quality: QUALITY_RANK[def.quality] ?? 4,
+            quantized: def.quantized,
+            note: canRun ? (LOCAL_VOICE_NOTES[def.id] ?? undefined) : undefined,
+            defId: def.id,
+            sizeBytes: def.sizeBytes,
+            ram: def.ramRequired,
+            status: resolvedState?.status ?? "not_downloaded",
+            state: resolvedState,
+            selected:
+              ctx.selectedProvider === "local-mlx" &&
+              ctx.selectedModelId === modelId,
+          };
+        });
+
   const seen = new Set<string>();
   const cloud: VoiceItem[] = [];
   for (const m of available) {
     if (m.type !== "voice") continue;
     if (m.provider_id === "local-whisper") continue;
+    if (m.provider_id === "local-mlx") continue;
     if (!VOICE_PROVIDERS.includes(m.provider_id)) continue;
     if (seen.has(m.model_id)) continue;
     seen.add(m.model_id);
@@ -257,5 +333,5 @@ export function buildVoiceItems(
     return am - bm;
   });
 
-  return [...local, ...cloud];
+  return [...whisperLocal, ...mlxLocal, ...cloud];
 }

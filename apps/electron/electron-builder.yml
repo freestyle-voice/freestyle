@@ -16,6 +16,12 @@ extraResources:
     to: "bin"
     filter:
       - "**/*"
+  - from: "../../scripts/mlx_asr_server.py"
+    to: "mlx-asr/mlx_asr_server.py"
+  - from: "resources/mlx-asr"
+    to: "mlx-asr"
+    filter:
+      - "**/*"
 win:
   executableName: Freestyle
   extraResources:

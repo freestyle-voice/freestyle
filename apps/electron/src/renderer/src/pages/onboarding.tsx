@@ -23,6 +23,7 @@ import {
   Keyboard,
   Loader2,
   Mic,
+  Power,
   Shield,
   Sparkles,
 } from "lucide-react";
@@ -44,6 +45,7 @@ export default function OnboardingPage(): React.JSX.Element {
   // Permissions state
   const [micStatus, setMicStatus] = useState<string>("unknown");
   const [accessibilityStatus, setAccessibilityStatus] = useState(false);
+  const [launchAtStartup, setLaunchAtStartup] = useState(false);
 
   // Voice model state
   const [modelSource, setModelSource] = useState<"cloud" | "local">("cloud");
@@ -88,6 +90,10 @@ export default function OnboardingPage(): React.JSX.Element {
     window.api
       ?.checkAccessibilityPermission()
       .then(setAccessibilityStatus)
+      .catch(() => {});
+    window.api
+      ?.getLaunchAtStartup()
+      .then(setLaunchAtStartup)
       .catch(() => {});
   }, []);
 
@@ -158,6 +164,11 @@ export default function OnboardingPage(): React.JSX.Element {
       }
     }, 1000);
     setTimeout(() => clearInterval(interval), 30000);
+  }, []);
+
+  const handleLaunchAtStartup = useCallback((enabled: boolean) => {
+    setLaunchAtStartup(enabled);
+    window.api?.setLaunchAtStartup(enabled);
   }, []);
 
   const openAccessibility = useCallback(() => {
@@ -517,6 +528,23 @@ export default function OnboardingPage(): React.JSX.Element {
                         : "Press once to start recording, press again to stop and transcribe. You can change this in Settings later."}
                     </p>
                   </div>
+                </div>
+              </div>
+
+              {/* Launch at startup */}
+              <div className="border-border rounded-lg border p-4">
+                <div className="flex items-center gap-3">
+                  <Power className="text-muted-foreground h-5 w-5 shrink-0" />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">Launch at startup</div>
+                    <p className="text-muted-foreground text-xs">
+                      Automatically start Freestyle when you log in.
+                    </p>
+                  </div>
+                  <Toggle
+                    on={launchAtStartup}
+                    onChange={handleLaunchAtStartup}
+                  />
                 </div>
               </div>
 

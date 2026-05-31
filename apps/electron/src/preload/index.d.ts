@@ -43,6 +43,9 @@ declare global {
       // Auto-update setting
       getAutoUpdate: () => Promise<boolean>;
       setAutoUpdate: (enabled: boolean) => void;
+      // Launch at startup setting
+      getLaunchAtStartup: () => Promise<boolean>;
+      setLaunchAtStartup: (enabled: boolean) => void;
       // Context-aware dictation
       getFrontmostApp: () => Promise<string | null>;
       // Pill position

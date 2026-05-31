@@ -166,7 +166,7 @@ export default function OnboardingPage(): React.JSX.Element {
     setTimeout(() => clearInterval(interval), 30000);
   }, []);
 
-  const handleLaunchAtStartup = useCallback((enabled: boolean) => {
+  const handleLaunchAtStartupToggle = useCallback((enabled: boolean) => {
     setLaunchAtStartup(enabled);
     window.api?.setLaunchAtStartup(enabled);
   }, []);
@@ -543,7 +543,7 @@ export default function OnboardingPage(): React.JSX.Element {
                   </div>
                   <Toggle
                     on={launchAtStartup}
-                    onChange={handleLaunchAtStartup}
+                    onChange={handleLaunchAtStartupToggle}
                   />
                 </div>
               </div>

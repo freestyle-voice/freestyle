@@ -533,8 +533,8 @@ export default function OnboardingPage(): React.JSX.Element {
 
               {/* Launch at startup */}
               <div className="border-border rounded-lg border p-4">
-                <div className="flex items-center gap-3">
-                  <Power className="text-muted-foreground h-5 w-5 shrink-0" />
+                <div className="flex items-start gap-3">
+                  <Power className="text-muted-foreground mt-0.5 h-5 w-5 shrink-0" />
                   <div className="flex-1">
                     <div className="text-sm font-medium">Launch at startup</div>
                     <p className="text-muted-foreground text-xs">

@@ -1166,9 +1166,7 @@ function registerHotkey(hotkey?: string): void {
 
   if (started) {
     accessibilityConfirmed = true;
-  }
-
-  if (!started) {
+  } else {
     console.warn(
       "[hotkey] Native key listener unavailable, falling back to Electron globalShortcut (toggle mode).",
     );
@@ -1186,8 +1184,7 @@ function registerHotkey(hotkey?: string): void {
     });
     if (registered) {
       accessibilityConfirmed = true;
-    }
-    if (!registered) {
+    } else {
       const errorPayload = {
         message: `Could not register hotkey "${accel}". Try a different key combination in Settings.`,
       };

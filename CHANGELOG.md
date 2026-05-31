@@ -1,4 +1,10 @@
 # Changelog
+## 0.0.12
+
+### Bug Fixes 🐛
+
+- Add Apple Events entitlement to fix paste on macOS by @MathurAditya724 in [#108](https://github.com/freestyle-voice/freestyle/pull/108)
+
 ## 0.0.11
 
 ### New Features ✨

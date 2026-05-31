@@ -618,6 +618,9 @@ app.whenReady().then(async () => {
   // Set app user model id for windows
   electronApp.setAppUserModelId("com.freestyle.app");
 
+  // Override app.name so macOS menu shows "Freestyle" instead of the package name
+  app.setName("Freestyle");
+
   // Register the custom app:// protocol for production SPA support
   registerAppProtocol();
 

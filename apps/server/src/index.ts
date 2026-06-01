@@ -23,9 +23,18 @@ import whisper, { autoStartWhisperServer } from "./routes/whisper.js";
 process.on("SIGINT", () => shutdownPosthog().finally(() => process.exit(0)));
 process.on("SIGTERM", () => shutdownPosthog().finally(() => process.exit(0)));
 
-setTimeout(() => reconcileUnsupportedMlxVoiceDefault(), 500);
-setTimeout(() => autoStartWhisperServer(), 1000);
-setTimeout(() => autoStartMlxAsrServer(), 1500);
+setTimeout(() => {
+  if (!process.env.FREESTYLE_DB_PATH) return;
+  reconcileUnsupportedMlxVoiceDefault();
+}, 500);
+setTimeout(() => {
+  if (!process.env.FREESTYLE_DB_PATH) return;
+  autoStartWhisperServer();
+}, 1000);
+setTimeout(() => {
+  if (!process.env.FREESTYLE_DB_PATH) return;
+  autoStartMlxAsrServer();
+}, 1500);
 
 const app = new Hono()
   // CORS for renderer requests (skip WebSocket upgrades)

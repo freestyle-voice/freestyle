@@ -5,6 +5,7 @@
     "build": "turbo build",
     "dev": "turbo dev",
     "format": "biome check --write .",
+    "test": "turbo test",
     "prepare": "is-ci || husky"
   },
   "devDependencies": {

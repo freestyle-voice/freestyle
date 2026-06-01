@@ -20,7 +20,8 @@
     "build:mac": "npm run compile:native && electron-vite build && electron-builder --mac --publish never",
     "build:linux": "npm run compile:native && electron-vite build && electron-builder --linux --publish never",
     "download:whisper-cpp": "node scripts/download-whisper-cpp.mjs",
-    "download:whisper-cpp:all": "node scripts/download-whisper-cpp.mjs --all"
+    "download:whisper-cpp:all": "node scripts/download-whisper-cpp.mjs --all",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
@@ -51,6 +52,7 @@
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^2.0.0",
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/vite": "^4.3.0",
     "@types/node": "^22.19.1",
     "@types/react": "^19.2.7",

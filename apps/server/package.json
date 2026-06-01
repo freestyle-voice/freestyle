@@ -2,7 +2,9 @@
   "name": "@freestyle/server",
   "type": "module",
   "scripts": {
-    "build": "tsc --emitDeclarationOnly && pkgroll --minify src/index.ts"
+    "build": "tsc --emitDeclarationOnly && pkgroll --minify src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "exports": {
     ".": {
@@ -37,6 +39,7 @@
     "@types/node": "latest",
     "@types/ws": "^8.18.1",
     "pkgroll": "^2.27.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.7"
   }
 }

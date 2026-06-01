@@ -1,0 +1,20 @@
+import { resolve } from "node:path";
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  resolve: {
+    alias: {
+      "@freestyle/validations": resolve(
+        __dirname,
+        "../../packages/validations/src/index.ts",
+      ),
+    },
+  },
+  test: {
+    globals: true,
+    include: ["tests/**/*.test.ts"],
+    setupFiles: ["tests/setup.ts"],
+    testTimeout: 10_000,
+    pool: "forks",
+  },
+});

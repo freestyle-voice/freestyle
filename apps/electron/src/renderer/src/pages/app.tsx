@@ -511,21 +511,20 @@ export default function AppPage(): React.JSX.Element {
         getStreamer().setContext(null);
       } catch {}
 
-      const appContextPromise =
-        window.api
-          ?.getFrontmostApp()
-          .then((app) => {
-            appContextRef.current = app;
-            try {
-              getStreamer().setContext(app);
-            } catch {}
-          })
-          .catch(() => {
-            appContextRef.current = null;
-            try {
-              getStreamer().setContext(null);
-            } catch {}
-          }) ?? Promise.resolve();
+      window.api
+        ?.getFrontmostApp()
+        .then((app) => {
+          appContextRef.current = app;
+          try {
+            getStreamer().setContext(app);
+          } catch {}
+        })
+        .catch(() => {
+          appContextRef.current = null;
+          try {
+            getStreamer().setContext(null);
+          } catch {}
+        });
 
       if (!forReRecord) {
         setState("initializing");
@@ -534,15 +533,9 @@ export default function AppPage(): React.JSX.Element {
 
       try {
         sessionStreamingRef.current = useStreamingRef.current;
-        const [stream] = await Promise.all([
-          sessionStreamingRef.current
-            ? recorderRef.current.acquireStream()
-            : recorderRef.current.start(),
-          Promise.race([
-            appContextPromise,
-            new Promise((resolve) => setTimeout(resolve, 300)),
-          ]),
-        ]);
+        const stream = await (sessionStreamingRef.current
+          ? recorderRef.current.acquireStream()
+          : recorderRef.current.start());
 
         if (!wantsMicRef.current) {
           recorderRef.current.cancel();

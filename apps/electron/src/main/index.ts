@@ -1,6 +1,19 @@
-import fixPath from "fix-path";
-
-fixPath();
+// GUI apps on macOS inherit the minimal launchd PATH (/usr/bin:/bin:/usr/sbin:/sbin)
+// which excludes Homebrew directories where cmake and other tools live.
+if (process.platform === "darwin") {
+  const extra = [
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    "/usr/local/sbin",
+  ];
+  const current = process.env.PATH ?? "";
+  const dirs = current.split(":");
+  const missing = extra.filter((p) => !dirs.includes(p));
+  if (missing.length > 0) {
+    process.env.PATH = `${current}:${missing.join(":")}`;
+  }
+}
 
 import { execFile } from "node:child_process";
 import { join } from "node:path";

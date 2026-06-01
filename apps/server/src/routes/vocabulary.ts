@@ -6,6 +6,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod/v3";
 import { getDb } from "../lib/db.js";
+import { capture } from "../lib/posthog.js";
 import type { VocabularyRow } from "../lib/vocabulary.js";
 
 const vocabulary = new Hono()
@@ -92,6 +93,8 @@ const vocabulary = new Hono()
         .prepare(`INSERT INTO vocabulary (term, notes) VALUES (?, ?)`)
         .run(term, notes);
 
+      capture("vocabulary term added", { has_notes: notes !== null });
+
       return c.json(
         {
           id: result.lastInsertRowid,
@@ -138,6 +141,7 @@ const vocabulary = new Hono()
     const db = getDb();
     const id = Number(c.req.param("id"));
     db.prepare("DELETE FROM vocabulary WHERE id = ?").run(id);
+    capture("vocabulary term deleted", {});
     return c.json({ ok: true });
   })
   .post(
@@ -182,6 +186,8 @@ const vocabulary = new Hono()
         db.exec("ROLLBACK");
         throw err;
       }
+
+      capture("vocabulary terms imported", { imported, skipped });
 
       return c.json({ imported, skipped });
     },

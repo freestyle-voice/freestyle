@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { capture } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
 import {
@@ -67,6 +68,8 @@ const whisper = new Hono()
 
     downloadModel(modelId).catch(() => {});
 
+    capture("whisper model download started", { model_id: modelId });
+
     return c.json({ ok: true, message: "Download started" });
   })
   .post("/models/:model/cancel", (c) => {
@@ -77,6 +80,11 @@ const whisper = new Hono()
   .delete("/models/:model", (c) => {
     const modelId = c.req.param("model");
     const deleted = deleteModel(modelId);
+
+    if (deleted) {
+      capture("whisper model deleted", { model_id: modelId });
+    }
+
     return c.json({ ok: deleted });
   })
   .post("/server/start", async (c) => {

@@ -2,6 +2,7 @@ import { upgradeWebSocket } from "@hono/node-server";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { postProcess } from "../lib/post-process.js";
+import { capture } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { captureException, metrics } from "../lib/sentry.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
@@ -141,6 +142,17 @@ const stream = new Hono().get(
 
             postProcess(rawText, appContext)
               .then((pp) => {
+                capture("streaming transcription completed", {
+                  provider: voiceDefaults!.provider,
+                  model: voiceDefaults!.model_id,
+                  duration_ms: durationMs,
+                  audio_duration_ms: audioDurationMs,
+                  llm_provider: pp.llmProvider,
+                  llm_model: pp.llmModel,
+                  input_tokens: pp.inputTokens,
+                  output_tokens: pp.outputTokens,
+                  cost_usd: pp.costUsd,
+                });
                 if (!closed) {
                   ws.send(JSON.stringify({ type: "final", text: pp.cleaned }));
                 }

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { capture } from "../lib/posthog.js";
 import {
   WHISPER_MODELS,
   WHISPER_PROVIDER_ID,
@@ -391,6 +392,14 @@ const models = new Hono()
         body.is_default ? 1 : 0,
       );
 
+    capture("model configured", {
+      provider: body.provider,
+      model_id: body.model_id,
+      model_name: body.model_name,
+      type: body.type,
+      is_default: body.is_default ?? false,
+    });
+
     return c.json({ id: result.lastInsertRowid, ...body }, 201);
   })
   .put("/configured/:id/default", (c) => {
@@ -398,8 +407,12 @@ const models = new Hono()
     const id = Number(c.req.param("id"));
 
     const row = db
-      .prepare("SELECT type FROM model_configs WHERE id = ?")
-      .get(id) as { type: string } | undefined;
+      .prepare(
+        "SELECT type, provider, model_id FROM model_configs WHERE id = ?",
+      )
+      .get(id) as
+      | { type: string; provider: string; model_id: string }
+      | undefined;
     if (!row) {
       return c.json({ error: "Model config not found" }, 404);
     }
@@ -410,12 +423,36 @@ const models = new Hono()
     );
     db.prepare("UPDATE model_configs SET is_default = 1 WHERE id = ?").run(id);
 
+    capture("default model changed", {
+      type: row.type,
+      provider: row.provider,
+      model_id: row.model_id,
+    });
+
     return c.json({ ok: true });
   })
   .delete("/configured/:id", (c) => {
     const db = getDb();
     const id = Number(c.req.param("id"));
+
+    const row = db
+      .prepare(
+        "SELECT provider, model_id, type FROM model_configs WHERE id = ?",
+      )
+      .get(id) as
+      | { provider: string; model_id: string; type: string }
+      | undefined;
+
     db.prepare("DELETE FROM model_configs WHERE id = ?").run(id);
+
+    if (row) {
+      capture("model deleted", {
+        provider: row.provider,
+        model_id: row.model_id,
+        type: row.type,
+      });
+    }
+
     return c.json({ ok: true });
   });
 

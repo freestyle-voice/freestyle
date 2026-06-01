@@ -2,6 +2,7 @@ import { apiKeySchema } from "@freestyle/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { capture } from "../lib/posthog.js";
 
 const apiKeys = new Hono()
   .get("/", (c) => {
@@ -38,12 +39,17 @@ const apiKeys = new Hono()
        ON CONFLICT(provider) DO UPDATE SET key = excluded.key, created_at = datetime('now')`,
     ).run(body.provider, body.key);
 
+    capture("api key configured", { provider: body.provider });
+
     return c.json({ provider: body.provider, configured: true });
   })
   .delete("/:provider", (c) => {
     const db = getDb();
     const provider = c.req.param("provider");
     db.prepare("DELETE FROM api_keys WHERE provider = ?").run(provider);
+
+    capture("api key deleted", { provider });
+
     return c.json({ ok: true });
   });
 

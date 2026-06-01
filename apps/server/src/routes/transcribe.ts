@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { postProcess } from "../lib/post-process.js";
+import {
+  capture,
+  captureException as posthogCaptureException,
+} from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { captureException, metrics } from "../lib/sentry.js";
 import { getProvider } from "../lib/streaming/registry.js";
@@ -100,8 +104,17 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     }
   } catch (err) {
     captureException(err);
+    posthogCaptureException(err, {
+      provider: defaults.voice.provider,
+      model: defaults.voice.model_id,
+    });
     metrics.count("transcription.error", 1, {
       attributes: { provider: defaults.voice.provider },
+    });
+    capture("transcription failed", {
+      provider: defaults.voice.provider,
+      model: defaults.voice.model_id,
+      error: err instanceof Error ? err.message : String(err),
     });
     return c.json(
       {
@@ -162,6 +175,14 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         console.error("Failed to save history:", err);
       });
 
+    capture("transcription completed", {
+      provider: voiceProvider,
+      model: voiceModel,
+      duration_ms: durationMs,
+      audio_duration_ms: audioDurationMs,
+      post_processed: false,
+    });
+
     return c.json({
       raw: rawText,
       cleaned: rawText,
@@ -205,6 +226,19 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   if (isDev) {
     console.log(`[transcribe] total ${Date.now() - start}ms`);
   }
+
+  capture("transcription completed", {
+    provider: voiceProvider,
+    model: voiceModel,
+    duration_ms: durationMs,
+    audio_duration_ms: audioDurationMs,
+    post_processed: true,
+    llm_provider: pp.llmProvider,
+    llm_model: pp.llmModel,
+    input_tokens: pp.inputTokens,
+    output_tokens: pp.outputTokens,
+    cost_usd: pp.costUsd,
+  });
 
   return c.json({
     raw: rawText,

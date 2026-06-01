@@ -818,6 +818,8 @@ app.whenReady().then(async () => {
   // Set database path for the server before any API calls
   process.env.FREESTYLE_DB_PATH = join(app.getPath("userData"), "freestyle.db");
 
+  process.env.FREESTYLE_ENV = is.dev ? "development" : "production";
+
   // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
   function startServer(port: number): void {
     const wss = new WebSocketServer({ noServer: true });

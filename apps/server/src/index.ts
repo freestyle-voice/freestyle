@@ -1,5 +1,9 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import {
+  captureException as posthogCaptureException,
+  shutdownPosthog,
+} from "./lib/posthog.js";
 import { captureException, initSentry } from "./lib/sentry.js";
 import apiKeys from "./routes/api-keys.js";
 import dictionary from "./routes/dictionary.js";
@@ -16,6 +20,9 @@ import whisper, { autoStartWhisperServer } from "./routes/whisper.js";
 
 initSentry();
 
+process.on("SIGINT", () => shutdownPosthog().finally(() => process.exit(0)));
+process.on("SIGTERM", () => shutdownPosthog().finally(() => process.exit(0)));
+
 setTimeout(() => autoStartWhisperServer(), 1000);
 
 const app = new Hono()
@@ -28,6 +35,7 @@ const app = new Hono()
   })
   .onError((err, c) => {
     captureException(err);
+    posthogCaptureException(err);
     return c.json({ error: "Internal server error" }, 500);
   })
   .get("/", (c) => {

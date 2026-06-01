@@ -1,14 +1,3 @@
-import * as Sentry from "@sentry/electron/main";
-import { app as _app } from "electron";
-
-Sentry.init({
-  dsn: "https://b7ed8a9e5051cfe650f0f26ca2482b4b@o4509750817325057.ingest.us.sentry.io/4511454571528192",
-  release: `freestyle@${_app.getVersion()}`,
-  environment: process.env.NODE_ENV ?? "development",
-  enabled: process.env.NODE_ENV === "production",
-  skipOpenTelemetrySetup: true,
-});
-
 import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -615,10 +604,6 @@ function createTray(): void {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
-  Sentry.setTag("platform", process.platform);
-  Sentry.setTag("arch", process.arch);
-  Sentry.setTag("electron", process.versions.electron ?? "unknown");
-
   // Set app user model id for windows
   electronApp.setAppUserModelId("com.freestyle.app");
 
@@ -843,7 +828,6 @@ app.whenReady().then(async () => {
         startServer(0);
       } else {
         console.error("Server failed to start:", err);
-        Sentry.captureException(err);
       }
     });
   }
@@ -1279,5 +1263,5 @@ app.on("before-quit", (event) => {
   isQuitting = true;
   event.preventDefault();
   cleanupBeforeQuit();
-  Sentry.close(2000).finally(() => app.exit(0));
+  app.exit(0);
 });

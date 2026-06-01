@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
-import { captureException, shutdownPosthog } from "./lib/posthog.js";
+import {
+  captureException,
+  getDeviceId,
+  shutdownPosthog,
+} from "./lib/posthog.js";
 import apiKeys from "./routes/api-keys.js";
 import dictionary from "./routes/dictionary.js";
 import formats from "./routes/formats.js";
@@ -40,6 +44,9 @@ const app = new Hono()
   })
   .get("/api/health", (c) => {
     return c.json({ status: "ok", name: "freestyle" });
+  })
+  .get("/api/device-id", (c) => {
+    return c.json({ deviceId: getDeviceId() });
   })
   .route("/api/settings", settings)
   .route("/api/keys", apiKeys)

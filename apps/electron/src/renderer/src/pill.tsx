@@ -1,11 +1,3 @@
-if (import.meta.env.PROD) {
-  import("@sentry/electron/renderer").then(({ init: electronRendererInit }) => {
-    import("@sentry/react").then(({ init: reactInit }) => {
-      electronRendererInit({}, reactInit);
-    });
-  });
-}
-
 import "./globals.css";
 
 import { initApiBase } from "@renderer/lib/api";

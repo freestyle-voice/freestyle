@@ -264,7 +264,7 @@ export default function VocabularyPage(): React.JSX.Element {
                   className="placeholder:text-muted-foreground/80 text-foreground min-w-0 flex-1 bg-transparent text-[13px] outline-none"
                 />
                 <span className="mono text-muted-foreground shrink-0 text-[10px]">
-                  {navigator.platform.includes("Mac") ? "⌘" : "Ctrl+"} K
+                  {navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+"} K
                 </span>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2.5">

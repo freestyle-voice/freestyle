@@ -189,6 +189,7 @@ const stream = new Hono().get(
               });
           },
           onError: (message) => {
+            if (upstream !== session) return;
             streamingUnsupported = true;
             ws.send(
               JSON.stringify({
@@ -198,7 +199,7 @@ const stream = new Hono().get(
               }),
             );
             ws.send(JSON.stringify({ type: "error", message }));
-            if (upstream === session) upstream = null;
+            upstream = null;
           },
           onClose: () => {
             // Ignore close from a superseded socket (replaced on a later "start").

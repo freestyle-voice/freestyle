@@ -90,12 +90,12 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "elevenlabs";
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
-    if (opts.bias?.kind === "elevenlabs-keyterms") {
-      return transcribeElevenLabsWithBias(opts, opts.bias);
-    }
     const model = stripProviderPrefix(opts.model).endsWith("_realtime")
       ? opts.model.replace(/_realtime$/, "")
       : opts.model;
+    if (opts.bias?.kind === "elevenlabs-keyterms") {
+      return transcribeElevenLabsWithBias({ ...opts, model }, opts.bias);
+    }
     return transcribeWithAiSdk(
       { ...opts, model },
       createElevenLabs,

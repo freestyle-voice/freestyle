@@ -15,6 +15,7 @@ import { stripProviderPrefix } from "../types.js";
 import { transcribeWithAiSdk } from "../utils.js";
 
 const DEEPGRAM_LISTEN_URL = "wss://api.deepgram.com/v1/listen";
+const COMMIT_TIMEOUT_MS = 12_000;
 
 /**
  * Merge a new finalized segment. Nova models often send cumulative transcripts
@@ -79,6 +80,14 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
     let partialText = "";
     let commitRequested = false;
     let finalDelivered = false;
+    let commitTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    function clearCommitTimeout(): void {
+      if (commitTimeout) {
+        clearTimeout(commitTimeout);
+        commitTimeout = null;
+      }
+    }
 
     const short = stripProviderPrefix(model);
 
@@ -102,6 +111,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       if (finalDelivered) return;
       finalDelivered = true;
       commitRequested = false;
+      clearCommitTimeout();
       const text = (accumulatedText || partialText).trim();
       accumulatedText = "";
       partialText = "";
@@ -163,6 +173,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
         ws.send(chunk);
       },
       reset(): void {
+        clearCommitTimeout();
         accumulatedText = "";
         partialText = "";
         commitRequested = false;
@@ -170,13 +181,18 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       },
       commit(): void {
         commitRequested = true;
+        clearCommitTimeout();
         if (ws.readyState !== WebSocket.OPEN) {
           deliverFinal();
           return;
         }
         ws.send(JSON.stringify({ type: "Finalize" }));
+        commitTimeout = setTimeout(() => {
+          deliverFinal();
+        }, COMMIT_TIMEOUT_MS);
       },
       cancel(): void {
+        clearCommitTimeout();
         accumulatedText = "";
         partialText = "";
         commitRequested = false;
@@ -188,6 +204,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
         }
       },
       close(): void {
+        clearCommitTimeout();
         if (ws.readyState <= WebSocket.OPEN) ws.close();
       },
     };

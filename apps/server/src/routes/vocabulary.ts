@@ -153,10 +153,12 @@ const vocabulary = new Hono()
     db.exec("BEGIN");
     try {
       for (const entry of body) {
-        const result = insertStmt.run(
-          entry.term.trim(),
-          entry.notes?.trim() || null,
-        );
+        const term = entry.term.trim();
+        if (!term) {
+          skipped++;
+          continue;
+        }
+        const result = insertStmt.run(term, entry.notes?.trim() || null);
         if (result.changes > 0) {
           imported++;
         } else {

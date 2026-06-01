@@ -114,7 +114,12 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
         );
       },
       commit(): void {
-        if (ws.readyState !== WebSocket.OPEN) return;
+        if (ws.readyState !== WebSocket.OPEN) {
+          const text = partialText.trim();
+          partialText = "";
+          callbacks.onFinal(text);
+          return;
+        }
         ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
       },
       reset(): void {

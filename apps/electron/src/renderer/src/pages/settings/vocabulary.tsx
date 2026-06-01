@@ -133,12 +133,20 @@ export default function VocabularyPage(): React.JSX.Element {
 
   const deleteEntry = useCallback(
     async (id: number) => {
-      await getClient().api.vocabulary[":id"].$delete({
-        param: { id: String(id) },
-      });
-      loadData();
+      try {
+        await getClient().api.vocabulary[":id"].$delete({
+          param: { id: String(id) },
+        });
+        if (entries.length === 1 && page > 0) {
+          setPage(page - 1);
+        } else {
+          loadData();
+        }
+      } catch (err) {
+        console.error("Failed to delete vocabulary entry:", err);
+      }
     },
-    [loadData],
+    [loadData, entries.length, page],
   );
 
   const importRef = useRef<HTMLInputElement>(null);
@@ -180,17 +188,27 @@ export default function VocabularyPage(): React.JSX.Element {
     }
   }, []);
 
+  const [importError, setImportError] = useState<string | null>(null);
+
   const handleImport = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      setImportError(null);
       try {
         const text = await file.text();
         const data = JSON.parse(text);
-        await getClient().api.vocabulary.import.$post({ json: data });
-        loadData();
+        const res = await getClient().api.vocabulary.import.$post({
+          json: data,
+        });
+        if (!res.ok) {
+          const detail = await res.text().catch(() => "");
+          setImportError(detail || `Import failed (HTTP ${res.status})`);
+        } else {
+          loadData();
+        }
       } catch {
-        // ignore
+        setImportError("Import failed — file must be valid JSON.");
       }
       if (importRef.current) importRef.current.value = "";
     },
@@ -246,7 +264,7 @@ export default function VocabularyPage(): React.JSX.Element {
                   className="placeholder:text-muted-foreground/80 text-foreground min-w-0 flex-1 bg-transparent text-[13px] outline-none"
                 />
                 <span className="mono text-muted-foreground shrink-0 text-[10px]">
-                  ⌘ K
+                  {navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+"} K
                 </span>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2.5">
@@ -281,6 +299,10 @@ export default function VocabularyPage(): React.JSX.Element {
                 </button>
               </div>
             </div>
+
+            {importError && (
+              <p className="text-destructive mb-4 text-xs">{importError}</p>
+            )}
 
             {showForm && (
               <form

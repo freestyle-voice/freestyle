@@ -15,8 +15,8 @@ const PROMPT_CHAR_BUDGET = 900;
 const DEEPGRAM_KEYTERM_MAX = 100;
 /** Keep streaming URLs short — long keyterm lists break the WS handshake. */
 const DEEPGRAM_STREAMING_KEYTERM_MAX = 25;
-const ELEVENLABS_REALTIME_KEYTERM_MAX = 50;
 const ELEVENLABS_BATCH_KEYTERM_MAX = 100;
+const ELEVENLABS_REALTIME_KEYTERM_MAX = 50;
 const ELEVENLABS_TERM_MAX_CHARS = 20;
 const ELEVENLABS_BATCH_TERM_MAX_CHARS = 50;
 
@@ -97,7 +97,7 @@ function capElevenLabsTerms(
 }
 
 function isNova3Model(model: string): boolean {
-  return model.includes("nova-3") || model.includes("nova-3-general");
+  return model.includes("nova-3");
 }
 
 function isNova2Model(model: string): boolean {

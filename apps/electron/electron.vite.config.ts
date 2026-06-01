@@ -5,6 +5,11 @@ import { defineConfig } from "electron-vite";
 
 export default defineConfig({
   main: {
+    define: {
+      "process.env.NODE_ENV": JSON.stringify(
+        process.env.NODE_ENV || "production",
+      ),
+    },
     build: {
       externalizeDeps: false,
       rollupOptions: {

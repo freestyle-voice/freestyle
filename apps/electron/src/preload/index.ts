@@ -115,6 +115,11 @@ const api = {
     ipcRenderer.invoke("settings:launch-at-startup"),
   setLaunchAtStartup: (enabled: boolean): void =>
     ipcRenderer.send("settings:set-launch-at-startup", enabled),
+  // Show dashboard on launch setting
+  getShowDashboardOnLaunch: (): Promise<boolean> =>
+    ipcRenderer.invoke("settings:show-dashboard-on-launch"),
+  setShowDashboardOnLaunch: (enabled: boolean): void =>
+    ipcRenderer.send("settings:set-show-dashboard-on-launch", enabled),
   // Context-aware dictation
   getFrontmostApp: (): Promise<string | null> =>
     ipcRenderer.invoke("system:frontmost-app"),

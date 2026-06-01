@@ -53,6 +53,9 @@ declare global {
       // Launch at startup setting
       getLaunchAtStartup: () => Promise<boolean>;
       setLaunchAtStartup: (enabled: boolean) => void;
+      // Show dashboard on launch setting
+      getShowDashboardOnLaunch: () => Promise<boolean>;
+      setShowDashboardOnLaunch: (enabled: boolean) => void;
       // Context-aware dictation
       getFrontmostApp: () => Promise<string | null>;
       // Pill position

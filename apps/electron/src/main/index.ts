@@ -869,7 +869,9 @@ app.whenReady().then(async () => {
 
   createAppWindow();
 
-  showSettingsWindow();
+  if (readSettings().showDashboardOnLaunch !== false) {
+    showSettingsWindow();
+  }
 
   // -- Auto-update helpers --
   const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -989,6 +991,18 @@ app.whenReady().then(async () => {
   ipcMain.on("settings:set-launch-at-startup", (_event, enabled: boolean) => {
     app.setLoginItemSettings({ openAtLogin: enabled });
   });
+
+  // -- Show dashboard on launch setting IPC --
+  ipcMain.handle("settings:show-dashboard-on-launch", () => {
+    return readSettings().showDashboardOnLaunch !== false;
+  });
+
+  ipcMain.on(
+    "settings:set-show-dashboard-on-launch",
+    (_event, enabled: boolean) => {
+      writeSettings({ showDashboardOnLaunch: enabled });
+    },
+  );
 
   // -- Context-aware dictation: get frontmost app + browser context --
   ipcMain.handle("system:frontmost-app", async () => {

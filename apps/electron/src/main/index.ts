@@ -19,7 +19,11 @@ import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
-import server from "@freestyle/server";
+import server, {
+  autoStartMlxAsrServer,
+  autoStartWhisperServer,
+  reconcileUnsupportedMlxVoiceDefault,
+} from "@freestyle/server";
 import { serve } from "@hono/node-server";
 import {
   app,
@@ -821,6 +825,11 @@ app.whenReady().then(async () => {
   process.env.FREESTYLE_DB_PATH = join(app.getPath("userData"), "freestyle.db");
 
   process.env.FREESTYLE_ENV = is.dev ? "development" : "production";
+
+  // Stagger non-critical server startup tasks now that the DB path is set
+  setTimeout(() => reconcileUnsupportedMlxVoiceDefault(), 500);
+  setTimeout(() => autoStartWhisperServer(), 1000);
+  setTimeout(() => autoStartMlxAsrServer(), 1500);
 
   // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
   function startServer(port: number): void {

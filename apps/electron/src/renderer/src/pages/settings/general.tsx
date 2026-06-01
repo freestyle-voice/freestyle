@@ -214,6 +214,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
     needsModifierOrMouseButton,
     invalidReleaseNotice,
     startRecording: startHotkeyRecording,
+    cancelRecording: cancelHotkeyRecording,
   } = useHotkeyRecorder(handleHotkeyRecorded);
 
   // Load available audio input devices
@@ -423,10 +424,10 @@ export default function GeneralSettingsPage(): React.JSX.Element {
   const liveKeys = liveModifiers.map(keyDisplayLabel);
   const draftKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : liveKeys;
   const captureHint = needsModifierOrMouseButton
-    ? "Add a modifier or side mouse button"
+    ? "Add a modifier or side mouse button · Esc to cancel"
     : canSaveRecording
-      ? "Release to save"
-      : "Press a modifier or side mouse button...";
+      ? "Release to save · Esc to cancel"
+      : "Press a modifier or side mouse button... · Esc to cancel";
 
   return (
     <div
@@ -561,6 +562,13 @@ export default function GeneralSettingsPage(): React.JSX.Element {
                     Hotkeys need a modifier or side mouse button
                   </div>
                 )}
+                <button
+                  type="button"
+                  onClick={cancelHotkeyRecording}
+                  className="border-border hover:bg-secondary ml-1 rounded-md border px-2.5 py-1 text-xs"
+                >
+                  Cancel
+                </button>
               </div>
             )}
           </Row>

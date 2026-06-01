@@ -234,6 +234,15 @@ guard let monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, h
     exit(1)
 }
 
+// NSEvent key-down monitor — catches compound shortcuts (e.g. Option+Space) that the CGEvent
+// tap may not surface when another app is focused, because macOS handles them first.
+var keyDownMonitor: Any?
+keyDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+    emitFlags(event.modifierFlags)
+    guard let name = keyCodeToName(event.keyCode) else { return }
+    emit("KEY_DOWN:\(name)")
+}
+
 // CGEvent keyboard tap — reliable KEY_UP delivery (NSEvent global monitors often miss key-up)
 let keyEventMask =
     (1 << CGEventType.keyDown.rawValue) |
@@ -261,9 +270,8 @@ let keyEventTap = CGEvent.tapCreate(
             return Unmanaged.passUnretained(event)
         }
 
-        if type == .keyDown {
-            emit("KEY_DOWN:\(name)")
-        } else if type == .keyUp {
+        // KEY_DOWN is emitted by the NSEvent global monitor above (avoids duplicate events).
+        if type == .keyUp {
             emit("KEY_UP:\(name)")
         }
 
@@ -285,6 +293,9 @@ let signalSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main
 signal(SIGTERM, SIG_IGN)
 signalSource.setEventHandler {
     NSEvent.removeMonitor(monitor)
+    if let keyDownMonitor {
+        NSEvent.removeMonitor(keyDownMonitor)
+    }
     if let keyEventTap {
         CGEvent.tapEnable(tap: keyEventTap, enable: false)
     }

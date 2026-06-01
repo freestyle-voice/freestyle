@@ -446,6 +446,16 @@ async function downloadWindowsBinaries(): Promise<void> {
     unlinkSync(tmpZip);
   } catch {}
 
+  // The upstream zip nests executables inside a Release/ subdirectory.
+  // Move them up so they sit directly inside binDir where findExecutable looks.
+  const releaseDir = join(binDir, "Release");
+  if (existsSync(releaseDir)) {
+    for (const name of readdirSync(releaseDir)) {
+      renameSync(join(releaseDir, name), join(binDir, name));
+    }
+    rmSync(releaseDir, { recursive: true, force: true });
+  }
+
   console.log("[whisper] Windows binaries downloaded");
 }
 

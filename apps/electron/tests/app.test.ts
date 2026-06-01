@@ -15,12 +15,36 @@ import { _electron as electron } from "playwright";
 
 let app: ElectronApplication;
 let dashboardPage: Page;
+let serverPort: number;
+
+const DEFAULT_PORT = 4649;
 
 /**
- * Launch the Electron app with a temporary user-data directory so
- * tests never touch real data. The app is built with `electron-vite build`
- * and the main entry is `out/main/index.js`.
+ * Wait for a window whose URL does NOT contain "pill" — that's the
+ * dashboard / onboarding window. The pill window loads pill.html and
+ * may appear first.
  */
+async function waitForDashboardWindow(
+  electronApp: ElectronApplication,
+  timeoutMs = 10_000,
+): Promise<Page> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    for (const win of electronApp.windows()) {
+      const url = win.url();
+      if (!url.includes("pill") && url.length > 0) {
+        await win.waitForLoadState("domcontentloaded");
+        return win;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+
+  // Fallback: return whatever window we have
+  return electronApp.windows()[0];
+}
+
 test.beforeAll(async () => {
   const userDataDir = mkdtempSync(join(tmpdir(), "freestyle-e2e-"));
   const dbPath = join(userDataDir, "freestyle.db");
@@ -36,26 +60,28 @@ test.beforeAll(async () => {
     timeout: 20_000,
   });
 
-  // The app creates a pill window (small, always-on-top) immediately,
-  // and a settings/dashboard window on first launch (onboarding).
-  // Wait for the first window, then try to find the dashboard.
-  dashboardPage = await app.firstWindow();
-  await dashboardPage.waitForLoadState("domcontentloaded");
+  // Wait for the first window so Playwright's internal state is ready.
+  await app.firstWindow();
 
-  // If we got the pill, look for the dashboard window
-  const windows = app.windows();
-  for (const win of windows) {
-    const url = win.url();
-    if (
-      url.includes("index.html") ||
-      url.includes("/today") ||
-      url.includes("/onboarding") ||
-      url.includes("app://renderer")
-    ) {
-      dashboardPage = win;
-      break;
+  // Find the dashboard (non-pill) window.
+  dashboardPage = await waitForDashboardWindow(app);
+
+  // Resolve the actual server port by probing the default port from the
+  // main process. The server starts on DEFAULT_PORT and only falls back
+  // to a random port when DEFAULT_PORT is already in use.
+  // Note: app.evaluate passes (electronModule, arg) so the user arg is
+  // the second parameter.
+  const portResult = await app.evaluate(async (_electron, port) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/health`);
+      if (res.ok) return port;
+    } catch {
+      // port not available
     }
-  }
+    return 0;
+  }, DEFAULT_PORT);
+
+  serverPort = portResult || DEFAULT_PORT;
 });
 
 test.afterAll(async () => {
@@ -94,8 +120,7 @@ test("dashboard window loads a valid route", async () => {
   const isValidRoute =
     url.includes("/today") ||
     url.includes("/onboarding") ||
-    url.includes("index.html") ||
-    url.includes("app://renderer");
+    url.includes("index.html");
   expect(isValidRoute).toBe(true);
 });
 
@@ -108,37 +133,32 @@ test("dashboard window has a reasonable viewport", async () => {
 });
 
 test("embedded server is running", async () => {
-  // Query the health endpoint from the main process to avoid
-  // CORS issues in the renderer.
-  const health = await app.evaluate(async () => {
-    const res = await fetch("http://127.0.0.1:4649/api/health");
+  const health = await app.evaluate(async (_electron, port) => {
+    const res = await fetch(`http://127.0.0.1:${port}/api/health`);
     return res.json() as Promise<{ status: string; name: string }>;
-  });
+  }, serverPort);
   expect(health).toEqual({ status: "ok", name: "freestyle" });
 });
 
 test("settings API works via embedded server", async () => {
-  // Write a setting and read it back via the embedded server
-  await app.evaluate(async () => {
-    await fetch("http://127.0.0.1:4649/api/settings/e2e_test", {
+  await app.evaluate(async (_electron, port) => {
+    await fetch(`http://127.0.0.1:${port}/api/settings/e2e_test`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: "hello" }),
     });
-  });
+  }, serverPort);
 
-  const result = await app.evaluate(async () => {
-    const res = await fetch("http://127.0.0.1:4649/api/settings/e2e_test");
+  const result = await app.evaluate(async (_electron, port) => {
+    const res = await fetch(`http://127.0.0.1:${port}/api/settings/e2e_test`);
     return res.json() as Promise<{ key: string; value: string }>;
-  });
+  }, serverPort);
   expect(result).toEqual({ key: "e2e_test", value: "hello" });
 });
 
 test("dashboard renders content", async () => {
-  // Wait for at least some content to render
   await dashboardPage.waitForTimeout(1000);
 
-  // The page should have some text content
   const bodyText = await dashboardPage.locator("body").innerText();
   expect(bodyText.length).toBeGreaterThan(0);
 });
@@ -146,7 +166,7 @@ test("dashboard renders content", async () => {
 test("sidebar navigation is rendered", async () => {
   const url = dashboardPage.url();
   if (url.includes("/onboarding")) {
-    // On onboarding page, there's no sidebar
+    // On onboarding page, there's no sidebar but there is content
     const body = await dashboardPage.locator("body").innerText();
     expect(body.length).toBeGreaterThan(0);
     return;

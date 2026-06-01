@@ -7,6 +7,6 @@ export default defineConfig({
   workers: 1, // Electron tests must run serially
   reporter: "list",
   use: {
-    trace: "on-first-retry",
+    trace: "retain-on-failure",
   },
 });

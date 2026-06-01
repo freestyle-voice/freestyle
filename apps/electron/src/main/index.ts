@@ -826,10 +826,10 @@ app.whenReady().then(async () => {
 
   process.env.FREESTYLE_ENV = is.dev ? "development" : "production";
 
-  // Stagger non-critical server startup tasks now that the DB path is set
-  setTimeout(() => reconcileUnsupportedMlxVoiceDefault(), 500);
-  setTimeout(() => autoStartWhisperServer(), 1000);
-  setTimeout(() => autoStartMlxAsrServer(), 1500);
+  // Run non-critical server startup tasks now that the DB path is set
+  reconcileUnsupportedMlxVoiceDefault();
+  autoStartWhisperServer();
+  autoStartMlxAsrServer();
 
   // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
   function startServer(port: number): void {

@@ -64,6 +64,11 @@ const api = {
     ipcRenderer.on("hotkey-record:captured", handler);
     return () => ipcRenderer.removeListener("hotkey-record:captured", handler);
   },
+  onHotkeyRecordReleased: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("hotkey-record:released", handler);
+    return () => ipcRenderer.removeListener("hotkey-record:released", handler);
+  },
   onHotkeyRecordCancel: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("hotkey-record:cancel", handler);

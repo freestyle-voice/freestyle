@@ -36,6 +36,8 @@ export function normalizeAccelerator(accel: string): string {
         lower === "rightmeta"
       )
         return "RightSuper";
+      if (lower === "mousebutton4" || lower === "mouse4") return "MouseButton4";
+      if (lower === "mousebutton5" || lower === "mouse5") return "MouseButton5";
       if (/^f\d+$/i.test(p)) return p.toUpperCase();
       if (p.length === 1) return p.toUpperCase();
       if (p === "Up" || p === "Down" || p === "Left" || p === "Right") return p;

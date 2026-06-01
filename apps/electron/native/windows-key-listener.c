@@ -16,7 +16,9 @@
 #include <string.h>
 
 static HHOOK g_hook = NULL;
+static HHOOK g_mouseHook = NULL;
 static DWORD g_targetVk = 0;
+static DWORD g_targetMouseButton = 0;
 static BOOL g_isKeyDown = FALSE;
 
 static BOOL g_requireCtrl = FALSE;
@@ -159,6 +161,12 @@ static const char* VkToRecordKeyName(DWORD vk) {
     return NULL;
 }
 
+static const char* MouseButtonToRecordKeyName(DWORD button) {
+    if (button == XBUTTON1) return "MouseButton4";
+    if (button == XBUTTON2) return "MouseButton5";
+    return NULL;
+}
+
 DWORD ParseKeyCode(const char* keyName) {
     if (_stricmp(keyName, "F1") == 0) return VK_F1;
     if (_stricmp(keyName, "F2") == 0) return VK_F2;
@@ -228,6 +236,12 @@ DWORD ParseKeyCode(const char* keyName) {
     return (DWORD)atoi(keyName);
 }
 
+DWORD ParseMouseButton(const char* keyName) {
+    if (_stricmp(keyName, "MouseButton4") == 0 || _stricmp(keyName, "Mouse4") == 0) return XBUTTON1;
+    if (_stricmp(keyName, "MouseButton5") == 0 || _stricmp(keyName, "Mouse5") == 0) return XBUTTON2;
+    return 0;
+}
+
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode == HC_ACTION) {
         KBDLLHOOKSTRUCT* kbd = (KBDLLHOOKSTRUCT*)lParam;
@@ -270,8 +284,12 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
             return CallNextHookEx(g_hook, nCode, wParam, lParam);
         }
 
-        if (g_record_mode && isUp && isModifierEvent) {
-            UpdateModifierState(kbd->vkCode, FALSE);
+        if (g_record_mode && isUp) {
+            if (isModifierEvent) {
+                UpdateModifierState(kbd->vkCode, FALSE);
+            }
+            printf("RECORD_RELEASE\n");
+            fflush(stdout);
             return CallNextHookEx(g_hook, nCode, wParam, lParam);
         }
 
@@ -287,7 +305,8 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
             fflush(stdout);
         }
 
-        if (g_isKeyDown && !g_useModifiersOnly && kbd->vkCode != g_targetVk &&
+        if (g_isKeyDown && !g_useModifiersOnly && g_targetVk != 0 &&
+            kbd->vkCode != g_targetVk &&
             !(GetAsyncKeyState(g_targetVk) & 0x8000)) {
             g_isKeyDown = FALSE;
             printf("KEY_UP\n");
@@ -336,11 +355,65 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     return CallNextHookEx(g_hook, nCode, wParam, lParam);
 }
 
+LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode == HC_ACTION) {
+        MSLLHOOKSTRUCT* mouse = (MSLLHOOKSTRUCT*)lParam;
+        BOOL isDown = (wParam == WM_XBUTTONDOWN);
+        BOOL isUp = (wParam == WM_XBUTTONUP);
+
+        if (!isDown && !isUp) {
+            return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
+        }
+
+        DWORD button = HIWORD(mouse->mouseData);
+
+        if (g_record_mode) {
+            if (isDown) {
+                const char* keyName = MouseButtonToRecordKeyName(button);
+                if (keyName) {
+                    EmitRecordModifiers();
+                    printf("RECORD_KEY:%s\n", keyName);
+                    fflush(stdout);
+                }
+            } else {
+                printf("RECORD_RELEASE\n");
+                fflush(stdout);
+            }
+            return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
+        }
+
+        if (button != g_targetMouseButton) {
+            return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
+        }
+
+        if (isDown) {
+            if (!g_isKeyDown && AreRequiredModifiersPressed()) {
+                g_isKeyDown = TRUE;
+                printf("KEY_DOWN\n");
+                fflush(stdout);
+            }
+            if (g_isKeyDown) return 1;
+        } else if (isUp) {
+            if (g_isKeyDown) {
+                g_isKeyDown = FALSE;
+                printf("KEY_UP\n");
+                fflush(stdout);
+                return 1;
+            }
+        }
+    }
+    return CallNextHookEx(g_mouseHook, nCode, wParam, lParam);
+}
+
 BOOL WINAPI ConsoleHandler(DWORD signal) {
     if (signal == CTRL_C_EVENT || signal == CTRL_BREAK_EVENT || signal == CTRL_CLOSE_EVENT) {
         if (g_hook) {
             UnhookWindowsHookEx(g_hook);
             g_hook = NULL;
+        }
+        if (g_mouseHook) {
+            UnhookWindowsHookEx(g_mouseHook);
+            g_mouseHook = NULL;
         }
         ExitProcess(0);
     }
@@ -357,6 +430,7 @@ DWORD ParseCompoundHotkey(const char* hotkey) {
     g_requireShift = FALSE;
     g_requireWin = FALSE;
     g_useModifiersOnly = FALSE;
+    g_targetMouseButton = 0;
 
     DWORD mainKeyVk = 0;
     char* token = strtok(buffer, "+");
@@ -383,7 +457,12 @@ DWORD ParseCompoundHotkey(const char* hotkey) {
                    _stricmp(token, "Cmd") == 0) {
             g_requireWin = TRUE;
         } else {
-            mainKeyVk = ParseKeyCode(token);
+            DWORD mouseButton = ParseMouseButton(token);
+            if (mouseButton != 0) {
+                g_targetMouseButton = mouseButton;
+            } else {
+                mainKeyVk = ParseKeyCode(token);
+            }
         }
 
         token = strtok(NULL, "+");
@@ -428,17 +507,18 @@ int main(int argc, char* argv[]) {
     }
 
     if (!g_record_mode) {
-        if (g_targetVk == 0 && (g_requireCtrl || g_requireAlt || g_requireShift || g_requireWin)) {
+        if (g_targetVk == 0 && g_targetMouseButton == 0 &&
+            (g_requireCtrl || g_requireAlt || g_requireShift || g_requireWin)) {
             g_useModifiersOnly = TRUE;
         }
 
-        if (g_targetVk == 0 && !g_useModifiersOnly) {
+        if (g_targetVk == 0 && g_targetMouseButton == 0 && !g_useModifiersOnly) {
             fprintf(stderr, "Error: Invalid key '%s'\n", argv[1]);
             return 1;
         }
 
-        fprintf(stderr, "Listening for: %s (VK=0x%02X, Ctrl=%d, Alt=%d, Shift=%d, Win=%d, ModOnly=%d)\n",
-                argv[1], g_targetVk, g_requireCtrl, g_requireAlt, g_requireShift, g_requireWin, g_useModifiersOnly);
+        fprintf(stderr, "Listening for: %s (VK=0x%02X, Mouse=%lu, Ctrl=%d, Alt=%d, Shift=%d, Win=%d, ModOnly=%d)\n",
+                argv[1], g_targetVk, (unsigned long)g_targetMouseButton, g_requireCtrl, g_requireAlt, g_requireShift, g_requireWin, g_useModifiersOnly);
     }
 
     SetConsoleCtrlHandler(ConsoleHandler, TRUE);
@@ -453,6 +533,13 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    g_mouseHook = SetWindowsHookEx(WH_MOUSE_LL, LowLevelMouseProc, NULL, 0);
+    if (!g_mouseHook && (g_record_mode || g_targetMouseButton != 0)) {
+        fprintf(stderr, "Error: Failed to install mouse hook (error %lu)\n", GetLastError());
+        UnhookWindowsHookEx(g_hook);
+        return 1;
+    }
+
     printf("READY\n");
     fflush(stdout);
 
@@ -463,5 +550,6 @@ int main(int argc, char* argv[]) {
     }
 
     UnhookWindowsHookEx(g_hook);
+    if (g_mouseHook) UnhookWindowsHookEx(g_mouseHook);
     return 0;
 }

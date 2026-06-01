@@ -16,6 +16,7 @@ const MAC_MOD_SYMBOLS: Record<string, string> = {
   Command: "\u2318",
   Alt: "\u2325",
   Shift: "\u21E7",
+  Fn: "\uD83C\uDF10",
 };
 
 const OTHER_MOD_LABELS: Record<string, string> = {
@@ -23,6 +24,8 @@ const OTHER_MOD_LABELS: Record<string, string> = {
   Command: "Super",
   Alt: "Alt",
   Shift: "Shift",
+  Super: "Super",
+  Fn: "Fn",
 };
 
 const KEY_SYMBOLS: Record<string, string> = {
@@ -37,6 +40,8 @@ const KEY_SYMBOLS: Record<string, string> = {
   Left: "\u2190",
   Right: "\u2192",
   Fn: "\uD83C\uDF10",
+  MouseButton4: "Mouse 4",
+  MouseButton5: "Mouse 5",
 };
 
 // ---------------------------------------------------------------------------
@@ -52,7 +57,30 @@ export interface HotkeyCombo {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const MODIFIER_ORDER = ["Control", "Command", "Alt", "Shift"];
+const MODIFIER_ORDER = ["Control", "Command", "Alt", "Shift", "Super", "Fn"];
+const MODIFIER_ALIASES: Record<string, string> = {
+  CommandOrControl: IS_MAC ? "Command" : "Control",
+  CmdOrCtrl: IS_MAC ? "Command" : "Control",
+};
+const MODIFIER_KEYS = new Set([
+  ...MODIFIER_ORDER,
+  "RightAlt",
+  "RightOption",
+  "RightControl",
+  "RightShift",
+  "RightCommand",
+  "RightSuper",
+]);
+const MACRO_MOUSE_BUTTONS = new Set(["MouseButton4", "MouseButton5"]);
+const CAPTURED_MODIFIER_KEYS: Record<string, string> = {
+  Fn: "Fn",
+  RightAlt: "Alt",
+  RightOption: "Alt",
+  RightControl: "Control",
+  RightShift: "Shift",
+  RightCommand: "Command",
+  RightSuper: "Super",
+};
 
 /** macOS: compound keys (Alt+Space) via DOM; Fn/right-mod via native IPC */
 const USE_DOM_CAPTURE = true;
@@ -96,23 +124,72 @@ function isDomModifierKey(e: KeyboardEvent): boolean {
   return DOM_MODIFIER_KEYS.has(e.key) || e.key === "Option";
 }
 
+function orderModifiers(modifiers: string[]): string[] {
+  const unique = new Set(modifiers);
+  return MODIFIER_ORDER.filter((modifier) => unique.has(modifier));
+}
+
+function mergeModifiers(current: string[], incoming: string[]): string[] {
+  return orderModifiers([...current, ...incoming]);
+}
+
+function normalizeCapturedCombo(
+  current: HotkeyCombo,
+  captured: HotkeyCombo,
+): HotkeyCombo {
+  const capturedModifier = captured.key
+    ? CAPTURED_MODIFIER_KEYS[captured.key]
+    : null;
+
+  return {
+    modifiers: mergeModifiers(
+      current.modifiers,
+      capturedModifier
+        ? [...captured.modifiers, capturedModifier]
+        : captured.modifiers,
+    ),
+    key: capturedModifier ? current.key : captured.key,
+  };
+}
+
+function isModifierName(part: string): boolean {
+  return MODIFIER_ORDER.includes(part) || part in MODIFIER_ALIASES;
+}
+
+function modifierName(part: string): string | null {
+  if (MODIFIER_ORDER.includes(part)) return part;
+  return MODIFIER_ALIASES[part] ?? null;
+}
+
 export function comboToAccelerator(combo: HotkeyCombo): string | null {
-  if (!combo.key) return null;
-  return [...combo.modifiers, combo.key].join("+");
+  if (!isValidHotkeyCombo(combo)) return null;
+  return combo.key
+    ? [...combo.modifiers, combo.key].join("+")
+    : combo.modifiers.join("+");
+}
+
+export function isValidHotkeyCombo(combo: HotkeyCombo | null): boolean {
+  if (!combo) return false;
+  if (combo.modifiers.length > 0) return true;
+  return (
+    !!combo.key &&
+    (MODIFIER_KEYS.has(combo.key) || MACRO_MOUSE_BUTTONS.has(combo.key))
+  );
+}
+
+export function needsModifierOrMouseButton(combo: HotkeyCombo | null): boolean {
+  return !!combo && !isValidHotkeyCombo(combo);
 }
 
 export function acceleratorToCombo(accel: string): HotkeyCombo {
   const parts = accel.split("+").map((p) => p.trim());
-  const key = parts[parts.length - 1];
+  const key = parts.every(isModifierName) ? null : parts[parts.length - 1];
   const modifiers: string[] = [];
+  const modifierParts = key ? parts.slice(0, -1) : parts;
 
-  for (let i = 0; i < parts.length - 1; i++) {
-    const p = parts[i];
-    if (p === "CommandOrControl") {
-      modifiers.push(IS_MAC ? "Command" : "Control");
-    } else if (MODIFIER_ORDER.includes(p)) {
-      modifiers.push(p);
-    }
+  for (const p of modifierParts) {
+    const modifier = modifierName(p);
+    if (modifier) modifiers.push(modifier);
   }
 
   return {
@@ -146,83 +223,140 @@ export function formatAccelerator(accel: string): string {
 // Hook -- uses main process IPC for recording (captures fn/globe key)
 // ---------------------------------------------------------------------------
 
-type RecorderState = "idle" | "recording" | "captured";
+type RecorderState = "idle" | "recording";
+const EMPTY_COMBO: HotkeyCombo = { modifiers: [], key: null };
 
 interface UseHotkeyRecorderReturn {
   state: RecorderState;
   liveModifiers: string[];
   capturedCombo: HotkeyCombo | null;
+  canSaveRecording: boolean;
+  needsModifierOrMouseButton: boolean;
+  invalidReleaseNotice: boolean;
   startRecording: () => void;
   cancelRecording: () => void;
-  saveRecording: () => void;
 }
 
 export function useHotkeyRecorder(
   onRecord: (accelerator: string) => void,
 ): UseHotkeyRecorderReturn {
   const [state, setState] = useState<RecorderState>("idle");
-  const [liveModifiers, setLiveModifiers] = useState<string[]>([]);
-  const [capturedCombo, setCapturedCombo] = useState<HotkeyCombo | null>(null);
+  const [draftCombo, setDraftCombo] = useState<HotkeyCombo>(EMPTY_COMBO);
+  const [invalidReleaseNotice, setInvalidReleaseNotice] = useState(false);
   const onRecordRef = useRef(onRecord);
   onRecordRef.current = onRecord;
   const recordingActiveRef = useRef(false);
+  const draftComboRef = useRef<HotkeyCombo>(EMPTY_COMBO);
+  const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const updateDraftCombo = useCallback(
+    (updater: (combo: HotkeyCombo) => HotkeyCombo) => {
+      const next = updater(draftComboRef.current);
+      draftComboRef.current = next;
+      setDraftCombo(next);
+    },
+    [],
+  );
+
+  const clearWarningTimer = useCallback(() => {
+    if (warningTimerRef.current) {
+      clearTimeout(warningTimerRef.current);
+      warningTimerRef.current = null;
+    }
+  }, []);
+
+  const showInvalidReleaseNotice = useCallback(() => {
+    clearWarningTimer();
+    setInvalidReleaseNotice(true);
+    warningTimerRef.current = setTimeout(() => {
+      setInvalidReleaseNotice(false);
+      warningTimerRef.current = null;
+    }, 1800);
+  }, [clearWarningTimer]);
 
   const startRecording = useCallback(() => {
     recordingActiveRef.current = true;
     setState("recording");
-    setLiveModifiers([]);
-    setCapturedCombo(null);
+    draftComboRef.current = EMPTY_COMBO;
+    setDraftCombo(EMPTY_COMBO);
+    setInvalidReleaseNotice(false);
     window.api?.startHotkeyRecording();
   }, []);
 
   const cancelRecording = useCallback(() => {
+    clearWarningTimer();
     recordingActiveRef.current = false;
     setState("idle");
-    setLiveModifiers([]);
-    setCapturedCombo(null);
+    draftComboRef.current = EMPTY_COMBO;
+    setDraftCombo(EMPTY_COMBO);
+    setInvalidReleaseNotice(false);
     window.api?.stopHotkeyRecording();
-  }, []);
+  }, [clearWarningTimer]);
 
-  const saveRecording = useCallback(() => {
-    const accel = capturedCombo?.key ? comboToAccelerator(capturedCombo) : null;
+  const completeRecording = useCallback(() => {
+    const accel = comboToAccelerator(draftComboRef.current);
+    if (!accel) {
+      if (
+        draftComboRef.current.key ||
+        draftComboRef.current.modifiers.length > 0
+      ) {
+        showInvalidReleaseNotice();
+        window.api?.stopHotkeyRecording();
+        recordingActiveRef.current = false;
+        setState("idle");
+        draftComboRef.current = EMPTY_COMBO;
+        setDraftCombo(EMPTY_COMBO);
+      }
+      return;
+    }
+
+    clearWarningTimer();
     if (accel) {
       onRecordRef.current(accel);
     }
     // Re-register the global listener with the new accelerator (single IPC)
-    window.api?.stopHotkeyRecording(accel ?? undefined);
+    window.api?.stopHotkeyRecording(accel);
     recordingActiveRef.current = false;
     setState("idle");
-    setLiveModifiers([]);
-    setCapturedCombo(null);
-  }, [capturedCombo]);
+    draftComboRef.current = EMPTY_COMBO;
+    setDraftCombo(EMPTY_COMBO);
+    setInvalidReleaseNotice(false);
+  }, [clearWarningTimer, showInvalidReleaseNotice]);
 
   // Global capture: native listener (all platforms) + DOM on macOS for Alt+Space etc.
   useEffect(() => {
     if (state !== "recording" || !window.api) return;
 
     const removeModifiers = window.api.onHotkeyRecordModifiers((modifiers) => {
-      setLiveModifiers(modifiers);
+      updateDraftCombo((combo) => ({
+        ...combo,
+        modifiers: mergeModifiers(combo.modifiers, modifiers),
+      }));
     });
 
     const removeCaptured = window.api.onHotkeyRecordCaptured((combo) => {
-      setCapturedCombo(combo);
-      setLiveModifiers([]);
-      setState("captured");
+      updateDraftCombo((current) => normalizeCapturedCombo(current, combo));
+    });
+
+    const removeReleased = window.api.onHotkeyRecordReleased(() => {
+      completeRecording();
     });
 
     const removeCancel = window.api.onHotkeyRecordCancel(() => {
       recordingActiveRef.current = false;
       setState("idle");
-      setLiveModifiers([]);
-      setCapturedCombo(null);
+      draftComboRef.current = EMPTY_COMBO;
+      setDraftCombo(EMPTY_COMBO);
+      setInvalidReleaseNotice(false);
     });
 
     return () => {
       removeModifiers();
       removeCaptured();
+      removeReleased();
       removeCancel();
     };
-  }, [state]);
+  }, [state, completeRecording, updateDraftCombo]);
 
   useEffect(() => {
     if (state !== "recording" || !USE_DOM_CAPTURE) return;
@@ -239,39 +373,60 @@ export function useHotkeyRecorder(
       const modifiers = modifiersFromEvent(e);
 
       if (isDomModifierKey(e)) {
-        setLiveModifiers(modifiers);
+        updateDraftCombo((combo) => ({
+          ...combo,
+          modifiers: mergeModifiers(combo.modifiers, modifiers),
+        }));
         return;
       }
 
       const key = domKeyFromEvent(e);
       if (!key) return;
 
-      setCapturedCombo({ modifiers, key });
-      setLiveModifiers([]);
-      setState("captured");
-      window.api?.pauseHotkeyRecording();
+      updateDraftCombo((combo) => ({
+        modifiers: mergeModifiers(combo.modifiers, modifiers),
+        key,
+      }));
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (e.key === "Escape") return;
+      completeRecording();
     };
 
     window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [state, cancelRecording]);
+    window.addEventListener("keyup", handleKeyUp, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keyup", handleKeyUp, true);
+    };
+  }, [state, cancelRecording, completeRecording, updateDraftCombo]);
 
   // Stop main process recording only if we started it (avoids re-registering hotkey on every settings navigation)
   useEffect(() => {
     return () => {
+      clearWarningTimer();
       if (recordingActiveRef.current) {
         recordingActiveRef.current = false;
         window.api?.stopHotkeyRecording();
       }
     };
-  }, []);
+  }, [clearWarningTimer]);
 
   return {
     state,
-    liveModifiers,
-    capturedCombo,
+    liveModifiers: draftCombo.modifiers,
+    capturedCombo:
+      draftCombo.modifiers.length > 0 || draftCombo.key ? draftCombo : null,
+    canSaveRecording: isValidHotkeyCombo(draftCombo),
+    needsModifierOrMouseButton: needsModifierOrMouseButton(
+      draftCombo.key ? draftCombo : null,
+    ),
+    invalidReleaseNotice,
     startRecording,
     cancelRecording,
-    saveRecording,
   };
 }

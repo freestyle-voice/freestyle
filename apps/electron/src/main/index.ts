@@ -1081,6 +1081,33 @@ app.whenReady().then(async () => {
 });
 
 const DEFAULT_HOTKEY = "Alt+Space";
+const HOTKEY_MODIFIER_PARTS = new Set([
+  "alt",
+  "option",
+  "control",
+  "ctrl",
+  "command",
+  "cmd",
+  "commandorcontrol",
+  "cmdorctrl",
+  "shift",
+  "super",
+  "meta",
+  "win",
+  "fn",
+  "globe",
+  "rightalt",
+  "rightoption",
+  "rightcontrol",
+  "rightctrl",
+  "rightshift",
+  "rightcommand",
+  "rightcmd",
+  "rightsuper",
+  "rightwin",
+  "rightmeta",
+]);
+const HOTKEY_MACRO_MOUSE_PARTS = new Set(["mousebutton4", "mousebutton5"]);
 
 function isValidAccelerator(accel: string): boolean {
   if (!accel || typeof accel !== "string") return false;
@@ -1088,7 +1115,13 @@ function isValidAccelerator(accel: string): boolean {
   if (accel.endsWith("+")) return false;
   const parts = accel.split("+");
   if (parts.some((p) => !p.trim())) return false;
-  return true;
+  return parts.some((part) => {
+    const normalized = part.trim().toLowerCase();
+    return (
+      HOTKEY_MODIFIER_PARTS.has(normalized) ||
+      HOTKEY_MACRO_MOUSE_PARTS.has(normalized)
+    );
+  });
 }
 
 function loadHotkeyFromDB(): string | undefined {

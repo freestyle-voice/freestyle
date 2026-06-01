@@ -93,6 +93,8 @@ static int parse_key_name(const char *name) {
     if (strcasecmp(name, "CapsLock") == 0) return KEY_CAPSLOCK;
     if (strcasecmp(name, "Pause") == 0) return KEY_PAUSE;
     if (strcasecmp(name, "Insert") == 0) return KEY_INSERT;
+    if (strcasecmp(name, "MouseButton4") == 0 || strcasecmp(name, "Mouse4") == 0) return BTN_SIDE;
+    if (strcasecmp(name, "MouseButton5") == 0 || strcasecmp(name, "Mouse5") == 0) return BTN_EXTRA;
 
     /* Function keys */
     if (name[0] == 'F' || name[0] == 'f') {
@@ -240,6 +242,8 @@ static const char *keycode_to_record_name(int code) {
     if (code == KEY_CAPSLOCK) return "CapsLock";
     if (code == KEY_PAUSE) return "Pause";
     if (code == KEY_INSERT) return "Insert";
+    if (code == BTN_SIDE) return "MouseButton4";
+    if (code == BTN_EXTRA) return "MouseButton5";
     if (code == KEY_RIGHTALT) return "RightAlt";
     if (code == KEY_RIGHTCTRL) return "RightControl";
     if (code == KEY_RIGHTSHIFT) return "RightShift";
@@ -270,7 +274,16 @@ static const char *keycode_to_record_name(int code) {
 }
 
 static void handle_record_event(int code, int pressed) {
-    if (!pressed) return;
+    int is_mod = is_ctrl(code) || is_alt(code) || is_shift(code) || is_meta(code);
+
+    if (!pressed) {
+        if (is_mod) {
+            update_modifier(code, 0);
+        }
+        printf("RECORD_RELEASE\n");
+        fflush(stdout);
+        return;
+    }
 
     if (code == KEY_ESC) {
         printf("RECORD_CANCEL\n");
@@ -278,7 +291,6 @@ static void handle_record_event(int code, int pressed) {
         return;
     }
 
-    int is_mod = is_ctrl(code) || is_alt(code) || is_shift(code) || is_meta(code);
     if (is_mod) {
         update_modifier(code, 1);
         if (code == KEY_RIGHTALT || code == KEY_RIGHTCTRL ||

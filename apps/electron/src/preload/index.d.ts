@@ -29,6 +29,7 @@ declare global {
       onHotkeyRecordCaptured: (
         callback: (combo: { modifiers: string[]; key: string }) => void,
       ) => () => void;
+      onHotkeyRecordReleased: (callback: () => void) => () => void;
       onHotkeyRecordCancel: (callback: () => void) => () => void;
       // Auto-updater
       checkForUpdate: () => Promise<{

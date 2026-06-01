@@ -35,6 +35,22 @@ const MAC_RIGHT_MOD_KEYS: Record<string, string> = {
   rightshift: "RightShift",
 };
 
+const RIGHT_MODIFIER_KEYS: Record<string, string> = {
+  RightOption: "Alt",
+  RightAlt: "Alt",
+  RightCommand: "Command",
+  RightControl: "Control",
+  RightShift: "Shift",
+  RightSuper: "Super",
+};
+
+const MAC_FLAG_MODIFIERS: Record<string, string> = {
+  control: "Control",
+  option: "Alt",
+  shift: "Shift",
+  command: "Command",
+};
+
 export class HotkeyRecorder {
   private process: ChildProcess | null = null;
   private target: WebContents | null = null;
@@ -67,6 +83,8 @@ export class HotkeyRecorder {
     const args: string[] = [];
     if (process.platform !== "darwin") {
       args.push("--record");
+    } else {
+      args.push("MouseButton4,MouseButton5");
     }
 
     try {
@@ -141,7 +159,10 @@ export class HotkeyRecorder {
   private sendCaptured(combo: HotkeyCombo): void {
     this.target?.send("hotkey-record:captured", combo);
     this.callbacks.onCaptured(combo);
-    this.stop();
+  }
+
+  private sendReleased(): void {
+    this.target?.send("hotkey-record:released");
   }
 
   private sendCancel(): void {
@@ -173,17 +194,58 @@ export class HotkeyRecorder {
       return;
     }
 
+    if (line.startsWith("RECORD_RELEASE")) {
+      this.sendReleased();
+      return;
+    }
+
     if (process.platform !== "darwin") return;
 
+    if (line.startsWith("FLAGS:")) {
+      const raw = line.slice("FLAGS:".length);
+      const modifiers = raw
+        ? raw
+            .split(",")
+            .map((part) => MAC_FLAG_MODIFIERS[part.trim().toLowerCase()])
+            .filter((part): part is string => Boolean(part))
+        : [];
+      this.sendModifiers(modifiers);
+      return;
+    }
+
     if (line === "FN_DOWN") {
-      this.sendCaptured({ modifiers: [], key: "Fn" });
+      this.sendModifiers([...this.pendingModifiers, "Fn"]);
+      return;
+    }
+
+    if (line === "FN_UP") {
+      this.sendReleased();
+      return;
+    }
+
+    if (line.startsWith("MOUSE_BUTTON_DOWN:")) {
+      const key = line.slice("MOUSE_BUTTON_DOWN:".length);
+      if (key) {
+        this.sendCaptured({ modifiers: [...this.pendingModifiers], key });
+      }
+      return;
+    }
+
+    if (line.startsWith("MOUSE_BUTTON_UP:")) {
+      this.sendReleased();
       return;
     }
 
     if (line.startsWith("RIGHT_MOD_DOWN:")) {
       const modName = line.slice("RIGHT_MOD_DOWN:".length);
       const key = MAC_RIGHT_MOD_KEYS[modName.toLowerCase()] ?? modName;
-      this.sendCaptured({ modifiers: [], key });
+      const modifier = RIGHT_MODIFIER_KEYS[key] ?? key;
+      this.sendModifiers([...this.pendingModifiers, modifier]);
+      return;
+    }
+
+    if (line.startsWith("RIGHT_MOD_UP:") || line.startsWith("MODIFIER_UP:")) {
+      this.sendReleased();
     }
   }
 }

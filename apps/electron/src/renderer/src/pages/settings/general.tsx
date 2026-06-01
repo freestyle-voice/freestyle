@@ -210,9 +210,10 @@ export default function GeneralSettingsPage(): React.JSX.Element {
     state: recorderState,
     liveModifiers,
     capturedCombo,
+    canSaveRecording,
+    needsModifierOrMouseButton,
+    invalidReleaseNotice,
     startRecording: startHotkeyRecording,
-    cancelRecording: cancelHotkeyRecording,
-    saveRecording: saveHotkeyRecording,
   } = useHotkeyRecorder(handleHotkeyRecorded);
 
   // Load available audio input devices
@@ -420,7 +421,12 @@ export default function GeneralSettingsPage(): React.JSX.Element {
 
   // Build display keys for current recorder state
   const liveKeys = liveModifiers.map(keyDisplayLabel);
-  const capturedKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : [];
+  const draftKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : liveKeys;
+  const captureHint = needsModifierOrMouseButton
+    ? "Add a modifier or side mouse button"
+    : canSaveRecording
+      ? "Release to save"
+      : "Press a modifier or side mouse button...";
 
   return (
     <div
@@ -517,60 +523,44 @@ export default function GeneralSettingsPage(): React.JSX.Element {
             }
           >
             {recorderState === "idle" ? (
-              <button
-                type="button"
-                onClick={startHotkeyRecording}
-                className="border-border hover:bg-secondary inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2 transition-colors"
-              >
-                <Keyboard className="text-muted-foreground h-4 w-4 shrink-0" />
-                <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
-                <span className="text-muted-foreground ml-1 text-xs">
-                  Change
-                </span>
-              </button>
-            ) : recorderState === "recording" ? (
-              <div className="border-primary/60 bg-primary/5 inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
+              <div className="relative inline-flex">
+                <button
+                  type="button"
+                  onClick={startHotkeyRecording}
+                  className="border-border hover:bg-secondary inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2 transition-colors"
+                >
+                  <Keyboard className="text-muted-foreground h-4 w-4 shrink-0" />
+                  <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
+                  <span className="text-muted-foreground ml-1 text-xs">
+                    Change
+                  </span>
+                </button>
+                {invalidReleaseNotice && (
+                  <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                    Hotkeys need a modifier or side mouse button
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
                 <Keyboard className="text-primary h-4 w-4 shrink-0" />
-                {liveKeys.length > 0 ? (
+                {draftKeys.length > 0 ? (
                   <>
-                    <KeyComboDisplay keys={liveKeys} variant="dim" />
-                    <span className="text-muted-foreground animate-pulse text-xs">
-                      + press a key
+                    <KeyComboDisplay keys={draftKeys} variant="dim" />
+                    <span className="text-muted-foreground text-xs">
+                      {captureHint}
                     </span>
                   </>
                 ) : (
                   <span className="text-muted-foreground animate-pulse text-sm">
-                    Press a key combination…
+                    {captureHint}
                   </span>
                 )}
-                <button
-                  type="button"
-                  onClick={cancelHotkeyRecording}
-                  className="border-border hover:bg-secondary ml-2 rounded-md border px-2.5 py-1 text-xs"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <div className="border-primary/60 bg-primary/5 inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
-                <Keyboard className="text-primary h-4 w-4 shrink-0" />
-                <KeyComboDisplay keys={capturedKeys} variant="recording" />
-                <div className="ml-2 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={saveHotkeyRecording}
-                    className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-2.5 py-1 text-xs font-medium"
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cancelHotkeyRecording}
-                    className="border-border hover:bg-secondary rounded-md border px-2.5 py-1 text-xs"
-                  >
-                    Cancel
-                  </button>
-                </div>
+                {invalidReleaseNotice && (
+                  <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                    Hotkeys need a modifier or side mouse button
+                  </div>
+                )}
               </div>
             )}
           </Row>

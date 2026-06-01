@@ -41,6 +41,39 @@ function formatHotkeyForBinary(hotkey: string): string {
   return hotkey;
 }
 
+function isMacroMouseButton(key: string | null): boolean {
+  return key === "mousebutton4" || key === "mousebutton5";
+}
+
+function modifierTokenToMacCategory(token: string): string | null {
+  if (token === "alt" || token === "option") {
+    return "option";
+  }
+  if (
+    token === "ctrl" ||
+    token === "control" ||
+    token === "commandorcontrol" ||
+    token === "cmdorctrl"
+  ) {
+    return "control";
+  }
+  if (token === "shift") {
+    return "shift";
+  }
+  if (token === "fn" || token === "globe") {
+    return "fn";
+  }
+  if (
+    token === "meta" ||
+    token === "super" ||
+    token === "command" ||
+    token === "cmd"
+  ) {
+    return "command";
+  }
+  return null;
+}
+
 /**
  * Parse an Electron-style hotkey accelerator into its constituent parts
  * for matching against macOS key listener events.
@@ -50,30 +83,32 @@ function parseHotkeyParts(hotkey: string): {
   key: string | null;
 } {
   const parts = hotkey.split("+").map((p) => p.trim().toLowerCase());
-  const key = parts.length > 0 ? parts[parts.length - 1] : null;
+  let key: string | null = null;
   const modifiers = new Set<string>();
 
-  for (let i = 0; i < parts.length - 1; i++) {
-    const mod = parts[i];
-    if (mod === "alt" || mod === "option") modifiers.add("option");
-    else if (
-      mod === "ctrl" ||
-      mod === "control" ||
-      mod === "commandorcontrol" ||
-      mod === "cmdorctrl"
-    )
-      modifiers.add("control");
-    else if (mod === "shift") modifiers.add("shift");
-    else if (
-      mod === "meta" ||
-      mod === "super" ||
-      mod === "command" ||
-      mod === "cmd"
-    )
-      modifiers.add("command");
+  for (const part of parts) {
+    const modifier = modifierTokenToMacCategory(part);
+    if (modifier) {
+      modifiers.add(modifier);
+    } else if (part) {
+      key = part;
+    }
   }
 
   return { modifiers, key };
+}
+
+function macMouseSuppressionArgs(hotkey: string): string[] {
+  const { key } = parseHotkeyParts(hotkey);
+  if (!isMacroMouseButton(key)) return [];
+  return [key === "mousebutton4" ? "MouseButton4" : "MouseButton5"];
+}
+
+function macRightModifierKey(hotkey: string): string {
+  const aliases: Record<string, string> = {
+    rightalt: "rightoption",
+  };
+  return aliases[hotkey] ?? hotkey;
 }
 
 export class NativeKeyListener {
@@ -88,6 +123,7 @@ export class NativeKeyListener {
   // macOS modifier tracking for hotkey matching
   private macModState = new Set<string>();
   private macFlagState = new Set<string>();
+  private macFnDown = false;
   private macHotkeyActive = false;
 
   constructor(options: KeyListenerOptions) {
@@ -117,9 +153,11 @@ export class NativeKeyListener {
 
     const args: string[] = [];
 
-    // macOS key listener doesn't need hotkey arg -- it reports all events
-    // and the main process filters. Windows and Linux take the hotkey.
-    if (process.platform !== "darwin") {
+    // macOS reports all events and main filters; pass mouse buttons only when
+    // they should be suppressed globally. Windows/Linux take the hotkey.
+    if (process.platform === "darwin") {
+      args.push(...macMouseSuppressionArgs(this.options.hotkey));
+    } else {
       args.push(formatHotkeyForBinary(this.options.hotkey));
     }
 
@@ -191,12 +229,22 @@ export class NativeKeyListener {
     const hotkey = this.options.hotkey.toLowerCase();
 
     // Fn/Globe key
-    if (line === "FN_DOWN" && (hotkey === "fn" || hotkey === "globe")) {
-      this.options.onKeyDown();
+    if (line === "FN_DOWN") {
+      this.macFnDown = true;
+      if (hotkey === "fn" || hotkey === "globe") {
+        this.options.onKeyDown();
+      } else {
+        this.checkMacHotkeyMatch();
+      }
       return;
     }
-    if (line === "FN_UP" && (hotkey === "fn" || hotkey === "globe")) {
-      this.options.onKeyUp();
+    if (line === "FN_UP") {
+      this.macFnDown = false;
+      if (hotkey === "fn" || hotkey === "globe") {
+        this.options.onKeyUp();
+      } else {
+        this.checkMacCompoundRelease();
+      }
       return;
     }
 
@@ -211,8 +259,13 @@ export class NativeKeyListener {
       const modName = line.slice(13);
       this.macModState.delete(modName.toLowerCase());
       if (this.macHotkeyActive) {
-        this.macHotkeyActive = false;
-        this.options.onKeyUp();
+        const hotkey = macRightModifierKey(this.options.hotkey.toLowerCase());
+        if (hotkey === modName.toLowerCase()) {
+          this.macHotkeyActive = false;
+          this.options.onKeyUp();
+        } else {
+          this.checkMacCompoundRelease();
+        }
       }
       return;
     }
@@ -243,6 +296,17 @@ export class NativeKeyListener {
           : [],
       );
       this.checkMacCompoundRelease();
+      this.checkMacHotkeyMatch();
+      return;
+    }
+
+    if (line.startsWith("MOUSE_BUTTON_DOWN:")) {
+      this.handleMacKeyEvent(line.slice("MOUSE_BUTTON_DOWN:".length), true);
+      return;
+    }
+
+    if (line.startsWith("MOUSE_BUTTON_UP:")) {
+      this.handleMacKeyEvent(line.slice("MOUSE_BUTTON_UP:".length), false);
       return;
     }
 
@@ -262,11 +326,12 @@ export class NativeKeyListener {
     if (!this.macHotkeyActive) return;
 
     const { modifiers, key: hotkeyKey } = parseHotkeyParts(this.options.hotkey);
-    if (!hotkeyKey) return;
-    const keyLower = hotkeyKey.toLowerCase();
-    if (keyLower === "fn" || keyLower === "globe") return;
+    if (hotkeyKey) {
+      const keyLower = hotkeyKey.toLowerCase();
+      if (keyLower === "fn" || keyLower === "globe") return;
+    }
 
-    const allModsMatch = [...modifiers].every((m) => this.macFlagState.has(m));
+    const allModsMatch = this.areMacModifiersActive(modifiers);
     if (!allModsMatch) {
       this.macHotkeyActive = false;
       this.options.onKeyUp();
@@ -278,7 +343,7 @@ export class NativeKeyListener {
     const { modifiers, key: hotkeyKey } = parseHotkeyParts(this.options.hotkey);
     if (!hotkeyKey || hotkeyKey.toLowerCase() !== key.toLowerCase()) return;
 
-    const allModsMatch = [...modifiers].every((m) => this.macFlagState.has(m));
+    const allModsMatch = this.areMacModifiersActive(modifiers);
     if (!allModsMatch) return;
 
     if (down) {
@@ -305,13 +370,13 @@ export class NativeKeyListener {
     const { modifiers, key: hotkeyKey } = parseHotkeyParts(this.options.hotkey);
 
     // Direct right-modifier hotkey (e.g., hotkey is literally "RightOption")
-    if (this.macModState.has(hotkey)) {
+    if (this.macModState.has(macRightModifierKey(hotkey))) {
       this.macHotkeyActive = true;
       this.options.onKeyDown();
       return;
     }
 
-    // Compound hotkeys (Alt+Space, etc.) use FLAGS + KEY_DOWN — not modifier-only match
+    // Compound hotkeys (Alt+Space, mouse buttons, etc.) use their own down event.
     if (hotkeyKey) {
       const keyLower = hotkeyKey.toLowerCase();
       if (keyLower !== "fn" && keyLower !== "globe") return;
@@ -319,26 +384,37 @@ export class NativeKeyListener {
 
     if (modifiers.size === 0) return;
 
-    // Map macOS modifier names to categories
-    const modCategoryMap: Record<string, string> = {
-      rightoption: "option",
-      rightcommand: "command",
-      rightcontrol: "control",
-      rightshift: "shift",
-    };
-
-    const activeCategories = new Set<string>();
-    for (const mod of this.macModState) {
-      const category = modCategoryMap[mod];
-      if (category) activeCategories.add(category);
-    }
-
-    // Check if all required modifiers are active
+    const activeCategories = this.currentMacModifierCategories();
     const allModsMatch = [...modifiers].every((m) => activeCategories.has(m));
     if (allModsMatch) {
       this.macHotkeyActive = true;
       this.options.onKeyDown();
     }
+  }
+
+  private currentMacModifierCategories(): Set<string> {
+    const activeCategories = new Set(this.macFlagState);
+    if (this.macFnDown) activeCategories.add("fn");
+
+    const modCategoryMap: Record<string, string> = {
+      rightoption: "option",
+      rightalt: "option",
+      rightcommand: "command",
+      rightcontrol: "control",
+      rightshift: "shift",
+    };
+
+    for (const mod of this.macModState) {
+      const category = modCategoryMap[mod];
+      if (category) activeCategories.add(category);
+    }
+
+    return activeCategories;
+  }
+
+  private areMacModifiersActive(modifiers: Set<string>): boolean {
+    const activeCategories = this.currentMacModifierCategories();
+    return [...modifiers].every((m) => activeCategories.has(m));
   }
 
   private scheduleRestart(): void {

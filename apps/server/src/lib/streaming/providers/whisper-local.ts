@@ -31,7 +31,13 @@ export class WhisperLocalTranscriptionProvider
       !isServerBinaryAvailable() &&
       !isServerRunning()
     ) {
-      await ensureBinariesDownloaded();
+      try {
+        await ensureBinariesDownloaded();
+      } catch (err) {
+        throw new Error(
+          `whisper.cpp binary not found and automatic setup failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
 
     if (isDev) {

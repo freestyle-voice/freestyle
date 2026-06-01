@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 
 /**
- * Download or build whisper.cpp binaries for development.
+ * Download or build whisper.cpp binaries.
  *
  * Usage:
- *   node scripts/download-whisper-cpp.mjs
+ *   node scripts/download-whisper-cpp.mjs              # dev: ~/.cache/freestyle/whisper-bin/
+ *   node scripts/download-whisper-cpp.mjs --resources   # CI:  resources/whisper/{platform}-{arch}/
  *
  * On Windows: downloads pre-built binaries from GitHub releases.
  * On macOS/Linux: builds from source (requires cmake + C compiler).
  *
- * Binaries are placed in ~/.cache/freestyle/whisper-bin/ (same
- * location the app uses at runtime, so the dev build picks them up).
+ * By default binaries land in ~/.cache/freestyle/whisper-bin/ (the
+ * location the app checks at runtime).  Pass --resources to place them
+ * in resources/whisper/{platform}-{arch}/ so electron-builder can
+ * bundle them into the packaged app via extraResources.
  */
 
 import { execFileSync } from "node:child_process";
@@ -21,17 +24,32 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  renameSync,
   rmSync,
   unlinkSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { fileURLToPath } from "node:url";
 
 const VERSION = "1.7.5";
 const WIN_VERSION = "1.8.5";
-const BIN_DIR = join(homedir(), ".cache", "freestyle", "whisper-bin");
+const CACHE_DIR = join(homedir(), ".cache", "freestyle", "whisper-bin");
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ELECTRON_ROOT = join(__dirname, "..");
+const RESOURCES_DIR = join(
+  ELECTRON_ROOT,
+  "resources",
+  "whisper",
+  `${process.platform}-${process.arch}`,
+);
+
+function getOutputDir() {
+  return process.argv.includes("--resources") ? RESOURCES_DIR : CACHE_DIR;
+}
 
 async function fetchToFile(url, dest) {
   const res = await fetch(url, {
@@ -58,12 +76,12 @@ async function fetchToFile(url, dest) {
   await pipeline(nodeStream, fileStream);
 }
 
-async function buildFromSource() {
-  if (!existsSync(BIN_DIR)) mkdirSync(BIN_DIR, { recursive: true });
+async function buildFromSource(outDir) {
+  if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
-  const srcDir = join(BIN_DIR, "whisper.cpp-src");
+  const srcDir = join(outDir, "whisper.cpp-src");
   const buildDir = join(srcDir, "build");
-  const tarPath = join(BIN_DIR, `whisper-${VERSION}.tar.gz`);
+  const tarPath = join(outDir, `whisper-${VERSION}.tar.gz`);
   const tarballUrl = `https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v${VERSION}.tar.gz`;
 
   console.log("Downloading whisper.cpp source...");
@@ -99,8 +117,8 @@ async function buildFromSource() {
   for (const name of ["whisper-cli", "whisper-server"]) {
     const built = join(buildDir, "bin", name);
     if (existsSync(built)) {
-      copyFileSync(built, join(BIN_DIR, name));
-      chmodSync(join(BIN_DIR, name), 0o755);
+      copyFileSync(built, join(outDir, name));
+      chmodSync(join(outDir, name), 0o755);
     }
   }
 
@@ -109,17 +127,17 @@ async function buildFromSource() {
     if (!existsSync(libDir)) continue;
     for (const file of readdirSync(libDir)) {
       if (file.endsWith(".dylib") || /\.so(\.\d+)*$/.test(file)) {
-        copyFileSync(join(libDir, file), join(BIN_DIR, file));
+        copyFileSync(join(libDir, file), join(outDir, file));
       }
     }
   }
 
   if (process.platform === "darwin") {
     for (const name of ["whisper-cli", "whisper-server"]) {
-      const binPath = join(BIN_DIR, name);
+      const binPath = join(outDir, name);
       if (!existsSync(binPath)) continue;
       try {
-        execFileSync("install_name_tool", ["-add_rpath", BIN_DIR, binPath], {
+        execFileSync("install_name_tool", ["-add_rpath", outDir, binPath], {
           stdio: "pipe",
         });
       } catch {}
@@ -129,14 +147,14 @@ async function buildFromSource() {
   try {
     rmSync(srcDir, { recursive: true, force: true });
   } catch {}
-  console.log("Done. Binaries at", BIN_DIR);
+  console.log("Done. Binaries at", outDir);
 }
 
-async function downloadWindows() {
-  if (!existsSync(BIN_DIR)) mkdirSync(BIN_DIR, { recursive: true });
+async function downloadWindows(outDir) {
+  if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
   const url = `https://github.com/ggml-org/whisper.cpp/releases/download/v${WIN_VERSION}/whisper-bin-x64.zip`;
-  const tmpZip = join(BIN_DIR, "whisper-bin.zip");
+  const tmpZip = join(outDir, "whisper-bin.zip");
 
   console.log("Downloading pre-built Windows binaries...");
   await fetchToFile(url, tmpZip);
@@ -145,7 +163,7 @@ async function downloadWindows() {
     "powershell",
     [
       "-Command",
-      `Expand-Archive -Force -Path '${tmpZip}' -DestinationPath '${BIN_DIR}'`,
+      `Expand-Archive -Force -Path '${tmpZip}' -DestinationPath '${outDir}'`,
     ],
     { stdio: "pipe", timeout: 30_000 },
   );
@@ -153,20 +171,32 @@ async function downloadWindows() {
   try {
     unlinkSync(tmpZip);
   } catch {}
-  console.log("Done. Binaries at", BIN_DIR);
+
+  // The upstream zip nests executables inside a Release/ subdirectory.
+  // Flatten them so they sit directly inside outDir.
+  const releaseDir = join(outDir, "Release");
+  if (existsSync(releaseDir)) {
+    for (const name of readdirSync(releaseDir)) {
+      renameSync(join(releaseDir, name), join(outDir, name));
+    }
+    rmSync(releaseDir, { recursive: true, force: true });
+  }
+
+  console.log("Done. Binaries at", outDir);
 }
 
 async function main() {
+  const outDir = getOutputDir();
   const cli = process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli";
-  if (existsSync(join(BIN_DIR, cli))) {
-    console.log("whisper-cli already exists at", BIN_DIR);
+  if (existsSync(join(outDir, cli))) {
+    console.log("whisper-cli already exists at", outDir);
     return;
   }
 
   if (process.platform === "win32") {
-    await downloadWindows();
+    await downloadWindows(outDir);
   } else {
-    await buildFromSource();
+    await buildFromSource(outDir);
   }
 }
 

@@ -8,6 +8,11 @@ import {
   getServerBinaryName,
 } from "./constants.js";
 
+// On Windows, X_OK is not meaningful (no Unix-style execute permission bits).
+// Use F_OK (existence check) instead so we don't miss valid binaries.
+const EXEC_CHECK =
+  process.platform === "win32" ? constants.F_OK : constants.X_OK;
+
 function findInPath(name: string): string | null {
   try {
     const cmd = process.platform === "win32" ? "where" : "which";
@@ -26,14 +31,14 @@ function findExecutable(name: string | null): string | null {
 
   const localPath = join(getBinDir(), name);
   try {
-    accessSync(localPath, constants.X_OK);
+    accessSync(localPath, EXEC_CHECK);
     return localPath;
   } catch {}
 
   const resourcesDir = getResourcesDir();
   const bundledPath = join(resourcesDir, name);
   try {
-    accessSync(bundledPath, constants.X_OK);
+    accessSync(bundledPath, EXEC_CHECK);
     return bundledPath;
   } catch {}
 

@@ -87,6 +87,10 @@ let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let keyListener: NativeKeyListener | null = null;
+// Latching flag: once the native key listener (or globalShortcut fallback)
+// has started successfully, accessibility is confirmed. The flag persists
+// even when keyListener is temporarily torn down for hotkey recording.
+let accessibilityConfirmed = false;
 let hotkeyPressed = false;
 let currentHotkeyAccel: string | null = null;
 let hotkeyActivationMode: "hold" | "toggle" = "hold";
@@ -220,8 +224,8 @@ function createAppWindow(): void {
 
 function createSettingsWindow(): void {
   settingsWindow = new BrowserWindow({
-    width: 800,
-    height: 560,
+    width: 1152,
+    height: 648,
     minWidth: 720,
     minHeight: 480,
     show: false,
@@ -618,6 +622,9 @@ app.whenReady().then(async () => {
   // Set app user model id for windows
   electronApp.setAppUserModelId("com.freestyle.app");
 
+  // Override app.name so macOS menu shows "Freestyle" instead of the package name
+  app.setName("Freestyle");
+
   // Register the custom app:// protocol for production SPA support
   registerAppProtocol();
 
@@ -731,7 +738,12 @@ app.whenReady().then(async () => {
   ipcMain.handle("permissions:check-accessibility", async () => {
     if (process.platform === "darwin") {
       const { systemPreferences } = await import("electron");
-      return systemPreferences.isTrustedAccessibilityClient(false);
+      const trusted = systemPreferences.isTrustedAccessibilityClient(false);
+      // The Electron API can return a stale result when the code signature
+      // changes between builds. Cross-check with accessibilityConfirmed —
+      // a latching flag set when the native key listener (or globalShortcut
+      // fallback) starts successfully, proving accessibility is working.
+      return trusted || accessibilityConfirmed;
     }
     return true;
   });
@@ -972,6 +984,15 @@ app.whenReady().then(async () => {
     }
   });
 
+  // -- Launch at startup setting IPC --
+  ipcMain.handle("settings:launch-at-startup", () => {
+    return app.getLoginItemSettings().openAtLogin;
+  });
+
+  ipcMain.on("settings:set-launch-at-startup", (_event, enabled: boolean) => {
+    app.setLoginItemSettings({ openAtLogin: enabled });
+  });
+
   // -- Context-aware dictation: get frontmost app + browser context --
   ipcMain.handle("system:frontmost-app", async () => {
     try {
@@ -1160,7 +1181,9 @@ function registerHotkey(hotkey?: string): void {
 
   const started = keyListener.start();
 
-  if (!started) {
+  if (started) {
+    accessibilityConfirmed = true;
+  } else {
     console.warn(
       "[hotkey] Native key listener unavailable, falling back to Electron globalShortcut (toggle mode).",
     );
@@ -1176,7 +1199,9 @@ function registerHotkey(hotkey?: string): void {
         sendHotkeyUp();
       }
     });
-    if (!registered) {
+    if (registered) {
+      accessibilityConfirmed = true;
+    } else {
       const errorPayload = {
         message: `Could not register hotkey "${accel}". Try a different key combination in Settings.`,
       };

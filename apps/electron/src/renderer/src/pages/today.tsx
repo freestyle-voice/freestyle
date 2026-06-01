@@ -289,7 +289,9 @@ const SAMPLE_TRANSCRIPT = "Pushing the meeting to tomorrow at ten.";
 
 function TutorialDemo(): React.JSX.Element {
   const [phase, setPhase] = useState<DemoPhase>("idle");
-  const [hotkeyTokens, setHotkeyTokens] = useState<string[]>(["fn"]);
+  const [hotkeyTokens, setHotkeyTokens] = useState<string[]>(() =>
+    formatAcceleratorKeys("Alt+Space"),
+  );
   const stepRef = useRef(0);
   const timeoutRef = useRef<number | null>(null);
   // suspendedRef pauses the auto-loop while the real hotkey is held
@@ -328,12 +330,14 @@ function TutorialDemo(): React.JSX.Element {
     fetch(`${getApiBase()}/api/settings/hotkey`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { value?: string } | null) => {
-        if (data?.value) {
-          const tokens = formatAcceleratorKeys(data.value);
-          if (tokens.length > 0) setHotkeyTokens(tokens);
-        }
+        const val = data?.value || "Alt+Space";
+        const tokens = formatAcceleratorKeys(val);
+        if (tokens.length > 0) setHotkeyTokens(tokens);
       })
-      .catch(() => {});
+      .catch(() => {
+        const tokens = formatAcceleratorKeys("Alt+Space");
+        if (tokens.length > 0) setHotkeyTokens(tokens);
+      });
   }, []);
 
   // Real hotkey events override the loop while held.

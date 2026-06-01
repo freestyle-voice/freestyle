@@ -242,7 +242,11 @@ export default function AppPage(): React.JSX.Element {
         return;
       }
 
-      await window.api.pasteText(finalText);
+      try {
+        await window.api.pasteText(finalText);
+      } catch (err) {
+        console.error("[pill] paste failed:", err);
+      }
       window.api.sendTranscriptionDone();
 
       if (

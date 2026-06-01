@@ -1,4 +1,31 @@
 # Changelog
+## 0.0.12
+
+### Bug Fixes 🐛
+
+- Add Apple Events entitlement to fix paste on macOS by @MathurAditya724 in [#108](https://github.com/freestyle-voice/freestyle/pull/108)
+
+## 0.0.11
+
+### New Features ✨
+
+- Add launch at startup setting and fix accessibility permission check by @MathurAditya724 in [#106](https://github.com/freestyle-voice/freestyle/pull/106)
+
+### Other
+
+- MIT license by @matteo8p in [#103](https://github.com/freestyle-voice/freestyle/pull/103)
+- fixed Issue: 73 by @srirae in [#102](https://github.com/freestyle-voice/freestyle/pull/102)
+
+## 0.0.10
+
+### Bug Fixes 🐛
+
+- Set app name to Freestyle in macOS menu bar by @MathurAditya724 in [#100](https://github.com/freestyle-voice/freestyle/pull/100)
+
+### Other
+
+- Changed settings window size by @kaito-undefined in [#93](https://github.com/freestyle-voice/freestyle/pull/93)
+
 ## 0.0.9
 
 ### New Features ✨

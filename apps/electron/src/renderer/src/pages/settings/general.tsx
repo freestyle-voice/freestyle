@@ -109,6 +109,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
   const [downloading, setDownloading] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [autoUpdate, setAutoUpdate] = useState(true);
+  const [launchAtStartup, setLaunchAtStartup] = useState(false);
 
   // Permissions
   type MicStatus =
@@ -290,6 +291,12 @@ export default function GeneralSettingsPage(): React.JSX.Element {
       .then((v) => setAutoUpdate(v))
       .catch(() => {});
 
+    // Launch at startup setting
+    window.api
+      ?.getLaunchAtStartup()
+      .then((v) => setLaunchAtStartup(v))
+      .catch(() => {});
+
     // Auto-updater events
     const removeAvail = window.api?.onUpdateAvailable((info) => {
       setUpdateAvailable(info.version);
@@ -371,6 +378,11 @@ export default function GeneralSettingsPage(): React.JSX.Element {
   const handleAutoUpdateToggle = useCallback((enabled: boolean) => {
     setAutoUpdate(enabled);
     window.api?.setAutoUpdate(enabled);
+  }, []);
+
+  const handleLaunchAtStartupToggle = useCallback((enabled: boolean) => {
+    setLaunchAtStartup(enabled);
+    window.api?.setLaunchAtStartup(enabled);
   }, []);
 
   const clearHistory = useCallback(async () => {
@@ -462,9 +474,18 @@ export default function GeneralSettingsPage(): React.JSX.Element {
           <Row
             label="Automatic updates"
             desc="Download new versions in the background as soon as they ship."
-            last
           >
             <Toggle on={autoUpdate} onChange={handleAutoUpdateToggle} />
+          </Row>
+          <Row
+            label="Launch at startup"
+            desc="Automatically start Freestyle when you log in to your computer."
+            last
+          >
+            <Toggle
+              on={launchAtStartup}
+              onChange={handleLaunchAtStartupToggle}
+            />
           </Row>
         </Section>
 
@@ -713,6 +734,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
               onAction={
                 micStatus === "denied" && isMac ? openMicSettings : requestMic
               }
+              onManage={isMac ? openMicSettings : undefined}
             />
           </Row>
           <Row
@@ -736,6 +758,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
               }
               external={isMac}
               onAction={openAccessibility}
+              onManage={isMac ? openAccessibility : undefined}
               note={
                 !isMac && accessibilityStatus !== true
                   ? "Auto-granted"
@@ -909,6 +932,7 @@ function PermissionControl({
   actionLabel,
   external,
   onAction,
+  onManage,
   note,
 }: {
   granted: boolean;
@@ -916,13 +940,26 @@ function PermissionControl({
   actionLabel: string | null;
   external?: boolean;
   onAction?: () => void;
+  onManage?: () => void;
   note?: string;
 }) {
   return (
     <div className="flex items-center gap-3">
       <StatusDot granted={granted} checking={checking} />
       {granted ? (
-        <Check className="text-primary h-4 w-4" />
+        <>
+          <Check className="text-primary h-4 w-4" />
+          {onManage && (
+            <button
+              type="button"
+              onClick={onManage}
+              className="border-border hover:bg-secondary inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors"
+            >
+              Manage
+              <ExternalLink className="h-3 w-3" />
+            </button>
+          )}
+        </>
       ) : note ? (
         <span className="text-muted-foreground text-xs">{note}</span>
       ) : actionLabel && onAction ? (

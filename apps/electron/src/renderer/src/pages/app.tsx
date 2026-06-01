@@ -533,15 +533,16 @@ export default function AppPage(): React.JSX.Element {
       }
 
       try {
-        await Promise.race([
-          appContextPromise,
-          new Promise((resolve) => setTimeout(resolve, 300)),
-        ]);
-
         sessionStreamingRef.current = useStreamingRef.current;
-        const stream = sessionStreamingRef.current
-          ? await recorderRef.current.acquireStream()
-          : await recorderRef.current.start();
+        const [stream] = await Promise.all([
+          sessionStreamingRef.current
+            ? recorderRef.current.acquireStream()
+            : recorderRef.current.start(),
+          Promise.race([
+            appContextPromise,
+            new Promise((resolve) => setTimeout(resolve, 300)),
+          ]),
+        ]);
 
         if (!wantsMicRef.current) {
           recorderRef.current.cancel();

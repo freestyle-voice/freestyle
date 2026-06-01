@@ -1,8 +1,8 @@
 import { generateText } from "ai";
 import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
 import { getDb } from "./db.js";
+import { capture, captureException } from "./posthog.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
-import { captureException, metrics } from "./sentry.js";
 
 /** Build a context string from the raw x-app-context header for matching */
 function buildMatchContext(rawContext: string | null): string {
@@ -179,7 +179,10 @@ IMPORTANT: Your entire response must be the cleaned text and nothing else. No qu
         cleanedText = cleanModelOutput(result.text, defaults.llm.model_id);
       } catch (err) {
         captureException(err);
-        metrics.count("post_process.llm_error", 1);
+        capture("post process failed", {
+          provider: defaults.llm!.provider,
+          model: defaults.llm!.model_id,
+        });
         console.error("LLM cleanup failed:", err);
       }
     }
@@ -233,9 +236,9 @@ IMPORTANT: Your entire response must be the cleaned text and nothing else. No qu
     }
   }
 
-  metrics.distribution("post_process.latency", Date.now() - ppStart, {
-    unit: "millisecond",
-    attributes: llmModel ? { model: llmModel } : undefined,
+  capture("post process completed", {
+    duration_ms: Date.now() - ppStart,
+    ...(llmModel ? { model: llmModel } : {}),
   });
 
   return {

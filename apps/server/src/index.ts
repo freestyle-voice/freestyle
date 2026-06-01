@@ -1,10 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import {
-  captureException as posthogCaptureException,
-  shutdownPosthog,
-} from "./lib/posthog.js";
-import { captureException, initSentry } from "./lib/sentry.js";
+import { captureException, shutdownPosthog } from "./lib/posthog.js";
 import apiKeys from "./routes/api-keys.js";
 import dictionary from "./routes/dictionary.js";
 import formats from "./routes/formats.js";
@@ -17,8 +13,6 @@ import stream from "./routes/stream.js";
 import transcribe from "./routes/transcribe.js";
 import vocabulary from "./routes/vocabulary.js";
 import whisper, { autoStartWhisperServer } from "./routes/whisper.js";
-
-initSentry();
 
 process.on("SIGINT", () => shutdownPosthog().finally(() => process.exit(0)));
 process.on("SIGTERM", () => shutdownPosthog().finally(() => process.exit(0)));
@@ -35,7 +29,6 @@ const app = new Hono()
   })
   .onError((err, c) => {
     captureException(err);
-    posthogCaptureException(err);
     return c.json({ error: "Internal server error" }, 500);
   })
   .get("/", (c) => {

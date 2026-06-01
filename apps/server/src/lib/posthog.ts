@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { PostHog } from "posthog-node";
+import { getDb } from "./db.js";
 
 let _client: PostHog | null = null;
 
@@ -10,6 +11,23 @@ function getEnvironment(): string {
   return process.env.FREESTYLE_ENV === "production"
     ? "production"
     : "development";
+}
+
+function isEnabled(): boolean {
+  if (process.env.DO_NOT_TRACK === "1") return false;
+  if (getEnvironment() !== "production") return false;
+
+  try {
+    const db = getDb();
+    const row = db
+      .prepare("SELECT value FROM settings WHERE key = 'telemetry_enabled'")
+      .get() as { value: string } | undefined;
+    if (row?.value === "false") return false;
+  } catch {
+    // DB not ready yet — default to enabled
+  }
+
+  return true;
 }
 
 function getClient(): PostHog {
@@ -28,7 +46,6 @@ export function getDeviceId(): string {
   if (_deviceId) return _deviceId;
 
   try {
-    const { getDb } = require("./db.js") as typeof import("./db.js");
     const db = getDb();
     const row = db
       .prepare("SELECT value FROM settings WHERE key = 'posthog_device_id'")
@@ -57,7 +74,8 @@ export function capture(
   properties?: Record<string, unknown>,
 ): void {
   try {
-    getClient()?.capture({
+    if (!isEnabled()) return;
+    getClient().capture({
       distinctId: getDeviceId(),
       event,
       properties: { ...properties, environment: getEnvironment() },
@@ -72,7 +90,8 @@ export function captureException(
   additionalProperties?: Record<string, unknown>,
 ): void {
   try {
-    getClient()?.captureException(error, getDeviceId(), {
+    if (!isEnabled()) return;
+    getClient().captureException(error, getDeviceId(), {
       ...additionalProperties,
       environment: getEnvironment(),
     });

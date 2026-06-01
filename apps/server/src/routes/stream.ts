@@ -2,9 +2,8 @@ import { upgradeWebSocket } from "@hono/node-server";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { postProcess } from "../lib/post-process.js";
-import { capture } from "../lib/posthog.js";
+import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
-import { captureException, metrics } from "../lib/sentry.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
 import {
   getApiKeyForProvider,
@@ -92,10 +91,6 @@ const stream = new Hono().get(
         true,
       );
 
-      metrics.count("streaming.session_opened", 1, {
-        attributes: { provider: defaults.voice.provider },
-      });
-
       const session = openStreamingSession({
         providerId: defaults.voice.provider,
         apiKey,
@@ -115,25 +110,6 @@ const stream = new Hono().get(
           onFinal: (rawText) => {
             if (upstream !== session) return;
             const durationMs = Date.now() - sessionStartTime;
-
-            const streamTags = {
-              provider: voiceDefaults!.provider,
-              model: voiceDefaults!.model_id,
-            };
-            metrics.count("streaming.transcription_count", 1, {
-              attributes: streamTags,
-            });
-            metrics.distribution("streaming.latency", durationMs, {
-              unit: "millisecond",
-              attributes: streamTags,
-            });
-            if (audioDurationMs > 0) {
-              metrics.distribution(
-                "streaming.audio_duration",
-                audioDurationMs,
-                { unit: "millisecond", attributes: streamTags },
-              );
-            }
 
             if (!rawText?.trim()) {
               ws.send(JSON.stringify({ type: "final", text: "" }));

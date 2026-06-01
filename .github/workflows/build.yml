@@ -55,9 +55,56 @@ jobs:
         working-directory: apps/electron
         run: pnpm run typecheck:web
 
+  test-server:
+    name: Test (Server API)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: "package.json"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run server tests
+        run: pnpm --filter @freestyle/server run test
+
+  test-electron:
+    name: Test (Electron E2E)
+    needs: [test-server]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: "package.json"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libgtk-3-0 libgbm1 libasound2 libx11-xcb1
+
+      - name: Build server
+        run: pnpm --filter @freestyle/server build
+
+      - name: Build electron app
+        working-directory: apps/electron
+        run: pnpm run build
+
+      - name: Run Electron E2E tests
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm --filter @freestyle/electron run test:e2e
+
   build-linux:
     name: Build (Linux)
-    needs: [lint, typecheck]
+    needs: [lint, typecheck, test-server]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -93,7 +140,7 @@ jobs:
 
   build-mac:
     name: Build (macOS)
-    needs: [lint, typecheck]
+    needs: [lint, typecheck, test-server]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -133,7 +180,7 @@ jobs:
 
   build-windows:
     name: Build (Windows)
-    needs: [lint, typecheck]
+    needs: [lint, typecheck, test-server]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

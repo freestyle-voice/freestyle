@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./fonts.css";
 
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import { getApiBase, initApiBase } from "@renderer/lib/api";
@@ -39,56 +40,54 @@ initApiBase().then(async () => {
         persistence: "memory",
       });
       posthog.identify(deviceId);
-    } catch {
-      // PostHog init is best-effort — never block the app
-    }
+    } catch {}
   }
-
-  createRoot(document.getElementById("root")!).render(
-    <StrictMode>
-      <BrowserRouter>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <TooltipProvider>
-            <Routes>
-              <Route path="/" element={<Navigate to="/today" replace />} />
-              <Route path="/onboarding" element={<OnboardingPage />} />
-
-              <Route element={<AppShell />}>
-                <Route path="/today" element={<TodayPage />} />
-                <Route element={<PagePad />}>
-                  <Route path="/settings" element={<GeneralSettingsPage />} />
-                  <Route
-                    path="/settings/general"
-                    element={<Navigate to="/settings" replace />}
-                  />
-                  <Route path="/settings/models" element={<ModelsPage />} />
-                  <Route
-                    path="/settings/dictionary"
-                    element={<DictionaryPage />}
-                  />
-                  <Route
-                    path="/settings/vocabulary"
-                    element={<VocabularyPage />}
-                  />
-                  <Route path="/settings/formats" element={<FormatsPage />} />
-                  <Route path="/settings/history" element={<HistoryPage />} />
-                  <Route
-                    path="/settings/permissions"
-                    element={<Navigate to="/settings" replace />}
-                  />
-                </Route>
-              </Route>
-
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </TooltipProvider>
-        </ThemeProvider>
-      </BrowserRouter>
-    </StrictMode>,
-  );
 });
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <BrowserRouter>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        enableSystem
+        disableTransitionOnChange
+      >
+        <TooltipProvider>
+          <Routes>
+            <Route path="/" element={<Navigate to="/today" replace />} />
+            <Route path="/onboarding" element={<OnboardingPage />} />
+
+            <Route element={<AppShell />}>
+              <Route path="/today" element={<TodayPage />} />
+              <Route element={<PagePad />}>
+                <Route path="/settings" element={<GeneralSettingsPage />} />
+                <Route
+                  path="/settings/general"
+                  element={<Navigate to="/settings" replace />}
+                />
+                <Route path="/settings/models" element={<ModelsPage />} />
+                <Route
+                  path="/settings/dictionary"
+                  element={<DictionaryPage />}
+                />
+                <Route
+                  path="/settings/vocabulary"
+                  element={<VocabularyPage />}
+                />
+                <Route path="/settings/formats" element={<FormatsPage />} />
+                <Route path="/settings/history" element={<HistoryPage />} />
+                <Route
+                  path="/settings/permissions"
+                  element={<Navigate to="/settings" replace />}
+                />
+              </Route>
+            </Route>
+
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </TooltipProvider>
+      </ThemeProvider>
+    </BrowserRouter>
+  </StrictMode>,
+);

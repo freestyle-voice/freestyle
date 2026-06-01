@@ -44,7 +44,7 @@ const settings = new Hono()
     ).run(key, String(body.value));
 
     // Don't capture internal/system keys
-    const skipKeys = new Set(["posthog_device_id"]);
+    const skipKeys = new Set(["posthog_device_id", "telemetry_enabled"]);
     if (!skipKeys.has(key)) {
       capture("setting updated", { key });
     }

@@ -102,14 +102,17 @@ const stream = new Hono().get(
         bias,
         callbacks: {
           onReady: (model) => {
+            if (upstream !== session) return;
             reconnectAttempts = 0;
             flushPendingAudio();
             ws.send(JSON.stringify({ type: "session.ready", model }));
           },
           onPartial: (text) => {
+            if (upstream !== session) return;
             ws.send(JSON.stringify({ type: "partial", text }));
           },
           onFinal: (rawText) => {
+            if (upstream !== session) return;
             const durationMs = Date.now() - sessionStartTime;
 
             const streamTags = {

@@ -89,18 +89,6 @@ export function initSchema(db: DatabaseSync): void {
     }
   }
 
-  if (currentVersion < 6) {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS vocabulary (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        term TEXT NOT NULL UNIQUE,
-        notes TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )
-    `);
-  }
-
   if (currentVersion < 5) {
     db.exec(`
       CREATE TABLE IF NOT EXISTS format_rules (
@@ -183,6 +171,18 @@ export function initSchema(db: DatabaseSync): void {
         stmt.run(pattern, label, instructions, isDefault);
       }
     }
+  }
+
+  if (currentVersion < 6) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS vocabulary (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        term TEXT NOT NULL UNIQUE,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
   }
 
   // Upsert schema version

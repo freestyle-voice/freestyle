@@ -18,7 +18,8 @@ export function loadVocabularyTerms(): string[] {
       )
       .all() as { term: string }[];
     return rows.map((r) => r.term.trim()).filter(Boolean);
-  } catch {
+  } catch (err) {
+    console.error("[vocabulary] Failed to load vocabulary terms:", err);
     return [];
   }
 }

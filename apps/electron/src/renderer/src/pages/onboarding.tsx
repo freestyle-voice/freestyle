@@ -358,7 +358,7 @@ export default function OnboardingPage(): React.JSX.Element {
             json: {
               provider: "local-whisper",
               model_id: `local-whisper/${def.id}`,
-              model_name: `${def.displayName} (Local)`,
+              model_name: def.displayName,
               type: "voice",
               is_default: true,
             },
@@ -445,6 +445,7 @@ export default function OnboardingPage(): React.JSX.Element {
           ? "local-mlx"
           : undefined),
     selectedWhisperModelId: selectedWhisperDefId ?? undefined,
+    selectedMlxModelId: selectedMlxDefId ?? undefined,
     keyProviders: apiKeys,
   });
 
@@ -686,7 +687,7 @@ export default function OnboardingPage(): React.JSX.Element {
                 <h2 className="text-lg font-semibold">Choose a Voice Model</h2>
                 <p className="text-muted-foreground mt-1 text-sm">
                   Use a cloud provider with an API key, or run speech-to-text
-                  locally with whisper.cpp.
+                  locally.
                 </p>
               </div>
 
@@ -698,6 +699,7 @@ export default function OnboardingPage(): React.JSX.Element {
                     onClick={() => {
                       setModelSource("cloud");
                       setSelectedWhisperDefId(null);
+                      setSelectedMlxDefId(null);
                     }}
                     className={cn(
                       "flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-[12px] transition-colors",

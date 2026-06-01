@@ -1896,7 +1896,10 @@ function ProvidersSection({
           <LocalProviderRow
             first={apiKeys.length === 0}
             modelCount={
-              configured.filter((m) => m.provider === "local-whisper").length
+              configured.filter(
+                (m) =>
+                  m.provider === "local-whisper" || m.provider === "local-mlx",
+              ).length
             }
           />
         )}
@@ -1979,7 +1982,7 @@ function LocalProviderRow({
       <Laptop className="text-primary h-[15px] w-[15px] shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="text-foreground text-[13.5px] font-semibold">
-          On-device · whisper.cpp
+          On-device
         </div>
         <div className="mono text-muted-foreground mt-0.5 text-[11px]">
           No key needed · runs locally

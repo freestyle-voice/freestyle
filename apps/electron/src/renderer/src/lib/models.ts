@@ -227,6 +227,7 @@ export function buildVoiceItems(
     selectedModelId?: string;
     selectedProvider?: string;
     selectedWhisperModelId?: string;
+    selectedMlxModelId?: string;
     keyProviders: Set<string>;
   },
 ): VoiceItem[] {
@@ -300,8 +301,9 @@ export function buildVoiceItems(
             status: resolvedState?.status ?? "not_downloaded",
             state: resolvedState,
             selected:
-              ctx.selectedProvider === "local-mlx" &&
-              ctx.selectedModelId === modelId,
+              ctx.selectedMlxModelId === def.id ||
+              (ctx.selectedProvider === "local-mlx" &&
+                ctx.selectedModelId === modelId),
           };
         });
 

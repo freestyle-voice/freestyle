@@ -1,4 +1,15 @@
 # Changelog
+## 0.1.1
+
+### Internal Changes 🔧
+
+- Faster dashboard init and local fonts for both windows by @MathurAditya724 in [#134](https://github.com/freestyle-voice/freestyle/pull/134)
+- Reduce pill initialization time on hotkey press by @MathurAditya724 in [#133](https://github.com/freestyle-voice/freestyle/pull/133)
+
+### Other
+
+- Fix hotkey binding by @tigerisaac in [#131](https://github.com/freestyle-voice/freestyle/pull/131)
+
 ## 0.1.0
 
 ### Bug Fixes 🐛

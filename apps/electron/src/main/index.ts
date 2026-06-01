@@ -13,7 +13,7 @@ import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
-import server from "@freestyle/server";
+import server, { registerActionHandler } from "@freestyle/server";
 import { serve } from "@hono/node-server";
 import {
   app,
@@ -866,6 +866,69 @@ app.whenReady().then(async () => {
   }
 
   createTray();
+
+  // -- Register shortcut action handlers so the server-side agent can
+  //    trigger Electron-level side-effects (open apps, URLs, etc.) --
+  registerActionHandler("open_app", async (params) => {
+    const name = String(params.name ?? "");
+    if (!name) return { ok: false, message: "No app name provided" };
+    try {
+      if (process.platform === "darwin") {
+        const { execFile: ef } = await import("node:child_process");
+        await new Promise<void>((resolve, reject) => {
+          ef("open", ["-a", name], (err) => (err ? reject(err) : resolve()));
+        });
+      } else if (process.platform === "win32") {
+        const { exec: ex } = await import("node:child_process");
+        await new Promise<void>((resolve, reject) => {
+          ex(`start "" "${name}"`, (err) => (err ? reject(err) : resolve()));
+        });
+      } else {
+        const { exec: ex } = await import("node:child_process");
+        await new Promise<void>((resolve, reject) => {
+          ex(`xdg-open "${name}" || ${name}`, (err) =>
+            err ? reject(err) : resolve(),
+          );
+        });
+      }
+      return { ok: true, message: `Opened ${name}` };
+    } catch (err) {
+      return {
+        ok: false,
+        message: `Failed to open ${name}: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  });
+
+  registerActionHandler("open_url", async (params) => {
+    const url = String(params.url ?? "");
+    if (!url) return { ok: false, message: "No URL provided" };
+    try {
+      await shell.openExternal(url);
+      return { ok: true, message: `Opened ${url}` };
+    } catch (err) {
+      return {
+        ok: false,
+        message: `Failed to open URL: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  });
+
+  registerActionHandler("paste_clipboard", async () => {
+    try {
+      const { clipboard } = await import("electron");
+      const text = clipboard.readText();
+      if (text) {
+        await pasteIntoFocusedApp(text);
+      }
+      return { ok: true, message: "Pasted clipboard contents" };
+    } catch (err) {
+      return {
+        ok: false,
+        message: `Failed to paste clipboard: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  });
 
   createAppWindow();
 

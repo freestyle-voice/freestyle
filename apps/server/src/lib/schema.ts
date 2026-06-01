@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 export function initSchema(db: DatabaseSync): void {
   db.exec(`
@@ -183,6 +183,33 @@ export function initSchema(db: DatabaseSync): void {
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
+  }
+
+  if (currentVersion < 7) {
+    // Rename dictionary -> shortcuts and add action column
+    try {
+      db.exec("ALTER TABLE dictionary RENAME TO shortcuts");
+    } catch {
+      // Table may already be named shortcuts (fresh install after v7)
+    }
+    // Ensure shortcuts table exists (fresh installs skip the dictionary creation)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS shortcuts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key TEXT NOT NULL UNIQUE,
+        value TEXT NOT NULL,
+        usage_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    try {
+      db.exec(
+        "ALTER TABLE shortcuts ADD COLUMN action TEXT NOT NULL DEFAULT 'replace'",
+      );
+    } catch {
+      // Column may already exist
+    }
   }
 
   // Upsert schema version

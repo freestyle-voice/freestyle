@@ -197,6 +197,10 @@
     grid-template-columns: minmax(120px, 180px) minmax(0, 1fr) 90px 70px;
   }
 
+  .shortcut-entry-row {
+    grid-template-columns: minmax(120px, 180px) minmax(0, 1fr) 75px 75px 70px;
+  }
+
   .vocabulary-entry-row {
     grid-template-columns: minmax(120px, 220px) minmax(0, 1fr) 70px;
   }
@@ -214,6 +218,7 @@
 
   @media (max-width: 900px) {
     .dictionary-entry-row,
+    .shortcut-entry-row,
     .vocabulary-entry-row {
       grid-template-columns: minmax(0, 1fr) auto;
     }

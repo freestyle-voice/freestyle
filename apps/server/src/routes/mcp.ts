@@ -1,16 +1,16 @@
 import {
-  createDictionarySchema,
   createFormatSchema,
-  updateDictionarySchema,
+  createShortcutSchema,
   updateFormatSchema,
+  updateShortcutSchema,
 } from "@freestyle/validations";
 import { StreamableHTTPTransport } from "@hono/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Hono } from "hono";
 import { z } from "zod/v3";
-import dictionary from "./dictionary.js";
 import formats from "./formats.js";
 import history from "./history.js";
+import shortcuts from "./shortcuts.js";
 
 async function call(
   app: Hono,
@@ -114,11 +114,11 @@ mcpServer.tool(
   },
 );
 
-// --- Dictionary tools ---
+// --- Shortcut tools ---
 
 mcpServer.tool(
-  "dict_list",
-  "List dictionary entries with optional search and pagination",
+  "shortcut_list",
+  "List shortcut entries with optional search and pagination",
   listParams,
   async ({ limit, offset, search }) => {
     const params = new URLSearchParams({
@@ -126,50 +126,50 @@ mcpServer.tool(
       offset: String(offset),
     });
     if (search) params.set("search", search);
-    const { data } = await call(dictionary, "GET", `/?${params}`);
+    const { data } = await call(shortcuts, "GET", `/?${params}`);
     return text(data);
   },
 );
 
 mcpServer.tool(
-  "dict_view",
-  "View a single dictionary entry by ID",
+  "shortcut_view",
+  "View a single shortcut entry by ID",
   idParam,
   async ({ id }) => {
-    const { data, ok } = await call(dictionary, "GET", `/${id}`);
-    if (!ok) return error(`Dictionary entry #${id} not found`);
+    const { data, ok } = await call(shortcuts, "GET", `/${id}`);
+    if (!ok) return error(`Shortcut #${id} not found`);
     return text(data);
   },
 );
 
 mcpServer.tool(
-  "dict_create",
-  "Create a new dictionary entry (word replacement)",
-  createDictionarySchema.shape,
+  "shortcut_create",
+  "Create a new shortcut (text replacement, URL shortcut, etc.)",
+  createShortcutSchema.shape,
   async (args) => {
-    const { data, ok } = await call(dictionary, "POST", "/", args);
-    if (!ok) return error(data.error ?? "Failed to create dictionary entry");
+    const { data, ok } = await call(shortcuts, "POST", "/", args);
+    if (!ok) return error(data.error ?? "Failed to create shortcut");
     return text(data);
   },
 );
 
 mcpServer.tool(
-  "dict_update",
-  "Update an existing dictionary entry",
-  { ...idParam, ...updateDictionarySchema.shape },
+  "shortcut_update",
+  "Update an existing shortcut",
+  { ...idParam, ...updateShortcutSchema.shape },
   async ({ id, ...body }) => {
-    const { data, ok } = await call(dictionary, "PUT", `/${id}`, body);
-    if (!ok) return error(data.error ?? `Dictionary entry #${id} not found`);
+    const { data, ok } = await call(shortcuts, "PUT", `/${id}`, body);
+    if (!ok) return error(data.error ?? `Shortcut #${id} not found`);
     return text(data);
   },
 );
 
 mcpServer.tool(
-  "dict_delete",
-  "Delete a dictionary entry",
+  "shortcut_delete",
+  "Delete a shortcut",
   idParam,
   async ({ id }) => {
-    await call(dictionary, "DELETE", `/${id}`);
+    await call(shortcuts, "DELETE", `/${id}`);
     return text({ ok: true, id });
   },
 );

@@ -12,11 +12,11 @@ import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import { initApiBase } from "@renderer/lib/api";
 import NotFoundPage from "@renderer/pages/not-found";
 import OnboardingPage from "@renderer/pages/onboarding";
-import DictionaryPage from "@renderer/pages/settings/dictionary";
 import FormatsPage from "@renderer/pages/settings/formats";
 import GeneralSettingsPage from "@renderer/pages/settings/general";
 import HistoryPage from "@renderer/pages/settings/history";
 import ModelsPage from "@renderer/pages/settings/models";
+import ShortcutsPage from "@renderer/pages/settings/shortcuts";
 import VocabularyPage from "@renderer/pages/settings/vocabulary";
 import AppShell from "@renderer/pages/shell";
 import TodayPage from "@renderer/pages/today";
@@ -58,8 +58,12 @@ initApiBase().then(() => {
                   />
                   <Route path="/settings/models" element={<ModelsPage />} />
                   <Route
+                    path="/settings/shortcuts"
+                    element={<ShortcutsPage />}
+                  />
+                  <Route
                     path="/settings/dictionary"
-                    element={<DictionaryPage />}
+                    element={<Navigate to="/settings/shortcuts" replace />}
                   />
                   <Route
                     path="/settings/vocabulary"

@@ -98,12 +98,12 @@ describe("Settings", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Dictionary CRUD
+// Shortcuts CRUD (formerly Dictionary)
 // ---------------------------------------------------------------------------
 
-describe("Dictionary", () => {
-  it("GET /api/dictionary returns empty list initially (ignoring seed data)", async () => {
-    const res = await req("/api/dictionary");
+describe("Shortcuts", () => {
+  it("GET /api/shortcuts returns empty list initially (ignoring seed data)", async () => {
+    const res = await req("/api/shortcuts");
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data).toHaveProperty("items");
@@ -111,8 +111,8 @@ describe("Dictionary", () => {
     expect(Array.isArray(data.items)).toBe(true);
   });
 
-  it("POST creates a new entry", async () => {
-    const res = await json("/api/dictionary", {
+  it("POST creates a new replace shortcut", async () => {
+    const res = await json("/api/shortcuts", {
       key: "type script",
       value: "TypeScript",
     });
@@ -120,92 +120,130 @@ describe("Dictionary", () => {
     const data = await res.json();
     expect(data.key).toBe("type script");
     expect(data.value).toBe("TypeScript");
+    expect(data.action).toBe("replace");
     expect(data.id).toBeDefined();
   });
 
+  it("POST creates an open_url shortcut", async () => {
+    const res = await json("/api/shortcuts", {
+      key: "go to github",
+      value: "https://github.com",
+      action: "open_url",
+    });
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.key).toBe("go to github");
+    expect(data.value).toBe("https://github.com");
+    expect(data.action).toBe("open_url");
+  });
+
   it("GET /:id returns the created entry", async () => {
-    const create = await json("/api/dictionary", {
+    const create = await json("/api/shortcuts", {
       key: "react js",
       value: "React.js",
     });
     const { id } = await create.json();
 
-    const get = await req(`/api/dictionary/${id}`);
+    const get = await req(`/api/shortcuts/${id}`);
     expect(get.status).toBe(200);
     const data = await get.json();
     expect(data.key).toBe("react js");
     expect(data.value).toBe("React.js");
+    expect(data.action).toBe("replace");
   });
 
   it("PUT updates an entry", async () => {
-    const create = await json("/api/dictionary", {
+    const create = await json("/api/shortcuts", {
       key: "node js",
       value: "Node.js",
     });
     const { id } = await create.json();
 
-    const put = await json(`/api/dictionary/${id}`, { value: "NodeJS" }, "PUT");
+    const put = await json(
+      `/api/shortcuts/${id}`,
+      { value: "NodeJS", action: "replace" },
+      "PUT",
+    );
     expect(put.status).toBe(200);
     const data = await put.json();
     expect(data.value).toBe("NodeJS");
   });
 
   it("DELETE removes an entry", async () => {
-    const create = await json("/api/dictionary", {
-      key: "to delete",
+    const create = await json("/api/shortcuts", {
+      key: "to delete shortcut",
       value: "gone",
     });
     const { id } = await create.json();
 
-    const del = await req(`/api/dictionary/${id}`, { method: "DELETE" });
+    const del = await req(`/api/shortcuts/${id}`, { method: "DELETE" });
     expect(del.status).toBe(200);
 
-    const get = await req(`/api/dictionary/${id}`);
+    const get = await req(`/api/shortcuts/${id}`);
     expect(get.status).toBe(404);
   });
 
   it("POST rejects duplicate keys", async () => {
-    await json("/api/dictionary", { key: "dupe", value: "first" });
-    const res = await json("/api/dictionary", { key: "dupe", value: "second" });
+    await json("/api/shortcuts", { key: "dupe shortcut", value: "first" });
+    const res = await json("/api/shortcuts", {
+      key: "dupe shortcut",
+      value: "second",
+    });
     expect(res.status).toBe(409);
   });
 
-  it("GET /api/dictionary supports search", async () => {
-    await json("/api/dictionary", { key: "searchable", value: "findme" });
+  it("GET /api/shortcuts supports search", async () => {
+    await json("/api/shortcuts", {
+      key: "searchable shortcut",
+      value: "findme",
+    });
 
-    const res = await req("/api/dictionary?search=searchable");
+    const res = await req("/api/shortcuts?search=searchable");
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.items.length).toBeGreaterThanOrEqual(1);
     expect(
-      data.items.some((i: { key: string }) => i.key === "searchable"),
+      data.items.some((i: { key: string }) => i.key === "searchable shortcut"),
     ).toBe(true);
   });
 
-  it("GET /api/dictionary/all returns all entries", async () => {
-    const res = await req("/api/dictionary/all");
+  it("GET /api/shortcuts/all returns all entries with action field", async () => {
+    const res = await req("/api/shortcuts/all");
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
+    if (data.length > 0) {
+      expect(data[0]).toHaveProperty("action");
+    }
   });
 
-  it("POST /api/dictionary/import bulk imports", async () => {
+  it("POST /api/shortcuts/import bulk imports", async () => {
     const entries = [
-      { key: "import one", value: "Import1" },
-      { key: "import two", value: "Import2" },
+      { key: "import shortcut one", value: "Import1" },
+      { key: "import shortcut two", value: "Import2", action: "open_url" },
     ];
-    const res = await json("/api/dictionary/import", entries);
+    const res = await json("/api/shortcuts/import", entries);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.imported).toBe(2);
     expect(data.skipped).toBe(0);
   });
 
-  it("GET /api/dictionary/export/json returns JSON export", async () => {
-    const res = await req("/api/dictionary/export/json");
+  it("GET /api/shortcuts/export/json returns JSON export with action field", async () => {
+    const res = await req("/api/shortcuts/export/json");
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
+    if (data.length > 0) {
+      expect(data[0]).toHaveProperty("action");
+    }
+  });
+
+  it("backward compat: /api/dictionary still works", async () => {
+    const res = await req("/api/dictionary");
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveProperty("items");
   });
 });
 

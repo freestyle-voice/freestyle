@@ -3,13 +3,13 @@ import markLight from "@renderer/assets/mark-light.svg";
 import { cn } from "@renderer/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import {
-  Book,
   BookOpen,
   Clock,
   Cpu,
   FileText,
   Languages,
   Sliders,
+  Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router";
@@ -25,9 +25,9 @@ const navItems: NavItem[] = [
   { to: "/today", label: "Today", icon: BookOpen, shortcut: "1" },
   { to: "/settings/history", label: "History", icon: Clock, shortcut: "2" },
   {
-    to: "/settings/dictionary",
-    label: "Dictionary",
-    icon: Book,
+    to: "/settings/shortcuts",
+    label: "Shortcuts",
+    icon: Zap,
     shortcut: "3",
   },
   {

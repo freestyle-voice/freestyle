@@ -142,7 +142,15 @@ const stream = new Hono().get(
             postProcess(rawText, appContext)
               .then((pp) => {
                 if (!closed) {
-                  ws.send(JSON.stringify({ type: "final", text: pp.cleaned }));
+                  ws.send(
+                    JSON.stringify({
+                      type: "final",
+                      text: pp.cleaned,
+                      ...(pp.actionsExecuted.length > 0
+                        ? { actions: pp.actionsExecuted }
+                        : {}),
+                    }),
+                  );
                 }
                 try {
                   const db = getDb();

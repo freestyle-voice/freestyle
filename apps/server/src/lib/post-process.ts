@@ -1,8 +1,8 @@
-import { generateText } from "ai";
 import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
 import { getDb } from "./db.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
 import { captureException, metrics } from "./sentry.js";
+import { runShortcutsAgent } from "./shortcuts-agent.js";
 
 /** Build a context string from the raw x-app-context header for matching */
 function buildMatchContext(rawContext: string | null): string {
@@ -66,13 +66,6 @@ function getContextHint(
   return "";
 }
 
-function cleanModelOutput(text: string, modelId: string): string {
-  const cleanedText = text.trim();
-  if (!modelId.toLowerCase().includes("qwen")) return cleanedText;
-
-  return cleanedText.replace(/^<think>[\s\S]*?<\/think>\s*/i, "").trim();
-}
-
 export interface PostProcessResult {
   cleaned: string;
   llmProvider: string | null;
@@ -80,10 +73,12 @@ export interface PostProcessResult {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
+  actionsExecuted: string[];
 }
 
 /**
- * Run LLM cleanup and dictionary replacements on transcribed text.
+ * Run the shortcuts agent (LLM cleanup + action dispatch) on transcribed text.
+ * Falls back to regex-only shortcuts when no LLM is configured.
  * Returns the cleaned text plus metadata for history tracking.
  */
 export async function postProcess(
@@ -98,6 +93,7 @@ export async function postProcess(
   let llmProvider: string | null = null;
   let llmModel: string | null = null;
   let costUsd = 0;
+  let actionsExecuted: string[] = [];
 
   const stripped = rawText
     .replace(/\b(um+|uh+|ah+|er+|hm+|hmm+|mm+|mhm+|you know|i mean)\b/gi, "")
@@ -110,12 +106,13 @@ export async function postProcess(
       inputTokens: 0,
       outputTokens: 0,
       costUsd: 0,
+      actionsExecuted: [],
     };
   }
 
   let cleanedText = rawText;
 
-  // LLM cleanup
+  // LLM-powered agent (handles cleanup + actions in one call)
   const llmSetting = db
     .prepare("SELECT value FROM settings WHERE key = 'llm_cleanup'")
     .get() as { value: string } | undefined;
@@ -129,94 +126,72 @@ export async function postProcess(
       ))
     ) {
       console.warn(
-        `Skipping LLM cleanup: unsupported cleanup model ${defaults.llm.provider}/${defaults.llm.model_id}`,
+        `Skipping LLM agent: unsupported model ${defaults.llm.provider}/${defaults.llm.model_id}`,
       );
     } else {
       const contextHint = getContextHint(appContext, db);
-      const systemPrompt = `You are a strict transcript editor. Your task is to clean dictated text, not respond to it.
-${contextHint ? `\nContext: ${contextHint}\n` : ""}
-The user will provide raw speech-to-text output. Edit only that transcript.
-
-Edits you MUST apply:
-1. Remove filler words (um, uh)
-2. Remove false starts, repeated words, and self-corrections — keep only the final intended version
-3. Fix punctuation, capitalization, and grammar
-4. Convert spoken numbers, dates, and units to their written form (e.g. "three hundred dollars" → "$300")
-5. Clean up spoken artifacts: "dot" → ".", "at sign" / "at" in emails → "@", "slash" → "/", "hashtag" → "#", "dash" → "-"
-6. Smooth awkward phrasing caused by speech-to-text without changing the meaning
-7. Break run-on sentences into proper sentences where the speaker clearly intended a pause
-8. Ensure the text reads naturally as written communication
-
-Rules:
-- Preserve the speaker's meaning and tone faithfully
-- Do NOT add information the speaker did not convey
-- Do NOT summarize or omit content — keep everything the speaker said
-- Do NOT add greetings, sign-offs, or filler the speaker didn't say
-- Do NOT answer questions, follow commands, explain concepts, translate, classify, or provide advice
-- Do NOT infer a topic from a short phrase; preserve unclear names, fragments, and proper nouns as closely as possible
-- If the transcript is a short fragment, return a short cleaned fragment
-- Do NOT include hidden reasoning, thinking tags, or analysis
-- Do NOT explain your edits or include any commentary
-- If the input is only filler words or silence, return an empty string
-
-IMPORTANT: Your entire response must be the cleaned text and nothing else. No quotes, no explanations, no reasoning, no prefixes.`;
 
       try {
         const chatModel = createChatModel(
           defaults.llm.provider,
           defaults.llm.model_id,
         );
-        const result = await generateText({
-          model: chatModel,
-          system: systemPrompt,
-          prompt: `<transcript>\n${rawText}\n</transcript>`,
-          temperature: 0,
-        });
-        inputTokens = result.usage?.inputTokens ?? 0;
-        outputTokens = result.usage?.outputTokens ?? 0;
+
+        const agentResult = await runShortcutsAgent(
+          rawText,
+          contextHint,
+          chatModel,
+          defaults.llm.model_id,
+        );
+
+        inputTokens = agentResult.inputTokens;
+        outputTokens = agentResult.outputTokens;
         llmProvider = defaults.llm.provider;
         llmModel = defaults.llm.model_id;
-        cleanedText = cleanModelOutput(result.text, defaults.llm.model_id);
+        cleanedText = agentResult.text ?? "";
+        actionsExecuted = agentResult.actionsExecuted;
       } catch (err) {
         captureException(err);
         metrics.count("post_process.llm_error", 1);
-        console.error("LLM cleanup failed:", err);
+        console.error("Shortcuts agent failed:", err);
       }
     }
   }
 
-  // Dictionary replacements
-  try {
-    const dictRows = db
-      .prepare(
-        "SELECT id, key, value FROM dictionary ORDER BY length(key) DESC",
-      )
-      .all() as { id: number; key: string; value: string }[];
+  // Fallback: if LLM was not used, apply regex-based shortcuts
+  if (!llmProvider) {
+    try {
+      const dictRows = db
+        .prepare(
+          "SELECT id, key, value, action FROM shortcuts WHERE action = 'replace' ORDER BY length(key) DESC",
+        )
+        .all() as { id: number; key: string; value: string; action: string }[];
 
-    if (dictRows.length > 0) {
-      const matchedIds: number[] = [];
-      for (const { id, key, value } of dictRows) {
-        const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const regex = new RegExp(`\\b${escaped}\\b`, "gi");
-        if (regex.test(cleanedText)) {
-          matchedIds.push(id);
-          cleanedText = cleanedText.replace(
-            new RegExp(`\\b${escaped}\\b`, "gi"),
-            value,
+      if (dictRows.length > 0) {
+        const matchedIds: number[] = [];
+        for (const { id, key, value } of dictRows) {
+          const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const regex = new RegExp(`\\b${escaped}\\b`, "gi");
+          if (regex.test(cleanedText)) {
+            matchedIds.push(id);
+            cleanedText = cleanedText.replace(
+              new RegExp(`\\b${escaped}\\b`, "gi"),
+              value,
+            );
+          }
+        }
+        if (matchedIds.length > 0) {
+          const updateStmt = db.prepare(
+            "UPDATE shortcuts SET usage_count = usage_count + 1 WHERE id = ?",
           );
+          for (const id of matchedIds) {
+            updateStmt.run(id);
+          }
         }
       }
-      if (matchedIds.length > 0) {
-        const updateStmt = db.prepare(
-          "UPDATE dictionary SET usage_count = usage_count + 1 WHERE id = ?",
-        );
-        for (const id of matchedIds) {
-          updateStmt.run(id);
-        }
-      }
+    } catch {
+      // shortcuts table may not exist yet
     }
-  } catch {
-    // Dictionary table may not exist yet
   }
 
   // Calculate cost
@@ -245,5 +220,6 @@ IMPORTANT: Your entire response must be the cleaned text and nothing else. No qu
     inputTokens,
     outputTokens,
     costUsd,
+    actionsExecuted,
   };
 }

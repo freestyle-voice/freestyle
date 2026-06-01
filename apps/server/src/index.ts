@@ -2,13 +2,13 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { captureException, initSentry } from "./lib/sentry.js";
 import apiKeys from "./routes/api-keys.js";
-import dictionary from "./routes/dictionary.js";
 import formats from "./routes/formats.js";
 import history from "./routes/history.js";
 import mcp from "./routes/mcp.js";
 import models from "./routes/models.js";
 import postProcessRoute from "./routes/post-process-route.js";
 import settings from "./routes/settings.js";
+import shortcuts from "./routes/shortcuts.js";
 import stream from "./routes/stream.js";
 import transcribe from "./routes/transcribe.js";
 import vocabulary from "./routes/vocabulary.js";
@@ -41,7 +41,8 @@ const app = new Hono()
   .route("/api/models", models)
   .route("/api/transcribe", transcribe)
   .route("/api/history", history)
-  .route("/api/dictionary", dictionary)
+  .route("/api/shortcuts", shortcuts)
+  .route("/api/dictionary", shortcuts)
   .route("/api/vocabulary", vocabulary)
   .route("/api/formats", formats)
   .route("/api/post-process", postProcessRoute)
@@ -50,5 +51,7 @@ const app = new Hono()
   .route("/stream", stream);
 
 export type AppType = typeof app;
+
+export { registerActionHandler } from "./lib/actions.js";
 
 export default app;

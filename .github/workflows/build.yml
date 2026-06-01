@@ -90,7 +90,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y xvfb libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libgtk-3-0 libgbm1 libasound2 libx11-xcb1
+        run: sudo apt-get update && sudo apt-get install -y xvfb libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libgtk-3-0 libgbm1 libasound2t64 libx11-xcb1
 
       - name: Build server
         run: pnpm --filter @freestyle/server build

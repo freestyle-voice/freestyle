@@ -869,10 +869,7 @@ app.whenReady().then(async () => {
 
   createAppWindow();
 
-  // Show the onboarding window automatically on first launch
-  if (readSettings().onboardingComplete !== true) {
-    showSettingsWindow();
-  }
+  showSettingsWindow();
 
   // -- Auto-update helpers --
   const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -1232,6 +1229,12 @@ app.on("window-all-closed", () => {
     // On non-macOS, keep the app alive for the tray
     // Only quit explicitly via tray menu
   }
+});
+
+// Re-open the dashboard when the app is activated (e.g. clicking the dock
+// icon or relaunching) and no dashboard window is currently open.
+app.on("activate", () => {
+  showSettingsWindow();
 });
 
 // Gracefully shut down the HTTP server and flush Sentry before quitting

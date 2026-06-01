@@ -83,21 +83,35 @@ export function VoiceRow({
   onSelectCloud,
   onSelectLocal,
   onDownload,
+  onRetryLocal,
   onCancel,
   onDelete,
 }: {
   item: VoiceItem;
   first: boolean;
   onSelectCloud: (m: AvailableModel) => void;
-  onSelectLocal: (defId: string, name: string) => void;
-  onDownload: (defId: string) => void;
-  onCancel?: (defId: string) => void;
-  onDelete?: (defId: string) => void;
+  onSelectLocal: (
+    defId: string,
+    name: string,
+    engine?: "whisper" | "mlx",
+  ) => void;
+  onDownload: (defId: string, engine?: "whisper" | "mlx") => void;
+  onRetryLocal?: (defId: string, engine: "whisper" | "mlx") => void;
+  onCancel?: (defId: string, engine?: "whisper" | "mlx") => void;
+  onDelete?: (defId: string, engine?: "whisper" | "mlx") => void;
 }): React.JSX.Element {
   const local = item.kind === "local";
   const status = item.status ?? "not_downloaded";
+  const selectedReady = item.selected && (!local || status === "ready");
   const downloading =
     local && (status === "downloading" || status === "verifying");
+  const hasProgress = !!item.state?.downloadProgress;
+  const isSetupError =
+    item.localEngine === "mlx" &&
+    !!item.state?.error &&
+    /(not installed|not found|missing|FREESTYLE|Python)/i.test(
+      item.state.error,
+    );
   const ghostBtn =
     "border-border hover:bg-secondary flex items-center gap-1.5 rounded-[8px] border px-3 py-2 text-[12.5px] font-medium";
   const solidBtn =
@@ -108,7 +122,7 @@ export function VoiceRow({
       className={cn(
         "group grid grid-cols-[1fr_auto] items-center gap-4 px-5 py-4",
         !first && "border-border border-t",
-        item.selected && "bg-primary/[0.06]",
+        selectedReady && "bg-primary/[0.06]",
       )}
     >
       <div className="min-w-0">
@@ -119,7 +133,7 @@ export function VoiceRow({
           <span className="text-muted-foreground whitespace-nowrap text-[12px]">
             {item.provider}
           </span>
-          {item.selected && <Check size={15} className="text-primary" />}
+          {selectedReady && <Check size={15} className="text-primary" />}
           {item.note && (
             <span className="text-primary whitespace-nowrap text-[11px] font-medium">
               {item.note}
@@ -163,7 +177,7 @@ export function VoiceRow({
         </div>
 
         {local && status === "error" && item.state?.error && (
-          <div className="text-destructive mt-1.5 text-[11.5px]">
+          <div className="text-destructive mt-1.5 text-[11.5px] leading-snug">
             {item.state.error}
           </div>
         )}
@@ -171,7 +185,7 @@ export function VoiceRow({
         {downloading && (
           <div className="mt-2.5 space-y-1">
             <div className="bg-secondary h-[5px] w-full overflow-hidden rounded-full">
-              {item.state?.phase === "building_binary" ? (
+              {!hasProgress ? (
                 <div className="bg-primary h-full w-full animate-pulse rounded-full" />
               ) : (
                 <div
@@ -183,8 +197,26 @@ export function VoiceRow({
               )}
             </div>
             <div className="text-muted-foreground mono flex justify-between text-[10px]">
-              {item.state?.phase === "building_binary" ? (
-                <span>Building whisper.cpp — this may take a minute…</span>
+              {item.state?.phase === "building_binary" && hasProgress ? (
+                <>
+                  <span>
+                    MLX runtime ·{" "}
+                    {formatBytes(item.state.downloadProgress!.bytesDownloaded)}{" "}
+                    / {formatBytes(item.state.downloadProgress!.bytesTotal)}
+                  </span>
+                  <span>
+                    {item.state.downloadProgress!.speedBps > 0 &&
+                      formatSpeed(item.state.downloadProgress!.speedBps)}
+                    {item.state.downloadProgress!.percent > 0 &&
+                      ` \u00b7 ${item.state.downloadProgress!.percent}%`}
+                  </span>
+                </>
+              ) : item.state?.phase === "building_binary" ? (
+                <span>
+                  {item.localEngine === "mlx"
+                    ? "Downloading MLX runtime..."
+                    : "Building whisper.cpp, this may take a minute..."}
+                </span>
               ) : item.state?.downloadProgress ? (
                 <>
                   <span>
@@ -199,7 +231,11 @@ export function VoiceRow({
                   </span>
                 </>
               ) : (
-                <span>Verifying…</span>
+                <span>
+                  {item.localEngine === "mlx"
+                    ? "Downloading model weights..."
+                    : "Verifying..."}
+                </span>
               )}
             </div>
           </div>
@@ -207,7 +243,7 @@ export function VoiceRow({
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5 justify-self-end">
-        {item.selected ? (
+        {selectedReady ? (
           <span
             className="mono text-primary"
             style={{ fontSize: 10, letterSpacing: "0.14em" }}
@@ -221,7 +257,8 @@ export function VoiceRow({
                 <button
                   type="button"
                   onClick={() =>
-                    item.defId && onSelectLocal(item.defId, item.name)
+                    item.defId &&
+                    onSelectLocal(item.defId, item.name, item.localEngine)
                   }
                   className={solidBtn}
                 >
@@ -230,11 +267,14 @@ export function VoiceRow({
                 {onDelete && (
                   <button
                     type="button"
-                    onClick={() => item.defId && onDelete(item.defId)}
-                    className="text-muted-foreground hover:text-destructive hover:bg-secondary rounded p-1.5 opacity-0 transition-opacity group-hover:opacity-100"
-                    title="Delete model"
+                    onClick={() =>
+                      item.defId && onDelete(item.defId, item.localEngine)
+                    }
+                    className="border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 hover:bg-destructive/5 flex items-center gap-1 rounded-[8px] border px-2.5 py-2 text-[12px] font-medium transition-colors"
+                    title="Remove downloaded model from disk"
                   >
                     <Trash2 size={13} />
+                    Delete
                   </button>
                 )}
               </>
@@ -242,7 +282,9 @@ export function VoiceRow({
             {status === "not_downloaded" && (
               <button
                 type="button"
-                onClick={() => item.defId && onDownload(item.defId)}
+                onClick={() =>
+                  item.defId && onDownload(item.defId, item.localEngine)
+                }
                 className={ghostBtn}
               >
                 <Download size={13} />
@@ -254,7 +296,9 @@ export function VoiceRow({
             {downloading && onCancel && (
               <button
                 type="button"
-                onClick={() => item.defId && onCancel(item.defId)}
+                onClick={() =>
+                  item.defId && onCancel(item.defId, item.localEngine)
+                }
                 className={ghostBtn}
               >
                 <X size={12} />
@@ -264,11 +308,20 @@ export function VoiceRow({
             {status === "error" && (
               <button
                 type="button"
-                onClick={() => item.defId && onDownload(item.defId)}
+                onClick={() => {
+                  if (!item.defId) return;
+                  if (item.localEngine === "mlx" && onRetryLocal) {
+                    onRetryLocal(item.defId, "mlx");
+                  } else {
+                    onDownload(item.defId);
+                  }
+                }}
                 className={ghostBtn}
               >
                 <RefreshCw size={12} />
-                Retry
+                {item.localEngine === "mlx" && isSetupError
+                  ? "Check setup"
+                  : "Retry"}
               </button>
             )}
           </>

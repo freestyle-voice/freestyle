@@ -1,0 +1,55 @@
+# Build and publish the optional MLX ASR runtime.
+#
+# This is intentionally separate from the app release. The worker is large, so
+# Freestyle downloads it on demand instead of bundling it into every DMG.
+
+name: MLX ASR Runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload the runtime archive to the mlx-asr-worker-v1 release
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build runtime archive
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build MLX ASR worker archive
+        run: ./scripts/build_mlx_asr_worker.sh
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlx-asr-worker-darwin-arm64
+          path: dist/mlx_asr_worker-darwin-arm64.tar.gz
+          if-no-files-found: error
+
+      - name: Publish fixed runtime release asset
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="mlx-asr-worker-v1"
+          asset="dist/mlx_asr_worker-darwin-arm64.tar.gz"
+
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title "MLX ASR Worker v1" \
+              --notes "Optional Freestyle runtime for local Qwen3 ASR."
+          fi
+
+          gh release upload "$tag" "$asset" --clobber

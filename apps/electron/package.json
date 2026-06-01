@@ -17,6 +17,7 @@
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run compile:native && electron-vite build && electron-builder --win --publish never",
+    "build:mlx-asr-worker": "../../scripts/build_mlx_asr_worker.sh",
     "build:mac": "npm run compile:native && electron-vite build && electron-builder --mac --publish never",
     "build:linux": "npm run compile:native && electron-vite build && electron-builder --linux --publish never",
     "download:whisper-cpp": "node scripts/download-whisper-cpp.mjs",

@@ -43,6 +43,8 @@ mac:
       to: "whisper/darwin-${arch}"
       filter:
         - "**/*"
+    - from: "../../scripts/mlx_asr_server.py"
+      to: "mlx-asr/mlx_asr_server.py"
 dmg:
   artifactName: ${productName}-${version}.${ext}
 linux:

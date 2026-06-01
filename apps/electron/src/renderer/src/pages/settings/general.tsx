@@ -110,6 +110,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
+  const [showOnLaunch, setShowOnLaunch] = useState(true);
 
   // Permissions
   type MicStatus =
@@ -297,6 +298,12 @@ export default function GeneralSettingsPage(): React.JSX.Element {
       .then((v) => setLaunchAtStartup(v))
       .catch(() => {});
 
+    // Show dashboard on launch setting
+    window.api
+      ?.getShowDashboardOnLaunch()
+      .then((v) => setShowOnLaunch(v))
+      .catch(() => {});
+
     // Auto-updater events
     const removeAvail = window.api?.onUpdateAvailable((info) => {
       setUpdateAvailable(info.version);
@@ -383,6 +390,11 @@ export default function GeneralSettingsPage(): React.JSX.Element {
   const handleLaunchAtStartupToggle = useCallback((enabled: boolean) => {
     setLaunchAtStartup(enabled);
     window.api?.setLaunchAtStartup(enabled);
+  }, []);
+
+  const handleShowOnLaunchToggle = useCallback((enabled: boolean) => {
+    setShowOnLaunch(enabled);
+    window.api?.setShowDashboardOnLaunch(enabled);
   }, []);
 
   const clearHistory = useCallback(async () => {
@@ -480,12 +492,18 @@ export default function GeneralSettingsPage(): React.JSX.Element {
           <Row
             label="Launch at startup"
             desc="Automatically start Freestyle when you log in to your computer."
-            last
           >
             <Toggle
               on={launchAtStartup}
               onChange={handleLaunchAtStartupToggle}
             />
+          </Row>
+          <Row
+            label="Show dashboard on launch"
+            desc="Open the dashboard window when Freestyle starts."
+            last
+          >
+            <Toggle on={showOnLaunch} onChange={handleShowOnLaunchToggle} />
           </Row>
         </Section>
 

@@ -251,7 +251,7 @@ const stream = new Hono().get(
 
         let msg: {
           type: string;
-          context?: string;
+          context?: string | null;
           audioDurationMs?: number;
         };
         try {
@@ -271,20 +271,30 @@ const stream = new Hono().get(
           case "start":
             sessionStartTime = Date.now();
             audioDurationMs = 0;
-            appContext = null;
+            appContext = msg.context ?? null;
             pendingAudioChunks = [];
             reconnectAttempts = 0;
             if (upstream) {
-              upstream.reset();
-              flushPendingAudio();
-              const voice = voiceDefaults ?? getDefaultModels().voice;
-              if (voice) {
-                ws.send(
-                  JSON.stringify({
-                    type: "session.ready",
-                    model: stripProviderPrefix(voice.model_id),
-                  }),
-                );
+              if (upstream.reset) {
+                upstream.reset();
+                flushPendingAudio();
+                const voice = voiceDefaults ?? getDefaultModels().voice;
+                if (voice) {
+                  ws.send(
+                    JSON.stringify({
+                      type: "session.ready",
+                      model: stripProviderPrefix(voice.model_id),
+                    }),
+                  );
+                }
+              } else {
+                upstream.close();
+                upstream = null;
+                if (!streamingUnsupported) {
+                  try {
+                    connectUpstream(ws);
+                  } catch {}
+                }
               }
               break;
             }
@@ -297,6 +307,9 @@ const stream = new Hono().get(
           case "commit":
             if (msg.audioDurationMs && msg.audioDurationMs > 0) {
               audioDurationMs = msg.audioDurationMs;
+            }
+            if (msg.context !== undefined) {
+              appContext = msg.context;
             }
             upstream?.commit();
             break;

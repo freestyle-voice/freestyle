@@ -1,5 +1,13 @@
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import {
+  MLX_ASR_MODELS,
+  MLX_ASR_PROVIDER_ID,
+  MLX_ASR_PROVIDER_NAME,
+} from "../lib/mlx-asr/constants.js";
+import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
+import { reconcileUnsupportedMlxVoiceDefault } from "../lib/mlx-asr/reconcile.js";
+import { canRunMlxAsr } from "../lib/mlx-asr/server.js";
 import { capture } from "../lib/posthog.js";
 import {
   WHISPER_MODELS,
@@ -77,6 +85,17 @@ const LOCAL_WHISPER_VOICE_MODELS: AvailableModel[] = WHISPER_MODELS.map(
     cost_output: 0,
   }),
 );
+
+const LOCAL_MLX_VOICE_MODELS: AvailableModel[] = MLX_ASR_MODELS.map((m) => ({
+  provider_id: MLX_ASR_PROVIDER_ID,
+  provider_name: MLX_ASR_PROVIDER_NAME,
+  model_id: `${MLX_ASR_PROVIDER_ID}/${m.id}`,
+  model_name: m.displayName,
+  family: m.family,
+  type: "voice" as const,
+  cost_input: 0,
+  cost_output: 0,
+}));
 
 // Hardcoded transcription models for providers missing from models.dev registry
 const BUILTIN_VOICE_MODELS: AvailableModel[] = [
@@ -320,6 +339,16 @@ const models = new Hono()
         }
       }
 
+      if (canRunMlxAsr()) {
+        for (const mlxModel of LOCAL_MLX_VOICE_MODELS) {
+          const modelId = mlxModel.model_id.split("/")[1];
+          const status = getMlxModelStatus(modelId);
+          if (status?.status === "ready") {
+            available.push(mlxModel);
+          }
+        }
+      }
+
       try {
         const localModels = await fetchLocalLlmModels();
         available.push(...localModels);
@@ -336,6 +365,7 @@ const models = new Hono()
     }
   })
   .get("/configured", (c) => {
+    reconcileUnsupportedMlxVoiceDefault();
     const db = getDb();
     const rows = db
       .prepare(

@@ -506,19 +506,26 @@ export default function AppPage(): React.JSX.Element {
         setIsReRecording(false);
       }
 
-      window.api
-        ?.getFrontmostApp()
-        .then((app) => {
-          appContextRef.current = app;
-          if (app) {
+      appContextRef.current = null;
+      try {
+        getStreamer().setContext(null);
+      } catch {}
+
+      const appContextPromise =
+        window.api
+          ?.getFrontmostApp()
+          .then((app) => {
+            appContextRef.current = app;
             try {
               getStreamer().setContext(app);
             } catch {}
-          }
-        })
-        .catch(() => {
-          appContextRef.current = null;
-        });
+          })
+          .catch(() => {
+            appContextRef.current = null;
+            try {
+              getStreamer().setContext(null);
+            } catch {}
+          }) ?? Promise.resolve();
 
       if (!forReRecord) {
         setState("initializing");
@@ -526,6 +533,11 @@ export default function AppPage(): React.JSX.Element {
       }
 
       try {
+        await Promise.race([
+          appContextPromise,
+          new Promise((resolve) => setTimeout(resolve, 300)),
+        ]);
+
         sessionStreamingRef.current = useStreamingRef.current;
         const stream = sessionStreamingRef.current
           ? await recorderRef.current.acquireStream()

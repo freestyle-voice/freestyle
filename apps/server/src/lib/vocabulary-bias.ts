@@ -164,6 +164,15 @@ export function buildAsrVocabularyBias(
         ? { kind: "elevenlabs-keyterms", terms: keyterms }
         : null;
     }
+    case "local-mlx": {
+      const parts: string[] = [];
+      if (contextPrompt?.trim()) parts.push(contextPrompt.trim());
+      if (capped.length > 0) {
+        parts.push(`Technical terms: ${capped.join(", ")}`);
+      }
+      const text = parts.join(" ").trim().slice(0, PROMPT_CHAR_BUDGET);
+      return text ? { kind: "prompt", text } : null;
+    }
     default:
       return null;
   }

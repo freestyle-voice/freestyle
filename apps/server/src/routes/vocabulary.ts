@@ -1,10 +1,10 @@
 import {
   createVocabularySchema,
+  importVocabularySchema,
   updateVocabularySchema,
 } from "@freestyle/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { z } from "zod/v3";
 import { getDb } from "../lib/db.js";
 import { capture } from "../lib/posthog.js";
 import type { VocabularyRow } from "../lib/vocabulary.js";
@@ -144,53 +144,40 @@ const vocabulary = new Hono()
     capture("vocabulary term deleted", {});
     return c.json({ ok: true });
   })
-  .post(
-    "/import",
-    zValidator(
-      "json",
-      z
-        .array(
-          z.object({
-            term: z.string(),
-            notes: z.string().nullable().optional(),
-          }),
-        )
-        .max(5000, "Import limited to 5 000 entries at a time"),
-    ),
-    (c) => {
-      const db = getDb();
-      const body = c.req.valid("json");
+  .post("/import", zValidator("json", importVocabularySchema), async (c) => {
+    const db = getDb();
+    const body = c.req.valid("json");
 
-      let imported = 0;
-      let skipped = 0;
-      const insertStmt = db.prepare(
-        "INSERT OR IGNORE INTO vocabulary (term, notes) VALUES (?, ?)",
-      );
+    let imported = 0;
+    let skipped = 0;
+    const insertStmt = db.prepare(
+      "INSERT OR IGNORE INTO vocabulary (term, notes) VALUES (?, ?)",
+    );
 
-      db.exec("BEGIN");
-      try {
-        for (const entry of body) {
-          if (entry.term?.trim()) {
-            const result = insertStmt.run(
-              entry.term.trim(),
-              entry.notes?.trim() || null,
-            );
-            if (result.changes > 0) imported++;
-            else skipped++;
-          } else {
-            skipped++;
-          }
+    db.exec("BEGIN");
+    try {
+      for (const entry of body) {
+        const term = entry.term.trim();
+        if (!term) {
+          skipped++;
+          continue;
         }
-        db.exec("COMMIT");
-      } catch (err) {
-        db.exec("ROLLBACK");
-        throw err;
+        const result = insertStmt.run(term, entry.notes?.trim() || null);
+        if (result.changes > 0) {
+          imported++;
+        } else {
+          skipped++;
+        }
       }
+      db.exec("COMMIT");
+    } catch (err) {
+      db.exec("ROLLBACK");
+      throw err;
+    }
 
-      capture("vocabulary terms imported", { imported, skipped });
+    capture("vocabulary terms imported", { imported, skipped });
 
-      return c.json({ imported, skipped });
-    },
-  );
+    return c.json({ imported, skipped });
+  });
 
 export default vocabulary;

@@ -13,12 +13,13 @@ import {
   ShowMoreModelRowsButton,
 } from "@renderer/components/model-row";
 import { Toggle, VoiceRow } from "@renderer/components/voice-row";
-import { getApiBase, getClient } from "@renderer/lib/api";
+import { getClient } from "@renderer/lib/api";
 import {
   type AvailableModel,
   buildVoiceItems,
   displayProviderName,
   LLM_PROVIDERS,
+  type MlxAsrStatus,
   VOICE_PROVIDERS,
   type VoiceItem,
   type WhisperStatus,
@@ -91,8 +92,18 @@ const RECOMMENDED_PROVIDERS = [
   },
 ];
 
+const DEFAULT_MLX_KEEP_ALIVE_MINUTES = 10;
+const MAX_MLX_KEEP_ALIVE_MINUTES = 10;
+const IS_MAC =
+  typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
+
 function displayName(providerId: string, fallback?: string): string {
   return displayProviderName(providerId, fallback);
+}
+
+function clampMlxKeepAliveMinutes(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_MLX_KEEP_ALIVE_MINUTES;
+  return Math.min(Math.max(Math.round(value), 0), MAX_MLX_KEEP_ALIVE_MINUTES);
 }
 
 type PickerType = "voice" | "llm" | null;
@@ -130,10 +141,19 @@ export default function ModelsPage(): React.JSX.Element {
   // Delete confirmation
   const [deleteProvider, setDeleteProvider] = useState<string | null>(null);
   const [deleteBlockedBy, setDeleteBlockedBy] = useState<string[]>([]);
+  const [pendingLocalDelete, setPendingLocalDelete] = useState<{
+    modelId: string;
+    engine: "whisper" | "mlx";
+    name: string;
+  } | null>(null);
 
   // Local Whisper
   const [whisperStatus, setWhisperStatus] = useState<WhisperStatus | null>(
     null,
+  );
+  const [mlxStatus, setMlxStatus] = useState<MlxAsrStatus | null>(null);
+  const [mlxKeepAliveMinutes, setMlxKeepAliveMinutes] = useState(
+    DEFAULT_MLX_KEEP_ALIVE_MINUTES,
   );
 
   // Local LLM
@@ -172,6 +192,7 @@ export default function ModelsPage(): React.JSX.Element {
         cleanupRes,
         localUrlRes,
         localKeyRes,
+        mlxKeepAliveRes,
       ] = await Promise.all([
         client.api.models.available.$get(),
         client.api.models.configured.$get(),
@@ -180,6 +201,9 @@ export default function ModelsPage(): React.JSX.Element {
         client.api.settings[":key"].$get({ param: { key: "local_llm_url" } }),
         client.api.settings[":key"].$get({
           param: { key: "local_llm_api_key" },
+        }),
+        client.api.settings[":key"].$get({
+          param: { key: "mlx_asr_keep_alive_minutes" },
         }),
       ]);
       if (availRes.ok) setAvailable(await availRes.json());
@@ -200,6 +224,13 @@ export default function ModelsPage(): React.JSX.Element {
         const data = await localKeyRes.json();
         if (data?.value) localLlmForm.setValue("api_key", data.value);
       }
+      if (mlxKeepAliveRes.ok) {
+        const data = await mlxKeepAliveRes.json();
+        const minutes = Number(data?.value);
+        if (Number.isFinite(minutes)) {
+          setMlxKeepAliveMinutes(clampMlxKeepAliveMinutes(minutes));
+        }
+      }
     } catch (err) {
       console.error("Failed to load models data:", err);
     } finally {
@@ -209,7 +240,7 @@ export default function ModelsPage(): React.JSX.Element {
 
   const loadWhisperStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${getApiBase()}/api/whisper/status`);
+      const res = await getClient().api.whisper.status.$get();
       if (res.ok) {
         const data: WhisperStatus = await res.json();
         setWhisperStatus(data);
@@ -221,10 +252,34 @@ export default function ModelsPage(): React.JSX.Element {
     return null;
   }, []);
 
+  const loadMlxStatus = useCallback(async (refresh = false) => {
+    try {
+      const res = refresh
+        ? await getClient().api["mlx-asr"].status.$get({
+            query: { refresh: "1" },
+          })
+        : await getClient().api["mlx-asr"].status.$get();
+      if (res.ok) {
+        const data: MlxAsrStatus = await res.json();
+        setMlxStatus(data);
+        if (Number.isFinite(data.keepAliveMinutes)) {
+          setMlxKeepAliveMinutes(
+            clampMlxKeepAliveMinutes(data.keepAliveMinutes),
+          );
+        }
+        return data;
+      }
+    } catch (err) {
+      console.error("Failed to load MLX ASR status:", err);
+    }
+    return null;
+  }, []);
+
   useEffect(() => {
     loadData();
     loadWhisperStatus();
-  }, [loadData, loadWhisperStatus]);
+    if (IS_MAC) loadMlxStatus();
+  }, [loadData, loadWhisperStatus, loadMlxStatus]);
 
   // Poll whisper status while a download is active
   useEffect(() => {
@@ -249,6 +304,26 @@ export default function ModelsPage(): React.JSX.Element {
     }, 500);
     return () => clearInterval(interval);
   }, [whisperStatus, loadWhisperStatus, loadData]);
+
+  useEffect(() => {
+    const hasActiveDownload = mlxStatus?.models?.some(
+      (m) => m.status === "downloading" || m.status === "verifying",
+    );
+    if (!hasActiveDownload) return;
+    const interval = setInterval(() => {
+      loadMlxStatus().then((data) => {
+        if (
+          data &&
+          !data.models?.some(
+            (m) => m.status === "downloading" || m.status === "verifying",
+          )
+        ) {
+          loadData();
+        }
+      });
+    }, 500);
+    return () => clearInterval(interval);
+  }, [mlxStatus, loadMlxStatus, loadData]);
 
   // Close the inline picker when mousedown lands outside both the pair card
   // (which holds the Change triggers) and the picker itself. Wrapping refs on
@@ -296,6 +371,7 @@ export default function ModelsPage(): React.JSX.Element {
       // Local LLM and Local Whisper have their own dedicated sections
       if (type === "llm" && m.provider_id === "local-llm") continue;
       if (type === "voice" && m.provider_id === "local-whisper") continue;
+      if (type === "voice" && m.provider_id === "local-mlx") continue;
       let entry = map.get(m.provider_id);
       if (!entry) {
         entry = {
@@ -310,10 +386,15 @@ export default function ModelsPage(): React.JSX.Element {
   }
 
   // Unified voice list: on-device (whisper.cpp) first, then cloud — one list.
-  const voiceItems = buildSettingsVoiceItems(available, whisperStatus, {
-    defaultVoice,
-    keyProviders,
-  });
+  const voiceItems = buildSettingsVoiceItems(
+    available,
+    whisperStatus,
+    mlxStatus,
+    {
+      defaultVoice,
+      keyProviders,
+    },
+  );
 
   // -------------------------------------------------------------------------
   // Handlers
@@ -407,6 +488,21 @@ export default function ModelsPage(): React.JSX.Element {
       .catch((err) => console.error("Failed to save LLM cleanup:", err));
   }, []);
 
+  const saveMlxKeepAliveMinutes = useCallback((minutes: number) => {
+    const next = clampMlxKeepAliveMinutes(minutes);
+    setMlxKeepAliveMinutes(next);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: "mlx_asr_keep_alive_minutes" },
+        json: { value: String(next) },
+      })
+      .then(() => {
+        if (next !== 0) return;
+        return getClient().api["mlx-asr"].server.stop.$post();
+      })
+      .catch((err) => console.error("Failed to save MLX ASR keep-alive:", err));
+  }, []);
+
   const saveProviderKey = useCallback(async () => {
     if (!editKeyValue.trim() || !editingProvider) return;
     await getClient().api.keys.$post({
@@ -468,8 +564,8 @@ export default function ModelsPage(): React.JSX.Element {
 
   const downloadWhisper = useCallback(
     async (modelId: string) => {
-      await fetch(`${getApiBase()}/api/whisper/models/${modelId}/download`, {
-        method: "POST",
+      await getClient().api.whisper.models[":model"].download.$post({
+        param: { model: modelId },
       });
       loadWhisperStatus();
     },
@@ -478,8 +574,8 @@ export default function ModelsPage(): React.JSX.Element {
 
   const cancelWhisper = useCallback(
     async (modelId: string) => {
-      await fetch(`${getApiBase()}/api/whisper/models/${modelId}/cancel`, {
-        method: "POST",
+      await getClient().api.whisper.models[":model"].cancel.$post({
+        param: { model: modelId },
       });
       loadWhisperStatus();
     },
@@ -488,14 +584,93 @@ export default function ModelsPage(): React.JSX.Element {
 
   const deleteWhisper = useCallback(
     async (modelId: string) => {
-      await fetch(`${getApiBase()}/api/whisper/models/${modelId}`, {
-        method: "DELETE",
+      await getClient().api.whisper.models[":model"].$delete({
+        param: { model: modelId },
       });
       loadWhisperStatus();
       loadData();
     },
     [loadWhisperStatus, loadData],
   );
+
+  const downloadMlx = useCallback(
+    async (modelId: string) => {
+      await getClient().api["mlx-asr"].models[":model"].download.$post({
+        param: { model: modelId },
+      });
+      loadMlxStatus();
+    },
+    [loadMlxStatus],
+  );
+
+  const cancelMlx = useCallback(
+    async (modelId: string) => {
+      await getClient().api["mlx-asr"].models[":model"].cancel.$post({
+        param: { model: modelId },
+      });
+      loadMlxStatus();
+    },
+    [loadMlxStatus],
+  );
+
+  const deleteMlx = useCallback(
+    async (modelId: string) => {
+      await getClient().api["mlx-asr"].models[":model"].$delete({
+        param: { model: modelId },
+      });
+      loadMlxStatus();
+      loadData();
+    },
+    [loadMlxStatus, loadData],
+  );
+
+  const downloadLocalVoice = useCallback(
+    (modelId: string, engine?: "whisper" | "mlx") => {
+      if (engine === "mlx") {
+        void downloadMlx(modelId);
+        return;
+      }
+      void downloadWhisper(modelId);
+    },
+    [downloadMlx, downloadWhisper],
+  );
+
+  const cancelLocalVoice = useCallback(
+    (modelId: string, engine?: "whisper" | "mlx") => {
+      if (engine === "mlx") {
+        void cancelMlx(modelId);
+        return;
+      }
+      void cancelWhisper(modelId);
+    },
+    [cancelMlx, cancelWhisper],
+  );
+
+  const requestDeleteLocalVoice = useCallback(
+    (modelId: string, engine?: "whisper" | "mlx") => {
+      if (!engine) return;
+      const item = voiceItems.find(
+        (row) => row.defId === modelId && row.localEngine === engine,
+      );
+      setPendingLocalDelete({
+        modelId,
+        engine,
+        name: item?.name ?? modelId,
+      });
+    },
+    [voiceItems],
+  );
+
+  const confirmDeleteLocalVoice = useCallback(async () => {
+    if (!pendingLocalDelete) return;
+    const { modelId, engine } = pendingLocalDelete;
+    setPendingLocalDelete(null);
+    if (engine === "mlx") {
+      await deleteMlx(modelId);
+      return;
+    }
+    await deleteWhisper(modelId);
+  }, [pendingLocalDelete, deleteMlx, deleteWhisper]);
 
   const selectLocalVoice = useCallback(
     async (modelId: string, modelName: string) => {
@@ -508,15 +683,50 @@ export default function ModelsPage(): React.JSX.Element {
           is_default: true,
         },
       });
-      fetch(`${getApiBase()}/api/whisper/server/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ modelId }),
-      }).catch(() => {});
+      getClient()
+        .api.whisper.server.start.$post({ json: { modelId } })
+        .catch(() => {});
       closePicker();
       loadData();
     },
     [closePicker, loadData],
+  );
+
+  const selectLocalMlx = useCallback(
+    async (modelId: string, modelName: string) => {
+      await getClient().api.models.configured.$post({
+        json: {
+          provider: "local-mlx",
+          model_id: `local-mlx/${modelId}`,
+          model_name: modelName,
+          type: "voice",
+          is_default: true,
+        },
+      });
+      getClient()
+        .api["mlx-asr"].server.start.$post({ json: { modelId } })
+        .catch(() => {});
+      closePicker();
+      loadData();
+    },
+    [closePicker, loadData],
+  );
+
+  const retryLocalMlx = useCallback(
+    async (modelId: string) => {
+      const data = await loadMlxStatus(true);
+      if (!data?.canRun) return;
+      const status = data.models?.find((m) => m.model === modelId);
+      if (status?.status !== "ready") {
+        await downloadMlx(modelId);
+        return;
+      }
+      const name =
+        data.modelDefinitions.find((m) => m.id === modelId)?.displayName ??
+        modelId;
+      await selectLocalMlx(modelId, name);
+    },
+    [downloadMlx, loadMlxStatus, selectLocalMlx],
   );
 
   const selectLocalLlmModel = useCallback(
@@ -607,9 +817,14 @@ export default function ModelsPage(): React.JSX.Element {
   }
 
   const isLocalWhisperActive = defaultVoice?.provider === "local-whisper";
+  const isLocalMlxActive = defaultVoice?.provider === "local-mlx";
+  const hasDownloadedMlx =
+    mlxStatus?.models?.some((m) => m.status === "ready") ?? false;
   const hasLocalModel =
     isLocalWhisperActive ||
-    !!whisperStatus?.models.some((m) => m.status === "ready");
+    isLocalMlxActive ||
+    !!whisperStatus?.models.some((m) => m.status === "ready") ||
+    hasDownloadedMlx;
 
   // -------------------------------------------------------------------------
   // Render
@@ -620,7 +835,7 @@ export default function ModelsPage(): React.JSX.Element {
       <PageHeader
         title="Models"
         subtitle="Choose how Freestyle listens — on-device for privacy, or cloud for speed and reach. Add an optional model to clean up what you say."
-        offline={isLocalWhisperActive}
+        offline={isLocalWhisperActive || isLocalMlxActive}
       />
       <div className="space-y-4">
         <div ref={pairCardRef}>
@@ -638,6 +853,17 @@ export default function ModelsPage(): React.JSX.Element {
           />
         </div>
 
+        {(isLocalMlxActive ||
+          (mlxStatus?.platformSupported &&
+            mlxStatus.models.some((m) => m.status === "ready"))) && (
+          <MlxMemorySection
+            keepAliveMinutes={mlxKeepAliveMinutes}
+            serverRunning={!!mlxStatus?.serverRunning}
+            blockedReason={mlxStatus?.blockedReason ?? null}
+            onChange={saveMlxKeepAliveMinutes}
+          />
+        )}
+
         {/* Inline picker — appears below the pair card */}
         {pickerOpen === "voice" && (
           <div ref={pickerRef}>
@@ -645,10 +871,17 @@ export default function ModelsPage(): React.JSX.Element {
               items={voiceItems}
               binaryDownloading={!!whisperStatus?.binaryDownloading}
               onSelectCloud={(m) => selectModel(m, "voice")}
-              onSelectLocal={selectLocalVoice}
-              onDownload={downloadWhisper}
-              onCancel={cancelWhisper}
-              onDelete={deleteWhisper}
+              onSelectLocal={(defId, name, engine) => {
+                if (engine === "mlx") selectLocalMlx(defId, name);
+                else selectLocalVoice(defId, name);
+              }}
+              onRetryLocal={(defId, engine) => {
+                if (engine === "mlx") retryLocalMlx(defId);
+                else downloadWhisper(defId);
+              }}
+              onDownload={downloadLocalVoice}
+              onCancel={cancelLocalVoice}
+              onDelete={requestDeleteLocalVoice}
               onClose={closePicker}
             />
           </div>
@@ -727,6 +960,15 @@ export default function ModelsPage(): React.JSX.Element {
             onConfirm={confirmDeleteProvider}
           />
         )}
+
+        {pendingLocalDelete && (
+          <LocalModelDeleteDialog
+            name={pendingLocalDelete.name}
+            engine={pendingLocalDelete.engine}
+            onClose={() => setPendingLocalDelete(null)}
+            onConfirm={() => void confirmDeleteLocalVoice()}
+          />
+        )}
       </div>
     </PageShell>
   );
@@ -739,12 +981,13 @@ export default function ModelsPage(): React.JSX.Element {
 function buildSettingsVoiceItems(
   available: AvailableModel[],
   whisperStatus: WhisperStatus | null,
+  mlxStatus: MlxAsrStatus | null,
   ctx: {
     defaultVoice: ConfiguredModel | undefined;
     keyProviders: Set<string>;
   },
 ): VoiceItem[] {
-  return buildVoiceItems(available, whisperStatus, {
+  return buildVoiceItems(available, whisperStatus, mlxStatus, {
     selectedModelId: ctx.defaultVoice?.model_id,
     selectedProvider: ctx.defaultVoice?.provider,
     keyProviders: ctx.keyProviders,
@@ -981,6 +1224,80 @@ function Eyebrow({
   );
 }
 
+function mlxKeepAliveDescription(minutes: number): string {
+  if (minutes === 0) {
+    return "Unload the model from memory after each transcription. Uses less RAM, but the next dictation waits for a full reload.";
+  }
+  if (minutes === 1) {
+    return "Keep the model in memory for about 1 minute after you finish dictating, so quick follow-ups stay fast.";
+  }
+  return `Keep the model loaded in memory for up to ${minutes} minutes after dictation. Faster repeat use, more RAM while warm.`;
+}
+
+function MlxMemorySection({
+  keepAliveMinutes,
+  serverRunning,
+  blockedReason,
+  onChange,
+}: {
+  keepAliveMinutes: number;
+  serverRunning: boolean;
+  blockedReason: string | null;
+  onChange: (minutes: number) => void;
+}): React.JSX.Element {
+  const valueLabel =
+    keepAliveMinutes === 0 ? "Cold start" : `${keepAliveMinutes} min`;
+  const fillPercent = (keepAliveMinutes / MAX_MLX_KEEP_ALIVE_MINUTES) * 100;
+
+  return (
+    <section className="border-border bg-card rounded-[14px] border p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Cpu className="text-primary h-3.5 w-3.5 shrink-0" />
+          <Eyebrow text="Model warming" accent />
+          {serverRunning && (
+            <span className="bg-primary/10 text-primary mono rounded-full px-2 py-0.5 text-[9px] uppercase tracking-[0.14em]">
+              Loaded
+            </span>
+          )}
+        </div>
+        <span className="border-border bg-background rounded-md border px-2.5 py-1 text-[12px] font-medium">
+          {valueLabel}
+        </span>
+      </div>
+
+      <p className="text-muted-foreground mt-3 text-[12px] leading-relaxed">
+        {mlxKeepAliveDescription(keepAliveMinutes)}
+      </p>
+
+      <div className="mt-4">
+        <input
+          type="range"
+          min={0}
+          max={MAX_MLX_KEEP_ALIVE_MINUTES}
+          step={1}
+          value={keepAliveMinutes}
+          onChange={(event) => onChange(Number(event.currentTarget.value))}
+          style={{
+            background: `linear-gradient(to right, var(--primary) ${fillPercent}%, var(--secondary) ${fillPercent}%)`,
+          }}
+          className="h-2 w-full appearance-none rounded-full outline-none [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-[0_0_0_4px_var(--card)]"
+          aria-label="MLX ASR keep-alive minutes"
+        />
+        <div className="text-muted-foreground mt-2 flex justify-between text-[11px]">
+          <span>Cold start (unload)</span>
+          <span>Keep warm 10 min</span>
+        </div>
+      </div>
+      {blockedReason && (
+        <p className="text-destructive mt-3 text-[12px] leading-relaxed">
+          {blockedReason}
+        </p>
+      )}
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Picker shell - shared chrome for voice and LLM model pickers
 // ---------------------------------------------------------------------------
@@ -1119,6 +1436,7 @@ function VoicePicker({
   onSelectCloud,
   onSelectLocal,
   onDownload,
+  onRetryLocal,
   onCancel,
   onDelete,
   onClose,
@@ -1126,10 +1444,15 @@ function VoicePicker({
   items: VoiceItem[];
   binaryDownloading: boolean;
   onSelectCloud: (m: AvailableModel) => void;
-  onSelectLocal: (defId: string, name: string) => void;
-  onDownload: (defId: string) => void;
-  onCancel: (defId: string) => void;
-  onDelete: (defId: string) => void;
+  onSelectLocal: (
+    defId: string,
+    name: string,
+    engine?: "whisper" | "mlx",
+  ) => void;
+  onDownload: (defId: string, engine?: "whisper" | "mlx") => void;
+  onRetryLocal: (defId: string, engine: "whisper" | "mlx") => void;
+  onCancel: (defId: string, engine?: "whisper" | "mlx") => void;
+  onDelete: (defId: string, engine?: "whisper" | "mlx") => void;
   onClose: () => void;
 }): React.JSX.Element {
   const [filter, setFilter] = useState("all");
@@ -1163,6 +1486,7 @@ function VoicePicker({
           onSelectCloud={onSelectCloud}
           onSelectLocal={onSelectLocal}
           onDownload={onDownload}
+          onRetryLocal={onRetryLocal}
           onCancel={onCancel}
           onDelete={onDelete}
         />
@@ -1572,7 +1896,10 @@ function ProvidersSection({
           <LocalProviderRow
             first={apiKeys.length === 0}
             modelCount={
-              configured.filter((m) => m.provider === "local-whisper").length
+              configured.filter(
+                (m) =>
+                  m.provider === "local-whisper" || m.provider === "local-mlx",
+              ).length
             }
           />
         )}
@@ -1655,7 +1982,7 @@ function LocalProviderRow({
       <Laptop className="text-primary h-[15px] w-[15px] shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="text-foreground text-[13.5px] font-semibold">
-          On-device · whisper.cpp
+          On-device
         </div>
         <div className="mono text-muted-foreground mt-0.5 text-[11px]">
           No key needed · runs locally
@@ -1872,6 +2199,50 @@ function EditKeyDialog({
             Save
           </button>
         </div>
+      </div>
+    </ModalShell>
+  );
+}
+
+function LocalModelDeleteDialog({
+  name,
+  engine,
+  onClose,
+  onConfirm,
+}: {
+  name: string;
+  engine: "whisper" | "mlx";
+  onClose: () => void;
+  onConfirm: () => void;
+}): React.JSX.Element {
+  const engineLabel = engine === "mlx" ? "MLX" : "Whisper";
+  return (
+    <ModalShell>
+      <div className="mb-4">
+        <h3 className="text-foreground m-0 text-[17px] font-semibold">
+          Delete local model?
+        </h3>
+        <p className="text-muted-foreground mt-1 text-[13px] leading-relaxed">
+          Remove <span className="text-foreground/80 font-medium">{name}</span>{" "}
+          from this Mac. {engineLabel} weights are deleted from your local
+          cache; you can download them again later.
+        </p>
+      </div>
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="border-border hover:bg-secondary rounded-md border px-3.5 py-1.5 text-[12.5px]"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-md px-3.5 py-1.5 text-[12.5px] font-medium"
+        >
+          Delete
+        </button>
       </div>
     </ModalShell>
   );

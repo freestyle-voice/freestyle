@@ -30,6 +30,7 @@ export class Streamer {
   private streamingSupported = false;
   private readonly callbacks: StreamerCallbacks;
   private readonly wsUrl: string;
+  private currentContext: string | null = null;
 
   // Capture pipeline — reused across sessions when possible
   private ctx: AudioContext | null = null;
@@ -50,7 +51,8 @@ export class Streamer {
 
   // ------- public API -------
 
-  setContext(context: string): void {
+  setContext(context: string | null): void {
+    this.currentContext = context;
     this.sendJSON({ type: "context", context });
   }
 
@@ -62,7 +64,7 @@ export class Streamer {
     this.pendingChunks = [];
     this.pcmChunks = [];
     this.pcmSampleCount = 0;
-    this.sendJSON({ type: "start" });
+    this.sendJSON({ type: "start", context: this.currentContext });
 
     if (!this.ctx || this.ctx.state === "closed") {
       this.ctx = new AudioContext();
@@ -105,7 +107,11 @@ export class Streamer {
     );
     this.stopCapture();
     this.flushPendingChunks();
-    this.sendJSON({ type: "commit", audioDurationMs });
+    this.sendJSON({
+      type: "commit",
+      audioDurationMs,
+      context: this.currentContext,
+    });
   }
 
   cancel(): void {

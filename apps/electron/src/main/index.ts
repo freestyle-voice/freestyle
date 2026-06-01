@@ -871,8 +871,7 @@ app.whenReady().then(async () => {
 
   createAppWindow();
 
-  // Show the onboarding window automatically on first launch
-  if (readSettings().onboardingComplete !== true) {
+  if (readSettings().showDashboardOnLaunch !== false) {
     showSettingsWindow();
   }
 
@@ -994,6 +993,18 @@ app.whenReady().then(async () => {
   ipcMain.on("settings:set-launch-at-startup", (_event, enabled: boolean) => {
     app.setLoginItemSettings({ openAtLogin: enabled });
   });
+
+  // -- Show dashboard on launch setting IPC --
+  ipcMain.handle("settings:show-dashboard-on-launch", () => {
+    return readSettings().showDashboardOnLaunch !== false;
+  });
+
+  ipcMain.on(
+    "settings:set-show-dashboard-on-launch",
+    (_event, enabled: boolean) => {
+      writeSettings({ showDashboardOnLaunch: enabled });
+    },
+  );
 
   // -- Context-aware dictation: get frontmost app + browser context --
   ipcMain.handle("system:frontmost-app", async () => {
@@ -1236,12 +1247,21 @@ app.on("window-all-closed", () => {
   }
 });
 
+// Re-open the dashboard when the app is activated (e.g. clicking the dock
+// icon or relaunching) and no dashboard window is currently open.
+app.on("activate", () => {
+  showSettingsWindow();
+});
+
 // Gracefully shut down the HTTP server and flush Sentry before quitting
 let isUpdaterQuitting = false;
 let isQuitting = false;
 
 function cleanupBeforeQuit(): void {
   fetch(`http://127.0.0.1:${serverPort}/api/whisper/server/stop`, {
+    method: "POST",
+  }).catch(() => {});
+  fetch(`http://127.0.0.1:${serverPort}/api/mlx-asr/server/stop`, {
     method: "POST",
   }).catch(() => {});
   if (httpServer) {

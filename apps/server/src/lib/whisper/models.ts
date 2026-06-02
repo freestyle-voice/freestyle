@@ -409,8 +409,7 @@ async function downloadWindowsBinaries(): Promise<void> {
   const binDir = getBinDir();
   if (!existsSync(binDir)) mkdirSync(binDir, { recursive: true });
 
-  const winVersion = "1.8.5";
-  const archiveUrl = `https://github.com/ggml-org/whisper.cpp/releases/download/v${winVersion}/whisper-bin-x64.zip`;
+  const archiveUrl = `https://github.com/ggml-org/whisper.cpp/releases/download/v${WHISPER_CPP_VERSION}/whisper-bin-x64.zip`;
   const tmpZip = join(binDir, "whisper-bin.zip");
 
   console.log("[whisper] Downloading pre-built Windows binaries...");

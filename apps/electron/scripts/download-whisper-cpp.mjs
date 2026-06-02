@@ -34,8 +34,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "1.7.5";
-const WIN_VERSION = "1.8.5";
+const VERSION = "1.8.5";
 const CACHE_DIR = join(homedir(), ".cache", "freestyle", "whisper-bin");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -153,7 +152,7 @@ async function buildFromSource(outDir) {
 async function downloadWindows(outDir) {
   if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
-  const url = `https://github.com/ggml-org/whisper.cpp/releases/download/v${WIN_VERSION}/whisper-bin-x64.zip`;
+  const url = `https://github.com/ggml-org/whisper.cpp/releases/download/v${VERSION}/whisper-bin-x64.zip`;
   const tmpZip = join(outDir, "whisper-bin.zip");
 
   console.log("Downloading pre-built Windows binaries...");

@@ -178,6 +178,6 @@ export function getBinDir(): string {
   return join(homedir(), ".cache", "freestyle", "whisper-bin");
 }
 
-export const WHISPER_CPP_VERSION = "1.7.5";
+export const WHISPER_CPP_VERSION = "1.8.5";
 
 export const WHISPER_SERVER_PORT = 8178;

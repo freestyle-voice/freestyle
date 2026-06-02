@@ -533,6 +533,28 @@ function showSettingsWindow(): void {
   settingsWindow.focus();
 }
 
+function isRunningFromReadOnlyLocation(): boolean {
+  if (process.platform !== "darwin") return false;
+  const exePath = app.getPath("exe");
+  return (
+    exePath.startsWith("/Volumes/") || exePath.includes("/AppTranslocation/")
+  );
+}
+
+const READ_ONLY_UPDATE_RE = /EROFS|EACCES|read.only|permission denied/i;
+
+function showMoveToApplicationsDialog(): void {
+  dialog.showMessageBox({
+    type: "warning",
+    title: "Move to Applications",
+    message:
+      "Freestyle is running from a read-only location and can\u2019t update itself.",
+    detail:
+      "Please drag Freestyle into your Applications folder and relaunch it from there.",
+    buttons: ["OK"],
+  });
+}
+
 function restartAndUpdate(): void {
   isUpdaterQuitting = true;
   autoUpdater.quitAndInstall();
@@ -575,12 +597,17 @@ async function checkForUpdatesFromMenu(): Promise<void> {
         detail: `Current version: v${app.getVersion()}`,
       });
     }
-  } catch {
-    dialog.showMessageBox({
-      type: "error",
-      title: "Update Check Failed",
-      message: "Unable to check for updates. Please try again later.",
-    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "";
+    if (READ_ONLY_UPDATE_RE.test(msg) && isRunningFromReadOnlyLocation()) {
+      showMoveToApplicationsDialog();
+    } else {
+      dialog.showMessageBox({
+        type: "error",
+        title: "Update Check Failed",
+        message: "Unable to check for updates. Please try again later.",
+      });
+    }
   }
 }
 
@@ -996,9 +1023,16 @@ app.whenReady().then(async () => {
       if (updateDownloadState === "downloading") {
         updateDownloadState = "idle";
       }
-      settingsWindow?.webContents.send("updater:error", {
-        message: err?.message ?? "Update failed",
-      });
+      const msg = err?.message ?? "Update failed";
+      if (READ_ONLY_UPDATE_RE.test(msg) && isRunningFromReadOnlyLocation()) {
+        showMoveToApplicationsDialog();
+        settingsWindow?.webContents.send("updater:error", {
+          message:
+            "Freestyle is running from a read-only location. Move it to Applications and relaunch.",
+        });
+      } else {
+        settingsWindow?.webContents.send("updater:error", { message: msg });
+      }
     });
 
     autoUpdater.checkForUpdatesAndNotify();

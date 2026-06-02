@@ -2,6 +2,7 @@ import { apiKeySchema } from "@freestyle/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
+import { KeyComboDisplay } from "@renderer/components/key-combo";
 import {
   LlmModelRow,
   MODEL_ROW_PAGE_SIZE,
@@ -9,6 +10,12 @@ import {
   ShowMoreModelRowsButton,
 } from "@renderer/components/model-row";
 import { Toggle, VoiceRow } from "@renderer/components/voice-row";
+import {
+  comboDisplayKeys,
+  formatAcceleratorKeys,
+  keyDisplayLabel,
+  useHotkeyRecorder,
+} from "@renderer/hooks/use-hotkey-recorder";
 import { getClient } from "@renderer/lib/api";
 import {
   type AvailableModel,
@@ -93,7 +100,39 @@ export default function OnboardingPage(): React.JSX.Element {
     Record<string, number>
   >({});
 
-  // Load permissions
+  // Hotkey recorder state
+  const [hotkey, setHotkey] = useState("Alt+Space");
+
+  const handleHotkeyRecorded = useCallback((accelerator: string) => {
+    setHotkey(accelerator);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: "hotkey" },
+        json: { value: accelerator },
+      })
+      .catch(() => {});
+  }, []);
+
+  const {
+    state: recorderState,
+    liveModifiers,
+    capturedCombo,
+    canSaveRecording,
+    needsModifierOrMouseButton,
+    invalidReleaseNotice,
+    startRecording: startHotkeyRecording,
+    cancelRecording: cancelHotkeyRecording,
+  } = useHotkeyRecorder(handleHotkeyRecorded);
+
+  const liveKeys = liveModifiers.map(keyDisplayLabel);
+  const draftKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : liveKeys;
+  const captureHint = needsModifierOrMouseButton
+    ? "Add a modifier or side mouse button"
+    : canSaveRecording
+      ? "Release to save"
+      : "Press a modifier or side mouse button...";
+
+  // Load permissions + saved hotkey
   useEffect(() => {
     window.api
       ?.checkMicPermission()
@@ -106,6 +145,13 @@ export default function OnboardingPage(): React.JSX.Element {
     window.api
       ?.getLaunchAtStartup()
       .then(setLaunchAtStartup)
+      .catch(() => {});
+    getClient()
+      .api.settings[":key"].$get({ param: { key: "hotkey" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.value) setHotkey(data.value as string);
+      })
       .catch(() => {});
   }, []);
 
@@ -627,19 +673,66 @@ export default function OnboardingPage(): React.JSX.Element {
                 </div>
               )}
 
-              {/* Hotkey info */}
+              {/* Hotkey */}
               <div className="border-border rounded-lg border p-4">
                 <div className="flex items-start gap-3">
                   <Keyboard className="text-muted-foreground mt-0.5 h-5 w-5 shrink-0" />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">
-                      Default Hotkey: Alt + Space
-                    </div>
+                  <div className="flex-1 space-y-2">
+                    <div className="text-sm font-medium">Hotkey</div>
                     <p className="text-muted-foreground text-xs">
                       {IS_MAC
-                        ? "Hold to record, release to transcribe. You can change this in Settings later."
-                        : "Press once to start recording, press again to stop and transcribe. You can change this in Settings later."}
+                        ? "Hold to record, release to transcribe."
+                        : "Press once to start recording, press again to stop and transcribe."}
                     </p>
+                    {recorderState === "idle" ? (
+                      <div className="relative inline-flex">
+                        <button
+                          type="button"
+                          onClick={startHotkeyRecording}
+                          className="border-border hover:bg-secondary inline-flex items-center gap-3 rounded-lg border px-3.5 py-2 transition-colors"
+                        >
+                          <KeyComboDisplay
+                            keys={formatAcceleratorKeys(hotkey)}
+                          />
+                          <span className="text-muted-foreground text-xs">
+                            Change
+                          </span>
+                        </button>
+                        {invalidReleaseNotice && (
+                          <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                            Hotkeys need a modifier or side mouse button
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="border-primary/60 bg-primary/5 relative inline-flex items-center gap-3 rounded-lg border px-3.5 py-2">
+                        <Keyboard className="text-primary h-4 w-4 shrink-0" />
+                        {draftKeys.length > 0 ? (
+                          <>
+                            <KeyComboDisplay keys={draftKeys} variant="dim" />
+                            <span className="text-muted-foreground text-xs">
+                              {captureHint}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground animate-pulse text-sm">
+                            {captureHint}
+                          </span>
+                        )}
+                        {invalidReleaseNotice && (
+                          <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                            Hotkeys need a modifier or side mouse button
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={cancelHotkeyRecording}
+                          className="border-border hover:bg-secondary ml-1 rounded-md border px-2.5 py-1 text-xs"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

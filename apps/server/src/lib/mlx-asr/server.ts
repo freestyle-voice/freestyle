@@ -544,6 +544,11 @@ export async function stopMlxServer(): Promise<void> {
     try {
       proc.stdin?.write(`${JSON.stringify({ type: "shutdown" })}\n`, () => {
         proc.stdin?.end();
+        try {
+          proc.kill(process.platform === "win32" ? undefined : "SIGTERM");
+        } catch {
+          // Process may have already exited after reading the shutdown message.
+        }
       });
     } catch {
       clearTimeout(killTimeout);

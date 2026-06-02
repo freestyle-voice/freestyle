@@ -336,14 +336,22 @@ const stream = new Hono().get(
               if (upstream.reset) {
                 upstream.reset();
                 const voice = voiceDefaults ?? getDefaultModels().voice;
-                if (voice && upstream.waitUntilReady) {
+                if (voice) {
                   const token = ++readyToken;
-                  afterSessionReady(
-                    ws,
-                    upstream,
-                    stripProviderPrefix(voice.model_id),
-                    token,
-                  );
+                  if (upstream.waitUntilReady) {
+                    afterSessionReady(
+                      ws,
+                      upstream,
+                      stripProviderPrefix(voice.model_id),
+                      token,
+                    );
+                  } else {
+                    notifySessionReady(
+                      ws,
+                      stripProviderPrefix(voice.model_id),
+                      token,
+                    );
+                  }
                 }
               } else {
                 upstream.close();

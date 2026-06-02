@@ -121,6 +121,10 @@ class MlxLocalStreamingSession implements StreamSession {
   commit(): void {
     this.clearTimer();
     this.commitRequested = true;
+    // When no partial has been shown yet and enough audio is buffered, run a
+    // non-final (partial) inference first so the user sees intermediate text
+    // while the final pass runs.  The commitRequested flag causes the final
+    // pass to start automatically in runInference's .finally() handler.
     if (
       !this.inFlight &&
       !this.lastText &&

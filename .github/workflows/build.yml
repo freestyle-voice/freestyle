@@ -226,3 +226,24 @@ jobs:
             apps/electron/dist/latest*.yml
             apps/electron/dist/*.blockmap
           if-no-files-found: warn
+
+  ci-status:
+    name: CI Status
+    if: always()
+    needs:
+      - lint
+      - typecheck
+      - test-server
+      - test-electron
+      - build-linux
+      - build-mac
+      - build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check CI result
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "CI failed or was cancelled"
+            exit 1
+          fi
+          echo "All CI checks passed"

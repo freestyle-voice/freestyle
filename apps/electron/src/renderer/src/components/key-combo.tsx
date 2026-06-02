@@ -1,6 +1,6 @@
 import { cn } from "@renderer/lib/utils";
 
-export function KeyBadge({
+function KeyBadge({
   label,
   variant = "default",
 }: {

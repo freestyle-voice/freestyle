@@ -967,9 +967,11 @@ app.whenReady().then(async () => {
   }
 
   // -- Auto-updater with IPC notifications --
-  // Track the version we already notified about so periodic checks don't
-  // spam the user with repeat notifications every 5 minutes.
-  let notifiedVersion: string | null = null;
+  // Track versions we already notified about so periodic checks don't spam.
+  // Separate flags for "available" vs "downloaded" because both events fire
+  // for the same version and each deserves one notification.
+  let notifiedAvailableVersion: string | null = null;
+  let notifiedDownloadedVersion: string | null = null;
 
   if (!is.dev) {
     const autoUpdateEnabled = readSettings().autoUpdate !== false;
@@ -985,8 +987,11 @@ app.whenReady().then(async () => {
         settingsWindow?.webContents.send("updater:downloading");
       }
       // Only show a native notification once per discovered version
-      if (Notification.isSupported() && notifiedVersion !== info.version) {
-        notifiedVersion = info.version;
+      if (
+        Notification.isSupported() &&
+        notifiedAvailableVersion !== info.version
+      ) {
+        notifiedAvailableVersion = info.version;
         const note = new Notification({
           title: "Freestyle Update Available",
           body: autoUpdater.autoDownload
@@ -1004,8 +1009,11 @@ app.whenReady().then(async () => {
         version: info.version,
       });
       // Only show a native notification once per version
-      if (Notification.isSupported() && notifiedVersion !== info.version) {
-        notifiedVersion = info.version;
+      if (
+        Notification.isSupported() &&
+        notifiedDownloadedVersion !== info.version
+      ) {
+        notifiedDownloadedVersion = info.version;
         const note = new Notification({
           title: "Update Ready to Install",
           body: `Version ${info.version} has been downloaded. Restart to update.`,

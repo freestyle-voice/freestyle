@@ -695,7 +695,7 @@ export default function OnboardingPage(): React.JSX.Element {
                           <KeyComboDisplay
                             keys={formatAcceleratorKeys(hotkey)}
                           />
-                          <span className="text-muted-foreground text-xs">
+                          <span className="text-muted-foreground ml-1 text-xs">
                             Change
                           </span>
                         </button>

@@ -196,12 +196,90 @@ export default function ShortcutsPage(): React.JSX.Element {
     setShowForm(true);
   }, []);
 
+  // YAML toggle
+  const stepsToYaml = useCallback(
+    (s: { action: string; value: string }[]): string =>
+      s
+        .map(
+          (st) =>
+            `- action: ${st.action}\n  value: ${JSON.stringify(st.value)}`,
+        )
+        .join("\n"),
+    [],
+  );
+
+  const yamlToSteps = useCallback(
+    (yaml: string): { action: StepAction; value: string }[] | null => {
+      try {
+        const lines = yaml.split("\n");
+        const parsed: { action: StepAction; value: string }[] = [];
+        let current: { action: string; value: string } | null = null;
+        for (const line of lines) {
+          const actionMatch = line.match(/^-\s*action:\s*(.+)/);
+          if (actionMatch) {
+            if (current)
+              parsed.push(current as { action: StepAction; value: string });
+            current = { action: actionMatch[1].trim(), value: "" };
+            continue;
+          }
+          const valueMatch = line.match(/^\s+value:\s*(.*)/);
+          if (valueMatch && current) {
+            let val = valueMatch[1].trim();
+            if (
+              (val.startsWith('"') && val.endsWith('"')) ||
+              (val.startsWith("'") && val.endsWith("'"))
+            ) {
+              try {
+                val = JSON.parse(val);
+              } catch {
+                val = val.slice(1, -1);
+              }
+            }
+            current.value = val;
+          }
+        }
+        if (current)
+          parsed.push(current as { action: StepAction; value: string });
+        if (
+          parsed.length === 0 ||
+          parsed.some(
+            (st) => !(stepActions as readonly string[]).includes(st.action),
+          )
+        )
+          return null;
+        return parsed;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
+  const [yamlText, setYamlText] = useState("");
+  useEffect(() => {
+    if (showYamlEditor) setYamlText(stepsToYaml(steps));
+  }, [showYamlEditor, steps, stepsToYaml]);
+
+  const applyYaml = useCallback(() => {
+    const parsed = yamlToSteps(yamlText);
+    if (parsed) {
+      setSteps(parsed);
+      setShowYamlEditor(false);
+    }
+  }, [yamlText, yamlToSteps]);
+
   const saveEntry = useCallback(async () => {
     if (!triggerPhrase.trim()) {
       setFormError("Trigger phrase is required");
       return;
     }
-    if (steps.length === 0) {
+
+    // If YAML editor is open, parse it first to capture any edits
+    const stepsToSave = showYamlEditor
+      ? (yamlToSteps(yamlText) ?? steps)
+      : steps;
+
+    if (stepsToSave.length === 0) {
       setFormError("At least one step is required");
       return;
     }
@@ -212,7 +290,7 @@ export default function ShortcutsPage(): React.JSX.Element {
       const payload = {
         key: triggerPhrase,
         description: description || undefined,
-        steps: steps.map((s) => ({ action: s.action, value: s.value })),
+        steps: stepsToSave.map((s) => ({ action: s.action, value: s.value })),
       };
       const res = editingId
         ? await client.api.shortcuts[":id"].$put({
@@ -232,7 +310,17 @@ export default function ShortcutsPage(): React.JSX.Element {
     } catch {
       setFormError("Failed to save shortcut.");
     }
-  }, [triggerPhrase, description, steps, editingId, resetForm, loadData]);
+  }, [
+    triggerPhrase,
+    description,
+    steps,
+    showYamlEditor,
+    yamlText,
+    yamlToSteps,
+    editingId,
+    resetForm,
+    loadData,
+  ]);
 
   const deleteEntry = useCallback(
     async (id: number) => {
@@ -344,76 +432,7 @@ export default function ShortcutsPage(): React.JSX.Element {
     [],
   );
 
-  // YAML toggle
-  const stepsToYaml = useCallback(
-    (steps: { action: string; value: string }[]): string =>
-      steps
-        .map(
-          (s) => `- action: ${s.action}\n  value: ${JSON.stringify(s.value)}`,
-        )
-        .join("\n"),
-    [],
-  );
-
-  const yamlToSteps = useCallback(
-    (yaml: string): { action: StepAction; value: string }[] | null => {
-      try {
-        const lines = yaml.split("\n");
-        const steps: { action: StepAction; value: string }[] = [];
-        let current: { action: string; value: string } | null = null;
-        for (const line of lines) {
-          const actionMatch = line.match(/^-\s*action:\s*(.+)/);
-          if (actionMatch) {
-            if (current)
-              steps.push(current as { action: StepAction; value: string });
-            current = { action: actionMatch[1].trim(), value: "" };
-            continue;
-          }
-          const valueMatch = line.match(/^\s+value:\s*(.*)/);
-          if (valueMatch && current) {
-            let val = valueMatch[1].trim();
-            if (
-              (val.startsWith('"') && val.endsWith('"')) ||
-              (val.startsWith("'") && val.endsWith("'"))
-            ) {
-              try {
-                val = JSON.parse(val);
-              } catch {
-                val = val.slice(1, -1);
-              }
-            }
-            current.value = val;
-          }
-        }
-        if (current)
-          steps.push(current as { action: StepAction; value: string });
-        if (
-          steps.length === 0 ||
-          steps.some(
-            (s) => !(stepActions as readonly string[]).includes(s.action),
-          )
-        )
-          return null;
-        return steps;
-      } catch {
-        return null;
-      }
-    },
-    [],
-  );
-
-  const [yamlText, setYamlText] = useState("");
-  useEffect(() => {
-    if (showYamlEditor) setYamlText(stepsToYaml(steps));
-  }, [showYamlEditor, steps, stepsToYaml]);
-
-  const applyYaml = useCallback(() => {
-    const parsed = yamlToSteps(yamlText);
-    if (parsed) {
-      setSteps(parsed);
-      setShowYamlEditor(false);
-    }
-  }, [yamlText, yamlToSteps]);
+  // (YAML functions moved above saveEntry)
 
   // Variable pills from trigger phrase
   const variables =

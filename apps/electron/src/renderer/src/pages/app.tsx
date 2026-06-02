@@ -831,6 +831,9 @@ export default function AppPage(): React.JSX.Element {
       if (s === "idle" || s === "error") {
         modeRef.current = "shortcuts";
         startRecording(false);
+      } else if (s === "transcribing" && !recordingActiveRef.current) {
+        modeRef.current = "shortcuts";
+        startRecording(true);
       }
     });
     const removeShortcutsUp = window.api.onShortcutsHotkeyUp(() => {

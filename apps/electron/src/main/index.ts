@@ -899,6 +899,9 @@ app.whenReady().then(async () => {
   registerActionHandler("open_app", async (params) => {
     const name = String(params.name ?? "");
     if (!name) return { ok: false, message: "Missing app name" };
+    if (/[&|<>^;`$]/.test(name)) {
+      return { ok: false, message: "Invalid characters in app name" };
+    }
     return new Promise((resolve) => {
       if (process.platform === "darwin") {
         execFile("open", ["-a", name], (err) => {

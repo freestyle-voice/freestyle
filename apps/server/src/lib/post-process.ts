@@ -298,7 +298,7 @@ export async function postProcessShortcuts(
   let costUsd = 0;
   let actionsExecuted: string[] = [];
 
-  const contextHint = appContext ? buildMatchContext(appContext) : "";
+  const contextHint = getContextHint(appContext, db);
 
   if (llmEnabled && defaults.llm) {
     try {

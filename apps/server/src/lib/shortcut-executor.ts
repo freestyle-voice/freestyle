@@ -90,7 +90,12 @@ export async function executeSteps(
   textParts: string[],
 ): Promise<void> {
   for (const step of steps) {
-    const interpolatedValue = interpolate(step.value, vars);
+    // Skip interpolation for if/transform — their values are JSON with
+    // field names like "variable" that would collide with {variable} placeholders.
+    const interpolatedValue =
+      step.action === "if" || step.action === "transform"
+        ? step.value
+        : interpolate(step.value, vars);
 
     switch (step.action) {
       case "replace": {
@@ -118,7 +123,10 @@ export async function executeSteps(
         break;
       }
       case "paste_clipboard": {
-        const result = await executeAction("paste_clipboard", {});
+        const result = await executeAction(
+          "paste_clipboard",
+          interpolatedValue ? { text: interpolatedValue } : {},
+        );
         actionsExecuted.push("paste_clipboard");
         if (!result.ok && result.message) {
           console.warn(`[shortcut] paste_clipboard failed: ${result.message}`);

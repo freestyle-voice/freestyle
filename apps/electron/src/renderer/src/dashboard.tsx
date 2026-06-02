@@ -10,6 +10,7 @@ import FormatsPage from "@renderer/pages/settings/formats";
 import GeneralSettingsPage from "@renderer/pages/settings/general";
 import HistoryPage from "@renderer/pages/settings/history";
 import ModelsPage from "@renderer/pages/settings/models";
+import ShortcutsPage from "@renderer/pages/settings/shortcuts";
 import VocabularyPage from "@renderer/pages/settings/vocabulary";
 import AppShell from "@renderer/pages/shell";
 import TodayPage from "@renderer/pages/today";
@@ -71,6 +72,7 @@ createRoot(document.getElementById("root")!).render(
                   path="/settings/dictionary"
                   element={<DictionaryPage />}
                 />
+                <Route path="/settings/shortcuts" element={<ShortcutsPage />} />
                 <Route
                   path="/settings/vocabulary"
                   element={<VocabularyPage />}

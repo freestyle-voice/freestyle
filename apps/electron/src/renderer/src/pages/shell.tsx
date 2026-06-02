@@ -10,6 +10,7 @@ import {
   FileText,
   Languages,
   Sliders,
+  Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router";
@@ -31,19 +32,25 @@ const navItems: NavItem[] = [
     shortcut: "3",
   },
   {
+    to: "/settings/shortcuts",
+    label: "Shortcuts",
+    icon: Zap,
+    shortcut: "4",
+  },
+  {
     to: "/settings/vocabulary",
     label: "Vocabulary",
     icon: Languages,
-    shortcut: "4",
+    shortcut: "5",
   },
   {
     to: "/settings/formats",
     label: "Formats",
     icon: FileText,
-    shortcut: "5",
+    shortcut: "6",
   },
-  { to: "/settings/models", label: "Models", icon: Cpu, shortcut: "6" },
-  { to: "/settings", label: "Settings", icon: Sliders, shortcut: "7" },
+  { to: "/settings/models", label: "Models", icon: Cpu, shortcut: "7" },
+  { to: "/settings", label: "Settings", icon: Sliders, shortcut: "8" },
 ];
 
 export default function AppShell(): React.JSX.Element {

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { postProcess } from "../lib/post-process.js";
+import { postProcess, postProcessShortcuts } from "../lib/post-process.js";
 
 const postProcessRoute = new Hono().post("/", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -9,14 +9,17 @@ const postProcessRoute = new Hono().post("/", async (c) => {
   }
 
   const appContext: string | null = body.appContext ?? null;
+  const reqMode: string = body.mode ?? "dictation";
 
-  const pp = await postProcess(body.text, appContext);
+  const ppFn = reqMode === "shortcuts" ? postProcessShortcuts : postProcess;
+  const pp = await ppFn(body.text, appContext);
 
   return c.json({
     cleaned: pp.cleaned,
     inputTokens: pp.inputTokens,
     outputTokens: pp.outputTokens,
     costUsd: pp.costUsd,
+    ...(reqMode === "shortcuts" ? { actionsExecuted: pp.actionsExecuted } : {}),
   });
 });
 

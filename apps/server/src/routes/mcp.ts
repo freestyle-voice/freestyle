@@ -1,8 +1,10 @@
 import {
   createDictionarySchema,
   createFormatSchema,
+  createShortcutSchema,
   updateDictionarySchema,
   updateFormatSchema,
+  updateShortcutSchema,
 } from "@freestyle/validations";
 import { StreamableHTTPTransport } from "@hono/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -11,6 +13,7 @@ import { z } from "zod/v3";
 import dictionary from "./dictionary.js";
 import formats from "./formats.js";
 import history from "./history.js";
+import shortcuts from "./shortcuts.js";
 
 async function call(
   app: Hono,
@@ -170,6 +173,66 @@ mcpServer.tool(
   idParam,
   async ({ id }) => {
     await call(dictionary, "DELETE", `/${id}`);
+    return text({ ok: true, id });
+  },
+);
+
+// --- Shortcut tools ---
+
+mcpServer.tool(
+  "shortcut_list",
+  "List shortcuts with optional search and pagination",
+  listParams,
+  async ({ limit, offset, search }) => {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+    });
+    if (search) params.set("search", search);
+    const { data } = await call(shortcuts, "GET", `/?${params}`);
+    return text(data);
+  },
+);
+
+mcpServer.tool(
+  "shortcut_view",
+  "View a single shortcut by ID",
+  idParam,
+  async ({ id }) => {
+    const { data, ok } = await call(shortcuts, "GET", `/${id}`);
+    if (!ok) return error(`Shortcut #${id} not found`);
+    return text(data);
+  },
+);
+
+mcpServer.tool(
+  "shortcut_create",
+  "Create a new shortcut with trigger phrase and steps",
+  createShortcutSchema.shape,
+  async (args) => {
+    const { data, ok } = await call(shortcuts, "POST", "/", args);
+    if (!ok) return error(data.error ?? "Failed to create shortcut");
+    return text(data);
+  },
+);
+
+mcpServer.tool(
+  "shortcut_update",
+  "Update an existing shortcut",
+  { ...idParam, ...updateShortcutSchema.shape },
+  async ({ id, ...body }) => {
+    const { data, ok } = await call(shortcuts, "PUT", `/${id}`, body);
+    if (!ok) return error(data.error ?? `Shortcut #${id} not found`);
+    return text({ ok: true, id });
+  },
+);
+
+mcpServer.tool(
+  "shortcut_delete",
+  "Delete a shortcut",
+  idParam,
+  async ({ id }) => {
+    await call(shortcuts, "DELETE", `/${id}`);
     return text({ ok: true, id });
   },
 );

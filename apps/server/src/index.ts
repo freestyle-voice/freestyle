@@ -15,6 +15,7 @@ import mlxAsr, { autoStartMlxAsrServer } from "./routes/mlx-asr.js";
 import models from "./routes/models.js";
 import postProcessRoute from "./routes/post-process-route.js";
 import settings from "./routes/settings.js";
+import shortcuts from "./routes/shortcuts.js";
 import stream from "./routes/stream.js";
 import transcribe from "./routes/transcribe.js";
 import vocabulary from "./routes/vocabulary.js";
@@ -50,6 +51,7 @@ const app = new Hono()
   .route("/api/transcribe", transcribe)
   .route("/api/history", history)
   .route("/api/dictionary", dictionary)
+  .route("/api/shortcuts", shortcuts)
   .route("/api/vocabulary", vocabulary)
   .route("/api/formats", formats)
   .route("/api/post-process", postProcessRoute)
@@ -58,6 +60,7 @@ const app = new Hono()
   .route("/mcp", mcp)
   .route("/stream", stream);
 
+export { registerActionHandler } from "./lib/actions.js";
 export {
   autoStartMlxAsrServer,
   autoStartWhisperServer,

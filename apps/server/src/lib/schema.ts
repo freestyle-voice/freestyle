@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 export function initSchema(db: DatabaseSync): void {
   db.exec(`
@@ -181,6 +181,30 @@ export function initSchema(db: DatabaseSync): void {
         notes TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+  }
+
+  if (currentVersion < 7) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS shortcuts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key TEXT NOT NULL UNIQUE,
+        description TEXT,
+        usage_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS shortcut_steps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        shortcut_id INTEGER NOT NULL REFERENCES shortcuts(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        value TEXT NOT NULL DEFAULT '',
+        UNIQUE(shortcut_id, position)
       )
     `);
   }

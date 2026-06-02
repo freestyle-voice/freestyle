@@ -13,6 +13,12 @@ declare global {
       getServerPort: () => Promise<number>;
       onHotkeyDown: (callback: () => void) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;
+      // Shortcuts hotkey
+      onShortcutsHotkeyDown: (callback: () => void) => () => void;
+      onShortcutsHotkeyUp: (callback: () => void) => () => void;
+      updateShortcutsHotkey: (hotkey: string) => void;
+      reloadShortcutsHotkey: () => void;
+      setShortcutsHotkeyMode: (mode: "hold" | "toggle") => void;
       onPillCancel: (callback: () => void) => () => void;
       checkMicPermission: () => Promise<string>;
       requestMicPermission: () => Promise<string>;

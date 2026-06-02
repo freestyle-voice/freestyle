@@ -136,6 +136,7 @@ export default function AppPage(): React.JSX.Element {
   /** True only while state is "recording" — used by the queue drain wait loop. */
   const recordingActiveRef = useRef(false);
   const appContextRef = useRef<string | null>(null);
+  const modeRef = useRef<"dictation" | "shortcuts">("dictation");
   const pendingCommitRef = useRef(false);
   const pillActiveRef = useRef(false);
   const barModeRef = useRef<BarMode | null>(null);
@@ -569,6 +570,7 @@ export default function AppPage(): React.JSX.Element {
 
         startListening(stream);
         try {
+          getStreamer().setMode(modeRef.current);
           await streamer.startCapture(stream);
         } catch {}
       } catch (err) {
@@ -810,12 +812,28 @@ export default function AppPage(): React.JSX.Element {
     const removeDown = window.api.onHotkeyDown(() => {
       const s = stateRef.current;
       if (s === "idle" || s === "error") {
+        modeRef.current = "dictation";
         startRecording(false);
       } else if (s === "transcribing" && !recordingActiveRef.current) {
+        modeRef.current = "dictation";
         startRecording(true);
       }
     });
     const removeUp = window.api.onHotkeyUp(() => {
+      if (stateRef.current === "recording") {
+        commitRecording();
+      } else if (stateRef.current === "initializing") {
+        pendingCommitRef.current = true;
+      }
+    });
+    const removeShortcutsDown = window.api.onShortcutsHotkeyDown(() => {
+      const s = stateRef.current;
+      if (s === "idle" || s === "error") {
+        modeRef.current = "shortcuts";
+        startRecording(false);
+      }
+    });
+    const removeShortcutsUp = window.api.onShortcutsHotkeyUp(() => {
       if (stateRef.current === "recording") {
         commitRecording();
       } else if (stateRef.current === "initializing") {
@@ -828,6 +846,8 @@ export default function AppPage(): React.JSX.Element {
     return () => {
       removeDown();
       removeUp();
+      removeShortcutsDown();
+      removeShortcutsUp();
       removeCancel();
     };
   }, [startRecording, commitRecording, cancelRecording]);

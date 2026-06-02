@@ -243,8 +243,7 @@ export default function AppPage(): React.JSX.Element {
       }
 
       try {
-        window.api.hidePill();
-        await window.api.pasteText(finalText, appContextRef.current);
+        await window.api.pasteText(finalText);
       } catch (err) {
         console.error("[pill] paste failed:", err);
       }

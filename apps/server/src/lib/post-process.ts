@@ -3,6 +3,11 @@ import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
 import { getDb } from "./db.js";
 import { capture, captureException } from "./posthog.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
+import {
+  applyShortcutsFallback,
+  loadShortcuts,
+  runShortcutsAgent,
+} from "./shortcuts-agent.js";
 
 /** Build a context string from the raw x-app-context header for matching */
 function buildMatchContext(rawContext: string | null): string {
@@ -80,6 +85,7 @@ export interface PostProcessResult {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
+  actionsExecuted: string[];
 }
 
 /**
@@ -110,6 +116,7 @@ export async function postProcess(
       inputTokens: 0,
       outputTokens: 0,
       costUsd: 0,
+      actionsExecuted: [],
     };
   }
 
@@ -248,5 +255,108 @@ IMPORTANT: Your entire response must be the cleaned text and nothing else. No qu
     inputTokens,
     outputTokens,
     costUsd,
+    actionsExecuted: [],
+  };
+}
+
+/**
+ * Post-process for shortcuts mode: run the shortcuts agent or fallback.
+ */
+export async function postProcessShortcuts(
+  rawText: string,
+  appContext: string | null,
+): Promise<PostProcessResult> {
+  const ppStart = Date.now();
+  const db = getDb();
+  const defaults = getDefaultModels();
+
+  const stripped = rawText
+    .replace(/\b(um+|uh+|ah+|er+|hm+|hmm+|mm+|mhm+|you know|i mean)\b/gi, "")
+    .replace(/[.…,!?\-–—\s]+/g, "");
+  if (!stripped) {
+    return {
+      cleaned: "",
+      llmProvider: null,
+      llmModel: null,
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+      actionsExecuted: [],
+    };
+  }
+
+  const llmSetting = db
+    .prepare("SELECT value FROM settings WHERE key = 'llm_cleanup'")
+    .get() as { value: string } | undefined;
+  const llmEnabled = llmSetting?.value === "true";
+
+  let cleanedText = rawText;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let llmProvider: string | null = null;
+  let llmModel: string | null = null;
+  let costUsd = 0;
+  let actionsExecuted: string[] = [];
+
+  const contextHint = appContext ? buildMatchContext(appContext) : "";
+
+  if (llmEnabled && defaults.llm) {
+    try {
+      const chatModel = createChatModel(
+        defaults.llm.provider,
+        defaults.llm.model_id,
+      );
+      const result = await runShortcutsAgent(
+        rawText,
+        contextHint,
+        chatModel,
+        defaults.llm.model_id,
+      );
+      cleanedText = result.cleaned;
+      actionsExecuted = result.actionsExecuted;
+      inputTokens = result.inputTokens;
+      outputTokens = result.outputTokens;
+      llmProvider = defaults.llm.provider;
+      llmModel = defaults.llm.model_id;
+    } catch (err) {
+      captureException(err);
+      console.error("Shortcuts agent failed:", err);
+      const fallback = applyShortcutsFallback(rawText, loadShortcuts());
+      cleanedText = fallback.cleaned;
+      actionsExecuted = fallback.actionsExecuted;
+    }
+  } else {
+    const fallback = applyShortcutsFallback(rawText, loadShortcuts());
+    cleanedText = fallback.cleaned;
+    actionsExecuted = fallback.actionsExecuted;
+  }
+
+  if (inputTokens > 0 || outputTokens > 0) {
+    try {
+      if (llmProvider && llmModel) {
+        const pricing = await getModelCost(llmProvider, llmModel);
+        if (pricing) {
+          costUsd = inputTokens * pricing.input + outputTokens * pricing.output;
+        }
+      }
+    } catch {
+      // ignore pricing errors
+    }
+  }
+
+  capture("post process shortcuts completed", {
+    duration_ms: Date.now() - ppStart,
+    ...(llmModel ? { model: llmModel } : {}),
+    actions_count: actionsExecuted.length,
+  });
+
+  return {
+    cleaned: cleanedText,
+    llmProvider,
+    llmModel,
+    inputTokens,
+    outputTokens,
+    costUsd,
+    actionsExecuted,
   };
 }

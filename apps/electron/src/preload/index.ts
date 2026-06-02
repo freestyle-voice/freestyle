@@ -24,6 +24,23 @@ const api = {
     ipcRenderer.on("hotkey:up", handler);
     return () => ipcRenderer.removeListener("hotkey:up", handler);
   },
+  // Shortcuts hotkey
+  onShortcutsHotkeyDown: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("shortcuts-hotkey:down", handler);
+    return () => ipcRenderer.removeListener("shortcuts-hotkey:down", handler);
+  },
+  onShortcutsHotkeyUp: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("shortcuts-hotkey:up", handler);
+    return () => ipcRenderer.removeListener("shortcuts-hotkey:up", handler);
+  },
+  updateShortcutsHotkey: (hotkey: string): void =>
+    ipcRenderer.send("shortcuts-hotkey:update", hotkey),
+  reloadShortcutsHotkey: (): void =>
+    ipcRenderer.send("shortcuts-hotkey:reload"),
+  setShortcutsHotkeyMode: (mode: "hold" | "toggle"): void =>
+    ipcRenderer.send("shortcuts-hotkey:set-mode", mode),
   onPillCancel: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("pill:cancel", handler);

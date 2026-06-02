@@ -1,7 +1,7 @@
 import { upgradeWebSocket } from "@hono/node-server";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
-import { postProcess } from "../lib/post-process.js";
+import { postProcess, postProcessShortcuts } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
@@ -24,6 +24,7 @@ const stream = new Hono().get(
     let sessionStartTime = Date.now();
     let voiceDefaults: { provider: string; model_id: string } | null = null;
     let appContext: string | null = null;
+    let mode: string = "dictation";
     let audioDurationMs = 0;
     /** Audio received while the upstream socket is still connecting. */
     let pendingAudioChunks: ArrayBuffer[] = [];
@@ -167,7 +168,9 @@ const stream = new Hono().get(
               return;
             }
 
-            postProcess(rawText, appContext)
+            const ppFn =
+              mode === "shortcuts" ? postProcessShortcuts : postProcess;
+            ppFn(rawText, appContext)
               .then((pp) => {
                 capture("streaming transcription completed", {
                   provider: voiceDefaults!.provider,
@@ -181,7 +184,14 @@ const stream = new Hono().get(
                   cost_usd: pp.costUsd,
                 });
                 if (!closed) {
-                  ws.send(JSON.stringify({ type: "final", text: pp.cleaned }));
+                  const finalMsg: Record<string, unknown> = {
+                    type: "final",
+                    text: pp.cleaned,
+                  };
+                  if (mode === "shortcuts" && pp.actionsExecuted.length > 0) {
+                    finalMsg.actions = pp.actionsExecuted;
+                  }
+                  ws.send(JSON.stringify(finalMsg));
                 }
                 try {
                   const db = getDb();
@@ -309,6 +319,7 @@ const stream = new Hono().get(
         let msg: {
           type: string;
           context?: string | null;
+          mode?: string;
           audioDurationMs?: number;
         };
         try {
@@ -324,11 +335,13 @@ const stream = new Hono().get(
         switch (msg.type) {
           case "context":
             appContext = msg.context ?? null;
+            if (msg.mode) mode = msg.mode;
             break;
           case "start":
             sessionStartTime = Date.now();
             audioDurationMs = 0;
             appContext = msg.context ?? null;
+            if (msg.mode) mode = msg.mode;
             pendingAudioChunks = [];
             pendingCommit = false;
             reconnectAttempts = 0;
@@ -369,6 +382,7 @@ const stream = new Hono().get(
             if (msg.context !== undefined) {
               appContext = msg.context;
             }
+            if (msg.mode) mode = msg.mode;
             if (
               upstream &&
               (upstream.waitUntilReady || notifiedReadyToken === readyToken)

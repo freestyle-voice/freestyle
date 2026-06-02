@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
-import { postProcess } from "../lib/post-process.js";
+import { postProcess, postProcessShortcuts } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { getProvider } from "../lib/streaming/registry.js";
@@ -29,6 +29,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   }
 
   const appContext = c.req.header("x-app-context") ?? null;
+  const reqMode = c.req.header("x-mode") ?? "dictation";
 
   let audioDurationMs = 0;
   if (audioData.length > 44) {
@@ -168,7 +169,8 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   }
 
   const ppStart = Date.now();
-  const pp = await postProcess(rawText, appContext);
+  const ppFn = reqMode === "shortcuts" ? postProcessShortcuts : postProcess;
+  const pp = await ppFn(rawText, appContext);
   if (isDev) {
     console.log(
       `[transcribe] post-process took ${Date.now() - ppStart}ms | cleaned=${JSON.stringify(pp.cleaned).slice(0, 120)}`,

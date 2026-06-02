@@ -30,6 +30,7 @@ export class Streamer {
   private readonly callbacks: StreamerCallbacks;
   private readonly wsUrl: string;
   private currentContext: string | null = null;
+  private mode: "dictation" | "shortcuts" = "dictation";
 
   // Capture pipeline — reused across sessions when possible
   private ctx: AudioContext | null = null;
@@ -52,7 +53,11 @@ export class Streamer {
 
   setContext(context: string | null): void {
     this.currentContext = context;
-    this.sendJSON({ type: "context", context });
+    this.sendJSON({ type: "context", context, mode: this.mode });
+  }
+
+  setMode(mode: "dictation" | "shortcuts"): void {
+    this.mode = mode;
   }
 
   async startCapture(stream: MediaStream): Promise<void> {
@@ -63,7 +68,11 @@ export class Streamer {
     this.pendingChunks = [];
     this.pcmChunks = [];
     this.pcmSampleCount = 0;
-    this.sendJSON({ type: "start", context: this.currentContext });
+    this.sendJSON({
+      type: "start",
+      context: this.currentContext,
+      mode: this.mode,
+    });
 
     if (!this.ctx || this.ctx.state === "closed") {
       this.ctx = new AudioContext();
@@ -110,6 +119,7 @@ export class Streamer {
       type: "commit",
       audioDurationMs,
       context: this.currentContext,
+      mode: this.mode,
     });
   }
 

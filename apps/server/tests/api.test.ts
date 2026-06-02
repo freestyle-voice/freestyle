@@ -399,3 +399,190 @@ describe("History", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Shortcuts CRUD
+// ---------------------------------------------------------------------------
+
+describe("Shortcuts", () => {
+  it("GET /api/shortcuts returns empty list initially", async () => {
+    const res = await req("/api/shortcuts");
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveProperty("items");
+    expect(data).toHaveProperty("total");
+    expect(Array.isArray(data.items)).toBe(true);
+  });
+
+  it("POST creates a single-step replace shortcut", async () => {
+    const res = await json("/api/shortcuts", {
+      key: "my email",
+      description: "Insert my email address",
+      steps: [{ action: "replace", value: "test@example.com" }],
+    });
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.key).toBe("my email");
+    expect(data.id).toBeDefined();
+    expect(data.steps).toHaveLength(1);
+    expect(data.steps[0].action).toBe("replace");
+    expect(data.steps[0].value).toBe("test@example.com");
+  });
+
+  it("POST creates a multi-step shortcut", async () => {
+    const res = await json("/api/shortcuts", {
+      key: "send report",
+      steps: [
+        { action: "replace", value: "Here is the report" },
+        { action: "open_url", value: "https://example.com/report" },
+      ],
+    });
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.steps).toHaveLength(2);
+    expect(data.steps[0].action).toBe("replace");
+    expect(data.steps[1].action).toBe("open_url");
+  });
+
+  it("POST creates a shortcut with variables", async () => {
+    const res = await json("/api/shortcuts", {
+      key: "search {query}",
+      description: "Search the web",
+      steps: [
+        { action: "open_url", value: "https://google.com/search?q={query}" },
+      ],
+    });
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.key).toBe("search {query}");
+  });
+
+  it("GET /:id returns shortcut with steps", async () => {
+    const create = await json("/api/shortcuts", {
+      key: "get by id test",
+      steps: [{ action: "replace", value: "found it" }],
+    });
+    const { id } = await create.json();
+
+    const get = await req(`/api/shortcuts/${id}`);
+    expect(get.status).toBe(200);
+    const data = await get.json();
+    expect(data.key).toBe("get by id test");
+    expect(data.steps).toHaveLength(1);
+    expect(data.steps[0].value).toBe("found it");
+  });
+
+  it("PUT updates steps", async () => {
+    const create = await json("/api/shortcuts", {
+      key: "update steps test",
+      steps: [{ action: "replace", value: "original" }],
+    });
+    const { id } = await create.json();
+
+    const put = await json(
+      `/api/shortcuts/${id}`,
+      {
+        steps: [
+          { action: "replace", value: "updated" },
+          { action: "open_app", value: "Notes" },
+        ],
+      },
+      "PUT",
+    );
+    expect(put.status).toBe(200);
+    const data = await put.json();
+    expect(data.steps).toHaveLength(2);
+    expect(data.steps[0].value).toBe("updated");
+    expect(data.steps[1].action).toBe("open_app");
+  });
+
+  it("DELETE removes a shortcut", async () => {
+    const create = await json("/api/shortcuts", {
+      key: "to delete shortcut",
+      steps: [{ action: "replace", value: "gone" }],
+    });
+    const { id } = await create.json();
+
+    const del = await req(`/api/shortcuts/${id}`, { method: "DELETE" });
+    expect(del.status).toBe(200);
+
+    const get = await req(`/api/shortcuts/${id}`);
+    expect(get.status).toBe(404);
+  });
+
+  it("POST rejects duplicate keys", async () => {
+    await json("/api/shortcuts", {
+      key: "dupe shortcut",
+      steps: [{ action: "replace", value: "first" }],
+    });
+    const res = await json("/api/shortcuts", {
+      key: "dupe shortcut",
+      steps: [{ action: "replace", value: "second" }],
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("GET /api/shortcuts supports search", async () => {
+    await json("/api/shortcuts", {
+      key: "searchable shortcut",
+      steps: [{ action: "replace", value: "findme" }],
+    });
+
+    const res = await req("/api/shortcuts?search=searchable");
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.items.length).toBeGreaterThanOrEqual(1);
+    expect(
+      data.items.some((i: { key: string }) => i.key === "searchable shortcut"),
+    ).toBe(true);
+  });
+
+  it("GET /api/shortcuts/all returns all with steps", async () => {
+    const res = await req("/api/shortcuts/all");
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    if (data.length > 0) {
+      expect(data[0]).toHaveProperty("steps");
+    }
+  });
+
+  it("POST /api/shortcuts/import imports legacy format", async () => {
+    const entries = [
+      { key: "legacy import one", value: "LegacyValue1", action: "replace" },
+      { key: "legacy import two", value: "LegacyValue2" },
+    ];
+    const res = await json("/api/shortcuts/import", entries);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(2);
+    expect(data.skipped).toBe(0);
+  });
+
+  it("POST /api/shortcuts/import imports steps format", async () => {
+    const entries = [
+      {
+        key: "steps import one",
+        steps: [
+          { action: "replace", value: "StepsValue1" },
+          { action: "open_app", value: "Notes" },
+        ],
+      },
+    ];
+    const res = await json("/api/shortcuts/import", entries);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(1);
+  });
+
+  it("GET /api/shortcuts/export/json returns JSON export with steps", async () => {
+    const res = await req("/api/shortcuts/export/json");
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    if (data.length > 0) {
+      expect(data[0]).toHaveProperty("key");
+      expect(data[0]).toHaveProperty("steps");
+    }
+  });
+});

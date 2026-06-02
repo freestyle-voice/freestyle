@@ -22,6 +22,7 @@ import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import server, {
   autoStartWhisperServer,
   reconcileUnsupportedMlxVoiceDefault,
+  registerActionHandler,
 } from "@freestyle/server";
 import { serve } from "@hono/node-server";
 import {
@@ -106,6 +107,11 @@ let currentHotkeyAccel: string | null = null;
 let hotkeyActivationMode: "hold" | "toggle" = "hold";
 let micListener: MicListener | null = null;
 let hotkeyRecorder: HotkeyRecorder | null = null;
+
+let shortcutsKeyListener: NativeKeyListener | null = null;
+let shortcutsHotkeyPressed = false;
+let shortcutsHotkeyAccel: string | null = null;
+let shortcutsHotkeyMode: "hold" | "toggle" = "hold";
 
 function stopHotkeyRecorderProcess(): void {
   hotkeyRecorder?.stop();
@@ -889,6 +895,44 @@ app.whenReady().then(async () => {
 
   createTray();
 
+  // Register action handlers for shortcuts
+  registerActionHandler("open_app", async (params) => {
+    const name = String(params.name ?? "");
+    if (!name) return { ok: false, message: "Missing app name" };
+    return new Promise((resolve) => {
+      if (process.platform === "darwin") {
+        execFile("open", ["-a", name], (err) => {
+          if (err) resolve({ ok: false, message: err.message });
+          else resolve({ ok: true });
+        });
+      } else if (process.platform === "win32") {
+        execFile("cmd", ["/c", "start", "", name], (err) => {
+          if (err) resolve({ ok: false, message: err.message });
+          else resolve({ ok: true });
+        });
+      } else {
+        execFile("xdg-open", [name], (err) => {
+          if (err) resolve({ ok: false, message: err.message });
+          else resolve({ ok: true });
+        });
+      }
+    });
+  });
+
+  registerActionHandler("open_url", async (params) => {
+    const url = String(params.url ?? "");
+    if (!url) return { ok: false, message: "Missing URL" };
+    await shell.openExternal(url);
+    return { ok: true };
+  });
+
+  registerActionHandler("paste_clipboard", async (params) => {
+    const text = String(params.text ?? clipboard.readText());
+    if (!text) return { ok: false, message: "Nothing to paste" };
+    await pasteIntoFocusedApp(text);
+    return { ok: true };
+  });
+
   createAppWindow();
 
   if (readSettings().showDashboardOnLaunch !== false) {
@@ -1063,6 +1107,10 @@ app.whenReady().then(async () => {
   hotkeyActivationMode = loadHotkeyModeFromDB();
   registerHotkey();
 
+  // Register shortcuts hotkey via native platform binary
+  shortcutsHotkeyMode = loadShortcutsHotkeyModeFromDB();
+  registerShortcutsHotkey();
+
   // Start microphone activity monitoring
   micListener = new MicListener({
     excludePid: process.pid,
@@ -1087,6 +1135,19 @@ app.whenReady().then(async () => {
     hotkeyActivationMode = mode === "toggle" ? "toggle" : "hold";
     hotkeyPressed = false;
     registerHotkey(currentHotkeyAccel ?? undefined);
+  });
+
+  ipcMain.on("shortcuts-hotkey:update", (_event, newHotkey: string) => {
+    registerShortcutsHotkey(newHotkey);
+  });
+  ipcMain.on("shortcuts-hotkey:reload", () => {
+    shortcutsHotkeyMode = loadShortcutsHotkeyModeFromDB();
+    registerShortcutsHotkey(shortcutsHotkeyAccel ?? undefined);
+  });
+  ipcMain.on("shortcuts-hotkey:set-mode", (_event, mode: string) => {
+    shortcutsHotkeyMode = mode === "toggle" ? "toggle" : "hold";
+    shortcutsHotkeyPressed = false;
+    registerShortcutsHotkey(shortcutsHotkeyAccel ?? undefined);
   });
 });
 
@@ -1277,11 +1338,136 @@ function registerHotkey(hotkey?: string): void {
   }
 }
 
+function loadShortcutsHotkeyFromDB(): string | undefined {
+  try {
+    const dbPath = process.env.FREESTYLE_DB_PATH;
+    if (dbPath) {
+      const { DatabaseSync } = require("node:sqlite");
+      const db = new DatabaseSync(dbPath);
+      const row = db
+        .prepare("SELECT value FROM settings WHERE key = 'shortcuts_hotkey'")
+        .get() as { value: string } | undefined;
+      db.close();
+      if (row?.value && isValidAccelerator(row.value)) {
+        return row.value;
+      }
+    }
+  } catch {
+    // Ignore errors
+  }
+  return undefined;
+}
+
+function loadShortcutsHotkeyModeFromDB(): "hold" | "toggle" {
+  try {
+    const dbPath = process.env.FREESTYLE_DB_PATH;
+    if (dbPath) {
+      const { DatabaseSync } = require("node:sqlite");
+      const db = new DatabaseSync(dbPath);
+      const row = db
+        .prepare(
+          "SELECT value FROM settings WHERE key = 'shortcuts_hotkey_mode'",
+        )
+        .get() as { value: string } | undefined;
+      db.close();
+      if (row?.value === "toggle") return "toggle";
+    }
+  } catch {
+    // Ignore errors
+  }
+  return "hold";
+}
+
+function sendShortcutsHotkeyDown(): void {
+  showPill();
+  mainWindow?.webContents.send("shortcuts-hotkey:down");
+  settingsWindow?.webContents.send("shortcuts-hotkey:down");
+}
+
+function sendShortcutsHotkeyUp(): void {
+  mainWindow?.webContents.send("shortcuts-hotkey:up");
+  settingsWindow?.webContents.send("shortcuts-hotkey:up");
+}
+
+function handleNativeShortcutsHotkeyDown(): void {
+  if (shortcutsHotkeyMode === "toggle") {
+    if (!shortcutsHotkeyPressed) {
+      shortcutsHotkeyPressed = true;
+      sendShortcutsHotkeyDown();
+    } else {
+      shortcutsHotkeyPressed = false;
+      sendShortcutsHotkeyUp();
+    }
+    return;
+  }
+
+  if (!shortcutsHotkeyPressed) {
+    shortcutsHotkeyPressed = true;
+    sendShortcutsHotkeyDown();
+  }
+}
+
+function handleNativeShortcutsHotkeyUp(): void {
+  if (shortcutsHotkeyMode === "toggle") return;
+
+  if (shortcutsHotkeyPressed) {
+    shortcutsHotkeyPressed = false;
+    sendShortcutsHotkeyUp();
+  }
+}
+
+function registerShortcutsHotkey(hotkey?: string): void {
+  if (shortcutsKeyListener) {
+    shortcutsKeyListener.stop();
+    shortcutsKeyListener = null;
+  }
+  shortcutsHotkeyPressed = false;
+
+  if (!hotkey) {
+    hotkey = loadShortcutsHotkeyFromDB();
+  }
+
+  if (!hotkey || !isValidAccelerator(hotkey)) {
+    shortcutsHotkeyAccel = null;
+    return;
+  }
+
+  const normalized = normalizeAccelerator(hotkey);
+  shortcutsHotkeyAccel = normalized;
+
+  shortcutsKeyListener = new NativeKeyListener({
+    hotkey: normalized,
+    onKeyDown: handleNativeShortcutsHotkeyDown,
+    onKeyUp: handleNativeShortcutsHotkeyUp,
+    onError: (error) => {
+      console.error("[shortcuts-hotkey] Native key listener error:", error);
+    },
+    onReady: () => {
+      if (process.env.NODE_ENV !== "production") {
+        console.log(
+          `[shortcuts-hotkey] Native key listener ready for "${normalized}"`,
+        );
+      }
+    },
+  });
+
+  if (!shortcutsKeyListener.start()) {
+    console.warn(
+      "[shortcuts-hotkey] Native key listener unavailable for shortcuts hotkey.",
+    );
+    shortcutsKeyListener = null;
+  }
+}
+
 // Clean up key listener and mic listener on quit
 app.on("will-quit", () => {
   if (keyListener) {
     keyListener.stop();
     keyListener = null;
+  }
+  if (shortcutsKeyListener) {
+    shortcutsKeyListener.stop();
+    shortcutsKeyListener = null;
   }
   if (micListener) {
     micListener.stop();

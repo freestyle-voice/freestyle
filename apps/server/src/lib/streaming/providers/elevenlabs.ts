@@ -111,7 +111,7 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
-    const { apiKey, model, bias, callbacks } = opts;
+    const { apiKey, model, language, bias, callbacks } = opts;
 
     let accumulatedText = "";
     let partialText = "";
@@ -167,6 +167,9 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
           audio_format: "pcm_16000",
           commit_strategy: "manual",
         });
+        if (language && language !== "auto") {
+          params.set("language_code", language);
+        }
         appendElevenLabsBiasToParams(params, bias);
 
         ws = new WebSocket(`${ELEVENLABS_STT_URL}?${params}`);

@@ -44,6 +44,8 @@ export interface TranscribeResult {
 export interface StreamingSessionOptions {
   apiKey: string;
   model: string;
+  /** ISO-639-1 language hint; omitted or "auto" lets the model auto-detect. */
+  language?: string;
   /** ASR-only vocabulary bias for the first recognition pass. */
   bias?: AsrVocabularyBias | null;
   callbacks: StreamCallbacks;

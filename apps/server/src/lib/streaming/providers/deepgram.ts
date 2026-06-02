@@ -74,7 +74,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
-    const { apiKey, model, bias, callbacks } = opts;
+    const { apiKey, model, language, bias, callbacks } = opts;
 
     let accumulatedText = "";
     let partialText = "";
@@ -101,6 +101,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       endpointing: "false",
       vad_events: "false",
     });
+    if (language && language !== "auto") params.set("language", language);
     appendDeepgramBiasToParams(params, bias);
 
     const ws = new WebSocket(`${DEEPGRAM_LISTEN_URL}?${params}`, {

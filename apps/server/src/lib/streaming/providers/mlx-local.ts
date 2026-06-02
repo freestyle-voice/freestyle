@@ -62,6 +62,8 @@ export class MlxLocalTranscriptionProvider implements TranscriptionProvider {
     const modelId = stripProviderPrefix(opts.model);
     return new MlxLocalStreamingSession({
       modelId,
+      language:
+        opts.language && opts.language !== "auto" ? opts.language : undefined,
       context: opts.bias?.kind === "prompt" ? opts.bias.text : undefined,
       callbacks: opts.callbacks,
     });
@@ -84,6 +86,7 @@ class MlxLocalStreamingSession implements StreamSession {
   constructor(
     private readonly opts: {
       modelId: string;
+      language?: string;
       context?: string;
       callbacks: StreamCallbacks;
     },
@@ -236,6 +239,7 @@ class MlxLocalStreamingSession implements StreamSession {
           modelId: this.opts.modelId,
           pcm: new Uint8Array(audio),
           sampleRate: STREAM_SAMPLE_RATE,
+          language: this.opts.language,
           context: this.opts.context,
           live: !final,
           deferUnload: true,

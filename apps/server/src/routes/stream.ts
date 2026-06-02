@@ -137,11 +137,17 @@ const stream = new Hono().get(
         true,
       );
 
+      const langSetting = getDb()
+        .prepare("SELECT value FROM settings WHERE key = 'language'")
+        .get() as { value: string } | undefined;
+      const language = langSetting?.value || undefined;
+
       const token = ++readyToken;
       const session = openStreamingSession({
         providerId: defaults.voice.provider,
         apiKey,
         model: defaults.voice.model_id,
+        language,
         bias,
         callbacks: {
           onReady: (readyModel) => {

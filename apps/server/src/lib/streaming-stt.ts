@@ -14,10 +14,11 @@ export function openStreamingSession(opts: {
   providerId: string;
   apiKey: string;
   model: string;
+  language?: string;
   bias?: AsrVocabularyBias | null;
   callbacks: StreamCallbacks;
 }): StreamSession {
-  const { providerId, apiKey, model, bias, callbacks } = opts;
+  const { providerId, apiKey, model, language, bias, callbacks } = opts;
 
   const provider = getProvider(providerId);
   if (!provider) {
@@ -32,7 +33,13 @@ export function openStreamingSession(opts: {
     );
   }
 
-  return provider.openStreamingSession({ apiKey, model, bias, callbacks });
+  return provider.openStreamingSession({
+    apiKey,
+    model,
+    language,
+    bias,
+    callbacks,
+  });
 }
 
 export function getApiKeyForProvider(providerId: string): string | null {

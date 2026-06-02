@@ -389,6 +389,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
 
   const handleOutputModeChange = useCallback((value: string) => {
     setOutputMode(value);
+    window.api?.sendOutputModeChanged(value);
     getClient()
       .api.settings[":key"].$put({
         param: { key: "output_mode" },

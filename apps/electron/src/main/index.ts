@@ -705,7 +705,13 @@ app.whenReady().then(async () => {
 
   // IPC: copy text to clipboard
   ipcMain.handle("copy:text", async (_event, text: string) => {
+    if (!text?.trim()) return;
     clipboard.writeText(text);
+  });
+
+  // IPC: broadcast output mode changes to pill window
+  ipcMain.on("settings:output-mode-changed", (_event, mode: string) => {
+    mainWindow?.webContents.send("settings:output-mode-changed", mode);
   });
 
   // IPC: hide the pill window on request from renderer

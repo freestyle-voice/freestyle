@@ -66,6 +66,9 @@ declare global {
       onPillPositionChanged: (
         callback: (position: string) => void,
       ) => () => void;
+      // Output mode
+      sendOutputModeChanged: (mode: string) => void;
+      onOutputModeChanged: (callback: (mode: string) => void) => () => void;
       // Hotkey error notifications
       onHotkeyError: (
         callback: (error: { message: string }) => void,

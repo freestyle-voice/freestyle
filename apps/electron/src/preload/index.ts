@@ -143,6 +143,15 @@ const api = {
     return () =>
       ipcRenderer.removeListener("settings:pill-position-changed", handler);
   },
+  // Output mode
+  sendOutputModeChanged: (mode: string): void =>
+    ipcRenderer.send("settings:output-mode-changed", mode),
+  onOutputModeChanged: (callback: (mode: string) => void): (() => void) => {
+    const handler = (_: unknown, mode: string): void => callback(mode);
+    ipcRenderer.on("settings:output-mode-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("settings:output-mode-changed", handler);
+  },
   // Hotkey error notifications
   onHotkeyError: (
     callback: (error: { message: string }) => void,

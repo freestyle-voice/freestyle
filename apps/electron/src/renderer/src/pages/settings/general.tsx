@@ -101,6 +101,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
   const [hotkey, setHotkey] = useState("Alt+Space");
   const [hotkeyMode, setHotkeyMode] = useState<"hold" | "toggle">("hold");
   const [language, setLanguage] = useState("auto");
+  const [outputMode, setOutputMode] = useState("paste");
   const [pillPosition, setPillPosition] = useState("bottom-center");
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [transcriptionPrompt, setTranscriptionPrompt] = useState("");
@@ -269,6 +270,13 @@ export default function GeneralSettingsPage(): React.JSX.Element {
         if (data?.value) setLanguage(data.value);
       })
       .catch(() => {});
+    getClient()
+      .api.settings[":key"].$get({ param: { key: "output_mode" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.value) setOutputMode(data.value);
+      })
+      .catch(() => {});
     window.api
       ?.getPillPosition()
       .then(setPillPosition)
@@ -374,6 +382,16 @@ export default function GeneralSettingsPage(): React.JSX.Element {
     getClient()
       .api.settings[":key"].$put({
         param: { key: "language" },
+        json: { value },
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleOutputModeChange = useCallback((value: string) => {
+    setOutputMode(value);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: "output_mode" },
         json: { value },
       })
       .catch(() => {});
@@ -660,6 +678,21 @@ export default function GeneralSettingsPage(): React.JSX.Element {
                 <option value="uk">Ukrainian</option>
               </select>
             </div>
+          </Row>
+
+          <Row
+            label="Output mode"
+            desc="Paste into the active app, or copy to clipboard."
+          >
+            <Segment
+              compact
+              options={[
+                { id: "paste", label: "Paste into app" },
+                { id: "clipboard", label: "Copy to clipboard" },
+              ]}
+              active={outputMode}
+              onSelect={handleOutputModeChange}
+            />
           </Row>
 
           <Row

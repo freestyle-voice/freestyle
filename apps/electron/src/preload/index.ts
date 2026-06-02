@@ -5,6 +5,8 @@ import { contextBridge, ipcRenderer } from "electron";
 const api = {
   pasteText: (text: string): Promise<void> =>
     ipcRenderer.invoke("paste:text", text),
+  copyText: (text: string): Promise<void> =>
+    ipcRenderer.invoke("copy:text", text),
   updateHotkey: (hotkey: string): void =>
     ipcRenderer.send("hotkey:update", hotkey),
   reloadHotkey: (): void => ipcRenderer.send("hotkey:reload"),

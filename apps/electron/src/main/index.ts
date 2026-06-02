@@ -28,6 +28,7 @@ import { serve } from "@hono/node-server";
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   globalShortcut,
   ipcMain,
@@ -700,6 +701,11 @@ app.whenReady().then(async () => {
   // IPC: paste text at cursor
   ipcMain.handle("paste:text", async (_event, text: string) => {
     await pasteIntoFocusedApp(text);
+  });
+
+  // IPC: copy text to clipboard
+  ipcMain.handle("copy:text", async (_event, text: string) => {
+    clipboard.writeText(text);
   });
 
   // IPC: hide the pill window on request from renderer

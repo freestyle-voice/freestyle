@@ -243,9 +243,20 @@ export default function AppPage(): React.JSX.Element {
       }
 
       try {
-        await window.api.pasteText(finalText);
+        const outModeRes = await getClient()
+          .api.settings[":key"].$get({ param: { key: "output_mode" } })
+          .catch(() => null);
+        const outputMode = outModeRes?.ok
+          ? (await outModeRes.json())?.value
+          : "paste";
+
+        if (outputMode === "clipboard") {
+          await window.api.copyText(finalText);
+        } else {
+          await window.api.pasteText(finalText);
+        }
       } catch (err) {
-        console.error("[pill] paste failed:", err);
+        console.error("[pill] paste/copy failed:", err);
       }
       window.api.sendTranscriptionDone();
 

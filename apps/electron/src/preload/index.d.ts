@@ -5,6 +5,7 @@ declare global {
     electron: ElectronAPI;
     api: {
       pasteText: (text: string) => Promise<void>;
+      copyText: (text: string) => Promise<void>;
       updateHotkey: (hotkey: string) => void;
       reloadHotkey: () => void;
       setHotkeyMode: (mode: "hold" | "toggle") => void;

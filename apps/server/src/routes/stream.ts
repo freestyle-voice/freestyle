@@ -13,6 +13,8 @@ import {
 } from "../lib/streaming-stt.js";
 import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
 
+const LOG_STREAM_PARTIALS = process.env.FREESTYLE_LOG_STREAM_PARTIALS === "1";
+
 const stream = new Hono().get(
   "/",
   upgradeWebSocket(() => {
@@ -149,6 +151,11 @@ const stream = new Hono().get(
           },
           onPartial: (text) => {
             if (upstream !== session) return;
+            if (LOG_STREAM_PARTIALS) {
+              console.log(
+                `[stream partial] ${defaults.voice!.provider}/${modelShort}: ${text}`,
+              );
+            }
             ws.send(JSON.stringify({ type: "partial", text }));
           },
           onFinal: (rawText) => {
@@ -286,7 +293,10 @@ const stream = new Hono().get(
                     (data as Buffer).byteOffset,
                     (data as Buffer).byteOffset + (data as Buffer).byteLength,
                   ) as ArrayBuffer);
-          if (!upstream || notifiedReadyToken !== readyToken) {
+          if (
+            !upstream ||
+            (!upstream.waitUntilReady && notifiedReadyToken !== readyToken)
+          ) {
             if (pendingAudioChunks.length < 500) {
               pendingAudioChunks.push(buf);
             }
@@ -359,7 +369,10 @@ const stream = new Hono().get(
             if (msg.context !== undefined) {
               appContext = msg.context;
             }
-            if (upstream && notifiedReadyToken === readyToken) {
+            if (
+              upstream &&
+              (upstream.waitUntilReady || notifiedReadyToken === readyToken)
+            ) {
               upstream.commit();
             } else {
               pendingCommit = true;

@@ -132,6 +132,7 @@ class MlxLocalStreamingSession implements StreamSession {
     this.dirty = false;
     this.commitRequested = false;
     this.generation++;
+    applyMlxAsrRetentionPolicy();
   }
 
   close(): void {
@@ -235,6 +236,9 @@ class MlxLocalStreamingSession implements StreamSession {
       })
       .finally(() => {
         if (this.closed || this.canceled || generation !== this.generation) {
+          if (this.closed || this.canceled) {
+            applyMlxAsrRetentionPolicy();
+          }
           return;
         }
         this.inFlight = false;

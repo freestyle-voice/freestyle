@@ -814,17 +814,6 @@ export default function OnboardingPage(): React.JSX.Element {
                 {saving ? "Setting up..." : "Continue"}
                 {!saving && <ChevronRight size={16} />}
               </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  window.api?.setOnboardingComplete();
-                  navigate("/today", { replace: true });
-                }}
-                className="text-muted-foreground hover:text-foreground w-full py-2 text-center text-xs"
-              >
-                Skip for now
-              </button>
             </div>
           )}
 

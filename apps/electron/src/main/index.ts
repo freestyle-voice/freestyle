@@ -533,6 +533,11 @@ function showSettingsWindow(): void {
   settingsWindow.focus();
 }
 
+function restartAndUpdate(): void {
+  isUpdaterQuitting = true;
+  autoUpdater.quitAndInstall();
+}
+
 async function checkForUpdatesFromMenu(): Promise<void> {
   if (is.dev) {
     dialog.showMessageBox({
@@ -540,6 +545,10 @@ async function checkForUpdatesFromMenu(): Promise<void> {
       title: "Check for Updates",
       message: "Update checking is not available in development mode.",
     });
+    return;
+  }
+  if (updateDownloadState === "downloaded") {
+    restartAndUpdate();
     return;
   }
   try {
@@ -575,23 +584,24 @@ async function checkForUpdatesFromMenu(): Promise<void> {
   }
 }
 
-function createTray(): void {
-  const trayImage = nativeImage.createFromPath(trayIconPath);
-  // Mark as template so macOS adapts to menu bar light/dark
-  trayImage.setTemplateImage(true);
+function buildTrayContextMenu(): Menu {
+  const updateItem =
+    updateDownloadState === "downloaded"
+      ? {
+          label: "Restart & Update",
+          click: () => restartAndUpdate(),
+        }
+      : {
+          label: "Check for Updates...",
+          click: () => checkForUpdatesFromMenu(),
+        };
 
-  tray = new Tray(trayImage);
-  tray.setToolTip("Freestyle");
-
-  const contextMenu = Menu.buildFromTemplate([
+  return Menu.buildFromTemplate([
     {
       label: "Settings",
       click: () => showSettingsWindow(),
     },
-    {
-      label: "Check for Updates...",
-      click: () => checkForUpdatesFromMenu(),
-    },
+    updateItem,
     ...(is.dev
       ? [
           { type: "separator" as const },
@@ -609,32 +619,40 @@ function createTray(): void {
       },
     },
   ]);
+}
+
+function createTray(): void {
+  const trayImage = nativeImage.createFromPath(trayIconPath);
+  // Mark as template so macOS adapts to menu bar light/dark
+  trayImage.setTemplateImage(true);
+
+  tray = new Tray(trayImage);
+  tray.setToolTip("Freestyle");
 
   // Left-click: open the settings window
   tray.on("click", () => {
     showSettingsWindow();
   });
 
-  // Right-click: show context menu
+  // Right-click: show context menu (rebuilt each time for up-to-date labels)
   tray.on("right-click", () => {
-    tray!.popUpContextMenu(contextMenu);
+    tray!.popUpContextMenu(buildTrayContextMenu());
   });
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(async () => {
-  // Set app user model id for windows
-  electronApp.setAppUserModelId("com.freestyle.app");
+// Rebuild the application menu so update-related labels stay current.
+function rebuildMenus(): void {
+  const updateMenuItem =
+    updateDownloadState === "downloaded"
+      ? {
+          label: "Restart & Update",
+          click: () => restartAndUpdate(),
+        }
+      : {
+          label: "Check for Updates...",
+          click: () => checkForUpdatesFromMenu(),
+        };
 
-  // Override app.name so macOS menu shows "Freestyle" instead of the package name
-  app.setName("Freestyle");
-
-  // Register the custom app:// protocol for production SPA support
-  registerAppProtocol();
-
-  // Set a minimal application menu
   const appMenu = Menu.buildFromTemplate([
     ...(process.platform === "darwin"
       ? [
@@ -649,10 +667,7 @@ app.whenReady().then(async () => {
                 click: () => showSettingsWindow(),
               },
               { type: "separator" as const },
-              {
-                label: "Check for Updates...",
-                click: () => checkForUpdatesFromMenu(),
-              },
+              updateMenuItem,
               ...(is.dev
                 ? [
                     { type: "separator" as const },
@@ -690,6 +705,22 @@ app.whenReady().then(async () => {
     },
   ]);
   Menu.setApplicationMenu(appMenu);
+}
+
+// This method will be called when Electron has finished
+// initialization and is ready to create browser windows.
+// Some APIs can only be used after this event occurs.
+app.whenReady().then(async () => {
+  // Set app user model id for windows
+  electronApp.setAppUserModelId("com.freestyle.app");
+
+  // Override app.name so macOS menu shows "Freestyle" instead of the package name
+  app.setName("Freestyle");
+
+  // Register the custom app:// protocol for production SPA support
+  registerAppProtocol();
+
+  rebuildMenus();
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
@@ -910,7 +941,6 @@ app.whenReady().then(async () => {
   // Track the version we already notified about so periodic checks don't
   // spam the user with repeat notifications every 5 minutes.
   let notifiedVersion: string | null = null;
-  let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 
   if (!is.dev) {
     const autoUpdateEnabled = readSettings().autoUpdate !== false;
@@ -944,7 +974,9 @@ app.whenReady().then(async () => {
       settingsWindow?.webContents.send("updater:downloaded", {
         version: info.version,
       });
-      if (Notification.isSupported()) {
+      // Only show a native notification once per version
+      if (Notification.isSupported() && notifiedVersion !== info.version) {
+        notifiedVersion = info.version;
         const note = new Notification({
           title: "Update Ready to Install",
           body: `Version ${info.version} has been downloaded. Restart to update.`,
@@ -952,6 +984,12 @@ app.whenReady().then(async () => {
         note.on("click", () => showSettingsWindow());
         note.show();
       }
+      // No need to keep polling once the update is downloaded
+      if (updateCheckTimer) {
+        clearInterval(updateCheckTimer);
+        updateCheckTimer = null;
+      }
+      rebuildMenus();
     });
 
     autoUpdater.on("error", (err) => {
@@ -975,8 +1013,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.on("updater:install", () => {
-    isUpdaterQuitting = true;
-    autoUpdater.quitAndInstall();
+    restartAndUpdate();
   });
 
   ipcMain.handle("updater:check", async () => {
@@ -1309,6 +1346,8 @@ app.on("activate", () => {
 // Gracefully shut down the HTTP server and flush Sentry before quitting
 let isUpdaterQuitting = false;
 let isQuitting = false;
+
+let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 
 function cleanupBeforeQuit(): void {
   fetch(`http://127.0.0.1:${serverPort}/api/whisper/server/stop`, {

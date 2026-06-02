@@ -16,7 +16,7 @@ if (process.platform === "darwin") {
 }
 
 import { execFile } from "node:child_process";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import server, {
@@ -536,14 +536,28 @@ function showSettingsWindow(): void {
 function isRunningFromReadOnlyLocation(): boolean {
   if (process.platform !== "darwin") return false;
   const exePath = app.getPath("exe");
-  return (
-    exePath.startsWith("/Volumes/") || exePath.includes("/AppTranslocation/")
-  );
+  if (
+    exePath.startsWith("/Volumes/") ||
+    exePath.includes("/AppTranslocation/")
+  ) {
+    return true;
+  }
+  try {
+    const { accessSync, constants } = require("node:fs");
+    accessSync(dirname(exePath), constants.W_OK);
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 const READ_ONLY_UPDATE_RE = /EROFS|EACCES|read[- ]only|permission denied/i;
 
+let readOnlyDialogShown = false;
+
 function showMoveToApplicationsDialog(): void {
+  if (readOnlyDialogShown) return;
+  readOnlyDialogShown = true;
   dialog.showMessageBox({
     type: "warning",
     title: "Move to Applications",
@@ -567,6 +581,10 @@ async function checkForUpdatesFromMenu(): Promise<void> {
       title: "Check for Updates",
       message: "Update checking is not available in development mode.",
     });
+    return;
+  }
+  if (isRunningFromReadOnlyLocation()) {
+    showMoveToApplicationsDialog();
     return;
   }
   if (updateDownloadState === "downloaded") {
@@ -1019,10 +1037,19 @@ app.whenReady().then(async () => {
       }
     });
 
-    autoUpdater.checkForUpdatesAndNotify();
-
-    // Always start periodic background checking regardless of auto-update setting
-    startUpdateCheckInterval();
+    if (isRunningFromReadOnlyLocation()) {
+      if (Notification.isSupported()) {
+        const note = new Notification({
+          title: "Move Freestyle to Applications",
+          body: "Freestyle can\u2019t update from this location. Move it to your Applications folder and relaunch.",
+        });
+        note.on("click", () => showSettingsWindow());
+        note.show();
+      }
+    } else {
+      autoUpdater.checkForUpdatesAndNotify();
+      startUpdateCheckInterval();
+    }
   }
 
   ipcMain.on("updater:download", () => {

@@ -541,7 +541,7 @@ function isRunningFromReadOnlyLocation(): boolean {
   );
 }
 
-const READ_ONLY_UPDATE_RE = /EROFS|EACCES|read.only|permission denied/i;
+const READ_ONLY_UPDATE_RE = /EROFS|EACCES|read[- ]only|permission denied/i;
 
 function showMoveToApplicationsDialog(): void {
   dialog.showMessageBox({
@@ -611,24 +611,19 @@ async function checkForUpdatesFromMenu(): Promise<void> {
   }
 }
 
-function buildTrayContextMenu(): Menu {
-  const updateItem =
-    updateDownloadState === "downloaded"
-      ? {
-          label: "Restart & Update",
-          click: () => restartAndUpdate(),
-        }
-      : {
-          label: "Check for Updates...",
-          click: () => checkForUpdatesFromMenu(),
-        };
+function buildUpdateMenuItem(): { label: string; click: () => void } {
+  return updateDownloadState === "downloaded"
+    ? { label: "Restart & Update", click: () => restartAndUpdate() }
+    : { label: "Check for Updates...", click: () => checkForUpdatesFromMenu() };
+}
 
+function buildTrayContextMenu(): Menu {
   return Menu.buildFromTemplate([
     {
       label: "Settings",
       click: () => showSettingsWindow(),
     },
-    updateItem,
+    buildUpdateMenuItem(),
     ...(is.dev
       ? [
           { type: "separator" as const },
@@ -669,17 +664,6 @@ function createTray(): void {
 
 // Rebuild the application menu so update-related labels stay current.
 function rebuildMenus(): void {
-  const updateMenuItem =
-    updateDownloadState === "downloaded"
-      ? {
-          label: "Restart & Update",
-          click: () => restartAndUpdate(),
-        }
-      : {
-          label: "Check for Updates...",
-          click: () => checkForUpdatesFromMenu(),
-        };
-
   const appMenu = Menu.buildFromTemplate([
     ...(process.platform === "darwin"
       ? [
@@ -694,7 +678,7 @@ function rebuildMenus(): void {
                 click: () => showSettingsWindow(),
               },
               { type: "separator" as const },
-              updateMenuItem,
+              buildUpdateMenuItem(),
               ...(is.dev
                 ? [
                     { type: "separator" as const },

@@ -127,10 +127,10 @@ export default function OnboardingPage(): React.JSX.Element {
   const liveKeys = liveModifiers.map(keyDisplayLabel);
   const draftKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : liveKeys;
   const captureHint = needsModifierOrMouseButton
-    ? "Add a modifier or side mouse button"
+    ? "Add a modifier or side mouse button · Esc to cancel"
     : canSaveRecording
-      ? "Release to save"
-      : "Press a modifier or side mouse button...";
+      ? "Release to save · Esc to cancel"
+      : "Press a modifier or side mouse button... · Esc to cancel";
 
   // Load permissions + saved hotkey
   useEffect(() => {
@@ -689,8 +689,9 @@ export default function OnboardingPage(): React.JSX.Element {
                         <button
                           type="button"
                           onClick={startHotkeyRecording}
-                          className="border-border hover:bg-secondary inline-flex items-center gap-3 rounded-lg border px-3.5 py-2 transition-colors"
+                          className="border-border hover:bg-secondary inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2 transition-colors"
                         >
+                          <Keyboard className="text-muted-foreground h-4 w-4 shrink-0" />
                           <KeyComboDisplay
                             keys={formatAcceleratorKeys(hotkey)}
                           />
@@ -705,7 +706,7 @@ export default function OnboardingPage(): React.JSX.Element {
                         )}
                       </div>
                     ) : (
-                      <div className="border-primary/60 bg-primary/5 relative inline-flex items-center gap-3 rounded-lg border px-3.5 py-2">
+                      <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
                         <Keyboard className="text-primary h-4 w-4 shrink-0" />
                         {draftKeys.length > 0 ? (
                           <>

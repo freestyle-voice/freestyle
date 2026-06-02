@@ -34,6 +34,13 @@ In Freestyle:
 2. Pick a **Local MLX** row → **Download** (HF weights only; uses `scripts/mlx_asr_server.py` via your Python).
 3. **Use** → dictate once and confirm partials + final text.
 
+**Parakeet** (`parakeet-tdt-0.6b-v3`): same flow; word-boost / context prompts are ignored
+(no error). Streaming uses a sidecar WAV from PCM because Parakeet rejects float32 ndarrays.
+
+```bash
+python3 scripts/test_mlx_asr_server.py
+```
+
 Optional status check (port is in Electron logs):
 
 ```bash
@@ -61,7 +68,7 @@ FREESTYLE_MLX_ASR_WORKER_URL=http://127.0.0.1:8765/mlx_asr_worker-darwin-arm64.t
 
 Then **Download** a Qwen model in Settings. You should see the MLX **runtime** download first, then model weights.
 
-To test against the real GitHub asset instead of a local server, omit `FREESTYLE_MLX_ASR_WORKER_URL` (requires `mlx-asr-worker-v1` published on the org repo).
+To test against the real GitHub asset instead of a local server, omit `FREESTYLE_MLX_ASR_WORKER_URL` (requires `mlx-asr-worker-v2` published on the org repo).
 
 ## Optional: packaged Mac build
 

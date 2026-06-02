@@ -16,13 +16,23 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from inspect import signature
+from inspect import Parameter, signature
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 _state: dict[str, Any] = {"model": None, "model_id": None}
+
+# mlx-audio STT models use different keyword names for Freestyle word-boost / context.
+# Pick the first alias present on ``generate`` (or ``stream_transcribe``) — never send all.
+_CONTEXT_PARAM_ALIASES: tuple[str, ...] = (
+    "system_prompt",  # Qwen3-ASR
+    "initial_prompt",  # Whisper
+    "prompt",  # Qwen2-Audio, Granite Speech
+    "context",  # VibeVoice ASR
+)
+_LANGUAGE_PARAM_ALIASES: tuple[str, ...] = ("language",)
 
 
 def _log(msg: str) -> None:
@@ -63,12 +73,39 @@ def _load_model(model_id: str) -> None:
     _log("model ready")
 
 
-def _supported_kwargs(fn: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
+def _function_params(fn: Any) -> dict[str, Parameter]:
     try:
-        params = signature(fn).parameters
+        return signature(fn).parameters
     except (TypeError, ValueError):
+        return {}
+
+
+def _pick_supported_param(
+    fn: Any,
+    aliases: tuple[str, ...],
+    value: str | None,
+) -> dict[str, Any]:
+    if not value:
+        return {}
+    params = _function_params(fn)
+    if not params:
+        return {aliases[0]: value}
+    for name in aliases:
+        if name in params:
+            return {name: value}
+    return {}
+
+
+def _supported_kwargs(fn: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
+    params = _function_params(fn)
+    if not params:
         return kwargs
     return {key: value for key, value in kwargs.items() if key in params}
+
+
+def _strip_prompt_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    drop = set(_CONTEXT_PARAM_ALIASES)
+    return {key: value for key, value in kwargs.items() if key not in drop}
 
 
 def _text_from_result(result: Any) -> str:
@@ -84,19 +121,42 @@ def _transcribe_kwargs(
 ) -> dict[str, Any]:
     lang = language.strip() if language and language.strip() else None
     prompt = context.strip() if context and context.strip() else None
-    candidates: dict[str, Any] = {}
 
-    if lang:
-        candidates["language"] = lang
-    if prompt:
-        candidates["prompt"] = prompt
-        candidates["system_prompt"] = prompt
-        candidates["context"] = prompt
-
-    return _supported_kwargs(fn, candidates)
+    kwargs: dict[str, Any] = {}
+    kwargs.update(_pick_supported_param(fn, _LANGUAGE_PARAM_ALIASES, lang))
+    kwargs.update(_pick_supported_param(fn, _CONTEXT_PARAM_ALIASES, prompt))
+    return kwargs
 
 
-def _audio_from_message(message: dict[str, Any]) -> str | np.ndarray:
+def _pcm_path_to_wav_path(pcm_path: Path, sample_rate: int) -> str:
+    """Convert raw PCM to a 16 kHz mono WAV path.
+
+    Some mlx-audio models (e.g. Parakeet) accept file paths but fail on float32
+    ndarrays passed to ``generate()``. Writing a sidecar WAV keeps streaming and
+    batch inference on the same code path.
+    """
+    import wave
+
+    pcm = np.fromfile(pcm_path, dtype=np.int16)
+    out_rate = sample_rate
+    if sample_rate != 16000:
+        from mlx_audio.stt.utils import resample_audio
+
+        f32 = pcm.astype(np.float32) / 32768.0
+        f32 = resample_audio(f32, sample_rate, 16000)
+        pcm = np.clip(f32 * 32768.0, -32768, 32767).astype(np.int16)
+        out_rate = 16000
+
+    wav_path = pcm_path.with_suffix(f"{pcm_path.suffix}.wav")
+    with wave.open(str(wav_path), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(out_rate)
+        wf.writeframes(pcm.tobytes())
+    return str(wav_path)
+
+
+def _audio_from_message(message: dict[str, Any]) -> str:
     audio_path = message.get("audio_path")
     if not isinstance(audio_path, str) or not audio_path:
         raise ValueError("missing audio_path")
@@ -108,16 +168,11 @@ def _audio_from_message(message: dict[str, Any]) -> str | np.ndarray:
         return audio_path
 
     sample_rate = int(message.get("sample_rate") or 16000)
-    audio = np.fromfile(path, dtype=np.int16).astype(np.float32) / 32768.0
-    if sample_rate != 16000:
-        from mlx_audio.stt.utils import resample_audio
-
-        audio = resample_audio(audio, sample_rate, 16000)
-    return np.asarray(audio, dtype=np.float32)
+    return _pcm_path_to_wav_path(path, sample_rate)
 
 
 def _transcribe(
-    audio: str | np.ndarray,
+    audio: str,
     *,
     language: str | None,
     context: str | None,
@@ -134,17 +189,16 @@ def _transcribe(
     try:
         result = model.generate(audio, **kwargs)
     except TypeError:
-        if "prompt" not in kwargs and "system_prompt" not in kwargs:
+        trimmed = _strip_prompt_kwargs(kwargs)
+        if trimmed == kwargs:
             raise
-        kwargs.pop("prompt", None)
-        kwargs.pop("system_prompt", None)
-        result = model.generate(audio, **kwargs)
+        result = model.generate(audio, **trimmed)
 
     return _text_from_result(result).strip()
 
 
 def _stream_transcribe(
-    audio: str | np.ndarray,
+    audio: str,
     *,
     language: str | None,
     context: str | None,

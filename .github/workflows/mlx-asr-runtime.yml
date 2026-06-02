@@ -14,7 +14,7 @@ on:
         description: Runtime release tag to create
         required: true
         type: string
-        default: mlx-asr-worker-v1
+        default: mlx-asr-worker-v2
 
 permissions:
   contents: write
@@ -47,10 +47,10 @@ jobs:
           ASSET: dist/mlx_asr_worker-darwin-arm64.tar.gz
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "::error::Release $RELEASE_TAG already exists. Use a new runtime tag and update DEFAULT_MLX_WORKER_URL."
+            echo "::error::Release $RELEASE_TAG already exists. Use a new runtime tag and update MLX_WORKER_RELEASE in runtime.ts."
             exit 1
           fi
 
           gh release create "$RELEASE_TAG" "$ASSET" \
             --title "MLX ASR Worker ${RELEASE_TAG#mlx-asr-worker-}" \
-            --notes "Optional Freestyle runtime for local Qwen3 ASR."
+            --notes "Optional Freestyle runtime for local MLX ASR (Qwen3, Parakeet, Whisper, etc.)."

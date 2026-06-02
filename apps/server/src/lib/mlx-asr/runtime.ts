@@ -16,7 +16,7 @@ import {
   isAppleSiliconMac,
 } from "./constants.js";
 
-const MLX_WORKER_RELEASE = "mlx-asr-worker-v1";
+const MLX_WORKER_RELEASE = "mlx-asr-worker-v2";
 const DEFAULT_MLX_WORKER_URL = `https://github.com/freestyle-voice/freestyle/releases/download/${MLX_WORKER_RELEASE}/mlx_asr_worker-darwin-arm64.tar.gz`;
 
 export interface MlxRuntimeDownloadStatus {

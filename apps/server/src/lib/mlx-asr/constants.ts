@@ -64,6 +64,17 @@ export const MLX_ASR_MODELS: MlxAsrModelDef[] = [
     quality: "High",
     quantized: true,
   },
+  {
+    id: "parakeet-tdt-0.6b-v3",
+    hfId: "mlx-community/parakeet-tdt-0.6b-v3",
+    family: "parakeet",
+    displayName: "Parakeet TDT 0.6B v3",
+    sizeBytes: 2_510_000_000,
+    ramRequired: "~2.5 GB",
+    speed: "Fast",
+    quality: "High",
+    quantized: false,
+  },
 ];
 
 export function getMlxAsrModel(id: string): MlxAsrModelDef | undefined {

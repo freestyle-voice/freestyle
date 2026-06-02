@@ -217,6 +217,7 @@ export const LOCAL_VOICE_NOTES: Record<string, string> = {
   "qwen3-0.6b-5bit": "Fast · great for low memory",
   "qwen3-0.6b-8bit": "Balanced quality and size",
   "qwen3-1.7b-8bit": "Best Qwen accuracy",
+  "parakeet-tdt-0.6b-v3": "Multilingual · ignores word-boost prompts",
 };
 
 export function buildVoiceItems(

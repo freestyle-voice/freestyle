@@ -1,5 +1,6 @@
 import { cn } from "@renderer/lib/utils";
 import { Check, Key, Sparkles } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export const PROVIDER_FILTER_MARKS: Record<string, string> = {
   openai: "OAI",
@@ -81,10 +82,15 @@ export function LlmModelRow({
           {selected && <Check size={15} className="text-primary" />}
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-4">
-          <span className="text-muted-foreground inline-flex min-w-0 items-center gap-1.5 text-[11.5px]">
-            <Sparkles className="h-3 w-3 shrink-0" />
-            <span className="min-w-0 truncate">{modelId}</span>
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-muted-foreground inline-flex min-w-0 items-center gap-1.5 text-[11.5px]">
+                <Sparkles className="h-3 w-3 shrink-0" />
+                <span className="min-w-0 truncate">{modelId}</span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>Model identifier</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 

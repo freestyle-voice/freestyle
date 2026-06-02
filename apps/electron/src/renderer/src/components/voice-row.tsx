@@ -14,6 +14,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export function Meter({ value }: { value?: number }): React.JSX.Element | null {
   if (value == null) return null;
@@ -143,34 +144,77 @@ export function VoiceRow({
 
         <div className="mt-2 flex flex-wrap items-center gap-4">
           {item.speed != null && (
-            <span className="inline-flex items-center gap-1.5">
-              <Zap className="text-muted-foreground h-3 w-3" />
-              <Meter value={item.speed} />
-            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1.5">
+                  <Zap className="text-muted-foreground h-3 w-3" />
+                  <Meter value={item.speed} />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Speed</TooltipContent>
+            </Tooltip>
           )}
           {item.quality != null && (
-            <span className="inline-flex items-center gap-1.5">
-              <Target className="text-muted-foreground h-3 w-3" />
-              <Meter value={item.quality} />
-            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1.5">
+                  <Target className="text-muted-foreground h-3 w-3" />
+                  <Meter value={item.quality} />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Quality</TooltipContent>
+            </Tooltip>
           )}
           {local ? (
             <>
               {item.sizeBytes != null && (
-                <StatPair icon={Download} label={formatBytes(item.sizeBytes)} />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <StatPair
+                        icon={Download}
+                        label={formatBytes(item.sizeBytes)}
+                      />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Download size</TooltipContent>
+                </Tooltip>
               )}
-              {item.ram && <StatPair icon={Cpu} label={`${item.ram} RAM`} />}
+              {item.ram && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <StatPair icon={Cpu} label={`${item.ram} RAM`} />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Memory required</TooltipContent>
+                </Tooltip>
+              )}
             </>
           ) : (
             <>
               {item.cost != null && (
-                <StatPair
-                  icon={CircleDollarSign}
-                  label={`$${item.cost.toFixed(2)}/hr`}
-                />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <StatPair
+                        icon={CircleDollarSign}
+                        label={`$${item.cost.toFixed(2)}/hr`}
+                      />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Estimated cost</TooltipContent>
+                </Tooltip>
               )}
               {item.streaming && (
-                <StatPair icon={Wifi} label="Streaming" accent />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <StatPair icon={Wifi} label="Streaming" accent />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Real-time streaming</TooltipContent>
+                </Tooltip>
               )}
             </>
           )}

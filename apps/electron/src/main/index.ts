@@ -765,10 +765,15 @@ app.whenReady().then(async () => {
     return true;
   });
 
-  ipcMain.on("permissions:open-accessibility", () => {
+  ipcMain.on("permissions:open-accessibility", async () => {
     if (process.platform === "darwin") {
+      // Passing `true` pops the native "would like to control this computer"
+      // prompt and adds Freestyle to the Accessibility list automatically, so
+      // the user only has to flip the toggle (macOS never lets us flip it).
+      const { systemPreferences } = await import("electron");
+      systemPreferences.isTrustedAccessibilityClient(true);
       shell.openExternal(
-        "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+        "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility",
       );
     }
   });

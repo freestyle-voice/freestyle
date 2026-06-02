@@ -836,7 +836,7 @@ app.whenReady().then(async () => {
   ipcMain.on("permissions:open-mic-settings", () => {
     if (process.platform === "darwin") {
       shell.openExternal(
-        "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+        "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Microphone",
       );
     }
   });

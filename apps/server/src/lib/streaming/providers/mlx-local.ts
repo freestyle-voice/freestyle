@@ -79,6 +79,7 @@ class MlxLocalStreamingSession implements StreamSession {
   private partialTimer: ReturnType<typeof setTimeout> | null = null;
   private lastText = "";
   private generation = 0;
+  private workerReadyPromise: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly opts: {
@@ -87,7 +88,7 @@ class MlxLocalStreamingSession implements StreamSession {
       callbacks: StreamCallbacks;
     },
   ) {
-    this.prepareWorker();
+    this.startWorkerLoad();
   }
 
   sendAudio(chunk: ArrayBuffer): void {
@@ -110,7 +111,11 @@ class MlxLocalStreamingSession implements StreamSession {
     this.commitRequested = false;
     this.lastText = "";
     this.generation++;
-    this.prepareWorker();
+    this.startWorkerLoad();
+  }
+
+  waitUntilReady(): Promise<void> {
+    return this.workerReadyPromise;
   }
 
   commit(): void {
@@ -135,24 +140,30 @@ class MlxLocalStreamingSession implements StreamSession {
     applyMlxAsrRetentionPolicy();
   }
 
-  private prepareWorker(): void {
+  /** Begin loading the MLX worker while audio is captured in parallel. */
+  private startWorkerLoad(): void {
     if (getMlxModelStatus(this.opts.modelId)?.status !== "ready") {
+      this.workerReadyPromise = Promise.reject(
+        new Error("MLX ASR model is not downloaded yet."),
+      );
+      this.workerReadyPromise.catch(() => undefined);
       this.opts.callbacks.onError("MLX ASR model is not downloaded yet.");
       return;
     }
 
     const generation = this.generation;
-    ensureMlxServerRunning(this.opts.modelId)
-      .then(() => {
+    this.workerReadyPromise = ensureMlxServerRunning(this.opts.modelId).then(
+      () => {
         if (this.closed || this.canceled || generation !== this.generation) {
           return;
         }
         this.opts.callbacks.onReady(this.opts.modelId);
-      })
-      .catch((err: Error) => {
-        if (this.closed || generation !== this.generation) return;
-        this.opts.callbacks.onError(err.message);
-      });
+      },
+    );
+    this.workerReadyPromise.catch((err: Error) => {
+      if (this.closed || generation !== this.generation) return;
+      this.opts.callbacks.onError(err.message);
+    });
   }
 
   private schedulePartial(): void {
@@ -186,18 +197,26 @@ class MlxLocalStreamingSession implements StreamSession {
     this.inFlight = true;
     this.dirty = false;
 
-    transcribePcmWithMlxAsr({
-      modelId: this.opts.modelId,
-      pcm: new Uint8Array(audio),
-      sampleRate: STREAM_SAMPLE_RATE,
-      context: this.opts.context,
-      live: !final,
-      deferUnload: true,
-      onPartial: final
-        ? undefined
-        : (text) => this.emitPartial(text, generation),
-    })
+    void this.workerReadyPromise
+      .then(() => {
+        if (this.closed || this.canceled || generation !== this.generation) {
+          return;
+        }
+
+        return transcribePcmWithMlxAsr({
+          modelId: this.opts.modelId,
+          pcm: new Uint8Array(audio),
+          sampleRate: STREAM_SAMPLE_RATE,
+          context: this.opts.context,
+          live: !final,
+          deferUnload: true,
+          onPartial: final
+            ? undefined
+            : (text) => this.emitPartial(text, generation),
+        });
+      })
       .then((text) => {
+        if (text === undefined) return;
         if (this.closed || this.canceled || generation !== this.generation) {
           return;
         }

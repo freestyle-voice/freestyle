@@ -36,6 +36,36 @@ const stream = new Hono().get(
       pendingAudioChunks = [];
     }
 
+    function notifySessionReady(
+      ws: { send: (data: string) => void },
+      model: string,
+    ): void {
+      flushPendingAudio();
+      ws.send(JSON.stringify({ type: "session.ready", model }));
+    }
+
+    function afterSessionReady(
+      ws: { send: (data: string) => void },
+      session: StreamSession,
+      model: string,
+    ): void {
+      const ready = session.waitUntilReady?.() ?? Promise.resolve();
+      void ready
+        .then(() => {
+          if (closed) return;
+          notifySessionReady(ws, model);
+        })
+        .catch((err: Error) => {
+          if (closed) return;
+          ws.send(
+            JSON.stringify({
+              type: "error",
+              message: err.message,
+            }),
+          );
+        });
+    }
+
     function connectUpstream(ws: {
       send: (data: string) => void;
       close: () => void;
@@ -97,11 +127,9 @@ const stream = new Hono().get(
         model: defaults.voice.model_id,
         bias,
         callbacks: {
-          onReady: (model) => {
+          onReady: () => {
             if (upstream !== session) return;
             reconnectAttempts = 0;
-            flushPendingAudio();
-            ws.send(JSON.stringify({ type: "session.ready", model }));
           },
           onPartial: (text) => {
             if (upstream !== session) return;
@@ -207,6 +235,9 @@ const stream = new Hono().get(
         },
       });
       upstream = session;
+      if (canStream) {
+        afterSessionReady(ws, session, modelShort);
+      }
     }
 
     return {
@@ -277,14 +308,12 @@ const stream = new Hono().get(
             if (upstream) {
               if (upstream.reset) {
                 upstream.reset();
-                flushPendingAudio();
                 const voice = voiceDefaults ?? getDefaultModels().voice;
                 if (voice) {
-                  ws.send(
-                    JSON.stringify({
-                      type: "session.ready",
-                      model: stripProviderPrefix(voice.model_id),
-                    }),
+                  afterSessionReady(
+                    ws,
+                    upstream,
+                    stripProviderPrefix(voice.model_id),
                   );
                 }
               } else {

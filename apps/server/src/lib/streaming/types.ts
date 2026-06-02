@@ -12,6 +12,11 @@ export interface StreamSession {
   sendAudio(chunk: ArrayBuffer): void;
   /** Clear per-recording transcript state without tearing down the socket. */
   reset?(): void;
+  /**
+   * Resolves when the session can run inference (e.g. MLX worker loaded).
+   * Audio may be sent before this completes; providers should buffer it.
+   */
+  waitUntilReady?(): Promise<void>;
   commit(): void;
   cancel(): void;
   close(): void;

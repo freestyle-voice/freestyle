@@ -283,6 +283,9 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
           startAutoCommit();
         }
       },
+      waitUntilReady(): Promise<void> {
+        return Promise.resolve();
+      },
       commit(): void {
         userCommitPending = true;
         finalDelivered = false;

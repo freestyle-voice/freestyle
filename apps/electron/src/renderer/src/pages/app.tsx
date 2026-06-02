@@ -243,7 +243,8 @@ export default function AppPage(): React.JSX.Element {
       }
 
       try {
-        await window.api.pasteText(finalText);
+        window.api.hidePill();
+        await window.api.pasteText(finalText, appContextRef.current);
       } catch (err) {
         console.error("[pill] paste failed:", err);
       }
@@ -763,6 +764,15 @@ export default function AppPage(): React.JSX.Element {
     setPillAlign(pos?.startsWith("top") ? "start" : "end");
     setPillSide(pos?.endsWith("right") ? "right" : "center");
   }, []);
+
+  // Open the streaming WebSocket early so MLX can load before the first hotkey press.
+  useEffect(() => {
+    try {
+      getStreamer();
+    } catch {
+      // Server may not be up yet; startCapture will retry.
+    }
+  }, [getStreamer]);
 
   useEffect(() => {
     getClient()

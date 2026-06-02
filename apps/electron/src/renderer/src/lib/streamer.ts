@@ -24,7 +24,6 @@ export interface StreamerCallbacks {
 
 export class Streamer {
   private ws: WebSocket | null = null;
-  private sessionReady = false;
   private pendingChunks: ArrayBuffer[] = [];
   private destroyed = false;
   private streamingSupported = false;
@@ -158,9 +157,11 @@ export class Streamer {
   }
 
   private sendAudio(chunk: ArrayBuffer): void {
-    if (this.ws?.readyState === WebSocket.OPEN && this.sessionReady) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(chunk);
-    } else if (this.capturing) {
+      return;
+    }
+    if (this.capturing) {
       this.pendingChunks.push(chunk);
     }
   }
@@ -172,7 +173,7 @@ export class Streamer {
   }
 
   private flushPendingChunks(): void {
-    if (!this.sessionReady || this.ws?.readyState !== WebSocket.OPEN) return;
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
     for (const chunk of this.pendingChunks) {
       this.ws!.send(chunk);
     }
@@ -208,7 +209,6 @@ export class Streamer {
           });
           break;
         case "session.ready":
-          this.sessionReady = true;
           this.flushPendingChunks();
           this.callbacks.onReady();
           break;
@@ -230,7 +230,6 @@ export class Streamer {
     ws.addEventListener("error", () => {});
 
     ws.addEventListener("close", () => {
-      this.sessionReady = false;
       this.pendingChunks = [];
       if (!this.destroyed && this.streamingSupported) {
         setTimeout(() => {

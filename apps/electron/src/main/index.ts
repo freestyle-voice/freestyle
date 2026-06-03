@@ -1437,7 +1437,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
 
   // Try native key listener binary first (all platforms)
   let nativeError = "";
-  keyListener = new NativeKeyListener({
+  const listener = new NativeKeyListener({
     hotkey: accel,
     onKeyDown: handleNativeHotkeyDown,
     onKeyUp: handleNativeHotkeyUp,
@@ -1449,8 +1449,16 @@ async function registerHotkey(hotkey?: string): Promise<void> {
       hotkeyLog.debug(`Native key listener ready for "${accel}"`);
     },
   });
+  keyListener = listener;
 
-  const started = await keyListener.start();
+  const started = await listener.start();
+
+  // Another registerHotkey call may have replaced keyListener while we
+  // were awaiting — if so, abandon this attempt.
+  if (keyListener !== listener) {
+    listener.stop();
+    return;
+  }
 
   if (started) {
     accessibilityConfirmed = true;
@@ -1458,7 +1466,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     hotkeyLog.warn(
       "Native key listener unavailable, falling back to Electron globalShortcut (toggle mode).",
     );
-    keyListener.stop();
+    listener.stop();
     keyListener = null;
 
     // Fallback: globalShortcut has no key-up — always use toggle semantics

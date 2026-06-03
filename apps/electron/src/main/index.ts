@@ -781,7 +781,10 @@ function createTray(): void {
   tray = new Tray(trayImage);
   tray.setToolTip("Freestyle");
 
-  // Left-click: open the settings window
+  // Set the context menu natively so Linux desktop panels register it automatically
+  tray.setContextMenu(buildTrayContextMenu());
+
+  // Maintain the left-click behavior for macOS and Windows users
   tray.on("click", () => {
     showSettingsWindow();
   });
@@ -852,6 +855,9 @@ function rebuildMenus(): void {
     },
   ]);
   Menu.setApplicationMenu(appMenu);
+
+  // Keep the static tray menu (used by Linux panels) in sync with update state
+  tray?.setContextMenu(buildTrayContextMenu());
 }
 
 // This method will be called when Electron has finished

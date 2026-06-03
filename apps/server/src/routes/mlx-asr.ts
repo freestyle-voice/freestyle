@@ -1,3 +1,4 @@
+import { createAppLogger } from "@freestyle/utils";
 import { Hono } from "hono";
 import {
   isAppleSiliconMac,
@@ -36,6 +37,8 @@ import {
 } from "../lib/mlx-asr/server.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
+
+const log = createAppLogger("mlx-asr");
 
 const mlxAsr = new Hono()
   .get("/status", (c) => {
@@ -172,19 +175,13 @@ export function autoStartMlxAsrServer(): void {
     const defaults = getDefaultModels();
     if (defaults.voice?.provider !== MLX_ASR_PROVIDER_ID) return;
     if (!canRunMlxAsr()) {
-      if (process.env.NODE_ENV !== "production") {
-        console.log(
-          "[mlx-asr] Skipping auto-start — Python or mlx-audio not available",
-        );
-      }
+      log.debug("Skipping auto-start — Python or mlx-audio not available");
       return;
     }
 
     const modelId = stripProviderPrefix(defaults.voice.model_id);
     if (getMlxModelStatus(modelId)?.status !== "ready") return;
-    if (process.env.NODE_ENV !== "production") {
-      console.log("[mlx-asr] Auto-starting server for model:", modelId);
-    }
+    log.debug(`Auto-starting server for model: ${modelId}`);
     startMlxInBackground(modelId);
   } catch {
     // DB not ready — skip

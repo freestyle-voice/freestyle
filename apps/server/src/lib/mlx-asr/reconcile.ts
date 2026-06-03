@@ -1,9 +1,11 @@
+import { createAppLogger } from "@freestyle/utils";
 import { getDb } from "../db.js";
 import { WHISPER_MODELS, WHISPER_PROVIDER_ID } from "../whisper/constants.js";
 import { getModelStatus as getWhisperModelStatus } from "../whisper/models.js";
 import { MLX_ASR_PROVIDER_ID } from "./constants.js";
 import { canRunMlxAsr, stopMlxServer } from "./server.js";
 
+const log = createAppLogger("mlx-asr");
 const PREFERRED_WHISPER_FALLBACK_ID = "base-q5_1";
 
 function pickWhisperFallbackId(): string {
@@ -62,11 +64,9 @@ export function reconcileUnsupportedMlxVoiceDefault(): boolean {
 
   stopMlxServer().catch(() => {});
 
-  if (process.env.NODE_ENV !== "production") {
-    console.log(
-      `[mlx-asr] Default voice was MLX but this machine cannot run it; switched to Whisper ${whisperId}`,
-    );
-  }
+  log.debug(
+    `Default voice was MLX but this machine cannot run it; switched to Whisper ${whisperId}`,
+  );
 
   return true;
 }

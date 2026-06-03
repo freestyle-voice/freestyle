@@ -10,7 +10,10 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
+import { createAppLogger } from "@freestyle/utils";
 import { getNativeBinaryPath } from "./native-binary";
+
+const log = createAppLogger("mic-listener");
 
 export type MicState = "active" | "inactive" | "unknown";
 
@@ -55,11 +58,7 @@ export class MicListener {
 
     const binaryPath = getNativeBinaryPath(binaryName);
     if (!binaryPath) {
-      if (process.env.NODE_ENV !== "production") {
-        console.log(
-          `[mic-listener] Binary not found: ${binaryName}, mic detection unavailable`,
-        );
-      }
+      log.debug(`Binary not found: ${binaryName}, mic detection unavailable`);
       return false;
     }
 
@@ -90,11 +89,7 @@ export class MicListener {
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch {
-      if (process.env.NODE_ENV !== "production") {
-        console.log(
-          "[mic-listener] pactl not available, mic detection unavailable on Linux",
-        );
-      }
+      log.debug("pactl not available, mic detection unavailable on Linux");
       return false;
     }
 
@@ -148,9 +143,7 @@ export class MicListener {
     });
 
     this.process.stderr?.on("data", (data: Buffer) => {
-      if (process.env.NODE_ENV !== "production") {
-        console.log(`[mic-listener] ${data.toString().trim()}`);
-      }
+      log.debug(data.toString().trim());
     });
 
     this.process.on("close", (code) => {
@@ -171,9 +164,7 @@ export class MicListener {
 
   private handleLine(line: string): void {
     if (line === "READY") {
-      if (process.env.NODE_ENV !== "production") {
-        console.log("[mic-listener] Ready");
-      }
+      log.debug("Ready");
       return;
     }
 

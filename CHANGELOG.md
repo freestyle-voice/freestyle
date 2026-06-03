@@ -1,4 +1,24 @@
 # Changelog
+## 0.1.3
+
+### New Features ✨
+
+- Validate API keys on save with per-provider health checks by @MathurAditya724 in [#159](https://github.com/freestyle-voice/freestyle/pull/159)
+
+### Bug Fixes 🐛
+
+- (macos) Use modern System Settings URL for microphone privacy pane by @MathurAditya724 in [#151](https://github.com/freestyle-voice/freestyle/pull/151)
+- Update download button not triggering download or showing progress by @MathurAditya724 in [#157](https://github.com/freestyle-voice/freestyle/pull/157)
+- Register Escape cancel shortcut on all platforms, not just Windows by @MathurAditya724 in [#155](https://github.com/freestyle-voice/freestyle/pull/155)
+- Prevent MLX ASR worker unload while transcriptions are in flight by @MathurAditya724 in [#154](https://github.com/freestyle-voice/freestyle/pull/154)
+- Add structured Winston logger and fix EPIPE crash on Linux AppImage by @MathurAditya724 in [#153](https://github.com/freestyle-voice/freestyle/pull/153)
+- Remove onboarding skip, stop repeated update notifications, dynamic menu labels by @MathurAditya724 in [#150](https://github.com/freestyle-voice/freestyle/pull/150)
+
+### Other
+
+- Implement "Hard Reset" that completely resets Freestyle (Dev only) by @matteo8p in [#152](https://github.com/freestyle-voice/freestyle/pull/152)
+- Fix transcription language in streaming path + macOS Accessibility prompt/URL by @BransTiong in [#149](https://github.com/freestyle-voice/freestyle/pull/149)
+
 ## 0.1.2
 
 ### New Features ✨

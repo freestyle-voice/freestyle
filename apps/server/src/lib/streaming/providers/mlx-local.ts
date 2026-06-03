@@ -1,3 +1,4 @@
+import { createAppLogger } from "@freestyle/utils";
 import { MLX_ASR_PROVIDER_ID } from "../../mlx-asr/constants.js";
 import { getMlxModelStatus } from "../../mlx-asr/models.js";
 import { describeMlxSetupBlocker } from "../../mlx-asr/python.js";
@@ -18,6 +19,7 @@ import type {
 } from "../types.js";
 import { stripProviderPrefix } from "../types.js";
 
+const log = createAppLogger("mlx-asr");
 const STREAM_SAMPLE_RATE = 16_000;
 const PARTIAL_INTERVAL_MS = 1_500;
 const MIN_PARTIAL_AUDIO_MS = 800;
@@ -27,7 +29,6 @@ export class MlxLocalTranscriptionProvider implements TranscriptionProvider {
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
     const modelId = stripProviderPrefix(opts.model);
-    const isDev = process.env.NODE_ENV !== "production";
 
     if (!canRunMlxAsr()) {
       throw new Error(
@@ -47,9 +48,7 @@ export class MlxLocalTranscriptionProvider implements TranscriptionProvider {
       context: opts.bias?.kind === "prompt" ? opts.bias.text : undefined,
     });
 
-    if (isDev) {
-      console.log(`[mlx-asr] inference took ${Date.now() - t0}ms`);
-    }
+    log.debug(`inference took ${Date.now() - t0}ms`);
 
     return { text: text.trim() };
   }

@@ -1,8 +1,11 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { createAppLogger } from "@freestyle/utils";
 import { findWhisperServer } from "./binary.js";
 import { WHISPER_SERVER_PORT } from "./constants.js";
 import { getDownloadedModelPath } from "./models.js";
 
+const log = createAppLogger("whisper");
+const serverLog = createAppLogger("whisper-server");
 const MAX_RESTARTS = 3;
 const RESTART_COOLDOWN_MS = 3_000;
 const STABILITY_THRESHOLD_MS = 30_000;
@@ -38,10 +41,10 @@ export function startInBackground(modelId: string): void {
 
   ensureServerRunning(modelId)
     .then(() => {
-      console.log("[whisper] Server ready on port", WHISPER_SERVER_PORT);
+      log.info(`Server ready on port ${WHISPER_SERVER_PORT}`);
     })
     .catch((err) => {
-      console.error("[whisper] Background server start failed:", err.message);
+      log.error(`Background server start failed: ${err.message}`);
     });
 }
 
@@ -101,8 +104,6 @@ async function doStart(modelId: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     let settled = false;
     let stderr = "";
-    const isDev = process.env.NODE_ENV !== "production";
-
     const timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
@@ -138,14 +139,14 @@ async function doStart(modelId: string): Promise<void> {
 
     proc.stdout?.on("data", (data: Buffer) => {
       const text = data.toString();
-      if (isDev) console.log("[whisper-server:stdout]", text.trimEnd());
+      serverLog.debug(`stdout: ${text.trimEnd()}`);
       checkReady(text);
     });
 
     proc.stderr?.on("data", (data: Buffer) => {
       const text = data.toString();
       stderr += text;
-      if (isDev) console.log("[whisper-server:stderr]", text.trimEnd());
+      serverLog.debug(`stderr: ${text.trimEnd()}`);
       checkReady(text);
     });
 
@@ -204,23 +205,21 @@ async function doStart(modelId: string): Promise<void> {
 function scheduleRestart(modelId: string): void {
   restartCount++;
   if (restartCount > MAX_RESTARTS) {
-    console.error(
-      `[whisper] Server crashed ${MAX_RESTARTS} times, not restarting`,
-    );
+    log.error(`Server crashed ${MAX_RESTARTS} times, not restarting`);
     serverFailed = true;
     autoRestart = false;
     currentModelId = null;
     return;
   }
 
-  console.log(
-    `[whisper] Server crashed, restarting in ${RESTART_COOLDOWN_MS / 1000}s (attempt ${restartCount}/${MAX_RESTARTS})`,
+  log.info(
+    `Server crashed, restarting in ${RESTART_COOLDOWN_MS / 1000}s (attempt ${restartCount}/${MAX_RESTARTS})`,
   );
 
   setTimeout(() => {
     if (!autoRestart) return;
     ensureServerRunning(modelId).catch((err) => {
-      console.error("[whisper] Restart failed:", err.message);
+      log.error(`Restart failed: ${err.message}`);
     });
   }, RESTART_COOLDOWN_MS);
 }

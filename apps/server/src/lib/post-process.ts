@@ -1,8 +1,11 @@
+import { createAppLogger } from "@freestyle/utils";
 import { generateText } from "ai";
 import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
 import { getDb } from "./db.js";
 import { capture, captureException } from "./posthog.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
+
+const log = createAppLogger("post-process");
 
 /** Build a context string from the raw x-app-context header for matching */
 function buildMatchContext(rawContext: string | null): string {
@@ -128,7 +131,7 @@ export async function postProcess(
         defaults.llm.model_id,
       ))
     ) {
-      console.warn(
+      log.warn(
         `Skipping LLM cleanup: unsupported cleanup model ${defaults.llm.provider}/${defaults.llm.model_id}`,
       );
     } else {
@@ -183,7 +186,7 @@ IMPORTANT: Your entire response must be the cleaned text and nothing else. No qu
           provider: defaults.llm!.provider,
           model: defaults.llm!.model_id,
         });
-        console.error("LLM cleanup failed:", err);
+        log.error(`LLM cleanup failed: ${err}`);
       }
     }
   }

@@ -1,3 +1,12 @@
+// Prevent EPIPE crashes when stdout/stderr is a closed pipe (e.g. Linux
+// AppImage launched detached from a terminal).
+for (const stream of [process.stdout, process.stderr]) {
+  stream?.on?.("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EPIPE") return;
+    throw err;
+  });
+}
+
 // GUI apps on macOS inherit the minimal launchd PATH (/usr/bin:/bin:/usr/sbin:/sbin)
 // which excludes Homebrew directories where cmake and other tools live.
 if (process.platform === "darwin") {
@@ -40,6 +49,7 @@ import server, {
   closeDb,
   reconcileUnsupportedMlxVoiceDefault,
 } from "@freestyle/server";
+import { createAppLogger } from "@freestyle/utils";
 import { serve } from "@hono/node-server";
 import {
   app,
@@ -66,6 +76,10 @@ import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
 import { MicListener } from "./mic-listener";
 import { pasteIntoFocusedApp } from "./paste";
+
+const log = createAppLogger("electron");
+const hotkeyLog = createAppLogger("hotkey");
+const hotkeyRecorderLog = createAppLogger("hotkey-recorder");
 
 const DEFAULT_PORT = 4649;
 const APP_WIDTH = 260;
@@ -336,16 +350,14 @@ function showPill(): void {
     mainWindow.showInactive();
   }
 
-  // On Windows, register Escape as a global shortcut while the pill
-  // is visible so the user can cancel recording/transcription.
-  if (process.platform === "win32") {
-    if (!globalShortcut.isRegistered("Escape")) {
-      globalShortcut.register("Escape", () => {
-        if (mainWindow?.isVisible()) {
-          mainWindow.webContents.send("pill:cancel");
-        }
-      });
-    }
+  // Register Escape as a global shortcut while the pill is visible
+  // so the user can cancel recording/transcription.
+  if (!globalShortcut.isRegistered("Escape")) {
+    globalShortcut.register("Escape", () => {
+      if (mainWindow?.isVisible()) {
+        mainWindow.webContents.send("pill:cancel");
+      }
+    });
   }
 }
 
@@ -518,12 +530,10 @@ function hidePill(): void {
   if (mainWindow?.isVisible()) {
     mainWindow.hide();
   }
-  // Unregister Escape shortcut when pill is hidden (Windows only)
-  if (process.platform === "win32") {
-    try {
-      globalShortcut.unregister("Escape");
-    } catch {}
-  }
+  // Unregister Escape shortcut when pill is hidden
+  try {
+    globalShortcut.unregister("Escape");
+  } catch {}
 }
 
 function resetOnboarding(): void {
@@ -659,6 +669,15 @@ function restartAndUpdate(): void {
   autoUpdater.quitAndInstall();
 }
 
+/** Mark state as downloading, notify the settings window, and kick off the download. */
+function triggerDownloadUpdate(): void {
+  updateDownloadState = "downloading";
+  settingsWindow?.webContents.send("updater:downloading");
+  autoUpdater.downloadUpdate().catch((err) => {
+    log.warn(`downloadUpdate rejected: ${err}`);
+  });
+}
+
 async function checkForUpdatesFromMenu(): Promise<void> {
   if (is.dev) {
     dialog.showMessageBox({
@@ -690,7 +709,7 @@ async function checkForUpdatesFromMenu(): Promise<void> {
         cancelId: 1,
       });
       if (response === 0) {
-        autoUpdater.downloadUpdate();
+        triggerDownloadUpdate();
       }
     } else {
       dialog.showMessageBox({
@@ -958,9 +977,7 @@ app.whenReady().then(async () => {
       keyListener.stop();
       keyListener = null;
     }
-    if (process.platform === "win32") {
-      globalShortcut.unregisterAll();
-    }
+    globalShortcut.unregisterAll();
 
     stopHotkeyRecorderProcess();
     const target =
@@ -975,7 +992,7 @@ app.whenReady().then(async () => {
         registerHotkey(currentHotkeyAccel ?? undefined);
       },
       onError: (message) => {
-        console.warn("[hotkey-recorder]", message);
+        hotkeyRecorderLog.warn(message);
       },
     });
     hotkeyRecorder.start(target);
@@ -1014,18 +1031,16 @@ app.whenReady().then(async () => {
       },
       (info) => {
         serverPort = info.port;
-        console.log(`Server running on http://localhost:${info.port}`);
+        log.info(`Server running on http://localhost:${info.port}`);
       },
     );
 
     httpServer.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE" && port === DEFAULT_PORT) {
-        console.warn(
-          `Port ${DEFAULT_PORT} in use, falling back to random port`,
-        );
+        log.warn(`Port ${DEFAULT_PORT} in use, falling back to random port`);
         startServer(0);
       } else {
-        console.error("Server failed to start:", err);
+        log.error(`Server failed to start: ${err}`);
       }
     });
   }
@@ -1042,7 +1057,7 @@ app.whenReady().then(async () => {
 
   if (existingServer) {
     serverPort = DEFAULT_PORT;
-    console.log(
+    log.info(
       `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
     );
   } else {
@@ -1079,6 +1094,7 @@ app.whenReady().then(async () => {
     const autoUpdateEnabled = readSettings().autoUpdate !== false;
     autoUpdater.autoDownload = autoUpdateEnabled;
     autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.logger = createAppLogger("updater");
 
     autoUpdater.on("update-available", (info) => {
       settingsWindow?.webContents.send("updater:available", {
@@ -1163,8 +1179,7 @@ app.whenReady().then(async () => {
   }
 
   ipcMain.on("updater:download", () => {
-    updateDownloadState = "downloading";
-    autoUpdater.downloadUpdate();
+    triggerDownloadUpdate();
   });
 
   ipcMain.on("updater:install", () => {
@@ -1409,9 +1424,7 @@ function registerHotkey(hotkey?: string): void {
     keyListener = null;
   }
   hotkeyPressed = false;
-  if (process.platform === "win32") {
-    globalShortcut.unregisterAll();
-  }
+  globalShortcut.unregisterAll();
 
   if (!hotkey) {
     hotkey = loadHotkeyFromDB();
@@ -1428,12 +1441,10 @@ function registerHotkey(hotkey?: string): void {
     onKeyDown: handleNativeHotkeyDown,
     onKeyUp: handleNativeHotkeyUp,
     onError: (error) => {
-      console.error("[hotkey] Native key listener error:", error);
+      hotkeyLog.error(`Native key listener error: ${error}`);
     },
     onReady: () => {
-      if (process.env.NODE_ENV !== "production") {
-        console.log(`[hotkey] Native key listener ready for "${accel}"`);
-      }
+      hotkeyLog.debug(`Native key listener ready for "${accel}"`);
     },
   });
 
@@ -1442,8 +1453,8 @@ function registerHotkey(hotkey?: string): void {
   if (started) {
     accessibilityConfirmed = true;
   } else {
-    console.warn(
-      "[hotkey] Native key listener unavailable, falling back to Electron globalShortcut (toggle mode).",
+    hotkeyLog.warn(
+      "Native key listener unavailable, falling back to Electron globalShortcut (toggle mode).",
     );
     keyListener = null;
 
@@ -1479,9 +1490,7 @@ app.on("will-quit", () => {
     micListener.stop();
     micListener = null;
   }
-  if (process.platform === "win32") {
-    globalShortcut.unregisterAll();
-  }
+  globalShortcut.unregisterAll();
 });
 
 // Keep app running in background when windows are closed (tray stays active)

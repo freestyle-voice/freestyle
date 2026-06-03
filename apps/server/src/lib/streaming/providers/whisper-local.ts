@@ -1,3 +1,4 @@
+import { createAppLogger } from "@freestyle/utils";
 import {
   isBinaryAvailable,
   isServerBinaryAvailable,
@@ -17,6 +18,8 @@ import type {
 } from "../types.js";
 import { stripProviderPrefix } from "../types.js";
 
+const log = createAppLogger("whisper");
+
 export class WhisperLocalTranscriptionProvider
   implements TranscriptionProvider
 {
@@ -24,7 +27,6 @@ export class WhisperLocalTranscriptionProvider
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
     const modelId = stripProviderPrefix(opts.model);
-    const isDev = process.env.NODE_ENV !== "production";
 
     if (
       !isBinaryAvailable() &&
@@ -40,19 +42,15 @@ export class WhisperLocalTranscriptionProvider
       }
     }
 
-    if (isDev) {
-      console.log(
-        `[whisper] transcribe: serverRunning=${isServerRunning()} serverBinary=${isServerBinaryAvailable()} cli=${isBinaryAvailable()}`,
-      );
-    }
+    log.debug(
+      `transcribe: serverRunning=${isServerRunning()} serverBinary=${isServerBinaryAvailable()} cli=${isBinaryAvailable()}`,
+    );
 
     if (isServerRunning()) {
       try {
         const t0 = Date.now();
         const result = await transcribeViaServer(opts.audio, getServerPort());
-        if (isDev) {
-          console.log(`[whisper] server inference took ${Date.now() - t0}ms`);
-        }
+        log.debug(`server inference took ${Date.now() - t0}ms`);
         return result;
       } catch {
         // fall through to CLI
@@ -66,9 +64,7 @@ export class WhisperLocalTranscriptionProvider
         modelId,
         language: opts.language,
       });
-      if (isDev) {
-        console.log(`[whisper] CLI inference took ${Date.now() - t0}ms`);
-      }
+      log.debug(`CLI inference took ${Date.now() - t0}ms`);
 
       if (isServerBinaryAvailable() && !isServerRunning()) {
         startInBackground(modelId);

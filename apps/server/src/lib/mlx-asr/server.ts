@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createAppLogger } from "@freestyle/utils";
 import { getDb } from "../db.js";
 import { getMlxAsrModel, isAppleSiliconMac } from "./constants.js";
 import {
@@ -14,6 +15,7 @@ import {
   isMlxAudioInstalled,
 } from "./python.js";
 
+const log = createAppLogger("mlx-asr");
 const START_TIMEOUT_MS = 120_000;
 const TRANSCRIBE_TIMEOUT_MS = 300_000;
 const DEFAULT_KEEP_ALIVE_MINUTES = 10;
@@ -107,10 +109,10 @@ export function startMlxInBackground(modelId: string): void {
   workerFailed = false;
   ensureMlxServerRunning(modelId)
     .then(() => {
-      console.log("[mlx-asr] Worker ready");
+      log.info("Worker ready");
     })
     .catch((err: Error) => {
-      console.error("[mlx-asr] Background worker start failed:", err.message);
+      log.error(`Background worker start failed: ${err.message}`);
     });
 }
 
@@ -279,7 +281,7 @@ async function spawnWorkerProcess(
   proc.stderr?.on("data", (data: Buffer) => {
     const text = data.toString().trimEnd();
     if (!text) return;
-    console.warn("[mlx-asr]", text);
+    log.warn(text);
   });
 
   proc.on("error", (err) => {
@@ -341,18 +343,12 @@ async function startWorker(modelId: string): Promise<void> {
     workerFailed = false;
     try {
       await spawnWorkerProcess(candidate.command, candidate.spawnArgs);
-      if (isDevOrLogging()) {
-        console.log(`[mlx-asr] started via ${candidate.label}`);
-      }
+      log.debug(`started via ${candidate.label}`);
       return;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       await stopMlxServer().catch(() => undefined);
-      if (isDevOrLogging()) {
-        console.warn(
-          `[mlx-asr] ${candidate.label} failed: ${lastError.message}`,
-        );
-      }
+      log.debug(`${candidate.label} failed: ${lastError.message}`);
     }
   }
 
@@ -363,18 +359,12 @@ async function startWorker(modelId: string): Promise<void> {
   );
 }
 
-function isDevOrLogging(): boolean {
-  return process.env.NODE_ENV !== "production";
-}
-
 function handleWorkerLine(line: string): void {
   let message: WorkerResponse;
   try {
     message = JSON.parse(line) as WorkerResponse;
   } catch {
-    if (process.env.NODE_ENV !== "production") {
-      console.log("[mlx-asr]", line);
-    }
+    log.debug(line);
     return;
   }
 
@@ -414,6 +404,8 @@ function sendTranscribeRequest(opts: {
   stream?: boolean;
   onPartial?: (text: string) => void;
 }): Promise<string> {
+  clearUnloadTimer();
+
   const proc = workerProcess;
   if (!proc?.stdin || !workerReady) {
     return Promise.reject(new Error("mlx-asr worker is not running"));
@@ -480,19 +472,21 @@ function clearUnloadTimer(): void {
 function scheduleUnload(): void {
   clearUnloadTimer();
   if (!workerProcess) return;
+  if (pending.size > 0) return;
   const minutes = getMlxAsrKeepAliveMinutes();
   const delayMs = minutes * 60_000;
 
   if (delayMs <= 0) {
     stopMlxServer().catch((err: Error) => {
-      console.error("[mlx-asr] Failed to unload worker:", err.message);
+      log.error(`Failed to unload worker: ${err.message}`);
     });
     return;
   }
 
   unloadTimer = setTimeout(() => {
+    if (pending.size > 0) return;
     stopMlxServer().catch((err: Error) => {
-      console.error("[mlx-asr] Failed to unload idle worker:", err.message);
+      log.error(`Failed to unload idle worker: ${err.message}`);
     });
   }, delayMs);
   unloadTimer.unref?.();

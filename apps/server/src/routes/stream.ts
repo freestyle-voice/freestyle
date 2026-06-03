@@ -1,3 +1,4 @@
+import { createAppLogger } from "@freestyle/utils";
 import { upgradeWebSocket } from "@hono/node-server";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
@@ -13,6 +14,7 @@ import {
 } from "../lib/streaming-stt.js";
 import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
 
+const log = createAppLogger("stream");
 const LOG_STREAM_PARTIALS = process.env.FREESTYLE_LOG_STREAM_PARTIALS === "1";
 
 const stream = new Hono().get(
@@ -158,8 +160,8 @@ const stream = new Hono().get(
           onPartial: (text) => {
             if (upstream !== session) return;
             if (LOG_STREAM_PARTIALS) {
-              console.log(
-                `[stream partial] ${defaults.voice!.provider}/${modelShort}: ${text}`,
+              log.info(
+                `partial ${defaults.voice!.provider}/${modelShort}: ${text}`,
               );
             }
             ws.send(JSON.stringify({ type: "partial", text }));
@@ -209,7 +211,7 @@ const stream = new Hono().get(
                     pp.costUsd,
                   );
                 } catch (err) {
-                  console.error("Failed to save history:", err);
+                  log.error(`Failed to save history: ${err}`);
                 }
               })
               .catch((err) => {

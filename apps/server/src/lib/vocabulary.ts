@@ -1,4 +1,7 @@
+import { createAppLogger } from "@freestyle/utils";
 import { getDb } from "./db.js";
+
+const log = createAppLogger("vocabulary");
 
 export interface VocabularyRow {
   id: number;
@@ -19,7 +22,7 @@ export function loadVocabularyTerms(): string[] {
       .all() as { term: string }[];
     return rows.map((r) => r.term.trim()).filter(Boolean);
   } catch (err) {
-    console.error("[vocabulary] Failed to load vocabulary terms:", err);
+    log.error(`Failed to load vocabulary terms: ${err}`);
     return [];
   }
 }

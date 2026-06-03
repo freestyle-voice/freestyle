@@ -15,6 +15,7 @@ import {
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { createAppLogger } from "@freestyle/utils";
 import {
   getBinDir,
   getModelPath,
@@ -24,6 +25,8 @@ import {
   WHISPER_MODELS,
   type WhisperModelDef,
 } from "./constants.js";
+
+const log = createAppLogger("whisper");
 
 export type DownloadStatus =
   | "not_downloaded"
@@ -298,7 +301,7 @@ async function buildFromSource(): Promise<void> {
   const tarballUrl = `https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v${WHISPER_CPP_VERSION}.tar.gz`;
   const tarPath = join(binDir, `whisper-${WHISPER_CPP_VERSION}.tar.gz`);
 
-  console.log("[whisper] Downloading whisper.cpp source...");
+  log.info("Downloading whisper.cpp source...");
 
   const res = await fetch(tarballUrl, {
     redirect: "follow",
@@ -313,7 +316,7 @@ async function buildFromSource(): Promise<void> {
   const fileStream = createWriteStream(tarPath);
   await pipeline(webBodyToReadable(res.body), fileStream);
 
-  console.log("[whisper] Extracting source...");
+  log.info("Extracting source...");
 
   if (existsSync(srcDir)) {
     rmSync(srcDir, { recursive: true, force: true });
@@ -336,7 +339,7 @@ async function buildFromSource(): Promise<void> {
     unlinkSync(tarPath);
   } catch {}
 
-  console.log("[whisper] Building whisper.cpp (this may take a minute)...");
+  log.info("Building whisper.cpp (this may take a minute)...");
 
   try {
     mkdirSync(buildDir, { recursive: true });
@@ -402,7 +405,7 @@ async function buildFromSource(): Promise<void> {
     );
   }
 
-  console.log("[whisper] Build complete");
+  log.info("Build complete");
 }
 
 async function downloadWindowsBinaries(): Promise<void> {
@@ -412,7 +415,7 @@ async function downloadWindowsBinaries(): Promise<void> {
   const archiveUrl = `https://github.com/ggml-org/whisper.cpp/releases/download/v${WHISPER_CPP_VERSION}/whisper-bin-x64.zip`;
   const tmpZip = join(binDir, "whisper-bin.zip");
 
-  console.log("[whisper] Downloading pre-built Windows binaries...");
+  log.info("Downloading pre-built Windows binaries...");
 
   const res = await fetch(archiveUrl, {
     redirect: "follow",
@@ -455,7 +458,7 @@ async function downloadWindowsBinaries(): Promise<void> {
     rmSync(releaseDir, { recursive: true, force: true });
   }
 
-  console.log("[whisper] Windows binaries downloaded");
+  log.info("Windows binaries downloaded");
 }
 
 // ---------------------------------------------------------------------------

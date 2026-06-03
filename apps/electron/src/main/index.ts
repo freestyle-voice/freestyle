@@ -333,16 +333,14 @@ function showPill(): void {
     mainWindow.showInactive();
   }
 
-  // On Windows, register Escape as a global shortcut while the pill
-  // is visible so the user can cancel recording/transcription.
-  if (process.platform === "win32") {
-    if (!globalShortcut.isRegistered("Escape")) {
-      globalShortcut.register("Escape", () => {
-        if (mainWindow?.isVisible()) {
-          mainWindow.webContents.send("pill:cancel");
-        }
-      });
-    }
+  // Register Escape as a global shortcut while the pill is visible
+  // so the user can cancel recording/transcription.
+  if (!globalShortcut.isRegistered("Escape")) {
+    globalShortcut.register("Escape", () => {
+      if (mainWindow?.isVisible()) {
+        mainWindow.webContents.send("pill:cancel");
+      }
+    });
   }
 }
 
@@ -515,12 +513,10 @@ function hidePill(): void {
   if (mainWindow?.isVisible()) {
     mainWindow.hide();
   }
-  // Unregister Escape shortcut when pill is hidden (Windows only)
-  if (process.platform === "win32") {
-    try {
-      globalShortcut.unregister("Escape");
-    } catch {}
-  }
+  // Unregister Escape shortcut when pill is hidden
+  try {
+    globalShortcut.unregister("Escape");
+  } catch {}
 }
 
 function resetOnboarding(): void {

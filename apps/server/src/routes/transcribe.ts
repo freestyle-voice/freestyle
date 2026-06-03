@@ -1,3 +1,4 @@
+import { createAppLogger } from "@freestyle/utils";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { postProcess } from "../lib/post-process.js";
@@ -6,6 +7,8 @@ import { getDefaultModels } from "../lib/providers.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import { getApiKeyForProvider } from "../lib/streaming-stt.js";
 import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
+
+const log = createAppLogger("transcribe");
 
 const transcribeRoute = new Hono().post("/", async (c) => {
   const start = Date.now();
@@ -77,8 +80,6 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     );
   }
 
-  const isDev = process.env.NODE_ENV !== "production";
-
   try {
     const bias = resolveAsrVocabularyBias(
       defaults.voice.provider,
@@ -93,11 +94,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       bias,
     });
     rawText = result.text;
-    if (isDev) {
-      console.log(
-        `[transcribe] STT took ${Date.now() - t0}ms | rawText=${JSON.stringify(rawText).slice(0, 120)}`,
-      );
-    }
+    log.debug(
+      `STT took ${Date.now() - t0}ms | rawText=${JSON.stringify(rawText).slice(0, 120)}`,
+    );
   } catch (err) {
     captureException(err, {
       provider: defaults.voice.provider,
@@ -148,7 +147,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         );
       })
       .catch((err) => {
-        console.error("Failed to save history:", err);
+        log.error(`Failed to save history: ${err}`);
       });
 
     capture("transcription completed", {
@@ -169,11 +168,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
   const ppStart = Date.now();
   const pp = await postProcess(rawText, appContext);
-  if (isDev) {
-    console.log(
-      `[transcribe] post-process took ${Date.now() - ppStart}ms | cleaned=${JSON.stringify(pp.cleaned).slice(0, 120)}`,
-    );
-  }
+  log.debug(
+    `post-process took ${Date.now() - ppStart}ms | cleaned=${JSON.stringify(pp.cleaned).slice(0, 120)}`,
+  );
 
   Promise.resolve()
     .then(() => {
@@ -196,12 +193,10 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       );
     })
     .catch((err) => {
-      console.error("Failed to save history:", err);
+      log.error(`Failed to save history: ${err}`);
     });
 
-  if (isDev) {
-    console.log(`[transcribe] total ${Date.now() - start}ms`);
-  }
+  log.debug(`total ${Date.now() - start}ms`);
 
   capture("transcription completed", {
     provider: voiceProvider,

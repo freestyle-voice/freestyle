@@ -11,7 +11,10 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
+import { createAppLogger } from "@freestyle/utils";
 import { getNativeBinaryPath } from "./native-binary";
+
+const log = createAppLogger("key-listener");
 
 type KeyEventCallback = () => void;
 
@@ -185,9 +188,7 @@ export class NativeKeyListener {
     });
 
     this.process.stderr?.on("data", (data: Buffer) => {
-      if (process.env.NODE_ENV !== "production") {
-        console.log(`[key-listener] ${data.toString().trim()}`);
-      }
+      log.debug(data.toString().trim());
     });
 
     this.process.on("close", (code) => {

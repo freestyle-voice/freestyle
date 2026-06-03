@@ -7,8 +7,11 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
+import { createAppLogger } from "@freestyle/utils";
 import type { WebContents } from "electron";
 import { getNativeBinaryPath } from "./native-binary";
+
+const log = createAppLogger("hotkey-recorder");
 
 export interface HotkeyCombo {
   modifiers: string[];
@@ -111,9 +114,7 @@ export class HotkeyRecorder {
     });
 
     this.process.stderr?.on("data", (data: Buffer) => {
-      if (process.env.NODE_ENV !== "production") {
-        console.log(`[hotkey-recorder] ${data.toString().trim()}`);
-      }
+      log.debug(data.toString().trim());
     });
 
     this.process.on("close", () => {

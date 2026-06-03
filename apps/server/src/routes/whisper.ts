@@ -1,7 +1,11 @@
+import { createAppLogger } from "@freestyle/utils";
 import { Hono } from "hono";
 import { capture } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
+
+const log = createAppLogger("whisper");
+
 import {
   isBinaryAvailable,
   isServerBinaryAvailable,
@@ -126,17 +130,13 @@ export function autoStartWhisperServer(): void {
     const modelId = stripProviderPrefix(defaults.voice.model_id);
 
     if (!hasServer) {
-      if (process.env.NODE_ENV !== "production") {
-        console.log(
-          "[whisper] whisper-server binary not found, skipping auto-start (CLI will be used)",
-        );
-      }
+      log.debug(
+        "whisper-server binary not found, skipping auto-start (CLI will be used)",
+      );
       return;
     }
 
-    if (process.env.NODE_ENV !== "production") {
-      console.log("[whisper] Auto-starting server for model:", modelId);
-    }
+    log.debug(`Auto-starting server for model: ${modelId}`);
     startInBackground(modelId);
   } catch {
     // DB not ready or other init issue — silently skip

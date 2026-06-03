@@ -1,6 +1,9 @@
 import { exec, execFile } from "node:child_process";
+import { createAppLogger } from "@freestyle/utils";
 import { clipboard } from "electron";
 import { getNativeBinaryPath } from "./native-binary";
+
+const log = createAppLogger("paste");
 
 function execAsync(cmd: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -36,8 +39,8 @@ async function pasteMac(): Promise<"native" | "legacy"> {
   if (binaryPath) {
     const exitCode = await execFileAsync(binaryPath);
     if (exitCode === 2) {
-      console.warn(
-        "[paste] No accessibility permission (native binary exit 2), falling back to osascript",
+      log.warn(
+        "No accessibility permission (native binary exit 2), falling back to osascript",
       );
       await execAsync(
         `osascript -e 'tell application "System Events" to keystroke "v" using {command down}'`,
@@ -78,8 +81,8 @@ async function pasteLinux(): Promise<"native" | "legacy"> {
     }
     const exitCode = await execFileAsync(binaryPath, args);
     if (exitCode !== 0) {
-      console.warn(
-        `[paste] Native paste failed (exit ${exitCode}), falling back to xdotool/wtype`,
+      log.warn(
+        `Native paste failed (exit ${exitCode}), falling back to xdotool/wtype`,
       );
       await pasteLinuxLegacy();
       return "legacy";
@@ -115,9 +118,7 @@ const PASTE_SETTLE_LEGACY_MS: Record<string, number> = {
 };
 
 export async function pasteIntoFocusedApp(text: string): Promise<void> {
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[paste] text:", JSON.stringify(text));
-  }
+  log.debug(`text: ${JSON.stringify(text)}`);
   if (!text?.trim()) return;
 
   const prior = clipboard.readText();

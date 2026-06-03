@@ -578,12 +578,16 @@ async function factoryReset(): Promise<void> {
 
     settingsCache = null;
     app.setLoginItemSettings({ openAtLogin: false });
+
+    app.relaunch();
+    app.exit(0);
   } catch (err) {
     console.error("[factory-reset] failed:", err);
+    dialog.showErrorBox(
+      "Hard Reset failed",
+      `${err instanceof Error ? err.message : String(err)}\n\nThe app may be in a partially reset state. Quit and relaunch manually.`,
+    );
   }
-
-  app.relaunch();
-  app.exit(0);
 }
 
 function showSettingsWindow(): void {

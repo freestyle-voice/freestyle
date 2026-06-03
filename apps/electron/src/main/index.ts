@@ -871,9 +871,7 @@ app.whenReady().then(async () => {
       keyListener.stop();
       keyListener = null;
     }
-    if (process.platform === "win32") {
-      globalShortcut.unregisterAll();
-    }
+    globalShortcut.unregisterAll();
 
     stopHotkeyRecorderProcess();
     const target =
@@ -1321,9 +1319,7 @@ function registerHotkey(hotkey?: string): void {
     keyListener = null;
   }
   hotkeyPressed = false;
-  if (process.platform === "win32") {
-    globalShortcut.unregisterAll();
-  }
+  globalShortcut.unregisterAll();
 
   if (!hotkey) {
     hotkey = loadHotkeyFromDB();
@@ -1389,9 +1385,7 @@ app.on("will-quit", () => {
     micListener.stop();
     micListener = null;
   }
-  if (process.platform === "win32") {
-    globalShortcut.unregisterAll();
-  }
+  globalShortcut.unregisterAll();
 });
 
 // Keep app running in background when windows are closed (tray stays active)

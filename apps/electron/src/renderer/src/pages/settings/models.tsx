@@ -27,6 +27,7 @@ import {
 import { cn } from "@renderer/lib/utils";
 import {
   AlertTriangle,
+  CheckCircle,
   ChevronRight,
   CircleDollarSign,
   Cloud,
@@ -46,6 +47,7 @@ import {
   Trash2,
   WifiOff,
   X,
+  XCircle,
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -67,6 +69,7 @@ interface ConfiguredModel {
 interface ApiKeyEntry {
   provider: string;
   created_at: string;
+  status: "valid" | "invalid" | "unknown";
 }
 
 // ---------------------------------------------------------------------------
@@ -137,6 +140,12 @@ export default function ModelsPage(): React.JSX.Element {
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [editKeyValue, setEditKeyValue] = useState("");
   const [showEditKey, setShowEditKey] = useState(false);
+
+  // Key validation state
+  const [keyValidating, setKeyValidating] = useState(false);
+  const [keyValidationError, setKeyValidationError] = useState<string | null>(
+    null,
+  );
 
   // Delete confirmation
   const [deleteProvider, setDeleteProvider] = useState<string | null>(null);
@@ -211,7 +220,7 @@ export default function ModelsPage(): React.JSX.Element {
         const configs: ConfiguredModel[] = await configRes.json();
         setConfigured(configs);
       }
-      if (keysRes.ok) setApiKeys(await keysRes.json());
+      if (keysRes.ok) setApiKeys((await keysRes.json()) as ApiKeyEntry[]);
       if (cleanupRes.ok) {
         const data = await cleanupRes.json();
         if (data?.value) setLlmCleanup(data.value === "true");
@@ -409,6 +418,7 @@ export default function ModelsPage(): React.JSX.Element {
     setPendingKeyProvider(null);
     setPendingModel(null);
     setShowPendingKey(false);
+    setKeyValidationError(null);
     apiKeyForm.reset({ provider: "", key: "" });
   }, [apiKeyForm]);
 
@@ -456,24 +466,47 @@ export default function ModelsPage(): React.JSX.Element {
     async (data: ApiKeyInput) => {
       if (!pendingModel) return;
 
-      const client = getClient();
-      await client.api.keys.$post({
-        json: { provider: data.provider, key: data.key },
-      });
+      setKeyValidating(true);
+      setKeyValidationError(null);
 
-      await client.api.models.configured.$post({
-        json: {
-          provider: pendingModel.provider_id,
-          model_id: pendingModel.model_id,
-          model_name: pendingModel.model_name,
-          type: pendingModelType,
-          is_default: true,
-        },
-      });
+      try {
+        const client = getClient();
+        const res = await client.api.keys.$post({
+          json: { provider: data.provider, key: data.key },
+        });
 
-      closePendingKey();
-      closePicker();
-      loadData();
+        if (res.ok) {
+          const body = await res.json();
+          if ("valid" in body && body.valid === false) {
+            setKeyValidationError(
+              ("error" in body && typeof body.error === "string"
+                ? body.error
+                : null) ?? "API key is not valid.",
+            );
+            setKeyValidating(false);
+            loadData();
+            return;
+          }
+        }
+
+        await client.api.models.configured.$post({
+          json: {
+            provider: pendingModel.provider_id,
+            model_id: pendingModel.model_id,
+            model_name: pendingModel.model_name,
+            type: pendingModelType,
+            is_default: true,
+          },
+        });
+
+        closePendingKey();
+        closePicker();
+        loadData();
+      } catch {
+        setKeyValidationError("Failed to validate key. Please try again.");
+      } finally {
+        setKeyValidating(false);
+      }
     },
     [pendingModel, pendingModelType, closePendingKey, closePicker, loadData],
   );
@@ -505,25 +538,52 @@ export default function ModelsPage(): React.JSX.Element {
 
   const saveProviderKey = useCallback(async () => {
     if (!editKeyValue.trim() || !editingProvider) return;
-    await getClient().api.keys.$post({
-      json: { provider: editingProvider, key: editKeyValue.trim() },
-    });
-    setEditingProvider(null);
-    setEditKeyValue("");
-    setShowEditKey(false);
-    loadData();
+
+    setKeyValidating(true);
+    setKeyValidationError(null);
+
+    try {
+      const res = await getClient().api.keys.$post({
+        json: { provider: editingProvider, key: editKeyValue.trim() },
+      });
+
+      if (res.ok) {
+        const body = await res.json();
+        if ("valid" in body && body.valid === false) {
+          setKeyValidationError(
+            ("error" in body && typeof body.error === "string"
+              ? body.error
+              : null) ?? "API key is not valid.",
+          );
+          setKeyValidating(false);
+          loadData();
+          return;
+        }
+      }
+
+      setEditingProvider(null);
+      setEditKeyValue("");
+      setShowEditKey(false);
+      loadData();
+    } catch {
+      setKeyValidationError("Failed to validate key. Please try again.");
+    } finally {
+      setKeyValidating(false);
+    }
   }, [editKeyValue, editingProvider, loadData]);
 
   const startEditProvider = useCallback((provider: string) => {
     setEditingProvider(provider);
     setEditKeyValue("");
     setShowEditKey(false);
+    setKeyValidationError(null);
   }, []);
 
   const closeEditProvider = useCallback(() => {
     setEditingProvider(null);
     setEditKeyValue("");
     setShowEditKey(false);
+    setKeyValidationError(null);
   }, []);
 
   const tryDeleteProvider = useCallback(
@@ -934,6 +994,8 @@ export default function ModelsPage(): React.JSX.Element {
             setShow={setShowPendingKey}
             onClose={closePendingKey}
             onSubmit={savePendingKeyAndModel}
+            validating={keyValidating}
+            validationError={keyValidationError}
           />
         )}
 
@@ -946,6 +1008,8 @@ export default function ModelsPage(): React.JSX.Element {
             setShow={setShowEditKey}
             onClose={closeEditProvider}
             onSave={saveProviderKey}
+            validating={keyValidating}
+            validationError={keyValidationError}
           />
         )}
 
@@ -1887,6 +1951,7 @@ function ProvidersSection({
             key={entry.provider}
             providerId={entry.provider}
             configured={configured}
+            status={entry.status ?? "unknown"}
             first={i === 0}
             onEdit={() => onEdit(entry.provider)}
             onDelete={() => onDelete(entry.provider)}
@@ -1911,12 +1976,14 @@ function ProvidersSection({
 function ProviderRow({
   providerId,
   configured,
+  status,
   first,
   onEdit,
   onDelete,
 }: {
   providerId: string;
   configured: ConfiguredModel[];
+  status: "valid" | "invalid" | "unknown";
   first: boolean;
   onEdit: () => void;
   onDelete: () => void;
@@ -1933,17 +2000,38 @@ function ProviderRow({
     >
       <Key className="text-muted-foreground h-[15px] w-[15px] shrink-0" />
       <div className="min-w-0 flex-1">
-        <div className="text-foreground text-[13.5px] font-semibold">
-          {displayName(providerId)}
+        <div className="flex items-center gap-1.5">
+          <span className="text-foreground text-[13.5px] font-semibold">
+            {displayName(providerId)}
+          </span>
+          {status === "valid" && (
+            <CheckCircle className="text-primary h-3.5 w-3.5 shrink-0" />
+          )}
+          {status === "invalid" && (
+            <XCircle className="text-destructive h-3.5 w-3.5 shrink-0" />
+          )}
         </div>
         <div className="mono text-muted-foreground mt-0.5 text-[11px]">
-          Key stored in keychain
+          {status === "invalid" ? (
+            <span className="text-destructive">
+              Key invalid — update or delete
+            </span>
+          ) : (
+            "Key stored in keychain"
+          )}
         </div>
       </div>
       <span className="text-muted-foreground text-[11.5px]">
         {count} model{count === 1 ? "" : "s"}
       </span>
-      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-0.5 transition-opacity",
+          status === "invalid"
+            ? "opacity-100"
+            : "opacity-0 group-hover:opacity-100",
+        )}
+      >
         <button
           type="button"
           onClick={onEdit}
@@ -2021,6 +2109,8 @@ function ApiKeyDialog({
   setShow,
   onClose,
   onSubmit,
+  validating,
+  validationError,
 }: {
   model: AvailableModel;
   provider: string;
@@ -2029,6 +2119,8 @@ function ApiKeyDialog({
   setShow: (v: boolean) => void;
   onClose: () => void;
   onSubmit: (data: ApiKeyInput) => Promise<void>;
+  validating?: boolean;
+  validationError?: string | null;
 }): React.JSX.Element {
   return (
     <ModalShell>
@@ -2070,7 +2162,8 @@ function ApiKeyDialog({
             placeholder="sk-…"
             className={cn(
               "border-border bg-background mono w-full rounded-md border py-2.5 pl-9 pr-10 text-[13px]",
-              form.formState.errors.key && "border-destructive",
+              (form.formState.errors.key || validationError) &&
+                "border-destructive",
             )}
             onKeyDown={(e) => {
               if (e.key === "Escape") onClose();
@@ -2089,6 +2182,12 @@ function ApiKeyDialog({
             {form.formState.errors.key.message}
           </p>
         )}
+        {validationError && (
+          <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2">
+            <AlertTriangle className="text-destructive mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <p className="text-destructive text-xs">{validationError}</p>
+          </div>
+        )}
         <p
           className="mono text-muted-foreground text-[10px] uppercase"
           style={{ letterSpacing: "0.14em" }}
@@ -2105,10 +2204,17 @@ function ApiKeyDialog({
           </button>
           <button
             type="submit"
-            disabled={!form.formState.isValid}
+            disabled={!form.formState.isValid || validating}
             className="bg-foreground text-background hover:bg-foreground/90 rounded-md px-3.5 py-1.5 text-[12.5px] font-medium disabled:opacity-50"
           >
-            Save &amp; continue
+            {validating ? (
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Checking…
+              </span>
+            ) : (
+              "Save & continue"
+            )}
           </button>
         </div>
       </form>
@@ -2124,6 +2230,8 @@ function EditKeyDialog({
   setShow,
   onClose,
   onSave,
+  validating,
+  validationError,
 }: {
   provider: string;
   value: string;
@@ -2132,6 +2240,8 @@ function EditKeyDialog({
   setShow: (v: boolean) => void;
   onClose: () => void;
   onSave: () => Promise<void>;
+  validating?: boolean;
+  validationError?: string | null;
 }): React.JSX.Element {
   return (
     <ModalShell>
@@ -2168,7 +2278,10 @@ function EditKeyDialog({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder="sk-…"
-            className="border-border bg-background mono w-full rounded-md border py-2.5 pl-9 pr-10 text-[13px]"
+            className={cn(
+              "border-border bg-background mono w-full rounded-md border py-2.5 pl-9 pr-10 text-[13px]",
+              validationError && "border-destructive",
+            )}
             onKeyDown={(e) => {
               if (e.key === "Enter" && value.trim()) onSave();
               if (e.key === "Escape") onClose();
@@ -2182,6 +2295,12 @@ function EditKeyDialog({
             {show ? <EyeOff size={15} /> : <Eye size={15} />}
           </button>
         </div>
+        {validationError && (
+          <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2">
+            <AlertTriangle className="text-destructive mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <p className="text-destructive text-xs">{validationError}</p>
+          </div>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <button
             type="button"
@@ -2193,10 +2312,17 @@ function EditKeyDialog({
           <button
             type="button"
             onClick={onSave}
-            disabled={!value.trim()}
+            disabled={!value.trim() || validating}
             className="bg-foreground text-background hover:bg-foreground/90 rounded-md px-3.5 py-1.5 text-[12.5px] font-medium disabled:opacity-50"
           >
-            Save
+            {validating ? (
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Checking…
+              </span>
+            ) : (
+              "Save"
+            )}
           </button>
         </div>
       </div>

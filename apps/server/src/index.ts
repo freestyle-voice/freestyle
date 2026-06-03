@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
+  capture,
   captureException,
   getDeviceId,
   shutdownPosthog,
@@ -43,6 +44,24 @@ const app = new Hono()
   })
   .get("/api/device-id", (c) => {
     return c.json({ deviceId: getDeviceId() });
+  })
+  // Renderer-side telemetry (e.g. onboarding UI events) funnels through the
+  // same server-side capture() as every other product event, so it honors the
+  // telemetry opt-out, DO_NOT_TRACK, and device-id attribution in one place.
+  .post("/api/telemetry", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as {
+      event?: unknown;
+      properties?: unknown;
+    } | null;
+    if (!body || typeof body.event !== "string" || !body.event) {
+      return c.json({ error: "event required" }, 400);
+    }
+    const properties =
+      body.properties && typeof body.properties === "object"
+        ? (body.properties as Record<string, unknown>)
+        : undefined;
+    capture(body.event, properties);
+    return c.json({ ok: true });
   })
   .route("/api/settings", settings)
   .route("/api/keys", apiKeys)

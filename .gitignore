@@ -55,3 +55,9 @@ apps/electron/resources/whisper/
 
 # Test artifacts
 test-results/
+
+# Local-only env files (keep .env.example tracked)
+.env
+.env.local
+.env.*.local
+!.env.example

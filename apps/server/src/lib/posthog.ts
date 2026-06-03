@@ -15,7 +15,8 @@ function getEnvironment(): string {
 
 function isEnabled(): boolean {
   if (process.env.DO_NOT_TRACK === "1") return false;
-  if (getEnvironment() !== "production") return false;
+  const devOptIn = process.env.FREESTYLE_ANALYTICS_DEV === "1";
+  if (getEnvironment() !== "production" && !devOptIn) return false;
 
   try {
     const db = getDb();

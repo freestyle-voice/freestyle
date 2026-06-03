@@ -2,7 +2,7 @@ import "./globals.css";
 import "./fonts.css";
 
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
-import { getApiBase, initApiBase } from "@renderer/lib/api";
+import { initApiBase } from "@renderer/lib/api";
 import NotFoundPage from "@renderer/pages/not-found";
 import OnboardingPage from "@renderer/pages/onboarding";
 import DictionaryPage from "@renderer/pages/settings/dictionary";
@@ -14,7 +14,6 @@ import VocabularyPage from "@renderer/pages/settings/vocabulary";
 import AppShell from "@renderer/pages/shell";
 import TodayPage from "@renderer/pages/today";
 import { ThemeProvider } from "next-themes";
-import posthog from "posthog-js";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router";
@@ -27,22 +26,9 @@ function PagePad(): React.JSX.Element {
   );
 }
 
-initApiBase().then(async () => {
-  if (import.meta.env.PROD) {
-    try {
-      const res = await fetch(`${getApiBase()}/api/device-id`);
-      const { deviceId } = (await res.json()) as { deviceId: string };
-      posthog.init("phc_mDhFafyLK3Safsrrehi7rnH2X9jVMMGNAwKWuJsEN54w", {
-        api_host: "https://us.i.posthog.com",
-        autocapture: false,
-        capture_pageview: false,
-        capture_pageleave: false,
-        persistence: "memory",
-      });
-      posthog.identify(deviceId);
-    } catch {}
-  }
-});
+// Analytics is captured server-side (see apps/server/src/lib/posthog.ts);
+// the renderer ships no analytics SDK.
+initApiBase();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

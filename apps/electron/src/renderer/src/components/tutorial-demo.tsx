@@ -28,6 +28,7 @@ const SAMPLE_TRANSCRIPT = "Pushing the meeting to tomorrow at ten.";
 export function TutorialDemo({
   hotkey,
   interactive = false,
+  onDictation,
 }: {
   hotkey?: string;
   // When true, the result line becomes a real editable textarea the user can
@@ -35,6 +36,9 @@ export function TutorialDemo({
   // scripted idle→pressed→result loop is disabled so the box stays calm until
   // a real hotkey press.
   interactive?: boolean;
+  // Fired on each real hotkey press while interactive (used by onboarding to
+  // log that the user actually tried dictation).
+  onDictation?: () => void;
 }): React.JSX.Element {
   const [phase, setPhase] = useState<DemoPhase>("idle");
   const [hotkeyTokens, setHotkeyTokens] = useState<string[]>(() =>
@@ -50,6 +54,10 @@ export function TutorialDemo({
   // True while the real hotkey is held — switches Wave from scripted
   // amplitude to live amplitude.
   const livePressRef = useRef(false);
+  // Keep the latest onDictation callback without re-subscribing the hotkey
+  // listeners every render (the parent passes a fresh closure each time).
+  const onDictationRef = useRef(onDictation);
+  onDictationRef.current = onDictation;
 
   const clearLoop = useCallback(() => {
     if (timeoutRef.current !== null) {
@@ -107,6 +115,7 @@ export function TutorialDemo({
       audioLevelRef.current = 0;
       clearLoop();
       setPhase("pressed");
+      if (interactive) onDictationRef.current?.();
     });
     const removeUp = window.api?.onHotkeyUp(() => {
       livePressRef.current = false;

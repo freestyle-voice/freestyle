@@ -15,6 +15,21 @@ if (process.platform === "darwin") {
   }
 }
 
+// In development, load a local-only env file (cwd: apps/electron) so flags like
+// FREESTYLE_ANALYTICS_DEV=1 take effect without exporting them in the shell.
+// `process.env.NODE_ENV` is replaced at build time (see electron.vite.config.ts),
+// so this whole block is dead-code-eliminated from packaged/production builds.
+if (process.env.NODE_ENV !== "production") {
+  const proc = process as typeof process & {
+    loadEnvFile?: (path?: string) => void;
+  };
+  try {
+    proc.loadEnvFile?.(".env.local");
+  } catch {
+    // no .env.local present — that's fine
+  }
+}
+
 import { execFile } from "node:child_process";
 import { rm } from "node:fs/promises";
 import { dirname, join } from "node:path";

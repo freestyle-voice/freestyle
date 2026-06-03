@@ -39,7 +39,6 @@
     "hono": "^4.12.22",
     "lucide-react": "^1.16.0",
     "next-themes": "^0.4.6",
-    "posthog-js": "^1.252.0",
     "radix-ui": "^1.4.3",
     "react-hook-form": "^7.76.1",
     "react-hotkeys-hook": "^5.3.2",

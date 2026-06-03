@@ -135,15 +135,16 @@ export class NativeKeyListener {
 
   /**
    * Start the native key listener binary.
-   * Returns true if the binary was found and spawned.
+   * Resolves true once the binary emits READY, false if it exits or
+   * fails before that.
    */
-  start(): boolean {
-    if (this.destroyed) return false;
+  start(): Promise<boolean> {
+    if (this.destroyed) return Promise.resolve(false);
 
     const binaryName = BINARY_NAMES[process.platform];
     if (!binaryName) {
       this.options.onError?.(`Unsupported platform: ${process.platform}`);
-      return false;
+      return Promise.resolve(false);
     }
 
     const binaryPath = getNativeBinaryPath(binaryName);
@@ -151,7 +152,7 @@ export class NativeKeyListener {
       this.options.onError?.(
         `Native key listener binary not found: ${binaryName}`,
       );
-      return false;
+      return Promise.resolve(false);
     }
 
     const args: string[] = [];
@@ -172,41 +173,61 @@ export class NativeKeyListener {
       this.options.onError?.(
         `Failed to spawn key listener: ${err instanceof Error ? err.message : String(err)}`,
       );
-      return false;
+      return Promise.resolve(false);
     }
 
-    let lineBuffer = "";
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      let stderrOutput = "";
+      let lineBuffer = "";
 
-    this.process.stdout?.on("data", (data: Buffer) => {
-      lineBuffer += data.toString();
-      const lines = lineBuffer.split("\n");
-      lineBuffer = lines.pop() ?? "";
+      this.process!.stdout?.on("data", (data: Buffer) => {
+        lineBuffer += data.toString();
+        const lines = lineBuffer.split("\n");
+        lineBuffer = lines.pop() ?? "";
 
-      for (const line of lines) {
-        this.handleLine(line.trim());
-      }
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!settled && trimmed === "READY") {
+            settled = true;
+            resolve(true);
+          }
+          this.handleLine(trimmed);
+        }
+      });
+
+      this.process!.stderr?.on("data", (data: Buffer) => {
+        const text = data.toString().trim();
+        stderrOutput += text + "\n";
+        log.debug(text);
+      });
+
+      this.process!.on("close", (code) => {
+        this.process = null;
+        if (!settled) {
+          settled = true;
+          if (stderrOutput.trim()) {
+            this.options.onError?.(stderrOutput.trim());
+          }
+          resolve(false);
+        }
+        if (!this.destroyed && code !== 0) {
+          this.scheduleRestart();
+        }
+      });
+
+      this.process!.on("error", (err) => {
+        this.options.onError?.(`Key listener process error: ${err.message}`);
+        this.process = null;
+        if (!settled) {
+          settled = true;
+          resolve(false);
+        }
+        if (!this.destroyed) {
+          this.scheduleRestart();
+        }
+      });
     });
-
-    this.process.stderr?.on("data", (data: Buffer) => {
-      log.debug(data.toString().trim());
-    });
-
-    this.process.on("close", (code) => {
-      this.process = null;
-      if (!this.destroyed && code !== 0) {
-        this.scheduleRestart();
-      }
-    });
-
-    this.process.on("error", (err) => {
-      this.options.onError?.(`Key listener process error: ${err.message}`);
-      this.process = null;
-      if (!this.destroyed) {
-        this.scheduleRestart();
-      }
-    });
-
-    return true;
   }
 
   private handleLine(line: string): void {

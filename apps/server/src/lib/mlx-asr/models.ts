@@ -55,6 +55,8 @@ interface ActiveMlxDownload {
   bytesDownloaded: number;
   bytesTotal: number;
   speedBps: number;
+  lastUpdate: number;
+  lastBytes: number;
   error?: string;
   stderr: string;
 }
@@ -225,12 +227,15 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
 
   if (isMlxModelDownloaded(model)) return;
 
+  const now = Date.now();
   const active: ActiveMlxDownload = {
     proc: null,
     phase: "building_binary",
     bytesDownloaded: 0,
     bytesTotal: 0,
     speedBps: 0,
+    lastUpdate: now,
+    lastBytes: 0,
     stderr: "",
   };
   activeDownloads.set(modelId, active);
@@ -253,6 +258,11 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
   }
 
   active.phase = "downloading_model";
+  active.bytesDownloaded = 0;
+  active.bytesTotal = 0;
+  active.speedBps = 0;
+  active.lastUpdate = Date.now();
+  active.lastBytes = 0;
 
   await new Promise<void>((resolve, reject) => {
     const proc = spawn(
@@ -264,6 +274,33 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
       },
     );
     active.proc = proc;
+
+    let stdoutBuf = "";
+    proc.stdout?.on("data", (data: Buffer) => {
+      stdoutBuf += data.toString();
+      let newlineIdx: number;
+      while ((newlineIdx = stdoutBuf.indexOf("\n")) !== -1) {
+        const line = stdoutBuf.slice(0, newlineIdx);
+        stdoutBuf = stdoutBuf.slice(newlineIdx + 1);
+        try {
+          const msg = JSON.parse(line);
+          if (msg.type === "progress") {
+            active.bytesDownloaded = msg.bytesDownloaded ?? 0;
+            active.bytesTotal = msg.bytesTotal ?? 0;
+            const ts = Date.now();
+            const elapsed = ts - active.lastUpdate;
+            if (elapsed >= 500) {
+              const delta = active.bytesDownloaded - active.lastBytes;
+              active.speedBps = Math.round((delta / elapsed) * 1000);
+              active.lastUpdate = ts;
+              active.lastBytes = active.bytesDownloaded;
+            }
+          }
+        } catch {
+          // non-JSON line; ignore
+        }
+      }
+    });
 
     proc.stderr?.on("data", (data: Buffer) => {
       active.stderr = `${active.stderr}${data.toString()}`.slice(-2_000);

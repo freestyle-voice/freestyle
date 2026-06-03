@@ -1,4 +1,5 @@
 import { Orb } from "@renderer/components/ui/orb";
+import { capture } from "@renderer/lib/analytics";
 import { getApiBase, getClient, refreshApiBase } from "@renderer/lib/api";
 import { Recorder } from "@renderer/lib/recorder";
 import { Streamer } from "@renderer/lib/streamer";
@@ -253,6 +254,16 @@ export default function AppPage(): React.JSX.Element {
         console.error("[pill] paste/copy failed:", err);
       }
       window.api.sendTranscriptionDone();
+
+      // North-star usage metric: fires exactly once per completed dictation,
+      // at the single point where single-chunk, multi-chunk, and streaming
+      // paths converge and text is delivered to the user.
+      capture("dictation completed", {
+        segments: nonEmpty.length,
+        multi_segment: nonEmpty.length > 1,
+        output_mode: _outputMode,
+        char_count: finalText.length,
+      });
 
       if (
         !recordingActiveRef.current &&

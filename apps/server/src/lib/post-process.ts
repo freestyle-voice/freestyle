@@ -92,6 +92,7 @@ export interface PostProcessResult {
 export async function postProcess(
   rawText: string,
   appContext: string | null,
+  source: "batch" | "multi_segment" | "streaming" = "batch",
 ): Promise<PostProcessResult> {
   const ppStart = Date.now();
   const db = getDb();
@@ -240,6 +241,7 @@ IMPORTANT: Your entire response must be the cleaned text and nothing else. No qu
   }
 
   capture("post process completed", {
+    source,
     duration_ms: Date.now() - ppStart,
     ...(llmModel ? { model: llmModel } : {}),
   });

@@ -175,7 +175,7 @@ const stream = new Hono().get(
               return;
             }
 
-            postProcess(rawText, appContext)
+            postProcess(rawText, appContext, "streaming")
               .then((pp) => {
                 capture("streaming transcription completed", {
                   provider: voiceDefaults!.provider,

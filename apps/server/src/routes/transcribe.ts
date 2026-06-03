@@ -167,7 +167,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   }
 
   const ppStart = Date.now();
-  const pp = await postProcess(rawText, appContext);
+  const pp = await postProcess(rawText, appContext, "batch");
   log.debug(
     `post-process took ${Date.now() - ppStart}ms | cleaned=${JSON.stringify(pp.cleaned).slice(0, 120)}`,
   );

@@ -58,6 +58,7 @@ const app = new Hono()
   .route("/mcp", mcp)
   .route("/stream", stream);
 
+export { closeDb } from "./lib/db.js";
 export {
   autoStartMlxAsrServer,
   autoStartWhisperServer,

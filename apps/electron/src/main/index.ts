@@ -16,11 +16,13 @@ if (process.platform === "darwin") {
 }
 
 import { execFile } from "node:child_process";
+import { rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import server, {
   autoStartWhisperServer,
+  closeDb,
   reconcileUnsupportedMlxVoiceDefault,
 } from "@freestyle/server";
 import { serve } from "@hono/node-server";
@@ -520,6 +522,70 @@ function resetOnboarding(): void {
   }
 }
 
+async function factoryReset(): Promise<void> {
+  const { response } = await dialog.showMessageBox({
+    type: "warning",
+    buttons: ["Cancel", "Hard Reset"],
+    defaultId: 0,
+    cancelId: 0,
+    title: "Hard Reset (Dev)",
+    message: "Delete all Freestyle settings & data and restart?",
+    detail:
+      "Removes settings, API keys, history, and dictionary/vocabulary, then " +
+      "relaunches into onboarding. Downloaded voice models are kept. macOS " +
+      "Microphone/Accessibility permissions are not affected.",
+  });
+  if (response !== 1) return;
+
+  try {
+    await fetch(`http://127.0.0.1:${serverPort}/api/whisper/server/stop`, {
+      method: "POST",
+    }).catch(() => {});
+    await fetch(`http://127.0.0.1:${serverPort}/api/mlx-asr/server/stop`, {
+      method: "POST",
+    }).catch(() => {});
+
+    if (keyListener) {
+      keyListener.stop();
+      keyListener = null;
+    }
+    if (micListener) {
+      micListener.stop();
+      micListener = null;
+    }
+    if (process.platform === "win32") {
+      globalShortcut.unregisterAll();
+    }
+
+    try {
+      closeDb();
+    } catch {}
+
+    if (httpServer) {
+      httpServer.close();
+      httpServer = null;
+    }
+
+    const userData = app.getPath("userData");
+    for (const f of [
+      "settings.json",
+      "freestyle.db",
+      "freestyle.db-wal",
+      "freestyle.db-shm",
+    ]) {
+      await rm(join(userData, f), { force: true });
+    }
+
+    settingsCache = null;
+    app.setLoginItemSettings({ openAtLogin: false });
+  } catch (err) {
+    console.error("[factory-reset] failed:", err);
+  }
+
+  app.relaunch();
+  app.exit(0);
+}
+
 function showSettingsWindow(): void {
   if (!settingsWindow) {
     createSettingsWindow();
@@ -649,6 +715,12 @@ function buildTrayContextMenu(): Menu {
             label: "Reset Onboarding",
             click: resetOnboarding,
           },
+          {
+            label: "Hard Reset",
+            click: () => {
+              void factoryReset();
+            },
+          },
         ]
       : []),
     { type: "separator" },
@@ -703,6 +775,12 @@ function rebuildMenus(): void {
                     {
                       label: "Reset Onboarding",
                       click: resetOnboarding,
+                    },
+                    {
+                      label: "Hard Reset",
+                      click: () => {
+                        void factoryReset();
+                      },
                     },
                   ]
                 : []),

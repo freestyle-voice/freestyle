@@ -404,6 +404,8 @@ function sendTranscribeRequest(opts: {
   stream?: boolean;
   onPartial?: (text: string) => void;
 }): Promise<string> {
+  clearUnloadTimer();
+
   const proc = workerProcess;
   if (!proc?.stdin || !workerReady) {
     return Promise.reject(new Error("mlx-asr worker is not running"));
@@ -470,6 +472,7 @@ function clearUnloadTimer(): void {
 function scheduleUnload(): void {
   clearUnloadTimer();
   if (!workerProcess) return;
+  if (pending.size > 0) return;
   const minutes = getMlxAsrKeepAliveMinutes();
   const delayMs = minutes * 60_000;
 
@@ -481,6 +484,7 @@ function scheduleUnload(): void {
   }
 
   unloadTimer = setTimeout(() => {
+    if (pending.size > 0) return;
     stopMlxServer().catch((err: Error) => {
       log.error(`Failed to unload idle worker: ${err.message}`);
     });

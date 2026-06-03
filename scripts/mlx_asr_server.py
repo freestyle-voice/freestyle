@@ -43,11 +43,76 @@ def _send(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=True), flush=True)
 
 
+class _DownloadProgress:
+    """Holds aggregate download state and emits JSON progress to stdout."""
+
+    def __init__(self) -> None:
+        self.bytes_downloaded: int = 0
+        self.bytes_total: int = 0
+
+    def emit(self) -> None:
+        if self.bytes_total > 0:
+            _send({
+                "type": "progress",
+                "bytesDownloaded": self.bytes_downloaded,
+                "bytesTotal": self.bytes_total,
+            })
+
+
+_dl_progress: _DownloadProgress | None = None
+
+
+class _ProgressTqdm:
+    """Minimal tqdm replacement that emits JSON progress lines to stdout.
+
+    ``huggingface_hub.snapshot_download`` uses this class in two roles:
+
+    1. **Aggregate bytes bar** — created once via ``_create_progress_bar``.
+       The internal ``_AggregatedTqdm`` helper mutates ``.total`` and calls
+       ``.update(n)`` / ``.refresh()`` as each file chunk arrives.
+    2. **File-listing bar** — created by ``thread_map`` to show how many
+       files have been fetched.  We ignore this bar.
+
+    Only the aggregate bytes bar emits progress JSON to the Node caller.
+    """
+
+    def __init__(self, *_args: Any, total: int | None = None, **_kwargs: Any) -> None:
+        self.total: int = total or 0
+        self.n: int = _kwargs.get("initial", 0)
+        self._is_bytes = _kwargs.get("unit") == "B"
+
+    def update(self, n: int | float | None = 1) -> None:
+        if n:
+            self.n += int(n)
+        if self._is_bytes and _dl_progress is not None and self.total > 0:
+            _dl_progress.bytes_downloaded = self.n
+            _dl_progress.bytes_total = self.total
+            _dl_progress.emit()
+
+    def refresh(self) -> None:
+        pass
+
+    def set_description(self, *_args: Any, **_kwargs: Any) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    def __enter__(self) -> "_ProgressTqdm":
+        return self
+
+    def __exit__(self, *_args: Any) -> None:
+        self.close()
+
+
 def _download_model(model_id: str) -> None:
+    global _dl_progress
     from huggingface_hub import snapshot_download
 
+    _dl_progress = _DownloadProgress()
     _log(f"downloading {model_id} ...")
-    path = snapshot_download(model_id)
+    path = snapshot_download(model_id, tqdm_class=_ProgressTqdm)
+    _dl_progress = None
     _send({"type": "downloaded", "model": model_id, "path": path})
 
 

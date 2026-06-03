@@ -1,15 +1,8 @@
 import { apiKeySchema } from "@freestyle/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
-import markDark from "@renderer/assets/mark-dark.svg";
-import markLight from "@renderer/assets/mark-light.svg";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
-import {
-  LlmModelRow,
-  MODEL_ROW_PAGE_SIZE,
-  ProviderModelHeader,
-  ShowMoreModelRowsButton,
-} from "@renderer/components/model-row";
-import { Toggle, VoiceRow } from "@renderer/components/voice-row";
+import { TutorialDemo } from "@renderer/components/tutorial-demo";
+import { VoiceRow } from "@renderer/components/voice-row";
 import {
   comboDisplayKeys,
   formatAcceleratorKeys,
@@ -20,49 +13,53 @@ import { getClient } from "@renderer/lib/api";
 import {
   type AvailableModel,
   buildVoiceItems,
-  LLM_PROVIDERS,
+  formatBytes,
   type MlxAsrStatus,
   PROVIDER_DISPLAY_NAMES,
+  type VoiceItem,
   type WhisperStatus,
 } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
 import {
+  ArrowRight,
   Check,
   ChevronLeft,
-  ChevronRight,
-  ExternalLink,
+  Download,
   Eye,
   EyeOff,
   HardDrive,
+  Key,
   Keyboard,
   Loader2,
   Mic,
-  Power,
   Shield,
-  Sparkles,
+  X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router";
 
-type Step = "welcome" | "permissions" | "voice-model" | "llm-cleanup";
-
-const STEPS: Step[] = ["welcome", "permissions", "voice-model", "llm-cleanup"];
+type Step = "permissions" | "model" | "tutorial";
 
 const IS_MAC =
   typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
 
+// The opinionated on-device pick, in order of preference. Qwen3 ASR (MLX)
+// is the hero when the machine can run it; whisper.cpp's Base model is the
+// universal fallback (it builds its own binary, no Python required).
+const RECOMMENDED_MLX_DEF = "qwen3-0.6b-8bit";
+const RECOMMENDED_WHISPER_DEF = "base";
+
 export default function OnboardingPage(): React.JSX.Element {
   const navigate = useNavigate();
-  const [step, setStep] = useState<Step>("welcome");
+  const [step, setStep] = useState<Step>("permissions");
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Permissions state
   const [micStatus, setMicStatus] = useState<string>("unknown");
   const [accessibilityStatus, setAccessibilityStatus] = useState(false);
-  const [launchAtStartup, setLaunchAtStartup] = useState(false);
 
   // Voice model state
-  const [modelSource, setModelSource] = useState<"cloud" | "local">("cloud");
   const [available, setAvailable] = useState<AvailableModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<AvailableModel | null>(
     null,
@@ -72,35 +69,29 @@ export default function OnboardingPage(): React.JSX.Element {
   >(null);
   const [selectedMlxDefId, setSelectedMlxDefId] = useState<string | null>(null);
   const [mlxStatus, setMlxStatus] = useState<MlxAsrStatus | null>(null);
+  const [whisperStatus, setWhisperStatus] = useState<WhisperStatus | null>(
+    null,
+  );
+  const [apiKeys, setApiKeys] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const autoPicked = useRef(false);
+  // True once we know whether MLX can run on this machine — so the auto-pick
+  // waits for the Qwen-vs-Whisper decision instead of settling on Whisper
+  // Base while the MLX status request is still in flight.
+  const [mlxResolved, setMlxResolved] = useState(false);
+
+  // Full model selector overlay (cloud + everything else)
+  const [showSelector, setShowSelector] = useState(false);
+  const [selectorSource, setSelectorSource] = useState<"cloud" | "local">(
+    "cloud",
+  );
   const apiKeyForm = useForm<{ provider: string; key: string }>({
     resolver: zodResolver(apiKeySchema),
     defaultValues: { provider: "", key: "" },
   });
   const [showKey, setShowKey] = useState(false);
-  const [needsKey, setNeedsKey] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [apiKeys, setApiKeys] = useState<Set<string>>(new Set());
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Local whisper state
-  const [whisperStatus, setWhisperStatus] = useState<WhisperStatus | null>(
-    null,
-  );
-
-  // LLM cleanup state
-  const [llmCleanup, setLlmCleanup] = useState(false);
-  const [selectedLlm, setSelectedLlm] = useState<AvailableModel | null>(null);
-  const llmKeyForm = useForm<{ provider: string; key: string }>({
-    resolver: zodResolver(apiKeySchema),
-    defaultValues: { provider: "", key: "" },
-  });
-  const [showLlmKey, setShowLlmKey] = useState(false);
-  const [needsLlmKey, setNeedsLlmKey] = useState(false);
-  const [llmVisibleModelCounts, setLlmVisibleModelCounts] = useState<
-    Record<string, number>
-  >({});
-
-  // Hotkey recorder state
+  // Hotkey recorder state (tutorial step)
   const [hotkey, setHotkey] = useState("Alt+Space");
 
   const handleHotkeyRecorded = useCallback((accelerator: string) => {
@@ -119,7 +110,6 @@ export default function OnboardingPage(): React.JSX.Element {
     capturedCombo,
     canSaveRecording,
     needsModifierOrMouseButton,
-    invalidReleaseNotice,
     startRecording: startHotkeyRecording,
     cancelRecording: cancelHotkeyRecording,
   } = useHotkeyRecorder(handleHotkeyRecorded);
@@ -130,7 +120,7 @@ export default function OnboardingPage(): React.JSX.Element {
     ? "Add a modifier or side mouse button · Esc to cancel"
     : canSaveRecording
       ? "Release to save · Esc to cancel"
-      : "Press a modifier or side mouse button... · Esc to cancel";
+      : "Press a modifier or side mouse button… · Esc to cancel";
 
   // Load permissions + saved hotkey
   useEffect(() => {
@@ -141,10 +131,6 @@ export default function OnboardingPage(): React.JSX.Element {
     window.api
       ?.checkAccessibilityPermission()
       .then(setAccessibilityStatus)
-      .catch(() => {});
-    window.api
-      ?.getLaunchAtStartup()
-      .then(setLaunchAtStartup)
       .catch(() => {});
     getClient()
       .api.settings[":key"].$get({ param: { key: "hotkey" } })
@@ -159,7 +145,7 @@ export default function OnboardingPage(): React.JSX.Element {
     return window.api?.onFullscreenChanged(setIsFullscreen);
   }, []);
 
-  // Load models
+  // Load models + keys
   useEffect(() => {
     const client = getClient();
     client.api.models.available
@@ -176,7 +162,6 @@ export default function OnboardingPage(): React.JSX.Element {
       .catch(() => {});
   }, []);
 
-  // Load whisper status
   const loadWhisperStatus = useCallback(async () => {
     try {
       const res = await getClient().api.whisper.status.$get();
@@ -201,16 +186,23 @@ export default function OnboardingPage(): React.JSX.Element {
         setMlxStatus(data);
         return data;
       }
-    } catch {}
+    } catch {
+    } finally {
+      // Settled — whether the probe succeeded or failed, the auto-pick can
+      // now proceed (a failed probe means MLX isn't usable → Whisper Base).
+      setMlxResolved(true);
+    }
     return null;
   }, []);
 
   useEffect(() => {
     loadWhisperStatus();
+    // MLX only exists on Apple Silicon; elsewhere there's nothing to wait for.
     if (IS_MAC) loadMlxStatus();
+    else setMlxResolved(true);
   }, [loadWhisperStatus, loadMlxStatus]);
 
-  // Poll whisper status while a download is active
+  // Poll while a download is active (whisper or mlx)
   useEffect(() => {
     const hasActiveDownload =
       whisperStatus?.binaryDownloading ||
@@ -218,9 +210,7 @@ export default function OnboardingPage(): React.JSX.Element {
         (m) => m.status === "downloading" || m.status === "verifying",
       );
     if (!hasActiveDownload) return;
-    const interval = setInterval(() => {
-      loadWhisperStatus();
-    }, 500);
+    const interval = setInterval(() => loadWhisperStatus(), 500);
     return () => clearInterval(interval);
   }, [whisperStatus, loadWhisperStatus]);
 
@@ -229,9 +219,7 @@ export default function OnboardingPage(): React.JSX.Element {
       (m) => m.status === "downloading" || m.status === "verifying",
     );
     if (!hasActiveDownload) return;
-    const interval = setInterval(() => {
-      loadMlxStatus();
-    }, 500);
+    const interval = setInterval(() => loadMlxStatus(), 500);
     return () => clearInterval(interval);
   }, [mlxStatus, loadMlxStatus]);
 
@@ -252,11 +240,6 @@ export default function OnboardingPage(): React.JSX.Element {
     setTimeout(() => clearInterval(interval), 30000);
   }, []);
 
-  const handleLaunchAtStartupToggle = useCallback((enabled: boolean) => {
-    setLaunchAtStartup(enabled);
-    window.api?.setLaunchAtStartup(enabled);
-  }, []);
-
   const openAccessibility = useCallback(() => {
     window.api?.openAccessibilitySettings();
     const interval = setInterval(async () => {
@@ -274,11 +257,10 @@ export default function OnboardingPage(): React.JSX.Element {
       setSelectedModel(model);
       setSelectedWhisperDefId(null);
       setSelectedMlxDefId(null);
+      // Reset the key form so the key-entry view opens empty for a provider
+      // we don't have a key for yet.
       if (!apiKeys.has(model.provider_id)) {
-        setNeedsKey(true);
         apiKeyForm.reset({ provider: model.provider_id, key: "" });
-      } else {
-        setNeedsKey(false);
       }
     },
     [apiKeys, apiKeyForm],
@@ -294,22 +276,8 @@ export default function OnboardingPage(): React.JSX.Element {
         setSelectedMlxDefId(null);
       }
       setSelectedModel(null);
-      setNeedsKey(false);
     },
     [],
-  );
-
-  const selectLlm = useCallback(
-    (model: AvailableModel) => {
-      setSelectedLlm(model);
-      if (!apiKeys.has(model.provider_id)) {
-        setNeedsLlmKey(true);
-        llmKeyForm.reset({ provider: model.provider_id, key: "" });
-      } else {
-        setNeedsLlmKey(false);
-      }
-    },
-    [apiKeys, llmKeyForm],
   );
 
   const downloadWhisperModel = useCallback(
@@ -343,31 +311,53 @@ export default function OnboardingPage(): React.JSX.Element {
     [downloadMlxModel, downloadWhisperModel],
   );
 
-  const saveVoiceAndContinue = useCallback(async () => {
-    if (needsKey && selectedModel) {
-      const valid = await apiKeyForm.trigger();
-      if (!valid) return;
-    }
+  const allVoiceItems = buildVoiceItems(available, whisperStatus, mlxStatus, {
+    selectedModelId: selectedModel?.model_id,
+    selectedProvider:
+      selectedModel?.provider_id ??
+      (selectedWhisperDefId
+        ? "local-whisper"
+        : selectedMlxDefId
+          ? "local-mlx"
+          : undefined),
+    selectedWhisperModelId: selectedWhisperDefId ?? undefined,
+    selectedMlxModelId: selectedMlxDefId ?? undefined,
+    keyProviders: apiKeys,
+  });
 
+  // Resolve the opinionated recommendation: Qwen3 on-device when MLX can run,
+  // otherwise whisper.cpp Base (universal).
+  const mlxQwen = allVoiceItems.find(
+    (v) => v.localEngine === "mlx" && v.defId === RECOMMENDED_MLX_DEF,
+  );
+  const whisperBase = allVoiceItems.find(
+    (v) => v.localEngine === "whisper" && v.defId === RECOMMENDED_WHISPER_DEF,
+  );
+  const recommended: VoiceItem | undefined =
+    mlxQwen && mlxStatus?.canRun ? mlxQwen : (whisperBase ?? mlxQwen);
+
+  // Pre-select the recommendation once models have loaded and the MLX
+  // capability check has settled (so we don't pick Whisper Base prematurely
+  // on a Mac that can actually run Qwen).
+  useEffect(() => {
+    if (autoPicked.current || !mlxResolved || !recommended?.defId) return;
+    autoPicked.current = true;
+    selectLocalModel(
+      recommended.defId,
+      recommended.name,
+      recommended.localEngine,
+    );
+  }, [recommended, selectLocalModel, mlxResolved]);
+
+  // The model the card reflects: whatever is currently selected, falling
+  // back to the recommendation before the user has touched anything.
+  const chosen = allVoiceItems.find((v) => v.selected) ?? recommended;
+
+  const saveVoiceModel = useCallback(async () => {
     setSaving(true);
-
     try {
       const client = getClient();
-
       if (selectedModel) {
-        if (needsKey) {
-          const keyData = apiKeyForm.getValues();
-          if (keyData.key.trim()) {
-            await client.api.keys.$post({
-              json: {
-                provider: keyData.provider,
-                key: keyData.key.trim(),
-              },
-            });
-            setApiKeys((prev) => new Set([...prev, keyData.provider]));
-          }
-        }
-
         await client.api.models.configured.$post({
           json: {
             provider: selectedModel.provider_id,
@@ -414,686 +404,856 @@ export default function OnboardingPage(): React.JSX.Element {
             .catch(() => {});
         }
       }
-
-      setStep("llm-cleanup");
+      setStep("tutorial");
     } catch {
-      // stay on voice-model step
+      // stay on the model step
     } finally {
       setSaving(false);
     }
   }, [
     selectedModel,
-    selectedWhisperDefId,
     selectedMlxDefId,
-    needsKey,
-    apiKeyForm,
-    whisperStatus,
+    selectedWhisperDefId,
     mlxStatus,
+    whisperStatus,
   ]);
 
-  const finishSetup = useCallback(async () => {
-    if (llmCleanup && selectedLlm && needsLlmKey) {
-      const valid = await llmKeyForm.trigger();
-      if (!valid) return;
-    }
+  // Validate + persist a freshly entered cloud key. Returns true when stored
+  // so the selector can commit and close.
+  const saveCloudKey = useCallback(async () => {
+    const valid = await apiKeyForm.trigger();
+    if (!valid) return false;
+    const { provider, key } = apiKeyForm.getValues();
+    if (!key.trim()) return false;
+    await getClient()
+      .api.keys.$post({ json: { provider, key: key.trim() } })
+      .catch(() => {});
+    setApiKeys((prev) => new Set([...prev, provider]));
+    return true;
+  }, [apiKeyForm]);
 
-    setSaving(true);
+  const finishSetup = useCallback(() => {
+    window.api?.setOnboardingComplete();
+    navigate("/today", { replace: true });
+  }, [navigate]);
 
-    try {
-      const client = getClient();
+  // Whether the chosen voice model is ready to use (downloaded / has a key).
+  const chosenReady =
+    !!chosen &&
+    (chosen.kind === "cloud" ? !!chosen.hasKey : chosen.status === "ready");
 
-      if (llmCleanup && selectedLlm) {
-        if (needsLlmKey) {
-          const keyData = llmKeyForm.getValues();
-          if (keyData.key.trim()) {
-            await client.api.keys.$post({
-              json: {
-                provider: keyData.provider,
-                key: keyData.key.trim(),
-              },
-            });
-            setApiKeys((prev) => new Set([...prev, keyData.provider]));
-          }
-        }
-
-        await client.api.settings[":key"].$put({
-          param: { key: "llm_cleanup" },
-          json: { value: "true" },
-        });
-
-        await client.api.models.configured.$post({
-          json: {
-            provider: selectedLlm.provider_id,
-            model_id: selectedLlm.model_id,
-            model_name: selectedLlm.model_name,
-            type: "llm",
-            is_default: true,
-          },
-        });
-      }
-
-      window.api?.setOnboardingComplete();
-      navigate("/today", { replace: true });
-    } catch {
-      // stay on step
-    } finally {
-      setSaving(false);
-    }
-  }, [llmCleanup, selectedLlm, needsLlmKey, llmKeyForm, navigate]);
-
-  const allVoiceItems = buildVoiceItems(available, whisperStatus, mlxStatus, {
-    selectedModelId: selectedModel?.model_id,
-    selectedProvider:
-      selectedModel?.provider_id ??
-      (selectedWhisperDefId
-        ? "local-whisper"
-        : selectedMlxDefId
-          ? "local-mlx"
-          : undefined),
-    selectedWhisperModelId: selectedWhisperDefId ?? undefined,
-    selectedMlxModelId: selectedMlxDefId ?? undefined,
-    keyProviders: apiKeys,
-  });
-
-  const voiceItems =
-    modelSource === "local"
-      ? allVoiceItems.filter((v) => v.kind === "local")
-      : allVoiceItems.filter((v) => v.kind === "cloud");
-
-  const llmModels = available.filter(
-    (m) =>
-      m.type === "llm" &&
-      LLM_PROVIDERS.includes(m.provider_id) &&
-      m.provider_id !== "local-llm",
-  );
-
-  const llmsByProvider = new Map<string, AvailableModel[]>();
-  for (const m of llmModels) {
-    const list = llmsByProvider.get(m.provider_id) ?? [];
-    list.push(m);
-    llmsByProvider.set(m.provider_id, list);
-  }
-  const visibleLlmCountFor = (providerId: string) =>
-    llmVisibleModelCounts[providerId] ?? MODEL_ROW_PAGE_SIZE;
-  const showMoreLlmsFor = (providerId: string, total: number) => {
-    setLlmVisibleModelCounts((prev) => ({
-      ...prev,
-      [providerId]: Math.min(
-        (prev[providerId] ?? MODEL_ROW_PAGE_SIZE) + MODEL_ROW_PAGE_SIZE,
-        total,
-      ),
-    }));
-  };
-
-  const hasModelSelected =
-    selectedModel !== null ||
-    selectedWhisperDefId !== null ||
-    selectedMlxDefId !== null;
-  const canAdvanceFromModel =
-    hasModelSelected &&
-    (!needsKey || apiKeyForm.watch("key").trim()) &&
-    !saving;
-
-  const currentStepIndex = STEPS.indexOf(step);
-  const wideModelStep = step === "voice-model" || step === "llm-cleanup";
+  const chosenDownloading =
+    !!chosen &&
+    chosen.kind === "local" &&
+    (chosen.status === "downloading" || chosen.status === "verifying");
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="bg-background flex h-screen flex-col">
       {!isFullscreen && (
         <div
           className="h-9 shrink-0"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         />
       )}
+
       <div
-        className="flex min-h-0 flex-1 flex-col items-center overflow-auto py-8"
+        className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-auto px-6 py-8"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
-        <div
+        {step === "permissions" && (
+          <PermissionsStep
+            micStatus={micStatus}
+            accessibilityStatus={accessibilityStatus}
+            onRequestMic={requestMic}
+            onOpenMicSettings={openMicSettings}
+            onOpenAccessibility={openAccessibility}
+            onContinue={() => setStep("model")}
+          />
+        )}
+
+        {step === "model" && (
+          <ModelStep
+            chosen={chosen}
+            chosenReady={chosenReady}
+            chosenDownloading={chosenDownloading}
+            saving={saving}
+            onDownload={() => {
+              if (chosen?.defId)
+                downloadLocalModel(chosen.defId, chosen.localEngine);
+            }}
+            onContinue={saveVoiceModel}
+            onOpenSelector={() => setShowSelector(true)}
+            onBack={() => setStep("permissions")}
+          />
+        )}
+
+        {step === "tutorial" && (
+          <TutorialStep
+            hotkey={hotkey}
+            recorderState={recorderState}
+            draftKeys={draftKeys}
+            captureHint={captureHint}
+            onStartRecording={startHotkeyRecording}
+            onCancelRecording={cancelHotkeyRecording}
+            onBack={() => setStep("model")}
+            onFinish={finishSetup}
+          />
+        )}
+      </div>
+
+      {showSelector && (
+        <ModelSelectorOverlay
+          source={selectorSource}
+          onSourceChange={setSelectorSource}
+          voiceItems={allVoiceItems}
+          keyProviders={apiKeys}
+          selectedCloud={selectedModel}
+          apiKeyForm={apiKeyForm}
+          showKey={showKey}
+          onToggleShowKey={() => setShowKey((v) => !v)}
+          onSelectCloud={selectCloudModel}
+          onSelectLocal={selectLocalModel}
+          onDownload={downloadLocalModel}
+          onRetryLocal={(defId, engine) => {
+            if (engine === "mlx") {
+              void loadMlxStatus(true).then((data) => {
+                if (data?.canRun) void downloadMlxModel(defId);
+              });
+            } else {
+              downloadWhisperModel(defId);
+            }
+          }}
+          onClose={() => setShowSelector(false)}
+          onSaveKey={saveCloudKey}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 1 — Permissions
+// ---------------------------------------------------------------------------
+function PermissionsStep({
+  micStatus,
+  accessibilityStatus,
+  onRequestMic,
+  onOpenMicSettings,
+  onOpenAccessibility,
+  onContinue,
+}: {
+  micStatus: string;
+  accessibilityStatus: boolean;
+  onRequestMic: () => void;
+  onOpenMicSettings: () => void;
+  onOpenAccessibility: () => void;
+  onContinue: () => void;
+}): React.JSX.Element {
+  const micGranted = micStatus === "granted";
+  // Accessibility is macOS-only; elsewhere the mic alone unblocks.
+  const allGranted = micGranted && (!IS_MAC || accessibilityStatus);
+
+  return (
+    <div className="w-full max-w-[440px]">
+      <div className="flex flex-col gap-2.5">
+        <PermCard
+          icon={Mic}
+          title="Microphone"
+          desc="To hear what you say."
+          granted={micGranted}
+          action={
+            micStatus === "denied" && IS_MAC ? (
+              <PermButton onClick={onOpenMicSettings}>Open Settings</PermButton>
+            ) : (
+              <PermButton onClick={onRequestMic}>Allow</PermButton>
+            )
+          }
+        />
+
+        {IS_MAC && (
+          <PermCard
+            icon={Shield}
+            title="Accessibility"
+            desc="To detect your hotkey and paste into any app."
+            granted={accessibilityStatus}
+            action={
+              <PermButton onClick={onOpenAccessibility}>
+                Open Settings
+              </PermButton>
+            }
+          />
+        )}
+      </div>
+
+      <div className="mt-7 flex items-center justify-end gap-3.5">
+        {!allGranted && (
+          <span className="mono text-muted-foreground text-[10.5px] tracking-[0.1em] uppercase">
+            {IS_MAC ? "Grant both to continue" : "Grant access to continue"}
+          </span>
+        )}
+        <button
+          type="button"
+          disabled={!allGranted}
+          onClick={onContinue}
           className={cn(
-            "responsive-standalone-pad my-auto w-full space-y-8",
-            wideModelStep ? "max-w-2xl" : "max-w-md",
+            "inline-flex items-center gap-1.5 rounded-[7px] px-3.5 py-[7px] text-[12.5px] font-medium transition-colors",
+            allGranted
+              ? "bg-foreground text-background hover:bg-foreground/90"
+              : "bg-secondary text-muted-foreground cursor-not-allowed",
           )}
         >
-          {/* Logo — welcome step only */}
-          {step === "welcome" && (
-            <div className="flex flex-col items-center gap-3">
-              <img
-                src={markLight}
-                alt="Freestyle"
-                className="block h-12 w-12 dark:hidden"
-              />
-              <img
-                src={markDark}
-                alt="Freestyle"
-                className="hidden h-12 w-12 dark:block"
-              />
-              <h1 className="serif text-2xl font-bold tracking-tight">
-                Freestyle
-              </h1>
-            </div>
-          )}
+          Continue
+          <ArrowRight size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
-          {/* Step: Welcome */}
-          {step === "welcome" && (
-            <div className="space-y-6 text-center">
-              <div>
-                <p className="text-muted-foreground text-sm">
-                  Voice-to-text that works everywhere. Hold a hotkey, speak, and
-                  your words appear as polished text in any app.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setStep("permissions")}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 w-full rounded-lg py-3 text-sm font-medium"
-              >
-                Get Started
-              </button>
-            </div>
-          )}
+function PermCard({
+  icon: Icon,
+  title,
+  desc,
+  granted,
+  action,
+}: {
+  icon: typeof Mic;
+  title: string;
+  desc: string;
+  granted: boolean;
+  action: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className="border-border bg-card flex items-center gap-3.5 rounded-[12px] border p-4">
+      <div
+        className={cn(
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border",
+          granted
+            ? "bg-accent border-primary/20"
+            : "bg-background border-border",
+        )}
+      >
+        <Icon
+          size={16}
+          className={
+            granted ? "text-accent-foreground" : "text-muted-foreground"
+          }
+        />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-foreground text-[14px] font-medium">{title}</div>
+        <div className="text-muted-foreground mt-0.5 text-[12.5px] leading-snug">
+          {desc}
+        </div>
+      </div>
+      {granted ? (
+        <span className="mono text-accent-foreground inline-flex items-center gap-1.5 text-[10.5px] tracking-[0.14em] uppercase">
+          <Check size={13} strokeWidth={2.2} />
+          Granted
+        </span>
+      ) : (
+        action
+      )}
+    </div>
+  );
+}
 
-          {/* Step: Permissions */}
-          {step === "permissions" && (
-            <div className="space-y-4">
-              <button
-                type="button"
-                onClick={() => setStep("welcome")}
-                className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs"
-              >
-                <ChevronLeft size={14} />
-                Back
-              </button>
-              <div className="text-center">
-                <h2 className="text-lg font-semibold">Permissions</h2>
-                <p className="text-muted-foreground mt-1 text-sm">
-                  {IS_MAC
-                    ? "Freestyle needs access to your microphone and accessibility features."
-                    : "Freestyle needs access to your microphone to capture audio."}
-                </p>
-              </div>
+function PermButton({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="bg-foreground text-background hover:bg-foreground/90 shrink-0 rounded-[7px] px-3 py-[7px] text-[12.5px] font-medium"
+    >
+      {children}
+    </button>
+  );
+}
 
-              {/* Microphone */}
-              <div className="border-border rounded-lg border p-4">
-                <div className="flex items-start gap-3">
-                  <Mic className="text-muted-foreground mt-0.5 h-5 w-5 shrink-0" />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">Microphone</div>
-                    <p className="text-muted-foreground text-xs">
-                      Required to capture your voice for transcription.
-                    </p>
-                  </div>
-                  {micStatus === "granted" ? (
-                    <Check className="text-primary h-5 w-5 shrink-0" />
-                  ) : micStatus === "denied" && IS_MAC ? (
-                    <button
-                      type="button"
-                      onClick={openMicSettings}
-                      className="bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium"
-                    >
-                      Open Settings
-                      <ExternalLink className="h-3 w-3" />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={requestMic}
-                      className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium"
-                    >
-                      Allow
-                    </button>
-                  )}
-                </div>
-              </div>
+// ---------------------------------------------------------------------------
+// Step 2 — Model (opinionated single recommendation)
+// ---------------------------------------------------------------------------
+function ModelStep({
+  chosen,
+  chosenReady,
+  chosenDownloading,
+  saving,
+  onDownload,
+  onContinue,
+  onOpenSelector,
+  onBack,
+}: {
+  chosen: VoiceItem | undefined;
+  chosenReady: boolean;
+  chosenDownloading: boolean;
+  saving: boolean;
+  onDownload: () => void;
+  onContinue: () => void;
+  onOpenSelector: () => void;
+  onBack: () => void;
+}): React.JSX.Element {
+  const isLocal = chosen?.kind === "local";
+  const progress = chosen?.state?.downloadProgress?.percent ?? null;
 
-              {/* Accessibility — macOS only */}
-              {IS_MAC && (
-                <div className="border-border rounded-lg border p-4">
-                  <div className="flex items-start gap-3">
-                    <Shield className="text-muted-foreground mt-0.5 h-5 w-5 shrink-0" />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium">Accessibility</div>
-                      <p className="text-muted-foreground text-xs">
-                        Required to detect the global hotkey and paste text into
-                        other apps.
-                      </p>
-                    </div>
-                    {accessibilityStatus ? (
-                      <Check className="text-primary h-5 w-5 shrink-0" />
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={openAccessibility}
-                        className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium"
-                      >
-                        Open Settings
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
+  return (
+    <div className="w-full max-w-[560px]">
+      <h1 className="serif text-foreground m-0 mb-7 text-center text-[56px] leading-[0.95] font-normal tracking-[-0.025em]">
+        <span>Choose a </span>
+        <span className="serif-italic text-primary">model.</span>
+      </h1>
 
-              {/* Hotkey */}
-              <div className="border-border rounded-lg border p-4">
-                <div className="flex items-start gap-3">
-                  <Keyboard className="text-muted-foreground mt-0.5 h-5 w-5 shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <div className="text-sm font-medium">Hotkey</div>
-                    <p className="text-muted-foreground text-xs">
-                      {IS_MAC
-                        ? "Hold to record, release to transcribe."
-                        : "Press once to start recording, press again to stop and transcribe."}
-                    </p>
-                    {recorderState === "idle" ? (
-                      <div className="relative inline-flex">
-                        <button
-                          type="button"
-                          onClick={startHotkeyRecording}
-                          className="border-border hover:bg-secondary inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2 transition-colors"
-                        >
-                          <Keyboard className="text-muted-foreground h-4 w-4 shrink-0" />
-                          <KeyComboDisplay
-                            keys={formatAcceleratorKeys(hotkey)}
-                          />
-                          <span className="text-muted-foreground ml-1 text-xs">
-                            Change
-                          </span>
-                        </button>
-                        {invalidReleaseNotice && (
-                          <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                            Hotkeys need a modifier or side mouse button
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
-                        <Keyboard className="text-primary h-4 w-4 shrink-0" />
-                        {draftKeys.length > 0 ? (
-                          <>
-                            <KeyComboDisplay keys={draftKeys} variant="dim" />
-                            <span className="text-muted-foreground text-xs">
-                              {captureHint}
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground animate-pulse text-sm">
-                            {captureHint}
-                          </span>
-                        )}
-                        {invalidReleaseNotice && (
-                          <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                            Hotkeys need a modifier or side mouse button
-                          </div>
-                        )}
-                        <button
-                          type="button"
-                          onClick={cancelHotkeyRecording}
-                          className="border-border hover:bg-secondary ml-1 rounded-md border px-2.5 py-1 text-xs"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Launch at startup */}
-              <div className="border-border rounded-lg border p-4">
-                <div className="flex items-start gap-3">
-                  <Power className="text-muted-foreground mt-0.5 h-5 w-5 shrink-0" />
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">Launch at startup</div>
-                    <p className="text-muted-foreground text-xs">
-                      Automatically start Freestyle when you log in.
-                    </p>
-                  </div>
-                  <Toggle
-                    on={launchAtStartup}
-                    onChange={handleLaunchAtStartupToggle}
-                  />
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setStep("voice-model")}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 flex w-full items-center justify-center gap-2 rounded-lg py-3 text-sm font-medium"
-              >
-                Continue
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          )}
-
-          {/* Step: Voice Model */}
-          {step === "voice-model" && (
-            <div className="space-y-4">
-              <button
-                type="button"
-                onClick={() => setStep("permissions")}
-                className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs"
-              >
-                <ChevronLeft size={14} />
-                Back
-              </button>
-              <div className="text-center">
-                <h2 className="text-lg font-semibold">Choose a Voice Model</h2>
-                <p className="text-muted-foreground mt-1 text-sm">
-                  Use a cloud provider with an API key, or run speech-to-text
-                  locally.
-                </p>
-              </div>
-
-              {/* Source toggle */}
-              <div className="flex justify-center">
-                <div className="border-border bg-secondary inline-flex rounded-md border p-[3px]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setModelSource("cloud");
-                      setSelectedWhisperDefId(null);
-                      setSelectedMlxDefId(null);
-                    }}
-                    className={cn(
-                      "flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-[12px] transition-colors",
-                      modelSource === "cloud"
-                        ? "bg-card border-border text-foreground border font-medium shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    Cloud API
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setModelSource("local");
-                      setSelectedModel(null);
-                      setNeedsKey(false);
-                    }}
-                    className={cn(
-                      "flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-[12px] transition-colors",
-                      modelSource === "local"
-                        ? "bg-card border-border text-foreground border font-medium shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <HardDrive className="h-3 w-3" />
-                    Local
-                  </button>
-                </div>
-              </div>
-
-              {/* Voice model list */}
-              <div className="border-border overflow-hidden rounded-[14px] border">
-                <div className="max-h-[340px] overflow-y-auto [scrollbar-gutter:stable]">
-                  {voiceItems.length === 0 && (
-                    <div className="flex items-center gap-2 px-5 py-6">
-                      <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-                      <span className="text-muted-foreground text-sm">
-                        Loading models...
-                      </span>
-                    </div>
-                  )}
-                  {voiceItems.map((item, i) => (
-                    <VoiceRow
-                      key={item.key}
-                      item={item}
-                      first={i === 0}
-                      onSelectCloud={selectCloudModel}
-                      onSelectLocal={selectLocalModel}
-                      onDownload={downloadLocalModel}
-                      onRetryLocal={(defId, engine) => {
-                        if (engine === "mlx") {
-                          void loadMlxStatus(true).then((data) => {
-                            if (data?.canRun) void downloadMlxModel(defId);
-                          });
-                        } else {
-                          downloadWhisperModel(defId);
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* API key input */}
-              {needsKey && selectedModel && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">
-                    Enter your{" "}
-                    {PROVIDER_DISPLAY_NAMES[selectedModel.provider_id] ??
-                      selectedModel.provider_id}{" "}
-                    API key
-                  </p>
-                  <div className="relative">
-                    <input
-                      type={showKey ? "text" : "password"}
-                      {...apiKeyForm.register("key")}
-                      placeholder="sk-..."
-                      className={cn(
-                        "border-border bg-card w-full rounded-lg border px-3 py-2.5 pr-10 font-mono text-sm",
-                        apiKeyForm.formState.errors.key && "border-destructive",
-                      )}
-                      onKeyDown={(e) => {
-                        if (
-                          e.key === "Enter" &&
-                          apiKeyForm.getValues("key").trim()
-                        )
-                          saveVoiceAndContinue();
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowKey(!showKey)}
-                      className="text-muted-foreground hover:text-foreground absolute right-3 top-1/2 -translate-y-1/2"
-                    >
-                      {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  {apiKeyForm.formState.errors.key && (
-                    <p className="text-destructive text-xs">
-                      {apiKeyForm.formState.errors.key.message}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={saveVoiceAndContinue}
-                disabled={!canAdvanceFromModel}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 flex w-full items-center justify-center gap-2 rounded-lg py-3 text-sm font-medium disabled:opacity-50"
-              >
-                {saving ? "Setting up..." : "Continue"}
-                {!saving && <ChevronRight size={16} />}
-              </button>
-            </div>
-          )}
-
-          {/* Step: LLM Cleanup */}
-          {step === "llm-cleanup" && (
-            <div className="space-y-4">
-              <button
-                type="button"
-                onClick={() => setStep("voice-model")}
-                className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs"
-              >
-                <ChevronLeft size={14} />
-                Back
-              </button>
-              <div className="text-center">
-                <h2 className="text-lg font-semibold">Text Cleanup</h2>
-                <p className="text-muted-foreground mt-1 text-sm">
-                  Optionally use an LLM to clean up transcriptions — fix
-                  grammar, remove filler words, and format text.
-                </p>
-              </div>
-
-              {/* Toggle */}
-              <div className="border-border rounded-lg border p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Sparkles className="text-muted-foreground h-5 w-5 shrink-0" />
-                    <div>
-                      <div className="text-sm font-medium">
-                        Enable LLM cleanup
-                      </div>
-                      <p className="text-muted-foreground text-xs">
-                        Polish transcriptions with a language model.
-                      </p>
-                    </div>
-                  </div>
-                  <Toggle on={llmCleanup} onChange={setLlmCleanup} />
-                </div>
-              </div>
-
-              {/* LLM model picker — shown when cleanup is enabled */}
-              {llmCleanup && (
-                <>
-                  <div className="border-border overflow-hidden rounded-[14px] border">
-                    <div className="max-h-[280px] overflow-y-auto [scrollbar-gutter:stable]">
-                      {[...llmsByProvider.entries()].map(
-                        ([providerId, models]) => {
-                          const providerName =
-                            PROVIDER_DISPLAY_NAMES[providerId] ?? providerId;
-                          const hasKey = apiKeys.has(providerId);
-                          const visibleCount = visibleLlmCountFor(providerId);
-                          const visibleModels = models.slice(0, visibleCount);
-                          return (
-                            <div key={providerId}>
-                              <ProviderModelHeader
-                                providerId={providerId}
-                                providerName={providerName}
-                                hasKey={hasKey}
-                              />
-                              {visibleModels.map((model, index) => (
-                                <LlmModelRow
-                                  key={`${providerId}:${model.model_id}`}
-                                  name={model.model_name}
-                                  providerName={providerName}
-                                  modelId={model.model_id}
-                                  selected={
-                                    selectedLlm?.provider_id ===
-                                      model.provider_id &&
-                                    selectedLlm?.model_id === model.model_id
-                                  }
-                                  hasKey={hasKey}
-                                  first={index === 0}
-                                  onSelect={() => selectLlm(model)}
-                                />
-                              ))}
-                              <ShowMoreModelRowsButton
-                                hiddenCount={
-                                  models.length - visibleModels.length
-                                }
-                                onClick={() =>
-                                  showMoreLlmsFor(providerId, models.length)
-                                }
-                              />
-                            </div>
-                          );
-                        },
-                      )}
-                      {llmModels.length === 0 && (
-                        <div className="flex items-center gap-2 px-5 py-6">
-                          <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-                          <span className="text-muted-foreground text-sm">
-                            Loading models...
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* LLM API key input */}
-                  {needsLlmKey && selectedLlm && (
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">
-                        Enter your{" "}
-                        {PROVIDER_DISPLAY_NAMES[selectedLlm.provider_id] ??
-                          selectedLlm.provider_id}{" "}
-                        API key
-                      </p>
-                      <div className="relative">
-                        <input
-                          type={showLlmKey ? "text" : "password"}
-                          {...llmKeyForm.register("key")}
-                          placeholder="sk-..."
-                          className={cn(
-                            "border-border bg-card w-full rounded-lg border px-3 py-2.5 pr-10 font-mono text-sm",
-                            llmKeyForm.formState.errors.key &&
-                              "border-destructive",
-                          )}
-                          onKeyDown={(e) => {
-                            if (
-                              e.key === "Enter" &&
-                              llmKeyForm.getValues("key").trim()
-                            )
-                              finishSetup();
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowLlmKey(!showLlmKey)}
-                          className="text-muted-foreground hover:text-foreground absolute right-3 top-1/2 -translate-y-1/2"
-                        >
-                          {showLlmKey ? (
-                            <EyeOff size={16} />
-                          ) : (
-                            <Eye size={16} />
-                          )}
-                        </button>
-                      </div>
-                      {llmKeyForm.formState.errors.key && (
-                        <p className="text-destructive text-xs">
-                          {llmKeyForm.formState.errors.key.message}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-
-              <button
-                type="button"
-                onClick={finishSetup}
-                disabled={
-                  saving ||
-                  (llmCleanup &&
-                    selectedLlm !== null &&
-                    needsLlmKey &&
-                    !llmKeyForm.watch("key").trim()) ||
-                  (llmCleanup && selectedLlm === null)
-                }
-                className="bg-primary text-primary-foreground hover:bg-primary/90 w-full rounded-lg py-3 text-sm font-medium disabled:opacity-50"
-              >
-                {saving ? "Setting up..." : "Finish Setup"}
-              </button>
-
-              {!llmCleanup && (
-                <p className="text-muted-foreground text-center text-xs">
-                  You can enable this later in Settings &gt; Models.
-                </p>
-              )}
-            </div>
-          )}
+      <div className="border-primary bg-card relative overflow-hidden rounded-[16px] border-[1.5px] p-6">
+        <div className="serif text-foreground text-[34px] leading-[1.02] tracking-[-0.02em]">
+          {chosen?.name ?? "Loading…"}
+        </div>
+        <div className="text-muted-foreground mt-1 text-[13px]">
+          {modelTagline(chosen)}
         </div>
 
-        {/* Step progress indicator */}
-        {step !== "welcome" && (
-          <div className="mt-8 mb-4 flex shrink-0 items-center gap-2">
-            {STEPS.map((s, i) => (
-              <div
-                key={s}
-                className={cn(
-                  "h-1.5 rounded-full transition-all",
-                  i <= currentStepIndex ? "bg-primary w-6" : "bg-border w-1.5",
-                )}
-              />
-            ))}
+        {/* Download progress */}
+        {chosenDownloading && (
+          <div className="mt-5 space-y-1.5">
+            <div className="bg-secondary h-1.5 w-full overflow-hidden rounded-full">
+              {progress == null ? (
+                <div className="bg-primary h-full w-full animate-pulse rounded-full" />
+              ) : (
+                <div
+                  className="bg-primary h-full rounded-full transition-all"
+                  style={{ width: `${progress}%` }}
+                />
+              )}
+            </div>
+            <div className="mono text-muted-foreground text-[10px]">
+              {chosen?.state?.phase === "building_binary"
+                ? "Preparing on-device runtime…"
+                : progress != null
+                  ? `Downloading · ${progress}%`
+                  : "Downloading…"}
+            </div>
           </div>
         )}
+
+        {/* Error */}
+        {isLocal && chosen?.status === "error" && chosen.state?.error && (
+          <div className="text-destructive mt-3 text-[12px] leading-snug">
+            {chosen.state.error}
+          </div>
+        )}
+
+        {/* Primary action */}
+        <ModelPrimaryButton
+          chosen={chosen}
+          chosenReady={chosenReady}
+          chosenDownloading={chosenDownloading}
+          saving={saving}
+          onDownload={onDownload}
+          onContinue={onContinue}
+        />
+      </div>
+
+      <div className="mt-[18px] flex items-center justify-between">
+        <button
+          type="button"
+          onClick={onBack}
+          className="border-border hover:bg-secondary rounded-[7px] border px-3.5 py-2 text-[12.5px] font-medium"
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          onClick={onOpenSelector}
+          className="mono text-accent-foreground decoration-primary/40 text-[11.5px] underline underline-offset-[3px]"
+        >
+          Or choose a different model.
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ModelPrimaryButton({
+  chosen,
+  chosenReady,
+  chosenDownloading,
+  saving,
+  onDownload,
+  onContinue,
+}: {
+  chosen: VoiceItem | undefined;
+  chosenReady: boolean;
+  chosenDownloading: boolean;
+  saving: boolean;
+  onDownload: () => void;
+  onContinue: () => void;
+}): React.JSX.Element {
+  const base =
+    "mt-5 inline-flex h-12 w-full items-center justify-center gap-2.5 rounded-[10px] text-[15px] font-semibold transition-colors";
+
+  if (chosenDownloading) {
+    return (
+      <button
+        type="button"
+        disabled
+        className={cn(base, "bg-secondary text-muted-foreground cursor-wait")}
+      >
+        <Loader2 size={17} className="animate-spin" />
+        Downloading…
+      </button>
+    );
+  }
+
+  if (chosenReady) {
+    return (
+      <button
+        type="button"
+        onClick={onContinue}
+        disabled={saving}
+        className={cn(
+          base,
+          "bg-foreground text-background hover:bg-foreground/90 disabled:opacity-60",
+        )}
+      >
+        {saving ? "Setting up…" : "Continue"}
+        {!saving && <ArrowRight size={17} />}
+      </button>
+    );
+  }
+
+  // Not ready → local model needs downloading.
+  return (
+    <button
+      type="button"
+      onClick={onDownload}
+      disabled={!chosen?.defId}
+      className={cn(
+        base,
+        "bg-foreground text-background hover:bg-foreground/90 disabled:opacity-60",
+      )}
+    >
+      <Download size={17} />
+      {chosen ? (
+        <>
+          Download {chosen.name}
+          {chosen.sizeBytes != null && (
+            <span className="mono text-background/70 text-[12px] font-normal">
+              {formatBytes(chosen.sizeBytes)}
+            </span>
+          )}
+        </>
+      ) : (
+        "Loading…"
+      )}
+    </button>
+  );
+}
+
+function modelTagline(chosen: VoiceItem | undefined): string {
+  if (!chosen) return "";
+  if (chosen.kind === "cloud") {
+    return [chosen.note, chosen.hasKey ? "Key added" : "Needs API key"]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  const bits: string[] = [];
+  if (chosen.note) bits.push(chosen.note);
+  bits.push("Runs on your Mac");
+  return bits.join(" · ");
+}
+
+// ---------------------------------------------------------------------------
+// Full model selector — opened from the model step as an option. Two views:
+//   "list" — browse cloud / on-device models, pick one
+//   "key"  — a focused, full-width API-key entry for a cloud pick that needs
+//            one (no more burying the input at the bottom of a scroll area)
+// ---------------------------------------------------------------------------
+function ModelSelectorOverlay({
+  source,
+  onSourceChange,
+  voiceItems,
+  keyProviders,
+  selectedCloud,
+  apiKeyForm,
+  showKey,
+  onToggleShowKey,
+  onSelectCloud,
+  onSelectLocal,
+  onDownload,
+  onRetryLocal,
+  onClose,
+  onSaveKey,
+}: {
+  source: "cloud" | "local";
+  onSourceChange: (s: "cloud" | "local") => void;
+  voiceItems: VoiceItem[];
+  keyProviders: Set<string>;
+  selectedCloud: AvailableModel | null;
+  apiKeyForm: ReturnType<typeof useForm<{ provider: string; key: string }>>;
+  showKey: boolean;
+  onToggleShowKey: () => void;
+  onSelectCloud: (m: AvailableModel) => void;
+  onSelectLocal: (
+    defId: string,
+    name: string,
+    engine?: "whisper" | "mlx",
+  ) => void;
+  onDownload: (defId: string, engine?: "whisper" | "mlx") => void;
+  onRetryLocal: (defId: string, engine: "whisper" | "mlx") => void;
+  onClose: () => void;
+  onSaveKey: () => Promise<boolean>;
+}): React.JSX.Element {
+  const [view, setView] = useState<"list" | "key">("list");
+  const [savingKey, setSavingKey] = useState(false);
+
+  const items = voiceItems.filter((v) =>
+    source === "local" ? v.kind === "local" : v.kind === "cloud",
+  );
+
+  // Esc steps back from key entry to the list, then closes the selector.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (view === "key") setView("list");
+      else onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, view]);
+
+  // Pick a cloud model: commit immediately when its key is already stored,
+  // otherwise move into the focused key-entry view.
+  const handleSelectCloud = (model: AvailableModel) => {
+    onSelectCloud(model);
+    if (keyProviders.has(model.provider_id)) {
+      onClose();
+    } else {
+      setView("key");
+    }
+  };
+
+  // Picking a ready on-device model commits straight away.
+  const handleSelectLocal = (
+    defId: string,
+    name: string,
+    engine?: "whisper" | "mlx",
+  ) => {
+    onSelectLocal(defId, name, engine);
+    onClose();
+  };
+
+  const handleSaveKey = async () => {
+    setSavingKey(true);
+    try {
+      const ok = await onSaveKey();
+      if (ok) onClose();
+    } finally {
+      setSavingKey(false);
+    }
+  };
+
+  const providerName = selectedCloud
+    ? (PROVIDER_DISPLAY_NAMES[selectedCloud.provider_id] ??
+      selectedCloud.provider_id)
+    : "";
+  const keyValue = apiKeyForm.watch("key") ?? "";
+
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismiss; Esc handled above
+    // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop dismiss; Esc handled above
+    <div
+      className="absolute inset-0 z-20 flex items-center justify-center p-10"
+      style={{ background: "rgba(22,20,15,0.34)" }}
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Choose a voice model"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+        className="border-border bg-background flex max-h-full w-full max-w-[600px] flex-col overflow-hidden rounded-[16px] border"
+        style={{ boxShadow: "0 24px 60px -16px rgba(20,12,4,0.4)" }}
+      >
+        {view === "list" ? (
+          <>
+            {/* Header */}
+            <div className="border-border/60 flex shrink-0 items-center justify-between border-b px-[22px] py-[18px]">
+              <div>
+                <div className="mono text-muted-foreground text-[10px] tracking-[0.16em] uppercase">
+                  Choose a model
+                </div>
+                <div className="serif text-foreground mt-0.5 text-[26px] leading-[1.05]">
+                  All voice models
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="border-border bg-card text-muted-foreground hover:text-foreground flex h-[30px] w-[30px] items-center justify-center rounded-[8px] border"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Source toggle */}
+            <div className="flex shrink-0 justify-center pt-4">
+              <div className="border-border bg-secondary inline-flex rounded-md border p-[3px]">
+                <button
+                  type="button"
+                  onClick={() => onSourceChange("cloud")}
+                  className={cn(
+                    "rounded-[5px] px-3 py-1.5 text-[12px] transition-colors",
+                    source === "cloud"
+                      ? "bg-card border-border text-foreground border font-medium shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Cloud API
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSourceChange("local")}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-[12px] transition-colors",
+                    source === "local"
+                      ? "bg-card border-border text-foreground border font-medium shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <HardDrive size={12} />
+                  On-device
+                </button>
+              </div>
+            </div>
+
+            {/* List */}
+            <div className="overflow-y-auto px-[22px] py-4 [scrollbar-gutter:stable]">
+              <div className="border-border overflow-hidden rounded-[14px] border">
+                {items.length === 0 && (
+                  <div className="flex items-center gap-2 px-5 py-6">
+                    <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+                    <span className="text-muted-foreground text-sm">
+                      Loading models…
+                    </span>
+                  </div>
+                )}
+                {items.map((item, i) => (
+                  <VoiceRow
+                    key={item.key}
+                    item={item}
+                    first={i === 0}
+                    onSelectCloud={handleSelectCloud}
+                    onSelectLocal={handleSelectLocal}
+                    onDownload={onDownload}
+                    onRetryLocal={onRetryLocal}
+                    hideRam
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-border/60 flex shrink-0 items-center justify-between border-t px-[22px] py-4">
+              <span className="text-muted-foreground text-[11.5px]">
+                {source === "cloud"
+                  ? "Cloud models need an API key — we'll ask once."
+                  : "On-device models run privately on your Mac."}
+              </span>
+              <button
+                type="button"
+                onClick={onClose}
+                className="border-border hover:bg-secondary rounded-[7px] border px-3.5 py-2 text-[12.5px] font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Key-entry header */}
+            <div className="border-border/60 flex shrink-0 items-center gap-3 border-b px-[22px] py-[18px]">
+              <button
+                type="button"
+                onClick={() => setView("list")}
+                aria-label="Back to models"
+                className="border-border bg-card text-muted-foreground hover:text-foreground flex h-[30px] w-[30px] items-center justify-center rounded-[8px] border"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <div>
+                <div className="mono text-muted-foreground text-[10px] tracking-[0.16em] uppercase">
+                  Connect {providerName}
+                </div>
+                <div className="serif text-foreground mt-0.5 text-[26px] leading-[1.05]">
+                  Add your{" "}
+                  <span className="serif-italic text-primary">
+                    {providerName}
+                  </span>{" "}
+                  key
+                </div>
+              </div>
+            </div>
+
+            {/* Key-entry body — the input is the whole view */}
+            <div className="px-[22px] py-7">
+              {selectedCloud && (
+                <p className="text-muted-foreground mb-4 text-[13px] leading-relaxed">
+                  Required to use{" "}
+                  <span className="text-foreground font-medium">
+                    {selectedCloud.model_name}
+                  </span>
+                  . Stored in your system keychain — never logged, never sent to
+                  us.
+                </p>
+              )}
+
+              <div className="relative">
+                <Key
+                  size={15}
+                  className="text-muted-foreground absolute top-1/2 left-3.5 -translate-y-1/2"
+                />
+                <input
+                  // biome-ignore lint/a11y/noAutofocus: key entry is the sole purpose of this view
+                  autoFocus
+                  type={showKey ? "text" : "password"}
+                  {...apiKeyForm.register("key")}
+                  placeholder="Paste your secret key — e.g. sk-…"
+                  className={cn(
+                    "border-input bg-card focus:border-primary focus:ring-ring/30 w-full rounded-[8px] border py-3 pr-11 pl-10 font-mono text-[14px] outline-none focus:ring-2",
+                    apiKeyForm.formState.errors.key && "border-destructive",
+                  )}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && keyValue.trim()) handleSaveKey();
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={onToggleShowKey}
+                  aria-label={showKey ? "Hide key" : "Show key"}
+                  className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3.5 -translate-y-1/2"
+                >
+                  {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              {apiKeyForm.formState.errors.key && (
+                <p className="text-destructive mt-2 text-[12px]">
+                  {apiKeyForm.formState.errors.key.message}
+                </p>
+              )}
+            </div>
+
+            {/* Key-entry footer */}
+            <div className="border-border/60 flex shrink-0 items-center justify-between border-t px-[22px] py-4">
+              <button
+                type="button"
+                onClick={() => setView("list")}
+                className="border-border hover:bg-secondary rounded-[7px] border px-3.5 py-2 text-[12.5px] font-medium"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveKey}
+                disabled={!keyValue.trim() || savingKey}
+                className="bg-foreground text-background hover:bg-foreground/90 inline-flex items-center gap-2 rounded-[7px] px-3.5 py-2 text-[12.5px] font-medium disabled:opacity-50"
+              >
+                {savingKey ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Check size={14} />
+                )}
+                {savingKey ? "Saving…" : `Save & use ${providerName}`}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 3 — How to use (live tutorial + hotkey rebind)
+// ---------------------------------------------------------------------------
+function TutorialStep({
+  hotkey,
+  recorderState,
+  draftKeys,
+  captureHint,
+  onStartRecording,
+  onCancelRecording,
+  onBack,
+  onFinish,
+}: {
+  hotkey: string;
+  recorderState: string;
+  draftKeys: string[];
+  captureHint: string;
+  onStartRecording: () => void;
+  onCancelRecording: () => void;
+  onBack: () => void;
+  onFinish: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="w-full max-w-[600px]">
+      <TutorialDemo hotkey={hotkey} interactive />
+
+      {/* Hotkey rebind — a single minimal control */}
+      <div className="mt-5 flex justify-center">
+        {recorderState === "idle" ? (
+          <button
+            type="button"
+            onClick={onStartRecording}
+            className="border-border bg-card hover:bg-secondary inline-flex items-center gap-3 rounded-[10px] border px-3.5 py-2.5 transition-colors"
+          >
+            <Keyboard className="text-muted-foreground h-4 w-4 shrink-0" />
+            <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
+            <span className="text-muted-foreground ml-1 text-[12.5px]">
+              Change
+            </span>
+          </button>
+        ) : (
+          <div className="border-primary bg-accent inline-flex items-center gap-3 rounded-[10px] border px-3.5 py-2.5">
+            <Keyboard className="text-accent-foreground h-4 w-4 shrink-0" />
+            {draftKeys.length > 0 ? (
+              <KeyComboDisplay keys={draftKeys} variant="dim" />
+            ) : null}
+            <span className="text-accent-foreground text-[12px]">
+              {captureHint}
+            </span>
+            <button
+              type="button"
+              onClick={onCancelRecording}
+              className="border-border bg-background hover:bg-secondary ml-1 rounded-[7px] border px-2.5 py-1 text-[12px]"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-7 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={onBack}
+          className="border-border hover:bg-secondary rounded-[7px] border px-3.5 py-2 text-[12.5px] font-medium"
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          onClick={onFinish}
+          className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-2 rounded-[7px] px-4 py-2 text-[12.5px] font-medium"
+        >
+          Start using Freestyle
+          <ArrowRight size={15} />
+        </button>
       </div>
     </div>
   );

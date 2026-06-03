@@ -87,6 +87,7 @@ export function VoiceRow({
   onRetryLocal,
   onCancel,
   onDelete,
+  hideRam,
 }: {
   item: VoiceItem;
   first: boolean;
@@ -100,6 +101,8 @@ export function VoiceRow({
   onRetryLocal?: (defId: string, engine: "whisper" | "mlx") => void;
   onCancel?: (defId: string, engine?: "whisper" | "mlx") => void;
   onDelete?: (defId: string, engine?: "whisper" | "mlx") => void;
+  /** Hide the "RAM" stat (onboarding keeps the row simpler). */
+  hideRam?: boolean;
 }): React.JSX.Element {
   const local = item.kind === "local";
   const status = item.status ?? "not_downloaded";
@@ -180,7 +183,7 @@ export function VoiceRow({
                   <TooltipContent>Download size</TooltipContent>
                 </Tooltip>
               )}
-              {item.ram && (
+              {!hideRam && item.ram && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span>

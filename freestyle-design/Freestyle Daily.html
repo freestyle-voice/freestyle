@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Freestyle — Daily</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,300..800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<style>
+  :root {
+    --canvas:    #F4F0E4;
+    --paper:     #ECE7D6;
+    --elevated:  #FBF8EE;
+    --rule:      #D6CDB8;
+    --rule-soft: #E3DCC8;
+    --ink:       #16140F;
+    --ink-soft:  #34302A;
+    --mute:      #7B7461;
+    --lime:      #D8FF3D;
+    --lime-deep: #6B8F12;
+    --lime-ink:  #3C5108;
+    --lime-soft: #ECF7B3;
+    --blush:     #DD6E4E;
+    --plum:      #5E4E78;
+  }
+  html, body { background: var(--canvas); }
+  body {
+    margin: 0;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  .serif {
+    font-family: 'Instrument Serif', 'Times New Roman', serif;
+    letter-spacing: -0.01em;
+    line-height: 0.95;
+  }
+  .serif-italic {
+    font-family: 'Instrument Serif', 'Times New Roman', serif;
+    font-style: italic;
+    letter-spacing: -0.005em;
+    line-height: 0.95;
+  }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="v3-art.jsx"></script>
+<script type="text/babel" src="v3-system.jsx"></script>
+<script type="text/babel" src="v3-app.jsx"></script>
+<script type="text/babel" src="v3-canvas.jsx"></script>
+
+</body>
+</html>

@@ -4,7 +4,6 @@ import { cn } from "@renderer/lib/utils";
 import {
   Check,
   CircleDollarSign,
-  Cpu,
   Download,
   Key,
   RefreshCw,
@@ -87,7 +86,6 @@ export function VoiceRow({
   onRetryLocal,
   onCancel,
   onDelete,
-  hideRam,
 }: {
   item: VoiceItem;
   first: boolean;
@@ -101,8 +99,6 @@ export function VoiceRow({
   onRetryLocal?: (defId: string, engine: "whisper" | "mlx") => void;
   onCancel?: (defId: string, engine?: "whisper" | "mlx") => void;
   onDelete?: (defId: string, engine?: "whisper" | "mlx") => void;
-  /** Hide the "RAM" stat (onboarding keeps the row simpler). */
-  hideRam?: boolean;
 }): React.JSX.Element {
   const local = item.kind === "local";
   const status = item.status ?? "not_downloaded";
@@ -169,31 +165,19 @@ export function VoiceRow({
             </Tooltip>
           )}
           {local ? (
-            <>
-              {item.sizeBytes != null && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span>
-                      <StatPair
-                        icon={Download}
-                        label={formatBytes(item.sizeBytes)}
-                      />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>Download size</TooltipContent>
-                </Tooltip>
-              )}
-              {!hideRam && item.ram && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span>
-                      <StatPair icon={Cpu} label={`${item.ram} RAM`} />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>Memory required</TooltipContent>
-                </Tooltip>
-              )}
-            </>
+            item.sizeBytes != null && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <StatPair
+                      icon={Download}
+                      label={formatBytes(item.sizeBytes)}
+                    />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Download size</TooltipContent>
+              </Tooltip>
+            )
           ) : (
             <>
               {item.cost != null && (

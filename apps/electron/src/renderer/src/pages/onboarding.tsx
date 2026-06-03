@@ -9,7 +9,7 @@ import {
   keyDisplayLabel,
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
-import { trackOnboarding } from "@renderer/lib/analytics";
+import { capture } from "@renderer/lib/analytics";
 import { getClient } from "@renderer/lib/api";
 import {
   type AvailableModel,
@@ -97,7 +97,7 @@ export default function OnboardingPage(): React.JSX.Element {
 
   const handleHotkeyRecorded = useCallback((accelerator: string) => {
     setHotkey(accelerator);
-    trackOnboarding("onboarding_hotkey_changed", { hotkey: accelerator });
+    capture("onboarding_hotkey_changed", { hotkey: accelerator });
     getClient()
       .api.settings[":key"].$put({
         param: { key: "hotkey" },
@@ -152,20 +152,19 @@ export default function OnboardingPage(): React.JSX.Element {
   useEffect(() => {
     if (!started.current) {
       started.current = true;
-      trackOnboarding("onboarding_started", {
+      capture("onboarding_started", {
         platform: IS_MAC ? "mac" : "other",
       });
     }
-    trackOnboarding("onboarding_step_viewed", { step });
+    capture("onboarding_step_viewed", { step });
   }, [step]);
 
   // Analytics: fire once each permission flips to granted.
   useEffect(() => {
-    if (micStatus === "granted") trackOnboarding("onboarding_mic_granted");
+    if (micStatus === "granted") capture("onboarding_mic_granted");
   }, [micStatus]);
   useEffect(() => {
-    if (accessibilityStatus)
-      trackOnboarding("onboarding_accessibility_granted");
+    if (accessibilityStatus) capture("onboarding_accessibility_granted");
   }, [accessibilityStatus]);
 
   // Load models + keys
@@ -247,13 +246,13 @@ export default function OnboardingPage(): React.JSX.Element {
   }, [mlxStatus, loadMlxStatus]);
 
   const requestMic = useCallback(async () => {
-    trackOnboarding("onboarding_mic_permission_clicked", { action: "allow" });
+    capture("onboarding_mic_permission_clicked", { action: "allow" });
     const status = await window.api?.requestMicPermission();
     if (status) setMicStatus(status);
   }, []);
 
   const openMicSettings = useCallback(() => {
-    trackOnboarding("onboarding_mic_permission_clicked", {
+    capture("onboarding_mic_permission_clicked", {
       action: "open_settings",
     });
     window.api?.openMicSettings();
@@ -268,7 +267,7 @@ export default function OnboardingPage(): React.JSX.Element {
   }, []);
 
   const openAccessibility = useCallback(() => {
-    trackOnboarding("onboarding_accessibility_clicked");
+    capture("onboarding_accessibility_clicked");
     window.api?.openAccessibilitySettings();
     const interval = setInterval(async () => {
       const ok = await window.api?.checkAccessibilityPermission();
@@ -399,11 +398,11 @@ export default function OnboardingPage(): React.JSX.Element {
       chosenStatus === "ready" &&
       (prev.status === "downloading" || prev.status === "verifying")
     ) {
-      trackOnboarding("onboarding_model_download_completed", {
+      capture("onboarding_model_download_completed", {
         model_id: chosenModelId,
       });
     } else if (chosenStatus === "error") {
-      trackOnboarding("onboarding_model_download_failed", {
+      capture("onboarding_model_download_failed", {
         model_id: chosenModelId,
       });
     }
@@ -460,7 +459,7 @@ export default function OnboardingPage(): React.JSX.Element {
             .catch(() => {});
         }
       }
-      trackOnboarding("onboarding_model_completed", {
+      capture("onboarding_model_completed", {
         model_id:
           selectedModel?.model_id ??
           (selectedMlxDefId
@@ -498,12 +497,12 @@ export default function OnboardingPage(): React.JSX.Element {
       .api.keys.$post({ json: { provider, key: key.trim() } })
       .catch(() => {});
     setApiKeys((prev) => new Set([...prev, provider]));
-    trackOnboarding("onboarding_cloud_key_saved", { provider });
+    capture("onboarding_cloud_key_saved", { provider });
     return true;
   }, [apiKeyForm]);
 
   const finishSetup = useCallback(() => {
-    trackOnboarding("onboarding_completed");
+    capture("onboarding_completed");
     window.api?.setOnboardingComplete();
     navigate("/today", { replace: true });
   }, [navigate]);
@@ -539,7 +538,7 @@ export default function OnboardingPage(): React.JSX.Element {
             onOpenMicSettings={openMicSettings}
             onOpenAccessibility={openAccessibility}
             onContinue={() => {
-              trackOnboarding("onboarding_permissions_completed");
+              capture("onboarding_permissions_completed");
               setStep("model");
             }}
           />
@@ -553,7 +552,7 @@ export default function OnboardingPage(): React.JSX.Element {
             saving={saving}
             onDownload={() => {
               if (!chosen?.defId) return;
-              trackOnboarding("onboarding_model_download_clicked", {
+              capture("onboarding_model_download_clicked", {
                 model_id: chosen.modelId,
                 model_name: chosen.name,
                 engine: chosen.localEngine,
@@ -563,11 +562,11 @@ export default function OnboardingPage(): React.JSX.Element {
             }}
             onContinue={saveVoiceModel}
             onOpenSelector={() => {
-              trackOnboarding("onboarding_model_selector_opened");
+              capture("onboarding_model_selector_opened");
               setShowSelector(true);
             }}
             onBack={() => {
-              trackOnboarding("onboarding_model_back_clicked");
+              capture("onboarding_model_back_clicked");
               setStep("permissions");
             }}
           />
@@ -580,13 +579,13 @@ export default function OnboardingPage(): React.JSX.Element {
             draftKeys={draftKeys}
             captureHint={captureHint}
             onStartRecording={() => {
-              trackOnboarding("onboarding_hotkey_change_started");
+              capture("onboarding_hotkey_change_started");
               startHotkeyRecording();
             }}
             onCancelRecording={cancelHotkeyRecording}
-            onDictation={() => trackOnboarding("onboarding_dictation_tried")}
+            onDictation={() => capture("onboarding_dictation_tried")}
             onBack={() => {
-              trackOnboarding("onboarding_tutorial_back_clicked");
+              capture("onboarding_tutorial_back_clicked");
               setStep("model");
             }}
             onFinish={finishSetup}
@@ -598,7 +597,7 @@ export default function OnboardingPage(): React.JSX.Element {
         <ModelSelectorOverlay
           source={selectorSource}
           onSourceChange={(s) => {
-            trackOnboarding("onboarding_model_selector_source_changed", {
+            capture("onboarding_model_selector_source_changed", {
               source: s,
             });
             setSelectorSource(s);
@@ -1026,7 +1025,7 @@ function ModelSelectorOverlay({
   // Pick a cloud model: commit immediately when its key is already stored,
   // otherwise move into the focused key-entry view.
   const handleSelectCloud = (model: AvailableModel) => {
-    trackOnboarding("onboarding_model_selected", {
+    capture("onboarding_model_selected", {
       model_id: model.model_id,
       kind: "cloud",
       provider: model.provider_id,
@@ -1036,7 +1035,7 @@ function ModelSelectorOverlay({
     if (keyProviders.has(model.provider_id)) {
       onClose();
     } else {
-      trackOnboarding("onboarding_cloud_key_entry_viewed", {
+      capture("onboarding_cloud_key_entry_viewed", {
         provider: model.provider_id,
       });
       setView("key");
@@ -1049,7 +1048,7 @@ function ModelSelectorOverlay({
     name: string,
     engine?: "whisper" | "mlx",
   ) => {
-    trackOnboarding("onboarding_model_selected", {
+    capture("onboarding_model_selected", {
       model_id: `${engine === "mlx" ? "local-mlx" : "local-whisper"}/${defId}`,
       kind: "local",
       provider: engine === "mlx" ? "local-mlx" : "local-whisper",
@@ -1165,7 +1164,6 @@ function ModelSelectorOverlay({
                     onSelectLocal={handleSelectLocal}
                     onDownload={onDownload}
                     onRetryLocal={onRetryLocal}
-                    hideRam
                   />
                 ))}
               </div>

@@ -17,6 +17,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
   getManagedMlxWorkerPath,
+  getMlxCacheDir,
   getMlxRuntimeDir,
   isAppleSiliconMac,
   MLX_ASR_MODELS,
@@ -121,8 +122,16 @@ function runtimeUrl(): string | null {
   return DEFAULT_MLX_WORKER_LATEST_URL;
 }
 
+function getMlxRuntimeStagingRoot(): string {
+  return join(
+    getMlxCacheDir(),
+    "staging",
+    `${process.platform}-${process.arch}`,
+  );
+}
+
 function stagedRuntimeRoot(releaseTag: string): string {
-  return join(getMlxRuntimeDir(), "staging", releaseTag);
+  return join(getMlxRuntimeStagingRoot(), releaseTag);
 }
 
 function stagedWorkerPath(releaseTag: string): string {
@@ -349,7 +358,7 @@ function promoteStagedRuntime(releaseTag: string): boolean {
   renameSync(stagedRoot, runtimeDir);
   writeRuntimeMetadata(runtimeDir, sourceUrl, releaseTag);
 
-  rmSync(join(getMlxRuntimeDir(), "staging"), { recursive: true, force: true });
+  rmSync(getMlxRuntimeStagingRoot(), { recursive: true, force: true });
 
   return isManagedMlxRuntimeAvailable();
 }
@@ -411,9 +420,9 @@ async function downloadRuntime(active: ActiveRuntimeDownload): Promise<void> {
 
   const runtimeDir = getMlxRuntimeDir();
   const releaseTag = runtimeReleaseTag();
-  await downloadRuntimeToDir(active, `${runtimeDir}.downloading`, url);
-
   const tempDir = `${runtimeDir}.downloading`;
+  await downloadRuntimeToDir(active, tempDir, url);
+
   rmSync(runtimeDir, { recursive: true, force: true });
   mkdirSync(dirname(runtimeDir), { recursive: true });
   renameSync(tempDir, runtimeDir);

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -10,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MLX_ASR_MODELS } from "../src/lib/mlx-asr/constants.js";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -31,22 +33,34 @@ function restoreEnv(): void {
   }
 }
 
+function mlxCacheRoot(): string {
+  return join(homeDir, ".cache", "freestyle", "mlx-asr");
+}
+
 function runtimeRoot(): string {
+  return join(mlxCacheRoot(), "runtime", `${process.platform}-${process.arch}`);
+}
+
+function stagingRoot(releaseTag: string): string {
   return join(
-    homeDir,
-    ".cache",
-    "freestyle",
-    "mlx-asr",
-    "runtime",
+    mlxCacheRoot(),
+    "staging",
     `${process.platform}-${process.arch}`,
+    releaseTag,
   );
 }
 
-function writeManagedRuntime(version?: string | null): void {
+function writeManagedRuntime(
+  version?: string | null,
+  options?: { workerContent?: string; syncedAppVersion?: string | null },
+): void {
   const root = runtimeRoot();
   const workerDir = join(root, "mlx_asr_worker");
   mkdirSync(workerDir, { recursive: true });
-  writeFileSync(join(workerDir, "mlx_asr_worker"), "worker");
+  writeFileSync(
+    join(workerDir, "mlx_asr_worker"),
+    options?.workerContent ?? "worker",
+  );
 
   if (version !== undefined) {
     writeFileSync(
@@ -56,6 +70,7 @@ function writeManagedRuntime(version?: string | null): void {
           downloadedAt: "2026-06-03T00:00:00.000Z",
           sourceUrl: "https://example.com/mlx_asr_worker-darwin-arm64.tar.gz",
           workerVersion: version,
+          syncedAppVersion: options?.syncedAppVersion ?? null,
         },
         null,
         2,
@@ -63,6 +78,30 @@ function writeManagedRuntime(version?: string | null): void {
       "utf8",
     );
   }
+}
+
+function seedMlxModelDownloaded(): void {
+  const model = MLX_ASR_MODELS[0]!;
+  const snapshotDir = join(
+    homeDir,
+    ".cache",
+    "huggingface",
+    "hub",
+    `models--${model.hfId.replaceAll("/", "--")}`,
+    "snapshots",
+    "test-snapshot",
+  );
+  mkdirSync(snapshotDir, { recursive: true });
+  writeFileSync(join(snapshotDir, "config.json"), "{}");
+}
+
+function writeStagedRuntime(
+  releaseTag: string,
+  workerContent = "staged-worker",
+): void {
+  const workerDir = join(stagingRoot(releaseTag), "mlx_asr_worker");
+  mkdirSync(workerDir, { recursive: true });
+  writeFileSync(join(workerDir, "mlx_asr_worker"), workerContent);
 }
 
 function deriveBundledVersion(): string {
@@ -181,6 +220,33 @@ describe("MLX runtime versioning", () => {
       false,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("promotes a staged worker into the active runtime on app version activation", async () => {
+    seedMlxModelDownloaded();
+    const bundledVersion = deriveBundledVersion();
+    writeManagedRuntime(bundledVersion, {
+      workerContent: "active-worker",
+      syncedAppVersion: "0.9.0",
+    });
+    writeStagedRuntime("0.9.1", "promoted-worker");
+
+    const runtime = await importRuntime();
+
+    await expect(
+      runtime.activateManagedMlxRuntimeForAppVersion("0.9.1"),
+    ).resolves.toBe(true);
+    expect(
+      readFileSync(
+        join(runtimeRoot(), "mlx_asr_worker", "mlx_asr_worker"),
+        "utf8",
+      ),
+    ).toBe("promoted-worker");
+    expect(
+      JSON.parse(readFileSync(join(runtimeRoot(), "metadata.json"), "utf8"))
+        .syncedAppVersion,
+    ).toBe("0.9.1");
+    expect(existsSync(stagingRoot("0.9.1"))).toBe(false);
   });
 
   it("does not prefetch or activate the runtime until an MLX model is downloaded", async () => {

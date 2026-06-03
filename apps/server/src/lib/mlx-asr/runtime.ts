@@ -1,11 +1,14 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   createWriteStream,
   existsSync,
   mkdirSync,
+  readFileSync,
   renameSync,
   rmSync,
   unlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
@@ -15,9 +18,14 @@ import {
   getMlxRuntimeDir,
   isAppleSiliconMac,
 } from "./constants.js";
+import { getMlxAsrServerScriptPath } from "./python.js";
 
-const MLX_WORKER_RELEASE = "mlx-asr-worker-v2";
-const DEFAULT_MLX_WORKER_URL = `https://github.com/freestyle-voice/freestyle/releases/download/${MLX_WORKER_RELEASE}/mlx_asr_worker-darwin-arm64.tar.gz`;
+const MLX_WORKER_ASSET_NAME = "mlx_asr_worker-darwin-arm64.tar.gz";
+const DEFAULT_MLX_WORKER_LATEST_URL = `https://github.com/freestyle-voice/freestyle/releases/latest/download/${MLX_WORKER_ASSET_NAME}`;
+// Keep this in sync with scripts/build_mlx_asr_worker.sh so unchanged worker
+// builds don't force users to redownload identical archives on every app release.
+const MLX_WORKER_BUILD_SPEC =
+  "pyinstaller=6.20.0;mlx-audio=0.4.3;huggingface_hub=1.17.0;bundle=onedir";
 
 export interface MlxRuntimeDownloadStatus {
   available: boolean;
@@ -43,10 +51,98 @@ interface ActiveRuntimeDownload {
   promise: Promise<void>;
 }
 
+interface InstalledMlxRuntimeMetadata {
+  downloadedAt: string;
+  sourceUrl: string;
+  workerVersion: string | null;
+}
+
 let activeDownload: ActiveRuntimeDownload | null = null;
+let cachedExpectedVersion: string | null | undefined;
+
+function expectedRuntimeVersion(): string | null {
+  return (
+    process.env.FREESTYLE_MLX_ASR_WORKER_VERSION || deriveBundledWorkerVersion()
+  );
+}
+
+function deriveBundledWorkerVersion(): string | null {
+  if (cachedExpectedVersion !== undefined) {
+    return cachedExpectedVersion;
+  }
+
+  try {
+    const scriptPath = getMlxAsrServerScriptPath();
+    if (!scriptPath || !existsSync(scriptPath)) {
+      cachedExpectedVersion = null;
+      return null;
+    }
+
+    const script = readFileSync(scriptPath);
+    cachedExpectedVersion = createHash("sha256")
+      .update(MLX_WORKER_BUILD_SPEC)
+      .update("\0")
+      .update(script)
+      .digest("hex")
+      .slice(0, 16);
+    return cachedExpectedVersion;
+  } catch {
+    cachedExpectedVersion = null;
+    return null;
+  }
+}
+
+function runtimeReleaseTag(): string | null {
+  return (
+    process.env.FREESTYLE_MLX_ASR_RELEASE_TAG ||
+    process.env.FREESTYLE_MLX_ASR_WORKER_VERSION ||
+    null
+  );
+}
 
 function runtimeUrl(): string | null {
-  return process.env.FREESTYLE_MLX_ASR_WORKER_URL || DEFAULT_MLX_WORKER_URL;
+  const envUrl = process.env.FREESTYLE_MLX_ASR_WORKER_URL;
+  if (envUrl) return envUrl;
+
+  const releaseTag = runtimeReleaseTag();
+  if (releaseTag) {
+    return `https://github.com/freestyle-voice/freestyle/releases/download/${releaseTag}/${MLX_WORKER_ASSET_NAME}`;
+  }
+
+  return DEFAULT_MLX_WORKER_LATEST_URL;
+}
+
+function runtimeMetadataPath(rootDir = getMlxRuntimeDir()): string {
+  return join(rootDir, "metadata.json");
+}
+
+function readInstalledRuntimeMetadata(): InstalledMlxRuntimeMetadata | null {
+  try {
+    const raw = readFileSync(runtimeMetadataPath(), "utf8");
+    const parsed = JSON.parse(raw) as Partial<InstalledMlxRuntimeMetadata>;
+    return {
+      downloadedAt:
+        typeof parsed.downloadedAt === "string" ? parsed.downloadedAt : "",
+      sourceUrl: typeof parsed.sourceUrl === "string" ? parsed.sourceUrl : "",
+      workerVersion:
+        typeof parsed.workerVersion === "string" ? parsed.workerVersion : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeRuntimeMetadata(rootDir: string, sourceUrl: string): void {
+  const metadata: InstalledMlxRuntimeMetadata = {
+    downloadedAt: new Date().toISOString(),
+    sourceUrl,
+    workerVersion: expectedRuntimeVersion(),
+  };
+  writeFileSync(
+    runtimeMetadataPath(rootDir),
+    JSON.stringify(metadata, null, 2),
+    "utf8",
+  );
 }
 
 export function isMlxRuntimeInstallable(): boolean {
@@ -55,6 +151,16 @@ export function isMlxRuntimeInstallable(): boolean {
 
 export function isManagedMlxRuntimeAvailable(): boolean {
   return existsSync(getManagedMlxWorkerPath());
+}
+
+export function getInstalledMlxRuntimeVersion(): string | null {
+  return readInstalledRuntimeMetadata()?.workerVersion ?? null;
+}
+
+export function needsManagedMlxRuntimeUpdate(): boolean {
+  const version = expectedRuntimeVersion();
+  if (!version || !isManagedMlxRuntimeAvailable()) return false;
+  return getInstalledMlxRuntimeVersion() !== version;
 }
 
 export function getMlxRuntimeDownloadStatus(): MlxRuntimeDownloadStatus {
@@ -89,7 +195,7 @@ export function getMlxRuntimeDownloadStatus(): MlxRuntimeDownloadStatus {
 }
 
 export async function ensureMlxRuntimeDownloaded(): Promise<void> {
-  if (isManagedMlxRuntimeAvailable()) return;
+  if (isManagedMlxRuntimeAvailable() && !needsManagedMlxRuntimeUpdate()) return;
   if (!isMlxRuntimeInstallable()) {
     throw new Error("MLX ASR runtime is only available on Apple Silicon Macs.");
   }
@@ -116,11 +222,47 @@ export async function ensureMlxRuntimeDownloaded(): Promise<void> {
   return active.promise;
 }
 
+export async function updateManagedMlxRuntimeIfNeeded(): Promise<boolean> {
+  if (!needsManagedMlxRuntimeUpdate()) return false;
+  await ensureMlxRuntimeDownloaded();
+  return true;
+}
+
 export function cancelMlxRuntimeDownload(): boolean {
   if (!activeDownload) return false;
   activeDownload.controller.abort();
   activeDownload = null;
   return true;
+}
+
+function runtimeDownloadHttpError(url: string, status: number): Error {
+  if (
+    status === 404 &&
+    url.includes("github.com/freestyle-voice/freestyle/releases/download/")
+  ) {
+    return new Error(
+      "MLX runtime download failed because this Freestyle release does not include the MLX worker asset yet.",
+    );
+  }
+
+  if (
+    status === 404 &&
+    url.includes(
+      "github.com/freestyle-voice/freestyle/releases/latest/download/",
+    )
+  ) {
+    return new Error(
+      "MLX runtime download failed because no published Freestyle release contains the MLX worker asset yet.",
+    );
+  }
+
+  if (status === 403 && url.includes("github.com/freestyle-voice/freestyle")) {
+    return new Error(
+      "MLX runtime download failed because GitHub temporarily rejected the request (HTTP 403). Please try again in a few minutes.",
+    );
+  }
+
+  return new Error(`MLX runtime download failed: HTTP ${status}`);
 }
 
 async function downloadRuntime(active: ActiveRuntimeDownload): Promise<void> {
@@ -140,7 +282,7 @@ async function downloadRuntime(active: ActiveRuntimeDownload): Promise<void> {
       redirect: "follow",
     });
     if (!res.ok || !res.body) {
-      throw new Error(`MLX runtime download failed: HTTP ${res.status}`);
+      throw runtimeDownloadHttpError(url, res.status);
     }
 
     const contentLength = res.headers.get("content-length");
@@ -156,6 +298,7 @@ async function downloadRuntime(active: ActiveRuntimeDownload): Promise<void> {
       timeout: 120_000,
     });
     unlinkSync(archivePath);
+    writeRuntimeMetadata(tempDir, url);
 
     rmSync(runtimeDir, { recursive: true, force: true });
     mkdirSync(dirname(runtimeDir), { recursive: true });

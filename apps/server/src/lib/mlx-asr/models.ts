@@ -22,6 +22,7 @@ import {
   ensureMlxRuntimeDownloaded,
   getMlxRuntimeDownloadStatus,
   isMlxRuntimeInstallable,
+  updateManagedMlxRuntimeIfNeeded,
 } from "./runtime.js";
 import { stopMlxServer } from "./server.js";
 
@@ -234,6 +235,13 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
     stderr: "",
   };
   activeDownloads.set(modelId, active);
+
+  await updateManagedMlxRuntimeIfNeeded().catch((err) => {
+    console.warn(
+      "[mlx-asr] Failed to refresh managed runtime before model download:",
+      err instanceof Error ? err.message : String(err),
+    );
+  });
 
   let runner = getRunner();
   if ("error" in runner) {

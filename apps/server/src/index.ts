@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
+import { updateManagedMlxRuntimeIfNeeded } from "./lib/mlx-asr/runtime.js";
 import {
   captureException,
   getDeviceId,
@@ -62,6 +63,7 @@ export {
   autoStartMlxAsrServer,
   autoStartWhisperServer,
   reconcileUnsupportedMlxVoiceDefault,
+  updateManagedMlxRuntimeIfNeeded,
 };
 
 export type AppType = typeof app;

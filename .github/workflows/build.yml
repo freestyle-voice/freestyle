@@ -145,7 +145,7 @@ jobs:
   build-mac:
     name: Build (macOS)
     needs: [lint, typecheck, test-server]
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -156,10 +156,20 @@ jobs:
           node-version-file: "package.json"
           cache: "pnpm"
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - run: pnpm install --frozen-lockfile
 
       - name: Build server
         run: pnpm --filter @freestyle/server build
+
+      - name: Build MLX ASR worker archive
+        run: ./scripts/build_mlx_asr_worker.sh
+
+      - name: Verify MLX ASR worker archive exists
+        run: test -f dist/mlx_asr_worker-darwin-arm64.tar.gz
 
       - name: Build whisper.cpp binaries
         working-directory: apps/electron
@@ -180,6 +190,7 @@ jobs:
         with:
           name: mac-builds
           path: |
+            dist/mlx_asr_worker-darwin-arm64.tar.gz
             apps/electron/dist/*.dmg
             apps/electron/dist/*.zip
             apps/electron/dist/latest*.yml

@@ -68,7 +68,10 @@ FREESTYLE_MLX_ASR_WORKER_URL=http://127.0.0.1:8765/mlx_asr_worker-darwin-arm64.t
 
 Then **Download** a Qwen model in Settings. You should see the MLX **runtime** download first, then model weights.
 
-To test against the real GitHub asset instead of a local server, omit `FREESTYLE_MLX_ASR_WORKER_URL` (requires `mlx-asr-worker-v2` published on the org repo).
+To test against the real GitHub asset instead of a local server, omit
+`FREESTYLE_MLX_ASR_WORKER_URL`. Production builds derive the worker URL from the
+current app release version and download the matching
+`mlx_asr_worker-darwin-arm64.tar.gz` asset automatically.
 
 ## Optional: packaged Mac build
 

@@ -619,7 +619,9 @@ async function checkForUpdatesFromMenu(): Promise<void> {
         cancelId: 1,
       });
       if (response === 0) {
-        autoUpdater.downloadUpdate();
+        updateDownloadState = "downloading";
+        settingsWindow?.webContents.send("updater:downloading");
+        autoUpdater.downloadUpdate().catch(() => {});
       }
     } else {
       dialog.showMessageBox({
@@ -1080,7 +1082,7 @@ app.whenReady().then(async () => {
 
   ipcMain.on("updater:download", () => {
     updateDownloadState = "downloading";
-    autoUpdater.downloadUpdate();
+    autoUpdater.downloadUpdate().catch(() => {});
   });
 
   ipcMain.on("updater:install", () => {

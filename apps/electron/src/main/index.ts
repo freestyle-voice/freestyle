@@ -588,6 +588,15 @@ function restartAndUpdate(): void {
   autoUpdater.quitAndInstall();
 }
 
+/** Mark state as downloading, notify the settings window, and kick off the download. */
+function triggerDownloadUpdate(): void {
+  updateDownloadState = "downloading";
+  settingsWindow?.webContents.send("updater:downloading");
+  autoUpdater.downloadUpdate().catch((err) => {
+    log.warn(`downloadUpdate rejected: ${err}`);
+  });
+}
+
 async function checkForUpdatesFromMenu(): Promise<void> {
   if (is.dev) {
     dialog.showMessageBox({
@@ -619,9 +628,7 @@ async function checkForUpdatesFromMenu(): Promise<void> {
         cancelId: 1,
       });
       if (response === 0) {
-        updateDownloadState = "downloading";
-        settingsWindow?.webContents.send("updater:downloading");
-        autoUpdater.downloadUpdate().catch(() => {});
+        triggerDownloadUpdate();
       }
     } else {
       dialog.showMessageBox({
@@ -1081,8 +1088,7 @@ app.whenReady().then(async () => {
   }
 
   ipcMain.on("updater:download", () => {
-    updateDownloadState = "downloading";
-    autoUpdater.downloadUpdate().catch(() => {});
+    triggerDownloadUpdate();
   });
 
   ipcMain.on("updater:install", () => {

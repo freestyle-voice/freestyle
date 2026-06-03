@@ -28,7 +28,6 @@ import {
 } from "../lib/mlx-asr/runtime.js";
 import {
   canRunMlxAsr,
-  getMlxAsrKeepAliveMinutes,
   isMlxServerFailed,
   isMlxServerRunning,
   startMlxInBackground,
@@ -63,7 +62,6 @@ const mlxAsr = new Hono()
       blockedReason,
       serverRunning: isMlxServerRunning(),
       serverFailed: isMlxServerFailed(),
-      keepAliveMinutes: getMlxAsrKeepAliveMinutes(),
       runtime: getMlxRuntimeDownloadStatus(),
       models: platformSupported ? getAllMlxModelStatuses() : [],
       modelDefinitions: platformSupported

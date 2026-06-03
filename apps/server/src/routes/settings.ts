@@ -5,7 +5,6 @@ import {
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
-import { applyMlxAsrRetentionPolicy } from "../lib/mlx-asr/server.js";
 import { capture } from "../lib/posthog.js";
 
 const settings = new Hono()
@@ -43,10 +42,6 @@ const settings = new Hono()
       `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
     ).run(key, String(body.value));
-
-    if (key === "mlx_asr_keep_alive_minutes") {
-      applyMlxAsrRetentionPolicy();
-    }
 
     // Don't capture internal/system keys
     const skipKeys = new Set(["posthog_device_id", "telemetry_enabled"]);

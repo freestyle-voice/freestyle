@@ -54,7 +54,6 @@ export interface MlxAsrStatus {
   blockedReason: string | null;
   serverRunning: boolean;
   serverFailed: boolean;
-  keepAliveMinutes: number;
   runtime?: {
     available: boolean;
     downloading: boolean;

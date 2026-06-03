@@ -2,7 +2,6 @@ import { MLX_ASR_PROVIDER_ID } from "../../mlx-asr/constants.js";
 import { getMlxModelStatus } from "../../mlx-asr/models.js";
 import { describeMlxSetupBlocker } from "../../mlx-asr/python.js";
 import {
-  applyMlxAsrRetentionPolicy,
   canRunMlxAsr,
   ensureMlxServerRunning,
   transcribePcmWithMlxAsr,
@@ -147,13 +146,11 @@ class MlxLocalStreamingSession implements StreamSession {
     this.dirty = false;
     this.commitRequested = false;
     this.generation++;
-    applyMlxAsrRetentionPolicy();
   }
 
   close(): void {
     this.closed = true;
     this.cancel();
-    applyMlxAsrRetentionPolicy();
   }
 
   /** Begin loading the MLX worker while audio is captured in parallel. */
@@ -242,7 +239,6 @@ class MlxLocalStreamingSession implements StreamSession {
           language: this.opts.language,
           context: this.opts.context,
           live: !final,
-          deferUnload: true,
           onPartial: final
             ? undefined
             : (text) => this.emitPartial(text, generation),
@@ -257,7 +253,6 @@ class MlxLocalStreamingSession implements StreamSession {
         if (final) {
           this.lastText = cleanText;
           this.opts.callbacks.onFinal(cleanText);
-          applyMlxAsrRetentionPolicy();
           return;
         }
         this.emitPartial(cleanText, generation);
@@ -268,9 +263,6 @@ class MlxLocalStreamingSession implements StreamSession {
       })
       .finally(() => {
         if (this.closed || this.canceled || generation !== this.generation) {
-          if (this.closed || this.canceled) {
-            applyMlxAsrRetentionPolicy();
-          }
           return;
         }
         this.inFlight = false;

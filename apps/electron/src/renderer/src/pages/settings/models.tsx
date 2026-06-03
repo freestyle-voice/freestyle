@@ -92,18 +92,11 @@ const RECOMMENDED_PROVIDERS = [
   },
 ];
 
-const DEFAULT_MLX_KEEP_ALIVE_MINUTES = 10;
-const MAX_MLX_KEEP_ALIVE_MINUTES = 10;
 const IS_MAC =
   typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
 
 function displayName(providerId: string, fallback?: string): string {
   return displayProviderName(providerId, fallback);
-}
-
-function clampMlxKeepAliveMinutes(value: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_MLX_KEEP_ALIVE_MINUTES;
-  return Math.min(Math.max(Math.round(value), 0), MAX_MLX_KEEP_ALIVE_MINUTES);
 }
 
 type PickerType = "voice" | "llm" | null;
@@ -118,6 +111,7 @@ export default function ModelsPage(): React.JSX.Element {
   const [apiKeys, setApiKeys] = useState<ApiKeyEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [llmCleanup, setLlmCleanup] = useState(false);
+  const [showCleanupComparison, setShowCleanupComparison] = useState(true);
 
   // Which inline picker is open ("voice" | "llm" | null)
   const [pickerOpen, setPickerOpen] = useState<PickerType>(null);
@@ -152,9 +146,6 @@ export default function ModelsPage(): React.JSX.Element {
     null,
   );
   const [mlxStatus, setMlxStatus] = useState<MlxAsrStatus | null>(null);
-  const [mlxKeepAliveMinutes, setMlxKeepAliveMinutes] = useState(
-    DEFAULT_MLX_KEEP_ALIVE_MINUTES,
-  );
 
   // Local LLM
   const localLlmForm = useForm<LocalLlmConfigInput>({
@@ -190,20 +181,20 @@ export default function ModelsPage(): React.JSX.Element {
         configRes,
         keysRes,
         cleanupRes,
+        compareRes,
         localUrlRes,
         localKeyRes,
-        mlxKeepAliveRes,
       ] = await Promise.all([
         client.api.models.available.$get(),
         client.api.models.configured.$get(),
         client.api.keys.$get(),
         client.api.settings[":key"].$get({ param: { key: "llm_cleanup" } }),
+        client.api.settings[":key"].$get({
+          param: { key: "show_cleanup_comparison" },
+        }),
         client.api.settings[":key"].$get({ param: { key: "local_llm_url" } }),
         client.api.settings[":key"].$get({
           param: { key: "local_llm_api_key" },
-        }),
-        client.api.settings[":key"].$get({
-          param: { key: "mlx_asr_keep_alive_minutes" },
         }),
       ]);
       if (availRes.ok) setAvailable(await availRes.json());
@@ -216,6 +207,12 @@ export default function ModelsPage(): React.JSX.Element {
         const data = await cleanupRes.json();
         if (data?.value) setLlmCleanup(data.value === "true");
       }
+      if (compareRes.ok) {
+        const data = await compareRes.json();
+        if (data?.value != null) {
+          setShowCleanupComparison(data.value !== "false");
+        }
+      }
       if (localUrlRes.ok) {
         const data = await localUrlRes.json();
         if (data?.value) localLlmForm.setValue("url", data.value);
@@ -223,13 +220,6 @@ export default function ModelsPage(): React.JSX.Element {
       if (localKeyRes.ok) {
         const data = await localKeyRes.json();
         if (data?.value) localLlmForm.setValue("api_key", data.value);
-      }
-      if (mlxKeepAliveRes.ok) {
-        const data = await mlxKeepAliveRes.json();
-        const minutes = Number(data?.value);
-        if (Number.isFinite(minutes)) {
-          setMlxKeepAliveMinutes(clampMlxKeepAliveMinutes(minutes));
-        }
       }
     } catch (err) {
       console.error("Failed to load models data:", err);
@@ -262,11 +252,6 @@ export default function ModelsPage(): React.JSX.Element {
       if (res.ok) {
         const data: MlxAsrStatus = await res.json();
         setMlxStatus(data);
-        if (Number.isFinite(data.keepAliveMinutes)) {
-          setMlxKeepAliveMinutes(
-            clampMlxKeepAliveMinutes(data.keepAliveMinutes),
-          );
-        }
         return data;
       }
     } catch (err) {
@@ -488,19 +473,16 @@ export default function ModelsPage(): React.JSX.Element {
       .catch((err) => console.error("Failed to save LLM cleanup:", err));
   }, []);
 
-  const saveMlxKeepAliveMinutes = useCallback((minutes: number) => {
-    const next = clampMlxKeepAliveMinutes(minutes);
-    setMlxKeepAliveMinutes(next);
+  const setShowCleanupComparisonOn = useCallback((next: boolean) => {
+    setShowCleanupComparison(next);
     getClient()
       .api.settings[":key"].$put({
-        param: { key: "mlx_asr_keep_alive_minutes" },
+        param: { key: "show_cleanup_comparison" },
         json: { value: String(next) },
       })
-      .then(() => {
-        if (next !== 0) return;
-        return getClient().api["mlx-asr"].server.stop.$post();
-      })
-      .catch((err) => console.error("Failed to save MLX ASR keep-alive:", err));
+      .catch((err) =>
+        console.error("Failed to save cleanup comparison setting:", err),
+      );
   }, []);
 
   const saveProviderKey = useCallback(async () => {
@@ -853,15 +835,25 @@ export default function ModelsPage(): React.JSX.Element {
           />
         </div>
 
-        {(isLocalMlxActive ||
-          (mlxStatus?.platformSupported &&
-            mlxStatus.models.some((m) => m.status === "ready"))) && (
-          <MlxMemorySection
-            keepAliveMinutes={mlxKeepAliveMinutes}
-            serverRunning={!!mlxStatus?.serverRunning}
-            blockedReason={mlxStatus?.blockedReason ?? null}
-            onChange={saveMlxKeepAliveMinutes}
-          />
+        {llmCleanup && (
+          <section className="border-border bg-card rounded-[14px] border px-5 py-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-foreground m-0 text-sm font-medium">
+                  Show STT vs cleaned
+                </p>
+                <p className="text-muted-foreground m-0 mt-1 max-w-xl text-[13px] leading-snug">
+                  Log both versions in the dev terminal after each dictation,
+                  and show before/after in History when cleanup changes the
+                  text.
+                </p>
+              </div>
+              <Toggle
+                on={showCleanupComparison}
+                onChange={setShowCleanupComparisonOn}
+              />
+            </div>
+          </section>
         )}
 
         {/* Inline picker — appears below the pair card */}
@@ -1221,80 +1213,6 @@ function Eyebrow({
     >
       {text}
     </span>
-  );
-}
-
-function mlxKeepAliveDescription(minutes: number): string {
-  if (minutes === 0) {
-    return "Unload the model from memory after each transcription. Uses less RAM, but the next dictation waits for a full reload.";
-  }
-  if (minutes === 1) {
-    return "Keep the model in memory for about 1 minute after you finish dictating, so quick follow-ups stay fast.";
-  }
-  return `Keep the model loaded in memory for up to ${minutes} minutes after dictation. Faster repeat use, more RAM while warm.`;
-}
-
-function MlxMemorySection({
-  keepAliveMinutes,
-  serverRunning,
-  blockedReason,
-  onChange,
-}: {
-  keepAliveMinutes: number;
-  serverRunning: boolean;
-  blockedReason: string | null;
-  onChange: (minutes: number) => void;
-}): React.JSX.Element {
-  const valueLabel =
-    keepAliveMinutes === 0 ? "Cold start" : `${keepAliveMinutes} min`;
-  const fillPercent = (keepAliveMinutes / MAX_MLX_KEEP_ALIVE_MINUTES) * 100;
-
-  return (
-    <section className="border-border bg-card rounded-[14px] border p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <Cpu className="text-primary h-3.5 w-3.5 shrink-0" />
-          <Eyebrow text="Model warming" accent />
-          {serverRunning && (
-            <span className="bg-primary/10 text-primary mono rounded-full px-2 py-0.5 text-[9px] uppercase tracking-[0.14em]">
-              Loaded
-            </span>
-          )}
-        </div>
-        <span className="border-border bg-background rounded-md border px-2.5 py-1 text-[12px] font-medium">
-          {valueLabel}
-        </span>
-      </div>
-
-      <p className="text-muted-foreground mt-3 text-[12px] leading-relaxed">
-        {mlxKeepAliveDescription(keepAliveMinutes)}
-      </p>
-
-      <div className="mt-4">
-        <input
-          type="range"
-          min={0}
-          max={MAX_MLX_KEEP_ALIVE_MINUTES}
-          step={1}
-          value={keepAliveMinutes}
-          onChange={(event) => onChange(Number(event.currentTarget.value))}
-          style={{
-            background: `linear-gradient(to right, var(--primary) ${fillPercent}%, var(--secondary) ${fillPercent}%)`,
-          }}
-          className="h-2 w-full appearance-none rounded-full outline-none [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-[0_0_0_4px_var(--card)]"
-          aria-label="MLX ASR keep-alive minutes"
-        />
-        <div className="text-muted-foreground mt-2 flex justify-between text-[11px]">
-          <span>Cold start (unload)</span>
-          <span>Keep warm 10 min</span>
-        </div>
-      </div>
-      {blockedReason && (
-        <p className="text-destructive mt-3 text-[12px] leading-relaxed">
-          {blockedReason}
-        </p>
-      )}
-    </section>
   );
 }
 

@@ -4,7 +4,6 @@ import { existsSync } from "node:fs";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getDb } from "../db.js";
 import { getMlxAsrModel, isAppleSiliconMac } from "./constants.js";
 import {
   describeMlxSetupBlocker,
@@ -17,8 +16,6 @@ import { updateManagedMlxRuntimeIfNeeded } from "./runtime.js";
 
 const START_TIMEOUT_MS = 120_000;
 const TRANSCRIBE_TIMEOUT_MS = 300_000;
-const DEFAULT_KEEP_ALIVE_MINUTES = 10;
-const MAX_KEEP_ALIVE_MINUTES = 10;
 
 interface WorkerResponse {
   id?: number;
@@ -42,7 +39,6 @@ let workerFailed = false;
 let startPromise: Promise<void> | null = null;
 let stdoutBuffer = "";
 let nextRequestId = 1;
-let unloadTimer: ReturnType<typeof setTimeout> | null = null;
 let lifecyclePromise: Promise<void> = Promise.resolve();
 const pending = new Map<number, PendingRequest>();
 
@@ -83,25 +79,7 @@ export function canRunMlxAsr(): boolean {
   return isMlxAudioInstalled(python);
 }
 
-export function getMlxAsrKeepAliveMinutes(): number {
-  try {
-    const db = getDb();
-    const row = db
-      .prepare(
-        "SELECT value FROM settings WHERE key = 'mlx_asr_keep_alive_minutes'",
-      )
-      .get() as { value: string } | undefined;
-    if (!row) return DEFAULT_KEEP_ALIVE_MINUTES;
-    const minutes = Number(row.value);
-    if (!Number.isFinite(minutes)) return DEFAULT_KEEP_ALIVE_MINUTES;
-    return Math.min(Math.max(Math.round(minutes), 0), MAX_KEEP_ALIVE_MINUTES);
-  } catch {
-    return DEFAULT_KEEP_ALIVE_MINUTES;
-  }
-}
-
 export function startMlxInBackground(modelId: string): void {
-  if (getMlxAsrKeepAliveMinutes() === 0) return;
   if (workerProcess && currentModelId === modelId && workerReady) return;
   if (startPromise && currentModelId === modelId) return;
 
@@ -115,12 +93,6 @@ export function startMlxInBackground(modelId: string): void {
     });
 }
 
-export function applyMlxAsrRetentionPolicy(): void {
-  if (!workerProcess) return;
-  if (pending.size > 0 || startPromise) return;
-  scheduleUnload();
-}
-
 export function ensureMlxServerRunning(modelId: string): Promise<void> {
   const run = lifecyclePromise.then(() =>
     ensureMlxServerRunningLocked(modelId),
@@ -130,7 +102,6 @@ export function ensureMlxServerRunning(modelId: string): Promise<void> {
 }
 
 async function ensureMlxServerRunningLocked(modelId: string): Promise<void> {
-  clearUnloadTimer();
   if (workerProcess && currentModelId === modelId && workerReady) {
     return;
   }
@@ -159,7 +130,6 @@ export async function transcribeWithMlxAsr(opts: {
   language?: string;
   context?: string;
   onPartial?: (text: string) => void;
-  deferUnload?: boolean;
 }): Promise<string> {
   await ensureMlxServerRunning(opts.modelId);
 
@@ -178,7 +148,6 @@ export async function transcribeWithMlxAsr(opts: {
     });
   } finally {
     await unlink(audioPath).catch(() => undefined);
-    if (!opts.deferUnload) scheduleUnload();
   }
 }
 
@@ -190,7 +159,6 @@ export async function transcribePcmWithMlxAsr(opts: {
   context?: string;
   live?: boolean;
   onPartial?: (text: string) => void;
-  deferUnload?: boolean;
 }): Promise<string> {
   await ensureMlxServerRunning(opts.modelId);
 
@@ -212,7 +180,6 @@ export async function transcribePcmWithMlxAsr(opts: {
     });
   } finally {
     await unlink(audioPath).catch(() => undefined);
-    if (!opts.deferUnload) scheduleUnload();
   }
 }
 
@@ -461,7 +428,6 @@ function sendTranscribeRequest(opts: {
 }
 
 function failWorker(err: Error): void {
-  clearUnloadTimer();
   if (readyReject) readyReject(err);
   readyResolve = null;
   readyReject = null;
@@ -479,36 +445,8 @@ function failWorker(err: Error): void {
   workerFailed = true;
 }
 
-function clearUnloadTimer(): void {
-  if (!unloadTimer) return;
-  clearTimeout(unloadTimer);
-  unloadTimer = null;
-}
-
-function scheduleUnload(): void {
-  clearUnloadTimer();
-  if (!workerProcess) return;
-  const minutes = getMlxAsrKeepAliveMinutes();
-  const delayMs = minutes * 60_000;
-
-  if (delayMs <= 0) {
-    stopMlxServer().catch((err: Error) => {
-      console.error("[mlx-asr] Failed to unload worker:", err.message);
-    });
-    return;
-  }
-
-  unloadTimer = setTimeout(() => {
-    stopMlxServer().catch((err: Error) => {
-      console.error("[mlx-asr] Failed to unload idle worker:", err.message);
-    });
-  }, delayMs);
-  unloadTimer.unref?.();
-}
-
 export async function stopMlxServer(): Promise<void> {
   if (!workerProcess) return;
-  clearUnloadTimer();
 
   const proc = workerProcess;
   workerProcess = null;

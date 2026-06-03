@@ -100,30 +100,19 @@ async function validateElevenLabs(apiKey: string): Promise<ValidationResult> {
 }
 
 async function validateAnthropic(apiKey: string): Promise<ValidationResult> {
-  // Anthropic has no free list-models endpoint, so we send an empty
-  // messages request which will fail with a 400 (bad request) if the key
-  // is valid, or 401 if invalid.
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
+  const res = await fetch("https://api.anthropic.com/v1/models", {
     headers: {
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: "claude-3-haiku-20240307",
-      max_tokens: 1,
-      messages: [],
-    }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
+  if (res.ok) return { valid: true };
   if (res.status === 401)
     return {
       valid: false,
       error: "Invalid API key. Please check and try again.",
     };
-  // 400 means the key authenticated but the request body was invalid — key is good
-  if (res.status === 400 || res.ok) return { valid: true };
   if (res.status === 403)
     return { valid: false, error: "API key lacks permission." };
   return { valid: false, error: `Anthropic returned HTTP ${res.status}.` };

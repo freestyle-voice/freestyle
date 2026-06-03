@@ -362,24 +362,32 @@ export default function OnboardingPage(): React.JSX.Element {
         if (needsKey) {
           const keyData = apiKeyForm.getValues();
           if (keyData.key.trim()) {
-            const res = await client.api.keys.$post({
+            // Validate first
+            const valRes = await client.api.keys.validate.$post({
               json: {
                 provider: keyData.provider,
                 key: keyData.key.trim(),
               },
             });
-            if (res.ok) {
-              const body = await res.json();
-              if ("valid" in body && body.valid === false) {
+            if (valRes.ok) {
+              const valBody = await valRes.json();
+              if ("valid" in valBody && valBody.valid === false) {
                 setVoiceKeyError(
-                  ("error" in body && typeof body.error === "string"
-                    ? body.error
+                  ("error" in valBody && typeof valBody.error === "string"
+                    ? valBody.error
                     : null) ?? "API key is not valid.",
                 );
                 setSaving(false);
                 return;
               }
             }
+            // Valid — save the key
+            await client.api.keys.$post({
+              json: {
+                provider: keyData.provider,
+                key: keyData.key.trim(),
+              },
+            });
             setApiKeys((prev) => new Set([...prev, keyData.provider]));
           }
         }
@@ -463,24 +471,32 @@ export default function OnboardingPage(): React.JSX.Element {
         if (needsLlmKey) {
           const keyData = llmKeyForm.getValues();
           if (keyData.key.trim()) {
-            const res = await client.api.keys.$post({
+            // Validate first
+            const valRes = await client.api.keys.validate.$post({
               json: {
                 provider: keyData.provider,
                 key: keyData.key.trim(),
               },
             });
-            if (res.ok) {
-              const body = await res.json();
-              if ("valid" in body && body.valid === false) {
+            if (valRes.ok) {
+              const valBody = await valRes.json();
+              if ("valid" in valBody && valBody.valid === false) {
                 setLlmKeyError(
-                  ("error" in body && typeof body.error === "string"
-                    ? body.error
+                  ("error" in valBody && typeof valBody.error === "string"
+                    ? valBody.error
                     : null) ?? "API key is not valid.",
                 );
                 setSaving(false);
                 return;
               }
             }
+            // Valid — save the key
+            await client.api.keys.$post({
+              json: {
+                provider: keyData.provider,
+                key: keyData.key.trim(),
+              },
+            });
             setApiKeys((prev) => new Set([...prev, keyData.provider]));
           }
         }

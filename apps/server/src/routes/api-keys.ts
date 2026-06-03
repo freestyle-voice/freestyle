@@ -40,31 +40,14 @@ const apiKeys = new Hono()
     const db = getDb();
     const body = c.req.valid("json");
 
-    // Validate the key before saving
-    const result = await validateApiKey(body.provider, body.key);
-
-    const status = result.valid ? "valid" : "invalid";
-
     db.prepare(
-      `INSERT INTO api_keys (provider, key, created_at, status) VALUES (?, ?, datetime('now'), ?)
-       ON CONFLICT(provider) DO UPDATE SET key = excluded.key, created_at = datetime('now'), status = ?`,
-    ).run(body.provider, body.key, status, status);
+      `INSERT INTO api_keys (provider, key, created_at, status) VALUES (?, ?, datetime('now'), 'valid')
+       ON CONFLICT(provider) DO UPDATE SET key = excluded.key, created_at = datetime('now'), status = 'valid'`,
+    ).run(body.provider, body.key);
 
-    capture("api key configured", { provider: body.provider, status });
+    capture("api key configured", { provider: body.provider });
 
-    if (!result.valid) {
-      return c.json(
-        {
-          provider: body.provider,
-          configured: true,
-          valid: false,
-          error: result.error,
-        },
-        200,
-      );
-    }
-
-    return c.json({ provider: body.provider, configured: true, valid: true });
+    return c.json({ provider: body.provider, configured: true });
   })
   .post("/validate", zValidator("json", apiKeySchema), async (c) => {
     const body = c.req.valid("json");

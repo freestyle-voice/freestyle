@@ -471,23 +471,29 @@ export default function ModelsPage(): React.JSX.Element {
 
       try {
         const client = getClient();
-        const res = await client.api.keys.$post({
+
+        // Validate first — no key is saved yet
+        const valRes = await client.api.keys.validate.$post({
           json: { provider: data.provider, key: data.key },
         });
 
-        if (res.ok) {
-          const body = await res.json();
-          if ("valid" in body && body.valid === false) {
+        if (valRes.ok) {
+          const valBody = await valRes.json();
+          if ("valid" in valBody && valBody.valid === false) {
             setKeyValidationError(
-              ("error" in body && typeof body.error === "string"
-                ? body.error
+              ("error" in valBody && typeof valBody.error === "string"
+                ? valBody.error
                 : null) ?? "API key is not valid.",
             );
             setKeyValidating(false);
-            loadData();
             return;
           }
         }
+
+        // Key is valid — save it and configure the model
+        await client.api.keys.$post({
+          json: { provider: data.provider, key: data.key },
+        });
 
         await client.api.models.configured.$post({
           json: {
@@ -543,23 +549,30 @@ export default function ModelsPage(): React.JSX.Element {
     setKeyValidationError(null);
 
     try {
-      const res = await getClient().api.keys.$post({
+      const client = getClient();
+
+      // Validate first
+      const valRes = await client.api.keys.validate.$post({
         json: { provider: editingProvider, key: editKeyValue.trim() },
       });
 
-      if (res.ok) {
-        const body = await res.json();
-        if ("valid" in body && body.valid === false) {
+      if (valRes.ok) {
+        const valBody = await valRes.json();
+        if ("valid" in valBody && valBody.valid === false) {
           setKeyValidationError(
-            ("error" in body && typeof body.error === "string"
-              ? body.error
+            ("error" in valBody && typeof valBody.error === "string"
+              ? valBody.error
               : null) ?? "API key is not valid.",
           );
           setKeyValidating(false);
-          loadData();
           return;
         }
       }
+
+      // Key is valid — save it
+      await client.api.keys.$post({
+        json: { provider: editingProvider, key: editKeyValue.trim() },
+      });
 
       setEditingProvider(null);
       setEditKeyValue("");

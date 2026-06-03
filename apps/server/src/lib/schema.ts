@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 export function initSchema(db: DatabaseSync): void {
   db.exec(`
@@ -183,6 +183,17 @@ export function initSchema(db: DatabaseSync): void {
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
+  }
+
+  if (currentVersion < 7) {
+    // Add validation status to api_keys
+    try {
+      db.exec(
+        "ALTER TABLE api_keys ADD COLUMN status TEXT NOT NULL DEFAULT 'unknown'",
+      );
+    } catch {
+      // Column may already exist
+    }
   }
 
   // Upsert schema version

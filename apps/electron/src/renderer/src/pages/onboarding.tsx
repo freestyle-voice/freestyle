@@ -27,6 +27,7 @@ import {
 } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
 import {
+  AlertTriangle,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -81,6 +82,8 @@ export default function OnboardingPage(): React.JSX.Element {
   const [saving, setSaving] = useState(false);
   const [apiKeys, setApiKeys] = useState<Set<string>>(new Set());
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [voiceKeyError, setVoiceKeyError] = useState<string | null>(null);
+  const [llmKeyError, setLlmKeyError] = useState<string | null>(null);
 
   // Local whisper state
   const [whisperStatus, setWhisperStatus] = useState<WhisperStatus | null>(
@@ -350,6 +353,7 @@ export default function OnboardingPage(): React.JSX.Element {
     }
 
     setSaving(true);
+    setVoiceKeyError(null);
 
     try {
       const client = getClient();
@@ -358,6 +362,26 @@ export default function OnboardingPage(): React.JSX.Element {
         if (needsKey) {
           const keyData = apiKeyForm.getValues();
           if (keyData.key.trim()) {
+            // Validate first
+            const valRes = await client.api.keys.validate.$post({
+              json: {
+                provider: keyData.provider,
+                key: keyData.key.trim(),
+              },
+            });
+            if (valRes.ok) {
+              const valBody = await valRes.json();
+              if ("valid" in valBody && valBody.valid === false) {
+                setVoiceKeyError(
+                  ("error" in valBody && typeof valBody.error === "string"
+                    ? valBody.error
+                    : null) ?? "API key is not valid.",
+                );
+                setSaving(false);
+                return;
+              }
+            }
+            // Valid — save the key
             await client.api.keys.$post({
               json: {
                 provider: keyData.provider,
@@ -438,6 +462,7 @@ export default function OnboardingPage(): React.JSX.Element {
     }
 
     setSaving(true);
+    setLlmKeyError(null);
 
     try {
       const client = getClient();
@@ -446,6 +471,26 @@ export default function OnboardingPage(): React.JSX.Element {
         if (needsLlmKey) {
           const keyData = llmKeyForm.getValues();
           if (keyData.key.trim()) {
+            // Validate first
+            const valRes = await client.api.keys.validate.$post({
+              json: {
+                provider: keyData.provider,
+                key: keyData.key.trim(),
+              },
+            });
+            if (valRes.ok) {
+              const valBody = await valRes.json();
+              if ("valid" in valBody && valBody.valid === false) {
+                setLlmKeyError(
+                  ("error" in valBody && typeof valBody.error === "string"
+                    ? valBody.error
+                    : null) ?? "API key is not valid.",
+                );
+                setSaving(false);
+                return;
+              }
+            }
+            // Valid — save the key
             await client.api.keys.$post({
               json: {
                 provider: keyData.provider,
@@ -896,6 +941,14 @@ export default function OnboardingPage(): React.JSX.Element {
                       {apiKeyForm.formState.errors.key.message}
                     </p>
                   )}
+                  {voiceKeyError && (
+                    <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2">
+                      <AlertTriangle className="text-destructive mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <p className="text-destructive text-xs">
+                        {voiceKeyError}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1049,6 +1102,14 @@ export default function OnboardingPage(): React.JSX.Element {
                         <p className="text-destructive text-xs">
                           {llmKeyForm.formState.errors.key.message}
                         </p>
+                      )}
+                      {llmKeyError && (
+                        <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2">
+                          <AlertTriangle className="text-destructive mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          <p className="text-destructive text-xs">
+                            {llmKeyError}
+                          </p>
+                        </div>
                       )}
                     </div>
                   )}

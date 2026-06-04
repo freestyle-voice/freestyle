@@ -675,13 +675,7 @@ function hidePill(): void {
 
 function resetOnboarding(): void {
   writeSettings({ onboardingComplete: false });
-  if (settingsWindow) {
-    settingsWindow.loadURL(getDashboardURL("/onboarding"));
-    settingsWindow.show();
-    settingsWindow.focus();
-  } else {
-    showSettingsWindow();
-  }
+  showSettingsWindow("/onboarding");
 }
 
 async function factoryReset(): Promise<void> {
@@ -760,7 +754,7 @@ function showSettingsWindow(path?: string): void {
     return;
   }
   if (path) {
-    settingsWindow.loadURL(getDashboardURL(path));
+    void settingsWindow.loadURL(getDashboardURL(path));
   }
   if (process.platform === "darwin") {
     app.dock?.show();

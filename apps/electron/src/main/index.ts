@@ -272,7 +272,7 @@ function getAppWindowPosition(): { x: number; y: number } {
         if (
           custom.x >= wa.x &&
           custom.x + APP_WIDTH <= wa.x + wa.width &&
-          custom.y >= wa.y - APP_HEIGHT &&
+          custom.y >= wa.y &&
           custom.y <= wa.y + wa.height
         ) {
           return custom;
@@ -1220,16 +1220,19 @@ app.whenReady().then(async () => {
   createAppWindow();
 
   // Clamp the pill to valid display bounds when monitors change.
-  screen.on("display-removed", () => {
+  const repositionPillForDisplayChange = (): void => {
     if (!mainWindow) return;
+    const before = readSettings().pillPosition as string;
     const { x, y } = getAppWindowPosition();
     setProgrammaticPosition(mainWindow, x, y);
-  });
-  screen.on("display-metrics-changed", () => {
-    if (!mainWindow) return;
-    const { x, y } = getAppWindowPosition();
-    setProgrammaticPosition(mainWindow, x, y);
-  });
+    const after = (readSettings().pillPosition as string) ?? "bottom-center";
+    if (before !== after) {
+      mainWindow.webContents.send("settings:pill-position-changed", after);
+      settingsWindow?.webContents.send("settings:pill-position-changed", after);
+    }
+  };
+  screen.on("display-removed", repositionPillForDisplayChange);
+  screen.on("display-metrics-changed", repositionPillForDisplayChange);
 
   if (readSettings().showDashboardOnLaunch !== false) {
     showSettingsWindow();

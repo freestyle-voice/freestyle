@@ -39,6 +39,10 @@ interface AudioDevice {
   label: string;
 }
 
+function normalizePillPos(pos: string): string {
+  return pos.startsWith("custom") ? "custom" : pos;
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -228,10 +232,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
       .catch(() => {});
     window.api
       ?.getPillPosition()
-      .then((pos) => {
-        const norm = pos.startsWith("custom") ? "custom" : pos;
-        setPillPosition(norm);
-      })
+      .then((pos) => setPillPosition(normalizePillPos(pos)))
       .catch(() => {});
     getClient()
       .api.settings[":key"].$get({ param: { key: "sound_enabled" } })
@@ -298,8 +299,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
 
     // Pill position live changes
     const removePillPos = window.api?.onPillPositionChanged((pos) => {
-      const norm = pos.startsWith("custom") ? "custom" : pos;
-      setPillPosition(norm);
+      setPillPosition(normalizePillPos(pos));
     });
 
     checkPermissions();

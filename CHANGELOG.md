@@ -1,4 +1,25 @@
 # Changelog
+## 0.1.4
+
+### New Features ✨
+
+- Auto-update managed mlx worker by @tigerisaac in [#169](https://github.com/freestyle-voice/freestyle/pull/169)
+- Add real progress tracking for MLX model weight downloads by @MathurAditya724 in [#161](https://github.com/freestyle-voice/freestyle/pull/161)
+
+### Bug Fixes 🐛
+
+- (ui) Models page polish by @shawnriju in [#163](https://github.com/freestyle-voice/freestyle/pull/163)
+- Polish pill panning — drag cursor, bounds checking, custom position lifecycle by @MathurAditya724 in [#171](https://github.com/freestyle-voice/freestyle/pull/171)
+- Gate tray setContextMenu to Linux only to preserve macOS click behavior by @MathurAditya724 in [#172](https://github.com/freestyle-voice/freestyle/pull/172)
+- Linux issues - program can't be closed, processes still hanging by @kajalkattige30 in [#162](https://github.com/freestyle-voice/freestyle/pull/162)
+- Wait for native key listener READY before confirming hotkey registration by @MathurAditya724 in [#167](https://github.com/freestyle-voice/freestyle/pull/167)
+
+### Other
+
+- Enhance 111: Adding panning to pill widget by @srirae in [#164](https://github.com/freestyle-voice/freestyle/pull/164)
+- Fix hog transcribe capture by @matteo8p in [#170](https://github.com/freestyle-voice/freestyle/pull/170)
+- Modify our onboarding flow. by @matteo8p in [#166](https://github.com/freestyle-voice/freestyle/pull/166)
+
 ## 0.1.3
 
 ### New Features ✨

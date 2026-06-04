@@ -198,18 +198,22 @@ function getDashboardURL(path = "/"): string {
 let programmaticTarget: { x: number; y: number } | null = null;
 let programmaticCleanupTimer: NodeJS.Timeout | null = null;
 
+function markProgrammaticTarget(x: number, y: number): void {
+  programmaticTarget = { x, y };
+  if (programmaticCleanupTimer) clearTimeout(programmaticCleanupTimer);
+  // Safety: clear the target after 1s in case the OS never delivers a settle event.
+  programmaticCleanupTimer = setTimeout(() => {
+    programmaticTarget = null;
+    programmaticCleanupTimer = null;
+  }, 1000);
+}
+
 function setProgrammaticPosition(
   win: BrowserWindow,
   x: number,
   y: number,
 ): void {
-  programmaticTarget = { x, y };
-  // Safety: clear the target after 1s in case the OS never delivers a settle event.
-  if (programmaticCleanupTimer) clearTimeout(programmaticCleanupTimer);
-  programmaticCleanupTimer = setTimeout(() => {
-    programmaticTarget = null;
-    programmaticCleanupTimer = null;
-  }, 1000);
+  markProgrammaticTarget(x, y);
   win.setPosition(x, y);
 }
 
@@ -300,12 +304,7 @@ function createAppWindow(): void {
   const { x, y } = getAppWindowPosition();
 
   // Mark the initial position as programmatic so the move listener ignores it.
-  programmaticTarget = { x, y };
-  if (programmaticCleanupTimer) clearTimeout(programmaticCleanupTimer);
-  programmaticCleanupTimer = setTimeout(() => {
-    programmaticTarget = null;
-    programmaticCleanupTimer = null;
-  }, 1000);
+  markProgrammaticTarget(x, y);
 
   mainWindow = new BrowserWindow({
     width: APP_WIDTH,

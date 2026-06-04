@@ -401,7 +401,7 @@ function createAppWindow(): void {
   mainWindow.loadURL(getPillURL());
 }
 
-function createSettingsWindow(): void {
+function createSettingsWindow(initialPath?: string): void {
   settingsWindow = new BrowserWindow({
     width: 1152,
     height: 648,
@@ -471,9 +471,8 @@ function createSettingsWindow(): void {
     }
   }
 
-  settingsWindow.loadURL(
-    getDashboardURL(onboardingDone ? "/today" : "/onboarding"),
-  );
+  const startPath = !onboardingDone ? "/onboarding" : (initialPath ?? "/today");
+  settingsWindow.loadURL(getDashboardURL(startPath));
 }
 
 function showPill(): void {
@@ -676,13 +675,7 @@ function hidePill(): void {
 
 function resetOnboarding(): void {
   writeSettings({ onboardingComplete: false });
-  if (settingsWindow) {
-    settingsWindow.loadURL(getDashboardURL("/onboarding"));
-    settingsWindow.show();
-    settingsWindow.focus();
-  } else {
-    showSettingsWindow();
-  }
+  showSettingsWindow("/onboarding");
 }
 
 async function factoryReset(): Promise<void> {
@@ -755,10 +748,13 @@ async function factoryReset(): Promise<void> {
   }
 }
 
-function showSettingsWindow(): void {
+function showSettingsWindow(path?: string): void {
   if (!settingsWindow) {
-    createSettingsWindow();
+    createSettingsWindow(path);
     return;
+  }
+  if (path) {
+    void settingsWindow.loadURL(getDashboardURL(path));
   }
   if (process.platform === "darwin") {
     app.dock?.show();
@@ -1294,7 +1290,7 @@ app.whenReady().then(async () => {
             ? `Version ${info.version} is downloading…`
             : `Version ${info.version} is available. Open settings to download.`,
         });
-        note.on("click", () => showSettingsWindow());
+        note.on("click", () => showSettingsWindow("/settings"));
         note.show();
       }
     });
@@ -1314,7 +1310,7 @@ app.whenReady().then(async () => {
           title: "Update Ready to Install",
           body: `Version ${info.version} has been downloaded. Restart to update.`,
         });
-        note.on("click", () => showSettingsWindow());
+        note.on("click", () => showSettingsWindow("/settings"));
         note.show();
       }
       // No need to keep polling once the update is downloaded
@@ -1354,7 +1350,7 @@ app.whenReady().then(async () => {
           title: "Move Freestyle to Applications",
           body: "Freestyle can\u2019t update from this location. Move it to your Applications folder and relaunch.",
         });
-        note.on("click", () => showSettingsWindow());
+        note.on("click", () => showSettingsWindow("/settings"));
         note.show();
       }
     } else {

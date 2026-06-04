@@ -86,6 +86,7 @@ const pillInnerStyle: React.CSSProperties = {
   fontFamily: "'DM Sans', sans-serif",
   fontSize: 13,
   fontWeight: 500,
+  cursor: "grab",
   WebkitAppRegion: "drag",
 } as React.CSSProperties;
 
@@ -777,11 +778,10 @@ export default function AppPage(): React.JSX.Element {
   }, [stopVisualization, hidePill]);
 
   // ---- Preferences ----
-  // The main process sends either a predefined position string (e.g. "top-center")
-  // or a display-relative alignment token ("custom-top" / "custom-bottom").
-  // Using includes("top") covers both cases correctly on all monitor setups.
   const applyPillPosition = useCallback((pos: string | null | undefined) => {
-    setPillAlign(pos?.includes("top") ? "start" : "end");
+    const isTop =
+      pos === "top-center" || pos === "top-right" || pos === "custom-top";
+    setPillAlign(isTop ? "start" : "end");
     setPillSide(pos?.endsWith("right") ? "right" : "center");
   }, []);
 
@@ -897,7 +897,13 @@ export default function AppPage(): React.JSX.Element {
       width={SVG_WIDTH}
       height={SVG_HEIGHT}
       viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-      style={{ display: "block", flexShrink: 0 }}
+      style={
+        {
+          display: "block",
+          flexShrink: 0,
+          WebkitAppRegion: "no-drag",
+        } as React.CSSProperties
+      }
       role="img"
       aria-label="Audio levels"
     >

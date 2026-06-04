@@ -228,6 +228,9 @@ function getPillAlignmentForCustom(): "custom-top" | "custom-bottom" {
   return wy < midY ? "custom-top" : "custom-bottom";
 }
 
+// Preset positions are relative to the primary display. Custom positions
+// can be on any display — they are saved as absolute screen coordinates
+// and bounds-checked on restore.
 function getAppWindowPosition(): { x: number; y: number } {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.workAreaSize;
@@ -259,7 +262,26 @@ function getAppWindowPosition(): { x: number; y: number } {
         typeof custom.x === "number" &&
         typeof custom.y === "number"
       ) {
-        return custom;
+        const display = screen.getDisplayMatching({
+          x: custom.x,
+          y: custom.y,
+          width: APP_WIDTH,
+          height: APP_HEIGHT,
+        });
+        const wa = display.workArea;
+        if (
+          custom.x >= wa.x &&
+          custom.x + APP_WIDTH <= wa.x + wa.width &&
+          custom.y >= wa.y - APP_HEIGHT &&
+          custom.y <= wa.y + wa.height
+        ) {
+          return custom;
+        }
+        // Saved position is off-screen; reset to default.
+        writeSettings({
+          pillPosition: "bottom-center",
+          pillCustomPosition: undefined,
+        });
       }
       return {
         x: Math.round((width - APP_WIDTH) / 2),
@@ -335,6 +357,17 @@ function createAppWindow(): void {
     // If programmaticTarget is set but coords don't match yet, the window is
     // still mid-animation — ignore until it settles.
     if (programmaticTarget) return;
+
+    // Ignore sub-threshold moves so accidental bumps don't override the preset.
+    const currentSetting = readSettings().pillPosition as string;
+    if (currentSetting !== "custom") {
+      const presetPos = getAppWindowPosition();
+      if (
+        Math.abs(nx - presetPos.x) < 10 &&
+        Math.abs(ny - presetPos.y) < 10
+      )
+        return;
+    }
 
     if (moveTimeout) clearTimeout(moveTimeout);
     moveTimeout = setTimeout(() => {
@@ -1189,6 +1222,18 @@ app.whenReady().then(async () => {
 
   createAppWindow();
 
+  // Clamp the pill to valid display bounds when monitors change.
+  screen.on("display-removed", () => {
+    if (!mainWindow) return;
+    const { x, y } = getAppWindowPosition();
+    setProgrammaticPosition(mainWindow, x, y);
+  });
+  screen.on("display-metrics-changed", () => {
+    if (!mainWindow) return;
+    const { x, y } = getAppWindowPosition();
+    setProgrammaticPosition(mainWindow, x, y);
+  });
+
   if (readSettings().showDashboardOnLaunch !== false) {
     showSettingsWindow();
   }
@@ -1388,19 +1433,12 @@ app.whenReady().then(async () => {
     return pos;
   });
 
-  ipcMain.handle("settings:has-custom-position", () => {
-    const custom = readSettings().pillCustomPosition as
-      | { x: number; y: number }
-      | undefined;
-    return !!(
-      custom &&
-      typeof custom.x === "number" &&
-      typeof custom.y === "number"
-    );
-  });
-
   ipcMain.on("settings:set-pill-position", (_event, position: string) => {
-    writeSettings({ pillPosition: position });
+    if (position === "custom") {
+      writeSettings({ pillPosition: position });
+    } else {
+      writeSettings({ pillPosition: position, pillCustomPosition: undefined });
+    }
     // Reposition the window and notify the renderer for CSS alignment.
     if (mainWindow) {
       const { x, y } = getAppWindowPosition();

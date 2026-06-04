@@ -362,10 +362,7 @@ function createAppWindow(): void {
     const currentSetting = readSettings().pillPosition as string;
     if (currentSetting !== "custom") {
       const presetPos = getAppWindowPosition();
-      if (
-        Math.abs(nx - presetPos.x) < 10 &&
-        Math.abs(ny - presetPos.y) < 10
-      )
+      if (Math.abs(nx - presetPos.x) < 10 && Math.abs(ny - presetPos.y) < 10)
         return;
     }
 

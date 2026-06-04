@@ -885,17 +885,20 @@ function createTray(): void {
   tray = new Tray(trayImage);
   tray.setToolTip("Freestyle");
 
-  // Set the context menu natively so Linux desktop panels register it automatically
-  tray.setContextMenu(buildTrayContextMenu());
+  if (process.platform === "linux") {
+    // Linux desktop panels often don't fire the right-click event, so
+    // assign the menu natively so the OS can register it via DBusMenu.
+    tray.setContextMenu(buildTrayContextMenu());
+  } else {
+    // macOS/Windows: left-click opens settings, right-click shows menu.
+    // Using setContextMenu on macOS would override the click handler.
+    tray.on("right-click", () => {
+      tray!.popUpContextMenu(buildTrayContextMenu());
+    });
+  }
 
-  // Maintain the left-click behavior for macOS and Windows users
   tray.on("click", () => {
     showSettingsWindow();
-  });
-
-  // Right-click: show context menu (rebuilt each time for up-to-date labels)
-  tray.on("right-click", () => {
-    tray!.popUpContextMenu(buildTrayContextMenu());
   });
 }
 
@@ -960,8 +963,11 @@ function rebuildMenus(): void {
   ]);
   Menu.setApplicationMenu(appMenu);
 
-  // Keep the static tray menu (used by Linux panels) in sync with update state
-  tray?.setContextMenu(buildTrayContextMenu());
+  // On Linux the tray menu is static (setContextMenu), so rebuild it
+  // when update state changes. macOS/Windows rebuild on every right-click.
+  if (process.platform === "linux") {
+    tray?.setContextMenu(buildTrayContextMenu());
+  }
 }
 
 // This method will be called when Electron has finished

@@ -745,7 +745,9 @@ async function factoryReset(): Promise<void> {
     app.relaunch();
     app.exit(0);
   } catch (err) {
-    console.error("[factory-reset] failed:", err);
+    log.error(
+      `factory-reset failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
     dialog.showErrorBox(
       "Hard Reset failed",
       `${err instanceof Error ? err.message : String(err)}\n\nThe app may be in a partially reset state. Quit and relaunch manually.`,

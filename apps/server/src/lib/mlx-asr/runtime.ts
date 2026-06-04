@@ -421,13 +421,15 @@ async function downloadRuntime(active: ActiveRuntimeDownload): Promise<void> {
   const runtimeDir = getMlxRuntimeDir();
   const releaseTag = runtimeReleaseTag();
   const tempDir = `${runtimeDir}.downloading`;
+  // Capture the old metadata before the directory is destroyed so
+  // syncedAppVersion survives the re-download.
+  const prevMeta = readInstalledRuntimeMetadata();
   await downloadRuntimeToDir(active, tempDir, url);
 
   rmSync(runtimeDir, { recursive: true, force: true });
   mkdirSync(dirname(runtimeDir), { recursive: true });
   renameSync(tempDir, runtimeDir);
-  const syncedVersion =
-    releaseTag ?? readInstalledRuntimeMetadata()?.syncedAppVersion ?? null;
+  const syncedVersion = releaseTag ?? prevMeta?.syncedAppVersion ?? null;
   writeRuntimeMetadata(runtimeDir, url, syncedVersion);
 
   if (!isManagedMlxRuntimeAvailable()) {

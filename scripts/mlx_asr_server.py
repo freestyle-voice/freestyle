@@ -113,9 +113,10 @@ class _ProgressTqdm:
 
     def _emit(self) -> None:
         if self._is_bytes and _dl_progress is not None and self.total > 0:
-            _dl_progress.bytes_downloaded = self.n
-            _dl_progress.bytes_total = self.total
-            _dl_progress.emit()
+            with self._lock:
+                _dl_progress.bytes_downloaded = self.n
+                _dl_progress.bytes_total = self.total
+                _dl_progress.emit()
 
     def refresh(self) -> None:
         self._emit()

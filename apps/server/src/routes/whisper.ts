@@ -3,13 +3,11 @@ import { Hono } from "hono";
 import { capture } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
-
-const log = createAppLogger("whisper");
-
 import {
   isBinaryAvailable,
   isServerBinaryAvailable,
 } from "../lib/whisper/binary.js";
+
 import {
   getModelsDir,
   WHISPER_MODELS,
@@ -30,6 +28,8 @@ import {
   startInBackground,
   stopServer,
 } from "../lib/whisper/server.js";
+
+const log = createAppLogger("whisper");
 
 const whisper = new Hono()
   .get("/status", (c) => {

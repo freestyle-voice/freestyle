@@ -491,10 +491,8 @@ export class NativeKeyListener {
       this.restartTimer = null;
     }
     if (this.process) {
-      const proc = this.process;
-      proc.removeAllListeners();
       try {
-        proc.kill("SIGTERM");
+        this.process.kill("SIGTERM");
       } catch {
         // Process may already be dead
       }

@@ -198,7 +198,7 @@ export class NativeKeyListener {
 
       this.process!.stderr?.on("data", (data: Buffer) => {
         const text = data.toString().trim();
-        stderrOutput += text + "\n";
+        stderrOutput += `${text}\n`;
         log.debug(text);
       });
 

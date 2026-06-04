@@ -286,8 +286,8 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
     let stdoutBuf = "";
     proc.stdout?.on("data", (data: Buffer) => {
       stdoutBuf += data.toString();
-      let newlineIdx: number;
-      while ((newlineIdx = stdoutBuf.indexOf("\n")) !== -1) {
+      let newlineIdx: number = stdoutBuf.indexOf("\n");
+      while (newlineIdx !== -1) {
         const line = stdoutBuf.slice(0, newlineIdx);
         stdoutBuf = stdoutBuf.slice(newlineIdx + 1);
         try {
@@ -307,6 +307,7 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
         } catch {
           // non-JSON line; ignore
         }
+        newlineIdx = stdoutBuf.indexOf("\n");
       }
     });
 

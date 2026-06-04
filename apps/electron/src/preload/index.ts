@@ -133,6 +133,8 @@ const api = {
   // Pill position
   getPillPosition: (): Promise<string> =>
     ipcRenderer.invoke("settings:pill-position"),
+  hasCustomPosition: (): Promise<boolean> =>
+    ipcRenderer.invoke("settings:has-custom-position"),
   setPillPosition: (position: string): void =>
     ipcRenderer.send("settings:set-pill-position", position),
   onPillPositionChanged: (

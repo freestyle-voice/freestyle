@@ -62,6 +62,7 @@ declare global {
       getFrontmostApp: () => Promise<string | null>;
       // Pill position
       getPillPosition: () => Promise<string>;
+      hasCustomPosition: () => Promise<boolean>;
       setPillPosition: (position: string) => void;
       onPillPositionChanged: (
         callback: (position: string) => void,

@@ -22,7 +22,7 @@ import {
   VolumeOff,
 } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -52,6 +52,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
   const [language, setLanguage] = useState("auto");
   const [outputMode, setOutputMode] = useState("paste");
   const [pillPosition, setPillPosition] = useState("bottom-center");
+  const [hasCustom, setHasCustom] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [transcriptionPrompt, setTranscriptionPrompt] = useState("");
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
@@ -228,7 +229,17 @@ export default function GeneralSettingsPage(): React.JSX.Element {
       .catch(() => {});
     window.api
       ?.getPillPosition()
-      .then(setPillPosition)
+      .then((pos) => {
+        // The main process may return "custom-top" or "custom-bottom" to convey
+        // the display-relative alignment; normalise back to "custom" for the UI.
+        const norm = pos.startsWith("custom") ? "custom" : pos;
+        setPillPosition(norm);
+        if (norm === "custom") setHasCustom(true);
+      })
+      .catch(() => {});
+    window.api
+      ?.hasCustomPosition()
+      .then(setHasCustom)
       .catch(() => {});
     getClient()
       .api.settings[":key"].$get({ param: { key: "sound_enabled" } })
@@ -293,6 +304,14 @@ export default function GeneralSettingsPage(): React.JSX.Element {
       })
       .catch(() => {});
 
+    // Pill position live changes
+    const removePillPos = window.api?.onPillPositionChanged((pos) => {
+      // Normalise custom-top / custom-bottom to "custom" for the dropdown.
+      const norm = pos.startsWith("custom") ? "custom" : pos;
+      setPillPosition(norm);
+      if (norm === "custom") setHasCustom(true);
+    });
+
     checkPermissions();
 
     return () => {
@@ -300,6 +319,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
       removeDownloading?.();
       removeDownloaded?.();
       removeError?.();
+      removePillPos?.();
       if (micPollRef.current) clearInterval(micPollRef.current);
       if (accessibilityPollRef.current)
         clearInterval(accessibilityPollRef.current);
@@ -396,6 +416,19 @@ export default function GeneralSettingsPage(): React.JSX.Element {
     : canSaveRecording
       ? "Release to save · Esc to cancel"
       : "Press a modifier or side mouse button... · Esc to cancel";
+
+  // Build position options once; include "Custom" only if the user has ever
+  // dragged the pill to a custom location.
+  const positionOptions = useMemo<SegmentOption[]>(() => {
+    const opts: SegmentOption[] = [
+      { id: "bottom-center", label: "Bottom · Center" },
+      { id: "bottom-right", label: "Bottom · Right" },
+      { id: "top-center", label: "Top · Center" },
+      { id: "top-right", label: "Top · Right" },
+    ];
+    if (hasCustom) opts.push({ id: "custom", label: "Custom" });
+    return opts;
+  }, [hasCustom]);
 
   return (
     <div
@@ -702,12 +735,7 @@ export default function GeneralSettingsPage(): React.JSX.Element {
           >
             <Segment
               compact
-              options={[
-                { id: "bottom-center", label: "Bottom · Center" },
-                { id: "bottom-right", label: "Bottom · Right" },
-                { id: "top-center", label: "Top · Center" },
-                { id: "top-right", label: "Top · Right" },
-              ]}
+              options={positionOptions}
               active={pillPosition}
               onSelect={handlePillPositionChange}
             />

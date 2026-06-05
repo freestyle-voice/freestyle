@@ -12,10 +12,15 @@ export interface WhisperModelDef {
   speed: string;
   quality: string;
   quantized: boolean;
-  url: string;
 }
 
-const HF_BASE = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
+/**
+ * Hugging Face repo the GGML models are fetched from. Each model's `fileName`
+ * (e.g. `ggml-tiny.bin`) doubles as its path within this repo. Pin `WHISPER_REPO_REVISION`
+ * to a commit SHA for fully reproducible downloads; "main" tracks the latest.
+ */
+export const WHISPER_REPO = "ggerganov/whisper.cpp";
+export const WHISPER_REPO_REVISION = "main";
 
 export const WHISPER_MODELS: WhisperModelDef[] = [
   {
@@ -27,7 +32,6 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     speed: "Fastest",
     quality: "Basic",
     quantized: false,
-    url: `${HF_BASE}/ggml-tiny.bin`,
   },
   {
     id: "tiny-q5_1",
@@ -38,7 +42,6 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     speed: "Fastest",
     quality: "Basic",
     quantized: true,
-    url: `${HF_BASE}/ggml-tiny-q5_1.bin`,
   },
   {
     id: "base",
@@ -49,7 +52,6 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     speed: "Fast",
     quality: "Good",
     quantized: false,
-    url: `${HF_BASE}/ggml-base.bin`,
   },
   {
     id: "base-q5_1",
@@ -60,7 +62,6 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     speed: "Very Fast",
     quality: "Good",
     quantized: true,
-    url: `${HF_BASE}/ggml-base-q5_1.bin`,
   },
   {
     id: "small",
@@ -71,7 +72,6 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     speed: "Medium",
     quality: "Better",
     quantized: false,
-    url: `${HF_BASE}/ggml-small.bin`,
   },
   {
     id: "small-q5_1",
@@ -82,7 +82,6 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     speed: "Fast",
     quality: "Better",
     quantized: true,
-    url: `${HF_BASE}/ggml-small-q5_1.bin`,
   },
   {
     id: "medium",
@@ -93,7 +92,6 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     speed: "Slow",
     quality: "High",
     quantized: false,
-    url: `${HF_BASE}/ggml-medium.bin`,
   },
   {
     id: "medium-q5_0",
@@ -104,7 +102,6 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     speed: "Medium",
     quality: "High",
     quantized: true,
-    url: `${HF_BASE}/ggml-medium-q5_0.bin`,
   },
   {
     id: "large",
@@ -115,7 +112,6 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     speed: "Slow",
     quality: "Best",
     quantized: false,
-    url: `${HF_BASE}/ggml-large-v3-turbo.bin`,
   },
 ];
 

@@ -16,6 +16,8 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createAppLogger } from "@freestyle/utils";
+import { downloadFileToCacheDir } from "@huggingface/hub";
+import { progressFetch } from "../hf/progress.js";
 import {
   getBinDir,
   getModelPath,
@@ -23,6 +25,8 @@ import {
   getWhisperModel,
   WHISPER_CPP_VERSION,
   WHISPER_MODELS,
+  WHISPER_REPO,
+  WHISPER_REPO_REVISION,
   type WhisperModelDef,
 } from "./constants.js";
 
@@ -190,27 +194,19 @@ export async function downloadModel(modelId: string): Promise<void> {
   const tempPath = `${destPath}.downloading`;
 
   try {
-    const res = await fetch(model.url, {
-      signal: controller.signal,
-      redirect: "follow",
+    // @huggingface/hub fetches into the HF cache (content-addressed by etag, so
+    // a completed file is verified rather than size-guessed) using our custom
+    // fetch for progress + cancellation.
+    const blobPath = await downloadFileToCacheDir({
+      repo: { type: "model", name: WHISPER_REPO },
+      path: model.fileName,
+      revision: WHISPER_REPO_REVISION,
+      fetch: progressFetch(active, controller.signal),
     });
 
-    if (!res.ok) {
-      throw new Error(`Download failed: HTTP ${res.status} ${res.statusText}`);
-    }
-
-    const contentLength = res.headers.get("content-length");
-    if (contentLength) {
-      active.bytesTotal = Number.parseInt(contentLength, 10);
-    }
-
-    if (!res.body) {
-      throw new Error("No response body received");
-    }
-
-    const fileStream = createWriteStream(tempPath);
-    await pipeline(webBodyToReadable(res.body, active), fileStream);
-
+    // Materialize at the flat path the inference layer loads from. Copy via a
+    // temp file + rename so a partially-written model is never seen as ready.
+    copyFileSync(blobPath, tempPath);
     renameSync(tempPath, destPath);
     activeDownloads.delete(modelId);
   } catch (err) {
@@ -465,15 +461,7 @@ async function downloadWindowsBinaries(): Promise<void> {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function webBodyToReadable(
-  body: ReadableStream<Uint8Array>,
-  progress?: {
-    bytesDownloaded: number;
-    lastUpdate: number;
-    lastBytes: number;
-    speedBps: number;
-  },
-): Readable {
+function webBodyToReadable(body: ReadableStream<Uint8Array>): Readable {
   const reader = body.getReader();
   return new Readable({
     async read() {
@@ -482,17 +470,6 @@ function webBodyToReadable(
         if (done) {
           this.push(null);
           return;
-        }
-        if (progress) {
-          progress.bytesDownloaded += value.byteLength;
-          const now = Date.now();
-          const elapsed = now - progress.lastUpdate;
-          if (elapsed >= 500) {
-            const bytesDelta = progress.bytesDownloaded - progress.lastBytes;
-            progress.speedBps = Math.round((bytesDelta / elapsed) * 1000);
-            progress.lastUpdate = now;
-            progress.lastBytes = progress.bytesDownloaded;
-          }
         }
         this.push(Buffer.from(value));
       } catch (err) {

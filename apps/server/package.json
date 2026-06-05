@@ -27,6 +27,7 @@
     "@hono/mcp": "^0.3.0",
     "@hono/node-server": "^2.0.4",
     "@hono/zod-validator": "^0.8.0",
+    "@huggingface/hub": "^2.13.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^6.0.191",
     "hono": "^4.12.22",

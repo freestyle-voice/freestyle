@@ -50,6 +50,8 @@ import server, {
   closeDb,
   prefetchManagedMlxRuntimeForAppRelease,
   reconcileUnsupportedMlxVoiceDefault,
+  stopMlxServer,
+  stopWhisperServer,
 } from "@freestyle/server";
 import { createAppLogger } from "@freestyle/utils";
 import { serve } from "@hono/node-server";
@@ -694,12 +696,8 @@ async function factoryReset(): Promise<void> {
   if (response !== 1) return;
 
   try {
-    await fetch(`http://127.0.0.1:${serverPort}/api/whisper/server/stop`, {
-      method: "POST",
-    }).catch(() => {});
-    await fetch(`http://127.0.0.1:${serverPort}/api/mlx-asr/server/stop`, {
-      method: "POST",
-    }).catch(() => {});
+    await stopWhisperServer().catch(() => {});
+    await stopMlxServer().catch(() => {});
 
     if (keyListener) {
       keyListener.stop();
@@ -1733,12 +1731,18 @@ let isQuitting = false;
 let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 
 function cleanupBeforeQuit(): void {
-  fetch(`http://127.0.0.1:${serverPort}/api/whisper/server/stop`, {
-    method: "POST",
-  }).catch(() => {});
-  fetch(`http://127.0.0.1:${serverPort}/api/mlx-asr/server/stop`, {
-    method: "POST",
-  }).catch(() => {});
+  stopWhisperServer().catch(() => {});
+  stopMlxServer().catch(() => {});
+  if (keyListener) {
+    keyListener.stop();
+    keyListener = null;
+  }
+  if (micListener) {
+    micListener.stop();
+    micListener = null;
+  }
+  stopHotkeyRecorderProcess();
+  globalShortcut.unregisterAll();
   if (httpServer) {
     httpServer.close();
     httpServer = null;

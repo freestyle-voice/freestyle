@@ -904,10 +904,7 @@ export default function ModelsPage(): React.JSX.Element {
 
   return (
     <PageShell>
-      <PageHeader
-        title="Models"
-        subtitle="Choose how Freestyle listens — on-device for privacy, or cloud for speed and reach. Add an optional model to clean up what you say."
-      />
+      <PageHeader title="Models" />
       <div className="space-y-4">
         <div ref={pairCardRef}>
           <PairCard

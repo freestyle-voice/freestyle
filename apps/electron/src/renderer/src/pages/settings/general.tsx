@@ -433,9 +433,6 @@ export default function GeneralSettingsPage(): React.JSX.Element {
             <span className="serif-italic text-primary">Settings</span>
             <span>. </span>
           </h1>
-          <p className="text-muted-foreground mt-2.5 max-w-[580px] text-[14px] leading-[1.5]">
-            Configure how Freestyle listens, speaks, and looks.
-          </p>
         </div>
 
         {updateAvailable && (

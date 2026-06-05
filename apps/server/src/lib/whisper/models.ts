@@ -194,9 +194,6 @@ export async function downloadModel(modelId: string): Promise<void> {
   const tempPath = `${destPath}.downloading`;
 
   try {
-    // @huggingface/hub fetches into the HF cache (content-addressed by etag, so
-    // a completed file is verified rather than size-guessed) using our custom
-    // fetch for progress + cancellation.
     const blobPath = await downloadFileToCacheDir({
       repo: { type: "model", name: WHISPER_REPO },
       path: model.fileName,
@@ -204,8 +201,6 @@ export async function downloadModel(modelId: string): Promise<void> {
       fetch: progressFetch(active, controller.signal),
     });
 
-    // Materialize at the flat path the inference layer loads from. Copy via a
-    // temp file + rename so a partially-written model is never seen as ready.
     copyFileSync(blobPath, tempPath);
     renameSync(tempPath, destPath);
     activeDownloads.delete(modelId);

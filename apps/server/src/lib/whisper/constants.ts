@@ -14,11 +14,6 @@ export interface WhisperModelDef {
   quantized: boolean;
 }
 
-/**
- * Hugging Face repo the GGML models are fetched from. Each model's `fileName`
- * (e.g. `ggml-tiny.bin`) doubles as its path within this repo. Pin `WHISPER_REPO_REVISION`
- * to a commit SHA for fully reproducible downloads; "main" tracks the latest.
- */
 export const WHISPER_REPO = "ggerganov/whisper.cpp";
 export const WHISPER_REPO_REVISION = "main";
 

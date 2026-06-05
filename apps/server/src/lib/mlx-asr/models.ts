@@ -1,22 +1,16 @@
-import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { listFiles, snapshotDownload } from "@huggingface/hub";
 import { getDb } from "../db.js";
+import { progressFetch } from "../hf/progress.js";
 import {
   getMlxAsrModel,
   MLX_ASR_MODELS,
   MLX_ASR_PROVIDER_ID,
   type MlxAsrModelDef,
 } from "./constants.js";
-import {
-  describeMlxSetupBlocker,
-  findPythonExecutable,
-  getMlxAsrServerScriptPath,
-  getMlxAsrWorkerPath,
-  isMlxAudioInstalled,
-  resetPythonProbe,
-} from "./python.js";
+import { describeMlxSetupBlocker, resetPythonProbe } from "./python.js";
 import {
   cancelMlxRuntimeDownload,
   ensureMlxRuntimeDownloaded,
@@ -51,7 +45,7 @@ export interface MlxModelDownloadState {
 }
 
 interface ActiveMlxDownload {
-  proc: ChildProcess | null;
+  controller: AbortController;
   phase: MlxDownloadPhase;
   bytesDownloaded: number;
   bytesTotal: number;
@@ -59,7 +53,6 @@ interface ActiveMlxDownload {
   lastUpdate: number;
   lastBytes: number;
   error?: string;
-  stderr: string;
 }
 
 const activeDownloads = new Map<string, ActiveMlxDownload>();
@@ -108,35 +101,6 @@ export function isMlxModelDownloaded(model: MlxAsrModelDef): boolean {
   } catch {
     return false;
   }
-}
-
-function getRunner():
-  | { command: string; argsPrefix: string[] }
-  | { error: string } {
-  const workerPath = getMlxAsrWorkerPath();
-  if (existsSync(workerPath)) {
-    return { command: workerPath, argsPrefix: [] };
-  }
-
-  const python = findPythonExecutable();
-  if (!python) {
-    return {
-      error:
-        "Bundled MLX ASR worker or Python 3 not found. Set FREESTYLE_MLX_ASR_WORKER or FREESTYLE_PYTHON.",
-    };
-  }
-  if (!isMlxAudioInstalled(python)) {
-    return {
-      error: `MLX ASR Python dependencies are not installed for ${python}. Run: ${python} -m pip install mlx-audio`,
-    };
-  }
-
-  const scriptPath = getMlxAsrServerScriptPath();
-  if (!existsSync(scriptPath)) {
-    return { error: `MLX ASR worker script not found: ${scriptPath}` };
-  }
-
-  return { command: python, argsPrefix: [scriptPath] };
 }
 
 export function getMlxModelStatus(
@@ -230,14 +194,13 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
 
   const now = Date.now();
   const active: ActiveMlxDownload = {
-    proc: null,
+    controller: new AbortController(),
     phase: "building_binary",
     bytesDownloaded: 0,
     bytesTotal: 0,
     speedBps: 0,
     lastUpdate: now,
     lastBytes: 0,
-    stderr: "",
   };
   activeDownloads.set(modelId, active);
 
@@ -248,21 +211,21 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
     );
   });
 
-  let runner = getRunner();
-  if ("error" in runner) {
+  let blocker = describeMlxSetupBlocker();
+  if (blocker) {
     try {
       await ensureMlxRuntimeDownloaded();
       resetPythonProbe();
-      runner = getRunner();
     } catch (err) {
       active.error = err instanceof Error ? err.message : String(err);
       throw err;
     }
-  }
 
-  if ("error" in runner) {
-    active.error = runner.error;
-    throw new Error(runner.error);
+    blocker = describeMlxSetupBlocker();
+    if (blocker) {
+      active.error = blocker;
+      throw new Error(blocker);
+    }
   }
 
   active.phase = "downloading_model";
@@ -272,78 +235,33 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
   active.lastUpdate = Date.now();
   active.lastBytes = 0;
 
-  await new Promise<void>((resolve, reject) => {
-    const proc = spawn(
-      runner.command,
-      [...runner.argsPrefix, "--model", model.hfId, "--download-model"],
-      {
-        stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env, PYTHONUNBUFFERED: "1" },
-      },
-    );
-    active.proc = proc;
+  const repo = { type: "model", name: model.hfId } as const;
 
-    let stdoutBuf = "";
-    proc.stdout?.on("data", (data: Buffer) => {
-      stdoutBuf += data.toString();
-      let newlineIdx: number = stdoutBuf.indexOf("\n");
-      while (newlineIdx !== -1) {
-        const line = stdoutBuf.slice(0, newlineIdx);
-        stdoutBuf = stdoutBuf.slice(newlineIdx + 1);
-        try {
-          const msg = JSON.parse(line);
-          if (msg.type === "progress") {
-            active.bytesDownloaded = msg.bytesDownloaded ?? 0;
-            active.bytesTotal = msg.bytesTotal ?? 0;
-            const ts = Date.now();
-            const elapsed = ts - active.lastUpdate;
-            if (elapsed >= 500) {
-              const delta = active.bytesDownloaded - active.lastBytes;
-              active.speedBps = Math.round((delta / elapsed) * 1000);
-              active.lastUpdate = ts;
-              active.lastBytes = active.bytesDownloaded;
-            }
-          }
-        } catch {
-          // non-JSON line; ignore
-        }
-        newlineIdx = stdoutBuf.indexOf("\n");
-      }
+  try {
+    let total = 0;
+    for await (const entry of listFiles({ repo, recursive: true })) {
+      if (entry.type === "file") total += entry.size ?? 0;
+    }
+    active.bytesTotal = total;
+  } catch {
+    active.bytesTotal = 0;
+  }
+
+  try {
+    await snapshotDownload({
+      repo,
+      cacheDir: hfCacheRoot(),
+      fetch: progressFetch(active, active.controller.signal),
     });
-
-    proc.stderr?.on("data", (data: Buffer) => {
-      active.stderr = `${active.stderr}${data.toString()}`.slice(-2_000);
-    });
-
-    proc.on("error", (err) => {
-      active.error = `Failed to start MLX model download: ${err.message}`;
-      reject(err);
-    });
-
-    proc.on("close", (code, signal) => {
-      if (!activeDownloads.has(modelId)) {
-        resolve();
-        return;
-      }
-
-      if (signal) {
-        activeDownloads.delete(modelId);
-        resolve();
-        return;
-      }
-
-      if (code === 0) {
-        activeDownloads.delete(modelId);
-        resolve();
-        return;
-      }
-
-      active.error =
-        active.stderr.trim() ||
-        `MLX model download failed with exit code ${code ?? "unknown"}`;
-      reject(new Error(active.error));
-    });
-  });
+    activeDownloads.delete(modelId);
+  } catch (err) {
+    if (active.controller.signal.aborted) {
+      activeDownloads.delete(modelId);
+      return;
+    }
+    active.error = err instanceof Error ? err.message : String(err);
+    throw err;
+  }
 }
 
 export function cancelMlxDownload(modelId: string): boolean {
@@ -352,7 +270,15 @@ export function cancelMlxDownload(modelId: string): boolean {
   if (active.phase === "building_binary") {
     cancelMlxRuntimeDownload();
   }
-  active.proc?.kill();
+  active.controller.abort();
+  if (active.phase === "downloading_model") {
+    const model = getMlxAsrModel(modelId);
+    if (model) {
+      try {
+        rmSync(hfRepoCacheDir(model.hfId), { recursive: true, force: true });
+      } catch {}
+    }
+  }
   activeDownloads.delete(modelId);
   return true;
 }

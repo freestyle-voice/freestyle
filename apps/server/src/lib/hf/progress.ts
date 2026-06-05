@@ -1,15 +1,3 @@
-/**
- * Progress-tracking wrapper around `fetch`, used to drive the download progress
- * UI while delegating the actual transfer + caching to `@huggingface/hub`.
- *
- * The hub download helpers accept a custom `fetch`. We pass one that streams the
- * response body through a byte counter (with the same 500ms speed window the
- * legacy raw-fetch path used) and is bound to an AbortSignal for cancellation.
- *
- * `bytesTotal` is owned by the caller (set from the model's known size) rather
- * than read from `content-length`, because the hub client may issue several
- * requests (metadata + blob) and only the blob carries the real size.
- */
 export interface ProgressSink {
   bytesDownloaded: number;
   bytesTotal: number;

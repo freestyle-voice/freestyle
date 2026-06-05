@@ -19,6 +19,18 @@ let restartCount = 0;
 let stabilityTimer: ReturnType<typeof setTimeout> | null = null;
 let serverFailed = false;
 
+function stopServerOnExit(): void {
+  const proc = serverProcess;
+  if (!proc) return;
+  try {
+    proc.kill(process.platform === "win32" ? undefined : "SIGTERM");
+  } catch {
+    // best effort during process teardown
+  }
+}
+
+process.once("exit", stopServerOnExit);
+
 export function isServerRunning(): boolean {
   return serverProcess !== null && serverReady;
 }

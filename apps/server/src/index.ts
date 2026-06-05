@@ -82,6 +82,8 @@ const app = new Hono()
   .route("/stream", stream);
 
 export { closeDb } from "./lib/db.js";
+export { stopMlxServer } from "./lib/mlx-asr/server.js";
+export { stopServer as stopWhisperServer } from "./lib/whisper/server.js";
 export {
   activateManagedMlxRuntimeForAppVersion,
   autoStartMlxAsrServer,

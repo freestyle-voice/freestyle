@@ -235,10 +235,7 @@ export default function VocabularyPage(): React.JSX.Element {
         className="responsive-page-scroll flex-1 overflow-auto"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
-        <PageHeader
-          title="Vocabulary"
-          subtitle="Names and phrases you say aloud. The speech model uses these during transcription—not voice shortcuts."
-        />
+        <PageHeader title="Vocabulary" />
 
         {isEmpty && !showForm ? (
           <EmptyState

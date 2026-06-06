@@ -47,7 +47,7 @@ function normalizePillPos(pos: string): string {
 // Page
 // ---------------------------------------------------------------------------
 
-export default function GeneralSettingsPage(): React.JSX.Element {
+export default function SettingsPage(): React.JSX.Element {
   const { theme, setTheme } = useTheme();
   const [devices, setDevices] = useState<AudioDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");

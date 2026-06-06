@@ -3,16 +3,16 @@ import "./fonts.css";
 
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import { initApiBase } from "@renderer/lib/api";
+import OnboardingPage from "@renderer/onboarding";
+import DictionaryPage from "@renderer/pages/dictionary";
+import FormatsPage from "@renderer/pages/formats";
+import HistoryPage from "@renderer/pages/history";
+import ModelsPage from "@renderer/pages/models";
 import NotFoundPage from "@renderer/pages/not-found";
-import OnboardingPage from "@renderer/pages/onboarding";
-import DictionaryPage from "@renderer/pages/settings/dictionary";
-import FormatsPage from "@renderer/pages/settings/formats";
-import GeneralSettingsPage from "@renderer/pages/settings/general";
-import HistoryPage from "@renderer/pages/settings/history";
-import ModelsPage from "@renderer/pages/settings/models";
-import VocabularyPage from "@renderer/pages/settings/vocabulary";
-import AppShell from "@renderer/pages/shell";
+import SettingsPage from "@renderer/pages/settings";
 import TodayPage from "@renderer/pages/today";
+import VocabularyPage from "@renderer/pages/vocabulary";
+import AppShell from "@renderer/shell";
 import { ThemeProvider } from "next-themes";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -47,7 +47,7 @@ createRoot(document.getElementById("root")!).render(
             <Route element={<AppShell />}>
               <Route path="/today" element={<TodayPage />} />
               <Route element={<PagePad />}>
-                <Route path="/settings" element={<GeneralSettingsPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
                 <Route
                   path="/settings/general"
                   element={<Navigate to="/settings" replace />}

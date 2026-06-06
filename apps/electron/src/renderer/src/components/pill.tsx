@@ -1,5 +1,5 @@
-import "./globals.css";
-import "./fonts.css";
+import "../globals.css";
+import "../fonts.css";
 
 import { initApiBase } from "@renderer/lib/api";
 import AppPage from "@renderer/pages/app";

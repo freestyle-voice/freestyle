@@ -603,12 +603,12 @@ export default function ModelsPage(): React.JSX.Element {
       const activeModels: string[] = [];
       if (defaultVoice?.provider === provider)
         activeModels.push(`Voice: ${defaultVoice.model_name}`);
-      if (defaultLlm?.provider === provider)
+      if (llmCleanup && defaultLlm?.provider === provider)
         activeModels.push(`LLM: ${defaultLlm.model_name}`);
       setDeleteProvider(provider);
       setDeleteBlockedBy(activeModels);
     },
-    [defaultVoice, defaultLlm],
+    [defaultVoice, defaultLlm, llmCleanup],
   );
 
   const confirmDeleteProvider = useCallback(async () => {

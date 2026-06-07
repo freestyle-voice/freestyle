@@ -17,6 +17,7 @@ export function PairCard({
   onToggleCleanup,
   onChangeVoice,
   onChangeLlm,
+  onConfigureWarming,
 }: {
   voice: ConfiguredModel | undefined;
   llm: ConfiguredModel | undefined;
@@ -24,6 +25,8 @@ export function PairCard({
   onToggleCleanup: (next: boolean) => void;
   onChangeVoice: () => void;
   onChangeLlm: () => void;
+  /** When set, shows a "Configure model warming" link by the voice button. */
+  onConfigureWarming?: () => void;
 }): React.JSX.Element {
   return (
     <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
@@ -34,6 +37,17 @@ export function PairCard({
         cta="Change"
         primary
         onChange={onChangeVoice}
+        accessory={
+          onConfigureWarming ? (
+            <button
+              type="button"
+              onClick={onConfigureWarming}
+              className="text-primary ml-auto text-[12px] font-medium underline-offset-2 hover:underline"
+            >
+              Configure model warming
+            </button>
+          ) : undefined
+        }
       />
       <div className="border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0">
         <PairSide
@@ -63,6 +77,7 @@ function PairSide({
   onToggle,
   onChange,
   dimmed,
+  accessory,
 }: {
   kicker: string;
   modelName: string | undefined;
@@ -73,6 +88,7 @@ function PairSide({
   onToggle?: (next: boolean) => void;
   onChange: () => void;
   dimmed?: boolean;
+  accessory?: React.ReactNode;
 }): React.JSX.Element {
   return (
     <div
@@ -130,6 +146,7 @@ function PairSide({
         >
           {cta}
         </button>
+        {accessory}
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { Eyebrow, PageHeader, PageShell } from "./page-chrome";
 import { PairCard } from "./pair-card";
@@ -32,6 +33,7 @@ export default function ModelsPage(): React.JSX.Element {
   const [pendingProviderDelete, setPendingProviderDelete] = useState<
     string | null
   >(null);
+  const [warmingOpen, setWarmingOpen] = useState(false);
 
   // -------------------------------------------------------------------------
   // Modal flow
@@ -129,6 +131,13 @@ export default function ModelsPage(): React.JSX.Element {
     (c) => c.provider === "local-whisper" || c.provider === "local-mlx",
   );
 
+  // Show the MLX warming control when MLX is the active voice engine, or the
+  // platform supports MLX and at least one MLX model is downloaded.
+  const showMlxWarming =
+    m.defaultVoice?.provider === "local-mlx" ||
+    (!!m.mlxStatus?.platformSupported &&
+      m.mlxStatus.models.some((model) => model.status === "ready"));
+
   return (
     <PageShell>
       <PageHeader title="Models" />
@@ -140,6 +149,9 @@ export default function ModelsPage(): React.JSX.Element {
           onToggleCleanup={m.setCleanup}
           onChangeVoice={openVoice}
           onChangeLlm={openLlm}
+          onConfigureWarming={
+            showMlxWarming ? () => setWarmingOpen(true) : undefined
+          }
         />
 
         <KeysSection
@@ -157,6 +169,15 @@ export default function ModelsPage(): React.JSX.Element {
           onDelete={setPendingProviderDelete}
         />
       </div>
+
+      {warmingOpen && (
+        <MlxWarmingDialog
+          keepAliveMinutes={m.mlxKeepAliveMinutes}
+          blockedReason={m.mlxStatus?.blockedReason ?? null}
+          onChange={m.saveMlxKeepAliveMinutes}
+          onClose={() => setWarmingOpen(false)}
+        />
+      )}
 
       {modal && (
         <ModelModal

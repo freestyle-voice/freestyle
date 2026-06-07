@@ -9,10 +9,19 @@ import {
   type WhisperStatus,
 } from "@renderer/lib/models";
 
+import {
+  DEFAULT_MLX_KEEP_ALIVE_MINUTES,
+  MAX_MLX_KEEP_ALIVE_MINUTES,
+} from "./constants";
 import type { ConfiguredModel } from "./types";
 
 export function displayName(providerId: string, fallback?: string): string {
   return displayProviderName(providerId, fallback);
+}
+
+export function clampMlxKeepAliveMinutes(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_MLX_KEEP_ALIVE_MINUTES;
+  return Math.min(Math.max(Math.round(value), 0), MAX_MLX_KEEP_ALIVE_MINUTES);
 }
 
 export function groupByProvider(

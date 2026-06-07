@@ -1,0 +1,2 @@
+export const DEFAULT_MLX_KEEP_ALIVE_MINUTES = 10;
+export const MAX_MLX_KEEP_ALIVE_MINUTES = 10;

@@ -7,8 +7,13 @@ import type {
 } from "@renderer/lib/models";
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_MLX_KEEP_ALIVE_MINUTES } from "./constants";
 import type { ApiKeyEntry, ConfiguredModel } from "./types";
-import { buildSettingsVoiceItems, groupByProvider } from "./utils";
+import {
+  buildSettingsVoiceItems,
+  clampMlxKeepAliveMinutes,
+  groupByProvider,
+} from "./utils";
 
 const IS_MAC =
   typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
@@ -34,6 +39,7 @@ export interface UseModels {
   whisperStatus: WhisperStatus | null;
   mlxStatus: MlxAsrStatus | null;
   llmCleanup: boolean;
+  mlxKeepAliveMinutes: number;
 
   // Derived
   keyProviders: Set<string>;
@@ -64,6 +70,7 @@ export interface UseModels {
   deleteLocal: (defId: string, engine?: "whisper" | "mlx") => Promise<void>;
   selectLocalLlmModel: (modelName: string) => Promise<void>;
   setCleanup: (next: boolean) => void;
+  saveMlxKeepAliveMinutes: (minutes: number) => void;
   deleteProvider: (provider: string) => Promise<void>;
 }
 
@@ -78,6 +85,9 @@ export function useModels(): UseModels {
     null,
   );
   const [mlxStatus, setMlxStatus] = useState<MlxAsrStatus | null>(null);
+  const [mlxKeepAliveMinutes, setMlxKeepAliveMinutes] = useState(
+    DEFAULT_MLX_KEEP_ALIVE_MINUTES,
+  );
 
   // Local LLM (Ollama / LM Studio) connection — simplified inline form state.
   const [localUrl, setLocalUrl] = useState("http://localhost:11434");
@@ -101,6 +111,7 @@ export function useModels(): UseModels {
         cleanupRes,
         localUrlRes,
         localKeyRes,
+        mlxKeepAliveRes,
       ] = await Promise.all([
         client.api.models.available.$get(),
         client.api.models.configured.$get(),
@@ -109,6 +120,9 @@ export function useModels(): UseModels {
         client.api.settings[":key"].$get({ param: { key: "local_llm_url" } }),
         client.api.settings[":key"].$get({
           param: { key: "local_llm_api_key" },
+        }),
+        client.api.settings[":key"].$get({
+          param: { key: "mlx_asr_keep_alive_minutes" },
         }),
       ]);
       if (availRes.ok) setAvailable(await availRes.json());
@@ -125,6 +139,13 @@ export function useModels(): UseModels {
       if (localKeyRes.ok) {
         const data = await localKeyRes.json();
         if ("value" in data && data.value) setLocalApiKey(data.value);
+      }
+      if (mlxKeepAliveRes.ok) {
+        const data = await mlxKeepAliveRes.json();
+        const minutes = "value" in data ? Number(data.value) : Number.NaN;
+        if (Number.isFinite(minutes)) {
+          setMlxKeepAliveMinutes(clampMlxKeepAliveMinutes(minutes));
+        }
       }
     } catch (err) {
       console.error("Failed to load models data:", err);
@@ -157,6 +178,11 @@ export function useModels(): UseModels {
       if (res.ok) {
         const data: MlxAsrStatus = await res.json();
         setMlxStatus(data);
+        if (Number.isFinite(data.keepAliveMinutes)) {
+          setMlxKeepAliveMinutes(
+            clampMlxKeepAliveMinutes(data.keepAliveMinutes),
+          );
+        }
         return data;
       }
     } catch (err) {
@@ -410,6 +436,23 @@ export function useModels(): UseModels {
       .catch((err) => console.error("Failed to save LLM cleanup:", err));
   }, []);
 
+  // Persist the MLX keep-alive window. At 0 ("cold start") also stop the
+  // running server so the model unloads immediately.
+  const saveMlxKeepAliveMinutes = useCallback((minutes: number) => {
+    const next = clampMlxKeepAliveMinutes(minutes);
+    setMlxKeepAliveMinutes(next);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: "mlx_asr_keep_alive_minutes" },
+        json: { value: String(next) },
+      })
+      .then(() => {
+        if (next !== 0) return;
+        return getClient().api["mlx-asr"].server.stop.$post();
+      })
+      .catch((err) => console.error("Failed to save MLX ASR keep-alive:", err));
+  }, []);
+
   const deleteProvider = useCallback(
     async (provider: string) => {
       const client = getClient();
@@ -497,6 +540,7 @@ export function useModels(): UseModels {
     whisperStatus,
     mlxStatus,
     llmCleanup,
+    mlxKeepAliveMinutes,
     keyProviders,
     defaultVoice,
     defaultLlm,
@@ -523,6 +567,7 @@ export function useModels(): UseModels {
     deleteLocal,
     selectLocalLlmModel,
     setCleanup,
+    saveMlxKeepAliveMinutes,
     deleteProvider,
   };
 }

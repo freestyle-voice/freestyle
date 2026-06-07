@@ -211,13 +211,11 @@ export default function AppPage(): React.JSX.Element {
       } else {
         const combined = nonEmpty.map((r) => r.raw).join(" ");
         try {
-          const res = await fetch(`${getApiBase()}/api/post-process`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          const res = await getClient().api["post-process"].$post({
+            json: {
               text: combined,
               appContext: appContextRef.current,
-            }),
+            },
           });
           if (!pillActiveRef.current) {
             return;

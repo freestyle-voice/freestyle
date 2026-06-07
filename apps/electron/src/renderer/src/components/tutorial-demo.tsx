@@ -1,5 +1,5 @@
 import { formatAcceleratorKeys } from "@renderer/hooks/use-hotkey-recorder";
-import { getApiBase } from "@renderer/lib/api";
+import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -92,7 +92,8 @@ export function TutorialDemo({
       if (tokens.length > 0) setHotkeyTokens(tokens);
       return;
     }
-    fetch(`${getApiBase()}/api/settings/hotkey`)
+    getClient()
+      .api.settings[":key"].$get({ param: { key: "hotkey" } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { value?: string } | null) => {
         const val = data?.value || "Alt+Space";

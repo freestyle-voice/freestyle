@@ -1,5 +1,5 @@
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
-import { getApiBase } from "@renderer/lib/api";
+import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -114,21 +114,24 @@ function buildModelBuckets(entries: HistoryEntry[]): UsageBucket[] {
 export default function TodayPage(): React.JSX.Element {
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
 
-  const loadToday = useCallback(() => {
-    const params = new URLSearchParams({
-      limit: "200",
-      orderBy: "-created_at",
-    });
-    fetch(`${getApiBase()}/api/history?${params}`)
-      .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((data: { items: HistoryEntry[] }) => {
-        const now = new Date();
-        const todaysEntries = data.items.filter((e) =>
-          isSameLocalDay(parseUtc(e.created_at), now),
-        );
-        setEntries(todaysEntries);
-      })
-      .catch(() => setEntries([]));
+  const loadToday = useCallback(async () => {
+    try {
+      const res = await getClient().api.history.$get({
+        query: { limit: "200", orderBy: "-created_at" },
+      });
+      if (!res.ok) {
+        setEntries([]);
+        return;
+      }
+      const data = await res.json();
+      const now = new Date();
+      const todaysEntries = (data.items as HistoryEntry[]).filter((e) =>
+        isSameLocalDay(parseUtc(e.created_at), now),
+      );
+      setEntries(todaysEntries);
+    } catch {
+      setEntries([]);
+    }
   }, []);
 
   useEffect(() => {

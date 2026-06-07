@@ -105,6 +105,12 @@ class MlxLocalStreamingSession implements StreamSession {
 
   reset(): void {
     this.clearTimer();
+    // If a final inference is still in flight, resolve it immediately with
+    // whatever partial text we have so the caller's promise does not hang
+    // until the 30 s timeout.
+    if (this.inFlight && this.commitRequested) {
+      this.opts.callbacks.onFinal(this.lastText);
+    }
     this.chunks = [];
     this.sampleCount = 0;
     this.canceled = false;

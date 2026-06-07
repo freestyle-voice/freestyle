@@ -477,9 +477,32 @@ function createSettingsWindow(initialPath?: string): void {
   settingsWindow.loadURL(getDashboardURL(startPath));
 }
 
+/**
+ * Resolves once a freshly-created pill window has finished loading and is
+ * visible.  `null` when no deferred show is in progress.
+ */
+let pillReadyPromise: Promise<void> | null = null;
+
 function showPill(): void {
   if (!mainWindow) {
     createAppWindow();
+    // The window was just created with `show: false` and is still loading.
+    // Defer showing until the renderer finishes loading so IPC messages
+    // (e.g. hotkey:down) sent immediately after are not lost.
+    pillReadyPromise = new Promise<void>((resolve) => {
+      mainWindow!.webContents.once("did-finish-load", () => {
+        pillReadyPromise = null;
+        if (!mainWindow) {
+          resolve();
+          return;
+        }
+        const { x, y } = getAppWindowPosition();
+        setProgrammaticPosition(mainWindow, x, y);
+        mainWindow.showInactive();
+        registerPillEscape();
+        resolve();
+      });
+    });
     return;
   }
 
@@ -489,8 +512,10 @@ function showPill(): void {
     mainWindow.showInactive();
   }
 
-  // Register Escape as a global shortcut while the pill is visible
-  // so the user can cancel recording/transcription.
+  registerPillEscape();
+}
+
+function registerPillEscape(): void {
   if (!globalShortcut.isRegistered("Escape")) {
     globalShortcut.register("Escape", () => {
       if (mainWindow?.isVisible()) {
@@ -1582,6 +1607,14 @@ function loadHotkeyModeFromDB(): "hold" | "toggle" {
 
 function sendHotkeyDown(): void {
   showPill();
+  if (pillReadyPromise) {
+    // The pill window is still loading — defer IPC until it can receive it.
+    void pillReadyPromise.then(() => {
+      mainWindow?.webContents.send("hotkey:down");
+      settingsWindow?.webContents.send("hotkey:down");
+    });
+    return;
+  }
   mainWindow?.webContents.send("hotkey:down");
   settingsWindow?.webContents.send("hotkey:down");
 }

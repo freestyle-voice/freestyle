@@ -826,6 +826,14 @@ export default function AppPage(): React.JSX.Element {
       if (s === "idle" || s === "error") {
         startRecording(false);
       } else if (s === "transcribing" && !recordingActiveRef.current) {
+        // Resolve the pending stream promise so the previous transcription
+        // does not hang for 30 s waiting for a result that will be dropped
+        // by the generation counter on the server side.
+        const resolver = streamResolverRef.current;
+        if (resolver) {
+          streamResolverRef.current = null;
+          resolver({ raw: "", cleaned: "" });
+        }
         startRecording(true);
       }
     });

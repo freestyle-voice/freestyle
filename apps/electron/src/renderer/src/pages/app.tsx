@@ -106,6 +106,17 @@ interface TranscribeResult {
   error?: string;
 }
 
+/**
+ * The app context (process name + window title) can contain characters
+ * outside ISO-8859-1 — e.g. a Cyrillic file path in the Notepad++ title
+ * bar. HTTP header values only allow Latin-1, so passing the raw JSON
+ * makes fetch() throw "Failed to execute 'fetch'". Percent-encode it so
+ * the header is always byte-safe; the server decodes it back.
+ */
+function encodeAppContext(context: string): string {
+  return encodeURIComponent(context);
+}
+
 interface QueueEntry {
   promise: Promise<TranscribeResult>;
 }
@@ -211,13 +222,11 @@ export default function AppPage(): React.JSX.Element {
       } else {
         const combined = nonEmpty.map((r) => r.raw).join(" ");
         try {
-          const res = await fetch(`${getApiBase()}/api/post-process`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          const res = await getClient().api["post-process"].$post({
+            json: {
               text: combined,
               appContext: appContextRef.current,
-            }),
+            },
           });
           if (!pillActiveRef.current) {
             return;
@@ -314,7 +323,9 @@ export default function AppPage(): React.JSX.Element {
                 "x-audio-duration-ms": String(durationMs),
               };
               if (appContextRef.current)
-                headers["x-app-context"] = appContextRef.current;
+                headers["x-app-context"] = encodeAppContext(
+                  appContextRef.current,
+                );
               if (queueRef.current.length > 0 || drainingRef.current)
                 headers["x-skip-post-process"] = "true";
               fetch(`${getApiBase()}/api/transcribe`, {
@@ -698,7 +709,8 @@ export default function AppPage(): React.JSX.Element {
       "Content-Type": "audio/wav",
       "x-audio-duration-ms": String(recordingDuration),
     };
-    if (appContextRef.current) headers["x-app-context"] = appContextRef.current;
+    if (appContextRef.current)
+      headers["x-app-context"] = encodeAppContext(appContextRef.current);
     if (isSubsequent) headers["x-skip-post-process"] = "true";
 
     const serverOk = await refreshApiBase();

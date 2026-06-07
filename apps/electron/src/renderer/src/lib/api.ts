@@ -23,9 +23,14 @@ export async function refreshApiBase(): Promise<boolean> {
     resolvedPort = DEFAULT_PORT;
   }
   try {
-    const res = await fetch(`${getApiBase()}/api/health`, {
-      signal: AbortSignal.timeout(3000),
-    });
+    const res = await getClient().api.health.$get(
+      {},
+      {
+        init: {
+          signal: AbortSignal.timeout(3000),
+        },
+      },
+    );
     if (!res.ok) return false;
     const data = (await res.json()) as { status?: string; name?: string };
     return data.status === "ok" && data.name === "freestyle";

@@ -33,7 +33,7 @@ function buildDesktopEntry(): string {
     "[Desktop Entry]",
     "Type=Application",
     "Name=Freestyle",
-    `Exec=${process.execPath}`,
+    `Exec="${process.execPath}"`,
     "X-GNOME-Autostart-enabled=true",
     "",
   ].join("\n");

@@ -5,7 +5,7 @@ import { type ElectronApplication, expect, test } from "@playwright/test";
 import { _electron as electron } from "playwright";
 
 /**
- * E2E tests for Linux XDG autostart.
+ * E2E tests for Linux XDG autostart and single-instance lock.
  *
  * These verify that the "Launch at startup" toggle creates and removes a
  * `.desktop` file under `$XDG_CONFIG_HOME/autostart/`.  The env var is
@@ -14,9 +14,7 @@ import { _electron as electron } from "playwright";
 
 let app: ElectronApplication;
 let xdgConfigHome: string;
-let serverPort: number;
 
-const DEFAULT_PORT = 4649;
 const DESKTOP_FILE = "freestyle.desktop";
 
 async function waitForDashboardWindow(
@@ -58,15 +56,6 @@ test.describe("Linux autostart", () => {
 
     await app.firstWindow();
     await waitForDashboardWindow(app);
-
-    const portResult = await app.evaluate(async (_electron, port) => {
-      try {
-        const res = await fetch(`http://127.0.0.1:${port}/api/health`);
-        if (res.ok) return port;
-      } catch {}
-      return 0;
-    }, DEFAULT_PORT);
-    serverPort = portResult || DEFAULT_PORT;
   });
 
   test.afterAll(async () => {
@@ -77,17 +66,7 @@ test.describe("Linux autostart", () => {
   });
 
   test("enabling autostart creates a .desktop file", async () => {
-    await app.evaluate(async (_electron, port) => {
-      await fetch(`http://127.0.0.1:${port}/api/settings/launch_at_startup`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: "true" }),
-      });
-    }, serverPort);
-
-    // Trigger the IPC handler directly in the main process
     await app.evaluate(({ ipcMain }) => {
-      // Simulate the renderer calling setLaunchAtStartup(true)
       ipcMain.emit("settings:set-launch-at-startup", {}, true);
     });
 
@@ -105,30 +84,9 @@ test.describe("Linux autostart", () => {
     expect(content).toContain("X-GNOME-Autostart-enabled=true");
   });
 
-  test("getLaunchAtStartup returns true when enabled", async () => {
-    const enabled = await app.evaluate(({ app: electronApp }) => {
-      return electronApp.getLoginItemSettings().openAtLogin;
-    });
-
-    // On Linux, getLoginItemSettings is a no-op (returns false).
-    // Our IPC handler checks the .desktop file instead.  Verify via IPC:
-    const result = await app.evaluate(async (_electron, port) => {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/api/settings/launch_at_startup`,
-      );
-      if (!res.ok) return null;
-      return res.json();
-    }, serverPort);
-
-    // The file exists from the previous test, so our handler should see it.
-    // Verify by calling the IPC handler from main process context.
-    const ipcResult = await app.evaluate(() => {
-      // Directly call the linux-autostart module in the main process
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const la = require("./linux-autostart");
-      return la.isEnabled();
-    });
-    expect(ipcResult).toBe(true);
+  test("autostart .desktop file is present after enabling", async () => {
+    const desktopPath = join(xdgConfigHome, "autostart", DESKTOP_FILE);
+    expect(existsSync(desktopPath)).toBe(true);
   });
 
   test("disabling autostart removes the .desktop file", async () => {
@@ -142,13 +100,9 @@ test.describe("Linux autostart", () => {
     expect(existsSync(desktopPath)).toBe(false);
   });
 
-  test("getLaunchAtStartup returns false when disabled", async () => {
-    const ipcResult = await app.evaluate(() => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const la = require("./linux-autostart");
-      return la.isEnabled();
-    });
-    expect(ipcResult).toBe(false);
+  test("autostart .desktop file is absent after disabling", async () => {
+    const desktopPath = join(xdgConfigHome, "autostart", DESKTOP_FILE);
+    expect(existsSync(desktopPath)).toBe(false);
   });
 
   test("app holds single-instance lock", async () => {

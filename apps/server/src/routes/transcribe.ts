@@ -10,6 +10,20 @@ import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
 
 const log = createAppLogger("transcribe");
 
+/**
+ * The client percent-encodes the x-app-context header so non-Latin1
+ * characters (e.g. a Cyrillic window title) survive transport. Decode it
+ * back here, tolerating values that were sent unencoded by older clients.
+ */
+function decodeAppContext(raw: string | undefined): string | null {
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
 const transcribeRoute = new Hono().post("/", async (c) => {
   const start = Date.now();
 
@@ -31,7 +45,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     return c.json({ error: "Empty audio data" }, 400);
   }
 
-  const appContext = c.req.header("x-app-context") ?? null;
+  const appContext = decodeAppContext(c.req.header("x-app-context"));
 
   let audioDurationMs = 0;
   if (audioData.length > 44) {

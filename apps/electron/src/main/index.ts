@@ -484,13 +484,29 @@ function createSettingsWindow(initialPath?: string): void {
 let pillReadyPromise: Promise<void> | null = null;
 
 function showPill(): void {
+  // Already waiting for a freshly-created pill to finish loading.
+  if (pillReadyPromise) return;
+
   if (!mainWindow) {
     createAppWindow();
+    if (!mainWindow) return;
+
     // The window was just created with `show: false` and is still loading.
     // Defer showing until the renderer finishes loading so IPC messages
     // (e.g. hotkey:down) sent immediately after are not lost.
+    const win = mainWindow;
     pillReadyPromise = new Promise<void>((resolve) => {
-      mainWindow!.webContents.once("did-finish-load", () => {
+      const cleanup = (): void => {
+        pillReadyPromise = null;
+        resolve();
+      };
+
+      // If the window is closed before it finishes loading, resolve the
+      // promise so deferred IPC calls are not stuck forever.
+      win.once("closed", cleanup);
+
+      win.webContents.once("did-finish-load", () => {
+        win.removeListener("closed", cleanup);
         pillReadyPromise = null;
         if (!mainWindow) {
           resolve();
@@ -1620,6 +1636,14 @@ function sendHotkeyDown(): void {
 }
 
 function sendHotkeyUp(): void {
+  if (pillReadyPromise) {
+    // Preserve IPC ordering: hotkey:up must arrive after hotkey:down.
+    void pillReadyPromise.then(() => {
+      mainWindow?.webContents.send("hotkey:up");
+      settingsWindow?.webContents.send("hotkey:up");
+    });
+    return;
+  }
   mainWindow?.webContents.send("hotkey:up");
   settingsWindow?.webContents.send("hotkey:up");
 }

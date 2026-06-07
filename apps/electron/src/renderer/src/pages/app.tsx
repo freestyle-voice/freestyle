@@ -829,6 +829,10 @@ export default function AppPage(): React.JSX.Element {
         // Resolve the pending stream promise so the previous transcription
         // does not hang for 30 s waiting for a result that will be dropped
         // by the generation counter on the server side.
+        // Set recordingActiveRef *before* resolving so that drainQueue
+        // (which may be awaiting this promise) sees an active recording
+        // and re-queues instead of calling hidePill().
+        recordingActiveRef.current = true;
         const resolver = streamResolverRef.current;
         if (resolver) {
           streamResolverRef.current = null;

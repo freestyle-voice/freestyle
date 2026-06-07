@@ -1,7 +1,11 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { dirname } from "node:path";
 import { createAppLogger } from "@freestyle/utils";
-import { findWhisperServer } from "./binary.js";
+import {
+  findWhisperServer,
+  WIN_DLL_NOT_FOUND_EXIT,
+  WIN_DLL_NOT_FOUND_MESSAGE,
+  whisperSpawnEnv,
+} from "./binary.js";
 import { WHISPER_SERVER_PORT } from "./constants.js";
 import { getDownloadedModelPath } from "./models.js";
 
@@ -108,14 +112,9 @@ async function doStart(modelId: string): Promise<void> {
     "127.0.0.1",
   ];
 
-  const binDir = dirname(serverBinary);
   const proc = spawn(serverBinary, args, {
     stdio: ["ignore", "pipe", "pipe"],
-    cwd: binDir,
-    env: {
-      ...process.env,
-      PATH: `${binDir}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
-    },
+    ...whisperSpawnEnv(serverBinary),
   });
 
   serverProcess = proc;
@@ -207,13 +206,9 @@ async function doStart(modelId: string): Promise<void> {
       if (!settled) {
         settled = true;
         currentModelId = null;
-        if (code === 3221225781) {
+        if (code === WIN_DLL_NOT_FOUND_EXIT) {
           reject(
-            new Error(
-              "whisper-server failed: a required system library is missing. " +
-                "Please install the Visual C++ Redistributable from " +
-                "https://aka.ms/vs/17/release/vc_redist.x64.exe",
-            ),
+            new Error(`whisper-server failed: ${WIN_DLL_NOT_FOUND_MESSAGE}`),
           );
         } else {
           const detail = stderr.trim() || `exit code ${code}`;

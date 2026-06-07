@@ -2,9 +2,14 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { TranscribeResult } from "../streaming/types.js";
-import { findWhisperBinary } from "./binary.js";
+import {
+  findWhisperBinary,
+  WIN_DLL_NOT_FOUND_EXIT,
+  WIN_DLL_NOT_FOUND_MESSAGE,
+  whisperSpawnEnv,
+} from "./binary.js";
 import { getDownloadedModelPath } from "./models.js";
 
 interface WhisperTranscribeOptions {
@@ -75,15 +80,10 @@ function runWhisperProcess(
   args: string[],
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const binDir = dirname(binaryPath);
     const proc = spawn(binaryPath, args, {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 120_000,
-      cwd: binDir,
-      env: {
-        ...process.env,
-        PATH: `${binDir}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
-      },
+      ...whisperSpawnEnv(binaryPath),
     });
 
     let stdout = "";
@@ -102,14 +102,8 @@ function runWhisperProcess(
     });
 
     proc.on("close", (code) => {
-      if (code === 3221225781) {
-        reject(
-          new Error(
-            "whisper.cpp failed: a required system library is missing. " +
-              "Please install the Visual C++ Redistributable from " +
-              "https://aka.ms/vs/17/release/vc_redist.x64.exe",
-          ),
-        );
+      if (code === WIN_DLL_NOT_FOUND_EXIT) {
+        reject(new Error(`whisper.cpp failed: ${WIN_DLL_NOT_FOUND_MESSAGE}`));
         return;
       }
       if (code !== 0) {

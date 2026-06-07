@@ -574,12 +574,8 @@ export default function AppPage(): React.JSX.Element {
           await streamer.startCapture(stream);
         } catch {}
       } catch (err) {
-        wantsMicRef.current = false;
         pendingCommitRef.current = false;
-        isReRecordingRef.current = false;
-        setIsReRecording(false);
         recorderRef.current.releaseStream();
-        stopVisualization();
         hidePill();
         window.api.showErrorDialog(
           "Recording Failed",
@@ -587,13 +583,7 @@ export default function AppPage(): React.JSX.Element {
         );
       }
     },
-    [
-      startBarAnimation,
-      startListening,
-      stopVisualization,
-      hidePill,
-      getStreamer,
-    ],
+    [startBarAnimation, startListening, hidePill, getStreamer],
   );
 
   // ---- Commit recording ----
@@ -720,11 +710,7 @@ export default function AppPage(): React.JSX.Element {
             body?.detail ||
             body?.error ||
             `Transcription failed (${res.status})`;
-          if (pillActiveRef.current && !wantsMicRef.current) {
-            hidePill();
-            window.api.showErrorDialog("Transcription Failed", msg);
-          }
-          return empty;
+          return { raw: "", cleaned: "", error: msg };
         }
         const data = (await res.json()) as {
           raw?: string;
@@ -753,22 +739,11 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- Cancel ----
   const cancelRecording = useCallback(() => {
-    wantsMicRef.current = false;
-    recordingActiveRef.current = false;
-    pillActiveRef.current = false;
-    isReRecordingRef.current = false;
-    setIsReRecording(false);
-    queueRef.current = [];
-    drainingRef.current = false;
-    drainAgainRef.current = false;
-    streamResolverRef.current = null;
-    setPendingCount(0);
-    stopVisualization();
     streamerRef.current?.cancel();
     recorderRef.current.cancel();
     recorderRef.current.releaseStream();
     hidePill();
-  }, [stopVisualization, hidePill]);
+  }, [hidePill]);
 
   // ---- Preferences ----
   const applyPillPosition = useCallback((pos: string | null | undefined) => {

@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { TranscribeResult } from "../streaming/types.js";
 import { findWhisperBinary } from "./binary.js";
 import { getDownloadedModelPath } from "./models.js";
@@ -75,9 +75,15 @@ function runWhisperProcess(
   args: string[],
 ): Promise<string> {
   return new Promise((resolve, reject) => {
+    const binDir = dirname(binaryPath);
     const proc = spawn(binaryPath, args, {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 120_000,
+      cwd: binDir,
+      env: {
+        ...process.env,
+        PATH: `${binDir}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
+      },
     });
 
     let stdout = "";
@@ -96,6 +102,16 @@ function runWhisperProcess(
     });
 
     proc.on("close", (code) => {
+      if (code === 3221225781) {
+        reject(
+          new Error(
+            "whisper.cpp failed: a required system library is missing. " +
+              "Please install the Visual C++ Redistributable from " +
+              "https://aka.ms/vs/17/release/vc_redist.x64.exe",
+          ),
+        );
+        return;
+      }
       if (code !== 0) {
         const detail = stderr.trim() || stdout.trim() || `exit code ${code}`;
         reject(new Error(`whisper.cpp failed: ${detail}`));

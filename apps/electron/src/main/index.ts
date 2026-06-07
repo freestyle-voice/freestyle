@@ -1104,6 +1104,19 @@ app.whenReady().then(async () => {
   // IPC: expose the server port to the renderer
   ipcMain.handle("server:port", () => serverPort);
 
+  ipcMain.handle(
+    "dialog:show-error",
+    async (_event, title: string, detail: string) => {
+      await dialog.showMessageBox({
+        type: "error",
+        title,
+        message: title,
+        detail,
+        buttons: ["OK"],
+      });
+    },
+  );
+
   // IPC: permission checks
   ipcMain.handle("permissions:check-mic", async () => {
     if (process.platform === "darwin") {

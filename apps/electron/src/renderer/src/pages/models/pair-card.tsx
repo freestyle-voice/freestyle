@@ -2,11 +2,12 @@ import { Toggle } from "@renderer/components/voice-row";
 import { cn } from "@renderer/lib/utils";
 
 import { Eyebrow } from "./page-chrome";
-import type { ConfiguredModel, PickerType } from "./types";
+import type { ConfiguredModel } from "./types";
 import { displayName } from "./utils";
 
 // ---------------------------------------------------------------------------
 // PairCard — the "current pair" hero: Voice (required) + LLM cleanup (optional)
+// Side-by-side layout; each "Change" opens the shared model modal.
 // ---------------------------------------------------------------------------
 
 export function PairCard({
@@ -16,7 +17,6 @@ export function PairCard({
   onToggleCleanup,
   onChangeVoice,
   onChangeLlm,
-  pickerOpen,
 }: {
   voice: ConfiguredModel | undefined;
   llm: ConfiguredModel | undefined;
@@ -24,7 +24,6 @@ export function PairCard({
   onToggleCleanup: (next: boolean) => void;
   onChangeVoice: () => void;
   onChangeLlm: () => void;
-  pickerOpen: PickerType;
 }): React.JSX.Element {
   return (
     <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
@@ -34,7 +33,6 @@ export function PairCard({
         providerName={voice ? displayName(voice.provider) : undefined}
         cta="Change"
         primary
-        active={pickerOpen === "voice"}
         onChange={onChangeVoice}
       />
       <div className="border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0">
@@ -47,7 +45,6 @@ export function PairCard({
           cta={llm ? "Change" : "Pick a model"}
           toggle={llmCleanup}
           onToggle={onToggleCleanup}
-          active={pickerOpen === "llm"}
           onChange={onChangeLlm}
           dimmed={!llmCleanup}
         />
@@ -64,7 +61,6 @@ function PairSide({
   primary,
   toggle,
   onToggle,
-  active,
   onChange,
   dimmed,
 }: {
@@ -75,7 +71,6 @@ function PairSide({
   primary?: boolean;
   toggle?: boolean;
   onToggle?: (next: boolean) => void;
-  active?: boolean;
   onChange: () => void;
   dimmed?: boolean;
 }): React.JSX.Element {
@@ -131,7 +126,6 @@ function PairSide({
             primary
               ? "bg-foreground text-background hover:bg-foreground/90"
               : "border-border hover:bg-secondary border",
-            active && "ring-primary/30 ring-2",
           )}
         >
           {cta}

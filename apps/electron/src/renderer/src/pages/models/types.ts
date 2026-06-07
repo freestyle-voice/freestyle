@@ -1,5 +1,3 @@
-import type { LucideIcon } from "lucide-react";
-
 export interface ConfiguredModel {
   id: number;
   provider: string;
@@ -14,14 +12,3 @@ export interface ApiKeyEntry {
   created_at: string;
   status: "valid" | "invalid" | "unknown";
 }
-
-/** Which inline picker is open. */
-export type PickerType = "voice" | "llm" | null;
-
-/** A filter chip shown in a model picker's filter bar. */
-export type PickerFilter = {
-  id: string;
-  label: string;
-  icon?: LucideIcon;
-  mark?: string;
-};

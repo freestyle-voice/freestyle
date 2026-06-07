@@ -494,7 +494,7 @@ function showPill(): void {
     // The window was just created with `show: false` and is still loading.
     // Defer showing until the renderer finishes loading so IPC messages
     // (e.g. hotkey:down) sent immediately after are not lost.
-    const win = mainWindow;
+    const win = mainWindow!;
     pillReadyPromise = new Promise<void>((resolve) => {
       const cleanup = (): void => {
         pillReadyPromise = null;

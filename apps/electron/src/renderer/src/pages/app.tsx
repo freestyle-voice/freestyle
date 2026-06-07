@@ -624,8 +624,6 @@ export default function AppPage(): React.JSX.Element {
     setState("transcribing");
     startBarAnimation("speaking");
 
-    const empty: TranscribeResult = { raw: "", cleaned: "" };
-
     if (sessionStreamingRef.current && streamerRef.current) {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();

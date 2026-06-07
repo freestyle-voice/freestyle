@@ -1,3 +1,9 @@
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@renderer/components/ui/sheet";
 import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
 import {
@@ -6,6 +12,7 @@ import {
   ChevronRight,
   Clock,
   Copy,
+  Filter,
   Search,
   Trash2,
 } from "lucide-react";
@@ -65,6 +72,13 @@ function formatCost(cost: number): string {
   return `$${cost.toFixed(3)}`;
 }
 
+function getLocalDateString(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 /** Get a date key for grouping: "Today", "Yesterday", or "Day, Mon DD" */
 function getDateGroup(iso: string): string {
   const d = new Date(`${iso}Z`);
@@ -92,6 +106,15 @@ export default function HistoryPage(): React.JSX.Element {
   const [search, setSearch] = useState("");
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return getLocalDateString(d);
+  });
+  const [endDate, setEndDate] = useState(() => {
+    return getLocalDateString(new Date());
+  });
+  const [filterOpen, setFilterOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -101,11 +124,17 @@ export default function HistoryPage(): React.JSX.Element {
         orderBy: "-created_at",
       };
       if (search) query.search = search;
+      if (startDate) query.start_date = startDate;
+      if (endDate) query.end_date = endDate;
+
+      const statsQuery: Record<string, string> = {};
+      if (startDate) statsQuery.start_date = startDate;
+      if (endDate) statsQuery.end_date = endDate;
 
       const client = getClient();
       const [histRes, statsRes] = await Promise.all([
         client.api.history.$get({ query }),
-        client.api.history.stats.$get(),
+        client.api.history.stats.$get({ query: statsQuery }),
       ]);
       if (histRes.ok) {
         const data = await histRes.json();
@@ -118,7 +147,7 @@ export default function HistoryPage(): React.JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, startDate, endDate]);
 
   useEffect(() => {
     loadData();
@@ -166,7 +195,20 @@ export default function HistoryPage(): React.JSX.Element {
     );
   }
 
-  const isEmpty = total === 0 && !search;
+  const todayStr = getLocalDateString(new Date());
+  const start7 = new Date();
+  start7.setDate(start7.getDate() - 7);
+  const start7Str = getLocalDateString(start7);
+  const start30 = new Date();
+  start30.setDate(start30.getDate() - 30);
+  const start30Str = getLocalDateString(start30);
+
+  const isTodayPreset = startDate === todayStr && endDate === todayStr;
+  const isWeeklyPreset = startDate === start7Str && endDate === todayStr;
+  const isMonthlyPreset = startDate === start30Str && endDate === todayStr;
+  const isAllTimePreset = startDate === "" && endDate === "";
+
+  const isGenuineEmpty = total === 0 && !search && !startDate && !endDate;
 
   return (
     <div
@@ -180,7 +222,7 @@ export default function HistoryPage(): React.JSX.Element {
       >
         <PageHeader title="History" />
 
-        {isEmpty ? (
+        {isGenuineEmpty ? (
           <EmptyState />
         ) : (
           <>
@@ -188,7 +230,7 @@ export default function HistoryPage(): React.JSX.Element {
             <div className="border-border mb-7 grid grid-cols-2 gap-2.5 border-b pb-7 md:grid-cols-4">
               <Stat
                 n={(stats?.total_words ?? 0).toLocaleString()}
-                l="words all time"
+                l={startDate || endDate ? "words filtered" : "words all time"}
               />
               <Stat n={String(stats?.total_sessions ?? 0)} l="sessions" />
               <Stat
@@ -202,30 +244,58 @@ export default function HistoryPage(): React.JSX.Element {
               <Stat
                 accent
                 n={`$${(stats?.total_cost_usd ?? 0).toFixed(2)}`}
-                l="cost · all time"
+                l={startDate || endDate ? "cost · filtered" : "cost · all time"}
               />
             </div>
 
-            {/* Search */}
-            <div className="border-border bg-card mb-6 flex items-center gap-2 rounded-lg border px-3 py-2">
-              <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(0);
-                }}
-                placeholder={`Search ${total} transcript${total === 1 ? "" : "s"}…`}
-                className="placeholder:text-muted-foreground/80 text-foreground flex-1 bg-transparent text-[13px] outline-none"
-              />
-              <span className="mono text-muted-foreground text-[10px]">
-                ⌘ K
-              </span>
+            {/* Search & Filter Row */}
+            <div className="mb-6 flex gap-2">
+              <div className="border-border bg-card flex flex-1 items-center gap-2 rounded-lg border px-3 py-2">
+                <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(0);
+                  }}
+                  placeholder={`Search ${total} transcript${total === 1 ? "" : "s"}…`}
+                  className="placeholder:text-muted-foreground/80 text-foreground flex-1 bg-transparent text-[13px] outline-none"
+                />
+                <span className="mono text-muted-foreground text-[10px]">
+                  ⌘ K
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFilterOpen(true)}
+                className={cn(
+                  "border-border bg-card hover:bg-accent hover:text-foreground text-muted-foreground flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-[13px] font-medium transition-colors cursor-pointer",
+                  (startDate || endDate) &&
+                    "border-primary text-primary bg-primary/5",
+                )}
+              >
+                <Filter className="h-3.5 w-3.5" />
+                <span>Filters</span>
+                {(startDate || endDate) && (
+                  <span className="bg-primary text-primary-foreground flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold">
+                    ✓
+                  </span>
+                )}
+              </button>
             </div>
 
             {entries.length === 0 ? (
-              <NoSearchResults />
+              <NoSearchResults
+                hasSearch={!!search}
+                hasDates={!!(startDate || endDate)}
+                onClear={() => {
+                  setSearch("");
+                  setStartDate("");
+                  setEndDate("");
+                  setPage(0);
+                }}
+              />
             ) : (
               groups.map((group) =>
                 group.items.length === 0 ? null : (
@@ -286,6 +356,158 @@ export default function HistoryPage(): React.JSX.Element {
           </>
         )}
       </div>
+
+      <Sheet open={filterOpen} onOpenChange={setFilterOpen}>
+        <SheetContent className="flex flex-col p-6 w-[340px] sm:w-[400px]">
+          <SheetHeader className="p-0 mb-4">
+            <SheetTitle className="text-lg font-semibold">
+              Filter History
+            </SheetTitle>
+          </SheetHeader>
+
+          <div className="flex flex-col gap-5 flex-1">
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="start-date-input"
+                className="mono text-muted-foreground text-[10px] uppercase tracking-wider"
+              >
+                Start Date
+              </label>
+              <input
+                id="start-date-input"
+                type="date"
+                value={startDate}
+                max={endDate || undefined}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (endDate && val > endDate) {
+                    setStartDate(endDate);
+                  } else {
+                    setStartDate(val);
+                  }
+                  setPage(0);
+                }}
+                className="bg-card border-border text-foreground w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-primary"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="end-date-input"
+                className="mono text-muted-foreground text-[10px] uppercase tracking-wider"
+              >
+                End Date
+              </label>
+              <input
+                id="end-date-input"
+                type="date"
+                value={endDate}
+                min={startDate || undefined}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (startDate && val < startDate) {
+                    setEndDate(startDate);
+                  } else {
+                    setEndDate(val);
+                  }
+                  setPage(0);
+                }}
+                className="bg-card border-border text-foreground w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-primary"
+              />
+            </div>
+
+            {/* Quick Presets */}
+            <div className="flex flex-col gap-2 mt-2">
+              <span className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
+                Presets
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStartDate(todayStr);
+                    setEndDate(todayStr);
+                    setPage(0);
+                  }}
+                  className={cn(
+                    "bg-card border-border hover:bg-accent text-foreground rounded border py-1.5 text-xs transition-colors cursor-pointer text-center font-medium",
+                    isTodayPreset &&
+                      "border-primary bg-primary/10 text-primary",
+                  )}
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStartDate(start7Str);
+                    setEndDate(todayStr);
+                    setPage(0);
+                  }}
+                  className={cn(
+                    "bg-card border-border hover:bg-accent text-foreground rounded border py-1.5 text-xs transition-colors cursor-pointer text-center font-medium",
+                    isWeeklyPreset &&
+                      "border-primary bg-primary/10 text-primary",
+                  )}
+                >
+                  Last 7 Days
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStartDate(start30Str);
+                    setEndDate(todayStr);
+                    setPage(0);
+                  }}
+                  className={cn(
+                    "bg-card border-border hover:bg-accent text-foreground rounded border py-1.5 text-xs transition-colors cursor-pointer text-center font-medium",
+                    isMonthlyPreset &&
+                      "border-primary bg-primary/10 text-primary",
+                  )}
+                >
+                  Last 30 Days
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStartDate("");
+                    setEndDate("");
+                    setPage(0);
+                  }}
+                  className={cn(
+                    "bg-card border-border hover:bg-accent text-foreground rounded border py-1.5 text-xs transition-colors cursor-pointer text-center font-medium",
+                    isAllTimePreset &&
+                      "border-primary bg-primary/10 text-primary",
+                  )}
+                >
+                  All Time
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-auto pt-4 border-t border-border flex gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setStartDate("");
+                setEndDate("");
+                setPage(0);
+              }}
+              className="border-border bg-card hover:bg-accent hover:text-foreground text-muted-foreground flex-1 rounded-md border py-2 text-sm font-medium transition-colors cursor-pointer text-center"
+            >
+              Clear All
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterOpen(false)}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 flex-1 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer text-center"
+            >
+              Apply Filters
+            </button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -449,12 +671,35 @@ function EmptyState(): React.JSX.Element {
   );
 }
 
-function NoSearchResults(): React.JSX.Element {
+function NoSearchResults({
+  hasSearch,
+  hasDates,
+  onClear,
+}: {
+  hasSearch: boolean;
+  hasDates: boolean;
+  onClear: () => void;
+}): React.JSX.Element {
   return (
-    <div className="text-muted-foreground py-10 text-center">
-      <span className="serif-italic text-[20px]">
-        no transcripts match that search.
-      </span>
+    <div className="border-border bg-card/30 mt-4 rounded-[14px] border border-dashed px-9 py-12 text-center">
+      <div className="text-muted-foreground mb-3">
+        <span className="serif-italic text-[20px]">
+          {hasSearch && hasDates
+            ? "no transcripts match that search and date range."
+            : hasSearch
+              ? "no transcripts match that search."
+              : "no transcripts found for this date range."}
+        </span>
+      </div>
+      {(hasSearch || hasDates) && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-primary hover:text-primary/80 text-xs font-semibold underline cursor-pointer"
+        >
+          Clear filters and search
+        </button>
+      )}
     </div>
   );
 }

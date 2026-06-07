@@ -489,12 +489,15 @@ function showPill(): void {
 
   if (!mainWindow) {
     createAppWindow();
-    if (!mainWindow) return;
+    // createAppWindow() synchronously assigns mainWindow, but TypeScript
+    // cannot track mutations through function calls.  Re-read and bail
+    // out if the assignment unexpectedly failed.
+    const win = mainWindow as BrowserWindow | null;
+    if (!win) return;
 
     // The window was just created with `show: false` and is still loading.
     // Defer showing until the renderer finishes loading so IPC messages
     // (e.g. hotkey:down) sent immediately after are not lost.
-    const win = mainWindow!;
     pillReadyPromise = new Promise<void>((resolve) => {
       const cleanup = (): void => {
         pillReadyPromise = null;

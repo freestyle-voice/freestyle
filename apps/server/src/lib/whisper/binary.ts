@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { accessSync, constants } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   getBinaryName,
   getBinDir,
@@ -62,4 +62,34 @@ export function isBinaryAvailable(): boolean {
 
 export function isServerBinaryAvailable(): boolean {
   return findWhisperServer() !== null;
+}
+
+/**
+ * Windows NTSTATUS code for STATUS_DLL_NOT_FOUND. When `whisper-cli.exe`
+ * or `whisper-server.exe` exits with this code the Visual C++ Redistributable
+ * (or a companion DLL like ggml.dll) is missing.
+ */
+export const WIN_DLL_NOT_FOUND_EXIT = 3221225781;
+
+export const WIN_DLL_NOT_FOUND_MESSAGE =
+  "a required system library is missing. " +
+  "Please install the Visual C++ Redistributable from " +
+  "https://aka.ms/vs/17/release/vc_redist.x64.exe";
+
+/**
+ * Return spawn options that set `cwd` to the binary's directory and prepend
+ * it to `PATH` so companion DLLs (ggml.dll, whisper.dll) are found on Windows.
+ */
+export function whisperSpawnEnv(binaryPath: string): {
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+} {
+  const binDir = dirname(binaryPath);
+  return {
+    cwd: binDir,
+    env: {
+      ...process.env,
+      PATH: `${binDir}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
+    },
+  };
 }

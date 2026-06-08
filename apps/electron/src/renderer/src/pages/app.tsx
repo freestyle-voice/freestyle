@@ -11,12 +11,7 @@ const FALL = 0.22;
 const SVG_WIDTH = 117;
 const SVG_HEIGHT = 25;
 
-type PillState =
-  | "idle"
-  | "initializing"
-  | "recording"
-  | "transcribing"
-  | "error";
+type PillState = "idle" | "initializing" | "recording" | "transcribing";
 
 type BarMode = "connecting" | "listening" | "speaking";
 
@@ -124,7 +119,6 @@ interface QueueEntry {
 export default function AppPage(): React.JSX.Element {
   const [state, setState] = useState<PillState>("idle");
   const [elapsed, setElapsed] = useState(0);
-  const [message, setMessage] = useState("");
   const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
   const [pillSide, setPillSide] = useState<"center" | "right">("center");
   const useStreamingRef = useRef(false);
@@ -206,9 +200,8 @@ export default function AppPage(): React.JSX.Element {
       if (nonEmpty.length === 0) {
         const errMsg = results.find((r) => r.error)?.error;
         if (errMsg) {
-          setState("error");
-          setMessage(errMsg);
-          setTimeout(() => hidePill(), 3000);
+          hidePill();
+          window.api.showErrorDialog("Transcription Failed", errMsg);
         } else {
           hidePill();
         }
@@ -351,9 +344,8 @@ export default function AppPage(): React.JSX.Element {
           if (!useStreamingRef.current) return;
           if (!pillActiveRef.current) return;
           if (wantsMicRef.current) return;
-          setState("error");
-          setMessage(msg);
-          setTimeout(() => hidePill(), 2000);
+          hidePill();
+          window.api.showErrorDialog("Transcription Failed", msg);
         },
       });
     }
@@ -503,7 +495,6 @@ export default function AppPage(): React.JSX.Element {
   // ---- Hide pill ----
   const hidePill = useCallback(() => {
     setState("idle");
-    setMessage("");
     setIsReRecording(false);
     isReRecordingRef.current = false;
     setPendingCount(0);
@@ -527,7 +518,6 @@ export default function AppPage(): React.JSX.Element {
       wantsMicRef.current = true;
       pillActiveRef.current = true;
       pendingCommitRef.current = false;
-      setMessage("");
 
       if (forReRecord) {
         isReRecordingRef.current = true;
@@ -595,24 +585,16 @@ export default function AppPage(): React.JSX.Element {
           await streamer.startCapture(stream);
         } catch {}
       } catch (err) {
-        wantsMicRef.current = false;
         pendingCommitRef.current = false;
-        isReRecordingRef.current = false;
-        setIsReRecording(false);
         recorderRef.current.releaseStream();
-        stopVisualization();
-        setState("error");
-        setMessage(err instanceof Error ? err.message : "Mic access denied");
-        setTimeout(() => hidePill(), 2000);
+        hidePill();
+        window.api.showErrorDialog(
+          "Recording Failed",
+          err instanceof Error ? err.message : "Mic access denied",
+        );
       }
     },
-    [
-      startBarAnimation,
-      startListening,
-      stopVisualization,
-      hidePill,
-      getStreamer,
-    ],
+    [startBarAnimation, startListening, hidePill, getStreamer],
   );
 
   // ---- Commit recording ----
@@ -652,8 +634,6 @@ export default function AppPage(): React.JSX.Element {
 
     setState("transcribing");
     startBarAnimation("speaking");
-
-    const empty: TranscribeResult = { raw: "", cleaned: "" };
 
     if (sessionStreamingRef.current && streamerRef.current) {
       recorderRef.current.cancel();
@@ -697,9 +677,11 @@ export default function AppPage(): React.JSX.Element {
 
     if (!wavBlob) {
       if (queueRef.current.length === 0 && !drainingRef.current) {
-        setState("error");
-        setMessage("No audio captured. Try recording again.");
-        setTimeout(() => hidePill(), 2500);
+        hidePill();
+        window.api.showErrorDialog(
+          "Recording Failed",
+          "No audio captured. Try recording again.",
+        );
       }
       return;
     }
@@ -715,11 +697,11 @@ export default function AppPage(): React.JSX.Element {
 
     const serverOk = await refreshApiBase();
     if (!serverOk) {
-      setState("error");
-      setMessage(
+      hidePill();
+      window.api.showErrorDialog(
+        "Server Unreachable",
         `Cannot reach Freestyle server at ${getApiBase()}. Quit and reopen the app.`,
       );
-      setTimeout(() => hidePill(), 4000);
       return;
     }
 
@@ -738,12 +720,7 @@ export default function AppPage(): React.JSX.Element {
             body?.detail ||
             body?.error ||
             `Transcription failed (${res.status})`;
-          if (pillActiveRef.current && !wantsMicRef.current) {
-            setState("error");
-            setMessage(msg);
-            setTimeout(() => hidePill(), 3000);
-          }
-          return empty;
+          return { raw: "", cleaned: "", error: msg };
         }
         const data = (await res.json()) as {
           raw?: string;
@@ -772,22 +749,11 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- Cancel ----
   const cancelRecording = useCallback(() => {
-    wantsMicRef.current = false;
-    recordingActiveRef.current = false;
-    pillActiveRef.current = false;
-    isReRecordingRef.current = false;
-    setIsReRecording(false);
-    queueRef.current = [];
-    drainingRef.current = false;
-    drainAgainRef.current = false;
-    streamResolverRef.current = null;
-    setPendingCount(0);
-    stopVisualization();
     streamerRef.current?.cancel();
     recorderRef.current.cancel();
     recorderRef.current.releaseStream();
     hidePill();
-  }, [stopVisualization, hidePill]);
+  }, [hidePill]);
 
   // ---- Preferences ----
   const applyPillPosition = useCallback((pos: string | null | undefined) => {
@@ -835,9 +801,21 @@ export default function AppPage(): React.JSX.Element {
   useEffect(() => {
     const removeDown = window.api.onHotkeyDown(() => {
       const s = stateRef.current;
-      if (s === "idle" || s === "error") {
+      if (s === "idle") {
         startRecording(false);
       } else if (s === "transcribing" && !recordingActiveRef.current) {
+        // Resolve the pending stream promise so the previous transcription
+        // does not hang for 30 s waiting for a result that will be dropped
+        // by the generation counter on the server side.
+        // Set recordingActiveRef *before* resolving so that drainQueue
+        // (which may be awaiting this promise) sees an active recording
+        // and re-queues instead of calling hidePill().
+        recordingActiveRef.current = true;
+        const resolver = streamResolverRef.current;
+        if (resolver) {
+          streamResolverRef.current = null;
+          resolver({ raw: "", cleaned: "" });
+        }
         startRecording(true);
       }
     });
@@ -887,9 +865,7 @@ export default function AppPage(): React.JSX.Element {
         ? "glow-recording"
         : state === "transcribing" && !isReRecording
           ? "glow-transcribing"
-          : state === "error"
-            ? "glow-error"
-            : "glow-idle";
+          : "glow-idle";
 
   const badge =
     state === "recording"
@@ -959,14 +935,9 @@ export default function AppPage(): React.JSX.Element {
             0%, 100% { box-shadow: 0 0 6px 2px rgba(96,165,250,0.14), 0 0 13px 3px rgba(96,165,250,0.06); }
             50% { box-shadow: 0 0 10px 2px rgba(96,165,250,0.22), 0 0 16px 4px rgba(96,165,250,0.09); }
           }
-          @keyframes glow-pulse-red {
-            0%, 100% { box-shadow: 0 0 6px 2px rgba(221,110,78,0.12); }
-            50% { box-shadow: 0 0 10px 2px rgba(221,110,78,0.20); }
-          }
           .glow-initializing { animation: glow-pulse-amber 1s ease-in-out infinite; }
           .glow-recording { animation: glow-pulse-green 2s ease-in-out infinite; }
           .glow-transcribing { animation: glow-pulse-blue 1.5s ease-in-out infinite; }
-          .glow-error { animation: glow-pulse-red 1.5s ease-in-out infinite; }
           .glow-idle { box-shadow: 0 0 5px 2px rgba(0,0,0,0.05); transition: box-shadow 300ms ease; }
           @keyframes shimmer {
             0% { background-position: 100% center; }
@@ -1087,13 +1058,11 @@ export default function AppPage(): React.JSX.Element {
             >
               <Orb
                 colors={
-                  state === "error"
-                    ? ["#DD6E4E", "#B85C3A"]
-                    : state === "transcribing"
-                      ? ["#60A5FA", "#3B82F6"]
-                      : state === "initializing"
-                        ? ["#FBBF24", "#F59E0B"]
-                        : ["#8AB62A", "#6B8F12"]
+                  state === "transcribing"
+                    ? ["#60A5FA", "#3B82F6"]
+                    : state === "initializing"
+                      ? ["#FBBF24", "#F59E0B"]
+                      : ["#8AB62A", "#6B8F12"]
                 }
                 agentState={
                   state === "initializing"
@@ -1112,19 +1081,6 @@ export default function AppPage(): React.JSX.Element {
             </div>
 
             {showBars && renderBars(barsSvgRef)}
-
-            {state === "error" && (
-              <span
-                style={
-                  {
-                    ...pillTextStyle,
-                    WebkitAppRegion: "no-drag",
-                  } as React.CSSProperties
-                }
-              >
-                {message || "Error"}
-              </span>
-            )}
 
             {badge && (
               <span

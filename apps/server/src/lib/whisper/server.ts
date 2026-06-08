@@ -1,6 +1,11 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createAppLogger } from "@freestyle/utils";
-import { findWhisperServer } from "./binary.js";
+import {
+  findWhisperServer,
+  WIN_DLL_NOT_FOUND_EXIT,
+  WIN_DLL_NOT_FOUND_MESSAGE,
+  whisperSpawnEnv,
+} from "./binary.js";
 import { WHISPER_SERVER_PORT } from "./constants.js";
 import { getDownloadedModelPath } from "./models.js";
 
@@ -109,6 +114,7 @@ async function doStart(modelId: string): Promise<void> {
 
   const proc = spawn(serverBinary, args, {
     stdio: ["ignore", "pipe", "pipe"],
+    ...whisperSpawnEnv(serverBinary),
   });
 
   serverProcess = proc;
@@ -200,8 +206,14 @@ async function doStart(modelId: string): Promise<void> {
       if (!settled) {
         settled = true;
         currentModelId = null;
-        const detail = stderr.trim() || `exit code ${code}`;
-        reject(new Error(`whisper-server exited unexpectedly: ${detail}`));
+        if (code === WIN_DLL_NOT_FOUND_EXIT) {
+          reject(
+            new Error(`whisper-server failed: ${WIN_DLL_NOT_FOUND_MESSAGE}`),
+          );
+        } else {
+          const detail = stderr.trim() || `exit code ${code}`;
+          reject(new Error(`whisper-server exited unexpectedly: ${detail}`));
+        }
         return;
       }
 

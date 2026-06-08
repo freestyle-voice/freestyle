@@ -477,9 +477,51 @@ function createSettingsWindow(initialPath?: string): void {
   settingsWindow.loadURL(getDashboardURL(startPath));
 }
 
+/**
+ * Resolves once a freshly-created pill window has finished loading and is
+ * visible.  `null` when no deferred show is in progress.
+ */
+let pillReadyPromise: Promise<void> | null = null;
+
 function showPill(): void {
+  // Already waiting for a freshly-created pill to finish loading.
+  if (pillReadyPromise) return;
+
   if (!mainWindow) {
     createAppWindow();
+    // createAppWindow() synchronously assigns mainWindow, but TypeScript
+    // cannot track mutations through function calls.  Re-read and bail
+    // out if the assignment unexpectedly failed.
+    const win = mainWindow as BrowserWindow | null;
+    if (!win) return;
+
+    // The window was just created with `show: false` and is still loading.
+    // Defer showing until the renderer finishes loading so IPC messages
+    // (e.g. hotkey:down) sent immediately after are not lost.
+    pillReadyPromise = new Promise<void>((resolve) => {
+      const cleanup = (): void => {
+        pillReadyPromise = null;
+        resolve();
+      };
+
+      // If the window is closed before it finishes loading, resolve the
+      // promise so deferred IPC calls are not stuck forever.
+      win.once("closed", cleanup);
+
+      win.webContents.once("did-finish-load", () => {
+        win.removeListener("closed", cleanup);
+        pillReadyPromise = null;
+        if (!mainWindow) {
+          resolve();
+          return;
+        }
+        const { x, y } = getAppWindowPosition();
+        setProgrammaticPosition(mainWindow, x, y);
+        mainWindow.showInactive();
+        registerPillEscape();
+        resolve();
+      });
+    });
     return;
   }
 
@@ -489,8 +531,10 @@ function showPill(): void {
     mainWindow.showInactive();
   }
 
-  // Register Escape as a global shortcut while the pill is visible
-  // so the user can cancel recording/transcription.
+  registerPillEscape();
+}
+
+function registerPillEscape(): void {
   if (!globalShortcut.isRegistered("Escape")) {
     globalShortcut.register("Escape", () => {
       if (mainWindow?.isVisible()) {
@@ -1063,6 +1107,19 @@ app.whenReady().then(async () => {
   // IPC: expose the server port to the renderer
   ipcMain.handle("server:port", () => serverPort);
 
+  ipcMain.handle(
+    "dialog:show-error",
+    async (_event, title: string, detail: string) => {
+      await dialog.showMessageBox({
+        type: "error",
+        title,
+        message: title,
+        detail,
+        buttons: ["OK"],
+      });
+    },
+  );
+
   // IPC: permission checks
   ipcMain.handle("permissions:check-mic", async () => {
     if (process.platform === "darwin") {
@@ -1582,11 +1639,27 @@ function loadHotkeyModeFromDB(): "hold" | "toggle" {
 
 function sendHotkeyDown(): void {
   showPill();
+  if (pillReadyPromise) {
+    // The pill window is still loading — defer IPC until it can receive it.
+    void pillReadyPromise.then(() => {
+      mainWindow?.webContents.send("hotkey:down");
+      settingsWindow?.webContents.send("hotkey:down");
+    });
+    return;
+  }
   mainWindow?.webContents.send("hotkey:down");
   settingsWindow?.webContents.send("hotkey:down");
 }
 
 function sendHotkeyUp(): void {
+  if (pillReadyPromise) {
+    // Preserve IPC ordering: hotkey:up must arrive after hotkey:down.
+    void pillReadyPromise.then(() => {
+      mainWindow?.webContents.send("hotkey:up");
+      settingsWindow?.webContents.send("hotkey:up");
+    });
+    return;
+  }
   mainWindow?.webContents.send("hotkey:up");
   settingsWindow?.webContents.send("hotkey:up");
 }

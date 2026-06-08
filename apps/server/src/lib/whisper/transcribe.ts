@@ -4,7 +4,12 @@ import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TranscribeResult } from "../streaming/types.js";
-import { findWhisperBinary } from "./binary.js";
+import {
+  findWhisperBinary,
+  WIN_DLL_NOT_FOUND_EXIT,
+  WIN_DLL_NOT_FOUND_MESSAGE,
+  whisperSpawnEnv,
+} from "./binary.js";
 import { getDownloadedModelPath } from "./models.js";
 
 interface WhisperTranscribeOptions {
@@ -78,6 +83,7 @@ function runWhisperProcess(
     const proc = spawn(binaryPath, args, {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 120_000,
+      ...whisperSpawnEnv(binaryPath),
     });
 
     let stdout = "";
@@ -96,6 +102,10 @@ function runWhisperProcess(
     });
 
     proc.on("close", (code) => {
+      if (code === WIN_DLL_NOT_FOUND_EXIT) {
+        reject(new Error(`whisper.cpp failed: ${WIN_DLL_NOT_FOUND_MESSAGE}`));
+        return;
+      }
       if (code !== 0) {
         const detail = stderr.trim() || stdout.trim() || `exit code ${code}`;
         reject(new Error(`whisper.cpp failed: ${detail}`));

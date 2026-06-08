@@ -13,6 +13,8 @@ const api = {
   setHotkeyMode: (mode: "hold" | "toggle"): void =>
     ipcRenderer.send("hotkey:set-mode", mode),
   hidePill: (): void => ipcRenderer.send("pill:hide"),
+  showErrorDialog: (title: string, message: string): Promise<void> =>
+    ipcRenderer.invoke("dialog:show-error", title, message),
   getServerPort: (): Promise<number> => ipcRenderer.invoke("server:port"),
   onHotkeyDown: (callback: () => void): (() => void) => {
     const handler = (): void => callback();

@@ -420,10 +420,10 @@ describe("History", () => {
 
     const formatDate = (d: Date, daysAgo = 0) => {
       const target = new Date(d);
-      target.setDate(target.getDate() - daysAgo);
-      const year = target.getFullYear();
-      const month = String(target.getMonth() + 1).padStart(2, "0");
-      const day = String(target.getDate()).padStart(2, "0");
+      target.setUTCDate(target.getUTCDate() - daysAgo);
+      const year = target.getUTCFullYear();
+      const month = String(target.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(target.getUTCDate()).padStart(2, "0");
       return `${year}-${month}-${day} 12:00:00`;
     };
 

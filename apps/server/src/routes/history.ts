@@ -24,10 +24,11 @@ const ALLOWED_ORDER_COLUMNS = new Set([
   "cost_usd",
 ]);
 
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
 const history = new Hono()
   .get("/", (c) => {
     const db = getDb();
-    const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
     const limit = Math.min(Number(c.req.query("limit") || 50), 200);
     const offset = Number(c.req.query("offset") || 0);
     const search = c.req.query("search")?.trim() || "";
@@ -94,7 +95,6 @@ const history = new Hono()
   .get("/stats", (c) => {
     const db = getDb();
 
-    const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
     const startDateParam = c.req.query("start_date");
     const endDateParam = c.req.query("end_date");
     const startDate =

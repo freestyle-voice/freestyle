@@ -142,7 +142,6 @@ export default function HistoryPage(): React.JSX.Element {
   const isTodayPreset = activePreset === "today";
   const isWeeklyPreset = activePreset === "weekly";
   const isMonthlyPreset = activePreset === "monthly";
-  const isAllTimePreset = activePreset === "all-time";
 
   const getTimeLabel = (): string => {
     if (activePreset === "weekly") return "past 7 days";
@@ -153,7 +152,7 @@ export default function HistoryPage(): React.JSX.Element {
   };
   const timeLabel = getTimeLabel();
 
-  const filterCount = activePreset !== "weekly" ? 1 : 0;
+  const filterCount = activePreset !== "all-time" ? 1 : 0;
 
   const loadData = useCallback(async () => {
     try {
@@ -316,10 +315,10 @@ export default function HistoryPage(): React.JSX.Element {
             {entries.length === 0 ? (
               <NoSearchResults
                 hasSearch={!!search}
-                hasDates={!!(startDate || endDate)}
+                hasDates={activePreset !== "all-time"}
                 onClear={() => {
                   setSearch("");
-                  setActivePreset("weekly");
+                  setActivePreset("all-time");
                   setCustomStartDate("");
                   setCustomEndDate("");
                   setPage(0);
@@ -456,7 +455,7 @@ export default function HistoryPage(): React.JSX.Element {
               <span className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
                 Presets
               </span>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -499,20 +498,6 @@ export default function HistoryPage(): React.JSX.Element {
                 >
                   Last 30 Days
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActivePreset("all-time");
-                    setPage(0);
-                  }}
-                  className={cn(
-                    "bg-card border-border hover:bg-accent text-foreground rounded border py-1.5 text-xs transition-colors cursor-pointer text-center font-medium",
-                    isAllTimePreset &&
-                      "border-primary bg-primary/10 text-primary",
-                  )}
-                >
-                  All Time
-                </button>
               </div>
             </div>
           </div>
@@ -521,7 +506,7 @@ export default function HistoryPage(): React.JSX.Element {
             <button
               type="button"
               onClick={() => {
-                setActivePreset("weekly");
+                setActivePreset("all-time");
                 setCustomStartDate("");
                 setCustomEndDate("");
                 setPage(0);
@@ -729,7 +714,11 @@ function NoSearchResults({
           onClick={onClear}
           className="text-primary hover:text-primary/80 text-xs font-semibold underline cursor-pointer"
         >
-          Clear filters and search
+          {hasSearch && hasDates
+            ? "Clear filters and search"
+            : hasSearch
+              ? "Clear search"
+              : "Clear filters"}
         </button>
       )}
     </div>

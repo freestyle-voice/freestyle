@@ -1,4 +1,27 @@
 # Changelog
+## 0.1.7
+
+### Bug Fixes 🐛
+
+- Prevent multiple instances on Linux and persist autostart setting by @MathurAditya724 in [#210](https://github.com/freestyle-voice/freestyle/pull/210)
+- Pill not showing on macOS and consecutive MLX transcription failures by @MathurAditya724 in [#209](https://github.com/freestyle-voice/freestyle/pull/209)
+- Percent-encode x-app-context header to avoid fetch failure on non-Latin1 window titles by @vbp1 in [#208](https://github.com/freestyle-voice/freestyle/pull/208)
+- Allow deleting inactive cleanup providers by @shikhargen in [#200](https://github.com/freestyle-voice/freestyle/pull/200)
+- Improve paste handling on Linux for Wayland and X11 by @shikhargen in [#196](https://github.com/freestyle-voice/freestyle/pull/196)
+
+### Internal Changes 🔧
+
+- Add opencode agent skills for frontend, React, and shadcn by @MathurAditya724 in [#207](https://github.com/freestyle-voice/freestyle/pull/207)
+- Remove subtitle from Vocabulary page header by @Agastya18 in [#197](https://github.com/freestyle-voice/freestyle/pull/197)
+
+### Other
+
+- replace raw fetch calls with typed getClient() RPC by @MathurAditya724 in [d00025d7](https://github.com/freestyle-voice/freestyle/commit/d00025d77b3a5a32ddd85824ed7c79e781a9e8a0)
+- increase models.dev cache TTL from 10 min to 6 hours by @MathurAditya724 in [da42677f](https://github.com/freestyle-voice/freestyle/commit/da42677f543baaa9869bf3e26f2a15e9eeed6619)
+- Delete package-lock.json by @MathurAditya724 in [8c9ee02f](https://github.com/freestyle-voice/freestyle/commit/8c9ee02f0b2167eac11c0b96a5f8c5f2451085a9)
+- Completely refactor the models page. by @matteo8p in [#206](https://github.com/freestyle-voice/freestyle/pull/206)
+- Refactor React components by @matteo8p in [#199](https://github.com/freestyle-voice/freestyle/pull/199)
+
 ## 0.1.6
 
 ### Bug Fixes 🐛

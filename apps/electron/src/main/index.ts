@@ -78,6 +78,7 @@ import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
+import * as linuxAutostart from "./linux-autostart";
 import { MicListener } from "./mic-listener";
 import { pasteIntoFocusedApp } from "./paste";
 
@@ -779,7 +780,11 @@ async function factoryReset(): Promise<void> {
     }
 
     settingsCache = null;
-    app.setLoginItemSettings({ openAtLogin: false });
+    if (process.platform === "linux") {
+      linuxAutostart.setEnabled(false);
+    } else {
+      app.setLoginItemSettings({ openAtLogin: false });
+    }
 
     app.relaunch();
     app.exit(0);
@@ -1045,6 +1050,23 @@ function rebuildMenus(): void {
     tray?.setContextMenu(buildTrayContextMenu());
   }
 }
+
+// Prevent multiple instances.  If another instance already holds the lock,
+// quit immediately and let the primary instance handle activation.
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+}
+
+app.on("second-instance", () => {
+  if (settingsWindow) {
+    if (settingsWindow.isMinimized()) settingsWindow.restore();
+    settingsWindow.show();
+    settingsWindow.focus();
+  } else {
+    showSettingsWindow();
+  }
+});
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
@@ -1457,10 +1479,15 @@ app.whenReady().then(async () => {
 
   // -- Launch at startup setting IPC --
   ipcMain.handle("settings:launch-at-startup", () => {
+    if (process.platform === "linux") return linuxAutostart.isEnabled();
     return app.getLoginItemSettings().openAtLogin;
   });
 
   ipcMain.on("settings:set-launch-at-startup", (_event, enabled: boolean) => {
+    if (process.platform === "linux") {
+      linuxAutostart.setEnabled(enabled);
+      return;
+    }
     app.setLoginItemSettings({ openAtLogin: enabled });
   });
 

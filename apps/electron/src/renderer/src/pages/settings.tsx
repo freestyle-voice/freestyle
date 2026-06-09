@@ -18,6 +18,7 @@ import {
   Mic,
   Monitor,
   Moon,
+  Pause,
   Sun,
   Trash2,
   Volume2,
@@ -25,6 +26,10 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type AudioPlaybackMode,
+  normalizeAudioPlaybackMode,
+} from "../../../shared/audio-playback";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 
 // ---------------------------------------------------------------------------
@@ -35,6 +40,12 @@ const themeOptions = [
   { value: "light", label: "Light", icon: Sun },
   { value: "dark", label: "Dark", icon: Moon },
   { value: "system", label: "System", icon: Monitor },
+] as const;
+
+const audioPlaybackOptions = [
+  { id: "off", label: "Off", icon: VolumeOff },
+  { id: "duck", label: "Duck", icon: Volume2 },
+  { id: "pause", label: "Pause", icon: Pause },
 ] as const;
 
 interface AudioDevice {
@@ -62,6 +73,8 @@ export default function SettingsPage(): React.JSX.Element {
   const [outputMode, setOutputMode] = useState("paste");
   const [pillPosition, setPillPosition] = useState("bottom-center");
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [audioPlaybackMode, setAudioPlaybackMode] =
+    useState<AudioPlaybackMode>("off");
   const [transcriptionPrompt, setTranscriptionPrompt] = useState("");
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
@@ -87,6 +100,8 @@ export default function SettingsPage(): React.JSX.Element {
     null,
   );
   const isMac = navigator.userAgent.includes("Mac");
+  const isLinux = window.api?.platform === "linux";
+  const supportsBackgroundAudio = isMac || isLinux;
   // macOS and Windows can deep-link to the OS mic privacy settings.
   const canOpenMicSettings = isMac || window.api?.platform === "win32";
 
@@ -248,6 +263,39 @@ export default function SettingsPage(): React.JSX.Element {
         if (data?.value === "false") setSoundEnabled(false);
       })
       .catch(() => {});
+    void (async () => {
+      try {
+        const modeResponse = await getClient().api.settings[":key"].$get({
+          param: { key: "audio_playback_mode" },
+        });
+        const modeData = modeResponse.ok ? await modeResponse.json() : null;
+        if (modeData?.value) {
+          setAudioPlaybackMode(normalizeAudioPlaybackMode(modeData.value));
+          return;
+        }
+
+        const legacyPauseResponse = await getClient().api.settings[":key"].$get(
+          {
+            param: { key: "pause_playback_while_recording" },
+          },
+        );
+        const legacyPauseData = legacyPauseResponse.ok
+          ? await legacyPauseResponse.json()
+          : null;
+        if (legacyPauseData?.value === "true") {
+          setAudioPlaybackMode("pause");
+          return;
+        }
+
+        const legacyDuckResponse = await getClient().api.settings[":key"].$get({
+          param: { key: "audio_ducking_enabled" },
+        });
+        const legacyDuckData = legacyDuckResponse.ok
+          ? await legacyDuckResponse.json()
+          : null;
+        setAudioPlaybackMode(legacyDuckData?.value === "true" ? "duck" : "off");
+      } catch {}
+    })();
     getClient()
       .api.settings[":key"].$get({ param: { key: "transcription_prompt" } })
       .then((r) => (r.ok ? r.json() : null))
@@ -401,6 +449,18 @@ export default function SettingsPage(): React.JSX.Element {
       .api.settings[":key"].$put({
         param: { key: "sound_enabled" },
         json: { value: String(enabled) },
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleAudioPlaybackModeChange = useCallback((value: string) => {
+    const mode = normalizeAudioPlaybackMode(value);
+    setAudioPlaybackMode(mode);
+    window.api?.sendAudioPlaybackModeChanged(mode);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: "audio_playback_mode" },
+        json: { value: mode },
       })
       .catch(() => {});
   }, []);
@@ -677,10 +737,29 @@ export default function SettingsPage(): React.JSX.Element {
             />
           </Row>
 
+          {supportsBackgroundAudio ? (
+            <Row
+              label="Background audio"
+              desc={
+                isLinux
+                  ? "Duck lowers system volume. Pause pauses MPRIS media and lowers volume."
+                  : "Duck lowers volume. Pause pauses current media and lowers volume."
+              }
+              last
+            >
+              <Segment
+                compact
+                options={audioPlaybackOptions}
+                active={audioPlaybackMode}
+                onSelect={handleAudioPlaybackModeChange}
+              />
+            </Row>
+          ) : null}
+
           <Row
             label="Sound feedback"
             desc="Soft chimes at the start and end of recording."
-            last
+            last={!supportsBackgroundAudio}
           >
             <div className="flex items-center gap-2.5">
               {soundEnabled ? (

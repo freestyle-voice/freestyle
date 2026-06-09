@@ -9,6 +9,11 @@ declare global {
       defaultHotkey: string;
       pasteText: (text: string) => Promise<void>;
       copyText: (text: string) => Promise<void>;
+      prepareSystemAudio: (
+        mode: import("../shared/audio-playback").ActiveAudioPlaybackMode,
+      ) => Promise<void>;
+      duckSystemAudio: () => Promise<void>;
+      restoreSystemAudio: () => Promise<void>;
       updateHotkey: (hotkey: string) => void;
       reloadHotkey: () => void;
       setHotkeyMode: (mode: "hold" | "toggle") => void;
@@ -79,6 +84,16 @@ declare global {
       // Output mode
       sendOutputModeChanged: (mode: string) => void;
       onOutputModeChanged: (callback: (mode: string) => void) => () => void;
+      sendAudioDuckingChanged: (enabled: boolean) => void;
+      onAudioDuckingChanged: (callback: (enabled: boolean) => void) => () => void;
+      sendAudioPlaybackModeChanged: (
+        mode: import("../shared/audio-playback").AudioPlaybackMode,
+      ) => void;
+      onAudioPlaybackModeChanged: (
+        callback: (
+          mode: import("../shared/audio-playback").AudioPlaybackMode,
+        ) => void,
+      ) => () => void;
       // Hotkey error notifications
       onHotkeyError: (
         callback: (error: { message: string }) => void,

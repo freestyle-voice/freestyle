@@ -81,6 +81,8 @@ import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
+import { AudioPlaybackController } from "./audio-playback-controller";
+import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
 import { MicListener } from "./mic-listener";
 import { isWaylandSession, pasteIntoFocusedApp } from "./paste";
 
@@ -147,6 +149,7 @@ let currentHotkeyAccel: string | null = null;
 let hotkeyActivationMode: "hold" | "toggle" = "hold";
 let micListener: MicListener | null = null;
 let hotkeyRecorder: HotkeyRecorder | null = null;
+const audioPlaybackController = new AudioPlaybackController();
 
 function stopHotkeyRecorderProcess(): void {
   hotkeyRecorder?.stop();
@@ -1142,6 +1145,28 @@ app.whenReady().then(async () => {
   // IPC: expose the server port to the renderer
   ipcMain.handle("server:port", () => serverPort);
 
+  // IPC: background audio while recording (Linux duck / pause)
+  ipcMain.handle("audio:prepare", async (_event, mode: unknown) => {
+    if (!isActiveAudioPlaybackMode(mode)) return;
+    await audioPlaybackController.prepare(mode);
+  });
+
+  ipcMain.handle("audio:duck", async () => {
+    await audioPlaybackController.duck();
+  });
+
+  ipcMain.handle("audio:restore", async () => {
+    await audioPlaybackController.restore();
+  });
+
+  ipcMain.on("settings:audio-ducking-changed", (_event, enabled: boolean) => {
+    mainWindow?.webContents.send("settings:audio-ducking-changed", enabled);
+  });
+
+  ipcMain.on("settings:audio-playback-mode-changed", (_event, mode: string) => {
+    mainWindow?.webContents.send("settings:audio-playback-mode-changed", mode);
+  });
+
   ipcMain.handle(
     "dialog:show-error",
     async (_event, title: string, detail: string) => {
@@ -1965,6 +1990,7 @@ let isQuitting = false;
 let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 
 function cleanupBeforeQuit(): void {
+  audioPlaybackController.restoreSync();
   stopWhisperServer().catch(() => {});
   stopMlxServer().catch(() => {});
   if (keyListener) {

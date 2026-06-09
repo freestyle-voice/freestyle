@@ -1,6 +1,11 @@
 import { Orb } from "@renderer/components/ui/orb";
 import { capture } from "@renderer/lib/analytics";
 import { getApiBase, getClient, refreshApiBase } from "@renderer/lib/api";
+import {
+  type HotkeyActivationMode,
+  parseHotkeyMode,
+  showsLivePartialPreview,
+} from "@renderer/lib/hotkey-mode";
 import { Recorder } from "@renderer/lib/recorder";
 import { Streamer } from "@renderer/lib/streamer";
 import {
@@ -145,6 +150,8 @@ export default function AppPage(): React.JSX.Element {
   const [isReRecording, setIsReRecording] = useState(false);
   const isReRecordingRef = useRef(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [hotkeyMode, setHotkeyMode] = useState<HotkeyActivationMode>("hold");
+  const hotkeyModeRef = useRef<HotkeyActivationMode>("hold");
   const [livePartial, setLivePartial] = useState("");
   const livePartialRef = useRef("");
   const partialScrollRef = useRef<HTMLDivElement>(null);
@@ -156,11 +163,23 @@ export default function AppPage(): React.JSX.Element {
   }, []);
 
   const updateLivePartial = useCallback((text: string) => {
+    if (!showsLivePartialPreview(hotkeyModeRef.current)) return;
     const display = text.trim();
     if (!display || display === livePartialRef.current) return;
     livePartialRef.current = display;
     setLivePartial(display);
   }, []);
+
+  const applyHotkeyMode = useCallback(
+    (mode: HotkeyActivationMode) => {
+      hotkeyModeRef.current = mode;
+      setHotkeyMode(mode);
+      if (!showsLivePartialPreview(mode)) {
+        clearLivePartial();
+      }
+    },
+    [clearLivePartial],
+  );
 
   updateLivePartialRef.current = updateLivePartial;
 
@@ -832,6 +851,13 @@ export default function AppPage(): React.JSX.Element {
         if (data?.value) _outputMode = data.value;
       })
       .catch(() => {});
+    getClient()
+      .api.settings[":key"].$get({ param: { key: "hotkey_mode" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.value) applyHotkeyMode(parseHotkeyMode(data.value));
+      })
+      .catch(() => {});
     window.api
       ?.getPillPosition()
       .then(applyPillPosition)
@@ -842,11 +868,15 @@ export default function AppPage(): React.JSX.Element {
     const removeOutputMode = window.api?.onOutputModeChanged((mode) => {
       _outputMode = mode;
     });
+    const removeHotkeyMode = window.api?.onHotkeyModeChanged((mode) => {
+      applyHotkeyMode(mode);
+    });
     return () => {
       removePillPos?.();
       removeOutputMode?.();
+      removeHotkeyMode?.();
     };
-  }, [applyPillPosition]);
+  }, [applyPillPosition, applyHotkeyMode]);
 
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -922,6 +952,7 @@ export default function AppPage(): React.JSX.Element {
           : "glow-idle";
 
   const showPartialPreview =
+    showsLivePartialPreview(hotkeyMode) &&
     livePartial.length > 0 &&
     (state === "recording" || state === "transcribing");
 

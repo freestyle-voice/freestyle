@@ -9,6 +9,9 @@ declare global {
       updateHotkey: (hotkey: string) => void;
       reloadHotkey: () => void;
       setHotkeyMode: (mode: "hold" | "toggle") => void;
+      onHotkeyModeChanged: (
+        callback: (mode: "hold" | "toggle") => void,
+      ) => () => void;
       hidePill: () => void;
       showErrorDialog: (title: string, message: string) => Promise<void>;
       getServerPort: () => Promise<number>;

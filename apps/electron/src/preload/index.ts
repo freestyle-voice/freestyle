@@ -12,6 +12,14 @@ const api = {
   reloadHotkey: (): void => ipcRenderer.send("hotkey:reload"),
   setHotkeyMode: (mode: "hold" | "toggle"): void =>
     ipcRenderer.send("hotkey:set-mode", mode),
+  onHotkeyModeChanged: (
+    callback: (mode: "hold" | "toggle") => void,
+  ): (() => void) => {
+    const handler = (_: unknown, mode: "hold" | "toggle"): void =>
+      callback(mode);
+    ipcRenderer.on("hotkey:mode-changed", handler);
+    return () => ipcRenderer.removeListener("hotkey:mode-changed", handler);
+  },
   hidePill: (): void => ipcRenderer.send("pill:hide"),
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),

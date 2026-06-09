@@ -1573,12 +1573,14 @@ app.whenReady().then(async () => {
   ipcMain.on("hotkey:reload", () => {
     hotkeyActivationMode = loadHotkeyModeFromDB();
     registerHotkey(currentHotkeyAccel ?? undefined);
+    broadcastHotkeyMode(hotkeyActivationMode);
   });
 
   ipcMain.on("hotkey:set-mode", (_event, mode: string) => {
     hotkeyActivationMode = mode === "toggle" ? "toggle" : "hold";
     hotkeyPressed = false;
     registerHotkey(currentHotkeyAccel ?? undefined);
+    broadcastHotkeyMode(hotkeyActivationMode);
   });
 });
 
@@ -1662,6 +1664,11 @@ function loadHotkeyModeFromDB(): "hold" | "toggle" {
     // Ignore errors
   }
   return "hold";
+}
+
+function broadcastHotkeyMode(mode: "hold" | "toggle"): void {
+  mainWindow?.webContents.send("hotkey:mode-changed", mode);
+  settingsWindow?.webContents.send("hotkey:mode-changed", mode);
 }
 
 function sendHotkeyDown(): void {

@@ -1,5 +1,5 @@
 import type { AvailableModel } from "@renderer/lib/models";
-import { cn } from "@renderer/lib/utils";
+import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   CheckCircle,
   Key,
@@ -203,8 +203,8 @@ export default function ModelsPage(): React.JSX.Element {
               <span className="text-foreground/80 font-medium">
                 {pendingLocalDelete.name}
               </span>{" "}
-              from this Mac. The weights are deleted from your local cache; you
-              can download them again later.
+              from {ON_DEVICE_PHRASE}. The weights are deleted from your local
+              cache; you can download them again later.
             </>
           }
           onCancel={() => setPendingLocalDelete(null)}

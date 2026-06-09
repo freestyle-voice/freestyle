@@ -5,7 +5,7 @@ import {
   SheetTitle,
 } from "@renderer/components/ui/sheet";
 import { getClient } from "@renderer/lib/api";
-import { cn } from "@renderer/lib/utils";
+import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   Check,
   ChevronLeft,
@@ -681,8 +681,8 @@ function EmptyState(): React.JSX.Element {
         Nothing recorded yet.
       </h2>
       <p className="text-muted-foreground mx-auto mt-2.5 max-w-[440px] text-[14px] leading-[1.55]">
-        Hold your hotkey anywhere on your Mac, speak, release. Your first
-        transcript will appear here.
+        Hold your hotkey anywhere on {ON_DEVICE_PHRASE}, speak, release. Your
+        first transcript will appear here.
       </p>
     </div>
   );

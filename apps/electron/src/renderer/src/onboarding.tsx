@@ -20,7 +20,7 @@ import {
   type VoiceItem,
   type WhisperStatus,
 } from "@renderer/lib/models";
-import { cn } from "@renderer/lib/utils";
+import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   ArrowRight,
   Check,
@@ -959,7 +959,7 @@ function modelTagline(chosen: VoiceItem | undefined): string {
   }
   const bits: string[] = [];
   if (chosen.note) bits.push(chosen.note);
-  bits.push("Runs on your Mac");
+  bits.push(`Runs on ${ON_DEVICE_PHRASE}`);
   return bits.join(" · ");
 }
 
@@ -1174,7 +1174,7 @@ function ModelSelectorOverlay({
               <span className="text-muted-foreground text-[11.5px]">
                 {source === "cloud"
                   ? "Cloud models need an API key — we'll ask once."
-                  : "On-device models run privately on your Mac."}
+                  : `On-device models run privately on ${ON_DEVICE_PHRASE}.`}
               </span>
               <button
                 type="button"

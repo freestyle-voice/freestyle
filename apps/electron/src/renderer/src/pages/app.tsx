@@ -3,7 +3,13 @@ import { capture } from "@renderer/lib/analytics";
 import { getApiBase, getClient, refreshApiBase } from "@renderer/lib/api";
 import { Recorder } from "@renderer/lib/recorder";
 import { Streamer } from "@renderer/lib/streamer";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 const BARS = 14;
 const RISE = 0.55;
@@ -95,6 +101,18 @@ const pillTextStyle: React.CSSProperties = {
   paddingRight: 7,
 };
 
+/** Scrollable slot so long partials stay pinned to the newest words. */
+const pillPartialScrollStyle: React.CSSProperties = {
+  color: "var(--muted-foreground)",
+  fontSize: 12,
+  flex: "1 1 0%",
+  minWidth: 0,
+  overflow: "hidden",
+  whiteSpace: "nowrap",
+  paddingRight: 7,
+  WebkitAppRegion: "no-drag",
+} as React.CSSProperties;
+
 interface TranscribeResult {
   raw: string;
   cleaned: string;
@@ -127,6 +145,31 @@ export default function AppPage(): React.JSX.Element {
   const [isReRecording, setIsReRecording] = useState(false);
   const isReRecordingRef = useRef(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [livePartial, setLivePartial] = useState("");
+  const livePartialRef = useRef("");
+  const partialScrollRef = useRef<HTMLDivElement>(null);
+  const updateLivePartialRef = useRef<(text: string) => void>(() => {});
+
+  const clearLivePartial = useCallback(() => {
+    livePartialRef.current = "";
+    setLivePartial("");
+  }, []);
+
+  const updateLivePartial = useCallback((text: string) => {
+    const display = text.trim();
+    if (!display || display === livePartialRef.current) return;
+    livePartialRef.current = display;
+    setLivePartial(display);
+  }, []);
+
+  updateLivePartialRef.current = updateLivePartial;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-pin scroll when partial text grows
+  useLayoutEffect(() => {
+    const el = partialScrollRef.current;
+    if (!el) return;
+    el.scrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+  }, [livePartial]);
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
@@ -296,8 +339,11 @@ export default function AppPage(): React.JSX.Element {
           }
         },
         onReady: () => {},
-        onPartial: () => {},
+        onPartial: (text) => {
+          updateLivePartialRef.current(text);
+        },
         onFinal: (text) => {
+          if (text.trim()) updateLivePartialRef.current(text);
           const resolver = streamResolverRef.current;
           if (!resolver) return;
           streamResolverRef.current = null;
@@ -505,9 +551,10 @@ export default function AppPage(): React.JSX.Element {
     drainAgainRef.current = false;
     recordingActiveRef.current = false;
     streamResolverRef.current = null;
+    clearLivePartial();
     stopVisualization();
     window.api.hidePill();
-  }, [stopVisualization]);
+  }, [stopVisualization, clearLivePartial]);
 
   // ---- Start recording ----
   const startRecording = useCallback(
@@ -552,6 +599,7 @@ export default function AppPage(): React.JSX.Element {
         setState("initializing");
         startBarAnimation("connecting");
       }
+      clearLivePartial();
 
       try {
         sessionStreamingRef.current = useStreamingRef.current;
@@ -594,7 +642,13 @@ export default function AppPage(): React.JSX.Element {
         );
       }
     },
-    [startBarAnimation, startListening, hidePill, getStreamer],
+    [
+      startBarAnimation,
+      startListening,
+      hidePill,
+      getStreamer,
+      clearLivePartial,
+    ],
   );
 
   // ---- Commit recording ----
@@ -867,6 +921,14 @@ export default function AppPage(): React.JSX.Element {
           ? "glow-transcribing"
           : "glow-idle";
 
+  const showPartialPreview =
+    livePartial.length > 0 &&
+    (state === "recording" || state === "transcribing");
+
+  const activePillInnerStyle: React.CSSProperties = showPartialPreview
+    ? { ...pillInnerStyle, width: 248 }
+    : pillInnerStyle;
+
   const badge =
     state === "recording"
       ? formatTimer(elapsed)
@@ -875,9 +937,10 @@ export default function AppPage(): React.JSX.Element {
         : null;
 
   const showBars =
-    state === "initializing" ||
-    state === "recording" ||
-    state === "transcribing";
+    (state === "initializing" ||
+      state === "recording" ||
+      state === "transcribing") &&
+    !showPartialPreview;
 
   const renderBars = (ref?: React.RefObject<SVGSVGElement | null>) => (
     <svg
@@ -1041,7 +1104,12 @@ export default function AppPage(): React.JSX.Element {
         >
           <div
             className="inline-flex items-center gap-2.5"
-            style={pillInnerStyle}
+            style={{
+              ...activePillInnerStyle,
+              display: showPartialPreview
+                ? "flex"
+                : activePillInnerStyle.display,
+            }}
           >
             <div
               style={
@@ -1080,7 +1148,19 @@ export default function AppPage(): React.JSX.Element {
               />
             </div>
 
-            {showBars && renderBars(barsSvgRef)}
+            {showPartialPreview ? (
+              <div
+                ref={partialScrollRef}
+                style={pillPartialScrollStyle}
+                title={livePartial}
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <span style={{ display: "inline-block" }}>{livePartial}</span>
+              </div>
+            ) : (
+              showBars && renderBars(barsSvgRef)
+            )}
 
             {badge && (
               <span

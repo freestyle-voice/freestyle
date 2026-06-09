@@ -116,6 +116,68 @@ export async function transcribeElevenLabsWithBias(
   return { text: data.text?.trim() ?? "" };
 }
 
+/**
+ * 60dB batch transcription via `POST /stt` (multipart). The client sends a
+ * WAV; vocabulary terms map to the `keywords` CSV boost field. 60dB does its
+ * own optional LLM refinement via `context`, but Freestyle runs its own
+ * post-processing step, so we deliberately omit `context` here.
+ */
+export async function transcribe60db(
+  opts: BiasTranscribeParams,
+  bias?: Extract<AsrVocabularyBias, { kind: "60db-keywords" }> | null,
+): Promise<TranscribeResult> {
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([Buffer.from(opts.audio)], { type: "application/octet-stream" }),
+    "audio.wav",
+  );
+  if (opts.language && opts.language !== "auto") {
+    form.append("language", opts.language);
+  }
+  if (bias?.terms.length) {
+    // Strip CSV-significant characters so terms can't break the keywords list.
+    const keywords = bias.terms
+      .map((t) => t.replace(/[,:]/g, " ").trim())
+      .filter(Boolean)
+      .join(",");
+    if (keywords) form.append("keywords", keywords);
+  }
+
+  const res = await fetch("https://api.60db.ai/stt", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${opts.apiKey}` },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(detail || `60dB transcription failed (${res.status})`);
+  }
+
+  const data = (await res.json()) as {
+    text?: string;
+    duration_sec?: number;
+    segments?: Array<{ start?: number; end?: number; text?: string }>;
+  };
+
+  const segments = data.segments
+    ?.filter((s) => typeof s.text === "string")
+    .map((s) => ({
+      text: s.text ?? "",
+      startSecond: s.start ?? 0,
+      endSecond: s.end ?? 0,
+    }));
+
+  return {
+    text: data.text?.trim() ?? "",
+    ...(segments?.length ? { segments } : {}),
+    ...(typeof data.duration_sec === "number"
+      ? { durationInSeconds: data.duration_sec }
+      : {}),
+  };
+}
+
 export function appendDeepgramBiasToParams(
   params: URLSearchParams,
   bias: AsrVocabularyBias | null | undefined,

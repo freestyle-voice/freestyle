@@ -163,6 +163,14 @@ const BUILTIN_VOICE_MODELS: AvailableModel[] = [
     family: "elevenlabs",
     type: "voice",
   },
+  {
+    provider_id: "60db",
+    provider_name: "60dB",
+    model_id: "60db/stt",
+    model_name: "Speech-to-Text",
+    family: "60db",
+    type: "voice",
+  },
 ];
 
 // In-memory cache for models.dev data

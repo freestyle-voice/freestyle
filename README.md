@@ -21,7 +21,7 @@ Freestyle is free, open source, and local first, ensuring your dictations are pr
 ### Features
 
 - **Voice dictation** — hold the hotkey, speak, release to paste at your cursor in milliseconds.
-- **Choose your model provider** — OpenAI, Groq, Anthropic, Google, Deepgram, ElevenLabs. Bring your own API key. 
+- **Choose your model provider** — OpenAI, Groq, Anthropic, Google, Deepgram, ElevenLabs, 60dB. Bring your own API key. 
 - **Transcription cleaning** — grammer and punctuation cleanup via post-processing. No more "um, oh, but".
 - **Dictionary** — custom phrase replacements applied after transcription. (ex. `"type script"` → `TypeScript`).
 - **Contextual correction** — reformat your text based on where you're typing. Automatically format emails into email format.

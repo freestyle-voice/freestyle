@@ -75,12 +75,14 @@ import { autoUpdater } from "electron-updater";
 import { WebSocketServer } from "ws";
 import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
+import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
+import { checkLinuxSetup } from "./linux-setup";
 import { MicListener } from "./mic-listener";
-import { pasteIntoFocusedApp } from "./paste";
+import { isWaylandSession, pasteIntoFocusedApp } from "./paste";
 
 const log = createAppLogger("electron");
 const hotkeyLog = createAppLogger("hotkey");
@@ -1091,10 +1093,17 @@ app.whenReady().then(async () => {
 
   // IPC: paste text at cursor
   ipcMain.handle("paste:text", async (_event, text: string) => {
-    await pasteIntoFocusedApp(text, async () => {
-      hidePill();
-      await wait(0);
-    });
+    try {
+      await pasteIntoFocusedApp(text, async () => {
+        hidePill();
+        await wait(0);
+      });
+    } catch (err) {
+      // pasteIntoFocusedApp left the transcript on the clipboard — tell the
+      // user instead of letting the dictation silently vanish.
+      notifyPasteFailed();
+      throw err;
+    }
   });
 
   // IPC: copy text to clipboard
@@ -1144,11 +1153,14 @@ app.whenReady().then(async () => {
 
   // IPC: permission checks
   ipcMain.handle("permissions:check-mic", async () => {
-    if (process.platform === "darwin") {
-      const { systemPreferences } = await import("electron");
-      return systemPreferences.getMediaAccessStatus("microphone");
+    if (process.platform === "linux") {
+      // Linux has no OS-level mic permission API; the renderer resolves the
+      // real state with a getUserMedia probe (see lib/permissions.ts).
+      return "unknown";
     }
-    return "granted"; // Windows/Linux don't have this API
+    // macOS and Windows both report the real privacy-settings state here.
+    const { systemPreferences } = await import("electron");
+    return systemPreferences.getMediaAccessStatus("microphone");
   });
 
   ipcMain.handle("permissions:request-mic", async () => {
@@ -1157,7 +1169,13 @@ app.whenReady().then(async () => {
       const granted = await systemPreferences.askForMediaAccess("microphone");
       return granted ? "granted" : "denied";
     }
-    return "granted";
+    if (process.platform === "win32") {
+      // Windows has no programmatic prompt; report the privacy-settings
+      // state so the UI can send the user to Settings when it's denied.
+      const { systemPreferences } = await import("electron");
+      return systemPreferences.getMediaAccessStatus("microphone");
+    }
+    return "unknown"; // Linux: renderer probes getUserMedia instead
   });
 
   ipcMain.handle("permissions:check-accessibility", async () => {
@@ -1187,7 +1205,16 @@ app.whenReady().then(async () => {
       shell.openExternal(
         "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Microphone",
       );
+    } else if (process.platform === "win32") {
+      shell.openExternal("ms-settings:privacy-microphone");
     }
+  });
+
+  // IPC: Linux system setup (input-group access for the hotkey listener and
+  // the xdotool/wtype paste fallback). Returns null on other platforms.
+  ipcMain.handle("permissions:check-linux-setup", async () => {
+    if (process.platform !== "linux") return null;
+    return checkLinuxSetup();
   });
 
   ipcMain.handle("onboarding:complete", () => {
@@ -1582,7 +1609,7 @@ app.whenReady().then(async () => {
   });
 });
 
-const DEFAULT_HOTKEY = "Alt+Space";
+const DEFAULT_HOTKEY = getDefaultHotkey();
 const HOTKEY_MODIFIER_PARTS = new Set([
   "alt",
   "option",
@@ -1617,13 +1644,19 @@ function isValidAccelerator(accel: string): boolean {
   if (accel.endsWith("+")) return false;
   const parts = accel.split("+");
   if (parts.some((p) => !p.trim())) return false;
-  return parts.some((part) => {
-    const normalized = part.trim().toLowerCase();
-    return (
-      HOTKEY_MODIFIER_PARTS.has(normalized) ||
-      HOTKEY_MACRO_MOUSE_PARTS.has(normalized)
-    );
-  });
+  const lowered = parts.map((p) => p.trim().toLowerCase());
+  // Fn/Globe is only observable by the macOS native listener; on other
+  // platforms a hotkey containing it would silently never fire.
+  if (
+    process.platform !== "darwin" &&
+    lowered.some((p) => p === "fn" || p === "globe")
+  ) {
+    return false;
+  }
+  return lowered.some(
+    (part) =>
+      HOTKEY_MODIFIER_PARTS.has(part) || HOTKEY_MACRO_MOUSE_PARTS.has(part),
+  );
 }
 
 function loadHotkeyFromDB(): string | undefined {
@@ -1718,6 +1751,49 @@ function handleNativeHotkeyUp(): void {
   }
 }
 
+// Notify once per session when hold-to-talk degrades to toggle mode, so the
+// user isn't left wondering why holding the hotkey stopped working.
+let hotkeyDegradedNotified = false;
+function notifyHotkeyDegraded(accel: string, nativeError: string): void {
+  if (hotkeyDegradedNotified || hotkeyActivationMode !== "hold") return;
+  hotkeyDegradedNotified = true;
+  let fix = "";
+  if (
+    process.platform === "linux" &&
+    nativeError.includes("No accessible input devices")
+  ) {
+    fix =
+      " To enable hold-to-talk, run: sudo usermod -aG input $USER — then log out and back in.";
+  }
+  const body = `Hold-to-talk isn't available, so "${accel}" now toggles recording on and off.${fix}`;
+  hotkeyLog.warn(body);
+  if (Notification.isSupported()) {
+    new Notification({ title: "Freestyle is in toggle mode", body }).show();
+  }
+}
+
+// Rate-limited so a broken paste backend doesn't fire a notification per
+// dictation.
+const PASTE_FAILED_NOTIFY_INTERVAL_MS = 30_000;
+let lastPasteFailedNotifyAt = 0;
+function notifyPasteFailed(): void {
+  const now = Date.now();
+  if (now - lastPasteFailedNotifyAt < PASTE_FAILED_NOTIFY_INTERVAL_MS) return;
+  lastPasteFailedNotifyAt = now;
+  const shortcut = process.platform === "darwin" ? "Cmd+V" : "Ctrl+V";
+  let hint = "";
+  if (process.platform === "linux") {
+    const tool = isWaylandSession() ? "wtype" : "xdotool";
+    hint = ` Installing ${tool} may fix this (e.g. sudo apt install ${tool}).`;
+  }
+  if (Notification.isSupported()) {
+    new Notification({
+      title: "Freestyle couldn't paste",
+      body: `Your transcript is on the clipboard — press ${shortcut} to paste it.${hint}`,
+    }).show();
+  }
+}
+
 async function registerHotkey(hotkey?: string): Promise<void> {
   // Tear down previous listener
   if (keyListener) {
@@ -1789,6 +1865,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
       // "grant Accessibility" prompt during onboarding, and leave paste
       // silently broken in the notarized prod build. Only the native key
       // listener starting (above) is real proof of Accessibility.
+      notifyHotkeyDegraded(accel, nativeError);
     } else {
       let message = `Could not register hotkey "${accel}". Try a different key combination in Settings.`;
       if (

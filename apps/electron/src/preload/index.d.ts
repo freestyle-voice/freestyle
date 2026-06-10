@@ -4,6 +4,8 @@ declare global {
   interface Window {
     electron: ElectronAPI;
     api: {
+      platform: string;
+      defaultHotkey: string;
       pasteText: (text: string) => Promise<void>;
       copyText: (text: string) => Promise<void>;
       updateHotkey: (hotkey: string) => void;
@@ -18,6 +20,12 @@ declare global {
       checkMicPermission: () => Promise<string>;
       requestMicPermission: () => Promise<string>;
       checkAccessibilityPermission: () => Promise<boolean>;
+      checkLinuxSetup: () => Promise<{
+        wayland: boolean;
+        inputAccess: boolean;
+        pasteToolRequired: string;
+        pasteTool: string | null;
+      } | null>;
       openAccessibilitySettings: () => void;
       openMicSettings: () => void;
       getOnboardingComplete: () => Promise<boolean>;

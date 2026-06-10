@@ -28,12 +28,19 @@ function getDesktopFilePath(): string {
   return join(getAutostartDir(), DESKTOP_FILENAME);
 }
 
+function getStableExecPath(): string {
+  // Under AppImage, process.execPath points into the transient mount at
+  // /tmp/.mount_* which changes every launch; the AppImage file itself is
+  // the stable path to put in the .desktop entry.
+  return process.env.APPIMAGE || process.execPath;
+}
+
 function buildDesktopEntry(): string {
   return [
     "[Desktop Entry]",
     "Type=Application",
     "Name=Freestyle",
-    `Exec="${process.execPath}"`,
+    `Exec="${getStableExecPath()}"`,
     "X-GNOME-Autostart-enabled=true",
     "",
   ].join("\n");

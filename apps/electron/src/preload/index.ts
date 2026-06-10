@@ -1,8 +1,13 @@
 import { electronAPI } from "@electron-toolkit/preload";
 import { contextBridge, ipcRenderer } from "electron";
+import { getDefaultHotkey } from "../shared/hotkey-defaults";
 
 // Custom APIs for renderer
 const api = {
+  // The renderer can't reach process.platform reliably (navigator.platform
+  // is deprecated); expose it once here so all platform checks agree.
+  platform: process.platform as string,
+  defaultHotkey: getDefaultHotkey(),
   pasteText: (text: string): Promise<void> =>
     ipcRenderer.invoke("paste:text", text),
   copyText: (text: string): Promise<void> =>
@@ -37,6 +42,12 @@ const api = {
     ipcRenderer.invoke("permissions:request-mic"),
   checkAccessibilityPermission: (): Promise<boolean> =>
     ipcRenderer.invoke("permissions:check-accessibility"),
+  checkLinuxSetup: (): Promise<{
+    wayland: boolean;
+    inputAccess: boolean;
+    pasteToolRequired: string;
+    pasteTool: string | null;
+  } | null> => ipcRenderer.invoke("permissions:check-linux-setup"),
   openAccessibilitySettings: (): void =>
     ipcRenderer.send("permissions:open-accessibility"),
   openMicSettings: (): void =>

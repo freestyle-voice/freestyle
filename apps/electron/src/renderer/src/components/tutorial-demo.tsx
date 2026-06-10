@@ -25,6 +25,9 @@ const PHASE_STEPS: ReadonlyArray<readonly [DemoPhase, number]> = [
 
 const SAMPLE_TRANSCRIPT = "Pushing the meeting to tomorrow at ten.";
 
+// Platform-aware default, mirrored from the main process via the preload.
+const DEFAULT_HOTKEY = window.api?.defaultHotkey ?? "Alt+Space";
+
 export function TutorialDemo({
   hotkey,
   interactive = false,
@@ -42,7 +45,7 @@ export function TutorialDemo({
 }): React.JSX.Element {
   const [phase, setPhase] = useState<DemoPhase>("idle");
   const [hotkeyTokens, setHotkeyTokens] = useState<string[]>(() =>
-    formatAcceleratorKeys(hotkey ?? "Alt+Space"),
+    formatAcceleratorKeys(hotkey ?? DEFAULT_HOTKEY),
   );
   const stepRef = useRef(0);
   const timeoutRef = useRef<number | null>(null);
@@ -96,12 +99,12 @@ export function TutorialDemo({
       .api.settings[":key"].$get({ param: { key: "hotkey" } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { value?: string } | null) => {
-        const val = data?.value || "Alt+Space";
+        const val = data?.value || DEFAULT_HOTKEY;
         const tokens = formatAcceleratorKeys(val);
         if (tokens.length > 0) setHotkeyTokens(tokens);
       })
       .catch(() => {
-        const tokens = formatAcceleratorKeys("Alt+Space");
+        const tokens = formatAcceleratorKeys(DEFAULT_HOTKEY);
         if (tokens.length > 0) setHotkeyTokens(tokens);
       });
   }, [hotkey]);

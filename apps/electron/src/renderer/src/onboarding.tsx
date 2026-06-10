@@ -21,11 +21,13 @@ import {
   type VoiceItem,
   type WhisperStatus,
 } from "@renderer/lib/models";
+import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   ArrowRight,
   Check,
   ChevronLeft,
+  ClipboardPaste,
   Eye,
   EyeOff,
   HardDrive,
@@ -42,8 +44,26 @@ import { useNavigate } from "react-router";
 
 type Step = "permissions" | "language" | "tutorial";
 
-const IS_MAC =
-  typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
+const PLATFORM =
+  (typeof window !== "undefined" && window.api?.platform) ||
+  (typeof navigator !== "undefined" && navigator.userAgent.includes("Mac")
+    ? "darwin"
+    : "unknown");
+const IS_MAC = PLATFORM === "darwin";
+const IS_WINDOWS = PLATFORM === "win32";
+const IS_LINUX = PLATFORM === "linux";
+
+const DEFAULT_HOTKEY =
+  (typeof window !== "undefined" && window.api?.defaultHotkey) || "Alt+Space";
+
+// Linux system-setup state reported by the main process (input-group access
+// for the hotkey listener, xdotool/wtype for the paste fallback).
+type LinuxSetup = {
+  wayland: boolean;
+  inputAccess: boolean;
+  pasteToolRequired: string;
+  pasteTool: string | null;
+};
 
 // The opinionated on-device pick, in order of preference. Qwen3 ASR (MLX)
 // is the hero when the machine can run it; whisper.cpp's Balanced model is
@@ -84,6 +104,7 @@ export default function OnboardingPage(): React.JSX.Element {
   // Permissions state
   const [micStatus, setMicStatus] = useState<string>("unknown");
   const [accessibilityStatus, setAccessibilityStatus] = useState(false);
+  const [linuxSetup, setLinuxSetup] = useState<LinuxSetup | null>(null);
 
   // Voice model state
   const [available, setAvailable] = useState<AvailableModel[]>([]);
@@ -119,7 +140,7 @@ export default function OnboardingPage(): React.JSX.Element {
   const [showKey, setShowKey] = useState(false);
 
   // Hotkey recorder state (tutorial step)
-  const [hotkey, setHotkey] = useState("Alt+Space");
+  const [hotkey, setHotkey] = useState(DEFAULT_HOTKEY);
 
   const handleHotkeyRecorded = useCallback((accelerator: string) => {
     setHotkey(accelerator);
@@ -152,14 +173,19 @@ export default function OnboardingPage(): React.JSX.Element {
 
   // Load permissions + saved hotkey
   useEffect(() => {
-    window.api
-      ?.checkMicPermission()
+    resolveMicStatus()
       .then(setMicStatus)
       .catch(() => {});
     window.api
       ?.checkAccessibilityPermission()
       .then(setAccessibilityStatus)
       .catch(() => {});
+    if (IS_LINUX) {
+      window.api
+        ?.checkLinuxSetup()
+        .then((setup) => setup && setLinuxSetup(setup))
+        .catch(() => {});
+    }
     getClient()
       .api.settings[":key"].$get({ param: { key: "hotkey" } })
       .then((r) => (r.ok ? r.json() : null))
@@ -179,7 +205,7 @@ export default function OnboardingPage(): React.JSX.Element {
     if (!started.current) {
       started.current = true;
       capture("onboarding_started", {
-        platform: IS_MAC ? "mac" : "other",
+        platform: PLATFORM,
       });
     }
     capture("onboarding_step_viewed", { step });
@@ -273,8 +299,14 @@ export default function OnboardingPage(): React.JSX.Element {
 
   const requestMic = useCallback(async () => {
     capture("onboarding_mic_permission_clicked", { action: "allow" });
-    const status = await window.api?.requestMicPermission();
+    const status = await requestMicAccess();
     if (status) setMicStatus(status);
+  }, []);
+
+  const recheckLinuxSetup = useCallback(async () => {
+    capture("onboarding_linux_setup_rechecked");
+    const setup = await window.api?.checkLinuxSetup();
+    if (setup) setLinuxSetup(setup);
   }, []);
 
   const openMicSettings = useCallback(() => {
@@ -605,9 +637,11 @@ export default function OnboardingPage(): React.JSX.Element {
           <PermissionsStep
             micStatus={micStatus}
             accessibilityStatus={accessibilityStatus}
+            linuxSetup={linuxSetup}
             onRequestMic={requestMic}
             onOpenMicSettings={openMicSettings}
             onOpenAccessibility={openAccessibility}
+            onRecheckLinuxSetup={recheckLinuxSetup}
             onContinue={() => {
               capture("onboarding_permissions_completed");
               setStep("language");
@@ -704,21 +738,32 @@ export default function OnboardingPage(): React.JSX.Element {
 function PermissionsStep({
   micStatus,
   accessibilityStatus,
+  linuxSetup,
   onRequestMic,
   onOpenMicSettings,
   onOpenAccessibility,
+  onRecheckLinuxSetup,
   onContinue,
 }: {
   micStatus: string;
   accessibilityStatus: boolean;
+  linuxSetup: LinuxSetup | null;
   onRequestMic: () => void;
   onOpenMicSettings: () => void;
   onOpenAccessibility: () => void;
+  onRecheckLinuxSetup: () => void;
   onContinue: () => void;
 }): React.JSX.Element {
   const micGranted = micStatus === "granted";
+  // On Wayland there is no hotkey fallback without /dev/input access, so
+  // missing input access blocks. On X11 the Electron globalShortcut still
+  // works (toggle mode), so the card only warns.
+  const linuxBlocked = !!linuxSetup?.wayland && !linuxSetup.inputAccess;
   // Accessibility is macOS-only; elsewhere the mic alone unblocks.
-  const allGranted = micGranted && (!IS_MAC || accessibilityStatus);
+  const allGranted =
+    micGranted && (!IS_MAC || accessibilityStatus) && !linuxBlocked;
+  // macOS and Windows can deep-link to the OS mic privacy settings.
+  const canOpenMicSettings = IS_MAC || IS_WINDOWS;
 
   return (
     <div className="w-full max-w-[440px]">
@@ -729,7 +774,7 @@ function PermissionsStep({
           desc="To hear what you say."
           granted={micGranted}
           action={
-            micStatus === "denied" && IS_MAC ? (
+            micStatus === "denied" && canOpenMicSettings ? (
               <PermButton onClick={onOpenMicSettings}>Open Settings</PermButton>
             ) : (
               <PermButton onClick={onRequestMic}>Allow</PermButton>
@@ -747,6 +792,52 @@ function PermissionsStep({
               <PermButton onClick={onOpenAccessibility}>
                 Open Settings
               </PermButton>
+            }
+          />
+        )}
+
+        {IS_LINUX && linuxSetup && (
+          <PermCard
+            icon={Keyboard}
+            title="Keyboard access"
+            desc={
+              linuxSetup.inputAccess ? (
+                "To detect your hotkey in any app."
+              ) : (
+                <>
+                  To detect your hotkey in any app, run{" "}
+                  <code className="text-foreground">
+                    sudo usermod -aG input $USER
+                  </code>{" "}
+                  in a terminal, then log out and back in.
+                  {!linuxSetup.wayland &&
+                    " Until then, the hotkey only works in toggle mode."}
+                </>
+              )
+            }
+            granted={linuxSetup.inputAccess}
+            action={
+              <PermButton onClick={onRecheckLinuxSetup}>Re-check</PermButton>
+            }
+          />
+        )}
+
+        {IS_LINUX && linuxSetup && !linuxSetup.pasteTool && (
+          <PermCard
+            icon={ClipboardPaste}
+            title="Paste tool"
+            desc={
+              <>
+                To paste into other apps, install {linuxSetup.pasteToolRequired}
+                :{" "}
+                <code className="text-foreground">
+                  sudo apt install {linuxSetup.pasteToolRequired}
+                </code>
+              </>
+            }
+            granted={false}
+            action={
+              <PermButton onClick={onRecheckLinuxSetup}>Re-check</PermButton>
             }
           />
         )}
@@ -786,7 +877,7 @@ function PermCard({
 }: {
   icon: typeof Mic;
   title: string;
-  desc: string;
+  desc: React.ReactNode;
   granted: boolean;
   action: React.ReactNode;
 }): React.JSX.Element {

@@ -351,7 +351,7 @@ function KeyRow({
               Key invalid — update or delete
             </span>
           ) : (
-            "Key stored in keychain"
+            `Key ${entry.hint ?? ""} stored in keychain`.replace("  ", " ")
           )}
         </div>
       </div>

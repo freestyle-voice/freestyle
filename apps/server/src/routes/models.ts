@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import {
+  LEGACY_MLX_ASR_MODELS,
   MLX_ASR_MODELS,
   MLX_ASR_PROVIDER_ID,
   MLX_ASR_PROVIDER_NAME,
@@ -12,6 +13,7 @@ import { capture } from "../lib/posthog.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
 import { isServerBinaryAvailable } from "../lib/whisper/binary.js";
 import {
+  LEGACY_WHISPER_MODELS,
   WHISPER_MODELS,
   WHISPER_PROVIDER_ID,
 } from "../lib/whisper/constants.js";
@@ -27,6 +29,8 @@ interface AvailableModel {
   type: "voice" | "llm";
   cost_input?: number;
   cost_output?: number;
+  /** Surfaced in the default picker; non-curated models live behind "All models". */
+  curated?: boolean;
 }
 
 const DEPRECATED_STATUS = "deprecated";
@@ -72,24 +76,27 @@ async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
   }));
 }
 
-// Speech-to-text model families from models.dev
-const STT_FAMILIES = new Set(["whisper", "deepgram"]);
+// Local voice models (curated + legacy that's still downloaded — the
+// /available handler filters to ready models, so legacy entries only
+// surface for installs that already have them on disk).
+const LOCAL_WHISPER_VOICE_MODELS: AvailableModel[] = [
+  ...WHISPER_MODELS,
+  ...LEGACY_WHISPER_MODELS,
+].map((m) => ({
+  provider_id: WHISPER_PROVIDER_ID,
+  provider_name: "Local Whisper",
+  model_id: `${WHISPER_PROVIDER_ID}/${m.id}`,
+  model_name: m.displayName,
+  family: "whisper-local",
+  type: "voice" as const,
+  cost_input: 0,
+  cost_output: 0,
+}));
 
-// Local Whisper voice models (generated from constants)
-const LOCAL_WHISPER_VOICE_MODELS: AvailableModel[] = WHISPER_MODELS.map(
-  (m) => ({
-    provider_id: WHISPER_PROVIDER_ID,
-    provider_name: "Local Whisper",
-    model_id: `${WHISPER_PROVIDER_ID}/${m.id}`,
-    model_name: `${m.displayName} (Local)`,
-    family: "whisper-local",
-    type: "voice" as const,
-    cost_input: 0,
-    cost_output: 0,
-  }),
-);
-
-const LOCAL_MLX_VOICE_MODELS: AvailableModel[] = MLX_ASR_MODELS.map((m) => ({
+const LOCAL_MLX_VOICE_MODELS: AvailableModel[] = [
+  ...MLX_ASR_MODELS,
+  ...LEGACY_MLX_ASR_MODELS,
+].map((m) => ({
   provider_id: MLX_ASR_PROVIDER_ID,
   provider_name: MLX_ASR_PROVIDER_NAME,
   model_id: `${MLX_ASR_PROVIDER_ID}/${m.id}`,
@@ -100,29 +107,22 @@ const LOCAL_MLX_VOICE_MODELS: AvailableModel[] = MLX_ASR_MODELS.map((m) => ({
   cost_output: 0,
 }));
 
-// Hardcoded transcription models for providers missing from models.dev registry
+// Curated cloud voice catalog: one flagship per provider. The models.dev
+// registry is deliberately NOT merged for voice — untested model noise.
 const BUILTIN_VOICE_MODELS: AvailableModel[] = [
   {
     provider_id: "openai",
     provider_name: "OpenAI",
-    model_id: "openai/whisper-1",
-    model_name: "Whisper V2",
-    family: "whisper",
-    type: "voice",
-  },
-  {
-    provider_id: "openai",
-    provider_name: "OpenAI",
     model_id: "openai/gpt-4o-transcribe",
-    model_name: "GPT-4o Transcribe",
+    model_name: "OpenAI Transcribe",
     family: "whisper",
     type: "voice",
   },
   {
-    provider_id: "openai",
-    provider_name: "OpenAI",
-    model_id: "openai/gpt-4o-mini-transcribe",
-    model_name: "GPT-4o Mini Transcribe",
+    provider_id: "groq",
+    provider_name: "Groq",
+    model_id: "groq/whisper-large-v3-turbo",
+    model_name: "Groq Whisper",
     family: "whisper",
     type: "voice",
   },
@@ -130,43 +130,38 @@ const BUILTIN_VOICE_MODELS: AvailableModel[] = [
     provider_id: "deepgram",
     provider_name: "Deepgram",
     model_id: "deepgram/nova-3",
-    model_name: "Nova 3",
+    model_name: "Deepgram Nova 3",
     family: "deepgram",
-    type: "voice",
-  },
-  {
-    provider_id: "deepgram",
-    provider_name: "Deepgram",
-    model_id: "deepgram/nova-2",
-    model_name: "Nova 2",
-    family: "deepgram",
-    type: "voice",
-  },
-  {
-    provider_id: "elevenlabs",
-    provider_name: "ElevenLabs",
-    model_id: "elevenlabs/scribe_v1",
-    model_name: "Scribe V1",
-    family: "elevenlabs",
-    type: "voice",
-  },
-  {
-    provider_id: "elevenlabs",
-    provider_name: "ElevenLabs",
-    model_id: "elevenlabs/scribe_v2",
-    model_name: "Scribe V2",
-    family: "elevenlabs",
     type: "voice",
   },
   {
     provider_id: "elevenlabs",
     provider_name: "ElevenLabs",
     model_id: "elevenlabs/scribe_v2_realtime",
-    model_name: "Scribe V2 Realtime",
+    model_name: "ElevenLabs Scribe",
     family: "elevenlabs",
     type: "voice",
   },
 ];
+
+// Cleanup-LLM providers the app can actually run (see lib/providers.ts).
+const SUPPORTED_LLM_PROVIDERS = new Set([
+  "openai",
+  "anthropic",
+  "google",
+  "groq",
+  "mistral",
+]);
+
+// One fast-tier cleanup model per provider, surfaced by default; everything
+// else from the registry sits behind the picker's "All models" expander.
+const CURATED_LLM_IDS = new Set([
+  "groq/llama-3.3-70b-versatile",
+  "openai/gpt-4o-mini",
+  "anthropic/claude-haiku-4-5",
+  "google/gemini-2.5-flash",
+  "mistral/mistral-small-latest",
+]);
 
 // In-memory cache for models.dev data
 let modelsCache: { data: unknown; fetchedAt: number } | null = null;
@@ -274,46 +269,29 @@ function isCleanupSuitableModel(model: RegistryModel): boolean {
 const models = new Hono()
   .get("/available", async (c) => {
     try {
-      const registry = await fetchModelsFromRegistry();
       const available: AvailableModel[] = [];
 
-      // Track builtin model IDs so we don't duplicate
-      const builtinIds = new Set(BUILTIN_VOICE_MODELS.map((m) => m.model_id));
-
+      // Cleanup LLMs come from the registry, restricted to providers the app
+      // can actually run. Voice is curated-only (no registry merge). A registry
+      // outage must not take the curated/local catalog down with it.
+      let registry: Record<string, unknown> = {};
+      try {
+        registry = await fetchModelsFromRegistry();
+      } catch {
+        // offline / models.dev unreachable — curated lists still work
+      }
       for (const [providerId, providerData] of Object.entries(registry)) {
+        if (!SUPPORTED_LLM_PROVIDERS.has(providerId)) continue;
         const provider = providerData as RegistryProvider;
         if (!provider.models) continue;
 
         for (const [, model] of Object.entries(provider.models)) {
           if (model.status === DEPRECATED_STATUS) continue;
 
-          const family = model.family ?? "";
           const inputMods = model.modalities?.input ?? [];
           const outputMods = model.modalities?.output ?? [];
-
-          // STT voice models: audio input + text output, or known STT families
-          const isSTT =
-            (STT_FAMILIES.has(family) &&
-              inputMods.includes("audio") &&
-              outputMods.includes("text")) ||
-            (inputMods.includes("audio") && outputMods.includes("text"));
-
-          // LLM models: text input + text output
           const isLLM =
             inputMods.includes("text") && outputMods.includes("text");
-
-          if (isSTT && !builtinIds.has(model.id)) {
-            available.push({
-              provider_id: providerId,
-              provider_name: provider.name ?? providerId,
-              model_id: model.id,
-              model_name: model.name,
-              family,
-              type: "voice",
-              cost_input: model.cost?.input,
-              cost_output: model.cost?.output,
-            });
-          }
 
           if (isLLM && isCleanupSuitableModel(model)) {
             available.push({
@@ -321,24 +299,27 @@ const models = new Hono()
               provider_name: provider.name ?? providerId,
               model_id: model.id,
               model_name: model.name,
-              family,
+              family: model.family ?? "",
               type: "llm",
               cost_input: model.cost?.input,
               cost_output: model.cost?.output,
+              curated: CURATED_LLM_IDS.has(`${providerId}/${model.id}`),
             });
           }
         }
       }
 
-      // Add builtin voice models
-      available.push(...BUILTIN_VOICE_MODELS);
+      // Curated cloud voice models
+      available.push(
+        ...BUILTIN_VOICE_MODELS.map((m) => ({ ...m, curated: true })),
+      );
 
       // Add local whisper voice models (only those that are downloaded)
       for (const whisperModel of LOCAL_WHISPER_VOICE_MODELS) {
         const modelId = whisperModel.model_id.split("/")[1];
         const status = getModelStatus(modelId);
         if (status?.status === "ready") {
-          available.push(whisperModel);
+          available.push({ ...whisperModel, curated: true });
         }
       }
 
@@ -347,14 +328,15 @@ const models = new Hono()
           const modelId = mlxModel.model_id.split("/")[1];
           const status = getMlxModelStatus(modelId);
           if (status?.status === "ready") {
-            available.push(mlxModel);
+            available.push({ ...mlxModel, curated: true });
           }
         }
       }
 
       try {
         const localModels = await fetchLocalLlmModels();
-        available.push(...localModels);
+        // The user explicitly connected this server — everything it serves is curated.
+        available.push(...localModels.map((m) => ({ ...m, curated: true })));
       } catch {
         // Local LLM server not reachable
       }

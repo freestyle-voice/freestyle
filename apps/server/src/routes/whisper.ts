@@ -8,17 +8,14 @@ import {
   isServerBinaryAvailable,
 } from "../lib/whisper/binary.js";
 
-import {
-  getModelsDir,
-  WHISPER_MODELS,
-  WHISPER_PROVIDER_ID,
-} from "../lib/whisper/constants.js";
+import { getModelsDir, WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
 import {
   cancelDownload,
   clearDownloadError,
   deleteModel,
   downloadModel,
   getAllModelStatuses,
+  getCatalogModels,
   getModelStatus,
   isBinaryDownloading,
 } from "../lib/whisper/models.js";
@@ -41,7 +38,7 @@ const whisper = new Hono()
       serverFailed: isServerFailed(),
       modelsDir: getModelsDir(),
       models: getAllModelStatuses(),
-      modelDefinitions: WHISPER_MODELS.map((m) => ({
+      modelDefinitions: getCatalogModels().map((m) => ({
         id: m.id,
         displayName: m.displayName,
         sizeBytes: m.sizeBytes,

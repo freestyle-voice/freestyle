@@ -2,7 +2,6 @@ import { createAppLogger } from "@freestyle/utils";
 import { Hono } from "hono";
 import {
   isAppleSiliconMac,
-  MLX_ASR_MODELS,
   MLX_ASR_PROVIDER_ID,
   MLX_ASR_PROVIDER_NAME,
   MLX_UNSUPPORTED_PLATFORM_REASON,
@@ -13,6 +12,7 @@ import {
   deleteMlxModel,
   downloadMlxModel,
   getAllMlxModelStatuses,
+  getMlxCatalogModels,
   getMlxModelStatus,
 } from "../lib/mlx-asr/models.js";
 import {
@@ -70,7 +70,7 @@ const mlxAsr = new Hono()
       runtime: getMlxRuntimeDownloadStatus(),
       models: platformSupported ? getAllMlxModelStatuses() : [],
       modelDefinitions: platformSupported
-        ? MLX_ASR_MODELS.map((m) => ({
+        ? getMlxCatalogModels().map((m) => ({
             id: m.id,
             hfId: m.hfId,
             family: m.family,

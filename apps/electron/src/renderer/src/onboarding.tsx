@@ -17,6 +17,7 @@ import {
   formatBytes,
   type MlxAsrStatus,
   PROVIDER_DISPLAY_NAMES,
+  PROVIDER_KEY_URLS,
   type VoiceItem,
   type WhisperStatus,
 } from "@renderer/lib/models";
@@ -25,7 +26,6 @@ import {
   ArrowRight,
   Check,
   ChevronLeft,
-  Download,
   Eye,
   EyeOff,
   HardDrive,
@@ -40,16 +40,41 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router";
 
-type Step = "permissions" | "model" | "tutorial";
+type Step = "permissions" | "language" | "tutorial";
 
 const IS_MAC =
   typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
 
 // The opinionated on-device pick, in order of preference. Qwen3 ASR (MLX)
-// is the hero when the machine can run it; whisper.cpp's Base model is the
-// universal fallback (it builds its own binary, no Python required).
+// is the hero when the machine can run it; whisper.cpp's Balanced model is
+// the universal fallback (it builds its own binary, no Python required).
+// It downloads in the background while the user picks a language and a
+// hotkey — first-time users never choose a model.
 const RECOMMENDED_MLX_DEF = "qwen3-0.6b-8bit";
-const RECOMMENDED_WHISPER_DEF = "base";
+const RECOMMENDED_WHISPER_DEF = "small-q5_1";
+
+// The one choice that genuinely changes transcription outcomes. Explicit
+// language beats auto-detect on both speed and accuracy; the full list
+// lives in Settings.
+const ONBOARDING_LANGUAGES: { id: string; label: string }[] = [
+  { id: "en", label: "English" },
+  { id: "es", label: "Español" },
+  { id: "fr", label: "Français" },
+  { id: "de", label: "Deutsch" },
+  { id: "it", label: "Italiano" },
+  { id: "pt", label: "Português" },
+  { id: "nl", label: "Nederlands" },
+  { id: "ru", label: "Русский" },
+  { id: "zh", label: "中文" },
+  { id: "ja", label: "日本語" },
+  { id: "ko", label: "한국어" },
+  { id: "hi", label: "हिन्दी" },
+];
+
+function defaultLanguage(): string {
+  const code = (navigator.language || "en").slice(0, 2).toLowerCase();
+  return ONBOARDING_LANGUAGES.some((l) => l.id === code) ? code : "auto";
+}
 
 export default function OnboardingPage(): React.JSX.Element {
   const navigate = useNavigate();
@@ -74,8 +99,9 @@ export default function OnboardingPage(): React.JSX.Element {
     null,
   );
   const [apiKeys, setApiKeys] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
+  const [language, setLanguage] = useState<string>(defaultLanguage);
   const autoPicked = useRef(false);
+  const warmed = useRef(false);
   // True once we know whether MLX can run on this machine — so the auto-pick
   // waits for the Qwen-vs-Whisper decision instead of settling on Whisper
   // Base while the MLX status request is still in flight.
@@ -279,22 +305,45 @@ export default function OnboardingPage(): React.JSX.Element {
     setTimeout(() => clearInterval(interval), 30000);
   }, []);
 
+  // Commit a model as the default. Selection in this flow IS commitment —
+  // there is no separate "save" step anymore.
+  const commitCloudModel = useCallback((model: AvailableModel) => {
+    getClient()
+      .api.models.configured.$post({
+        json: {
+          provider: model.provider_id,
+          model_id: model.model_id,
+          model_name: model.model_name,
+          type: "voice",
+          is_default: true,
+        },
+      })
+      .catch(() => {});
+    capture("onboarding_model_completed", {
+      model_id: model.model_id,
+      kind: "cloud",
+      provider: model.provider_id,
+    });
+  }, []);
+
   const selectCloudModel = useCallback(
     (model: AvailableModel) => {
       setSelectedModel(model);
       setSelectedWhisperDefId(null);
       setSelectedMlxDefId(null);
-      // Reset the key form so the key-entry view opens empty for a provider
-      // we don't have a key for yet.
-      if (!apiKeys.has(model.provider_id)) {
+      if (apiKeys.has(model.provider_id)) {
+        commitCloudModel(model);
+      } else {
+        // Reset the key form so the key-entry view opens empty for a
+        // provider we don't have a key for yet; commit happens on key save.
         apiKeyForm.reset({ provider: model.provider_id, key: "" });
       }
     },
-    [apiKeys, apiKeyForm],
+    [apiKeys, apiKeyForm, commitCloudModel],
   );
 
   const selectLocalModel = useCallback(
-    (defId: string, _name: string, engine?: "whisper" | "mlx") => {
+    (defId: string, name: string, engine?: "whisper" | "mlx") => {
       if (engine === "mlx") {
         setSelectedMlxDefId(defId);
         setSelectedWhisperDefId(null);
@@ -303,6 +352,18 @@ export default function OnboardingPage(): React.JSX.Element {
         setSelectedMlxDefId(null);
       }
       setSelectedModel(null);
+      const provider = engine === "mlx" ? "local-mlx" : "local-whisper";
+      getClient()
+        .api.models.configured.$post({
+          json: {
+            provider,
+            model_id: `${provider}/${defId}`,
+            model_name: name,
+            type: "voice",
+            is_default: true,
+          },
+        })
+        .catch(() => {});
     },
     [],
   );
@@ -363,9 +424,9 @@ export default function OnboardingPage(): React.JSX.Element {
   const recommended: VoiceItem | undefined =
     mlxQwen && mlxStatus?.canRun ? mlxQwen : (whisperBase ?? mlxQwen);
 
-  // Pre-select the recommendation once models have loaded and the MLX
-  // capability check has settled (so we don't pick Whisper Base prematurely
-  // on a Mac that can actually run Qwen).
+  // Auto-setup: once the MLX capability check settles, commit the platform
+  // default and start its download in the background — the user never has
+  // to choose a model. The selector stays available as an escape hatch.
   useEffect(() => {
     if (autoPicked.current || !mlxResolved || !recommended?.defId) return;
     autoPicked.current = true;
@@ -374,7 +435,38 @@ export default function OnboardingPage(): React.JSX.Element {
       recommended.name,
       recommended.localEngine,
     );
-  }, [recommended, selectLocalModel, mlxResolved]);
+    if (recommended.status === "not_downloaded") {
+      capture("onboarding_model_auto_setup", {
+        model_id: recommended.modelId,
+      });
+      downloadLocalModel(recommended.defId, recommended.localEngine);
+    }
+  }, [recommended, selectLocalModel, mlxResolved, downloadLocalModel]);
+
+  // Pre-warm the local engine the moment its download lands, so the first
+  // dictation in the tutorial is fast.
+  const warmTarget = allVoiceItems.find((v) => v.selected) ?? recommended;
+  useEffect(() => {
+    if (
+      warmed.current ||
+      warmTarget?.kind !== "local" ||
+      warmTarget.status !== "ready" ||
+      !warmTarget.defId
+    )
+      return;
+    warmed.current = true;
+    if (warmTarget.localEngine === "mlx") {
+      getClient()
+        .api["mlx-asr"].server.start.$post({
+          json: { modelId: warmTarget.defId },
+        })
+        .catch(() => {});
+    } else {
+      getClient()
+        .api.whisper.server.start.$post({ json: { modelId: warmTarget.defId } })
+        .catch(() => {});
+    }
+  }, [warmTarget]);
 
   // The model the card reflects: whatever is currently selected, falling
   // back to the recommendation before the user has touched anything.
@@ -408,83 +500,16 @@ export default function OnboardingPage(): React.JSX.Element {
     }
   }, [chosenStatus, chosenModelId]);
 
-  const saveVoiceModel = useCallback(async () => {
-    setSaving(true);
-    try {
-      const client = getClient();
-      if (selectedModel) {
-        await client.api.models.configured.$post({
-          json: {
-            provider: selectedModel.provider_id,
-            model_id: selectedModel.model_id,
-            model_name: selectedModel.model_name,
-            type: "voice",
-            is_default: true,
-          },
-        });
-      } else if (selectedMlxDefId && mlxStatus) {
-        const def = mlxStatus.modelDefinitions.find(
-          (d) => d.id === selectedMlxDefId,
-        );
-        if (def) {
-          await client.api.models.configured.$post({
-            json: {
-              provider: "local-mlx",
-              model_id: `local-mlx/${def.id}`,
-              model_name: def.displayName,
-              type: "voice",
-              is_default: true,
-            },
-          });
-          client.api["mlx-asr"].server.start
-            .$post({ json: { modelId: selectedMlxDefId } })
-            .catch(() => {});
-        }
-      } else if (selectedWhisperDefId && whisperStatus) {
-        const def = whisperStatus.modelDefinitions.find(
-          (d) => d.id === selectedWhisperDefId,
-        );
-        if (def) {
-          await client.api.models.configured.$post({
-            json: {
-              provider: "local-whisper",
-              model_id: `local-whisper/${def.id}`,
-              model_name: def.displayName,
-              type: "voice",
-              is_default: true,
-            },
-          });
-          client.api.whisper.server.start
-            .$post({ json: { modelId: selectedWhisperDefId } })
-            .catch(() => {});
-        }
-      }
-      capture("onboarding_model_completed", {
-        model_id:
-          selectedModel?.model_id ??
-          (selectedMlxDefId
-            ? `local-mlx/${selectedMlxDefId}`
-            : selectedWhisperDefId
-              ? `local-whisper/${selectedWhisperDefId}`
-              : undefined),
-        kind: selectedModel ? "cloud" : "local",
-        provider:
-          selectedModel?.provider_id ??
-          (selectedMlxDefId ? "local-mlx" : "local-whisper"),
-      });
-      setStep("tutorial");
-    } catch {
-      // stay on the model step
-    } finally {
-      setSaving(false);
-    }
-  }, [
-    selectedModel,
-    selectedMlxDefId,
-    selectedWhisperDefId,
-    mlxStatus,
-    whisperStatus,
-  ]);
+  // Persist the language choice (the transcribe path reads it per request).
+  const saveLanguage = useCallback((value: string) => {
+    setLanguage(value);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: "language" },
+        json: { value },
+      })
+      .catch(() => {});
+  }, []);
 
   // Validate + persist a freshly entered cloud key. Returns true when stored
   // so the selector can commit and close.
@@ -498,8 +523,9 @@ export default function OnboardingPage(): React.JSX.Element {
       .catch(() => {});
     setApiKeys((prev) => new Set([...prev, provider]));
     capture("onboarding_cloud_key_saved", { provider });
+    if (selectedModel) commitCloudModel(selectedModel);
     return true;
-  }, [apiKeyForm]);
+  }, [apiKeyForm, selectedModel, commitCloudModel]);
 
   const finishSetup = useCallback(() => {
     capture("onboarding_completed");
@@ -512,10 +538,32 @@ export default function OnboardingPage(): React.JSX.Element {
     !!chosen &&
     (chosen.kind === "cloud" ? !!chosen.hasKey : chosen.status === "ready");
 
-  const chosenDownloading =
-    !!chosen &&
-    chosen.kind === "local" &&
-    (chosen.status === "downloading" || chosen.status === "verifying");
+  // One quiet line describing the background setup, shown while it runs.
+  // The user never chooses the model, but they should see what's being
+  // installed on their machine — name and size, not a mystery download.
+  const setupStatus = ((): string | null => {
+    if (!chosen || chosen.kind !== "local" || chosenReady) return null;
+    if (chosen.state?.phase === "building_binary") {
+      return "Preparing your transcription engine…";
+    }
+    const size =
+      chosen.sizeBytes != null ? ` (${formatBytes(chosen.sizeBytes)})` : "";
+    if (
+      chosen.status === "downloading" ||
+      chosen.status === "verifying" ||
+      chosen.status === "not_downloaded"
+    ) {
+      const p = chosen.state?.downloadProgress;
+      const pct = p?.bytesTotal ? ` ${p.percent}%` : "";
+      return `Downloading ${chosen.name}${size}, your private transcription model…${pct}`;
+    }
+    return null;
+  })();
+
+  const setupError =
+    chosen?.kind === "local" && chosen.status === "error"
+      ? (chosen.state?.error ?? "Model download failed")
+      : null;
 
   return (
     <div className="bg-background flex h-screen flex-col">
@@ -539,35 +587,23 @@ export default function OnboardingPage(): React.JSX.Element {
             onOpenAccessibility={openAccessibility}
             onContinue={() => {
               capture("onboarding_permissions_completed");
-              setStep("model");
+              setStep("language");
             }}
           />
         )}
 
-        {step === "model" && (
-          <ModelStep
-            chosen={chosen}
-            chosenReady={chosenReady}
-            chosenDownloading={chosenDownloading}
-            saving={saving}
-            onDownload={() => {
-              if (!chosen?.defId) return;
-              capture("onboarding_model_download_clicked", {
-                model_id: chosen.modelId,
-                model_name: chosen.name,
-                engine: chosen.localEngine,
-                size_bytes: chosen.sizeBytes,
-              });
-              downloadLocalModel(chosen.defId, chosen.localEngine);
-            }}
-            onContinue={saveVoiceModel}
-            onOpenSelector={() => {
-              capture("onboarding_model_selector_opened");
-              setShowSelector(true);
-            }}
-            onBack={() => {
-              capture("onboarding_model_back_clicked");
-              setStep("permissions");
+        {step === "language" && (
+          <LanguageStep
+            language={language}
+            onSelect={saveLanguage}
+            setupStatus={setupStatus}
+            setupError={setupError}
+            onBack={() => setStep("permissions")}
+            onContinue={() => {
+              // Persist even when the pre-selected locale was never clicked.
+              saveLanguage(language);
+              capture("onboarding_language_completed", { language });
+              setStep("tutorial");
             }}
           />
         )}
@@ -578,6 +614,14 @@ export default function OnboardingPage(): React.JSX.Element {
             recorderState={recorderState}
             draftKeys={draftKeys}
             captureHint={captureHint}
+            modelReady={chosenReady}
+            modelName={chosen?.name}
+            setupStatus={setupStatus}
+            setupError={setupError}
+            onOpenSelector={() => {
+              capture("onboarding_model_selector_opened");
+              setShowSelector(true);
+            }}
             onStartRecording={() => {
               capture("onboarding_hotkey_change_started");
               startHotkeyRecording();
@@ -586,7 +630,7 @@ export default function OnboardingPage(): React.JSX.Element {
             onDictation={() => capture("onboarding_dictation_tried")}
             onBack={() => {
               capture("onboarding_tutorial_back_clicked");
-              setStep("model");
+              setStep("language");
             }}
             onFinish={finishSetup}
           />
@@ -774,87 +818,72 @@ function PermButton({
 }
 
 // ---------------------------------------------------------------------------
-// Step 2 — Model (opinionated single recommendation)
+// Step 2 — Language (the model sets itself up in the background)
 // ---------------------------------------------------------------------------
-function ModelStep({
-  chosen,
-  chosenReady,
-  chosenDownloading,
-  saving,
-  onDownload,
-  onContinue,
-  onOpenSelector,
+function LanguageStep({
+  language,
+  onSelect,
+  setupStatus,
+  setupError,
   onBack,
+  onContinue,
 }: {
-  chosen: VoiceItem | undefined;
-  chosenReady: boolean;
-  chosenDownloading: boolean;
-  saving: boolean;
-  onDownload: () => void;
-  onContinue: () => void;
-  onOpenSelector: () => void;
+  language: string;
+  onSelect: (id: string) => void;
+  setupStatus: string | null;
+  setupError: string | null;
   onBack: () => void;
+  onContinue: () => void;
 }): React.JSX.Element {
-  const isLocal = chosen?.kind === "local";
-  const progress = chosen?.state?.downloadProgress?.percent ?? null;
-
   return (
     <div className="w-full max-w-[560px]">
       <h1 className="serif text-foreground m-0 mb-7 text-center text-[56px] leading-[0.95] font-normal tracking-[-0.025em]">
-        <span>Choose a </span>
-        <span className="serif-italic text-primary">model.</span>
+        <span>What language do you </span>
+        <span className="serif-italic text-primary">speak?</span>
       </h1>
 
-      <div className="border-primary bg-card relative overflow-hidden rounded-[16px] border-[1.5px] p-6">
-        <div className="serif text-foreground text-[34px] leading-[1.02] tracking-[-0.02em]">
-          {chosen?.name ?? "Loading…"}
-        </div>
-        <div className="text-muted-foreground mt-1 text-[13px]">
-          {modelTagline(chosen)}
-        </div>
-
-        {/* Download progress */}
-        {chosenDownloading && (
-          <div className="mt-5 space-y-1.5">
-            <div className="bg-secondary h-1.5 w-full overflow-hidden rounded-full">
-              {progress == null ? (
-                <div className="bg-primary h-full w-full animate-pulse rounded-full" />
-              ) : (
-                <div
-                  className="bg-primary h-full rounded-full transition-all"
-                  style={{ width: `${progress}%` }}
-                />
-              )}
-            </div>
-            <div className="mono text-muted-foreground text-[10px]">
-              {chosen?.state?.phase === "building_binary"
-                ? "Preparing on-device runtime…"
-                : progress != null
-                  ? `Downloading · ${progress}%`
-                  : "Downloading…"}
-            </div>
-          </div>
-        )}
-
-        {/* Error */}
-        {isLocal && chosen?.status === "error" && chosen.state?.error && (
-          <div className="text-destructive mt-3 text-[12px] leading-snug">
-            {chosen.state.error}
-          </div>
-        )}
-
-        {/* Primary action */}
-        <ModelPrimaryButton
-          chosen={chosen}
-          chosenReady={chosenReady}
-          chosenDownloading={chosenDownloading}
-          saving={saving}
-          onDownload={onDownload}
-          onContinue={onContinue}
-        />
+      <div className="flex flex-wrap justify-center gap-2">
+        {ONBOARDING_LANGUAGES.map((l) => (
+          <button
+            key={l.id}
+            type="button"
+            onClick={() => onSelect(l.id)}
+            className={cn(
+              "rounded-full border px-4 py-2 text-[13.5px] font-medium transition-colors",
+              language === l.id
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-card text-foreground hover:bg-secondary",
+            )}
+          >
+            {l.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => onSelect("auto")}
+          className={cn(
+            "rounded-full border px-4 py-2 text-[13.5px] transition-colors",
+            language === "auto"
+              ? "border-primary bg-primary text-primary-foreground font-medium"
+              : "border-border text-muted-foreground hover:bg-secondary",
+          )}
+        >
+          Auto-detect
+        </button>
       </div>
+      {/* Background model setup — quiet status, never a decision. */}
+      {setupStatus && (
+        <p className="mono text-muted-foreground mt-6 text-center text-[11px]">
+          {setupStatus}
+        </p>
+      )}
+      {setupError && (
+        <p className="text-destructive mt-6 text-center text-[12px] leading-snug">
+          {setupError}
+        </p>
+      )}
 
-      <div className="mt-[18px] flex items-center justify-between">
+      <div className="mt-7 flex items-center justify-between">
         <button
           type="button"
           onClick={onBack}
@@ -864,103 +893,15 @@ function ModelStep({
         </button>
         <button
           type="button"
-          onClick={onOpenSelector}
-          className="mono text-accent-foreground decoration-primary/40 text-[11.5px] underline underline-offset-[3px]"
+          onClick={onContinue}
+          className="bg-foreground text-background hover:bg-foreground/90 inline-flex items-center gap-1.5 rounded-[7px] px-3.5 py-2 text-[12.5px] font-medium"
         >
-          Or choose a different model.
+          Continue
+          <ArrowRight size={13} />
         </button>
       </div>
     </div>
   );
-}
-
-function ModelPrimaryButton({
-  chosen,
-  chosenReady,
-  chosenDownloading,
-  saving,
-  onDownload,
-  onContinue,
-}: {
-  chosen: VoiceItem | undefined;
-  chosenReady: boolean;
-  chosenDownloading: boolean;
-  saving: boolean;
-  onDownload: () => void;
-  onContinue: () => void;
-}): React.JSX.Element {
-  const base =
-    "mt-5 inline-flex h-12 w-full items-center justify-center gap-2.5 rounded-[10px] text-[15px] font-semibold transition-colors";
-
-  if (chosenDownloading) {
-    return (
-      <button
-        type="button"
-        disabled
-        className={cn(base, "bg-secondary text-muted-foreground cursor-wait")}
-      >
-        <Loader2 size={17} className="animate-spin" />
-        Downloading…
-      </button>
-    );
-  }
-
-  if (chosenReady) {
-    return (
-      <button
-        type="button"
-        onClick={onContinue}
-        disabled={saving}
-        className={cn(
-          base,
-          "bg-foreground text-background hover:bg-foreground/90 disabled:opacity-60",
-        )}
-      >
-        {saving ? "Setting up…" : "Continue"}
-        {!saving && <ArrowRight size={17} />}
-      </button>
-    );
-  }
-
-  // Not ready → local model needs downloading.
-  return (
-    <button
-      type="button"
-      onClick={onDownload}
-      disabled={!chosen?.defId}
-      className={cn(
-        base,
-        "bg-foreground text-background hover:bg-foreground/90 disabled:opacity-60",
-      )}
-    >
-      <Download size={17} />
-      {chosen ? (
-        <>
-          Download {chosen.name}
-          {chosen.sizeBytes != null && (
-            <span className="mono text-background/70 text-[12px] font-normal">
-              {formatBytes(chosen.sizeBytes)}
-            </span>
-          )}
-        </>
-      ) : (
-        "Loading…"
-      )}
-    </button>
-  );
-}
-
-function modelTagline(chosen: VoiceItem | undefined): string {
-  if (!chosen) return "";
-  if (chosen.kind === "cloud") {
-    return [chosen.note, chosen.hasKey ? "Key added" : "Needs API key"]
-      .filter(Boolean)
-      .join(" · ");
-  }
-  const bits: string[] = [];
-  if (chosen.note) bits.push(chosen.note);
-  bits.push(`Runs on ${ON_DEVICE_PHRASE}`);
-  return bits.join(" · ");
 }
 
 // ---------------------------------------------------------------------------
@@ -1257,6 +1198,19 @@ function ModelSelectorOverlay({
                   {apiKeyForm.formState.errors.key.message}
                 </p>
               )}
+              {selectedCloud &&
+                PROVIDER_KEY_URLS[selectedCloud.provider_id] && (
+                  <p className="mt-3 text-[12.5px]">
+                    <a
+                      href={PROVIDER_KEY_URLS[selectedCloud.provider_id]}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary underline underline-offset-2"
+                    >
+                      Don't have one? Get a {providerName} key ↗
+                    </a>
+                  </p>
+                )}
             </div>
 
             {/* Key-entry footer */}
@@ -1297,6 +1251,11 @@ function TutorialStep({
   recorderState,
   draftKeys,
   captureHint,
+  modelReady,
+  modelName,
+  setupStatus,
+  setupError,
+  onOpenSelector,
   onStartRecording,
   onCancelRecording,
   onDictation,
@@ -1307,6 +1266,11 @@ function TutorialStep({
   recorderState: string;
   draftKeys: string[];
   captureHint: string;
+  modelReady: boolean;
+  modelName?: string;
+  setupStatus: string | null;
+  setupError: string | null;
+  onOpenSelector: () => void;
   onStartRecording: () => void;
   onCancelRecording: () => void;
   onDictation: () => void;
@@ -1315,7 +1279,37 @@ function TutorialStep({
 }): React.JSX.Element {
   return (
     <div className="w-full max-w-[600px]">
-      <TutorialDemo hotkey={hotkey} interactive onDictation={onDictation} />
+      <TutorialDemo
+        hotkey={hotkey}
+        interactive={modelReady}
+        onDictation={onDictation}
+      />
+
+      {/* Background setup catching up — practice unlocks when it lands. */}
+      {!modelReady && setupStatus && (
+        <p className="mono text-muted-foreground mt-3 text-center text-[11px]">
+          Almost ready —{" "}
+          {setupStatus.charAt(0).toLowerCase() + setupStatus.slice(1)}
+        </p>
+      )}
+      {!modelReady && setupError && (
+        <p className="text-destructive mt-3 text-center text-[12px]">
+          {setupError}
+        </p>
+      )}
+
+      {/* The model is visible and changeable here — where it can be tested. */}
+      <div className="mt-3 flex justify-center">
+        <button
+          type="button"
+          onClick={onOpenSelector}
+          className="mono text-muted-foreground hover:text-foreground text-[11px] underline underline-offset-[3px]"
+        >
+          {modelReady && modelName
+            ? `Using ${modelName} · Choose a different model`
+            : "Choose a different model"}
+        </button>
+      </div>
 
       {/* Hotkey rebind — a single minimal control */}
       <div className="mt-5 flex justify-center">

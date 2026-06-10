@@ -1,4 +1,4 @@
-import type { AvailableModel } from "@renderer/lib/models";
+import { type AvailableModel, PROVIDER_KEY_URLS } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
 import { AlertTriangle, Eye, EyeOff, Key, Loader2, X } from "lucide-react";
 import { useState } from "react";
@@ -218,12 +218,24 @@ function KeyStep({
             <p className="text-destructive text-xs">{error}</p>
           </div>
         )}
-        <p
-          className="mono text-muted-foreground text-[10px] uppercase"
-          style={{ letterSpacing: "0.14em" }}
-        >
-          Stored in keychain · never logged
-        </p>
+        <div className="flex items-center justify-between">
+          <p
+            className="mono text-muted-foreground text-[10px] uppercase"
+            style={{ letterSpacing: "0.14em" }}
+          >
+            Stored in keychain · never logged
+          </p>
+          {PROVIDER_KEY_URLS[provider] && (
+            <a
+              href={PROVIDER_KEY_URLS[provider]}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary text-[12px] underline underline-offset-2"
+            >
+              Get a {providerLabel} key ↗
+            </a>
+          )}
+        </div>
         <div className="flex justify-end gap-2 pt-2">
           <button
             type="button"

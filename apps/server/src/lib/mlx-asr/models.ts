@@ -6,6 +6,7 @@ import { getDb } from "../db.js";
 import { progressFetch } from "../hf/progress.js";
 import {
   getMlxAsrModel,
+  LEGACY_MLX_ASR_MODELS,
   MLX_ASR_MODELS,
   MLX_ASR_PROVIDER_ID,
   type MlxAsrModelDef,
@@ -167,8 +168,17 @@ export function getMlxModelStatus(
   return { ...baseModelState(modelId, model), status: "not_downloaded" };
 }
 
+/**
+ * Catalog shown in pickers: the curated models, plus legacy models that
+ * this install still has downloaded.
+ */
+export function getMlxCatalogModels(): MlxAsrModelDef[] {
+  const legacy = LEGACY_MLX_ASR_MODELS.filter((m) => isMlxModelDownloaded(m));
+  return [...MLX_ASR_MODELS, ...legacy];
+}
+
 export function getAllMlxModelStatuses(): MlxModelDownloadState[] {
-  return MLX_ASR_MODELS.map((m) => getMlxModelStatus(m.id)!);
+  return getMlxCatalogModels().map((m) => getMlxModelStatus(m.id)!);
 }
 
 export function clearMlxDownloadError(modelId: string): void {

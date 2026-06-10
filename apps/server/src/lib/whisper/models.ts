@@ -22,6 +22,7 @@ import {
   getModelPath,
   getModelsDir,
   getWhisperModel,
+  LEGACY_WHISPER_MODELS,
   WHISPER_CPP_VERSION,
   WHISPER_MODELS,
   WHISPER_REPO,
@@ -137,8 +138,17 @@ export function getModelStatus(modelId: string): ModelDownloadState | null {
   return { ...baseModelState(modelId, model), status: "not_downloaded" };
 }
 
+/**
+ * Catalog shown in pickers: the curated models, plus legacy models that
+ * this install still has downloaded.
+ */
+export function getCatalogModels(): WhisperModelDef[] {
+  const legacy = LEGACY_WHISPER_MODELS.filter((m) => isModelDownloaded(m));
+  return [...WHISPER_MODELS, ...legacy];
+}
+
 export function getAllModelStatuses(): ModelDownloadState[] {
-  return WHISPER_MODELS.map((m) => getModelStatus(m.id)!);
+  return getCatalogModels().map((m) => getModelStatus(m.id)!);
 }
 
 export async function downloadModel(modelId: string): Promise<void> {

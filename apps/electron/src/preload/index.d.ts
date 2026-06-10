@@ -1,7 +1,8 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
-
-type AudioPlaybackMode = "off" | "duck" | "pause";
-type ActiveAudioPlaybackMode = Exclude<AudioPlaybackMode, "off">;
+import type {
+  ActiveAudioPlaybackMode,
+  AudioPlaybackMode,
+} from "../shared/audio-playback";
 
 declare global {
   interface Window {

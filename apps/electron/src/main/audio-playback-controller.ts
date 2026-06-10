@@ -1,7 +1,6 @@
+import type { ActiveAudioPlaybackMode } from "../shared/audio-playback";
 import { AudioDucker } from "./audio-ducker";
 import { AudioPauser } from "./audio-pauser";
-
-export type AudioPlaybackMode = "duck" | "pause";
 
 export class AudioPlaybackController {
   private readonly ducker = new AudioDucker();
@@ -9,7 +8,7 @@ export class AudioPlaybackController {
   private paused = false;
   private ducked = false;
 
-  async prepare(mode: AudioPlaybackMode): Promise<void> {
+  async prepare(mode: ActiveAudioPlaybackMode): Promise<void> {
     if (process.platform !== "darwin") return;
     if (this.paused || this.ducked) return;
 

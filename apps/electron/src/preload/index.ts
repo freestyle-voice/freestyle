@@ -1,8 +1,9 @@
 import { electronAPI } from "@electron-toolkit/preload";
 import { contextBridge, ipcRenderer } from "electron";
-
-type AudioPlaybackMode = "off" | "duck" | "pause";
-type ActiveAudioPlaybackMode = Exclude<AudioPlaybackMode, "off">;
+import type {
+  ActiveAudioPlaybackMode,
+  AudioPlaybackMode,
+} from "../shared/audio-playback";
 
 // Custom APIs for renderer
 const api = {

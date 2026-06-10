@@ -24,6 +24,10 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type AudioPlaybackMode,
+  normalizeAudioPlaybackMode,
+} from "../../../shared/audio-playback";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -35,8 +39,6 @@ const themeOptions = [
   { value: "system", label: "System", icon: Monitor },
 ] as const;
 
-type AudioPlaybackMode = "off" | "duck" | "pause";
-
 const audioPlaybackOptions = [
   { id: "off", label: "Off", icon: VolumeOff },
   { id: "duck", label: "Duck", icon: Volume2 },
@@ -46,12 +48,6 @@ const audioPlaybackOptions = [
 interface AudioDevice {
   deviceId: string;
   label: string;
-}
-
-function normalizeAudioPlaybackMode(
-  value: string | null | undefined,
-): AudioPlaybackMode {
-  return value === "duck" || value === "pause" ? value : "off";
 }
 
 function normalizePillPos(pos: string): string {

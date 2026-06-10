@@ -75,10 +75,8 @@ import { autoUpdater } from "electron-updater";
 import { WebSocketServer } from "ws";
 import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
-import {
-  AudioPlaybackController,
-  type AudioPlaybackMode,
-} from "./audio-playback-controller";
+import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
+import { AudioPlaybackController } from "./audio-playback-controller";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
@@ -93,10 +91,6 @@ const hotkeyRecorderLog = createAppLogger("hotkey-recorder");
 const DEFAULT_PORT = 4649;
 const APP_WIDTH = 260;
 const APP_HEIGHT = 90;
-
-function isAudioPlaybackMode(mode: unknown): mode is AudioPlaybackMode {
-  return mode === "duck" || mode === "pause";
-}
 
 // ---------------------------------------------------------------------------
 // settings.json helpers — single source for read/write of the lightweight
@@ -1113,7 +1107,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("audio:prepare", async (_event, mode: unknown) => {
-    if (!isAudioPlaybackMode(mode)) return;
+    if (!isActiveAudioPlaybackMode(mode)) return;
     await audioPlaybackController.prepare(mode);
   });
 

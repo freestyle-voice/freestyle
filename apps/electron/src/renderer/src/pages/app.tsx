@@ -4,6 +4,10 @@ import { getApiBase, getClient, refreshApiBase } from "@renderer/lib/api";
 import { Recorder } from "@renderer/lib/recorder";
 import { Streamer } from "@renderer/lib/streamer";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type AudioPlaybackMode,
+  normalizeAudioPlaybackMode,
+} from "../../../shared/audio-playback";
 
 const BARS = 14;
 const RISE = 0.55;
@@ -14,13 +18,6 @@ const SVG_HEIGHT = 25;
 type PillState = "idle" | "initializing" | "recording" | "transcribing";
 
 type BarMode = "connecting" | "listening" | "speaking";
-type AudioPlaybackMode = "off" | "duck" | "pause";
-
-function normalizeAudioPlaybackMode(
-  value: string | null | undefined,
-): AudioPlaybackMode {
-  return value === "duck" || value === "pause" ? value : "off";
-}
 
 // ---------------------------------------------------------------------------
 // Sound

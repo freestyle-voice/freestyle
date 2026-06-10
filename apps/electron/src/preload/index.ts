@@ -1,12 +1,19 @@
 import { electronAPI } from "@electron-toolkit/preload";
 import { contextBridge, ipcRenderer } from "electron";
 
+type AudioPlaybackMode = "off" | "duck" | "pause";
+type ActiveAudioPlaybackMode = Exclude<AudioPlaybackMode, "off">;
+
 // Custom APIs for renderer
 const api = {
   pasteText: (text: string): Promise<void> =>
     ipcRenderer.invoke("paste:text", text),
   copyText: (text: string): Promise<void> =>
     ipcRenderer.invoke("copy:text", text),
+  prepareSystemAudio: (mode: ActiveAudioPlaybackMode): Promise<void> =>
+    ipcRenderer.invoke("audio:prepare", mode),
+  duckSystemAudio: (): Promise<void> => ipcRenderer.invoke("audio:duck"),
+  restoreSystemAudio: (): Promise<void> => ipcRenderer.invoke("audio:restore"),
   updateHotkey: (hotkey: string): void =>
     ipcRenderer.send("hotkey:update", hotkey),
   reloadHotkey: (): void => ipcRenderer.send("hotkey:reload"),
@@ -153,6 +160,30 @@ const api = {
     ipcRenderer.on("settings:output-mode-changed", handler);
     return () =>
       ipcRenderer.removeListener("settings:output-mode-changed", handler);
+  },
+  sendAudioDuckingChanged: (enabled: boolean): void =>
+    ipcRenderer.send("settings:audio-ducking-changed", enabled),
+  onAudioDuckingChanged: (
+    callback: (enabled: boolean) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, enabled: boolean): void => callback(enabled);
+    ipcRenderer.on("settings:audio-ducking-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("settings:audio-ducking-changed", handler);
+  },
+  sendAudioPlaybackModeChanged: (mode: AudioPlaybackMode): void =>
+    ipcRenderer.send("settings:audio-playback-mode-changed", mode),
+  onAudioPlaybackModeChanged: (
+    callback: (mode: AudioPlaybackMode) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, mode: AudioPlaybackMode): void =>
+      callback(mode);
+    ipcRenderer.on("settings:audio-playback-mode-changed", handler);
+    return () =>
+      ipcRenderer.removeListener(
+        "settings:audio-playback-mode-changed",
+        handler,
+      );
   },
   // Hotkey error notifications
   onHotkeyError: (

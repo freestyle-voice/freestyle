@@ -14,6 +14,13 @@ const SVG_HEIGHT = 25;
 type PillState = "idle" | "initializing" | "recording" | "transcribing";
 
 type BarMode = "connecting" | "listening" | "speaking";
+type AudioPlaybackMode = "off" | "duck" | "pause";
+
+function normalizeAudioPlaybackMode(
+  value: string | null | undefined,
+): AudioPlaybackMode {
+  return value === "duck" || value === "pause" ? value : "off";
+}
 
 // ---------------------------------------------------------------------------
 // Sound
@@ -21,6 +28,7 @@ type BarMode = "connecting" | "listening" | "speaking";
 
 let _soundEnabled = true;
 let _outputMode = "paste";
+let _audioPlaybackMode: AudioPlaybackMode = "off";
 let _toneCtx: AudioContext | null = null;
 
 function getToneCtx(): AudioContext {
@@ -554,18 +562,30 @@ export default function AppPage(): React.JSX.Element {
       }
 
       try {
+        if (_audioPlaybackMode !== "off") {
+          await window.api
+            ?.prepareSystemAudio(_audioPlaybackMode)
+            .catch(() => {});
+        }
+        if (!wantsMicRef.current) {
+          window.api?.restoreSystemAudio().catch(() => {});
+          return;
+        }
+
         sessionStreamingRef.current = useStreamingRef.current;
         const stream = await recorderRef.current.acquireStream();
 
         if (!wantsMicRef.current) {
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
+          window.api?.restoreSystemAudio().catch(() => {});
           return;
         }
         if (pendingCommitRef.current) {
           pendingCommitRef.current = false;
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
+          window.api?.restoreSystemAudio().catch(() => {});
           streamerRef.current?.cancel();
           if (!forReRecord) hidePill();
           return;
@@ -585,6 +605,7 @@ export default function AppPage(): React.JSX.Element {
           await streamer.startCapture(stream);
         } catch {}
       } catch (err) {
+        window.api?.restoreSystemAudio().catch(() => {});
         pendingCommitRef.current = false;
         recorderRef.current.releaseStream();
         hidePill();
@@ -622,6 +643,7 @@ export default function AppPage(): React.JSX.Element {
     if (recordingDuration < 500) {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
+      window.api?.restoreSystemAudio().catch(() => {});
       streamerRef.current?.cancel();
       if (queueRef.current.length === 0 && !drainingRef.current) {
         hidePill();
@@ -638,6 +660,7 @@ export default function AppPage(): React.JSX.Element {
     if (sessionStreamingRef.current && streamerRef.current) {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
+      window.api?.restoreSystemAudio().catch(() => {});
 
       setPendingCount((c) => c + 1);
       const transcribePromise = new Promise<TranscribeResult>((resolve) => {
@@ -670,6 +693,7 @@ export default function AppPage(): React.JSX.Element {
       wavBlob = streamerRef.current?.getWavBlob() ?? null;
     }
     recorderRef.current.releaseStream();
+    window.api?.restoreSystemAudio().catch(() => {});
 
     if (!pillActiveRef.current) {
       return;
@@ -752,6 +776,7 @@ export default function AppPage(): React.JSX.Element {
     streamerRef.current?.cancel();
     recorderRef.current.cancel();
     recorderRef.current.releaseStream();
+    window.api?.restoreSystemAudio().catch(() => {});
     hidePill();
   }, [hidePill]);
 
@@ -771,6 +796,26 @@ export default function AppPage(): React.JSX.Element {
         if (data?.value === "false") _soundEnabled = false;
       })
       .catch(() => {});
+    void (async () => {
+      try {
+        const modeResponse = await getClient().api.settings[":key"].$get({
+          param: { key: "audio_playback_mode" },
+        });
+        const modeData = modeResponse.ok ? await modeResponse.json() : null;
+        if (modeData?.value) {
+          _audioPlaybackMode = normalizeAudioPlaybackMode(modeData.value);
+          return;
+        }
+
+        const legacyResponse = await getClient().api.settings[":key"].$get({
+          param: { key: "audio_ducking_enabled" },
+        });
+        const legacyData = legacyResponse.ok
+          ? await legacyResponse.json()
+          : null;
+        _audioPlaybackMode = legacyData?.value === "true" ? "duck" : "off";
+      } catch {}
+    })();
     getClient()
       .api.settings[":key"].$get({ param: { key: "output_mode" } })
       .then((r) => (r.ok ? r.json() : null))
@@ -788,9 +833,19 @@ export default function AppPage(): React.JSX.Element {
     const removeOutputMode = window.api?.onOutputModeChanged((mode) => {
       _outputMode = mode;
     });
+    const removeAudioDucking = window.api?.onAudioDuckingChanged((enabled) => {
+      _audioPlaybackMode = enabled ? "duck" : "off";
+    });
+    const removeAudioPlaybackMode = window.api?.onAudioPlaybackModeChanged(
+      (mode) => {
+        _audioPlaybackMode = normalizeAudioPlaybackMode(mode);
+      },
+    );
     return () => {
       removePillPos?.();
       removeOutputMode?.();
+      removeAudioDucking?.();
+      removeAudioPlaybackMode?.();
     };
   }, [applyPillPosition]);
 

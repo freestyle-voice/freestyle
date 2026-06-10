@@ -78,6 +78,16 @@ function compileMacOS() {
       src: "macos-mic-listener.swift",
       frameworks: ["CoreAudio", "Foundation"],
     },
+    {
+      name: "macos-audio-duck",
+      src: "macos-audio-duck.swift",
+      frameworks: ["CoreAudio", "Foundation"],
+    },
+    {
+      name: "macos-media-control",
+      src: "macos-media-control.swift",
+      frameworks: ["AppKit", "Foundation"],
+    },
   ];
 
   for (const bin of binaries) {

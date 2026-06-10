@@ -16,6 +16,7 @@ import {
   Mic,
   Monitor,
   Moon,
+  Pause,
   Sun,
   Trash2,
   Volume2,
@@ -34,9 +35,23 @@ const themeOptions = [
   { value: "system", label: "System", icon: Monitor },
 ] as const;
 
+type AudioPlaybackMode = "off" | "duck" | "pause";
+
+const audioPlaybackOptions = [
+  { id: "off", label: "Off", icon: VolumeOff },
+  { id: "duck", label: "Duck", icon: Volume2 },
+  { id: "pause", label: "Pause", icon: Pause },
+] as const;
+
 interface AudioDevice {
   deviceId: string;
   label: string;
+}
+
+function normalizeAudioPlaybackMode(
+  value: string | null | undefined,
+): AudioPlaybackMode {
+  return value === "duck" || value === "pause" ? value : "off";
 }
 
 function normalizePillPos(pos: string): string {
@@ -57,6 +72,8 @@ export default function SettingsPage(): React.JSX.Element {
   const [outputMode, setOutputMode] = useState("paste");
   const [pillPosition, setPillPosition] = useState("bottom-center");
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [audioPlaybackMode, setAudioPlaybackMode] =
+    useState<AudioPlaybackMode>("off");
   const [transcriptionPrompt, setTranscriptionPrompt] = useState("");
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
@@ -241,6 +258,26 @@ export default function SettingsPage(): React.JSX.Element {
         if (data?.value === "false") setSoundEnabled(false);
       })
       .catch(() => {});
+    void (async () => {
+      try {
+        const modeResponse = await getClient().api.settings[":key"].$get({
+          param: { key: "audio_playback_mode" },
+        });
+        const modeData = modeResponse.ok ? await modeResponse.json() : null;
+        if (modeData?.value) {
+          setAudioPlaybackMode(normalizeAudioPlaybackMode(modeData.value));
+          return;
+        }
+
+        const legacyResponse = await getClient().api.settings[":key"].$get({
+          param: { key: "audio_ducking_enabled" },
+        });
+        const legacyData = legacyResponse.ok
+          ? await legacyResponse.json()
+          : null;
+        setAudioPlaybackMode(legacyData?.value === "true" ? "duck" : "off");
+      } catch {}
+    })();
     getClient()
       .api.settings[":key"].$get({ param: { key: "transcription_prompt" } })
       .then((r) => (r.ok ? r.json() : null))
@@ -394,6 +431,24 @@ export default function SettingsPage(): React.JSX.Element {
       .api.settings[":key"].$put({
         param: { key: "sound_enabled" },
         json: { value: String(enabled) },
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleAudioPlaybackModeChange = useCallback((value: string) => {
+    const mode = normalizeAudioPlaybackMode(value);
+    setAudioPlaybackMode(mode);
+    window.api?.sendAudioPlaybackModeChanged(mode);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: "audio_playback_mode" },
+        json: { value: mode },
+      })
+      .catch(() => {});
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: "audio_ducking_enabled" },
+        json: { value: String(mode === "duck") },
       })
       .catch(() => {});
   }, []);
@@ -688,7 +743,7 @@ export default function SettingsPage(): React.JSX.Element {
           <Row
             label="Sound feedback"
             desc="Soft chimes at the start and end of recording."
-            last
+            last={!isMac}
           >
             <div className="flex items-center gap-2.5">
               {soundEnabled ? (
@@ -699,6 +754,21 @@ export default function SettingsPage(): React.JSX.Element {
               <Toggle on={soundEnabled} onChange={handleSoundToggle} />
             </div>
           </Row>
+
+          {isMac && (
+            <Row
+              label="Background audio"
+              desc="Duck lowers volume. Pause pauses current media and lowers volume."
+              last
+            >
+              <Segment
+                compact
+                options={audioPlaybackOptions}
+                active={audioPlaybackMode}
+                onSelect={handleAudioPlaybackModeChange}
+              />
+            </Row>
+          )}
         </Section>
 
         <Section label="Display">

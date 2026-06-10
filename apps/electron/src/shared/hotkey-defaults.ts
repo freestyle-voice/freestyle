@@ -1,12 +1,22 @@
 /**
  * Single source of truth for the default push-to-talk hotkey.
  *
- * Alt+Space opens the window system menu on Windows and the window menu on
- * many Linux window managers, so it is only a safe default on macOS.
+ * - macOS: Fn (Globe) — dedicated dictation key, no modifier conflicts
+ * - Windows: Control+Super — avoids Alt+Space window menu and common shortcuts
+ * - Linux: Alt+Super — common dictation combo (e.g. pepper-x), avoids WM launcher binds
  *
  * Imported by both the main process and the preload script (which exposes it
  * to the renderer as `window.api.defaultHotkey`).
  */
 export function getDefaultHotkey(platform: string = process.platform): string {
-  return platform === "darwin" ? "Alt+Space" : "Control+Alt+Space";
+  switch (platform) {
+    case "darwin":
+      return "Fn";
+    case "win32":
+      return "Control+Super";
+    case "linux":
+      return "Alt+Super";
+    default:
+      return "Control+Super";
+  }
 }

@@ -2,6 +2,7 @@ import { formatAcceleratorKeys } from "@renderer/hooks/use-hotkey-recorder";
 import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 
 // ---------------------------------------------------------------------------
 // Tutorial — animated 3-phase loop:
@@ -26,7 +27,7 @@ const PHASE_STEPS: ReadonlyArray<readonly [DemoPhase, number]> = [
 const SAMPLE_TRANSCRIPT = "Pushing the meeting to tomorrow at ten.";
 
 // Platform-aware default, mirrored from the main process via the preload.
-const DEFAULT_HOTKEY = window.api?.defaultHotkey ?? "Alt+Space";
+const DEFAULT_HOTKEY = window.api?.defaultHotkey ?? getDefaultHotkey();
 
 export function TutorialDemo({
   hotkey,

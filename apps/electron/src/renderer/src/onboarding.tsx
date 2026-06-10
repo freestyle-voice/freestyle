@@ -41,6 +41,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router";
+import { getDefaultHotkey } from "../../shared/hotkey-defaults";
 
 type Step = "permissions" | "language" | "tutorial";
 
@@ -54,7 +55,8 @@ const IS_WINDOWS = PLATFORM === "win32";
 const IS_LINUX = PLATFORM === "linux";
 
 const DEFAULT_HOTKEY =
-  (typeof window !== "undefined" && window.api?.defaultHotkey) || "Alt+Space";
+  (typeof window !== "undefined" && window.api?.defaultHotkey) ||
+  getDefaultHotkey();
 
 // Linux system-setup state reported by the main process (input-group access
 // for the hotkey listener, xdotool/wtype for the paste fallback).

@@ -99,6 +99,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       defaults.voice.provider,
       defaults.voice.model_id,
     );
+    log.debug(`bias=${JSON.stringify(bias)}`);
     const t0 = Date.now();
     const result = await provider.transcribe({
       audio: audioData,

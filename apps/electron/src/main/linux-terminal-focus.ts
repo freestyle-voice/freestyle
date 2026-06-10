@@ -30,11 +30,35 @@ const TERMINAL_IDENTIFIERS = [
   "sakura",
   "warp",
   "termius",
+  "integrated-terminal",
+];
+
+const IDE_HOST_IDENTIFIERS = [
+  "code",
+  "cursor",
+  "zed",
+  "vscodium",
+  "codium",
+  "windsurf",
+  "fleet",
 ];
 
 function matchesTerminal(identifier: string): boolean {
   const lower = identifier.toLowerCase();
   return TERMINAL_IDENTIFIERS.some((term) => lower.includes(term));
+}
+
+/** Heuristic for VS Code / Zed integrated terminals on Wayland compositors. */
+function matchesIntegratedTerminal(className: string, title?: string): boolean {
+  const cls = className.toLowerCase();
+  if (!IDE_HOST_IDENTIFIERS.some((ide) => cls.includes(ide))) return false;
+  if (!title) return false;
+
+  const normalized = title.toLowerCase();
+  if (/\bterminal\b/.test(normalized)) return true;
+
+  // Shell names commonly appear in integrated terminal tab titles.
+  return /\b(bash|zsh|fish|pwsh|nushell|dash|ash|sh)\b/.test(normalized);
 }
 
 function execFileCapture(
@@ -58,17 +82,33 @@ async function detectViaXdotool(): Promise<string | null> {
   const windowId = await execFileCapture("xdotool", ["getactivewindow"]);
   if (!windowId) return null;
 
-  const className = await execFileCapture("xdotool", [
-    "getwindowclassname",
-    windowId,
-  ]);
-  if (className && matchesTerminal(className)) return className;
+  let currentId = windowId;
+  for (let depth = 0; depth < 20; depth++) {
+    const className = await execFileCapture("xdotool", [
+      "getwindowclassname",
+      currentId,
+    ]);
+    if (className && matchesTerminal(className)) return className;
 
-  const windowName = await execFileCapture("xdotool", [
-    "getwindowname",
-    windowId,
-  ]);
-  if (windowName && matchesTerminal(windowName)) return windowName;
+    const windowName = await execFileCapture("xdotool", [
+      "getwindowname",
+      currentId,
+    ]);
+    if (windowName && matchesTerminal(windowName)) return windowName;
+    if (
+      className &&
+      matchesIntegratedTerminal(className, windowName ?? undefined)
+    ) {
+      return "integrated-terminal";
+    }
+
+    const parentId = await execFileCapture("xdotool", [
+      "getwindowparent",
+      currentId,
+    ]);
+    if (!parentId || parentId === "0" || parentId === currentId) break;
+    currentId = parentId;
+  }
 
   const pid = await execFileCapture("xdotool", ["getwindowpid", windowId]);
   if (pid) {
@@ -80,7 +120,7 @@ async function detectViaXdotool(): Promise<string | null> {
     }
   }
 
-  return className ?? windowName;
+  return null;
 }
 
 async function detectViaHyprland(): Promise<string | null> {
@@ -91,8 +131,14 @@ async function detectViaHyprland(): Promise<string | null> {
     const data = JSON.parse(output) as {
       class?: string;
       initialClass?: string;
+      title?: string;
     };
-    return data.class ?? data.initialClass ?? null;
+    const className = data.class ?? data.initialClass ?? "";
+    if (matchesTerminal(className)) return className;
+    if (matchesIntegratedTerminal(className, data.title)) {
+      return "integrated-terminal";
+    }
+    return className || null;
   } catch {
     return null;
   }
@@ -110,7 +156,14 @@ type SwayNode = {
 
 function findFocusedSwayNode(node: SwayNode): string | null {
   if (node.focused && node.type === "con") {
-    return node.app_id ?? node.window_properties?.class ?? node.name ?? null;
+    const className =
+      node.app_id ?? node.window_properties?.class ?? node.name ?? "";
+    const title = node.name ?? "";
+    if (matchesTerminal(className)) return className;
+    if (matchesIntegratedTerminal(className, title)) {
+      return "integrated-terminal";
+    }
+    return className || null;
   }
 
   for (const child of node.nodes ?? []) {

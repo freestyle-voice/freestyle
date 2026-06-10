@@ -11,8 +11,9 @@ optimal implementations that reduce lines of code.
 
 > **Fixed wholesale:** the local whisper path is now **server-only** (item 13). The CLI inference
 > path (`lib/whisper/transcribe.ts`) was deleted; all per-request decode params live in one place
-> (`providers/whisper-local.ts`). Net effect: items 1–7 and 9–13 below are resolved by that refactor
-> plus small targeted fixes. Items 8 and most cloud items remain open.
+> (`providers/whisper-local.ts`). All items are now resolved except C13 (OpenAI GA realtime
+> migration), which is deliberately deferred — it changes a working wire protocol and needs live
+> verification against the OpenAI API.
 
 ---
 
@@ -52,10 +53,10 @@ optimal implementations that reduce lines of code.
   Fixed: `findWhisperBinary`/`findWhisperServer` results are cached; `resetBinaryCache()` is called
   after binaries are downloaded/built.
 
-- [ ] **8. Models stored twice on disk**
-  `downloadModel` uses `downloadFileToCacheDir` (HF cache) then `copyFileSync` into the models dir
-  (`apps/server/src/lib/whisper/models.ts`). large-v3-turbo → 3.2 GB for one model.
-  **Fix:** download straight to `getModelPath()`, or hardlink instead of copy.
+- [x] **8. Models stored twice on disk**
+  Fixed: `downloadModel` streams the HF `resolve/` URL straight to the models dir (temp file +
+  rename) via the existing `progressFetch` wrapper; the HF-cache intermediary (and the
+  `downloadFileToCacheDir` dependency on this path) is gone.
 
 - [x] **9. Unnecessary buffer copy in `transcribeViaServer`**
   Fixed: the Uint8Array view is passed to `Blob` directly.
@@ -119,11 +120,10 @@ Files: `apps/server/src/routes/stream.ts`, `apps/server/src/lib/streaming/provid
   Fixed: `streamingUnsupported` is reset on every `"start"` — an upstream error downgrades only the
   recording it happened in; each new recording retries streaming.
 
-- [ ] **C3. Settings changes never reach a live streaming session** (cloud twin of item 2)
-  On `"start"`, an existing session with `reset()` is reused as-is (`stream.ts`); provider, model,
-  language, and vocabulary bias were captured at session creation. Changing vocab terms, language,
-  or provider only takes effect when the upstream happens to die and reconnect.
-  **Fix:** on `"start"`, compare current defaults/bias against the session's config; recycle on change.
+- [x] **C3. Settings changes never reach a live streaming session** (cloud twin of item 2)
+  Fixed: `connectUpstream` records a fingerprint of (provider, model, language, bias); on `"start"`
+  the session is reused only if the recomputed fingerprint matches, otherwise it is closed and
+  reconnected with fresh settings.
 
 - [x] **C4. OpenAI commit has no timeout**
   Fixed: same 12s commit timer as Deepgram/ElevenLabs, delivering accumulated partial text.
@@ -132,42 +132,38 @@ Files: `apps/server/src/routes/stream.ts`, `apps/server/src/lib/streaming/provid
   Fixed: `CLOUD_TRANSCRIBE_TIMEOUT_MS` (120s) `AbortSignal` on `transcribeWithAiSdk`,
   `transcribeDeepgramListen`, and `transcribeElevenLabsWithBias`.
 
-- [ ] **C6. No Deepgram KeepAlive — idle sessions die and churn reconnects**
-  Deepgram closes streaming sockets after ~10s without audio (NET-0001). The upstream opens at
-  client-socket connect and idles between recordings, so every pause burns the 3 reconnect attempts
-  in a loop; ElevenLabs fetches a fresh single-use token per cycle.
-  **Fix:** send `{"type":"KeepAlive"}` every ~5s while idle, or open the upstream lazily on `"start"`.
+- [x] **C6. No Deepgram KeepAlive — idle sessions die and churn reconnects**
+  Fixed: the Deepgram session sends `{"type":"KeepAlive"}` every 5s while the socket is open,
+  holding the connection through idle periods between recordings.
 
-- [ ] **C7. Word-overlap dedup can delete words the user actually said**
-  `mergeFinalSegment` (`providers/deepgram.ts`) and `joinSegments` (`providers/elevenlabs.ts`)
-  strip up to 5 repeated boundary words — "very, very" across a segment boundary loses one. The
-  comment's premise is also shaky: Deepgram `is_final` results cover distinct spans (not cumulative).
-  The dedup protects against ElevenLabs auto-commit overlap (real), but is applied blanket to correct
-  input too.
-  **Fix:** scope the dedup to the ElevenLabs auto-commit case; for Deepgram, plain append per final span.
+- [x] **C7. Word-overlap dedup can delete words the user actually said**
+  Fixed: one shared `mergeFinalSegment` (`lib/streaming/segments.ts`) with opt-in overlap dedup.
+  Deepgram uses containment-only merging (finals cover distinct spans); ElevenLabs enables the
+  5-word overlap dedup, where repeated-tail segments are a known auto-commit artifact.
 
-- [ ] **C8. ElevenLabs masks terminal errors during commit**
-  `quota_exceeded`/`auth_error` arriving while a commit is pending (`providers/elevenlabs.ts`)
-  silently delivers partial text as final — the user never learns their key/quota is dead.
-  **Fix:** surface the error alongside (or instead of) the salvaged text for non-transient error types.
+- [x] **C8. ElevenLabs masks terminal errors during commit**
+  Fixed: `auth_error`/`quota_exceeded` always surface via `onError` (triggering the client's WAV
+  REST fallback, whose batch request reports the real failure); transient errors keep the
+  salvage-partial-text behavior.
 
-- [ ] **C9. Stream route silently drops audio once 500 chunks are pending**
-  (`routes/stream.ts`) — no error surfaced to the client.
+- [x] **C9. Stream route silently drops audio once 500 chunks are pending**
+  Fixed: on overflow the route sends one `error` message, which triggers the renderer's WAV REST
+  fallback (the full recording is preserved client-side, so no audio is lost).
 
-- [ ] **C10. Renderer REST fallback only fires on explicit `onError`**
-  (`apps/electron/src/renderer/src/pages/app.tsx:310-340`) — a silently-stalled stream loses the
-  recording; no watchdog timeout on commit.
+- [x] **C10. Renderer commit timeout lost the recording**
+  Fixed: the renderer's commit watchdog (was 30s, resolving empty) is now 15s and salvages via the
+  REST fallback with the full recorded WAV — same path as `onError`, now shared
+  (`restFallbackTranscribe` in `app.tsx`). Server-side commit timeouts fire at 12s, so 15s only
+  triggers when the stream is truly dead.
 
 ## Inefficiencies / design
 
-- [ ] **C11. Duplicate merge logic**
-  `mergeFinalSegment`/`previewText` (deepgram.ts) and `joinSegments` (elevenlabs.ts) are the same
-  algorithm implemented twice. Extract one shared util (and fix C7 there once).
+- [x] **C11. Duplicate merge logic**
+  Fixed: extracted to `lib/streaming/segments.ts` (see C7).
 
-- [ ] **C12. Deepgram batch formatting depends on vocab presence**
-  The bias path sets `smart_format=true` (`transcribe-bias.ts`); the AI SDK path doesn't. Adding a
-  vocabulary word changes number/date formatting.
-  **Fix:** align params across both paths (or route both through one implementation).
+- [x] **C12. Deepgram batch formatting depends on vocab presence**
+  Fixed: all Deepgram batch transcription goes through `transcribeDeepgramListen` (one path,
+  `smart_format=true` always); the AI SDK route and the `@ai-sdk/deepgram` dependency were removed.
 
 - [ ] **C13. OpenAI realtime uses the beta API**
   `OpenAI-Beta: realtime=v1` + `transcription_session.update` (`providers/openai.ts`).
@@ -187,10 +183,10 @@ Files: `apps/server/src/routes/stream.ts`, `apps/server/src/lib/streaming/provid
 
 ---
 
-## Remaining work, in priority order
+## Remaining work
 
-1. **C3** — recycle live streaming sessions when defaults/bias change (correctness, parallels fixed item 2).
-2. **C6** — Deepgram KeepAlive or lazy upstream connect (reliability + connection churn).
-3. **C7 + C11** — one shared segment-merge util with the dedup scoped to ElevenLabs auto-commit.
-4. **C8** — surface terminal ElevenLabs errors; **C9/C10** — audio-drop signaling and a renderer commit watchdog.
-5. **8** — stop double-storing whisper models on disk; **C12** — align Deepgram batch params; **C13** — OpenAI GA realtime migration.
+- **C13** — migrate the OpenAI realtime session off the beta API (`OpenAI-Beta: realtime=v1`) to the
+  GA surface. Deferred deliberately: the beta protocol works today, the GA protocol has different
+  session/event shapes, and the migration should be validated against the live API, not blind.
+- Manual end-to-end dictation pass (local whisper + one cloud streaming provider) before merging —
+  the automated tests don't exercise live providers or the whisper-server binary.

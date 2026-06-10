@@ -16,7 +16,6 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createAppLogger } from "@freestyle/utils";
-import { downloadFileToCacheDir } from "@huggingface/hub";
 import { progressFetch } from "../hf/progress.js";
 import {
   getBinDir,
@@ -194,14 +193,16 @@ export async function downloadModel(modelId: string): Promise<void> {
   const tempPath = `${destPath}.downloading`;
 
   try {
-    const blobPath = await downloadFileToCacheDir({
-      repo: { type: "model", name: WHISPER_REPO },
-      path: model.fileName,
-      revision: WHISPER_REPO_REVISION,
-      fetch: progressFetch(active, controller.signal),
-    });
-
-    copyFileSync(blobPath, tempPath);
+    // Stream straight to the models dir — going through the HF cache would
+    // store every model twice on disk.
+    const url = `https://huggingface.co/${WHISPER_REPO}/resolve/${WHISPER_REPO_REVISION}/${model.fileName}`;
+    const res = await progressFetch(active, controller.signal)(url);
+    if (!res.ok || !res.body) {
+      throw new Error(`Model download failed: HTTP ${res.status}`);
+    }
+    const total = Number(res.headers.get("content-length"));
+    if (total > 0) active.bytesTotal = total;
+    await pipeline(webBodyToReadable(res.body), createWriteStream(tempPath));
     renameSync(tempPath, destPath);
     activeDownloads.delete(modelId);
   } catch (err) {

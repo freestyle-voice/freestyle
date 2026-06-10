@@ -284,6 +284,37 @@ export default function AppPage(): React.JSX.Element {
     }
   }, []);
 
+  // ---- REST fallback (full recorded WAV kept by the streamer) ----
+  const restFallbackTranscribe = useCallback(
+    (errorMsg: string): Promise<TranscribeResult> | null => {
+      const wavBlob = streamerRef.current?.getWavBlob() ?? null;
+      if (!wavBlob) return null;
+      const headers: Record<string, string> = {
+        "Content-Type": "audio/wav",
+        "x-audio-duration-ms": String(Date.now() - startTimeRef.current),
+      };
+      if (appContextRef.current)
+        headers["x-app-context"] = encodeAppContext(appContextRef.current);
+      if (queueRef.current.length > 0 || drainingRef.current)
+        headers["x-skip-post-process"] = "true";
+      return fetch(`${getApiBase()}/api/transcribe`, {
+        method: "POST",
+        body: wavBlob,
+        headers,
+      })
+        .then(async (res) => {
+          if (!res.ok) return { raw: "", cleaned: "", error: errorMsg };
+          const data = (await res.json()) as { raw?: string; cleaned?: string };
+          return {
+            raw: (data.raw || "").trim(),
+            cleaned: (data.cleaned || data.raw || "").trim(),
+          };
+        })
+        .catch(() => ({ raw: "", cleaned: "", error: errorMsg }));
+    },
+    [],
+  );
+
   // ---- Streamer (lazy singleton) ----
   // biome-ignore lint/correctness/useExhaustiveDependencies: singleton
   const getStreamer = useCallback((): Streamer => {
@@ -308,34 +339,9 @@ export default function AppPage(): React.JSX.Element {
           const resolver = streamResolverRef.current;
           if (resolver) {
             streamResolverRef.current = null;
-            const wavBlob = streamerRef.current?.getWavBlob() ?? null;
-            if (wavBlob) {
-              const durationMs = Date.now() - startTimeRef.current;
-              const headers: Record<string, string> = {
-                "Content-Type": "audio/wav",
-                "x-audio-duration-ms": String(durationMs),
-              };
-              if (appContextRef.current)
-                headers["x-app-context"] = encodeAppContext(
-                  appContextRef.current,
-                );
-              if (queueRef.current.length > 0 || drainingRef.current)
-                headers["x-skip-post-process"] = "true";
-              fetch(`${getApiBase()}/api/transcribe`, {
-                method: "POST",
-                body: wavBlob,
-                headers,
-              })
-                .then(async (res) => {
-                  if (!res.ok) return { raw: "", cleaned: "", error: msg };
-                  const data = await res.json();
-                  return {
-                    raw: (data.raw || "").trim(),
-                    cleaned: (data.cleaned || data.raw || "").trim(),
-                  };
-                })
-                .catch(() => ({ raw: "", cleaned: "", error: msg }))
-                .then(resolver);
+            const fallback = restFallbackTranscribe(msg);
+            if (fallback) {
+              void fallback.then(resolver);
               return;
             }
             resolver({ raw: "", cleaned: "", error: msg });
@@ -642,16 +648,23 @@ export default function AppPage(): React.JSX.Element {
       setPendingCount((c) => c + 1);
       const transcribePromise = new Promise<TranscribeResult>((resolve) => {
         streamResolverRef.current = resolve;
+        // Server-side commit timeouts fire at 12s; if no final arrived by
+        // 15s the stream is dead — salvage via REST with the recorded WAV.
         setTimeout(() => {
           if (streamResolverRef.current === resolve) {
             streamResolverRef.current = null;
-            resolve({
-              raw: "",
-              cleaned: "",
-              error: "Transcription timed out",
-            });
+            const fallback = restFallbackTranscribe("Transcription timed out");
+            if (fallback) {
+              void fallback.then(resolve);
+            } else {
+              resolve({
+                raw: "",
+                cleaned: "",
+                error: "Transcription timed out",
+              });
+            }
           }
-        }, 30000);
+        }, 15000);
       }).finally(() => {
         setPendingCount((c) => Math.max(0, c - 1));
       });
@@ -745,7 +758,7 @@ export default function AppPage(): React.JSX.Element {
 
     queueRef.current.push({ promise: transcribePromise });
     drainQueue();
-  }, [hidePill, drainQueue, startBarAnimation]);
+  }, [hidePill, drainQueue, startBarAnimation, restFallbackTranscribe]);
 
   // ---- Cancel ----
   const cancelRecording = useCallback(() => {

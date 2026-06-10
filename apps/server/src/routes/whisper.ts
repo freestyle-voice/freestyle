@@ -122,20 +122,9 @@ export function autoStartWhisperServer(): void {
   try {
     const defaults = getDefaultModels();
     if (defaults.voice?.provider !== WHISPER_PROVIDER_ID) return;
-
-    const hasCli = isBinaryAvailable();
-    const hasServer = isServerBinaryAvailable();
-    if (!hasCli && !hasServer) return;
+    if (!isServerBinaryAvailable()) return;
 
     const modelId = stripProviderPrefix(defaults.voice.model_id);
-
-    if (!hasServer) {
-      log.debug(
-        "whisper-server binary not found, skipping auto-start (CLI will be used)",
-      );
-      return;
-    }
-
     log.debug(`Auto-starting server for model: ${modelId}`);
     startInBackground(modelId);
   } catch {

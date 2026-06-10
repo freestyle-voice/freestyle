@@ -156,8 +156,8 @@ export async function downloadModel(modelId: string): Promise<void> {
 
   if (isModelDownloaded(model)) return;
 
-  const { isBinaryAvailable } = await import("./binary.js");
-  const needsBinary = !isBinaryAvailable();
+  const { isServerBinaryAvailable } = await import("./binary.js");
+  const needsBinary = !isServerBinaryAvailable();
 
   const controller = new AbortController();
   const active: ActiveDownload = {
@@ -268,8 +268,10 @@ export function isBinaryDownloading(): boolean {
 }
 
 export async function ensureBinariesDownloaded(): Promise<void> {
-  const { isBinaryAvailable } = await import("./binary.js");
-  if (isBinaryAvailable()) return;
+  const { isServerBinaryAvailable, resetBinaryCache } = await import(
+    "./binary.js"
+  );
+  if (isServerBinaryAvailable()) return;
 
   if (binaryDownloadPromise) return binaryDownloadPromise;
   const task =
@@ -278,6 +280,7 @@ export async function ensureBinariesDownloaded(): Promise<void> {
       : buildFromSource();
   binaryDownloadPromise = task.finally(() => {
     binaryDownloadPromise = null;
+    resetBinaryCache();
   });
   return binaryDownloadPromise;
 }
@@ -389,10 +392,13 @@ async function buildFromSource(): Promise<void> {
     rmSync(srcDir, { recursive: true, force: true });
   } catch {}
 
-  const { isBinaryAvailable } = await import("./binary.js");
-  if (!isBinaryAvailable()) {
+  const { isServerBinaryAvailable, resetBinaryCache } = await import(
+    "./binary.js"
+  );
+  resetBinaryCache();
+  if (!isServerBinaryAvailable()) {
     throw new Error(
-      "whisper.cpp build completed but binary not found. Check build output.",
+      "whisper.cpp build completed but whisper-server not found. Check build output.",
     );
   }
 

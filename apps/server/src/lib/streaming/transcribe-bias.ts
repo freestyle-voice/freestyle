@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import type { AsrVocabularyBias } from "../vocabulary-bias.js";
 import type { TranscribeResult } from "./types.js";
-import { stripProviderPrefix } from "./types.js";
+import { CLOUD_TRANSCRIBE_TIMEOUT_MS, stripProviderPrefix } from "./types.js";
 
 interface BiasTranscribeParams {
   audio: Uint8Array;
@@ -55,6 +55,7 @@ export async function transcribeDeepgramListen(
       "Content-Type": "audio/wav",
     },
     body: Buffer.from(opts.audio),
+    signal: AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
   });
 
   if (!res.ok) {
@@ -103,6 +104,7 @@ export async function transcribeElevenLabsWithBias(
     method: "POST",
     headers: { "xi-api-key": opts.apiKey },
     body: form,
+    signal: AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
   });
 
   if (!res.ok) {

@@ -45,15 +45,29 @@ function findExecutable(name: string | null): string | null {
   return findInPath(name);
 }
 
+// PATH lookups spawn `which`/`where` synchronously, so cache results.
+// Reset via resetBinaryCache() after binaries are downloaded/built.
+let cachedBinary: string | null | undefined;
+let cachedServer: string | null | undefined;
+
+export function resetBinaryCache(): void {
+  cachedBinary = undefined;
+  cachedServer = undefined;
+}
+
 export function findWhisperBinary(): string | null {
-  const primary = findExecutable(getBinaryName());
-  if (primary) return primary;
-  // Homebrew installs as "whisper-cpp" not "whisper-cli"
-  return findInPath("whisper-cpp");
+  if (cachedBinary === undefined) {
+    // Homebrew installs as "whisper-cpp" not "whisper-cli"
+    cachedBinary = findExecutable(getBinaryName()) ?? findInPath("whisper-cpp");
+  }
+  return cachedBinary;
 }
 
 export function findWhisperServer(): string | null {
-  return findExecutable(getServerBinaryName());
+  if (cachedServer === undefined) {
+    cachedServer = findExecutable(getServerBinaryName());
+  }
+  return cachedServer;
 }
 
 export function isBinaryAvailable(): boolean {

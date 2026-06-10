@@ -247,6 +247,9 @@ const stream = new Hono().get(
             );
             ws.send(JSON.stringify({ type: "error", message }));
             upstream = null;
+            try {
+              session.close();
+            } catch {}
           },
           onClose: () => {
             // Ignore close from a superseded socket (replaced on a later "start").
@@ -284,23 +287,15 @@ const stream = new Hono().get(
 
       onMessage(event, ws) {
         const data = event.data;
-        const isBinary =
-          data instanceof ArrayBuffer ||
-          ArrayBuffer.isView(data) ||
-          (typeof Buffer !== "undefined" && Buffer.isBuffer(data));
-        if (isBinary) {
+        // Note: Buffer is an ArrayBuffer view, so this covers Node Buffers too.
+        if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
           const buf =
             data instanceof ArrayBuffer
               ? data
-              : ArrayBuffer.isView(data)
-                ? (data.buffer.slice(
-                    data.byteOffset,
-                    data.byteOffset + data.byteLength,
-                  ) as ArrayBuffer)
-                : ((data as Buffer).buffer.slice(
-                    (data as Buffer).byteOffset,
-                    (data as Buffer).byteOffset + (data as Buffer).byteLength,
-                  ) as ArrayBuffer);
+              : (data.buffer.slice(
+                  data.byteOffset,
+                  data.byteOffset + data.byteLength,
+                ) as ArrayBuffer);
           if (
             !upstream ||
             (!upstream.waitUntilReady && notifiedReadyToken !== readyToken)
@@ -340,6 +335,9 @@ const stream = new Hono().get(
             pendingAudioChunks = [];
             pendingCommit = false;
             reconnectAttempts = 0;
+            // A prior upstream error disables streaming only for the rest of
+            // that recording; each new recording gets a fresh attempt.
+            streamingUnsupported = false;
             if (upstream) {
               if (upstream.reset) {
                 upstream.reset();
@@ -364,19 +362,15 @@ const stream = new Hono().get(
               } else {
                 upstream.close();
                 upstream = null;
-                if (!streamingUnsupported) {
-                  try {
-                    connectUpstream(ws);
-                  } catch {}
-                }
+                try {
+                  connectUpstream(ws);
+                } catch {}
               }
               break;
             }
-            if (!streamingUnsupported) {
-              try {
-                connectUpstream(ws);
-              } catch {}
-            }
+            try {
+              connectUpstream(ws);
+            } catch {}
             break;
           case "commit":
             if (msg.audioDurationMs && msg.audioDurationMs > 0) {

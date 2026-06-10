@@ -147,23 +147,15 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   const skipPostProcess = c.req.header("x-skip-post-process") === "true";
 
   if (skipPostProcess) {
-    Promise.resolve()
-      .then(() => {
-        db.prepare(
-          `INSERT INTO transcription_history
-             (raw_text, voice_provider, voice_model, duration_ms, audio_duration_ms)
-             VALUES (?, ?, ?, ?, ?)`,
-        ).run(
-          rawText,
-          voiceProvider,
-          voiceModel,
-          Date.now() - start,
-          audioDurationMs,
-        );
-      })
-      .catch((err) => {
-        log.error(`Failed to save history: ${err}`);
-      });
+    try {
+      db.prepare(
+        `INSERT INTO transcription_history
+           (raw_text, voice_provider, voice_model, duration_ms, audio_duration_ms)
+           VALUES (?, ?, ?, ?, ?)`,
+      ).run(rawText, voiceProvider, voiceModel, durationMs, audioDurationMs);
+    } catch (err) {
+      log.error(`Failed to save history: ${err}`);
+    }
 
     capture("transcription completed", {
       provider: voiceProvider,
@@ -187,29 +179,27 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     `post-process took ${Date.now() - ppStart}ms | cleaned=${JSON.stringify(pp.cleaned).slice(0, 120)}`,
   );
 
-  Promise.resolve()
-    .then(() => {
-      db.prepare(
-        `INSERT INTO transcription_history
-           (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        rawText,
-        pp.cleaned !== rawText ? pp.cleaned : null,
-        voiceProvider,
-        voiceModel,
-        pp.llmProvider,
-        pp.llmModel,
-        Date.now() - start,
-        audioDurationMs,
-        pp.inputTokens,
-        pp.outputTokens,
-        pp.costUsd,
-      );
-    })
-    .catch((err) => {
-      log.error(`Failed to save history: ${err}`);
-    });
+  try {
+    db.prepare(
+      `INSERT INTO transcription_history
+         (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      rawText,
+      pp.cleaned !== rawText ? pp.cleaned : null,
+      voiceProvider,
+      voiceModel,
+      pp.llmProvider,
+      pp.llmModel,
+      Date.now() - start,
+      audioDurationMs,
+      pp.inputTokens,
+      pp.outputTokens,
+      pp.costUsd,
+    );
+  } catch (err) {
+    log.error(`Failed to save history: ${err}`);
+  }
 
   log.debug(`total ${Date.now() - start}ms`);
 

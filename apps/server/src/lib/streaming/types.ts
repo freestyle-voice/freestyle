@@ -58,6 +58,9 @@ export interface TranscriptionProvider {
   openStreamingSession?(opts: StreamingSessionOptions): StreamSession;
 }
 
+/** Upper bound for one-shot cloud transcription requests. */
+export const CLOUD_TRANSCRIBE_TIMEOUT_MS = 120_000;
+
 export function stripProviderPrefix(modelId: string): string {
   const idx = modelId.indexOf("/");
   return idx >= 0 ? modelId.slice(idx + 1) : modelId;

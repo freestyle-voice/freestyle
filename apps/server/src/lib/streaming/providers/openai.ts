@@ -12,6 +12,7 @@ import { stripProviderPrefix } from "../types.js";
 import { transcribeWithAiSdk } from "../utils.js";
 
 const REALTIME_URL = "wss://api.openai.com/v1/realtime?intent=transcription";
+const COMMIT_TIMEOUT_MS = 12_000;
 
 export class OpenAITranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "openai";
@@ -29,6 +30,23 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
     const short = stripProviderPrefix(model);
     let partialText = "";
     let configured = false;
+    let finalDelivered = false;
+    let commitTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    function clearCommitTimeout(): void {
+      if (commitTimeout) {
+        clearTimeout(commitTimeout);
+        commitTimeout = null;
+      }
+    }
+
+    function deliverFinal(text: string): void {
+      if (finalDelivered) return;
+      finalDelivered = true;
+      clearCommitTimeout();
+      partialText = "";
+      callbacks.onFinal(text.trim());
+    }
 
     const ws = new WebSocket(REALTIME_URL, {
       headers: {
@@ -80,8 +98,7 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
         case "conversation.item.input_audio_transcription.completed": {
           const text =
             typeof evt.transcript === "string" ? evt.transcript : partialText;
-          callbacks.onFinal(text.trim());
-          partialText = "";
+          deliverFinal(text);
           return;
         }
         case "error": {
@@ -115,26 +132,35 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
         );
       },
       commit(): void {
+        finalDelivered = false;
         if (ws.readyState !== WebSocket.OPEN) {
-          const text = partialText.trim();
-          partialText = "";
-          callbacks.onFinal(text);
+          deliverFinal(partialText);
           return;
         }
         ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+        // Don't hang the recording if "completed" never arrives.
+        clearCommitTimeout();
+        commitTimeout = setTimeout(() => {
+          deliverFinal(partialText);
+        }, COMMIT_TIMEOUT_MS);
       },
       reset(): void {
+        clearCommitTimeout();
         partialText = "";
+        finalDelivered = false;
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
         }
       },
       cancel(): void {
+        clearCommitTimeout();
+        partialText = "";
+        finalDelivered = false;
         if (ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
-        partialText = "";
       },
       close(): void {
+        clearCommitTimeout();
         if (ws.readyState <= WebSocket.OPEN) ws.close();
       },
     };

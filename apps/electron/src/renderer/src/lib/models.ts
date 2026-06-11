@@ -74,6 +74,7 @@ export const CLOUD_VOICE_PROVIDERS = [
   "groq",
   "deepgram",
   "elevenlabs",
+  "sarvam",
 ];
 
 export const VOICE_PROVIDERS = [
@@ -100,6 +101,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   elevenlabs: "ElevenLabs",
   mistral: "Mistral",
   openrouter: "OpenRouter",
+  sarvam: "Sarvam AI",
   "local-llm": "Local LLM",
   "local-whisper": "Local Whisper",
   "local-mlx": "Local MLX",
@@ -114,6 +116,7 @@ export const PROVIDER_KEY_URLS: Record<string, string> = {
   anthropic: "https://console.anthropic.com/settings/keys",
   google: "https://aistudio.google.com/apikey",
   mistral: "https://console.mistral.ai/api-keys",
+  sarvam: "https://dashboard.sarvam.ai/",
 };
 
 export function displayProviderName(
@@ -194,6 +197,12 @@ export const VOICE_META: Record<
     cost: 0.4,
     streaming: true,
     note: "Excellent across 99 languages",
+  },
+  "sarvam/saaras:v3": {
+    speed: 4,
+    quality: 4,
+    cost: 0.36,
+    note: "Optimized for Indian accents & dialects",
   },
 };
 

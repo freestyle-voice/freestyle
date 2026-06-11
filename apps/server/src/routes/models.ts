@@ -142,6 +142,14 @@ const BUILTIN_VOICE_MODELS: AvailableModel[] = [
     family: "elevenlabs",
     type: "voice",
   },
+  {
+    provider_id: "sarvam",
+    provider_name: "Sarvam AI",
+    model_id: "sarvam/saaras:v3",
+    model_name: "Sarvam Speech-to-Text",
+    family: "sarvam",
+    type: "voice",
+  },
 ];
 
 // Cleanup-LLM providers the app can actually run (see lib/providers.ts).

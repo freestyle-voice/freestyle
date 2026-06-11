@@ -3,6 +3,7 @@ import { ElevenLabsTranscriptionProvider } from "./providers/elevenlabs.js";
 import { GroqTranscriptionProvider } from "./providers/groq.js";
 import { MlxLocalTranscriptionProvider } from "./providers/mlx-local.js";
 import { OpenAITranscriptionProvider } from "./providers/openai.js";
+import { SarvamTranscriptionProvider } from "./providers/sarvam.js";
 import { WhisperLocalTranscriptionProvider } from "./providers/whisper-local.js";
 import type { TranscriptionProvider } from "./types.js";
 
@@ -13,6 +14,7 @@ const providers: TranscriptionProvider[] = [
   new GroqTranscriptionProvider(),
   new WhisperLocalTranscriptionProvider(),
   new MlxLocalTranscriptionProvider(),
+  new SarvamTranscriptionProvider(),
 ];
 
 const providerMap = new Map(providers.map((p) => [p.providerId, p]));

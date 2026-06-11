@@ -716,6 +716,10 @@ function hidePill(): void {
   if (mainWindow?.isVisible()) {
     mainWindow.hide();
   }
+  // Session ended (cancel, error, or paste complete). Clear latched hotkey
+  // state so the next press starts fresh — e.g. after ESC while still
+  // holding the dictation key.
+  hotkeyPressed = false;
   // Unregister Escape shortcut when pill is hidden
   try {
     globalShortcut.unregister("Escape");

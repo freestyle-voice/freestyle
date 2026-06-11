@@ -102,7 +102,11 @@ jobs:
         working-directory: apps/electron
         run: pnpm run build
 
+      - name: Verify electron build output
+        run: test -f apps/electron/out/main/index.js
+
       - name: Run Electron E2E tests
+        timeout-minutes: 5
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm --filter @freestyle/electron run test:e2e
 
   build-linux:

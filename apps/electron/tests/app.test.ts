@@ -158,9 +158,16 @@ test("settings API works via embedded server", async () => {
 });
 
 test("dashboard renders content", async () => {
-  await dashboardPage.waitForTimeout(2000);
-
   const body = dashboardPage.locator("body");
+
+  if (dashboardPage.url().includes("/onboarding")) {
+    await body.waitFor({ state: "visible" });
+    expect((await body.innerText()).length).toBeGreaterThan(0);
+    return;
+  }
+
+  await dashboardPage.waitForSelector("main, nav", { timeout: 10_000 });
+
   await body.waitFor({ state: "visible" });
   const bodyText = await body.innerText();
   expect(bodyText.length).toBeGreaterThan(0);

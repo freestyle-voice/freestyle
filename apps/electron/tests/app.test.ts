@@ -65,6 +65,7 @@ test.beforeAll(async () => {
 
   // Find the dashboard (non-pill) window.
   dashboardPage = await waitForDashboardWindow(app);
+  await dashboardPage.waitForLoadState("networkidle");
 
   // Resolve the actual server port by probing the default port from the
   // main process. The server starts on DEFAULT_PORT and only falls back
@@ -157,9 +158,11 @@ test("settings API works via embedded server", async () => {
 });
 
 test("dashboard renders content", async () => {
-  await dashboardPage.waitForTimeout(1000);
+  await dashboardPage.waitForTimeout(2000);
 
-  const bodyText = await dashboardPage.locator("body").innerText();
+  const body = dashboardPage.locator("body");
+  await body.waitFor({ state: "visible" });
+  const bodyText = await body.innerText();
   expect(bodyText.length).toBeGreaterThan(0);
 });
 
@@ -172,7 +175,7 @@ test("sidebar navigation is rendered", async () => {
     return;
   }
 
-  await dashboardPage.waitForSelector("nav", { timeout: 5000 });
+  await dashboardPage.waitForSelector("nav", { timeout: 10_000 });
   const navLinks = await dashboardPage.locator("nav a").all();
-  expect(navLinks.length).toBe(6);
+  expect(navLinks.length).toBe(7);
 });

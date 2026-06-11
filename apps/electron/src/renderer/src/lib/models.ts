@@ -74,6 +74,7 @@ export const CLOUD_VOICE_PROVIDERS = [
   "groq",
   "deepgram",
   "elevenlabs",
+  "60db",
 ];
 
 export const VOICE_PROVIDERS = [
@@ -98,6 +99,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   groq: "Groq",
   deepgram: "Deepgram",
   elevenlabs: "ElevenLabs",
+  "60db": "60dB",
   mistral: "Mistral",
   openrouter: "OpenRouter",
   "local-llm": "Local LLM",
@@ -194,6 +196,11 @@ export const VOICE_META: Record<
     cost: 0.4,
     streaming: true,
     note: "Excellent across 99 languages",
+  },
+  "60db/stt": {
+    speed: 3,
+    quality: 4,
+    note: "Multilingual · diarization",
   },
 };
 

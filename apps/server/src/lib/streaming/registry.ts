@@ -1,3 +1,4 @@
+import { SixtyDbTranscriptionProvider } from "./providers/60db.js";
 import { DeepgramTranscriptionProvider } from "./providers/deepgram.js";
 import { ElevenLabsTranscriptionProvider } from "./providers/elevenlabs.js";
 import { GroqTranscriptionProvider } from "./providers/groq.js";
@@ -10,6 +11,7 @@ const providers: TranscriptionProvider[] = [
   new OpenAITranscriptionProvider(),
   new DeepgramTranscriptionProvider(),
   new ElevenLabsTranscriptionProvider(),
+  new SixtyDbTranscriptionProvider(),
   new GroqTranscriptionProvider(),
   new WhisperLocalTranscriptionProvider(),
   new MlxLocalTranscriptionProvider(),

@@ -9,7 +9,8 @@ export type AsrVocabularyBias =
   | { kind: "prompt"; text: string }
   | { kind: "deepgram-keyterms"; terms: string[] }
   | { kind: "deepgram-keywords"; terms: string[] }
-  | { kind: "elevenlabs-keyterms"; terms: string[] };
+  | { kind: "elevenlabs-keyterms"; terms: string[] }
+  | { kind: "60db-keywords"; terms: string[] };
 
 const PROMPT_CHAR_BUDGET = 900;
 const DEEPGRAM_KEYTERM_MAX = 100;
@@ -19,6 +20,8 @@ const ELEVENLABS_BATCH_KEYTERM_MAX = 100;
 const ELEVENLABS_REALTIME_KEYTERM_MAX = 50;
 const ELEVENLABS_TERM_MAX_CHARS = 20;
 const ELEVENLABS_BATCH_TERM_MAX_CHARS = 50;
+const SIXTYDB_KEYWORD_MAX = 100;
+const SIXTYDB_TERM_MAX_CHARS = 50;
 
 function capTerms(terms: string[], max: number): string[] {
   const seen = new Set<string>();
@@ -164,6 +167,19 @@ export function buildAsrVocabularyBias(
       const keyterms = capElevenLabsTerms(capped, max, maxChars);
       return keyterms.length > 0
         ? { kind: "elevenlabs-keyterms", terms: keyterms }
+        : null;
+    }
+    case "60db": {
+      const keywords = capTerms(
+        capped.map((t) =>
+          t.length > SIXTYDB_TERM_MAX_CHARS
+            ? t.slice(0, SIXTYDB_TERM_MAX_CHARS)
+            : t,
+        ),
+        SIXTYDB_KEYWORD_MAX,
+      );
+      return keywords.length > 0
+        ? { kind: "60db-keywords", terms: keywords }
         : null;
     }
     case "local-mlx": {

@@ -99,6 +99,20 @@ async function validateElevenLabs(apiKey: string): Promise<ValidationResult> {
   return { valid: false, error: `ElevenLabs returned HTTP ${res.status}.` };
 }
 
+async function validate60db(apiKey: string): Promise<ValidationResult> {
+  const res = await fetch("https://api.60db.ai/myvoices", {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (res.ok) return { valid: true };
+  if (res.status === 401 || res.status === 403)
+    return {
+      valid: false,
+      error: "Invalid API key. Please check and try again.",
+    };
+  return { valid: false, error: `60dB returned HTTP ${res.status}.` };
+}
+
 async function validateAnthropic(apiKey: string): Promise<ValidationResult> {
   const res = await fetch("https://api.anthropic.com/v1/models", {
     headers: {
@@ -158,6 +172,7 @@ const LIVE_VALIDATORS: Record<
   groq: validateGroq,
   deepgram: validateDeepgram,
   elevenlabs: validateElevenLabs,
+  "60db": validate60db,
   anthropic: validateAnthropic,
   google: validateGoogle,
   mistral: validateMistral,

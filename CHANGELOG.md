@@ -1,4 +1,24 @@
 # Changelog
+## 0.1.8
+
+### Bug Fixes 🐛
+
+- Restore hotkey after ESC cancels dictation (#232) by @anish808 in [#233](https://github.com/freestyle-voice/freestyle/pull/233)
+- Use platform-appropriate device copy on Linux and Windows by @andrewjsalzer in [#217](https://github.com/freestyle-voice/freestyle/pull/217)
+
+### Other
+
+- Update platform default push-to-talk hotkeys by @tigerisaac in [#230](https://github.com/freestyle-voice/freestyle/pull/230)
+- Cross platform stability fixes by @matteo8p in [#227](https://github.com/freestyle-voice/freestyle/pull/227)
+- cross platform audit by @matteo8p in [#225](https://github.com/freestyle-voice/freestyle/pull/225)
+- onboarding funnel by @matteo8p in [f9fc6912](https://github.com/freestyle-voice/freestyle/commit/f9fc6912d31cf9c26318ea5ca4135d6012ff545a)
+- Implement opiniated method to choosing models. by @matteo8p in [#224](https://github.com/freestyle-voice/freestyle/pull/224)
+- Transcription optimize 2 by @matteo8p in [#223](https://github.com/freestyle-voice/freestyle/pull/223)
+- Optimize transcribe first pass by @matteo8p in [#222](https://github.com/freestyle-voice/freestyle/pull/222)
+- Transcribe stability improvements by @matteo8p in [#221](https://github.com/freestyle-voice/freestyle/pull/221)
+- Feat/history filter panel by @shawnriju in [#211](https://github.com/freestyle-voice/freestyle/pull/211)
+- Refactor React components by @matteo8p in [#199](https://github.com/freestyle-voice/freestyle/pull/199)
+
 ## 0.1.7
 
 ### Bug Fixes 🐛

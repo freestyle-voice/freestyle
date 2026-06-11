@@ -436,7 +436,7 @@ function createSettingsWindow(initialPath?: string): void {
   settingsWindow.on("closed", () => {
     if (hotkeyRecorder) {
       stopHotkeyRecorderProcess();
-      registerHotkey(currentHotkeyAccel ?? undefined);
+      scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
     }
     settingsWindow = null;
   });
@@ -716,6 +716,10 @@ function hidePill(): void {
   if (mainWindow?.isVisible()) {
     mainWindow.hide();
   }
+  // Session ended (cancel, error, or paste complete). Clear latched hotkey
+  // state so the next press starts fresh — e.g. after ESC while still
+  // holding the dictation key.
+  hotkeyPressed = false;
   // Unregister Escape shortcut when pill is hidden
   try {
     globalShortcut.unregister("Escape");
@@ -1244,7 +1248,7 @@ app.whenReady().then(async () => {
       onCaptured: () => {},
       onCancel: () => {
         stopHotkeyRecorderProcess();
-        registerHotkey(currentHotkeyAccel ?? undefined);
+        scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
       },
       onError: (message) => {
         hotkeyRecorderLog.warn(message);
@@ -1259,7 +1263,7 @@ app.whenReady().then(async () => {
 
   ipcMain.on("hotkey-record:stop", (_event, hotkey?: string) => {
     stopHotkeyRecorderProcess();
-    registerHotkey(
+    scheduleHotkeyRegistration(
       typeof hotkey === "string" && hotkey.length > 0
         ? hotkey
         : (currentHotkeyAccel ?? undefined),
@@ -1580,7 +1584,7 @@ app.whenReady().then(async () => {
 
   // Register hold-to-record hotkey via native platform binary
   hotkeyActivationMode = loadHotkeyModeFromDB();
-  registerHotkey();
+  scheduleHotkeyRegistration();
 
   // Start microphone activity monitoring
   micListener = new MicListener({
@@ -1594,18 +1598,18 @@ app.whenReady().then(async () => {
 
   // Listen for hotkey changes from the settings UI
   ipcMain.on("hotkey:update", (_event, newHotkey: string) => {
-    registerHotkey(newHotkey);
+    scheduleHotkeyRegistration(newHotkey);
   });
 
   ipcMain.on("hotkey:reload", () => {
     hotkeyActivationMode = loadHotkeyModeFromDB();
-    registerHotkey(currentHotkeyAccel ?? undefined);
+    scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
   });
 
   ipcMain.on("hotkey:set-mode", (_event, mode: string) => {
     hotkeyActivationMode = mode === "toggle" ? "toggle" : "hold";
     hotkeyPressed = false;
-    registerHotkey(currentHotkeyAccel ?? undefined);
+    scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
   });
 });
 
@@ -1794,90 +1798,136 @@ function notifyPasteFailed(): void {
   }
 }
 
-async function registerHotkey(hotkey?: string): Promise<void> {
-  // Tear down previous listener
-  if (keyListener) {
-    keyListener.stop();
-    keyListener = null;
-  }
-  hotkeyPressed = false;
-  globalShortcut.unregisterAll();
+/** Electron globalShortcut rejects some combos (e.g. Alt+Super on Linux). */
+const LINUX_GLOBAL_SHORTCUT_FALLBACK = "F9";
 
-  if (!hotkey) {
-    hotkey = loadHotkeyFromDB();
-  }
-
-  const normalized =
-    hotkey && isValidAccelerator(hotkey) ? normalizeAccelerator(hotkey) : null;
-  const accel = normalized ?? DEFAULT_HOTKEY;
-  currentHotkeyAccel = accel;
-
-  // Try native key listener binary first (all platforms)
-  let nativeError = "";
-  const listener = new NativeKeyListener({
-    hotkey: accel,
-    onKeyDown: handleNativeHotkeyDown,
-    onKeyUp: handleNativeHotkeyUp,
-    onError: (error) => {
-      nativeError = error;
-      hotkeyLog.error(`Native key listener error: ${error}`);
-    },
-    onReady: () => {
-      hotkeyLog.debug(`Native key listener ready for "${accel}"`);
-    },
-  });
-  keyListener = listener;
-
-  const started = await listener.start();
-
-  // Another registerHotkey call may have replaced keyListener while we
-  // were awaiting — if so, abandon this attempt.
-  if (keyListener !== listener) {
-    listener.stop();
-    return;
-  }
-
-  if (started) {
-    accessibilityConfirmed = true;
-  } else {
-    hotkeyLog.warn(
-      "Native key listener unavailable, falling back to Electron globalShortcut (toggle mode).",
-    );
-    listener.stop();
-    keyListener = null;
-
-    // Fallback: globalShortcut has no key-up — always use toggle semantics
-    const registered = globalShortcut.register(accel, () => {
-      if (!hotkeyPressed) {
-        hotkeyPressed = true;
-        sendHotkeyDown();
-      } else {
-        hotkeyPressed = false;
-        sendHotkeyUp();
-      }
-    });
-    if (registered) {
-      // Do NOT latch accessibilityConfirmed here. Registering a global
-      // shortcut requires no Accessibility permission on macOS, so a
-      // successful registration proves nothing about whether the app can
-      // post CGEvents / send Apple Events. Latching it here would make
-      // permissions:check-accessibility report a false positive, hide the
-      // "grant Accessibility" prompt during onboarding, and leave paste
-      // silently broken in the notarized prod build. Only the native key
-      // listener starting (above) is real proof of Accessibility.
-      notifyHotkeyDegraded(accel, nativeError);
+function registerGlobalShortcutToggle(accel: string): string | null {
+  const onToggle = (): void => {
+    if (!hotkeyPressed) {
+      hotkeyPressed = true;
+      sendHotkeyDown();
     } else {
-      let message = `Could not register hotkey "${accel}". Try a different key combination in Settings.`;
-      if (
-        process.platform === "linux" &&
-        nativeError.includes("No accessible input devices")
-      ) {
-        message = `Hotkey "${accel}" requires access to input devices. Run: sudo usermod -aG input $USER — then log out and back in.`;
-      }
-      const errorPayload = { message };
-      mainWindow?.webContents.send("hotkey:error", errorPayload);
-      settingsWindow?.webContents.send("hotkey:error", errorPayload);
+      hotkeyPressed = false;
+      sendHotkeyUp();
     }
+  };
+
+  const candidates =
+    process.platform === "linux" && /super/i.test(accel)
+      ? [accel, LINUX_GLOBAL_SHORTCUT_FALLBACK]
+      : [accel];
+
+  for (const candidate of candidates) {
+    try {
+      if (globalShortcut.register(candidate, onToggle)) {
+        if (candidate !== accel) {
+          hotkeyLog.warn(
+            `globalShortcut does not support "${accel}"; using "${candidate}" instead.`,
+          );
+        }
+        return candidate;
+      }
+    } catch (err) {
+      hotkeyLog.warn(
+        `globalShortcut.register failed for "${candidate}": ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  return null;
+}
+
+function scheduleHotkeyRegistration(hotkey?: string): void {
+  void registerHotkey(hotkey).catch((err) => {
+    hotkeyLog.error(
+      `Hotkey registration failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
+}
+
+async function registerHotkey(hotkey?: string): Promise<void> {
+  try {
+    // Tear down previous listener
+    if (keyListener) {
+      keyListener.stop();
+      keyListener = null;
+    }
+    hotkeyPressed = false;
+    globalShortcut.unregisterAll();
+
+    if (!hotkey) {
+      hotkey = loadHotkeyFromDB();
+    }
+
+    const normalized =
+      hotkey && isValidAccelerator(hotkey)
+        ? normalizeAccelerator(hotkey)
+        : null;
+    const accel = normalized ?? DEFAULT_HOTKEY;
+    currentHotkeyAccel = accel;
+
+    // Try native key listener binary first (all platforms)
+    let nativeError = "";
+    const listener = new NativeKeyListener({
+      hotkey: accel,
+      onKeyDown: handleNativeHotkeyDown,
+      onKeyUp: handleNativeHotkeyUp,
+      onError: (error) => {
+        nativeError = error;
+        hotkeyLog.error(`Native key listener error: ${error}`);
+      },
+      onReady: () => {
+        hotkeyLog.debug(`Native key listener ready for "${accel}"`);
+      },
+    });
+    keyListener = listener;
+
+    const started = await listener.start();
+
+    // Another registerHotkey call may have replaced keyListener while we
+    // were awaiting — if so, abandon this attempt.
+    if (keyListener !== listener) {
+      listener.stop();
+      return;
+    }
+
+    if (started) {
+      accessibilityConfirmed = true;
+    } else {
+      hotkeyLog.warn(
+        "Native key listener unavailable, falling back to Electron globalShortcut (toggle mode).",
+      );
+      listener.stop();
+      keyListener = null;
+
+      // Fallback: globalShortcut has no key-up — always use toggle semantics
+      const registeredAccel = registerGlobalShortcutToggle(accel);
+      if (registeredAccel) {
+        // Do NOT latch accessibilityConfirmed here. Registering a global
+        // shortcut requires no Accessibility permission on macOS, so a
+        // successful registration proves nothing about whether the app can
+        // post CGEvents / send Apple Events. Latching it here would make
+        // permissions:check-accessibility report a false positive, hide the
+        // "grant Accessibility" prompt during onboarding, and leave paste
+        // silently broken in the notarized prod build. Only the native key
+        // listener starting (above) is real proof of Accessibility.
+        notifyHotkeyDegraded(accel, nativeError);
+      } else {
+        let message = `Could not register hotkey "${accel}". Try a different key combination in Settings.`;
+        if (
+          process.platform === "linux" &&
+          nativeError.includes("No accessible input devices")
+        ) {
+          message = `Hotkey "${accel}" requires access to input devices. Run: sudo usermod -aG input $USER — then log out and back in.`;
+        }
+        const errorPayload = { message };
+        mainWindow?.webContents.send("hotkey:error", errorPayload);
+        settingsWindow?.webContents.send("hotkey:error", errorPayload);
+      }
+    }
+  } catch (err) {
+    hotkeyLog.error(
+      `registerHotkey failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 

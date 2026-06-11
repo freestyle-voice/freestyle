@@ -118,6 +118,11 @@ interface QueueEntry {
 
 export default function AppPage(): React.JSX.Element {
   const [state, setState] = useState<PillState>("idle");
+  const stateRef = useRef<PillState>("idle");
+  const setPillState = useCallback((next: PillState) => {
+    stateRef.current = next;
+    setState(next);
+  }, []);
   const [elapsed, setElapsed] = useState(0);
   const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
   const [pillSide, setPillSide] = useState<"center" | "right">("center");
@@ -500,7 +505,7 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- Hide pill ----
   const hidePill = useCallback(() => {
-    setState("idle");
+    setPillState("idle");
     setIsReRecording(false);
     isReRecordingRef.current = false;
     setPendingCount(0);
@@ -513,7 +518,7 @@ export default function AppPage(): React.JSX.Element {
     streamResolverRef.current = null;
     stopVisualization();
     window.api.hidePill();
-  }, [stopVisualization]);
+  }, [stopVisualization, setPillState]);
 
   // ---- Start recording ----
   const startRecording = useCallback(
@@ -555,7 +560,7 @@ export default function AppPage(): React.JSX.Element {
         });
 
       if (!forReRecord) {
-        setState("initializing");
+        setPillState("initializing");
         startBarAnimation("connecting");
       }
 
@@ -578,7 +583,7 @@ export default function AppPage(): React.JSX.Element {
         }
 
         playTone("start");
-        setState("recording");
+        setPillState("recording");
         recordingActiveRef.current = true;
         startTimeRef.current = Date.now();
         timerRef.current = window.setInterval(() => {
@@ -600,7 +605,7 @@ export default function AppPage(): React.JSX.Element {
         );
       }
     },
-    [startBarAnimation, startListening, hidePill, getStreamer],
+    [startBarAnimation, startListening, hidePill, getStreamer, setPillState],
   );
 
   // ---- Commit recording ----
@@ -632,13 +637,13 @@ export default function AppPage(): React.JSX.Element {
       if (queueRef.current.length === 0 && !drainingRef.current) {
         hidePill();
       } else {
-        setState("transcribing");
+        setPillState("transcribing");
         startBarAnimation("speaking");
       }
       return;
     }
 
-    setState("transcribing");
+    setPillState("transcribing");
     startBarAnimation("speaking");
 
     if (sessionStreamingRef.current && streamerRef.current) {
@@ -758,10 +763,21 @@ export default function AppPage(): React.JSX.Element {
 
     queueRef.current.push({ promise: transcribePromise });
     drainQueue();
-  }, [hidePill, drainQueue, startBarAnimation, restFallbackTranscribe]);
+  }, [
+    hidePill,
+    drainQueue,
+    startBarAnimation,
+    restFallbackTranscribe,
+    setPillState,
+  ]);
 
   // ---- Cancel ----
   const cancelRecording = useCallback(() => {
+    const resolver = streamResolverRef.current;
+    if (resolver) {
+      streamResolverRef.current = null;
+      resolver({ raw: "", cleaned: "" });
+    }
     streamerRef.current?.cancel();
     recorderRef.current.cancel();
     recorderRef.current.releaseStream();
@@ -807,12 +823,13 @@ export default function AppPage(): React.JSX.Element {
     };
   }, [applyPillPosition]);
 
-  const stateRef = useRef(state);
-  stateRef.current = state;
-
   // ---- Hotkey handlers ----
   useEffect(() => {
     const removeDown = window.api.onHotkeyDown(() => {
+      // hidePill() clears pillActiveRef before React re-renders idle state.
+      if (!pillActiveRef.current) {
+        stateRef.current = "idle";
+      }
       const s = stateRef.current;
       if (s === "idle") {
         startRecording(false);
@@ -833,6 +850,7 @@ export default function AppPage(): React.JSX.Element {
       }
     });
     const removeUp = window.api.onHotkeyUp(() => {
+      if (!pillActiveRef.current) return;
       if (stateRef.current === "recording") {
         commitRecording();
       } else if (stateRef.current === "initializing") {

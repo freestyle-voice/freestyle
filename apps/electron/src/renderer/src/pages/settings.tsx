@@ -6,6 +6,7 @@ import {
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
 import { getClient } from "@renderer/lib/api";
+import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { cn } from "@renderer/lib/utils";
 import {
@@ -630,26 +631,11 @@ export default function SettingsPage(): React.JSX.Element {
                 className="w-full min-w-0 truncate bg-transparent pr-6 outline-none"
               >
                 <option value="auto">Auto-detect</option>
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="it">Italian</option>
-                <option value="pt">Portuguese</option>
-                <option value="nl">Dutch</option>
-                <option value="ru">Russian</option>
-                <option value="zh">Chinese</option>
-                <option value="ja">Japanese</option>
-                <option value="ko">Korean</option>
-                <option value="ar">Arabic</option>
-                <option value="hi">Hindi</option>
-                <option value="pl">Polish</option>
-                <option value="tr">Turkish</option>
-                <option value="sv">Swedish</option>
-                <option value="da">Danish</option>
-                <option value="no">Norwegian</option>
-                <option value="fi">Finnish</option>
-                <option value="uk">Ukrainian</option>
+                {LANGUAGES.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.label}
+                  </option>
+                ))}
               </select>
             </div>
           </Row>

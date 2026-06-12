@@ -2,6 +2,7 @@ import { createAppLogger } from "@freestyle/utils";
 import { upgradeWebSocket } from "@hono/node-server";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { getLanguageSetting } from "../lib/language.js";
 import { postProcess } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
@@ -48,10 +49,7 @@ const stream = new Hono().get(
     } | null {
       const voice = getDefaultModels().voice;
       if (!voice) return null;
-      const langSetting = getDb()
-        .prepare("SELECT value FROM settings WHERE key = 'language'")
-        .get() as { value: string } | undefined;
-      const language = langSetting?.value || undefined;
+      const language = getLanguageSetting();
       const bias = resolveAsrVocabularyBias(
         voice.provider,
         voice.model_id,
@@ -197,7 +195,7 @@ const stream = new Hono().get(
               return;
             }
 
-            postProcess(rawText, appContext, "streaming")
+            postProcess(rawText, appContext, "streaming", config.language)
               .then((pp) => {
                 capture("streaming transcription completed", {
                   provider: voiceDefaults!.provider,

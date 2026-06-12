@@ -172,7 +172,6 @@ export const VOICE_META: Record<
     speed: 5,
     quality: 3,
     cost: 0.04,
-    streaming: true,
     note: "Fastest and cheapest cloud option",
   },
   "openai/gpt-4o-transcribe": {

@@ -1,6 +1,7 @@
 import { createAppLogger } from "@freestyle/utils";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { getLanguageSetting } from "../lib/language.js";
 import { postProcess } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
@@ -69,10 +70,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   const db = getDb();
   let rawText: string;
 
-  const langSetting = db
-    .prepare("SELECT value FROM settings WHERE key = 'language'")
-    .get() as { value: string } | undefined;
-  const language = langSetting?.value || undefined;
+  const language = getLanguageSetting();
 
   const provider = getProvider(defaults.voice.provider);
   if (!provider) {
@@ -174,7 +172,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   }
 
   const ppStart = Date.now();
-  const pp = await postProcess(rawText, appContext, "batch");
+  const pp = await postProcess(rawText, appContext, "batch", language);
   log.debug(
     `post-process took ${Date.now() - ppStart}ms | cleaned=${JSON.stringify(pp.cleaned).slice(0, 120)}`,
   );

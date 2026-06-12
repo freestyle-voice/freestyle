@@ -149,7 +149,7 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
           audio_format: "pcm_16000",
           commit_strategy: "manual",
         });
-        if (language && language !== "auto") {
+        if (language) {
           params.set("language_code", language);
         }
         appendElevenLabsBiasToParams(params, bias);

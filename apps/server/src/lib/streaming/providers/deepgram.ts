@@ -71,7 +71,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       endpointing: "false",
       vad_events: "false",
     });
-    if (language && language !== "auto") params.set("language", language);
+    params.set("language", language ?? "multi");
     appendDeepgramBiasToParams(params, bias);
 
     const ws = new WebSocket(`${DEEPGRAM_LISTEN_URL}?${params}`, {

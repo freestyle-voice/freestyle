@@ -187,6 +187,7 @@ def _pick_supported_param(
     for name in aliases:
         if name in params:
             return {name: value}
+    _log(f"dropping {aliases[0]!r}: not supported by {_state['model_id']}")
     return {}
 
 

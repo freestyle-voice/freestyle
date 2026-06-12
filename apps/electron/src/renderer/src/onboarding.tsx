@@ -462,7 +462,7 @@ export default function OnboardingPage(): React.JSX.Element {
       recommended.localEngine,
       "auto",
     );
-    if (recommended.status === "not_downloaded") {
+    if (recommended.status === "not_downloaded" && !window.api?.isE2E) {
       capture("onboarding_model_auto_setup", {
         model_id: recommended.modelId,
       });

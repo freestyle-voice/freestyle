@@ -56,6 +56,7 @@ test.beforeAll(async () => {
         ...process.env,
         NODE_ENV: "development",
         FREESTYLE_DB_PATH: dbPath,
+        FREESTYLE_E2E: "1",
         ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
       },
       timeout: 30_000,

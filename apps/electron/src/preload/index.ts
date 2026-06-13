@@ -166,6 +166,29 @@ const api = {
     return () =>
       ipcRenderer.removeListener("settings:output-mode-changed", handler);
   },
+  sendAudioDuckingChanged: (enabled: boolean): void =>
+    ipcRenderer.send("settings:audio-ducking-changed", enabled),
+  onAudioDuckingChanged: (
+    callback: (enabled: boolean) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, enabled: boolean): void => callback(enabled);
+    ipcRenderer.on("settings:audio-ducking-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("settings:audio-ducking-changed", handler);
+  },
+  sendAudioDuckingLevelChanged: (level: number): void =>
+    ipcRenderer.send("settings:audio-ducking-level-changed", level),
+  onAudioDuckingLevelChanged: (
+    callback: (level: number) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, level: number): void => callback(level);
+    ipcRenderer.on("settings:audio-ducking-level-changed", handler);
+    return () =>
+      ipcRenderer.removeListener(
+        "settings:audio-ducking-level-changed",
+        handler,
+      );
+  },
   // Hotkey error notifications
   onHotkeyError: (
     callback: (error: { message: string }) => void,
@@ -177,6 +200,9 @@ const api = {
   },
   // Audio level stream — pill broadcasts per-frame mic amplitude (0..1) so
   // other windows (the Today tutorial demo) can render a live waveform.
+  startAudioDucking: (level: number): Promise<void> =>
+    ipcRenderer.invoke("audio:duck-start", level),
+  stopAudioDucking: (): Promise<void> => ipcRenderer.invoke("audio:duck-stop"),
   sendAudioLevel: (level: number): void =>
     ipcRenderer.send("audio:level", level),
   onAudioLevel: (callback: (level: number) => void): (() => void) => {

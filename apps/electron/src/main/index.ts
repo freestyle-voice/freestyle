@@ -76,6 +76,7 @@ import { WebSocketServer } from "ws";
 import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
+import { AudioDucker } from "./audio-ducking";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
@@ -135,6 +136,7 @@ let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let keyListener: NativeKeyListener | null = null;
+const audioDucker = new AudioDucker();
 // Latching flag: set only once the native key listener has started
 // successfully, which requires Accessibility permission and therefore
 // proves it is granted. NOT set on the globalShortcut fallback, which
@@ -1121,9 +1123,36 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send("settings:output-mode-changed", mode);
   });
 
+  ipcMain.on("settings:audio-ducking-changed", (_event, enabled: boolean) => {
+    mainWindow?.webContents.send("settings:audio-ducking-changed", enabled);
+    settingsWindow?.webContents.send("settings:audio-ducking-changed", enabled);
+  });
+
+  ipcMain.on(
+    "settings:audio-ducking-level-changed",
+    (_event, level: number) => {
+      mainWindow?.webContents.send(
+        "settings:audio-ducking-level-changed",
+        level,
+      );
+      settingsWindow?.webContents.send(
+        "settings:audio-ducking-level-changed",
+        level,
+      );
+    },
+  );
+
   // IPC: hide the pill window on request from renderer
   ipcMain.on("pill:hide", () => {
     hidePill();
+  });
+
+  ipcMain.handle("audio:duck-start", async (_event, level?: number) => {
+    await audioDucker.duck(level);
+  });
+
+  ipcMain.handle("audio:duck-stop", async () => {
+    await audioDucker.restore();
   });
 
   // IPC: fan out per-frame audio levels from the pill to other windows
@@ -1755,7 +1784,7 @@ function handleNativeHotkeyUp(): void {
   }
 }
 
-// Notify once per session when hold-to-talk degrades to toggle mode, so the
+// Notify once per session when push-to-talk degrades to toggle mode, so the
 // user isn't left wondering why holding the hotkey stopped working.
 let hotkeyDegradedNotified = false;
 function notifyHotkeyDegraded(accel: string, nativeError: string): void {
@@ -1767,9 +1796,9 @@ function notifyHotkeyDegraded(accel: string, nativeError: string): void {
     nativeError.includes("No accessible input devices")
   ) {
     fix =
-      " To enable hold-to-talk, run: sudo usermod -aG input $USER — then log out and back in.";
+      " To enable push-to-talk, run: sudo usermod -aG input $USER — then log out and back in.";
   }
-  const body = `Hold-to-talk isn't available, so "${accel}" now toggles recording on and off.${fix}`;
+  const body = `Push-to-talk isn't available, so "${accel}" now toggles recording on and off.${fix}`;
   hotkeyLog.warn(body);
   if (Notification.isSupported()) {
     new Notification({ title: "Freestyle is in toggle mode", body }).show();
@@ -1933,6 +1962,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
 
 // Clean up key listener and mic listener on quit
 app.on("will-quit", () => {
+  void audioDucker.restore();
   if (keyListener) {
     keyListener.stop();
     keyListener = null;
@@ -1965,6 +1995,7 @@ let isQuitting = false;
 let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 
 function cleanupBeforeQuit(): void {
+  void audioDucker.restore();
   stopWhisperServer().catch(() => {});
   stopMlxServer().catch(() => {});
   if (keyListener) {

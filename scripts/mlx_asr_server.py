@@ -26,7 +26,7 @@ import numpy as np
 _state: dict[str, Any] = {"model": None, "model_id": None}
 
 # mlx-audio STT models use different keyword names for Freestyle word-boost / context.
-# Pick the first alias present on ``generate`` (or ``stream_transcribe``) — never send all.
+# Pick the first alias present on ``generate`` — never send all.
 _CONTEXT_PARAM_ALIASES: tuple[str, ...] = (
     "system_prompt",  # Qwen3-ASR
     "initial_prompt",  # Whisper
@@ -191,13 +191,6 @@ def _pick_supported_param(
     return {}
 
 
-def _supported_kwargs(fn: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
-    params = _function_params(fn)
-    if not params:
-        return kwargs
-    return {key: value for key, value in kwargs.items() if key in params}
-
-
 def _strip_prompt_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     drop = set(_CONTEXT_PARAM_ALIASES)
     return {key: value for key, value in kwargs.items() if key not in drop}
@@ -309,77 +302,16 @@ def _transcribe(
     return _text_from_result(result).strip()
 
 
-def _stream_transcribe(
-    audio: str,
-    *,
-    language: str | None,
-    context: str | None,
-    live: bool,
-    on_partial: Any,
-) -> str:
-    model = _state["model"]
-    if model is None:
-        raise RuntimeError("model not loaded")
-    if not hasattr(model, "stream_transcribe"):
-        return _transcribe(audio, language=language, context=context)
-
-    kwargs = _transcribe_kwargs(
-        model.stream_transcribe,
-        language=language,
-        context=context,
-    )
-    kwargs = {
-        **kwargs,
-        **_supported_kwargs(
-            model.stream_transcribe,
-            {"min_chunk_duration": 0.5 if live else 1.0},
-        ),
-    }
-
-    try:
-        iterator = model.stream_transcribe(audio=audio, **kwargs)
-    except TypeError:
-        iterator = model.stream_transcribe(audio, **kwargs)
-
-    pieces: list[str] = []
-    last_text = ""
-    for result in iterator:
-        piece = _text_from_result(result)
-        if not piece:
-            continue
-        pieces.append(piece)
-        text = "".join(pieces).strip()
-        if text and text != last_text:
-            last_text = text
-            on_partial(text)
-
-    return "".join(pieces).strip()
-
-
 def _handle_transcribe(message: dict[str, Any]) -> None:
     req_id = message.get("id")
 
     try:
         audio = _audio_from_message(message)
-        if message.get("stream") or message.get("audio_format") == "pcm_s16le":
-            emit_partials = bool(message.get("stream"))
-            def partial_handler(text: str) -> None:
-                if emit_partials:
-                    _send({"id": req_id, "type": "partial", "text": text})
-
-            text = _stream_transcribe(
-                audio,
-                language=message.get("language"),
-                context=message.get("context"),
-                live=bool(message.get("live")),
-                on_partial=partial_handler,
-            )
-        else:
-            text = _transcribe(
-                audio,
-                language=message.get("language"),
-                context=message.get("context"),
-            )
+        text = _transcribe(
+            audio,
+            language=message.get("language"),
+            context=message.get("context"),
+        )
         _send({"id": req_id, "type": "final", "text": text})
     except Exception as exc:
         _log(f"inference error: {exc}")

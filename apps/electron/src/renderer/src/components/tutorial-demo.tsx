@@ -310,8 +310,8 @@ function FnKey({
         letterSpacing: "0.04em",
         transform: pressed ? `translateY(${size * 0.04}px)` : "translateY(0)",
         boxShadow: pressed
-          ? `inset 0 -1px 0 rgba(20,12,4,0.06), 0 0 0 6px var(--accent)`
-          : `0 1px 0 var(--border), 0 2px 2px -1px rgba(20,12,4,0.06)`,
+          ? `inset 0 -1px 0 rgba(0,0,0,0.06), 0 0 0 6px var(--accent)`
+          : `0 1px 0 var(--border), 0 2px 2px -1px rgba(0,0,0,0.06)`,
         transitionTimingFunction: "cubic-bezier(0.3, 0.7, 0.4, 1)",
       }}
     >

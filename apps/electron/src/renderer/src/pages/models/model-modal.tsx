@@ -40,14 +40,14 @@ function Backdrop({
     // biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismiss
     // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop dismiss
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,12,4,0.35)] p-6 backdrop-blur-[4px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.35)] p-6 backdrop-blur-[4px]"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label={label}
-        className="border-border bg-card flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-[14px] border shadow-[0_24px_60px_-16px_rgba(20,12,4,0.4)]"
+        className="border-border bg-card flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-[14px] border shadow-[0_24px_60px_-16px_rgba(0,0,0,0.4)]"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >
@@ -285,14 +285,14 @@ export function ConfirmDialog({
     // biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismiss
     // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop dismiss
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(20,12,4,0.35)] p-6 backdrop-blur-[4px]"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(0,0,0,0.35)] p-6 backdrop-blur-[4px]"
       onClick={onCancel}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="border-border bg-card w-full max-w-md rounded-[14px] border p-7 shadow-[0_24px_60px_-16px_rgba(20,12,4,0.4)]"
+        className="border-border bg-card w-full max-w-md rounded-[14px] border p-7 shadow-[0_24px_60px_-16px_rgba(0,0,0,0.4)]"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >

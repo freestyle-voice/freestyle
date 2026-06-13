@@ -4,6 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export const PROVIDER_FILTER_MARKS: Record<string, string> = {
   openai: "OAI",
+  openrouter: "OR",
   anthropic: "A",
   google: "G",
   groq: "GQ",

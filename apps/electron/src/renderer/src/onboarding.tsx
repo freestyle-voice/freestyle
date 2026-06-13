@@ -1117,7 +1117,7 @@ function ModelSelectorOverlay({
     // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop dismiss; Esc handled above
     <div
       className="absolute inset-0 z-20 flex items-center justify-center p-10"
-      style={{ background: "rgba(22,20,15,0.34)" }}
+      style={{ background: "rgba(0,0,0,0.35)" }}
       onClick={onClose}
     >
       <div
@@ -1127,7 +1127,7 @@ function ModelSelectorOverlay({
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
         className="border-border bg-background flex max-h-full w-full max-w-[600px] flex-col overflow-hidden rounded-[16px] border"
-        style={{ boxShadow: "0 24px 60px -16px rgba(20,12,4,0.4)" }}
+        style={{ boxShadow: "0 24px 60px -16px rgba(0,0,0,0.4)" }}
       >
         {view === "list" ? (
           <>

@@ -75,14 +75,14 @@ import { autoUpdater } from "electron-updater";
 import { WebSocketServer } from "ws";
 import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
+import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
+import { AudioPlaybackController } from "./audio-playback-controller";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
-import { AudioPlaybackController } from "./audio-playback-controller";
-import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
 import { MicListener } from "./mic-listener";
 import { isWaylandSession, pasteIntoFocusedApp } from "./paste";
 

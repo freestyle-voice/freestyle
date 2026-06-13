@@ -85,7 +85,9 @@ declare global {
       sendOutputModeChanged: (mode: string) => void;
       onOutputModeChanged: (callback: (mode: string) => void) => () => void;
       sendAudioDuckingChanged: (enabled: boolean) => void;
-      onAudioDuckingChanged: (callback: (enabled: boolean) => void) => () => void;
+      onAudioDuckingChanged: (
+        callback: (enabled: boolean) => void,
+      ) => () => void;
       sendAudioPlaybackModeChanged: (
         mode: import("../shared/audio-playback").AudioPlaybackMode,
       ) => void;

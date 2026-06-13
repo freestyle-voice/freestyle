@@ -111,11 +111,7 @@ async function writeVolume(
 
 function writeVolumeSync(method: SinkMethod, volume: number): void {
   if (method === "wpctl") {
-    runCmdSync("wpctl", [
-      "set-volume",
-      "@DEFAULT_AUDIO_SINK@",
-      String(volume),
-    ]);
+    runCmdSync("wpctl", ["set-volume", "@DEFAULT_AUDIO_SINK@", String(volume)]);
     return;
   }
 

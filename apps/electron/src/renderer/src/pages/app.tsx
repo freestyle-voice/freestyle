@@ -157,10 +157,13 @@ export default function AppPage(): React.JSX.Element {
   );
   const drainAgainRef = useRef(false);
 
-  const isTranscriptionIdle = (): boolean =>
-    queueRef.current.length === 0 &&
-    !drainingRef.current &&
-    streamResolverRef.current === null;
+  const isTranscriptionIdle = useCallback(
+    (): boolean =>
+      queueRef.current.length === 0 &&
+      !drainingRef.current &&
+      streamResolverRef.current === null,
+    [],
+  );
 
   const getInputVolume = useCallback(() => volumeRef.current, []);
 
@@ -540,7 +543,13 @@ export default function AppPage(): React.JSX.Element {
       startBarAnimation("speaking");
       void drainQueue();
     }
-  }, [hidePill, setPillState, startBarAnimation, drainQueue]);
+  }, [
+    hidePill,
+    setPillState,
+    startBarAnimation,
+    drainQueue,
+    isTranscriptionIdle,
+  ]);
 
   // ---- Start recording ----
   const startRecording = useCallback(
@@ -801,6 +810,7 @@ export default function AppPage(): React.JSX.Element {
     restFallbackTranscribe,
     setPillState,
     resumeTranscribingOrHide,
+    isTranscriptionIdle,
   ]);
 
   // ---- Cancel ----
@@ -949,7 +959,13 @@ export default function AppPage(): React.JSX.Element {
       removeUp();
       removeCancel();
     };
-  }, [startRecording, commitRecording, cancelRecording, hidePill]);
+  }, [
+    startRecording,
+    commitRecording,
+    cancelRecording,
+    hidePill,
+    isTranscriptionIdle,
+  ]);
 
   // ---- Cleanup on unmount ----
   const mountedRef = useRef(true);

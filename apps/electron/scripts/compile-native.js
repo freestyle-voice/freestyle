@@ -78,6 +78,11 @@ function compileMacOS() {
       src: "macos-mic-listener.swift",
       frameworks: ["CoreAudio", "Foundation"],
     },
+    {
+      name: "macos-volume-control",
+      src: "macos-volume-control.swift",
+      frameworks: ["CoreAudio", "Foundation"],
+    },
   ];
 
   for (const bin of binaries) {
@@ -114,7 +119,7 @@ function compileWindows() {
     {
       name: "windows-mic-listener.exe",
       src: "windows-mic-listener.c",
-      libs: ["ole32.lib", "oleaut32.lib"],
+      libs: ["user32.lib", "ole32.lib", "oleaut32.lib", "uuid.lib"],
     },
   ];
 
@@ -123,14 +128,25 @@ function compileWindows() {
     const src = join(NATIVE_DIR, bin.src);
     const out = join(outputDir, bin.name);
 
-    // Try MSVC first (cl.exe), fall back to gcc (MinGW)
     const clArgs = ["/O2", src, `/Fe:${out}`, ...bin.libs];
-    let ok = run("cl", clArgs);
+    const gccLibs = bin.libs.map((l) => `-l${l.replace(".lib", "")}`);
+    const gccArgs = ["-O2", "-static-libgcc", src, "-o", out, ...gccLibs];
+    const clangArgs = ["-O2", src, "-o", out, ...gccLibs];
 
+    // Try MSVC first, then clang-cl (drop-in MSVC-compatible CLI),
+    // then clang/gcc with MinGW-style flags.
+    let ok = run("cl", clArgs);
     if (!ok) {
-      console.log("  MSVC not found, trying MinGW gcc...");
-      const gccLibs = bin.libs.map((l) => `-l${l.replace(".lib", "")}`);
-      ok = run("gcc", ["-O2", "-static-libgcc", src, "-o", out, ...gccLibs]);
+      console.log("  MSVC not found, trying clang-cl...");
+      ok = run("clang-cl", clArgs);
+    }
+    if (!ok) {
+      console.log("  clang-cl not found, trying clang...");
+      ok = run("clang", clangArgs);
+    }
+    if (!ok) {
+      console.log("  clang not found, trying MinGW gcc...");
+      ok = run("gcc", gccArgs);
     }
 
     if (!ok) {
@@ -220,6 +236,20 @@ function compileLinux() {
       console.log(`  -> ${out}`);
     } else {
       console.warn("  WARNING: Failed to compile linux-key-listener.");
+    }
+  }
+
+  // linux-mic-listener
+  console.log("  Compiling linux-mic-listener...");
+  {
+    const src = join(NATIVE_DIR, "linux-mic-listener.c");
+    const out = join(outputDir, "linux-mic-listener");
+    const ok = runShell(`gcc -O2 ${src} -o ${out}`);
+    if (ok) {
+      chmodSync(out, 0o755);
+      console.log(`  -> ${out}`);
+    } else {
+      console.warn("  WARNING: Failed to compile linux-mic-listener.");
     }
   }
 }

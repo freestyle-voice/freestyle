@@ -83,7 +83,26 @@ export class MicListener {
   }
 
   private startLinux(): boolean {
-    // On Linux, use `pactl subscribe` to monitor PulseAudio events
+    // Prefer the native helper if it was compiled; otherwise fall back to
+    // spawning `pactl subscribe` directly.
+    const binaryPath = getNativeBinaryPath("linux-mic-listener");
+    if (binaryPath) {
+      try {
+        this.process = spawn(binaryPath, [], {
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        this.setupProcessHandlers();
+        return true;
+      } catch (err) {
+        log.debug(
+          `Failed to spawn native linux-mic-listener: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
+    // Fallback: `pactl subscribe` to monitor PulseAudio events
     try {
       this.process = spawn("pactl", ["subscribe"], {
         stdio: ["pipe", "pipe", "pipe"],

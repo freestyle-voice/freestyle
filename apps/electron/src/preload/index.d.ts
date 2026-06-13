@@ -79,11 +79,21 @@ declare global {
       // Output mode
       sendOutputModeChanged: (mode: string) => void;
       onOutputModeChanged: (callback: (mode: string) => void) => () => void;
+      sendAudioDuckingChanged: (enabled: boolean) => void;
+      onAudioDuckingChanged: (
+        callback: (enabled: boolean) => void,
+      ) => () => void;
+      sendAudioDuckingLevelChanged: (level: number) => void;
+      onAudioDuckingLevelChanged: (
+        callback: (level: number) => void,
+      ) => () => void;
       // Hotkey error notifications
       onHotkeyError: (
         callback: (error: { message: string }) => void,
       ) => () => void;
       // Audio level stream
+      startAudioDucking: (level: number) => Promise<void>;
+      stopAudioDucking: () => Promise<void>;
       sendAudioLevel: (level: number) => void;
       onAudioLevel: (callback: (level: number) => void) => () => void;
       // Transcription completion broadcast

@@ -91,7 +91,7 @@
   <div class="wrap">
     <div class="eyebrow"><span class="recdot"></span>FREESTYLE · WEEK BY WEEK · v2 · JUN 11, 2026</div>
     <h1>You're further along<br>than the plan assumed.<br><span class="red">Launch moves up.</span></h1>
-    <p class="lede">Onboarding work shipped in 0.1.8. External contributors are already merging PRs. Two blog posts proved the teardown format. <strong>Phase 1 compresses to 3 weeks, Show HN moves from week 7 to week 6 (Jul 20–26), and three new items enter the plan: the license answer, the OpenWhispr differentiation, and directory listings.</strong></p>
+    <p class="lede">Onboarding work shipped in 0.1.8. External contributors are already merging PRs. Two blog posts proved the teardown format. <strong>Phase 1 compresses to 3 weeks, Show HN moves from week 7 to week 6 (Jul 20–26), and three new items enter the plan: the README trust fix, the OpenWhispr differentiation, and directory listings.</strong></p>
     <div class="strip" aria-label="week index">
       <a class="s1" href="#w1">1</a><a class="s1" href="#w2">2</a><a class="s1" href="#w3">3</a>
       <a class="s2" href="#w4">4</a><a class="s2" href="#w5">5</a><a class="s2 launch" href="#w6">6</a><a class="s2" href="#w7">7</a><a class="s2" href="#w8">8</a>
@@ -126,7 +126,7 @@
         <ul>
           <li><b>Zero external footprint</b> — no Show HN, no unprompted mentions, absent from AlternativeTo's 50+ Wispr alternatives</li>
           <li><b>OpenWhispr owns "open source Wispr alternative"</b> — MIT, local models, listicle coverage. Need a sharper claim</li>
-          <li><b>FSL-1.1 license</b> — HN will say "not open source." The answer must exist before launch day</li>
+          <li><b>No sustainability story</b> — Freestyle is MIT (LICENSE, README, ROADMAP all agree), so "not open source" is a non-issue. The real question an MIT project draws: how does it stay funded, and what stops a closed-source pivot?</li>
           <li><b>README contradicts itself</b> — "never leaves your device" beside six cloud BYOK providers (+ "grammer" typo)</li>
           <li>No zero-edit benchmark, no trust artifact, no comparison page</li>
         </ul>
@@ -154,12 +154,12 @@
     <div class="wk-body">
       <h3>Make every claim bulletproof</h3>
       <ul class="t">
-        <li><b>Write the license answer with Aditya.</b> Either switch to MIT/Apache before launch, or write the honest FSL post ("why Fair Source, what converts to Apache and when") and pin it. Deciding this in an HN comment thread is how launches die.</li>
-        <li>README pass: fix "grammer," restructure so local-first claims attach only to local models — mirror the website's careful phrasing. Lead with whisper.cpp, not the cloud provider list.</li>
+        <li><b>Confirm the sustainability answer with Aditya.</b> The license is already settled — MIT across LICENSE, README, and ROADMAP — so "not open source" is off the table. Spend the energy instead on the question MIT invites: how the project stays funded and why it won't pivot closed (see WK 12). Don't improvise it in an HN thread.</li>
+        <li>README pass <b>(started Jun 11)</b>: "grammer" fixed, and the local-first privacy claim now scopes to local models with cloud BYOK called out as opt-in. Still to do: lead with whisper.cpp over the cloud provider list, mirror the website's careful phrasing.</li>
         <li>Stand up the dashboard: stars, release-asset downloads, Discord actives, mention search, contributor count.</li>
         <li>Time-to-first-real-dictation on 3 clean machines — validate that the 0.1.8 onboarding work actually hits &lt;60s.</li>
       </ul>
-      <div class="gate">Gate: license story decided and written. Nothing else this quarter has a harder deadline.</div>
+      <div class="gate">Gate: with the license settled (MIT), the gate becomes the sustainability answer — written and ready for the launch thread.</div>
     </div>
   </div>
 
@@ -185,7 +185,7 @@
         <li>Publish benchmark results (blog post #4 if the numbers tell a story).</li>
         <li>Finish interviews; rank fixes; top 3 go into week 4–5 product time.</li>
       </ul>
-      <div class="gate">Gate to Phase 2: trust doc live, benchmark done, license answered, differentiation written. All four or the launch slips a week.</div>
+      <div class="gate">Gate to Phase 2: trust doc live, benchmark done, sustainability answer written, differentiation written. All four or the launch slips a week.</div>
     </div>
   </div>
 </div>
@@ -211,7 +211,7 @@
     <div class="wk-body">
       <h3>Polish + pre-launch</h3>
       <ul class="t">
-        <li><b>Finish the flagship.</b> Two cold reads — one technical (Aditya), one non-technical. Pre-write answers to the predictable hostile comments: the license, "yet another whisper wrapper," the OpenWhispr comparison.</li>
+        <li><b>Finish the flagship.</b> Two cold reads — one technical (Aditya), one non-technical. Pre-write answers to the predictable hostile comments: how it stays funded (MIT, so no license fight — but expect the question), "yet another whisper wrapper," the OpenWhispr comparison.</li>
         <li>Launch checklist: clean-machine installs on all 3 platforms, demo GIF above the README fold, benchmark in the post.</li>
         <li>Brief the contributor crew — Isaac, Uday, Sri, Shikhar, anish808, andrewjsalzer, shawnriju — launch day is all-hands-in-comments.</li>
         <li>Build the evangelist list: 15 targets across OSS maintainers, privacy YouTubers, accessibility advocates, dev newsletters.</li>
@@ -224,7 +224,7 @@
     <div class="wk-body">
       <h3>Launch <span class="tag">● Show HN — Tue or Wed AM PT</span></h3>
       <ul class="t">
-        <li><b>Show HN, morning PT.</b> You + Aditya in comments all day. The license question gets the prepared answer, with grace.</li>
+        <li><b>Show HN, morning PT.</b> You + Aditya in comments all day. The sustainability question gets the prepared answer, with grace.</li>
         <li>Same-day native post to r/localllama (the angle: local model story + benchmark). LinkedIn follow-up rides the wave.</li>
         <li><b>Comparison page live within 48h</b> — catch the "wispr flow alternative" searches the post generates.</li>
         <li>Every bug and feature ask from the thread becomes a public issue, same day.</li>
@@ -301,7 +301,7 @@
     <div class="wk-body">
       <h3>Monetization: decide, don't build</h3>
       <ul class="t">
-        <li><b>One-page decision doc with Aditya.</b> FSL already signals commercial intent — make it explicit: hosted sync/teams, paid support, Sponsors, or deliberately nothing. The license and monetization answers must agree.</li>
+        <li><b>One-page decision doc with Aditya.</b> MIT pre-commits nothing — so monetization is a fully open choice: hosted sync/teams, paid support, Sponsors, or deliberately nothing. Whatever you pick has to square with staying MIT — no rug-pull to closed source.</li>
         <li>Release-notes post #2 + clip.</li>
       </ul>
     </div>
@@ -323,7 +323,7 @@
 <footer>
   <div class="wrap">
     <span>FREESTYLE-VOICE / FREESTYLE · v2</span>
-    <span>HARDEST DEADLINE: THE LICENSE ANSWER, WK 1</span>
+    <span>HARDEST DEADLINE: THE SUSTAINABILITY ANSWER, WK 1</span>
   </div>
 </footer>
 

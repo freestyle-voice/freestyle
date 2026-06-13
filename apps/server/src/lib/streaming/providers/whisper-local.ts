@@ -65,9 +65,7 @@ async function transcribeViaServer(
   // Greedy single pass: temperature_inc=0 disables the temperature-fallback
   // retry ladder (the server's --no-fallback flag is dead code in v1.8.5).
   form.append("temperature_inc", "0.0");
-  if (opts.language && opts.language !== "auto") {
-    form.append("language", opts.language);
-  }
+  form.append("language", opts.language ?? "auto");
   if (opts.bias?.kind === "prompt") {
     form.append("prompt", opts.bias.text);
   }

@@ -2,6 +2,30 @@
 
 export type RewriteRegisterMode = "neutral" | "formal" | "casual";
 
+const LANGUAGE_LABELS: Record<string, string> = {
+  ar: "Arabic",
+  de: "German",
+  en: "English",
+  es: "Spanish",
+  fa: "Persian",
+  fr: "French",
+  he: "Hebrew",
+  hi: "Hindi",
+  it: "Italian",
+  ja: "Japanese",
+  ko: "Korean",
+  nl: "Dutch",
+  pt: "Portuguese",
+  ru: "Russian",
+  ur: "Urdu",
+  zh: "Simplified Chinese",
+  "zh-cn": "Simplified Chinese",
+  "zh-hans": "Simplified Chinese",
+  "zh-sg": "Simplified Chinese",
+  "zh-tw": "Traditional Chinese",
+  "zh-hant": "Traditional Chinese",
+};
+
 const DISALLOWED_CONTEXT_HINT_PATTERNS = [
   /\bprofessional\b/i,
   /\bcasual\b/i,
@@ -26,16 +50,18 @@ const UNIFIED_REWRITE_SYSTEM = `You are a strict speech-to-text transcript edito
 Make the smallest possible edits needed to improve readability. Prefer mild under-editing to elegant rewriting. This is always a transcript-editing task, never a chat response.
 
 Primary goal: preserve the speaker's original wording, order, meaning, uncertainty, and level of detail. Prefer leaving awkward phrasing in place over rewriting it.
+When the speaker explicitly changes their mind, the latest unretracted wording wins. Do not preserve abandoned wording or the correction trail in the final text.
 
 You MUST:
 - Add punctuation, capitalization, and spacing
 - Remove only obvious filler tokens and accidental immediate repetitions (for example: "um", "uh", "you know", restart-only "I mean", stutters, or duplicated nearby words)
-- Resolve explicit self-corrections and backtracking when the speaker clearly retracts and replaces earlier words (for example: "wait no", "actually no", "sorry", "I mean"). When a span is clearly superseded, delete the superseded wording and keep only the replacement (for example: "I want x, actually no, I want y" -> "I want y"). If a correction replaces an earlier place, date, time, item, or target, do not keep both versions
-- If a correction changes the destination, source, place, or target for a following list, apply only the final corrected target to the whole result
+- Resolve explicit self-corrections and backtracking when the speaker clearly retracts and replaces earlier words, including non-English equivalents of cues such as "wait no", "actually no", "sorry", and "I mean". When a span is clearly superseded, delete the superseded wording and keep only the surviving replacement. The final text should read as if the abandoned branch was never spoken unless some part of it was not actually retracted. Do not preserve the correction trail in the final text unless it remains semantically necessary. If the speaker moves from A to B to C, keep only C plus any unretracted surrounding text
+- If a correction changes the destination, source, place, or target for a following list, apply only the final corrected target to the whole result and drop the discarded target
 - Preserve the original wording as much as possible; do not add, swap, or smooth content words unless a tiny edit is required to fix a transcription artifact
 - Do not add helper words or light grammar rewrites just to make a phrase sound more standard. If the speaker said "by end of week" or "reply by end of day", keep that wording unless a literal dictated string clearly requires another form
 - Preserve colloquialisms, contractions, shorthand, idioms, and casual spellings by default unless a context-specific register hint below explicitly calls for light normalization. If the speaker used an informal token intentionally, keep that token instead of converting it to a more standard word unless the register hint below explicitly allows light normalization for a formal destination app
 - When there is no formal register hint, keep casual shorthand exactly as spoken. Do not expand tokens such as "gonna", "wanna", "gotta", "cuz", "lemme", or "thx" just because a more standard form exists
+- Keep the output in the same language(s) and script(s) as the transcript. Do not translate. The English examples below demonstrate editing behavior only; they do not change the output language
 - Preserve subordinate clauses and qualifiers such as "if nothing breaks", "because", "unless", "I think", and "probably" unless they were clearly superseded by a correction
 - Preserve greetings, framing phrases, and lead-in clauses unless they are obvious filler or clearly superseded by a correction
 - When the transcript clearly dictates a list, checklist, or step sequence, format it as a list. Prefer a list over prose when the speaker uses sequence cues such as "first", "second", "then", "finally", "one", "two", or "three", even if there is no lead-in phrase. Use numbered items for ordered steps and whenever the speaker explicitly counts with "one", "two", "three", "first", "second", or "third". Use bullets or hyphen lines only for plain unnumbered item lists. Keep the item wording close to the transcript. For ordered steps, do not rewrite them back into ordinary sentences
@@ -56,6 +82,7 @@ You MUST NOT:
 - Rephrase for tone, fluency, professionalism, brevity, or style
 - Expand or formalize colloquialisms, contractions, shorthand, or idioms just to make the text sound more polished. Only do light normalization when a context-specific register hint below explicitly allows it
 - Remove meaningful words, qualifiers, side comments, or hedging just to make the text cleaner
+- Translate the transcript into English or any other language
 - Convert prose into email format, markdown, or any other new structure unless the transcript itself clearly dictates that structure. Lists are allowed only when the transcript clearly dictates a list or sequence
 - Normalize numbers, money, phone numbers, emails, URLs, or dates unless the speaker explicitly dictated the exact written form
 - Force sentence-ending punctuation onto very short fragments or note fragments when capitalization alone is enough
@@ -134,10 +161,31 @@ function buildRegisterBlock(registerMode: RewriteRegisterMode): string {
   }
 }
 
+function normalizeLanguageCode(language: string): string {
+  return language.trim().toLowerCase().replace(/_/g, "-");
+}
+
+export function buildLanguageBlock(language: string | undefined): string {
+  if (!language?.trim()) return "";
+
+  const normalized = normalizeLanguageCode(language);
+  if (normalized === "auto") return "";
+
+  const baseCode = normalized.split("-")[0] ?? normalized;
+  const label = LANGUAGE_LABELS[normalized] ?? LANGUAGE_LABELS[baseCode];
+  const descriptor = label ? label : `language code "${language}"`;
+  const punctuationHint = normalized.startsWith("zh")
+    ? " Use standard Chinese punctuation."
+    : "";
+
+  return `\n\nLanguage constraint: the transcript language is ${descriptor}. Return the final edited text in the same language and script. Do not translate to English or another language. If the transcript mixes languages, preserve each span in the language spoken.${punctuationHint}`;
+}
+
 export function buildRewritePrompt(
   inputText: string,
   options?: {
     contextHint?: string;
+    language?: string;
     registerMode?: RewriteRegisterMode;
   },
 ): { system: string; prompt: string } {
@@ -148,9 +196,11 @@ export function buildRewritePrompt(
     ? `\n\nWeak context hint: use this only when the transcript already clearly implies it. Never change tone, shorten the text, or add new structure because of this hint.\n${contextHint}`
     : "";
   const registerBlock = buildRegisterBlock(options?.registerMode ?? "neutral");
+  const languageBlock = buildLanguageBlock(options?.language);
 
   return {
-    system: UNIFIED_REWRITE_SYSTEM + contextBlock + registerBlock,
+    system:
+      UNIFIED_REWRITE_SYSTEM + languageBlock + contextBlock + registerBlock,
     prompt: `<transcript>\n${inputText}\n</transcript>`,
   };
 }

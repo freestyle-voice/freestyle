@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { execFileSync } from "node:child_process";
+import { execFile as execFileCallback } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
@@ -15,6 +15,7 @@ import {
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { promisify } from "node:util";
 import { createAppLogger } from "@freestyle/utils";
 import { progressFetch } from "../hf/progress.js";
 import {
@@ -31,6 +32,7 @@ import {
 } from "./constants.js";
 
 const log = createAppLogger("whisper");
+const execFile = promisify(execFileCallback);
 
 export type DownloadStatus =
   | "not_downloaded"
@@ -329,10 +331,12 @@ async function buildFromSource(): Promise<void> {
   mkdirSync(srcDir, { recursive: true });
 
   try {
-    execFileSync(
+    await execFile(
       "tar",
       ["xzf", tarPath, "-C", srcDir, "--strip-components=1"],
-      { stdio: "pipe", timeout: 30_000 },
+      {
+        timeout: 30_000,
+      },
     );
   } catch {
     throw new Error(
@@ -348,14 +352,13 @@ async function buildFromSource(): Promise<void> {
 
   try {
     mkdirSync(buildDir, { recursive: true });
-    execFileSync(
+    await execFile(
       "cmake",
       ["..", "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_SHARED_LIBS=OFF"],
-      { cwd: buildDir, stdio: "pipe", timeout: 60_000 },
+      { cwd: buildDir, timeout: 60_000 },
     );
-    execFileSync("cmake", ["--build", ".", "--config", "Release", "-j"], {
+    await execFile("cmake", ["--build", ".", "--config", "Release", "-j"], {
       cwd: buildDir,
-      stdio: "pipe",
       timeout: 300_000,
     });
   } catch (err) {
@@ -391,8 +394,7 @@ async function buildFromSource(): Promise<void> {
       const binPath = join(binDir, name);
       if (!existsSync(binPath)) continue;
       try {
-        execFileSync("install_name_tool", ["-add_rpath", binDir, binPath], {
-          stdio: "pipe",
+        await execFile("install_name_tool", ["-add_rpath", binDir, binPath], {
           timeout: 10_000,
         });
       } catch {}
@@ -437,13 +439,13 @@ async function downloadWindowsBinaries(): Promise<void> {
   await pipeline(webBodyToReadable(res.body), fileStream);
 
   try {
-    execFileSync(
+    await execFile(
       "powershell",
       [
         "-Command",
         `Expand-Archive -Force -Path '${tmpZip}' -DestinationPath '${binDir}'`,
       ],
-      { stdio: "pipe", timeout: 30_000 },
+      { timeout: 30_000 },
     );
   } catch {
     try {

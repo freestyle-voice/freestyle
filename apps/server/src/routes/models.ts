@@ -166,11 +166,26 @@ const SUPPORTED_LLM_PROVIDERS = new Set([
 const CURATED_LLM_IDS = new Set([
   "groq/llama-3.1-8b-instant",
   "groq/llama-3.3-70b-versatile",
+  "groq/openai/gpt-oss-20b",
+  "groq/qwen/qwen3-32b",
+  "groq/mistral-saba-24b",
   "openai/gpt-4o-mini",
   "anthropic/claude-haiku-4-5",
   "google/gemini-2.5-flash",
   "mistral/mistral-small-latest",
 ]);
+
+const BUILTIN_LLM_MODELS: AvailableModel[] = [
+  {
+    provider_id: "groq",
+    provider_name: "Groq",
+    model_id: "mistral-saba-24b",
+    model_name: "Mistral Saba 24B",
+    family: "mistral",
+    type: "llm",
+    curated: true,
+  },
+];
 
 // In-memory cache for models.dev data
 let modelsCache: { data: unknown; fetchedAt: number } | null = null;
@@ -316,6 +331,16 @@ const models = new Hono()
             });
           }
         }
+      }
+
+      for (const model of BUILTIN_LLM_MODELS) {
+        const exists = available.some(
+          (item) =>
+            item.provider_id === model.provider_id &&
+            item.model_id === model.model_id &&
+            item.type === model.type,
+        );
+        if (!exists) available.push(model);
       }
 
       // Curated cloud voice models

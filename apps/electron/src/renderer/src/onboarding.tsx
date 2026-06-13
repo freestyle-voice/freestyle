@@ -11,6 +11,7 @@ import {
 } from "@renderer/hooks/use-hotkey-recorder";
 import { capture } from "@renderer/lib/analytics";
 import { getClient } from "@renderer/lib/api";
+import { defaultLanguage, ONBOARDING_LANGUAGES } from "@renderer/lib/languages";
 import {
   type AvailableModel,
   buildVoiceItems,
@@ -74,29 +75,6 @@ type LinuxSetup = {
 // hotkey — first-time users never choose a model.
 const RECOMMENDED_MLX_DEF = "qwen3-0.6b-8bit";
 const RECOMMENDED_WHISPER_DEF = "small-q5_1";
-
-// The one choice that genuinely changes transcription outcomes. Explicit
-// language beats auto-detect on both speed and accuracy; the full list
-// lives in Settings.
-const ONBOARDING_LANGUAGES: { id: string; label: string }[] = [
-  { id: "en", label: "English" },
-  { id: "es", label: "Español" },
-  { id: "fr", label: "Français" },
-  { id: "de", label: "Deutsch" },
-  { id: "it", label: "Italiano" },
-  { id: "pt", label: "Português" },
-  { id: "nl", label: "Nederlands" },
-  { id: "ru", label: "Русский" },
-  { id: "zh", label: "中文" },
-  { id: "ja", label: "日本語" },
-  { id: "ko", label: "한국어" },
-  { id: "hi", label: "हिन्दी" },
-];
-
-function defaultLanguage(): string {
-  const code = (navigator.language || "en").slice(0, 2).toLowerCase();
-  return ONBOARDING_LANGUAGES.some((l) => l.id === code) ? code : "auto";
-}
 
 export default function OnboardingPage(): React.JSX.Element {
   const navigate = useNavigate();
@@ -484,7 +462,7 @@ export default function OnboardingPage(): React.JSX.Element {
       recommended.localEngine,
       "auto",
     );
-    if (recommended.status === "not_downloaded") {
+    if (recommended.status === "not_downloaded" && !window.api?.isE2E) {
       capture("onboarding_model_auto_setup", {
         model_id: recommended.modelId,
       });
@@ -974,7 +952,7 @@ function LanguageStep({
                 : "border-border bg-card text-foreground hover:bg-secondary",
             )}
           >
-            {l.label}
+            {l.nativeLabel}
           </button>
         ))}
         <button

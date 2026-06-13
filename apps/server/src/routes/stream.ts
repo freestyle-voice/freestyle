@@ -60,10 +60,7 @@ const stream = new Hono().get(
     } | null {
       const voice = getDefaultModels().voice;
       if (!voice) return null;
-      const langSetting = getDb()
-        .prepare("SELECT value FROM settings WHERE key = 'language'")
-        .get() as { value: string } | undefined;
-      const language = langSetting?.value || undefined;
+      const language = getLanguageSetting();
       const bias = resolveAsrVocabularyBias(
         voice.provider,
         voice.model_id,
@@ -251,6 +248,7 @@ const stream = new Hono().get(
               commitTime > 0 ? Date.now() - commitTime : durationMs;
 
             const cleanup = postProcess(rawText, appContext, {
+              language: config.language,
               source: useFastHandoff ? "streaming_handoff" : "streaming",
               ...(useFastHandoff ? { includeTimings: true } : {}),
             });

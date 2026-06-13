@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createOpenAI } from "@ai-sdk/openai";
 import WebSocket from "ws";
+import { createPcmUpsampler } from "../pcm.js";
 import type {
   StreamingSessionOptions,
   StreamSession,
@@ -13,6 +14,8 @@ import { transcribeWithAiSdk } from "../utils.js";
 
 const REALTIME_URL = "wss://api.openai.com/v1/realtime?intent=transcription";
 const COMMIT_TIMEOUT_MS = 12_000;
+const CLIENT_SAMPLE_RATE = 16_000;
+const REALTIME_SAMPLE_RATE = 24_000;
 
 export class OpenAITranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "openai";
@@ -48,25 +51,34 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
       callbacks.onFinal(text.trim());
     }
 
+    const upsample = createPcmUpsampler(
+      CLIENT_SAMPLE_RATE,
+      REALTIME_SAMPLE_RATE,
+    );
+
     const ws = new WebSocket(REALTIME_URL, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "OpenAI-Beta": "realtime=v1",
       },
     });
 
     ws.on("open", () => {
       const transcription: Record<string, unknown> = { model: short };
-      if (language && language !== "auto") transcription.language = language;
+      if (language) transcription.language = language;
       if (bias?.kind === "prompt") transcription.prompt = bias.text;
 
       ws.send(
         JSON.stringify({
-          type: "transcription_session.update",
+          type: "session.update",
           session: {
-            input_audio_format: "pcm16",
-            input_audio_transcription: transcription,
-            turn_detection: null,
+            type: "transcription",
+            audio: {
+              input: {
+                format: { type: "audio/pcm", rate: REALTIME_SAMPLE_RATE },
+                transcription,
+                turn_detection: null,
+              },
+            },
           },
         }),
       );
@@ -123,7 +135,7 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
     return {
       sendAudio(chunk: ArrayBuffer): void {
         if (ws.readyState !== WebSocket.OPEN) return;
-        const b64 = Buffer.from(chunk).toString("base64");
+        const b64 = Buffer.from(upsample(chunk)).toString("base64");
         ws.send(
           JSON.stringify({
             type: "input_audio_buffer.append",

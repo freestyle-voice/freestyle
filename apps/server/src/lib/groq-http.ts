@@ -11,15 +11,17 @@ let cachedChatModel: LanguageModel | null = null;
 let cachedModelId: string | null = null;
 let prewarmPromise: Promise<void> | null = null;
 
+export function normalizeGroqModelId(modelId: string): string {
+  return modelId.startsWith("groq/") ? modelId.slice("groq/".length) : modelId;
+}
+
 export function getGroqChatModel(modelId: string): LanguageModel {
   const apiKey = getApiKeyForProvider("groq");
   if (!apiKey) {
     throw new Error("No API key configured for provider: groq");
   }
 
-  const shortId = modelId.includes("/")
-    ? modelId.slice(modelId.indexOf("/") + 1)
-    : modelId;
+  const shortId = normalizeGroqModelId(modelId);
 
   if (
     cachedChatModel &&

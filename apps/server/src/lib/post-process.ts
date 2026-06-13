@@ -1,3 +1,4 @@
+import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
 import { createAppLogger } from "@freestyle/utils";
 import { generateText } from "ai";
 import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
@@ -7,7 +8,11 @@ import { maxOutputTokensForCleanup } from "./editor/max-output-tokens.js";
 import { cleanModelOutput } from "./editor/model-hints.js";
 import { buildRewritePrompt } from "./editor/prompts.js";
 import { getRewritePromptContext } from "./editor/rewrite-context.js";
-import { getGroqChatModel, prewarmGroqConnection } from "./groq-http.js";
+import {
+  getGroqChatModel,
+  normalizeGroqModelId,
+  prewarmGroqConnection,
+} from "./groq-http.js";
 import { capture, captureException } from "./posthog.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
 
@@ -36,6 +41,7 @@ export type PostProcessSource =
 
 export interface PostProcessOptions {
   source?: PostProcessSource;
+  language?: string;
   /** Return handoff/llm timing breakdown for pipeline logs. */
   includeTimings?: boolean;
 }
@@ -54,6 +60,32 @@ function resolveChatModel(provider: string, modelId: string) {
   return createChatModel(provider, modelId);
 }
 
+export function groqCleanupProviderOptions(
+  modelId: string,
+): { groq: GroqLanguageModelOptions } | undefined {
+  const shortId = normalizeGroqModelId(modelId);
+
+  switch (shortId) {
+    case "qwen/qwen3-32b":
+      return {
+        groq: {
+          reasoningFormat: "hidden",
+          reasoningEffort: "none",
+        },
+      };
+    case "openai/gpt-oss-20b":
+    case "openai/gpt-oss-120b":
+      return {
+        groq: {
+          reasoningFormat: "hidden",
+          reasoningEffort: "low",
+        },
+      };
+    default:
+      return undefined;
+  }
+}
+
 /** Warm the default cleanup model while the user is still speaking. */
 export function prewarmPostProcess(): void {
   const defaults = getDefaultModels();
@@ -61,10 +93,7 @@ export function prewarmPostProcess(): void {
   if (!llm || !isLlmCleanupEnabled(getDb())) return;
 
   if (llm.provider === "groq") {
-    const modelId = llm.model_id.includes("/")
-      ? llm.model_id.slice(llm.model_id.indexOf("/") + 1)
-      : llm.model_id;
-    void prewarmGroqConnection(modelId);
+    void prewarmGroqConnection(normalizeGroqModelId(llm.model_id));
   }
 }
 
@@ -116,6 +145,7 @@ export async function postProcess(
       const rewriteContext = getRewritePromptContext(appContext, db);
       const { system, prompt } = buildRewritePrompt(rawText, {
         contextHint: rewriteContext.contextHint || undefined,
+        language: options.language,
         registerMode: rewriteContext.registerMode,
       });
 
@@ -129,6 +159,11 @@ export async function postProcess(
           prompt,
           temperature: 0,
           maxOutputTokens: maxOutputTokensForCleanup(rawText),
+          ...(llm.provider === "groq"
+            ? {
+                providerOptions: groqCleanupProviderOptions(llm.model_id),
+              }
+            : {}),
         });
         inputTokens = result.usage?.inputTokens ?? 0;
         outputTokens = result.usage?.outputTokens ?? 0;

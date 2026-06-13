@@ -34,4 +34,28 @@ describe("applyDictionaryReplacements", () => {
       .get("freestyle") as { usage_count: number };
     expect(count.usage_count).toBe(1);
   });
+
+  it("replaces Chinese phrases inside running text", () => {
+    const db = testDb();
+    db.prepare("INSERT INTO dictionary (key, value) VALUES (?, ?)").run(
+      "旧金山",
+      "San Francisco",
+    );
+
+    const result = applyDictionaryReplacements("我们改去旧金山开会", db);
+
+    expect(result).toBe("我们改去San Francisco开会");
+  });
+
+  it("does not replace latin keys inside larger words", () => {
+    const db = testDb();
+    db.prepare("INSERT INTO dictionary (key, value) VALUES (?, ?)").run(
+      "cat",
+      "dog",
+    );
+
+    const result = applyDictionaryReplacements("concatenate the cat", db);
+
+    expect(result).toBe("concatenate the dog");
+  });
 });

@@ -34,9 +34,7 @@ export async function transcribeDeepgramListen(
     punctuate: "true",
     smart_format: "true",
   });
-  if (opts.language && opts.language !== "auto") {
-    params.set("language", opts.language);
-  }
+  params.set("language", opts.language ?? "multi");
 
   if (bias?.kind === "deepgram-keyterms") {
     for (const term of bias.terms) {
@@ -96,7 +94,7 @@ export async function transcribeElevenLabsWithBias(
   for (const term of bias.terms) {
     form.append("keyterms", term);
   }
-  if (opts.language && opts.language !== "auto") {
+  if (opts.language) {
     form.append("language_code", opts.language);
   }
 

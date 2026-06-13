@@ -2,6 +2,7 @@ import { createAppLogger } from "@freestyle/utils";
 import { upgradeWebSocket } from "@hono/node-server";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { getLanguageSetting } from "../lib/language.js";
 import { postProcess, prewarmPostProcess } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";

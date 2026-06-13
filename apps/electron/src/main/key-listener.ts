@@ -501,6 +501,7 @@ export class NativeKeyListener {
     this.macModState.clear();
     this.macFlagState.clear();
     this.macHotkeyActive = false;
+    this.macFnDown = false;
     this.restartAttempts = 0;
     this.start();
   }

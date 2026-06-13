@@ -1,6 +1,7 @@
 import { createAppLogger } from "@freestyle/utils";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { getLanguageSetting } from "../lib/language.js";
 import { postProcess } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
@@ -69,10 +70,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   const db = getDb();
   let rawText: string;
 
-  const langSetting = db
-    .prepare("SELECT value FROM settings WHERE key = 'language'")
-    .get() as { value: string } | undefined;
-  const language = langSetting?.value || undefined;
+  const language = getLanguageSetting();
 
   const provider = getProvider(defaults.voice.provider);
   if (!provider) {
@@ -99,6 +97,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       defaults.voice.provider,
       defaults.voice.model_id,
     );
+    log.debug(`bias=${JSON.stringify(bias)}`);
     const t0 = Date.now();
     const result = await provider.transcribe({
       audio: audioData,
@@ -146,23 +145,15 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   const skipPostProcess = c.req.header("x-skip-post-process") === "true";
 
   if (skipPostProcess) {
-    Promise.resolve()
-      .then(() => {
-        db.prepare(
-          `INSERT INTO transcription_history
-             (raw_text, voice_provider, voice_model, duration_ms, audio_duration_ms)
-             VALUES (?, ?, ?, ?, ?)`,
-        ).run(
-          rawText,
-          voiceProvider,
-          voiceModel,
-          Date.now() - start,
-          audioDurationMs,
-        );
-      })
-      .catch((err) => {
-        log.error(`Failed to save history: ${err}`);
-      });
+    try {
+      db.prepare(
+        `INSERT INTO transcription_history
+           (raw_text, voice_provider, voice_model, duration_ms, audio_duration_ms)
+           VALUES (?, ?, ?, ?, ?)`,
+      ).run(rawText, voiceProvider, voiceModel, durationMs, audioDurationMs);
+    } catch (err) {
+      log.error(`Failed to save history: ${err}`);
+    }
 
     capture("transcription completed", {
       provider: voiceProvider,
@@ -181,34 +172,32 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   }
 
   const ppStart = Date.now();
-  const pp = await postProcess(rawText, appContext, "batch");
+  const pp = await postProcess(rawText, appContext, "batch", language);
   log.debug(
     `post-process took ${Date.now() - ppStart}ms | cleaned=${JSON.stringify(pp.cleaned).slice(0, 120)}`,
   );
 
-  Promise.resolve()
-    .then(() => {
-      db.prepare(
-        `INSERT INTO transcription_history
-           (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        rawText,
-        pp.cleaned !== rawText ? pp.cleaned : null,
-        voiceProvider,
-        voiceModel,
-        pp.llmProvider,
-        pp.llmModel,
-        Date.now() - start,
-        audioDurationMs,
-        pp.inputTokens,
-        pp.outputTokens,
-        pp.costUsd,
-      );
-    })
-    .catch((err) => {
-      log.error(`Failed to save history: ${err}`);
-    });
+  try {
+    db.prepare(
+      `INSERT INTO transcription_history
+         (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      rawText,
+      pp.cleaned !== rawText ? pp.cleaned : null,
+      voiceProvider,
+      voiceModel,
+      pp.llmProvider,
+      pp.llmModel,
+      Date.now() - start,
+      audioDurationMs,
+      pp.inputTokens,
+      pp.outputTokens,
+      pp.costUsd,
+    );
+  } catch (err) {
+    log.error(`Failed to save history: ${err}`);
+  }
 
   log.debug(`total ${Date.now() - start}ms`);
 

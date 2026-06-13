@@ -45,7 +45,7 @@ function execFileAsync(path: string, args: string[] = []): Promise<number> {
   });
 }
 
-function isWaylandSession(): boolean {
+export function isWaylandSession(): boolean {
   return (
     process.env.XDG_SESSION_TYPE?.toLowerCase() === "wayland" ||
     Boolean(process.env.WAYLAND_DISPLAY)
@@ -172,6 +172,7 @@ export async function pasteIntoFocusedApp(
   const prior = clipboard.readText();
   clipboard.writeText(text);
 
+  let pasted = false;
   try {
     await beforePaste?.();
 
@@ -187,12 +188,22 @@ export async function pasteIntoFocusedApp(
         method = await pasteLinux();
         break;
     }
+    pasted = true;
 
     const settleTable =
       method === "native" ? PASTE_SETTLE_MS : PASTE_SETTLE_LEGACY_MS;
     const settleMs = settleTable[process.platform] ?? 500;
     await new Promise((r) => setTimeout(r, settleMs));
   } finally {
-    clipboard.writeText(prior);
+    // When every paste backend failed, the clipboard is the only copy of the
+    // transcript the user still has — leave it there instead of restoring.
+    if (pasted) {
+      try {
+        clipboard.writeText(prior);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.warn(`Failed to restore clipboard: ${message}`);
+      }
+    }
   }
 }

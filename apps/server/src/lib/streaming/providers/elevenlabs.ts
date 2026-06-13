@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createElevenLabs } from "@ai-sdk/elevenlabs";
 import WebSocket from "ws";
+import { mergeFinalSegment } from "../segments.js";
 import {
   appendElevenLabsBiasToParams,
   transcribeElevenLabsWithBias,
@@ -58,33 +59,14 @@ async function getSingleUseToken(apiKey: string): Promise<string> {
 }
 
 /**
- * Join two transcript segments, removing duplicate words at the boundary.
  * When auto-commits fire mid-speech, ElevenLabs may repeat the last few
- * words of the previous segment at the start of the next one.
+ * words of the previous segment at the start of the next one — so overlap
+ * dedup is enabled when merging segments here.
  */
-function joinSegments(prev: string, next: string): string {
-  if (!prev) return next;
-  if (!next) return prev;
+const SEGMENT_OVERLAP_DEDUP_WORDS = 5;
 
-  const prevWords = prev.split(/\s+/);
-  const nextWords = next.split(/\s+/);
-
-  const maxOverlap = Math.min(5, prevWords.length, nextWords.length);
-  let overlapLen = 0;
-
-  for (let n = 1; n <= maxOverlap; n++) {
-    const tail = prevWords.slice(-n).join(" ").toLowerCase();
-    const head = nextWords.slice(0, n).join(" ").toLowerCase();
-    if (tail === head) {
-      overlapLen = n;
-    }
-  }
-
-  if (overlapLen > 0) {
-    return `${prev} ${nextWords.slice(overlapLen).join(" ")}`.trim();
-  }
-  return `${prev} ${next}`;
-}
+/** Errors that mean the session cannot recover; always surface these. */
+const TERMINAL_ERRORS = new Set(["auth_error", "quota_exceeded"]);
 
 export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "elevenlabs";
@@ -167,7 +149,7 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
           audio_format: "pcm_16000",
           commit_strategy: "manual",
         });
-        if (language && language !== "auto") {
+        if (language) {
           params.set("language_code", language);
         }
         appendElevenLabsBiasToParams(params, bias);
@@ -210,10 +192,11 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
             }
             case "committed_transcript":
             case "committed_transcript_with_timestamps": {
-              const segmentText = (msg.text ?? partialText).trim();
-              if (segmentText) {
-                accumulatedText = joinSegments(accumulatedText, segmentText);
-              }
+              accumulatedText = mergeFinalSegment(
+                accumulatedText,
+                msg.text ?? partialText,
+                SEGMENT_OVERLAP_DEDUP_WORDS,
+              );
               partialText = "";
 
               if (userCommitPending) {
@@ -221,9 +204,9 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
               }
               return;
             }
-            case "error":
             case "auth_error":
             case "quota_exceeded":
+            case "error":
             case "rate_limited":
             case "commit_throttled":
             case "transcriber_error":
@@ -232,7 +215,13 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
             case "insufficient_audio_activity":
               clearCommitTimeout();
               stopAutoCommit();
-              if (userCommitPending) {
+              if (TERMINAL_ERRORS.has(msg.message_type ?? "")) {
+                // Dead key/quota: surface it instead of silently salvaging,
+                // so the user learns why transcription stopped working.
+                callbacks.onError(
+                  msg.error ?? msg.message_type ?? "ElevenLabs error",
+                );
+              } else if (userCommitPending) {
                 deliverUserFinal();
               } else {
                 callbacks.onError(msg.error ?? "ElevenLabs error");

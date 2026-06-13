@@ -5,6 +5,8 @@ export interface AvailableModel {
   model_name: string;
   family?: string;
   type: "voice" | "llm";
+  /** Surfaced in the default picker; non-curated models live behind "All models". */
+  curated?: boolean;
 }
 
 export interface WhisperModelDef {
@@ -103,6 +105,17 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   "local-mlx": "Local MLX",
 };
 
+/** Where to create an API key, linked from the key-entry views. */
+export const PROVIDER_KEY_URLS: Record<string, string> = {
+  openai: "https://platform.openai.com/api-keys",
+  groq: "https://console.groq.com/keys",
+  deepgram: "https://console.deepgram.com",
+  elevenlabs: "https://elevenlabs.io/app/settings/api-keys",
+  anthropic: "https://console.anthropic.com/settings/keys",
+  google: "https://aistudio.google.com/apikey",
+  mistral: "https://console.mistral.ai/api-keys",
+};
+
 export function displayProviderName(
   providerId: string,
   fallback?: string,
@@ -159,37 +172,27 @@ export const VOICE_META: Record<
     speed: 5,
     quality: 3,
     cost: 0.04,
-    streaming: true,
-    note: "Fastest \u00b7 cheapest",
+    note: "Fastest and cheapest cloud option",
   },
   "openai/gpt-4o-transcribe": {
     speed: 3,
     quality: 5,
     cost: 0.18,
-    note: "Most accurate",
+    note: "Most accurate overall",
   },
-  "openai/gpt-4o-mini-transcribe": { speed: 4, quality: 4, cost: 0.12 },
-  "openai/whisper-1": { speed: 3, quality: 3, cost: 0.06 },
   "deepgram/nova-3": {
     speed: 4,
     quality: 4,
     cost: 0.26,
     streaming: true,
-    note: "Low-latency streaming",
+    note: "Live streaming \u2014 see words as you speak",
   },
-  "deepgram/nova-2": { speed: 4, quality: 3, cost: 0.22, streaming: true },
-  "elevenlabs/scribe_v1": {
-    speed: 3,
-    quality: 4,
-    cost: 0.4,
-    note: "99 languages",
-  },
-  "elevenlabs/scribe_v2": { speed: 3, quality: 4, cost: 0.4 },
   "elevenlabs/scribe_v2_realtime": {
     speed: 4,
     quality: 4,
     cost: 0.4,
     streaming: true,
+    note: "Excellent across 99 languages",
   },
 };
 
@@ -210,15 +213,19 @@ export const QUALITY_RANK: Record<string, number> = {
 };
 
 export const LOCAL_VOICE_NOTES: Record<string, string> = {
-  base: "Great everyday pick",
-  "base-q5_1": "Great everyday pick, smaller",
-  large: "Best quality, still fast",
-  "medium-q5_0": "High quality, modest size",
-  "qwen3-0.6b-5bit": "Fast · great for low memory",
-  "qwen3-0.6b-8bit": "Balanced quality and size",
-  "qwen3-1.7b-8bit": "Best Qwen accuracy",
-  "parakeet-tdt-0.6b-v3": "Multilingual · ignores word-boost prompts",
+  "base-q5_1": "Light and quick — good for older machines",
+  "small-q5_1": "Solid everyday accuracy",
+  large: "Most accurate on-device option",
+  "qwen3-0.6b-8bit": "Fast, accurate, runs privately on your Mac",
+  "qwen3-1.7b-8bit": "Highest on-device accuracy",
+  "parakeet-tdt-0.6b-v3": "Very fast · 25 languages · no custom vocabulary",
 };
+
+/** The single recommended model per platform (one badge, everywhere). */
+export const RECOMMENDED_LOCAL_IDS = new Set([
+  "local-mlx/qwen3-0.6b-8bit",
+  "local-whisper/small-q5_1",
+]);
 
 export function buildVoiceItems(
   available: AvailableModel[],
@@ -240,7 +247,7 @@ export function buildVoiceItems(
         key: modelId,
         kind: "local",
         localEngine: "whisper",
-        name: `Whisper ${def.displayName}`,
+        name: def.displayName,
         provider: "On-device",
         modelId,
         speed: SPEED_RANK[def.speed] ?? 3,

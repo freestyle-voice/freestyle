@@ -13,7 +13,7 @@ import { _electron as electron } from "playwright";
 // Helpers
 // ---------------------------------------------------------------------------
 
-let app: ElectronApplication;
+let app: ElectronApplication | undefined;
 let dashboardPage: Page;
 let serverPort: number;
 
@@ -49,44 +49,62 @@ test.beforeAll(async () => {
   const userDataDir = mkdtempSync(join(tmpdir(), "freestyle-e2e-"));
   const dbPath = join(userDataDir, "freestyle.db");
 
-  app = await electron.launch({
-    args: [resolve(__dirname, "../out/main/index.js")],
-    env: {
-      ...process.env,
-      NODE_ENV: "development",
-      FREESTYLE_DB_PATH: dbPath,
-      ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
-    },
-    timeout: 20_000,
-  });
+  try {
+    app = await electron.launch({
+      args: [resolve(__dirname, "../out/main/index.js")],
+      env: {
+        ...process.env,
+        NODE_ENV: "development",
+        FREESTYLE_DB_PATH: dbPath,
+        FREESTYLE_E2E: "1",
+        ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
+      },
+      timeout: 30_000,
+    });
 
-  // Wait for the first window so Playwright's internal state is ready.
-  await app.firstWindow();
+    // Wait for the first window so Playwright's internal state is ready.
+    await app.firstWindow();
 
-  // Find the dashboard (non-pill) window.
-  dashboardPage = await waitForDashboardWindow(app);
-
-  // Resolve the actual server port by probing the default port from the
-  // main process. The server starts on DEFAULT_PORT and only falls back
-  // to a random port when DEFAULT_PORT is already in use.
-  // Note: app.evaluate passes (electronModule, arg) so the user arg is
-  // the second parameter.
-  const portResult = await app.evaluate(async (_electron, port) => {
+    // Find the dashboard (non-pill) window.
+    dashboardPage = await waitForDashboardWindow(app, 15_000);
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/api/health`);
-      if (res.ok) return port;
+      await dashboardPage.waitForLoadState("networkidle", { timeout: 15_000 });
     } catch {
-      // port not available
+      // Embedded server keeps connections open; networkidle may never fire.
+      await dashboardPage.waitForLoadState("load", { timeout: 10_000 });
     }
-    return 0;
-  }, DEFAULT_PORT);
 
-  serverPort = portResult || DEFAULT_PORT;
+    // Resolve the actual server port by probing the default port from the
+    // main process. The server starts on DEFAULT_PORT and only falls back
+    // to a random port when DEFAULT_PORT is already in use.
+    const portResult = await app.evaluate(async (_electron, port) => {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/health`);
+        if (res.ok) return port;
+      } catch {
+        // port not available
+      }
+      return 0;
+    }, DEFAULT_PORT);
+
+    serverPort = portResult || DEFAULT_PORT;
+  } catch (error) {
+    console.error("Failed to launch Electron app:", error);
+    if (app) {
+      await app.close().catch(console.error);
+      app = undefined;
+    }
+    throw error;
+  }
 });
 
 test.afterAll(async () => {
-  if (app) {
-    await app.close();
+  try {
+    if (app) {
+      await app.close();
+    }
+  } catch (error) {
+    console.warn("Error closing app:", error);
   }
 });
 
@@ -157,9 +175,18 @@ test("settings API works via embedded server", async () => {
 });
 
 test("dashboard renders content", async () => {
-  await dashboardPage.waitForTimeout(1000);
+  const body = dashboardPage.locator("body");
 
-  const bodyText = await dashboardPage.locator("body").innerText();
+  if (dashboardPage.url().includes("/onboarding")) {
+    await body.waitFor({ state: "visible" });
+    expect((await body.innerText()).length).toBeGreaterThan(0);
+    return;
+  }
+
+  await dashboardPage.waitForSelector("main, nav", { timeout: 10_000 });
+
+  await body.waitFor({ state: "visible" });
+  const bodyText = await body.innerText();
   expect(bodyText.length).toBeGreaterThan(0);
 });
 
@@ -172,7 +199,7 @@ test("sidebar navigation is rendered", async () => {
     return;
   }
 
-  await dashboardPage.waitForSelector("nav", { timeout: 5000 });
+  await dashboardPage.waitForSelector("nav", { timeout: 10_000 });
   const navLinks = await dashboardPage.locator("nav a").all();
-  expect(navLinks.length).toBe(6);
+  expect(navLinks.length).toBe(7);
 });

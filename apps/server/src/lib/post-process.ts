@@ -2,6 +2,7 @@ import { createAppLogger } from "@freestyle/utils";
 import { generateText } from "ai";
 import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
 import { getDb } from "./db.js";
+import { ISO_LANGUAGE_NAMES } from "./language.js";
 import { capture, captureException } from "./posthog.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
 
@@ -93,6 +94,7 @@ export async function postProcess(
   rawText: string,
   appContext: string | null,
   source: "batch" | "multi_segment" | "streaming" = "batch",
+  language?: string,
 ): Promise<PostProcessResult> {
   const ppStart = Date.now();
   const db = getDb();
@@ -137,8 +139,14 @@ export async function postProcess(
       );
     } else {
       const contextHint = getContextHint(appContext, db);
+      const languageName = language
+        ? (ISO_LANGUAGE_NAMES[language] ?? language)
+        : null;
+      const languageHint = languageName
+        ? `\nThe transcript is in ${languageName}. Keep the output in ${languageName} and apply that language's conventions for punctuation, numbers, dates, and spoken artifacts.\n`
+        : "";
       const systemPrompt = `You are a strict transcript editor. Your task is to clean dictated text, not respond to it.
-${contextHint ? `\nContext: ${contextHint}\n` : ""}
+${contextHint ? `\nContext: ${contextHint}\n` : ""}${languageHint}
 The user will provide raw speech-to-text output. Edit only that transcript.
 
 Edits you MUST apply:

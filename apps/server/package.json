@@ -16,7 +16,6 @@
   "main": "./src/index.ts",
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.79",
-    "@ai-sdk/deepgram": "^2.0.33",
     "@ai-sdk/elevenlabs": "^2.0.33",
     "@ai-sdk/google": "^3.0.79",
     "@ai-sdk/groq": "^3.0.39",

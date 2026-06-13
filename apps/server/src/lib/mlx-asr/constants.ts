@@ -32,21 +32,10 @@ export interface MlxAsrModelDef {
 /** App catalog → passed to the worker as `--model <hfId>`. Any mlx-audio STT repo works. */
 export const MLX_ASR_MODELS: MlxAsrModelDef[] = [
   {
-    id: "qwen3-0.6b-5bit",
-    hfId: "mlx-community/Qwen3-ASR-0.6B-5bit",
-    family: "qwen3-asr",
-    displayName: "Qwen3 ASR 0.6B (5-bit)",
-    sizeBytes: 450_000_000,
-    ramRequired: "~1.5 GB",
-    speed: "Very Fast",
-    quality: "Better",
-    quantized: true,
-  },
-  {
     id: "qwen3-0.6b-8bit",
     hfId: "mlx-community/Qwen3-ASR-0.6B-8bit",
     family: "qwen3-asr",
-    displayName: "Qwen3 ASR 0.6B (8-bit)",
+    displayName: "Qwen3 Fast",
     sizeBytes: 650_000_000,
     ramRequired: "~1.5 GB",
     speed: "Fast",
@@ -57,7 +46,7 @@ export const MLX_ASR_MODELS: MlxAsrModelDef[] = [
     id: "qwen3-1.7b-8bit",
     hfId: "mlx-community/Qwen3-ASR-1.7B-8bit",
     family: "qwen3-asr",
-    displayName: "Qwen3 ASR 1.7B (8-bit)",
+    displayName: "Qwen3 Pro",
     sizeBytes: 1_800_000_000,
     ramRequired: "~3 GB",
     speed: "Medium",
@@ -65,10 +54,21 @@ export const MLX_ASR_MODELS: MlxAsrModelDef[] = [
     quantized: true,
   },
   {
+    id: "sensevoice-small",
+    hfId: "mlx-community/SenseVoiceSmall",
+    family: "sensevoice",
+    displayName: "SenseVoice",
+    sizeBytes: 936_000_000,
+    ramRequired: "~1.5 GB",
+    speed: "Fast",
+    quality: "High",
+    quantized: false,
+  },
+  {
     id: "parakeet-tdt-0.6b-v3",
     hfId: "mlx-community/parakeet-tdt-0.6b-v3",
     family: "parakeet",
-    displayName: "Parakeet TDT 0.6B v3",
+    displayName: "Parakeet",
     sizeBytes: 2_510_000_000,
     ramRequired: "~2.5 GB",
     speed: "Fast",
@@ -77,8 +77,29 @@ export const MLX_ASR_MODELS: MlxAsrModelDef[] = [
   },
 ];
 
+/**
+ * Removed from the catalog but still resolvable so existing installs that
+ * picked one keep working. Listed in pickers only while downloaded.
+ */
+export const LEGACY_MLX_ASR_MODELS: MlxAsrModelDef[] = [
+  {
+    id: "qwen3-0.6b-5bit",
+    hfId: "mlx-community/Qwen3-ASR-0.6B-5bit",
+    family: "qwen3-asr",
+    displayName: "Qwen3 ASR 0.6B (5-bit)",
+    sizeBytes: 450_000_000,
+    ramRequired: "~1.5 GB",
+    speed: "Very Fast",
+    quality: "Better",
+    quantized: true,
+  },
+];
+
 export function getMlxAsrModel(id: string): MlxAsrModelDef | undefined {
-  return MLX_ASR_MODELS.find((m) => m.id === id);
+  return (
+    MLX_ASR_MODELS.find((m) => m.id === id) ??
+    LEGACY_MLX_ASR_MODELS.find((m) => m.id === id)
+  );
 }
 
 export function getMlxCacheDir(): string {

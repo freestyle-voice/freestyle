@@ -17,11 +17,54 @@ export interface WhisperModelDef {
 export const WHISPER_REPO = "ggerganov/whisper.cpp";
 export const WHISPER_REPO_REVISION = "main";
 
+/**
+ * Curated catalog shown to users. Three tiers, no quantization variants —
+ * the q5 builds are visually indistinguishable in quality at a third the size,
+ * so only they ship; `medium` is dominated by large-v3-turbo on both axes.
+ */
 export const WHISPER_MODELS: WhisperModelDef[] = [
+  {
+    id: "base-q5_1",
+    fileName: "ggml-base-q5_1.bin",
+    displayName: "Whisper Fast",
+    sizeBytes: 57_000_000,
+    ramRequired: "~1 GB",
+    speed: "Fastest",
+    quality: "Good",
+    quantized: true,
+  },
+  {
+    id: "small-q5_1",
+    fileName: "ggml-small-q5_1.bin",
+    displayName: "Whisper Balanced",
+    sizeBytes: 181_000_000,
+    ramRequired: "~2 GB",
+    speed: "Fast",
+    quality: "Better",
+    quantized: true,
+  },
+  {
+    id: "large",
+    fileName: "ggml-large-v3-turbo.bin",
+    displayName: "Whisper Pro",
+    sizeBytes: 1_600_000_000,
+    ramRequired: "~6 GB",
+    speed: "Medium",
+    quality: "Best",
+    quantized: false,
+  },
+];
+
+/**
+ * Removed from the catalog but still resolvable so existing installs that
+ * downloaded (or defaulted to) one of these keep transcribing. They appear
+ * in pickers only while downloaded.
+ */
+export const LEGACY_WHISPER_MODELS: WhisperModelDef[] = [
   {
     id: "tiny",
     fileName: "ggml-tiny.bin",
-    displayName: "Tiny",
+    displayName: "Whisper Tiny",
     sizeBytes: 75_000_000,
     ramRequired: "~1 GB",
     speed: "Fastest",
@@ -31,7 +74,7 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
   {
     id: "tiny-q5_1",
     fileName: "ggml-tiny-q5_1.bin",
-    displayName: "Tiny Q5",
+    displayName: "Whisper Tiny Q5",
     sizeBytes: 31_000_000,
     ramRequired: "~1 GB",
     speed: "Fastest",
@@ -41,7 +84,7 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
   {
     id: "base",
     fileName: "ggml-base.bin",
-    displayName: "Base",
+    displayName: "Whisper Base",
     sizeBytes: 142_000_000,
     ramRequired: "~1 GB",
     speed: "Fast",
@@ -49,19 +92,9 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     quantized: false,
   },
   {
-    id: "base-q5_1",
-    fileName: "ggml-base-q5_1.bin",
-    displayName: "Base Q5",
-    sizeBytes: 57_000_000,
-    ramRequired: "~1 GB",
-    speed: "Very Fast",
-    quality: "Good",
-    quantized: true,
-  },
-  {
     id: "small",
     fileName: "ggml-small.bin",
-    displayName: "Small",
+    displayName: "Whisper Small",
     sizeBytes: 466_000_000,
     ramRequired: "~2 GB",
     speed: "Medium",
@@ -69,19 +102,9 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
     quantized: false,
   },
   {
-    id: "small-q5_1",
-    fileName: "ggml-small-q5_1.bin",
-    displayName: "Small Q5",
-    sizeBytes: 181_000_000,
-    ramRequired: "~2 GB",
-    speed: "Fast",
-    quality: "Better",
-    quantized: true,
-  },
-  {
     id: "medium",
     fileName: "ggml-medium.bin",
-    displayName: "Medium",
+    displayName: "Whisper Medium",
     sizeBytes: 1_500_000_000,
     ramRequired: "~5 GB",
     speed: "Slow",
@@ -91,27 +114,20 @@ export const WHISPER_MODELS: WhisperModelDef[] = [
   {
     id: "medium-q5_0",
     fileName: "ggml-medium-q5_0.bin",
-    displayName: "Medium Q5",
+    displayName: "Whisper Medium Q5",
     sizeBytes: 539_000_000,
     ramRequired: "~3 GB",
     speed: "Medium",
     quality: "High",
     quantized: true,
   },
-  {
-    id: "large",
-    fileName: "ggml-large-v3-turbo.bin",
-    displayName: "Large V3 Turbo",
-    sizeBytes: 1_600_000_000,
-    ramRequired: "~6 GB",
-    speed: "Slow",
-    quality: "Best",
-    quantized: false,
-  },
 ];
 
 export function getWhisperModel(id: string): WhisperModelDef | undefined {
-  return WHISPER_MODELS.find((m) => m.id === id);
+  return (
+    WHISPER_MODELS.find((m) => m.id === id) ??
+    LEGACY_WHISPER_MODELS.find((m) => m.id === id)
+  );
 }
 
 export function getModelsDir(): string {

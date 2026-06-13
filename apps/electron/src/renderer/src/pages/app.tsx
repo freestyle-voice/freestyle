@@ -90,16 +90,6 @@ const pillInnerStyle: React.CSSProperties = {
   WebkitAppRegion: "drag",
 } as React.CSSProperties;
 
-const pillTextStyle: React.CSSProperties = {
-  color: "var(--muted-foreground)",
-  fontSize: 12,
-  flex: 1,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  paddingRight: 7,
-};
-
 interface TranscribeResult {
   raw: string;
   cleaned: string;
@@ -123,14 +113,17 @@ interface QueueEntry {
 
 export default function AppPage(): React.JSX.Element {
   const [state, setState] = useState<PillState>("idle");
+  const stateRef = useRef<PillState>("idle");
+  const setPillState = useCallback((next: PillState) => {
+    stateRef.current = next;
+    setState(next);
+  }, []);
   const [elapsed, setElapsed] = useState(0);
   const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
   const [pillSide, setPillSide] = useState<"center" | "right">("center");
   const useStreamingRef = useRef(false);
   const sessionStreamingRef = useRef(false);
 
-  const [isReRecording, setIsReRecording] = useState(false);
-  const isReRecordingRef = useRef(false);
   const [pendingCount, setPendingCount] = useState(0);
 
   const recorderRef = useRef(new Recorder());
@@ -164,6 +157,11 @@ export default function AppPage(): React.JSX.Element {
   );
   const drainAgainRef = useRef(false);
 
+  const isTranscriptionIdle = (): boolean =>
+    queueRef.current.length === 0 &&
+    !drainingRef.current &&
+    streamResolverRef.current === null;
+
   const getInputVolume = useCallback(() => volumeRef.current, []);
 
   // ---- Queue drain ----
@@ -193,7 +191,11 @@ export default function AppPage(): React.JSX.Element {
         return;
       }
 
-      if (recordingActiveRef.current || queueRef.current.length > 0) {
+      if (
+        recordingActiveRef.current ||
+        wantsMicRef.current ||
+        queueRef.current.length > 0
+      ) {
         const resolved = results
           .filter((r) => r.raw.trim())
           .map((r) => ({ promise: Promise.resolve(r) }));
@@ -207,6 +209,10 @@ export default function AppPage(): React.JSX.Element {
         if (errMsg) {
           hidePill();
           window.api.showErrorDialog("Transcription Failed", errMsg);
+        } else if (wantsMicRef.current) {
+          // Re-record may have resolved the in-flight stream with an empty
+          // result; a new recording is starting — keep the pill visible.
+          return;
         } else {
           hidePill();
         }
@@ -285,9 +291,48 @@ export default function AppPage(): React.JSX.Element {
       if (drainAgainRef.current) {
         drainAgainRef.current = false;
         void drainQueue();
+      } else if (
+        pillActiveRef.current &&
+        stateRef.current === "transcribing" &&
+        !wantsMicRef.current &&
+        !recordingActiveRef.current &&
+        isTranscriptionIdle()
+      ) {
+        hidePill();
       }
     }
   }, []);
+
+  // ---- REST fallback (full recorded WAV kept by the streamer) ----
+  const restFallbackTranscribe = useCallback(
+    (errorMsg: string): Promise<TranscribeResult> | null => {
+      const wavBlob = streamerRef.current?.getWavBlob() ?? null;
+      if (!wavBlob) return null;
+      const headers: Record<string, string> = {
+        "Content-Type": "audio/wav",
+        "x-audio-duration-ms": String(Date.now() - startTimeRef.current),
+      };
+      if (appContextRef.current)
+        headers["x-app-context"] = encodeAppContext(appContextRef.current);
+      if (queueRef.current.length > 0 || drainingRef.current)
+        headers["x-skip-post-process"] = "true";
+      return fetch(`${getApiBase()}/api/transcribe`, {
+        method: "POST",
+        body: wavBlob,
+        headers,
+      })
+        .then(async (res) => {
+          if (!res.ok) return { raw: "", cleaned: "", error: errorMsg };
+          const data = (await res.json()) as { raw?: string; cleaned?: string };
+          return {
+            raw: (data.raw || "").trim(),
+            cleaned: (data.cleaned || data.raw || "").trim(),
+          };
+        })
+        .catch(() => ({ raw: "", cleaned: "", error: errorMsg }));
+    },
+    [],
+  );
 
   // ---- Streamer (lazy singleton) ----
   // biome-ignore lint/correctness/useExhaustiveDependencies: singleton
@@ -313,34 +358,9 @@ export default function AppPage(): React.JSX.Element {
           const resolver = streamResolverRef.current;
           if (resolver) {
             streamResolverRef.current = null;
-            const wavBlob = streamerRef.current?.getWavBlob() ?? null;
-            if (wavBlob) {
-              const durationMs = Date.now() - startTimeRef.current;
-              const headers: Record<string, string> = {
-                "Content-Type": "audio/wav",
-                "x-audio-duration-ms": String(durationMs),
-              };
-              if (appContextRef.current)
-                headers["x-app-context"] = encodeAppContext(
-                  appContextRef.current,
-                );
-              if (queueRef.current.length > 0 || drainingRef.current)
-                headers["x-skip-post-process"] = "true";
-              fetch(`${getApiBase()}/api/transcribe`, {
-                method: "POST",
-                body: wavBlob,
-                headers,
-              })
-                .then(async (res) => {
-                  if (!res.ok) return { raw: "", cleaned: "", error: msg };
-                  const data = await res.json();
-                  return {
-                    raw: (data.raw || "").trim(),
-                    cleaned: (data.cleaned || data.raw || "").trim(),
-                  };
-                })
-                .catch(() => ({ raw: "", cleaned: "", error: msg }))
-                .then(resolver);
+            const fallback = restFallbackTranscribe(msg);
+            if (fallback) {
+              void fallback.then(resolver);
               return;
             }
             resolver({ raw: "", cleaned: "", error: msg });
@@ -499,9 +519,7 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- Hide pill ----
   const hidePill = useCallback(() => {
-    setState("idle");
-    setIsReRecording(false);
-    isReRecordingRef.current = false;
+    setPillState("idle");
     setPendingCount(0);
     wantsMicRef.current = false;
     pillActiveRef.current = false;
@@ -512,7 +530,17 @@ export default function AppPage(): React.JSX.Element {
     streamResolverRef.current = null;
     stopVisualization();
     window.api.hidePill();
-  }, [stopVisualization]);
+  }, [stopVisualization, setPillState]);
+
+  const resumeTranscribingOrHide = useCallback(() => {
+    if (isTranscriptionIdle()) {
+      hidePill();
+    } else {
+      setPillState("transcribing");
+      startBarAnimation("speaking");
+      void drainQueue();
+    }
+  }, [hidePill, setPillState, startBarAnimation, drainQueue]);
 
   // ---- Start recording ----
   const startRecording = useCallback(
@@ -523,14 +551,6 @@ export default function AppPage(): React.JSX.Element {
       wantsMicRef.current = true;
       pillActiveRef.current = true;
       pendingCommitRef.current = false;
-
-      if (forReRecord) {
-        isReRecordingRef.current = true;
-        setIsReRecording(true);
-      } else {
-        isReRecordingRef.current = false;
-        setIsReRecording(false);
-      }
 
       appContextRef.current = null;
       const streamer = getStreamer();
@@ -553,10 +573,8 @@ export default function AppPage(): React.JSX.Element {
           } catch {}
         });
 
-      if (!forReRecord) {
-        setState("initializing");
-        startBarAnimation("connecting");
-      }
+      setPillState("initializing");
+      startBarAnimation("connecting");
 
       try {
         if (_audioPlaybackMode !== "off") {
@@ -576,20 +594,28 @@ export default function AppPage(): React.JSX.Element {
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
           window.api?.restoreSystemAudio().catch(() => {});
+          if (forReRecord) {
+            resumeTranscribingOrHide();
+          }
           return;
         }
         if (pendingCommitRef.current) {
           pendingCommitRef.current = false;
+          wantsMicRef.current = false;
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
           window.api?.restoreSystemAudio().catch(() => {});
           streamerRef.current?.cancel();
-          if (!forReRecord) hidePill();
+          if (forReRecord) {
+            resumeTranscribingOrHide();
+          } else {
+            hidePill();
+          }
           return;
         }
 
         playTone("start");
-        setState("recording");
+        setPillState("recording");
         recordingActiveRef.current = true;
         startTimeRef.current = Date.now();
         timerRef.current = window.setInterval(() => {
@@ -612,15 +638,20 @@ export default function AppPage(): React.JSX.Element {
         );
       }
     },
-    [startBarAnimation, startListening, hidePill, getStreamer],
+    [
+      startBarAnimation,
+      startListening,
+      hidePill,
+      getStreamer,
+      setPillState,
+      resumeTranscribingOrHide,
+    ],
   );
 
   // ---- Commit recording ----
   const commitRecording = useCallback(async () => {
     wantsMicRef.current = false;
     recordingActiveRef.current = false;
-    isReRecordingRef.current = false;
-    setIsReRecording(false);
     playTone("stop");
 
     clearInterval(timerRef.current);
@@ -642,16 +673,11 @@ export default function AppPage(): React.JSX.Element {
       recorderRef.current.releaseStream();
       window.api?.restoreSystemAudio().catch(() => {});
       streamerRef.current?.cancel();
-      if (queueRef.current.length === 0 && !drainingRef.current) {
-        hidePill();
-      } else {
-        setState("transcribing");
-        startBarAnimation("speaking");
-      }
+      resumeTranscribingOrHide();
       return;
     }
 
-    setState("transcribing");
+    setPillState("transcribing");
     startBarAnimation("speaking");
 
     if (sessionStreamingRef.current && streamerRef.current) {
@@ -662,16 +688,23 @@ export default function AppPage(): React.JSX.Element {
       setPendingCount((c) => c + 1);
       const transcribePromise = new Promise<TranscribeResult>((resolve) => {
         streamResolverRef.current = resolve;
+        // Server-side commit timeouts fire at 12s; if no final arrived by
+        // 15s the stream is dead — salvage via REST with the recorded WAV.
         setTimeout(() => {
           if (streamResolverRef.current === resolve) {
             streamResolverRef.current = null;
-            resolve({
-              raw: "",
-              cleaned: "",
-              error: "Transcription timed out",
-            });
+            const fallback = restFallbackTranscribe("Transcription timed out");
+            if (fallback) {
+              void fallback.then(resolve);
+            } else {
+              resolve({
+                raw: "",
+                cleaned: "",
+                error: "Transcription timed out",
+              });
+            }
           }
-        }, 30000);
+        }, 15000);
       }).finally(() => {
         setPendingCount((c) => Math.max(0, c - 1));
       });
@@ -697,12 +730,14 @@ export default function AppPage(): React.JSX.Element {
     }
 
     if (!wavBlob) {
-      if (queueRef.current.length === 0 && !drainingRef.current) {
+      if (isTranscriptionIdle()) {
         hidePill();
         window.api.showErrorDialog(
           "Recording Failed",
           "No audio captured. Try recording again.",
         );
+      } else {
+        resumeTranscribingOrHide();
       }
       return;
     }
@@ -766,10 +801,22 @@ export default function AppPage(): React.JSX.Element {
 
     queueRef.current.push({ promise: transcribePromise });
     drainQueue();
-  }, [hidePill, drainQueue, startBarAnimation]);
+  }, [
+    hidePill,
+    drainQueue,
+    startBarAnimation,
+    restFallbackTranscribe,
+    setPillState,
+    resumeTranscribingOrHide,
+  ]);
 
   // ---- Cancel ----
   const cancelRecording = useCallback(() => {
+    const resolver = streamResolverRef.current;
+    if (resolver) {
+      streamResolverRef.current = null;
+      resolver({ raw: "", cleaned: "" });
+    }
     streamerRef.current?.cancel();
     recorderRef.current.cancel();
     recorderRef.current.releaseStream();
@@ -846,36 +893,46 @@ export default function AppPage(): React.JSX.Element {
     };
   }, [applyPillPosition]);
 
-  const stateRef = useRef(state);
-  stateRef.current = state;
-
   // ---- Hotkey handlers ----
   useEffect(() => {
     const removeDown = window.api.onHotkeyDown(() => {
+      // hidePill() clears pillActiveRef before React re-renders idle state.
+      if (!pillActiveRef.current) {
+        stateRef.current = "idle";
+      }
       const s = stateRef.current;
       if (s === "idle") {
         startRecording(false);
-      } else if (s === "transcribing" && !recordingActiveRef.current) {
+      } else if (s === "transcribing" && !wantsMicRef.current) {
+        if (isTranscriptionIdle()) {
+          hidePill();
+          return;
+        }
         // Resolve the pending stream promise so the previous transcription
         // does not hang for 30 s waiting for a result that will be dropped
-        // by the generation counter on the server side.
-        // Set recordingActiveRef *before* resolving so that drainQueue
-        // (which may be awaiting this promise) sees an active recording
-        // and re-queues instead of calling hidePill().
-        recordingActiveRef.current = true;
+        // by the generation counter on the server side. Start re-record
+        // first so wantsMicRef is set before the empty resolve reaches
+        // drainQueue.
+        void startRecording(true);
         const resolver = streamResolverRef.current;
         if (resolver) {
           streamResolverRef.current = null;
           resolver({ raw: "", cleaned: "" });
         }
-        startRecording(true);
       }
     });
     const removeUp = window.api.onHotkeyUp(() => {
+      if (!pillActiveRef.current) return;
       if (stateRef.current === "recording") {
         commitRecording();
       } else if (stateRef.current === "initializing") {
         pendingCommitRef.current = true;
+      } else if (
+        stateRef.current === "transcribing" &&
+        !wantsMicRef.current &&
+        isTranscriptionIdle()
+      ) {
+        hidePill();
       }
     });
     const removeCancel = window.api.onPillCancel(() => {
@@ -886,7 +943,7 @@ export default function AppPage(): React.JSX.Element {
       removeUp();
       removeCancel();
     };
-  }, [startRecording, commitRecording, cancelRecording]);
+  }, [startRecording, commitRecording, cancelRecording, hidePill]);
 
   // ---- Cleanup on unmount ----
   const mountedRef = useRef(true);
@@ -915,7 +972,7 @@ export default function AppPage(): React.JSX.Element {
       ? "glow-initializing"
       : state === "recording"
         ? "glow-recording"
-        : state === "transcribing" && !isReRecording
+        : state === "transcribing"
           ? "glow-transcribing"
           : "glow-idle";
 
@@ -991,104 +1048,20 @@ export default function AppPage(): React.JSX.Element {
           .glow-recording { animation: glow-pulse-green 2s ease-in-out infinite; }
           .glow-transcribing { animation: glow-pulse-blue 1.5s ease-in-out infinite; }
           .glow-idle { box-shadow: 0 0 5px 2px rgba(0,0,0,0.05); transition: box-shadow 300ms ease; }
-          @keyframes shimmer {
-            0% { background-position: 100% center; }
-            100% { background-position: 0% center; }
-          }
-          .shimmer-text {
-            font-style: italic;
-            background: linear-gradient(90deg, var(--muted-foreground) calc(50% - 40px), var(--foreground), var(--muted-foreground) calc(50% + 40px));
-            background-size: 250% 100%;
-            background-clip: text;
-            -webkit-background-clip: text;
-            color: transparent;
-            animation: shimmer 2s linear infinite;
-          }
-          @keyframes stack-slide-down {
-            from { opacity: 0; transform: translateX(-50%) scale(0.87) translateY(-8px); }
-            to   { opacity: 0.95; transform: translateX(-50%) scale(0.87) translateY(0); }
-          }
-          @keyframes stack-slide-up {
-            from { opacity: 0; transform: translateX(-50%) scale(0.87) translateY(8px); }
-            to   { opacity: 0.95; transform: translateX(-50%) scale(0.87) translateY(0); }
-          }
-          .stack-enter-down { animation: stack-slide-down 100ms ease-out both; }
-          .stack-enter-up   { animation: stack-slide-up 100ms ease-out both; }
         `}
       </style>
 
       <div
         style={{
-          position: "relative",
           marginBottom: pillAlign === "end" ? 8 : "auto",
           marginTop: pillAlign === "start" ? 8 : "auto",
         }}
       >
-        {isReRecording && (
-          <div
-            className={
-              pillAlign === "end" ? "stack-enter-up" : "stack-enter-down"
-            }
-            style={{
-              borderRadius: 25,
-              position: "absolute",
-              ...(pillAlign === "end" ? { top: -18 } : { bottom: -18 }),
-              left: "50%",
-              transform: "translateX(-50%) scale(0.87)",
-              opacity: 0.95,
-              pointerEvents: "none",
-              zIndex: 0,
-              width: "100%",
-            }}
-          >
-            <div
-              className="inline-flex items-center gap-2.5"
-              style={pillInnerStyle}
-            >
-              <div
-                style={{
-                  width: 29,
-                  height: 29,
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  flexShrink: 0,
-                }}
-              >
-                <Orb
-                  colors={["#60A5FA", "#3B82F6"]}
-                  agentState="talking"
-                  className="h-full w-full"
-                />
-              </div>
-              <span style={pillTextStyle}>
-                <span className="shimmer-text">Transcribing...</span>
-              </span>
-              {pendingCount > 0 && (
-                <span
-                  className="mono"
-                  style={{
-                    fontSize: 10,
-                    letterSpacing: "0.06em",
-                    opacity: 0.6,
-                    flexShrink: 0,
-                    color: "var(--muted-foreground)",
-                    paddingRight: 5,
-                  }}
-                >
-                  x{pendingCount}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
         <div
           className={topGlow}
           style={{
             borderRadius: 25,
             visibility: state === "idle" ? "hidden" : "visible",
-            position: "relative",
-            zIndex: 1,
           }}
         >
           <div

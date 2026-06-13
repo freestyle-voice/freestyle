@@ -10,10 +10,21 @@ const apiKeys = new Hono()
     const db = getDb();
     const rows = db
       .prepare(
-        "SELECT provider, created_at, status FROM api_keys ORDER BY created_at DESC",
+        "SELECT provider, key, created_at, status FROM api_keys ORDER BY created_at DESC",
       )
-      .all() as { provider: string; created_at: string; status: string }[];
-    return c.json(rows);
+      .all() as {
+      provider: string;
+      key: string;
+      created_at: string;
+      status: string;
+    }[];
+    // Expose only a last-4 hint so users can tell keys apart in the UI.
+    return c.json(
+      rows.map(({ key, ...row }) => ({
+        ...row,
+        hint: key.length > 8 ? `…${key.slice(-4)}` : "…",
+      })),
+    );
   })
   .get("/:provider", (c) => {
     const db = getDb();

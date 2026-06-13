@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { execFileSync } from "node:child_process";
+import { execFile as execFileCallback } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
@@ -15,14 +15,15 @@ import {
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { promisify } from "node:util";
 import { createAppLogger } from "@freestyle/utils";
-import { downloadFileToCacheDir } from "@huggingface/hub";
 import { progressFetch } from "../hf/progress.js";
 import {
   getBinDir,
   getModelPath,
   getModelsDir,
   getWhisperModel,
+  LEGACY_WHISPER_MODELS,
   WHISPER_CPP_VERSION,
   WHISPER_MODELS,
   WHISPER_REPO,
@@ -31,6 +32,7 @@ import {
 } from "./constants.js";
 
 const log = createAppLogger("whisper");
+const execFile = promisify(execFileCallback);
 
 export type DownloadStatus =
   | "not_downloaded"
@@ -138,8 +140,17 @@ export function getModelStatus(modelId: string): ModelDownloadState | null {
   return { ...baseModelState(modelId, model), status: "not_downloaded" };
 }
 
+/**
+ * Catalog shown in pickers: the curated models, plus legacy models that
+ * this install still has downloaded.
+ */
+export function getCatalogModels(): WhisperModelDef[] {
+  const legacy = LEGACY_WHISPER_MODELS.filter((m) => isModelDownloaded(m));
+  return [...WHISPER_MODELS, ...legacy];
+}
+
 export function getAllModelStatuses(): ModelDownloadState[] {
-  return WHISPER_MODELS.map((m) => getModelStatus(m.id)!);
+  return getCatalogModels().map((m) => getModelStatus(m.id)!);
 }
 
 export async function downloadModel(modelId: string): Promise<void> {
@@ -156,8 +167,8 @@ export async function downloadModel(modelId: string): Promise<void> {
 
   if (isModelDownloaded(model)) return;
 
-  const { isBinaryAvailable } = await import("./binary.js");
-  const needsBinary = !isBinaryAvailable();
+  const { isServerBinaryAvailable } = await import("./binary.js");
+  const needsBinary = !isServerBinaryAvailable();
 
   const controller = new AbortController();
   const active: ActiveDownload = {
@@ -194,14 +205,16 @@ export async function downloadModel(modelId: string): Promise<void> {
   const tempPath = `${destPath}.downloading`;
 
   try {
-    const blobPath = await downloadFileToCacheDir({
-      repo: { type: "model", name: WHISPER_REPO },
-      path: model.fileName,
-      revision: WHISPER_REPO_REVISION,
-      fetch: progressFetch(active, controller.signal),
-    });
-
-    copyFileSync(blobPath, tempPath);
+    // Stream straight to the models dir — going through the HF cache would
+    // store every model twice on disk.
+    const url = `https://huggingface.co/${WHISPER_REPO}/resolve/${WHISPER_REPO_REVISION}/${model.fileName}`;
+    const res = await progressFetch(active, controller.signal)(url);
+    if (!res.ok || !res.body) {
+      throw new Error(`Model download failed: HTTP ${res.status}`);
+    }
+    const total = Number(res.headers.get("content-length"));
+    if (total > 0) active.bytesTotal = total;
+    await pipeline(webBodyToReadable(res.body), createWriteStream(tempPath));
     renameSync(tempPath, destPath);
     activeDownloads.delete(modelId);
   } catch (err) {
@@ -268,8 +281,10 @@ export function isBinaryDownloading(): boolean {
 }
 
 export async function ensureBinariesDownloaded(): Promise<void> {
-  const { isBinaryAvailable } = await import("./binary.js");
-  if (isBinaryAvailable()) return;
+  const { isServerBinaryAvailable, resetBinaryCache } = await import(
+    "./binary.js"
+  );
+  if (isServerBinaryAvailable()) return;
 
   if (binaryDownloadPromise) return binaryDownloadPromise;
   const task =
@@ -278,6 +293,7 @@ export async function ensureBinariesDownloaded(): Promise<void> {
       : buildFromSource();
   binaryDownloadPromise = task.finally(() => {
     binaryDownloadPromise = null;
+    resetBinaryCache();
   });
   return binaryDownloadPromise;
 }
@@ -315,10 +331,12 @@ async function buildFromSource(): Promise<void> {
   mkdirSync(srcDir, { recursive: true });
 
   try {
-    execFileSync(
+    await execFile(
       "tar",
       ["xzf", tarPath, "-C", srcDir, "--strip-components=1"],
-      { stdio: "pipe", timeout: 30_000 },
+      {
+        timeout: 30_000,
+      },
     );
   } catch {
     throw new Error(
@@ -334,14 +352,13 @@ async function buildFromSource(): Promise<void> {
 
   try {
     mkdirSync(buildDir, { recursive: true });
-    execFileSync(
+    await execFile(
       "cmake",
       ["..", "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_SHARED_LIBS=OFF"],
-      { cwd: buildDir, stdio: "pipe", timeout: 60_000 },
+      { cwd: buildDir, timeout: 60_000 },
     );
-    execFileSync("cmake", ["--build", ".", "--config", "Release", "-j"], {
+    await execFile("cmake", ["--build", ".", "--config", "Release", "-j"], {
       cwd: buildDir,
-      stdio: "pipe",
       timeout: 300_000,
     });
   } catch (err) {
@@ -377,8 +394,7 @@ async function buildFromSource(): Promise<void> {
       const binPath = join(binDir, name);
       if (!existsSync(binPath)) continue;
       try {
-        execFileSync("install_name_tool", ["-add_rpath", binDir, binPath], {
-          stdio: "pipe",
+        await execFile("install_name_tool", ["-add_rpath", binDir, binPath], {
           timeout: 10_000,
         });
       } catch {}
@@ -389,10 +405,13 @@ async function buildFromSource(): Promise<void> {
     rmSync(srcDir, { recursive: true, force: true });
   } catch {}
 
-  const { isBinaryAvailable } = await import("./binary.js");
-  if (!isBinaryAvailable()) {
+  const { isServerBinaryAvailable, resetBinaryCache } = await import(
+    "./binary.js"
+  );
+  resetBinaryCache();
+  if (!isServerBinaryAvailable()) {
     throw new Error(
-      "whisper.cpp build completed but binary not found. Check build output.",
+      "whisper.cpp build completed but whisper-server not found. Check build output.",
     );
   }
 
@@ -420,13 +439,13 @@ async function downloadWindowsBinaries(): Promise<void> {
   await pipeline(webBodyToReadable(res.body), fileStream);
 
   try {
-    execFileSync(
+    await execFile(
       "powershell",
       [
         "-Command",
         `Expand-Archive -Force -Path '${tmpZip}' -DestinationPath '${binDir}'`,
       ],
-      { stdio: "pipe", timeout: 30_000 },
+      { timeout: 30_000 },
     );
   } catch {
     try {

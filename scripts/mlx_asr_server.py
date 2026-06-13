@@ -187,6 +187,7 @@ def _pick_supported_param(
     for name in aliases:
         if name in params:
             return {name: value}
+    _log(f"dropping {aliases[0]!r}: not supported by {_state['model_id']}")
     return {}
 
 
@@ -203,8 +204,25 @@ def _strip_prompt_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
 
 
 def _text_from_result(result: Any) -> str:
-    text = getattr(result, "text", result)
-    return "" if text is None else str(text)
+    if result is None:
+        return ""
+    if isinstance(result, str):
+        return result
+    if isinstance(result, list):
+        for item in result:
+            text = _text_from_result(item)
+            if text:
+                return text
+        return ""
+    if isinstance(result, dict):
+        for key in ("text", "transcription", "result"):
+            if key in result:
+                return _text_from_result(result[key])
+        return ""
+    text = getattr(result, "text", None)
+    if text is not None:
+        return _text_from_result(text)
+    return str(result)
 
 
 def _transcribe_kwargs(

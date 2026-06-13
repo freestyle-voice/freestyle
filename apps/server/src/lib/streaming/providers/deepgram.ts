@@ -1,5 +1,5 @@
-import { createDeepgram } from "@ai-sdk/deepgram";
 import WebSocket from "ws";
+import { mergeFinalSegment, previewText } from "../segments.js";
 import {
   appendDeepgramBiasToParams,
   transcribeDeepgramListen,
@@ -12,61 +12,23 @@ import type {
   TranscriptionProvider,
 } from "../types.js";
 import { stripProviderPrefix } from "../types.js";
-import { transcribeWithAiSdk } from "../utils.js";
 
 const DEEPGRAM_LISTEN_URL = "wss://api.deepgram.com/v1/listen";
 const COMMIT_TIMEOUT_MS = 12_000;
-
-/**
- * Merge a new finalized segment. Nova models often send cumulative transcripts
- * (full text so far) rather than deltas — appending would duplicate lines.
- */
-function mergeFinalSegment(prev: string, next: string): string {
-  const p = prev.trim();
-  const n = next.trim();
-  if (!n) return p;
-  if (!p) return n;
-  if (n === p) return p;
-  if (n.startsWith(p)) return n;
-  if (p.startsWith(n)) return p;
-
-  const prevWords = p.split(/\s+/);
-  const nextWords = n.split(/\s+/);
-  const maxOverlap = Math.min(5, prevWords.length, nextWords.length);
-  let overlapLen = 0;
-  for (let i = 1; i <= maxOverlap; i++) {
-    const tail = prevWords.slice(-i).join(" ").toLowerCase();
-    const head = nextWords.slice(0, i).join(" ").toLowerCase();
-    if (tail === head) overlapLen = i;
-  }
-  if (overlapLen > 0) {
-    return `${p} ${nextWords.slice(overlapLen).join(" ")}`.trim();
-  }
-  return `${p} ${n}`;
-}
-
-function previewText(accumulated: string, partial: string): string {
-  const a = accumulated.trim();
-  const p = partial.trim();
-  if (!p) return a;
-  if (!a) return p;
-  if (p.startsWith(a)) return p;
-  if (a.startsWith(p)) return a;
-  return `${a} ${p}`.trim();
-}
+// Deepgram closes streaming sockets after ~10s without audio (NET-0001);
+// KeepAlive holds the connection open between recordings.
+const KEEPALIVE_INTERVAL_MS = 5_000;
 
 export class DeepgramTranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "deepgram";
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
-    const bias = opts.bias;
-    if (
-      bias?.kind === "deepgram-keyterms" ||
-      bias?.kind === "deepgram-keywords"
-    ) {
-      return transcribeDeepgramListen(opts, bias);
-    }
-    return transcribeWithAiSdk(opts, createDeepgram, this.providerId);
+    const bias =
+      opts.bias?.kind === "deepgram-keyterms" ||
+      opts.bias?.kind === "deepgram-keywords"
+        ? opts.bias
+        : null;
+    return transcribeDeepgramListen(opts, bias);
   }
 
   supportsStreaming(_modelId: string): boolean {
@@ -81,11 +43,19 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
     let commitRequested = false;
     let finalDelivered = false;
     let commitTimeout: ReturnType<typeof setTimeout> | null = null;
+    let keepAlive: ReturnType<typeof setInterval> | null = null;
 
     function clearCommitTimeout(): void {
       if (commitTimeout) {
         clearTimeout(commitTimeout);
         commitTimeout = null;
+      }
+    }
+
+    function stopKeepAlive(): void {
+      if (keepAlive) {
+        clearInterval(keepAlive);
+        keepAlive = null;
       }
     }
 
@@ -101,7 +71,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       endpointing: "false",
       vad_events: "false",
     });
-    if (language && language !== "auto") params.set("language", language);
+    params.set("language", language ?? "multi");
     appendDeepgramBiasToParams(params, bias);
 
     const ws = new WebSocket(`${DEEPGRAM_LISTEN_URL}?${params}`, {
@@ -120,6 +90,11 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
     }
 
     ws.on("open", () => {
+      keepAlive = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "KeepAlive" }));
+        }
+      }, KEEPALIVE_INTERVAL_MS);
       callbacks.onReady(short);
     });
 
@@ -143,10 +118,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       if (!transcript) return;
 
       if (msg.is_final) {
-        const segment = transcript.trim();
-        if (segment) {
-          accumulatedText = mergeFinalSegment(accumulatedText, segment);
-        }
+        accumulatedText = mergeFinalSegment(accumulatedText, transcript);
         partialText = "";
 
         if (commitRequested) {
@@ -161,10 +133,12 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
     });
 
     ws.on("error", (err) => {
+      stopKeepAlive();
       callbacks.onError(err instanceof Error ? err.message : String(err));
     });
 
     ws.on("close", () => {
+      stopKeepAlive();
       callbacks.onClose();
     });
 
@@ -206,6 +180,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       },
       close(): void {
         clearCommitTimeout();
+        stopKeepAlive();
         if (ws.readyState <= WebSocket.OPEN) ws.close();
       },
     };

@@ -6,6 +6,8 @@ import {
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
 import { getClient } from "@renderer/lib/api";
+import { LANGUAGES } from "@renderer/lib/languages";
+import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { cn } from "@renderer/lib/utils";
 import {
   Check,
@@ -28,6 +30,7 @@ import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
 } from "../../../shared/audio-playback";
+import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -62,7 +65,9 @@ export default function SettingsPage(): React.JSX.Element {
   const { theme, setTheme } = useTheme();
   const [devices, setDevices] = useState<AudioDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
-  const [hotkey, setHotkey] = useState("Alt+Space");
+  const [hotkey, setHotkey] = useState(
+    window.api?.defaultHotkey ?? getDefaultHotkey(),
+  );
   const [hotkeyMode, setHotkeyMode] = useState<"hold" | "toggle">("hold");
   const [language, setLanguage] = useState("auto");
   const [outputMode, setOutputMode] = useState("paste");
@@ -95,10 +100,12 @@ export default function SettingsPage(): React.JSX.Element {
     null,
   );
   const isMac = navigator.userAgent.includes("Mac");
+  // macOS and Windows can deep-link to the OS mic privacy settings.
+  const canOpenMicSettings = isMac || window.api?.platform === "win32";
 
   const checkPermissions = useCallback(async () => {
     try {
-      const mic = await window.api?.checkMicPermission();
+      const mic = await resolveMicStatus();
       if (mic) setMicStatus(mic as MicStatus);
     } catch {}
     try {
@@ -108,7 +115,7 @@ export default function SettingsPage(): React.JSX.Element {
   }, []);
 
   const requestMic = useCallback(async () => {
-    const status = await window.api?.requestMicPermission();
+    const status = await requestMicAccess();
     if (status) setMicStatus(status as MicStatus);
   }, []);
 
@@ -675,26 +682,11 @@ export default function SettingsPage(): React.JSX.Element {
                 className="w-full min-w-0 truncate bg-transparent pr-6 outline-none"
               >
                 <option value="auto">Auto-detect</option>
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="it">Italian</option>
-                <option value="pt">Portuguese</option>
-                <option value="nl">Dutch</option>
-                <option value="ru">Russian</option>
-                <option value="zh">Chinese</option>
-                <option value="ja">Japanese</option>
-                <option value="ko">Korean</option>
-                <option value="ar">Arabic</option>
-                <option value="hi">Hindi</option>
-                <option value="pl">Polish</option>
-                <option value="tr">Turkish</option>
-                <option value="sv">Swedish</option>
-                <option value="da">Danish</option>
-                <option value="no">Norwegian</option>
-                <option value="fi">Finnish</option>
-                <option value="uk">Ukrainian</option>
+                {LANGUAGES.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.label}
+                  </option>
+                ))}
               </select>
             </div>
           </Row>
@@ -802,17 +794,19 @@ export default function SettingsPage(): React.JSX.Element {
               granted={micStatus === "granted"}
               checking={micStatus === "unknown"}
               actionLabel={
-                micStatus === "denied" && isMac
+                micStatus === "denied" && canOpenMicSettings
                   ? "Open Settings"
                   : micStatus === "granted"
                     ? null
                     : "Allow"
               }
-              external={micStatus === "denied" && isMac}
+              external={micStatus === "denied" && canOpenMicSettings}
               onAction={
-                micStatus === "denied" && isMac ? openMicSettings : requestMic
+                micStatus === "denied" && canOpenMicSettings
+                  ? openMicSettings
+                  : requestMic
               }
-              onManage={isMac ? openMicSettings : undefined}
+              onManage={canOpenMicSettings ? openMicSettings : undefined}
             />
           </Row>
           <Row

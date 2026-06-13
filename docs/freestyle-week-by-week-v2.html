@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Freestyle — Week-by-Week v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FCFCFD; --ink:#16181D; --muted:#6F7480; --line:#E6E8EC;
+    --rec:#E5484D; --p1:#16181D; --p2:#6F7480; --p3:#E5484D; --done:#1A9E63;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--paper);color:var(--ink);font-family:'Archivo',sans-serif;-webkit-font-smoothing:antialiased;line-height:1.6}
+  .wrap{max-width:760px;margin:0 auto;padding:0 28px}
+
+  header{padding:88px 0 56px;border-bottom:1px solid var(--line)}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:10px;margin-bottom:32px}
+  .recdot{width:9px;height:9px;border-radius:50%;background:var(--rec);display:inline-block;animation:pulse 2.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  @media (prefers-reduced-motion: reduce){.recdot{animation:none}}
+  h1{font-size:clamp(36px,6.4vw,56px);font-weight:800;font-variation-settings:'wdth' 88;letter-spacing:-.025em;line-height:1.04;margin-bottom:22px}
+  h1 .red{color:var(--rec)}
+  .lede{font-size:17px;color:var(--muted);max-width:58ch}
+  .lede strong{color:var(--ink);font-weight:600}
+
+  .strip{display:flex;gap:3px;margin-top:40px}
+  .strip a{flex:1;height:34px;border-radius:4px;display:flex;align-items:center;justify-content:center;
+    font-family:'IBM Plex Mono',monospace;font-size:11px;color:#fff;text-decoration:none;opacity:.92}
+  .strip a:hover{opacity:1}
+  .strip .s1{background:var(--p1)} .strip .s2{background:var(--p2)} .strip .s3{background:var(--p3)}
+  .strip .launch{outline:2px solid var(--rec);outline-offset:2px}
+  .striplabels{display:flex;justify-content:space-between;margin-top:10px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:.08em}
+
+  .label{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:20px}
+
+  /* state of play */
+  .state{padding:56px 0;border-bottom:1px solid var(--line)}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-bottom:36px}
+  .stat .n{font-size:30px;font-weight:800;font-variation-settings:'wdth' 88;letter-spacing:-.02em}
+  .stat .l{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-top:2px}
+  @media(max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:36px}
+  @media(max-width:640px){.cols{grid-template-columns:1fr}}
+  .col h4{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:500;margin-bottom:12px}
+  .col.done h4{color:var(--done)} .col.gaps h4{color:var(--rec)}
+  .col ul{list-style:none}
+  .col li{font-size:14.5px;padding:7px 0 7px 22px;position:relative;border-bottom:1px solid var(--line)}
+  .col li:last-child{border-bottom:none}
+  .col.done li::before{content:"✓";position:absolute;left:0;color:var(--done);font-family:'IBM Plex Mono',monospace;font-size:13px}
+  .col.gaps li::before{content:"✗";position:absolute;left:0;color:var(--rec);font-family:'IBM Plex Mono',monospace;font-size:13px}
+  .col li b{font-weight:600}
+
+  .phasebar{padding:52px 0 6px}
+  .phasebar .ph{display:flex;align-items:baseline;gap:14px}
+  .phasebar .chip{width:10px;height:10px;border-radius:2px;flex:none;transform:translateY(1px)}
+  .phasebar h2{font-size:22px;font-weight:700;letter-spacing:-.012em;font-variation-settings:'wdth' 92}
+  .phasebar .days{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);letter-spacing:.1em}
+  .phasebar .why{color:var(--muted);font-size:15px;margin-top:8px;max-width:62ch}
+
+  .week{display:grid;grid-template-columns:108px 1fr;gap:0 28px;padding:26px 0;border-bottom:1px solid var(--line)}
+  .wk-id .n{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:500}
+  .wk-id .d{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);margin-top:2px}
+  .wk-body h3{font-size:17px;font-weight:700;letter-spacing:-.01em;margin-bottom:8px}
+  .wk-body h3 .tag{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;color:var(--rec);text-transform:uppercase;margin-left:10px;font-weight:500}
+  ul.t{list-style:none}
+  ul.t li{font-size:15px;padding:5px 0 5px 24px;position:relative;max-width:62ch}
+  ul.t li::before{content:"";position:absolute;left:0;top:12px;width:11px;height:11px;border:1.5px solid var(--muted);border-radius:3px}
+  ul.t li b{font-weight:600}
+  ul.t li .note{color:var(--muted)}
+  .gate{margin-top:10px;font-size:13.5px;color:var(--muted);padding-left:24px;max-width:62ch}
+  .gate b{color:var(--ink);font-weight:600}
+  @media(max-width:560px){.week{grid-template-columns:1fr;gap:6px}}
+
+  .recurring{padding:40px 0;border-bottom:1px solid var(--line)}
+  .rec-items{display:grid;grid-template-columns:1fr 1fr;gap:14px 32px;max-width:680px}
+  .rec-items div{font-size:15px;padding-left:22px;position:relative}
+  .rec-items div::before{content:"↻";position:absolute;left:0;color:var(--rec);font-family:'IBM Plex Mono',monospace;font-size:13px}
+  .rec-items b{font-weight:600}
+  .rec-items span{color:var(--muted)}
+  @media(max-width:560px){.rec-items{grid-template-columns:1fr}}
+
+  footer{padding:48px 0 72px;color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.08em}
+  footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="eyebrow"><span class="recdot"></span>FREESTYLE · WEEK BY WEEK · v2 · JUN 11, 2026</div>
+    <h1>You're further along<br>than the plan assumed.<br><span class="red">Launch moves up.</span></h1>
+    <p class="lede">Onboarding work shipped in 0.1.8. External contributors are already merging PRs. Two blog posts proved the teardown format. <strong>Phase 1 compresses to 3 weeks, Show HN moves from week 7 to week 6 (Jul 20–26), and three new items enter the plan: the README trust fix, the OpenWhispr differentiation, and directory listings.</strong></p>
+    <div class="strip" aria-label="week index">
+      <a class="s1" href="#w1">1</a><a class="s1" href="#w2">2</a><a class="s1" href="#w3">3</a>
+      <a class="s2" href="#w4">4</a><a class="s2" href="#w5">5</a><a class="s2 launch" href="#w6">6</a><a class="s2" href="#w7">7</a><a class="s2" href="#w8">8</a>
+      <a class="s3" href="#w9">9</a><a class="s3" href="#w10">10</a><a class="s3" href="#w11">11</a><a class="s3" href="#w12">12</a><a class="s3" href="#w13">13</a>
+    </div>
+    <div class="striplabels"><span>TRUST GAPS</span><span>LAUNCH · WK 6</span><span>LOOPS</span></div>
+  </div>
+</header>
+
+<div class="state">
+  <div class="wrap">
+    <div class="label">State of play · Jun 11</div>
+    <div class="stats">
+      <div class="stat"><div class="n">336</div><div class="l">GitHub stars</div></div>
+      <div class="stat"><div class="n">45</div><div class="l">Forks</div></div>
+      <div class="stat"><div class="n">6+</div><div class="l">Contributors</div></div>
+      <div class="stat"><div class="n">0.1.8</div><div class="l">Shipped today</div></div>
+    </div>
+    <div class="cols">
+      <div class="col done">
+        <h4>Already done — skip in plan</h4>
+        <ul>
+          <li><b>v1 on all 3 platforms,</b> 6 releases, 3-day ship cadence</li>
+          <li><b>Onboarding funnel + cross-platform audit</b> landed in 0.1.8</li>
+          <li><b>Contributor flywheel is live</b> — 4 external PRs in the latest release alone</li>
+          <li><b>Teardown format proven</b> — floating-pill post (Jun 8) is the flagship's warm-up act</li>
+          <li>Manifesto post, LinkedIn launch, Discord, X account, <span class="note">wispr-flow-alternative</span> GitHub topic</li>
+        </ul>
+      </div>
+      <div class="col gaps">
+        <h4>Gaps the research found</h4>
+        <ul>
+          <li><b>Zero external footprint</b> — no Show HN, no unprompted mentions, absent from AlternativeTo's 50+ Wispr alternatives</li>
+          <li><b>OpenWhispr owns "open source Wispr alternative"</b> — MIT, local models, listicle coverage. Need a sharper claim</li>
+          <li><b>No sustainability story</b> — Freestyle is MIT (LICENSE, README, ROADMAP all agree), so "not open source" is a non-issue. The real question an MIT project draws: how does it stay funded, and what stops a closed-source pivot?</li>
+          <li><b>README contradicts itself</b> — "never leaves your device" beside six cloud BYOK providers (+ "grammer" typo)</li>
+          <li>No zero-edit benchmark, no trust artifact, no comparison page</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="recurring">
+  <div class="wrap">
+    <div class="label">Every week</div>
+    <div class="rec-items">
+      <div><b>Friday dashboard</b> <span>— stars, downloads, retention proxy, mentions, contributors. Baseline: 336 / ? / ? / 0 / 6.</span></div>
+      <div><b>Reddit, 30 min</b> <span>— r/localllama, r/macapps, r/privacy. Comments now; no direct posts until launch week.</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="phasebar"><div class="wrap"><div class="ph"><span class="chip" style="background:var(--p1)"></span><h2>Phase 1 — Close the trust gaps</h2><span class="days">WKS 1–3 · JUN 15 – JUL 5</span></div>
+<p class="why">Onboarding shipped, so Phase 1 shrinks from 4 weeks to 3 and refocuses: for a trust-positioned product, every claim must survive a hostile HN reader.</p></div></div>
+
+<div class="wrap">
+  <div class="week" id="w1">
+    <div class="wk-id"><div class="n">WK 01</div><div class="d">JUN 15–21</div></div>
+    <div class="wk-body">
+      <h3>Make every claim bulletproof</h3>
+      <ul class="t">
+        <li><b>Confirm the sustainability answer with Aditya.</b> The license is already settled — MIT across LICENSE, README, and ROADMAP — so "not open source" is off the table. Spend the energy instead on the question MIT invites: how the project stays funded and why it won't pivot closed (see WK 12). Don't improvise it in an HN thread.</li>
+        <li>README pass <b>(started Jun 11)</b>: "grammer" fixed, and the local-first privacy claim now scopes to local models with cloud BYOK called out as opt-in. Still to do: lead with whisper.cpp over the cloud provider list, mirror the website's careful phrasing.</li>
+        <li>Stand up the dashboard: stars, release-asset downloads, Discord actives, mention search, contributor count.</li>
+        <li>Time-to-first-real-dictation on 3 clean machines — validate that the 0.1.8 onboarding work actually hits &lt;60s.</li>
+      </ul>
+      <div class="gate">Gate: with the license settled (MIT), the gate becomes the sustainability answer — written and ready for the launch thread.</div>
+    </div>
+  </div>
+
+  <div class="week" id="w2">
+    <div class="wk-id"><div class="n">WK 02</div><div class="d">JUN 22–28</div></div>
+    <div class="wk-body">
+      <h3>Trust artifact + benchmark</h3>
+      <ul class="t">
+        <li><b>Publish "Where your audio goes"</b> — network diagram per mode (local vs BYOK), zero-egress proof for local, verify-it-yourself with Little Snitch/Wireshark. This is blog post #3 and launch ammo.</li>
+        <li>Build the zero-edit benchmark harness: same audio set through Freestyle (local + BYOK), Wispr, Apple dictation, <b>and OpenWhispr</b>. Honest numbers, including losses.</li>
+        <li>Recruit 10 user interviews from Discord (lighter than the original 20 — you have live contributors to talk to as well).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="week" id="w3">
+    <div class="wk-id"><div class="n">WK 03</div><div class="d">JUN 29 – JUL 5</div></div>
+    <div class="wk-body">
+      <h3>Free distribution + the positioning call <span class="tag">July 4 week — keep it light</span></h3>
+      <ul class="t">
+        <li><b>Submit Freestyle everywhere it's missing:</b> AlternativeTo (Wispr Flow + OpenWhispr pages), relevant awesome-lists, directory sites. ~2 hours, permanent high-intent traffic.</li>
+        <li><b>Write the one-line differentiation vs OpenWhispr</b> — "open source" is no longer the wedge; they have it. Candidates: contextual correction, cross-platform polish, ship velocity, the teardown-driven credibility. Pick one, make it the comparison page's spine.</li>
+        <li>Publish benchmark results (blog post #4 if the numbers tell a story).</li>
+        <li>Finish interviews; rank fixes; top 3 go into week 4–5 product time.</li>
+      </ul>
+      <div class="gate">Gate to Phase 2: trust doc live, benchmark done, sustainability answer written, differentiation written. All four or the launch slips a week.</div>
+    </div>
+  </div>
+</div>
+
+<div class="phasebar"><div class="wrap"><div class="ph"><span class="chip" style="background:var(--p2)"></span><h2>Phase 2 — The launch</h2><span class="days">WKS 4–8 · JUL 6 – AUG 9</span></div>
+<p class="why">The floating-pill post is the proof the format works. The flagship is the same move at full power, with a launch apparatus around it.</p></div></div>
+
+<div class="wrap">
+  <div class="week" id="w4">
+    <div class="wk-id"><div class="n">WK 04</div><div class="d">JUL 6–12</div></div>
+    <div class="wk-body">
+      <h3>Draft the flagship</h3>
+      <ul class="t">
+        <li><b>Draft "How Wispr Flow actually works (and why we built the local-first version)"</b> — the Baseten/Chains research + Excalidraw diagrams. Link the floating-pill post and trust doc from it; the three together are the credibility stack.</li>
+        <li>Draft the comparison page: Freestyle vs Wispr Flow vs OpenWhispr — honest three-way table built on the benchmark numbers. Target <span class="note">wispr flow alternative</span>.</li>
+        <li>Ship the top interview-driven fixes.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="week" id="w5">
+    <div class="wk-id"><div class="n">WK 05</div><div class="d">JUL 13–19</div></div>
+    <div class="wk-body">
+      <h3>Polish + pre-launch</h3>
+      <ul class="t">
+        <li><b>Finish the flagship.</b> Two cold reads — one technical (Aditya), one non-technical. Pre-write answers to the predictable hostile comments: how it stays funded (MIT, so no license fight — but expect the question), "yet another whisper wrapper," the OpenWhispr comparison.</li>
+        <li>Launch checklist: clean-machine installs on all 3 platforms, demo GIF above the README fold, benchmark in the post.</li>
+        <li>Brief the contributor crew — Isaac, Uday, Sri, Shikhar, anish808, andrewjsalzer, shawnriju — launch day is all-hands-in-comments.</li>
+        <li>Build the evangelist list: 15 targets across OSS maintainers, privacy YouTubers, accessibility advocates, dev newsletters.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="week" id="w6">
+    <div class="wk-id"><div class="n">WK 06</div><div class="d">JUL 20–26</div></div>
+    <div class="wk-body">
+      <h3>Launch <span class="tag">● Show HN — Tue or Wed AM PT</span></h3>
+      <ul class="t">
+        <li><b>Show HN, morning PT.</b> You + Aditya in comments all day. The sustainability question gets the prepared answer, with grace.</li>
+        <li>Same-day native post to r/localllama (the angle: local model story + benchmark). LinkedIn follow-up rides the wave.</li>
+        <li><b>Comparison page live within 48h</b> — catch the "wispr flow alternative" searches the post generates.</li>
+        <li>Every bug and feature ask from the thread becomes a public issue, same day.</li>
+      </ul>
+      <div class="gate">Protect this week from Adapt crunch. Check the date against your work calendar now.</div>
+    </div>
+  </div>
+
+  <div class="week" id="w7">
+    <div class="wk-id"><div class="n">WK 07</div><div class="d">JUL 27 – AUG 2</div></div>
+    <div class="wk-body">
+      <h3>Convert the spike</h3>
+      <ul class="t">
+        <li><b>Evangelist wave 1: white-glove onboard 5</b> — personal setup, direct line to you.</li>
+        <li>Fix the top 3 launch-surfaced bugs at your usual 3-day cadence — speed is reputation.</li>
+        <li>Launch retro: did the launch cohort's time-to-first-dictation and week-1 retention hold?</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="week" id="w8">
+    <div class="wk-id"><div class="n">WK 08</div><div class="d">AUG 3–9</div></div>
+    <div class="wk-body">
+      <h3>Second wave + mention check</h3>
+      <ul class="t">
+        <li><b>Evangelist wave 2: next 5.</b> Ask wave 1 for one honest public take.</li>
+        <li>SEO check: is the comparison page surfacing? Is Freestyle now on the AlternativeTo lists with likes?</li>
+        <li><b>Mention check:</b> unprompted Reddit/HN/X mentions since launch. Zero means the wedge isn't landing — diagnose before Phase 3.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="phasebar"><div class="wrap"><div class="ph"><span class="chip" style="background:var(--p3)"></span><h2>Phase 3 — Compounding loops</h2><span class="days">WKS 9–13 · AUG 10 – SEP 13</span></div>
+<p class="why">The contributor flywheel already turns — Phase 3 formalizes it instead of building it. The milestone mechanic changes: Linux already shipped, so gate a future feature, not a platform.</p></div></div>
+
+<div class="wrap">
+  <div class="week" id="w9">
+    <div class="wk-id"><div class="n">WK 09</div><div class="d">AUG 10–16</div></div>
+    <div class="wk-body">
+      <h3>Formalize the flywheel</h3>
+      <ul class="t">
+        <li><b>Pick the milestone mechanic:</b> "X beta opens at 1,000 stars" where X is the most-requested launch-thread feature (meeting transcription? mobile? speaker diarization?). Transparent rules — hidden deadlines were Wispr's own regret.</li>
+        <li>10+ genuinely-good first issues from the launch backlog; "built by N contributors" counter in the README.</li>
+        <li>Contributor credit cadence locked: every release note, every name (you're already doing this — keep it).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="week" id="w10">
+    <div class="wk-id"><div class="n">WK 10</div><div class="d">AUG 17–23</div></div>
+    <div class="wk-body">
+      <h3>Cadence begins</h3>
+      <ul class="t">
+        <li><b>Release-notes post #1 + the 20-second clip:</b> dictating into Cursor, instant text. Make it loop-worthy; this is the repeatable growth asset.</li>
+        <li>Review the first-PR funnel: are good-first-issues getting picked up by post-launch arrivals?</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="week" id="w11">
+    <div class="wk-id"><div class="n">WK 11</div><div class="d">AUG 24–30</div></div>
+    <div class="wk-body">
+      <h3>Teardown #3</h3>
+      <ul class="t">
+        <li><b>Next technical post</b> — the floating pill and flagship established the franchise; keep it going (latency pipeline? local model selection? the dictionary engine?). Each one compounds the "they show their work" reputation OpenWhispr doesn't have.</li>
+        <li>Star-milestone check-in if within striking distance.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="week" id="w12">
+    <div class="wk-id"><div class="n">WK 12</div><div class="d">AUG 31 – SEP 6</div></div>
+    <div class="wk-body">
+      <h3>Monetization: decide, don't build</h3>
+      <ul class="t">
+        <li><b>One-page decision doc with Aditya.</b> MIT pre-commits nothing — so monetization is a fully open choice: hosted sync/teams, paid support, Sponsors, or deliberately nothing. Whatever you pick has to square with staying MIT — no rug-pull to closed source.</li>
+        <li>Release-notes post #2 + clip.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="week" id="w13">
+    <div class="wk-id"><div class="n">WK 13</div><div class="d">SEP 7–13</div></div>
+    <div class="wk-body">
+      <h3>Day-90 review</h3>
+      <ul class="t">
+        <li><b>Score against baseline:</b> 336 stars / 6 contributors / 0 mentions on Jun 11. Honest deltas, not vibes.</li>
+        <li>The hard question: did launch-week arrivals stick as users and contributors, or was it a spike?</li>
+        <li>Write the next 90 in one page while it's fresh.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>FREESTYLE-VOICE / FREESTYLE · v2</span>
+    <span>HARDEST DEADLINE: THE SUSTAINABILITY ANSWER, WK 1</span>
+  </div>
+</footer>
+
+</body>
+</html>

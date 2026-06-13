@@ -126,6 +126,9 @@ async function doStart(modelId: string): Promise<void> {
       if (settled) return;
       settled = true;
       const lastOutput = stderr.trim().slice(-500);
+      try {
+        proc.kill();
+      } catch {}
       reject(
         new Error(
           `whisper-server failed to start within 90 seconds. Last output:\n${lastOutput}`,
@@ -144,31 +147,18 @@ async function doStart(modelId: string): Promise<void> {
       resolve();
     }
 
-    function checkReady(text: string): void {
-      if (
-        text.includes("listening") ||
-        text.includes("model loaded") ||
-        text.includes("http://") ||
-        text.includes("running on")
-      ) {
-        onReady();
-      }
-    }
-
     proc.stdout?.on("data", (data: Buffer) => {
-      const text = data.toString();
-      serverLog.debug(`stdout: ${text.trimEnd()}`);
-      checkReady(text);
+      serverLog.debug(`stdout: ${data.toString().trimEnd()}`);
     });
 
     proc.stderr?.on("data", (data: Buffer) => {
       const text = data.toString();
       stderr += text;
       serverLog.debug(`stderr: ${text.trimEnd()}`);
-      checkReady(text);
     });
 
-    // Poll the HTTP endpoint as a fallback readiness check
+    // The server is ready once it answers HTTP — version-proof, unlike
+    // matching startup log strings.
     healthCheckInterval = setInterval(async () => {
       if (settled) {
         if (healthCheckInterval) clearInterval(healthCheckInterval);
@@ -182,7 +172,7 @@ async function doStart(modelId: string): Promise<void> {
           onReady();
         }
       } catch {}
-    }, 2000);
+    }, 250);
 
     proc.on("error", (err) => {
       if (settled) return;

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getLanguageSetting } from "../lib/language.js";
 import { postProcess } from "../lib/post-process.js";
 
 const postProcessRoute = new Hono().post("/", async (c) => {
@@ -10,7 +11,12 @@ const postProcessRoute = new Hono().post("/", async (c) => {
 
   const appContext: string | null = body.appContext ?? null;
 
-  const pp = await postProcess(body.text, appContext, "multi_segment");
+  const pp = await postProcess(
+    body.text,
+    appContext,
+    "multi_segment",
+    getLanguageSetting(),
+  );
 
   return c.json({
     cleaned: pp.cleaned,

@@ -211,6 +211,106 @@ describe("Dictionary", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Vocabulary CRUD
+// ---------------------------------------------------------------------------
+
+describe("Vocabulary", () => {
+  it("GET /api/vocabulary returns list shape", async () => {
+    const res = await req("/api/vocabulary");
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveProperty("items");
+    expect(data).toHaveProperty("total");
+    expect(Array.isArray(data.items)).toBe(true);
+  });
+
+  it("POST creates a new term", async () => {
+    const res = await json("/api/vocabulary", {
+      term: "TypeScript",
+      notes: "Programming language",
+    });
+    expect(res.status).toBe(201);
+    const data = await res.json();
+    expect(data.term).toBe("TypeScript");
+    expect(data.notes).toBe("Programming language");
+    expect(data.id).toBeDefined();
+  });
+
+  it("GET /:id returns the created term", async () => {
+    const create = await json("/api/vocabulary", { term: "Kubernetes" });
+    const { id } = await create.json();
+
+    const get = await req(`/api/vocabulary/${id}`);
+    expect(get.status).toBe(200);
+    expect((await get.json()).term).toBe("Kubernetes");
+  });
+
+  it("PUT updates a term", async () => {
+    const create = await json("/api/vocabulary", { term: "React" });
+    const { id } = await create.json();
+
+    const put = await json(
+      `/api/vocabulary/${id}`,
+      { notes: "UI library" },
+      "PUT",
+    );
+    expect(put.status).toBe(200);
+    expect((await put.json()).notes).toBe("UI library");
+  });
+
+  it("DELETE removes a term", async () => {
+    const create = await json("/api/vocabulary", { term: "to-delete" });
+    const { id } = await create.json();
+
+    const del = await req(`/api/vocabulary/${id}`, { method: "DELETE" });
+    expect(del.status).toBe(200);
+
+    const get = await req(`/api/vocabulary/${id}`);
+    expect(get.status).toBe(404);
+  });
+
+  it("POST rejects duplicate terms", async () => {
+    await json("/api/vocabulary", { term: "dupe-term" });
+    const res = await json("/api/vocabulary", { term: "dupe-term" });
+    expect(res.status).toBe(409);
+  });
+
+  it("GET /api/vocabulary supports search", async () => {
+    await json("/api/vocabulary", { term: "searchable-vocab" });
+
+    const res = await req("/api/vocabulary?search=searchable-vocab");
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(
+      data.items.some((i: { term: string }) => i.term === "searchable-vocab"),
+    ).toBe(true);
+  });
+
+  it("GET /api/vocabulary/all returns all terms", async () => {
+    const res = await req("/api/vocabulary/all");
+    expect(res.status).toBe(200);
+    expect(Array.isArray(await res.json())).toBe(true);
+  });
+
+  it("POST /api/vocabulary/import bulk imports", async () => {
+    const res = await json("/api/vocabulary/import", [
+      { term: "import-one" },
+      { term: "import-two", notes: "note" },
+    ]);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.imported).toBe(2);
+    expect(data.skipped).toBe(0);
+  });
+
+  it("GET /api/vocabulary/export/json returns JSON export", async () => {
+    const res = await req("/api/vocabulary/export/json");
+    expect(res.status).toBe(200);
+    expect(Array.isArray(await res.json())).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Format Rules CRUD
 // ---------------------------------------------------------------------------
 

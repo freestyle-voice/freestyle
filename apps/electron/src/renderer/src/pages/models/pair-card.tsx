@@ -31,7 +31,7 @@ export function PairCard({
   return (
     <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
       <PairSide
-        kicker="Voice model · required"
+        kicker="Transcription · required"
         modelName={voice?.model_name}
         providerName={voice ? displayName(voice.provider) : undefined}
         cta="Change"
@@ -51,7 +51,7 @@ export function PairCard({
       />
       <div className="border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0">
         <PairSide
-          kicker="Post-processing model · optional"
+          kicker="AI cleanup · optional"
           modelName={llmCleanup ? llm?.model_name : undefined}
           providerName={
             llmCleanup && llm ? displayName(llm.provider) : undefined

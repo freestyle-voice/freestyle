@@ -18,6 +18,7 @@ import {
   Mic,
   Monitor,
   Moon,
+  Sparkles,
   Sun,
   Trash2,
   Volume2,
@@ -46,6 +47,11 @@ function normalizePillPos(pos: string): string {
   return pos.startsWith("custom") ? "custom" : pos;
 }
 
+function clampAudioDuckingLevel(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(Math.max(Math.round(value), 0), 100);
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -62,6 +68,9 @@ export default function SettingsPage(): React.JSX.Element {
   const [outputMode, setOutputMode] = useState("paste");
   const [pillPosition, setPillPosition] = useState("bottom-center");
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [audioDuckingEnabled, setAudioDuckingEnabled] = useState(true);
+  const [audioDuckingLevel, setAudioDuckingLevel] = useState(0);
+  const [llmCleanupEnabled, setLlmCleanupEnabled] = useState(false);
   const [transcriptionPrompt, setTranscriptionPrompt] = useState("");
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
@@ -249,6 +258,39 @@ export default function SettingsPage(): React.JSX.Element {
       })
       .catch(() => {});
     getClient()
+      .api.settings[":key"].$get({ param: { key: "audio_ducking_enabled" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.value === "false") setAudioDuckingEnabled(false);
+      })
+      .catch(() => {});
+    getClient()
+      .api.settings[":key"].$get({ param: { key: "audio_ducking_level" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        setAudioDuckingLevel(clampAudioDuckingLevel(Number(data?.value ?? 0)));
+      })
+      .catch(() => {});
+    getClient()
+      .api.settings[":key"].$get({ param: { key: "llm_cleanup" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.value === "true") setLlmCleanupEnabled(true);
+      })
+      .catch(() => {});
+    getClient()
+      .api.settings[":key"].$get({ param: { key: "theme" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (
+          data?.value &&
+          ["light", "dark", "system"].includes(data.value as string)
+        ) {
+          setTheme(data.value as string);
+        }
+      })
+      .catch(() => {});
+    getClient()
       .api.settings[":key"].$get({ param: { key: "transcription_prompt" } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
@@ -321,7 +363,7 @@ export default function SettingsPage(): React.JSX.Element {
       if (accessibilityPollRef.current)
         clearInterval(accessibilityPollRef.current);
     };
-  }, [checkPermissions]);
+  }, [checkPermissions, setTheme]);
 
   const handleDeviceChange = useCallback((deviceId: string) => {
     setSelectedDevice(deviceId);
@@ -400,6 +442,39 @@ export default function SettingsPage(): React.JSX.Element {
     getClient()
       .api.settings[":key"].$put({
         param: { key: "sound_enabled" },
+        json: { value: String(enabled) },
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleAudioDuckingToggle = useCallback((enabled: boolean) => {
+    setAudioDuckingEnabled(enabled);
+    window.api?.sendAudioDuckingChanged(enabled);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: "audio_ducking_enabled" },
+        json: { value: String(enabled) },
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleAudioDuckingLevelChange = useCallback((value: number) => {
+    const next = clampAudioDuckingLevel(value);
+    setAudioDuckingLevel(next);
+    window.api?.sendAudioDuckingLevelChanged(next);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: "audio_ducking_level" },
+        json: { value: String(next) },
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleLlmCleanupToggle = useCallback((enabled: boolean) => {
+    setLlmCleanupEnabled(enabled);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: "llm_cleanup" },
         json: { value: String(enabled) },
       })
       .catch(() => {});
@@ -513,7 +588,7 @@ export default function SettingsPage(): React.JSX.Element {
             desc={
               hotkeyMode === "toggle"
                 ? "Press the shortcut once to start, press again to stop."
-                : "Hold the shortcut to record, release to transcribe."
+                : "Push-to-talk while the shortcut is held; release to transcribe."
             }
           >
             {recorderState === "idle" ? (
@@ -585,7 +660,7 @@ export default function SettingsPage(): React.JSX.Element {
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                Hold
+                Push-to-talk
               </button>
               <button
                 type="button"
@@ -680,7 +755,6 @@ export default function SettingsPage(): React.JSX.Element {
           <Row
             label="Sound feedback"
             desc="Soft chimes at the start and end of recording."
-            last
           >
             <div className="flex items-center gap-2.5">
               {soundEnabled ? (
@@ -689,6 +763,61 @@ export default function SettingsPage(): React.JSX.Element {
                 <VolumeOff className="text-muted-foreground h-4 w-4 shrink-0" />
               )}
               <Toggle on={soundEnabled} onChange={handleSoundToggle} />
+            </div>
+          </Row>
+
+          <Row
+            label="Push-to-talk ducking"
+            desc="Set the background audio level while push-to-talk is active. 0% fully mutes it; higher values keep more sound in the mix."
+            last
+          >
+            <div className="max-w-md space-y-3">
+              <div className="flex items-center gap-2.5">
+                {audioDuckingEnabled ? (
+                  <Volume2 className="text-muted-foreground h-4 w-4 shrink-0" />
+                ) : (
+                  <VolumeOff className="text-muted-foreground h-4 w-4 shrink-0" />
+                )}
+                <Toggle
+                  on={audioDuckingEnabled}
+                  onChange={handleAudioDuckingToggle}
+                />
+                <span className="text-muted-foreground text-[12.5px]">
+                  {audioDuckingLevel === 0
+                    ? "Full mute"
+                    : `${audioDuckingLevel}% of current volume`}
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-muted-foreground w-10 text-[12px]">
+                  0%
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={audioDuckingLevel}
+                  disabled={!audioDuckingEnabled}
+                  onChange={(e) =>
+                    handleAudioDuckingLevelChange(Number(e.target.value))
+                  }
+                  className="h-2 w-full appearance-none rounded-full outline-none disabled:opacity-40 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-[0_0_0_4px_var(--card)]"
+                  style={{
+                    background: `linear-gradient(to right, var(--color-primary) 0%, var(--color-primary) ${audioDuckingLevel}%, color-mix(in srgb, var(--color-border) 86%, transparent) ${audioDuckingLevel}%, color-mix(in srgb, var(--color-border) 86%, transparent) 100%)`,
+                  }}
+                />
+                <span className="text-muted-foreground w-12 text-right text-[12px]">
+                  100%
+                </span>
+              </div>
+              <p className="text-muted-foreground text-[12px] leading-[1.5]">
+                {audioDuckingEnabled
+                  ? audioDuckingLevel === 0
+                    ? "Freestyle fully mutes background audio while you hold push-to-talk."
+                    : `Freestyle keeps background audio at ${audioDuckingLevel}% of its current volume while you hold push-to-talk.`
+                  : "Turn this on if you want Freestyle to reduce or mute background audio while you speak."}
+              </p>
             </div>
           </Row>
         </Section>
@@ -716,6 +845,22 @@ export default function SettingsPage(): React.JSX.Element {
               active={pillPosition}
               onSelect={handlePillPositionChange}
             />
+          </Row>
+        </Section>
+
+        <Section label="Cleanup model">
+          <Row
+            label="Enable cleanup model"
+            desc="Use a text model to post-process transcripts after speech recognition. Configure the cleanup model on the Models page."
+            last
+          >
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="text-muted-foreground h-4 w-4 shrink-0" />
+              <Toggle
+                on={llmCleanupEnabled}
+                onChange={handleLlmCleanupToggle}
+              />
+            </div>
           </Row>
         </Section>
 
@@ -912,7 +1057,7 @@ function Segment({
                 ? "px-2.5 py-[4px] text-[12px]"
                 : "px-3 py-[6px] text-[12.5px]",
               isOn
-                ? "bg-card border-border text-foreground border font-medium shadow-[0_1px_2px_rgba(20,12,4,0.04)]"
+                ? "bg-card border-border text-foreground border font-medium shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
                 : "text-muted-foreground hover:text-foreground border border-transparent",
             )}
           >

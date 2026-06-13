@@ -3,11 +3,13 @@ import { ElevenLabsTranscriptionProvider } from "./providers/elevenlabs.js";
 import { GroqTranscriptionProvider } from "./providers/groq.js";
 import { MlxLocalTranscriptionProvider } from "./providers/mlx-local.js";
 import { OpenAITranscriptionProvider } from "./providers/openai.js";
+import { OpenRouterTranscriptionProvider } from "./providers/openrouter.js";
 import { WhisperLocalTranscriptionProvider } from "./providers/whisper-local.js";
 import type { TranscriptionProvider } from "./types.js";
 
 const providers: TranscriptionProvider[] = [
   new OpenAITranscriptionProvider(),
+  new OpenRouterTranscriptionProvider(),
   new DeepgramTranscriptionProvider(),
   new ElevenLabsTranscriptionProvider(),
   new GroqTranscriptionProvider(),

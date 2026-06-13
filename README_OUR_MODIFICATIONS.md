@@ -109,11 +109,20 @@ Key files:
 
 - Changed the main accent away from green to a royal-blue direction
 - Moved the general background toward a darker graphite-grey presentation
+- Recolored the packaged app icon and brand-logo assets from green to royal
+  blue for visual consistency across the installer and media surfaces
 
 Key files:
 
 - `apps/electron/src/renderer/src/globals.css`
 - `apps/electron/src/renderer/src/components/model-row.tsx`
+- `apps/electron/build/icon.icns`
+- `apps/electron/build/icon.ico`
+- `apps/electron/build/icon.png`
+- `apps/electron/resources/icon.png`
+- `media/freestyle-logo-full-dark.png`
+- `media/freestyle-logo-full-light.png`
+- `media/freestyle-logo-square.png`
 
 ### 7. Documentation and delivery artifacts
 
@@ -138,6 +147,10 @@ Files changed in the implementation delta:
 - `apps/electron/src/preload/index.ts`
 - `apps/electron/src/renderer/src/components/model-row.tsx`
 - `apps/electron/src/renderer/src/globals.css`
+- `apps/electron/build/icon.icns`
+- `apps/electron/build/icon.ico`
+- `apps/electron/build/icon.png`
+- `apps/electron/resources/icon.png`
 - `apps/electron/src/renderer/src/lib/models.ts`
 - `apps/electron/src/renderer/src/pages/app.tsx`
 - `apps/electron/src/renderer/src/pages/models/model-list.tsx`
@@ -155,6 +168,9 @@ Files changed in the implementation delta:
 - `apps/server/tests/openapi-compatible.test.ts`
 - `apps/server/tests/openrouter.test.ts`
 - `docs/openapi-compatible-and-push-to-talk-hardening-2026-06-12.md`
+- `media/freestyle-logo-full-dark.png`
+- `media/freestyle-logo-full-light.png`
+- `media/freestyle-logo-square.png`
 - `packages/validations/src/index.ts`
 - `packages/validations/src/openapi.ts`
 

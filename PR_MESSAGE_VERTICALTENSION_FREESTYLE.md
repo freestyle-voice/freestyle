@@ -23,6 +23,7 @@ Compared with upstream `verticaltension/freestyle`, this branch:
   shared `/models`
 - shifts the accent and background presentation toward royal blue and dark
   graphite
+- recolors the packaged app icon and shared brand-logo assets to royal blue
 - documents the implementation and delivery artifacts
 
 ## Main changes
@@ -57,6 +58,8 @@ Compared with upstream `verticaltension/freestyle`, this branch:
 
 - updated the accent styling toward royal blue
 - updated the base background styling toward dark graphite grey
+- recolored the packaged app icon and shared Freestyle logo assets toward royal
+  blue
 
 ### Documentation
 

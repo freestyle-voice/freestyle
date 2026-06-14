@@ -20,8 +20,15 @@ type BarMode = "connecting" | "listening" | "speaking";
 // ---------------------------------------------------------------------------
 
 let _soundEnabled = true;
+let _duckingEnabled = true;
+let _duckingLevel = 0;
 let _outputMode = "paste";
 let _toneCtx: AudioContext | null = null;
+
+function clampDuckingLevel(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(Math.max(Math.round(value), 0), 100);
+}
 
 function getToneCtx(): AudioContext {
   if (!_toneCtx || _toneCtx.state === "closed") _toneCtx = new AudioContext();
@@ -165,6 +172,15 @@ export default function AppPage(): React.JSX.Element {
   const drainAgainRef = useRef(false);
 
   const getInputVolume = useCallback(() => volumeRef.current, []);
+  const startAudioDucking = useCallback(() => {
+    if (!_duckingEnabled) return;
+    const request = window.api?.startAudioDucking(_duckingLevel / 100);
+    request?.catch(() => {});
+  }, []);
+  const stopAudioDucking = useCallback(() => {
+    const request = window.api?.stopAudioDucking();
+    request?.catch(() => {});
+  }, []);
 
   // ---- Queue drain ----
   // biome-ignore lint/correctness/useExhaustiveDependencies: drainQueue only reads refs plus hidePill, which is declared later in this component, so adding it to the deps array would reference it before initialization (TDZ). The empty array is intentional.
@@ -505,6 +521,7 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- Hide pill ----
   const hidePill = useCallback(() => {
+    stopAudioDucking();
     setPillState("idle");
     setIsReRecording(false);
     isReRecordingRef.current = false;
@@ -518,7 +535,7 @@ export default function AppPage(): React.JSX.Element {
     streamResolverRef.current = null;
     stopVisualization();
     window.api.hidePill();
-  }, [stopVisualization, setPillState]);
+  }, [stopVisualization, stopAudioDucking, setPillState]);
 
   // ---- Start recording ----
   const startRecording = useCallback(
@@ -582,6 +599,7 @@ export default function AppPage(): React.JSX.Element {
           return;
         }
 
+        startAudioDucking();
         playTone("start");
         setPillState("recording");
         recordingActiveRef.current = true;
@@ -598,6 +616,7 @@ export default function AppPage(): React.JSX.Element {
       } catch (err) {
         pendingCommitRef.current = false;
         recorderRef.current.releaseStream();
+        stopAudioDucking();
         hidePill();
         window.api.showErrorDialog(
           "Recording Failed",
@@ -605,7 +624,15 @@ export default function AppPage(): React.JSX.Element {
         );
       }
     },
-    [startBarAnimation, startListening, hidePill, getStreamer, setPillState],
+    [
+      startBarAnimation,
+      startListening,
+      hidePill,
+      getStreamer,
+      setPillState,
+      startAudioDucking,
+      stopAudioDucking,
+    ],
   );
 
   // ---- Commit recording ----
@@ -614,6 +641,7 @@ export default function AppPage(): React.JSX.Element {
     recordingActiveRef.current = false;
     isReRecordingRef.current = false;
     setIsReRecording(false);
+    stopAudioDucking();
     playTone("stop");
 
     clearInterval(timerRef.current);
@@ -769,6 +797,7 @@ export default function AppPage(): React.JSX.Element {
     startBarAnimation,
     restFallbackTranscribe,
     setPillState,
+    stopAudioDucking,
   ]);
 
   // ---- Cancel ----
@@ -781,8 +810,9 @@ export default function AppPage(): React.JSX.Element {
     streamerRef.current?.cancel();
     recorderRef.current.cancel();
     recorderRef.current.releaseStream();
+    stopAudioDucking();
     hidePill();
-  }, [hidePill]);
+  }, [hidePill, stopAudioDucking]);
 
   // ---- Preferences ----
   const applyPillPosition = useCallback((pos: string | null | undefined) => {
@@ -798,6 +828,20 @@ export default function AppPage(): React.JSX.Element {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.value === "false") _soundEnabled = false;
+      })
+      .catch(() => {});
+    getClient()
+      .api.settings[":key"].$get({ param: { key: "audio_ducking_enabled" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        _duckingEnabled = data?.value !== "false";
+      })
+      .catch(() => {});
+    getClient()
+      .api.settings[":key"].$get({ param: { key: "audio_ducking_level" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        _duckingLevel = clampDuckingLevel(Number(data?.value ?? 0));
       })
       .catch(() => {});
     getClient()
@@ -817,9 +861,19 @@ export default function AppPage(): React.JSX.Element {
     const removeOutputMode = window.api?.onOutputModeChanged((mode) => {
       _outputMode = mode;
     });
+    const removeAudioDucking = window.api?.onAudioDuckingChanged((enabled) => {
+      _duckingEnabled = enabled;
+    });
+    const removeAudioDuckingLevel = window.api?.onAudioDuckingLevelChanged(
+      (level) => {
+        _duckingLevel = clampDuckingLevel(level);
+      },
+    );
     return () => {
       removePillPos?.();
       removeOutputMode?.();
+      removeAudioDucking?.();
+      removeAudioDuckingLevel?.();
     };
   }, [applyPillPosition]);
 
@@ -959,8 +1013,8 @@ export default function AppPage(): React.JSX.Element {
             50% { box-shadow: 0 0 10px 2px rgba(251,191,36,0.22), 0 0 16px 4px rgba(251,191,36,0.09); }
           }
           @keyframes glow-pulse-green {
-            0%, 100% { box-shadow: 0 0 6px 2px rgba(138,182,42,0.12), 0 0 13px 3px rgba(138,182,42,0.05); }
-            50% { box-shadow: 0 0 10px 2px rgba(138,182,42,0.20), 0 0 16px 4px rgba(138,182,42,0.08); }
+            0%, 100% { box-shadow: 0 0 6px 2px rgba(91,124,250,0.14), 0 0 13px 3px rgba(91,124,250,0.06); }
+            50% { box-shadow: 0 0 10px 2px rgba(91,124,250,0.22), 0 0 16px 4px rgba(91,124,250,0.1); }
           }
           @keyframes glow-pulse-blue {
             0%, 100% { box-shadow: 0 0 6px 2px rgba(96,165,250,0.14), 0 0 13px 3px rgba(96,165,250,0.06); }
@@ -1093,7 +1147,7 @@ export default function AppPage(): React.JSX.Element {
                     ? ["#60A5FA", "#3B82F6"]
                     : state === "initializing"
                       ? ["#FBBF24", "#F59E0B"]
-                      : ["#8AB62A", "#6B8F12"]
+                      : ["#5A6FAD", "#435595"]
                 }
                 agentState={
                   state === "initializing"

@@ -84,7 +84,12 @@ import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
 import { MicListener } from "./mic-listener";
-import { isWaylandSession, pasteIntoFocusedApp } from "./paste";
+import {
+  isWaylandSession,
+  pasteIntoFocusedApp,
+  startLinuxPasteHelper,
+  stopLinuxPasteHelper,
+} from "./paste";
 
 const log = createAppLogger("electron");
 const hotkeyLog = createAppLogger("hotkey");
@@ -1081,6 +1086,8 @@ app.on("second-instance", () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
+  void startLinuxPasteHelper();
+
   // Set app user model id for windows
   electronApp.setAppUserModelId("com.freestyle.app");
 
@@ -1958,6 +1965,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
 // Clean up key listener and mic listener on quit
 app.on("will-quit", () => {
   audioPlaybackController.restoreSync();
+  stopLinuxPasteHelper();
   if (keyListener) {
     keyListener.stop();
     keyListener = null;
@@ -1991,6 +1999,7 @@ let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 
 function cleanupBeforeQuit(): void {
   audioPlaybackController.restoreSync();
+  stopLinuxPasteHelper();
   stopWhisperServer().catch(() => {});
   stopMlxServer().catch(() => {});
   if (keyListener) {

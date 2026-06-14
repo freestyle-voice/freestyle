@@ -132,6 +132,20 @@ async function validateGoogle(apiKey: string): Promise<ValidationResult> {
   return { valid: false, error: `Google returned HTTP ${res.status}.` };
 }
 
+async function validateSoniox(apiKey: string): Promise<ValidationResult> {
+  const res = await fetch("https://api.soniox.com/v1/models", {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (res.ok) return { valid: true };
+  if (res.status === 401)
+    return {
+      valid: false,
+      error: "Invalid API key. Please check and try again.",
+    };
+  return { valid: false, error: `Soniox returned HTTP ${res.status}.` };
+}
+
 async function validateMistral(apiKey: string): Promise<ValidationResult> {
   const res = await fetch("https://api.mistral.ai/v1/models", {
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -161,6 +175,7 @@ const LIVE_VALIDATORS: Record<
   anthropic: validateAnthropic,
   google: validateGoogle,
   mistral: validateMistral,
+  soniox: validateSoniox,
 };
 
 export async function validateApiKey(

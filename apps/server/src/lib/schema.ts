@@ -1,6 +1,124 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
+
+const DEFAULT_FORMAT_RULES = [
+  {
+    pattern: "mail.google.com|outlook|yahoo.com|proton",
+    label: "Email",
+    instructions:
+      "If the transcript clearly dictates an email, preserve greeting/sign-off only if spoken, keep paragraph breaks clean, and do not invent a subject line.",
+  },
+  {
+    pattern: "slack.com|Slack",
+    label: "Slack",
+    instructions:
+      "Keep the wording intact. Add only light punctuation and paragraph breaks.",
+  },
+  {
+    pattern: "discord.com|Discord",
+    label: "Discord",
+    instructions:
+      "Keep the wording intact. Add only light punctuation and paragraph breaks.",
+  },
+  {
+    pattern: "github.com|GitLab",
+    label: "Code Platform",
+    instructions:
+      "Keep technical wording exact. Preserve explicit markdown, code blocks, or lists only if they were clearly dictated.",
+  },
+  {
+    pattern: "docs.google.com|notion.so|Notion",
+    label: "Document",
+    instructions:
+      "Preserve paragraph breaks and headings only when they are already clearly implied by the transcript.",
+  },
+  {
+    pattern: "Code|Cursor|Terminal|iTerm",
+    label: "Code Editor",
+    instructions:
+      "Keep technical terms exact. Do not rewrite for tone or style.",
+  },
+  {
+    pattern: "Messages|WhatsApp|Telegram",
+    label: "Messaging",
+    instructions: "Keep the wording intact. Add only light punctuation.",
+  },
+  {
+    pattern: "x.com|twitter.com",
+    label: "X/Twitter",
+    instructions:
+      "Keep the wording intact. Do not shorten or rewrite for length.",
+  },
+  {
+    pattern: "linkedin.com",
+    label: "LinkedIn",
+    instructions:
+      "Keep the wording intact. Add only light punctuation and paragraph breaks.",
+  },
+  {
+    pattern: "chatgpt.com|claude.ai|perplexity",
+    label: "AI Chat",
+    instructions:
+      "Keep the wording intact. Preserve explicit prompt structure only if it was clearly dictated.",
+  },
+] as const;
+
+const LEGACY_DEFAULT_FORMAT_RULES = [
+  {
+    pattern: "mail.google.com|outlook|yahoo.com|proton",
+    label: "Email",
+    instructions:
+      "Format as a proper email body: use greeting if dictated, clear paragraphs separated by blank lines, professional tone, sign-off if dictated. No subject line.",
+  },
+  {
+    pattern: "slack.com|Slack",
+    label: "Slack",
+    instructions: "Conversational, concise, professional. Casual punctuation.",
+  },
+  {
+    pattern: "discord.com|Discord",
+    label: "Discord",
+    instructions: "Casual and conversational tone.",
+  },
+  {
+    pattern: "github.com|GitLab",
+    label: "Code Platform",
+    instructions: "Clear, technical, well-structured with markdown.",
+  },
+  {
+    pattern: "docs.google.com|notion.so|Notion",
+    label: "Document",
+    instructions:
+      "Proper document formatting with clear paragraphs and structure.",
+  },
+  {
+    pattern: "Code|Cursor|Terminal|iTerm",
+    label: "Code Editor",
+    instructions:
+      "Clean prose for code comments, commits, or documentation. Preserve technical terms.",
+  },
+  {
+    pattern: "Messages|WhatsApp|Telegram",
+    label: "Messaging",
+    instructions: "Casual and brief, like a text message.",
+  },
+  {
+    pattern: "x.com|twitter.com",
+    label: "X/Twitter",
+    instructions: "Concise (280 chars ideal), punchy, and direct.",
+  },
+  {
+    pattern: "linkedin.com",
+    label: "LinkedIn",
+    instructions: "Professional and well-structured.",
+  },
+  {
+    pattern: "chatgpt.com|claude.ai|perplexity",
+    label: "AI Chat",
+    instructions: "Clear, well-structured prompt or message.",
+  },
+] as const;
 
 export function initSchema(db: DatabaseSync): void {
   db.exec(`
@@ -107,68 +225,11 @@ export function initSchema(db: DatabaseSync): void {
       .prepare("SELECT COUNT(*) as c FROM format_rules")
       .get() as { c: number };
     if (count.c === 0) {
-      const defaults = [
-        [
-          "mail.google.com|outlook|yahoo.com|proton",
-          "Email",
-          "Format as a proper email body: use greeting if dictated, clear paragraphs separated by blank lines, professional tone, sign-off if dictated. No subject line.",
-          1,
-        ],
-        [
-          "slack.com|Slack",
-          "Slack",
-          "Conversational, concise, professional. Casual punctuation.",
-          1,
-        ],
-        [
-          "discord.com|Discord",
-          "Discord",
-          "Casual and conversational tone.",
-          1,
-        ],
-        [
-          "github.com|GitLab",
-          "Code Platform",
-          "Clear, technical, well-structured with markdown.",
-          1,
-        ],
-        [
-          "docs.google.com|notion.so|Notion",
-          "Document",
-          "Proper document formatting with clear paragraphs and structure.",
-          1,
-        ],
-        [
-          "Code|Cursor|Terminal|iTerm",
-          "Code Editor",
-          "Clean prose for code comments, commits, or documentation. Preserve technical terms.",
-          1,
-        ],
-        [
-          "Messages|WhatsApp|Telegram",
-          "Messaging",
-          "Casual and brief, like a text message.",
-          1,
-        ],
-        [
-          "x.com|twitter.com",
-          "X/Twitter",
-          "Concise (280 chars ideal), punchy, and direct.",
-          1,
-        ],
-        ["linkedin.com", "LinkedIn", "Professional and well-structured.", 1],
-        [
-          "chatgpt.com|claude.ai|perplexity",
-          "AI Chat",
-          "Clear, well-structured prompt or message.",
-          1,
-        ],
-      ];
       const stmt = db.prepare(
         "INSERT INTO format_rules (app_pattern, label, instructions, is_default) VALUES (?, ?, ?, ?)",
       );
-      for (const [pattern, label, instructions, isDefault] of defaults) {
-        stmt.run(pattern, label, instructions, isDefault);
+      for (const rule of DEFAULT_FORMAT_RULES) {
+        stmt.run(rule.pattern, rule.label, rule.instructions, 1);
       }
     }
   }
@@ -193,6 +254,23 @@ export function initSchema(db: DatabaseSync): void {
       );
     } catch {
       // Column may already exist
+    }
+  }
+
+  if (currentVersion < 8) {
+    const updateStmt = db.prepare(
+      "UPDATE format_rules SET instructions = ?, updated_at = datetime('now') WHERE app_pattern = ? AND label = ? AND instructions = ? AND is_default = 1",
+    );
+
+    for (let i = 0; i < LEGACY_DEFAULT_FORMAT_RULES.length; i += 1) {
+      const legacy = LEGACY_DEFAULT_FORMAT_RULES[i];
+      const next = DEFAULT_FORMAT_RULES[i];
+      updateStmt.run(
+        next.instructions,
+        legacy.pattern,
+        legacy.label,
+        legacy.instructions,
+      );
     }
   }
 

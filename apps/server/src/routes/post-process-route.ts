@@ -10,13 +10,13 @@ const postProcessRoute = new Hono().post("/", async (c) => {
   }
 
   const appContext: string | null = body.appContext ?? null;
+  const language =
+    typeof body.language === "string" ? body.language : getLanguageSetting();
 
-  const pp = await postProcess(
-    body.text,
-    appContext,
-    "multi_segment",
-    getLanguageSetting(),
-  );
+  const pp = await postProcess(body.text, appContext, {
+    language,
+    source: "multi_segment",
+  });
 
   return c.json({
     cleaned: pp.cleaned,

@@ -349,8 +349,9 @@ export default function VocabularyPage(): React.JSX.Element {
                   </FormField>
                 </div>
                 <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
-                  Multi-word phrases work on Nova 3, OpenAI, and Groq. Nova 2
-                  boosts single words. Scribe v1 does not use vocabulary bias.
+                  Multi-word phrases work on Nova 3, Soniox, OpenAI, and Groq.
+                  Nova 2 boosts single words. Scribe v1 does not use vocabulary
+                  bias.
                 </p>
                 {formError && (
                   <p className="text-destructive mt-3 text-xs">{formError}</p>

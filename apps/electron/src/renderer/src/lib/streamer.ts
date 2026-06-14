@@ -2,10 +2,10 @@
  * Persistent WebSocket-based audio streamer for real-time STT.
  *
  * A single Streamer instance stays alive across recording sessions.
- * The WebSocket to the server (and through it the upstream STT
- * provider) remains open, eliminating reconnection overhead on each
- * hotkey press.  Recording sessions are delimited by startCapture /
- * commit / cancel rather than connect / disconnect.
+ * The renderer↔server WebSocket remains open, while the server may keep
+ * the upstream STT provider warm or reopen it per recording depending on
+ * provider behavior. Recording sessions are delimited by startCapture /
+ * commit / cancel rather than rebuilding the whole client pipeline.
  */
 
 import { getPCMProcessorUrl } from "./pcm-processor";

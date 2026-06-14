@@ -6,6 +6,7 @@ import { initApiBase } from "@renderer/lib/api";
 import OnboardingPage from "@renderer/onboarding";
 import DictionaryPage from "@renderer/pages/dictionary";
 import FormatsPage from "@renderer/pages/formats";
+import HelpPage from "@renderer/pages/help";
 import HistoryPage from "@renderer/pages/history";
 import ModelsPage from "@renderer/pages/models";
 import NotFoundPage from "@renderer/pages/not-found";
@@ -63,6 +64,7 @@ createRoot(document.getElementById("root")!).render(
                 />
                 <Route path="/settings/formats" element={<FormatsPage />} />
                 <Route path="/settings/history" element={<HistoryPage />} />
+                <Route path="/help" element={<HelpPage />} />
                 <Route
                   path="/settings/permissions"
                   element={<Navigate to="/settings" replace />}

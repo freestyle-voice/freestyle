@@ -121,6 +121,11 @@ function compileWindows() {
       src: "windows-mic-listener.c",
       libs: ["user32.lib", "ole32.lib", "oleaut32.lib", "uuid.lib"],
     },
+    {
+      name: "windows-volume-control.exe",
+      src: "windows-volume-control.c",
+      libs: ["user32.lib", "ole32.lib", "uuid.lib"],
+    },
   ];
 
   for (const bin of binaries) {

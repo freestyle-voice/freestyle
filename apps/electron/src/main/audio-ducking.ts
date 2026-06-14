@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { promisify } from "node:util";
 import { createAppLogger } from "@freestyle/utils";
 import { getNativeBinaryPath } from "./native-binary";
@@ -6,19 +6,15 @@ import { getNativeBinaryPath } from "./native-binary";
 const execFileAsync = promisify(execFile);
 const log = createAppLogger("audio-ducking");
 
-let macosVolumeControlPath: string | null | undefined;
-function getMacosVolumeControlPath(): string | null {
-  if (macosVolumeControlPath === undefined) {
-    macosVolumeControlPath = getNativeBinaryPath("macos-volume-control");
-  }
-  return macosVolumeControlPath;
-}
-
 const MIN_DUCK_DELTA = 0.02;
 const RESTORE_EPSILON = 0.08;
 const DEFAULT_DUCK_LEVEL = 0;
 
-type BackendKind = "windows" | "macos" | "linux-wpctl" | "linux-pactl";
+const NATIVE_COMMAND_TIMEOUT_MS = 500;
+const NATIVE_STARTUP_TIMEOUT_MS = 2000;
+const NATIVE_KILL_TIMEOUT_MS = 500;
+
+type BackendKind = "windows-native" | "windows" | "macos" | "linux-wpctl" | "linux-pactl";
 type DuckStrategy = "volume" | "mute";
 
 interface Snapshot {
@@ -39,21 +35,279 @@ interface RestorePlan {
   restoreMute: boolean;
 }
 
+interface PendingRequest {
+  resolve: (value: string) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Context needed to execute a backend operation. On Windows this may carry a
+ * live native controller; on other platforms it is just the backend kind.
+ */
+interface BackendContext {
+  kind: BackendKind;
+  native?: NativeWindowsVolumeController;
+}
+
+/**
+ * Low-latency Windows volume controller backed by a native helper.
+ *
+ * The helper opens the default playback endpoint's IAudioEndpointVolume once
+ * and keeps it warm. Commands are sent over stdin; responses are read from
+ * stdout. If the helper fails to start, crashes, hangs, or misbehaves, callers
+ * can fall back to the slower PowerShell-based implementation.
+ *
+ * Safety features:
+ *  - startup timeout
+ *  - per-command timeout
+ *  - automatic cleanup on dispose / crash / EOF
+ *  - explicit kill with graceful window then SIGTERM
+ *  - stderr logging
+ */
+class NativeWindowsVolumeController {
+  private process: ChildProcessWithoutNullStreams | null = null;
+  private pending: PendingRequest | null = null;
+  private buffer = "";
+  private ready = false;
+  private disposed = false;
+
+  constructor(private readonly binaryPath: string) {}
+
+  /**
+   * Start the helper process. Returns true if it printed "ready", false
+   * otherwise. Subsequent calls are no-ops if already started.
+   */
+  async start(): Promise<boolean> {
+    if (this.process) return this.ready;
+    if (this.disposed) return false;
+
+    log.debug(`Starting native Windows volume helper: ${this.binaryPath}`);
+
+    return new Promise((resolve) => {
+      const startupTimer = setTimeout(() => {
+        log.error("Native volume helper startup timed out");
+        this.dispose();
+        resolve(false);
+      }, NATIVE_STARTUP_TIMEOUT_MS);
+
+      try {
+        this.process = spawn(this.binaryPath, [], {
+          windowsHide: true,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+      } catch (err) {
+        clearTimeout(startupTimer);
+        log.error(`Failed to spawn native volume helper: ${String(err)}`);
+        resolve(false);
+        return;
+      }
+
+      if (!this.process?.stdin || !this.process?.stdout || !this.process?.stderr) {
+        clearTimeout(startupTimer);
+        log.error("Native volume helper has no stdio pipes");
+        this.dispose();
+        resolve(false);
+        return;
+      }
+
+      this.process.stdout.setEncoding("utf8");
+      this.process.stdout.on("data", (chunk: string) => this.onData(chunk));
+      this.process.on("error", (err) => {
+        log.error(`Native volume helper process error: ${err.message}`);
+        this.onProcessExit();
+      });
+      this.process.on("exit", () => this.onProcessExit());
+      this.process.on("close", () => this.onProcessExit());
+      this.process.stderr.on("data", (chunk: Buffer) => {
+        const text = chunk.toString("utf8").trim();
+        if (text) log.debug(`Native volume helper stderr: ${text}`);
+      });
+
+      const onFirstLines = (chunk: string) => {
+        this.buffer += chunk;
+        const lines = this.buffer.split(/\r?\n/);
+        this.buffer = lines.pop() ?? "";
+        for (const raw of lines) {
+          const line = raw.trim();
+          if (!line) continue;
+
+          if (line === "ready") {
+            clearTimeout(startupTimer);
+            this.ready = true;
+            // Replace one-time handler with normal handler.
+            this.process?.stdout.off("data", onFirstLines);
+            this.process?.stdout.on("data", (c: string) => this.onData(c));
+            resolve(true);
+            return;
+          }
+
+          if (line.startsWith("err|")) {
+            clearTimeout(startupTimer);
+            log.error(`Native volume helper failed to initialize: ${line}`);
+            this.dispose();
+            resolve(false);
+            return;
+          }
+        }
+      };
+
+      this.process.stdout.on("data", onFirstLines);
+    });
+  }
+
+  private onData(chunk: string): void {
+    this.buffer += chunk;
+    const lines = this.buffer.split(/\r?\n/);
+    this.buffer = lines.pop() ?? "";
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
+      this.handleResponse(line);
+    }
+  }
+
+  private handleResponse(line: string): void {
+    const pending = this.pending;
+    if (!pending) {
+      log.debug(`Unexpected response from native volume helper: ${line}`);
+      return;
+    }
+    this.pending = null;
+    clearTimeout(pending.timer);
+    pending.resolve(line);
+  }
+
+  private onProcessExit(): void {
+    if (!this.process) return;
+    log.debug("Native volume helper process exited");
+    const wasPending = this.pending;
+    this.pending = null;
+    this.process = null;
+    this.ready = false;
+    if (wasPending) {
+      clearTimeout(wasPending.timer);
+      wasPending.reject(new Error("Native volume helper exited unexpectedly"));
+    }
+  }
+
+  /**
+   * Send a command and wait for a single-line response. Throws on timeout,
+   * process error, or non-ok response where applicable.
+   */
+  async request(command: string, timeoutMs = NATIVE_COMMAND_TIMEOUT_MS): Promise<string> {
+    if (this.disposed) throw new Error("Native volume helper is disposed");
+    if (!this.ready || !this.process?.stdin) {
+      throw new Error("Native volume helper not ready");
+    }
+    if (this.pending) {
+      throw new Error("Native volume helper already has a pending request");
+    }
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending = null;
+        log.error(`Native volume helper command timed out: ${command}`);
+        this.dispose();
+        reject(new Error(`Native volume helper command timed out: ${command}`));
+      }, timeoutMs);
+
+      this.pending = { resolve, reject, timer };
+      this.process!.stdin.write(`${command}\n`, (err) => {
+        if (err) {
+          this.pending = null;
+          clearTimeout(timer);
+          log.error(`Failed to write to native volume helper: ${err.message}`);
+          this.dispose();
+          reject(err);
+        }
+      });
+    });
+  }
+
+  async getVolumeState(): Promise<VolumeState | null> {
+    const line = await this.request("get");
+    return parsePipeVolumeState(line);
+  }
+
+  async setVolume(value: number): Promise<void> {
+    const response = await this.request(`set ${clamp01(value).toFixed(4)}`);
+    if (response !== "ok") {
+      throw new Error(`set volume failed: ${response}`);
+    }
+  }
+
+  async setMuted(muted: boolean): Promise<void> {
+    const response = await this.request(`mute ${muted ? "1" : "0"}`);
+    if (response !== "ok") {
+      throw new Error(`set mute failed: ${response}`);
+    }
+  }
+
+  /**
+   * Kill the helper process and clean up. Idempotent.
+   */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+
+    const proc = this.process;
+    const wasPending = this.pending;
+
+    this.process = null;
+    this.pending = null;
+    this.ready = false;
+
+    if (wasPending) {
+      clearTimeout(wasPending.timer);
+      wasPending.reject(new Error("Native volume helper disposed"));
+    }
+
+    if (!proc) return;
+
+    try {
+      if (!proc.stdin.destroyed) {
+        proc.stdin.end();
+      }
+    } catch {
+      // ignore
+    }
+
+    const killTimer = setTimeout(() => {
+      try {
+        if (!proc.killed) {
+          proc.kill("SIGTERM");
+        }
+      } catch {
+        // ignore
+      }
+    }, NATIVE_KILL_TIMEOUT_MS);
+
+    proc.on("exit", () => clearTimeout(killTimer));
+    proc.on("close", () => clearTimeout(killTimer));
+
+    if (proc.exitCode !== null) {
+      clearTimeout(killTimer);
+    }
+  }
+}
+
 export class AudioDucker {
   private snapshot: Snapshot | null = null;
-  private backendPromise: Promise<BackendKind | null> | null = null;
+  private backendPromise: Promise<BackendContext | null> | null = null;
   private queue = Promise.resolve();
   private depth = 0;
+  private nativeController: NativeWindowsVolumeController | null = null;
 
   duck(level = DEFAULT_DUCK_LEVEL): Promise<void> {
     return this.enqueue(async () => {
       this.depth += 1;
       if (this.snapshot) return;
 
-      const kind = await this.getBackend();
-      if (!kind) return;
+      const ctx = await this.getBackend();
+      if (!ctx) return;
 
-      const state = await readVolumeState(kind);
+      const state = await readVolumeState(ctx);
       if (!state || state.muted) return;
 
       const desiredLevel = clamp01(level);
@@ -62,28 +316,28 @@ export class AudioDucker {
         desiredLevel <= 0 || state.volume - target < MIN_DUCK_DELTA;
 
       if (useMuteFallback) {
-        await setMuted(kind, true);
+        await setMuted(ctx, true);
         this.snapshot = {
-          kind,
+          kind: ctx.kind,
           current: state.volume,
           muted: state.muted,
           target: null,
           strategy: "mute",
         };
-        log.debug(`Applied mute fallback while ducking on ${kind}`);
+        log.debug(`Applied mute fallback while ducking on ${ctx.kind}`);
         return;
       }
 
-      await setVolume(kind, target);
+      await setVolume(ctx, target);
       this.snapshot = {
-        kind,
+        kind: ctx.kind,
         current: state.volume,
         muted: state.muted,
         target,
         strategy: "volume",
       };
       log.debug(
-        `Applied volume ducking on ${kind}: ${state.volume.toFixed(3)} -> ${target.toFixed(3)}`,
+        `Applied volume ducking on ${ctx.kind}: ${state.volume.toFixed(3)} -> ${target.toFixed(3)}`,
       );
     });
   }
@@ -99,7 +353,15 @@ export class AudioDucker {
       this.snapshot = null;
       if (!snapshot) return;
 
-      const live = await readVolumeState(snapshot.kind).catch(() => null);
+      // If we have a live native controller, use it for restore; otherwise
+      // reconstruct a minimal context from the snapshot kind.
+      const ctx: BackendContext | null = this.nativeController
+        ? { kind: snapshot.kind, native: this.nativeController }
+        : await this.getBackend().catch(() => null);
+
+      if (!ctx) return;
+
+      const live = await readVolumeState(ctx).catch(() => null);
       const restorePlan = getRestorePlan(snapshot, live);
       if (!restorePlan.restoreVolume && !restorePlan.restoreMute) {
         log.debug(
@@ -109,13 +371,22 @@ export class AudioDucker {
       }
 
       if (restorePlan.restoreVolume) {
-        await setVolume(snapshot.kind, snapshot.current);
+        await setVolume(ctx, snapshot.current);
       }
       if (restorePlan.restoreMute) {
-        await setMuted(snapshot.kind, snapshot.muted);
+        await setMuted(ctx, snapshot.muted);
       }
       log.debug(`Restored audio after ducking on ${snapshot.kind}`);
     });
+  }
+
+  /**
+   * Dispose the native helper (if any). Call this when the app is quitting.
+   */
+  dispose(): void {
+    this.nativeController?.dispose();
+    this.nativeController = null;
+    this.backendPromise = null;
   }
 
   private enqueue(work: () => Promise<void>): Promise<void> {
@@ -127,17 +398,32 @@ export class AudioDucker {
     return this.queue;
   }
 
-  private getBackend(): Promise<BackendKind | null> {
+  private getBackend(): Promise<BackendContext | null> {
     if (!this.backendPromise) {
-      this.backendPromise = detectBackend();
+      this.backendPromise = detectBackend(this);
     }
     return this.backendPromise;
   }
 }
 
-async function detectBackend(): Promise<BackendKind | null> {
-  if (process.platform === "win32") return "windows";
-  if (process.platform === "darwin") return "macos";
+async function detectBackend(ducker: AudioDucker): Promise<BackendContext | null> {
+  if (process.platform === "win32") {
+    const nativePath = getNativeBinaryPath("windows-volume-control");
+    if (nativePath) {
+      const controller = new NativeWindowsVolumeController(nativePath);
+      ducker["nativeController"] = controller;
+      const ok = await controller.start();
+      if (ok) {
+        log.debug("Using native Windows volume control helper");
+        return { kind: "windows-native", native: controller };
+      }
+      log.debug("Native Windows volume helper unavailable, falling back to PowerShell");
+      controller.dispose();
+      ducker["nativeController"] = null;
+    }
+    return { kind: "windows" };
+  }
+  if (process.platform === "darwin") return { kind: "macos" };
   if (process.platform !== "linux") return null;
 
   const tool = await commandExists("wpctl")
@@ -147,7 +433,7 @@ async function detectBackend(): Promise<BackendKind | null> {
         kind ?? ((await commandExists("pactl")) ? "linux-pactl" : null),
     );
 
-  return tool;
+  return tool ? { kind: tool } : null;
 }
 
 async function commandExists(command: string): Promise<boolean> {
@@ -159,8 +445,10 @@ async function commandExists(command: string): Promise<boolean> {
   }
 }
 
-async function readVolumeState(kind: BackendKind): Promise<VolumeState | null> {
-  switch (kind) {
+async function readVolumeState(ctx: BackendContext): Promise<VolumeState | null> {
+  switch (ctx.kind) {
+    case "windows-native":
+      return ctx.native!.getVolumeState();
     case "windows":
       return readWindowsVolumeState();
     case "macos":
@@ -169,35 +457,23 @@ async function readVolumeState(kind: BackendKind): Promise<VolumeState | null> {
       return readWpctlVolumeState();
     case "linux-pactl":
       return readPactlVolumeState();
+    default:
+      return null;
   }
 }
 
-async function setVolume(kind: BackendKind, value: number): Promise<void> {
+async function setVolume(ctx: BackendContext, value: number): Promise<void> {
   const clamped = clamp01(value);
-  switch (kind) {
+  switch (ctx.kind) {
+    case "windows-native":
+      await ctx.native!.setVolume(clamped);
+      return;
     case "windows":
       await setWindowsVolume(clamped);
       return;
-    case "macos": {
-      const nativePath = getMacosVolumeControlPath();
-      if (nativePath) {
-        try {
-          await execFileAsync(nativePath, ["set", clamped.toFixed(4)]);
-          return;
-        } catch (err) {
-          log.debug(
-            `macOS native volume set failed, falling back to AppleScript: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-        }
-      }
-      await execFileAsync("osascript", [
-        "-e",
-        `set volume output volume ${Math.round(clamped * 100)}`,
-      ]);
+    case "macos":
+      await setMacVolume(clamped);
       return;
-    }
     case "linux-wpctl":
       await execFileAsync("wpctl", [
         "set-volume",
@@ -215,33 +491,17 @@ async function setVolume(kind: BackendKind, value: number): Promise<void> {
   }
 }
 
-async function setMuted(kind: BackendKind, muted: boolean): Promise<void> {
-  switch (kind) {
+async function setMuted(ctx: BackendContext, muted: boolean): Promise<void> {
+  switch (ctx.kind) {
+    case "windows-native":
+      await ctx.native!.setMuted(muted);
+      return;
     case "windows":
       await setWindowsMuted(muted);
       return;
-    case "macos": {
-      const nativePath = getMacosVolumeControlPath();
-      if (nativePath) {
-        try {
-          await execFileAsync(nativePath, [muted ? "mute" : "unmute"]);
-          return;
-        } catch (err) {
-          log.debug(
-            `macOS native mute set failed, falling back to AppleScript: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-        }
-      }
-      await execFileAsync("osascript", [
-        "-e",
-        muted
-          ? "set volume with output muted"
-          : "set volume without output muted",
-      ]);
+    case "macos":
+      await setMacMuted(muted);
       return;
-    }
     case "linux-wpctl":
       await execFileAsync("wpctl", [
         "set-mute",
@@ -437,7 +697,7 @@ async function setWindowsMuted(muted: boolean): Promise<void> {
 }
 
 async function readMacVolumeState(): Promise<VolumeState | null> {
-  const nativePath = getMacosVolumeControlPath();
+  const nativePath = getNativeBinaryPath("macos-volume-control");
   if (nativePath) {
     try {
       const { stdout } = await execFileAsync(nativePath, ["get"]);
@@ -466,6 +726,48 @@ async function readMacVolumeState(): Promise<VolumeState | null> {
     volume: clamp01(volume / 100),
     muted: mutedRaw.trim().toLowerCase() === "true",
   };
+}
+
+async function setMacVolume(value: number): Promise<void> {
+  const nativePath = getNativeBinaryPath("macos-volume-control");
+  if (nativePath) {
+    try {
+      await execFileAsync(nativePath, ["set", clamp01(value).toFixed(4)]);
+      return;
+    } catch (err) {
+      log.debug(
+        `macOS native volume set failed, falling back to AppleScript: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+  await execFileAsync("osascript", [
+    "-e",
+    `set volume output volume ${Math.round(clamp01(value) * 100)}`,
+  ]);
+}
+
+async function setMacMuted(muted: boolean): Promise<void> {
+  const nativePath = getNativeBinaryPath("macos-volume-control");
+  if (nativePath) {
+    try {
+      await execFileAsync(nativePath, [muted ? "mute" : "unmute"]);
+      return;
+    } catch (err) {
+      log.debug(
+        `macOS native mute set failed, falling back to AppleScript: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+  await execFileAsync("osascript", [
+    "-e",
+    muted
+      ? "set volume with output muted"
+      : "set volume without output muted",
+  ]);
 }
 
 function parsePipeVolumeState(stdout: string): VolumeState | null {

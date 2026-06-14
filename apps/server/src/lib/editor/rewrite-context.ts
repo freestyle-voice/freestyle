@@ -107,6 +107,7 @@ export function getRewritePromptContext(
   if (!matchStr) {
     return { contextHint: "", registerMode: "neutral" };
   }
+  const matchStrLower = matchStr.toLowerCase();
 
   try {
     const rows = db
@@ -118,7 +119,7 @@ export function getRewritePromptContext(
     for (const row of rows) {
       const patterns = row.app_pattern.split("|").map((p) => p.trim());
       for (const pattern of patterns) {
-        if (pattern && matchStr.toLowerCase().includes(pattern.toLowerCase())) {
+        if (pattern && matchStrLower.includes(pattern.toLowerCase())) {
           const registerModeFromLabel = inferRegisterModeFromLabel(row.label);
           return {
             contextHint: row.instructions,

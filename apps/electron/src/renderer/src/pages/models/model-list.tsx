@@ -319,8 +319,11 @@ export function ModelList({
     ? rows.length - rows.filter((r) => r.curated).length
     : 0;
 
-  const showLocalLlmForm =
-    type === "llm" && (filter === "all" || filter === "local");
+  // The OpenAPI-compatible connector is part of the LLM picker itself, not a
+  // row filter, so keep it visible regardless of which source/provider chip is
+  // active. Otherwise the form disappears as soon as the user clicks a cloud
+  // provider filter and looks like it was removed from the page.
+  const showLocalLlmForm = type === "llm";
 
   return (
     <>

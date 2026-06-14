@@ -12,7 +12,7 @@
 |---|-------|----------------|
 | 1 | Default hotkey is `Alt+Space` on every platform | On Windows, Alt+Space opens the window system menu; on many Linux WMs it opens the window menu too. First-run experience on non-Mac is broken out of the box. |
 | 2 | Onboarding permission checks are stubs on Windows/Linux | Mic + accessibility report "granted" without checking anything. A Linux user who isn't in the `input` group sails through onboarding, then the hotkey silently degrades or dies. |
-| 3 | Silent push-to-talk → toggle degradation | When the native key listener fails (very likely on Wayland), the app falls back to `globalShortcut` in toggle mode with no user-facing notification — and `globalShortcut` itself doesn't work on GNOME Wayland. |
+| 3 | Silent push to hold → toggle degradation | When the native key listener fails (very likely on Wayland), the app falls back to `globalShortcut` in toggle mode with no user-facing notification — and `globalShortcut` itself doesn't work on GNOME Wayland. |
 | 4 | No arm64 support on Windows/Linux, no Intel mac binaries | `getBinaryName()` returns `null` on linux-arm64 / win32-arm64 → local transcription dead. CI builds mac only on Apple silicon, so darwin-x64 native binaries are never produced. |
 | 5 | Nothing in CI would catch a Windows/Linux regression | E2E runs only on Linux/xvfb (X11). No packaged-artifact verification, no Windows/macOS E2E, no Wayland coverage. |
 
@@ -34,9 +34,9 @@ The architecture is good: per-platform native listeners (`native/macos-key-liste
   1. Detect Wayland + missing `input` group at startup/onboarding (see §3) and show the existing `usermod -aG input` guidance *proactively*, not only after total failure (the message at `index.ts:1795-1800` is good — surface it earlier).
   2. Longer term: evaluate the XDG Desktop Portal `GlobalShortcuts` interface for Wayland (Electron ≥ recent versions expose it via `globalShortcut` on some setups; otherwise libportal).
 
-### 1.3 [verified] [HIGH] Silent push-to-talk → toggle degradation in the fallback
-- `index.ts:1768-1774`: when the native listener fails, the fallback registers `globalShortcut` with "toggle semantics" because globalShortcut has no key-up. A push-to-talk user gets different behavior with no notification (a warning goes to the log only).
-- **Fix:** send a `hotkey:degraded` event to the renderer and show a one-time banner/toast: "Push-to-talk unavailable (reason); using toggle mode. Fix: …".
+### 1.3 [verified] [HIGH] Silent push to hold → toggle degradation in the fallback
+- `index.ts:1768-1774`: when the native listener fails, the fallback registers `globalShortcut` with "toggle semantics" because globalShortcut has no key-up. A push to hold user gets different behavior with no notification (a warning goes to the log only).
+- **Fix:** send a `hotkey:degraded` event to the renderer and show a one-time banner/toast: "Push to Hold unavailable (reason); using toggle mode. Fix: …".
 
 ### 1.4 [verified] [MEDIUM] No platform-aware hotkey validation (Fn/Globe, right-modifiers)
 - macOS supports `Fn`/`Globe` and right-side modifiers via the Swift listener; the Windows/Linux C listeners don't parse those tokens, and `isValidAccelerator()` (`index.ts:1614`) doesn't reject them per platform. A `Fn`-based hotkey on Linux silently never fires.
@@ -181,7 +181,7 @@ The MLX runtime is correctly gated by `isAppleSiliconMac()` (`apps/server/src/li
 ### P0 — correctness on first run (small diffs, big impact)
 1. Platform-aware `DEFAULT_HOTKEY`; single source of truth shared with renderer (§1.1).
 2. Real onboarding gating on Windows/Linux: getUserMedia probe; Linux `/dev/input` + xdotool/wtype checks with copy-pasteable fix commands (§3.1, §2.1).
-3. Notify on hotkey degradation (push-to-talk → toggle) and on paste failure ("text is on your clipboard") (§1.3, §2.3).
+3. Notify on hotkey degradation (push to hold → toggle) and on paste failure ("text is on your clipboard") (§1.3, §2.3).
 4. AppImage autostart `$APPIMAGE` fix (§8).
 5. `macFnDown` reset; `Fn`/`Globe` rejected in validation off-mac (§1.5, §1.4).
 

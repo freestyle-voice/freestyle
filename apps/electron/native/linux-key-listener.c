@@ -1,5 +1,5 @@
 /**
- * Linux Key Listener for Push-to-Talk
+ * Linux Key Listener for Push to Hold
  *
  * Monitors /dev/input event devices for global key events on both X11
  * and Wayland. Parses compound hotkeys from CLI args.

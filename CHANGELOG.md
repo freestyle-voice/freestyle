@@ -8,7 +8,7 @@
 
 ### Other
 
-- Update platform default push-to-talk hotkeys by @tigerisaac in [#230](https://github.com/freestyle-voice/freestyle/pull/230)
+- Update platform default push to hold hotkeys by @tigerisaac in [#230](https://github.com/freestyle-voice/freestyle/pull/230)
 - Cross platform stability fixes by @matteo8p in [#227](https://github.com/freestyle-voice/freestyle/pull/227)
 - cross platform audit by @matteo8p in [#225](https://github.com/freestyle-voice/freestyle/pull/225)
 - onboarding funnel by @matteo8p in [f9fc6912](https://github.com/freestyle-voice/freestyle/commit/f9fc6912d31cf9c26318ea5ca4135d6012ff545a)

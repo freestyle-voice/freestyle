@@ -1,5 +1,5 @@
 /**
- * Windows Key Listener for Push-to-Talk
+ * Windows Key Listener for Push to Hold
  *
  * Uses Windows Low-Level Keyboard Hook to detect key up/down events.
  * Accepts a virtual key code as command line argument.

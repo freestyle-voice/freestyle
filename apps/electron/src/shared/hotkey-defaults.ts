@@ -1,5 +1,5 @@
 /**
- * Single source of truth for the default push-to-talk hotkey.
+ * Single source of truth for the default push to hold hotkey.
  *
  * - macOS: Fn (Globe) — dedicated dictation key, no modifier conflicts
  * - Windows: Control+Super — avoids Alt+Space window menu and common shortcuts

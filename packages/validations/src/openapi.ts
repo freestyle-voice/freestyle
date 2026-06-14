@@ -8,6 +8,12 @@ export interface OpenApiEndpointPreset {
   description: string;
 }
 
+/**
+ * Curated list of the most commonly used OpenAPI-compatible providers.
+ * Lesser-known providers are intentionally omitted to keep the picker
+ * approachable; users can still reach any other endpoint through the
+ * "Custom endpoint" preset.
+ */
 export const OPENAPI_ENDPOINT_PRESETS: readonly OpenApiEndpointPreset[] = [
   {
     id: "openrouter",
@@ -19,7 +25,7 @@ export const OPENAPI_ENDPOINT_PRESETS: readonly OpenApiEndpointPreset[] = [
   },
   {
     id: "azure",
-    label: "Azure Template",
+    label: "Azure OpenAI",
     endpoint: "https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1",
     applyMode: "draft",
     description:
@@ -27,39 +33,10 @@ export const OPENAPI_ENDPOINT_PRESETS: readonly OpenApiEndpointPreset[] = [
   },
   {
     id: "litellm-local",
-    label: "LiteLLM Local",
+    label: "LiteLLM / Local",
     endpoint: "http://localhost:4000/v1",
     applyMode: "save",
     description: "Common local LiteLLM gateway port.",
-  },
-  {
-    id: "vllm-local",
-    label: "vLLM Local",
-    endpoint: "http://localhost:8000/v1",
-    applyMode: "save",
-    description: "Common local vLLM server port.",
-  },
-  {
-    id: "localhost-template",
-    label: "Custom Local Template",
-    endpoint: "http://localhost:11434/v1",
-    applyMode: "draft",
-    description:
-      "Template for Ollama, LM Studio, or another localhost gateway.",
-  },
-  {
-    id: "https-template",
-    label: "Generic HTTPS Template",
-    endpoint: "https://YOUR-HOSTNAME.example.com/v1",
-    applyMode: "draft",
-    description: "Template for hosted OpenAPI-compatible gateways and proxies.",
-  },
-  {
-    id: "moonshot",
-    label: "Moonshot (Kimi)",
-    endpoint: "https://api.moonshot.cn/v1",
-    applyMode: "save",
-    description: "Moonshot AI's OpenAPI-compatible endpoint for Kimi models.",
   },
   {
     id: "together",
@@ -78,20 +55,11 @@ export const OPENAPI_ENDPOINT_PRESETS: readonly OpenApiEndpointPreset[] = [
       "Fireworks AI's OpenAI-compatible inference base for chat-capable models.",
   },
   {
-    id: "deepinfra",
-    label: "DeepInfra",
-    endpoint: "https://api.deepinfra.com/v1/openai",
-    applyMode: "save",
-    description:
-      "DeepInfra's OpenAI-compatible base for chat-completions style model access.",
-  },
-  {
-    id: "sambanova",
-    label: "SambaNova",
-    endpoint: "https://api.sambanova.ai/v1",
-    applyMode: "save",
-    description:
-      "SambaNova's OpenAI-compatible base for SambaCloud model access.",
+    id: "https-template",
+    label: "Custom endpoint",
+    endpoint: "https://YOUR-HOSTNAME.example.com/v1",
+    applyMode: "draft",
+    description: "Any other hosted OpenAPI-compatible gateway or proxy.",
   },
 ] as const;
 

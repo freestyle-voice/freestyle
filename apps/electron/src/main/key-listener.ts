@@ -6,7 +6,7 @@
  *
  * Uses purpose-built native binaries that provide:
  *   - macOS: Globe/Fn key + modifier detection via Cocoa/CGEvent
- *   - Windows: True push to hold via WH_KEYBOARD_LL hook
+ *   - Windows: True push-to-talk via WH_KEYBOARD_LL hook
  *   - Linux: /dev/input event monitoring for X11 and Wayland
  */
 

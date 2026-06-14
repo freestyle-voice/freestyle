@@ -34,6 +34,7 @@ export interface LocalLlmState {
   models: string[];
   test: () => Promise<void>;
   applyModel: () => Promise<void>;
+  applyVoiceModel: () => Promise<void>;
   clearStatus: () => void;
 }
 
@@ -70,6 +71,7 @@ export interface UseModels {
     name: string,
     engine?: "whisper" | "mlx",
   ) => Promise<void>;
+  selectLocalVoiceModel: (modelName: string) => Promise<void>;
   retryLocalMlx: (defId: string) => Promise<void>;
   downloadLocal: (defId: string, engine?: "whisper" | "mlx") => void;
   cancelLocal: (defId: string, engine?: "whisper" | "mlx") => void;
@@ -446,6 +448,22 @@ export function useModels(): UseModels {
     [loadData],
   );
 
+  const selectLocalVoiceModel = useCallback(
+    async (modelName: string) => {
+      await getClient().api.models.configured.$post({
+        json: {
+          provider: "local-llm",
+          model_id: `local-llm/${modelName}`,
+          model_name: modelName,
+          type: "voice",
+          is_default: true,
+        },
+      });
+      await loadData();
+    },
+    [loadData],
+  );
+
   const setCleanup = useCallback((next: boolean) => {
     setLlmCleanup(next);
     getClient()
@@ -603,6 +621,30 @@ export function useModels(): UseModels {
     }
   }, [localModelName, llmCleanup, selectLocalLlmModel]);
 
+  const applyLocalVoiceModel = useCallback(async () => {
+    const modelName = localModelName.trim();
+    if (!modelName) {
+      setLocalError("Enter a model or deployment name first.");
+      return;
+    }
+
+    setLocalApplyingModel(true);
+    setLocalError(null);
+
+    try {
+      await selectLocalVoiceModel(modelName);
+      setLocalModels((prev) =>
+        prev.includes(modelName) ? prev : [...prev, modelName],
+      );
+    } catch (err) {
+      setLocalError(
+        err instanceof Error ? err.message : "Failed to save model name",
+      );
+    } finally {
+      setLocalApplyingModel(false);
+    }
+  }, [localModelName, selectLocalVoiceModel]);
+
   return {
     loading,
     available,
@@ -632,11 +674,13 @@ export function useModels(): UseModels {
       models: localModels,
       test: testLocalLlm,
       applyModel: applyLocalLlmModel,
+      applyVoiceModel: applyLocalVoiceModel,
       clearStatus: clearLocalStatus,
     },
     configureModel,
     saveKey,
     selectLocalVoice,
+    selectLocalVoiceModel,
     retryLocalMlx,
     downloadLocal,
     cancelLocal,

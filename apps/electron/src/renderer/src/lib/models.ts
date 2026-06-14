@@ -81,6 +81,7 @@ export const VOICE_PROVIDERS = [
   ...CLOUD_VOICE_PROVIDERS,
   "local-whisper",
   "local-mlx",
+  "local-llm",
 ];
 
 export const LLM_PROVIDERS = [

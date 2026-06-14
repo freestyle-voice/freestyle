@@ -1147,7 +1147,7 @@ export default function AppPage(): React.JSX.Element {
                     ? ["#60A5FA", "#3B82F6"]
                     : state === "initializing"
                       ? ["#FBBF24", "#F59E0B"]
-                      : ["#8AB62A", "#6B8F12"]
+                      : ["#5A6FAD", "#435595"]
                 }
                 agentState={
                   state === "initializing"

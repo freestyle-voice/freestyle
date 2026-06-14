@@ -47,12 +47,12 @@
 }
 
 /*
- * Warm cream/olive editorial palette
+ * Warm cream/royal-blue editorial palette
  * Reference colors:
  *   canvas:      #F4F0E4   paper:       #ECE7D6   elevated:    #FBF8EE
  *   rule:        #D6CDB8   rule-soft:   #E3DCC8   ink:         #16140F
- *   ink-soft:    #34302A   mute:        #7B7461   olive:       #6B8F12
- *   olive-deep:  #4A6309   olive-ink:   #2E3F05   olive-soft:  #E8EFC9
+ *   ink-soft:    #34302A   mute:        #7B7461   royal:       #435595
+ *   royal-deep:  #2E3F7A   royal-ink:   #1E2A52   royal-soft:  #E8EEF9
  *   blush:       #DD6E4E   plum:        #5E4E78
  */
 :root {
@@ -63,36 +63,36 @@
   --card-foreground: #16140F;
   --popover: #FBF8EE;
   --popover-foreground: #16140F;
-  --primary: #6B8F12;
+  --primary: #435595;
   --primary-foreground: #FBF8EE;
   --secondary: #ECE7D6;
   --secondary-foreground: #34302A;
   --muted: #ECE7D6;
   --muted-foreground: #7B7461;
-  --accent: #E8EFC9;
-  --accent-foreground: #2E3F05;
+  --accent: #E8EEF9;
+  --accent-foreground: #1E2A52;
   --destructive: #DD6E4E;
   --destructive-foreground: #FBF8EE;
   --border: #D6CDB8;
   --input: #E3DCC8;
-  --ring: #6B8F12;
-  --chart-1: #6B8F12;
-  --chart-2: #4A6309;
+  --ring: #435595;
+  --chart-1: #435595;
+  --chart-2: #2E3F7A;
   --chart-3: #5E4E78;
   --chart-4: #DD6E4E;
   --chart-5: #7B7461;
   --sidebar: #ECE7D6;
   --sidebar-foreground: #34302A;
-  --sidebar-primary: #6B8F12;
+  --sidebar-primary: #435595;
   --sidebar-primary-foreground: #FBF8EE;
   --sidebar-accent: #FBF8EE;
   --sidebar-accent-foreground: #16140F;
   --sidebar-border: #D6CDB8;
-  --sidebar-ring: #6B8F12;
+  --sidebar-ring: #435595;
 }
 
 /*
- * Dark mode — deep warm neutrals with olive accent
+ * Dark mode — deep warm neutrals with royal-blue accent
  * Derived from the light palette, inverted for comfortable dark UI
  */
 .dark {
@@ -102,32 +102,32 @@
   --card-foreground: #ECE7D6;
   --popover: #1E1C16;
   --popover-foreground: #ECE7D6;
-  --primary: #8AB62A;
+  --primary: #5A6FAD;
   --primary-foreground: #16140F;
   --secondary: #2A2720;
   --secondary-foreground: #ECE7D6;
   --muted: #2A2720;
   --muted-foreground: #9E977F;
-  --accent: #2E3F05;
-  --accent-foreground: #E8EFC9;
+  --accent: #1E2A52;
+  --accent-foreground: #E8EEF9;
   --destructive: #E0805F;
   --destructive-foreground: #16140F;
   --border: #3A362D;
   --input: #3A362D;
-  --ring: #8AB62A;
-  --chart-1: #8AB62A;
-  --chart-2: #6B8F12;
+  --ring: #5A6FAD;
+  --chart-1: #5A6FAD;
+  --chart-2: #435595;
   --chart-3: #8A7AAE;
   --chart-4: #E0805F;
   --chart-5: #9E977F;
   --sidebar: #1E1C16;
   --sidebar-foreground: #ECE7D6;
-  --sidebar-primary: #8AB62A;
+  --sidebar-primary: #5A6FAD;
   --sidebar-primary-foreground: #16140F;
   --sidebar-accent: #2A2720;
   --sidebar-accent-foreground: #ECE7D6;
   --sidebar-border: #3A362D;
-  --sidebar-ring: #8AB62A;
+  --sidebar-ring: #5A6FAD;
 }
 
 @layer base {
@@ -154,7 +154,7 @@
   }
 
   ::selection {
-    background-color: rgba(107, 143, 18, 0.25);
+    background-color: rgba(67, 85, 149, 0.25);
   }
 
   button:not(:disabled) {

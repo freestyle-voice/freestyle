@@ -92,20 +92,15 @@ describe("OpenAPI-compatible endpoint helpers", () => {
     );
   });
 
-  it("covers the non-OpenAI OpenPets-compatible presets", () => {
+  it("covers the curated OpenAPI-compatible presets", () => {
     expect(OPENAPI_ENDPOINT_PRESETS.map((preset) => preset.id)).toEqual(
       expect.arrayContaining([
         "openrouter",
         "azure",
         "litellm-local",
-        "vllm-local",
-        "localhost-template",
-        "https-template",
-        "moonshot",
         "together",
         "fireworks",
-        "deepinfra",
-        "sambanova",
+        "https-template",
       ]),
     );
   });

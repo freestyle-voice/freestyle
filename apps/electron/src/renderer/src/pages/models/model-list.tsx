@@ -25,7 +25,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { UseModels } from "./use-models";
 import { displayName } from "./utils";
 
@@ -307,6 +307,32 @@ export function ModelList({
         })
       : buildLlmRows(m, { onPickCloud, onClose });
 
+  // The OpenAPI-compatible provider shelf is part of the LLM picker. In the
+  // voice picker the same providers are folded into the existing filter-chip
+  // row so they do not push the model list out of the modal.
+  const showLocalLlmForm = type === "llm";
+  const activePresetId = filter.startsWith("preset:")
+    ? filter.slice("preset:".length)
+    : null;
+  const activePreset = OPENAPI_ENDPOINT_PRESETS.find(
+    (p) => p.id === activePresetId,
+  );
+
+  const handleFilterChange = useCallback(
+    (id: string) => {
+      setFilter(id);
+      if (type === "voice" && id.startsWith("preset:")) {
+        const presetId = id.slice("preset:".length);
+        const preset = OPENAPI_ENDPOINT_PRESETS.find((p) => p.id === presetId);
+        if (preset) {
+          m.localLlm.setUrl(preset.endpoint);
+          m.localLlm.clearStatus();
+        }
+      }
+    },
+    [type, m.localLlm.setUrl, m.localLlm.clearStatus],
+  );
+
   const q = search.toLowerCase();
   // Curated-only for LLM until expanded; searching always searches everything.
   const curatedOnly = type === "llm" && !showAllLlm && !q;
@@ -314,25 +340,22 @@ export function ModelList({
     if (curatedOnly && !r.curated) return false;
     if (filter === "cloud" && r.source !== "cloud") return false;
     if (filter === "local" && r.source !== "local") return false;
-    if (
+    if (activePresetId) {
+      if (r.provider !== "local-llm") return false;
+    } else if (
       filter !== "all" &&
       filter !== "cloud" &&
       filter !== "local" &&
       r.provider !== filter
-    )
+    ) {
       return false;
+    }
     if (q && !`${r.name} ${r.meta}`.toLowerCase().includes(q)) return false;
     return true;
   });
   const hiddenCount = curatedOnly
     ? rows.length - rows.filter((r) => r.curated).length
     : 0;
-
-  // The OpenAPI-compatible connector is part of the LLM picker itself, not a
-  // row filter, so keep it visible regardless of which source/provider chip is
-  // active. Otherwise the form disappears as soon as the user clicks a cloud
-  // provider filter and looks like it was removed from the page.
-  const showLocalLlmForm = type === "llm";
 
   return (
     <>
@@ -368,7 +391,30 @@ export function ModelList({
         </button>
       </header>
 
-      <FilterBar rows={rows} active={filter} onChange={setFilter} type={type} />
+      {showLocalLlmForm && (
+        <LocalLlmConnect
+          m={m}
+          onApply={m.localLlm.applyModel}
+          showCards
+        />
+      )}
+
+      <FilterBar
+        rows={rows}
+        active={filter}
+        onChange={handleFilterChange}
+        type={type}
+      />
+
+      {activePreset && type === "voice" && (
+        <div className="border-border border-b">
+          <LocalLlmConnect
+            m={m}
+            onApply={m.localLlm.applyVoiceModel}
+            activePresetId={activePresetId}
+          />
+        </div>
+      )}
 
       {type === "voice" && m.whisperStatus?.binaryDownloading && (
         <div className="border-border flex items-center gap-2.5 border-b px-5 py-3">
@@ -380,7 +426,6 @@ export function ModelList({
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {showLocalLlmForm && <LocalLlmConnect m={m} />}
         {visible.length === 0 ? (
           <div className="text-muted-foreground px-5 py-10 text-center text-[13px]">
             No models match.
@@ -423,9 +468,11 @@ function FilterBar({
   const seen = new Set<string>();
   for (const r of rows) {
     if (seen.has(r.provider)) continue;
-    // Keep voice local engines in the On-device bucket only; surface the
-    // OpenAPI-compatible provider as a first-class filter for LLM.
+    // Keep voice local engines in the On-device bucket only. In the voice
+    // picker the OpenAPI-compatible endpoint is represented by preset chips
+    // (Azure, Together, …) rather than the generic local-llm provider chip.
     if (type === "voice" && r.source === "local") continue;
+    if (type === "voice" && r.provider === "local-llm") continue;
     seen.add(r.provider);
     providers.push({
       id: r.provider,
@@ -434,11 +481,24 @@ function FilterBar({
     });
   }
 
+  // In the voice picker, surface the OpenAPI-compatible providers as chips in
+  // the same filter bar instead of a separate shelf above the list.
+  const openApiChips =
+    type === "voice"
+      ? OPENAPI_ENDPOINT_PRESETS.map((preset) => ({
+          id: `preset:${preset.id}`,
+          label: preset.label,
+          mark: "API" as const,
+        }))
+      : [];
+
   const sources = [
     { id: "all", label: "All" },
     { id: "cloud", label: "Cloud" },
     { id: "local", label: "On-device" },
   ];
+
+  const showDivider = providers.length > 0 || openApiChips.length > 0;
 
   return (
     <div className="border-border flex flex-wrap items-center gap-2 border-b px-5 py-2.5">
@@ -450,10 +510,19 @@ function FilterBar({
           onClick={() => onChange(f.id)}
         />
       ))}
-      {providers.length > 0 && (
+      {showDivider && (
         <span className="bg-border mx-1 h-4 w-px shrink-0" aria-hidden="true" />
       )}
       {providers.map((p) => (
+        <Chip
+          key={p.id}
+          label={p.label}
+          mark={p.mark}
+          on={active === p.id}
+          onClick={() => onChange(p.id)}
+        />
+      ))}
+      {openApiChips.map((p) => (
         <Chip
           key={p.id}
           label={p.label}
@@ -676,57 +745,76 @@ function Progress({
 // Local LLM connect form (shown under the On-device filter for LLM)
 // ---------------------------------------------------------------------------
 
-function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
+function LocalLlmConnect({
+  m,
+  onApply,
+  activePresetId: forcedPresetId,
+  showCards = false,
+}: {
+  m: UseModels;
+  onApply: () => Promise<void>;
+  activePresetId?: string | null;
+  showCards?: boolean;
+}): React.JSX.Element {
   const [showKey, setShowKey] = useState(false);
   const { localLlm } = m;
   const normalizedUrl =
     normalizeOpenApiCompatibleEndpoint(localLlm.url) ?? localLlm.url.trim();
   const activePresetId =
-    OPENAPI_ENDPOINT_PRESETS.find(
+    forcedPresetId ??
+    (OPENAPI_ENDPOINT_PRESETS.find(
       (preset) =>
         normalizeOpenApiCompatibleEndpoint(preset.endpoint) === normalizedUrl,
-    )?.id ?? null;
+    )?.id ??
+      null);
   const credentialUi = getOpenApiCredentialUi(activePresetId);
   const modelUi = getOpenApiModelUi(activePresetId);
 
   return (
     <div className="border-border border-b">
-      <div className="flex items-center gap-2 px-5 pb-2 pt-3">
-        <Laptop className="text-primary h-3 w-3" />
-        <span
-          className="mono text-foreground text-[10px] uppercase"
-          style={{ letterSpacing: "0.14em" }}
-        >
-          OpenAPI Compatible
-        </span>
-        <span className="text-muted-foreground text-[11.5px]">
-          Azure, OpenRouter, Together, Fireworks, DeepInfra, local gateways &
-          more
-        </span>
-      </div>
-      <div className="flex flex-wrap gap-2 px-5 pb-3">
-        {OPENAPI_ENDPOINT_PRESETS.map((preset) => {
-          const active = preset.id === activePresetId;
-          return (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => {
-                localLlm.setUrl(preset.endpoint);
-                localLlm.clearStatus();
-              }}
-              className={cn(
-                "rounded-full border px-3 py-1 text-[11.5px] transition-colors",
-                active
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-background text-muted-foreground hover:text-foreground",
-              )}
+      {showCards && (
+        <>
+          <div className="flex items-center gap-2 px-5 pb-2 pt-3">
+            <Laptop className="text-primary h-3 w-3" />
+            <span
+              className="mono text-foreground text-[10px] uppercase"
+              style={{ letterSpacing: "0.14em" }}
             >
-              {preset.label}
-            </button>
-          );
-        })}
-      </div>
+              Add a provider
+            </span>
+            <span className="text-muted-foreground text-[11.5px]">
+              Pick a service, enter its key, then test and apply a model
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 px-5 pb-3 sm:grid-cols-3">
+            {OPENAPI_ENDPOINT_PRESETS.map((preset) => {
+              const active = preset.id === activePresetId;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => {
+                    localLlm.setUrl(preset.endpoint);
+                    localLlm.clearStatus();
+                  }}
+                  className={cn(
+                    "flex flex-col items-start gap-0.5 rounded-lg border p-2.5 text-left transition-colors",
+                    active
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-background text-foreground hover:border-primary/60 hover:bg-secondary/40",
+                  )}
+                  title={preset.description}
+                >
+                  <span className="text-[12px] font-medium">{preset.label}</span>
+                  <span className="text-muted-foreground line-clamp-2 text-[10.5px] leading-snug">
+                    {preset.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -793,7 +881,7 @@ function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
             />
             <button
               type="button"
-              onClick={() => void localLlm.applyModel()}
+              onClick={() => void onApply()}
               disabled={!localLlm.modelName.trim() || localLlm.applyingModel}
               className="bg-secondary hover:bg-secondary/80 shrink-0 rounded-md px-3.5 py-2 text-[12.5px] font-medium disabled:opacity-50"
             >

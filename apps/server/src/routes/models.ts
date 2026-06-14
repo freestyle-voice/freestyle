@@ -51,7 +51,9 @@ const OPENROUTER_FETCH_TIMEOUT_MS = 4000;
 const UNSUITABLE_CLEANUP_MODEL_PATTERN =
   /guard|safeguard|safety|moderation|classif(?:y|ier|ication)?|embed(?:ding)?|image/i;
 
-async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
+async function fetchLocalOpenApiModels(
+  type: "voice" | "llm",
+): Promise<AvailableModel[]> {
   const db = getDb();
   const urlRow = db
     .prepare("SELECT value FROM settings WHERE key = 'local_llm_url'")
@@ -85,7 +87,7 @@ async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
     model_id: `local-llm/${m.id}`,
     model_name: m.id,
     family: "openapi-compatible",
-    type: "llm" as const,
+    type,
     cost_input: 0,
     cost_output: 0,
   }));
@@ -409,11 +411,15 @@ const models = new Hono()
       }
 
       try {
-        const localModels = await fetchLocalLlmModels();
+        const localLlmModels = await fetchLocalOpenApiModels("llm");
+        const localVoiceModels = await fetchLocalOpenApiModels("voice");
         // The user explicitly connected this server — everything it serves is curated.
-        available.push(...localModels.map((m) => ({ ...m, curated: true })));
+        available.push(
+          ...localLlmModels.map((m) => ({ ...m, curated: true })),
+          ...localVoiceModels.map((m) => ({ ...m, curated: true })),
+        );
       } catch {
-        // Local LLM server not reachable
+        // Local OpenAPI-compatible server not reachable
       }
 
       return c.json(available);

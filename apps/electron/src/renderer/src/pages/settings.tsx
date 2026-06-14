@@ -588,7 +588,7 @@ export default function SettingsPage(): React.JSX.Element {
             desc={
               hotkeyMode === "toggle"
                 ? "Press the shortcut once to start, press again to stop."
-                : "Push to Hold while the shortcut is held; release to transcribe."
+                : "Hold the shortcut to record, release to transcribe."
             }
           >
             {recorderState === "idle" ? (
@@ -646,7 +646,7 @@ export default function SettingsPage(): React.JSX.Element {
             desc={
               hotkeyMode === "toggle"
                 ? "Press the shortcut once to start, again to stop."
-                : "Push to Hold while the shortcut is held."
+                : "Push-to-talk while the shortcut is held."
             }
           >
             <div className="border-border bg-card inline-flex w-fit shrink-0 rounded-lg border p-0.5 text-sm">
@@ -660,7 +660,7 @@ export default function SettingsPage(): React.JSX.Element {
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                Push to Hold
+                Hold
               </button>
               <button
                 type="button"
@@ -767,8 +767,8 @@ export default function SettingsPage(): React.JSX.Element {
           </Row>
 
           <Row
-            label="Push to Hold ducking"
-            desc="Set the background audio level while push to hold is active. 0% fully mutes it; higher values keep more sound in the mix."
+            label="Push-to-talk ducking"
+            desc="Set the background audio level while push-to-talk is active. 0% fully mutes it; higher values keep more sound in the mix."
             last
           >
             <div className="max-w-md space-y-3">
@@ -814,8 +814,8 @@ export default function SettingsPage(): React.JSX.Element {
               <p className="text-muted-foreground text-[12px] leading-[1.5]">
                 {audioDuckingEnabled
                   ? audioDuckingLevel === 0
-                    ? "Freestyle fully mutes background audio while you hold push to hold."
-                    : `Freestyle keeps background audio at ${audioDuckingLevel}% of its current volume while you hold push to hold.`
+                    ? "Freestyle fully mutes background audio while you hold push-to-talk."
+                    : `Freestyle keeps background audio at ${audioDuckingLevel}% of its current volume while you hold push-to-talk.`
                   : "Turn this on if you want Freestyle to reduce or mute background audio while you speak."}
               </p>
             </div>

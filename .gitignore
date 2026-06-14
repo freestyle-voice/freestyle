@@ -61,3 +61,4 @@ test-results/
 .env.local
 .env.*.local
 !.env.example
+.venv-icons/

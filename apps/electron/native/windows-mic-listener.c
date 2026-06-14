@@ -7,8 +7,8 @@
  * Uses IAudioSessionManager2 to enumerate and monitor capture sessions.
  * Supports --exclude-pid to ignore the app's own microphone usage.
  *
- * Compile with: cl /O2 windows-mic-listener.c /Fe:windows-mic-listener.exe ole32.lib oleaut32.lib
- * Or with MinGW: gcc -O2 windows-mic-listener.c -o windows-mic-listener.exe -lole32 -loleaut32
+ * Compile with: cl /O2 windows-mic-listener.c /Fe:windows-mic-listener.exe user32.lib ole32.lib oleaut32.lib uuid.lib
+ * Or with MinGW: gcc -O2 windows-mic-listener.c -o windows-mic-listener.exe -luser32 -lole32 -loleaut32 -luuid
  */
 
 #define WIN32_LEAN_AND_MEAN

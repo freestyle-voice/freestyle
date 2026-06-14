@@ -21,7 +21,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router";
 
 function PagePad(): React.JSX.Element {
   return (
-    <div className="responsive-route-pad">
+    <div className="responsive-route-pad flex h-full min-h-0 flex-col">
       <Outlet />
     </div>
   );

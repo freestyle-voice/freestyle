@@ -1,4 +1,5 @@
 import { KeyComboDisplay } from "@renderer/components/key-combo";
+import { DictationLanguagesField } from "@renderer/components/language-picker";
 import {
   comboDisplayKeys,
   formatAcceleratorKeys,
@@ -6,7 +7,12 @@ import {
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
 import { getClient } from "@renderer/lib/api";
-import { LANGUAGES } from "@renderer/lib/languages";
+import {
+  defaultManualLanguages,
+  formatLanguageSummary,
+  parseLanguageSetting,
+  serializeLanguageSetting,
+} from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { cn } from "@renderer/lib/utils";
 import {
@@ -14,7 +20,6 @@ import {
   Download,
   ExternalLink,
   Keyboard,
-  Languages,
   Mic,
   Monitor,
   Moon,
@@ -37,6 +42,23 @@ const themeOptions = [
   { value: "system", label: "System", icon: Monitor },
 ] as const;
 
+const settingsSections = [
+  { id: "application", label: "Application" },
+  { id: "recording", label: "Recording" },
+  { id: "display", label: "Display" },
+  { id: "permissions", label: "Permissions" },
+  { id: "data", label: "Data" },
+] as const;
+
+type SettingsSectionId = (typeof settingsSections)[number]["id"];
+
+function parseSettingsSection(hash: string): SettingsSectionId {
+  const id = hash.replace(/^#/, "");
+  return settingsSections.some((section) => section.id === id)
+    ? (id as SettingsSectionId)
+    : "application";
+}
+
 interface AudioDevice {
   deviceId: string;
   label: string;
@@ -58,11 +80,11 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.defaultHotkey ?? getDefaultHotkey(),
   );
   const [hotkeyMode, setHotkeyMode] = useState<"hold" | "toggle">("hold");
-  const [language, setLanguage] = useState("auto");
+  const [languageAutoDetect, setLanguageAutoDetect] = useState(true);
+  const [languageSelections, setLanguageSelections] = useState<string[]>([]);
   const [outputMode, setOutputMode] = useState("paste");
   const [pillPosition, setPillPosition] = useState("bottom-center");
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [transcriptionPrompt, setTranscriptionPrompt] = useState("");
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -70,6 +92,9 @@ export default function SettingsPage(): React.JSX.Element {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
+    parseSettingsSection(window.location.hash),
+  );
 
   // Permissions
   type MicStatus =
@@ -89,6 +114,22 @@ export default function SettingsPage(): React.JSX.Element {
   const isMac = navigator.userAgent.includes("Mac");
   // macOS and Windows can deep-link to the OS mic privacy settings.
   const canOpenMicSettings = isMac || window.api?.platform === "win32";
+
+  const selectSection = useCallback((id: SettingsSectionId) => {
+    setActiveSection(id);
+    const nextHash = `#${id}`;
+    if (window.location.hash !== nextHash) {
+      window.history.replaceState(null, "", nextHash);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setActiveSection(parseSettingsSection(window.location.hash));
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   const checkPermissions = useCallback(async () => {
     try {
@@ -227,7 +268,13 @@ export default function SettingsPage(): React.JSX.Element {
       .api.settings[":key"].$get({ param: { key: "language" } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data?.value) setLanguage(data.value);
+        const parsed = parseLanguageSetting(data?.value);
+        setLanguageAutoDetect(parsed.autoDetect);
+        setLanguageSelections(
+          parsed.languages.length > 0
+            ? parsed.languages
+            : defaultManualLanguages(),
+        );
       })
       .catch(() => {});
     getClient()
@@ -248,15 +295,6 @@ export default function SettingsPage(): React.JSX.Element {
         if (data?.value === "false") setSoundEnabled(false);
       })
       .catch(() => {});
-    getClient()
-      .api.settings[":key"].$get({ param: { key: "transcription_prompt" } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value) setTranscriptionPrompt(data.value);
-      })
-      .catch(() => {});
-
-    // Auto-update setting
     window.api
       ?.getAutoUpdate()
       .then((v) => setAutoUpdate(v))
@@ -343,15 +381,23 @@ export default function SettingsPage(): React.JSX.Element {
     [setTheme],
   );
 
-  const handleLanguageChange = useCallback((value: string) => {
-    setLanguage(value);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: "language" },
-        json: { value },
-      })
-      .catch(() => {});
-  }, []);
+  const handleLanguagesSave = useCallback(
+    (next: { autoDetect: boolean; languages: string[] }) => {
+      const languages =
+        next.languages.length > 0 ? next.languages : defaultManualLanguages();
+      setLanguageAutoDetect(next.autoDetect);
+      setLanguageSelections(languages);
+      getClient()
+        .api.settings[":key"].$put({
+          param: { key: "language" },
+          json: {
+            value: serializeLanguageSetting(next.autoDetect, languages),
+          },
+        })
+        .catch(() => {});
+    },
+    [],
+  );
 
   const handleOutputModeChange = useCallback((value: string) => {
     setOutputMode(value);
@@ -414,6 +460,10 @@ export default function SettingsPage(): React.JSX.Element {
       ? "Release to save · Esc to cancel"
       : "Press a modifier or side mouse button... · Esc to cancel";
 
+  const activeSectionLabel =
+    settingsSections.find((section) => section.id === activeSection)?.label ??
+    "Application";
+
   const positionOptions = useMemo<SegmentOption[]>(() => {
     const opts: SegmentOption[] = [
       { id: "bottom-center", label: "Bottom · Center" },
@@ -432,364 +482,357 @@ export default function SettingsPage(): React.JSX.Element {
     >
       <div className="h-9 shrink-0" />
       <div
-        className="responsive-page-scroll flex-1 overflow-auto"
+        className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 min-[900px]:grid-cols-[180px_minmax(0,1fr)]"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
-        <div className="mb-7">
-          <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-            <span className="serif-italic text-primary">Settings</span>
-            <span>. </span>
-          </h1>
+        <div className="min-[900px]:col-span-2">
+          <div className="mb-7">
+            <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
+              <span className="serif-italic text-primary">Settings</span>
+              <span>. </span>
+            </h1>
+          </div>
+
+          {updateAvailable && (
+            <div className="border-primary/30 bg-primary/5 mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <Download className="text-primary h-4 w-4" />
+                <span className="min-w-0 text-sm">
+                  {updateDownloaded
+                    ? `Version ${updateAvailable} ready to install`
+                    : `Version ${updateAvailable} available`}
+                </span>
+              </div>
+              {updateDownloaded ? (
+                <button
+                  type="button"
+                  onClick={() => window.api?.installUpdate()}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium"
+                >
+                  Restart & Update
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDownloading(true);
+                    setUpdateError(null);
+                    window.api?.downloadUpdate();
+                  }}
+                  disabled={downloading}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium disabled:opacity-50"
+                >
+                  {downloading ? "Downloading..." : "Download"}
+                </button>
+              )}
+              {updateError && (
+                <span className="text-destructive w-full text-xs">
+                  {updateError}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
-        {updateAvailable && (
-          <div className="border-primary/30 bg-primary/5 mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <Download className="text-primary h-4 w-4" />
-              <span className="min-w-0 text-sm">
-                {updateDownloaded
-                  ? `Version ${updateAvailable} ready to install`
-                  : `Version ${updateAvailable} available`}
-              </span>
-            </div>
-            {updateDownloaded ? (
-              <button
-                type="button"
-                onClick={() => window.api?.installUpdate()}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium"
-              >
-                Restart & Update
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setDownloading(true);
-                  setUpdateError(null);
-                  window.api?.downloadUpdate();
-                }}
-                disabled={downloading}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium disabled:opacity-50"
-              >
-                {downloading ? "Downloading..." : "Download"}
-              </button>
-            )}
-            {updateError && (
-              <span className="text-destructive w-full text-xs">
-                {updateError}
-              </span>
-            )}
-          </div>
-        )}
+        <SettingsSidebar active={activeSection} onSelect={selectSection} />
 
-        <Section label="Application">
-          <Row
-            label="Automatic updates"
-            desc="Download new versions in the background as soon as they ship."
-          >
-            <Toggle on={autoUpdate} onChange={handleAutoUpdateToggle} />
-          </Row>
-          <Row
-            label="Launch at startup"
-            desc="Automatically start Freestyle when you log in to your computer."
-          >
-            <Toggle
-              on={launchAtStartup}
-              onChange={handleLaunchAtStartupToggle}
-            />
-          </Row>
-          <Row
-            label="Show dashboard on launch"
-            desc="Open the dashboard window when Freestyle starts."
-            last
-          >
-            <Toggle on={showOnLaunch} onChange={handleShowOnLaunchToggle} />
-          </Row>
-        </Section>
+        <div className="min-h-0 overflow-y-auto">
+          <h2 className="text-foreground mb-6 text-[22px] font-medium tracking-[-0.02em]">
+            {activeSectionLabel}
+          </h2>
 
-        <Section label="Recording">
-          <Row
-            label="Hotkey"
-            desc={
-              hotkeyMode === "toggle"
-                ? "Press the shortcut once to start, press again to stop."
-                : "Hold the shortcut to record, release to transcribe."
-            }
-          >
-            {recorderState === "idle" ? (
-              <div className="relative inline-flex">
-                <button
-                  type="button"
-                  onClick={startHotkeyRecording}
-                  className="border-border hover:bg-secondary inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2 transition-colors"
-                >
-                  <Keyboard className="text-muted-foreground h-4 w-4 shrink-0" />
-                  <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
-                  <span className="text-muted-foreground ml-1 text-xs">
-                    Change
-                  </span>
-                </button>
-                {invalidReleaseNotice && (
-                  <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                    Hotkeys need a modifier or side mouse button
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
-                <Keyboard className="text-primary h-4 w-4 shrink-0" />
-                {draftKeys.length > 0 ? (
-                  <>
-                    <KeyComboDisplay keys={draftKeys} variant="dim" />
-                    <span className="text-muted-foreground text-xs">
-                      {captureHint}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-muted-foreground animate-pulse text-sm">
-                    {captureHint}
-                  </span>
-                )}
-                {invalidReleaseNotice && (
-                  <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                    Hotkeys need a modifier or side mouse button
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={cancelHotkeyRecording}
-                  className="border-border hover:bg-secondary ml-1 rounded-md border px-2.5 py-1 text-xs"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-          </Row>
-
-          <Row
-            label="Activation"
-            desc={
-              hotkeyMode === "toggle"
-                ? "Press the shortcut once to start, again to stop."
-                : "Push-to-talk while the shortcut is held."
-            }
-          >
-            <div className="border-border bg-card inline-flex w-fit shrink-0 rounded-lg border p-0.5 text-sm">
-              <button
-                type="button"
-                onClick={() => handleHotkeyModeChange("hold")}
-                className={cn(
-                  "rounded-md px-3 py-1.5 transition-colors",
-                  hotkeyMode === "hold"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
+          {activeSection === "application" && (
+            <SettingsPanel>
+              <Row
+                label="Automatic updates"
+                desc="Download new versions in the background as soon as they ship."
               >
-                Hold
-              </button>
-              <button
-                type="button"
-                onClick={() => handleHotkeyModeChange("toggle")}
-                className={cn(
-                  "rounded-md px-3 py-1.5 transition-colors",
+                <Toggle on={autoUpdate} onChange={handleAutoUpdateToggle} />
+              </Row>
+              <Row
+                label="Launch at startup"
+                desc="Automatically start Freestyle when you log in to your computer."
+              >
+                <Toggle
+                  on={launchAtStartup}
+                  onChange={handleLaunchAtStartupToggle}
+                />
+              </Row>
+              <Row
+                label="Show dashboard on launch"
+                desc="Open the dashboard window when Freestyle starts."
+                last
+              >
+                <Toggle on={showOnLaunch} onChange={handleShowOnLaunchToggle} />
+              </Row>
+            </SettingsPanel>
+          )}
+
+          {activeSection === "recording" && (
+            <SettingsPanel>
+              <Row
+                label="Hotkey"
+                desc={
                   hotkeyMode === "toggle"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
+                    ? "Press the shortcut once to start, press again to stop."
+                    : "Hold the shortcut to record, release to transcribe."
+                }
+              >
+                {recorderState === "idle" ? (
+                  <div className="relative inline-flex">
+                    <button
+                      type="button"
+                      onClick={startHotkeyRecording}
+                      className="border-border hover:bg-secondary inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2 transition-colors"
+                    >
+                      <Keyboard className="text-muted-foreground h-4 w-4 shrink-0" />
+                      <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
+                      <span className="text-muted-foreground ml-1 text-xs">
+                        Change
+                      </span>
+                    </button>
+                    {invalidReleaseNotice && (
+                      <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                        Hotkeys need a modifier or side mouse button
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
+                    <Keyboard className="text-primary h-4 w-4 shrink-0" />
+                    {draftKeys.length > 0 ? (
+                      <>
+                        <KeyComboDisplay keys={draftKeys} variant="dim" />
+                        <span className="text-muted-foreground text-xs">
+                          {captureHint}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground animate-pulse text-sm">
+                        {captureHint}
+                      </span>
+                    )}
+                    {invalidReleaseNotice && (
+                      <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                        Hotkeys need a modifier or side mouse button
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={cancelHotkeyRecording}
+                      className="border-border hover:bg-secondary ml-1 rounded-md border px-2.5 py-1 text-xs"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </Row>
+
+              <Row
+                label="Activation"
+                desc={
+                  hotkeyMode === "toggle"
+                    ? "Press the shortcut once to start, again to stop."
+                    : "Push-to-talk while the shortcut is held."
+                }
+              >
+                <div className="border-border bg-card inline-flex w-fit shrink-0 rounded-lg border p-0.5 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => handleHotkeyModeChange("hold")}
+                    className={cn(
+                      "rounded-md px-3 py-1.5 transition-colors",
+                      hotkeyMode === "hold"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    Hold
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleHotkeyModeChange("toggle")}
+                    className={cn(
+                      "rounded-md px-3 py-1.5 transition-colors",
+                      hotkeyMode === "toggle"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    Toggle
+                  </button>
+                </div>
+              </Row>
+
+              <Row label="Microphone" desc="Select your audio input device.">
+                <div className="border-border bg-card text-foreground flex w-full max-w-md items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                  <Mic className="text-muted-foreground h-4 w-4 shrink-0" />
+                  <select
+                    id="settings-microphone"
+                    value={selectedDevice}
+                    onChange={(e) => handleDeviceChange(e.target.value)}
+                    className="w-full min-w-0 truncate bg-transparent pr-6 outline-none"
+                  >
+                    <option value="">System default</option>
+                    {devices.map((d) => (
+                      <option key={d.deviceId} value={d.deviceId}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </Row>
+
+              <Row
+                label="Dictation languages"
+                desc={formatLanguageSummary(
+                  languageAutoDetect,
+                  languageSelections,
                 )}
               >
-                Toggle
-              </button>
-            </div>
-          </Row>
+                <DictationLanguagesField
+                  autoDetect={languageAutoDetect}
+                  languages={languageSelections}
+                  onSave={handleLanguagesSave}
+                />
+              </Row>
 
-          <Row label="Microphone" desc="Select your audio input device.">
-            <div className="border-border bg-card text-foreground flex w-full max-w-md items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-              <Mic className="text-muted-foreground h-4 w-4 shrink-0" />
-              <select
-                id="settings-microphone"
-                value={selectedDevice}
-                onChange={(e) => handleDeviceChange(e.target.value)}
-                className="w-full min-w-0 truncate bg-transparent pr-6 outline-none"
+              <Row
+                label="Output mode"
+                desc="Paste into the active app, or copy to clipboard."
               >
-                <option value="">System default</option>
-                {devices.map((d) => (
-                  <option key={d.deviceId} value={d.deviceId}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </Row>
+                <Segment
+                  compact
+                  options={[
+                    { id: "paste", label: "Paste into app" },
+                    { id: "clipboard", label: "Copy to clipboard" },
+                  ]}
+                  active={outputMode}
+                  onSelect={handleOutputModeChange}
+                />
+              </Row>
 
-          <Row label="Language" desc="Hint for the transcription model.">
-            <div className="border-border bg-card text-foreground flex w-full max-w-xs items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-              <Languages className="text-muted-foreground h-4 w-4 shrink-0" />
-              <select
-                id="settings-language"
-                value={language}
-                onChange={(e) => handleLanguageChange(e.target.value)}
-                className="w-full min-w-0 truncate bg-transparent pr-6 outline-none"
+              <Row
+                label="Sound feedback"
+                desc="Soft chimes at the start and end of recording."
+                last
               >
-                <option value="auto">Auto-detect</option>
-                {LANGUAGES.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </Row>
+                <div className="flex items-center gap-2.5">
+                  {soundEnabled ? (
+                    <Volume2 className="text-muted-foreground h-4 w-4 shrink-0" />
+                  ) : (
+                    <VolumeOff className="text-muted-foreground h-4 w-4 shrink-0" />
+                  )}
+                  <Toggle on={soundEnabled} onChange={handleSoundToggle} />
+                </div>
+              </Row>
+            </SettingsPanel>
+          )}
 
-          <Row
-            label="Output mode"
-            desc="Paste into the active app, or copy to clipboard."
-          >
-            <Segment
-              compact
-              options={[
-                { id: "paste", label: "Paste into app" },
-                { id: "clipboard", label: "Copy to clipboard" },
-              ]}
-              active={outputMode}
-              onSelect={handleOutputModeChange}
-            />
-          </Row>
+          {activeSection === "display" && (
+            <SettingsPanel>
+              <Row label="Theme" desc="Light, dark, or follow your system.">
+                <Segment
+                  options={themeOptions.map((o) => ({
+                    id: o.value,
+                    label: o.label,
+                    icon: o.icon,
+                  }))}
+                  active={theme ?? "system"}
+                  onSelect={handleThemeChange}
+                />
+              </Row>
+              <Row
+                label="Widget position"
+                desc="Where the floating pill appears on your screen."
+                last
+              >
+                <Segment
+                  compact
+                  options={positionOptions}
+                  active={pillPosition}
+                  onSelect={handlePillPositionChange}
+                />
+              </Row>
+            </SettingsPanel>
+          )}
 
-          <Row
-            label="Transcription prompt"
-            desc="List domain terms, names, or jargon to nudge the speech model toward better accuracy."
-          >
-            <input
-              id="settings-transcription-prompt"
-              type="text"
-              value={transcriptionPrompt}
-              onChange={(e) => setTranscriptionPrompt(e.target.value)}
-              onBlur={() => {
-                getClient()
-                  .api.settings[":key"].$put({
-                    param: { key: "transcription_prompt" },
-                    json: { value: transcriptionPrompt },
-                  })
-                  .catch(() => {});
-              }}
-              placeholder="e.g. TypeScript, React, Kubernetes, JIRA…"
-              className="border-border bg-card text-foreground w-full max-w-md rounded-lg border px-3 py-2 text-sm"
-            />
-          </Row>
+          {activeSection === "permissions" && (
+            <SettingsPanel>
+              <Row
+                label="Microphone"
+                desc="Required to capture audio for transcription."
+              >
+                <PermissionControl
+                  granted={micStatus === "granted"}
+                  checking={micStatus === "unknown"}
+                  actionLabel={
+                    micStatus === "denied" && canOpenMicSettings
+                      ? "Open Settings"
+                      : micStatus === "granted"
+                        ? null
+                        : "Allow"
+                  }
+                  external={micStatus === "denied" && canOpenMicSettings}
+                  onAction={
+                    micStatus === "denied" && canOpenMicSettings
+                      ? openMicSettings
+                      : requestMic
+                  }
+                  onManage={canOpenMicSettings ? openMicSettings : undefined}
+                />
+              </Row>
+              <Row
+                label="Accessibility"
+                desc={
+                  isMac
+                    ? "Required to detect the global hotkey and paste into other apps. Toggle Freestyle on under System Settings › Privacy & Security › Accessibility."
+                    : "Required to detect the global hotkey and paste into other apps."
+                }
+                last
+              >
+                <PermissionControl
+                  granted={accessibilityStatus === true}
+                  checking={accessibilityStatus === null}
+                  actionLabel={
+                    accessibilityStatus === true
+                      ? null
+                      : isMac
+                        ? "Open Settings"
+                        : null
+                  }
+                  external={isMac}
+                  onAction={openAccessibility}
+                  onManage={isMac ? openAccessibility : undefined}
+                  note={
+                    !isMac && accessibilityStatus !== true
+                      ? "Auto-granted"
+                      : undefined
+                  }
+                />
+              </Row>
+            </SettingsPanel>
+          )}
 
-          <Row
-            label="Sound feedback"
-            desc="Soft chimes at the start and end of recording."
-            last
-          >
-            <div className="flex items-center gap-2.5">
-              {soundEnabled ? (
-                <Volume2 className="text-muted-foreground h-4 w-4 shrink-0" />
-              ) : (
-                <VolumeOff className="text-muted-foreground h-4 w-4 shrink-0" />
-              )}
-              <Toggle on={soundEnabled} onChange={handleSoundToggle} />
-            </div>
-          </Row>
-        </Section>
-
-        <Section label="Display">
-          <Row label="Theme" desc="Light, dark, or follow your system.">
-            <Segment
-              options={themeOptions.map((o) => ({
-                id: o.value,
-                label: o.label,
-                icon: o.icon,
-              }))}
-              active={theme ?? "system"}
-              onSelect={handleThemeChange}
-            />
-          </Row>
-          <Row
-            label="Widget position"
-            desc="Where the floating pill appears on your screen."
-            last
-          >
-            <Segment
-              compact
-              options={positionOptions}
-              active={pillPosition}
-              onSelect={handlePillPositionChange}
-            />
-          </Row>
-        </Section>
-
-        <Section label="Permissions">
-          <Row
-            label="Microphone"
-            desc="Required to capture audio for transcription."
-          >
-            <PermissionControl
-              granted={micStatus === "granted"}
-              checking={micStatus === "unknown"}
-              actionLabel={
-                micStatus === "denied" && canOpenMicSettings
-                  ? "Open Settings"
-                  : micStatus === "granted"
-                    ? null
-                    : "Allow"
-              }
-              external={micStatus === "denied" && canOpenMicSettings}
-              onAction={
-                micStatus === "denied" && canOpenMicSettings
-                  ? openMicSettings
-                  : requestMic
-              }
-              onManage={canOpenMicSettings ? openMicSettings : undefined}
-            />
-          </Row>
-          <Row
-            label="Accessibility"
-            desc={
-              isMac
-                ? "Required to detect the global hotkey and paste into other apps. Toggle Freestyle on under System Settings › Privacy & Security › Accessibility."
-                : "Required to detect the global hotkey and paste into other apps."
-            }
-            last
-          >
-            <PermissionControl
-              granted={accessibilityStatus === true}
-              checking={accessibilityStatus === null}
-              actionLabel={
-                accessibilityStatus === true
-                  ? null
-                  : isMac
-                    ? "Open Settings"
-                    : null
-              }
-              external={isMac}
-              onAction={openAccessibility}
-              onManage={isMac ? openAccessibility : undefined}
-              note={
-                !isMac && accessibilityStatus !== true
-                  ? "Auto-granted"
-                  : undefined
-              }
-            />
-          </Row>
-        </Section>
-
-        <Section label="Data" tight>
-          <Row
-            label="Transcription history"
-            desc="Permanently delete every saved session — this can't be undone."
-            last
-          >
-            <button
-              type="button"
-              onClick={clearHistory}
-              className="border-destructive/40 text-destructive hover:bg-destructive/10 inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Clear history
-            </button>
-          </Row>
-        </Section>
+          {activeSection === "data" && (
+            <SettingsPanel>
+              <Row
+                label="Transcription history"
+                desc="Permanently delete every saved session — this can't be undone."
+                last
+              >
+                <button
+                  type="button"
+                  onClick={clearHistory}
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10 inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Clear history
+                </button>
+              </Row>
+            </SettingsPanel>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -799,23 +842,39 @@ export default function SettingsPage(): React.JSX.Element {
 // Layout primitives — Section / Row pattern from r-settings.jsx GeneralP1
 // ---------------------------------------------------------------------------
 
-function Section({
-  label,
-  tight,
-  children,
+function SettingsSidebar({
+  active,
+  onSelect,
 }: {
-  label: string;
-  tight?: boolean;
-  children: React.ReactNode;
-}) {
+  active: SettingsSectionId;
+  onSelect: (id: SettingsSectionId) => void;
+}): React.JSX.Element {
   return (
-    <section className={cn(tight ? "mt-7" : "mt-8")}>
-      <h2 className="mono text-muted-foreground mb-1 text-[10px] font-semibold uppercase tracking-[0.18em]">
-        {label}
-      </h2>
-      <div className="flex flex-col">{children}</div>
-    </section>
+    <nav className="border-border flex h-full min-h-0 shrink-0 gap-1 overflow-x-auto pb-1 min-[900px]:flex-col min-[900px]:overflow-visible min-[900px]:border-r min-[900px]:pr-4 min-[900px]:pb-0">
+      {settingsSections.map((section) => {
+        const isActive = section.id === active;
+        return (
+          <button
+            key={section.id}
+            type="button"
+            onClick={() => onSelect(section.id)}
+            className={cn(
+              "shrink-0 rounded-[7px] border px-2.5 py-1.5 text-left text-[13px] transition-colors min-[900px]:w-full",
+              isActive
+                ? "border-border bg-card text-foreground font-medium"
+                : "text-secondary-foreground/80 hover:bg-card/50 border-transparent font-normal",
+            )}
+          >
+            {section.label}
+          </button>
+        );
+      })}
+    </nav>
   );
+}
+
+function SettingsPanel({ children }: { children: React.ReactNode }) {
+  return <div className="flex flex-col">{children}</div>;
 }
 
 function Row({

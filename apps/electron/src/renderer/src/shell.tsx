@@ -154,7 +154,7 @@ export default function AppShell(): React.JSX.Element {
         <div className="h-3" />
       </aside>
 
-      <div className="relative min-w-0 flex-1">
+      <div className="relative min-h-0 min-w-0 flex-1">
         <div
           className="absolute right-3 top-2.5 z-20 flex items-center gap-2"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -179,10 +179,7 @@ export default function AppShell(): React.JSX.Element {
           </a>
         </div>
 
-        <main
-          className="h-full overflow-auto"
-          style={{ scrollbarWidth: "none" } as React.CSSProperties}
-        >
+        <main className="min-h-0 h-full overflow-hidden">
           <Outlet />
         </main>
       </div>

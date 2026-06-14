@@ -36,3 +36,50 @@ export function defaultLanguage(): string {
   const code = (navigator.language || "en").slice(0, 2).toLowerCase();
   return ONBOARDING_LANGUAGES.some((l) => l.id === code) ? code : "auto";
 }
+
+export function parseLanguageSetting(value: string | null | undefined): {
+  autoDetect: boolean;
+  languages: string[];
+} {
+  if (!value || value === "auto") {
+    return { autoDetect: true, languages: [] };
+  }
+  return {
+    autoDetect: false,
+    languages: value
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean),
+  };
+}
+
+export function serializeLanguageSetting(
+  autoDetect: boolean,
+  languages: string[],
+): string {
+  if (autoDetect) return "auto";
+  return languages.join(",");
+}
+
+export function languageLabel(id: string): string {
+  const match = LANGUAGES.find((language) => language.id === id);
+  if (!match) return id;
+  if (match.nativeLabel !== match.label) {
+    return `${match.label} (${match.nativeLabel})`;
+  }
+  return match.label;
+}
+
+export function formatLanguageSummary(
+  autoDetect: boolean,
+  languageIds: string[],
+): string {
+  if (autoDetect) return "Auto-detect";
+  if (languageIds.length === 0) return "No languages selected";
+  return languageIds.map(languageLabel).join(" · ");
+}
+
+export function defaultManualLanguages(): string[] {
+  const code = (navigator.language || "en").slice(0, 2).toLowerCase();
+  return LANGUAGES.some((language) => language.id === code) ? [code] : ["en"];
+}

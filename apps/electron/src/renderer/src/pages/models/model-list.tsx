@@ -238,7 +238,16 @@ function buildLlmRows(
     }
   }
 
+  // Collect every model the configured OpenAPI-compatible endpoint serves.
+  // The server returns them in `available` on every load, but the UI was only
+  // showing models discovered during the current test session, so they
+  // disappeared after reopening the page.
   const names = new Set(m.localLlm.models);
+  for (const model of m.available) {
+    if (model.type === "llm" && model.provider_id === "local-llm") {
+      names.add(model.model_id.replace(/^local-llm\//, ""));
+    }
+  }
   if (m.defaultLlm?.provider === "local-llm") {
     names.add(m.defaultLlm.model_id.replace(/^local-llm\//, ""));
   }
@@ -248,7 +257,7 @@ function buildLlmRows(
       key: `local:${name}`,
       name,
       source: "local",
-      provider: "local",
+      provider: "local-llm",
       meta: `${localProviderLabel} endpoint`,
       curated: true,
       selected:
@@ -359,7 +368,7 @@ export function ModelList({
         </button>
       </header>
 
-      <FilterBar rows={rows} active={filter} onChange={setFilter} />
+      <FilterBar rows={rows} active={filter} onChange={setFilter} type={type} />
 
       {type === "voice" && m.whisperStatus?.binaryDownloading && (
         <div className="border-border flex items-center gap-2.5 border-b px-5 py-3">
@@ -403,15 +412,20 @@ function FilterBar({
   rows,
   active,
   onChange,
+  type,
 }: {
   rows: Row[];
   active: string;
   onChange: (id: string) => void;
+  type: "voice" | "llm";
 }): React.JSX.Element {
   const providers: { id: string; label: string; mark?: string }[] = [];
   const seen = new Set<string>();
   for (const r of rows) {
-    if (r.source !== "cloud" || seen.has(r.provider)) continue;
+    if (seen.has(r.provider)) continue;
+    // Keep voice local engines in the On-device bucket only; surface the
+    // OpenAPI-compatible provider as a first-class filter for LLM.
+    if (type === "voice" && r.source === "local") continue;
     seen.add(r.provider);
     providers.push({
       id: r.provider,

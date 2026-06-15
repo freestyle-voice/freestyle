@@ -4,7 +4,7 @@ import { getNativeBinaryPath } from "../native-binary";
 const DUCKED_VOLUME = 0.15;
 
 interface VolumeSnapshot {
-  deviceId: number;
+  deviceId: string;
   previousVolume: number;
 }
 
@@ -30,13 +30,13 @@ function parseSnapshot(stdout: string): VolumeSnapshot {
     deviceId?: unknown;
     volume?: unknown;
   };
-  if (typeof data.deviceId !== "number" || typeof data.volume !== "number") {
-    throw new Error("Invalid macOS output-volume response");
+  if (typeof data.deviceId !== "string" || typeof data.volume !== "number") {
+    throw new Error("Invalid Windows output-volume response");
   }
   return { deviceId: data.deviceId, previousVolume: data.volume };
 }
 
-export class MacosAudioDucker {
+export class WindowsAudioDucker {
   private snapshot: VolumeSnapshot | null = null;
   private active = false;
 
@@ -45,10 +45,10 @@ export class MacosAudioDucker {
   }
 
   async duckVolume(): Promise<boolean> {
-    if (process.platform !== "darwin") return false;
+    if (process.platform !== "win32") return false;
     if (this.active) return true;
 
-    const binaryPath = getNativeBinaryPath("macos-output-volume");
+    const binaryPath = getNativeBinaryPath("windows-output-volume");
     if (!binaryPath) return false;
 
     const snapshot = parseSnapshot(await execFileText(binaryPath, ["get"]));
@@ -56,7 +56,7 @@ export class MacosAudioDucker {
       await execFileText(binaryPath, [
         "set",
         String(DUCKED_VOLUME),
-        String(snapshot.deviceId),
+        snapshot.deviceId,
       ]);
     }
 
@@ -66,7 +66,7 @@ export class MacosAudioDucker {
   }
 
   async restore(): Promise<void> {
-    if (process.platform !== "darwin") return;
+    if (process.platform !== "win32") return;
     if (!this.active) return;
 
     const snapshot = this.snapshot;
@@ -74,14 +74,14 @@ export class MacosAudioDucker {
     this.active = false;
     if (!snapshot) return;
 
-    const binaryPath = getNativeBinaryPath("macos-output-volume");
+    const binaryPath = getNativeBinaryPath("windows-output-volume");
     if (!binaryPath) return;
 
     try {
       await execFileText(binaryPath, [
         "set",
         String(snapshot.previousVolume),
-        String(snapshot.deviceId),
+        snapshot.deviceId,
       ]);
     } catch {
       await execFileText(binaryPath, ["set", String(snapshot.previousVolume)]);
@@ -89,7 +89,7 @@ export class MacosAudioDucker {
   }
 
   restoreSync(): void {
-    if (process.platform !== "darwin") return;
+    if (process.platform !== "win32") return;
     if (!this.active) return;
 
     const snapshot = this.snapshot;
@@ -97,14 +97,14 @@ export class MacosAudioDucker {
     this.active = false;
     if (!snapshot) return;
 
-    const binaryPath = getNativeBinaryPath("macos-output-volume");
+    const binaryPath = getNativeBinaryPath("windows-output-volume");
     if (!binaryPath) return;
 
     try {
       execFileTextSync(binaryPath, [
         "set",
         String(snapshot.previousVolume),
-        String(snapshot.deviceId),
+        snapshot.deviceId,
       ]);
     } catch {
       try {

@@ -21,7 +21,7 @@ function execFileTextSync(path: string, args: string[]): string {
 export class MacosMediaPlayback {
   private active = false;
 
-  async pause(): Promise<boolean> {
+  async pausePlayback(): Promise<boolean> {
     if (process.platform !== "darwin") return false;
     if (this.active) return true;
 

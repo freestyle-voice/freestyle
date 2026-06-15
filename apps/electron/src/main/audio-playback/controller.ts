@@ -1,17 +1,20 @@
 import type { ActiveAudioPlaybackMode } from "../../shared/audio-playback";
-import * as linuxAudioDucker from "./linux-audio-ducker";
 import * as linuxMediaPlayback from "./linux-media-playback";
-import { MacosAudioDucker } from "./macos-audio-ducker";
 import { MacosMediaPlayback } from "./macos-media-playback";
+import * as volumeDucker from "./volume-ducker";
+import * as windowsMediaPlayback from "./windows-media-playback";
 
 export class AudioPlaybackController {
-  private readonly macosDucker = new MacosAudioDucker();
   private readonly macosMediaPlayback = new MacosMediaPlayback();
   private paused = false;
   private ducked = false;
 
   private supportsBackgroundAudio(): boolean {
-    return process.platform === "darwin" || process.platform === "linux";
+    return (
+      process.platform === "darwin" ||
+      process.platform === "linux" ||
+      process.platform === "win32"
+    );
   }
 
   async prepare(mode: ActiveAudioPlaybackMode): Promise<void> {
@@ -38,13 +41,7 @@ export class AudioPlaybackController {
 
   private async duckSafely(): Promise<boolean> {
     try {
-      if (process.platform === "darwin") {
-        return await this.macosDucker.duck();
-      }
-      if (process.platform === "linux") {
-        return await linuxAudioDucker.duckVolume();
-      }
-      return false;
+      return await volumeDucker.duckVolume();
     } catch {
       return false;
     }
@@ -53,10 +50,13 @@ export class AudioPlaybackController {
   private async pauseSafely(): Promise<boolean> {
     try {
       if (process.platform === "darwin") {
-        return await this.macosMediaPlayback.pause();
+        return await this.macosMediaPlayback.pausePlayback();
       }
       if (process.platform === "linux") {
         return await linuxMediaPlayback.pausePlayback();
+      }
+      if (process.platform === "win32") {
+        return await windowsMediaPlayback.pausePlayback();
       }
       return false;
     } catch {
@@ -75,11 +75,7 @@ export class AudioPlaybackController {
 
     if (shouldRestoreDuck) {
       try {
-        if (process.platform === "darwin") {
-          await this.macosDucker.restore();
-        } else if (process.platform === "linux") {
-          await linuxAudioDucker.restoreVolume();
-        }
+        await volumeDucker.restoreVolume();
       } catch {
         // Still try to resume media below if Freestyle paused it.
       }
@@ -91,6 +87,8 @@ export class AudioPlaybackController {
           await this.macosMediaPlayback.restore();
         } else if (process.platform === "linux") {
           await linuxMediaPlayback.resumePlayback();
+        } else if (process.platform === "win32") {
+          await windowsMediaPlayback.resumePlayback();
         }
       } catch {
         // A media session may disappear while recording.
@@ -108,11 +106,7 @@ export class AudioPlaybackController {
     this.ducked = false;
 
     if (shouldRestoreDuck) {
-      if (process.platform === "darwin") {
-        this.macosDucker.restoreSync();
-      } else if (process.platform === "linux") {
-        linuxAudioDucker.restoreVolumeSync();
-      }
+      volumeDucker.restoreVolumeSync();
     }
 
     if (shouldResume) {
@@ -120,6 +114,8 @@ export class AudioPlaybackController {
         this.macosMediaPlayback.restoreSync();
       } else if (process.platform === "linux") {
         void linuxMediaPlayback.resumePlayback();
+      } else if (process.platform === "win32") {
+        windowsMediaPlayback.resumePlaybackSync();
       }
     }
   }

@@ -79,8 +79,8 @@ function compileMacOS() {
       frameworks: ["CoreAudio", "Foundation"],
     },
     {
-      name: "macos-audio-duck",
-      src: "macos-audio-duck.swift",
+      name: "macos-output-volume",
+      src: "macos-output-volume.swift",
       frameworks: ["CoreAudio", "Foundation"],
     },
     {

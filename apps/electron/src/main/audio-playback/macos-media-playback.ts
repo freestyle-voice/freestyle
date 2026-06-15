@@ -1,5 +1,5 @@
 import { execFile, execFileSync } from "node:child_process";
-import { getNativeBinaryPath } from "./native-binary";
+import { getNativeBinaryPath } from "../native-binary";
 
 function execFileText(path: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -18,7 +18,7 @@ function execFileTextSync(path: string, args: string[]): string {
   return execFileSync(path, args, { encoding: "utf8" }).trim();
 }
 
-export class AudioPauser {
+export class MacosMediaPlayback {
   private active = false;
 
   async pause(): Promise<boolean> {

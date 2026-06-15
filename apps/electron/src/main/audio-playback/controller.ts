@@ -1,12 +1,12 @@
-import type { ActiveAudioPlaybackMode } from "../shared/audio-playback";
-import { AudioDucker } from "./audio-ducker";
-import { AudioPauser } from "./audio-pauser";
+import type { ActiveAudioPlaybackMode } from "../../shared/audio-playback";
 import * as linuxAudioDucker from "./linux-audio-ducker";
 import * as linuxMediaPlayback from "./linux-media-playback";
+import { MacosAudioDucker } from "./macos-audio-ducker";
+import { MacosMediaPlayback } from "./macos-media-playback";
 
 export class AudioPlaybackController {
-  private readonly ducker = new AudioDucker();
-  private readonly pauser = new AudioPauser();
+  private readonly macosDucker = new MacosAudioDucker();
+  private readonly macosMediaPlayback = new MacosMediaPlayback();
   private paused = false;
   private ducked = false;
 
@@ -39,7 +39,7 @@ export class AudioPlaybackController {
   private async duckSafely(): Promise<boolean> {
     try {
       if (process.platform === "darwin") {
-        return await this.ducker.duck();
+        return await this.macosDucker.duck();
       }
       if (process.platform === "linux") {
         return await linuxAudioDucker.duckVolume();
@@ -53,7 +53,7 @@ export class AudioPlaybackController {
   private async pauseSafely(): Promise<boolean> {
     try {
       if (process.platform === "darwin") {
-        return await this.pauser.pause();
+        return await this.macosMediaPlayback.pause();
       }
       if (process.platform === "linux") {
         return await linuxMediaPlayback.pausePlayback();
@@ -76,7 +76,7 @@ export class AudioPlaybackController {
     if (shouldRestoreDuck) {
       try {
         if (process.platform === "darwin") {
-          await this.ducker.restore();
+          await this.macosDucker.restore();
         } else if (process.platform === "linux") {
           await linuxAudioDucker.restoreVolume();
         }
@@ -88,7 +88,7 @@ export class AudioPlaybackController {
     if (shouldResume) {
       try {
         if (process.platform === "darwin") {
-          await this.pauser.restore();
+          await this.macosMediaPlayback.restore();
         } else if (process.platform === "linux") {
           await linuxMediaPlayback.resumePlayback();
         }
@@ -109,7 +109,7 @@ export class AudioPlaybackController {
 
     if (shouldRestoreDuck) {
       if (process.platform === "darwin") {
-        this.ducker.restoreSync();
+        this.macosDucker.restoreSync();
       } else if (process.platform === "linux") {
         linuxAudioDucker.restoreVolumeSync();
       }
@@ -117,7 +117,7 @@ export class AudioPlaybackController {
 
     if (shouldResume) {
       if (process.platform === "darwin") {
-        this.pauser.restoreSync();
+        this.macosMediaPlayback.restoreSync();
       } else if (process.platform === "linux") {
         void linuxMediaPlayback.resumePlayback();
       }

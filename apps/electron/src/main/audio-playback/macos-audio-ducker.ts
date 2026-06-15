@@ -1,5 +1,5 @@
 import { execFile, execFileSync } from "node:child_process";
-import { getNativeBinaryPath } from "./native-binary";
+import { getNativeBinaryPath } from "../native-binary";
 
 const DUCKED_VOLUME = 0.15;
 
@@ -31,12 +31,12 @@ function parseSnapshot(stdout: string): VolumeSnapshot {
     volume?: unknown;
   };
   if (typeof data.deviceId !== "number" || typeof data.volume !== "number") {
-    throw new Error("Invalid macOS audio-duck response");
+    throw new Error("Invalid macOS output-volume response");
   }
   return { deviceId: data.deviceId, previousVolume: data.volume };
 }
 
-export class AudioDucker {
+export class MacosAudioDucker {
   private snapshot: VolumeSnapshot | null = null;
   private active = false;
 
@@ -48,7 +48,7 @@ export class AudioDucker {
     if (process.platform !== "darwin") return false;
     if (this.active) return true;
 
-    const binaryPath = getNativeBinaryPath("macos-audio-duck");
+    const binaryPath = getNativeBinaryPath("macos-output-volume");
     if (!binaryPath) return false;
 
     const snapshot = parseSnapshot(await execFileText(binaryPath, ["get"]));
@@ -74,7 +74,7 @@ export class AudioDucker {
     this.active = false;
     if (!snapshot) return;
 
-    const binaryPath = getNativeBinaryPath("macos-audio-duck");
+    const binaryPath = getNativeBinaryPath("macos-output-volume");
     if (!binaryPath) return;
 
     try {
@@ -97,7 +97,7 @@ export class AudioDucker {
     this.active = false;
     if (!snapshot) return;
 
-    const binaryPath = getNativeBinaryPath("macos-audio-duck");
+    const binaryPath = getNativeBinaryPath("macos-output-volume");
     if (!binaryPath) return;
 
     try {

@@ -1,24 +1,24 @@
 /**
- * macOS Audio Duck
+ * macOS Output Volume
  *
  * Reads and writes the default output device volume through CoreAudio.
  *
  * Commands:
- *   macos-audio-duck get
- *   macos-audio-duck set <volume> [deviceId]
+ *   macos-output-volume get
+ *   macos-output-volume set <volume> [deviceId]
  *
  * Output:
  *   get -> {"deviceId":123,"volume":0.5}
  *
  * Compile:
- *   swiftc -O macos-audio-duck.swift -o macos-audio-duck \
+ *   swiftc -O macos-output-volume.swift -o macos-output-volume \
  *     -framework CoreAudio -framework Foundation
  */
 
 import CoreAudio
 import Foundation
 
-enum AudioDuckError: Error, CustomStringConvertible {
+enum OutputVolumeError: Error, CustomStringConvertible {
     case invalidArguments
     case invalidVolume
     case noDefaultOutputDevice(OSStatus)
@@ -30,7 +30,7 @@ enum AudioDuckError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .invalidArguments:
-            return "usage: macos-audio-duck get | set <volume> [deviceId]"
+            return "usage: macos-output-volume get | set <volume> [deviceId]"
         case .invalidVolume:
             return "volume must be a number between 0.0 and 1.0"
         case .noDefaultOutputDevice(let status):
@@ -67,7 +67,7 @@ func outputDevice(selector: AudioObjectPropertySelector) throws -> AudioDeviceID
         &size,
         &deviceID
     )
-    guard status == noErr else { throw AudioDuckError.noDefaultOutputDevice(status) }
+    guard status == noErr else { throw OutputVolumeError.noDefaultOutputDevice(status) }
     return deviceID
 }
 
@@ -84,17 +84,17 @@ func defaultOutputDevice() throws -> AudioDeviceID {
             if deviceID != kAudioObjectUnknown {
                 return deviceID
             }
-        } catch AudioDuckError.noDefaultOutputDevice(let status) {
+        } catch OutputVolumeError.noDefaultOutputDevice(let status) {
             lastStatus = status
         }
     }
 
-    throw AudioDuckError.noDefaultOutputDevice(lastStatus)
+    throw OutputVolumeError.noDefaultOutputDevice(lastStatus)
 }
 
 func parseDevice(_ value: String?) throws -> AudioDeviceID {
     guard let value else { return try defaultOutputDevice() }
-    guard let parsed = UInt32(value) else { throw AudioDuckError.invalidDevice(value) }
+    guard let parsed = UInt32(value) else { throw OutputVolumeError.invalidDevice(value) }
     return AudioDeviceID(parsed)
 }
 
@@ -116,7 +116,7 @@ func readVolumeElement(_ deviceID: AudioDeviceID, _ element: AudioObjectProperty
     var value: Float32 = 0
     var size = UInt32(MemoryLayout<Float32>.size)
     let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value)
-    guard status == noErr else { throw AudioDuckError.readFailed(status) }
+    guard status == noErr else { throw OutputVolumeError.readFailed(status) }
     return value
 }
 
@@ -130,7 +130,7 @@ func setVolumeElement(
     var settableAddress = address
     let settableStatus = AudioObjectIsPropertySettable(deviceID, &settableAddress, &settable)
     guard settableStatus == noErr, settable.boolValue else {
-        throw AudioDuckError.writeFailed(settableStatus)
+        throw OutputVolumeError.writeFailed(settableStatus)
     }
 
     var value = volume
@@ -142,7 +142,7 @@ func setVolumeElement(
         UInt32(MemoryLayout<Float32>.size),
         &value
     )
-    guard status == noErr else { throw AudioDuckError.writeFailed(status) }
+    guard status == noErr else { throw OutputVolumeError.writeFailed(status) }
 }
 
 func preferredStereoChannels(_ deviceID: AudioDeviceID) -> [AudioObjectPropertyElement] {
@@ -176,7 +176,7 @@ func readableVolumeElements(_ deviceID: AudioDeviceID) -> [AudioObjectPropertyEl
 
 func readVolume(_ deviceID: AudioDeviceID) throws -> Float32 {
     let elements = readableVolumeElements(deviceID)
-    guard !elements.isEmpty else { throw AudioDuckError.volumeUnavailable }
+    guard !elements.isEmpty else { throw OutputVolumeError.volumeUnavailable }
 
     var values: [Float32] = []
     for element in elements {
@@ -199,7 +199,7 @@ func setVolume(_ deviceID: AudioDeviceID, _ volume: Float32) throws {
     let elements = (preferredStereoChannels(deviceID) + [1, 2])
         .filter { seen.insert($0).inserted }
         .filter { hasVolume(deviceID, $0) }
-    guard !elements.isEmpty else { throw AudioDuckError.volumeUnavailable }
+    guard !elements.isEmpty else { throw OutputVolumeError.volumeUnavailable }
 
     var lastError: Error?
     var didSet = false
@@ -213,40 +213,40 @@ func setVolume(_ deviceID: AudioDeviceID, _ volume: Float32) throws {
     }
 
     if !didSet {
-        throw lastError ?? AudioDuckError.volumeUnavailable
+        throw lastError ?? OutputVolumeError.volumeUnavailable
     }
 }
 
 func parseVolume(_ value: String) throws -> Float32 {
     guard let volume = Float32(value), volume >= 0, volume <= 1 else {
-        throw AudioDuckError.invalidVolume
+        throw OutputVolumeError.invalidVolume
     }
     return volume
 }
 
 func run() throws {
     guard CommandLine.arguments.count >= 2 else {
-        throw AudioDuckError.invalidArguments
+        throw OutputVolumeError.invalidArguments
     }
 
     let command = CommandLine.arguments[1]
     switch command {
     case "get":
         guard CommandLine.arguments.count == 2 else {
-            throw AudioDuckError.invalidArguments
+            throw OutputVolumeError.invalidArguments
         }
         let deviceID = try defaultOutputDevice()
         let volume = try readVolume(deviceID)
         print("{\"deviceId\":\(deviceID),\"volume\":\(volume)}")
     case "set":
         guard CommandLine.arguments.count == 3 || CommandLine.arguments.count == 4 else {
-            throw AudioDuckError.invalidArguments
+            throw OutputVolumeError.invalidArguments
         }
         let targetVolume = try parseVolume(CommandLine.arguments[2])
         let deviceID = try parseDevice(CommandLine.arguments.count == 4 ? CommandLine.arguments[3] : nil)
         try setVolume(deviceID, targetVolume)
     default:
-        throw AudioDuckError.invalidArguments
+        throw OutputVolumeError.invalidArguments
     }
 }
 

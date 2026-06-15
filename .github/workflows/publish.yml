@@ -61,10 +61,32 @@ jobs:
 
       - name: Install Craft
         run: |
-          CRAFT_URL=$(curl -fsSL https://api.github.com/repos/getsentry/craft/releases/latest \
-            | jq -r '.assets[] | select(.name == "craft") | .browser_download_url')
-          sudo curl -fsSL -o /usr/local/bin/craft "$CRAFT_URL"
+          set -euo pipefail
+
+          # Retry the GitHub API call because it can return 502/504 transiently.
+          CRAFT_URL=""
+          for i in 1 2 3 4 5; do
+            CRAFT_URL=$(curl -fsSL --retry 5 --retry-delay 2 \
+              https://api.github.com/repos/getsentry/craft/releases/latest \
+              | jq -r '.assets[] | select(.name == "craft") | .browser_download_url') && break
+            echo "Attempt $i failed to resolve Craft URL; retrying in 5s..."
+            sleep 5
+          done
+
+          if [[ -z "$CRAFT_URL" ]]; then
+            echo "::error::Could not determine Craft download URL"
+            exit 1
+          fi
+
+          # Retry the binary download for the same reason.
+          for i in 1 2 3 4 5; do
+            sudo curl -fsSL --retry 5 --retry-delay 2 -o /usr/local/bin/craft "$CRAFT_URL" && break
+            echo "Attempt $i failed to download Craft; retrying in 5s..."
+            sleep 5
+          done
+
           sudo chmod +x /usr/local/bin/craft
+          craft --version
 
       - name: Wait for CI on release branch
         env:

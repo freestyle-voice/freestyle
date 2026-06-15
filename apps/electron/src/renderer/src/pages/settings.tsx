@@ -38,6 +38,13 @@ const themeOptions = [
   { value: "system", label: "System", icon: Monitor },
 ] as const;
 
+const accentColorOptions = [
+  { value: "green", label: "Green", dotClass: "bg-[#6B8F12]" },
+  { value: "blue", label: "Blue", dotClass: "bg-[#435595]" },
+  { value: "red", label: "Red", dotClass: "bg-[#B91C1C]" },
+  { value: "yellow", label: "Yellow", dotClass: "bg-[#CA8A04]" },
+] as const;
+
 interface AudioDevice {
   deviceId: string;
   label: string;
@@ -72,6 +79,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [audioDuckingLevel, setAudioDuckingLevel] = useState(0);
   const [llmCleanupEnabled, setLlmCleanupEnabled] = useState(false);
   const [transcriptionPrompt, setTranscriptionPrompt] = useState("");
+  const [accentColor, setAccentColor] = useState("green");
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -286,6 +294,24 @@ export default function SettingsPage(): React.JSX.Element {
       })
       .catch(() => {});
 
+    // Accent color setting
+    getClient()
+      .api.settings[":key"].$get({ param: { key: "accent_color" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const value = data?.value;
+        if (
+          value === "green" ||
+          value === "blue" ||
+          value === "red" ||
+          value === "yellow"
+        ) {
+          setAccentColor(value);
+          document.documentElement.dataset.accentColor = value;
+        }
+      })
+      .catch(() => {});
+
     // Auto-update setting
     window.api
       ?.getAutoUpdate()
@@ -372,6 +398,20 @@ export default function SettingsPage(): React.JSX.Element {
     },
     [setTheme],
   );
+
+  const handleAccentColorChange = useCallback((value: string) => {
+    const valid = ["green", "blue", "red", "yellow"].includes(value)
+      ? value
+      : "green";
+    setAccentColor(valid);
+    document.documentElement.dataset.accentColor = valid;
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: "accent_color" },
+        json: { value: valid },
+      })
+      .catch(() => {});
+  }, []);
 
   const handleLanguageChange = useCallback((value: string) => {
     setLanguage(value);
@@ -823,6 +863,20 @@ export default function SettingsPage(): React.JSX.Element {
             />
           </Row>
           <Row
+            label="Accent color"
+            desc="Tint used for buttons, focus rings, and highlights."
+          >
+            <Segment
+              options={accentColorOptions.map((o) => ({
+                id: o.value,
+                label: o.label,
+                dotClass: o.dotClass,
+              }))}
+              active={accentColor}
+              onSelect={handleAccentColorChange}
+            />
+          </Row>
+          <Row
             label="Widget position"
             desc="Where the floating pill appears on your screen."
             last
@@ -1016,6 +1070,7 @@ type SegmentOption = {
   id: string;
   label: string;
   icon?: typeof Mic;
+  dotClass?: string;
 };
 
 function Segment({
@@ -1054,6 +1109,14 @@ function Segment({
                 className={cn(
                   "h-3.5 w-3.5",
                   isOn ? "text-primary" : "text-muted-foreground",
+                )}
+              />
+            )}
+            {o.dotClass && (
+              <span
+                className={cn(
+                  "h-3 w-3 rounded-full border border-black/10",
+                  o.dotClass,
                 )}
               />
             )}

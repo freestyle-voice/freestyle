@@ -89,6 +89,7 @@
   --sidebar-accent-foreground: #16140F;
   --sidebar-border: #D6CDB8;
   --sidebar-ring: #6B8F12;
+  --selection: rgba(107, 143, 18, 0.25);
 }
 
 /*
@@ -128,6 +129,90 @@
   --sidebar-accent-foreground: #ECE7D6;
   --sidebar-border: #3A362D;
   --sidebar-ring: #8AB62A;
+  --selection: rgba(138, 182, 42, 0.35);
+}
+
+/*
+ * Accent-color variants
+ * Default (no data-accent-color) is olive green. Users can switch to blue,
+ * red, or yellow in Settings. App icons stay olive; only UI accents change.
+ */
+:root[data-accent-color="blue"] {
+  --primary: #435595;
+  --primary-foreground: #FBF8EE;
+  --ring: #435595;
+  --chart-1: #435595;
+  --chart-2: #2F3F75;
+  --sidebar-primary: #435595;
+  --sidebar-ring: #435595;
+  --accent: #DEE4F7;
+  --accent-foreground: #1E2740;
+  --selection: rgba(67, 85, 149, 0.25);
+}
+
+.dark[data-accent-color="blue"] {
+  --primary: #5A6FAD;
+  --primary-foreground: #16140F;
+  --ring: #5A6FAD;
+  --chart-1: #5A6FAD;
+  --chart-2: #435595;
+  --sidebar-primary: #5A6FAD;
+  --sidebar-ring: #5A6FAD;
+  --accent: #1E2740;
+  --accent-foreground: #DEE4F7;
+  --selection: rgba(90, 111, 173, 0.35);
+}
+
+:root[data-accent-color="red"] {
+  --primary: #B91C1C;
+  --primary-foreground: #FBF8EE;
+  --ring: #B91C1C;
+  --chart-1: #B91C1C;
+  --chart-2: #7F1D1D;
+  --sidebar-primary: #B91C1C;
+  --sidebar-ring: #B91C1C;
+  --accent: #FDE8E8;
+  --accent-foreground: #450A0A;
+  --selection: rgba(185, 28, 28, 0.25);
+}
+
+.dark[data-accent-color="red"] {
+  --primary: #EF4444;
+  --primary-foreground: #16140F;
+  --ring: #EF4444;
+  --chart-1: #EF4444;
+  --chart-2: #B91C1C;
+  --sidebar-primary: #EF4444;
+  --sidebar-ring: #EF4444;
+  --accent: #450A0A;
+  --accent-foreground: #FDE8E8;
+  --selection: rgba(239, 68, 68, 0.35);
+}
+
+:root[data-accent-color="yellow"] {
+  --primary: #CA8A04;
+  --primary-foreground: #16140F;
+  --ring: #CA8A04;
+  --chart-1: #CA8A04;
+  --chart-2: #854D0E;
+  --sidebar-primary: #CA8A04;
+  --sidebar-ring: #CA8A04;
+  --accent: #FEF9C3;
+  --accent-foreground: #422006;
+  --selection: rgba(202, 138, 4, 0.25);
+}
+
+.dark[data-accent-color="yellow"] {
+  --primary: #FACC15;
+  --primary-foreground: #16140F;
+  --ring: #FACC15;
+  --chart-1: #FACC15;
+  --chart-2: #CA8A04;
+  --sidebar-primary: #FACC15;
+  --sidebar-ring: #FACC15;
+  --accent: #422006;
+  --accent-foreground: #FEF9C3;
+  --selection: rgba(250, 204, 21, 0.35);
 }
 
 @layer base {
@@ -154,7 +239,7 @@
   }
 
   ::selection {
-    background-color: rgba(107, 143, 18, 0.25);
+    background-color: var(--selection);
   }
 
   button:not(:disabled) {

@@ -1,11 +1,17 @@
 import {
   localLlmConfigSchema,
+  normalizeOpenApiCompatibleEndpoint,
   settingValueSchema,
 } from "@freestyle/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { applyMlxAsrRetentionPolicy } from "../lib/mlx-asr/server.js";
+import {
+  buildOpenApiCompatibleHeaders,
+  canUseManualOpenApiCompatibleModelSelection,
+  getOpenApiCompatibleManualModelHint,
+} from "../lib/openapi-compatible.js";
 import { capture } from "../lib/posthog.js";
 
 const settings = new Hono()
@@ -67,19 +73,34 @@ const settings = new Hono()
     zValidator("json", localLlmConfigSchema),
     async (c) => {
       const body = c.req.valid("json");
-      const url = body.url.replace(/\/+$/, "").replace(/\/v1$/, "");
+      const endpoint = normalizeOpenApiCompatibleEndpoint(body.url);
+      if (!endpoint) {
+        return c.json(
+          {
+            error:
+              "Use https, or http only for localhost, and provide a base ending in /v1 or a full /responses or /chat/completions URL.",
+          },
+          400,
+        );
+      }
+      const apiKey = body.api_key?.trim() || undefined;
 
       try {
-        const res = await fetch(`${url}/v1/models`, {
-          headers: {
-            ...(body.api_key
-              ? { Authorization: `Bearer ${body.api_key}` }
-              : {}),
-          },
+        const res = await fetch(`${endpoint}/models`, {
+          headers: buildOpenApiCompatibleHeaders(endpoint, apiKey),
           signal: AbortSignal.timeout(5000),
         });
 
         if (!res.ok) {
+          if (canUseManualOpenApiCompatibleModelSelection(res.status)) {
+            return c.json({
+              ok: true,
+              models: [],
+              model_discovery: "manual",
+              hint: getOpenApiCompatibleManualModelHint(endpoint),
+            });
+          }
+
           return c.json(
             { error: `Server returned ${res.status}: ${res.statusText}` },
             502,
@@ -95,7 +116,16 @@ const settings = new Hono()
           models = data.data.map((m) => m.id);
         }
 
-        return c.json({ ok: true, models });
+        if (models.length === 0) {
+          return c.json({
+            ok: true,
+            models: [],
+            model_discovery: "manual",
+            hint: getOpenApiCompatibleManualModelHint(endpoint),
+          });
+        }
+
+        return c.json({ ok: true, models, model_discovery: "available" });
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Failed to connect";

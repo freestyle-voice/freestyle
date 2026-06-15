@@ -6,6 +6,11 @@ import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 import { getDb } from "./db.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./mlx-asr/reconcile.js";
+import {
+  buildOpenApiCompatibleHeaders,
+  getNormalizedOpenApiCompatibleEndpoint,
+  getOpenApiCompatibleProviderLabel,
+} from "./openapi-compatible.js";
 import { getApiKeyForProvider } from "./streaming-stt.js";
 
 const LOCAL_PROVIDERS = new Set(["local-llm"]);
@@ -57,10 +62,25 @@ const PROVIDER_FACTORIES: Record<
       .prepare("SELECT value FROM settings WHERE key = 'local_llm_api_key'")
       .get() as { value: string } | undefined;
 
-    const baseURL = urlRow.value.replace(/\/v1\/?$/, "");
-    const apiKey = keyRow?.value || "local";
+    const endpoint = getNormalizedOpenApiCompatibleEndpoint(urlRow.value);
+    if (!endpoint) {
+      throw new Error(
+        "OpenAPI-compatible endpoint URL is invalid. Re-save it in Settings > Models.",
+      );
+    }
+    const rawApiKey = keyRow?.value?.trim() || undefined;
+    const apiKey = rawApiKey || "local";
 
-    const p = createOpenAI({ apiKey, baseURL: `${baseURL}/v1` });
+    const p = createOpenAI({
+      apiKey,
+      baseURL: endpoint,
+      headers: rawApiKey
+        ? buildOpenApiCompatibleHeaders(endpoint, rawApiKey)
+        : undefined,
+      name: getOpenApiCompatibleProviderLabel(endpoint)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-"),
+    });
     return { chat: (m: string) => p.chat(m) };
   },
 };

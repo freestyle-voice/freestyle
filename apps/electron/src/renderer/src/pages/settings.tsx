@@ -279,6 +279,18 @@ export default function SettingsPage(): React.JSX.Element {
       })
       .catch(() => {});
     getClient()
+      .api.settings[":key"].$get({ param: { key: "theme" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (
+          data?.value &&
+          ["light", "dark", "system"].includes(data.value as string)
+        ) {
+          setTheme(data.value as string);
+        }
+      })
+      .catch(() => {});
+    getClient()
       .api.settings[":key"].$get({ param: { key: "transcription_prompt" } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
@@ -351,7 +363,7 @@ export default function SettingsPage(): React.JSX.Element {
       if (accessibilityPollRef.current)
         clearInterval(accessibilityPollRef.current);
     };
-  }, [checkPermissions]);
+  }, [checkPermissions, setTheme]);
 
   const handleDeviceChange = useCallback((deviceId: string) => {
     setSelectedDevice(deviceId);
@@ -1045,7 +1057,7 @@ function Segment({
                 ? "px-2.5 py-[4px] text-[12px]"
                 : "px-3 py-[6px] text-[12.5px]",
               isOn
-                ? "bg-card border-border text-foreground border font-medium shadow-[0_1px_2px_rgba(20,12,4,0.04)]"
+                ? "bg-card border-border text-foreground border font-medium shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
                 : "text-muted-foreground hover:text-foreground border border-transparent",
             )}
           >

@@ -4,6 +4,7 @@ import { getApiBase, getClient, refreshApiBase } from "@renderer/lib/api";
 import { Recorder } from "@renderer/lib/recorder";
 import { Streamer } from "@renderer/lib/streamer";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
 const BARS = 14;
 const RISE = 0.55;
@@ -822,14 +823,14 @@ export default function AppPage(): React.JSX.Element {
 
   useEffect(() => {
     getClient()
-      .api.settings[":key"].$get({ param: { key: "sound_enabled" } })
+      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.soundEnabled } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.value === "false") _soundEnabled = false;
       })
       .catch(() => {});
     getClient()
-      .api.settings[":key"].$get({ param: { key: "output_mode" } })
+      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.outputMode } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.value) _outputMode = data.value;

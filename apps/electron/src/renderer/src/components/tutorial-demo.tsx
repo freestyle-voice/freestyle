@@ -3,6 +3,7 @@ import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
+import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
 // ---------------------------------------------------------------------------
 // Tutorial — animated 3-phase loop:
@@ -97,7 +98,7 @@ export function TutorialDemo({
       return;
     }
     getClient()
-      .api.settings[":key"].$get({ param: { key: "hotkey" } })
+      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.hotkey } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { value?: string } | null) => {
         const val = data?.value || DEFAULT_HOTKEY;

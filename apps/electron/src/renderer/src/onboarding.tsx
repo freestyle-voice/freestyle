@@ -43,6 +43,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router";
 import { getDefaultHotkey } from "../../shared/hotkey-defaults";
+import { SETTINGS_KEYS } from "../../shared/settings-keys";
 
 type Step = "permissions" | "language" | "tutorial";
 
@@ -127,7 +128,7 @@ export default function OnboardingPage(): React.JSX.Element {
     capture("onboarding_hotkey_changed", { hotkey: accelerator });
     getClient()
       .api.settings[":key"].$put({
-        param: { key: "hotkey" },
+        param: { key: SETTINGS_KEYS.hotkey },
         json: { value: accelerator },
       })
       .catch(() => {});
@@ -167,7 +168,7 @@ export default function OnboardingPage(): React.JSX.Element {
         .catch(() => {});
     }
     getClient()
-      .api.settings[":key"].$get({ param: { key: "hotkey" } })
+      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.hotkey } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.value) setHotkey(data.value as string);
@@ -531,7 +532,7 @@ export default function OnboardingPage(): React.JSX.Element {
   const persistLanguage = useCallback((value: string) => {
     getClient()
       .api.settings[":key"].$put({
-        param: { key: "language" },
+        param: { key: SETTINGS_KEYS.language },
         json: { value },
       })
       .catch(() => {});

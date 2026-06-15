@@ -6,6 +6,7 @@ import type {
   WhisperStatus,
 } from "@renderer/lib/models";
 import { useCallback, useEffect, useState } from "react";
+import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 
 import { DEFAULT_MLX_KEEP_ALIVE_MINUTES } from "./constants";
 import type { ApiKeyEntry, ConfiguredModel } from "./types";
@@ -116,13 +117,17 @@ export function useModels(): UseModels {
         client.api.models.available.$get(),
         client.api.models.configured.$get(),
         client.api.keys.$get(),
-        client.api.settings[":key"].$get({ param: { key: "llm_cleanup" } }),
-        client.api.settings[":key"].$get({ param: { key: "local_llm_url" } }),
         client.api.settings[":key"].$get({
-          param: { key: "local_llm_api_key" },
+          param: { key: SETTINGS_KEYS.llmCleanup },
         }),
         client.api.settings[":key"].$get({
-          param: { key: "mlx_asr_keep_alive_minutes" },
+          param: { key: SETTINGS_KEYS.localLlmUrl },
+        }),
+        client.api.settings[":key"].$get({
+          param: { key: SETTINGS_KEYS.localLlmApiKey },
+        }),
+        client.api.settings[":key"].$get({
+          param: { key: SETTINGS_KEYS.mlxAsrKeepAliveMinutes },
         }),
       ]);
       if (availRes.ok) setAvailable(await availRes.json());
@@ -430,7 +435,7 @@ export function useModels(): UseModels {
     setLlmCleanup(next);
     getClient()
       .api.settings[":key"].$put({
-        param: { key: "llm_cleanup" },
+        param: { key: SETTINGS_KEYS.llmCleanup },
         json: { value: String(next) },
       })
       .catch((err) => console.error("Failed to save LLM cleanup:", err));
@@ -443,7 +448,7 @@ export function useModels(): UseModels {
     setMlxKeepAliveMinutes(next);
     getClient()
       .api.settings[":key"].$put({
-        param: { key: "mlx_asr_keep_alive_minutes" },
+        param: { key: SETTINGS_KEYS.mlxAsrKeepAliveMinutes },
         json: { value: String(next) },
       })
       .then(() => {
@@ -489,16 +494,16 @@ export function useModels(): UseModels {
       const client = getClient();
       await Promise.all([
         client.api.settings[":key"].$put({
-          param: { key: "local_llm_url" },
+          param: { key: SETTINGS_KEYS.localLlmUrl },
           json: { value: url },
         }),
         key
           ? client.api.settings[":key"].$put({
-              param: { key: "local_llm_api_key" },
+              param: { key: SETTINGS_KEYS.localLlmApiKey },
               json: { value: key },
             })
           : client.api.settings[":key"].$delete({
-              param: { key: "local_llm_api_key" },
+              param: { key: SETTINGS_KEYS.localLlmApiKey },
             }),
       ]);
 

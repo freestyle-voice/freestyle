@@ -26,6 +26,7 @@ import {
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
+import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -151,7 +152,7 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.setHotkeyMode(mode);
     getClient()
       .api.settings[":key"].$put({
-        param: { key: "hotkey_mode" },
+        param: { key: SETTINGS_KEYS.hotkeyMode },
         json: { value: mode },
       })
       .catch(() => {});
@@ -161,7 +162,7 @@ export default function SettingsPage(): React.JSX.Element {
     setHotkey(accelerator);
     getClient()
       .api.settings[":key"].$put({
-        param: { key: "hotkey" },
+        param: { key: SETTINGS_KEYS.hotkey },
         json: { value: accelerator },
       })
       .catch(() => {});
@@ -203,35 +204,35 @@ export default function SettingsPage(): React.JSX.Element {
   // Load saved settings from server
   useEffect(() => {
     getClient()
-      .api.settings[":key"].$get({ param: { key: "mic_device_id" } })
+      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.micDeviceId } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.value) setSelectedDevice(data.value);
       })
       .catch(() => {});
     getClient()
-      .api.settings[":key"].$get({ param: { key: "hotkey" } })
+      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.hotkey } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.value) setHotkey(data.value);
       })
       .catch(() => {});
     getClient()
-      .api.settings[":key"].$get({ param: { key: "hotkey_mode" } })
+      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.hotkeyMode } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.value === "toggle") setHotkeyMode("toggle");
       })
       .catch(() => {});
     getClient()
-      .api.settings[":key"].$get({ param: { key: "language" } })
+      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.language } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.value) setLanguage(data.value);
       })
       .catch(() => {});
     getClient()
-      .api.settings[":key"].$get({ param: { key: "output_mode" } })
+      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.outputMode } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.value) setOutputMode(data.value);
@@ -242,14 +243,16 @@ export default function SettingsPage(): React.JSX.Element {
       .then((pos) => setPillPosition(normalizePillPos(pos)))
       .catch(() => {});
     getClient()
-      .api.settings[":key"].$get({ param: { key: "sound_enabled" } })
+      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.soundEnabled } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.value === "false") setSoundEnabled(false);
       })
       .catch(() => {});
     getClient()
-      .api.settings[":key"].$get({ param: { key: "transcription_prompt" } })
+      .api.settings[":key"].$get({
+        param: { key: SETTINGS_KEYS.transcriptionPrompt },
+      })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.value) setTranscriptionPrompt(data.value);
@@ -327,7 +330,7 @@ export default function SettingsPage(): React.JSX.Element {
     setSelectedDevice(deviceId);
     getClient()
       .api.settings[":key"].$put({
-        param: { key: "mic_device_id" },
+        param: { key: SETTINGS_KEYS.micDeviceId },
         json: { value: deviceId },
       })
       .catch(() => {});
@@ -337,7 +340,10 @@ export default function SettingsPage(): React.JSX.Element {
     (value: string) => {
       setTheme(value);
       getClient()
-        .api.settings[":key"].$put({ param: { key: "theme" }, json: { value } })
+        .api.settings[":key"].$put({
+          param: { key: SETTINGS_KEYS.theme },
+          json: { value },
+        })
         .catch(() => {});
     },
     [setTheme],
@@ -347,7 +353,7 @@ export default function SettingsPage(): React.JSX.Element {
     setLanguage(value);
     getClient()
       .api.settings[":key"].$put({
-        param: { key: "language" },
+        param: { key: SETTINGS_KEYS.language },
         json: { value },
       })
       .catch(() => {});
@@ -358,7 +364,7 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.sendOutputModeChanged(value);
     getClient()
       .api.settings[":key"].$put({
-        param: { key: "output_mode" },
+        param: { key: SETTINGS_KEYS.outputMode },
         json: { value },
       })
       .catch(() => {});
@@ -399,7 +405,7 @@ export default function SettingsPage(): React.JSX.Element {
     setSoundEnabled(enabled);
     getClient()
       .api.settings[":key"].$put({
-        param: { key: "sound_enabled" },
+        param: { key: SETTINGS_KEYS.soundEnabled },
         json: { value: String(enabled) },
       })
       .catch(() => {});
@@ -667,7 +673,7 @@ export default function SettingsPage(): React.JSX.Element {
               onBlur={() => {
                 getClient()
                   .api.settings[":key"].$put({
-                    param: { key: "transcription_prompt" },
+                    param: { key: SETTINGS_KEYS.transcriptionPrompt },
                     json: { value: transcriptionPrompt },
                   })
                   .catch(() => {});

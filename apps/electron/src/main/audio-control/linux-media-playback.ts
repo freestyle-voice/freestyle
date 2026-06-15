@@ -8,11 +8,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createAppLogger } from "@freestyle/utils";
+import { AUDIO_CONTROL_CMD_TIMEOUT_MS } from "./audio-control-constants";
 
 const log = createAppLogger("linux-media-playback");
 const execFileAsync = promisify(execFile);
 
-const CMD_TIMEOUT_MS = 3000;
 const MPRIS_PREFIX = "org.mpris.MediaPlayer2.";
 const MPRIS_PATH = "/org/mpris/MediaPlayer2";
 const MPRIS_PLAYER = "org.mpris.MediaPlayer2.Player";
@@ -25,7 +25,7 @@ async function runCmd(
 ): Promise<{ stdout: string; ok: boolean }> {
   try {
     const { stdout } = await execFileAsync(command, args, {
-      timeout: CMD_TIMEOUT_MS,
+      timeout: AUDIO_CONTROL_CMD_TIMEOUT_MS,
     });
     return { stdout: stdout.trim(), ok: true };
   } catch {

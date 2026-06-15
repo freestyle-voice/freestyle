@@ -1,12 +1,8 @@
 import { execFile, execFileSync } from "node:child_process";
 import { getNativeBinaryPath } from "../native-binary";
-
-const DUCKED_VOLUME = 0.15;
-
-interface VolumeSnapshot {
-  deviceId: number;
-  previousVolume: number;
-}
+import { DUCKED_VOLUME } from "./audio-control-constants";
+import type { DeviceVolumeSnapshot } from "./interfaces/device-volume-snapshot.interface";
+import type { VolumeDucker } from "./interfaces/volume-ducker.interface";
 
 function execFileText(path: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -25,7 +21,7 @@ function execFileTextSync(path: string, args: string[]): string {
   return execFileSync(path, args, { encoding: "utf8" }).trim();
 }
 
-function parseSnapshot(stdout: string): VolumeSnapshot {
+function parseSnapshot(stdout: string): DeviceVolumeSnapshot<number> {
   const data = JSON.parse(stdout) as {
     deviceId?: unknown;
     volume?: unknown;
@@ -36,15 +32,15 @@ function parseSnapshot(stdout: string): VolumeSnapshot {
   return { deviceId: data.deviceId, previousVolume: data.volume };
 }
 
-export class MacosAudioDucker {
-  private snapshot: VolumeSnapshot | null = null;
+export class MacosVolumeDucker implements VolumeDucker {
+  private snapshot: DeviceVolumeSnapshot<number> | null = null;
   private active = false;
 
   isActive(): boolean {
     return this.active;
   }
 
-  async duckVolume(): Promise<boolean> {
+  async duck(): Promise<boolean> {
     if (process.platform !== "darwin") return false;
     if (this.active) return true;
 

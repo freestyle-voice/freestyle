@@ -5,22 +5,21 @@
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { createAppLogger } from "@freestyle/utils";
+import {
+  AUDIO_CONTROL_CMD_TIMEOUT_MS,
+  DUCKED_VOLUME,
+} from "./audio-control-constants";
+import type { VolumeDucker } from "./interfaces/volume-ducker.interface";
 
 const log = createAppLogger("linux-audio-ducker");
 const execFileAsync = promisify(execFile);
 
-const CMD_TIMEOUT_MS = 3000;
-const DUCKED_VOLUME = 0.15;
-
 type SinkMethod = "wpctl" | "pactl";
 
-interface VolumeSnapshot {
+interface SinkVolumeSnapshot {
   method: SinkMethod;
   previousVolume: number;
 }
-
-let snapshot: VolumeSnapshot | null = null;
-let active = false;
 
 async function runCmd(
   command: string,
@@ -28,7 +27,7 @@ async function runCmd(
 ): Promise<{ stdout: string; ok: boolean }> {
   try {
     const { stdout } = await execFileAsync(command, args, {
-      timeout: CMD_TIMEOUT_MS,
+      timeout: AUDIO_CONTROL_CMD_TIMEOUT_MS,
     });
     return { stdout: stdout.trim(), ok: true };
   } catch {
@@ -39,7 +38,7 @@ async function runCmd(
 function runCmdSync(command: string, args: string[]): string {
   return execFileSync(command, args, {
     encoding: "utf8",
-    timeout: CMD_TIMEOUT_MS,
+    timeout: AUDIO_CONTROL_CMD_TIMEOUT_MS,
   }).trim();
 }
 
@@ -62,7 +61,7 @@ function parsePactlVolume(stdout: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-async function readVolume(): Promise<VolumeSnapshot | null> {
+async function readVolume(): Promise<SinkVolumeSnapshot | null> {
   if (await commandExists("wpctl")) {
     const { stdout, ok } = await runCmd("wpctl", [
       "get-volume",
@@ -122,7 +121,7 @@ function writeVolumeSync(method: SinkMethod, volume: number): void {
   ]);
 }
 
-function targetDuckedVolume(current: VolumeSnapshot): number {
+function targetDuckedVolume(current: SinkVolumeSnapshot): number {
   if (current.method === "wpctl") {
     return Math.min(current.previousVolume, DUCKED_VOLUME);
   }
@@ -130,65 +129,70 @@ function targetDuckedVolume(current: VolumeSnapshot): number {
   return Math.min(current.previousVolume, duckedPercent);
 }
 
-export async function duckVolume(): Promise<boolean> {
-  if (process.platform !== "linux") return false;
-  if (active) return true;
+export class LinuxVolumeDucker implements VolumeDucker {
+  private snapshot: SinkVolumeSnapshot | null = null;
+  private active = false;
 
-  const current = await readVolume();
-  if (!current) {
-    log.warn("duck_volume failed: no wpctl or pactl sink volume available");
-    return false;
+  isActive(): boolean {
+    return this.active;
   }
 
-  const ducked = targetDuckedVolume(current);
-  if (ducked < current.previousVolume) {
-    const ok = await writeVolume(current.method, ducked);
-    if (!ok) return false;
-  }
+  async duck(): Promise<boolean> {
+    if (process.platform !== "linux") return false;
+    if (this.active) return true;
 
-  snapshot = current;
-  active = true;
-  log.info(
-    `Ducked sink volume ${current.previousVolume} -> ${ducked} (${current.method})`,
-  );
-  return true;
-}
+    const current = await readVolume();
+    if (!current) {
+      log.warn("duck_volume failed: no wpctl or pactl sink volume available");
+      return false;
+    }
 
-export async function restoreVolume(): Promise<void> {
-  if (process.platform !== "linux") return;
-  if (!active) return;
+    const ducked = targetDuckedVolume(current);
+    if (ducked < current.previousVolume) {
+      const ok = await writeVolume(current.method, ducked);
+      if (!ok) return false;
+    }
 
-  const current = snapshot;
-  snapshot = null;
-  active = false;
-  if (!current) return;
-
-  try {
-    await writeVolume(current.method, current.previousVolume);
+    this.snapshot = current;
+    this.active = true;
     log.info(
-      `Restored sink volume to ${current.previousVolume} (${current.method})`,
+      `Ducked sink volume ${current.previousVolume} -> ${ducked} (${current.method})`,
     );
-  } catch {
-    log.warn("restore_volume failed");
+    return true;
   }
-}
 
-export function restoreVolumeSync(): void {
-  if (process.platform !== "linux") return;
-  if (!active) return;
+  async restore(): Promise<void> {
+    if (process.platform !== "linux") return;
+    if (!this.active) return;
 
-  const current = snapshot;
-  snapshot = null;
-  active = false;
-  if (!current) return;
+    const current = this.snapshot;
+    this.snapshot = null;
+    this.active = false;
+    if (!current) return;
 
-  try {
-    writeVolumeSync(current.method, current.previousVolume);
-  } catch {
-    // Quit cleanup should never block app shutdown on audio restore failure.
+    try {
+      await writeVolume(current.method, current.previousVolume);
+      log.info(
+        `Restored sink volume to ${current.previousVolume} (${current.method})`,
+      );
+    } catch {
+      log.warn("restore_volume failed");
+    }
   }
-}
 
-export function isDuckActive(): boolean {
-  return active;
+  restoreSync(): void {
+    if (process.platform !== "linux") return;
+    if (!this.active) return;
+
+    const current = this.snapshot;
+    this.snapshot = null;
+    this.active = false;
+    if (!current) return;
+
+    try {
+      writeVolumeSync(current.method, current.previousVolume);
+    } catch {
+      // Quit cleanup should never block app shutdown on audio restore failure.
+    }
+  }
 }

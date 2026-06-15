@@ -7,10 +7,9 @@
 
 import { execFile, execFileSync } from "node:child_process";
 import { createAppLogger } from "@freestyle/utils";
+import { AUDIO_CONTROL_CMD_TIMEOUT_MS } from "./audio-control-constants";
 
 const log = createAppLogger("windows-media-playback");
-
-const CMD_TIMEOUT_MS = 5000;
 
 let pausedSourceAppUserModelIds: string[] = [];
 
@@ -138,7 +137,7 @@ function runMediaControl(
     execFile(
       "powershell.exe",
       mediaControlArgs(action, sourceAppUserModelIds),
-      { encoding: "utf8", timeout: CMD_TIMEOUT_MS },
+      { encoding: "utf8", timeout: AUDIO_CONTROL_CMD_TIMEOUT_MS },
       (err, stdout, stderr) => {
         if (err) {
           const detail = typeof stderr === "string" ? stderr.trim() : "";
@@ -158,7 +157,7 @@ function runMediaControlSync(
   return execFileSync(
     "powershell.exe",
     mediaControlArgs(action, sourceAppUserModelIds),
-    { encoding: "utf8", timeout: CMD_TIMEOUT_MS },
+    { encoding: "utf8", timeout: AUDIO_CONTROL_CMD_TIMEOUT_MS },
   ).trim();
 }
 

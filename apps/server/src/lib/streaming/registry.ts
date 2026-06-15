@@ -1,18 +1,25 @@
 import { DeepgramTranscriptionProvider } from "./providers/deepgram.js";
 import { ElevenLabsTranscriptionProvider } from "./providers/elevenlabs.js";
 import { GroqTranscriptionProvider } from "./providers/groq.js";
+import { LocalLlmTranscriptionProvider } from "./providers/local-llm.js";
+import { OpenApiCompatibleTranscriptionProvider } from "./providers/openapi-compatible.js";
 import { MlxLocalTranscriptionProvider } from "./providers/mlx-local.js";
 import { OpenAITranscriptionProvider } from "./providers/openai.js";
+import { OpenRouterTranscriptionProvider } from "./providers/openrouter.js";
 import { WhisperLocalTranscriptionProvider } from "./providers/whisper-local.js";
 import type { TranscriptionProvider } from "./types.js";
 
 const providers: TranscriptionProvider[] = [
   new OpenAITranscriptionProvider(),
+  new OpenRouterTranscriptionProvider(),
   new DeepgramTranscriptionProvider(),
   new ElevenLabsTranscriptionProvider(),
   new GroqTranscriptionProvider(),
   new WhisperLocalTranscriptionProvider(),
   new MlxLocalTranscriptionProvider(),
+  new LocalLlmTranscriptionProvider(),
+  new OpenApiCompatibleTranscriptionProvider("together"),
+  new OpenApiCompatibleTranscriptionProvider("fireworks"),
 ];
 
 const providerMap = new Map(providers.map((p) => [p.providerId, p]));

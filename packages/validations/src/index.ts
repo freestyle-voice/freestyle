@@ -3,6 +3,7 @@ export * from "./dictionary.js";
 export * from "./formats.js";
 export * from "./local-llm.js";
 export * from "./models.js";
+export * from "./openapi.js";
 export * from "./query.js";
 export * from "./settings.js";
 export * from "./vocabulary.js";

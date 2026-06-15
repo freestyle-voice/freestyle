@@ -1,3 +1,4 @@
+import { normalizeOpenApiCompatibleEndpoint } from "@freestyle/validations";
 import { getClient } from "@renderer/lib/api";
 import type {
   AvailableModel,
@@ -23,11 +24,17 @@ export interface LocalLlmState {
   setUrl: (v: string) => void;
   apiKey: string;
   setApiKey: (v: string) => void;
+  modelName: string;
+  setModelName: (v: string) => void;
   testing: boolean;
+  applyingModel: boolean;
   connected: boolean | null;
   error: string | null;
+  hint: string | null;
   models: string[];
   test: () => Promise<void>;
+  applyModel: () => Promise<void>;
+  applyVoiceModel: () => Promise<void>;
   clearStatus: () => void;
 }
 
@@ -64,6 +71,7 @@ export interface UseModels {
     name: string,
     engine?: "whisper" | "mlx",
   ) => Promise<void>;
+  selectLocalVoiceModel: (modelName: string) => Promise<void>;
   retryLocalMlx: (defId: string) => Promise<void>;
   downloadLocal: (defId: string, engine?: "whisper" | "mlx") => void;
   cancelLocal: (defId: string, engine?: "whisper" | "mlx") => void;
@@ -89,12 +97,15 @@ export function useModels(): UseModels {
     DEFAULT_MLX_KEEP_ALIVE_MINUTES,
   );
 
-  // Local LLM (Ollama / LM Studio) connection — simplified inline form state.
-  const [localUrl, setLocalUrl] = useState("http://localhost:11434");
+  // OpenAPI-compatible cleanup model connection.
+  const [localUrl, setLocalUrl] = useState("http://localhost:11434/v1");
   const [localApiKey, setLocalApiKey] = useState("");
+  const [localModelName, setLocalModelName] = useState("");
   const [localTesting, setLocalTesting] = useState(false);
+  const [localApplyingModel, setLocalApplyingModel] = useState(false);
   const [localConnected, setLocalConnected] = useState<boolean | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [localHint, setLocalHint] = useState<string | null>(null);
   const [localModels, setLocalModels] = useState<string[]>([]);
 
   // -------------------------------------------------------------------------
@@ -134,7 +145,11 @@ export function useModels(): UseModels {
       }
       if (localUrlRes.ok) {
         const data = await localUrlRes.json();
-        if ("value" in data && data.value) setLocalUrl(data.value);
+        if ("value" in data && data.value) {
+          setLocalUrl(
+            normalizeOpenApiCompatibleEndpoint(data.value) ?? data.value,
+          );
+        }
       }
       if (localKeyRes.ok) {
         const data = await localKeyRes.json();
@@ -263,6 +278,13 @@ export function useModels(): UseModels {
       keyProviders,
     },
   );
+
+  useEffect(() => {
+    if (defaultLlm?.provider !== "local-llm") return;
+    const configuredModel = defaultLlm.model_id.replace(/^local-llm\//, "");
+    if (!configuredModel) return;
+    setLocalModelName((prev) => prev || configuredModel);
+  }, [defaultLlm]);
 
   // -------------------------------------------------------------------------
   // Actions
@@ -426,6 +448,22 @@ export function useModels(): UseModels {
     [loadData],
   );
 
+  const selectLocalVoiceModel = useCallback(
+    async (modelName: string) => {
+      await getClient().api.models.configured.$post({
+        json: {
+          provider: "local-llm",
+          model_id: `local-llm/${modelName}`,
+          model_name: modelName,
+          type: "voice",
+          is_default: true,
+        },
+      });
+      await loadData();
+    },
+    [loadData],
+  );
+
   const setCleanup = useCallback((next: boolean) => {
     setLlmCleanup(next);
     getClient()
@@ -477,14 +515,23 @@ export function useModels(): UseModels {
   const clearLocalStatus = useCallback(() => {
     setLocalConnected(null);
     setLocalError(null);
+    setLocalHint(null);
   }, []);
 
   const testLocalLlm = useCallback(async () => {
     setLocalTesting(true);
     setLocalConnected(null);
     setLocalError(null);
+    setLocalHint(null);
     try {
-      const url = localUrl.replace(/\/+$/, "");
+      const url = normalizeOpenApiCompatibleEndpoint(localUrl);
+      if (!url) {
+        setLocalConnected(false);
+        setLocalError(
+          "Use https, or http only for localhost, and end the base URL with /v1.",
+        );
+        return;
+      }
       const key = localApiKey.trim();
       const client = getClient();
       await Promise.all([
@@ -509,8 +556,17 @@ export function useModels(): UseModels {
       if (res.ok) {
         const result = await res.json();
         if ("ok" in result && result.ok) {
+          const models = Array.isArray(result.models) ? result.models : [];
           setLocalConnected(true);
-          setLocalModels(result.models ?? []);
+          setLocalModels(models);
+          setLocalHint(
+            "hint" in result && typeof result.hint === "string"
+              ? result.hint
+              : null,
+          );
+          if (models.length > 0 && !localModelName.trim()) {
+            setLocalModelName(models[0] ?? "");
+          }
           await loadData();
           return;
         }
@@ -530,7 +586,64 @@ export function useModels(): UseModels {
     } finally {
       setLocalTesting(false);
     }
-  }, [localUrl, localApiKey, loadData]);
+  }, [localUrl, localApiKey, localModelName, loadData]);
+
+  const applyLocalLlmModel = useCallback(async () => {
+    const modelName = localModelName.trim();
+    if (!modelName) {
+      setLocalError("Enter a model or deployment name first.");
+      return;
+    }
+
+    setLocalApplyingModel(true);
+    setLocalError(null);
+
+    try {
+      await selectLocalLlmModel(modelName);
+      if (!llmCleanup) {
+        await getClient()
+          .api.settings[":key"].$put({
+            param: { key: "llm_cleanup" },
+            json: { value: "true" },
+          })
+          .then(() => setLlmCleanup(true))
+          .catch((err) => console.error("Failed to enable cleanup:", err));
+      }
+      setLocalModels((prev) =>
+        prev.includes(modelName) ? prev : [...prev, modelName],
+      );
+    } catch (err) {
+      setLocalError(
+        err instanceof Error ? err.message : "Failed to save model name",
+      );
+    } finally {
+      setLocalApplyingModel(false);
+    }
+  }, [localModelName, llmCleanup, selectLocalLlmModel]);
+
+  const applyLocalVoiceModel = useCallback(async () => {
+    const modelName = localModelName.trim();
+    if (!modelName) {
+      setLocalError("Enter a model or deployment name first.");
+      return;
+    }
+
+    setLocalApplyingModel(true);
+    setLocalError(null);
+
+    try {
+      await selectLocalVoiceModel(modelName);
+      setLocalModels((prev) =>
+        prev.includes(modelName) ? prev : [...prev, modelName],
+      );
+    } catch (err) {
+      setLocalError(
+        err instanceof Error ? err.message : "Failed to save model name",
+      );
+    } finally {
+      setLocalApplyingModel(false);
+    }
+  }, [localModelName, selectLocalVoiceModel]);
 
   return {
     loading,
@@ -551,16 +664,23 @@ export function useModels(): UseModels {
       setUrl: setLocalUrl,
       apiKey: localApiKey,
       setApiKey: setLocalApiKey,
+      modelName: localModelName,
+      setModelName: setLocalModelName,
       testing: localTesting,
+      applyingModel: localApplyingModel,
       connected: localConnected,
       error: localError,
+      hint: localHint,
       models: localModels,
       test: testLocalLlm,
+      applyModel: applyLocalLlmModel,
+      applyVoiceModel: applyLocalVoiceModel,
       clearStatus: clearLocalStatus,
     },
     configureModel,
     saveKey,
     selectLocalVoice,
+    selectLocalVoiceModel,
     retryLocalMlx,
     downloadLocal,
     cancelLocal,

@@ -71,6 +71,9 @@ export interface MlxAsrStatus {
 
 export const CLOUD_VOICE_PROVIDERS = [
   "openai",
+  "openrouter",
+  "together",
+  "fireworks",
   "groq",
   "deepgram",
   "elevenlabs",
@@ -80,6 +83,7 @@ export const VOICE_PROVIDERS = [
   ...CLOUD_VOICE_PROVIDERS,
   "local-whisper",
   "local-mlx",
+  "local-llm",
 ];
 
 export const LLM_PROVIDERS = [
@@ -100,7 +104,9 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   elevenlabs: "ElevenLabs",
   mistral: "Mistral",
   openrouter: "OpenRouter",
-  "local-llm": "Local LLM",
+  together: "Together AI",
+  fireworks: "Fireworks AI",
+  "local-llm": "OpenAPI Compatible",
   "local-whisper": "Local Whisper",
   "local-mlx": "Local MLX",
 };
@@ -108,6 +114,9 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
 /** Where to create an API key, linked from the key-entry views. */
 export const PROVIDER_KEY_URLS: Record<string, string> = {
   openai: "https://platform.openai.com/api-keys",
+  openrouter: "https://openrouter.ai/keys",
+  together: "https://api.together.ai/settings/api-keys",
+  fireworks: "https://app.fireworks.ai/users/settings/api-keys",
   groq: "https://console.groq.com/keys",
   deepgram: "https://console.deepgram.com",
   elevenlabs: "https://elevenlabs.io/app/settings/api-keys",

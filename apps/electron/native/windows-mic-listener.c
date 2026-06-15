@@ -16,12 +16,41 @@
 #define CINTERFACE
 
 #include <windows.h>
-#include <initguid.h>
 #include <mmdeviceapi.h>
 #include <audiopolicy.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* ------------------------------------------------------------------------ *
+ * Explicit GUID definitions
+ *
+ * These symbols are normally supplied by defining INITGUID and including
+ * <initguid.h> before the Core Audio headers, or by linking uuid.lib. On the
+ * current build host only clang-cl is available, and neither path resolves the
+ * symbols, so we define them directly in this translation unit.
+ * ------------------------------------------------------------------------ */
+
+const CLSID CLSID_MMDeviceEnumerator =
+    { 0xBCDE0395, 0xE52F, 0x467C, { 0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E } };
+
+const IID IID_IMMDeviceEnumerator =
+    { 0xA95664D2, 0x9614, 0x4F35, { 0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6 } };
+
+const IID IID_IAudioSessionManager2 =
+    { 0x77AA99A0, 0x1BD6, 0x484F, { 0x8B, 0xC7, 0x2C, 0x65, 0x4C, 0x9A, 0x9B, 0x6F } };
+
+const IID IID_IAudioSessionControl2 =
+    { 0xbfb7ff88, 0x7239, 0x4fc9, { 0x8f, 0xa2, 0x07, 0xc9, 0x50, 0xbe, 0x9c, 0x6d } };
+
+const IID IID_IAudioSessionNotification =
+    { 0x641DD20B, 0x4D41, 0x49CC, { 0xAB, 0xA3, 0x17, 0x4B, 0x94, 0x77, 0xBB, 0x08 } };
+
+const IID IID_IAudioSessionEvents =
+    { 0x24918ACC, 0x64B3, 0x37C1, { 0x8C, 0xA9, 0x74, 0xA6, 0x6E, 0x99, 0x57, 0xA8 } };
+
+const IID IID_IUnknown =
+    { 0x00000000, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46 } };
 
 static DWORD g_excludePid = 0;
 static volatile BOOL g_running = TRUE;

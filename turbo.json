@@ -1,6 +1,16 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  "globalPassThroughEnv": [
+    "DISPLAY",
+    "HYPRLAND_INSTANCE_SIGNATURE",
+    "SWAYSOCK",
+    "WAYLAND_DISPLAY",
+    "XDG_BACKEND",
+    "XDG_CURRENT_DESKTOP",
+    "XDG_SESSION_ID",
+    "XDG_SESSION_TYPE"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

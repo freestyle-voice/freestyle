@@ -141,3 +141,14 @@ export function appendElevenLabsBiasToParams(
     params.append("keyterms", term);
   }
 }
+
+/** Soniox WebSocket session `context` object (terms + optional background text). */
+export function sonioxContextFromBias(
+  bias: AsrVocabularyBias | null | undefined,
+): { terms?: string[]; text?: string } | undefined {
+  if (!bias || bias.kind !== "soniox-context") return undefined;
+  const context: { terms?: string[]; text?: string } = {};
+  if (bias.terms.length > 0) context.terms = bias.terms;
+  if (bias.text?.trim()) context.text = bias.text.trim();
+  return Object.keys(context).length > 0 ? context : undefined;
+}

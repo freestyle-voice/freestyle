@@ -100,6 +100,8 @@ export default function SettingsPage(): React.JSX.Element {
     null,
   );
   const isMac = navigator.userAgent.includes("Mac");
+  const isLinux = window.api?.platform === "linux";
+  const supportsBackgroundAudio = isMac || isLinux;
   // macOS and Windows can deep-link to the OS mic privacy settings.
   const canOpenMicSettings = isMac || window.api?.platform === "win32";
 
@@ -272,13 +274,26 @@ export default function SettingsPage(): React.JSX.Element {
           return;
         }
 
-        const legacyResponse = await getClient().api.settings[":key"].$get({
+        const legacyPauseResponse = await getClient().api.settings[":key"].$get(
+          {
+            param: { key: "pause_playback_while_recording" },
+          },
+        );
+        const legacyPauseData = legacyPauseResponse.ok
+          ? await legacyPauseResponse.json()
+          : null;
+        if (legacyPauseData?.value === "true") {
+          setAudioPlaybackMode("pause");
+          return;
+        }
+
+        const legacyDuckResponse = await getClient().api.settings[":key"].$get({
           param: { key: "audio_ducking_enabled" },
         });
-        const legacyData = legacyResponse.ok
-          ? await legacyResponse.json()
+        const legacyDuckData = legacyDuckResponse.ok
+          ? await legacyDuckResponse.json()
           : null;
-        setAudioPlaybackMode(legacyData?.value === "true" ? "duck" : "off");
+        setAudioPlaybackMode(legacyDuckData?.value === "true" ? "duck" : "off");
       } catch {}
     })();
     getClient()
@@ -731,7 +746,7 @@ export default function SettingsPage(): React.JSX.Element {
           <Row
             label="Sound feedback"
             desc="Soft chimes at the start and end of recording."
-            last={!isMac}
+            last={!supportsBackgroundAudio}
           >
             <div className="flex items-center gap-2.5">
               {soundEnabled ? (
@@ -743,10 +758,14 @@ export default function SettingsPage(): React.JSX.Element {
             </div>
           </Row>
 
-          {isMac && (
+          {supportsBackgroundAudio ? (
             <Row
               label="Background audio"
-              desc="Duck lowers volume. Pause pauses current media and lowers volume."
+              desc={
+                isLinux
+                  ? "Duck lowers system volume. Pause pauses MPRIS media and lowers volume."
+                  : "Duck lowers volume. Pause pauses current media and lowers volume."
+              }
               last
             >
               <Segment
@@ -756,7 +775,7 @@ export default function SettingsPage(): React.JSX.Element {
                 onSelect={handleAudioPlaybackModeChange}
               />
             </Row>
-          )}
+          ) : null}
         </Section>
 
         <Section label="Display">

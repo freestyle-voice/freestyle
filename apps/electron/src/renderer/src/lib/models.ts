@@ -74,6 +74,7 @@ export const CLOUD_VOICE_PROVIDERS = [
   "groq",
   "deepgram",
   "elevenlabs",
+  "soniox",
 ];
 
 export const VOICE_PROVIDERS = [
@@ -98,6 +99,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   groq: "Groq",
   deepgram: "Deepgram",
   elevenlabs: "ElevenLabs",
+  soniox: "Soniox",
   mistral: "Mistral",
   openrouter: "OpenRouter",
   "local-llm": "Local LLM",
@@ -111,6 +113,7 @@ export const PROVIDER_KEY_URLS: Record<string, string> = {
   groq: "https://console.groq.com/keys",
   deepgram: "https://console.deepgram.com",
   elevenlabs: "https://elevenlabs.io/app/settings/api-keys",
+  soniox: "https://console.soniox.com",
   anthropic: "https://console.anthropic.com/settings/keys",
   google: "https://aistudio.google.com/apikey",
   mistral: "https://console.mistral.ai/api-keys",
@@ -193,6 +196,13 @@ export const VOICE_META: Record<
     cost: 0.4,
     streaming: true,
     note: "Excellent across 99 languages",
+  },
+  "soniox/stt-rt-v4": {
+    speed: 5,
+    quality: 5,
+    cost: 0.12,
+    streaming: true,
+    note: "Fast multilingual streaming — pairs with Groq cleanup",
   },
 };
 

@@ -1,6 +1,7 @@
 import { exec, execFile } from "node:child_process";
 import { createAppLogger } from "@freestyle/utils";
 import { clipboard } from "electron";
+import { isLinuxTerminalFocused } from "./linux-terminal-focus";
 import { getNativeBinaryPath } from "./native-binary";
 
 const log = createAppLogger("paste");
@@ -92,34 +93,48 @@ async function pasteWindows(): Promise<"native" | "legacy"> {
 
 type PasteMethod = "native" | "legacy";
 
-async function pasteLinux(): Promise<PasteMethod> {
+function linuxPasteArgs(wayland: boolean, isTerminal: boolean): string[] {
+  if (wayland) {
+    return isTerminal ? ["--uinput", "--terminal"] : ["--uinput"];
+  }
+  return isTerminal ? ["--terminal"] : [];
+}
+
+async function pasteLinux(isTerminal: boolean): Promise<PasteMethod> {
   const binaryPath = getNativeBinaryPath("linux-fast-paste");
   const wayland = isWaylandSession();
 
   if (wayland) {
-    return pasteLinuxWayland(binaryPath);
+    return pasteLinuxWayland(binaryPath, isTerminal);
   }
 
   if (binaryPath) {
-    const exitCode = await execFileAsync(binaryPath);
+    const exitCode = await execFileAsync(
+      binaryPath,
+      linuxPasteArgs(false, isTerminal),
+    );
     if (exitCode !== 0) {
       log.warn(
         `Native paste failed (exit ${exitCode}), falling back to xdotool`,
       );
-      await pasteLinuxLegacy(false);
+      await pasteLinuxLegacy(false, isTerminal);
       return "legacy";
     }
     return "native";
   }
-  await pasteLinuxLegacy(false);
+  await pasteLinuxLegacy(false, isTerminal);
   return "legacy";
 }
 
 async function pasteLinuxWayland(
   binaryPath: string | null,
+  isTerminal: boolean,
 ): Promise<PasteMethod> {
   if (binaryPath) {
-    const exitCode = await execFileAsync(binaryPath, ["--uinput"]);
+    const exitCode = await execFileAsync(
+      binaryPath,
+      linuxPasteArgs(true, isTerminal),
+    );
     if (exitCode === 0) {
       return "legacy";
     }
@@ -128,21 +143,25 @@ async function pasteLinuxWayland(
     );
   }
 
-  await pasteLinuxLegacy(true);
+  await pasteLinuxLegacy(true, isTerminal);
   return "legacy";
 }
 
-async function pasteLinuxLegacy(wayland: boolean): Promise<void> {
+async function pasteLinuxLegacy(
+  wayland: boolean,
+  isTerminal: boolean,
+): Promise<void> {
   if (wayland) {
-    const pasted = await tryExecAsync(
-      "wtype -M ctrl -P v -p v -m ctrl",
-      "wtype paste",
-    );
+    const cmd = isTerminal
+      ? "wtype -M ctrl -M shift -P v -p v -m shift -m ctrl"
+      : "wtype -M ctrl -P v -p v -m ctrl";
+    const pasted = await tryExecAsync(cmd, "wtype paste");
     if (!pasted) {
       throw new Error("No supported Wayland paste backend succeeded");
     }
   } else {
-    await execAsync("xdotool key ctrl+v");
+    const key = isTerminal ? "ctrl+shift+v" : "ctrl+v";
+    await execAsync(`xdotool key ${key}`);
   }
 }
 
@@ -184,9 +203,14 @@ export async function pasteIntoFocusedApp(
       case "win32":
         method = await pasteWindows();
         break;
-      default:
-        method = await pasteLinux();
+      default: {
+        const isTerminal = await isLinuxTerminalFocused();
+        if (isTerminal) {
+          log.debug("focused app is a terminal, using Ctrl+Shift+V");
+        }
+        method = await pasteLinux(isTerminal);
         break;
+      }
     }
     pasted = true;
 

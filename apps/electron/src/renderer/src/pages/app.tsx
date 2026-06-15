@@ -157,10 +157,13 @@ export default function AppPage(): React.JSX.Element {
   );
   const drainAgainRef = useRef(false);
 
-  const isTranscriptionIdle = (): boolean =>
-    queueRef.current.length === 0 &&
-    !drainingRef.current &&
-    streamResolverRef.current === null;
+  const isTranscriptionIdle = useCallback(
+    (): boolean =>
+      queueRef.current.length === 0 &&
+      !drainingRef.current &&
+      streamResolverRef.current === null,
+    [],
+  );
 
   const getInputVolume = useCallback(() => volumeRef.current, []);
 
@@ -540,7 +543,13 @@ export default function AppPage(): React.JSX.Element {
       startBarAnimation("speaking");
       void drainQueue();
     }
-  }, [hidePill, setPillState, startBarAnimation, drainQueue]);
+  }, [
+    hidePill,
+    setPillState,
+    startBarAnimation,
+    drainQueue,
+    isTranscriptionIdle,
+  ]);
 
   // ---- Start recording ----
   const startRecording = useCallback(
@@ -628,9 +637,9 @@ export default function AppPage(): React.JSX.Element {
           await streamer.startCapture(stream);
         } catch {}
       } catch (err) {
-        window.api?.restoreSystemAudio().catch(() => {});
         pendingCommitRef.current = false;
         recorderRef.current.releaseStream();
+        window.api?.restoreSystemAudio().catch(() => {});
         hidePill();
         window.api.showErrorDialog(
           "Recording Failed",
@@ -808,6 +817,7 @@ export default function AppPage(): React.JSX.Element {
     restFallbackTranscribe,
     setPillState,
     resumeTranscribingOrHide,
+    isTranscriptionIdle,
   ]);
 
   // ---- Cancel ----
@@ -851,13 +861,26 @@ export default function AppPage(): React.JSX.Element {
           return;
         }
 
-        const legacyResponse = await getClient().api.settings[":key"].$get({
+        const legacyPauseResponse = await getClient().api.settings[":key"].$get(
+          {
+            param: { key: "pause_playback_while_recording" },
+          },
+        );
+        const legacyPauseData = legacyPauseResponse.ok
+          ? await legacyPauseResponse.json()
+          : null;
+        if (legacyPauseData?.value === "true") {
+          _audioPlaybackMode = "pause";
+          return;
+        }
+
+        const legacyDuckResponse = await getClient().api.settings[":key"].$get({
           param: { key: "audio_ducking_enabled" },
         });
-        const legacyData = legacyResponse.ok
-          ? await legacyResponse.json()
+        const legacyDuckData = legacyDuckResponse.ok
+          ? await legacyDuckResponse.json()
           : null;
-        _audioPlaybackMode = legacyData?.value === "true" ? "duck" : "off";
+        _audioPlaybackMode = legacyDuckData?.value === "true" ? "duck" : "off";
       } catch {}
     })();
     getClient()
@@ -943,7 +966,13 @@ export default function AppPage(): React.JSX.Element {
       removeUp();
       removeCancel();
     };
-  }, [startRecording, commitRecording, cancelRecording, hidePill]);
+  }, [
+    startRecording,
+    commitRecording,
+    cancelRecording,
+    hidePill,
+    isTranscriptionIdle,
+  ]);
 
   // ---- Cleanup on unmount ----
   const mountedRef = useRef(true);

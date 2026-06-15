@@ -166,33 +166,43 @@ export class LinuxVolumeDucker implements VolumeDucker {
     if (!this.active) return;
 
     const current = this.snapshot;
-    this.snapshot = null;
-    this.active = false;
-    if (!current) return;
+    if (!current) {
+      this.active = false;
+      return;
+    }
 
     try {
-      await writeVolume(current.method, current.previousVolume);
+      const ok = await writeVolume(current.method, current.previousVolume);
+      if (!ok) throw new Error("restore_volume failed");
+      this.snapshot = null;
+      this.active = false;
       log.info(
         `Restored sink volume to ${current.previousVolume} (${current.method})`,
       );
-    } catch {
+    } catch (err) {
       log.warn("restore_volume failed");
+      throw err;
     }
   }
 
-  restoreSync(): void {
-    if (process.platform !== "linux") return;
-    if (!this.active) return;
+  restoreSync(): boolean {
+    if (process.platform !== "linux") return true;
+    if (!this.active) return true;
 
     const current = this.snapshot;
-    this.snapshot = null;
-    this.active = false;
-    if (!current) return;
+    if (!current) {
+      this.active = false;
+      return true;
+    }
 
     try {
       writeVolumeSync(current.method, current.previousVolume);
+      this.snapshot = null;
+      this.active = false;
+      return true;
     } catch {
       // Quit cleanup should never block app shutdown on audio restore failure.
+      return false;
     }
   }
 }

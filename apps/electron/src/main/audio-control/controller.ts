@@ -19,20 +19,25 @@ export class AudioPlaybackController {
 
   async prepare(mode: ActiveAudioPlaybackMode): Promise<void> {
     if (!this.supportsBackgroundAudio()) return;
-    if (this.paused || this.ducked) return;
 
-    const duckPromise = this.duckSafely();
+    const shouldDuck = !this.ducked;
+    const shouldPause = mode === "pause" && !this.paused;
+    if (!shouldDuck && !shouldPause) return;
+
+    const duckPromise = shouldDuck
+      ? this.duckSafely()
+      : Promise.resolve(this.ducked);
     if (mode === "pause") {
       const [ducked, paused] = await Promise.all([
         duckPromise,
-        this.pauseSafely(),
+        shouldPause ? this.pauseSafely() : Promise.resolve(this.paused),
       ]);
-      this.ducked = ducked;
-      this.paused = paused;
+      this.ducked = this.ducked || ducked;
+      this.paused = this.paused || paused;
       return;
     }
 
-    this.ducked = await duckPromise;
+    this.ducked = this.ducked || (await duckPromise);
   }
 
   async duck(): Promise<void> {
@@ -70,18 +75,18 @@ export class AudioPlaybackController {
 
     const shouldResume = this.paused;
     const shouldRestoreDuck = this.ducked;
-    this.paused = false;
-    this.ducked = false;
 
     if (shouldRestoreDuck) {
       try {
         await volumeDucker.restoreVolume();
+        this.ducked = false;
       } catch {
         // Still try to resume media below if Freestyle paused it.
       }
     }
 
     if (shouldResume) {
+      this.paused = false;
       try {
         if (process.platform === "darwin") {
           await this.macosMediaPlayback.restore();
@@ -102,14 +107,13 @@ export class AudioPlaybackController {
 
     const shouldResume = this.paused;
     const shouldRestoreDuck = this.ducked;
-    this.paused = false;
-    this.ducked = false;
 
     if (shouldRestoreDuck) {
-      volumeDucker.restoreVolumeSync();
+      this.ducked = !volumeDucker.restoreVolumeSync();
     }
 
     if (shouldResume) {
+      this.paused = false;
       if (process.platform === "darwin") {
         this.macosMediaPlayback.restoreSync();
       } else if (process.platform === "linux") {

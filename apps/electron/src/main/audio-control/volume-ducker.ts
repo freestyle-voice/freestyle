@@ -21,6 +21,6 @@ export async function restoreVolume(): Promise<void> {
   await currentDucker()?.restore();
 }
 
-export function restoreVolumeSync(): void {
-  currentDucker()?.restoreSync();
+export function restoreVolumeSync(): boolean {
+  return currentDucker()?.restoreSync() ?? true;
 }

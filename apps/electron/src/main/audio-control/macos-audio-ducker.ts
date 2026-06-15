@@ -66,12 +66,15 @@ export class MacosVolumeDucker implements VolumeDucker {
     if (!this.active) return;
 
     const snapshot = this.snapshot;
-    this.snapshot = null;
-    this.active = false;
-    if (!snapshot) return;
+    if (!snapshot) {
+      this.active = false;
+      return;
+    }
 
     const binaryPath = getNativeBinaryPath("macos-output-volume");
-    if (!binaryPath) return;
+    if (!binaryPath) {
+      throw new Error("macos-output-volume binary is unavailable");
+    }
 
     try {
       await execFileText(binaryPath, [
@@ -82,19 +85,25 @@ export class MacosVolumeDucker implements VolumeDucker {
     } catch {
       await execFileText(binaryPath, ["set", String(snapshot.previousVolume)]);
     }
-  }
 
-  restoreSync(): void {
-    if (process.platform !== "darwin") return;
-    if (!this.active) return;
-
-    const snapshot = this.snapshot;
     this.snapshot = null;
     this.active = false;
-    if (!snapshot) return;
+  }
+
+  restoreSync(): boolean {
+    if (process.platform !== "darwin") return true;
+    if (!this.active) return true;
+
+    const snapshot = this.snapshot;
+    if (!snapshot) {
+      this.active = false;
+      return true;
+    }
 
     const binaryPath = getNativeBinaryPath("macos-output-volume");
-    if (!binaryPath) return;
+    if (!binaryPath) return false;
+
+    let restored = false;
 
     try {
       execFileTextSync(binaryPath, [
@@ -102,12 +111,20 @@ export class MacosVolumeDucker implements VolumeDucker {
         String(snapshot.previousVolume),
         String(snapshot.deviceId),
       ]);
+      restored = true;
     } catch {
       try {
         execFileTextSync(binaryPath, ["set", String(snapshot.previousVolume)]);
+        restored = true;
       } catch {
         // Quit cleanup should never block app shutdown on audio restore failure.
       }
     }
+
+    if (restored) {
+      this.snapshot = null;
+      this.active = false;
+    }
+    return restored;
   }
 }

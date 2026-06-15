@@ -101,9 +101,10 @@ export default function SettingsPage(): React.JSX.Element {
   );
   const isMac = navigator.userAgent.includes("Mac");
   const isLinux = window.api?.platform === "linux";
-  const supportsBackgroundAudio = isMac || isLinux;
+  const isWindows = window.api?.platform === "win32";
+  const supportsBackgroundAudio = isMac || isLinux || isWindows;
   // macOS and Windows can deep-link to the OS mic privacy settings.
-  const canOpenMicSettings = isMac || window.api?.platform === "win32";
+  const canOpenMicSettings = isMac || isWindows;
 
   const checkPermissions = useCallback(async () => {
     try {

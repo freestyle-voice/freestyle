@@ -18,6 +18,7 @@ import {
   Mic,
   Monitor,
   Moon,
+  Sparkles,
   Sun,
   Trash2,
   Volume2,
@@ -69,6 +70,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [audioDuckingEnabled, setAudioDuckingEnabled] = useState(true);
   const [audioDuckingLevel, setAudioDuckingLevel] = useState(0);
+  const [llmCleanupEnabled, setLlmCleanupEnabled] = useState(false);
   const [transcriptionPrompt, setTranscriptionPrompt] = useState("");
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
@@ -270,6 +272,13 @@ export default function SettingsPage(): React.JSX.Element {
       })
       .catch(() => {});
     getClient()
+      .api.settings[":key"].$get({ param: { key: "llm_cleanup" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.value === "true") setLlmCleanupEnabled(true);
+      })
+      .catch(() => {});
+    getClient()
       .api.settings[":key"].$get({ param: { key: "transcription_prompt" } })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
@@ -446,6 +455,16 @@ export default function SettingsPage(): React.JSX.Element {
       .api.settings[":key"].$put({
         param: { key: "audio_ducking_level" },
         json: { value: String(next) },
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleLlmCleanupToggle = useCallback((enabled: boolean) => {
+    setLlmCleanupEnabled(enabled);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: "llm_cleanup" },
+        json: { value: String(enabled) },
       })
       .catch(() => {});
   }, []);
@@ -818,6 +837,21 @@ export default function SettingsPage(): React.JSX.Element {
           </Row>
         </Section>
 
+        <Section label="Cleanup model">
+          <Row
+            label="Enable cleanup model"
+            desc="Use a text model to post-process transcripts after speech recognition. Configure the cleanup model on the Models page."
+            last
+          >
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="text-muted-foreground h-4 w-4 shrink-0" />
+              <Toggle
+                on={llmCleanupEnabled}
+                onChange={handleLlmCleanupToggle}
+              />
+            </div>
+          </Row>
+        </Section>
         <Section label="Permissions">
           <Row
             label="Microphone"

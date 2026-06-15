@@ -45,6 +45,14 @@ export function openStreamingSession(opts: {
 export function getApiKeyForProvider(providerId: string): string | null {
   if (LOCAL_STT_PROVIDERS.has(providerId)) return "local";
 
+  if (providerId === "local-llm") {
+    const db = getDb();
+    const row = db
+      .prepare("SELECT value FROM settings WHERE key = 'local_llm_api_key'")
+      .get() as { value: string } | undefined;
+    return row?.value?.trim() ?? null;
+  }
+
   const db = getDb();
   const row = db
     .prepare("SELECT key FROM api_keys WHERE provider = ?")

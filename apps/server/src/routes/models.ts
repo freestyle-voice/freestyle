@@ -9,6 +9,26 @@ import {
 import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "../lib/mlx-asr/reconcile.js";
 import { canRunMlxAsr } from "../lib/mlx-asr/server.js";
+import {
+  buildOpenApiCompatibleHeaders,
+  getNormalizedOpenApiCompatibleEndpoint,
+  getOpenApiCompatibleProviderLabel,
+} from "../lib/openapi-compatible.js";
+import { getApiKeyForProvider } from "../lib/streaming-stt.js";
+import {
+  getOpenApiEndpointPreset,
+  isFixedOpenApiEndpoint,
+  OPENAPI_CLOUD_PROVIDER_IDS,
+  type OpenApiCloudProviderId,
+} from "@freestyle/validations";
+
+import {
+  getOpenRouterHeaders,
+  OPENROUTER_API_BASE,
+  OPENROUTER_PROVIDER_ID,
+  OPENROUTER_PROVIDER_NAME,
+  prefixOpenRouterModelId,
+} from "../lib/openrouter.js";
 import { capture } from "../lib/posthog.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
 import { isServerBinaryAvailable } from "../lib/whisper/binary.js";
@@ -35,10 +55,15 @@ interface AvailableModel {
 
 const DEPRECATED_STATUS = "deprecated";
 const REGISTRY_FETCH_TIMEOUT_MS = 3000;
+const OPENROUTER_FETCH_TIMEOUT_MS = 4000;
+const OPENAPI_CLOUD_FETCH_TIMEOUT_MS = 4000;
+const MAX_OPENAPI_MODELS_PER_PROVIDER = 200;
 const UNSUITABLE_CLEANUP_MODEL_PATTERN =
   /guard|safeguard|safety|moderation|classif(?:y|ier|ication)?|embed(?:ding)?|image/i;
 
-async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
+async function fetchLocalOpenApiModels(
+  type: "voice" | "llm",
+): Promise<AvailableModel[]> {
   const db = getDb();
   const urlRow = db
     .prepare("SELECT value FROM settings WHERE key = 'local_llm_url'")
@@ -49,12 +74,12 @@ async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
     .prepare("SELECT value FROM settings WHERE key = 'local_llm_api_key'")
     .get() as { value: string } | undefined;
 
-  const baseUrl = urlRow.value.replace(/\/+$/, "").replace(/\/v1$/, "");
+  const endpoint = getNormalizedOpenApiCompatibleEndpoint(urlRow.value);
+  if (!endpoint) return [];
+  const apiKey = keyRow?.value?.trim() || undefined;
 
-  const res = await fetch(`${baseUrl}/v1/models`, {
-    headers: {
-      ...(keyRow?.value ? { Authorization: `Bearer ${keyRow.value}` } : {}),
-    },
+  const res = await fetch(`${endpoint}/models`, {
+    headers: buildOpenApiCompatibleHeaders(endpoint, apiKey),
     signal: AbortSignal.timeout(3000),
   });
   if (!res.ok) return [];
@@ -64,13 +89,15 @@ async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
   };
   if (!data.data || !Array.isArray(data.data)) return [];
 
+  const providerName = getOpenApiCompatibleProviderLabel(endpoint);
+
   return data.data.map((m) => ({
     provider_id: "local-llm",
-    provider_name: "Local LLM",
+    provider_name: providerName,
     model_id: `local-llm/${m.id}`,
     model_name: m.id,
-    family: "local",
-    type: "llm" as const,
+    family: "openapi-compatible",
+    type,
     cost_input: 0,
     cost_output: 0,
   }));
@@ -166,6 +193,17 @@ const CURATED_LLM_IDS = new Set([
 // In-memory cache for models.dev data
 let modelsCache: { data: unknown; fetchedAt: number } | null = null;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+let openRouterVoiceCache: { data: AvailableModel[]; fetchedAt: number } | null =
+  null;
+const openApiCloudVoiceCache = new Map<
+  OpenApiCloudProviderId,
+  { data: AvailableModel[]; fetchedAt: number }
+>();
+
+// Heuristic identifiers for transcription-capable models on OpenAPI-compatible
+// providers that do not publish modality metadata in their /models response.
+const TRANSCRIPTION_MODEL_HINTS =
+  /whisper|transcrib|audio|speech.?to.?text|stt/i;
 
 async function fetchModelsFromRegistry(): Promise<Record<string, unknown>> {
   if (modelsCache && Date.now() - modelsCache.fetchedAt < CACHE_TTL_MS) {
@@ -181,6 +219,132 @@ async function fetchModelsFromRegistry(): Promise<Record<string, unknown>> {
   const data = (await res.json()) as Record<string, unknown>;
   modelsCache = { data, fetchedAt: Date.now() };
   return data;
+}
+
+interface OpenRouterModel {
+  id: string;
+  name: string;
+  architecture?: {
+    input_modalities?: string[];
+    output_modalities?: string[];
+    modality?: string;
+  };
+}
+
+async function fetchOpenRouterVoiceModels(): Promise<AvailableModel[]> {
+  if (
+    openRouterVoiceCache &&
+    Date.now() - openRouterVoiceCache.fetchedAt < CACHE_TTL_MS
+  ) {
+    return openRouterVoiceCache.data;
+  }
+
+  const res = await fetch(
+    `${OPENROUTER_API_BASE}/models?output_modalities=transcription`,
+    {
+      headers: getOpenRouterHeaders(),
+      signal: AbortSignal.timeout(OPENROUTER_FETCH_TIMEOUT_MS),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to fetch OpenRouter models: ${res.status}`);
+  }
+
+  const data = (await res.json()) as { data?: OpenRouterModel[] };
+  const models = (data.data ?? [])
+    .filter((model) => {
+      const input = model.architecture?.input_modalities ?? [];
+      const output = model.architecture?.output_modalities ?? [];
+      return input.includes("audio") && output.includes("transcription");
+    })
+    .map(
+      (model): AvailableModel => ({
+        provider_id: OPENROUTER_PROVIDER_ID,
+        provider_name: OPENROUTER_PROVIDER_NAME,
+        model_id: prefixOpenRouterModelId(model.id),
+        model_name: model.name,
+        family: model.id.split("/")[0] ?? "openrouter",
+        type: "voice",
+      }),
+    )
+    .sort((a, b) => a.model_name.localeCompare(b.model_name));
+
+  openRouterVoiceCache = { data: models, fetchedAt: Date.now() };
+  return models;
+}
+
+async function fetchOpenApiCloudVoiceModels(
+  providerId: OpenApiCloudProviderId,
+): Promise<AvailableModel[]> {
+  const cached = openApiCloudVoiceCache.get(providerId);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const preset = getOpenApiEndpointPreset(providerId);
+  if (!preset || !isFixedOpenApiEndpoint(preset.endpoint)) {
+    return [];
+  }
+
+  const apiKey = getApiKeyForProvider(providerId);
+  if (!apiKey) {
+    return [];
+  }
+
+  const endpoint = getNormalizedOpenApiCompatibleEndpoint(preset.endpoint);
+  if (!endpoint) {
+    return [];
+  }
+
+  const res = await fetch(`${endpoint}/models`, {
+    headers: buildOpenApiCompatibleHeaders(endpoint, apiKey),
+    signal: AbortSignal.timeout(OPENAPI_CLOUD_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    return [];
+  }
+
+  const data = (await res.json()) as {
+    data?: Array<{
+      id: string;
+      name?: string;
+      architecture?: {
+        input_modalities?: string[];
+        output_modalities?: string[];
+        modality?: string;
+      };
+    }>;
+  };
+  if (!data.data || !Array.isArray(data.data)) {
+    return [];
+  }
+
+  const models = data.data
+    .slice(0, MAX_OPENAPI_MODELS_PER_PROVIDER)
+    .filter((model) => {
+      const input = model.architecture?.input_modalities ?? [];
+      const output = model.architecture?.output_modalities ?? [];
+      const hasAudioModality =
+        input.includes("audio") && output.includes("transcription");
+      const matchesTranscriptionHint = TRANSCRIPTION_MODEL_HINTS.test(
+        `${model.id} ${model.name ?? ""}`,
+      );
+      return hasAudioModality || matchesTranscriptionHint;
+    })
+    .map(
+      (model): AvailableModel => ({
+        provider_id: providerId,
+        provider_name: preset.label,
+        model_id: `${providerId}/${model.id}`,
+        model_name: model.name ?? model.id,
+        family: providerId,
+        type: "voice",
+      }),
+    )
+    .sort((a, b) => a.model_name.localeCompare(b.model_name));
+
+  openApiCloudVoiceCache.set(providerId, { data: models, fetchedAt: Date.now() });
+  return models;
 }
 
 /**
@@ -314,6 +478,23 @@ const models = new Hono()
         ...BUILTIN_VOICE_MODELS.map((m) => ({ ...m, curated: true })),
       );
 
+      try {
+        available.push(...(await fetchOpenRouterVoiceModels()));
+      } catch {
+        // OpenRouter model discovery is optional.
+      }
+
+      for (const providerId of OPENAPI_CLOUD_PROVIDER_IDS) {
+        if (providerId === OPENROUTER_PROVIDER_ID) continue;
+        try {
+          available.push(
+            ...(await fetchOpenApiCloudVoiceModels(providerId)),
+          );
+        } catch {
+          // Cloud OpenAPI provider discovery is optional.
+        }
+      }
+
       // Add local whisper voice models (only those that are downloaded)
       for (const whisperModel of LOCAL_WHISPER_VOICE_MODELS) {
         const modelId = whisperModel.model_id.split("/")[1];
@@ -334,11 +515,15 @@ const models = new Hono()
       }
 
       try {
-        const localModels = await fetchLocalLlmModels();
+        const localLlmModels = await fetchLocalOpenApiModels("llm");
+        const localVoiceModels = await fetchLocalOpenApiModels("voice");
         // The user explicitly connected this server — everything it serves is curated.
-        available.push(...localModels.map((m) => ({ ...m, curated: true })));
+        available.push(
+          ...localLlmModels.map((m) => ({ ...m, curated: true })),
+          ...localVoiceModels.map((m) => ({ ...m, curated: true })),
+        );
       } catch {
-        // Local LLM server not reachable
+        // Local OpenAPI-compatible server not reachable
       }
 
       return c.json(available);

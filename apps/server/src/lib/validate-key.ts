@@ -5,6 +5,8 @@
  * authenticates the key without incurring usage charges.
  */
 
+import { getOpenRouterHeaders, OPENROUTER_API_BASE } from "./openrouter.js";
+
 const TIMEOUT_MS = 10_000;
 
 interface ValidationResult {
@@ -24,6 +26,10 @@ const FORMAT_HINTS: Record<string, { prefix: string; hint: string }> = {
   groq: {
     prefix: "gsk_",
     hint: 'Groq keys start with "gsk_".',
+  },
+  openrouter: {
+    prefix: "sk-or-",
+    hint: 'OpenRouter keys start with "sk-or-".',
   },
 };
 
@@ -146,6 +152,27 @@ async function validateMistral(apiKey: string): Promise<ValidationResult> {
   return { valid: false, error: `Mistral returned HTTP ${res.status}.` };
 }
 
+async function validateOpenRouter(apiKey: string): Promise<ValidationResult> {
+  const res = await fetch(`${OPENROUTER_API_BASE}/key`, {
+    headers: getOpenRouterHeaders(apiKey),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (res.ok) return { valid: true };
+  if (res.status === 401 || res.status === 403) {
+    return {
+      valid: false,
+      error: "Invalid API key. Please check and try again.",
+    };
+  }
+  if (res.status === 402) {
+    return {
+      valid: false,
+      error: "OpenRouter key has no credits available.",
+    };
+  }
+  return { valid: false, error: `OpenRouter returned HTTP ${res.status}.` };
+}
+
 // ---------------------------------------------------------------------------
 // Dispatcher
 // ---------------------------------------------------------------------------
@@ -161,6 +188,7 @@ const LIVE_VALIDATORS: Record<
   anthropic: validateAnthropic,
   google: validateGoogle,
   mistral: validateMistral,
+  openrouter: validateOpenRouter,
 };
 
 export async function validateApiKey(

@@ -599,7 +599,6 @@ export default function AppPage(): React.JSX.Element {
           return;
         }
 
-        startAudioDucking();
         playTone("start");
         setPillState("recording");
         recordingActiveRef.current = true;
@@ -613,6 +612,17 @@ export default function AppPage(): React.JSX.Element {
         try {
           await streamer.startCapture(stream);
         } catch {}
+
+        // Only delay ducking when sound feedback is enabled, so the activation
+        // tone isn't swallowed by the duck. If sound is off, duck immediately.
+        if (_soundEnabled) {
+          window.setTimeout(() => {
+            if (!wantsMicRef.current || pendingCommitRef.current) return;
+            startAudioDucking();
+          }, 80);
+        } else {
+          startAudioDucking();
+        }
       } catch (err) {
         pendingCommitRef.current = false;
         recorderRef.current.releaseStream();

@@ -145,10 +145,13 @@ function LanguagePickerDialog({
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/25 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
-        <DialogPrimitive.Content className="border-border bg-card fixed top-1/2 left-1/2 z-50 flex max-h-[min(680px,calc(100vh-2rem))] w-[min(520px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[14px] border shadow-xl data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+        <DialogPrimitive.Content
+          className="border-border bg-card fixed top-1/2 left-1/2 z-[51] flex max-h-[min(680px,calc(100vh-2rem))] w-[min(520px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[14px] border shadow-xl data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
           <div className="border-border border-b px-6 pt-6 pb-5">
             <div className="mb-4 flex items-start justify-between gap-3">
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1 overflow-hidden pr-2">
                 <DialogPrimitive.Title className="serif text-foreground m-0 text-[32px] font-normal leading-[0.95] tracking-[-0.025em]">
                   <span className="serif-italic text-primary">Languages</span>
                   <span>. </span>
@@ -157,14 +160,14 @@ function LanguagePickerDialog({
                   Tell Freestyle which languages to expect when you dictate.
                 </DialogPrimitive.Description>
               </div>
-              <div className="flex shrink-0 items-center gap-3 pt-1">
-                <label className="text-muted-foreground flex items-center gap-2 text-[12.5px]">
-                  Auto-detect
+              <div className="relative z-10 flex shrink-0 items-center gap-3 pt-1">
+                <div className="text-muted-foreground flex items-center gap-2 text-[12.5px]">
+                  <span>Auto-detect</span>
                   <Toggle
                     on={draftAutoDetect}
                     onChange={handleAutoDetectChange}
                   />
-                </label>
+                </div>
                 <DialogPrimitive.Close className="text-muted-foreground hover:text-foreground cursor-pointer rounded p-1">
                   <X size={16} />
                 </DialogPrimitive.Close>

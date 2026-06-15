@@ -61,14 +61,14 @@ export function Toggle({
       type="button"
       onClick={() => onChange(!on)}
       className={cn(
-        "relative h-[22px] w-10 shrink-0 rounded-full border transition-colors",
+        "relative h-[22px] w-10 shrink-0 cursor-pointer rounded-full border transition-colors",
         on ? "bg-primary border-primary/80" : "bg-secondary border-border",
       )}
       aria-pressed={on}
     >
       <span
         className={cn(
-          "absolute top-[1px] block h-[18px] w-[18px] rounded-full transition-transform",
+          "pointer-events-none absolute top-[1px] block h-[18px] w-[18px] rounded-full transition-transform",
           on ? "bg-primary-foreground" : "bg-muted-foreground/70",
         )}
         style={{ transform: on ? "translateX(19px)" : "translateX(2px)" }}

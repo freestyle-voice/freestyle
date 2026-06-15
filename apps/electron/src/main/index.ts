@@ -1166,28 +1166,6 @@ app.whenReady().then(async () => {
   // IPC: expose the server port to the renderer
   ipcMain.handle("server:port", () => serverPort);
 
-  // IPC: background audio while recording (Linux duck / pause)
-  ipcMain.handle("audio:prepare", async (_event, mode: unknown) => {
-    if (!isActiveAudioPlaybackMode(mode)) return;
-    await audioPlaybackController.prepare(mode);
-  });
-
-  ipcMain.handle("audio:duck", async () => {
-    await audioPlaybackController.duck();
-  });
-
-  ipcMain.handle("audio:restore", async () => {
-    await audioPlaybackController.restore();
-  });
-
-  ipcMain.on("settings:audio-ducking-changed", (_event, enabled: boolean) => {
-    mainWindow?.webContents.send("settings:audio-ducking-changed", enabled);
-  });
-
-  ipcMain.on("settings:audio-playback-mode-changed", (_event, mode: string) => {
-    mainWindow?.webContents.send("settings:audio-playback-mode-changed", mode);
-  });
-
   ipcMain.handle(
     "dialog:show-error",
     async (_event, title: string, detail: string) => {

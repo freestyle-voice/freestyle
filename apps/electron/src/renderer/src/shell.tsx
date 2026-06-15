@@ -1,5 +1,6 @@
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
+import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -66,6 +67,25 @@ export default function AppShell(): React.JSX.Element {
 
   useEffect(() => {
     return window.api?.onFullscreenChanged(setIsFullscreen);
+  }, []);
+
+  // Apply persisted accent color on startup
+  useEffect(() => {
+    getClient()
+      .api.settings[":key"].$get({ param: { key: "accent_color" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const value = data?.value;
+        if (
+          value === "green" ||
+          value === "blue" ||
+          value === "red" ||
+          value === "yellow"
+        ) {
+          document.documentElement.dataset.accentColor = value;
+        }
+      })
+      .catch(() => {});
   }, []);
 
   return (

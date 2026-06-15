@@ -1,3 +1,4 @@
+import { DiscordIcon } from "@renderer/components/brand-icons";
 import { LINKS } from "@renderer/lib/links";
 import {
   Eyebrow,
@@ -5,10 +6,8 @@ import {
   PageShell,
 } from "@renderer/pages/models/page-chrome";
 import { Bug, ExternalLink, Heart } from "lucide-react";
-import type { IconType } from "react-icons";
-import { SiDiscord } from "react-icons/si";
 
-type CardIcon = React.ComponentType<{ className?: string }> | IconType;
+type CardIcon = React.ComponentType<{ className?: string }>;
 
 function HelpCard({
   href,
@@ -61,7 +60,7 @@ export default function HelpPage(): React.JSX.Element {
           />
           <HelpCard
             href={LINKS.discord}
-            icon={SiDiscord}
+            icon={DiscordIcon}
             title="Ask the community"
             desc="Join our Discord to ask for help live and chat with other users."
           />

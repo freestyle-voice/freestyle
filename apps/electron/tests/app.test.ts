@@ -201,5 +201,5 @@ test("sidebar navigation is rendered", async () => {
 
   await dashboardPage.waitForSelector("nav", { timeout: 10_000 });
   const navLinks = await dashboardPage.locator("nav a").all();
-  expect(navLinks.length).toBe(7);
+  expect(navLinks.length).toBe(8);
 });

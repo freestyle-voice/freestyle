@@ -1,5 +1,6 @@
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
+import { DiscordIcon, GitHubIcon } from "@renderer/components/brand-icons";
 import { LINKS } from "@renderer/lib/links";
 import { cn } from "@renderer/lib/utils";
 import type { LucideIcon } from "lucide-react";
@@ -14,7 +15,6 @@ import {
   Settings,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { SiDiscord, SiGithub } from "react-icons/si";
 import { NavLink, Outlet, useNavigate } from "react-router";
 
 type NavItem = {
@@ -165,7 +165,7 @@ export default function AppShell(): React.JSX.Element {
             rel="noopener noreferrer"
             className="border-transparent hover:border-border hover:bg-card text-foreground inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors"
           >
-            <SiGithub className="h-3.5 w-3.5" />
+            <GitHubIcon className="h-3.5 w-3.5" />
             Star the repo
           </a>
           <a
@@ -175,7 +175,7 @@ export default function AppShell(): React.JSX.Element {
             aria-label="Join our Discord"
             className="border-transparent hover:border-border hover:bg-card text-foreground inline-flex items-center justify-center rounded-md border p-1.5 transition-colors"
           >
-            <SiDiscord className="h-3.5 w-3.5" />
+            <DiscordIcon className="h-3.5 w-3.5" />
           </a>
         </div>
 

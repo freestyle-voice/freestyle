@@ -598,7 +598,7 @@ export default function AppPage(): React.JSX.Element {
 
         recordingSessionUsesTransportRef.current =
           supportsSessionTransportRef.current;
-        
+
         const stream = await recorderRef.current.acquireStream();
 
         if (!wantsMicRef.current) {

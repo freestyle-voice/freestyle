@@ -28,11 +28,11 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
 } from "../../../shared/audio-playback";
-import { useTranslation } from "react-i18next";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 
 // ---------------------------------------------------------------------------

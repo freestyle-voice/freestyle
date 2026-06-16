@@ -130,7 +130,7 @@ export default function VocabularyPage(): React.JSX.Element {
         setFormError(t("vocabulary.failedToSave"));
       }
     },
-    [editingId, resetForm, loadData],
+    [editingId, resetForm, loadData, t],
   );
 
   const deleteEntry = useCallback(
@@ -214,7 +214,7 @@ export default function VocabularyPage(): React.JSX.Element {
       }
       if (importRef.current) importRef.current.value = "";
     },
-    [loadData],
+    [loadData, t],
   );
 
   if (loading) {

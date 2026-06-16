@@ -97,7 +97,7 @@ export default function FormatsPage(): React.JSX.Element {
         setFormError(t("formats.failedToSave"));
       }
     },
-    [editingId, resetForm, loadData],
+    [editingId, resetForm, loadData, t],
   );
 
   const deleteRule = useCallback(

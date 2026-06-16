@@ -125,7 +125,7 @@ export default function DictionaryPage(): React.JSX.Element {
         setFormError(t("dictionary.failedToSave"));
       }
     },
-    [editingId, resetForm, loadData],
+    [editingId, resetForm, loadData, t],
   );
 
   const deleteEntry = useCallback(

@@ -71,5 +71,5 @@ deb:
 npmRebuild: false
 publish:
   provider: github
-  owner: freestyle-voice
+  owner: verticaltension
   repo: freestyle

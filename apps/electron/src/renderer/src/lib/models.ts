@@ -75,6 +75,7 @@ export const CLOUD_VOICE_PROVIDERS = [
   "deepgram",
   "elevenlabs",
   "soniox",
+  "sprag",
 ];
 
 export const VOICE_PROVIDERS = [
@@ -100,6 +101,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   deepgram: "Deepgram",
   elevenlabs: "ElevenLabs",
   soniox: "Soniox",
+  sprag: "Sprag",
   mistral: "Mistral",
   openrouter: "OpenRouter",
   "local-llm": "Local LLM",
@@ -114,6 +116,7 @@ export const PROVIDER_KEY_URLS: Record<string, string> = {
   deepgram: "https://console.deepgram.com",
   elevenlabs: "https://elevenlabs.io/app/settings/api-keys",
   soniox: "https://console.soniox.com",
+  sprag: "https://sprag.ai/settings/api-keys",
   anthropic: "https://console.anthropic.com/settings/keys",
   google: "https://aistudio.google.com/apikey",
   mistral: "https://console.mistral.ai/api-keys",
@@ -203,6 +206,11 @@ export const VOICE_META: Record<
     cost: 0.12,
     streaming: true,
     note: "Fast multilingual streaming — pairs with Groq cleanup",
+  },
+  "sprag/Qwen/Qwen3-ASR-1.7B": {
+    speed: 4,
+    quality: 4,
+    note: "OpenAI-compatible cloud ASR",
   },
 };
 

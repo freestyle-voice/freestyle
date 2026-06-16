@@ -146,6 +146,20 @@ async function validateSoniox(apiKey: string): Promise<ValidationResult> {
   return { valid: false, error: `Soniox returned HTTP ${res.status}.` };
 }
 
+async function validateSprag(apiKey: string): Promise<ValidationResult> {
+  const res = await fetch("https://api.sprag.ai/v1/models", {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (res.ok) return { valid: true };
+  if (res.status === 401 || res.status === 403)
+    return {
+      valid: false,
+      error: "Invalid API key. Please check and try again.",
+    };
+  return { valid: false, error: `Sprag returned HTTP ${res.status}.` };
+}
+
 async function validateMistral(apiKey: string): Promise<ValidationResult> {
   const res = await fetch("https://api.mistral.ai/v1/models", {
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -176,6 +190,7 @@ const LIVE_VALIDATORS: Record<
   google: validateGoogle,
   mistral: validateMistral,
   soniox: validateSoniox,
+  sprag: validateSprag,
 };
 
 export async function validateApiKey(

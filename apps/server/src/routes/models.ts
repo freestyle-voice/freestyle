@@ -150,6 +150,14 @@ const BUILTIN_VOICE_MODELS: AvailableModel[] = [
     family: "soniox",
     type: "voice",
   },
+  {
+    provider_id: "sprag",
+    provider_name: "Sprag",
+    model_id: "sprag/Qwen/Qwen3-ASR-1.7B",
+    model_name: "Sprag Qwen3 ASR",
+    family: "whisper",
+    type: "voice",
+  },
 ];
 
 // Cleanup-LLM providers the app can actually run (see lib/providers.ts).

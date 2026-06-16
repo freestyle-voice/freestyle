@@ -1,0 +1,2 @@
+export const DUCKED_VOLUME = 0.15;
+export const AUDIO_CONTROL_CMD_TIMEOUT_MS = 5000;

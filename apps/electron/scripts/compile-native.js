@@ -78,6 +78,16 @@ function compileMacOS() {
       src: "macos-mic-listener.swift",
       frameworks: ["CoreAudio", "Foundation"],
     },
+    {
+      name: "macos-output-volume",
+      src: "macos-output-volume.swift",
+      frameworks: ["CoreAudio", "Foundation"],
+    },
+    {
+      name: "macos-media-control",
+      src: "macos-media-control.swift",
+      frameworks: ["AppKit", "Foundation"],
+    },
   ];
 
   for (const bin of binaries) {
@@ -115,6 +125,11 @@ function compileWindows() {
       name: "windows-mic-listener.exe",
       src: "windows-mic-listener.c",
       libs: ["ole32.lib", "oleaut32.lib"],
+    },
+    {
+      name: "windows-output-volume.exe",
+      src: "windows-output-volume.c",
+      libs: ["ole32.lib"],
     },
   ];
 

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
+import { Trans, useTranslation } from "react-i18next";
 
 interface VocabularyEntry {
   id: number;
@@ -31,6 +32,7 @@ interface VocabularyEntry {
 const PAGE_SIZE = 20;
 
 export default function VocabularyPage(): React.JSX.Element {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<VocabularyEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -125,7 +127,7 @@ export default function VocabularyPage(): React.JSX.Element {
         resetForm();
         loadData();
       } catch {
-        setFormError("Failed to save entry.");
+        setFormError(t("vocabulary.failedToSave"));
       }
     },
     [editingId, resetForm, loadData],
@@ -208,7 +210,7 @@ export default function VocabularyPage(): React.JSX.Element {
           loadData();
         }
       } catch {
-        setImportError("Import failed — file must be valid JSON.");
+        setImportError(t("vocabulary.importFailed"));
       }
       if (importRef.current) importRef.current.value = "";
     },
@@ -218,7 +220,9 @@ export default function VocabularyPage(): React.JSX.Element {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground text-sm">Loading vocabulary…</p>
+        <p className="text-muted-foreground text-sm">
+          {t("vocabulary.loading")}
+        </p>
       </div>
     );
   }
@@ -235,7 +239,7 @@ export default function VocabularyPage(): React.JSX.Element {
         className="responsive-page-scroll flex-1 overflow-auto"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
-        <PageHeader title="Vocabulary" />
+        <PageHeader title={t("vocabulary.title")} />
 
         {isEmpty && !showForm ? (
           <EmptyState
@@ -257,7 +261,7 @@ export default function VocabularyPage(): React.JSX.Element {
                     setSearch(e.target.value);
                     setPage(0);
                   }}
-                  placeholder="Search vocabulary…"
+                  placeholder={t("vocabulary.searchPlaceholder")}
                   className="placeholder:text-muted-foreground/80 text-foreground min-w-0 flex-1 bg-transparent text-[13px] outline-none"
                 />
                 <span className="mono text-muted-foreground shrink-0 text-[10px]">
@@ -265,16 +269,19 @@ export default function VocabularyPage(): React.JSX.Element {
                 </span>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2.5">
-                <ToolbarButton onClick={exportJson} title="Export as JSON">
+                <ToolbarButton
+                  onClick={exportJson}
+                  title={t("vocabulary.exportTitle")}
+                >
                   <Download size={13} />
-                  Export
+                  {t("vocabulary.exportLabel")}
                 </ToolbarButton>
                 <ToolbarButton
                   onClick={() => importRef.current?.click()}
-                  title="Import from JSON"
+                  title={t("vocabulary.importTitle")}
                 >
                   <Upload size={13} />
-                  Import
+                  {t("vocabulary.importLabel")}
                 </ToolbarButton>
                 <input
                   ref={importRef}
@@ -292,7 +299,7 @@ export default function VocabularyPage(): React.JSX.Element {
                   className="bg-primary text-primary-foreground hover:bg-primary/90 flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 py-2 text-[12.5px] font-medium"
                 >
                   <Plus size={13} />
-                  Add term
+                  {t("vocabulary.addTerm")}
                 </button>
               </div>
             </div>
@@ -308,7 +315,9 @@ export default function VocabularyPage(): React.JSX.Element {
               >
                 <div className="mb-3 flex items-center justify-between">
                   <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
-                    {editingId ? "Edit term" : "New term"}
+                    {editingId
+                      ? t("vocabulary.editTerm")
+                      : t("vocabulary.newTerm")}
                   </span>
                   <button
                     type="button"
@@ -320,7 +329,7 @@ export default function VocabularyPage(): React.JSX.Element {
                 </div>
                 <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
                   <FormField
-                    label="Term · word or phrase"
+                    label={t("vocabulary.termLabel")}
                     error={formErrors.term?.message}
                   >
                     <input
@@ -334,7 +343,7 @@ export default function VocabularyPage(): React.JSX.Element {
                     />
                   </FormField>
                   <FormField
-                    label="Notes · optional"
+                    label={t("vocabulary.notesLabel")}
                     error={formErrors.notes?.message}
                   >
                     <input
@@ -349,9 +358,8 @@ export default function VocabularyPage(): React.JSX.Element {
                   </FormField>
                 </div>
                 <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
-                  Multi-word phrases work on Nova 3, Soniox, OpenAI, and Groq.
-                  Nova 2 boosts single words. Scribe v1 does not use vocabulary
-                  bias.
+                  Multi-word phrases work on Nova 3, OpenAI, and Groq. Nova 2
+                  boosts single words. Scribe v1 does not use vocabulary bias.
                 </p>
                 {formError && (
                   <p className="text-destructive mt-3 text-xs">{formError}</p>
@@ -362,13 +370,15 @@ export default function VocabularyPage(): React.JSX.Element {
                     onClick={resetForm}
                     className="border-border text-secondary-foreground/80 hover:text-foreground cursor-pointer rounded-md border px-3 py-1.5 text-[12.5px] font-medium"
                   >
-                    Cancel
+                    {t("vocabulary.cancel")}
                   </button>
                   <button
                     type="submit"
                     className="bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer rounded-md px-3 py-1.5 text-[12.5px] font-medium"
                   >
-                    {editingId ? "Update" : "Add term"}
+                    {editingId
+                      ? t("vocabulary.update")
+                      : t("vocabulary.addTerm")}
                   </button>
                 </div>
               </form>
@@ -393,7 +403,10 @@ export default function VocabularyPage(): React.JSX.Element {
             {total > 0 && (
               <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2">
                 <span className="mono text-muted-foreground text-[11px] tracking-[0.04em]">
-                  {total} {total === 1 ? "term" : "terms"}
+                  {total}{" "}
+                  {total === 1
+                    ? t("vocabulary.termSingular")
+                    : t("vocabulary.termPlural")}
                 </span>
                 {totalPages > 1 && (
                   <div className="flex items-center gap-1">
@@ -552,24 +565,27 @@ function EntryRow({
 }
 
 function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="border-border bg-card mt-4 rounded-[14px] border border-dashed px-9 py-[52px] text-center">
       <div className="bg-accent mx-auto mb-[18px] inline-flex h-16 w-16 items-center justify-center rounded-2xl">
         <Languages className="text-primary h-7 w-7" />
       </div>
       <h2 className="serif text-foreground m-0 text-[32px] font-medium leading-none">
-        No terms yet.
+        {t("vocabulary.emptyTitle")}
       </h2>
       <p className="text-muted-foreground mx-auto mt-2.5 max-w-[440px] text-[14px] leading-[1.55]">
-        Add names, brands, or phrases you say often, like{" "}
-        <span className="mono border-border bg-background text-foreground rounded-[5px] border px-[7px] py-[2px] text-[12px]">
-          Nguyen
-        </span>{" "}
-        or{" "}
-        <span className="mono border-border bg-background text-foreground rounded-[5px] border px-[7px] py-[2px] text-[12px]">
-          account number
-        </span>
-        .
+        <Trans
+          i18nKey="vocabulary.emptyDesc"
+          components={{
+            example1: (
+              <span className="mono border-border bg-background text-foreground rounded-[5px] border px-[7px] py-[2px] text-[12px]" />
+            ),
+            example2: (
+              <span className="mono border-border bg-background text-foreground rounded-[5px] border px-[7px] py-[2px] text-[12px]" />
+            ),
+          }}
+        />
       </p>
       <button
         type="button"
@@ -577,19 +593,20 @@ function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
         className="bg-primary text-primary-foreground hover:bg-primary/90 mt-[22px] inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3.5 py-2 text-[12.5px] font-medium"
       >
         <Plus size={13} />
-        Add your first term
+        {t("vocabulary.addFirstTerm")}
       </button>
     </div>
   );
 }
 
 function NoSearchResults({ search }: { search: string }): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="text-muted-foreground py-10 text-center">
       <span className="serif-italic text-[20px]">
         {search
-          ? `nothing matches "${search}".`
-          : "no terms — add one to start."}
+          ? t("vocabulary.noResults", { search })
+          : t("vocabulary.noTerms")}
       </span>
     </div>
   );

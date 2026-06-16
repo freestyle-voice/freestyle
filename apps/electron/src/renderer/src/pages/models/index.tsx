@@ -9,6 +9,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
@@ -19,6 +20,7 @@ import { useModels } from "./use-models";
 import { displayName } from "./utils";
 
 export default function ModelsPage(): React.JSX.Element {
+  const { t } = useTranslation();
   const m = useModels();
 
   const [modal, setModal] = useState<ModalState | null>(null);
@@ -121,7 +123,7 @@ export default function ModelsPage(): React.JSX.Element {
     return (
       <PageShell>
         <div className="flex items-center justify-center py-24">
-          <p className="text-muted-foreground text-sm">Loading models…</p>
+          <p className="text-muted-foreground text-sm">{t("models.loading")}</p>
         </div>
       </PageShell>
     );
@@ -140,7 +142,7 @@ export default function ModelsPage(): React.JSX.Element {
 
   return (
     <PageShell>
-      <PageHeader title="Models" />
+      <PageHeader title={t("models.title")} />
       <div className="space-y-6">
         <PairCard
           voice={m.defaultVoice}
@@ -196,16 +198,18 @@ export default function ModelsPage(): React.JSX.Element {
 
       {pendingLocalDelete && (
         <ConfirmDialog
-          title="Delete local model?"
+          title={t("models.deleteLocalTitle")}
           message={
-            <>
-              Remove{" "}
-              <span className="text-foreground/80 font-medium">
-                {pendingLocalDelete.name}
-              </span>{" "}
-              from {ON_DEVICE_PHRASE}. The weights are deleted from your local
-              cache; you can download them again later.
-            </>
+            <Trans
+              i18nKey="models.deleteLocalMsg"
+              values={{
+                name: pendingLocalDelete.name,
+                phrase: ON_DEVICE_PHRASE,
+              }}
+              components={{
+                b: <span className="text-foreground/80 font-medium" />,
+              }}
+            />
           }
           onCancel={() => setPendingLocalDelete(null)}
           onConfirm={() => {
@@ -218,17 +222,19 @@ export default function ModelsPage(): React.JSX.Element {
 
       {pendingProviderDelete && (
         <ConfirmDialog
-          title="Delete provider"
+          title={t("models.deleteProviderTitle")}
           message={
             <>
-              Delete the{" "}
-              <span className="text-foreground/80 font-medium">
-                {displayName(pendingProviderDelete)}
-              </span>{" "}
-              API key? This also removes all configured models for this provider
+              <Trans
+                i18nKey="models.deleteProviderMsgBase"
+                values={{ provider: displayName(pendingProviderDelete) }}
+                components={{
+                  b: <span className="text-foreground/80 font-medium" />,
+                }}
+              />
               {(m.defaultVoice?.provider === pendingProviderDelete ||
                 m.defaultLlm?.provider === pendingProviderDelete) &&
-                ", including a model you're currently using"}
+                t("models.deleteProviderCurrentSuffix")}
               .
             </>
           }
@@ -261,11 +267,11 @@ function KeysSection({
   onEdit: (provider: string) => void;
   onDelete: (provider: string) => void;
 }): React.JSX.Element | null {
+  const { t } = useTranslation();
   if (apiKeys.length === 0 && !showLocal) {
     return (
       <p className="text-muted-foreground text-[13px]">
-        No API keys yet — choose a cloud model above and you'll be prompted for
-        a key.
+        {t("models.noApiKeys")}
       </p>
     );
   }
@@ -273,7 +279,7 @@ function KeysSection({
   return (
     <section>
       <div className="mb-3">
-        <Eyebrow text="API keys" />
+        <Eyebrow text={t("models.apiKeys")} />
       </div>
       <div className="border-border bg-card overflow-hidden rounded-[12px] border">
         {apiKeys.map((entry, i) => (
@@ -298,10 +304,10 @@ function KeysSection({
             <Laptop className="text-primary h-[15px] w-[15px] shrink-0" />
             <div className="min-w-0 flex-1">
               <div className="text-foreground text-[13.5px] font-semibold">
-                On-device
+                {t("models.onDevice")}
               </div>
               <div className="mono text-muted-foreground mt-0.5 text-[11px]">
-                No key needed · runs locally
+                {t("models.onDeviceNoKey")}
               </div>
             </div>
           </div>
@@ -324,6 +330,7 @@ function KeyRow({
   onEdit: () => void;
   onDelete: () => void;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   const invalid = entry.status === "invalid";
   return (
     <div
@@ -347,16 +354,17 @@ function KeyRow({
         </div>
         <div className="mono text-muted-foreground mt-0.5 text-[11px]">
           {invalid ? (
-            <span className="text-destructive">
-              Key invalid — update or delete
-            </span>
+            <span className="text-destructive">{t("models.keyInvalid")}</span>
+          ) : entry.hint ? (
+            t("models.keyStoredWithHint", { hint: entry.hint })
           ) : (
-            `Key ${entry.hint ?? ""} stored in keychain`.replace("  ", " ")
+            t("models.keyStored")
           )}
         </div>
       </div>
       <span className="text-muted-foreground text-[11.5px]">
-        {count} model{count === 1 ? "" : "s"}
+        {count}{" "}
+        {count === 1 ? t("models.modelSingular") : t("models.modelPlural")}
       </span>
       <div
         className={cn(

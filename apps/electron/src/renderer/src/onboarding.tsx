@@ -1,6 +1,7 @@
 import { apiKeySchema } from "@freestyle/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
+import { LanguageSelector } from "@renderer/components/language-selector";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { VoiceRow } from "@renderer/components/voice-row";
 import {
@@ -41,10 +42,11 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
+import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { getDefaultHotkey } from "../../shared/hotkey-defaults";
 
-type Step = "permissions" | "language" | "tutorial";
+type Step = "ui-language" | "permissions" | "language" | "tutorial";
 
 const PLATFORM =
   (typeof window !== "undefined" && window.api?.platform) ||
@@ -78,7 +80,7 @@ const RECOMMENDED_WHISPER_DEF = "small-q5_1";
 
 export default function OnboardingPage(): React.JSX.Element {
   const navigate = useNavigate();
-  const [step, setStep] = useState<Step>("permissions");
+  const [step, setStep] = useState<Step>("ui-language");
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Permissions state
@@ -613,6 +615,10 @@ export default function OnboardingPage(): React.JSX.Element {
         className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-auto px-6 py-8"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
+        {step === "ui-language" && (
+          <UILanguageStep onContinue={() => setStep("permissions")} />
+        )}
+
         {step === "permissions" && (
           <PermissionsStep
             micStatus={micStatus}
@@ -713,6 +719,40 @@ export default function OnboardingPage(): React.JSX.Element {
 }
 
 // ---------------------------------------------------------------------------
+// Step 0 — UI Language selection (must come before all other steps)
+// ---------------------------------------------------------------------------
+function UILanguageStep({
+  onContinue,
+}: {
+  onContinue: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div className="w-full max-w-[440px]">
+      <h1 className="serif text-foreground m-0 mb-2 text-center text-[42px] leading-[1.0] font-normal tracking-[-0.025em]">
+        {t("onboarding.uiLanguage.title")}
+      </h1>
+      <p className="text-muted-foreground mb-7 text-center text-[14px]">
+        {t("onboarding.uiLanguage.subtitle")}
+      </p>
+
+      <LanguageSelector className="mx-auto" />
+
+      <div className="mt-7 flex justify-end">
+        <button
+          type="button"
+          onClick={onContinue}
+          className="bg-foreground text-background hover:bg-foreground/90 inline-flex items-center gap-1.5 rounded-[7px] px-3.5 py-[7px] text-[12.5px] font-medium transition-colors"
+        >
+          {t("onboarding.uiLanguage.getStarted")}
+          <ArrowRight size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Step 1 — Permissions
 // ---------------------------------------------------------------------------
 function PermissionsStep({
@@ -734,6 +774,7 @@ function PermissionsStep({
   onRecheckLinuxSetup: () => void;
   onContinue: () => void;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   const micGranted = micStatus === "granted";
   // On Wayland there is no hotkey fallback without /dev/input access, so
   // missing input access blocks. On X11 the Electron globalShortcut still
@@ -750,14 +791,18 @@ function PermissionsStep({
       <div className="flex flex-col gap-2.5">
         <PermCard
           icon={Mic}
-          title="Microphone"
-          desc="To hear what you say."
+          title={t("onboarding.permissions.microphone.title")}
+          desc={t("onboarding.permissions.microphone.desc")}
           granted={micGranted}
           action={
             micStatus === "denied" && canOpenMicSettings ? (
-              <PermButton onClick={onOpenMicSettings}>Open Settings</PermButton>
+              <PermButton onClick={onOpenMicSettings}>
+                {t("common.openSettings")}
+              </PermButton>
             ) : (
-              <PermButton onClick={onRequestMic}>Allow</PermButton>
+              <PermButton onClick={onRequestMic}>
+                {t("common.allow")}
+              </PermButton>
             )
           }
         />
@@ -765,12 +810,12 @@ function PermissionsStep({
         {IS_MAC && (
           <PermCard
             icon={Shield}
-            title="Accessibility"
-            desc="To detect your hotkey and paste into any app."
+            title={t("onboarding.permissions.accessibility.title")}
+            desc={t("onboarding.permissions.accessibility.desc")}
             granted={accessibilityStatus}
             action={
               <PermButton onClick={onOpenAccessibility}>
-                Open Settings
+                {t("common.openSettings")}
               </PermButton>
             }
           />
@@ -779,25 +824,26 @@ function PermissionsStep({
         {IS_LINUX && linuxSetup && (
           <PermCard
             icon={Keyboard}
-            title="Keyboard access"
+            title={t("onboarding.permissions.keyboardAccess.title")}
             desc={
               linuxSetup.inputAccess ? (
-                "To detect your hotkey in any app."
+                t("onboarding.permissions.keyboardAccess.descGranted")
               ) : (
                 <>
-                  To detect your hotkey in any app, run{" "}
-                  <code className="text-foreground">
-                    sudo usermod -aG input $USER
-                  </code>{" "}
-                  in a terminal, then log out and back in.
+                  <Trans
+                    i18nKey="onboarding.permissions.keyboardAccess.descDenied"
+                    components={{ code: <code className="text-foreground" /> }}
+                  />
                   {!linuxSetup.wayland &&
-                    " Until then, the hotkey only works in toggle mode."}
+                    t("onboarding.permissions.keyboardAccess.toggleNote")}
                 </>
               )
             }
             granted={linuxSetup.inputAccess}
             action={
-              <PermButton onClick={onRecheckLinuxSetup}>Re-check</PermButton>
+              <PermButton onClick={onRecheckLinuxSetup}>
+                {t("common.recheck")}
+              </PermButton>
             }
           />
         )}
@@ -805,19 +851,19 @@ function PermissionsStep({
         {IS_LINUX && linuxSetup && !linuxSetup.pasteTool && (
           <PermCard
             icon={ClipboardPaste}
-            title="Paste tool"
+            title={t("onboarding.permissions.pasteTool.title")}
             desc={
-              <>
-                To paste into other apps, install {linuxSetup.pasteToolRequired}
-                :{" "}
-                <code className="text-foreground">
-                  sudo apt install {linuxSetup.pasteToolRequired}
-                </code>
-              </>
+              <Trans
+                i18nKey="onboarding.permissions.pasteTool.desc"
+                values={{ tool: linuxSetup.pasteToolRequired }}
+                components={{ code: <code className="text-foreground" /> }}
+              />
             }
             granted={false}
             action={
-              <PermButton onClick={onRecheckLinuxSetup}>Re-check</PermButton>
+              <PermButton onClick={onRecheckLinuxSetup}>
+                {t("common.recheck")}
+              </PermButton>
             }
           />
         )}
@@ -826,7 +872,9 @@ function PermissionsStep({
       <div className="mt-7 flex items-center justify-end gap-3.5">
         {!allGranted && (
           <span className="mono text-muted-foreground text-[10.5px] tracking-[0.1em] uppercase">
-            {IS_MAC ? "Grant both to continue" : "Grant access to continue"}
+            {IS_MAC
+              ? t("onboarding.permissions.grantBoth")
+              : t("onboarding.permissions.grantAccess")}
           </span>
         )}
         <button
@@ -840,7 +888,7 @@ function PermissionsStep({
               : "bg-secondary text-muted-foreground cursor-not-allowed",
           )}
         >
-          Continue
+          {t("common.continue")}
           <ArrowRight size={13} />
         </button>
       </div>
@@ -861,6 +909,7 @@ function PermCard({
   granted: boolean;
   action: React.ReactNode;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="border-border bg-card flex items-center gap-3.5 rounded-[12px] border p-4">
       <div
@@ -887,7 +936,7 @@ function PermCard({
       {granted ? (
         <span className="mono text-accent-foreground inline-flex items-center gap-1.5 text-[10.5px] tracking-[0.14em] uppercase">
           <Check size={13} strokeWidth={2.2} />
-          Granted
+          {t("common.granted")}
         </span>
       ) : (
         action
@@ -932,11 +981,14 @@ function LanguageStep({
   onBack: () => void;
   onContinue: () => void;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="w-full max-w-[560px]">
       <h1 className="serif text-foreground m-0 mb-7 text-center text-[56px] leading-[0.95] font-normal tracking-[-0.025em]">
-        <span>What language do you </span>
-        <span className="serif-italic text-primary">speak?</span>
+        <span>{t("onboarding.language.titlePrefix")}</span>
+        <span className="serif-italic text-primary">
+          {t("onboarding.language.titleEmphasis")}
+        </span>
       </h1>
 
       <div className="flex flex-wrap justify-center gap-2">
@@ -965,7 +1017,7 @@ function LanguageStep({
               : "border-border text-muted-foreground hover:bg-secondary",
           )}
         >
-          Auto-detect
+          {t("onboarding.language.autoDetect")}
         </button>
       </div>
       {/* Background model setup — quiet status, never a decision. */}
@@ -986,14 +1038,14 @@ function LanguageStep({
           onClick={onBack}
           className="border-border hover:bg-secondary rounded-[7px] border px-3.5 py-2 text-[12.5px] font-medium"
         >
-          Back
+          {t("common.back")}
         </button>
         <button
           type="button"
           onClick={onContinue}
           className="bg-foreground text-background hover:bg-foreground/90 inline-flex items-center gap-1.5 rounded-[7px] px-3.5 py-2 text-[12.5px] font-medium"
         >
-          Continue
+          {t("common.continue")}
           <ArrowRight size={13} />
         </button>
       </div>
@@ -1042,6 +1094,7 @@ function ModelSelectorOverlay({
   onClose: () => void;
   onSaveKey: () => Promise<boolean>;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   const [view, setView] = useState<"list" | "key">("list");
   const [savingKey, setSavingKey] = useState(false);
 
@@ -1135,10 +1188,10 @@ function ModelSelectorOverlay({
             <div className="border-border/60 flex shrink-0 items-center justify-between border-b px-[22px] py-[18px]">
               <div>
                 <div className="mono text-muted-foreground text-[10px] tracking-[0.16em] uppercase">
-                  Choose a model
+                  {t("onboarding.modelSelector.chooseModel")}
                 </div>
                 <div className="serif text-foreground mt-0.5 text-[26px] leading-[1.05]">
-                  All voice models
+                  {t("onboarding.modelSelector.allVoiceModels")}
                 </div>
               </div>
               <button
@@ -1164,7 +1217,7 @@ function ModelSelectorOverlay({
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  Cloud API
+                  {t("onboarding.modelSelector.cloudApi")}
                 </button>
                 <button
                   type="button"
@@ -1177,7 +1230,7 @@ function ModelSelectorOverlay({
                   )}
                 >
                   <HardDrive size={12} />
-                  On-device
+                  {t("onboarding.modelSelector.onDevice")}
                 </button>
               </div>
             </div>
@@ -1189,7 +1242,7 @@ function ModelSelectorOverlay({
                   <div className="flex items-center gap-2 px-5 py-6">
                     <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
                     <span className="text-muted-foreground text-sm">
-                      Loading models…
+                      {t("onboarding.modelSelector.loading")}
                     </span>
                   </div>
                 )}
@@ -1211,15 +1264,17 @@ function ModelSelectorOverlay({
             <div className="border-border/60 flex shrink-0 items-center justify-between border-t px-[22px] py-4">
               <span className="text-muted-foreground text-[11.5px]">
                 {source === "cloud"
-                  ? "Cloud models need an API key — we'll ask once."
-                  : `On-device models run privately on ${ON_DEVICE_PHRASE}.`}
+                  ? t("onboarding.modelSelector.cloudNote")
+                  : t("onboarding.modelSelector.onDeviceNote", {
+                      phrase: ON_DEVICE_PHRASE,
+                    })}
               </span>
               <button
                 type="button"
                 onClick={onClose}
                 className="border-border hover:bg-secondary rounded-[7px] border px-3.5 py-2 text-[12.5px] font-medium"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
             </div>
           </>
@@ -1230,21 +1285,21 @@ function ModelSelectorOverlay({
               <button
                 type="button"
                 onClick={() => setView("list")}
-                aria-label="Back to models"
+                aria-label={t("onboarding.modelSelector.backToModels")}
                 className="border-border bg-card text-muted-foreground hover:text-foreground flex h-[30px] w-[30px] items-center justify-center rounded-[8px] border"
               >
                 <ChevronLeft size={16} />
               </button>
               <div>
                 <div className="mono text-muted-foreground text-[10px] tracking-[0.16em] uppercase">
-                  Connect {providerName}
+                  {t("onboarding.modelSelector.connect", {
+                    provider: providerName,
+                  })}
                 </div>
                 <div className="serif text-foreground mt-0.5 text-[26px] leading-[1.05]">
-                  Add your{" "}
-                  <span className="serif-italic text-primary">
-                    {providerName}
-                  </span>{" "}
-                  key
+                  {t("onboarding.modelSelector.addKey", {
+                    provider: providerName,
+                  })}
                 </div>
               </div>
             </div>
@@ -1253,12 +1308,9 @@ function ModelSelectorOverlay({
             <div className="px-[22px] py-7">
               {selectedCloud && (
                 <p className="text-muted-foreground mb-4 text-[13px] leading-relaxed">
-                  Required to use{" "}
-                  <span className="text-foreground font-medium">
-                    {selectedCloud.model_name}
-                  </span>
-                  . Stored in your system keychain — never logged, never sent to
-                  us.
+                  {t("onboarding.modelSelector.requiredFor", {
+                    model: selectedCloud.model_name,
+                  })}
                 </p>
               )}
 
@@ -1272,7 +1324,7 @@ function ModelSelectorOverlay({
                   autoFocus
                   type={showKey ? "text" : "password"}
                   {...apiKeyForm.register("key")}
-                  placeholder="Paste your secret key — e.g. sk-…"
+                  placeholder={t("onboarding.modelSelector.keyPlaceholder")}
                   className={cn(
                     "border-input bg-card focus:border-primary focus:ring-ring/30 w-full rounded-[8px] border py-3 pr-11 pl-10 font-mono text-[14px] outline-none focus:ring-2",
                     apiKeyForm.formState.errors.key && "border-destructive",
@@ -1304,7 +1356,9 @@ function ModelSelectorOverlay({
                       rel="noreferrer"
                       className="text-primary underline underline-offset-2"
                     >
-                      Don't have one? Get a {providerName} key ↗
+                      {t("onboarding.modelSelector.getKey", {
+                        provider: providerName,
+                      })}
                     </a>
                   </p>
                 )}
@@ -1317,7 +1371,7 @@ function ModelSelectorOverlay({
                 onClick={() => setView("list")}
                 className="border-border hover:bg-secondary rounded-[7px] border px-3.5 py-2 text-[12.5px] font-medium"
               >
-                Back
+                {t("common.back")}
               </button>
               <button
                 type="button"
@@ -1330,7 +1384,11 @@ function ModelSelectorOverlay({
                 ) : (
                   <Check size={14} />
                 )}
-                {savingKey ? "Saving…" : `Save & use ${providerName}`}
+                {savingKey
+                  ? t("common.saving")
+                  : t("onboarding.modelSelector.saveKey", {
+                      provider: providerName,
+                    })}
               </button>
             </div>
           </>
@@ -1374,6 +1432,7 @@ function TutorialStep({
   onBack: () => void;
   onFinish: () => void;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="w-full max-w-[600px]">
       <TutorialDemo
@@ -1385,7 +1444,7 @@ function TutorialStep({
       {/* Background setup catching up — practice unlocks when it lands. */}
       {!modelReady && setupStatus && (
         <p className="mono text-muted-foreground mt-3 text-center text-[11px]">
-          Almost ready —{" "}
+          {t("onboarding.tutorial.almostReady")}
           {setupStatus.charAt(0).toLowerCase() + setupStatus.slice(1)}
         </p>
       )}
@@ -1403,8 +1462,8 @@ function TutorialStep({
           className="mono text-muted-foreground hover:text-foreground text-[11px] underline underline-offset-[3px]"
         >
           {modelReady && modelName
-            ? `Using ${modelName} · Choose a different model`
-            : "Choose a different model"}
+            ? t("onboarding.tutorial.usingModel", { name: modelName })
+            : t("onboarding.tutorial.chooseModel")}
         </button>
       </div>
 
@@ -1419,7 +1478,7 @@ function TutorialStep({
             <Keyboard className="text-muted-foreground h-4 w-4 shrink-0" />
             <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
             <span className="text-muted-foreground ml-1 text-[12.5px]">
-              Change
+              {t("common.change")}
             </span>
           </button>
         ) : (
@@ -1436,7 +1495,7 @@ function TutorialStep({
               onClick={onCancelRecording}
               className="border-border bg-background hover:bg-secondary ml-1 rounded-[7px] border px-2.5 py-1 text-[12px]"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
           </div>
         )}
@@ -1448,14 +1507,14 @@ function TutorialStep({
           onClick={onBack}
           className="border-border hover:bg-secondary rounded-[7px] border px-3.5 py-2 text-[12.5px] font-medium"
         >
-          Back
+          {t("common.back")}
         </button>
         <button
           type="button"
           onClick={onFinish}
           className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-2 rounded-[7px] px-4 py-2 text-[12.5px] font-medium"
         >
-          Start using Freestyle
+          {t("onboarding.tutorial.finish")}
           <ArrowRight size={15} />
         </button>
       </div>

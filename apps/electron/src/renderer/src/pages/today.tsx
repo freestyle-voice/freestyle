@@ -2,6 +2,7 @@ import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -112,6 +113,7 @@ function buildModelBuckets(entries: HistoryEntry[]): UsageBucket[] {
 // ---------------------------------------------------------------------------
 
 export default function TodayPage(): React.JSX.Element {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
 
   const loadToday = useCallback(async () => {
@@ -218,7 +220,7 @@ export default function TodayPage(): React.JSX.Element {
               <div className="relative mb-5">
                 <span className="border-border bg-background absolute top-1 -left-[30px] h-2.5 w-2.5 rounded-full border-[1.5px] border-dashed" />
                 <span className="serif-italic text-muted-foreground text-[18px]">
-                  ready when you are…
+                  {t("today.readyWhenYouAre")}
                 </span>
               </div>
               {ordered.map((e) => (
@@ -232,28 +234,28 @@ export default function TodayPage(): React.JSX.Element {
       {/* Right rail — day summary */}
       <aside className="border-border bg-sidebar mt-16 mr-4 mb-4 hidden w-[280px] shrink-0 flex-col gap-7 overflow-auto rounded-2xl border px-7 pt-7 pb-9 lg:flex">
         <section>
-          <RailLabel>In numbers</RailLabel>
+          <RailLabel>{t("today.inNumbers")}</RailLabel>
           <RailStat
             big
             n={stats ? stats.words.toLocaleString() : "—"}
-            l="words today"
+            l={t("today.wordsToday")}
           />
           <RailStat
             accent
             n={stats && stats.wpm > 0 ? String(stats.wpm) : "—"}
-            l="avg wpm"
+            l={t("today.avgWpm")}
           />
           <RailStat
             n={stats ? formatMinutes(stats.audioSec) : "0:00"}
-            l="min spoken"
+            l={t("today.minSpoken")}
           />
         </section>
 
         <section>
-          <RailLabel>Most used</RailLabel>
+          <RailLabel>{t("today.mostUsed")}</RailLabel>
           {buckets.length === 0 ? (
             <p className="text-muted-foreground py-3 text-[12px] italic leading-relaxed">
-              No models yet. Models will appear here as you dictate.
+              {t("today.noModelsYet")}
             </p>
           ) : (
             buckets.map((b) => <UsageBar key={b.label} {...b} />)
@@ -261,7 +263,7 @@ export default function TodayPage(): React.JSX.Element {
         </section>
 
         <section>
-          <RailLabel>Activity · 24h</RailLabel>
+          <RailLabel>{t("today.activity24h")}</RailLabel>
           <HourSpark data={hourly} />
         </section>
       </aside>
@@ -320,6 +322,7 @@ function TimelineNode({ entry }: { entry: HistoryEntry }): React.JSX.Element {
 }
 
 function EmptyTimeline(): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
       <div
@@ -327,7 +330,7 @@ function EmptyTimeline(): React.JSX.Element {
         style={{ borderStyle: "dashed", borderWidth: "1.5px" }}
       />
       <span className="serif-italic text-muted-foreground text-[22px] leading-snug">
-        your day is unwritten — your first session will land here.
+        {t("today.emptyTimeline")}
       </span>
     </div>
   );

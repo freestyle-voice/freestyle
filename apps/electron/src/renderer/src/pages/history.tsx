@@ -19,6 +19,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface HistoryEntry {
   id: number;
@@ -103,6 +104,7 @@ function getDateGroup(iso: string): string {
 const PAGE_SIZE = 20;
 
 export default function HistoryPage(): React.JSX.Element {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -146,11 +148,11 @@ export default function HistoryPage(): React.JSX.Element {
   const isMonthlyPreset = activePreset === "monthly";
 
   const getTimeLabel = (): string => {
-    if (activePreset === "weekly") return "past 7 days";
-    if (activePreset === "today") return "today";
-    if (activePreset === "monthly") return "past 30 days";
-    if (activePreset === "all-time") return "all time";
-    return "filtered"; // custom range
+    if (activePreset === "weekly") return t("history.timeLabelPast7");
+    if (activePreset === "today") return t("history.timeLabelToday");
+    if (activePreset === "monthly") return t("history.timeLabelPast30");
+    if (activePreset === "all-time") return t("history.timeLabelAllTime");
+    return t("history.timeLabelFiltered");
   };
   const timeLabel = getTimeLabel();
 
@@ -230,7 +232,7 @@ export default function HistoryPage(): React.JSX.Element {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground text-sm">Loading history…</p>
+        <p className="text-muted-foreground text-sm">{t("history.loading")}</p>
       </div>
     );
   }
@@ -252,7 +254,7 @@ export default function HistoryPage(): React.JSX.Element {
           } as React.CSSProperties
         }
       >
-        <PageHeader title="History" />
+        <PageHeader title={t("history.title")} />
 
         {isGenuineEmpty ? (
           <EmptyState />
@@ -262,11 +264,11 @@ export default function HistoryPage(): React.JSX.Element {
             <div className="border-border mb-7 grid grid-cols-2 gap-2.5 border-b pb-7 md:grid-cols-4">
               <Stat
                 n={(stats?.total_words ?? 0).toLocaleString()}
-                l={`words · ${timeLabel}`}
+                l={t("history.wordsStat", { label: timeLabel })}
               />
               <Stat
                 n={String(stats?.total_sessions ?? 0)}
-                l={`sessions · ${timeLabel}`}
+                l={t("history.sessionsStat", { label: timeLabel })}
               />
               <Stat
                 n={
@@ -274,12 +276,12 @@ export default function HistoryPage(): React.JSX.Element {
                     ? formatSeconds(Math.round(stats.avg_duration_ms))
                     : "—"
                 }
-                l="avg latency"
+                l={t("history.avgLatency")}
               />
               <Stat
                 accent
                 n={`$${(stats?.total_cost_usd ?? 0).toFixed(2)}`}
-                l={`cost · ${timeLabel}`}
+                l={t("history.costStat", { label: timeLabel })}
               />
             </div>
 
@@ -294,7 +296,11 @@ export default function HistoryPage(): React.JSX.Element {
                     setSearch(e.target.value);
                     setPage(0);
                   }}
-                  placeholder={`Search ${total} transcript${total === 1 ? "" : "s"}…`}
+                  placeholder={
+                    total === 1
+                      ? t("history.searchSingular", { total })
+                      : t("history.searchPlural", { total })
+                  }
                   className="placeholder:text-muted-foreground/80 text-foreground flex-1 bg-transparent text-[13px] outline-none"
                 />
                 <span className="mono text-muted-foreground text-[10px]">
@@ -310,7 +316,7 @@ export default function HistoryPage(): React.JSX.Element {
                 )}
               >
                 <Filter className="h-3.5 w-3.5" />
-                <span>Filters</span>
+                <span>{t("history.filtersBtn")}</span>
                 {filterCount > 0 && (
                   <span className="bg-primary text-primary-foreground flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold">
                     {filterCount}
@@ -334,7 +340,16 @@ export default function HistoryPage(): React.JSX.Element {
             ) : (
               groups.map((group) =>
                 group.items.length === 0 ? null : (
-                  <FeedGroup key={group.label} label={group.label}>
+                  <FeedGroup
+                    key={group.label}
+                    label={
+                      group.label === "Today"
+                        ? t("history.groupToday")
+                        : group.label === "Yesterday"
+                          ? t("history.groupYesterday")
+                          : group.label
+                    }
+                  >
                     {group.items.map((entry) => (
                       <FeedItem
                         key={entry.id}
@@ -351,7 +366,10 @@ export default function HistoryPage(): React.JSX.Element {
             {total > PAGE_SIZE && (
               <div className="border-border mt-4 flex items-center justify-between border-t pt-4">
                 <span className="mono text-muted-foreground text-[11px] uppercase tracking-[0.12em]">
-                  {total} {total === 1 ? "session" : "sessions"}
+                  {total}{" "}
+                  {total === 1
+                    ? t("history.sessionSingular")
+                    : t("history.sessionPlural")}
                 </span>
                 <div className="flex items-center gap-1">
                   <button
@@ -396,7 +414,7 @@ export default function HistoryPage(): React.JSX.Element {
         <SheetContent className="flex flex-col p-6 w-[340px] sm:w-[400px]">
           <SheetHeader className="p-0 mb-4">
             <SheetTitle className="text-lg font-semibold">
-              Filter History
+              {t("history.filterTitle")}
             </SheetTitle>
           </SheetHeader>
 
@@ -406,7 +424,7 @@ export default function HistoryPage(): React.JSX.Element {
                 htmlFor="start-date-input"
                 className="mono text-muted-foreground text-[10px] uppercase tracking-wider"
               >
-                Start Date
+                {t("history.startDate")}
               </label>
               <input
                 id="start-date-input"
@@ -434,7 +452,7 @@ export default function HistoryPage(): React.JSX.Element {
                 htmlFor="end-date-input"
                 className="mono text-muted-foreground text-[10px] uppercase tracking-wider"
               >
-                End Date
+                {t("history.endDate")}
               </label>
               <input
                 id="end-date-input"
@@ -460,7 +478,7 @@ export default function HistoryPage(): React.JSX.Element {
             {/* Quick Presets */}
             <div className="flex flex-col gap-2 mt-2">
               <span className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
-                Presets
+                {t("history.presetsLabel")}
               </span>
               <div className="grid grid-cols-3 gap-2">
                 <button
@@ -475,7 +493,7 @@ export default function HistoryPage(): React.JSX.Element {
                       "border-primary bg-primary/10 text-primary",
                   )}
                 >
-                  Today
+                  {t("history.presetToday")}
                 </button>
                 <button
                   type="button"
@@ -489,7 +507,7 @@ export default function HistoryPage(): React.JSX.Element {
                       "border-primary bg-primary/10 text-primary",
                   )}
                 >
-                  Last 7 Days
+                  {t("history.presetLast7")}
                 </button>
                 <button
                   type="button"
@@ -503,7 +521,7 @@ export default function HistoryPage(): React.JSX.Element {
                       "border-primary bg-primary/10 text-primary",
                   )}
                 >
-                  Last 30 Days
+                  {t("history.presetLast30")}
                 </button>
               </div>
             </div>
@@ -520,14 +538,14 @@ export default function HistoryPage(): React.JSX.Element {
               }}
               className="border-border bg-card hover:bg-accent hover:text-foreground text-muted-foreground flex-1 rounded-md border py-2 text-sm font-medium transition-colors cursor-pointer text-center"
             >
-              Clear All
+              {t("history.clearAll")}
             </button>
             <button
               type="button"
               onClick={() => setFilterOpen(false)}
               className="bg-primary text-primary-foreground hover:bg-primary/90 flex-1 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer text-center"
             >
-              Done
+              {t("history.done")}
             </button>
           </div>
         </SheetContent>
@@ -694,17 +712,17 @@ function FeedItem({
 }
 
 function EmptyState(): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="border-border bg-card mt-4 rounded-[14px] border border-dashed px-9 py-[60px] text-center">
       <div className="bg-accent mx-auto mb-[18px] inline-flex h-16 w-16 items-center justify-center rounded-2xl">
         <Clock className="text-primary h-7 w-7" />
       </div>
       <h2 className="serif text-foreground m-0 text-[32px] font-medium leading-none">
-        Nothing recorded yet.
+        {t("history.emptyTitle")}
       </h2>
       <p className="text-muted-foreground mx-auto mt-2.5 max-w-[440px] text-[14px] leading-[1.55]">
-        Hold your hotkey anywhere on {ON_DEVICE_PHRASE}, speak, release. Your
-        first transcript will appear here.
+        {t("history.emptyDesc", { phrase: ON_DEVICE_PHRASE })}
       </p>
     </div>
   );
@@ -719,15 +737,16 @@ function NoSearchResults({
   hasDates: boolean;
   onClear: () => void;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="border-border bg-card/30 mt-4 rounded-[14px] border border-dashed px-9 py-12 text-center">
       <div className="text-muted-foreground mb-3">
         <span className="serif-italic text-[20px]">
           {hasSearch && hasDates
-            ? "no transcripts match that search and date range."
+            ? t("history.noResultsBoth")
             : hasSearch
-              ? "no transcripts match that search."
-              : "no transcripts found for this date range."}
+              ? t("history.noResultsSearch")
+              : t("history.noResultsDates")}
         </span>
       </div>
       {(hasSearch || hasDates) && (
@@ -737,10 +756,10 @@ function NoSearchResults({
           className="text-primary hover:text-primary/80 text-xs font-semibold underline cursor-pointer"
         >
           {hasSearch && hasDates
-            ? "Clear filters and search"
+            ? t("history.clearBoth")
             : hasSearch
-              ? "Clear search"
-              : "Clear filters"}
+              ? t("history.clearSearch")
+              : t("history.clearFilters")}
         </button>
       )}
     </div>

@@ -6,6 +6,7 @@ import { cn } from "@renderer/lib/utils";
 import { FileText, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
+import { useTranslation } from "react-i18next";
 
 interface FormatRule {
   id: number;
@@ -18,6 +19,7 @@ interface FormatRule {
 }
 
 export default function FormatsPage(): React.JSX.Element {
+  const { t } = useTranslation();
   const [rules, setRules] = useState<FormatRule[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -92,7 +94,7 @@ export default function FormatsPage(): React.JSX.Element {
         resetForm();
         loadData();
       } catch {
-        setFormError("Failed to save.");
+        setFormError(t("formats.failedToSave"));
       }
     },
     [editingId, resetForm, loadData],
@@ -119,7 +121,7 @@ export default function FormatsPage(): React.JSX.Element {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground text-sm">Loading formats…</p>
+        <p className="text-muted-foreground text-sm">{t("formats.loading")}</p>
       </div>
     );
   }
@@ -134,7 +136,7 @@ export default function FormatsPage(): React.JSX.Element {
         className="responsive-page-scroll flex-1 overflow-auto"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
-        <PageHeader title="Formats" />
+        <PageHeader title={t("formats.title")} />
 
         {/* Action bar */}
         <div className="mb-5 flex items-center justify-between">
@@ -149,7 +151,7 @@ export default function FormatsPage(): React.JSX.Element {
             className="bg-primary text-primary-foreground hover:bg-primary/90 flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-2 text-[12.5px] font-medium"
           >
             <Plus size={13} />
-            Add format
+            {t("formats.addFormat")}
           </button>
           {customRules.length > 0 && (
             <button
@@ -158,7 +160,7 @@ export default function FormatsPage(): React.JSX.Element {
               className="border-border text-secondary-foreground/80 hover:text-foreground flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-2 text-[12.5px] font-medium"
             >
               <RotateCcw size={12} />
-              Reset to defaults
+              {t("formats.resetToDefaults")}
             </button>
           )}
         </div>
@@ -171,7 +173,7 @@ export default function FormatsPage(): React.JSX.Element {
           >
             <div className="mb-3 flex items-center justify-between">
               <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
-                {editingId ? "Edit format" : "New format"}
+                {editingId ? t("formats.editFormat") : t("formats.newFormat")}
               </span>
               <button
                 type="button"
@@ -183,13 +185,13 @@ export default function FormatsPage(): React.JSX.Element {
             </div>
             <div className="space-y-3.5">
               <FormField
-                label="Label"
+                label={t("formats.labelField")}
                 error={form.formState.errors.label?.message}
               >
                 <input
                   type="text"
                   {...form.register("label")}
-                  placeholder='e.g. "Email" or "Slack"'
+                  placeholder={t("formats.labelPlaceholder")}
                   className={cn(
                     "border-border bg-background w-full rounded-[7px] border px-[11px] py-2 text-[13px] outline-none",
                     form.formState.errors.label && "border-destructive",
@@ -197,14 +199,14 @@ export default function FormatsPage(): React.JSX.Element {
                 />
               </FormField>
               <FormField
-                label="App pattern · pipe-separated"
+                label={t("formats.appPatternField")}
                 error={form.formState.errors.app_pattern?.message}
-                hint="Matched against the app name, URL, and page title. Case-insensitive."
+                hint={t("formats.appPatternHint")}
               >
                 <input
                   type="text"
                   {...form.register("app_pattern")}
-                  placeholder="e.g. mail.google.com | outlook | Spark"
+                  placeholder={t("formats.appPatternPlaceholder")}
                   className={cn(
                     "border-border bg-background mono w-full rounded-[7px] border px-[11px] py-2 text-[13px] outline-none",
                     form.formState.errors.app_pattern && "border-destructive",
@@ -212,12 +214,12 @@ export default function FormatsPage(): React.JSX.Element {
                 />
               </FormField>
               <FormField
-                label="Instructions · sent to the LLM"
+                label={t("formats.instructionsField")}
                 error={form.formState.errors.instructions?.message}
               >
                 <textarea
                   {...form.register("instructions")}
-                  placeholder="Tell the LLM how to format the text…"
+                  placeholder={t("formats.instructionsPlaceholder")}
                   rows={3}
                   className={cn(
                     "border-border bg-background w-full resize-none rounded-[7px] border px-[11px] py-2 text-[13px] leading-[1.5] outline-none",
@@ -234,13 +236,13 @@ export default function FormatsPage(): React.JSX.Element {
                   onClick={resetForm}
                   className="border-border text-secondary-foreground/80 hover:text-foreground cursor-pointer rounded-md border px-3 py-1.5 text-[12.5px] font-medium"
                 >
-                  Cancel
+                  {t("formats.cancel")}
                 </button>
                 <button
                   type="submit"
                   className="bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer rounded-md px-3 py-1.5 text-[12.5px] font-medium"
                 >
-                  {editingId ? "Update" : "Add format"}
+                  {editingId ? t("formats.update") : t("formats.addFormatBtn")}
                 </button>
               </div>
             </div>
@@ -249,7 +251,7 @@ export default function FormatsPage(): React.JSX.Element {
 
         {/* Custom section */}
         {customRules.length > 0 && (
-          <Section label="Custom">
+          <Section label={t("formats.custom")}>
             {customRules.map((rule) => (
               <FormatCard
                 key={rule.id}
@@ -264,7 +266,7 @@ export default function FormatsPage(): React.JSX.Element {
 
         {/* Defaults section */}
         {defaultRules.length > 0 && (
-          <Section label="Defaults">
+          <Section label={t("formats.defaults")}>
             {defaultRules.map((rule) => (
               <FormatCard
                 key={rule.id}
@@ -279,7 +281,7 @@ export default function FormatsPage(): React.JSX.Element {
         {rules.length === 0 && !showForm && (
           <div className="text-muted-foreground py-10 text-center">
             <span className="serif-italic text-[20px]">
-              no formats yet — add one above.
+              {t("formats.empty")}
             </span>
           </div>
         )}

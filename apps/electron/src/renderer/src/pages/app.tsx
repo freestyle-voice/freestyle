@@ -37,11 +37,15 @@ function getToneCtx(): AudioContext {
 
 type TonePreset = "start" | "stop";
 const TONE_PRESETS: Record<TonePreset, { freq: number; ms: number }> = {
-  start: { freq: 880, ms: 100 },
-  stop: { freq: 660, ms: 100 },
+  start: { freq: 880, ms: 60 },
+  stop: { freq: 660, ms: 60 },
 };
 
-async function playTone(preset: TonePreset, volume = 0.3): Promise<void> {
+async function playTone(
+  preset: TonePreset,
+  volume = 0.3,
+  onEnded?: () => void,
+): Promise<void> {
   if (!_soundEnabled) return;
   const { freq, ms } = TONE_PRESETS[preset];
   try {
@@ -55,6 +59,15 @@ async function playTone(preset: TonePreset, volume = 0.3): Promise<void> {
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + ms / 1000);
     osc.connect(gain);
     gain.connect(ctx.destination);
+    if (onEnded) {
+      const latencyBuffer = Math.max(
+        80,
+        Math.round((ctx.outputLatency || 0.05) * 1000) + 40,
+      );
+      osc.onended = () => {
+        window.setTimeout(() => onEnded(), latencyBuffer);
+      };
+    }
     osc.start();
     osc.stop(ctx.currentTime + ms / 1000);
   } catch {}
@@ -599,7 +612,15 @@ export default function AppPage(): React.JSX.Element {
           return;
         }
 
-        playTone("start");
+        playTone("start", 0.3, () => {
+          if (!wantsMicRef.current || pendingCommitRef.current) return;
+          startAudioDucking();
+        });
+        // When sound feedback is disabled there is no tone, so duck
+        // immediately to keep push-to-talk snappy.
+        if (!_soundEnabled) {
+          startAudioDucking();
+        }
         setPillState("recording");
         recordingActiveRef.current = true;
         startTimeRef.current = Date.now();
@@ -612,17 +633,6 @@ export default function AppPage(): React.JSX.Element {
         try {
           await streamer.startCapture(stream);
         } catch {}
-
-        // Only delay ducking when sound feedback is enabled, so the activation
-        // tone isn't swallowed by the duck. If sound is off, duck immediately.
-        if (_soundEnabled) {
-          window.setTimeout(() => {
-            if (!wantsMicRef.current || pendingCommitRef.current) return;
-            startAudioDucking();
-          }, 80);
-        } else {
-          startAudioDucking();
-        }
       } catch (err) {
         pendingCommitRef.current = false;
         recorderRef.current.releaseStream();
@@ -651,7 +661,7 @@ export default function AppPage(): React.JSX.Element {
     recordingActiveRef.current = false;
     isReRecordingRef.current = false;
     setIsReRecording(false);
-    stopAudioDucking();
+    await stopAudioDucking();
     playTone("stop");
 
     clearInterval(timerRef.current);
@@ -879,11 +889,15 @@ export default function AppPage(): React.JSX.Element {
         _duckingLevel = clampDuckingLevel(level);
       },
     );
+    const removeSoundEnabled = window.api?.onSoundEnabledChanged((enabled) => {
+      _soundEnabled = enabled;
+    });
     return () => {
       removePillPos?.();
       removeOutputMode?.();
       removeAudioDucking?.();
       removeAudioDuckingLevel?.();
+      removeSoundEnabled?.();
     };
   }, [applyPillPosition]);
 

@@ -166,6 +166,17 @@ const api = {
     return () =>
       ipcRenderer.removeListener("settings:output-mode-changed", handler);
   },
+  // Sound feedback
+  sendSoundEnabledChanged: (enabled: boolean): void =>
+    ipcRenderer.send("settings:sound-enabled-changed", enabled),
+  onSoundEnabledChanged: (
+    callback: (enabled: boolean) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, enabled: boolean): void => callback(enabled);
+    ipcRenderer.on("settings:sound-enabled-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("settings:sound-enabled-changed", handler);
+  },
   sendAudioDuckingChanged: (enabled: boolean): void =>
     ipcRenderer.send("settings:audio-ducking-changed", enabled),
   onAudioDuckingChanged: (

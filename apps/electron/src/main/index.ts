@@ -151,6 +151,7 @@ let micListener: MicListener | null = null;
 let hotkeyRecorder: HotkeyRecorder | null = null;
 let audioDuckingEnabled = true;
 let audioDuckingLevel = 0;
+let soundEnabled = true;
 
 function readDbSetting(key: string): string | undefined {
   try {
@@ -1109,8 +1110,8 @@ app.whenReady().then(async () => {
 
   rebuildMenus();
 
-  // Load audio ducking preferences so key-event ducking works before the
-  // renderer has a chance to broadcast them.
+  // Load audio ducking and sound-feedback preferences so key-event ducking
+  // works before the renderer has a chance to broadcast them.
   const savedDuckingEnabled = readDbSetting("audio_ducking_enabled");
   if (savedDuckingEnabled === "false") audioDuckingEnabled = false;
   const savedDuckingLevel = readDbSetting("audio_ducking_level");
@@ -1118,6 +1119,8 @@ app.whenReady().then(async () => {
     const parsed = Number.parseInt(savedDuckingLevel, 10);
     if (Number.isFinite(parsed)) audioDuckingLevel = parsed / 100;
   }
+  const savedSoundEnabled = readDbSetting("sound_enabled");
+  if (savedSoundEnabled === "false") soundEnabled = false;
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
@@ -1149,6 +1152,12 @@ app.whenReady().then(async () => {
   // IPC: broadcast output mode changes to pill window
   ipcMain.on("settings:output-mode-changed", (_event, mode: string) => {
     mainWindow?.webContents.send("settings:output-mode-changed", mode);
+  });
+
+  ipcMain.on("settings:sound-enabled-changed", (_event, enabled: boolean) => {
+    soundEnabled = enabled;
+    mainWindow?.webContents.send("settings:sound-enabled-changed", enabled);
+    settingsWindow?.webContents.send("settings:sound-enabled-changed", enabled);
   });
 
   ipcMain.on("settings:audio-ducking-changed", (_event, enabled: boolean) => {
@@ -1791,7 +1800,9 @@ function handleNativeHotkeyDown(): void {
   if (hotkeyActivationMode === "toggle") {
     if (!hotkeyPressed) {
       hotkeyPressed = true;
-      if (audioDuckingEnabled) void audioDucker.duck(audioDuckingLevel);
+      if (!soundEnabled && audioDuckingEnabled) {
+        void audioDucker.duck(audioDuckingLevel);
+      }
       sendHotkeyDown();
     } else {
       hotkeyPressed = false;
@@ -1803,7 +1814,9 @@ function handleNativeHotkeyDown(): void {
 
   if (!hotkeyPressed) {
     hotkeyPressed = true;
-    if (audioDuckingEnabled) void audioDucker.duck(audioDuckingLevel);
+    if (!soundEnabled && audioDuckingEnabled) {
+      void audioDucker.duck(audioDuckingLevel);
+    }
     sendHotkeyDown();
   }
 }

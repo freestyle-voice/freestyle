@@ -418,6 +418,7 @@ export default function SettingsPage(): React.JSX.Element {
 
   const handleSoundToggle = useCallback((enabled: boolean) => {
     setSoundEnabled(enabled);
+    window.api?.sendSoundEnabledChanged(enabled);
     getClient()
       .api.settings[":key"].$put({
         param: { key: "sound_enabled" },
@@ -615,7 +616,7 @@ export default function SettingsPage(): React.JSX.Element {
             desc={
               hotkeyMode === "toggle"
                 ? "Press the shortcut once to start, again to stop."
-                : "Push-to-talk while the shortcut is held."
+                : "Hold the shortcut to record, release to transcribe."
             }
           >
             <div className="border-border bg-card inline-flex w-fit shrink-0 rounded-lg border p-0.5 text-sm">
@@ -816,7 +817,6 @@ export default function SettingsPage(): React.JSX.Element {
             />
           </Row>
         </Section>
-
 
         <Section label="Permissions">
           <Row

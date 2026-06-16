@@ -79,6 +79,11 @@ declare global {
       // Output mode
       sendOutputModeChanged: (mode: string) => void;
       onOutputModeChanged: (callback: (mode: string) => void) => () => void;
+      // Sound feedback
+      sendSoundEnabledChanged: (enabled: boolean) => void;
+      onSoundEnabledChanged: (
+        callback: (enabled: boolean) => void,
+      ) => () => void;
       sendAudioDuckingChanged: (enabled: boolean) => void;
       onAudioDuckingChanged: (
         callback: (enabled: boolean) => void,

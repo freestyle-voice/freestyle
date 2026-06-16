@@ -1,7 +1,6 @@
 import { apiKeySchema } from "@freestyle/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
-import { LanguageSelector } from "@renderer/components/language-selector";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { VoiceRow } from "@renderer/components/voice-row";
 import {
@@ -47,7 +46,7 @@ import { useNavigate } from "react-router";
 import { getDefaultHotkey } from "../../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../../shared/settings-keys";
 
-type Step = "ui-language" | "permissions" | "language" | "tutorial";
+type Step = "permissions" | "language" | "tutorial";
 
 const PLATFORM =
   (typeof window !== "undefined" && window.api?.platform) ||
@@ -81,7 +80,7 @@ const RECOMMENDED_WHISPER_DEF = "small-q5_1";
 
 export default function OnboardingPage(): React.JSX.Element {
   const navigate = useNavigate();
-  const [step, setStep] = useState<Step>("ui-language");
+  const [step, setStep] = useState<Step>("permissions");
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Permissions state
@@ -616,10 +615,6 @@ export default function OnboardingPage(): React.JSX.Element {
         className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-auto px-6 py-8"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
-        {step === "ui-language" && (
-          <UILanguageStep onContinue={() => setStep("permissions")} />
-        )}
-
         {step === "permissions" && (
           <PermissionsStep
             micStatus={micStatus}
@@ -715,40 +710,6 @@ export default function OnboardingPage(): React.JSX.Element {
           onSaveKey={saveCloudKey}
         />
       )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Step 0 — UI Language selection (must come before all other steps)
-// ---------------------------------------------------------------------------
-function UILanguageStep({
-  onContinue,
-}: {
-  onContinue: () => void;
-}): React.JSX.Element {
-  const { t } = useTranslation();
-  return (
-    <div className="w-full max-w-[440px]">
-      <h1 className="serif text-foreground m-0 mb-2 text-center text-[42px] leading-[1.0] font-normal tracking-[-0.025em]">
-        {t("onboarding.uiLanguage.title")}
-      </h1>
-      <p className="text-muted-foreground mb-7 text-center text-[14px]">
-        {t("onboarding.uiLanguage.subtitle")}
-      </p>
-
-      <LanguageSelector className="mx-auto" />
-
-      <div className="mt-7 flex justify-end">
-        <button
-          type="button"
-          onClick={onContinue}
-          className="bg-foreground text-background hover:bg-foreground/90 inline-flex items-center gap-1.5 rounded-[7px] px-3.5 py-[7px] text-[12.5px] font-medium transition-colors"
-        >
-          {t("onboarding.uiLanguage.getStarted")}
-          <ArrowRight size={13} />
-        </button>
-      </div>
     </div>
   );
 }

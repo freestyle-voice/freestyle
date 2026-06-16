@@ -27,11 +27,6 @@
     "ja": "日本語"
   },
   "onboarding": {
-    "uiLanguage": {
-      "title": "Freestyle へようこそ",
-      "subtitle": "希望するインターフェース言語を選択してください。",
-      "getStarted": "始める"
-    },
     "permissions": {
       "microphone": {
         "title": "マイク",
@@ -330,7 +325,8 @@
       "vocabulary": "ボキャブラリー",
       "formats": "フォーマット",
       "models": "モデル",
-      "settings": "設定"
+      "settings": "設定",
+      "help": "ヘルプ"
     }
   }
 }

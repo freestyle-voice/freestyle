@@ -6,11 +6,12 @@ import type { LucideIcon } from "lucide-react";
 import {
   Book,
   BookOpen,
+  CircleHelp,
   Clock,
   Cpu,
   FileText,
   Languages,
-  Sliders,
+  Settings,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -63,9 +64,15 @@ const STATIC_NAV: {
   },
   {
     to: "/settings",
-    icon: Sliders,
+    icon: Settings,
     shortcut: "7",
     labelKey: "shell.nav.settings",
+  },
+  {
+    to: "/help",
+    icon: CircleHelp,
+    shortcut: "8",
+    labelKey: "shell.nav.help",
   },
 ];
 

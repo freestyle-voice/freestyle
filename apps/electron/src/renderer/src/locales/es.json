@@ -27,11 +27,6 @@
     "ja": "Japonés"
   },
   "onboarding": {
-    "uiLanguage": {
-      "title": "Bienvenido a Freestyle",
-      "subtitle": "Elige tu idioma de interfaz preferido.",
-      "getStarted": "Comenzar"
-    },
     "permissions": {
       "microphone": {
         "title": "Micrófono",
@@ -330,7 +325,8 @@
       "vocabulary": "Vocabulario",
       "formats": "Formatos",
       "models": "Modelos",
-      "settings": "Ajustes"
+      "settings": "Ajustes",
+      "help": "Ayuda"
     }
   }
 }

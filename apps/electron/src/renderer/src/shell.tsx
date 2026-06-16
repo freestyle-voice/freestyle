@@ -1,5 +1,6 @@
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
+import { LINKS } from "@renderer/lib/links";
 import { cn } from "@renderer/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { SiDiscord, SiGithub } from "react-icons/si";
 import { NavLink, Outlet, useNavigate } from "react-router";
 
 type NavItem = {
@@ -22,7 +24,12 @@ type NavItem = {
   shortcut: string;
 };
 
-const STATIC_NAV = [
+const STATIC_NAV: {
+  to: string;
+  icon: LucideIcon;
+  shortcut: string;
+  labelKey: string;
+}[] = [
   { to: "/today", icon: BookOpen, shortcut: "1", labelKey: "shell.nav.today" },
   {
     to: "/settings/history",
@@ -62,13 +69,70 @@ const STATIC_NAV = [
   },
 ];
 
+const PRIMARY_COUNT = 6;
+
+function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
+  return (
+    <nav
+      className="flex flex-col gap-px px-3"
+      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+    >
+      {items.map((item) => {
+        const Icon = item.icon;
+        return (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === "/settings"}
+            className="block"
+          >
+            {({ isActive }) => (
+              <div
+                className={cn(
+                  "flex items-center gap-2.5 rounded-[7px] border px-2.5 py-1.5 text-[13px] transition-colors",
+                  isActive
+                    ? "border-border bg-card text-foreground font-medium"
+                    : "text-secondary-foreground/80 hover:bg-card/50 border-transparent font-normal",
+                )}
+              >
+                <Icon
+                  size={14}
+                  className={
+                    isActive ? "text-primary" : "text-muted-foreground"
+                  }
+                />
+                <span className="flex-1">{item.label}</span>
+                <span
+                  className={cn(
+                    "mono shrink-0 text-[9.5px] tabular-nums",
+                    isActive
+                      ? "text-muted-foreground/80"
+                      : "text-muted-foreground/60",
+                  )}
+                >
+                  {"⌘"}
+                  {item.shortcut}
+                </span>
+              </div>
+            )}
+          </NavLink>
+        );
+      })}
+    </nav>
+  );
+}
+
 export default function AppShell(): React.JSX.Element {
   const navigate = useNavigate();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { t } = useTranslation();
 
   const navItems: NavItem[] = useMemo(
-    () => STATIC_NAV.map((item) => ({ ...item, label: t(item.labelKey) })),
+    () =>
+      STATIC_NAV.map((item) => ({
+        ...item,
+        label: t(item.labelKey) as string,
+      })),
     [t],
   );
 
@@ -118,57 +182,44 @@ export default function AppShell(): React.JSX.Element {
           </span>
         </div>
 
-        <nav
-          className="flex flex-col gap-px px-3"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        >
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === "/settings"}
-                className="block"
-              >
-                {({ isActive }) => (
-                  <div
-                    className={cn(
-                      "flex items-center gap-2.5 rounded-[7px] border px-2.5 py-1.5 text-[13px] transition-colors",
-                      isActive
-                        ? "border-border bg-card text-foreground font-medium"
-                        : "text-secondary-foreground/80 hover:bg-card/50 border-transparent font-normal",
-                    )}
-                  >
-                    <Icon
-                      size={14}
-                      className={
-                        isActive ? "text-primary" : "text-muted-foreground"
-                      }
-                    />
-                    <span className="flex-1">{item.label}</span>
-                    <span
-                      className={cn(
-                        "mono shrink-0 text-[9.5px] tabular-nums",
-                        isActive
-                          ? "text-muted-foreground/80"
-                          : "text-muted-foreground/60",
-                      )}
-                    >
-                      {"⌘"}
-                      {item.shortcut}
-                    </span>
-                  </div>
-                )}
-              </NavLink>
-            );
-          })}
-        </nav>
+        <NavList items={navItems.slice(0, PRIMARY_COUNT)} />
+        <div className="flex-1" />
+        <NavList items={navItems.slice(PRIMARY_COUNT)} />
+        <div className="h-3" />
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-auto">
-        <Outlet />
-      </main>
+      <div className="relative min-w-0 flex-1">
+        <div
+          className="absolute right-3 top-2.5 z-20 flex items-center gap-2"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          <a
+            href={LINKS.repo}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="border-transparent hover:border-border hover:bg-card text-foreground inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors"
+          >
+            <SiGithub className="h-3.5 w-3.5" />
+            Star the repo
+          </a>
+          <a
+            href={LINKS.discord}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Join our Discord"
+            className="border-transparent hover:border-border hover:bg-card text-foreground inline-flex items-center justify-center rounded-md border p-1.5 transition-colors"
+          >
+            <SiDiscord className="h-3.5 w-3.5" />
+          </a>
+        </div>
+
+        <main
+          className="h-full overflow-auto"
+          style={{ scrollbarWidth: "none" } as React.CSSProperties}
+        >
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

@@ -34,9 +34,7 @@ export async function transcribeDeepgramListen(
     punctuate: "true",
     smart_format: "true",
   });
-  if (opts.language && opts.language !== "auto") {
-    params.set("language", opts.language);
-  }
+  params.set("language", opts.language ?? "multi");
 
   if (bias?.kind === "deepgram-keyterms") {
     for (const term of bias.terms) {
@@ -96,7 +94,7 @@ export async function transcribeElevenLabsWithBias(
   for (const term of bias.terms) {
     form.append("keyterms", term);
   }
-  if (opts.language && opts.language !== "auto") {
+  if (opts.language) {
     form.append("language_code", opts.language);
   }
 
@@ -142,4 +140,15 @@ export function appendElevenLabsBiasToParams(
   for (const term of bias.terms) {
     params.append("keyterms", term);
   }
+}
+
+/** Soniox WebSocket session `context` object (terms + optional background text). */
+export function sonioxContextFromBias(
+  bias: AsrVocabularyBias | null | undefined,
+): { terms?: string[]; text?: string } | undefined {
+  if (!bias || bias.kind !== "soniox-context") return undefined;
+  const context: { terms?: string[]; text?: string } = {};
+  if (bias.terms.length > 0) context.terms = bias.terms;
+  if (bias.text?.trim()) context.text = bias.text.trim();
+  return Object.keys(context).length > 0 ? context : undefined;
 }

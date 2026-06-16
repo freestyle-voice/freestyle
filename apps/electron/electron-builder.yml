@@ -50,6 +50,10 @@ dmg:
   artifactName: ${productName}-${version}.${ext}
 linux:
   executableName: freestyle
+  icon: icons
+  desktop:
+    entry:
+      StartupWMClass: freestyle
   target:
     - AppImage
     - deb

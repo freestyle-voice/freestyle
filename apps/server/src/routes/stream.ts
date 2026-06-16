@@ -2,9 +2,12 @@ import { createAppLogger } from "@freestyle/utils";
 import { upgradeWebSocket } from "@hono/node-server";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
-import { postProcess } from "../lib/post-process.js";
+import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
+import { getLanguageSetting } from "../lib/language.js";
+import { postProcess, prewarmPostProcess } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
+import { shouldKeepStreamingUpstreamAlive } from "../lib/streaming/session-policy.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
 import {
   getApiKeyForProvider,
@@ -16,6 +19,7 @@ import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
 
 const log = createAppLogger("stream");
 const LOG_STREAM_PARTIALS = process.env.FREESTYLE_LOG_STREAM_PARTIALS === "1";
+const LOG_PIPELINE_LATENCY = process.env.FREESTYLE_LOG_PIPELINE_LATENCY !== "0";
 
 const stream = new Hono().get(
   "/",
@@ -24,6 +28,8 @@ const stream = new Hono().get(
     let closed = false;
     let streamingUnsupported = false;
     let sessionStartTime = Date.now();
+    /** Set when the client sends `commit` — measures Soniox finalize tail only. */
+    let commitTime = 0;
     let voiceDefaults: { provider: string; model_id: string } | null = null;
     /** Fingerprint of the settings the current upstream session was built with. */
     let upstreamConfigKey: string | null = null;
@@ -38,6 +44,14 @@ const stream = new Hono().get(
     let notifiedReadyToken = 0;
     const MAX_RECONNECT_ATTEMPTS = 3;
     const MAX_PENDING_AUDIO_CHUNKS = 500;
+    type ResolvedStreamConfig = NonNullable<
+      ReturnType<typeof resolveStreamConfig>
+    >;
+    type AnnouncedStreamConfig = {
+      config: ResolvedStreamConfig;
+      canStream: boolean;
+      modelShort: string;
+    };
 
     /** Resolve the settings a streaming session depends on, plus a compare key. */
     function resolveStreamConfig(): {
@@ -48,10 +62,7 @@ const stream = new Hono().get(
     } | null {
       const voice = getDefaultModels().voice;
       if (!voice) return null;
-      const langSetting = getDb()
-        .prepare("SELECT value FROM settings WHERE key = 'language'")
-        .get() as { value: string } | undefined;
-      const language = langSetting?.value || undefined;
+      const language = getLanguageSetting();
       const bias = resolveAsrVocabularyBias(
         voice.provider,
         voice.model_id,
@@ -78,6 +89,17 @@ const stream = new Hono().get(
       pendingAudioChunks = [];
     }
 
+    function closeUpstreamSession(session: StreamSession | null): void {
+      if (!session) return;
+      if (upstream === session) {
+        upstream = null;
+        upstreamConfigKey = null;
+      }
+      try {
+        session.close();
+      } catch {}
+    }
+
     function notifySessionReady(
       ws: { send: (data: string) => void },
       model: string,
@@ -86,6 +108,9 @@ const stream = new Hono().get(
       if (token !== readyToken || notifiedReadyToken === token) return;
       notifiedReadyToken = token;
       flushPendingAudio();
+      if (voiceDefaults?.provider === "soniox") {
+        prewarmPostProcess();
+      }
       ws.send(JSON.stringify({ type: "session.ready", model }));
       if (pendingCommit) {
         pendingCommit = false;
@@ -117,10 +142,10 @@ const stream = new Hono().get(
         });
     }
 
-    function connectUpstream(ws: {
+    function announceConfig(ws: {
       send: (data: string) => void;
       close: () => void;
-    }): void {
+    }): AnnouncedStreamConfig | null {
       const config = resolveStreamConfig();
       if (!config) {
         ws.send(
@@ -130,22 +155,10 @@ const stream = new Hono().get(
           }),
         );
         ws.close();
-        return;
+        return null;
       }
       const voice = config.voice;
       voiceDefaults = voice;
-
-      const apiKey = getApiKeyForProvider(voice.provider);
-      if (!apiKey) {
-        ws.send(
-          JSON.stringify({
-            type: "error",
-            message: `No API key for ${voice.provider}`,
-          }),
-        );
-        ws.close();
-        return;
-      }
 
       const canStream = supportsStreaming(voice.provider, voice.model_id);
 
@@ -158,6 +171,38 @@ const stream = new Hono().get(
           streaming: canStream,
         }),
       );
+
+      return {
+        config,
+        canStream,
+        modelShort,
+      };
+    }
+
+    function connectUpstream(
+      ws: {
+        send: (data: string) => void;
+        close: () => void;
+      },
+      announced?: AnnouncedStreamConfig,
+    ): void {
+      const resolved = announced ?? announceConfig(ws);
+      if (!resolved) return;
+
+      const { config, canStream, modelShort } = resolved;
+      const voice = config.voice;
+
+      const apiKey = getApiKeyForProvider(voice.provider);
+      if (!apiKey) {
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: `No API key for ${voice.provider}`,
+          }),
+        );
+        ws.close();
+        return;
+      }
 
       if (!canStream) {
         readyToken++;
@@ -190,15 +235,43 @@ const stream = new Hono().get(
           },
           onFinal: (rawText) => {
             if (upstream !== session) return;
+            rawText = sanitizeTranscriptText(rawText);
             const durationMs = Date.now() - sessionStartTime;
+            if (!shouldKeepStreamingUpstreamAlive(voice.provider)) {
+              closeUpstreamSession(session);
+            }
 
             if (!rawText?.trim()) {
               ws.send(JSON.stringify({ type: "final", text: "" }));
               return;
             }
 
-            postProcess(rawText, appContext, "streaming")
+            const useFastHandoff = voiceDefaults!.provider === "soniox";
+            const sttAfterCommitMs =
+              commitTime > 0 ? Date.now() - commitTime : durationMs;
+
+            const cleanup = postProcess(rawText, appContext, {
+              language: config.language,
+              source: useFastHandoff ? "streaming_handoff" : "streaming",
+              ...(useFastHandoff ? { includeTimings: true } : {}),
+            });
+
+            cleanup
               .then((pp) => {
+                if (LOG_PIPELINE_LATENCY) {
+                  const handoffTimings = pp.timings;
+                  if (handoffTimings) {
+                    const { handoffMs, llmMs } = handoffTimings;
+                    const e2eMs = sttAfterCommitMs + handoffMs + llmMs;
+                    log.info(
+                      `[pipeline] stt=${sttAfterCommitMs}ms handoff=${handoffMs}ms llm=${llmMs}ms e2e=${e2eMs}ms | ${voiceDefaults!.provider}/${voiceDefaults!.model_id} → ${pp.llmModel ?? "—"}`,
+                    );
+                  } else {
+                    log.info(
+                      `[pipeline] session=${durationMs}ms stt_after_commit=${sttAfterCommitMs}ms | ${voiceDefaults!.provider}/${voiceDefaults!.model_id}`,
+                    );
+                  }
+                }
                 capture("streaming transcription completed", {
                   provider: voiceDefaults!.provider,
                   model: voiceDefaults!.model_id,
@@ -299,7 +372,25 @@ const stream = new Hono().get(
     return {
       onOpen(_event, ws) {
         try {
-          connectUpstream(ws);
+          const announced = announceConfig(ws);
+          if (!announced) return;
+          if (!announced.canStream) {
+            readyToken++;
+            notifiedReadyToken = readyToken;
+            ws.send(
+              JSON.stringify({
+                type: "session.ready",
+                model: announced.modelShort,
+              }),
+            );
+            return;
+          }
+          if (
+            !shouldKeepStreamingUpstreamAlive(announced.config.voice.provider)
+          ) {
+            return;
+          }
+          connectUpstream(ws, announced);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           ws.send(JSON.stringify({ type: "error", message }));
@@ -373,10 +464,14 @@ const stream = new Hono().get(
             streamingUnsupported = false;
             // Reuse the session only if the settings it was built with
             // (provider, model, language, vocabulary bias) are unchanged.
+            const nextConfig = resolveStreamConfig();
             const sameConfig =
               upstreamConfigKey !== null &&
-              resolveStreamConfig()?.key === upstreamConfigKey;
-            if (upstream?.reset && sameConfig) {
+              nextConfig?.key === upstreamConfigKey;
+            const keepWarm =
+              nextConfig !== null &&
+              shouldKeepStreamingUpstreamAlive(nextConfig.voice.provider);
+            if (upstream?.reset && sameConfig && keepWarm) {
               upstream.reset();
               const voice = voiceDefaults ?? getDefaultModels().voice;
               if (voice) {
@@ -399,8 +494,7 @@ const stream = new Hono().get(
               break;
             }
             if (upstream) {
-              upstream.close();
-              upstream = null;
+              closeUpstreamSession(upstream);
             }
             try {
               connectUpstream(ws);
@@ -408,6 +502,7 @@ const stream = new Hono().get(
             break;
           }
           case "commit":
+            commitTime = Date.now();
             if (msg.audioDurationMs && msg.audioDurationMs > 0) {
               audioDurationMs = msg.audioDurationMs;
             }
@@ -426,7 +521,15 @@ const stream = new Hono().get(
           case "cancel":
             pendingCommit = false;
             pendingAudioChunks = [];
-            upstream?.cancel();
+            if (
+              upstream &&
+              voiceDefaults &&
+              !shouldKeepStreamingUpstreamAlive(voiceDefaults.provider)
+            ) {
+              closeUpstreamSession(upstream);
+            } else {
+              upstream?.cancel();
+            }
             break;
         }
       },

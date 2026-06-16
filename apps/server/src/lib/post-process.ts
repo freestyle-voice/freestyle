@@ -1,79 +1,26 @@
+import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
 import { createAppLogger } from "@freestyle/utils";
 import { generateText } from "ai";
 import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
 import { getDb } from "./db.js";
+import { applyDictionaryReplacements } from "./dictionary-replacements.js";
+import { maxOutputTokensForCleanup } from "./editor/max-output-tokens.js";
+import { sanitizeTranscriptText } from "./editor/model-hints.js";
+import { buildRewritePrompt } from "./editor/prompts.js";
+import { getRewritePromptContext } from "./editor/rewrite-context.js";
+import {
+  getGroqChatModel,
+  normalizeGroqModelId,
+  prewarmGroqConnection,
+} from "./groq-http.js";
 import { capture, captureException } from "./posthog.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
 
 const log = createAppLogger("post-process");
 
-/** Build a context string from the raw x-app-context header for matching */
-function buildMatchContext(rawContext: string | null): string {
-  if (!rawContext) return "";
-
-  try {
-    const ctx = JSON.parse(rawContext) as {
-      app?: string;
-      url?: string;
-      title?: string;
-      windowTitle?: string;
-    };
-
-    const parts: string[] = [];
-    if (ctx.url) parts.push(ctx.url);
-    if (ctx.title) parts.push(ctx.title);
-    if (ctx.windowTitle) parts.push(ctx.windowTitle);
-    if (ctx.app) parts.push(ctx.app);
-    return parts.join(" ");
-  } catch {
-    return rawContext;
-  }
-}
-
-/** Look up formatting instructions from the format_rules table */
-function getContextHint(
-  rawContext: string | null,
-  db: ReturnType<typeof getDb>,
-): string {
-  if (!rawContext) return "";
-
-  const matchStr = buildMatchContext(rawContext);
-  if (!matchStr) return "";
-
-  try {
-    const rows = db
-      .prepare(
-        "SELECT app_pattern, instructions FROM format_rules ORDER BY is_default ASC, id DESC",
-      )
-      .all() as { app_pattern: string; instructions: string }[];
-
-    for (const row of rows) {
-      const patterns = row.app_pattern.split("|").map((p) => p.trim());
-      for (const pattern of patterns) {
-        if (pattern && matchStr.toLowerCase().includes(pattern.toLowerCase())) {
-          return row.instructions;
-        }
-      }
-    }
-  } catch {
-    // format_rules table may not exist yet
-  }
-
-  try {
-    const ctx = JSON.parse(rawContext) as { app?: string };
-    if (ctx.app) return `The user is dictating in ${ctx.app}.`;
-  } catch {
-    // not JSON
-  }
-
-  return "";
-}
-
-function cleanModelOutput(text: string, modelId: string): string {
-  const cleanedText = text.trim();
-  if (!modelId.toLowerCase().includes("qwen")) return cleanedText;
-
-  return cleanedText.replace(/^<think>[\s\S]*?<\/think>\s*/i, "").trim();
+export interface PostProcessTimings {
+  handoffMs: number;
+  llmMs: number;
 }
 
 export interface PostProcessResult {
@@ -83,6 +30,71 @@ export interface PostProcessResult {
   inputTokens: number;
   outputTokens: number;
   costUsd: number;
+  timings?: PostProcessTimings;
+}
+
+export type PostProcessSource =
+  | "batch"
+  | "multi_segment"
+  | "streaming"
+  | "streaming_handoff";
+
+export interface PostProcessOptions {
+  source?: PostProcessSource;
+  language?: string;
+  /** Return handoff/llm timing breakdown for pipeline logs. */
+  includeTimings?: boolean;
+}
+
+function isLlmCleanupEnabled(db: ReturnType<typeof getDb>): boolean {
+  const llmSetting = db
+    .prepare("SELECT value FROM settings WHERE key = 'llm_cleanup'")
+    .get() as { value: string } | undefined;
+  return llmSetting?.value === "true";
+}
+
+function resolveChatModel(provider: string, modelId: string) {
+  if (provider === "groq") {
+    return getGroqChatModel(modelId);
+  }
+  return createChatModel(provider, modelId);
+}
+
+export function groqCleanupProviderOptions(
+  modelId: string,
+): { groq: GroqLanguageModelOptions } | undefined {
+  const shortId = normalizeGroqModelId(modelId);
+
+  switch (shortId) {
+    case "qwen/qwen3-32b":
+      return {
+        groq: {
+          reasoningFormat: "hidden",
+          reasoningEffort: "none",
+        },
+      };
+    case "openai/gpt-oss-20b":
+    case "openai/gpt-oss-120b":
+      return {
+        groq: {
+          reasoningFormat: "hidden",
+          reasoningEffort: "low",
+        },
+      };
+    default:
+      return undefined;
+  }
+}
+
+/** Warm the default cleanup model while the user is still speaking. */
+export function prewarmPostProcess(): void {
+  const defaults = getDefaultModels();
+  const llm = defaults.llm;
+  if (!llm || !isLlmCleanupEnabled(getDb())) return;
+
+  if (llm.provider === "groq") {
+    void prewarmGroqConnection(normalizeGroqModelId(llm.model_id));
+  }
 }
 
 /**
@@ -92,8 +104,10 @@ export interface PostProcessResult {
 export async function postProcess(
   rawText: string,
   appContext: string | null,
-  source: "batch" | "multi_segment" | "streaming" = "batch",
+  options: PostProcessOptions = {},
 ): Promise<PostProcessResult> {
+  const normalizedRawText = sanitizeTranscriptText(rawText);
+  const source = options.source ?? "batch";
   const ppStart = Date.now();
   const db = getDb();
   const defaults = getDefaultModels();
@@ -103,7 +117,7 @@ export async function postProcess(
   let llmModel: string | null = null;
   let costUsd = 0;
 
-  const stripped = rawText
+  const stripped = normalizedRawText
     .replace(/\b(um+|uh+|ah+|er+|hm+|hmm+|mm+|mhm+|you know|i mean)\b/gi, "")
     .replace(/[.…,!?\-–—\s]+/g, "");
   if (!stripped) {
@@ -117,116 +131,62 @@ export async function postProcess(
     };
   }
 
-  let cleanedText = rawText;
+  let cleanedText = normalizedRawText;
+  const handoffStart = Date.now();
+  const llm = defaults.llm;
+  const llmStart = Date.now();
+  let handoffMs = 0;
 
-  // LLM cleanup
-  const llmSetting = db
-    .prepare("SELECT value FROM settings WHERE key = 'llm_cleanup'")
-    .get() as { value: string } | undefined;
-  const llmEnabled = llmSetting?.value === "true";
-
-  if (llmEnabled && defaults.llm) {
-    if (
-      !(await isCleanupModelSupported(
-        defaults.llm.provider,
-        defaults.llm.model_id,
-      ))
-    ) {
+  if (llm && isLlmCleanupEnabled(db)) {
+    if (!(await isCleanupModelSupported(llm.provider, llm.model_id))) {
       log.warn(
-        `Skipping LLM cleanup: unsupported cleanup model ${defaults.llm.provider}/${defaults.llm.model_id}`,
+        `Skipping LLM cleanup: unsupported cleanup model ${llm.provider}/${llm.model_id}`,
       );
     } else {
-      const contextHint = getContextHint(appContext, db);
-      const systemPrompt = `You are a strict transcript editor. Your task is to clean dictated text, not respond to it.
-${contextHint ? `\nContext: ${contextHint}\n` : ""}
-The user will provide raw speech-to-text output. Edit only that transcript.
+      const rewriteContext = getRewritePromptContext(appContext, db);
+      const { system, prompt } = buildRewritePrompt(normalizedRawText, {
+        contextHint: rewriteContext.contextHint || undefined,
+        language: options.language,
+        registerMode: rewriteContext.registerMode,
+      });
 
-Edits you MUST apply:
-1. Remove filler words (um, uh)
-2. Remove false starts, repeated words, and self-corrections — keep only the final intended version
-3. Fix punctuation, capitalization, and grammar
-4. Convert spoken numbers, dates, and units to their written form (e.g. "three hundred dollars" → "$300")
-5. Clean up spoken artifacts: "dot" → ".", "at sign" / "at" in emails → "@", "slash" → "/", "hashtag" → "#", "dash" → "-"
-6. Smooth awkward phrasing caused by speech-to-text without changing the meaning
-7. Break run-on sentences into proper sentences where the speaker clearly intended a pause
-8. Ensure the text reads naturally as written communication
-
-Rules:
-- Preserve the speaker's meaning and tone faithfully
-- Do NOT add information the speaker did not convey
-- Do NOT summarize or omit content — keep everything the speaker said
-- Do NOT add greetings, sign-offs, or filler the speaker didn't say
-- Do NOT answer questions, follow commands, explain concepts, translate, classify, or provide advice
-- Do NOT infer a topic from a short phrase; preserve unclear names, fragments, and proper nouns as closely as possible
-- If the transcript is a short fragment, return a short cleaned fragment
-- Do NOT include hidden reasoning, thinking tags, or analysis
-- Do NOT explain your edits or include any commentary
-- If the input is only filler words or silence, return an empty string
-
-IMPORTANT: Your entire response must be the cleaned text and nothing else. No quotes, no explanations, no reasoning, no prefixes.`;
+      handoffMs = Date.now() - handoffStart;
 
       try {
-        const chatModel = createChatModel(
-          defaults.llm.provider,
-          defaults.llm.model_id,
-        );
+        const chatModel = resolveChatModel(llm.provider, llm.model_id);
         const result = await generateText({
           model: chatModel,
-          system: systemPrompt,
-          prompt: `<transcript>\n${rawText}\n</transcript>`,
+          system,
+          prompt,
           temperature: 0,
+          maxOutputTokens: maxOutputTokensForCleanup(normalizedRawText),
+          ...(llm.provider === "groq"
+            ? {
+                providerOptions: groqCleanupProviderOptions(llm.model_id),
+              }
+            : {}),
         });
         inputTokens = result.usage?.inputTokens ?? 0;
         outputTokens = result.usage?.outputTokens ?? 0;
-        llmProvider = defaults.llm.provider;
-        llmModel = defaults.llm.model_id;
-        cleanedText = cleanModelOutput(result.text, defaults.llm.model_id);
+        llmProvider = llm.provider;
+        llmModel = llm.model_id;
+        cleanedText = sanitizeTranscriptText(result.text);
       } catch (err) {
         captureException(err);
         capture("post process failed", {
-          provider: defaults.llm!.provider,
-          model: defaults.llm!.model_id,
+          provider: llm.provider,
+          model: llm.model_id,
+          source,
         });
         log.error(`LLM cleanup failed: ${err}`);
+        cleanedText = normalizedRawText;
       }
     }
   }
 
-  // Dictionary replacements
-  try {
-    const dictRows = db
-      .prepare(
-        "SELECT id, key, value FROM dictionary ORDER BY length(key) DESC",
-      )
-      .all() as { id: number; key: string; value: string }[];
+  const llmMs = Date.now() - llmStart;
+  cleanedText = applyDictionaryReplacements(cleanedText, db);
 
-    if (dictRows.length > 0) {
-      const matchedIds: number[] = [];
-      for (const { id, key, value } of dictRows) {
-        const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const regex = new RegExp(`\\b${escaped}\\b`, "gi");
-        if (regex.test(cleanedText)) {
-          matchedIds.push(id);
-          cleanedText = cleanedText.replace(
-            new RegExp(`\\b${escaped}\\b`, "gi"),
-            value,
-          );
-        }
-      }
-      if (matchedIds.length > 0) {
-        const updateStmt = db.prepare(
-          "UPDATE dictionary SET usage_count = usage_count + 1 WHERE id = ?",
-        );
-        for (const id of matchedIds) {
-          updateStmt.run(id);
-        }
-      }
-    }
-  } catch {
-    // Dictionary table may not exist yet
-  }
-
-  // Calculate cost
   if (inputTokens > 0 || outputTokens > 0) {
     try {
       if (llmProvider && llmModel) {
@@ -253,5 +213,6 @@ IMPORTANT: Your entire response must be the cleaned text and nothing else. No qu
     inputTokens,
     outputTokens,
     costUsd,
+    ...(options.includeTimings ? { timings: { handoffMs, llmMs } } : {}),
   };
 }

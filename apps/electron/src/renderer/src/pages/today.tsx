@@ -198,7 +198,7 @@ export default function TodayPage(): React.JSX.Element {
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
         {/* macOS drag region — the title bar area */}
-        <div className="h-9 shrink-0" />
+        <div className="h-16 shrink-0" />
         <div
           className="responsive-page-scroll flex-1 overflow-auto"
           style={
@@ -232,7 +232,7 @@ export default function TodayPage(): React.JSX.Element {
       </div>
 
       {/* Right rail — day summary */}
-      <aside className="border-border bg-sidebar hidden lg:flex w-[280px] shrink-0 flex-col gap-7 border-l px-7 pt-[44px] pb-9 overflow-auto">
+      <aside className="border-border bg-sidebar mt-16 mr-4 mb-4 hidden w-[280px] shrink-0 flex-col gap-7 overflow-auto rounded-2xl border px-7 pt-7 pb-9 lg:flex">
         <section>
           <RailLabel>{t("today.inNumbers")}</RailLabel>
           <RailStat

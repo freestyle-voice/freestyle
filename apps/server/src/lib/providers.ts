@@ -5,6 +5,7 @@ import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 import { getDb } from "./db.js";
+import { groqFetch } from "./groq-http.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./mlx-asr/reconcile.js";
 import { getApiKeyForProvider } from "./streaming-stt.js";
 
@@ -28,7 +29,7 @@ const PROVIDER_FACTORIES: Record<
     return { chat: (m) => p.chat(m) };
   },
   groq: (apiKey) => {
-    const p = createGroq({ apiKey });
+    const p = createGroq({ apiKey, fetch: groqFetch });
     return { chat: (m) => p.languageModel(m) };
   },
   anthropic: (apiKey) => {

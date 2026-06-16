@@ -54,6 +54,17 @@ export const MLX_ASR_MODELS: MlxAsrModelDef[] = [
     quantized: true,
   },
   {
+    id: "sensevoice-small",
+    hfId: "mlx-community/SenseVoiceSmall",
+    family: "sensevoice",
+    displayName: "SenseVoice",
+    sizeBytes: 936_000_000,
+    ramRequired: "~1.5 GB",
+    speed: "Fast",
+    quality: "High",
+    quantized: false,
+  },
+  {
     id: "parakeet-tdt-0.6b-v3",
     hfId: "mlx-community/parakeet-tdt-0.6b-v3",
     family: "parakeet",

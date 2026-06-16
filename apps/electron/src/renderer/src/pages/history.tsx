@@ -13,8 +13,10 @@ import {
   Clock,
   Copy,
   Filter,
+  Redo2,
   Search,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -245,7 +247,12 @@ export default function HistoryPage(): React.JSX.Element {
       <div className="h-9 shrink-0" />
       <div
         className="responsive-page-scroll flex-1 overflow-auto"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        style={
+          {
+            WebkitAppRegion: "no-drag",
+            scrollbarWidth: "none",
+          } as React.CSSProperties
+        }
       >
         <PageHeader title={t("history.title")} />
 
@@ -626,7 +633,11 @@ function FeedItem({
   onDelete: (id: number) => void;
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false);
-  const text = entry.cleaned_text || entry.raw_text;
+  const hasAiEdit =
+    !!entry.cleaned_text && entry.cleaned_text.trim() !== entry.raw_text.trim();
+  const [showAiEdit, setShowAiEdit] = useState(hasAiEdit);
+  const text =
+    showAiEdit && entry.cleaned_text ? entry.cleaned_text : entry.raw_text;
   const voice = shortModel(entry.voice_model) || entry.voice_provider;
   const llm = shortModel(entry.llm_model);
   const modelLabel = llm ? `${voice} · ${llm}` : voice;
@@ -657,6 +668,16 @@ function FeedItem({
           </span>
         )}
         <div className="ml-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          {hasAiEdit && (
+            <button
+              type="button"
+              onClick={() => setShowAiEdit((value) => !value)}
+              className="text-muted-foreground hover:text-foreground cursor-pointer rounded p-1"
+              title={showAiEdit ? "Undo AI edit" : "Redo AI edit"}
+            >
+              {showAiEdit ? <Undo2 size={13} /> : <Redo2 size={13} />}
+            </button>
+          )}
           <button
             type="button"
             onClick={copyText}
@@ -682,6 +703,7 @@ function FeedItem({
       <p
         className="text-foreground m-0 text-[16px] leading-[1.55]"
         style={{ textWrap: "pretty" as never }}
+        dir="auto"
       >
         “{text}”
       </p>

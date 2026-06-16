@@ -1,5 +1,6 @@
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { LanguageSelector } from "@renderer/components/language-selector";
+import { Select } from "@renderer/components/ui/select";
 import {
   comboDisplayKeys,
   formatAcceleratorKeys,
@@ -7,6 +8,7 @@ import {
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
 import { getClient } from "@renderer/lib/api";
+import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { cn } from "@renderer/lib/utils";
 import {
@@ -54,6 +56,7 @@ function normalizePillPos(pos: string): string {
 export default function SettingsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
+
   const [devices, setDevices] = useState<AudioDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [hotkey, setHotkey] = useState(
@@ -72,6 +75,30 @@ export default function SettingsPage(): React.JSX.Element {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
+
+  const microphoneOptions = useMemo(
+    () => [
+      { value: "", label: t("settings.recording.microphoneDefault") },
+      ...devices.map((d) => ({ value: d.deviceId, label: d.label })),
+    ],
+    [devices, t],
+  );
+
+  const languageOptions = useMemo(
+    () => [
+      {
+        value: "auto",
+        label:
+          t("settings.recording.transcriptionLanguages.auto") || "Auto-detect",
+      },
+      ...LANGUAGES.map((l) => ({
+        value: l.id,
+        label:
+          t(`settings.recording.transcriptionLanguages.${l.id}`) || l.label,
+      })),
+    ],
+    [t],
+  );
 
   // Permissions
   type MicStatus =
@@ -620,69 +647,30 @@ export default function SettingsPage(): React.JSX.Element {
             label={t("settings.recording.microphone")}
             desc={t("settings.recording.microphoneDesc")}
           >
-            <div className="border-border bg-card text-foreground flex w-full max-w-md items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-              <Mic className="text-muted-foreground h-4 w-4 shrink-0" />
-              <select
-                id="settings-microphone"
-                value={selectedDevice}
-                onChange={(e) => handleDeviceChange(e.target.value)}
-                className="w-full min-w-0 truncate bg-transparent pr-6 outline-none"
-              >
-                <option value="">
-                  {t("settings.recording.microphoneDefault")}
-                </option>
-                {devices.map((d) => (
-                  <option key={d.deviceId} value={d.deviceId}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Select
+              id="settings-microphone"
+              value={selectedDevice}
+              onChange={handleDeviceChange}
+              options={microphoneOptions}
+              icon={<Mic className="text-muted-foreground h-4 w-4 shrink-0" />}
+              className="max-w-md"
+            />
           </Row>
 
           <Row
             label={t("settings.recording.language")}
             desc={t("settings.recording.languageDesc")}
           >
-            <div className="border-border bg-card text-foreground flex w-full max-w-xs items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-              <Languages className="text-muted-foreground h-4 w-4 shrink-0" />
-              <select
-                id="settings-language"
-                value={language}
-                onChange={(e) => handleLanguageChange(e.target.value)}
-                className="w-full min-w-0 truncate bg-transparent pr-6 outline-none"
-              >
-                {(
-                  [
-                    "auto",
-                    "en",
-                    "es",
-                    "fr",
-                    "de",
-                    "it",
-                    "pt",
-                    "nl",
-                    "ru",
-                    "zh",
-                    "ja",
-                    "ko",
-                    "ar",
-                    "hi",
-                    "pl",
-                    "tr",
-                    "sv",
-                    "da",
-                    "no",
-                    "fi",
-                    "uk",
-                  ] as const
-                ).map((code) => (
-                  <option key={code} value={code}>
-                    {t(`settings.recording.transcriptionLanguages.${code}`)}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Select
+              id="settings-language"
+              value={language}
+              onChange={handleLanguageChange}
+              options={languageOptions}
+              icon={
+                <Languages className="text-muted-foreground h-4 w-4 shrink-0" />
+              }
+              className="max-w-md"
+            />
           </Row>
 
           <Row

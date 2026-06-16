@@ -1,6 +1,12 @@
-import { exec, execFile } from "node:child_process";
+import {
+  type ChildProcessWithoutNullStreams,
+  exec,
+  execFile,
+  spawn,
+} from "node:child_process";
 import { createAppLogger } from "@freestyle/utils";
 import { clipboard } from "electron";
+import { isLinuxTerminalFocused } from "./linux-terminal-focus";
 import { getNativeBinaryPath } from "./native-binary";
 
 const log = createAppLogger("paste");
@@ -92,57 +98,230 @@ async function pasteWindows(): Promise<"native" | "legacy"> {
 
 type PasteMethod = "native" | "legacy";
 
-async function pasteLinux(): Promise<PasteMethod> {
+let linuxUinputHelper: ChildProcessWithoutNullStreams | null = null;
+let linuxUinputReady = false;
+let linuxUinputStarting: Promise<boolean> | null = null;
+let linuxUinputLineBuffer = "";
+let linuxUinputPendingResponse: ((success: boolean) => void) | null = null;
+let linuxUinputCommandChain: Promise<unknown> = Promise.resolve();
+
+function settleLinuxUinputResponse(success: boolean): void {
+  const resolve = linuxUinputPendingResponse;
+  linuxUinputPendingResponse = null;
+  resolve?.(success);
+}
+
+function clearLinuxUinputHelper(helper: ChildProcessWithoutNullStreams): void {
+  if (linuxUinputHelper !== helper) return;
+  linuxUinputHelper = null;
+  linuxUinputReady = false;
+  linuxUinputStarting = null;
+  linuxUinputLineBuffer = "";
+  settleLinuxUinputResponse(false);
+}
+
+function handleLinuxUinputLine(line: string): void {
+  if (line === "READY") {
+    linuxUinputReady = true;
+    return;
+  }
+  if (line === "OK") {
+    settleLinuxUinputResponse(true);
+    return;
+  }
+  if (line.startsWith("ERROR")) {
+    log.warn(`Persistent uinput helper: ${line}`);
+    settleLinuxUinputResponse(false);
+  }
+}
+
+export function startLinuxPasteHelper(): Promise<boolean> {
+  if (process.platform !== "linux" || !isWaylandSession()) {
+    return Promise.resolve(false);
+  }
+  if (linuxUinputHelper && linuxUinputReady) {
+    return Promise.resolve(true);
+  }
+  if (linuxUinputStarting) return linuxUinputStarting;
+
+  const binaryPath = getNativeBinaryPath("linux-fast-paste");
+  if (!binaryPath) return Promise.resolve(false);
+
+  linuxUinputStarting = new Promise<boolean>((resolve) => {
+    const helper = spawn(binaryPath, ["--uinput-server"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    linuxUinputHelper = helper;
+    let settled = false;
+    let stderr = "";
+
+    const settleStart = (success: boolean): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(success);
+    };
+
+    const timeout = setTimeout(() => {
+      log.warn("Persistent uinput helper timed out during startup");
+      settleStart(false);
+      helper.kill("SIGTERM");
+    }, 2_000);
+
+    helper.stdout.on("data", (data: Buffer) => {
+      linuxUinputLineBuffer += data.toString();
+      const lines = linuxUinputLineBuffer.split("\n");
+      linuxUinputLineBuffer = lines.pop() ?? "";
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        handleLinuxUinputLine(line);
+        if (line === "READY") {
+          log.debug("Persistent uinput paste helper ready");
+          settleStart(true);
+        }
+      }
+    });
+
+    helper.stderr.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    helper.on("error", (err) => {
+      log.warn(`Persistent uinput helper error: ${err.message}`);
+      settleStart(false);
+      clearLinuxUinputHelper(helper);
+    });
+
+    helper.on("close", (code) => {
+      if (stderr.trim()) {
+        log.warn(`Persistent uinput helper failed: ${stderr.trim()}`);
+      } else if (linuxUinputReady && code !== 0) {
+        log.warn(`Persistent uinput helper exited with code ${code}`);
+      }
+      settleStart(false);
+      clearLinuxUinputHelper(helper);
+    });
+  });
+
+  return linuxUinputStarting;
+}
+
+export function stopLinuxPasteHelper(): void {
+  const helper = linuxUinputHelper;
+  if (!helper) return;
+  clearLinuxUinputHelper(helper);
+  if (!helper.stdin.writable) {
+    helper.kill("SIGTERM");
+    return;
+  }
+
+  helper.stdin.end("QUIT\n");
+  const forceKill = setTimeout(() => helper.kill("SIGTERM"), 250);
+  forceKill.unref();
+  helper.once("close", () => clearTimeout(forceKill));
+}
+
+async function sendPersistentUinputPaste(
+  isTerminal: boolean,
+): Promise<boolean> {
+  const run = async (): Promise<boolean> => {
+    if (!(await startLinuxPasteHelper())) return false;
+    const helper = linuxUinputHelper;
+    if (!helper?.stdin.writable) return false;
+
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const settle = (success: boolean): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        if (linuxUinputPendingResponse === settle) {
+          linuxUinputPendingResponse = null;
+        }
+        resolve(success);
+      };
+      const timeout = setTimeout(() => {
+        log.warn("Persistent uinput helper timed out while pasting");
+        settle(false);
+        clearLinuxUinputHelper(helper);
+        helper.kill("SIGTERM");
+      }, 1_000);
+
+      linuxUinputPendingResponse = settle;
+      const command = isTerminal ? "PASTE_TERMINAL\n" : "PASTE\n";
+      helper.stdin.write(command, (err) => {
+        if (err) {
+          settle(false);
+          clearLinuxUinputHelper(helper);
+          helper.kill("SIGTERM");
+        }
+      });
+    });
+  };
+
+  const result = linuxUinputCommandChain.then(run, run);
+  linuxUinputCommandChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+function linuxPasteArgs(isTerminal: boolean): string[] {
+  return isTerminal ? ["--terminal"] : [];
+}
+
+async function pasteLinux(isTerminal: boolean): Promise<PasteMethod> {
   const binaryPath = getNativeBinaryPath("linux-fast-paste");
   const wayland = isWaylandSession();
 
   if (wayland) {
-    return pasteLinuxWayland(binaryPath);
+    return pasteLinuxWayland(isTerminal);
   }
 
   if (binaryPath) {
-    const exitCode = await execFileAsync(binaryPath);
+    const exitCode = await execFileAsync(
+      binaryPath,
+      linuxPasteArgs(isTerminal),
+    );
     if (exitCode !== 0) {
       log.warn(
         `Native paste failed (exit ${exitCode}), falling back to xdotool`,
       );
-      await pasteLinuxLegacy(false);
+      await pasteLinuxLegacy(false, isTerminal);
       return "legacy";
     }
     return "native";
   }
-  await pasteLinuxLegacy(false);
+  await pasteLinuxLegacy(false, isTerminal);
   return "legacy";
 }
 
-async function pasteLinuxWayland(
-  binaryPath: string | null,
-): Promise<PasteMethod> {
-  if (binaryPath) {
-    const exitCode = await execFileAsync(binaryPath, ["--uinput"]);
-    if (exitCode === 0) {
-      return "legacy";
-    }
-    log.warn(
-      `Native uinput paste failed (exit ${exitCode}), falling back to wtype`,
-    );
+async function pasteLinuxWayland(isTerminal: boolean): Promise<PasteMethod> {
+  if (await sendPersistentUinputPaste(isTerminal)) {
+    return "native";
   }
 
-  await pasteLinuxLegacy(true);
+  log.warn("Persistent uinput paste failed, falling back to wtype");
+  await pasteLinuxLegacy(true, isTerminal);
   return "legacy";
 }
 
-async function pasteLinuxLegacy(wayland: boolean): Promise<void> {
+async function pasteLinuxLegacy(
+  wayland: boolean,
+  isTerminal: boolean,
+): Promise<void> {
   if (wayland) {
-    const pasted = await tryExecAsync(
-      "wtype -M ctrl -P v -p v -m ctrl",
-      "wtype paste",
-    );
+    const cmd = isTerminal
+      ? "wtype -M ctrl -M shift -P v -p v -m shift -m ctrl"
+      : "wtype -M ctrl -P v -p v -m ctrl";
+    const pasted = await tryExecAsync(cmd, "wtype paste");
     if (!pasted) {
       throw new Error("No supported Wayland paste backend succeeded");
     }
   } else {
-    await execAsync("xdotool key ctrl+v");
+    const key = isTerminal ? "ctrl+shift+v" : "ctrl+v";
+    await execAsync(`xdotool key ${key}`);
   }
 }
 
@@ -184,9 +363,14 @@ export async function pasteIntoFocusedApp(
       case "win32":
         method = await pasteWindows();
         break;
-      default:
-        method = await pasteLinux();
+      default: {
+        const isTerminal = await isLinuxTerminalFocused();
+        if (isTerminal) {
+          log.debug("focused app is a terminal, using Ctrl+Shift+V");
+        }
+        method = await pasteLinux(isTerminal);
         break;
+      }
     }
     pasted = true;
 

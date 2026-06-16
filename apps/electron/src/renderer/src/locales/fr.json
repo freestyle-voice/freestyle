@@ -21,7 +21,10 @@
     "en": "English",
     "es": "Español",
     "fr": "Français",
-    "de": "Deutsch"
+    "de": "Deutsch",
+    "it": "Italien",
+    "pt": "Portugais",
+    "ja": "Japonais"
   },
   "onboarding": {
     "uiLanguage": {

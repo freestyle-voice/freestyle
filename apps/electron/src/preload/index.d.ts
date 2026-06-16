@@ -5,6 +5,7 @@ declare global {
     electron: ElectronAPI;
     api: {
       platform: string;
+      isE2E: boolean;
       defaultHotkey: string;
       pasteText: (text: string) => Promise<void>;
       copyText: (text: string) => Promise<void>;

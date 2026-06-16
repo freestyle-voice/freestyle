@@ -19,9 +19,13 @@
   },
   "languageNames": {
     "en": "English",
-    "es": "Español",
-    "fr": "Français",
-    "de": "Deutsch"
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "it": "Italian",
+    "pt": "Portuguese",
+    "ja": "Japanese",
+    "template": "Your Language (Native Name)"
   },
   "onboarding": {
     "uiLanguage": {

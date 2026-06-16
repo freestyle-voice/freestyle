@@ -113,5 +113,19 @@ class PcmToWavTests(unittest.TestCase):
                 self.assertEqual(wf.getnframes(), 1600)
 
 
+class TextFromResultTests(unittest.TestCase):
+    def test_extracts_text_from_dict_result(self) -> None:
+        self.assertEqual(
+            mlx_asr_server._text_from_result({"text": "hello"}),
+            "hello",
+        )
+
+    def test_extracts_text_from_list_result(self) -> None:
+        self.assertEqual(
+            mlx_asr_server._text_from_result([{"text": "hello"}]),
+            "hello",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

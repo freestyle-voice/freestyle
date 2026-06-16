@@ -11,6 +11,7 @@
  * Usage:
  *   linux-fast-paste                 # XTest mode (X11)
  *   linux-fast-paste --uinput        # uinput mode (Wayland)
+ *   linux-fast-paste --uinput-server # persistent uinput mode over stdin/stdout
  *   linux-fast-paste --portal        # D-Bus RemoteDesktop portal
  *   linux-fast-paste --terminal      # Force Ctrl+Shift+V
  *   linux-fast-paste --window <id>   # Target a specific X window
@@ -445,11 +446,11 @@ static void emit_input(int fd, int type, int code, int val) {
     if (write(fd, &ie, sizeof(ie)) < 0) { /* best-effort */ }
 }
 
-static int paste_via_uinput(int use_shift) {
+static int create_uinput_keyboard(void) {
     int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
     if (fd < 0) {
         fprintf(stderr, "Cannot open /dev/uinput: %s\n", strerror(errno));
-        return 3;
+        return -3;
     }
 
     if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0 ||
@@ -457,7 +458,7 @@ static int paste_via_uinput(int use_shift) {
         ioctl(fd, UI_SET_KEYBIT, KEY_LEFTSHIFT) < 0 ||
         ioctl(fd, UI_SET_KEYBIT, KEY_V) < 0) {
         close(fd);
-        return 4;
+        return -4;
     }
 
     struct uinput_setup usetup;
@@ -470,11 +471,15 @@ static int paste_via_uinput(int use_shift) {
     if (ioctl(fd, UI_DEV_SETUP, &usetup) < 0 ||
         ioctl(fd, UI_DEV_CREATE) < 0) {
         close(fd);
-        return 4;
+        return -4;
     }
 
-    usleep(50000);
+    /* Compositors attach newly-created uinput devices asynchronously. */
+    usleep(100000);
+    return fd;
+}
 
+static void send_uinput_paste(int fd, int use_shift) {
     emit_input(fd, EV_KEY, KEY_LEFTCTRL, 1);
     emit_input(fd, EV_SYN, SYN_REPORT, 0);
 
@@ -501,11 +506,49 @@ static int paste_via_uinput(int use_shift) {
 
     emit_input(fd, EV_KEY, KEY_LEFTCTRL, 0);
     emit_input(fd, EV_SYN, SYN_REPORT, 0);
+}
 
-    usleep(20000);
-
+static void destroy_uinput_keyboard(int fd) {
     ioctl(fd, UI_DEV_DESTROY);
     close(fd);
+}
+
+static int paste_via_uinput(int use_shift) {
+    int fd = create_uinput_keyboard();
+    if (fd < 0) return -fd;
+
+    send_uinput_paste(fd, use_shift);
+    /* Keep a one-shot device alive until the compositor consumes releases. */
+    usleep(100000);
+    destroy_uinput_keyboard(fd);
+    return 0;
+}
+
+static int run_uinput_server(void) {
+    int fd = create_uinput_keyboard();
+    if (fd < 0) return -fd;
+
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    printf("READY\n");
+
+    char command[64];
+    while (fgets(command, sizeof(command), stdin)) {
+        command[strcspn(command, "\r\n")] = '\0';
+
+        if (strcmp(command, "PASTE") == 0) {
+            send_uinput_paste(fd, 0);
+            printf("OK\n");
+        } else if (strcmp(command, "PASTE_TERMINAL") == 0) {
+            send_uinput_paste(fd, 1);
+            printf("OK\n");
+        } else if (strcmp(command, "QUIT") == 0) {
+            break;
+        } else {
+            printf("ERROR unknown command\n");
+        }
+    }
+
+    destroy_uinput_keyboard(fd);
     return 0;
 }
 #endif
@@ -513,6 +556,7 @@ static int paste_via_uinput(int use_shift) {
 int main(int argc, char *argv[]) {
     int force_terminal = 0;
     int use_uinput = 0;
+    int use_uinput_server = 0;
     int use_portal = 0;
     const char *restore_token = NULL;
     Window target_window = None;
@@ -522,6 +566,8 @@ int main(int argc, char *argv[]) {
             force_terminal = 1;
         } else if (strcmp(argv[i], "--uinput") == 0) {
             use_uinput = 1;
+        } else if (strcmp(argv[i], "--uinput-server") == 0) {
+            use_uinput_server = 1;
         } else if (strcmp(argv[i], "--portal") == 0) {
             use_portal = 1;
         } else if (strcmp(argv[i], "--restore-token") == 0 && i + 1 < argc) {
@@ -529,6 +575,15 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[i], "--window") == 0 && i + 1 < argc) {
             target_window = (Window)strtoul(argv[++i], NULL, 0);
         }
+    }
+
+    if (use_uinput_server) {
+#ifdef HAVE_UINPUT
+        return run_uinput_server();
+#else
+        fprintf(stderr, "uinput support not compiled in\n");
+        return 3;
+#endif
     }
 
     if (use_portal) {

@@ -32,10 +32,10 @@ In Freestyle:
 
 1. Open **Settings → Models → Change voice**.
 2. Pick a **Local MLX** row → **Download** (HF weights only; uses `scripts/mlx_asr_server.py` via your Python).
-3. **Use** → dictate once and confirm partials + final text.
+3. **Use** → dictate once and confirm the final transcript appears after you stop speaking. MLX is batch-only here, so there are no live partials.
 
 **Parakeet** (`parakeet-tdt-0.6b-v3`): same flow; word-boost / context prompts are ignored
-(no error). Streaming uses a sidecar WAV from PCM because Parakeet rejects float32 ndarrays.
+(no error). The batch session transport uses a sidecar WAV from PCM because Parakeet rejects float32 ndarrays.
 
 ```bash
 python3 scripts/test_mlx_asr_server.py

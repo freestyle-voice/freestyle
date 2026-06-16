@@ -1,11 +1,13 @@
 /**
- * Persistent WebSocket-based audio streamer for real-time STT.
+ * Persistent WebSocket-based audio session transport for STT.
  *
  * A single Streamer instance stays alive across recording sessions.
  * The renderer↔server WebSocket remains open, while the server may keep
  * the upstream STT provider warm or reopen it per recording depending on
- * provider behavior. Recording sessions are delimited by startCapture /
- * commit / cancel rather than rebuilding the whole client pipeline.
+ * provider behavior. Some providers stream live partials; others use the
+ * same session transport for a single final transcript on commit.
+ * Recording sessions are delimited by startCapture / commit / cancel
+ * rather than rebuilding the whole client pipeline.
  */
 
 import { getPCMProcessorUrl } from "./pcm-processor";
@@ -19,7 +21,11 @@ export interface StreamerCallbacks {
   onCleaned?: (text: string) => void;
   onError: (message: string) => void;
   onReady: () => void;
-  onConfig: (config: { streaming: boolean; model: string }) => void;
+  onConfig: (config: {
+    streaming: boolean;
+    sessionTransport: boolean;
+    model: string;
+  }) => void;
 }
 
 export class Streamer {
@@ -27,6 +33,8 @@ export class Streamer {
   private pendingChunks: ArrayBuffer[] = [];
   private destroyed = false;
   private streamingSupported = false;
+  private sessionTransportSupported = false;
+  private configReceived = false;
   private readonly callbacks: StreamerCallbacks;
   private readonly wsUrl: string;
   private currentContext: string | null = null;
@@ -157,11 +165,18 @@ export class Streamer {
   }
 
   private sendAudio(chunk: ArrayBuffer): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
+    if (
+      this.ws?.readyState === WebSocket.OPEN &&
+      this.configReceived &&
+      this.sessionTransportSupported
+    ) {
       this.ws.send(chunk);
       return;
     }
-    if (this.capturing) {
+    if (
+      this.capturing &&
+      (!this.configReceived || this.sessionTransportSupported)
+    ) {
       this.pendingChunks.push(chunk);
     }
   }
@@ -173,6 +188,11 @@ export class Streamer {
   }
 
   private flushPendingChunks(): void {
+    if (this.configReceived && !this.sessionTransportSupported) {
+      this.pendingChunks = [];
+      return;
+    }
+    if (!this.sessionTransportSupported) return;
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     for (const chunk of this.pendingChunks) {
       this.ws!.send(chunk);
@@ -185,6 +205,7 @@ export class Streamer {
     const ws = new WebSocket(this.wsUrl);
     ws.binaryType = "arraybuffer";
     this.ws = ws;
+    this.configReceived = false;
 
     ws.addEventListener("message", (e) => {
       if (typeof e.data !== "string") return;
@@ -194,6 +215,7 @@ export class Streamer {
         message?: string;
         model?: string;
         streaming?: boolean;
+        sessionTransport?: boolean;
       };
       try {
         msg = JSON.parse(e.data);
@@ -203,8 +225,15 @@ export class Streamer {
       switch (msg.type) {
         case "config":
           this.streamingSupported = msg.streaming ?? false;
+          this.sessionTransportSupported =
+            msg.sessionTransport ?? this.streamingSupported;
+          this.configReceived = true;
+          if (!this.sessionTransportSupported) {
+            this.pendingChunks = [];
+          }
           this.callbacks.onConfig({
             streaming: this.streamingSupported,
+            sessionTransport: this.sessionTransportSupported,
             model: msg.model ?? "",
           });
           break;
@@ -231,7 +260,7 @@ export class Streamer {
 
     ws.addEventListener("close", () => {
       this.pendingChunks = [];
-      if (!this.destroyed && this.streamingSupported) {
+      if (!this.destroyed && this.sessionTransportSupported) {
         setTimeout(() => {
           if (!this.destroyed) this.openWebSocket();
         }, 1000);

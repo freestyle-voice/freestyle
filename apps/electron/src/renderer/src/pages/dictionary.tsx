@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
+import { Trans, useTranslation } from "react-i18next";
 
 interface DictionaryEntry {
   id: number;
@@ -32,6 +33,7 @@ interface DictionaryEntry {
 const PAGE_SIZE = 20;
 
 export default function DictionaryPage(): React.JSX.Element {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<DictionaryEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -120,10 +122,10 @@ export default function DictionaryPage(): React.JSX.Element {
         resetForm();
         loadData();
       } catch {
-        setFormError("Failed to save entry.");
+        setFormError(t("dictionary.failedToSave"));
       }
     },
-    [editingId, resetForm, loadData],
+    [editingId, resetForm, loadData, t],
   );
 
   const deleteEntry = useCallback(
@@ -177,7 +179,9 @@ export default function DictionaryPage(): React.JSX.Element {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground text-sm">Loading dictionary…</p>
+        <p className="text-muted-foreground text-sm">
+          {t("dictionary.loading")}
+        </p>
       </div>
     );
   }
@@ -195,8 +199,8 @@ export default function DictionaryPage(): React.JSX.Element {
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         <PageHeader
-          title="Dictionary"
-          subtitle="Shortcuts that expand as you speak. Say the key, get the value."
+          title={t("dictionary.title")}
+          subtitle={t("dictionary.subtitle")}
         />
 
         {isEmpty && !showForm ? (
@@ -219,7 +223,7 @@ export default function DictionaryPage(): React.JSX.Element {
                     setSearch(e.target.value);
                     setPage(0);
                   }}
-                  placeholder="Search dictionary…"
+                  placeholder={t("dictionary.searchPlaceholder")}
                   className="placeholder:text-muted-foreground/80 text-foreground flex-1 bg-transparent text-[13px] outline-none"
                 />
                 <span className="mono text-muted-foreground text-[10px]">
@@ -227,16 +231,19 @@ export default function DictionaryPage(): React.JSX.Element {
                 </span>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2.5">
-                <ToolbarButton onClick={exportJson} title="Export as JSON">
+                <ToolbarButton
+                  onClick={exportJson}
+                  title={t("dictionary.exportTitle")}
+                >
                   <Download size={13} />
-                  Export
+                  {t("dictionary.exportLabel")}
                 </ToolbarButton>
                 <ToolbarButton
                   onClick={() => importRef.current?.click()}
-                  title="Import from JSON"
+                  title={t("dictionary.importTitle")}
                 >
                   <Upload size={13} />
-                  Import
+                  {t("dictionary.importLabel")}
                 </ToolbarButton>
                 <input
                   ref={importRef}
@@ -254,7 +261,7 @@ export default function DictionaryPage(): React.JSX.Element {
                   className="bg-primary text-primary-foreground hover:bg-primary/90 flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 py-2 text-[12.5px] font-medium"
                 >
                   <Plus size={13} />
-                  Add entry
+                  {t("dictionary.addEntry")}
                 </button>
               </div>
             </div>
@@ -267,7 +274,9 @@ export default function DictionaryPage(): React.JSX.Element {
               >
                 <div className="mb-3 flex items-center justify-between">
                   <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
-                    {editingId ? "Edit entry" : "New entry"}
+                    {editingId
+                      ? t("dictionary.editEntry")
+                      : t("dictionary.newEntry")}
                   </span>
                   <button
                     type="button"
@@ -279,13 +288,13 @@ export default function DictionaryPage(): React.JSX.Element {
                 </div>
                 <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
                   <FormField
-                    label="Key · phrase to detect"
+                    label={t("dictionary.keyLabel")}
                     error={formErrors.key?.message}
                   >
                     <input
                       type="text"
                       {...register("key")}
-                      placeholder='e.g. "my address"'
+                      placeholder={t("dictionary.keyLabel")}
                       className={cn(
                         "border-border bg-background w-full rounded-[7px] border px-[11px] py-2 text-[13px] outline-none",
                         formErrors.key && "border-destructive",
@@ -293,7 +302,7 @@ export default function DictionaryPage(): React.JSX.Element {
                     />
                   </FormField>
                   <FormField
-                    label="Value · replacement text"
+                    label={t("dictionary.valueLabel")}
                     error={formErrors.value?.message}
                   >
                     <textarea
@@ -316,13 +325,15 @@ export default function DictionaryPage(): React.JSX.Element {
                     onClick={resetForm}
                     className="border-border text-secondary-foreground/80 hover:text-foreground cursor-pointer rounded-md border px-3 py-1.5 text-[12.5px] font-medium"
                   >
-                    Cancel
+                    {t("dictionary.cancel")}
                   </button>
                   <button
                     type="submit"
                     className="bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer rounded-md px-3 py-1.5 text-[12.5px] font-medium"
                   >
-                    {editingId ? "Update" : "Add entry"}
+                    {editingId
+                      ? t("dictionary.update")
+                      : t("dictionary.addEntry")}
                   </button>
                 </div>
               </form>
@@ -349,7 +360,10 @@ export default function DictionaryPage(): React.JSX.Element {
             {total > 0 && (
               <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2">
                 <span className="mono text-muted-foreground text-[11px] tracking-[0.04em]">
-                  {total} {total === 1 ? "entry" : "entries"}
+                  {total}{" "}
+                  {total === 1
+                    ? t("dictionary.entrySingular")
+                    : t("dictionary.entryPlural")}
                 </span>
                 {totalPages > 1 && (
                   <div className="flex items-center gap-1">
@@ -515,20 +529,24 @@ function EntryRow({
 }
 
 function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="border-border bg-card mt-4 rounded-[14px] border border-dashed px-9 py-[52px] text-center">
       <div className="bg-accent mx-auto mb-[18px] inline-flex h-16 w-16 items-center justify-center rounded-2xl">
         <Book className="text-primary h-7 w-7" />
       </div>
       <h2 className="serif text-foreground m-0 text-[32px] font-medium leading-none">
-        Nothing in the book yet.
+        {t("dictionary.emptyTitle")}
       </h2>
       <p className="text-muted-foreground mx-auto mt-2.5 max-w-[440px] text-[14px] leading-[1.55]">
-        Add a phrase you say often, like{" "}
-        <span className="mono border-border bg-background text-foreground rounded-[5px] border px-[7px] py-[2px] text-[12px]">
-          my address
-        </span>{" "}
-        — and Freestyle expands it inline.
+        <Trans
+          i18nKey="dictionary.emptyDesc"
+          components={{
+            example: (
+              <span className="mono border-border bg-background text-foreground rounded-[5px] border px-[7px] py-[2px] text-[12px]" />
+            ),
+          }}
+        />
       </p>
       <button
         type="button"
@@ -536,19 +554,20 @@ function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
         className="bg-primary text-primary-foreground hover:bg-primary/90 mt-[22px] inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3.5 py-2 text-[12.5px] font-medium"
       >
         <Plus size={13} />
-        Add your first entry
+        {t("dictionary.addFirstEntry")}
       </button>
     </div>
   );
 }
 
 function NoSearchResults({ search }: { search: string }): React.JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="text-muted-foreground py-10 text-center">
       <span className="serif-italic text-[20px]">
         {search
-          ? `nothing matches "${search}".`
-          : "no entries — add one to start."}
+          ? t("dictionary.noResults", { search })
+          : t("dictionary.noEntries")}
       </span>
     </div>
   );

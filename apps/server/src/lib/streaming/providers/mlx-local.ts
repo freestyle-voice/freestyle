@@ -22,8 +22,6 @@ import { stripProviderPrefix } from "../types.js";
 
 const log = createAppLogger("mlx-asr");
 const STREAM_SAMPLE_RATE = 16_000;
-const PARTIAL_INTERVAL_MS = 1_500;
-const MIN_PARTIAL_AUDIO_MS = 800;
 
 export class MlxLocalTranscriptionProvider implements TranscriptionProvider {
   readonly providerId = MLX_ASR_PROVIDER_ID;
@@ -55,12 +53,16 @@ export class MlxLocalTranscriptionProvider implements TranscriptionProvider {
   }
 
   supportsStreaming(_modelId: string): boolean {
+    return false;
+  }
+
+  supportsSessionTransport(_modelId: string): boolean {
     return true;
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
     const modelId = stripProviderPrefix(opts.model);
-    return new MlxLocalStreamingSession({
+    return new MlxLocalSessionTransport({
       modelId,
       language: resolveMlxLanguage(modelId, opts.language),
       context: opts.bias?.kind === "prompt" ? opts.bias.text : undefined,
@@ -69,16 +71,13 @@ export class MlxLocalTranscriptionProvider implements TranscriptionProvider {
   }
 }
 
-class MlxLocalStreamingSession implements StreamSession {
+class MlxLocalSessionTransport implements StreamSession {
   private chunks: Buffer[] = [];
   private sampleCount = 0;
   private closed = false;
   private canceled = false;
   private inFlight = false;
-  private dirty = false;
-  private commitRequested = false;
-  private partialTimer: ReturnType<typeof setTimeout> | null = null;
-  private lastText = "";
+  private committed = false;
   private generation = 0;
   private workerReadyPromise: Promise<void> = Promise.resolve();
 
@@ -98,26 +97,14 @@ class MlxLocalStreamingSession implements StreamSession {
     const buf = Buffer.from(chunk);
     this.chunks.push(buf);
     this.sampleCount += Math.floor(buf.byteLength / 2);
-
-    if (this.audioDurationMs() < MIN_PARTIAL_AUDIO_MS) return;
-    this.schedulePartial();
   }
 
   reset(): void {
-    this.clearTimer();
-    // If a final inference is still in flight, resolve it immediately with
-    // whatever partial text we have so the caller's promise does not hang
-    // until the 30 s timeout.
-    if (this.inFlight && this.commitRequested) {
-      this.opts.callbacks.onFinal(this.lastText);
-    }
     this.chunks = [];
     this.sampleCount = 0;
     this.canceled = false;
     this.inFlight = false;
-    this.dirty = false;
-    this.commitRequested = false;
-    this.lastText = "";
+    this.committed = false;
     this.generation++;
     this.startWorkerLoad();
   }
@@ -127,30 +114,16 @@ class MlxLocalStreamingSession implements StreamSession {
   }
 
   commit(): void {
-    this.clearTimer();
-    this.commitRequested = true;
-    // When no partial has been shown yet and enough audio is buffered, run a
-    // non-final (partial) inference first so the user sees intermediate text
-    // while the final pass runs.  The commitRequested flag causes the final
-    // pass to start automatically in runInference's .finally() handler.
-    if (
-      !this.inFlight &&
-      !this.lastText &&
-      this.audioDurationMs() >= MIN_PARTIAL_AUDIO_MS
-    ) {
-      this.runInference(false);
-      return;
-    }
-    this.runInference(true);
+    if (this.committed || this.inFlight) return;
+    this.committed = true;
+    this.runInference();
   }
 
   cancel(): void {
     this.canceled = true;
-    this.clearTimer();
     this.chunks = [];
     this.sampleCount = 0;
-    this.dirty = false;
-    this.commitRequested = false;
+    this.committed = false;
     this.generation++;
     applyMlxAsrRetentionPolicy();
   }
@@ -161,7 +134,7 @@ class MlxLocalStreamingSession implements StreamSession {
     applyMlxAsrRetentionPolicy();
   }
 
-  /** Begin loading the MLX worker while audio is captured in parallel. */
+  /** Batch-only session transport: load the MLX worker while audio is captured. */
   private startWorkerLoad(): void {
     if (getMlxModelStatus(this.opts.modelId)?.status !== "ready") {
       this.workerReadyPromise = Promise.reject(
@@ -179,7 +152,6 @@ class MlxLocalStreamingSession implements StreamSession {
           return;
         }
         this.opts.callbacks.onReady(this.opts.modelId);
-        this.runReadyPreview(generation);
       },
     );
     this.workerReadyPromise.catch((err: Error) => {
@@ -188,40 +160,12 @@ class MlxLocalStreamingSession implements StreamSession {
     });
   }
 
-  private schedulePartial(): void {
-    if (this.closed || this.canceled || this.commitRequested) return;
-    if (this.partialTimer) return;
-    this.partialTimer = setTimeout(() => {
-      this.partialTimer = null;
-      this.runInference(false);
-    }, PARTIAL_INTERVAL_MS);
-  }
-
-  private runReadyPreview(generation: number): void {
-    if (
-      this.closed ||
-      this.canceled ||
-      this.inFlight ||
-      this.lastText ||
-      generation !== this.generation ||
-      this.audioDurationMs() < MIN_PARTIAL_AUDIO_MS
-    ) {
-      return;
-    }
-    this.clearTimer();
-    this.runInference(false);
-  }
-
-  private runInference(final: boolean): void {
+  private runInference(): void {
     if (this.closed || this.canceled) return;
-    if (this.inFlight) {
-      this.dirty = true;
-      if (final) this.commitRequested = true;
-      return;
-    }
+    if (this.inFlight) return;
 
     if (this.sampleCount === 0) {
-      if (final) this.opts.callbacks.onFinal("");
+      this.opts.callbacks.onFinal("");
       return;
     }
     if (getMlxModelStatus(this.opts.modelId)?.status !== "ready") {
@@ -232,7 +176,6 @@ class MlxLocalStreamingSession implements StreamSession {
     const generation = this.generation;
     const audio = Buffer.concat(this.chunks);
     this.inFlight = true;
-    this.dirty = false;
 
     void this.workerReadyPromise
       .then(() => {
@@ -246,11 +189,7 @@ class MlxLocalStreamingSession implements StreamSession {
           sampleRate: STREAM_SAMPLE_RATE,
           language: this.opts.language,
           context: this.opts.context,
-          live: !final,
           deferUnload: true,
-          onPartial: final
-            ? undefined
-            : (text) => this.emitPartial(text, generation),
         });
       })
       .then((text) => {
@@ -258,14 +197,8 @@ class MlxLocalStreamingSession implements StreamSession {
         if (this.closed || this.canceled || generation !== this.generation) {
           return;
         }
-        const cleanText = text.trim();
-        if (final) {
-          this.lastText = cleanText;
-          this.opts.callbacks.onFinal(cleanText);
-          applyMlxAsrRetentionPolicy();
-          return;
-        }
-        this.emitPartial(cleanText, generation);
+        this.opts.callbacks.onFinal(text.trim());
+        applyMlxAsrRetentionPolicy();
       })
       .catch((err: Error) => {
         if (this.closed || generation !== this.generation) return;
@@ -279,39 +212,6 @@ class MlxLocalStreamingSession implements StreamSession {
           return;
         }
         this.inFlight = false;
-        if (this.commitRequested) {
-          this.commitRequested = false;
-          this.runInference(true);
-          return;
-        }
-        if (this.dirty) {
-          this.schedulePartial();
-        }
       });
-  }
-
-  private emitPartial(text: string, generation: number): void {
-    const cleanText = text.trim();
-    if (
-      !cleanText ||
-      cleanText === this.lastText ||
-      this.closed ||
-      this.canceled ||
-      generation !== this.generation
-    ) {
-      return;
-    }
-    this.lastText = cleanText;
-    this.opts.callbacks.onPartial(cleanText);
-  }
-
-  private audioDurationMs(): number {
-    return Math.round((this.sampleCount / STREAM_SAMPLE_RATE) * 1000);
-  }
-
-  private clearTimer(): void {
-    if (!this.partialTimer) return;
-    clearTimeout(this.partialTimer);
-    this.partialTimer = null;
   }
 }

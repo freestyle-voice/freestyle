@@ -1,11 +1,14 @@
 import { getDb } from "./db.js";
 import { MLX_ASR_PROVIDER_ID } from "./mlx-asr/constants.js";
-import { getProvider, supportsStreaming } from "./streaming/registry.js";
+import { getProvider, supportsSessionTransport } from "./streaming/registry.js";
 import type { StreamCallbacks, StreamSession } from "./streaming/types.js";
 import type { AsrVocabularyBias } from "./vocabulary-bias.js";
 import { WHISPER_PROVIDER_ID } from "./whisper/constants.js";
 
-export { supportsStreaming } from "./streaming/registry.js";
+export {
+  supportsSessionTransport,
+  supportsStreaming,
+} from "./streaming/registry.js";
 export type { StreamCallbacks, StreamSession } from "./streaming/types.js";
 
 const LOCAL_STT_PROVIDERS = new Set([WHISPER_PROVIDER_ID, MLX_ASR_PROVIDER_ID]);
@@ -27,9 +30,9 @@ export function openStreamingSession(opts: {
   if (!provider.openStreamingSession) {
     throw new Error(`Provider ${providerId} does not support streaming`);
   }
-  if (!supportsStreaming(providerId, model)) {
+  if (!supportsSessionTransport(providerId, model)) {
     throw new Error(
-      `Model ${model} on provider ${providerId} does not support streaming`,
+      `Model ${model} on provider ${providerId} does not support session audio transport`,
     );
   }
 

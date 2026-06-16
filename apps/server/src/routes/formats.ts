@@ -73,6 +73,7 @@ const formats = new Hono()
     const db = getDb();
     const context = c.req.query("context") ?? "";
     if (!context) return c.json(null);
+    const contextLower = context.toLowerCase();
 
     const rows = db
       .prepare("SELECT * FROM format_rules ORDER BY is_default ASC, id DESC")
@@ -82,7 +83,7 @@ const formats = new Hono()
     for (const row of rows) {
       const patterns = row.app_pattern.split("|").map((p) => p.trim());
       for (const pattern of patterns) {
-        if (pattern && context.toLowerCase().includes(pattern.toLowerCase())) {
+        if (pattern && contextLower.includes(pattern.toLowerCase())) {
           return c.json(row);
         }
       }

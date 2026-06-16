@@ -32,3 +32,16 @@ export function supportsStreaming(
   if (!provider.openStreamingSession) return false;
   return provider.supportsStreaming(modelId);
 }
+
+export function supportsSessionTransport(
+  providerId: string,
+  modelId: string,
+): boolean {
+  const provider = providerMap.get(providerId);
+  if (!provider) return false;
+  if (!provider.openStreamingSession) return false;
+  return (
+    provider.supportsSessionTransport?.(modelId) ??
+    provider.supportsStreaming(modelId)
+  );
+}

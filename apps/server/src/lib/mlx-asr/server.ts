@@ -37,7 +37,6 @@ interface WorkerResponse {
 interface PendingRequest {
   resolve: (text: string) => void;
   reject: (err: Error) => void;
-  onPartial?: (text: string) => void;
   timeout: ReturnType<typeof setTimeout>;
 }
 
@@ -164,7 +163,6 @@ export async function transcribeWithMlxAsr(opts: {
   audio: Uint8Array;
   language?: string;
   context?: string;
-  onPartial?: (text: string) => void;
   deferUnload?: boolean;
 }): Promise<string> {
   await ensureMlxServerRunning(opts.modelId);
@@ -179,8 +177,6 @@ export async function transcribeWithMlxAsr(opts: {
       audioPath,
       language: opts.language,
       context: opts.context,
-      stream: !!opts.onPartial,
-      onPartial: opts.onPartial,
     });
   } finally {
     await unlink(audioPath).catch(() => undefined);
@@ -194,8 +190,6 @@ export async function transcribePcmWithMlxAsr(opts: {
   sampleRate: number;
   language?: string;
   context?: string;
-  live?: boolean;
-  onPartial?: (text: string) => void;
   deferUnload?: boolean;
 }): Promise<string> {
   await ensureMlxServerRunning(opts.modelId);
@@ -212,9 +206,6 @@ export async function transcribePcmWithMlxAsr(opts: {
       sampleRate: opts.sampleRate,
       language: opts.language,
       context: opts.context,
-      live: opts.live,
-      stream: !!opts.onPartial,
-      onPartial: opts.onPartial,
     });
   } finally {
     await unlink(audioPath).catch(() => undefined);
@@ -397,8 +388,7 @@ function handleWorkerLine(line: string): void {
   const req = pending.get(message.id);
   if (!req) return;
 
-  if (message.type === "partial") {
-    req.onPartial?.(message.text ?? "");
+  if (message.type && message.type !== "final") {
     return;
   }
 
@@ -417,9 +407,6 @@ function sendTranscribeRequest(opts: {
   sampleRate?: number;
   language?: string;
   context?: string;
-  live?: boolean;
-  stream?: boolean;
-  onPartial?: (text: string) => void;
 }): Promise<string> {
   clearUnloadTimer();
 
@@ -437,8 +424,6 @@ function sendTranscribeRequest(opts: {
     sample_rate: opts.sampleRate,
     language: opts.language,
     context: opts.context,
-    live: opts.live,
-    stream: opts.stream,
   };
 
   return new Promise<string>((resolve, reject) => {
@@ -447,7 +432,7 @@ function sendTranscribeRequest(opts: {
       reject(new Error("MLX ASR inference timed out."));
     }, TRANSCRIBE_TIMEOUT_MS);
 
-    pending.set(id, { resolve, reject, onPartial: opts.onPartial, timeout });
+    pending.set(id, { resolve, reject, timeout });
     proc.stdin?.write(`${JSON.stringify(payload)}\n`, (err) => {
       if (!err) return;
       const req = pending.get(id);

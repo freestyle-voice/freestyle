@@ -13,6 +13,7 @@ import {
   getApiKeyForProvider,
   openStreamingSession,
   type StreamSession,
+  supportsSessionTransport,
   supportsStreaming,
 } from "../lib/streaming-stt.js";
 import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
@@ -26,7 +27,7 @@ const stream = new Hono().get(
   upgradeWebSocket(() => {
     let upstream: StreamSession | null = null;
     let closed = false;
-    let streamingUnsupported = false;
+    let sessionTransportUnavailable = false;
     let sessionStartTime = Date.now();
     /** Set when the client sends `commit` — measures Soniox finalize tail only. */
     let commitTime = 0;
@@ -50,10 +51,11 @@ const stream = new Hono().get(
     type AnnouncedStreamConfig = {
       config: ResolvedStreamConfig;
       canStream: boolean;
+      canUseSessionTransport: boolean;
       modelShort: string;
     };
 
-    /** Resolve the settings a streaming session depends on, plus a compare key. */
+    /** Resolve the settings a session transport depends on, plus a compare key. */
     function resolveStreamConfig(): {
       voice: { provider: string; model_id: string };
       language: string | undefined;
@@ -161,6 +163,10 @@ const stream = new Hono().get(
       voiceDefaults = voice;
 
       const canStream = supportsStreaming(voice.provider, voice.model_id);
+      const canUseSessionTransport = supportsSessionTransport(
+        voice.provider,
+        voice.model_id,
+      );
 
       const modelShort = stripProviderPrefix(voice.model_id);
 
@@ -169,12 +175,14 @@ const stream = new Hono().get(
           type: "config",
           model: modelShort,
           streaming: canStream,
+          sessionTransport: canUseSessionTransport,
         }),
       );
 
       return {
         config,
         canStream,
+        canUseSessionTransport,
         modelShort,
       };
     }
@@ -189,7 +197,8 @@ const stream = new Hono().get(
       const resolved = announced ?? announceConfig(ws);
       if (!resolved) return;
 
-      const { config, canStream, modelShort } = resolved;
+      const { config, canStream, canUseSessionTransport, modelShort } =
+        resolved;
       const voice = config.voice;
 
       const apiKey = getApiKeyForProvider(voice.provider);
@@ -204,7 +213,7 @@ const stream = new Hono().get(
         return;
       }
 
-      if (!canStream) {
+      if (!canUseSessionTransport) {
         readyToken++;
         notifiedReadyToken = readyToken;
         ws.send(JSON.stringify({ type: "session.ready", model: modelShort }));
@@ -246,13 +255,18 @@ const stream = new Hono().get(
               return;
             }
 
-            const useFastHandoff = voiceDefaults!.provider === "soniox";
+            const useFastHandoff =
+              canStream && voiceDefaults!.provider === "soniox";
             const sttAfterCommitMs =
               commitTime > 0 ? Date.now() - commitTime : durationMs;
 
             const cleanup = postProcess(rawText, appContext, {
               language: config.language,
-              source: useFastHandoff ? "streaming_handoff" : "streaming",
+              source: useFastHandoff
+                ? "streaming_handoff"
+                : canStream
+                  ? "streaming"
+                  : "batch",
               ...(useFastHandoff ? { includeTimings: true } : {}),
             });
 
@@ -332,11 +346,12 @@ const stream = new Hono().get(
           },
           onError: (message) => {
             if (upstream !== session) return;
-            streamingUnsupported = true;
+            sessionTransportUnavailable = true;
             ws.send(
               JSON.stringify({
                 type: "config",
                 streaming: false,
+                sessionTransport: false,
                 model: modelShort,
               }),
             );
@@ -352,7 +367,7 @@ const stream = new Hono().get(
             upstream = null;
             if (
               !closed &&
-              !streamingUnsupported &&
+              !sessionTransportUnavailable &&
               reconnectAttempts < MAX_RECONNECT_ATTEMPTS
             ) {
               reconnectAttempts++;
@@ -364,7 +379,7 @@ const stream = new Hono().get(
         },
       });
       upstream = session;
-      if (canStream) {
+      if (canUseSessionTransport) {
         afterSessionReady(ws, session, modelShort, token);
       }
     }
@@ -374,7 +389,7 @@ const stream = new Hono().get(
         try {
           const announced = announceConfig(ws);
           if (!announced) return;
-          if (!announced.canStream) {
+          if (!announced.canUseSessionTransport) {
             readyToken++;
             notifiedReadyToken = readyToken;
             ws.send(
@@ -459,9 +474,9 @@ const stream = new Hono().get(
             pendingChunksDropped = false;
             pendingCommit = false;
             reconnectAttempts = 0;
-            // A prior upstream error disables streaming only for the rest of
-            // that recording; each new recording gets a fresh attempt.
-            streamingUnsupported = false;
+            // A prior upstream error disables session transport only for the
+            // rest of that recording; each new recording gets a fresh attempt.
+            sessionTransportUnavailable = false;
             // Reuse the session only if the settings it was built with
             // (provider, model, language, vocabulary bias) are unchanged.
             const nextConfig = resolveStreamConfig();

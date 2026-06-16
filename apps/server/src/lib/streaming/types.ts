@@ -58,7 +58,13 @@ export interface StreamingSessionOptions {
 export interface TranscriptionProvider {
   readonly providerId: string;
   transcribe(opts: TranscribeOptions): Promise<TranscribeResult>;
+  /** Live partials/finals over the websocket stream route. */
   supportsStreaming(modelId: string): boolean;
+  /**
+   * Session transport over the websocket stream route, even when the provider
+   * only emits a single final transcript on commit.
+   */
+  supportsSessionTransport?(modelId: string): boolean;
   openStreamingSession?(opts: StreamingSessionOptions): StreamSession;
 }
 

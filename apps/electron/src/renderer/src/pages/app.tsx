@@ -4,11 +4,11 @@ import { getApiBase, getClient, refreshApiBase } from "@renderer/lib/api";
 import { Recorder } from "@renderer/lib/recorder";
 import { Streamer } from "@renderer/lib/streamer";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
 } from "../../../shared/audio-playback";
+import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
 const BARS = 14;
 const RISE = 0.55;

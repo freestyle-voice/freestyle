@@ -22,6 +22,8 @@ import {
   Check,
   Download,
   ExternalLink,
+  Eye,
+  EyeOff,
   Key,
   Keyboard,
   Languages,
@@ -102,6 +104,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [savedServerUrl, setSavedServerUrl] = useState("");
   const [serverTokenInput, setServerTokenInput] = useState("");
   const [savedServerToken, setSavedServerToken] = useState("");
+  const [showToken, setShowToken] = useState(false);
   const [serverUrlError, setServerUrlError] = useState<string | null>(null);
   const [serverTest, setServerTest] = useState<
     "idle" | "testing" | "ok" | "unreachable" | "unauthorized"
@@ -544,6 +547,18 @@ export default function SettingsPage(): React.JSX.Element {
     await refreshApiBase();
     await testServer(savedUrl, savedToken);
   }, [serverUrlInput, serverTokenInput, testServer]);
+
+  const handleResetServer = useCallback(async () => {
+    const savedUrl = (await window.api?.setServerUrl("")) ?? "";
+    const savedToken = (await window.api?.setServerToken("")) ?? "";
+    setSavedServerUrl(savedUrl);
+    setServerUrlInput(savedUrl);
+    setSavedServerToken(savedToken);
+    setServerTokenInput(savedToken);
+    setServerUrlError(null);
+    setServerTest("idle");
+    await refreshApiBase();
+  }, []);
 
   const clearHistory = useCallback(async () => {
     if (!confirm(t("settings.data.clearHistoryConfirm"))) {
@@ -1009,7 +1024,30 @@ export default function SettingsPage(): React.JSX.Element {
             desc="Leave empty to use the built-in local server. Point this at a self-hosted Freestyle server (e.g. http://your-vm:4649) to use that instead, with an access token if it requires one. Restart the app after changing this."
             last
           >
-            <div className="flex w-full max-w-md flex-col gap-2">
+            <div className="flex w-full max-w-md flex-col gap-2.5">
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "mono inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-[3px] text-[9px] uppercase tracking-[0.14em]",
+                    savedServerUrl
+                      ? "bg-secondary text-secondary-foreground"
+                      : "bg-accent text-accent-foreground",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      savedServerUrl ? "bg-muted-foreground" : "bg-primary",
+                    )}
+                  />
+                  {savedServerUrl ? "Custom server" : "Local server"}
+                </span>
+                {savedServerUrl && (
+                  <span className="text-muted-foreground min-w-0 truncate text-xs">
+                    {savedServerUrl}
+                  </span>
+                )}
+              </div>
               <div className="border-border bg-card flex items-center gap-2 rounded-lg border px-3">
                 <Server className="text-muted-foreground h-4 w-4 shrink-0" />
                 <input
@@ -1025,11 +1063,16 @@ export default function SettingsPage(): React.JSX.Element {
                   className="text-foreground min-w-0 flex-1 bg-transparent py-2 text-sm outline-none"
                 />
               </div>
-              <div className="border-border bg-card flex items-center gap-2 rounded-lg border px-3">
+              <div
+                className={cn(
+                  "border-border bg-card flex items-center gap-2 rounded-lg border px-3 transition-opacity",
+                  !serverUrlInput.trim() && "opacity-55",
+                )}
+              >
                 <Key className="text-muted-foreground h-4 w-4 shrink-0" />
                 <input
                   id="settings-server-token"
-                  type="password"
+                  type={showToken ? "text" : "password"}
                   value={serverTokenInput}
                   onChange={(e) => {
                     setServerTokenInput(e.target.value);
@@ -1038,6 +1081,20 @@ export default function SettingsPage(): React.JSX.Element {
                   placeholder="Access token (optional)"
                   className="text-foreground min-w-0 flex-1 bg-transparent py-2 text-sm outline-none"
                 />
+                {serverTokenInput && (
+                  <button
+                    type="button"
+                    onClick={() => setShowToken((v) => !v)}
+                    aria-label={showToken ? "Hide token" : "Show token"}
+                    className="text-muted-foreground hover:text-foreground shrink-0 transition-colors"
+                  >
+                    {showToken ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -1058,6 +1115,18 @@ export default function SettingsPage(): React.JSX.Element {
                 >
                   Test connection
                 </button>
+                {(savedServerUrl ||
+                  savedServerToken ||
+                  serverUrlInput.trim() ||
+                  serverTokenInput.trim()) && (
+                  <button
+                    type="button"
+                    onClick={handleResetServer}
+                    className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center rounded-md px-2 py-1.5 text-xs font-medium transition-colors"
+                  >
+                    Reset to local
+                  </button>
+                )}
                 {serverTest === "testing" && (
                   <span className="text-muted-foreground text-xs">
                     Testing…

@@ -13,6 +13,7 @@ import {
   checkServerHealth,
   getClient,
   getLocalApiBase,
+  refreshApiBase,
 } from "@renderer/lib/api";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
@@ -537,6 +538,9 @@ export default function SettingsPage(): React.JSX.Element {
     setServerUrlInput(savedUrl);
     setSavedServerToken(savedToken);
     setServerTokenInput(savedToken);
+    // Apply the new base/token to this window's client immediately. Switching
+    // the local server on/off still needs a restart (see the row description).
+    await refreshApiBase();
     await testServer(savedUrl, savedToken);
   }, [serverUrlInput, serverTokenInput, testServer]);
 

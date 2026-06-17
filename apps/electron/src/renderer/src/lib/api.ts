@@ -24,8 +24,16 @@ export function getServerToken(): string {
   return serverToken;
 }
 
-function authHeaders(token: string): Record<string, string> | undefined {
-  return token ? { Authorization: `Bearer ${token}` } : undefined;
+function authHeaders(token: string): Record<string, string> {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * Auth headers for the configured server, for use in raw `fetch()` calls.
+ * Empty when no token is set.
+ */
+export function getAuthHeaders(): Record<string, string> {
+  return authHeaders(serverToken);
 }
 
 export async function initApiBase(): Promise<void> {
@@ -101,5 +109,5 @@ export async function refreshApiBase(): Promise<boolean> {
 }
 
 export function getClient() {
-  return hc<AppType>(getApiBase(), { headers: authHeaders(serverToken) });
+  return hc<AppType>(getApiBase(), { headers: getAuthHeaders() });
 }

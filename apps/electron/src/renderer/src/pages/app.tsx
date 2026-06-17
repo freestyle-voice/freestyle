@@ -2,6 +2,7 @@ import { Orb } from "@renderer/components/ui/orb";
 import { capture } from "@renderer/lib/analytics";
 import {
   getApiBase,
+  getAuthHeaders,
   getClient,
   getServerToken,
   refreshApiBase,
@@ -320,6 +321,7 @@ export default function AppPage(): React.JSX.Element {
       const headers: Record<string, string> = {
         "Content-Type": "audio/wav",
         "x-audio-duration-ms": String(Date.now() - startTimeRef.current),
+        ...getAuthHeaders(),
       };
       if (appContextRef.current)
         headers["x-app-context"] = encodeAppContext(appContextRef.current);
@@ -768,6 +770,7 @@ export default function AppPage(): React.JSX.Element {
     const headers: Record<string, string> = {
       "Content-Type": "audio/wav",
       "x-audio-duration-ms": String(recordingDuration),
+      ...getAuthHeaders(),
     };
     if (appContextRef.current)
       headers["x-app-context"] = encodeAppContext(appContextRef.current);

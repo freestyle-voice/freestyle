@@ -33,6 +33,7 @@ import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { getWhisperCmakeArgs } from "./whisper-cmake-args.mjs";
 
 const VERSION = "1.8.5";
 const CACHE_DIR = join(homedir(), ".cache", "freestyle", "whisper-bin");
@@ -98,15 +99,11 @@ async function buildFromSource(outDir) {
 
   console.log("Building (this may take a minute)...");
   mkdirSync(buildDir, { recursive: true });
-  execFileSync(
-    "cmake",
-    ["..", "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_SHARED_LIBS=OFF"],
-    {
-      cwd: buildDir,
-      stdio: "inherit",
-      timeout: 60_000,
-    },
-  );
+  execFileSync("cmake", getWhisperCmakeArgs(), {
+    cwd: buildDir,
+    stdio: "inherit",
+    timeout: 60_000,
+  });
   execFileSync("cmake", ["--build", ".", "--config", "Release", "-j"], {
     cwd: buildDir,
     stdio: "inherit",

@@ -42,9 +42,8 @@ export interface StartServerOptions {
 }
 
 export interface RunningServer {
-  /** The underlying Node HTTP server. */
   server: ServerType;
-  /** The actual port the server bound to (resolved when port is 0). */
+  /** The actual port bound (useful when `port` was 0). */
   port: number;
 }
 

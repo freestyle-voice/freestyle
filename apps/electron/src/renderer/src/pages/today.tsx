@@ -1,4 +1,5 @@
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
+import { Progress } from "@renderer/components/ui/progress";
 import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -387,12 +388,7 @@ function UsageBar({ label, pct }: UsageBucket): React.JSX.Element {
         </span>
         <span className="mono text-muted-foreground text-[10.5px]">{pct}%</span>
       </div>
-      <div className="bg-background h-1 w-full overflow-hidden rounded-full">
-        <div
-          className="bg-primary h-full rounded-full"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      <Progress value={pct} className="h-1" />
     </div>
   );
 }

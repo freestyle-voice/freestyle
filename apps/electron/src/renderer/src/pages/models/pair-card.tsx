@@ -1,3 +1,4 @@
+import { Button } from "@renderer/components/ui/button";
 import { Toggle } from "@renderer/components/voice-row";
 import { cn } from "@renderer/lib/utils";
 
@@ -39,13 +40,14 @@ export function PairCard({
         onChange={onChangeVoice}
         accessory={
           onConfigureWarming ? (
-            <button
-              type="button"
+            <Button
+              variant="link"
+              size="sm"
               onClick={onConfigureWarming}
-              className="text-primary ml-auto text-[12px] font-medium underline-offset-2 hover:underline"
+              className="ml-auto"
             >
               Configure model warming
-            </button>
+            </Button>
           ) : undefined
         }
       />
@@ -134,18 +136,13 @@ function PairSide({
         )}
       </div>
       <div className="mt-auto flex items-center gap-2.5 pt-1">
-        <button
-          type="button"
+        <Button
+          variant={primary ? "ink" : "outline"}
+          size="sm"
           onClick={onChange}
-          className={cn(
-            "rounded-[7px] px-3 py-1.5 text-[12.5px] font-medium transition-colors",
-            primary
-              ? "bg-foreground text-background hover:bg-foreground/90"
-              : "border-border hover:bg-secondary border",
-          )}
         >
           {cta}
-        </button>
+        </Button>
         {accessory}
       </div>
     </div>

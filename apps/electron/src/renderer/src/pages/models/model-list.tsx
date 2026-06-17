@@ -1,4 +1,14 @@
 import { PROVIDER_FILTER_MARKS } from "@renderer/components/model-row";
+import { Badge } from "@renderer/components/ui/badge";
+import { Button } from "@renderer/components/ui/button";
+import { Input } from "@renderer/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@renderer/components/ui/input-group";
+import { Progress } from "@renderer/components/ui/progress";
 import type {
   AvailableModel,
   VoiceItem,
@@ -257,15 +267,16 @@ export function ModelList({
     <>
       <header className="border-border flex shrink-0 items-center gap-3 border-b px-5 py-3.5">
         {type === "voice" ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setView("tiers")}
-            className="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-1.5"
+            className="shrink-0 gap-1.5"
             aria-label="Back to simple view"
           >
-            <ArrowLeft size={14} />
-            <Mic className="h-3.5 w-3.5" />
-          </button>
+            <ArrowLeft data-icon="inline-start" />
+            <Mic />
+          </Button>
         ) : (
           <Sparkles className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
         )}
@@ -277,22 +288,23 @@ export function ModelList({
         </span>
         <div className="border-border bg-background ml-3 flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 py-1">
           <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-          <input
+          <Input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search…"
-            className="placeholder:text-muted-foreground/70 min-w-0 flex-1 border-none bg-transparent text-[12.5px] outline-none"
+            className="placeholder:text-muted-foreground/70 h-auto min-w-0 flex-1 rounded-none border-none bg-transparent px-0 py-0 text-[12.5px] shadow-none focus-visible:ring-0"
           />
         </div>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={onClose}
-          className="text-muted-foreground hover:text-foreground shrink-0"
+          className="shrink-0"
           aria-label="Close"
         >
-          <X size={16} />
-        </button>
+          <X data-icon />
+        </Button>
       </header>
 
       <FilterBar rows={rows} active={filter} onChange={setFilter} />
@@ -318,13 +330,13 @@ export function ModelList({
           ))
         )}
         {hiddenCount > 0 && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             onClick={() => setShowAllLlm(true)}
-            className="border-border text-muted-foreground hover:text-foreground w-full border-t px-5 py-3 text-left text-[12.5px]"
+            className="border-border text-muted-foreground hover:text-foreground h-auto w-full justify-start rounded-none border-t px-5 py-3 text-left text-[12.5px] font-normal"
           >
             Show all models ({hiddenCount} more) →
-          </button>
+          </Button>
         )}
       </div>
     </>
@@ -417,14 +429,15 @@ function VoiceTiers({
         >
           How should Freestyle transcribe?
         </span>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={onClose}
-          className="text-muted-foreground hover:text-foreground shrink-0"
+          className="shrink-0"
           aria-label="Close"
         >
-          <X size={16} />
-        </button>
+          <X data-icon />
+        </Button>
       </header>
 
       <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-3">
@@ -447,7 +460,7 @@ function VoiceTiers({
           disabled={!privateItem || downloading}
           onClick={pickPrivate}
         >
-          {downloading && <Progress state={privateItem?.state} />}
+          {downloading && <DownloadProgress state={privateItem?.state} />}
           {status === "error" && privateItem?.state?.error && (
             <p className="text-destructive mt-1.5 text-[11px] leading-snug">
               {privateItem.state.error}
@@ -475,20 +488,17 @@ function VoiceTiers({
       </div>
 
       <footer className="border-border flex items-center justify-between border-t px-5 py-3">
-        <button
-          type="button"
+        <Button
+          variant="link"
+          size="sm"
           onClick={onShowAll}
-          className="text-muted-foreground hover:text-foreground text-[12.5px]"
+          className="text-muted-foreground hover:text-foreground px-0 text-[12.5px]"
         >
           All models →
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="border-border hover:bg-secondary rounded-md border px-3.5 py-1.5 text-[12.5px]"
-        >
+        </Button>
+        <Button variant="outline" size="sm" onClick={onClose}>
           Cancel
-        </button>
+        </Button>
       </footer>
     </>
   );
@@ -514,6 +524,10 @@ function TierCard({
   children?: React.ReactNode;
 }): React.JSX.Element {
   return (
+    // TODO(shadcn-migration): kept as a native button — this is a card-shaped
+    // multi-line control (flex-col, items-start, wrapping description) that does
+    // not map cleanly onto <Button> without fighting its inline/whitespace-nowrap
+    // base styles. Revisit if a card-button variant is added.
     <button
       type="button"
       onClick={onClick}
@@ -529,12 +543,13 @@ function TierCard({
         </span>
         {selected && <Check size={14} className="text-primary shrink-0" />}
         {badge && !selected && (
-          <span
-            className="mono bg-primary/10 text-primary ml-auto rounded-full px-2 py-0.5 text-[9px] uppercase"
+          <Badge
+            variant="secondary"
+            className="mono ml-auto text-[9px] uppercase"
             style={{ letterSpacing: "0.1em" }}
           >
             {badge}
-          </span>
+          </Badge>
         )}
       </div>
       <p className="text-muted-foreground mt-1.5 text-[12px] leading-relaxed">
@@ -619,15 +634,11 @@ function Chip({
   onClick: () => void;
 }): React.JSX.Element {
   return (
-    <button
-      type="button"
+    <Button
+      variant={on ? "default" : "outline"}
+      size="xs"
       onClick={onClick}
-      className={cn(
-        "flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
-        on
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border text-muted-foreground hover:bg-secondary/60",
-      )}
+      className="gap-1.5 rounded-full"
     >
       {mark && (
         <span
@@ -638,18 +649,13 @@ function Chip({
         </span>
       )}
       {label}
-    </button>
+    </Button>
   );
 }
 
 // ---------------------------------------------------------------------------
 // Row
 // ---------------------------------------------------------------------------
-
-const SOLID_BTN =
-  "bg-foreground text-background hover:bg-foreground/90 rounded-[8px] px-3.5 py-2 text-[12.5px] font-medium";
-const GHOST_BTN =
-  "border-border hover:bg-secondary flex items-center gap-1.5 rounded-[8px] border px-3 py-2 text-[12.5px] font-medium";
 
 function ModelRow({
   row,
@@ -680,12 +686,13 @@ function ModelRow({
             <Check size={14} className="text-primary shrink-0" />
           )}
           {row.recommended && !row.selected && (
-            <span
-              className="mono bg-primary/10 text-primary shrink-0 rounded-full px-2 py-0.5 text-[9px] uppercase"
+            <Badge
+              variant="secondary"
+              className="mono shrink-0 text-[9px] uppercase"
               style={{ letterSpacing: "0.1em" }}
             >
               Recommended
-            </span>
+            </Badge>
           )}
         </div>
         <div className="text-muted-foreground mt-0.5 text-[12px]">
@@ -696,7 +703,7 @@ function ModelRow({
             {row.state.error}
           </div>
         )}
-        {downloading && <Progress state={row.state} />}
+        {downloading && <DownloadProgress state={row.state} />}
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5 justify-self-end">
@@ -711,68 +718,58 @@ function ModelRow({
           <>
             {status === "ready" && (
               <>
-                <button
-                  type="button"
-                  onClick={row.onSelect}
-                  className={SOLID_BTN}
-                >
+                <Button variant="ink" size="sm" onClick={row.onSelect}>
                   Use
-                </button>
+                </Button>
                 {row.onDelete && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={row.onDelete}
-                    className="border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 hover:bg-destructive/5 rounded-[8px] border p-2 transition-colors"
+                    className="text-muted-foreground hover:text-destructive"
+                    aria-label="Remove downloaded model from disk"
                     title="Remove downloaded model from disk"
                   >
-                    <Trash2 size={13} />
-                  </button>
+                    <Trash2 data-icon />
+                  </Button>
                 )}
               </>
             )}
             {status === "not_downloaded" && (
-              <button
-                type="button"
-                onClick={row.onDownload}
-                className={GHOST_BTN}
-              >
-                <Download size={13} />
+              <Button variant="outline" size="sm" onClick={row.onDownload}>
+                <Download data-icon="inline-start" />
                 Download
-              </button>
+              </Button>
             )}
             {downloading && (
-              <button
-                type="button"
-                onClick={row.onCancel}
-                className={GHOST_BTN}
-              >
-                <X size={12} />
+              <Button variant="outline" size="sm" onClick={row.onCancel}>
+                <X data-icon="inline-start" />
                 Cancel
-              </button>
+              </Button>
             )}
             {status === "error" && (
-              <button type="button" onClick={row.onRetry} className={GHOST_BTN}>
-                <RefreshCw size={12} />
+              <Button variant="outline" size="sm" onClick={row.onRetry}>
+                <RefreshCw data-icon="inline-start" />
                 Retry
-              </button>
+              </Button>
             )}
           </>
         ) : row.hasKey ? (
-          <button type="button" onClick={row.onSelect} className={SOLID_BTN}>
+          <Button variant="ink" size="sm" onClick={row.onSelect}>
             Use
-          </button>
+          </Button>
         ) : (
-          <button type="button" onClick={row.onSelect} className={GHOST_BTN}>
-            <Key size={12} />
+          <Button variant="outline" size="sm" onClick={row.onSelect}>
+            <Key data-icon="inline-start" />
             Add key
-          </button>
+          </Button>
         )}
       </div>
     </div>
   );
 }
 
-function Progress({
+function DownloadProgress({
   state,
 }: {
   state?: WhisperModelDownloadState;
@@ -780,16 +777,10 @@ function Progress({
   const p = state?.downloadProgress;
   return (
     <div className="mt-2 space-y-1">
-      <div className="bg-secondary h-[5px] w-full overflow-hidden rounded-full">
-        {p ? (
-          <div
-            className="bg-primary h-full rounded-full transition-all"
-            style={{ width: `${p.percent}%` }}
-          />
-        ) : (
-          <div className="bg-primary h-full w-full animate-pulse rounded-full" />
-        )}
-      </div>
+      <Progress
+        value={p ? p.percent : 100}
+        className={cn("h-[5px]", !p && "animate-pulse")}
+      />
       <div className="text-muted-foreground mono flex justify-between text-[10px]">
         {p ? (
           <>
@@ -843,7 +834,7 @@ function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
         className="space-y-2.5 px-5 pb-3.5"
       >
         <div className="flex items-center gap-2">
-          <input
+          <Input
             type="text"
             value={localLlm.url}
             onChange={(e) => {
@@ -851,12 +842,14 @@ function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
               localLlm.clearStatus();
             }}
             placeholder="http://localhost:11434"
-            className="border-border bg-background min-w-0 flex-1 rounded-md border px-3 py-2 text-[13px]"
+            className="min-w-0 flex-1"
           />
-          <button
+          <Button
             type="submit"
+            variant="secondary"
+            size="sm"
             disabled={localLlm.testing}
-            className="bg-secondary hover:bg-secondary/80 shrink-0 rounded-md px-3.5 py-2 text-[12.5px] font-medium disabled:opacity-50"
+            className="shrink-0"
           >
             {localLlm.testing ? (
               <span className="flex items-center gap-1.5">
@@ -866,24 +859,25 @@ function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
             ) : (
               "Test"
             )}
-          </button>
+          </Button>
         </div>
-        <div className="relative">
-          <input
+        <InputGroup>
+          <InputGroupInput
             type={showKey ? "text" : "password"}
             value={localLlm.apiKey}
             onChange={(e) => localLlm.setApiKey(e.target.value)}
             placeholder="API key (optional)"
-            className="border-border bg-background w-full rounded-md border px-3 py-2 pr-10 text-[13px]"
           />
-          <button
-            type="button"
-            onClick={() => setShowKey(!showKey)}
-            className="text-muted-foreground hover:text-foreground absolute right-3 top-1/2 -translate-y-1/2"
-          >
-            {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-          </button>
-        </div>
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              size="icon-xs"
+              aria-label={showKey ? "Hide API key" : "Show API key"}
+              onClick={() => setShowKey(!showKey)}
+            >
+              {showKey ? <EyeOff /> : <Eye />}
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
         {localLlm.connected === true && (
           <p className="text-primary text-[12px]">
             Connected ({localLlm.models.length}{" "}

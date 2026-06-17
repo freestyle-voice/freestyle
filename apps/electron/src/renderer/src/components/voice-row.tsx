@@ -13,6 +13,9 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { Button } from "./ui/button";
+import { Progress } from "./ui/progress";
+import { Switch } from "./ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export function Meter({ value }: { value?: number }): React.JSX.Element | null {
@@ -56,25 +59,7 @@ export function Toggle({
   on: boolean;
   onChange: (next: boolean) => void;
 }): React.JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!on)}
-      className={cn(
-        "relative h-[22px] w-10 shrink-0 rounded-full border transition-colors",
-        on ? "bg-primary border-primary/80" : "bg-secondary border-border",
-      )}
-      aria-pressed={on}
-    >
-      <span
-        className={cn(
-          "absolute top-[1px] block h-[18px] w-[18px] rounded-full transition-transform",
-          on ? "bg-primary-foreground" : "bg-muted-foreground/70",
-        )}
-        style={{ transform: on ? "translateX(19px)" : "translateX(2px)" }}
-      />
-    </button>
-  );
+  return <Switch checked={on} onCheckedChange={onChange} />;
 }
 
 export function VoiceRow({
@@ -112,11 +97,6 @@ export function VoiceRow({
     /(not installed|not found|missing|FREESTYLE|Python)/i.test(
       item.state.error,
     );
-  const ghostBtn =
-    "border-border hover:bg-secondary flex items-center gap-1.5 rounded-[8px] border px-3 py-2 text-[12.5px] font-medium";
-  const solidBtn =
-    "bg-foreground text-background hover:bg-foreground/90 rounded-[8px] px-3.5 py-2 text-[12.5px] font-medium";
-
   return (
     <div
       className={cn(
@@ -215,18 +195,17 @@ export function VoiceRow({
 
         {downloading && (
           <div className="mt-2.5 space-y-1">
-            <div className="bg-secondary h-[5px] w-full overflow-hidden rounded-full">
-              {!hasProgress ? (
-                <div className="bg-primary h-full w-full animate-pulse rounded-full" />
-              ) : (
-                <div
-                  className="bg-primary h-full rounded-full transition-all"
-                  style={{
-                    width: `${item.state?.downloadProgress?.percent ?? 0}%`,
-                  }}
-                />
-              )}
-            </div>
+            {!hasProgress ? (
+              <Progress
+                value={100}
+                className="h-[5px] [&>[data-slot=progress-indicator]]:animate-pulse"
+              />
+            ) : (
+              <Progress
+                value={item.state?.downloadProgress?.percent ?? 0}
+                className="h-[5px]"
+              />
+            )}
             <div className="text-muted-foreground mono flex justify-between text-[10px]">
               {item.state?.phase === "building_binary" && hasProgress ? (
                 <>
@@ -285,60 +264,61 @@ export function VoiceRow({
           <>
             {status === "ready" && (
               <>
-                <button
-                  type="button"
+                <Button
+                  variant="ink"
+                  size="sm"
                   onClick={() =>
                     item.defId &&
                     onSelectLocal(item.defId, item.name, item.localEngine)
                   }
-                  className={solidBtn}
                 >
                   Use
-                </button>
+                </Button>
                 {onDelete && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() =>
                       item.defId && onDelete(item.defId, item.localEngine)
                     }
-                    className="border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 hover:bg-destructive/5 flex items-center gap-1 rounded-[8px] border px-2.5 py-2 text-[12px] font-medium transition-colors"
                     title="Remove downloaded model from disk"
                   >
-                    <Trash2 size={13} />
+                    <Trash2 data-icon="inline-start" />
                     Delete
-                  </button>
+                  </Button>
                 )}
               </>
             )}
             {status === "not_downloaded" && (
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() =>
                   item.defId && onDownload(item.defId, item.localEngine)
                 }
-                className={ghostBtn}
               >
-                <Download size={13} />
+                <Download data-icon="inline-start" />
                 {item.sizeBytes != null
                   ? formatBytes(item.sizeBytes)
                   : "Download"}
-              </button>
+              </Button>
             )}
             {downloading && onCancel && (
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() =>
                   item.defId && onCancel(item.defId, item.localEngine)
                 }
-                className={ghostBtn}
               >
-                <X size={12} />
+                <X data-icon="inline-start" />
                 Cancel
-              </button>
+              </Button>
             )}
             {status === "error" && (
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   if (!item.defId) return;
                   if (item.localEngine === "mlx" && onRetryLocal) {
@@ -347,32 +327,31 @@ export function VoiceRow({
                     onDownload(item.defId);
                   }
                 }}
-                className={ghostBtn}
               >
-                <RefreshCw size={12} />
+                <RefreshCw data-icon="inline-start" />
                 {item.localEngine === "mlx" && isSetupError
                   ? "Check setup"
                   : "Retry"}
-              </button>
+              </Button>
             )}
           </>
         ) : item.hasKey ? (
-          <button
-            type="button"
+          <Button
+            variant="ink"
+            size="sm"
             onClick={() => item.available && onSelectCloud(item.available)}
-            className={solidBtn}
           >
             Use
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => item.available && onSelectCloud(item.available)}
-            className={ghostBtn}
           >
-            <Key size={12} />
+            <Key data-icon="inline-start" />
             Add key
-          </button>
+          </Button>
         )}
       </div>
     </div>

@@ -4,6 +4,7 @@ import { cn } from "@renderer/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
+import { Textarea } from "./ui/textarea";
 
 // ---------------------------------------------------------------------------
 // Tutorial — animated 3-phase loop:
@@ -233,13 +234,12 @@ export function TutorialDemo({
         {interactive ? (
           // Real practice area — focus it, hold the hotkey, and the
           // transcription pastes in just like in any other app.
-          <textarea
-            // biome-ignore lint/a11y/noAutofocus: this is the one interactive target on the step
+          <Textarea
             autoFocus
             rows={3}
             aria-label="Practice dictation area"
             placeholder="Click here, hold your hotkey, and speak — your words land right here."
-            className="placeholder:text-muted-foreground/70 text-foreground mt-2 block w-full resize-none border-none bg-transparent text-[17px] leading-[1.5] outline-none"
+            className="placeholder:text-muted-foreground/70 text-foreground mt-2 block min-h-0 w-full resize-none border-none bg-transparent px-0 py-0 text-[17px] leading-[1.5] shadow-none outline-none focus-visible:border-none focus-visible:ring-0 dark:bg-transparent"
           />
         ) : (
           // Result transcript

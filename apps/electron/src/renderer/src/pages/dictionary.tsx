@@ -3,6 +3,9 @@ import {
   createDictionarySchema,
 } from "@freestyle/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Button } from "@renderer/components/ui/button";
+import { Input } from "@renderer/components/ui/input";
+import { Textarea } from "@renderer/components/ui/textarea";
 import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
 import {
@@ -235,14 +238,14 @@ export default function DictionaryPage(): React.JSX.Element {
                   onClick={exportJson}
                   title={t("dictionary.exportTitle")}
                 >
-                  <Download size={13} />
+                  <Download data-icon="inline-start" />
                   {t("dictionary.exportLabel")}
                 </ToolbarButton>
                 <ToolbarButton
                   onClick={() => importRef.current?.click()}
                   title={t("dictionary.importTitle")}
                 >
-                  <Upload size={13} />
+                  <Upload data-icon="inline-start" />
                   {t("dictionary.importLabel")}
                 </ToolbarButton>
                 <input
@@ -252,17 +255,17 @@ export default function DictionaryPage(): React.JSX.Element {
                   className="hidden"
                   onChange={handleImport}
                 />
-                <button
-                  type="button"
+                <Button
+                  variant="default"
+                  className="shrink-0"
                   onClick={() => {
                     resetForm();
                     setShowForm(true);
                   }}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-3 py-2 text-[12.5px] font-medium"
                 >
-                  <Plus size={13} />
+                  <Plus data-icon="inline-start" />
                   {t("dictionary.addEntry")}
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -278,41 +281,37 @@ export default function DictionaryPage(): React.JSX.Element {
                       ? t("dictionary.editEntry")
                       : t("dictionary.newEntry")}
                   </span>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={resetForm}
-                    className="text-muted-foreground hover:text-foreground cursor-pointer"
+                    aria-label={t("dictionary.cancel")}
                   >
-                    <X size={14} />
-                  </button>
+                    <X />
+                  </Button>
                 </div>
                 <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
                   <FormField
                     label={t("dictionary.keyLabel")}
                     error={formErrors.key?.message}
                   >
-                    <input
+                    <Input
                       type="text"
                       {...register("key")}
                       placeholder={t("dictionary.keyLabel")}
-                      className={cn(
-                        "border-border bg-background w-full rounded-[7px] border px-[11px] py-2 text-[13px] outline-none",
-                        formErrors.key && "border-destructive",
-                      )}
+                      aria-invalid={!!formErrors.key}
                     />
                   </FormField>
                   <FormField
                     label={t("dictionary.valueLabel")}
                     error={formErrors.value?.message}
                   >
-                    <textarea
+                    <Textarea
                       {...register("value")}
                       placeholder='e.g. "847 Mission Street, Apt 4, SF…"'
                       rows={2}
-                      className={cn(
-                        "border-border bg-background w-full resize-none rounded-[7px] border px-[11px] py-2 text-[13px] outline-none",
-                        formErrors.value && "border-destructive",
-                      )}
+                      className="resize-none"
+                      aria-invalid={!!formErrors.value}
                     />
                   </FormField>
                 </div>
@@ -320,21 +319,14 @@ export default function DictionaryPage(): React.JSX.Element {
                   <p className="text-destructive mt-3 text-xs">{formError}</p>
                 )}
                 <div className="mt-4 flex flex-wrap justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={resetForm}
-                    className="border-border text-secondary-foreground/80 hover:text-foreground cursor-pointer rounded-md border px-3 py-1.5 text-[12.5px] font-medium"
-                  >
+                  <Button variant="outline" size="sm" onClick={resetForm}>
                     {t("dictionary.cancel")}
-                  </button>
-                  <button
-                    type="submit"
-                    className="bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer rounded-md px-3 py-1.5 text-[12.5px] font-medium"
-                  >
+                  </Button>
+                  <Button type="submit" variant="default" size="sm">
                     {editingId
                       ? t("dictionary.update")
                       : t("dictionary.addEntry")}
-                  </button>
+                  </Button>
                 </div>
               </form>
             )}
@@ -367,37 +359,29 @@ export default function DictionaryPage(): React.JSX.Element {
                 </span>
                 {totalPages > 1 && (
                   <div className="flex items-center gap-1">
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
                       onClick={() => setPage((p) => Math.max(0, p - 1))}
                       disabled={page === 0}
-                      className={cn(
-                        "rounded p-1",
-                        page === 0
-                          ? "text-muted-foreground/40 cursor-not-allowed"
-                          : "text-muted-foreground hover:text-foreground cursor-pointer",
-                      )}
+                      aria-label="Previous page"
                     >
-                      <ChevronLeft size={16} />
-                    </button>
+                      <ChevronLeft />
+                    </Button>
                     <span className="mono text-muted-foreground px-2 text-[11px]">
                       {page + 1} / {totalPages}
                     </span>
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
                       onClick={() =>
                         setPage((p) => Math.min(totalPages - 1, p + 1))
                       }
                       disabled={page >= totalPages - 1}
-                      className={cn(
-                        "rounded p-1",
-                        page >= totalPages - 1
-                          ? "text-muted-foreground/40 cursor-not-allowed"
-                          : "text-muted-foreground hover:text-foreground cursor-pointer",
-                      )}
+                      aria-label="Next page"
                     >
-                      <ChevronRight size={16} />
-                    </button>
+                      <ChevronRight />
+                    </Button>
                   </div>
                 )}
               </div>
@@ -445,14 +429,15 @@ function ToolbarButton({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <button
-      type="button"
+    <Button
+      variant="outline"
+      size="sm"
       onClick={onClick}
       title={title}
-      className="border-border text-secondary-foreground/80 hover:text-foreground flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-3 py-2 text-[12.5px] font-medium"
+      className="shrink-0"
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -507,22 +492,25 @@ function EntryRow({
         {entry.usage_count > 0 ? `${entry.usage_count}× used` : "—"}
       </span>
       <div className="flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 max-[900px]:row-span-2 max-[900px]:opacity-100">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={() => onEdit(entry)}
-          className="text-muted-foreground hover:text-foreground cursor-pointer rounded p-1"
           title="Edit"
+          aria-label="Edit"
         >
-          <Pencil size={13} />
-        </button>
-        <button
-          type="button"
+          <Pencil />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={() => onDelete(entry.id)}
-          className="text-muted-foreground hover:text-destructive cursor-pointer rounded p-1"
+          className="hover:text-destructive"
           title="Delete"
+          aria-label="Delete"
         >
-          <Trash2 size={13} />
-        </button>
+          <Trash2 />
+        </Button>
       </div>
     </div>
   );
@@ -548,14 +536,10 @@ function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
           }}
         />
       </p>
-      <button
-        type="button"
-        onClick={onAdd}
-        className="bg-primary text-primary-foreground hover:bg-primary/90 mt-[22px] inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3.5 py-2 text-[12.5px] font-medium"
-      >
-        <Plus size={13} />
+      <Button variant="default" className="mt-[22px]" onClick={onAdd}>
+        <Plus data-icon="inline-start" />
         {t("dictionary.addFirstEntry")}
-      </button>
+      </Button>
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import { cn } from "@renderer/lib/utils";
 import { Check, Key, Sparkles } from "lucide-react";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export const PROVIDER_FILTER_MARKS: Record<string, string> = {
@@ -24,12 +26,13 @@ export function ProviderModelHeader({
   return (
     <div className="border-border bg-card text-muted-foreground sticky top-0 z-10 flex items-center gap-1.5 border-b px-5 py-1.5 text-[10px] font-semibold uppercase tracking-wider">
       {PROVIDER_FILTER_MARKS[providerId] && (
-        <span
-          className="border-current/35 inline-flex h-4 min-w-4 items-center justify-center rounded-full border px-1 text-[8px] font-semibold leading-none"
+        <Badge
+          variant="outline"
+          className="h-4 min-w-4 border-current/35 px-1 text-[8px] leading-none"
           aria-hidden="true"
         >
           {PROVIDER_FILTER_MARKS[providerId]}
-        </span>
+        </Badge>
       )}
       <span>{providerName}</span>
       {!hasKey && (
@@ -58,11 +61,6 @@ export function LlmModelRow({
   first: boolean;
   onSelect?: () => void;
 }): React.JSX.Element {
-  const ghostBtn =
-    "border-border hover:bg-secondary flex items-center gap-1.5 rounded-[8px] border px-3 py-2 text-[12.5px] font-medium";
-  const solidBtn =
-    "bg-foreground text-background hover:bg-foreground/90 rounded-[8px] px-3.5 py-2 text-[12.5px] font-medium";
-
   return (
     <div
       className={cn(
@@ -103,14 +101,14 @@ export function LlmModelRow({
             SELECTED
           </span>
         ) : hasKey ? (
-          <button type="button" onClick={onSelect} className={solidBtn}>
+          <Button variant="ink" size="sm" onClick={onSelect}>
             Use
-          </button>
+          </Button>
         ) : (
-          <button type="button" onClick={onSelect} className={ghostBtn}>
-            <Key size={12} />
+          <Button variant="outline" size="sm" onClick={onSelect}>
+            <Key data-icon="inline-start" />
             Add key
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -127,13 +125,13 @@ export function ShowMoreModelRowsButton({
   if (hiddenCount <= 0) return null;
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={onClick}
-      className="text-muted-foreground hover:bg-secondary hover:text-foreground flex w-full items-center justify-center border-t border-border px-5 py-3 text-[12.5px] font-medium"
+      className="text-muted-foreground hover:text-foreground w-full justify-center rounded-none border-t border-border px-5 py-3"
     >
       Show {Math.min(hiddenCount, MODEL_ROW_PAGE_SIZE)} more
       {hiddenCount > MODEL_ROW_PAGE_SIZE ? ` (${hiddenCount} hidden)` : ""}
-    </button>
+    </Button>
   );
 }

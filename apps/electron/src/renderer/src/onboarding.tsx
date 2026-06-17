@@ -2,6 +2,22 @@ import { apiKeySchema } from "@freestyle/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
+import { Button } from "@renderer/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@renderer/components/ui/dialog";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@renderer/components/ui/input-group";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@renderer/components/ui/toggle-group";
 import { VoiceRow } from "@renderer/components/voice-row";
 import {
   comboDisplayKeys,
@@ -839,20 +855,10 @@ function PermissionsStep({
               : t("onboarding.permissions.grantAccess")}
           </span>
         )}
-        <button
-          type="button"
-          disabled={!allGranted}
-          onClick={onContinue}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-[7px] px-3.5 py-[7px] text-[12.5px] font-medium transition-colors",
-            allGranted
-              ? "bg-foreground text-background hover:bg-foreground/90"
-              : "bg-secondary text-muted-foreground cursor-not-allowed",
-          )}
-        >
+        <Button variant="ink" disabled={!allGranted} onClick={onContinue}>
           {t("common.continue")}
-          <ArrowRight size={13} />
-        </button>
+          <ArrowRight data-icon="inline-end" />
+        </Button>
       </div>
     </div>
   );
@@ -915,13 +921,9 @@ function PermButton({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="bg-foreground text-background hover:bg-foreground/90 shrink-0 rounded-[7px] px-3 py-[7px] text-[12.5px] font-medium"
-    >
+    <Button variant="ink" size="sm" onClick={onClick} className="shrink-0">
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -955,32 +957,24 @@ function LanguageStep({
 
       <div className="flex flex-wrap justify-center gap-2">
         {ONBOARDING_LANGUAGES.map((l) => (
-          <button
+          <Button
             key={l.id}
-            type="button"
+            variant={language === l.id ? "default" : "outline"}
+            size="sm"
             onClick={() => onSelect(l.id)}
-            className={cn(
-              "rounded-full border px-4 py-2 text-[13.5px] font-medium transition-colors",
-              language === l.id
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-card text-foreground hover:bg-secondary",
-            )}
+            className="rounded-full px-4 text-[13.5px]"
           >
             {l.nativeLabel}
-          </button>
+          </Button>
         ))}
-        <button
-          type="button"
+        <Button
+          variant={language === "auto" ? "default" : "outline"}
+          size="sm"
           onClick={() => onSelect("auto")}
-          className={cn(
-            "rounded-full border px-4 py-2 text-[13.5px] transition-colors",
-            language === "auto"
-              ? "border-primary bg-primary text-primary-foreground font-medium"
-              : "border-border text-muted-foreground hover:bg-secondary",
-          )}
+          className="rounded-full px-4 text-[13.5px]"
         >
           {t("onboarding.language.autoDetect")}
-        </button>
+        </Button>
       </div>
       {/* Background model setup — quiet status, never a decision. */}
       {setupStatus && (
@@ -995,21 +989,13 @@ function LanguageStep({
       )}
 
       <div className="mt-7 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          className="border-border hover:bg-secondary rounded-[7px] border px-3.5 py-2 text-[12.5px] font-medium"
-        >
+        <Button variant="outline" onClick={onBack}>
           {t("common.back")}
-        </button>
-        <button
-          type="button"
-          onClick={onContinue}
-          className="bg-foreground text-background hover:bg-foreground/90 inline-flex items-center gap-1.5 rounded-[7px] px-3.5 py-2 text-[12.5px] font-medium"
-        >
+        </Button>
+        <Button variant="ink" onClick={onContinue}>
           {t("common.continue")}
-          <ArrowRight size={13} />
-        </button>
+          <ArrowRight data-icon="inline-end" />
+        </Button>
       </div>
     </div>
   );
@@ -1064,17 +1050,6 @@ function ModelSelectorOverlay({
     source === "local" ? v.kind === "local" : v.kind === "cloud",
   );
 
-  // Esc steps back from key entry to the list, then closes the selector.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (view === "key") setView("list");
-      else onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, view]);
-
   // Pick a cloud model: commit immediately when its key is already stored,
   // otherwise move into the focused key-entry view.
   const handleSelectCloud = (model: AvailableModel) => {
@@ -1128,22 +1103,19 @@ function ModelSelectorOverlay({
   const keyValue = apiKeyForm.watch("key") ?? "";
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismiss; Esc handled above
-    // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop dismiss; Esc handled above
-    <div
-      className="absolute inset-0 z-20 flex items-center justify-center p-10"
-      style={{ background: "rgba(22,20,15,0.34)" }}
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Choose a voice model"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-        className="border-border bg-background flex max-h-full w-full max-w-[600px] flex-col overflow-hidden rounded-[16px] border"
-        style={{ boxShadow: "0 24px 60px -16px rgba(20,12,4,0.4)" }}
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        onEscapeKeyDown={(e) => {
+          // Esc steps back from key entry to the list before closing.
+          if (view === "key") {
+            e.preventDefault();
+            setView("list");
+          }
+        }}
+        className="flex max-h-[calc(100vh-5rem)] w-full max-w-[600px] flex-col gap-0 overflow-hidden rounded-[16px] border-border bg-background p-0 sm:max-w-[600px]"
       >
+        <DialogTitle className="sr-only">Choose a voice model</DialogTitle>
         {view === "list" ? (
           <>
             {/* Header */}
@@ -1156,45 +1128,42 @@ function ModelSelectorOverlay({
                   {t("onboarding.modelSelector.allVoiceModels")}
                 </div>
               </div>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={onClose}
                 aria-label="Close"
-                className="border-border bg-card text-muted-foreground hover:text-foreground flex h-[30px] w-[30px] items-center justify-center rounded-[8px] border"
               >
-                <X size={15} />
-              </button>
+                <X />
+              </Button>
             </div>
 
             {/* Source toggle */}
             <div className="flex shrink-0 justify-center pt-4">
-              <div className="border-border bg-secondary inline-flex rounded-md border p-[3px]">
-                <button
-                  type="button"
-                  onClick={() => onSourceChange("cloud")}
-                  className={cn(
-                    "rounded-[5px] px-3 py-1.5 text-[12px] transition-colors",
-                    source === "cloud"
-                      ? "bg-card border-border text-foreground border font-medium shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
+              <ToggleGroup
+                type="single"
+                value={source}
+                onValueChange={(v) =>
+                  v && onSourceChange(v as "cloud" | "local")
+                }
+                spacing={0}
+                size="sm"
+                className="border border-border bg-secondary rounded-md p-[3px]"
+              >
+                <ToggleGroupItem
+                  value="cloud"
+                  className="data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm"
                 >
                   {t("onboarding.modelSelector.cloudApi")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onSourceChange("local")}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-[5px] px-3 py-1.5 text-[12px] transition-colors",
-                    source === "local"
-                      ? "bg-card border-border text-foreground border font-medium shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="local"
+                  className="data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm"
                 >
-                  <HardDrive size={12} />
+                  <HardDrive data-icon="inline-start" />
                   {t("onboarding.modelSelector.onDevice")}
-                </button>
-              </div>
+                </ToggleGroupItem>
+              </ToggleGroup>
             </div>
 
             {/* List */}
@@ -1231,27 +1200,23 @@ function ModelSelectorOverlay({
                       phrase: ON_DEVICE_PHRASE,
                     })}
               </span>
-              <button
-                type="button"
-                onClick={onClose}
-                className="border-border hover:bg-secondary rounded-[7px] border px-3.5 py-2 text-[12.5px] font-medium"
-              >
+              <Button variant="outline" onClick={onClose}>
                 {t("common.cancel")}
-              </button>
+              </Button>
             </div>
           </>
         ) : (
           <>
             {/* Key-entry header */}
             <div className="border-border/60 flex shrink-0 items-center gap-3 border-b px-[22px] py-[18px]">
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => setView("list")}
                 aria-label={t("onboarding.modelSelector.backToModels")}
-                className="border-border bg-card text-muted-foreground hover:text-foreground flex h-[30px] w-[30px] items-center justify-center rounded-[8px] border"
               >
-                <ChevronLeft size={16} />
-              </button>
+                <ChevronLeft />
+              </Button>
               <div>
                 <div className="mono text-muted-foreground text-[10px] tracking-[0.16em] uppercase">
                   {t("onboarding.modelSelector.connect", {
@@ -1276,34 +1241,31 @@ function ModelSelectorOverlay({
                 </p>
               )}
 
-              <div className="relative">
-                <Key
-                  size={15}
-                  className="text-muted-foreground absolute top-1/2 left-3.5 -translate-y-1/2"
-                />
-                <input
-                  // biome-ignore lint/a11y/noAutofocus: key entry is the sole purpose of this view
+              <InputGroup className="h-10">
+                <InputGroupInput
                   autoFocus
                   type={showKey ? "text" : "password"}
                   {...apiKeyForm.register("key")}
                   placeholder={t("onboarding.modelSelector.keyPlaceholder")}
-                  className={cn(
-                    "border-input bg-card focus:border-primary focus:ring-ring/30 w-full rounded-[8px] border py-3 pr-11 pl-10 font-mono text-[14px] outline-none focus:ring-2",
-                    apiKeyForm.formState.errors.key && "border-destructive",
-                  )}
+                  aria-invalid={!!apiKeyForm.formState.errors.key}
+                  className="font-mono text-[14px]"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && keyValue.trim()) handleSaveKey();
                   }}
                 />
-                <button
-                  type="button"
-                  onClick={onToggleShowKey}
-                  aria-label={showKey ? "Hide key" : "Show key"}
-                  className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3.5 -translate-y-1/2"
-                >
-                  {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
+                <InputGroupAddon>
+                  <Key />
+                </InputGroupAddon>
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton
+                    size="icon-xs"
+                    onClick={onToggleShowKey}
+                    aria-label={showKey ? "Hide key" : "Show key"}
+                  >
+                    {showKey ? <EyeOff /> : <Eye />}
+                  </InputGroupButton>
+                </InputGroupAddon>
+              </InputGroup>
               {apiKeyForm.formState.errors.key && (
                 <p className="text-destructive mt-2 text-[12px]">
                   {apiKeyForm.formState.errors.key.message}
@@ -1328,35 +1290,30 @@ function ModelSelectorOverlay({
 
             {/* Key-entry footer */}
             <div className="border-border/60 flex shrink-0 items-center justify-between border-t px-[22px] py-4">
-              <button
-                type="button"
-                onClick={() => setView("list")}
-                className="border-border hover:bg-secondary rounded-[7px] border px-3.5 py-2 text-[12.5px] font-medium"
-              >
+              <Button variant="outline" onClick={() => setView("list")}>
                 {t("common.back")}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="ink"
                 onClick={handleSaveKey}
                 disabled={!keyValue.trim() || savingKey}
-                className="bg-foreground text-background hover:bg-foreground/90 inline-flex items-center gap-2 rounded-[7px] px-3.5 py-2 text-[12.5px] font-medium disabled:opacity-50"
               >
                 {savingKey ? (
-                  <Loader2 size={14} className="animate-spin" />
+                  <Loader2 data-icon="inline-start" className="animate-spin" />
                 ) : (
-                  <Check size={14} />
+                  <Check data-icon="inline-start" />
                 )}
                 {savingKey
                   ? t("common.saving")
                   : t("onboarding.modelSelector.saveKey", {
                       provider: providerName,
                     })}
-              </button>
+              </Button>
             </div>
           </>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1418,31 +1375,31 @@ function TutorialStep({
 
       {/* The model is visible and changeable here — where it can be tested. */}
       <div className="mt-3 flex justify-center">
-        <button
-          type="button"
+        <Button
+          variant="link"
           onClick={onOpenSelector}
-          className="mono text-muted-foreground hover:text-foreground text-[11px] underline underline-offset-[3px]"
+          className="mono text-muted-foreground hover:text-foreground h-auto p-0 text-[11px] underline underline-offset-[3px]"
         >
           {modelReady && modelName
             ? t("onboarding.tutorial.usingModel", { name: modelName })
             : t("onboarding.tutorial.chooseModel")}
-        </button>
+        </Button>
       </div>
 
       {/* Hotkey rebind — a single minimal control */}
       <div className="mt-5 flex justify-center">
         {recorderState === "idle" ? (
-          <button
-            type="button"
+          <Button
+            variant="outline"
             onClick={onStartRecording}
-            className="border-border bg-card hover:bg-secondary inline-flex items-center gap-3 rounded-[10px] border px-3.5 py-2.5 transition-colors"
+            className="bg-card hover:bg-secondary h-auto gap-3 rounded-[10px] px-3.5 py-2.5"
           >
-            <Keyboard className="text-muted-foreground h-4 w-4 shrink-0" />
+            <Keyboard className="text-muted-foreground shrink-0" />
             <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
             <span className="text-muted-foreground ml-1 text-[12.5px]">
               {t("common.change")}
             </span>
-          </button>
+          </Button>
         ) : (
           <div className="border-primary bg-accent inline-flex items-center gap-3 rounded-[10px] border px-3.5 py-2.5">
             <Keyboard className="text-accent-foreground h-4 w-4 shrink-0" />
@@ -1452,33 +1409,26 @@ function TutorialStep({
             <span className="text-accent-foreground text-[12px]">
               {captureHint}
             </span>
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              size="xs"
               onClick={onCancelRecording}
-              className="border-border bg-background hover:bg-secondary ml-1 rounded-[7px] border px-2.5 py-1 text-[12px]"
+              className="ml-1"
             >
               {t("common.cancel")}
-            </button>
+            </Button>
           </div>
         )}
       </div>
 
       <div className="mt-7 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          className="border-border hover:bg-secondary rounded-[7px] border px-3.5 py-2 text-[12.5px] font-medium"
-        >
+        <Button variant="outline" onClick={onBack}>
           {t("common.back")}
-        </button>
-        <button
-          type="button"
-          onClick={onFinish}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-2 rounded-[7px] px-4 py-2 text-[12.5px] font-medium"
-        >
+        </Button>
+        <Button variant="default" onClick={onFinish}>
           {t("onboarding.tutorial.finish")}
-          <ArrowRight size={15} />
-        </button>
+          <ArrowRight data-icon="inline-end" />
+        </Button>
       </div>
     </div>
   );

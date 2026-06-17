@@ -1,3 +1,4 @@
+import { Kbd } from "@renderer/components/ui/kbd";
 import { cn } from "@renderer/lib/utils";
 
 function KeyBadge({
@@ -8,12 +9,9 @@ function KeyBadge({
   variant?: "default" | "recording" | "dim";
 }) {
   return (
-    <kbd
+    <Kbd
       className={cn(
-        "inline-flex select-none items-center justify-center",
-        "min-w-[26px] rounded-md px-1.5 py-1",
-        "font-mono text-xs font-medium leading-none",
-        "border shadow-[0_1px_0_0_hsl(var(--border))]",
+        "min-w-[26px] rounded-md border px-1.5 py-1 font-mono leading-none shadow-[0_1px_0_0_hsl(var(--border))]",
         variant === "default" && "border-border bg-muted text-foreground",
         variant === "recording" &&
           "border-primary/40 bg-primary/10 text-primary",
@@ -22,7 +20,7 @@ function KeyBadge({
       )}
     >
       {label}
-    </kbd>
+    </Kbd>
   );
 }
 

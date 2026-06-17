@@ -1,13 +1,26 @@
 import { serverUrlSchema } from "@freestyle/validations";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { LanguageSelector } from "@renderer/components/language-selector";
+import { Button } from "@renderer/components/ui/button";
+import { Input } from "@renderer/components/ui/input";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
-import { Select } from "@renderer/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@renderer/components/ui/select";
+import { Switch } from "@renderer/components/ui/switch";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@renderer/components/ui/toggle-group";
 import {
   comboDisplayKeys,
   formatAcceleratorKeys,
@@ -655,26 +668,26 @@ export default function SettingsPage(): React.JSX.Element {
               </span>
             </div>
             {updateDownloaded ? (
-              <button
-                type="button"
+              <Button
+                variant="default"
+                size="sm"
                 onClick={() => window.api?.installUpdate()}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium"
               >
                 {t("common.restartAndUpdate")}
-              </button>
+              </Button>
             ) : (
-              <button
-                type="button"
+              <Button
+                variant="default"
+                size="sm"
                 onClick={() => {
                   setDownloading(true);
                   setUpdateError(null);
                   window.api?.downloadUpdate();
                 }}
                 disabled={downloading}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium disabled:opacity-50"
               >
                 {downloading ? t("common.downloading") : t("common.download")}
-              </button>
+              </Button>
             )}
             {updateError && (
               <span className="text-destructive w-full text-xs">
@@ -699,15 +712,18 @@ export default function SettingsPage(): React.JSX.Element {
             label={t("settings.application.autoUpdate")}
             desc={t("settings.application.autoUpdateDesc")}
           >
-            <Toggle on={autoUpdate} onChange={handleAutoUpdateToggle} />
+            <Switch
+              checked={autoUpdate}
+              onCheckedChange={handleAutoUpdateToggle}
+            />
           </Row>
           <Row
             label={t("settings.application.launchAtStartup")}
             desc={t("settings.application.launchAtStartupDesc")}
           >
-            <Toggle
-              on={launchAtStartup}
-              onChange={handleLaunchAtStartupToggle}
+            <Switch
+              checked={launchAtStartup}
+              onCheckedChange={handleLaunchAtStartupToggle}
             />
           </Row>
           <Row
@@ -715,7 +731,10 @@ export default function SettingsPage(): React.JSX.Element {
             desc={t("settings.application.showOnLaunchDesc")}
             last
           >
-            <Toggle on={showOnLaunch} onChange={handleShowOnLaunchToggle} />
+            <Switch
+              checked={showOnLaunch}
+              onCheckedChange={handleShowOnLaunchToggle}
+            />
           </Row>
         </Section>
 
@@ -730,17 +749,17 @@ export default function SettingsPage(): React.JSX.Element {
           >
             {recorderState === "idle" ? (
               <div className="relative inline-flex">
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
                   onClick={startHotkeyRecording}
-                  className="border-border hover:bg-secondary inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2 transition-colors"
+                  className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
                 >
-                  <Keyboard className="text-muted-foreground h-4 w-4 shrink-0" />
+                  <Keyboard className="text-muted-foreground size-4 shrink-0" />
                   <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
                   <span className="text-muted-foreground ml-1 text-xs">
                     {t("common.change")}
                   </span>
-                </button>
+                </Button>
                 {invalidReleaseNotice && (
                   <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
                     {t("settings.recording.needsModifier")}
@@ -767,13 +786,14 @@ export default function SettingsPage(): React.JSX.Element {
                     {t("settings.recording.needsModifier")}
                   </div>
                 )}
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={cancelHotkeyRecording}
-                  className="border-border hover:bg-secondary ml-1 rounded-md border px-2.5 py-1 text-xs"
+                  className="ml-1"
                 >
                   {t("common.cancel")}
-                </button>
+                </Button>
               </div>
             )}
           </Row>
@@ -786,32 +806,28 @@ export default function SettingsPage(): React.JSX.Element {
                 : t("settings.recording.activationDescHold")
             }
           >
-            <div className="border-border bg-card inline-flex w-fit shrink-0 rounded-lg border p-0.5 text-sm">
-              <button
-                type="button"
-                onClick={() => handleHotkeyModeChange("hold")}
-                className={cn(
-                  "rounded-md px-3 py-1.5 transition-colors",
-                  hotkeyMode === "hold"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
+            <ToggleGroup
+              type="single"
+              value={hotkeyMode}
+              onValueChange={(v) =>
+                v && handleHotkeyModeChange(v as "hold" | "toggle")
+              }
+              spacing={0.5}
+              className="border-border bg-secondary rounded-[9px] border p-[3px]"
+            >
+              <ToggleGroupItem
+                value="hold"
+                className="data-[state=on]:bg-card data-[state=on]:shadow-sm"
               >
                 {t("settings.recording.activationHold")}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleHotkeyModeChange("toggle")}
-                className={cn(
-                  "rounded-md px-3 py-1.5 transition-colors",
-                  hotkeyMode === "toggle"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="toggle"
+                className="data-[state=on]:bg-card data-[state=on]:shadow-sm"
               >
                 {t("settings.recording.activationToggle")}
-              </button>
-            </div>
+              </ToggleGroupItem>
+            </ToggleGroup>
           </Row>
 
           <Row
@@ -819,29 +835,48 @@ export default function SettingsPage(): React.JSX.Element {
             desc={t("settings.recording.microphoneDesc")}
           >
             <Select
-              id="settings-microphone"
-              value={selectedDevice}
-              onChange={handleDeviceChange}
-              options={microphoneOptions}
-              icon={<Mic className="text-muted-foreground h-4 w-4 shrink-0" />}
-              className="max-w-md"
-            />
+              value={selectedDevice === "" ? "default" : selectedDevice}
+              onValueChange={(v) =>
+                handleDeviceChange(v === "default" ? "" : v)
+              }
+            >
+              <SelectTrigger
+                id="settings-microphone"
+                className="w-full max-w-md"
+              >
+                <Mic className="text-muted-foreground size-4 shrink-0" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {microphoneOptions.map((o) => (
+                  <SelectItem
+                    key={o.value}
+                    value={o.value === "" ? "default" : o.value}
+                  >
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Row>
 
           <Row
             label={t("settings.recording.language")}
             desc={t("settings.recording.languageDesc")}
           >
-            <Select
-              id="settings-language"
-              value={language}
-              onChange={handleLanguageChange}
-              options={languageOptions}
-              icon={
-                <Languages className="text-muted-foreground h-4 w-4 shrink-0" />
-              }
-              className="max-w-md"
-            />
+            <Select value={language} onValueChange={handleLanguageChange}>
+              <SelectTrigger id="settings-language" className="w-full max-w-md">
+                <Languages className="text-muted-foreground size-4 shrink-0" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {languageOptions.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Row>
 
           <Row
@@ -866,7 +901,7 @@ export default function SettingsPage(): React.JSX.Element {
             label={t("settings.recording.transcriptionPrompt")}
             desc={t("settings.recording.transcriptionPromptDesc")}
           >
-            <input
+            <Input
               id="settings-transcription-prompt"
               type="text"
               value={transcriptionPrompt}
@@ -882,7 +917,7 @@ export default function SettingsPage(): React.JSX.Element {
               placeholder={t(
                 "settings.recording.transcriptionPromptPlaceholder",
               )}
-              className="border-border bg-card text-foreground w-full max-w-md rounded-lg border px-3 py-2 text-sm"
+              className="max-w-md"
             />
           </Row>
 
@@ -897,7 +932,10 @@ export default function SettingsPage(): React.JSX.Element {
               ) : (
                 <VolumeOff className="text-muted-foreground h-4 w-4 shrink-0" />
               )}
-              <Toggle on={soundEnabled} onChange={handleSoundToggle} />
+              <Switch
+                checked={soundEnabled}
+                onCheckedChange={handleSoundToggle}
+              />
             </div>
           </Row>
 
@@ -1013,14 +1051,10 @@ export default function SettingsPage(): React.JSX.Element {
             desc={t("settings.data.historyDesc")}
             last
           >
-            <button
-              type="button"
-              onClick={clearHistory}
-              className="border-destructive/40 text-destructive hover:bg-destructive/10 inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
+            <Button variant="destructive" size="sm" onClick={clearHistory}>
+              <Trash2 data-icon="inline-start" />
               {t("settings.data.clearHistory")}
-            </button>
+            </Button>
           </Row>
         </Section>
 
@@ -1106,36 +1140,37 @@ export default function SettingsPage(): React.JSX.Element {
                 )}
               </InputGroup>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
+                <Button
+                  variant="ink"
+                  size="sm"
                   onClick={handleSaveServer}
                   disabled={
                     serverUrlInput.trim() === savedServerUrl.trim() &&
                     serverTokenInput.trim() === savedServerToken.trim()
                   }
-                  className="bg-foreground text-background hover:bg-foreground/90 inline-flex shrink-0 items-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
                 >
                   {t("common.save")}
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => testServer(serverUrlInput, serverTokenInput)}
                   disabled={serverTest === "testing"}
-                  className="border-border hover:bg-secondary inline-flex shrink-0 items-center rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
                 >
                   Test connection
-                </button>
+                </Button>
                 {(savedServerUrl ||
                   savedServerToken ||
                   serverUrlInput.trim() ||
                   serverTokenInput.trim()) && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={handleResetServer}
-                    className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center rounded-md px-2 py-1.5 text-xs font-medium transition-colors"
+                    className="text-muted-foreground"
                   >
                     Reset to local
-                  </button>
+                  </Button>
                 )}
                 {serverTest === "testing" && (
                   <span className="text-muted-foreground text-xs">
@@ -1225,34 +1260,6 @@ function Row({
 // Reusable controls
 // ---------------------------------------------------------------------------
 
-function Toggle({
-  on,
-  onChange,
-}: {
-  on: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!on)}
-      aria-pressed={on}
-      className={cn(
-        "relative h-[22px] w-10 shrink-0 rounded-full border transition-colors",
-        on ? "bg-primary border-primary/80" : "bg-secondary border-border",
-      )}
-    >
-      <span
-        className={cn(
-          "absolute top-[1px] block h-[18px] w-[18px] rounded-full transition-transform",
-          on ? "bg-primary-foreground" : "bg-muted-foreground/70",
-        )}
-        style={{ transform: on ? "translateX(19px)" : "translateX(2px)" }}
-      />
-    </button>
-  );
-}
-
 type SegmentOption = {
   id: string;
   label: string;
@@ -1271,38 +1278,30 @@ function Segment({
   compact?: boolean;
 }) {
   return (
-    <div className="border-border bg-secondary inline-flex max-w-full flex-nowrap gap-[2px] rounded-[9px] border p-[3px]">
+    <ToggleGroup
+      type="single"
+      value={active}
+      onValueChange={(v) => v && onSelect(v)}
+      spacing={0.5}
+      className="border-border bg-secondary max-w-full rounded-[9px] border p-[3px]"
+    >
       {options.map((o) => {
-        const isOn = o.id === active;
         const Icon = o.icon;
         return (
-          <button
+          <ToggleGroupItem
             key={o.id}
-            type="button"
-            onClick={() => onSelect(o.id)}
+            value={o.id}
             className={cn(
-              "flex items-center gap-1.5 rounded-md transition-colors",
-              compact
-                ? "px-2.5 py-[4px] text-[12px]"
-                : "px-3 py-[6px] text-[12.5px]",
-              isOn
-                ? "bg-card border-border text-foreground border font-medium shadow-[0_1px_2px_rgba(20,12,4,0.04)]"
-                : "text-muted-foreground hover:text-foreground border border-transparent",
+              "text-muted-foreground gap-1.5 rounded-md data-[state=on]:bg-card data-[state=on]:font-medium data-[state=on]:shadow-sm",
+              compact ? "h-7 px-2.5 text-[12px]" : "h-8 px-3 text-[12.5px]",
             )}
           >
-            {Icon && (
-              <Icon
-                className={cn(
-                  "h-3.5 w-3.5",
-                  isOn ? "text-primary" : "text-muted-foreground",
-                )}
-              />
-            )}
+            {Icon && <Icon data-icon="inline-start" />}
             {o.label}
-          </button>
+          </ToggleGroupItem>
         );
       })}
-    </div>
+    </ToggleGroup>
   );
 }
 
@@ -1331,27 +1330,19 @@ function PermissionControl({
         <>
           <Check className="text-primary h-4 w-4" />
           {onManage && (
-            <button
-              type="button"
-              onClick={onManage}
-              className="border-border hover:bg-secondary inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors"
-            >
+            <Button variant="outline" size="sm" onClick={onManage}>
               {t("common.manage")}
-              <ExternalLink className="h-3 w-3" />
-            </button>
+              <ExternalLink data-icon="inline-end" />
+            </Button>
           )}
         </>
       ) : note ? (
         <span className="text-muted-foreground text-xs">{note}</span>
       ) : actionLabel && onAction ? (
-        <button
-          type="button"
-          onClick={onAction}
-          className="bg-foreground text-background hover:bg-foreground/90 inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors"
-        >
+        <Button variant="ink" size="sm" onClick={onAction}>
           {actionLabel}
-          {external && <ExternalLink className="h-3 w-3" />}
-        </button>
+          {external && <ExternalLink data-icon="inline-end" />}
+        </Button>
       ) : null}
     </div>
   );

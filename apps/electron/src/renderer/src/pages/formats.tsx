@@ -1,6 +1,10 @@
 import type { CreateFormatInput } from "@freestyle/validations";
 import { createFormatSchema } from "@freestyle/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Badge } from "@renderer/components/ui/badge";
+import { Button } from "@renderer/components/ui/button";
+import { Input } from "@renderer/components/ui/input";
+import { Textarea } from "@renderer/components/ui/textarea";
 import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
 import { FileText, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
@@ -140,28 +144,23 @@ export default function FormatsPage(): React.JSX.Element {
 
         {/* Action bar */}
         <div className="mb-5 flex items-center justify-between">
-          <button
-            type="button"
+          <Button
+            variant="default"
             onClick={() => {
               form.reset({ label: "", app_pattern: "", instructions: "" });
               setEditingId(null);
               setFormError(null);
               setShowForm(true);
             }}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-2 text-[12.5px] font-medium"
           >
-            <Plus size={13} />
+            <Plus data-icon="inline-start" />
             {t("formats.addFormat")}
-          </button>
+          </Button>
           {customRules.length > 0 && (
-            <button
-              type="button"
-              onClick={resetDefaults}
-              className="border-border text-secondary-foreground/80 hover:text-foreground flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-2 text-[12.5px] font-medium"
-            >
-              <RotateCcw size={12} />
+            <Button variant="outline" onClick={resetDefaults}>
+              <RotateCcw data-icon="inline-start" />
               {t("formats.resetToDefaults")}
-            </button>
+            </Button>
           )}
         </div>
 
@@ -175,27 +174,25 @@ export default function FormatsPage(): React.JSX.Element {
               <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
                 {editingId ? t("formats.editFormat") : t("formats.newFormat")}
               </span>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={resetForm}
-                className="text-muted-foreground hover:text-foreground cursor-pointer"
+                aria-label={t("formats.cancel")}
               >
-                <X size={14} />
-              </button>
+                <X />
+              </Button>
             </div>
             <div className="space-y-3.5">
               <FormField
                 label={t("formats.labelField")}
                 error={form.formState.errors.label?.message}
               >
-                <input
+                <Input
                   type="text"
                   {...form.register("label")}
                   placeholder={t("formats.labelPlaceholder")}
-                  className={cn(
-                    "border-border bg-background w-full rounded-[7px] border px-[11px] py-2 text-[13px] outline-none",
-                    form.formState.errors.label && "border-destructive",
-                  )}
+                  aria-invalid={!!form.formState.errors.label}
                 />
               </FormField>
               <FormField
@@ -203,47 +200,36 @@ export default function FormatsPage(): React.JSX.Element {
                 error={form.formState.errors.app_pattern?.message}
                 hint={t("formats.appPatternHint")}
               >
-                <input
+                <Input
                   type="text"
                   {...form.register("app_pattern")}
                   placeholder={t("formats.appPatternPlaceholder")}
-                  className={cn(
-                    "border-border bg-background mono w-full rounded-[7px] border px-[11px] py-2 text-[13px] outline-none",
-                    form.formState.errors.app_pattern && "border-destructive",
-                  )}
+                  className="mono"
+                  aria-invalid={!!form.formState.errors.app_pattern}
                 />
               </FormField>
               <FormField
                 label={t("formats.instructionsField")}
                 error={form.formState.errors.instructions?.message}
               >
-                <textarea
+                <Textarea
                   {...form.register("instructions")}
                   placeholder={t("formats.instructionsPlaceholder")}
                   rows={3}
-                  className={cn(
-                    "border-border bg-background w-full resize-none rounded-[7px] border px-[11px] py-2 text-[13px] leading-[1.5] outline-none",
-                    form.formState.errors.instructions && "border-destructive",
-                  )}
+                  className="resize-none"
+                  aria-invalid={!!form.formState.errors.instructions}
                 />
               </FormField>
               {formError && (
                 <p className="text-destructive text-xs">{formError}</p>
               )}
               <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="border-border text-secondary-foreground/80 hover:text-foreground cursor-pointer rounded-md border px-3 py-1.5 text-[12.5px] font-medium"
-                >
+                <Button variant="outline" size="sm" onClick={resetForm}>
                   {t("formats.cancel")}
-                </button>
-                <button
-                  type="submit"
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer rounded-md px-3 py-1.5 text-[12.5px] font-medium"
-                >
+                </Button>
+                <Button type="submit" variant="default" size="sm">
                   {editingId ? t("formats.update") : t("formats.addFormatBtn")}
-                </button>
+                </Button>
               </div>
             </div>
           </form>
@@ -395,9 +381,12 @@ function FormatCard({
             {rule.label}
           </span>
           {custom && (
-            <span className="mono bg-primary text-primary-foreground rounded-full px-1.5 py-[2px] text-[9px] tracking-[0.14em]">
+            <Badge
+              variant="default"
+              className="mono text-[9px] tracking-[0.14em]"
+            >
               CUSTOM
-            </span>
+            </Badge>
           )}
           <span
             className="mono border-border bg-background text-secondary-foreground/90 rounded border px-[7px] py-[2px] text-[10px]"
@@ -414,23 +403,26 @@ function FormatCard({
         </p>
       </div>
       <div className="flex shrink-0 gap-0.5 self-start opacity-0 transition-opacity group-hover:opacity-100">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={() => onEdit(rule)}
-          className="text-muted-foreground hover:text-foreground cursor-pointer rounded p-1"
           title="Edit"
+          aria-label="Edit"
         >
-          <Pencil size={13} />
-        </button>
+          <Pencil />
+        </Button>
         {custom && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={() => onDelete(rule.id)}
-            className="text-muted-foreground hover:text-destructive cursor-pointer rounded p-1"
+            className="hover:text-destructive"
             title="Delete"
+            aria-label="Delete"
           >
-            <Trash2 size={13} />
-          </button>
+            <Trash2 />
+          </Button>
         )}
       </div>
     </div>

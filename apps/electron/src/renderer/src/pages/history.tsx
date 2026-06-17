@@ -1,3 +1,7 @@
+import { Badge } from "@renderer/components/ui/badge";
+import { Button } from "@renderer/components/ui/button";
+import { Input } from "@renderer/components/ui/input";
+import { Label } from "@renderer/components/ui/label";
 import {
   Sheet,
   SheetContent,
@@ -307,22 +311,22 @@ export default function HistoryPage(): React.JSX.Element {
                   ⌘ K
                 </span>
               </div>
-              <button
-                type="button"
+              <Button
+                variant="outline"
                 onClick={() => setFilterOpen(true)}
                 className={cn(
-                  "border-border bg-card hover:bg-accent hover:text-foreground text-muted-foreground flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-[13px] font-medium transition-colors cursor-pointer",
+                  "text-muted-foreground",
                   filterCount > 0 && "border-primary text-primary bg-primary/5",
                 )}
               >
-                <Filter className="h-3.5 w-3.5" />
+                <Filter data-icon="inline-start" />
                 <span>{t("history.filtersBtn")}</span>
                 {filterCount > 0 && (
-                  <span className="bg-primary text-primary-foreground flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold">
+                  <Badge className="h-4 min-w-4 px-1 text-[9px] font-bold">
                     {filterCount}
-                  </span>
+                  </Badge>
                 )}
-              </button>
+              </Button>
             </div>
 
             {entries.length === 0 ? (
@@ -372,37 +376,29 @@ export default function HistoryPage(): React.JSX.Element {
                     : t("history.sessionPlural")}
                 </span>
                 <div className="flex items-center gap-1">
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={() => setPage((p) => Math.max(0, p - 1))}
                     disabled={page === 0}
-                    className={cn(
-                      "rounded p-1",
-                      page === 0
-                        ? "text-muted-foreground/40 cursor-not-allowed"
-                        : "text-muted-foreground hover:text-foreground cursor-pointer",
-                    )}
+                    aria-label="Previous page"
                   >
-                    <ChevronLeft size={16} />
-                  </button>
+                    <ChevronLeft />
+                  </Button>
                   <span className="mono text-muted-foreground px-2 text-[11px]">
                     {page + 1} / {totalPages}
                   </span>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={() =>
                       setPage((p) => Math.min(totalPages - 1, p + 1))
                     }
                     disabled={page >= totalPages - 1}
-                    className={cn(
-                      "rounded p-1",
-                      page >= totalPages - 1
-                        ? "text-muted-foreground/40 cursor-not-allowed"
-                        : "text-muted-foreground hover:text-foreground cursor-pointer",
-                    )}
+                    aria-label="Next page"
                   >
-                    <ChevronRight size={16} />
-                  </button>
+                    <ChevronRight />
+                  </Button>
                 </div>
               </div>
             )}
@@ -420,13 +416,13 @@ export default function HistoryPage(): React.JSX.Element {
 
           <div className="flex flex-col gap-5 flex-1">
             <div className="flex flex-col gap-2">
-              <label
+              <Label
                 htmlFor="start-date-input"
                 className="mono text-muted-foreground text-[10px] uppercase tracking-wider"
               >
                 {t("history.startDate")}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="start-date-input"
                 type="date"
                 value={startDate}
@@ -443,18 +439,17 @@ export default function HistoryPage(): React.JSX.Element {
                   }
                   setPage(0);
                 }}
-                className="bg-card border-border text-foreground w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-primary"
               />
             </div>
 
             <div className="flex flex-col gap-2">
-              <label
+              <Label
                 htmlFor="end-date-input"
                 className="mono text-muted-foreground text-[10px] uppercase tracking-wider"
               >
                 {t("history.endDate")}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="end-date-input"
                 type="date"
                 value={endDate}
@@ -471,7 +466,6 @@ export default function HistoryPage(): React.JSX.Element {
                   }
                   setPage(0);
                 }}
-                className="bg-card border-border text-foreground w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-primary"
               />
             </div>
 
@@ -481,72 +475,63 @@ export default function HistoryPage(): React.JSX.Element {
                 {t("history.presetsLabel")}
               </span>
               <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
+                <Button
+                  variant={isTodayPreset ? "default" : "outline"}
+                  size="sm"
+                  className="w-full"
                   onClick={() => {
                     setActivePreset("today");
                     setPage(0);
                   }}
-                  className={cn(
-                    "bg-card border-border hover:bg-accent text-foreground rounded border py-1.5 text-xs transition-colors cursor-pointer text-center font-medium",
-                    isTodayPreset &&
-                      "border-primary bg-primary/10 text-primary",
-                  )}
                 >
                   {t("history.presetToday")}
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant={isWeeklyPreset ? "default" : "outline"}
+                  size="sm"
+                  className="w-full"
                   onClick={() => {
                     setActivePreset("weekly");
                     setPage(0);
                   }}
-                  className={cn(
-                    "bg-card border-border hover:bg-accent text-foreground rounded border py-1.5 text-xs transition-colors cursor-pointer text-center font-medium",
-                    isWeeklyPreset &&
-                      "border-primary bg-primary/10 text-primary",
-                  )}
                 >
                   {t("history.presetLast7")}
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant={isMonthlyPreset ? "default" : "outline"}
+                  size="sm"
+                  className="w-full"
                   onClick={() => {
                     setActivePreset("monthly");
                     setPage(0);
                   }}
-                  className={cn(
-                    "bg-card border-border hover:bg-accent text-foreground rounded border py-1.5 text-xs transition-colors cursor-pointer text-center font-medium",
-                    isMonthlyPreset &&
-                      "border-primary bg-primary/10 text-primary",
-                  )}
                 >
                   {t("history.presetLast30")}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
 
           <div className="mt-auto pt-4 border-t border-border flex gap-3">
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              className="flex-1"
               onClick={() => {
                 setActivePreset("all-time");
                 setCustomStartDate("");
                 setCustomEndDate("");
                 setPage(0);
               }}
-              className="border-border bg-card hover:bg-accent hover:text-foreground text-muted-foreground flex-1 rounded-md border py-2 text-sm font-medium transition-colors cursor-pointer text-center"
             >
               {t("history.clearAll")}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="default"
+              className="flex-1"
               onClick={() => setFilterOpen(false)}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 flex-1 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer text-center"
             >
               {t("history.done")}
-            </button>
+            </Button>
           </div>
         </SheetContent>
       </Sheet>
@@ -669,35 +654,35 @@ function FeedItem({
         )}
         <div className="ml-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           {hasAiEdit && (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-xs"
               onClick={() => setShowAiEdit((value) => !value)}
-              className="text-muted-foreground hover:text-foreground cursor-pointer rounded p-1"
               title={showAiEdit ? "Undo AI edit" : "Redo AI edit"}
+              aria-label={showAiEdit ? "Undo AI edit" : "Redo AI edit"}
             >
-              {showAiEdit ? <Undo2 size={13} /> : <Redo2 size={13} />}
-            </button>
+              {showAiEdit ? <Undo2 /> : <Redo2 />}
+            </Button>
           )}
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={copyText}
-            className="text-muted-foreground hover:text-foreground cursor-pointer rounded p-1"
             title="Copy text"
+            aria-label="Copy text"
           >
-            {copied ? (
-              <Check size={13} className="text-primary" />
-            ) : (
-              <Copy size={13} />
-            )}
-          </button>
-          <button
-            type="button"
+            {copied ? <Check className="text-primary" /> : <Copy />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
             onClick={() => onDelete(entry.id)}
-            className="text-muted-foreground hover:text-destructive cursor-pointer rounded p-1"
+            className="hover:text-destructive"
             title="Delete"
+            aria-label="Delete"
           >
-            <Trash2 size={13} />
-          </button>
+            <Trash2 />
+          </Button>
         </div>
       </div>
       <p
@@ -750,17 +735,17 @@ function NoSearchResults({
         </span>
       </div>
       {(hasSearch || hasDates) && (
-        <button
-          type="button"
+        <Button
+          variant="link"
           onClick={onClear}
-          className="text-primary hover:text-primary/80 text-xs font-semibold underline cursor-pointer"
+          className="h-auto p-0 text-xs font-semibold underline"
         >
           {hasSearch && hasDates
             ? t("history.clearBoth")
             : hasSearch
               ? t("history.clearSearch")
               : t("history.clearFilters")}
-        </button>
+        </Button>
       )}
     </div>
   );

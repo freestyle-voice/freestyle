@@ -1,5 +1,26 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@renderer/components/ui/alert-dialog";
+import { Button } from "@renderer/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@renderer/components/ui/dialog";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@renderer/components/ui/input-group";
 import { type AvailableModel, PROVIDER_KEY_URLS } from "@renderer/lib/models";
-import { cn } from "@renderer/lib/utils";
 import { AlertTriangle, Eye, EyeOff, Key, Loader2, X } from "lucide-react";
 import { useState } from "react";
 
@@ -37,23 +58,16 @@ function Backdrop({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismiss
-    // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop dismiss
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,12,4,0.35)] p-6 backdrop-blur-[4px]"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent
         aria-label={label}
-        className="border-border bg-card flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-[14px] border shadow-[0_24px_60px_-16px_rgba(20,12,4,0.4)]"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
+        showCloseButton={false}
+        className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden p-0 sm:max-w-2xl"
       >
+        <DialogTitle className="sr-only">{label}</DialogTitle>
         {children}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -174,13 +188,14 @@ function KeyStep({
             )}
           </p>
         </div>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={onClose}
-          className="text-muted-foreground hover:text-foreground"
+          aria-label="Close"
         >
-          <X size={18} />
-        </button>
+          <X data-icon />
+        </Button>
       </div>
 
       <form
@@ -190,28 +205,29 @@ function KeyStep({
           if (value.trim()) onSave(value.trim());
         }}
       >
-        <div className="relative">
-          <Key className="text-muted-foreground absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" />
-          <input
+        <InputGroup>
+          <InputGroupAddon>
+            <Key />
+          </InputGroupAddon>
+          <InputGroupInput
             type={show ? "text" : "password"}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder="sk-…"
-            // biome-ignore lint/a11y/noAutofocus: focus the key field when the step opens
+            aria-invalid={!!error}
             autoFocus
-            className={cn(
-              "border-border bg-background mono w-full rounded-md border py-2.5 pl-9 pr-10 text-[13px]",
-              error && "border-destructive",
-            )}
+            className="mono"
           />
-          <button
-            type="button"
-            onClick={() => setShow(!show)}
-            className="text-muted-foreground hover:text-foreground absolute right-3 top-1/2 -translate-y-1/2"
-          >
-            {show ? <EyeOff size={15} /> : <Eye size={15} />}
-          </button>
-        </div>
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              size="icon-xs"
+              aria-label={show ? "Hide API key" : "Show API key"}
+              onClick={() => setShow(!show)}
+            >
+              {show ? <EyeOff /> : <Eye />}
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
         {error && (
           <div className="bg-destructive/10 flex items-start gap-2 rounded-md px-3 py-2">
             <AlertTriangle className="text-destructive mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -237,17 +253,18 @@ function KeyStep({
           )}
         </div>
         <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="sm"
             onClick={canGoBack ? onBack : onClose}
-            className="border-border hover:bg-secondary rounded-md border px-3.5 py-1.5 text-[12.5px]"
           >
             {canGoBack ? "Back" : "Cancel"}
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
+            variant="ink"
+            size="sm"
             disabled={!value.trim() || saving}
-            className="bg-foreground text-background hover:bg-foreground/90 rounded-md px-3.5 py-1.5 text-[12.5px] font-medium disabled:opacity-50"
           >
             {saving ? (
               <span className="flex items-center gap-1.5">
@@ -257,7 +274,7 @@ function KeyStep({
             ) : (
               "Save & use"
             )}
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -282,43 +299,19 @@ export function ConfirmDialog({
   onConfirm: () => void;
 }): React.JSX.Element {
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismiss
-    // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop dismiss
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(20,12,4,0.35)] p-6 backdrop-blur-[4px]"
-      onClick={onCancel}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="border-border bg-card w-full max-w-md rounded-[14px] border p-7 shadow-[0_24px_60px_-16px_rgba(20,12,4,0.4)]"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-foreground m-0 text-[17px] font-semibold">
-          {title}
-        </h3>
-        <p className="text-muted-foreground mt-1 text-[13px] leading-relaxed">
-          {message}
-        </p>
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="border-border hover:bg-secondary rounded-md border px-3.5 py-1.5 text-[12.5px]"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-md px-3.5 py-1.5 text-[12.5px] font-medium"
-          >
+    <AlertDialog open onOpenChange={(o) => !o && onCancel()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{message}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={onConfirm}>
             {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

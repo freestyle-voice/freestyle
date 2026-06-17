@@ -2,7 +2,13 @@ import { SUPPORTED_LANGUAGES } from "@renderer/i18n";
 import { cn } from "@renderer/lib/utils";
 import { Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Select } from "./ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 
 interface LanguageSelectorProps {
   className?: string;
@@ -25,10 +31,19 @@ export function LanguageSelector({
   return (
     <Select
       value={currentLang}
-      onChange={(val) => i18n.changeLanguage(val)}
-      options={options}
-      icon={<Globe className="text-muted-foreground h-4 w-4 shrink-0" />}
-      className={cn("max-w-xs", className)}
-    />
+      onValueChange={(val) => i18n.changeLanguage(val)}
+    >
+      <SelectTrigger className={cn("w-full max-w-xs", className)}>
+        <Globe className="text-muted-foreground size-4 shrink-0" />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((o) => (
+          <SelectItem key={o.value} value={o.value}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

@@ -182,69 +182,95 @@ Tracking convention: the **smaller** the mono label, the **wider** the tracking
 
 ---
 
-## 6. Components (recipes)
+## 6. Components
 
-### Card / panel
-```html
-<section class="border-border bg-card rounded-[14px] border p-6"> … </section>
-```
+> **Component-first rule.** Every interactive control comes from
+> `apps/electron/src/renderer/src/components/ui/*` (our themed shadcn/ui kit).
+> **Do not hand-roll `<button>`, `<input>`, `<textarea>`, switches, badges,
+> modals, segmented controls, sliders, or progress bars** with bare Tailwind —
+> import the component and pick a variant. The kit is already themed to the
+> tokens in this doc, so you get the editorial look for free and we stay
+> consistent. The class strings below are the **contract each component
+> satisfies**, not copy-paste markup. To add a new primitive, install it with
+> `pnpm dlx shadcn@latest add <name>` and theme it to these tokens.
 
-### Two-up "pair" layout (required + optional)
-Grid that stacks under 820px, divided by a hairline:
-```html
-<section class="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2"> … </section>
-```
+### Card / panel → `Card`
+`import { Card } from "@renderer/components/ui/card"` — themed
+`border-border bg-card rounded-[14px] border p-6`. Compose with
+`CardHeader`/`CardTitle`/`CardContent`/`CardFooter`. The legacy inline
+`border-border bg-card rounded-[14px] border p-6` is still acceptable for
+layout-only wrappers, but prefer `Card` for content panels.
 
-### Badge / status pill
-```html
-<span class="mono bg-primary text-primary-foreground rounded-full px-1.5 py-[2px] text-[9px] tracking-[0.14em]">ACTIVE</span>
-```
-Variants: olive (`bg-primary`) for active; `bg-accent text-accent-foreground`
-for on-device/positive; `bg-primary/10 text-primary` for "FASTER"-type hints.
+### Badge / status pill → `Badge`
+`import { Badge } from ".../ui/badge"`. Variants map to the palette: `default`
+(olive `bg-primary`) for active; `secondary` for neutral; `destructive` for
+errors/warnings; `outline` for hairline chips; `ghost`/`link` for inline.
+Keep mono micro-label typography via `className="mono text-[9px] tracking-[0.14em]"`.
 
-### Filter chip / segmented option (toggleable)
-Rounded-full, 1px border; selected = olive fill + olive border + primary-fg
-text; idle = transparent + border + muted text.
+### Filter chip / segmented option → `ToggleGroup` (single)
+`import { ToggleGroup, ToggleGroupItem } from ".../ui/toggle-group"`. Use
+`type="single"`. Give the group the segmented "track" look with
+`className="border border-border bg-secondary rounded-[9px] p-[3px]"` and items
+`data-[state=on]:bg-card data-[state=on]:shadow-sm`. Selected = lifts to
+`bg-card`; idle = transparent + muted text.
 
-### Buttons
-- **Primary**: `bg-foreground text-background` (near-black ink on paper), hover
-  `bg-foreground/90`. Radius 7–8px. *(Olive fill is reserved for selection
-  states/CTAs where the ink button would compete.)*
-- **Secondary/ghost**: `border-border border bg-transparent`, hover `bg-secondary`.
-- Label: DM Sans `12.5px`, `font-medium`/`600`.
+### Buttons → `Button`
+`import { Button } from ".../ui/button"`. Pick the variant — never restyle:
+- **`ink`** — primary CTA, near-black ink on paper (`bg-foreground text-background`).
+- **`default`** — olive fill (`bg-primary`); reserved for selection states/CTAs
+  where the ink button would compete.
+- **`outline`** — secondary, hairline border on transparent, hover `bg-muted`.
+- **`ghost`** — borderless, hover-only (icon buttons, row actions).
+- **`destructive`** — soft terracotta (`bg-destructive/10 text-destructive`).
+- **`link`** — inline text link.
+Sizes: `default` (h-8), `sm`, `xs`, `lg`, and `icon`/`icon-sm`/`icon-xs`/`icon-lg`
+for square icon buttons. Icons inside a button take `data-icon="inline-start"`
+or `data-icon="inline-end"` (the component sizes them — no `size`/`w-/h-` on the icon).
 
-### Toggle (switch)
-22px tall, 40px wide, `rounded-full`. On = `bg-primary border-primary/80` with a
-`primary-foreground` knob; off = `bg-secondary border-border` with a muted knob.
+### Toggle (switch) → `Switch`
+`import { Switch } from ".../ui/switch"`. `<Switch checked={on} onCheckedChange={…} />`.
+On = `bg-primary` track with a light knob; off = `bg-input`. Use `size="sm"` for dense rows.
 
-### Input
-```html
-<div class="border-border bg-background flex items-center gap-2 rounded-md border px-2.5 py-1">
-  <Search class="text-muted-foreground h-3.5 w-3.5" />
-  <input class="flex-1 border-none bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground/70" />
-</div>
-```
+### Input → `Input` / `InputGroup`
+`import { Input } from ".../ui/input"`. For a leading icon, trailing button
+(show/hide key), or `⌘K` addon, use `InputGroup` + `InputGroupInput` +
+`InputGroupAddon` + `InputGroupButton` (see `settings.tsx` Server section).
+Pair labels with `Label` (`import { Label } from ".../ui/label"`).
+Multi-line → `Textarea`. Dropdowns → `Select` (`SelectTrigger`/`SelectValue`/
+`SelectContent`/`SelectItem`) — note `SelectItem` cannot use an empty-string value.
 
 ### List row (selectable)
-Hairline-divided rows inside a `rounded-[14px]` card; selected row tinted
-`bg-primary/5` with a trailing `Check` in `--primary`. Use CSS grid with
-explicit columns + `gap`, never inline-flow siblings.
+Hairline-divided rows inside a `Card`; selected row tinted `bg-primary/5` with a
+trailing `Check` in `--primary`. Use CSS grid with explicit columns + `gap`,
+never inline-flow siblings.
 
 ### Meter (speed / quality)
-Five 5px dots, filled to value in `--primary`, empty in `--border`.
+Five 5px dots, filled to value in `--primary`, empty in `--border`. (Bespoke —
+not a shadcn primitive.)
 
-### Progress bar
-Track `bg-secondary`, fill `bg-primary`, height `1.5` (6px), `rounded-full`.
-Pair with mono 10px byte/percent readout.
+### Progress bar → `Progress` ; range → `Slider`
+`import { Progress } from ".../ui/progress"` — track `bg-muted`, fill
+`bg-primary`, height `h-1` (override via `className`). Pair with mono 10px
+byte/percent readout. For a draggable value use `Slider`
+(`<Slider value={[n]} onValueChange={([v]) => …} />`).
 
 ### Empty state
 ```html
 <div class="border-border bg-card rounded-[14px] border border-dashed px-9 py-[52px] text-center"> … </div>
 ```
+Use `Button` (variant `default`) for the call-to-action inside it.
 
-### Modal
-Centered, `bg-card w-full max-w-md rounded-[14px] border p-7` with the modal
-shadow above. Dim the backdrop with warm ink, not pure black.
+### Modal → `Dialog` ; confirm → `AlertDialog`
+`import { Dialog, DialogContent, DialogHeader, DialogTitle, … } from ".../ui/dialog"`.
+Already themed: centered `bg-card max-w-md rounded-[14px] border p-6` with the
+modal shadow, warm-ink (`rgba(20,12,4,0.35)`) blurred backdrop. **Always render a
+`DialogTitle`** (use `className="sr-only"` if visually hidden) — Radix handles
+Esc, focus-trap, and backdrop dismissal, so don't re-implement them. For
+destructive confirmations use `AlertDialog` (`AlertDialogCancel` +
+`AlertDialogAction variant="destructive"`). Side panels use `Sheet`.
+
+### Keycaps → `Kbd`
+`import { Kbd } from ".../ui/kbd"` for `⌘K`-style hints and keycaps.
 
 ---
 
@@ -291,6 +317,8 @@ shadow above. Dim the backdrop with warm ink, not pure black.
 ## 10. Do / Don't
 
 **Do**
+- Reach for a `components/ui/*` component (§6) before writing any styled
+  `<button>`/`<input>`/`<div>`. Pick a variant; don't restyle.
 - Start from an existing page's structure and swap the content.
 - Keep one olive accent word per title; keep one primary action per view.
 - Use hairline borders + generous whitespace to separate, before reaching for
@@ -298,6 +326,8 @@ shadow above. Dim the backdrop with warm ink, not pure black.
 - Make every badge/stat earn its place by informing a choice.
 
 **Don't**
+- Hand-roll a control (button, switch, badge, modal, segmented toggle, slider,
+  progress) with bare Tailwind when a `components/ui/*` component exists.
 - Introduce new hues, gradients, or a second accent color.
 - Use pure white/black, emoji, or drop shadows on resting elements.
 - Build big `<h2>` section headers — structure with mono eyebrows.

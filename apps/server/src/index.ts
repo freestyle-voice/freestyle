@@ -27,8 +27,16 @@ const app = new Hono()
   })
   .use(authMiddleware)
   .onError((err, c) => {
-    // Let Hono's own exceptions (e.g. bearerAuth's 401) keep their response.
-    if (err instanceof HTTPException) return err.getResponse();
+    // Let Hono's own exceptions (e.g. bearerAuth's 401) keep their response,
+    // but still report genuine server errors.
+    if (err instanceof HTTPException) {
+      if (err.status >= 500) captureException(err);
+      const res = err.getResponse();
+      // Preserve CORS so the cross-origin renderer can read auth errors.
+      const origin = c.req.header("origin");
+      if (origin) res.headers.set("Access-Control-Allow-Origin", origin);
+      return res;
+    }
     captureException(err);
     return c.json({ error: "Internal server error" }, 500);
   })

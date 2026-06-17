@@ -51,6 +51,8 @@ function shutdown(signal: string): void {
     }
     process.exit(0);
   });
+  // Don't wait forever for in-flight connections (e.g. open WebSockets).
+  setTimeout(() => process.exit(0), 10_000).unref();
 }
 
 process.on("SIGINT", () => shutdown("SIGINT"));

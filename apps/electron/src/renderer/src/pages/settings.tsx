@@ -509,13 +509,14 @@ export default function SettingsPage(): React.JSX.Element {
       return;
     }
     const base = parsed.data || getLocalApiBase();
-    const trimmedToken = token.trim();
     setServerTest("testing");
     if (!(await checkServerHealth(base, 5000))) {
       setServerTest("unreachable");
       return;
     }
-    if (trimmedToken && !(await checkServerAuth(base, trimmedToken, 5000))) {
+    // Always probe an authenticated endpoint so we catch both a wrong token and
+    // a server that requires a token when none was entered.
+    if (!(await checkServerAuth(base, token.trim(), 5000))) {
       setServerTest("unauthorized");
       return;
     }

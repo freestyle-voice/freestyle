@@ -12,4 +12,13 @@ export const serverUrlSchema = z
     (v) => v === "" || z.string().url().safeParse(v).success,
     "Must be a valid URL",
   )
-  .transform((v) => v.replace(/\/+$/, ""));
+  // Normalize via the URL parser (lowercases scheme/host so the renderer's
+  // http->ws rewrite is reliable), then drop any trailing slash.
+  .transform((v) => {
+    if (v === "") return "";
+    try {
+      return new URL(v).href.replace(/\/+$/, "");
+    } catch {
+      return v.replace(/\/+$/, "");
+    }
+  });

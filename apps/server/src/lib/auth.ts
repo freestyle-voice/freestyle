@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
+import { timingSafeEqual } from "hono/utils/buffer";
 
 // The active bearer token. Empty means auth is disabled (the default), which
 // keeps the loopback/in-process Electron server open as before. A value is
@@ -31,7 +32,8 @@ export const authMiddleware: MiddlewareHandler = async (c, next) => {
   if (EXEMPT_PATHS.has(c.req.path)) return next();
 
   if (c.req.header("upgrade")?.toLowerCase() === "websocket") {
-    if (c.req.query("token") === token) return next();
+    // Constant-time compare, matching what bearerAuth does for the HTTP path.
+    if (await timingSafeEqual(c.req.query("token") ?? "", token)) return next();
     return c.json({ error: "Unauthorized" }, 401);
   }
 

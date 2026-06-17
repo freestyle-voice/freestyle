@@ -381,7 +381,7 @@ function KeyRow({
           aria-label="Update API key"
           title="Update API key"
         >
-          <Pencil data-icon />
+          <Pencil />
         </Button>
         <Button
           variant="ghost"
@@ -391,7 +391,7 @@ function KeyRow({
           aria-label="Delete provider"
           title="Delete provider"
         >
-          <Trash2 data-icon />
+          <Trash2 />
         </Button>
       </div>
     </div>

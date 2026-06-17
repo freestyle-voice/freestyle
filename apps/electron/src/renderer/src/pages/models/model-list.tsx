@@ -303,7 +303,7 @@ export function ModelList({
           className="shrink-0"
           aria-label="Close"
         >
-          <X data-icon />
+          <X />
         </Button>
       </header>
 
@@ -436,7 +436,7 @@ function VoiceTiers({
           className="shrink-0"
           aria-label="Close"
         >
-          <X data-icon />
+          <X />
         </Button>
       </header>
 
@@ -730,7 +730,7 @@ function ModelRow({
                     aria-label="Remove downloaded model from disk"
                     title="Remove downloaded model from disk"
                   >
-                    <Trash2 data-icon />
+                    <Trash2 />
                   </Button>
                 )}
               </>

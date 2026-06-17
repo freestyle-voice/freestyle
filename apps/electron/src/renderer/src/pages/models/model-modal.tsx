@@ -194,7 +194,7 @@ function KeyStep({
           onClick={onClose}
           aria-label="Close"
         >
-          <X data-icon />
+          <X />
         </Button>
       </div>
 

@@ -129,6 +129,11 @@ export default function SettingsPage(): React.JSX.Element {
     "idle" | "testing" | "ok" | "unreachable" | "unauthorized"
   >("idle");
 
+  // Radix SelectItem cannot use an empty-string value, so the "system default"
+  // microphone (stored as "") is represented by this sentinel at the Select
+  // boundary only. Use an unlikely string to avoid colliding with a real
+  // deviceId of "default".
+  const SYSTEM_DEFAULT_MIC = "__system_default_mic__";
   const microphoneOptions = useMemo(
     () => [
       { value: "", label: t("settings.recording.microphoneDefault") },
@@ -835,9 +840,11 @@ export default function SettingsPage(): React.JSX.Element {
             desc={t("settings.recording.microphoneDesc")}
           >
             <Select
-              value={selectedDevice === "" ? "default" : selectedDevice}
+              value={
+                selectedDevice === "" ? SYSTEM_DEFAULT_MIC : selectedDevice
+              }
               onValueChange={(v) =>
-                handleDeviceChange(v === "default" ? "" : v)
+                handleDeviceChange(v === SYSTEM_DEFAULT_MIC ? "" : v)
               }
             >
               <SelectTrigger
@@ -851,7 +858,7 @@ export default function SettingsPage(): React.JSX.Element {
                 {microphoneOptions.map((o) => (
                   <SelectItem
                     key={o.value}
-                    value={o.value === "" ? "default" : o.value}
+                    value={o.value === "" ? SYSTEM_DEFAULT_MIC : o.value}
                   >
                     {o.label}
                   </SelectItem>

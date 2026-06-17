@@ -698,94 +698,6 @@ export default function SettingsPage(): React.JSX.Element {
           </Row>
         </Section>
 
-        <Section label="Server">
-          <Row
-            label="Server URL"
-            desc="Leave empty to use the built-in local server. Enter the URL of a self-hosted Freestyle server (e.g. http://your-vm:4649) to use that instead. Restart the app after changing this."
-          >
-            <div className="flex w-full max-w-md items-center gap-2">
-              <Server className="text-muted-foreground h-4 w-4 shrink-0" />
-              <input
-                id="settings-server-url"
-                type="text"
-                value={serverUrlInput}
-                onChange={(e) => {
-                  setServerUrlInput(e.target.value);
-                  setServerTest("idle");
-                  setServerUrlError(null);
-                }}
-                placeholder="http://127.0.0.1:4649 (local)"
-                className="border-border bg-card text-foreground min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm"
-              />
-            </div>
-            {serverUrlError && (
-              <span className="text-destructive mt-2 block text-xs">
-                {serverUrlError}
-              </span>
-            )}
-          </Row>
-          <Row
-            label="Access token"
-            desc="Optional. Required only if your server is configured with FREESTYLE_AUTH_TOKEN. Sent as a bearer token on requests."
-            last
-          >
-            <div className="flex w-full max-w-md flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Key className="text-muted-foreground h-4 w-4 shrink-0" />
-                <input
-                  id="settings-server-token"
-                  type="password"
-                  value={serverTokenInput}
-                  onChange={(e) => {
-                    setServerTokenInput(e.target.value);
-                    setServerTest("idle");
-                  }}
-                  placeholder="None"
-                  className="border-border bg-card text-foreground min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveServer}
-                  disabled={
-                    serverUrlInput.trim() === savedServerUrl.trim() &&
-                    serverTokenInput.trim() === savedServerToken.trim()
-                  }
-                  className="bg-foreground text-background hover:bg-foreground/90 inline-flex shrink-0 items-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
-                >
-                  {t("common.save")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => testServer(serverUrlInput, serverTokenInput)}
-                  className="border-border hover:bg-secondary inline-flex shrink-0 items-center rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
-                >
-                  Test connection
-                </button>
-                {serverTest === "testing" && (
-                  <span className="text-muted-foreground text-xs">
-                    Testing…
-                  </span>
-                )}
-                {serverTest === "ok" && (
-                  <span className="text-primary inline-flex items-center gap-1 text-xs">
-                    <Check className="h-3.5 w-3.5" /> Connected
-                  </span>
-                )}
-                {serverTest === "unreachable" && (
-                  <span className="text-destructive text-xs">Unreachable</span>
-                )}
-                {serverTest === "unauthorized" && (
-                  <span className="text-destructive text-xs">
-                    Token rejected
-                  </span>
-                )}
-              </div>
-            </div>
-          </Row>
-        </Section>
-
         <Section label={t("settings.sections.recording")}>
           <Row
             label={t("settings.recording.hotkey")}
@@ -1088,6 +1000,89 @@ export default function SettingsPage(): React.JSX.Element {
               <Trash2 className="h-3.5 w-3.5" />
               {t("settings.data.clearHistory")}
             </button>
+          </Row>
+        </Section>
+
+        <Section label="Server" tight>
+          <Row
+            label="Server URL"
+            desc="Leave empty to use the built-in local server. Point this at a self-hosted Freestyle server (e.g. http://your-vm:4649) to use that instead, with an access token if it requires one. Restart the app after changing this."
+            last
+          >
+            <div className="flex w-full max-w-md flex-col gap-2">
+              <div className="border-border bg-card flex items-center gap-2 rounded-lg border px-3">
+                <Server className="text-muted-foreground h-4 w-4 shrink-0" />
+                <input
+                  id="settings-server-url"
+                  type="text"
+                  value={serverUrlInput}
+                  onChange={(e) => {
+                    setServerUrlInput(e.target.value);
+                    setServerTest("idle");
+                    setServerUrlError(null);
+                  }}
+                  placeholder="http://127.0.0.1:4649 (local)"
+                  className="text-foreground min-w-0 flex-1 bg-transparent py-2 text-sm outline-none"
+                />
+              </div>
+              <div className="border-border bg-card flex items-center gap-2 rounded-lg border px-3">
+                <Key className="text-muted-foreground h-4 w-4 shrink-0" />
+                <input
+                  id="settings-server-token"
+                  type="password"
+                  value={serverTokenInput}
+                  onChange={(e) => {
+                    setServerTokenInput(e.target.value);
+                    setServerTest("idle");
+                  }}
+                  placeholder="Access token (optional)"
+                  className="text-foreground min-w-0 flex-1 bg-transparent py-2 text-sm outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveServer}
+                  disabled={
+                    serverUrlInput.trim() === savedServerUrl.trim() &&
+                    serverTokenInput.trim() === savedServerToken.trim()
+                  }
+                  className="bg-foreground text-background hover:bg-foreground/90 inline-flex shrink-0 items-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
+                >
+                  {t("common.save")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => testServer(serverUrlInput, serverTokenInput)}
+                  className="border-border hover:bg-secondary inline-flex shrink-0 items-center rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
+                >
+                  Test connection
+                </button>
+                {serverTest === "testing" && (
+                  <span className="text-muted-foreground text-xs">
+                    Testing…
+                  </span>
+                )}
+                {serverTest === "ok" && (
+                  <span className="text-primary inline-flex items-center gap-1 text-xs">
+                    <Check className="h-3.5 w-3.5" /> Connected
+                  </span>
+                )}
+                {serverTest === "unreachable" && (
+                  <span className="text-destructive text-xs">Unreachable</span>
+                )}
+                {serverTest === "unauthorized" && (
+                  <span className="text-destructive text-xs">
+                    Token rejected
+                  </span>
+                )}
+              </div>
+              {serverUrlError && (
+                <span className="text-destructive text-xs">
+                  {serverUrlError}
+                </span>
+              )}
+            </div>
           </Row>
         </Section>
       </div>

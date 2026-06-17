@@ -1,6 +1,12 @@
 import { serverUrlSchema } from "@freestyle/validations";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { LanguageSelector } from "@renderer/components/language-selector";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@renderer/components/ui/input-group";
 import { Select } from "@renderer/components/ui/select";
 import {
   comboDisplayKeys,
@@ -1048,29 +1054,30 @@ export default function SettingsPage(): React.JSX.Element {
                   </span>
                 )}
               </div>
-              <div className="border-border bg-card flex items-center gap-2 rounded-lg border px-3">
-                <Server className="text-muted-foreground h-4 w-4 shrink-0" />
-                <input
+              <InputGroup>
+                <InputGroupInput
                   id="settings-server-url"
                   type="text"
                   value={serverUrlInput}
+                  aria-invalid={!!serverUrlError}
                   onChange={(e) => {
                     setServerUrlInput(e.target.value);
                     setServerTest("idle");
                     setServerUrlError(null);
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveServer();
+                  }}
                   placeholder="http://127.0.0.1:4649 (local)"
-                  className="text-foreground min-w-0 flex-1 bg-transparent py-2 text-sm outline-none"
                 />
-              </div>
-              <div
-                className={cn(
-                  "border-border bg-card flex items-center gap-2 rounded-lg border px-3 transition-opacity",
-                  !serverUrlInput.trim() && "opacity-55",
-                )}
+                <InputGroupAddon>
+                  <Server />
+                </InputGroupAddon>
+              </InputGroup>
+              <InputGroup
+                className={cn(!serverUrlInput.trim() && "opacity-55")}
               >
-                <Key className="text-muted-foreground h-4 w-4 shrink-0" />
-                <input
+                <InputGroupInput
                   id="settings-server-token"
                   type={showToken ? "text" : "password"}
                   value={serverTokenInput}
@@ -1078,24 +1085,26 @@ export default function SettingsPage(): React.JSX.Element {
                     setServerTokenInput(e.target.value);
                     setServerTest("idle");
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveServer();
+                  }}
                   placeholder="Access token (optional)"
-                  className="text-foreground min-w-0 flex-1 bg-transparent py-2 text-sm outline-none"
                 />
+                <InputGroupAddon>
+                  <Key />
+                </InputGroupAddon>
                 {serverTokenInput && (
-                  <button
-                    type="button"
-                    onClick={() => setShowToken((v) => !v)}
-                    aria-label={showToken ? "Hide token" : "Show token"}
-                    className="text-muted-foreground hover:text-foreground shrink-0 transition-colors"
-                  >
-                    {showToken ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupButton
+                      size="icon-xs"
+                      aria-label={showToken ? "Hide token" : "Show token"}
+                      onClick={() => setShowToken((v) => !v)}
+                    >
+                      {showToken ? <EyeOff /> : <Eye />}
+                    </InputGroupButton>
+                  </InputGroupAddon>
                 )}
-              </div>
+              </InputGroup>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -1111,7 +1120,8 @@ export default function SettingsPage(): React.JSX.Element {
                 <button
                   type="button"
                   onClick={() => testServer(serverUrlInput, serverTokenInput)}
-                  className="border-border hover:bg-secondary inline-flex shrink-0 items-center rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
+                  disabled={serverTest === "testing"}
+                  className="border-border hover:bg-secondary inline-flex shrink-0 items-center rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
                 >
                   Test connection
                 </button>

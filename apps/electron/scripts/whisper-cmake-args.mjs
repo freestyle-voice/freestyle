@@ -8,11 +8,7 @@
  */
 
 export function getWhisperCmakeArgs({ forBundledRelease = false } = {}) {
-  const args = [
-    "..",
-    "-DCMAKE_BUILD_TYPE=Release",
-    "-DBUILD_SHARED_LIBS=OFF",
-  ];
+  const args = ["..", "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_SHARED_LIBS=OFF"];
 
   const bundleLinux =
     process.platform === "linux" &&

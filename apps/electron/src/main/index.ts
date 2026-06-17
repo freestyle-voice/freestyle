@@ -55,6 +55,7 @@ import {
   stopWhisperServer,
 } from "@freestyle/server";
 import { createAppLogger } from "@freestyle/utils";
+import { serverUrlSchema } from "@freestyle/validations";
 import {
   app,
   BrowserWindow,
@@ -141,10 +142,8 @@ function writeSettings(patch: Record<string, unknown>): void {
  * empty string when using the default local server.
  */
 function getServerUrl(): string {
-  const raw = readSettings().serverUrl;
-  if (typeof raw !== "string") return "";
-  // Strip any trailing slash so callers can append paths cleanly.
-  return raw.trim().replace(/\/+$/, "");
+  const parsed = serverUrlSchema.safeParse(readSettings().serverUrl);
+  return parsed.success ? parsed.data : "";
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1190,10 +1189,10 @@ app.whenReady().then(async () => {
 
   // IPC: persist the server URL. Takes effect for API/WebSocket calls
   // immediately; switching between local and a configured URL requires a
-  // restart to start/stop the local server.
+  // restart to start/stop the local server. Invalid values are ignored.
   ipcMain.handle("server:set-url", (_event, url: unknown) => {
-    const value = typeof url === "string" ? url.trim() : "";
-    writeSettings({ serverUrl: value });
+    const parsed = serverUrlSchema.safeParse(url);
+    if (parsed.success) writeSettings({ serverUrl: parsed.data });
     return getServerUrl();
   });
 

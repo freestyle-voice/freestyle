@@ -4,5 +4,6 @@ export * from "./formats.js";
 export * from "./local-llm.js";
 export * from "./models.js";
 export * from "./query.js";
+export * from "./server.js";
 export * from "./settings.js";
 export * from "./vocabulary.js";

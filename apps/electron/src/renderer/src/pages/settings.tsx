@@ -1,3 +1,4 @@
+import { serverUrlSchema } from "@freestyle/validations";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { LanguageSelector } from "@renderer/components/language-selector";
 import { Select } from "@renderer/components/ui/select";
@@ -96,6 +97,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [showOnLaunch, setShowOnLaunch] = useState(true);
   const [serverUrlInput, setServerUrlInput] = useState("");
   const [savedServerUrl, setSavedServerUrl] = useState("");
+  const [serverUrlError, setServerUrlError] = useState<string | null>(null);
   const [serverTest, setServerTest] = useState<
     "idle" | "testing" | "ok" | "fail"
   >("idle");
@@ -488,16 +490,26 @@ export default function SettingsPage(): React.JSX.Element {
   }, []);
 
   const testServerUrl = useCallback(async (rawUrl: string) => {
-    const base = rawUrl.trim().replace(/\/+$/, "") || getLocalApiBase();
+    const parsed = serverUrlSchema.safeParse(rawUrl);
+    if (!parsed.success) {
+      setServerUrlError(parsed.error.issues[0].message);
+      setServerTest("idle");
+      return;
+    }
+    const base = parsed.data || getLocalApiBase();
     setServerTest("testing");
     const ok = await checkServerHealth(base, 5000);
     setServerTest(ok ? "ok" : "fail");
   }, []);
 
   const handleSaveServerUrl = useCallback(async () => {
-    const saved =
-      (await window.api?.setServerUrl(serverUrlInput)) ??
-      serverUrlInput.trim().replace(/\/+$/, "");
+    const parsed = serverUrlSchema.safeParse(serverUrlInput);
+    if (!parsed.success) {
+      setServerUrlError(parsed.error.issues[0].message);
+      return;
+    }
+    setServerUrlError(null);
+    const saved = (await window.api?.setServerUrl(parsed.data)) ?? parsed.data;
     setSavedServerUrl(saved);
     setServerUrlInput(saved);
     await testServerUrl(saved);
@@ -672,6 +684,7 @@ export default function SettingsPage(): React.JSX.Element {
                   onChange={(e) => {
                     setServerUrlInput(e.target.value);
                     setServerTest("idle");
+                    setServerUrlError(null);
                   }}
                   placeholder="http://127.0.0.1:4649 (local)"
                   className="border-border bg-card text-foreground min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm"
@@ -707,6 +720,11 @@ export default function SettingsPage(): React.JSX.Element {
                   <span className="text-destructive text-xs">Unreachable</span>
                 )}
               </div>
+              {serverUrlError && (
+                <span className="text-destructive text-xs">
+                  {serverUrlError}
+                </span>
+              )}
             </div>
           </Row>
         </Section>

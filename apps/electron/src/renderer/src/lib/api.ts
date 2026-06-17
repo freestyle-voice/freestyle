@@ -46,7 +46,8 @@ export async function checkServerHealth(
 /** Re-read the server location (configured URL or local port) and verify it's reachable. */
 export async function refreshApiBase(): Promise<boolean> {
   try {
-    serverUrl = (await window.api.getServerUrl()).trim().replace(/\/+$/, "");
+    // Main returns an already-validated, normalized value.
+    serverUrl = await window.api.getServerUrl();
   } catch {
     serverUrl = "";
   }

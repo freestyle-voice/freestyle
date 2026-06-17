@@ -7,4 +7,3 @@
 .git
 **/.DS_Store
 **/*.log
-apps/electron/native/**/build

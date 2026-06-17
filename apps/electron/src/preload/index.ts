@@ -34,6 +34,10 @@ const api = {
   getServerUrl: (): Promise<string> => ipcRenderer.invoke("server:url"),
   setServerUrl: (url: string): Promise<string> =>
     ipcRenderer.invoke("server:set-url", url),
+  // Optional bearer token for a configured server ("" = none)
+  getServerToken: (): Promise<string> => ipcRenderer.invoke("server:token"),
+  setServerToken: (token: string): Promise<string> =>
+    ipcRenderer.invoke("server:set-token", token),
   onHotkeyDown: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("hotkey:down", handler);

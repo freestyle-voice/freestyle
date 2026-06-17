@@ -146,6 +146,12 @@ function getServerUrl(): string {
   return parsed.success ? parsed.data : "";
 }
 
+/** Optional bearer token sent to a configured server ("" = none). */
+function getServerToken(): string {
+  const raw = readSettings().serverToken;
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let httpServer: any = null;
 let serverPort = DEFAULT_PORT;
@@ -1194,6 +1200,15 @@ app.whenReady().then(async () => {
     const parsed = serverUrlSchema.safeParse(url);
     if (parsed.success) writeSettings({ serverUrl: parsed.data });
     return getServerUrl();
+  });
+
+  // IPC: read/persist the optional bearer token for a configured server.
+  ipcMain.handle("server:token", () => getServerToken());
+  ipcMain.handle("server:set-token", (_event, token: unknown) => {
+    writeSettings({
+      serverToken: typeof token === "string" ? token.trim() : "",
+    });
+    return getServerToken();
   });
 
   ipcMain.handle(

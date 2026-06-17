@@ -1,6 +1,11 @@
 import { Orb } from "@renderer/components/ui/orb";
 import { capture } from "@renderer/lib/analytics";
-import { getApiBase, getClient, refreshApiBase } from "@renderer/lib/api";
+import {
+  getApiBase,
+  getClient,
+  getServerToken,
+  refreshApiBase,
+} from "@renderer/lib/api";
 import { Recorder } from "@renderer/lib/recorder";
 import { Streamer } from "@renderer/lib/streamer";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -342,41 +347,46 @@ export default function AppPage(): React.JSX.Element {
   // biome-ignore lint/correctness/useExhaustiveDependencies: singleton
   const getStreamer = useCallback((): Streamer => {
     if (!streamerRef.current) {
-      streamerRef.current = new Streamer(getApiBase(), {
-        onConfig: (config) => {
-          supportsSessionTransportRef.current = config.sessionTransport;
-          if (wantsMicRef.current) {
-            recordingSessionUsesTransportRef.current = config.sessionTransport;
-          }
-        },
-        onReady: () => {},
-        onPartial: () => {},
-        onFinal: (text) => {
-          const resolver = streamResolverRef.current;
-          if (!resolver) return;
-          streamResolverRef.current = null;
-          resolver({ raw: text, cleaned: text });
-        },
-        onCleaned: () => {},
-        onError: (msg) => {
-          const resolver = streamResolverRef.current;
-          if (resolver) {
+      streamerRef.current = new Streamer(
+        getApiBase(),
+        {
+          onConfig: (config) => {
+            supportsSessionTransportRef.current = config.sessionTransport;
+            if (wantsMicRef.current) {
+              recordingSessionUsesTransportRef.current =
+                config.sessionTransport;
+            }
+          },
+          onReady: () => {},
+          onPartial: () => {},
+          onFinal: (text) => {
+            const resolver = streamResolverRef.current;
+            if (!resolver) return;
             streamResolverRef.current = null;
-            const fallback = restFallbackTranscribe(msg);
-            if (fallback) {
-              void fallback.then(resolver);
+            resolver({ raw: text, cleaned: text });
+          },
+          onCleaned: () => {},
+          onError: (msg) => {
+            const resolver = streamResolverRef.current;
+            if (resolver) {
+              streamResolverRef.current = null;
+              const fallback = restFallbackTranscribe(msg);
+              if (fallback) {
+                void fallback.then(resolver);
+                return;
+              }
+              resolver({ raw: "", cleaned: "", error: msg });
               return;
             }
-            resolver({ raw: "", cleaned: "", error: msg });
-            return;
-          }
-          if (!supportsSessionTransportRef.current) return;
-          if (!pillActiveRef.current) return;
-          if (wantsMicRef.current) return;
-          hidePill();
-          window.api.showErrorDialog("Transcription Failed", msg);
+            if (!supportsSessionTransportRef.current) return;
+            if (!pillActiveRef.current) return;
+            if (wantsMicRef.current) return;
+            hidePill();
+            window.api.showErrorDialog("Transcription Failed", msg);
+          },
         },
-      });
+        getServerToken(),
+      );
     }
     return streamerRef.current;
   }, []);

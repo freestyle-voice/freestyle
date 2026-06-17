@@ -9,8 +9,11 @@
 #
 # Build from the repository root:
 #   docker build -f apps/server/Dockerfile -t freestyle-server .
-# Run:
+# Run (open):
 #   docker run -p 4649:4649 -v freestyle-data:/data freestyle-server
+# Run (require a bearer token):
+#   docker run -p 4649:4649 -v freestyle-data:/data \
+#     -e FREESTYLE_AUTH_TOKEN=your-secret freestyle-server
 # ---------------------------------------------------------------------------
 
 FROM node:22-slim AS build

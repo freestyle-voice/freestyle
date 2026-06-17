@@ -1,7 +1,9 @@
 import { type ServerType, serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { HTTPException } from "hono/http-exception";
 import { WebSocketServer } from "ws";
+import { authMiddleware, setAuthToken } from "./lib/auth.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
   activateManagedMlxRuntimeForAppVersion,
@@ -23,7 +25,10 @@ const app = new Hono()
     }
     return cors()(c, next);
   })
+  .use(authMiddleware)
   .onError((err, c) => {
+    // Let Hono's own exceptions (e.g. bearerAuth's 401) keep their response.
+    if (err instanceof HTTPException) return err.getResponse();
     captureException(err);
     return c.json({ error: "Internal server error" }, 500);
   })
@@ -39,6 +44,12 @@ export interface StartServerOptions {
    * (e.g. when running the server standalone inside a container/VM).
    */
   host?: string;
+  /**
+   * Bearer token required for API/WebSocket requests. When omitted (or empty),
+   * the server is unauthenticated — appropriate for the loopback Electron
+   * server, but set this for standalone/remote deployments.
+   */
+  token?: string;
 }
 
 export interface RunningServer {
@@ -56,7 +67,8 @@ export interface RunningServer {
 export function startServer(
   options: StartServerOptions = {},
 ): Promise<RunningServer> {
-  const { port = 4649, host = "127.0.0.1" } = options;
+  const { port = 4649, host = "127.0.0.1", token } = options;
+  setAuthToken(token);
   const wss = new WebSocketServer({ noServer: true });
 
   return new Promise((resolve, reject) => {

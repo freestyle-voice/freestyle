@@ -50,8 +50,11 @@ export class Streamer {
   private pcmChunks: Int16Array[] = [];
   private pcmSampleCount = 0;
 
-  constructor(baseUrl: string, callbacks: StreamerCallbacks) {
-    this.wsUrl = `${baseUrl.replace(/^http/, "ws")}/stream`;
+  constructor(baseUrl: string, callbacks: StreamerCallbacks, token = "") {
+    // Browsers can't set headers on a WebSocket, so the bearer token (when
+    // configured) is passed as a query param and validated on the upgrade.
+    const query = token ? `?token=${encodeURIComponent(token)}` : "";
+    this.wsUrl = `${baseUrl.replace(/^http/, "ws")}/stream${query}`;
     this.callbacks = callbacks;
     this.openWebSocket();
   }

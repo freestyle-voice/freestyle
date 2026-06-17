@@ -9,6 +9,7 @@ import {
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
 import {
+  checkServerAuth,
   checkServerHealth,
   getClient,
   getLocalApiBase,
@@ -20,6 +21,7 @@ import {
   Check,
   Download,
   ExternalLink,
+  Key,
   Keyboard,
   Languages,
   Mic,
@@ -97,9 +99,11 @@ export default function SettingsPage(): React.JSX.Element {
   const [showOnLaunch, setShowOnLaunch] = useState(true);
   const [serverUrlInput, setServerUrlInput] = useState("");
   const [savedServerUrl, setSavedServerUrl] = useState("");
+  const [serverTokenInput, setServerTokenInput] = useState("");
+  const [savedServerToken, setSavedServerToken] = useState("");
   const [serverUrlError, setServerUrlError] = useState<string | null>(null);
   const [serverTest, setServerTest] = useState<
-    "idle" | "testing" | "ok" | "fail"
+    "idle" | "testing" | "ok" | "unreachable" | "unauthorized"
   >("idle");
 
   const microphoneOptions = useMemo(
@@ -367,12 +371,19 @@ export default function SettingsPage(): React.JSX.Element {
       .then((v) => setShowOnLaunch(v))
       .catch(() => {});
 
-    // Server URL ("" = local server)
+    // Server URL + token ("" = local server / no auth)
     window.api
       ?.getServerUrl()
       .then((url) => {
         setSavedServerUrl(url);
         setServerUrlInput(url);
+      })
+      .catch(() => {});
+    window.api
+      ?.getServerToken()
+      .then((token) => {
+        setSavedServerToken(token);
+        setServerTokenInput(token);
       })
       .catch(() => {});
 
@@ -489,7 +500,7 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.setShowDashboardOnLaunch(enabled);
   }, []);
 
-  const testServerUrl = useCallback(async (rawUrl: string) => {
+  const testServer = useCallback(async (rawUrl: string, token: string) => {
     const parsed = serverUrlSchema.safeParse(rawUrl);
     if (!parsed.success) {
       setServerUrlError(parsed.error.issues[0].message);
@@ -497,23 +508,37 @@ export default function SettingsPage(): React.JSX.Element {
       return;
     }
     const base = parsed.data || getLocalApiBase();
+    const trimmedToken = token.trim();
     setServerTest("testing");
-    const ok = await checkServerHealth(base, 5000);
-    setServerTest(ok ? "ok" : "fail");
+    if (!(await checkServerHealth(base, 5000))) {
+      setServerTest("unreachable");
+      return;
+    }
+    if (trimmedToken && !(await checkServerAuth(base, trimmedToken, 5000))) {
+      setServerTest("unauthorized");
+      return;
+    }
+    setServerTest("ok");
   }, []);
 
-  const handleSaveServerUrl = useCallback(async () => {
+  const handleSaveServer = useCallback(async () => {
     const parsed = serverUrlSchema.safeParse(serverUrlInput);
     if (!parsed.success) {
       setServerUrlError(parsed.error.issues[0].message);
       return;
     }
     setServerUrlError(null);
-    const saved = (await window.api?.setServerUrl(parsed.data)) ?? parsed.data;
-    setSavedServerUrl(saved);
-    setServerUrlInput(saved);
-    await testServerUrl(saved);
-  }, [serverUrlInput, testServerUrl]);
+    const savedUrl =
+      (await window.api?.setServerUrl(parsed.data)) ?? parsed.data;
+    const savedToken =
+      (await window.api?.setServerToken(serverTokenInput)) ??
+      serverTokenInput.trim();
+    setSavedServerUrl(savedUrl);
+    setServerUrlInput(savedUrl);
+    setSavedServerToken(savedToken);
+    setServerTokenInput(savedToken);
+    await testServer(savedUrl, savedToken);
+  }, [serverUrlInput, serverTokenInput, testServer]);
 
   const clearHistory = useCallback(async () => {
     if (!confirm(t("settings.data.clearHistoryConfirm"))) {
@@ -672,36 +697,63 @@ export default function SettingsPage(): React.JSX.Element {
           <Row
             label="Server URL"
             desc="Leave empty to use the built-in local server. Enter the URL of a self-hosted Freestyle server (e.g. http://your-vm:4649) to use that instead. Restart the app after changing this."
+          >
+            <div className="flex w-full max-w-md items-center gap-2">
+              <Server className="text-muted-foreground h-4 w-4 shrink-0" />
+              <input
+                id="settings-server-url"
+                type="text"
+                value={serverUrlInput}
+                onChange={(e) => {
+                  setServerUrlInput(e.target.value);
+                  setServerTest("idle");
+                  setServerUrlError(null);
+                }}
+                placeholder="http://127.0.0.1:4649 (local)"
+                className="border-border bg-card text-foreground min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm"
+              />
+            </div>
+            {serverUrlError && (
+              <span className="text-destructive mt-2 block text-xs">
+                {serverUrlError}
+              </span>
+            )}
+          </Row>
+          <Row
+            label="Access token"
+            desc="Optional. Required only if your server is configured with FREESTYLE_AUTH_TOKEN. Sent as a bearer token on requests."
             last
           >
             <div className="flex w-full max-w-md flex-col gap-2">
               <div className="flex items-center gap-2">
-                <Server className="text-muted-foreground h-4 w-4 shrink-0" />
+                <Key className="text-muted-foreground h-4 w-4 shrink-0" />
                 <input
-                  id="settings-server-url"
-                  type="text"
-                  value={serverUrlInput}
+                  id="settings-server-token"
+                  type="password"
+                  value={serverTokenInput}
                   onChange={(e) => {
-                    setServerUrlInput(e.target.value);
+                    setServerTokenInput(e.target.value);
                     setServerTest("idle");
-                    setServerUrlError(null);
                   }}
-                  placeholder="http://127.0.0.1:4649 (local)"
+                  placeholder="None"
                   className="border-border bg-card text-foreground min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm"
                 />
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleSaveServerUrl}
-                  disabled={serverUrlInput.trim() === savedServerUrl.trim()}
+                  onClick={handleSaveServer}
+                  disabled={
+                    serverUrlInput.trim() === savedServerUrl.trim() &&
+                    serverTokenInput.trim() === savedServerToken.trim()
+                  }
                   className="bg-foreground text-background hover:bg-foreground/90 inline-flex shrink-0 items-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
                 >
                   {t("common.save")}
                 </button>
                 <button
                   type="button"
-                  onClick={() => testServerUrl(serverUrlInput)}
+                  onClick={() => testServer(serverUrlInput, serverTokenInput)}
                   className="border-border hover:bg-secondary inline-flex shrink-0 items-center rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
                 >
                   Test connection
@@ -713,18 +765,18 @@ export default function SettingsPage(): React.JSX.Element {
                 )}
                 {serverTest === "ok" && (
                   <span className="text-primary inline-flex items-center gap-1 text-xs">
-                    <Check className="h-3.5 w-3.5" /> Reachable
+                    <Check className="h-3.5 w-3.5" /> Connected
                   </span>
                 )}
-                {serverTest === "fail" && (
+                {serverTest === "unreachable" && (
                   <span className="text-destructive text-xs">Unreachable</span>
                 )}
+                {serverTest === "unauthorized" && (
+                  <span className="text-destructive text-xs">
+                    Token rejected
+                  </span>
+                )}
               </div>
-              {serverUrlError && (
-                <span className="text-destructive text-xs">
-                  {serverUrlError}
-                </span>
-              )}
             </div>
           </Row>
         </Section>

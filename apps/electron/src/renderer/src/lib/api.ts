@@ -6,6 +6,8 @@ const HEALTH_TIMEOUT_MS = 3000;
 let resolvedPort: number = DEFAULT_PORT;
 // Configured server URL ("" = use the local server).
 let serverUrl = "";
+// Optional bearer token for a configured server ("" = none).
+let serverToken = "";
 let initialized = false;
 
 /** Base URL of the locally-run server (used when no server URL is configured). */
@@ -17,6 +19,15 @@ export function getApiBase(): string {
   return serverUrl || getLocalApiBase();
 }
 
+/** Bearer token for the configured server, or "" when none is set. */
+export function getServerToken(): string {
+  return serverToken;
+}
+
+function authHeaders(token: string): Record<string, string> | undefined {
+  return token ? { Authorization: `Bearer ${token}` } : undefined;
+}
+
 export async function initApiBase(): Promise<void> {
   if (initialized) return;
   await refreshApiBase();
@@ -25,31 +36,59 @@ export async function initApiBase(): Promise<void> {
 
 /**
  * Verify a Freestyle server is reachable and identifies itself at `base`.
- * Used for both the live API base and ad-hoc connectivity tests (settings).
+ * `/api/health` is unauthenticated, so this checks reachability only.
  */
 export async function checkServerHealth(
   base: string,
   timeoutMs = HEALTH_TIMEOUT_MS,
 ): Promise<boolean> {
   try {
-    const res = await fetch(`${base}/api/health`, {
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    const res = await hc<AppType>(base).api.health.$get(
+      {},
+      { init: { signal: AbortSignal.timeout(timeoutMs) } },
+    );
     if (!res.ok) return false;
-    const data = (await res.json()) as { status?: string; name?: string };
+    const data = await res.json();
     return data.status === "ok" && data.name === "freestyle";
   } catch {
     return false;
   }
 }
 
-/** Re-read the server location (configured URL or local port) and verify it's reachable. */
+/**
+ * Verify the bearer token is accepted by hitting an authenticated endpoint.
+ * Returns true when the token is valid (or when no token is required).
+ */
+export async function checkServerAuth(
+  base: string,
+  token: string,
+  timeoutMs = HEALTH_TIMEOUT_MS,
+): Promise<boolean> {
+  try {
+    const res = await hc<AppType>(base, {
+      headers: authHeaders(token),
+    }).api["device-id"].$get(
+      {},
+      { init: { signal: AbortSignal.timeout(timeoutMs) } },
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Re-read the server location/token and verify it's reachable. */
 export async function refreshApiBase(): Promise<boolean> {
   try {
     // Main returns an already-validated, normalized value.
     serverUrl = await window.api.getServerUrl();
   } catch {
     serverUrl = "";
+  }
+  try {
+    serverToken = await window.api.getServerToken();
+  } catch {
+    serverToken = "";
   }
   if (!serverUrl) {
     try {
@@ -62,5 +101,5 @@ export async function refreshApiBase(): Promise<boolean> {
 }
 
 export function getClient() {
-  return hc<AppType>(getApiBase());
+  return hc<AppType>(getApiBase(), { headers: authHeaders(serverToken) });
 }

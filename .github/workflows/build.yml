@@ -129,7 +129,7 @@ jobs:
         run: pnpm --filter @freestyle/server build
 
       - name: Install native build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev binutils
 
       - name: Build whisper.cpp binaries
         working-directory: apps/electron

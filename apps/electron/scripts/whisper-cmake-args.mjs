@@ -15,9 +15,8 @@ export function getWhisperCmakeArgs({ forBundledRelease = false } = {}) {
   ];
 
   const bundleLinux =
-    forBundledRelease ||
-    (process.platform === "linux" &&
-      process.argv.includes("--resources"));
+    process.platform === "linux" &&
+    (forBundledRelease || process.argv.includes("--resources"));
 
   if (bundleLinux) {
     args.push("-DGGML_NATIVE=OFF");

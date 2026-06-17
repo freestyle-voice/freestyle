@@ -22,6 +22,8 @@ declare global {
       hidePill: () => void;
       showErrorDialog: (title: string, message: string) => Promise<void>;
       getServerPort: () => Promise<number>;
+      getRemoteServerUrl: () => Promise<string>;
+      setRemoteServerUrl: (url: string) => Promise<string>;
       onHotkeyDown: (callback: () => void) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;
       onPillCancel: (callback: () => void) => () => void;

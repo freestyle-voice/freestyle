@@ -1,5 +1,7 @@
+import { type ServerType, serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { WebSocketServer } from "ws";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
   activateManagedMlxRuntimeForAppVersion,
@@ -27,6 +29,53 @@ const app = new Hono()
   })
   .get("/", (c) => c.text("Freestyle API"))
   .route("/", routes);
+
+export interface StartServerOptions {
+  /** Port to listen on. Defaults to 4649. Use 0 for a random free port. */
+  port?: number;
+  /**
+   * Host/interface to bind to. Defaults to "127.0.0.1" (loopback only).
+   * Set to "0.0.0.0" to accept connections from outside the machine
+   * (e.g. when running the server standalone inside a container/VM).
+   */
+  host?: string;
+}
+
+export interface RunningServer {
+  /** The underlying Node HTTP server. */
+  server: ServerType;
+  /** The actual port the server bound to (resolved when port is 0). */
+  port: number;
+}
+
+/**
+ * Start the Freestyle HTTP server with WebSocket support.
+ *
+ * Shared by the Electron main process (loopback, in-process) and the
+ * standalone container entrypoint (see startup.ts).
+ */
+export function startServer(
+  options: StartServerOptions = {},
+): Promise<RunningServer> {
+  const { port = 4649, host = "127.0.0.1" } = options;
+  const wss = new WebSocketServer({ noServer: true });
+
+  return new Promise((resolve, reject) => {
+    const server = serve(
+      {
+        fetch: app.fetch,
+        port,
+        hostname: host,
+        websocket: { server: wss },
+      },
+      (info) => {
+        resolve({ server, port: info.port });
+      },
+    );
+    // Reject if the server fails to bind (e.g. EADDRINUSE) before listening.
+    server.once("error", reject);
+  });
+}
 
 export { closeDb } from "./lib/db.js";
 export { stopMlxServer } from "./lib/mlx-asr/server.js";

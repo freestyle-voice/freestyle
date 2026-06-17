@@ -3,9 +3,12 @@ import { hc } from "hono/client";
 
 const DEFAULT_PORT = 4649;
 let resolvedPort: number = DEFAULT_PORT;
+// Base URL of a configured remote server ("" = use the local server).
+let remoteBase = "";
 let initialized = false;
 
 export function getApiBase(): string {
+  if (remoteBase) return remoteBase;
   return `http://127.0.0.1:${resolvedPort}`;
 }
 
@@ -15,12 +18,21 @@ export async function initApiBase(): Promise<void> {
   initialized = true;
 }
 
-/** Re-read the server port and verify the API is reachable. */
+/** Re-read the server location (remote URL or local port) and verify it's reachable. */
 export async function refreshApiBase(): Promise<boolean> {
   try {
-    resolvedPort = await window.api.getServerPort();
+    remoteBase = (await window.api.getRemoteServerUrl())
+      .trim()
+      .replace(/\/+$/, "");
   } catch {
-    resolvedPort = DEFAULT_PORT;
+    remoteBase = "";
+  }
+  if (!remoteBase) {
+    try {
+      resolvedPort = await window.api.getServerPort();
+    } catch {
+      resolvedPort = DEFAULT_PORT;
+    }
   }
   try {
     const res = await getClient().api.health.$get(

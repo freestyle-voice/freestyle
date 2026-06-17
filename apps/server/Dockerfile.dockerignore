@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/out
+**/.turbo
+**/.wrangler
+**/build
+.git
+**/.DS_Store
+**/*.log
+apps/electron/native/**/build

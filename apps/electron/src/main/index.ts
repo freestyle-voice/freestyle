@@ -44,17 +44,17 @@ import { rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { electronApp, is, optimizer } from "@electron-toolkit/utils";
-import server, {
+import {
   activateManagedMlxRuntimeForAppVersion,
   autoStartWhisperServer,
   closeDb,
   prefetchManagedMlxRuntimeForAppRelease,
   reconcileUnsupportedMlxVoiceDefault,
+  startServer as startFreestyleServer,
   stopMlxServer,
   stopWhisperServer,
 } from "@freestyle/server";
 import { createAppLogger } from "@freestyle/utils";
-import { serve } from "@hono/node-server";
 import {
   app,
   BrowserWindow,
@@ -72,7 +72,6 @@ import {
   Tray,
 } from "electron";
 import { autoUpdater } from "electron-updater";
-import { WebSocketServer } from "ws";
 import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
@@ -134,6 +133,18 @@ function writeSettings(patch: Record<string, unknown>): void {
   } catch {
     // ignore
   }
+}
+
+/**
+ * The base URL of a remote Freestyle server, if the user has configured one.
+ * When set, the app connects to that server instead of running one locally.
+ * Returns an empty string when using the default local server.
+ */
+function getRemoteServerUrl(): string {
+  const raw = readSettings().remoteServerUrl;
+  if (typeof raw !== "string") return "";
+  // Strip any trailing slash so callers can append paths cleanly.
+  return raw.trim().replace(/\/+$/, "");
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1174,6 +1185,18 @@ app.whenReady().then(async () => {
   // IPC: expose the server port to the renderer
   ipcMain.handle("server:port", () => serverPort);
 
+  // IPC: read the configured remote server URL ("" = use the local server)
+  ipcMain.handle("server:remote-url", () => getRemoteServerUrl());
+
+  // IPC: persist the remote server URL. Takes effect for API/WebSocket calls
+  // immediately; switching between local and remote requires a restart to
+  // start/stop the local server.
+  ipcMain.handle("server:set-remote-url", (_event, url: unknown) => {
+    const value = typeof url === "string" ? url.trim() : "";
+    writeSettings({ remoteServerUrl: value });
+    return getRemoteServerUrl();
+  });
+
   ipcMain.handle(
     "dialog:show-error",
     async (_event, title: string, detail: string) => {
@@ -1302,63 +1325,71 @@ app.whenReady().then(async () => {
     );
   });
 
-  // Set database path for the server before any API calls
-  process.env.FREESTYLE_DB_PATH = join(app.getPath("userData"), "freestyle.db");
+  // When a remote server URL is configured, the app talks to that server
+  // instead of running one locally. Skip all local server startup in that case.
+  const remoteServerUrl = getRemoteServerUrl();
 
-  process.env.FREESTYLE_ENV = is.dev ? "development" : "production";
-  if (!is.dev) {
-    process.env.FREESTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
-  }
-
-  // Run non-critical server startup tasks now that the DB path is set
-  reconcileUnsupportedMlxVoiceDefault();
-  autoStartWhisperServer();
-
-  // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
-  function startServer(port: number): void {
-    const wss = new WebSocketServer({ noServer: true });
-    httpServer = serve(
-      {
-        fetch: server.fetch,
-        port,
-        websocket: { server: wss },
-      },
-      (info) => {
-        serverPort = info.port;
-        log.info(`Server running on http://localhost:${info.port}`);
-      },
-    );
-
-    httpServer.on("error", (err: NodeJS.ErrnoException) => {
-      if (err.code === "EADDRINUSE" && port === DEFAULT_PORT) {
-        log.warn(`Port ${DEFAULT_PORT} in use, falling back to random port`);
-        startServer(0);
-      } else {
-        log.error(`Server failed to start: ${err}`);
-      }
-    });
-  }
-
-  // Check if a Freestyle server is already running on the default port.
-  let existingServer = false;
-  try {
-    const res = await net.fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`);
-    if (res.ok) {
-      const data = (await res.json()) as { status?: string; name?: string };
-      existingServer = data?.status === "ok" && data?.name === "freestyle";
-    }
-  } catch {}
-
-  if (existingServer) {
-    serverPort = DEFAULT_PORT;
-    log.info(
-      `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
-    );
+  if (remoteServerUrl) {
+    log.info(`Using remote Freestyle server at ${remoteServerUrl}`);
   } else {
-    startServer(DEFAULT_PORT);
+    // Set database path for the server before any API calls
+    process.env.FREESTYLE_DB_PATH = join(
+      app.getPath("userData"),
+      "freestyle.db",
+    );
+
+    process.env.FREESTYLE_ENV = is.dev ? "development" : "production";
+    if (!is.dev) {
+      process.env.FREESTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
+    }
+
+    // Run non-critical server startup tasks now that the DB path is set
+    reconcileUnsupportedMlxVoiceDefault();
+    autoStartWhisperServer();
+
+    // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
+    const startServer = (port: number): void => {
+      startFreestyleServer({ port, host: "127.0.0.1" })
+        .then(({ server, port: boundPort }) => {
+          httpServer = server;
+          serverPort = boundPort;
+          log.info(`Server running on http://localhost:${boundPort}`);
+        })
+        .catch((err: NodeJS.ErrnoException) => {
+          if (err.code === "EADDRINUSE" && port === DEFAULT_PORT) {
+            log.warn(
+              `Port ${DEFAULT_PORT} in use, falling back to random port`,
+            );
+            startServer(0);
+          } else {
+            log.error(`Server failed to start: ${err}`);
+          }
+        });
+    };
+
+    // Check if a Freestyle server is already running on the default port.
+    let existingServer = false;
+    try {
+      const res = await net.fetch(
+        `http://127.0.0.1:${DEFAULT_PORT}/api/health`,
+      );
+      if (res.ok) {
+        const data = (await res.json()) as { status?: string; name?: string };
+        existingServer = data?.status === "ok" && data?.name === "freestyle";
+      }
+    } catch {}
+
+    if (existingServer) {
+      serverPort = DEFAULT_PORT;
+      log.info(
+        `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
+      );
+    } else {
+      startServer(DEFAULT_PORT);
+    }
   }
 
-  if (!is.dev) {
+  if (!remoteServerUrl && !is.dev) {
     void activateManagedMlxRuntimeForAppVersion(app.getVersion()).catch(
       (err) => {
         log.warn(

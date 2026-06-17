@@ -186,12 +186,6 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.65
         version: 3.0.65(zod@4.4.3)
-      '@freestyle/utils':
-        specifier: workspace:*
-        version: link:../../packages/utils
-      '@freestyle/validations':
-        specifier: workspace:*
-        version: link:../../packages/validations
       '@hono/mcp':
         specifier: ^0.3.0
         version: 0.3.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(hono-rate-limiter@0.5.3(hono@4.12.22))(hono@4.12.22)(zod@4.4.3)
@@ -229,6 +223,12 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@freestyle/utils':
+        specifier: workspace:*
+        version: link:../../packages/utils
+      '@freestyle/validations':
+        specifier: workspace:*
+        version: link:../../packages/validations
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15

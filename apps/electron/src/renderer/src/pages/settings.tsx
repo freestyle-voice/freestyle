@@ -21,6 +21,7 @@ import {
   Monitor,
   Moon,
   Pause,
+  Server,
   Sun,
   Trash2,
   Volume2,
@@ -89,6 +90,11 @@ export default function SettingsPage(): React.JSX.Element {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
+  const [serverUrlInput, setServerUrlInput] = useState("");
+  const [savedServerUrl, setSavedServerUrl] = useState("");
+  const [serverTest, setServerTest] = useState<
+    "idle" | "testing" | "ok" | "fail"
+  >("idle");
 
   const microphoneOptions = useMemo(
     () => [
@@ -355,6 +361,15 @@ export default function SettingsPage(): React.JSX.Element {
       .then((v) => setShowOnLaunch(v))
       .catch(() => {});
 
+    // Remote server URL ("" = local server)
+    window.api
+      ?.getRemoteServerUrl()
+      .then((url) => {
+        setSavedServerUrl(url);
+        setServerUrlInput(url);
+      })
+      .catch(() => {});
+
     // Auto-updater events
     const removeAvail = window.api?.onUpdateAvailable((info) => {
       setUpdateAvailable(info.version);
@@ -467,6 +482,36 @@ export default function SettingsPage(): React.JSX.Element {
     setShowOnLaunch(enabled);
     window.api?.setShowDashboardOnLaunch(enabled);
   }, []);
+
+  const testServerUrl = useCallback(async (rawUrl: string) => {
+    const base = rawUrl.trim().replace(/\/+$/, "");
+    setServerTest("testing");
+    try {
+      const target = base
+        ? `${base}/api/health`
+        : `http://127.0.0.1:4649/api/health`;
+      const res = await fetch(target, {
+        signal: AbortSignal.timeout(5000),
+      });
+      const data = (await res.json()) as { status?: string; name?: string };
+      setServerTest(
+        res.ok && data.status === "ok" && data.name === "freestyle"
+          ? "ok"
+          : "fail",
+      );
+    } catch {
+      setServerTest("fail");
+    }
+  }, []);
+
+  const handleSaveServerUrl = useCallback(async () => {
+    const saved =
+      (await window.api?.setRemoteServerUrl(serverUrlInput)) ??
+      serverUrlInput.trim().replace(/\/+$/, "");
+    setSavedServerUrl(saved);
+    setServerUrlInput(saved);
+    await testServerUrl(saved);
+  }, [serverUrlInput, testServerUrl]);
 
   const clearHistory = useCallback(async () => {
     if (!confirm(t("settings.data.clearHistoryConfirm"))) {
@@ -618,6 +663,61 @@ export default function SettingsPage(): React.JSX.Element {
             last
           >
             <Toggle on={showOnLaunch} onChange={handleShowOnLaunchToggle} />
+          </Row>
+        </Section>
+
+        <Section label="Server">
+          <Row
+            label="Server URL"
+            desc="Leave empty to use the built-in local server. Enter the URL of a self-hosted Freestyle server (e.g. http://your-vm:4649) to connect to it instead. Restart the app after changing this."
+            last
+          >
+            <div className="flex w-full max-w-md flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Server className="text-muted-foreground h-4 w-4 shrink-0" />
+                <input
+                  id="settings-server-url"
+                  type="text"
+                  value={serverUrlInput}
+                  onChange={(e) => {
+                    setServerUrlInput(e.target.value);
+                    setServerTest("idle");
+                  }}
+                  placeholder="http://127.0.0.1:4649 (local)"
+                  className="border-border bg-card text-foreground min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveServerUrl}
+                  disabled={serverUrlInput.trim() === savedServerUrl.trim()}
+                  className="bg-foreground text-background hover:bg-foreground/90 inline-flex shrink-0 items-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
+                >
+                  {t("common.save")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => testServerUrl(serverUrlInput)}
+                  className="border-border hover:bg-secondary inline-flex shrink-0 items-center rounded-md border px-3 py-1.5 text-xs font-medium transition-colors"
+                >
+                  Test connection
+                </button>
+                {serverTest === "testing" && (
+                  <span className="text-muted-foreground text-xs">
+                    Testing…
+                  </span>
+                )}
+                {serverTest === "ok" && (
+                  <span className="text-primary inline-flex items-center gap-1 text-xs">
+                    <Check className="h-3.5 w-3.5" /> Reachable
+                  </span>
+                )}
+                {serverTest === "fail" && (
+                  <span className="text-destructive text-xs">Unreachable</span>
+                )}
+              </div>
+            </div>
           </Row>
         </Section>
 

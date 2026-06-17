@@ -27,8 +27,15 @@ if (!process.env.FREESTYLE_DB_PATH) {
   process.exit(1);
 }
 
-const { server } = await startServer({ port, host });
-console.log(`Freestyle server running on http://${host}:${port}`);
+const { server, port: boundPort } = await startServer({ port, host }).catch(
+  (err) => {
+    console.error(
+      `Failed to start server: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    process.exit(1);
+  },
+);
+console.log(`Freestyle server running on http://${host}:${boundPort}`);
 
 function shutdown(signal: string): void {
   console.log(`Received ${signal}, shutting down...`);

@@ -7,7 +7,11 @@ import {
   keyDisplayLabel,
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
-import { getClient } from "@renderer/lib/api";
+import {
+  checkServerHealth,
+  getClient,
+  getLocalApiBase,
+} from "@renderer/lib/api";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { cn } from "@renderer/lib/utils";
@@ -484,24 +488,10 @@ export default function SettingsPage(): React.JSX.Element {
   }, []);
 
   const testServerUrl = useCallback(async (rawUrl: string) => {
-    const base = rawUrl.trim().replace(/\/+$/, "");
+    const base = rawUrl.trim().replace(/\/+$/, "") || getLocalApiBase();
     setServerTest("testing");
-    try {
-      const target = base
-        ? `${base}/api/health`
-        : `http://127.0.0.1:4649/api/health`;
-      const res = await fetch(target, {
-        signal: AbortSignal.timeout(5000),
-      });
-      const data = (await res.json()) as { status?: string; name?: string };
-      setServerTest(
-        res.ok && data.status === "ok" && data.name === "freestyle"
-          ? "ok"
-          : "fail",
-      );
-    } catch {
-      setServerTest("fail");
-    }
+    const ok = await checkServerHealth(base, 5000);
+    setServerTest(ok ? "ok" : "fail");
   }, []);
 
   const handleSaveServerUrl = useCallback(async () => {

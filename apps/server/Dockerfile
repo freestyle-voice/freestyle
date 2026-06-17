@@ -7,7 +7,9 @@
 # root, then use `pnpm deploy` to produce a self-contained directory (its
 # own node_modules with only production dependencies) for the runtime image.
 #
-# Build from the repository root:
+# Released images are published to ghcr.io/freestyle-voice/freestyle-server
+# (tagged with each release version and :latest). To build locally instead,
+# run from the repository root:
 #   docker build -f apps/server/Dockerfile -t freestyle-server .
 # Run (open):
 #   docker run -p 4649:4649 -v freestyle-data:/data freestyle-server

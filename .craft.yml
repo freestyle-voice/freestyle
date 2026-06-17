@@ -24,3 +24,17 @@ artifactProvider:
 targets:
   - name: github
     includeNames: /(^|.*\/)(.*\.(dmg|zip|exe|msi|AppImage|deb|snap|blockmap)|latest.*\.yml|mlx_asr_worker-.*\.tar\.gz)$/
+
+  # Re-tag the server container image (built & pushed during CI on the release
+  # branch, tagged with the git SHA) to the release version and :latest.
+  # Craft auto-authenticates to ghcr.io via GITHUB_TOKEN/GITHUB_API_TOKEN.
+  - name: docker
+    id: versioned
+    source: ghcr.io/freestyle-voice/freestyle-server
+    target: ghcr.io/freestyle-voice/freestyle-server
+  - name: docker
+    id: latest
+    source: ghcr.io/freestyle-voice/freestyle-server
+    target:
+      image: ghcr.io/freestyle-voice/freestyle-server
+      format: "{{{image}}}:latest"

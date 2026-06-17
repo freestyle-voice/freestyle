@@ -136,12 +136,12 @@ function writeSettings(patch: Record<string, unknown>): void {
 }
 
 /**
- * The base URL of a remote Freestyle server, if the user has configured one.
- * When set, the app connects to that server instead of running one locally.
- * Returns an empty string when using the default local server.
+ * The configured Freestyle server URL, if the user has set one. When present,
+ * the app connects to that server instead of running one locally. Returns an
+ * empty string when using the default local server.
  */
-function getRemoteServerUrl(): string {
-  const raw = readSettings().remoteServerUrl;
+function getServerUrl(): string {
+  const raw = readSettings().serverUrl;
   if (typeof raw !== "string") return "";
   // Strip any trailing slash so callers can append paths cleanly.
   return raw.trim().replace(/\/+$/, "");
@@ -1185,16 +1185,16 @@ app.whenReady().then(async () => {
   // IPC: expose the server port to the renderer
   ipcMain.handle("server:port", () => serverPort);
 
-  // IPC: read the configured remote server URL ("" = use the local server)
-  ipcMain.handle("server:remote-url", () => getRemoteServerUrl());
+  // IPC: read the configured server URL ("" = use the local server)
+  ipcMain.handle("server:url", () => getServerUrl());
 
-  // IPC: persist the remote server URL. Takes effect for API/WebSocket calls
-  // immediately; switching between local and remote requires a restart to
-  // start/stop the local server.
-  ipcMain.handle("server:set-remote-url", (_event, url: unknown) => {
+  // IPC: persist the server URL. Takes effect for API/WebSocket calls
+  // immediately; switching between local and a configured URL requires a
+  // restart to start/stop the local server.
+  ipcMain.handle("server:set-url", (_event, url: unknown) => {
     const value = typeof url === "string" ? url.trim() : "";
-    writeSettings({ remoteServerUrl: value });
-    return getRemoteServerUrl();
+    writeSettings({ serverUrl: value });
+    return getServerUrl();
   });
 
   ipcMain.handle(
@@ -1325,12 +1325,12 @@ app.whenReady().then(async () => {
     );
   });
 
-  // When a remote server URL is configured, the app talks to that server
-  // instead of running one locally. Skip all local server startup in that case.
-  const remoteServerUrl = getRemoteServerUrl();
+  // When a server URL is configured, the app talks to that server instead of
+  // running one locally. Skip all local server startup in that case.
+  const serverUrl = getServerUrl();
 
-  if (remoteServerUrl) {
-    log.info(`Using remote Freestyle server at ${remoteServerUrl}`);
+  if (serverUrl) {
+    log.info(`Using configured Freestyle server at ${serverUrl}`);
   } else {
     // Set database path for the server before any API calls
     process.env.FREESTYLE_DB_PATH = join(
@@ -1389,7 +1389,7 @@ app.whenReady().then(async () => {
     }
   }
 
-  if (!remoteServerUrl && !is.dev) {
+  if (!serverUrl && !is.dev) {
     void activateManagedMlxRuntimeForAppVersion(app.getVersion()).catch(
       (err) => {
         log.warn(

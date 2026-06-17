@@ -30,11 +30,10 @@ const api = {
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),
   getServerPort: (): Promise<number> => ipcRenderer.invoke("server:port"),
-  // Remote server URL ("" = use the bundled local server)
-  getRemoteServerUrl: (): Promise<string> =>
-    ipcRenderer.invoke("server:remote-url"),
-  setRemoteServerUrl: (url: string): Promise<string> =>
-    ipcRenderer.invoke("server:set-remote-url", url),
+  // Server URL ("" = use the bundled local server)
+  getServerUrl: (): Promise<string> => ipcRenderer.invoke("server:url"),
+  setServerUrl: (url: string): Promise<string> =>
+    ipcRenderer.invoke("server:set-url", url),
   onHotkeyDown: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("hotkey:down", handler);

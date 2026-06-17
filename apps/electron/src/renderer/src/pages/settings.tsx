@@ -361,9 +361,9 @@ export default function SettingsPage(): React.JSX.Element {
       .then((v) => setShowOnLaunch(v))
       .catch(() => {});
 
-    // Remote server URL ("" = local server)
+    // Server URL ("" = local server)
     window.api
-      ?.getRemoteServerUrl()
+      ?.getServerUrl()
       .then((url) => {
         setSavedServerUrl(url);
         setServerUrlInput(url);
@@ -506,7 +506,7 @@ export default function SettingsPage(): React.JSX.Element {
 
   const handleSaveServerUrl = useCallback(async () => {
     const saved =
-      (await window.api?.setRemoteServerUrl(serverUrlInput)) ??
+      (await window.api?.setServerUrl(serverUrlInput)) ??
       serverUrlInput.trim().replace(/\/+$/, "");
     setSavedServerUrl(saved);
     setServerUrlInput(saved);
@@ -669,7 +669,7 @@ export default function SettingsPage(): React.JSX.Element {
         <Section label="Server">
           <Row
             label="Server URL"
-            desc="Leave empty to use the built-in local server. Enter the URL of a self-hosted Freestyle server (e.g. http://your-vm:4649) to connect to it instead. Restart the app after changing this."
+            desc="Leave empty to use the built-in local server. Enter the URL of a self-hosted Freestyle server (e.g. http://your-vm:4649) to use that instead. Restart the app after changing this."
             last
           >
             <div className="flex w-full max-w-md flex-col gap-2">

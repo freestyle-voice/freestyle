@@ -805,9 +805,7 @@ export default function SettingsPage(): React.JSX.Element {
                       <span
                         className={cn(
                           "h-1.5 w-1.5 rounded-full",
-                          savedServerUrl
-                            ? "bg-muted-foreground"
-                            : "bg-primary",
+                          savedServerUrl ? "bg-muted-foreground" : "bg-primary",
                         )}
                       />
                       {savedServerUrl ? "Custom server" : "Local server"}
@@ -1026,57 +1024,35 @@ export default function SettingsPage(): React.JSX.Element {
                   value={
                     selectedDevice === "" ? SYSTEM_DEFAULT_MIC : selectedDevice
                   }
-              onValueChange={(v) =>
-                handleDeviceChange(v === SYSTEM_DEFAULT_MIC ? "" : v)
-              }
-            >
-              <SelectTrigger
-                id="settings-microphone"
-                className="w-full max-w-md"
-              >
-                <Mic className="text-muted-foreground size-4 shrink-0" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {microphoneOptions.map((o) => (
-                  <SelectItem
-                    key={o.value}
-                    value={o.value === "" ? SYSTEM_DEFAULT_MIC : o.value}
+                  onValueChange={(v) =>
+                    handleDeviceChange(v === SYSTEM_DEFAULT_MIC ? "" : v)
+                  }
+                >
+                  <SelectTrigger
+                    id="settings-microphone"
+                    className="w-full max-w-md"
                   >
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Row>
-
-          <Row
-            label={t("settings.recording.language")}
-            desc={t("settings.recording.languageDesc")}
-          >
-            <Select value={language} onValueChange={handleLanguageChange}>
-              <SelectTrigger id="settings-language" className="w-full max-w-md">
-                <Languages className="text-muted-foreground size-4 shrink-0" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {languageOptions.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Row>
+                    <Mic className="text-muted-foreground size-4 shrink-0" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {microphoneOptions.map((o) => (
+                      <SelectItem
+                        key={o.value}
+                        value={o.value === "" ? SYSTEM_DEFAULT_MIC : o.value}
+                      >
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Row>
 
               <Row
                 label={t("settings.recording.language")}
                 desc={t("settings.recording.languageDesc")}
               >
-                <Select
-                  value={language}
-                  onValueChange={handleLanguageChange}
-                >
+                <Select value={language} onValueChange={handleLanguageChange}>
                   <SelectTrigger
                     id="settings-language"
                     className="w-full max-w-md"

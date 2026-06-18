@@ -7,6 +7,11 @@ import { join } from "node:path";
 import type { AgentAuthMode } from "@freestyle/validations";
 import { app, ipcMain } from "electron";
 import { getPrereqStatus } from "./auth.js";
+import {
+  computerUseAvailable,
+  computerUseEnabled,
+  installCliclick,
+} from "./computer-use.js";
 import { getConversation, listConversations } from "./history.js";
 import type { AgentSessionManager } from "./session-manager.js";
 
@@ -20,6 +25,8 @@ interface AgentIpcDeps {
   /** Expand + focus the bar — used to reveal it once a voice transcript lands
    *  (recording itself happens in the slim collapsed pill). */
   revealBar: () => void;
+  /** Persist the computer-use opt-in through main's settings.json writer. */
+  persistComputerUse: (enabled: boolean) => void;
 }
 
 /** cwd for runs + conversation history: configured `agentCwd`, else home. */
@@ -82,4 +89,15 @@ export function registerAgentIpc(deps: AgentIpcDeps): void {
   });
 
   ipcMain.on("agent-bar:reveal", () => deps.revealBar());
+
+  // ---- Computer use (opt-in, experimental) ----
+  ipcMain.handle("agent:computer-use:get", () => computerUseEnabled());
+
+  ipcMain.on("agent:computer-use:set", (_event, enabled: unknown) => {
+    deps.persistComputerUse(enabled === true);
+  });
+
+  ipcMain.handle("agent:computer-use:status", () => computerUseAvailable());
+
+  ipcMain.handle("agent:computer-use:install", () => installCliclick());
 }

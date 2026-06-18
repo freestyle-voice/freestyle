@@ -107,6 +107,12 @@ export default function SettingsPage(): React.JSX.Element {
   const [audioPlaybackMode, setAudioPlaybackMode] =
     useState<AudioPlaybackMode>("off");
   const [transcriptionPrompt, setTranscriptionPrompt] = useState("");
+  const [computerUse, setComputerUse] = useState(false);
+  const [helperStatus, setHelperStatus] = useState<{
+    ok: boolean;
+    reason?: string;
+  } | null>(null);
+  const [installingHelper, setInstallingHelper] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -586,6 +592,48 @@ export default function SettingsPage(): React.JSX.Element {
     await getClient().api.history.$delete();
   }, [t]);
 
+  // ---- Computer use (experimental) ----
+  useEffect(() => {
+    let active = true;
+    window.api?.agent
+      .getComputerUse()
+      .then((v) => {
+        if (active) setComputerUse(v);
+      })
+      .catch(() => {});
+    window.api?.agent
+      .computerUseStatus()
+      .then((s) => {
+        if (active) setHelperStatus(s);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleComputerUseToggle = useCallback((enabled: boolean) => {
+    setComputerUse(enabled);
+    window.api?.agent.setComputerUse(enabled);
+    if (enabled) {
+      window.api?.agent
+        .computerUseStatus()
+        .then(setHelperStatus)
+        .catch(() => {});
+    }
+  }, []);
+
+  const handleInstallHelper = useCallback(async () => {
+    setInstallingHelper(true);
+    try {
+      await window.api?.agent.installComputerUse();
+      const status = await window.api?.agent.computerUseStatus();
+      if (status) setHelperStatus(status);
+    } finally {
+      setInstallingHelper(false);
+    }
+  }, []);
+
   const handleSoundToggle = useCallback((enabled: boolean) => {
     setSoundEnabled(enabled);
     getClient()
@@ -1038,6 +1086,47 @@ export default function SettingsPage(): React.JSX.Element {
                   : undefined
               }
             />
+          </Row>
+        </Section>
+
+        <Section label="Computer use (experimental)" tight>
+          <Row
+            label="Allow computer use"
+            desc="Let the Claude agent see your screen and control the mouse and keyboard. Powerful but risky — a misheard request can take actions on its own. Off by default."
+          >
+            <Switch
+              checked={computerUse}
+              onCheckedChange={handleComputerUseToggle}
+            />
+          </Row>
+          <Row
+            label="Desktop control helper"
+            desc="Freestyle uses a small bundled helper (cliclick) plus macOS Screen Recording and Accessibility permission to control the desktop."
+            last
+          >
+            <div className="flex items-center gap-3">
+              <StatusDot
+                granted={helperStatus?.ok === true}
+                checking={helperStatus === null || installingHelper}
+              />
+              {helperStatus?.ok === true ? (
+                <Check className="text-primary h-4 w-4" />
+              ) : (
+                <Button
+                  variant="ink"
+                  size="sm"
+                  onClick={handleInstallHelper}
+                  disabled={installingHelper}
+                >
+                  {installingHelper ? "Installing…" : "Install helper"}
+                </Button>
+              )}
+              {helperStatus && !helperStatus.ok && helperStatus.reason ? (
+                <span className="text-muted-foreground max-w-xs text-xs">
+                  {helperStatus.reason}
+                </span>
+              ) : null}
+            </div>
           </Row>
         </Section>
 

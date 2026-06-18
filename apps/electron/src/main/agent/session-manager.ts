@@ -18,6 +18,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { createAppLogger } from "@freestyle/utils";
 import type { AgentEvent } from "@freestyle/validations";
 import { resolveAuth } from "./auth.js";
+import { computerUseEnabled, createComputerUseServer } from "./computer-use.js";
 
 const log = createAppLogger("agent-session");
 
@@ -76,6 +77,11 @@ export class AgentSessionManager {
 
     const { env } = resolveAuth();
 
+    // Computer use (opt-in, experimental): when enabled, attach the macOS
+    // desktop actuator as an in-process MCP server so the agent can screenshot,
+    // click, and type on the real machine. Off by default — see computer-use.ts.
+    const computerUse = computerUseEnabled();
+
     try {
       const stream = query({
         prompt,
@@ -87,6 +93,9 @@ export class AgentSessionManager {
           ...(resume ? { resume } : {}),
           // Every Claude Code tool, run without approval prompts.
           tools: { type: "preset", preset: "claude_code" },
+          ...(computerUse
+            ? { mcpServers: { computer: createComputerUseServer() } }
+            : {}),
           permissionMode: "bypassPermissions",
           allowDangerouslySkipPermissions: true,
           stderr: (data: string) => log.debug(`[claude] ${data.trim()}`),

@@ -279,6 +279,14 @@ const api = {
     setComposing: (composing: boolean): void =>
       ipcRenderer.send("agent-bar:composing", composing),
     reveal: (): void => ipcRenderer.send("agent-bar:reveal"),
+    getComputerUse: (): Promise<boolean> =>
+      ipcRenderer.invoke("agent:computer-use:get"),
+    setComputerUse: (enabled: boolean): void =>
+      ipcRenderer.send("agent:computer-use:set", enabled),
+    computerUseStatus: (): Promise<{ ok: boolean; reason?: string }> =>
+      ipcRenderer.invoke("agent:computer-use:status"),
+    installComputerUse: (): Promise<{ ok: boolean; reason?: string }> =>
+      ipcRenderer.invoke("agent:computer-use:install"),
     onHotkeyDown: (callback: () => void): (() => void) => {
       const handler = (): void => callback();
       ipcRenderer.on("agent-hotkey:down", handler);

@@ -137,6 +137,10 @@ declare global {
         getConversation: (id: string) => Promise<AgentMessage[]>;
         setComposing: (composing: boolean) => void;
         reveal: () => void;
+        getComputerUse: () => Promise<boolean>;
+        setComputerUse: (enabled: boolean) => void;
+        computerUseStatus: () => Promise<{ ok: boolean; reason?: string }>;
+        installComputerUse: () => Promise<{ ok: boolean; reason?: string }>;
         onHotkeyDown: (callback: () => void) => () => void;
         onHotkeyUp: (callback: () => void) => () => void;
         onEvent: (callback: (event: AgentEvent) => void) => () => void;

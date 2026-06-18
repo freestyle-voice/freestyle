@@ -1911,6 +1911,8 @@ app.whenReady().then(async () => {
       agentBarComposing = composing;
     },
     revealBar: () => expandAgentBar(true),
+    persistComputerUse: (enabled) =>
+      writeSettings({ agentComputerUse: enabled }),
   });
   void registerAgentHotkey().catch((err) => {
     hotkeyLog.error(

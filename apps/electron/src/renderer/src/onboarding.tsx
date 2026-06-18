@@ -11,13 +11,10 @@ import {
 import {
   InputGroup,
   InputGroupAddon,
-  InputGroupButton,
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@renderer/components/ui/toggle-group";
+import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
+import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import { VoiceRow } from "@renderer/components/voice-row";
 import {
   comboDisplayKeys,
@@ -45,8 +42,6 @@ import {
   Check,
   ChevronLeft,
   ClipboardPaste,
-  Eye,
-  EyeOff,
   HardDrive,
   Key,
   Keyboard,
@@ -1140,30 +1135,22 @@ function ModelSelectorOverlay({
 
             {/* Source toggle */}
             <div className="flex shrink-0 justify-center pt-4">
-              <ToggleGroup
-                type="single"
-                value={source}
-                onValueChange={(v) =>
-                  v && onSourceChange(v as "cloud" | "local")
-                }
-                spacing={0}
+              <SegmentedControl
                 size="sm"
-                className="border border-border bg-secondary rounded-md p-[3px]"
-              >
-                <ToggleGroupItem
-                  value="cloud"
-                  className="data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm"
-                >
-                  {t("onboarding.modelSelector.cloudApi")}
-                </ToggleGroupItem>
-                <ToggleGroupItem
-                  value="local"
-                  className="data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm"
-                >
-                  <HardDrive data-icon="inline-start" />
-                  {t("onboarding.modelSelector.onDevice")}
-                </ToggleGroupItem>
-              </ToggleGroup>
+                value={source}
+                onValueChange={(v) => onSourceChange(v as "cloud" | "local")}
+                options={[
+                  {
+                    value: "cloud",
+                    label: t("onboarding.modelSelector.cloudApi"),
+                  },
+                  {
+                    value: "local",
+                    label: t("onboarding.modelSelector.onDevice"),
+                    icon: HardDrive,
+                  },
+                ]}
+              />
             </div>
 
             {/* List */}
@@ -1256,15 +1243,11 @@ function ModelSelectorOverlay({
                 <InputGroupAddon>
                   <Key />
                 </InputGroupAddon>
-                <InputGroupAddon align="inline-end">
-                  <InputGroupButton
-                    size="icon-xs"
-                    onClick={onToggleShowKey}
-                    aria-label={showKey ? "Hide key" : "Show key"}
-                  >
-                    {showKey ? <EyeOff /> : <Eye />}
-                  </InputGroupButton>
-                </InputGroupAddon>
+                <RevealToggle
+                  revealed={showKey}
+                  onToggle={onToggleShowKey}
+                  label="key"
+                />
               </InputGroup>
               {apiKeyForm.formState.errors.key && (
                 <p className="text-destructive mt-2 text-[12px]">

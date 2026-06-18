@@ -6,9 +6,10 @@ import { Input } from "@renderer/components/ui/input";
 import {
   InputGroup,
   InputGroupAddon,
-  InputGroupButton,
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
+import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
+import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import {
   Select,
   SelectContent,
@@ -17,10 +18,6 @@ import {
   SelectValue,
 } from "@renderer/components/ui/select";
 import { Switch } from "@renderer/components/ui/switch";
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@renderer/components/ui/toggle-group";
 import {
   comboDisplayKeys,
   formatAcceleratorKeys,
@@ -41,8 +38,6 @@ import {
   Check,
   Download,
   ExternalLink,
-  Eye,
-  EyeOff,
   Key,
   Keyboard,
   Languages,
@@ -811,28 +806,22 @@ export default function SettingsPage(): React.JSX.Element {
                 : t("settings.recording.activationDescHold")
             }
           >
-            <ToggleGroup
-              type="single"
+            <SegmentedControl
               value={hotkeyMode}
               onValueChange={(v) =>
-                v && handleHotkeyModeChange(v as "hold" | "toggle")
+                handleHotkeyModeChange(v as "hold" | "toggle")
               }
-              spacing={0.5}
-              className="border-border bg-secondary rounded-[9px] border p-[3px]"
-            >
-              <ToggleGroupItem
-                value="hold"
-                className="data-[state=on]:bg-card data-[state=on]:shadow-sm"
-              >
-                {t("settings.recording.activationHold")}
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="toggle"
-                className="data-[state=on]:bg-card data-[state=on]:shadow-sm"
-              >
-                {t("settings.recording.activationToggle")}
-              </ToggleGroupItem>
-            </ToggleGroup>
+              options={[
+                {
+                  value: "hold",
+                  label: t("settings.recording.activationHold"),
+                },
+                {
+                  value: "toggle",
+                  label: t("settings.recording.activationToggle"),
+                },
+              ]}
+            />
           </Row>
 
           <Row
@@ -1135,15 +1124,11 @@ export default function SettingsPage(): React.JSX.Element {
                   <Key />
                 </InputGroupAddon>
                 {serverTokenInput && (
-                  <InputGroupAddon align="inline-end">
-                    <InputGroupButton
-                      size="icon-xs"
-                      aria-label={showToken ? "Hide token" : "Show token"}
-                      onClick={() => setShowToken((v) => !v)}
-                    >
-                      {showToken ? <EyeOff /> : <Eye />}
-                    </InputGroupButton>
-                  </InputGroupAddon>
+                  <RevealToggle
+                    revealed={showToken}
+                    onToggle={() => setShowToken((v) => !v)}
+                    label="token"
+                  />
                 )}
               </InputGroup>
               <div className="flex items-center gap-2">
@@ -1285,30 +1270,16 @@ function Segment({
   compact?: boolean;
 }) {
   return (
-    <ToggleGroup
-      type="single"
+    <SegmentedControl
+      options={options.map((o) => ({
+        value: o.id,
+        label: o.label,
+        icon: o.icon,
+      }))}
       value={active}
-      onValueChange={(v) => v && onSelect(v)}
-      spacing={0.5}
-      className="border-border bg-secondary max-w-full rounded-[9px] border p-[3px]"
-    >
-      {options.map((o) => {
-        const Icon = o.icon;
-        return (
-          <ToggleGroupItem
-            key={o.id}
-            value={o.id}
-            className={cn(
-              "text-muted-foreground gap-1.5 rounded-md data-[state=on]:bg-card data-[state=on]:font-medium data-[state=on]:shadow-sm",
-              compact ? "h-7 px-2.5 text-[12px]" : "h-8 px-3 text-[12.5px]",
-            )}
-          >
-            {Icon && <Icon data-icon="inline-start" />}
-            {o.label}
-          </ToggleGroupItem>
-        );
-      })}
-    </ToggleGroup>
+      onValueChange={onSelect}
+      size={compact ? "sm" : "default"}
+    />
   );
 }
 

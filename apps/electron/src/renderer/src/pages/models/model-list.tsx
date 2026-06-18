@@ -4,11 +4,10 @@ import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import {
   InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
 import { Progress } from "@renderer/components/ui/progress";
+import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
 import type {
   AvailableModel,
   VoiceItem,
@@ -20,8 +19,6 @@ import {
   ArrowLeft,
   Check,
   Download,
-  Eye,
-  EyeOff,
   Key,
   Laptop,
   Loader2,
@@ -868,15 +865,11 @@ function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
             onChange={(e) => localLlm.setApiKey(e.target.value)}
             placeholder="API key (optional)"
           />
-          <InputGroupAddon align="inline-end">
-            <InputGroupButton
-              size="icon-xs"
-              aria-label={showKey ? "Hide API key" : "Show API key"}
-              onClick={() => setShowKey(!showKey)}
-            >
-              {showKey ? <EyeOff /> : <Eye />}
-            </InputGroupButton>
-          </InputGroupAddon>
+          <RevealToggle
+            revealed={showKey}
+            onToggle={() => setShowKey(!showKey)}
+            label="API key"
+          />
         </InputGroup>
         {localLlm.connected === true && (
           <p className="text-primary text-[12px]">

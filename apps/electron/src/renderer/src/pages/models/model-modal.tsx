@@ -17,11 +17,11 @@ import {
 import {
   InputGroup,
   InputGroupAddon,
-  InputGroupButton,
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
+import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
 import { type AvailableModel, PROVIDER_KEY_URLS } from "@renderer/lib/models";
-import { AlertTriangle, Eye, EyeOff, Key, Loader2, X } from "lucide-react";
+import { AlertTriangle, Key, Loader2, X } from "lucide-react";
 import { useState } from "react";
 
 import { ModelList } from "./model-list";
@@ -218,15 +218,11 @@ function KeyStep({
             autoFocus
             className="mono"
           />
-          <InputGroupAddon align="inline-end">
-            <InputGroupButton
-              size="icon-xs"
-              aria-label={show ? "Hide API key" : "Show API key"}
-              onClick={() => setShow(!show)}
-            >
-              {show ? <EyeOff /> : <Eye />}
-            </InputGroupButton>
-          </InputGroupAddon>
+          <RevealToggle
+            revealed={show}
+            onToggle={() => setShow(!show)}
+            label="API key"
+          />
         </InputGroup>
         {error && (
           <div className="bg-destructive/10 flex items-start gap-2 rounded-md px-3 py-2">

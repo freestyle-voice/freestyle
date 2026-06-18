@@ -13,7 +13,14 @@ export default defineConfig({
     build: {
       externalizeDeps: false,
       rollupOptions: {
-        external: ["electron", "bufferutil", "utf-8-validate"],
+        external: [
+          "electron",
+          "bufferutil",
+          "utf-8-validate",
+          // Spawns the bundled Claude Code binary at runtime; must not be
+          // inlined by the bundler (and is asarUnpack'd — see electron-builder.yml).
+          "@anthropic-ai/claude-agent-sdk",
+        ],
       },
     },
   },
@@ -33,6 +40,7 @@ export default defineConfig({
         input: {
           index: resolve("src/renderer/index.html"),
           pill: resolve("src/renderer/pill.html"),
+          bar: resolve("src/renderer/bar.html"),
         },
       },
     },

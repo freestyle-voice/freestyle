@@ -1,4 +1,11 @@
 import { electronAPI } from "@electron-toolkit/preload";
+import type {
+  AgentAuthMode,
+  AgentConversation,
+  AgentEvent,
+  AgentMessage,
+  AgentPrereqStatus,
+} from "@freestyle/validations";
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   ActiveAudioPlaybackMode,
@@ -251,6 +258,49 @@ const api = {
     ): void => callback(state);
     ipcRenderer.on("mic:activity-changed", handler);
     return () => ipcRenderer.removeListener("mic:activity-changed", handler);
+  },
+  // --- Claude Code agent (Voice OS) ---
+  agent: {
+    prereqStatus: (): Promise<AgentPrereqStatus> =>
+      ipcRenderer.invoke("agent:prereq-status"),
+    setAuthMode: (mode: AgentAuthMode): void =>
+      ipcRenderer.send("agent:set-auth-mode", mode),
+    start: (payload: {
+      prompt: string;
+      cwd?: string;
+      resume?: string;
+    }): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("agent:start", payload),
+    cancel: (): void => ipcRenderer.send("agent:cancel"),
+    listConversations: (): Promise<AgentConversation[]> =>
+      ipcRenderer.invoke("agent:list-conversations"),
+    getConversation: (id: string): Promise<AgentMessage[]> =>
+      ipcRenderer.invoke("agent:get-conversation", id),
+    setComposing: (composing: boolean): void =>
+      ipcRenderer.send("agent-bar:composing", composing),
+    reveal: (): void => ipcRenderer.send("agent-bar:reveal"),
+    onHotkeyDown: (callback: () => void): (() => void) => {
+      const handler = (): void => callback();
+      ipcRenderer.on("agent-hotkey:down", handler);
+      return () => ipcRenderer.removeListener("agent-hotkey:down", handler);
+    },
+    onHotkeyUp: (callback: () => void): (() => void) => {
+      const handler = (): void => callback();
+      ipcRenderer.on("agent-hotkey:up", handler);
+      return () => ipcRenderer.removeListener("agent-hotkey:up", handler);
+    },
+    onEvent: (callback: (event: AgentEvent) => void): (() => void) => {
+      const handler = (_: unknown, event: AgentEvent): void => callback(event);
+      ipcRenderer.on("agent:event", handler);
+      return () => ipcRenderer.removeListener("agent:event", handler);
+    },
+    onSetExpanded: (callback: (expanded: boolean) => void): (() => void) => {
+      const handler = (_: unknown, expanded: boolean): void =>
+        callback(expanded);
+      ipcRenderer.on("agent-bar:set-expanded", handler);
+      return () =>
+        ipcRenderer.removeListener("agent-bar:set-expanded", handler);
+    },
   },
 };
 

@@ -1,5 +1,12 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
 import type {
+  AgentAuthMode,
+  AgentConversation,
+  AgentEvent,
+  AgentMessage,
+  AgentPrereqStatus,
+} from "@freestyle/validations";
+import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
 } from "../shared/audio-playback";
@@ -116,6 +123,25 @@ declare global {
       onMicActivityChanged: (
         callback: (state: "active" | "inactive" | "unknown") => void,
       ) => () => void;
+      // Claude Code agent (Voice OS)
+      agent: {
+        prereqStatus: () => Promise<AgentPrereqStatus>;
+        setAuthMode: (mode: AgentAuthMode) => void;
+        start: (payload: {
+          prompt: string;
+          cwd?: string;
+          resume?: string;
+        }) => Promise<{ ok: boolean; error?: string }>;
+        cancel: () => void;
+        listConversations: () => Promise<AgentConversation[]>;
+        getConversation: (id: string) => Promise<AgentMessage[]>;
+        setComposing: (composing: boolean) => void;
+        reveal: () => void;
+        onHotkeyDown: (callback: () => void) => () => void;
+        onHotkeyUp: (callback: () => void) => () => void;
+        onEvent: (callback: (event: AgentEvent) => void) => () => void;
+        onSetExpanded: (callback: (expanded: boolean) => void) => () => void;
+      };
     };
   }
 }

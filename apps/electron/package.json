@@ -28,6 +28,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.181",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@freestyle/server": "workspace:*",
@@ -50,7 +51,9 @@
     "react-hotkeys-hook": "^5.3.2",
     "react-i18next": "^17.0.8",
     "react-icons": "^5.6.0",
+    "react-markdown": "^10.1.0",
     "react-router": "^7.15.1",
+    "remark-gfm": "^4.0.1",
     "shadcn": "^4.8.0",
     "tailwind-merge": "^3.6.0",
     "three": "^0.184.0",

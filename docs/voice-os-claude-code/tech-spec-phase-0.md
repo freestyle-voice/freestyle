@@ -122,11 +122,7 @@ class AgentSessionManager {
   - `type: "result"` → `result` (final text), `usage.{input_tokens, output_tokens}`, `total_cost_usd`, `stop_reason`. Fires once at the end.
   - (also `tool_progress`, `permission_denied` — handle/ignore as needed.)
 - **Cancellation (verified):** pass `options.abortController = new AbortController()` and call `controller.abort()` in `cancel()` (the `Query` object also exposes `.interrupt()`).
-- **Permission posture (slice safety, verified):** safest is `permissionMode: "default"` + `allowedTools: ["Read","Glob","Grep","WebSearch"]` + a `canUseTool` callback that **denies everything else** for the slice:
-  ```ts
-  canUseTool: async (toolName) => ({ behavior: "deny", message: `${toolName} needs approval (Phase 2)` })
-  ```
-  Alternatively `permissionMode: "plan"` (explores read-only, routes edits to `canUseTool`). **Never `bypassPermissions`.** The `canUseTool` seam is exactly where Part E's confirmation UX plugs in later.
+- **Tool/permission posture (owner decision — full autonomy):** the agent gets **every Claude Code tool** via `tools: { type: "preset", preset: "claude_code" }` and runs them **without any approval** via `permissionMode: "bypassPermissions"` (the SDK requires this be paired with `allowDangerouslySkipPermissions: true`; it also cannot run as root on Unix). This **overrides product-spec D4** (plan-first / never-bypass) for the Phase 0 build at the owner's request — there is no approval gate, so the agent can edit files, run shell commands, fetch the web, etc. ⚠️ Combined with voice input, a misheard prompt executes unattended; Part E's gating becomes a *re-introduction* later rather than a removal.
 - `options.cwd` = the configured project path (default `{userData}/agent-scratch`).
 - `env` merged with `resolveAuth().env` (§4.5).
 - Iterates the generator → **normalizes** each `SDKMessage` to the `AgentEvent` contract (§4.6) → pushes `agent:event` to the Bar. Completion → `result` event w/ usage; throw → `error`.

@@ -333,7 +333,10 @@
       "promptToggle": "View / edit prompt",
       "presetHint": "Editing this prompt switches to Custom so presets stay intact.",
       "customHint": "Your custom instructions are used for cleanup.",
-      "resetToPresets": "Reset to presets"
+      "resetToPresets": "Reset to presets",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved"
     }
   },
   "shell": {

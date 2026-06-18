@@ -10,7 +10,7 @@ import type {
   VoiceItem,
   WhisperStatus,
 } from "@renderer/lib/models";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 
 import { DEFAULT_MLX_KEEP_ALIVE_MINUTES } from "./constants";
@@ -47,6 +47,10 @@ export interface UseModels {
   llmCleanup: boolean;
   cleanupIntensity: CleanupIntensity;
   cleanupCustomPrompt: string;
+  /** True when the custom prompt has unsaved edits. */
+  customPromptDirty: boolean;
+  /** True while the custom prompt is being persisted. */
+  savingCustomPrompt: boolean;
   mlxKeepAliveMinutes: number;
 
   // Derived
@@ -80,6 +84,7 @@ export interface UseModels {
   setCleanup: (next: boolean) => void;
   setCleanupIntensity: (next: CleanupIntensity) => void;
   setCleanupCustomPrompt: (next: string) => void;
+  saveCleanupCustomPrompt: () => Promise<void>;
   saveMlxKeepAliveMinutes: (minutes: number) => void;
   deleteProvider: (provider: string) => Promise<void>;
 }
@@ -93,9 +98,9 @@ export function useModels(): UseModels {
   const [cleanupIntensity, setCleanupIntensityState] =
     useState<CleanupIntensity>(DEFAULT_CLEANUP_INTENSITY);
   const [cleanupCustomPrompt, setCleanupCustomPromptState] = useState("");
-  const customPromptSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  // The last value persisted to the server — used to detect unsaved edits.
+  const [savedCleanupCustomPrompt, setSavedCleanupCustomPrompt] = useState("");
+  const [savingCustomPrompt, setSavingCustomPrompt] = useState(false);
 
   const [whisperStatus, setWhisperStatus] = useState<WhisperStatus | null>(
     null,
@@ -170,6 +175,7 @@ export function useModels(): UseModels {
         const data = await cleanupCustomPromptRes.json();
         if ("value" in data && typeof data.value === "string") {
           setCleanupCustomPromptState(data.value);
+          setSavedCleanupCustomPrompt(data.value);
         }
       }
       if (localUrlRes.ok) {
@@ -237,15 +243,6 @@ export function useModels(): UseModels {
     if (IS_MAC) loadMlxStatus();
   }, [loadData, loadWhisperStatus, loadMlxStatus]);
 
-  // Flush any pending debounced custom-prompt write on unmount.
-  useEffect(() => {
-    return () => {
-      if (customPromptSaveTimer.current) {
-        clearTimeout(customPromptSaveTimer.current);
-      }
-    };
-  }, []);
-
   // Poll whisper status while a download is active.
   useEffect(() => {
     const active =
@@ -296,6 +293,7 @@ export function useModels(): UseModels {
   // -------------------------------------------------------------------------
 
   const keyProviders = new Set(apiKeys.map((k) => k.provider));
+  const customPromptDirty = cleanupCustomPrompt !== savedCleanupCustomPrompt;
   const defaultVoice = configured.find(
     (m) => m.type === "voice" && m.is_default === 1,
   );
@@ -495,24 +493,27 @@ export function useModels(): UseModels {
       .catch((err) => console.error("Failed to save cleanup intensity:", err));
   }, []);
 
-  // Persist the custom prompt locally on every keystroke but debounce the
-  // network write so typing doesn't fire a PUT per character.
+  // Edit the custom prompt locally; persistence happens explicitly via
+  // saveCleanupCustomPrompt (the Save button).
   const setCleanupCustomPrompt = useCallback((next: string) => {
     setCleanupCustomPromptState(next);
-    if (customPromptSaveTimer.current) {
-      clearTimeout(customPromptSaveTimer.current);
-    }
-    customPromptSaveTimer.current = setTimeout(() => {
-      getClient()
-        .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.cleanupCustomPrompt },
-          json: { value: next },
-        })
-        .catch((err) =>
-          console.error("Failed to save cleanup custom prompt:", err),
-        );
-    }, 500);
   }, []);
+
+  const saveCleanupCustomPrompt = useCallback(async () => {
+    const value = cleanupCustomPrompt;
+    setSavingCustomPrompt(true);
+    try {
+      await getClient().api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.cleanupCustomPrompt },
+        json: { value },
+      });
+      setSavedCleanupCustomPrompt(value);
+    } catch (err) {
+      console.error("Failed to save cleanup custom prompt:", err);
+    } finally {
+      setSavingCustomPrompt(false);
+    }
+  }, [cleanupCustomPrompt]);
 
   // Persist the MLX keep-alive window. At 0 ("cold start") also stop the
   // running server so the model unloads immediately.
@@ -620,6 +621,8 @@ export function useModels(): UseModels {
     llmCleanup,
     cleanupIntensity,
     cleanupCustomPrompt,
+    customPromptDirty,
+    savingCustomPrompt,
     mlxKeepAliveMinutes,
     keyProviders,
     defaultVoice,
@@ -649,6 +652,7 @@ export function useModels(): UseModels {
     setCleanup,
     setCleanupIntensity,
     setCleanupCustomPrompt,
+    saveCleanupCustomPrompt,
     saveMlxKeepAliveMinutes,
     deleteProvider,
   };

@@ -162,8 +162,11 @@ export default function ModelsPage(): React.JSX.Element {
           <CleanupIntensityCard
             intensity={m.cleanupIntensity}
             customPrompt={m.cleanupCustomPrompt}
+            customPromptDirty={m.customPromptDirty}
+            savingCustomPrompt={m.savingCustomPrompt}
             onIntensityChange={m.setCleanupIntensity}
             onCustomPromptChange={m.setCleanupCustomPrompt}
+            onSaveCustomPrompt={m.saveCleanupCustomPrompt}
           />
         )}
 

@@ -12,6 +12,7 @@ import {
 import { Button } from "@renderer/components/ui/button";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import { Textarea } from "@renderer/components/ui/textarea";
+import { Check, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Eyebrow } from "./page-chrome";
@@ -27,13 +28,19 @@ import { Eyebrow } from "./page-chrome";
 export function CleanupIntensityCard({
   intensity,
   customPrompt,
+  customPromptDirty,
+  savingCustomPrompt,
   onIntensityChange,
   onCustomPromptChange,
+  onSaveCustomPrompt,
 }: {
   intensity: CleanupIntensity;
   customPrompt: string;
+  customPromptDirty: boolean;
+  savingCustomPrompt: boolean;
   onIntensityChange: (next: CleanupIntensity) => void;
   onCustomPromptChange: (next: string) => void;
+  onSaveCustomPrompt: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
 
@@ -100,21 +107,43 @@ export function CleanupIntensityCard({
               aria-label={t("models.cleanup.promptLabel")}
             />
 
-            <div className="text-muted-foreground mt-2 flex items-center justify-between text-[11px]">
+            <div className="text-muted-foreground mt-2.5 flex items-center justify-between gap-3 text-[11px]">
               <span>
                 {isCustom
                   ? t("models.cleanup.customHint")
                   : t("models.cleanup.presetHint")}
               </span>
               {isCustom && (
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="h-auto p-0"
-                  onClick={() => onIntensityChange("low")}
-                >
-                  {t("models.cleanup.resetToPresets")}
-                </Button>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0"
+                    onClick={() => onIntensityChange("low")}
+                  >
+                    {t("models.cleanup.resetToPresets")}
+                  </Button>
+                  <Button
+                    variant="ink"
+                    size="sm"
+                    onClick={onSaveCustomPrompt}
+                    disabled={savingCustomPrompt || !customPromptDirty}
+                  >
+                    {savingCustomPrompt ? (
+                      <>
+                        <Loader2 className="animate-spin" />
+                        {t("models.cleanup.saving")}
+                      </>
+                    ) : customPromptDirty ? (
+                      t("models.cleanup.save")
+                    ) : (
+                      <>
+                        <Check />
+                        {t("models.cleanup.saved")}
+                      </>
+                    )}
+                  </Button>
+                </div>
               )}
             </div>
           </AccordionContent>

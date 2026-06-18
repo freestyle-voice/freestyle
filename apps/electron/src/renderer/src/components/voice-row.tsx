@@ -195,17 +195,12 @@ export function VoiceRow({
 
         {downloading && (
           <div className="mt-2.5 space-y-1">
-            {!hasProgress ? (
-              <Progress
-                value={100}
-                className="h-[5px] [&>[data-slot=progress-indicator]]:animate-pulse"
-              />
-            ) : (
-              <Progress
-                value={item.state?.downloadProgress?.percent ?? 0}
-                className="h-[5px]"
-              />
-            )}
+            <Progress
+              value={
+                hasProgress ? (item.state?.downloadProgress?.percent ?? 0) : 100
+              }
+              className={cn("h-[5px]", !hasProgress && "animate-pulse")}
+            />
             <div className="text-muted-foreground mono flex justify-between text-[10px]">
               {item.state?.phase === "building_binary" && hasProgress ? (
                 <>

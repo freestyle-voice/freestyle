@@ -4,11 +4,12 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AgentAuthMode } from "@freestyle/validations";
+import type { AgentAuthMode, ComputerUseMode } from "@freestyle/validations";
 import { app, ipcMain, shell } from "electron";
 import { getPrereqStatus } from "./auth.js";
 import {
   computerUseEnabled,
+  computerUseMode,
   computerUsePrereqs,
   installCliclick,
   requestScreenRecording,
@@ -34,6 +35,8 @@ interface AgentIpcDeps {
   revealBar: () => void;
   /** Persist the computer-use opt-in through main's settings.json writer. */
   persistComputerUse: (enabled: boolean) => void;
+  /** Persist the computer-use actuation mode (full vs guided). */
+  persistComputerUseMode: (mode: ComputerUseMode) => void;
 }
 
 /** cwd for runs + conversation history: configured `agentCwd`, else home. */
@@ -123,6 +126,12 @@ export function registerAgentIpc(deps: AgentIpcDeps): void {
 
   ipcMain.on("agent:computer-use:set", (_event, enabled: unknown) => {
     deps.persistComputerUse(enabled === true);
+  });
+
+  ipcMain.handle("agent:computer-use:mode:get", () => computerUseMode());
+
+  ipcMain.on("agent:computer-use:mode:set", (_event, mode: unknown) => {
+    deps.persistComputerUseMode(mode === "full" ? "full" : "guided");
   });
 
   // Returns the full per-item prereq snapshot (helper + Accessibility + Screen

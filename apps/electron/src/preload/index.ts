@@ -5,7 +5,9 @@ import type {
   AgentEvent,
   AgentMessage,
   AgentPrereqStatus,
+  ComputerUseMode,
   ComputerUsePrereqs,
+  GuidanceEvent,
 } from "@freestyle/validations";
 import { contextBridge, ipcRenderer } from "electron";
 import type {
@@ -287,6 +289,10 @@ const api = {
       ipcRenderer.invoke("agent:computer-use:get"),
     setComputerUse: (enabled: boolean): void =>
       ipcRenderer.send("agent:computer-use:set", enabled),
+    getComputerUseMode: (): Promise<ComputerUseMode> =>
+      ipcRenderer.invoke("agent:computer-use:mode:get"),
+    setComputerUseMode: (mode: ComputerUseMode): void =>
+      ipcRenderer.send("agent:computer-use:mode:set", mode),
     computerUseStatus: (): Promise<ComputerUsePrereqs> =>
       ipcRenderer.invoke("agent:computer-use:status"),
     installComputerUse: (): Promise<{ ok: boolean; reason?: string }> =>
@@ -314,6 +320,15 @@ const api = {
       ipcRenderer.on("agent-bar:set-expanded", handler);
       return () =>
         ipcRenderer.removeListener("agent-bar:set-expanded", handler);
+    },
+  },
+  // Guided-mode ghost-cursor overlay (consumed only by the overlay window).
+  overlay: {
+    onGuidance: (callback: (event: GuidanceEvent) => void): (() => void) => {
+      const handler = (_: unknown, event: GuidanceEvent): void =>
+        callback(event);
+      ipcRenderer.on("overlay:guidance", handler);
+      return () => ipcRenderer.removeListener("overlay:guidance", handler);
     },
   },
 };

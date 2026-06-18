@@ -17,10 +17,12 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { createAppLogger } from "@freestyle/utils";
 import type { AgentEvent } from "@freestyle/validations";
+import { hideGuidanceOverlay } from "../overlay.js";
 import { isAuthReady, resolveAuth } from "./auth.js";
 import {
   computerUseEnabled,
   computerUsePrereqs,
+  computerUseSelfTest,
   createComputerUseServer,
 } from "./computer-use.js";
 
@@ -120,6 +122,13 @@ export class AgentSessionManager {
           });
           this.emit({ type: "status", sessionId, status: "error" });
           return;
+        }
+        // Non-blocking functional check: surfaces *silent* actuator breakage
+        // (a helper that's present but no longer actuates) in the logs without
+        // failing the run, since prereqs already passed the hard checks.
+        const selfTest = await computerUseSelfTest();
+        if (!selfTest.ok) {
+          log.warn(`computer-use self-test failed: ${selfTest.details}`);
         }
       }
 
@@ -241,6 +250,9 @@ export class AgentSessionManager {
     } finally {
       this.running = false;
       this.controller = null;
+      // Clear any guided ghost-cursor overlay left on screen (no-op in full
+      // mode / when nothing was shown).
+      hideGuidanceOverlay();
     }
   }
 }

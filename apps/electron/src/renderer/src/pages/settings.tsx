@@ -1,5 +1,6 @@
 import type {
   AgentPrereqStatus,
+  ComputerUseMode,
   ComputerUsePrereqs,
 } from "@freestyle/validations";
 import { serverUrlSchema } from "@freestyle/validations";
@@ -130,6 +131,8 @@ export default function SettingsPage(): React.JSX.Element {
     useState<AudioPlaybackMode>("off");
   const [transcriptionPrompt, setTranscriptionPrompt] = useState("");
   const [computerUse, setComputerUse] = useState(false);
+  const [computerUseMode, setComputerUseMode] =
+    useState<ComputerUseMode>("guided");
   const [helperStatus, setHelperStatus] = useState<ComputerUsePrereqs | null>(
     null,
   );
@@ -650,6 +653,12 @@ export default function SettingsPage(): React.JSX.Element {
         if (active) setHelperStatus(s);
       })
       .catch(() => {});
+    window.api?.agent
+      .getComputerUseMode()
+      .then((m) => {
+        if (active) setComputerUseMode(m);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
@@ -664,6 +673,16 @@ export default function SettingsPage(): React.JSX.Element {
         .then(setHelperStatus)
         .catch(() => {});
     }
+  }, []);
+
+  const handleComputerUseModeChange = useCallback((mode: ComputerUseMode) => {
+    setComputerUseMode(mode);
+    window.api?.agent.setComputerUseMode(mode);
+    // Prereqs differ by mode (guided needs only Screen Recording), so refresh.
+    window.api?.agent
+      .computerUseStatus()
+      .then(setHelperStatus)
+      .catch(() => {});
   }, []);
 
   const handleInstallHelper = useCallback(async () => {
@@ -1343,6 +1362,23 @@ export default function SettingsPage(): React.JSX.Element {
                   onCheckedChange={handleComputerUseToggle}
                 />
               </Row>
+              {computerUse && (
+                <Row
+                  label="Mode"
+                  desc="Guided: the agent never touches your cursor — it shows a ghost cursor and captions pointing you to each step, and you perform it (non-invasive, great for learning). Full: the agent drives the mouse and keyboard itself."
+                >
+                  <SegmentedControl
+                    value={computerUseMode}
+                    onValueChange={(v) =>
+                      handleComputerUseModeChange(v as ComputerUseMode)
+                    }
+                    options={[
+                      { value: "guided", label: "Guided" },
+                      { value: "full", label: "Full control" },
+                    ]}
+                  />
+                </Row>
+              )}
               {/* Claude sign-in — required for every agent run, not just
                   computer use. We can't sign the user in from here, so we just
                   report status and point them at `claude login`. */}

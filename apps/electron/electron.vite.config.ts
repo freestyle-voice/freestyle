@@ -41,6 +41,7 @@ export default defineConfig({
           index: resolve("src/renderer/index.html"),
           pill: resolve("src/renderer/pill.html"),
           bar: resolve("src/renderer/bar.html"),
+          overlay: resolve("src/renderer/overlay.html"),
         },
       },
     },

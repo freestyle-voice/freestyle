@@ -91,6 +91,7 @@ import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
 import { MicListener } from "./mic-listener";
+import { destroyOverlayWindow } from "./overlay";
 import {
   isWaylandSession,
   pasteIntoFocusedApp,
@@ -1948,6 +1949,8 @@ app.whenReady().then(async () => {
     revealBar: () => expandAgentBar(true),
     persistComputerUse: (enabled) =>
       writeSettings({ agentComputerUse: enabled }),
+    persistComputerUseMode: (mode) =>
+      writeSettings({ agentComputerUseMode: mode }),
   });
   void registerAgentHotkey().catch((err) => {
     hotkeyLog.error(
@@ -2287,6 +2290,7 @@ app.on("will-quit", () => {
     agentKeyListener = null;
   }
   agentSessionManager?.cancel();
+  destroyOverlayWindow();
   if (micListener) {
     micListener.stop();
     micListener = null;

@@ -104,6 +104,38 @@ export interface ComputerUsePrereqs {
   reason?: string;
 }
 
+/**
+ * How computer use actuates:
+ *  - `full`   — the agent directly drives the real cursor/keyboard.
+ *  - `guided` — the agent never actuates; it shows a "ghost cursor" overlay and
+ *               captions pointing the user to each step, and the user performs
+ *               it. Non-invasive, and a teaching experience.
+ */
+export type ComputerUseMode = "full" | "guided";
+
+/**
+ * A single guidance instruction pushed from main → the overlay window in
+ * `guided` mode. Coordinates are LOGICAL pixels in the most recent screenshot's
+ * space (top-left origin), matching the agent's tool coordinates.
+ */
+export interface GuidanceEvent {
+  kind:
+    | "move"
+    | "click"
+    | "right_click"
+    | "double_click"
+    | "type"
+    | "key"
+    | "clear";
+  /** Target point for cursor/click kinds. */
+  x?: number;
+  y?: number;
+  /** Short human caption describing the step, e.g. "Click the Export button". */
+  caption?: string;
+  /** For `type`/`key`: the text or key chord to display in the hint. */
+  text?: string;
+}
+
 /** A past agent conversation, sourced from the SDK's on-disk session store. */
 export interface AgentConversation {
   /** SDK session id (used to resume). */

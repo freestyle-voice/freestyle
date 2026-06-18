@@ -1,30 +1,26 @@
 /**
  * Computer use (Voice OS — Part D, experimental, opt-in).
  *
- * Exposes a macOS desktop actuator to the Claude agent as in-process MCP tools
+ * Exposes a desktop actuator to the Claude agent as in-process MCP tools
  * (screenshot + mouse + keyboard). The Agent SDK has no native `computer` tool,
  * so we surface our own `mcp__computer__*` tools and execute them against the
- * real desktop. The agent decides actions by looking at the screenshots we
- * return.
+ * real desktop. The agent decides actions from the screenshots we return.
  *
- * Requirements (macOS only):
- *  - `cliclick` for mouse/keyboard:  `brew install cliclick`
- *  - built-in `screencapture` + `sips` (always present)
- *  - macOS permissions granted to the Freestyle app: **Screen Recording**
- *    (for screencapture) and **Accessibility** (for cliclick).
+ * This file is the platform-agnostic facade: prerequisites, the MCP server, and
+ * the opt-in gate. All OS-specific actuation lives behind `DesktopActuator`
+ * (see ./desktop) — macOS today, Windows/Linux next. The MCP tool list is
+ * generated from the active backend's declared capabilities, so the model never
+ * sees a tool the platform can't honor.
  *
- * Coordinates are LOGICAL screen points. We downscale the Retina capture to the
- * display's logical size before returning it, so the model's clicks line up 1:1
- * with what it sees, and `cliclick` (which also uses logical points) matches.
+ * Coordinates are LOGICAL screen pixels in the most recent screenshot's space
+ * (top-left origin); the backend maps that to device pixels and clamps.
  *
  * ⚠️ Safety: this lets the agent control the real machine. It is gated behind
  * the `agentComputerUse` setting (default off) and is independent of the
- * engine's existing bypass-permissions posture — enabling it widens the blast
- * radius considerably. Treat as experimental.
+ * engine's bypass-permissions posture — enabling it widens the blast radius
+ * considerably. Treat as experimental.
  */
-import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   createSdkMcpServer,
@@ -32,374 +28,72 @@ import {
   tool,
 } from "@anthropic-ai/claude-agent-sdk";
 import { createAppLogger } from "@freestyle/utils";
-import type { ComputerUsePrereqs, PrereqState } from "@freestyle/validations";
-import { app, screen, systemPreferences } from "electron";
+import type {
+  ComputerUseMode,
+  ComputerUsePrereqs,
+} from "@freestyle/validations";
+import { app } from "electron";
 import { z } from "zod";
-import { getNativeBinaryPath } from "../native-binary.js";
+import type { SelfTestResult } from "./desktop/index.js";
+import { getActuator } from "./desktop/index.js";
 
 const log = createAppLogger("agent-computer");
 
-const SCREENCAPTURE = "/usr/sbin/screencapture";
-const SIPS = "/usr/bin/sips";
-
-function run(cmd: string, args: string[], timeoutMs = 15000): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      cmd,
-      args,
-      { encoding: "utf-8", timeout: timeoutMs },
-      (err, stdout) => {
-        if (err) reject(err);
-        else resolve(String(stdout).trim());
-      },
-    );
-  });
-}
-
-// ---- cliclick discovery ----
-// Seamless path: a `cliclick` binary we bundle in the app's resources (no
-// Homebrew required). Falls back to a Homebrew/PATH install for dev builds.
-let cliclickPath: string | null | undefined;
-
-async function findCliclick(): Promise<string | null> {
-  if (cliclickPath !== undefined) return cliclickPath;
-  // Bundled binary first (resources/bin/<platform>-<arch>/cliclick → Resources/bin),
-  // then a Homebrew/PATH install for dev builds that don't ship it.
-  const bundled = getNativeBinaryPath("cliclick");
-  const candidates = [
-    ...(bundled ? [bundled] : []),
-    "/opt/homebrew/bin/cliclick",
-    "/usr/local/bin/cliclick",
-    "cliclick",
-  ];
-  for (const p of candidates) {
-    try {
-      await run(p, ["-V"], 4000);
-      cliclickPath = p;
-      return p;
-    } catch {
-      // try next
-    }
-  }
-  cliclickPath = null;
-  return null;
-}
-
-async function findBrew(): Promise<string | null> {
-  for (const p of ["/opt/homebrew/bin/brew", "/usr/local/bin/brew", "brew"]) {
-    try {
-      await run(p, ["--version"], 4000);
-      return p;
-    } catch {
-      // try next
-    }
-  }
-  return null;
-}
-
-/**
- * Best-effort install of the desktop-control helper for builds that don't ship
- * a bundled `cliclick` (e.g. local dev). Shipped builds bundle it, so this is a
- * fallback. Tries Homebrew; returns a clear reason if it can't.
- */
-export async function installCliclick(): Promise<{
-  ok: boolean;
-  reason?: string;
-}> {
-  if (process.platform !== "darwin") {
-    return { ok: false, reason: "Computer use is macOS-only in this build." };
-  }
-  cliclickPath = undefined; // re-probe (bundled binary may have just appeared)
-  if (await findCliclick()) return { ok: true };
-
-  const brew = await findBrew();
-  if (!brew) {
-    return {
-      ok: false,
-      reason:
-        "Homebrew not found. Install Homebrew from https://brew.sh and retry, or use a Freestyle build that bundles the helper.",
-    };
-  }
+function readSettings(): Record<string, unknown> {
   try {
-    log.info("installing cliclick via Homebrew…");
-    await run(brew, ["install", "cliclick"], 180000);
-  } catch (e) {
-    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
-  }
-  cliclickPath = undefined;
-  return (await findCliclick())
-    ? { ok: true }
-    : {
-        ok: false,
-        reason: "Install completed but cliclick still wasn't found.",
-      };
-}
-
-// ---------------------------------------------------------------------------
-// Permission probing
-//
-// macOS gates the two syscalls we depend on behind separate TCC permissions:
-//   - Accessibility  → cliclick can move/click/type (else actions silently no-op)
-//   - Screen Recording → screencapture returns real pixels (else a black frame)
-// Neither can be *granted* programmatically; we can only read their state and
-// (for Screen Recording) trigger the first-run prompt by attempting a capture.
-// ---------------------------------------------------------------------------
-
-/** macOS Accessibility (mouse/keyboard control). */
-function accessibilityState(): PrereqState {
-  if (process.platform !== "darwin") return "ok";
-  // `false` = probe without popping the prompt. We can't distinguish
-  // "not-determined" from "denied" via this API, so report both as "denied".
-  return systemPreferences.isTrustedAccessibilityClient(false)
-    ? "ok"
-    : "denied";
-}
-
-/** macOS Screen Recording (screenshots). */
-function screenRecordingState(): PrereqState {
-  if (process.platform !== "darwin") return "ok";
-  switch (systemPreferences.getMediaAccessStatus("screen")) {
-    case "granted":
-      return "ok";
-    case "denied":
-    case "restricted":
-      return "denied";
-    case "not-determined":
-      return "unknown";
-    default:
-      return "unknown";
+    return JSON.parse(
+      readFileSync(join(app.getPath("userData"), "settings.json"), "utf-8"),
+    ) as Record<string, unknown>;
+  } catch {
+    return {};
   }
 }
 
-/**
- * Full, honest prerequisite snapshot for computer use. Probed live every call
- * (cheap) so a permission revoked mid-session is reflected immediately.
- */
+/** Actuation mode (settings.json `agentComputerUseMode`). Defaults to the
+ *  non-invasive `guided` mode. */
+export function computerUseMode(): ComputerUseMode {
+  return readSettings().agentComputerUseMode === "full" ? "full" : "guided";
+}
+
+// ---------------------------------------------------------------------------
+// Prerequisites / lifecycle (delegated to the active backend for the mode)
+// ---------------------------------------------------------------------------
+
+/** Full, honest prerequisite snapshot, probed live every call (cheap). */
 export async function computerUsePrereqs(): Promise<ComputerUsePrereqs> {
-  const platformSupported = process.platform === "darwin";
-  if (!platformSupported) {
-    return {
-      ok: false,
-      platformSupported: false,
-      helper: "missing",
-      accessibility: "denied",
-      screenRecording: "denied",
-      reason: "Computer use is macOS-only in this build.",
-    };
-  }
-
-  const helper: PrereqState = (await findCliclick()) ? "ok" : "missing";
-  const accessibility = accessibilityState();
-  const screenRecording = screenRecordingState();
-
-  // Surface the single most actionable blocker first.
-  let reason: string | undefined;
-  if (helper !== "ok") {
-    reason =
-      "Desktop-control helper (cliclick) isn't installed. Click “Install helper”.";
-  } else if (accessibility !== "ok") {
-    reason =
-      "Freestyle needs macOS Accessibility permission to control the mouse and keyboard.";
-  } else if (screenRecording !== "ok") {
-    reason =
-      "Freestyle needs macOS Screen Recording permission to see the screen.";
-  }
-
-  const ok =
-    helper === "ok" && accessibility === "ok" && screenRecording === "ok";
-  return {
-    ok,
-    platformSupported,
-    helper,
-    accessibility,
-    screenRecording,
-    reason,
-  };
+  return getActuator(computerUseMode()).prereqs();
 }
 
-/**
- * Backward-compatible boolean+reason view, kept for the run-time guard and any
- * older callers. Derives from {@link computerUsePrereqs}.
- */
+/** Boolean+reason view used by the run-time guard. */
 export async function computerUseAvailable(): Promise<{
   ok: boolean;
   reason?: string;
 }> {
-  const p = await computerUsePrereqs();
+  const p = await getActuator(computerUseMode()).prereqs();
   return { ok: p.ok, reason: p.reason };
 }
 
-/**
- * Best-effort trigger for the macOS Screen Recording prompt. There is no
- * `askForMediaAccess("screen")`, so the only way to make the OS show its dialog
- * (and add Freestyle to the Screen Recording list) is to actually attempt a
- * capture. We swallow any failure and just return the (re-probed) prereqs.
- */
+/** Best-effort trigger for any first-run OS capture permission prompt. */
 export async function requestScreenRecording(): Promise<ComputerUsePrereqs> {
-  if (process.platform === "darwin") {
-    try {
-      await captureScreenshot();
-    } catch {
-      // Expected when permission is absent — the attempt is what surfaces the
-      // prompt / adds the app to the Screen Recording list.
-    }
-  }
-  return computerUsePrereqs();
+  return getActuator(computerUseMode()).requestPermissions();
+}
+
+/** Locate or install the desktop-control helper the backend needs. */
+export async function installCliclick(): Promise<{
+  ok: boolean;
+  reason?: string;
+}> {
+  return getActuator(computerUseMode()).ensureHelper();
+}
+
+/** One-shot functional check (capture round-trip); logged at session start. */
+export async function computerUseSelfTest(): Promise<SelfTestResult> {
+  return getActuator(computerUseMode()).selfTest();
 }
 
 /** Whether the user has opted into computer use (settings.json `agentComputerUse`). */
 export function computerUseEnabled(): boolean {
-  try {
-    const settings = JSON.parse(
-      readFileSync(join(app.getPath("userData"), "settings.json"), "utf-8"),
-    ) as { agentComputerUse?: unknown };
-    return settings.agentComputerUse === true;
-  } catch {
-    return false;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Actuator
-// ---------------------------------------------------------------------------
-
-function logicalSize(): { width: number; height: number } {
-  const { width, height } = screen.getPrimaryDisplay().size;
-  return { width: Math.round(width), height: Math.round(height) };
-}
-
-async function cliclick(args: string[]): Promise<void> {
-  const path = await findCliclick();
-  if (!path) throw new Error("cliclick unavailable");
-  await run(path, args);
-}
-
-async function captureScreenshot(): Promise<{
-  data: string;
-  width: number;
-  height: number;
-}> {
-  const { width, height } = logicalSize();
-  const dir = mkdtempSync(join(tmpdir(), "fs-shot-"));
-  const file = join(dir, "shot.png");
-  try {
-    // -x: silent, -D 1: main display.
-    await run(SCREENCAPTURE, ["-x", "-D", "1", "-t", "png", file]);
-    // Downscale the Retina capture to logical size (sips -z HEIGHT WIDTH) so the
-    // image's pixel space equals the logical coordinate space cliclick uses.
-    await run(SIPS, ["-z", String(height), String(width), file]);
-    const data = readFileSync(file).toString("base64");
-    return { data, width, height };
-  } finally {
-    try {
-      rmSync(dir, { recursive: true, force: true });
-    } catch {}
-  }
-}
-
-function clampX(x: number): number {
-  return Math.max(0, Math.min(logicalSize().width - 1, Math.round(x)));
-}
-function clampY(y: number): number {
-  return Math.max(0, Math.min(logicalSize().height - 1, Math.round(y)));
-}
-
-// Chord parsing: "cmd+shift+4" → modifiers [cmd, shift] + key "4".
-const MOD_MAP: Record<string, string> = {
-  cmd: "cmd",
-  command: "cmd",
-  ctrl: "ctrl",
-  control: "ctrl",
-  alt: "alt",
-  option: "alt",
-  opt: "alt",
-  shift: "shift",
-  fn: "fn",
-};
-// AppleScript System Events key codes for named keys. We deliberately DON'T use
-// cliclick's `kp:` for key presses: on macOS 26 its synthetic key-code events
-// silently no-op (verified: return/enter/space/tab produce nothing), so named
-// keys — most importantly Return — never fire. System Events `key code` works
-// reliably and is the same path the app already uses for paste (see paste.ts).
-const APPLE_KEY_CODES: Record<string, number> = {
-  return: 36,
-  enter: 76, // numeric-keypad Enter
-  esc: 53,
-  escape: 53,
-  tab: 48,
-  space: 49,
-  delete: 51,
-  backspace: 51,
-  del: 51,
-  "fwd-delete": 117,
-  fwddelete: 117,
-  forwarddelete: 117,
-  up: 126,
-  "arrow-up": 126,
-  down: 125,
-  "arrow-down": 125,
-  left: 123,
-  "arrow-left": 123,
-  right: 124,
-  "arrow-right": 124,
-  home: 115,
-  end: 119,
-  pageup: 116,
-  "page-up": 116,
-  pagedown: 121,
-  "page-down": 121,
-  f1: 122,
-  f2: 120,
-  f3: 99,
-  f4: 118,
-  f5: 96,
-  f6: 97,
-  f7: 98,
-  f8: 100,
-  f9: 101,
-  f10: 109,
-  f11: 103,
-  f12: 111,
-};
-// Normalized modifier → AppleScript `using {...}` phrase. (fn has no System
-// Events equivalent and isn't representable in a chord.)
-const APPLE_MOD: Record<string, string> = {
-  cmd: "command down",
-  ctrl: "control down",
-  alt: "option down",
-  shift: "shift down",
-};
-
-/** Build an AppleScript that presses a key/chord via System Events. A
- *  single-character key uses `keystroke` (so modifiers form real shortcuts);
- *  named keys use `key code`. */
-function buildKeystrokeScript(chord: string): string {
-  const parts = chord
-    .split("+")
-    .map((p) => p.trim().toLowerCase())
-    .filter(Boolean);
-  if (parts.length === 0) throw new Error("empty key chord");
-  const key = parts[parts.length - 1];
-  const mods = parts.slice(0, -1).map((m) => {
-    const norm = MOD_MAP[m];
-    const apple = norm ? APPLE_MOD[norm] : undefined;
-    if (!apple) throw new Error(`unsupported modifier: ${m}`);
-    return apple;
-  });
-
-  let action: string;
-  if (key.length === 1) {
-    // Escape for an AppleScript double-quoted string literal.
-    const esc = key.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-    action = `keystroke "${esc}"`;
-  } else {
-    const code = APPLE_KEY_CODES[key];
-    if (code === undefined) throw new Error(`unknown key: ${key}`);
-    action = `key code ${code}`;
-  }
-
-  const using = mods.length ? ` using {${mods.join(", ")}}` : "";
-  return `tell application "System Events" to ${action}${using}`;
+  return readSettings().agentComputerUse === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -424,6 +118,8 @@ function err(message: string): ToolResult {
   };
 }
 
+/** Re-check prerequisites before every action so a permission revoked mid-run
+ *  surfaces as a clear error instead of a silent no-op. */
 async function guarded(fn: () => Promise<ToolResult>): Promise<ToolResult> {
   const avail = await computerUseAvailable();
   if (!avail.ok) return err(avail.reason ?? "computer use unavailable");
@@ -437,95 +133,153 @@ async function guarded(fn: () => Promise<ToolResult>): Promise<ToolResult> {
 }
 
 // ---------------------------------------------------------------------------
-// MCP server
+// MCP server — tools generated from the backend's capabilities
 // ---------------------------------------------------------------------------
 
+// A short caption the agent attaches to each action. In guided mode it's shown
+// to the user as the ghost-cursor caption; in full mode it's ignored.
+const noteSchema = {
+  note: z
+    .string()
+    .optional()
+    .describe(
+      "Short caption describing this step for the user, e.g. 'Click the Export button'. Shown in guided mode.",
+    ),
+};
+
 export function createComputerUseServer(): McpSdkServerConfigWithInstance {
+  const actuator = getActuator(computerUseMode());
+  const caps = actuator.capabilities();
+  const guided = actuator.actuation === "guided";
+
+  // In guided mode the agent points; the user acts. Phrase results so the model
+  // waits for the user and verifies via a screenshot instead of assuming the
+  // action already happened.
+  const done = (direct: string, guidedHint: string): ToolResult =>
+    ok(
+      guided
+        ? `${guidedHint} The user performs it — take a screenshot to verify before the next step.`
+        : direct,
+    );
+
+  const screenshotTool = tool(
+    "screenshot",
+    "Capture the current screen. Returns a PNG; all click/move coordinates use this image's pixel space.",
+    {},
+    async () =>
+      guarded(async () => {
+        const shot = await actuator.screenshot();
+        return {
+          content: [
+            { type: "image", data: shot.data, mimeType: "image/png" },
+            {
+              type: "text",
+              text: `Screen captured at ${shot.width}x${shot.height} logical pixels. Coordinates are in this space.`,
+            },
+          ],
+        };
+      }),
+  );
+
+  const leftClickTool = tool(
+    "left_click",
+    "Move the cursor to (x, y) and left-click.",
+    { x: z.number(), y: z.number(), ...noteSchema },
+    async ({ x, y, note }) =>
+      guarded(async () => {
+        await actuator.click(x, y, "left", note);
+        const at = `(${Math.round(x)}, ${Math.round(y)})`;
+        return done(`left-clicked ${at}`, `Pointed the user to click ${at}.`);
+      }),
+  );
+
+  const rightClickTool = tool(
+    "right_click",
+    "Move the cursor to (x, y) and right-click.",
+    { x: z.number(), y: z.number(), ...noteSchema },
+    async ({ x, y, note }) =>
+      guarded(async () => {
+        await actuator.click(x, y, "right", note);
+        const at = `(${Math.round(x)}, ${Math.round(y)})`;
+        return done(
+          `right-clicked ${at}`,
+          `Pointed the user to right-click ${at}.`,
+        );
+      }),
+  );
+
+  const doubleClickTool = tool(
+    "double_click",
+    "Move the cursor to (x, y) and double-click.",
+    { x: z.number(), y: z.number(), ...noteSchema },
+    async ({ x, y, note }) =>
+      guarded(async () => {
+        await actuator.doubleClick(x, y, note);
+        const at = `(${Math.round(x)}, ${Math.round(y)})`;
+        return done(
+          `double-clicked ${at}`,
+          `Pointed the user to double-click ${at}.`,
+        );
+      }),
+  );
+
+  const moveCursorTool = tool(
+    "move_cursor",
+    "Move the cursor to (x, y) without clicking.",
+    { x: z.number(), y: z.number(), ...noteSchema },
+    async ({ x, y, note }) =>
+      guarded(async () => {
+        await actuator.moveCursor(x, y, note);
+        const at = `(${Math.round(x)}, ${Math.round(y)})`;
+        return done(`moved to ${at}`, `Pointed the user to ${at}.`);
+      }),
+  );
+
+  const typeTextTool = tool(
+    "type_text",
+    "Type a string of text at the current keyboard focus.",
+    { text: z.string(), ...noteSchema },
+    async ({ text, note }) =>
+      guarded(async () => {
+        await actuator.typeText(text, note);
+        return done(
+          `typed ${text.length} characters`,
+          `Asked the user to type: "${text}".`,
+        );
+      }),
+  );
+
+  const pressKeyTool = tool(
+    "press_key",
+    "Press a single key or chord, e.g. 'return', 'escape', 'cmd+space', 'cmd+shift+4', 'pagedown'.",
+    { keys: z.string(), ...noteSchema },
+    async ({ keys, note }) =>
+      guarded(async () => {
+        await actuator.pressKey(keys, note);
+        return done(`pressed ${keys}`, `Asked the user to press ${keys}.`);
+      }),
+  );
+
+  // Only register tools the backend can actually perform.
+  const tools = [
+    ...(caps.screenshot ? [screenshotTool] : []),
+    ...(caps.click ? [leftClickTool, rightClickTool] : []),
+    ...(caps.doubleClick ? [doubleClickTool] : []),
+    ...(caps.mouseMove ? [moveCursorTool] : []),
+    ...(caps.typeText ? [typeTextTool] : []),
+    ...(caps.pressKey ? [pressKeyTool] : []),
+  ];
+
+  const baseInstructions =
+    "ALWAYS call `screenshot` first to see the screen before acting. Click/move coordinates are in the pixel space of the most recent screenshot (logical screen points, top-left origin).";
+  const instructions = guided
+    ? `You are in GUIDED (teaching) mode. You do NOT control the mouse or keyboard — each tool call instead shows the user a ghost-cursor hint and a caption, and the USER performs the step. ${baseInstructions} For every action, pass a short \`note\` describing what to do and why (it's shown to the user). Work ONE small step at a time, and after each step take a fresh screenshot to confirm the user completed it before continuing — never assume an action happened.`
+    : `Control the user's desktop directly. ${baseInstructions} These actions affect the real machine — be deliberate and verify with a fresh screenshot after each step.`;
+
   return createSdkMcpServer({
     name: "computer",
     version: "0.1.0",
-    instructions:
-      "Control the user's macOS desktop. ALWAYS call `screenshot` first to see the screen before acting. Click/move coordinates are in the pixel space of the most recent screenshot (logical screen points, top-left origin). These actions affect the real machine — be deliberate and verify with a fresh screenshot after each step.",
-    tools: [
-      tool(
-        "screenshot",
-        "Capture the current screen. Returns a PNG; all click/move coordinates use this image's pixel space.",
-        {},
-        async () =>
-          guarded(async () => {
-            const shot = await captureScreenshot();
-            return {
-              content: [
-                { type: "image", data: shot.data, mimeType: "image/png" },
-                {
-                  type: "text",
-                  text: `Screen captured at ${shot.width}x${shot.height} logical pixels. Coordinates are in this space.`,
-                },
-              ],
-            };
-          }),
-      ),
-      tool(
-        "left_click",
-        "Move the cursor to (x, y) and left-click.",
-        { x: z.number(), y: z.number() },
-        async ({ x, y }) =>
-          guarded(async () => {
-            await cliclick([`c:${clampX(x)},${clampY(y)}`]);
-            return ok(`left-clicked (${Math.round(x)}, ${Math.round(y)})`);
-          }),
-      ),
-      tool(
-        "right_click",
-        "Move the cursor to (x, y) and right-click.",
-        { x: z.number(), y: z.number() },
-        async ({ x, y }) =>
-          guarded(async () => {
-            await cliclick([`rc:${clampX(x)},${clampY(y)}`]);
-            return ok(`right-clicked (${Math.round(x)}, ${Math.round(y)})`);
-          }),
-      ),
-      tool(
-        "double_click",
-        "Move the cursor to (x, y) and double-click.",
-        { x: z.number(), y: z.number() },
-        async ({ x, y }) =>
-          guarded(async () => {
-            await cliclick([`dc:${clampX(x)},${clampY(y)}`]);
-            return ok(`double-clicked (${Math.round(x)}, ${Math.round(y)})`);
-          }),
-      ),
-      tool(
-        "move_cursor",
-        "Move the cursor to (x, y) without clicking.",
-        { x: z.number(), y: z.number() },
-        async ({ x, y }) =>
-          guarded(async () => {
-            await cliclick([`m:${clampX(x)},${clampY(y)}`]);
-            return ok(`moved to (${Math.round(x)}, ${Math.round(y)})`);
-          }),
-      ),
-      tool(
-        "type_text",
-        "Type a string of text at the current keyboard focus.",
-        { text: z.string() },
-        async ({ text }) =>
-          guarded(async () => {
-            await cliclick([`t:${text}`]);
-            return ok(`typed ${text.length} characters`);
-          }),
-      ),
-      tool(
-        "press_key",
-        "Press a single key or chord, e.g. 'return', 'escape', 'cmd+space', 'cmd+shift+4', 'pagedown'.",
-        { keys: z.string() },
-        async ({ keys }) =>
-          guarded(async () => {
-            // System Events, not cliclick `kp:` — the latter no-ops on macOS 26.
-            await run("/usr/bin/osascript", ["-e", buildKeystrokeScript(keys)]);
-            return ok(`pressed ${keys}`);
-          }),
-      ),
-    ],
+    instructions,
+    tools,
   });
 }

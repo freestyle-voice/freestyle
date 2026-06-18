@@ -99,7 +99,8 @@ async function buildFromSource(outDir) {
 
   console.log("Building (this may take a minute)...");
   mkdirSync(buildDir, { recursive: true });
-  execFileSync("cmake", getWhisperCmakeArgs(), {
+  const forBundledRelease = process.argv.includes("--resources");
+  execFileSync("cmake", getWhisperCmakeArgs({ forBundledRelease }), {
     cwd: buildDir,
     stdio: "inherit",
     timeout: 60_000,

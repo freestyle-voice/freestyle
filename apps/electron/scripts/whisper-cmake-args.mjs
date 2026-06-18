@@ -10,11 +10,7 @@
 export function getWhisperCmakeArgs({ forBundledRelease = false } = {}) {
   const args = ["..", "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_SHARED_LIBS=OFF"];
 
-  const bundleLinux =
-    process.platform === "linux" &&
-    (forBundledRelease || process.argv.includes("--resources"));
-
-  if (bundleLinux) {
+  if (process.platform === "linux" && forBundledRelease) {
     args.push("-DGGML_NATIVE=OFF");
   }
 

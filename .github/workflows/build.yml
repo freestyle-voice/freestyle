@@ -135,7 +135,7 @@ jobs:
         working-directory: apps/electron
         run: node scripts/download-whisper-cpp.mjs --resources
 
-      - name: Verify whisper-server is portable (no AVX-512)
+      - name: Verify whisper binaries are portable (no AVX-512)
         working-directory: apps/electron
         run: node scripts/verify-whisper-portable.mjs
 

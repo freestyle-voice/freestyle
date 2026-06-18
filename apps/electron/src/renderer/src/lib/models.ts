@@ -175,7 +175,13 @@ export const VOICE_META: Record<
     speed: 5,
     quality: 3,
     cost: 0.04,
-    note: "Fastest and cheapest cloud option",
+    note: "Fastest and cheapest Groq Whisper option",
+  },
+  "groq/whisper-large-v3": {
+    speed: 4,
+    quality: 4,
+    cost: 0.111,
+    note: "Highest-accuracy Groq Whisper — supports translation",
   },
   "openai/gpt-4o-transcribe": {
     speed: 3,

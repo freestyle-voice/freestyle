@@ -347,7 +347,7 @@ const FASTEST_TIER: AvailableModel = {
   provider_id: "groq",
   provider_name: "Groq",
   model_id: "groq/whisper-large-v3-turbo",
-  model_name: "Groq Whisper",
+  model_name: "Groq Whisper Turbo",
   type: "voice",
 };
 

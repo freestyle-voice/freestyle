@@ -330,6 +330,7 @@
         "custom": "Custom — your own instructions control how the transcript is cleaned up."
       },
       "promptLabel": "Cleanup prompt",
+      "promptToggle": "View / edit prompt",
       "presetHint": "Editing this prompt switches to Custom so presets stay intact.",
       "customHint": "Your custom instructions are used for cleanup.",
       "resetToPresets": "Reset to presets"

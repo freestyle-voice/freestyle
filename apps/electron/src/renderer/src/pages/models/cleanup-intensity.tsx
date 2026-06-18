@@ -3,6 +3,12 @@ import {
   CLEANUP_PRESET_PROMPTS,
   type CleanupIntensity,
 } from "@freestyle/validations";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@renderer/components/ui/accordion";
 import { Button } from "@renderer/components/ui/button";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import { Textarea } from "@renderer/components/ui/textarea";
@@ -75,36 +81,45 @@ export function CleanupIntensityCard({
         />
       </div>
 
-      <p className="text-muted-foreground mb-4 max-w-[520px] text-[13px] leading-[1.5]">
+      <p className="text-muted-foreground max-w-[520px] text-[13px] leading-[1.5]">
         {t(`models.cleanup.desc.${intensity}`)}
       </p>
 
-      <Textarea
-        value={promptValue}
-        maxLength={CLEANUP_CUSTOM_PROMPT_MAX}
-        onChange={(e) => handlePromptChange(e.target.value)}
-        spellCheck={false}
-        className="mono min-h-[180px] resize-y text-[12px] leading-[1.6]"
-        aria-label={t("models.cleanup.promptLabel")}
-      />
+      <Accordion type="single" collapsible className="mt-3">
+        <AccordionItem value="prompt" className="border-b-0">
+          <AccordionTrigger>
+            {t("models.cleanup.promptToggle")}
+          </AccordionTrigger>
+          <AccordionContent>
+            <Textarea
+              value={promptValue}
+              maxLength={CLEANUP_CUSTOM_PROMPT_MAX}
+              onChange={(e) => handlePromptChange(e.target.value)}
+              spellCheck={false}
+              className="mono min-h-[180px] resize-y text-[12px] leading-[1.6]"
+              aria-label={t("models.cleanup.promptLabel")}
+            />
 
-      <div className="text-muted-foreground mt-2 flex items-center justify-between text-[11px]">
-        <span>
-          {isCustom
-            ? t("models.cleanup.customHint")
-            : t("models.cleanup.presetHint")}
-        </span>
-        {isCustom && (
-          <Button
-            variant="link"
-            size="sm"
-            className="h-auto p-0"
-            onClick={() => onIntensityChange("low")}
-          >
-            {t("models.cleanup.resetToPresets")}
-          </Button>
-        )}
-      </div>
+            <div className="text-muted-foreground mt-2 flex items-center justify-between text-[11px]">
+              <span>
+                {isCustom
+                  ? t("models.cleanup.customHint")
+                  : t("models.cleanup.presetHint")}
+              </span>
+              {isCustom && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0"
+                  onClick={() => onIntensityChange("low")}
+                >
+                  {t("models.cleanup.resetToPresets")}
+                </Button>
+              )}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
     </section>
   );
 }

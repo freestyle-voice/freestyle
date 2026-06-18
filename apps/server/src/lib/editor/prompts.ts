@@ -1,4 +1,4 @@
-/** Shared transcript cleanup prompt. */
+/** Transcript cleanup prompt assembly (intensity preset + dynamic blocks). */
 
 import {
   CLEANUP_PRESET_PROMPTS,

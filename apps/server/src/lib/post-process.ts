@@ -48,13 +48,6 @@ export interface PostProcessOptions {
   includeTimings?: boolean;
 }
 
-function isLlmCleanupEnabled(db: ReturnType<typeof getDb>): boolean {
-  const llmSetting = db
-    .prepare("SELECT value FROM settings WHERE key = 'llm_cleanup'")
-    .get() as { value: string } | undefined;
-  return llmSetting?.value === "true";
-}
-
 function readSetting(
   db: ReturnType<typeof getDb>,
   key: string,
@@ -63,6 +56,10 @@ function readSetting(
     | { value: string }
     | undefined;
   return row?.value;
+}
+
+function isLlmCleanupEnabled(db: ReturnType<typeof getDb>): boolean {
+  return readSetting(db, "llm_cleanup") === "true";
 }
 
 function getCleanupIntensity(db: ReturnType<typeof getDb>): CleanupIntensity {

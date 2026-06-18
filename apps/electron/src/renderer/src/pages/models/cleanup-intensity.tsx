@@ -1,6 +1,8 @@
-import { CLEANUP_PRESET_PROMPTS } from "@freestyle/utils";
-import type { CleanupIntensity } from "@freestyle/validations";
-import { CLEANUP_CUSTOM_PROMPT_MAX } from "@freestyle/validations";
+import {
+  CLEANUP_CUSTOM_PROMPT_MAX,
+  CLEANUP_PRESET_PROMPTS,
+  type CleanupIntensity,
+} from "@freestyle/validations";
 import { Button } from "@renderer/components/ui/button";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import { Textarea } from "@renderer/components/ui/textarea";

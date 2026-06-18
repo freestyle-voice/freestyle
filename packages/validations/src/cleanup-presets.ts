@@ -7,8 +7,9 @@
  * language/context/register blocks are appended by the server at request time
  * and are intentionally not part of these strings.
  *
- * The `CleanupIntensity` union itself lives in `@freestyle/validations`; this
- * record only covers the three editable presets ("custom" has no fixed body).
+ * The `CleanupIntensity` union itself lives alongside this file in
+ * `./settings`; this record only covers the three editable presets ("custom"
+ * has no fixed body).
  */
 
 const LOW_PRESET = `You are a strict speech-to-text transcript editor.

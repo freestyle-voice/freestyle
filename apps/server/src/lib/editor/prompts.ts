@@ -1,7 +1,9 @@
 /** Shared transcript cleanup prompt. */
 
-import { CLEANUP_PRESET_PROMPTS } from "@freestyle/utils";
-import type { CleanupIntensity } from "@freestyle/validations";
+import {
+  CLEANUP_PRESET_PROMPTS,
+  type CleanupIntensity,
+} from "@freestyle/validations";
 
 export type RewriteRegisterMode = "neutral" | "formal" | "casual";
 

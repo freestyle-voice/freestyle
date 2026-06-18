@@ -315,7 +315,24 @@
     "deleteLocalMsg": "Remove <b>{{name}}</b> from {{phrase}}. The weights are deleted from your local cache; you can download them again later.",
     "deleteProviderTitle": "Delete provider",
     "deleteProviderMsgBase": "Delete the <b>{{provider}}</b> API key? This also removes all configured models for this provider",
-    "deleteProviderCurrentSuffix": ", including a model you're currently using"
+    "deleteProviderCurrentSuffix": ", including a model you're currently using",
+    "cleanup": {
+      "title": "Cleanup intensity",
+      "levelLow": "Low",
+      "levelMedium": "Medium",
+      "levelHigh": "High",
+      "levelCustom": "Custom",
+      "desc": {
+        "low": "Minimal edits — fix punctuation, capitalization, and obvious slips while keeping your exact wording and meaning.",
+        "medium": "Balanced — clean up grammar and awkward phrasing for readability, without changing your meaning or reordering your points.",
+        "high": "Polished — free to rephrase, reframe, and reorder for clarity and flow, while faithfully preserving your meaning and facts.",
+        "custom": "Custom — your own instructions control how the transcript is cleaned up."
+      },
+      "promptLabel": "Cleanup prompt",
+      "presetHint": "Editing this prompt switches to Custom so presets stay intact.",
+      "customHint": "Your custom instructions are used for cleanup.",
+      "resetToPresets": "Reset to presets"
+    }
   },
   "shell": {
     "nav": {

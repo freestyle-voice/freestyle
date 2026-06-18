@@ -1,4 +1,6 @@
 export const SETTINGS_KEYS = {
+  cleanupCustomPrompt: "cleanup_custom_prompt",
+  cleanupIntensity: "cleanup_intensity",
   hotkey: "hotkey",
   hotkeyMode: "hotkey_mode",
   language: "language",

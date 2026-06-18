@@ -1,5 +1,7 @@
 import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
 import { createAppLogger } from "@freestyle/utils";
+import type { CleanupIntensity } from "@freestyle/validations";
+import { parseCleanupIntensity } from "@freestyle/validations";
 import { generateText } from "ai";
 import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
 import { getDb } from "./db.js";
@@ -51,6 +53,26 @@ function isLlmCleanupEnabled(db: ReturnType<typeof getDb>): boolean {
     .prepare("SELECT value FROM settings WHERE key = 'llm_cleanup'")
     .get() as { value: string } | undefined;
   return llmSetting?.value === "true";
+}
+
+function readSetting(
+  db: ReturnType<typeof getDb>,
+  key: string,
+): string | undefined {
+  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as
+    | { value: string }
+    | undefined;
+  return row?.value;
+}
+
+function getCleanupIntensity(db: ReturnType<typeof getDb>): CleanupIntensity {
+  return parseCleanupIntensity(readSetting(db, "cleanup_intensity"));
+}
+
+function getCleanupCustomPrompt(
+  db: ReturnType<typeof getDb>,
+): string | undefined {
+  return readSetting(db, "cleanup_custom_prompt");
 }
 
 function resolveChatModel(provider: string, modelId: string) {
@@ -148,6 +170,8 @@ export async function postProcess(
         contextHint: rewriteContext.contextHint || undefined,
         language: options.language,
         registerMode: rewriteContext.registerMode,
+        intensity: getCleanupIntensity(db),
+        customPrompt: getCleanupCustomPrompt(db),
       });
 
       handoffMs = Date.now() - handoffStart;

@@ -12,6 +12,7 @@ import {
 import { useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
+import { CleanupIntensityCard } from "./cleanup-intensity";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { Eyebrow, PageHeader, PageShell } from "./page-chrome";
@@ -156,6 +157,15 @@ export default function ModelsPage(): React.JSX.Element {
             showMlxWarming ? () => setWarmingOpen(true) : undefined
           }
         />
+
+        {m.llmCleanup && (
+          <CleanupIntensityCard
+            intensity={m.cleanupIntensity}
+            customPrompt={m.cleanupCustomPrompt}
+            onIntensityChange={m.setCleanupIntensity}
+            onCustomPromptChange={m.setCleanupCustomPrompt}
+          />
+        )}
 
         <KeysSection
           apiKeys={m.apiKeys}

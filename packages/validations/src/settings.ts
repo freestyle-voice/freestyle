@@ -18,8 +18,12 @@ export type CleanupIntensity = z.infer<typeof cleanupIntensitySchema>;
 
 export const DEFAULT_CLEANUP_INTENSITY: CleanupIntensity = "low";
 
-/** Upper bound on a user-authored custom cleanup prompt. */
-export const CLEANUP_CUSTOM_PROMPT_MAX = 8000;
+/**
+ * Upper bound on a user-authored custom cleanup prompt. Comfortably above the
+ * longest built-in preset (~8k chars) so users can seed Custom from any preset
+ * and still have room to build on top of it.
+ */
+export const CLEANUP_CUSTOM_PROMPT_MAX = 20000;
 
 export const cleanupCustomPromptSchema = z
   .string()

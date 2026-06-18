@@ -52,6 +52,15 @@ export function CleanupIntensityCard({
     onCustomPromptChange(value);
   };
 
+  const handleLevelChange = (next: CleanupIntensity): void => {
+    // Picking Custom from a preset seeds it with that preset's text (when the
+    // custom prompt is still empty) so the user can build on top of it.
+    if (next === "custom" && intensity !== "custom" && !customPrompt.trim()) {
+      onCustomPromptChange(CLEANUP_PRESET_PROMPTS[intensity]);
+    }
+    onIntensityChange(next);
+  };
+
   return (
     <section className="border-border bg-card rounded-[14px] border p-6">
       <div className="mb-1.5 flex flex-wrap items-center justify-between gap-3">
@@ -60,7 +69,7 @@ export function CleanupIntensityCard({
           size="sm"
           options={options}
           value={intensity}
-          onValueChange={(v) => onIntensityChange(v as CleanupIntensity)}
+          onValueChange={(v) => handleLevelChange(v as CleanupIntensity)}
         />
       </div>
 

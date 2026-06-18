@@ -68,6 +68,40 @@ export interface AgentPrereqStatus {
   authMode: AgentAuthMode;
   /** Whether a dedicated `claude-agent` API key is stored. */
   apiKeyConfigured: boolean;
+  /** Whether a Claude subscription login exists on this machine
+   *  (`~/.claude.json` records a logged-in `oauthAccount`). */
+  subscriptionLoggedIn: boolean;
+  /**
+   * Whether the *effective* auth path can actually authenticate a run right
+   * now: api-key mode with a stored key, or any mode falling back to a
+   * subscription login. When false, a run will fail with an auth error and the
+   * user needs to sign in (`claude login`) or add an API key.
+   */
+  authReady: boolean;
+}
+
+/** State of a single setup prerequisite. */
+export type PrereqState = "ok" | "missing" | "denied" | "unknown";
+
+/**
+ * Detailed computer-use prerequisites, probed live in the main process before
+ * (and during) a run. Unlike a single boolean, this distinguishes the three
+ * independent things computer use needs so the UI can guide the user to fix
+ * exactly the one that's missing.
+ */
+export interface ComputerUsePrereqs {
+  /** True only when the platform is supported and every item below is `ok`. */
+  ok: boolean;
+  /** False on non-macOS builds — computer use is macOS-only for now. */
+  platformSupported: boolean;
+  /** The bundled/Homebrew `cliclick` helper used for mouse + keyboard. */
+  helper: PrereqState;
+  /** macOS Accessibility permission — required to move/click/type. */
+  accessibility: PrereqState;
+  /** macOS Screen Recording permission — required for non-black screenshots. */
+  screenRecording: PrereqState;
+  /** Human-readable summary of the first blocking issue, when not `ok`. */
+  reason?: string;
 }
 
 /** A past agent conversation, sourced from the SDK's on-disk session store. */

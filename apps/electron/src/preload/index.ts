@@ -5,6 +5,7 @@ import type {
   AgentEvent,
   AgentMessage,
   AgentPrereqStatus,
+  ComputerUsePrereqs,
 } from "@freestyle/validations";
 import { contextBridge, ipcRenderer } from "electron";
 import type {
@@ -286,10 +287,12 @@ const api = {
       ipcRenderer.invoke("agent:computer-use:get"),
     setComputerUse: (enabled: boolean): void =>
       ipcRenderer.send("agent:computer-use:set", enabled),
-    computerUseStatus: (): Promise<{ ok: boolean; reason?: string }> =>
+    computerUseStatus: (): Promise<ComputerUsePrereqs> =>
       ipcRenderer.invoke("agent:computer-use:status"),
     installComputerUse: (): Promise<{ ok: boolean; reason?: string }> =>
       ipcRenderer.invoke("agent:computer-use:install"),
+    requestScreenRecording: (): Promise<ComputerUsePrereqs> =>
+      ipcRenderer.invoke("agent:computer-use:request-screen-recording"),
     onHotkeyDown: (callback: () => void): (() => void) => {
       const handler = (): void => callback();
       ipcRenderer.on("agent-hotkey:down", handler);

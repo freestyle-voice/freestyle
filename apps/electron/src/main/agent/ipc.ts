@@ -5,12 +5,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentAuthMode } from "@freestyle/validations";
-import { app, ipcMain } from "electron";
+import { app, ipcMain, shell } from "electron";
 import { getPrereqStatus } from "./auth.js";
 import {
-  computerUseAvailable,
   computerUseEnabled,
+  computerUsePrereqs,
   installCliclick,
+  requestScreenRecording,
 } from "./computer-use.js";
 import { getConversation, listConversations } from "./history.js";
 import type { AgentSessionManager } from "./session-manager.js";
@@ -124,7 +125,20 @@ export function registerAgentIpc(deps: AgentIpcDeps): void {
     deps.persistComputerUse(enabled === true);
   });
 
-  ipcMain.handle("agent:computer-use:status", () => computerUseAvailable());
+  // Returns the full per-item prereq snapshot (helper + Accessibility + Screen
+  // Recording), not just a single boolean, so the UI can guide each fix.
+  ipcMain.handle("agent:computer-use:status", () => computerUsePrereqs());
 
   ipcMain.handle("agent:computer-use:install", () => installCliclick());
+
+  // Trigger the macOS Screen Recording prompt (no askForMediaAccess exists for
+  // "screen", so we attempt a capture) and open the relevant settings pane.
+  ipcMain.handle("agent:computer-use:request-screen-recording", async () => {
+    if (process.platform === "darwin") {
+      shell.openExternal(
+        "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ScreenCapture",
+      );
+    }
+    return requestScreenRecording();
+  });
 }

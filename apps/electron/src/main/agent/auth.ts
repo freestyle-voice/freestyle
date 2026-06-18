@@ -41,6 +41,32 @@ export function getAgentAuthMode(): AgentAuthMode {
     : "subscription";
 }
 
+/**
+ * Best-effort check for an existing Claude subscription login.
+ *
+ * Claude Code records the signed-in account in `~/.claude.json` under
+ * `oauthAccount` (the actual OAuth tokens live in the macOS Keychain or
+ * `~/.claude/.credentials.json` on Linux). Checking for that key is a cheap,
+ * cross-platform signal that the user has run `claude login` at least once,
+ * without us shelling out to `security` or reading secrets. This is a
+ * heuristic — we use it to *guide* setup, never to hard-block a run (so a
+ * false negative can't lock a working subscription out).
+ */
+function hasSubscriptionLogin(): boolean {
+  try {
+    const raw = readFileSync(
+      join(app.getPath("home"), ".claude.json"),
+      "utf-8",
+    );
+    const parsed = JSON.parse(raw) as { oauthAccount?: unknown };
+    return (
+      typeof parsed.oauthAccount === "object" && parsed.oauthAccount !== null
+    );
+  } catch {
+    return false;
+  }
+}
+
 function readAgentApiKey(): string | null {
   try {
     const dbPath = process.env.FREESTYLE_DB_PATH;
@@ -85,8 +111,22 @@ export function resolveAuth(): ResolvedAuth {
 }
 
 export function getPrereqStatus(): AgentPrereqStatus {
+  const authMode = getAgentAuthMode();
+  const apiKeyConfigured = !!readAgentApiKey();
+  const subscriptionLoggedIn = hasSubscriptionLogin();
+  // Mirror resolveAuth()'s effective path: api-key mode uses the key only when
+  // one is stored; every other case falls back to the subscription login.
+  const authReady =
+    authMode === "api-key" && apiKeyConfigured ? true : subscriptionLoggedIn;
   return {
-    authMode: getAgentAuthMode(),
-    apiKeyConfigured: !!readAgentApiKey(),
+    authMode,
+    apiKeyConfigured,
+    subscriptionLoggedIn,
+    authReady,
   };
+}
+
+/** Convenience predicate for the run-time pre-flight gate. */
+export function isAuthReady(): boolean {
+  return getPrereqStatus().authReady;
 }

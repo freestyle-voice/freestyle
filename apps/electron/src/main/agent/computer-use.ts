@@ -32,7 +32,8 @@ import {
   tool,
 } from "@anthropic-ai/claude-agent-sdk";
 import { createAppLogger } from "@freestyle/utils";
-import { app, screen } from "electron";
+import type { ComputerUsePrereqs, PrereqState } from "@freestyle/validations";
+import { app, screen, systemPreferences } from "electron";
 import { z } from "zod";
 import { getNativeBinaryPath } from "../native-binary.js";
 
@@ -134,22 +135,116 @@ export async function installCliclick(): Promise<{
       };
 }
 
+// ---------------------------------------------------------------------------
+// Permission probing
+//
+// macOS gates the two syscalls we depend on behind separate TCC permissions:
+//   - Accessibility  → cliclick can move/click/type (else actions silently no-op)
+//   - Screen Recording → screencapture returns real pixels (else a black frame)
+// Neither can be *granted* programmatically; we can only read their state and
+// (for Screen Recording) trigger the first-run prompt by attempting a capture.
+// ---------------------------------------------------------------------------
+
+/** macOS Accessibility (mouse/keyboard control). */
+function accessibilityState(): PrereqState {
+  if (process.platform !== "darwin") return "ok";
+  // `false` = probe without popping the prompt. We can't distinguish
+  // "not-determined" from "denied" via this API, so report both as "denied".
+  return systemPreferences.isTrustedAccessibilityClient(false)
+    ? "ok"
+    : "denied";
+}
+
+/** macOS Screen Recording (screenshots). */
+function screenRecordingState(): PrereqState {
+  if (process.platform !== "darwin") return "ok";
+  switch (systemPreferences.getMediaAccessStatus("screen")) {
+    case "granted":
+      return "ok";
+    case "denied":
+    case "restricted":
+      return "denied";
+    case "not-determined":
+      return "unknown";
+    default:
+      return "unknown";
+  }
+}
+
+/**
+ * Full, honest prerequisite snapshot for computer use. Probed live every call
+ * (cheap) so a permission revoked mid-session is reflected immediately.
+ */
+export async function computerUsePrereqs(): Promise<ComputerUsePrereqs> {
+  const platformSupported = process.platform === "darwin";
+  if (!platformSupported) {
+    return {
+      ok: false,
+      platformSupported: false,
+      helper: "missing",
+      accessibility: "denied",
+      screenRecording: "denied",
+      reason: "Computer use is macOS-only in this build.",
+    };
+  }
+
+  const helper: PrereqState = (await findCliclick()) ? "ok" : "missing";
+  const accessibility = accessibilityState();
+  const screenRecording = screenRecordingState();
+
+  // Surface the single most actionable blocker first.
+  let reason: string | undefined;
+  if (helper !== "ok") {
+    reason =
+      "Desktop-control helper (cliclick) isn't installed. Click “Install helper”.";
+  } else if (accessibility !== "ok") {
+    reason =
+      "Freestyle needs macOS Accessibility permission to control the mouse and keyboard.";
+  } else if (screenRecording !== "ok") {
+    reason =
+      "Freestyle needs macOS Screen Recording permission to see the screen.";
+  }
+
+  const ok =
+    helper === "ok" && accessibility === "ok" && screenRecording === "ok";
+  return {
+    ok,
+    platformSupported,
+    helper,
+    accessibility,
+    screenRecording,
+    reason,
+  };
+}
+
+/**
+ * Backward-compatible boolean+reason view, kept for the run-time guard and any
+ * older callers. Derives from {@link computerUsePrereqs}.
+ */
 export async function computerUseAvailable(): Promise<{
   ok: boolean;
   reason?: string;
 }> {
-  if (process.platform !== "darwin") {
-    return { ok: false, reason: "Computer use is macOS-only in this build." };
+  const p = await computerUsePrereqs();
+  return { ok: p.ok, reason: p.reason };
+}
+
+/**
+ * Best-effort trigger for the macOS Screen Recording prompt. There is no
+ * `askForMediaAccess("screen")`, so the only way to make the OS show its dialog
+ * (and add Freestyle to the Screen Recording list) is to actually attempt a
+ * capture. We swallow any failure and just return the (re-probed) prereqs.
+ */
+export async function requestScreenRecording(): Promise<ComputerUsePrereqs> {
+  if (process.platform === "darwin") {
+    try {
+      await captureScreenshot();
+    } catch {
+      // Expected when permission is absent — the attempt is what surfaces the
+      // prompt / adds the app to the Screen Recording list.
+    }
   }
-  const cli = await findCliclick();
-  if (!cli) {
-    return {
-      ok: false,
-      reason:
-        "`cliclick` not found. Install it with `brew install cliclick`, then grant Freestyle Accessibility + Screen Recording permission.",
-    };
-  }
-  return { ok: true };
+  return computerUsePrereqs();
 }
 
 /** Whether the user has opted into computer use (settings.json `agentComputerUse`). */
@@ -221,26 +316,64 @@ const MOD_MAP: Record<string, string> = {
   shift: "shift",
   fn: "fn",
 };
-const KEY_MAP: Record<string, string> = {
-  enter: "return",
-  return: "return",
-  esc: "esc",
-  escape: "esc",
-  tab: "tab",
-  space: "space",
-  delete: "delete",
-  backspace: "delete",
-  up: "arrow-up",
-  down: "arrow-down",
-  left: "arrow-left",
-  right: "arrow-right",
-  home: "home",
-  end: "end",
-  pageup: "page-up",
-  pagedown: "page-down",
+// AppleScript System Events key codes for named keys. We deliberately DON'T use
+// cliclick's `kp:` for key presses: on macOS 26 its synthetic key-code events
+// silently no-op (verified: return/enter/space/tab produce nothing), so named
+// keys — most importantly Return — never fire. System Events `key code` works
+// reliably and is the same path the app already uses for paste (see paste.ts).
+const APPLE_KEY_CODES: Record<string, number> = {
+  return: 36,
+  enter: 76, // numeric-keypad Enter
+  esc: 53,
+  escape: 53,
+  tab: 48,
+  space: 49,
+  delete: 51,
+  backspace: 51,
+  del: 51,
+  "fwd-delete": 117,
+  fwddelete: 117,
+  forwarddelete: 117,
+  up: 126,
+  "arrow-up": 126,
+  down: 125,
+  "arrow-down": 125,
+  left: 123,
+  "arrow-left": 123,
+  right: 124,
+  "arrow-right": 124,
+  home: 115,
+  end: 119,
+  pageup: 116,
+  "page-up": 116,
+  pagedown: 121,
+  "page-down": 121,
+  f1: 122,
+  f2: 120,
+  f3: 99,
+  f4: 118,
+  f5: 96,
+  f6: 97,
+  f7: 98,
+  f8: 100,
+  f9: 101,
+  f10: 109,
+  f11: 103,
+  f12: 111,
+};
+// Normalized modifier → AppleScript `using {...}` phrase. (fn has no System
+// Events equivalent and isn't representable in a chord.)
+const APPLE_MOD: Record<string, string> = {
+  cmd: "command down",
+  ctrl: "control down",
+  alt: "option down",
+  shift: "shift down",
 };
 
-function buildKeyArgs(chord: string): string[] {
+/** Build an AppleScript that presses a key/chord via System Events. A
+ *  single-character key uses `keystroke` (so modifiers form real shortcuts);
+ *  named keys use `key code`. */
+function buildKeystrokeScript(chord: string): string {
   const parts = chord
     .split("+")
     .map((p) => p.trim().toLowerCase())
@@ -248,17 +381,25 @@ function buildKeyArgs(chord: string): string[] {
   if (parts.length === 0) throw new Error("empty key chord");
   const key = parts[parts.length - 1];
   const mods = parts.slice(0, -1).map((m) => {
-    const mapped = MOD_MAP[m];
-    if (!mapped) throw new Error(`unknown modifier: ${m}`);
-    return mapped;
+    const norm = MOD_MAP[m];
+    const apple = norm ? APPLE_MOD[norm] : undefined;
+    if (!apple) throw new Error(`unsupported modifier: ${m}`);
+    return apple;
   });
 
-  const keyArg = key.length === 1 ? `t:${key}` : `kp:${KEY_MAP[key] ?? key}`;
-  return [
-    ...mods.map((m) => `kd:${m}`),
-    keyArg,
-    ...mods.reverse().map((m) => `ku:${m}`),
-  ];
+  let action: string;
+  if (key.length === 1) {
+    // Escape for an AppleScript double-quoted string literal.
+    const esc = key.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    action = `keystroke "${esc}"`;
+  } else {
+    const code = APPLE_KEY_CODES[key];
+    if (code === undefined) throw new Error(`unknown key: ${key}`);
+    action = `key code ${code}`;
+  }
+
+  const using = mods.length ? ` using {${mods.join(", ")}}` : "";
+  return `tell application "System Events" to ${action}${using}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -380,7 +521,8 @@ export function createComputerUseServer(): McpSdkServerConfigWithInstance {
         { keys: z.string() },
         async ({ keys }) =>
           guarded(async () => {
-            await cliclick(buildKeyArgs(keys));
+            // System Events, not cliclick `kp:` — the latter no-ops on macOS 26.
+            await run("/usr/bin/osascript", ["-e", buildKeystrokeScript(keys)]);
             return ok(`pressed ${keys}`);
           }),
       ),

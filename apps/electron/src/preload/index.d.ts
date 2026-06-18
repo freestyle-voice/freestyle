@@ -5,6 +5,7 @@ import type {
   AgentEvent,
   AgentMessage,
   AgentPrereqStatus,
+  ComputerUsePrereqs,
 } from "@freestyle/validations";
 import type {
   ActiveAudioPlaybackMode,
@@ -147,8 +148,9 @@ declare global {
         ) => void;
         getComputerUse: () => Promise<boolean>;
         setComputerUse: (enabled: boolean) => void;
-        computerUseStatus: () => Promise<{ ok: boolean; reason?: string }>;
+        computerUseStatus: () => Promise<ComputerUsePrereqs>;
         installComputerUse: () => Promise<{ ok: boolean; reason?: string }>;
+        requestScreenRecording: () => Promise<ComputerUsePrereqs>;
         onHotkeyDown: (callback: () => void) => () => void;
         onHotkeyUp: (callback: () => void) => () => void;
         onEvent: (callback: (event: AgentEvent) => void) => () => void;

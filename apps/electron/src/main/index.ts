@@ -105,17 +105,23 @@ const hotkeyRecorderLog = createAppLogger("hotkey-recorder");
 const DEFAULT_PORT = 4649;
 const APP_WIDTH = 260;
 const APP_HEIGHT = 90;
-// Agent bar lives at the top-center in two states: a slim always-visible strip
-// that expands to a full conversation panel on hover.
-// Tall enough to host the full voice pill (216×43 + glow) while recording; the
-// slim idle strip sits centered inside the same footprint.
-const AGENT_BAR_COLLAPSED = { width: 268, height: 84 };
+// Agent bar lives at the top-center. The WINDOW is a fixed size (the expanded
+// footprint) and never resizes — collapse/expand is a pure renderer crossfade
+// (see bar.tsx); main only toggles click-through + focusability. AGENT_BAR_STRIP
+// is the slim collapsed strip's visible rect at the top of that window, used
+// only for hover hit-testing (it's a strict subset, so the state machine can't
+// oscillate). 268×84 is also tall enough to host the voice pill while recording.
+const AGENT_BAR_STRIP = { width: 268, height: 84 };
 const AGENT_BAR_EXPANDED = { width: 468, height: 600 };
 let agentBarExpanded = false;
 // Show/hide is owned here: a single interval reconciles the panel against the
 // real OS cursor. DOM mouseleave is unreliable for a frameless, always-on-top
 // panel (the cursor leaving via a screen edge often never fires it).
 let agentBarComposing = false;
+// Live hover hit-box reported by the renderer (window-relative CSS px) — the
+// real bounding rect of the visible collapsed pill, so hover matches exactly
+// what's drawn instead of the generous strip band. Null until first report.
+let agentBarHoverRect: Rect | null = null;
 let agentBarPoll: ReturnType<typeof setInterval> | null = null;
 let agentBarOutsideTicks = 0;
 const AGENT_BAR_COLLAPSE_TICKS = 3; // ~300ms grace at the 100ms cadence below
@@ -610,26 +616,47 @@ function registerPillEscape(): void {
 // or blocks the desktop; agents keep streaming in the background either way.
 // ---------------------------------------------------------------------------
 
-function getAgentBarBounds(state: "collapsed" | "expanded"): {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-} {
+type Rect = { x: number; y: number; width: number; height: number };
+
+/** The fixed window footprint (expanded size), top-center. Never changes. */
+function getAgentBarWindowBounds(): Rect {
   const wa = screen.getPrimaryDisplay().workArea;
-  const size = state === "expanded" ? AGENT_BAR_EXPANDED : AGENT_BAR_COLLAPSED;
   return {
-    x: Math.round(wa.x + (wa.width - size.width) / 2),
+    x: Math.round(wa.x + (wa.width - AGENT_BAR_EXPANDED.width) / 2),
     y: wa.y + 6,
-    width: size.width,
-    height: size.height,
+    width: AGENT_BAR_EXPANDED.width,
+    height: AGENT_BAR_EXPANDED.height,
+  };
+}
+
+/** The visible strip while collapsed: centered at the top of the window. Hover
+ *  here expands. A strict subset of the window rect, so hover/leave can't flap. */
+function getAgentBarStripRect(): Rect {
+  const win = getAgentBarWindowBounds();
+  // Prefer the renderer-reported pill rect so the hover target is exactly the
+  // visible pill (it tracks size changes: idle pill, "Working…", voice pill).
+  // It's always a subset of the window, so the expand/collapse state machine
+  // still can't flap. Fall back to the centered strip band before first report.
+  if (agentBarHoverRect) {
+    return {
+      x: Math.round(win.x + agentBarHoverRect.x),
+      y: Math.round(win.y + agentBarHoverRect.y),
+      width: Math.round(agentBarHoverRect.width),
+      height: Math.round(agentBarHoverRect.height),
+    };
+  }
+  return {
+    x: Math.round(win.x + (win.width - AGENT_BAR_STRIP.width) / 2),
+    y: win.y,
+    width: AGENT_BAR_STRIP.width,
+    height: AGENT_BAR_STRIP.height,
   };
 }
 
 function createAgentBarWindow(): void {
   agentBarExpanded = false;
   agentBarWindow = new BrowserWindow({
-    ...getAgentBarBounds("collapsed"),
+    ...getAgentBarWindowBounds(),
     show: false,
     frame: false,
     transparent: true,
@@ -650,6 +677,9 @@ function createAgentBarWindow(): void {
 
   agentBarWindow.setAlwaysOnTop(true, "screen-saver");
   agentBarWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // Start collapsed: the window is full-size but mostly transparent, so make it
+  // click-through (only the strip region reacts, via the cursor poll below).
+  agentBarWindow.setIgnoreMouseEvents(true, { forward: true });
 
   agentBarWindow.on("closed", () => {
     if (agentBarPoll) {
@@ -680,11 +710,10 @@ function expandAgentBar(focus: boolean): void {
   if (!agentBarExpanded) {
     agentBarExpanded = true;
     agentBarOutsideTicks = 0;
+    // No resize — the window is already full-size. Just make it interactive and
+    // let the renderer crossfade the panel in.
+    agentBarWindow.setIgnoreMouseEvents(false);
     agentBarWindow.setFocusable(true);
-    // Instant (not animated): the window and its content change together, so
-    // the panel never clips or jumps while growing. The window is transparent,
-    // so the size change itself is invisible.
-    agentBarWindow.setBounds(getAgentBarBounds("expanded"), false);
     agentBarWindow.webContents.send("agent-bar:set-expanded", true);
   }
   if (focus) {
@@ -693,13 +722,14 @@ function expandAgentBar(focus: boolean): void {
   }
 }
 
-/** Shrink back to the slim strip and drop focusability so it can't hold focus. */
+/** Crossfade back to the slim strip: drop focus + restore click-through so the
+ *  big transparent window doesn't hold focus or block the desktop. No resize. */
 function collapseAgentBar(): void {
   if (!agentBarWindow || !agentBarExpanded) return;
   agentBarExpanded = false;
   agentBarOutsideTicks = 0;
-  agentBarWindow.setBounds(getAgentBarBounds("collapsed"), false);
   agentBarWindow.setFocusable(false);
+  agentBarWindow.setIgnoreMouseEvents(true, { forward: true });
   agentBarWindow.webContents.send("agent-bar:set-expanded", false);
 }
 
@@ -712,20 +742,22 @@ function collapseAgentBar(): void {
 function reconcileAgentBar(): void {
   if (!agentBarWindow) return;
   const p = screen.getCursorScreenPoint();
-  const b = agentBarWindow.getBounds();
   const m = 6; // small forgiveness margin around the edges
-  const over =
-    p.x >= b.x - m &&
-    p.x <= b.x + b.width + m &&
-    p.y >= b.y - m &&
-    p.y <= b.y + b.height + m;
+  const within = (r: Rect): boolean =>
+    p.x >= r.x - m &&
+    p.x <= r.x + r.width + m &&
+    p.y >= r.y - m &&
+    p.y <= r.y + r.height + m;
 
+  // Collapsed: only the slim strip sub-rect is a hover target (the rest of the
+  // window is transparent + click-through). Expanded: stay open while the
+  // cursor is anywhere over the full panel.
   if (!agentBarExpanded) {
     agentBarOutsideTicks = 0;
-    if (over) expandAgentBar(false);
+    if (within(getAgentBarStripRect())) expandAgentBar(false);
     return;
   }
-  if (over || agentBarComposing) {
+  if (within(getAgentBarWindowBounds()) || agentBarComposing) {
     agentBarOutsideTicks = 0;
     return;
   }
@@ -1909,6 +1941,9 @@ app.whenReady().then(async () => {
     persistAuthMode: (mode) => writeSettings({ agentAuthMode: mode }),
     setComposing: (composing) => {
       agentBarComposing = composing;
+    },
+    setHoverRect: (rect) => {
+      agentBarHoverRect = rect;
     },
     revealBar: () => expandAgentBar(true),
     persistComputerUse: (enabled) =>

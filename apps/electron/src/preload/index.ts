@@ -279,6 +279,9 @@ const api = {
     setComposing: (composing: boolean): void =>
       ipcRenderer.send("agent-bar:composing", composing),
     reveal: (): void => ipcRenderer.send("agent-bar:reveal"),
+    setHoverRect: (
+      rect: { x: number; y: number; width: number; height: number } | null,
+    ): void => ipcRenderer.send("agent-bar:hover-rect", rect),
     getComputerUse: (): Promise<boolean> =>
       ipcRenderer.invoke("agent:computer-use:get"),
     setComputerUse: (enabled: boolean): void =>

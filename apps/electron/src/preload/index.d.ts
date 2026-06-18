@@ -137,6 +137,14 @@ declare global {
         getConversation: (id: string) => Promise<AgentMessage[]>;
         setComposing: (composing: boolean) => void;
         reveal: () => void;
+        setHoverRect: (
+          rect: {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+          } | null,
+        ) => void;
         getComputerUse: () => Promise<boolean>;
         setComputerUse: (enabled: boolean) => void;
         computerUseStatus: () => Promise<{ ok: boolean; reason?: string }>;

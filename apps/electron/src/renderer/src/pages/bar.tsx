@@ -9,7 +9,13 @@ import { Orb } from "@renderer/components/ui/orb";
 import { VoicePill } from "@renderer/components/ui/voice-pill";
 import { getApiBase, getAuthHeaders, refreshApiBase } from "@renderer/lib/api";
 import { Recorder } from "@renderer/lib/recorder";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 type CaptureState = "idle" | "recording" | "transcribing";
 type RunStatus =
@@ -27,6 +33,11 @@ interface Item {
 }
 
 const MIN_RECORDING_MS = 400;
+
+// Collapsed strip band height — matches AGENT_BAR_STRIP.height in index.ts (the
+// hover rect main uses). The strip is pinned to this band at the top of the
+// fixed-size window so it sits at its final position regardless of layer state.
+const STRIP_H = 84;
 
 // ---- consistency with the dictation pill: matching start/stop tones ----
 let toneCtx: AudioContext | null = null;
@@ -105,6 +116,9 @@ export default function BarPage(): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const expandedRef = useRef(false);
+  // Wraps the visible collapsed pill so we can report its exact bounding box to
+  // main for hover hit-testing (see the report effect below).
+  const pillRef = useRef<HTMLDivElement>(null);
   // Set when a transcript lands while collapsed: focus the input once the
   // panel finishes mounting after the reveal.
   const pendingFocusRef = useRef(false);
@@ -136,11 +150,14 @@ export default function BarPage(): React.JSX.Element {
     const off = window.api.agent.onSetExpanded((next) => {
       setExpanded(next);
       expandedRef.current = next;
-      if (!next) setListOpen(false);
-      // Focus the input as soon as the panel mounts after a reveal.
-      if (next && pendingFocusRef.current) {
-        pendingFocusRef.current = false;
-        requestAnimationFrame(() => textareaRef.current?.focus());
+      if (next) {
+        // Focus the input on reveal (e.g. after a voice transcript lands).
+        if (pendingFocusRef.current) {
+          pendingFocusRef.current = false;
+          requestAnimationFrame(() => textareaRef.current?.focus());
+        }
+      } else {
+        setListOpen(false);
       }
     });
     return off;
@@ -150,6 +167,45 @@ export default function BarPage(): React.JSX.Element {
     const busy = capture !== "idle" || (focused && input.trim().length > 0);
     window.api.agent.setComposing(busy);
   }, [capture, focused, input]);
+
+  // ---- Auto-grow the composer with its content. Reset to "auto" first so it
+  // can shrink too, then size to scrollHeight. A CSS max-height caps the growth
+  // (it expands into the panel, shrinking the scrollable transcript above —
+  // the window itself is fixed-size and never grows). Past the cap it scrolls. ----
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
+
+  // ---- Report the collapsed pill's real bounding box to main, so the hover
+  // hit-box matches the visible pill instead of the whole strip band. The pill
+  // is top-centered with no frame, so its viewport rect == window-relative px.
+  // We only measure while collapsed (when expanded the pill is scaled out via a
+  // CSS transform, which would skew getBoundingClientRect). ----
+  useEffect(() => {
+    const el = pillRef.current;
+    if (!el || expanded) return;
+    const report = (): void => {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return;
+      window.api.agent.setHoverRect({
+        x: r.left,
+        y: r.top,
+        width: r.width,
+        height: r.height,
+      });
+    };
+    // Measure after layout settles (the collapse transition resets the scale).
+    const raf = requestAnimationFrame(report);
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [expanded, capture]);
 
   // ---- Voice capture (reuses the dictation recorder + /api/transcribe) ----
   const transcribe = useCallback(
@@ -350,211 +406,244 @@ export default function BarPage(): React.JSX.Element {
         ? "bg-emerald-400"
         : "bg-muted-foreground/40";
 
-  // ---- Collapsed ----
-  if (!expanded) {
-    // While capturing voice, show the exact Freestyle dictation pill.
-    if (capture !== "idle") {
-      return (
-        <VoicePill
-          state={capture === "recording" ? "recording" : "transcribing"}
-          stream={micStream}
-          draggable={false}
-          align="center"
-        />
-      );
-    }
-    // Otherwise, the slim always-on strip.
-    return (
+  // ---- Persistent shell -----------------------------------------------------
+  // The window never resizes and neither layer ever unmounts (so the WebGL Orbs
+  // never re-init). Expand/collapse is a pure CSS crossfade — transitions, not
+  // one-shot keyframes, so re-hovering mid-animation reverses smoothly instead
+  // of restarting. This is what keeps the motion flicker-free.
+  return (
+    <div
+      className="relative h-screen w-screen overflow-hidden"
+      style={{ fontFamily: "'DM Sans', sans-serif" }}
+    >
+      <style>{glowKeyframes}</style>
+
+      {/* Collapsed layer: slim strip (or the recording pill), pinned to the top
+          band so it never shifts. Fades out as the panel takes over. */}
       <div
-        className="flex h-screen w-screen items-center justify-center"
-        style={{ fontFamily: "'DM Sans', sans-serif" }}
+        className={`absolute inset-x-0 top-0 flex items-center justify-center transition-[opacity,transform] duration-150 ease-out ${
+          expanded ? "pointer-events-none scale-95 opacity-0" : "opacity-100"
+        }`}
+        style={{ height: STRIP_H }}
       >
-        <style>{glowKeyframes}</style>
-        <div
-          className={`flex items-center gap-2 rounded-full border border-border bg-card/95 px-3 py-1 text-xs text-foreground shadow-sm backdrop-blur ${
-            busy ? "glow-agent-busy" : ""
-          }`}
-        >
-          <div className="h-4 w-4 overflow-hidden rounded-full">
+        {/* Content-sized wrapper: its bounding box is the hover hit-box. */}
+        <div ref={pillRef} className="inline-flex">
+          {capture !== "idle" ? (
+            <VoicePill
+              state={capture === "recording" ? "recording" : "transcribing"}
+              stream={micStream}
+              draggable={false}
+              align="center"
+            />
+          ) : (
+            <div
+              className={`flex items-center gap-2 rounded-full border border-border bg-card/95 px-3 py-1 text-xs text-foreground shadow-sm backdrop-blur ${
+                busy ? "glow-agent-busy" : ""
+              }`}
+            >
+              <div className="h-4 w-4 overflow-hidden rounded-full">
+                <Orb
+                  colors={orbColors}
+                  agentState={orbState}
+                  className="h-full w-full"
+                />
+              </div>
+              <span className="text-muted-foreground">
+                {running ? "Working…" : "Claude Code"}
+              </span>
+              <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Expanded panel: fills the window. Fades + settles in from the top. */}
+      <div
+        className={`absolute inset-0 flex origin-top flex-col overflow-hidden rounded-2xl border border-border bg-card text-foreground shadow-2xl transition-[opacity,transform] duration-150 ease-out ${
+          expanded
+            ? "opacity-100"
+            : "pointer-events-none -translate-y-1 scale-[0.98] opacity-0"
+        }`}
+      >
+        {/* Header */}
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+          <div className="h-5 w-5 overflow-hidden rounded-full">
             <Orb
               colors={orbColors}
               agentState={orbState}
               className="h-full w-full"
             />
           </div>
-          <span className="text-muted-foreground">
-            {running ? "Working…" : "Claude Code"}
-          </span>
+          <button
+            type="button"
+            onClick={() => setListOpen((v) => !v)}
+            className="flex items-center gap-1 text-sm font-semibold hover:text-foreground"
+          >
+            <span className="max-w-[180px] truncate">
+              {activeId
+                ? (conversations.find((c) => c.id === activeId)?.title ??
+                  "Conversation")
+                : "New conversation"}
+            </span>
+            <span className="text-muted-foreground text-xs">⌄</span>
+          </button>
           <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
+          <div className="ml-auto flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={newConversation}
+              title="New conversation"
+              className="rounded px-1.5 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              +
+            </button>
+          </div>
         </div>
-      </div>
-    );
-  }
 
-  // ---- Expanded panel ----
-  return (
-    <div
-      className="relative flex h-screen w-screen flex-col overflow-hidden rounded-2xl border border-border bg-card text-foreground shadow-2xl"
-      style={{ fontFamily: "'DM Sans', sans-serif" }}
-    >
-      <style>{glowKeyframes}</style>
+        {/* Conversation list overlay */}
+        {listOpen && (
+          <div className="absolute inset-x-2 top-12 z-10 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-xl">
+            <button
+              type="button"
+              onClick={newConversation}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted"
+            >
+              <span className="text-muted-foreground">+</span> New conversation
+            </button>
+            {conversations.length === 0 && (
+              <p className="px-2 py-2 text-xs text-muted-foreground">
+                No past conversations yet.
+              </p>
+            )}
+            {conversations.map((c) => (
+              <button
+                type="button"
+                key={c.id}
+                onClick={() => loadConversation(c.id)}
+                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted ${
+                  c.id === activeId ? "bg-muted" : ""
+                }`}
+              >
+                <span className="flex-1 truncate">{c.title}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {relativeTime(c.updatedAt)}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
 
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <div className="h-5 w-5 overflow-hidden rounded-full">
-          <Orb
-            colors={orbColors}
-            agentState={orbState}
-            className="h-full w-full"
-          />
-        </div>
-        <button
-          type="button"
-          onClick={() => setListOpen((v) => !v)}
-          className="flex items-center gap-1 text-sm font-semibold hover:text-foreground"
+        {/* Transcript */}
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto px-3 py-2 text-sm"
         >
-          <span className="max-w-[180px] truncate">
-            {activeId
-              ? (conversations.find((c) => c.id === activeId)?.title ??
-                "Conversation")
-              : "New conversation"}
-          </span>
-          <span className="text-muted-foreground text-xs">⌄</span>
-        </button>
-        <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
-        <div className="ml-auto flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={newConversation}
-            title="New conversation"
-            className="rounded px-1.5 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            +
-          </button>
-        </div>
-      </div>
-
-      {/* Conversation list overlay */}
-      {listOpen && (
-        <div className="absolute inset-x-2 top-12 z-10 max-h-72 overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-xl">
-          <button
-            type="button"
-            onClick={newConversation}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted"
-          >
-            <span className="text-muted-foreground">+</span> New conversation
-          </button>
-          {conversations.length === 0 && (
-            <p className="px-2 py-2 text-xs text-muted-foreground">
-              No past conversations yet.
+          {items.length === 0 && (
+            <p className="mt-6 text-center text-xs text-muted-foreground">
+              Hold the agent hotkey and speak, edit, then press Enter to run.
             </p>
           )}
-          {conversations.map((c) => (
-            <button
-              type="button"
-              key={c.id}
-              onClick={() => loadConversation(c.id)}
-              className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-muted ${
-                c.id === activeId ? "bg-muted" : ""
-              }`}
-            >
-              <span className="flex-1 truncate">{c.title}</span>
-              <span className="text-[10px] text-muted-foreground">
-                {relativeTime(c.updatedAt)}
-              </span>
-            </button>
+          {items.map((item) => (
+            <div key={item.id} className="mb-2.5">
+              {item.role === "user" && (
+                <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-sm bg-primary/10 px-3 py-1.5 text-foreground">
+                  {item.text}
+                </div>
+              )}
+              {item.role === "assistant" && (
+                <Markdown className="max-w-[92%]">{item.text}</Markdown>
+              )}
+              {item.role === "tool" && (
+                <div className="font-mono text-[11px] text-blue-400 break-words">
+                  ⚙ {item.text}
+                </div>
+              )}
+              {item.role === "error" && (
+                <div className="text-red-400">⚠ {item.text}</div>
+              )}
+            </div>
           ))}
-        </div>
-      )}
-
-      {/* Transcript */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 text-sm">
-        {items.length === 0 && (
-          <p className="mt-6 text-center text-xs text-muted-foreground">
-            Hold the agent hotkey and speak, edit, then press Enter to run.
-          </p>
-        )}
-        {items.map((item) => (
-          <div key={item.id} className="mb-2.5">
-            {item.role === "user" && (
-              <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-sm bg-primary/10 px-3 py-1.5 text-foreground">
-                {item.text}
-              </div>
-            )}
-            {item.role === "assistant" && (
-              <Markdown className="max-w-[92%]">{item.text}</Markdown>
-            )}
-            {item.role === "tool" && (
-              <div className="font-mono text-[11px] text-blue-400 break-words">
-                ⚙ {item.text}
-              </div>
-            )}
-            {item.role === "error" && (
-              <div className="text-red-400">⚠ {item.text}</div>
-            )}
-          </div>
-        ))}
-        {running && (
-          <p className="text-xs text-muted-foreground animate-pulse">
-            {runStatus === "starting" ? "Starting…" : "Working…"}
-          </p>
-        )}
-        {usage && (
-          <p className="mt-2 text-[10px] text-muted-foreground">
-            {usage.inputTokens}↓ {usage.outputTokens}↑ tokens
-            {typeof usage.costUsd === "number"
-              ? ` · $${usage.costUsd.toFixed(4)}`
-              : ""}
-            {runStatus === "canceled" ? " · canceled" : ""}
-          </p>
-        )}
-      </div>
-
-      {(notice || capture !== "idle") && (
-        <div className="flex items-center gap-2 px-3 pb-1 text-[11px] text-muted-foreground">
-          {capture === "recording" && <VolumeBars stream={micStream} />}
-          <span>
-            {capture === "recording"
-              ? "Listening… release to transcribe"
-              : capture === "transcribing"
-                ? "Transcribing…"
-                : notice}
-          </span>
-        </div>
-      )}
-
-      {/* Input */}
-      <div className="border-t border-border p-2">
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          placeholder="Speak with the hotkey, or type a prompt…"
-          rows={2}
-          className="w-full resize-none rounded-lg bg-background px-2.5 py-1.5 text-sm text-foreground outline-none border border-border focus:border-ring"
-        />
-        <div className="mt-1.5 flex items-center justify-end gap-2">
-          {running ? (
-            <button
-              type="button"
-              onClick={cancel}
-              className="rounded-lg bg-muted px-3 py-1 text-xs hover:bg-muted/80"
-            >
-              Cancel
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={send}
-              disabled={!input.trim()}
-              className="rounded-lg bg-primary px-3 py-1 text-xs text-primary-foreground disabled:opacity-40"
-            >
-              Send
-            </button>
+          {running && (
+            <p className="text-xs text-muted-foreground animate-pulse">
+              {runStatus === "starting" ? "Starting…" : "Working…"}
+            </p>
           )}
+          {usage && (
+            <p className="mt-2 text-[10px] text-muted-foreground">
+              {usage.inputTokens}↓ {usage.outputTokens}↑ tokens
+              {typeof usage.costUsd === "number"
+                ? ` · $${usage.costUsd.toFixed(4)}`
+                : ""}
+              {runStatus === "canceled" ? " · canceled" : ""}
+            </p>
+          )}
+        </div>
+
+        {(notice || capture !== "idle") && (
+          <div className="flex items-center gap-2 px-3 pb-1 text-[11px] text-muted-foreground">
+            {capture === "recording" && <VolumeBars stream={micStream} />}
+            <span>
+              {capture === "recording"
+                ? "Listening… release to transcribe"
+                : capture === "transcribing"
+                  ? "Transcribing…"
+                  : notice}
+            </span>
+          </div>
+        )}
+
+        {/* Input — a self-contained composer (Claude-style): one rounded,
+            bordered surface holding the auto-growing textarea with the action
+            button tucked into the bottom-right corner. */}
+        <div className="px-2 pb-2 pt-1">
+          <div className="flex flex-col rounded-2xl border border-border bg-background shadow-sm transition-colors focus-within:border-ring">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={onKeyDown}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
+              placeholder="Speak with the hotkey, or type a prompt…"
+              rows={1}
+              className="max-h-[180px] w-full resize-none overflow-y-auto bg-transparent px-3 pt-2.5 pb-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+            />
+            <div className="flex items-center justify-end px-2 pb-2">
+              {running ? (
+                <button
+                  type="button"
+                  onClick={cancel}
+                  title="Stop"
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-foreground transition-colors hover:bg-muted/80"
+                >
+                  <span className="block h-2.5 w-2.5 rounded-[2px] bg-foreground" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={send}
+                  disabled={!input.trim()}
+                  title="Send"
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    aria-hidden="true"
+                    className="h-4 w-4"
+                  >
+                    <path
+                      d="M8 13V3.5M8 3.5L3.75 7.75M8 3.5l4.25 4.25"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -22,6 +22,12 @@ interface AgentIpcDeps {
   /** Track whether the bar is "busy" (recording or editing) so main's
    *  cursor-driven auto-collapse waits instead of shrinking mid-action. */
   setComposing: (composing: boolean) => void;
+  /** Report the live collapsed-pill hit-box (window-relative CSS px) so main's
+   *  hover hit-testing matches the visible pill. Null clears it (fall back to
+   *  the default strip band). */
+  setHoverRect: (
+    rect: { x: number; y: number; width: number; height: number } | null,
+  ) => void;
   /** Expand + focus the bar — used to reveal it once a voice transcript lands
    *  (recording itself happens in the slim collapsed pill). */
   revealBar: () => void;
@@ -89,6 +95,27 @@ export function registerAgentIpc(deps: AgentIpcDeps): void {
   });
 
   ipcMain.on("agent-bar:reveal", () => deps.revealBar());
+
+  ipcMain.on("agent-bar:hover-rect", (_event, rect: unknown) => {
+    if (rect && typeof rect === "object") {
+      const r = rect as Record<string, unknown>;
+      if (
+        typeof r.x === "number" &&
+        typeof r.y === "number" &&
+        typeof r.width === "number" &&
+        typeof r.height === "number"
+      ) {
+        deps.setHoverRect({
+          x: r.x,
+          y: r.y,
+          width: r.width,
+          height: r.height,
+        });
+        return;
+      }
+    }
+    deps.setHoverRect(null);
+  });
 
   // ---- Computer use (opt-in, experimental) ----
   ipcMain.handle("agent:computer-use:get", () => computerUseEnabled());

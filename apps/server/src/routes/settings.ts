@@ -1,4 +1,6 @@
 import {
+  cleanupCustomPromptSchema,
+  cleanupIntensitySchema,
   localLlmConfigSchema,
   settingValueSchema,
 } from "@freestyle/validations";
@@ -38,6 +40,19 @@ const settings = new Hono()
     const db = getDb();
     const key = c.req.param("key");
     const body = c.req.valid("json");
+
+    // Key-specific validation for settings with constrained value shapes.
+    if (key === "cleanup_intensity") {
+      const parsed = cleanupIntensitySchema.safeParse(body.value);
+      if (!parsed.success) {
+        return c.json({ error: "Invalid cleanup intensity" }, 400);
+      }
+    } else if (key === "cleanup_custom_prompt") {
+      const parsed = cleanupCustomPromptSchema.safeParse(body.value);
+      if (!parsed.success) {
+        return c.json({ error: "Custom prompt is too long" }, 400);
+      }
+    }
 
     db.prepare(
       `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))

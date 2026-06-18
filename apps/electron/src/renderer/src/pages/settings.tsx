@@ -77,6 +77,25 @@ const audioPlaybackOptions = [
   { id: "pause", label: "Pause", icon: Pause },
 ] as const;
 
+const settingsSectionIds = [
+  "interface",
+  "application",
+  "recording",
+  "display",
+  "permissions",
+  "computer-use",
+  "data",
+] as const;
+
+type SettingsSectionId = (typeof settingsSectionIds)[number];
+
+function parseSettingsSection(hash: string): SettingsSectionId {
+  const id = hash.replace(/^#/, "");
+  return (settingsSectionIds as readonly string[]).includes(id)
+    ? (id as SettingsSectionId)
+    : "application";
+}
+
 interface AudioDevice {
   deviceId: string;
   label: string;
@@ -93,7 +112,6 @@ function normalizePillPos(pos: string): string {
 export default function SettingsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
-
   const [devices, setDevices] = useState<AudioDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [hotkey, setHotkey] = useState(
@@ -120,6 +138,9 @@ export default function SettingsPage(): React.JSX.Element {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
+    parseSettingsSection(window.location.hash),
+  );
   const [serverUrlInput, setServerUrlInput] = useState("");
   const [savedServerUrl, setSavedServerUrl] = useState("");
   const [serverTokenInput, setServerTokenInput] = useState("");
@@ -180,6 +201,22 @@ export default function SettingsPage(): React.JSX.Element {
   const supportsBackgroundAudio = isMac || isLinux || isWindows;
   // macOS and Windows can deep-link to the OS mic privacy settings.
   const canOpenMicSettings = isMac || isWindows;
+
+  const selectSection = useCallback((id: SettingsSectionId) => {
+    setActiveSection(id);
+    const nextHash = `#${id}`;
+    if (window.location.hash !== nextHash) {
+      window.history.replaceState(null, "", nextHash);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setActiveSection(parseSettingsSection(window.location.hash));
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   const checkPermissions = useCallback(async () => {
     try {
@@ -671,6 +708,8 @@ export default function SettingsPage(): React.JSX.Element {
       ? "Release to save · Esc to cancel"
       : "Press a modifier or side mouse button... · Esc to cancel";
 
+  const activeSectionLabel = t(`settings.sections.${activeSection}`);
+
   const positionOptions = useMemo<SegmentOption[]>(() => {
     const opts: SegmentOption[] = [
       {
@@ -688,598 +727,628 @@ export default function SettingsPage(): React.JSX.Element {
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col"
+      className="flex min-h-0 flex-1 flex-col"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
       <div className="h-9 shrink-0" />
       <div
-        className="responsive-page-scroll flex-1 overflow-auto"
+        className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 min-[900px]:grid-cols-[180px_minmax(0,1fr)]"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
-        <div className="mb-7">
-          <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-            <span className="serif-italic text-primary">
-              {t("settings.title")}
-            </span>
-            <span>. </span>
-          </h1>
+        <div className="min-[900px]:col-span-2">
+          <div className="mb-7">
+            <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
+              <span className="serif-italic text-primary">
+                {t("settings.title")}
+              </span>
+              <span>. </span>
+            </h1>
+          </div>
+
+          {updateAvailable && (
+            <div className="border-primary/30 bg-primary/5 mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <Download className="text-primary h-4 w-4" />
+                <span className="min-w-0 text-sm">
+                  {updateDownloaded
+                    ? t("settings.updateReady", { version: updateAvailable })
+                    : t("settings.updateAvailable", {
+                        version: updateAvailable,
+                      })}
+                </span>
+              </div>
+              {updateDownloaded ? (
+                <button
+                  type="button"
+                  onClick={() => window.api?.installUpdate()}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium"
+                >
+                  {t("common.restartAndUpdate")}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDownloading(true);
+                    setUpdateError(null);
+                    window.api?.downloadUpdate();
+                  }}
+                  disabled={downloading}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium disabled:opacity-50"
+                >
+                  {downloading ? t("common.downloading") : t("common.download")}
+                </button>
+              )}
+              {updateError && (
+                <span className="text-destructive w-full text-xs">
+                  {updateError}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
-        {updateAvailable && (
-          <div className="border-primary/30 bg-primary/5 mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <Download className="text-primary h-4 w-4" />
-              <span className="min-w-0 text-sm">
-                {updateDownloaded
-                  ? t("settings.updateReady", { version: updateAvailable })
-                  : t("settings.updateAvailable", { version: updateAvailable })}
-              </span>
-            </div>
-            {updateDownloaded ? (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => window.api?.installUpdate()}
+        <SettingsSidebar active={activeSection} onSelect={selectSection} />
+
+        <div className="min-h-0 overflow-y-auto">
+          <h2 className="text-foreground mb-6 text-[22px] font-medium tracking-[-0.02em]">
+            {activeSectionLabel}
+          </h2>
+
+          {activeSection === "interface" && (
+            <SettingsPanel>
+              <Row
+                label={t("settings.interfaceLanguage.label")}
+                desc={t("settings.interfaceLanguage.desc")}
+                last
               >
-                {t("common.restartAndUpdate")}
-              </Button>
-            ) : (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => {
-                  setDownloading(true);
-                  setUpdateError(null);
-                  window.api?.downloadUpdate();
-                }}
-                disabled={downloading}
+                <LanguageSelector />
+              </Row>
+            </SettingsPanel>
+          )}
+
+          {activeSection === "application" && (
+            <SettingsPanel>
+              <Row
+                label={t("settings.application.autoUpdate")}
+                desc={t("settings.application.autoUpdateDesc")}
               >
-                {downloading ? t("common.downloading") : t("common.download")}
-              </Button>
-            )}
-            {updateError && (
-              <span className="text-destructive w-full text-xs">
-                {updateError}
-              </span>
-            )}
-          </div>
-        )}
-
-        <Section label={t("settings.sections.interface")}>
-          <Row
-            label={t("settings.interfaceLanguage.label")}
-            desc={t("settings.interfaceLanguage.desc")}
-            last
-          >
-            <LanguageSelector />
-          </Row>
-        </Section>
-
-        <Section label={t("settings.sections.application")}>
-          <Row
-            label={t("settings.application.autoUpdate")}
-            desc={t("settings.application.autoUpdateDesc")}
-          >
-            <Switch
-              checked={autoUpdate}
-              onCheckedChange={handleAutoUpdateToggle}
-            />
-          </Row>
-          <Row
-            label={t("settings.application.launchAtStartup")}
-            desc={t("settings.application.launchAtStartupDesc")}
-          >
-            <Switch
-              checked={launchAtStartup}
-              onCheckedChange={handleLaunchAtStartupToggle}
-            />
-          </Row>
-          <Row
-            label={t("settings.application.showOnLaunch")}
-            desc={t("settings.application.showOnLaunchDesc")}
-            last
-          >
-            <Switch
-              checked={showOnLaunch}
-              onCheckedChange={handleShowOnLaunchToggle}
-            />
-          </Row>
-        </Section>
-
-        <Section label={t("settings.sections.recording")}>
-          <Row
-            label={t("settings.recording.hotkey")}
-            desc={
-              hotkeyMode === "toggle"
-                ? t("settings.recording.hotkeyDescToggle")
-                : t("settings.recording.hotkeyDescHold")
-            }
-          >
-            {recorderState === "idle" ? (
-              <div className="relative inline-flex">
-                <Button
-                  variant="outline"
-                  onClick={startHotkeyRecording}
-                  className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
-                >
-                  <Keyboard className="text-muted-foreground size-4 shrink-0" />
-                  <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
-                  <span className="text-muted-foreground ml-1 text-xs">
-                    {t("common.change")}
-                  </span>
-                </Button>
-                {invalidReleaseNotice && (
-                  <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                    {t("settings.recording.needsModifier")}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
-                <Keyboard className="text-primary h-4 w-4 shrink-0" />
-                {draftKeys.length > 0 ? (
-                  <>
-                    <KeyComboDisplay keys={draftKeys} variant="dim" />
-                    <span className="text-muted-foreground text-xs">
-                      {captureHint}
+                <Switch
+                  checked={autoUpdate}
+                  onCheckedChange={handleAutoUpdateToggle}
+                />
+              </Row>
+              <Row
+                label={t("settings.application.launchAtStartup")}
+                desc={t("settings.application.launchAtStartupDesc")}
+              >
+                <Switch
+                  checked={launchAtStartup}
+                  onCheckedChange={handleLaunchAtStartupToggle}
+                />
+              </Row>
+              <Row
+                label={t("settings.application.showOnLaunch")}
+                desc={t("settings.application.showOnLaunchDesc")}
+              >
+                <Switch
+                  checked={showOnLaunch}
+                  onCheckedChange={handleShowOnLaunchToggle}
+                />
+              </Row>
+              <Row
+                label="Server URL"
+                desc="Leave empty to use the built-in local server. Point this at a self-hosted Freestyle server (e.g. http://your-vm:4649) to use that instead, with an access token if it requires one. Restart the app after changing this."
+                last
+              >
+                <div className="flex w-full max-w-md flex-col gap-2.5">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "mono inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-[3px] text-[9px] uppercase tracking-[0.14em]",
+                        savedServerUrl
+                          ? "bg-secondary text-secondary-foreground"
+                          : "bg-accent text-accent-foreground",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "h-1.5 w-1.5 rounded-full",
+                          savedServerUrl ? "bg-muted-foreground" : "bg-primary",
+                        )}
+                      />
+                      {savedServerUrl ? "Custom server" : "Local server"}
                     </span>
-                  </>
+                    {savedServerUrl && (
+                      <span className="text-muted-foreground min-w-0 truncate text-xs">
+                        {savedServerUrl}
+                      </span>
+                    )}
+                  </div>
+                  <InputGroup>
+                    <InputGroupInput
+                      id="settings-server-url"
+                      type="text"
+                      value={serverUrlInput}
+                      aria-invalid={!!serverUrlError}
+                      onChange={(e) => {
+                        setServerUrlInput(e.target.value);
+                        setServerTest("idle");
+                        setServerUrlError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveServer();
+                      }}
+                      placeholder="http://127.0.0.1:4649 (local)"
+                    />
+                    <InputGroupAddon>
+                      <Server />
+                    </InputGroupAddon>
+                  </InputGroup>
+                  <InputGroup
+                    className={cn(!serverUrlInput.trim() && "opacity-55")}
+                  >
+                    <InputGroupInput
+                      id="settings-server-token"
+                      type={showToken ? "text" : "password"}
+                      value={serverTokenInput}
+                      onChange={(e) => {
+                        setServerTokenInput(e.target.value);
+                        setServerTest("idle");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveServer();
+                      }}
+                      placeholder="Access token (optional)"
+                    />
+                    <InputGroupAddon>
+                      <Key />
+                    </InputGroupAddon>
+                    {serverTokenInput && (
+                      <RevealToggle
+                        revealed={showToken}
+                        onToggle={() => setShowToken((v) => !v)}
+                        label="token"
+                      />
+                    )}
+                  </InputGroup>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ink"
+                      size="sm"
+                      onClick={handleSaveServer}
+                      disabled={
+                        serverUrlInput.trim() === savedServerUrl.trim() &&
+                        serverTokenInput.trim() === savedServerToken.trim()
+                      }
+                    >
+                      {t("common.save")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        testServer(serverUrlInput, serverTokenInput)
+                      }
+                      disabled={serverTest === "testing"}
+                    >
+                      Test connection
+                    </Button>
+                    {(savedServerUrl ||
+                      savedServerToken ||
+                      serverUrlInput.trim() ||
+                      serverTokenInput.trim()) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleResetServer}
+                        className="text-muted-foreground"
+                      >
+                        Reset to local
+                      </Button>
+                    )}
+                    {serverTest === "testing" && (
+                      <span className="text-muted-foreground text-xs">
+                        Testing...
+                      </span>
+                    )}
+                    {serverTest === "ok" && (
+                      <span className="text-primary inline-flex items-center gap-1 text-xs">
+                        <Check className="h-3.5 w-3.5" /> Connected
+                      </span>
+                    )}
+                    {serverTest === "unreachable" && (
+                      <span className="text-destructive text-xs">
+                        Unreachable
+                      </span>
+                    )}
+                    {serverTest === "unauthorized" && (
+                      <span className="text-destructive text-xs">
+                        Token rejected
+                      </span>
+                    )}
+                  </div>
+                  {serverUrlError && (
+                    <span className="text-destructive text-xs">
+                      {serverUrlError}
+                    </span>
+                  )}
+                </div>
+              </Row>
+            </SettingsPanel>
+          )}
+
+          {activeSection === "recording" && (
+            <SettingsPanel>
+              <Row
+                label={t("settings.recording.hotkey")}
+                desc={
+                  hotkeyMode === "toggle"
+                    ? t("settings.recording.hotkeyDescToggle")
+                    : t("settings.recording.hotkeyDescHold")
+                }
+              >
+                {recorderState === "idle" ? (
+                  <div className="relative inline-flex">
+                    <Button
+                      variant="outline"
+                      onClick={startHotkeyRecording}
+                      className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
+                    >
+                      <Keyboard className="text-muted-foreground size-4 shrink-0" />
+                      <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
+                      <span className="text-muted-foreground ml-1 text-xs">
+                        {t("common.change")}
+                      </span>
+                    </Button>
+                    {invalidReleaseNotice && (
+                      <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                        {t("settings.recording.needsModifier")}
+                      </div>
+                    )}
+                  </div>
                 ) : (
-                  <span className="text-muted-foreground animate-pulse text-sm">
-                    {captureHint}
-                  </span>
-                )}
-                {invalidReleaseNotice && (
-                  <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                    {t("settings.recording.needsModifier")}
+                  <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
+                    <Keyboard className="text-primary h-4 w-4 shrink-0" />
+                    {draftKeys.length > 0 ? (
+                      <>
+                        <KeyComboDisplay keys={draftKeys} variant="dim" />
+                        <span className="text-muted-foreground text-xs">
+                          {captureHint}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground animate-pulse text-sm">
+                        {captureHint}
+                      </span>
+                    )}
+                    {invalidReleaseNotice && (
+                      <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                        {t("settings.recording.needsModifier")}
+                      </div>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={cancelHotkeyRecording}
+                      className="ml-1"
+                    >
+                      {t("common.cancel")}
+                    </Button>
                   </div>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={cancelHotkeyRecording}
-                  className="ml-1"
-                >
-                  {t("common.cancel")}
-                </Button>
-              </div>
-            )}
-          </Row>
+              </Row>
 
-          <Row
-            label={t("settings.recording.activation")}
-            desc={
-              hotkeyMode === "toggle"
-                ? t("settings.recording.activationDescToggle")
-                : t("settings.recording.activationDescHold")
-            }
-          >
-            <SegmentedControl
-              value={hotkeyMode}
-              onValueChange={(v) =>
-                handleHotkeyModeChange(v as "hold" | "toggle")
-              }
-              options={[
-                {
-                  value: "hold",
-                  label: t("settings.recording.activationHold"),
-                },
-                {
-                  value: "toggle",
-                  label: t("settings.recording.activationToggle"),
-                },
-              ]}
-            />
-          </Row>
-
-          <Row
-            label={t("settings.recording.microphone")}
-            desc={t("settings.recording.microphoneDesc")}
-          >
-            <Select
-              value={
-                selectedDevice === "" ? SYSTEM_DEFAULT_MIC : selectedDevice
-              }
-              onValueChange={(v) =>
-                handleDeviceChange(v === SYSTEM_DEFAULT_MIC ? "" : v)
-              }
-            >
-              <SelectTrigger
-                id="settings-microphone"
-                className="w-full max-w-md"
+              <Row
+                label={t("settings.recording.activation")}
+                desc={
+                  hotkeyMode === "toggle"
+                    ? t("settings.recording.activationDescToggle")
+                    : t("settings.recording.activationDescHold")
+                }
               >
-                <Mic className="text-muted-foreground size-4 shrink-0" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {microphoneOptions.map((o) => (
-                  <SelectItem
-                    key={o.value}
-                    value={o.value === "" ? SYSTEM_DEFAULT_MIC : o.value}
-                  >
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Row>
-
-          <Row
-            label={t("settings.recording.language")}
-            desc={t("settings.recording.languageDesc")}
-          >
-            <Select value={language} onValueChange={handleLanguageChange}>
-              <SelectTrigger id="settings-language" className="w-full max-w-md">
-                <Languages className="text-muted-foreground size-4 shrink-0" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {languageOptions.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Row>
-
-          <Row
-            label={t("settings.recording.outputMode")}
-            desc={t("settings.recording.outputModeDesc")}
-          >
-            <Segment
-              compact
-              options={[
-                { id: "paste", label: t("settings.recording.outputModePaste") },
-                {
-                  id: "clipboard",
-                  label: t("settings.recording.outputModeClipboard"),
-                },
-              ]}
-              active={outputMode}
-              onSelect={handleOutputModeChange}
-            />
-          </Row>
-
-          <Row
-            label={t("settings.recording.transcriptionPrompt")}
-            desc={t("settings.recording.transcriptionPromptDesc")}
-          >
-            <Input
-              id="settings-transcription-prompt"
-              type="text"
-              value={transcriptionPrompt}
-              onChange={(e) => setTranscriptionPrompt(e.target.value)}
-              onBlur={() => {
-                getClient()
-                  .api.settings[":key"].$put({
-                    param: { key: SETTINGS_KEYS.transcriptionPrompt },
-                    json: { value: transcriptionPrompt },
-                  })
-                  .catch(() => {});
-              }}
-              placeholder={t(
-                "settings.recording.transcriptionPromptPlaceholder",
-              )}
-              className="max-w-md"
-            />
-          </Row>
-
-          <Row
-            last={!supportsBackgroundAudio}
-            label={t("settings.recording.sound")}
-            desc={t("settings.recording.soundDesc")}
-          >
-            <div className="flex items-center gap-2.5">
-              {soundEnabled ? (
-                <Volume2 className="text-muted-foreground h-4 w-4 shrink-0" />
-              ) : (
-                <VolumeOff className="text-muted-foreground h-4 w-4 shrink-0" />
-              )}
-              <Switch
-                checked={soundEnabled}
-                onCheckedChange={handleSoundToggle}
-              />
-            </div>
-          </Row>
-
-          {supportsBackgroundAudio ? (
-            <Row
-              label="Background audio"
-              desc={
-                isLinux
-                  ? "Duck lowers system volume. Pause pauses MPRIS media and lowers volume."
-                  : "Duck lowers volume. Pause pauses current media and lowers volume."
-              }
-              last
-            >
-              <Segment
-                compact
-                options={audioPlaybackOptions}
-                active={audioPlaybackMode}
-                onSelect={handleAudioPlaybackModeChange}
-              />
-            </Row>
-          ) : null}
-        </Section>
-
-        <Section label={t("settings.sections.display")}>
-          <Row
-            label={t("settings.display.theme")}
-            desc={t("settings.display.themeDesc")}
-          >
-            <Segment
-              options={themeOptions.map((o) => ({
-                id: o.value,
-                label: t(
-                  `settings.display.theme${o.value.charAt(0).toUpperCase()}${o.value.slice(1)}`,
-                ),
-                icon: o.icon,
-              }))}
-              active={theme ?? "system"}
-              onSelect={handleThemeChange}
-            />
-          </Row>
-          <Row
-            label={t("settings.display.widgetPosition")}
-            desc={t("settings.display.widgetPositionDesc")}
-            last
-          >
-            <Segment
-              compact
-              options={positionOptions}
-              active={pillPosition}
-              onSelect={handlePillPositionChange}
-            />
-          </Row>
-        </Section>
-
-        <Section label={t("settings.sections.permissions")}>
-          <Row
-            label={t("settings.permissions.microphone")}
-            desc={t("settings.permissions.microphoneDesc")}
-          >
-            <PermissionControl
-              granted={micStatus === "granted"}
-              checking={micStatus === "unknown"}
-              actionLabel={
-                micStatus === "denied" && canOpenMicSettings
-                  ? t("common.openSettings")
-                  : micStatus === "granted"
-                    ? null
-                    : t("common.allow")
-              }
-              external={micStatus === "denied" && canOpenMicSettings}
-              onAction={
-                micStatus === "denied" && canOpenMicSettings
-                  ? openMicSettings
-                  : requestMic
-              }
-              onManage={canOpenMicSettings ? openMicSettings : undefined}
-            />
-          </Row>
-          <Row
-            label={t("settings.permissions.accessibility")}
-            desc={
-              isMac
-                ? t("settings.permissions.accessibilityDescMac")
-                : t("settings.permissions.accessibilityDescOther")
-            }
-            last
-          >
-            <PermissionControl
-              granted={accessibilityStatus === true}
-              checking={accessibilityStatus === null}
-              actionLabel={
-                accessibilityStatus === true
-                  ? null
-                  : isMac
-                    ? t("common.openSettings")
-                    : null
-              }
-              external={isMac}
-              onAction={openAccessibility}
-              onManage={isMac ? openAccessibility : undefined}
-              note={
-                !isMac && accessibilityStatus !== true
-                  ? t("settings.permissions.autoGranted")
-                  : undefined
-              }
-            />
-          </Row>
-        </Section>
-
-        <Section label="Computer use (experimental)" tight>
-          <Row
-            label="Allow computer use"
-            desc="Let the Claude agent see your screen and control the mouse and keyboard. Powerful but risky — a misheard request can take actions on its own. Off by default."
-          >
-            <Switch
-              checked={computerUse}
-              onCheckedChange={handleComputerUseToggle}
-            />
-          </Row>
-          <Row
-            label="Desktop control helper"
-            desc="Freestyle uses a small bundled helper (cliclick) plus macOS Screen Recording and Accessibility permission to control the desktop."
-            last
-          >
-            <div className="flex items-center gap-3">
-              <StatusDot
-                granted={helperStatus?.ok === true}
-                checking={helperStatus === null || installingHelper}
-              />
-              {helperStatus?.ok === true ? (
-                <Check className="text-primary h-4 w-4" />
-              ) : (
-                <Button
-                  variant="ink"
-                  size="sm"
-                  onClick={handleInstallHelper}
-                  disabled={installingHelper}
-                >
-                  {installingHelper ? "Installing…" : "Install helper"}
-                </Button>
-              )}
-              {helperStatus && !helperStatus.ok && helperStatus.reason ? (
-                <span className="text-muted-foreground max-w-xs text-xs">
-                  {helperStatus.reason}
-                </span>
-              ) : null}
-            </div>
-          </Row>
-        </Section>
-
-        <Section label={t("settings.sections.data")} tight>
-          <Row
-            label={t("settings.data.history")}
-            desc={t("settings.data.historyDesc")}
-            last
-          >
-            <Button variant="destructive" size="sm" onClick={clearHistory}>
-              <Trash2 data-icon="inline-start" />
-              {t("settings.data.clearHistory")}
-            </Button>
-          </Row>
-        </Section>
-
-        <Section label="Server" tight>
-          <Row
-            label="Server URL"
-            desc="Leave empty to use the built-in local server. Point this at a self-hosted Freestyle server (e.g. http://your-vm:4649) to use that instead, with an access token if it requires one. Restart the app after changing this."
-            last
-          >
-            <div className="flex w-full max-w-md flex-col gap-2.5">
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    "mono inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-[3px] text-[9px] uppercase tracking-[0.14em]",
-                    savedServerUrl
-                      ? "bg-secondary text-secondary-foreground"
-                      : "bg-accent text-accent-foreground",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "h-1.5 w-1.5 rounded-full",
-                      savedServerUrl ? "bg-muted-foreground" : "bg-primary",
-                    )}
-                  />
-                  {savedServerUrl ? "Custom server" : "Local server"}
-                </span>
-                {savedServerUrl && (
-                  <span className="text-muted-foreground min-w-0 truncate text-xs">
-                    {savedServerUrl}
-                  </span>
-                )}
-              </div>
-              <InputGroup>
-                <InputGroupInput
-                  id="settings-server-url"
-                  type="text"
-                  value={serverUrlInput}
-                  aria-invalid={!!serverUrlError}
-                  onChange={(e) => {
-                    setServerUrlInput(e.target.value);
-                    setServerTest("idle");
-                    setServerUrlError(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSaveServer();
-                  }}
-                  placeholder="http://127.0.0.1:4649 (local)"
+                <SegmentedControl
+                  value={hotkeyMode}
+                  onValueChange={(v) =>
+                    handleHotkeyModeChange(v as "hold" | "toggle")
+                  }
+                  options={[
+                    {
+                      value: "hold",
+                      label: t("settings.recording.activationHold"),
+                    },
+                    {
+                      value: "toggle",
+                      label: t("settings.recording.activationToggle"),
+                    },
+                  ]}
                 />
-                <InputGroupAddon>
-                  <Server />
-                </InputGroupAddon>
-              </InputGroup>
-              <InputGroup
-                className={cn(!serverUrlInput.trim() && "opacity-55")}
+              </Row>
+
+              <Row
+                label={t("settings.recording.microphone")}
+                desc={t("settings.recording.microphoneDesc")}
               >
-                <InputGroupInput
-                  id="settings-server-token"
-                  type={showToken ? "text" : "password"}
-                  value={serverTokenInput}
-                  onChange={(e) => {
-                    setServerTokenInput(e.target.value);
-                    setServerTest("idle");
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSaveServer();
-                  }}
-                  placeholder="Access token (optional)"
-                />
-                <InputGroupAddon>
-                  <Key />
-                </InputGroupAddon>
-                {serverTokenInput && (
-                  <RevealToggle
-                    revealed={showToken}
-                    onToggle={() => setShowToken((v) => !v)}
-                    label="token"
-                  />
-                )}
-              </InputGroup>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ink"
-                  size="sm"
-                  onClick={handleSaveServer}
-                  disabled={
-                    serverUrlInput.trim() === savedServerUrl.trim() &&
-                    serverTokenInput.trim() === savedServerToken.trim()
+                <Select
+                  value={
+                    selectedDevice === "" ? SYSTEM_DEFAULT_MIC : selectedDevice
+                  }
+                  onValueChange={(v) =>
+                    handleDeviceChange(v === SYSTEM_DEFAULT_MIC ? "" : v)
                   }
                 >
-                  {t("common.save")}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => testServer(serverUrlInput, serverTokenInput)}
-                  disabled={serverTest === "testing"}
-                >
-                  Test connection
-                </Button>
-                {(savedServerUrl ||
-                  savedServerToken ||
-                  serverUrlInput.trim() ||
-                  serverTokenInput.trim()) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleResetServer}
-                    className="text-muted-foreground"
+                  <SelectTrigger
+                    id="settings-microphone"
+                    className="w-full max-w-md"
                   >
-                    Reset to local
-                  </Button>
-                )}
-                {serverTest === "testing" && (
-                  <span className="text-muted-foreground text-xs">
-                    Testing…
-                  </span>
-                )}
-                {serverTest === "ok" && (
-                  <span className="text-primary inline-flex items-center gap-1 text-xs">
-                    <Check className="h-3.5 w-3.5" /> Connected
-                  </span>
-                )}
-                {serverTest === "unreachable" && (
-                  <span className="text-destructive text-xs">Unreachable</span>
-                )}
-                {serverTest === "unauthorized" && (
-                  <span className="text-destructive text-xs">
-                    Token rejected
-                  </span>
-                )}
-              </div>
-              {serverUrlError && (
-                <span className="text-destructive text-xs">
-                  {serverUrlError}
-                </span>
-              )}
-            </div>
-          </Row>
-        </Section>
+                    <Mic className="text-muted-foreground size-4 shrink-0" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {microphoneOptions.map((o) => (
+                      <SelectItem
+                        key={o.value}
+                        value={o.value === "" ? SYSTEM_DEFAULT_MIC : o.value}
+                      >
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Row>
+
+              <Row
+                label={t("settings.recording.language")}
+                desc={t("settings.recording.languageDesc")}
+              >
+                <Select value={language} onValueChange={handleLanguageChange}>
+                  <SelectTrigger
+                    id="settings-language"
+                    className="w-full max-w-md"
+                  >
+                    <Languages className="text-muted-foreground size-4 shrink-0" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {languageOptions.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Row>
+
+              <Row
+                label={t("settings.recording.outputMode")}
+                desc={t("settings.recording.outputModeDesc")}
+              >
+                <Segment
+                  compact
+                  options={[
+                    {
+                      id: "paste",
+                      label: t("settings.recording.outputModePaste"),
+                    },
+                    {
+                      id: "clipboard",
+                      label: t("settings.recording.outputModeClipboard"),
+                    },
+                  ]}
+                  active={outputMode}
+                  onSelect={handleOutputModeChange}
+                />
+              </Row>
+
+              <Row
+                label={t("settings.recording.transcriptionPrompt")}
+                desc={t("settings.recording.transcriptionPromptDesc")}
+              >
+                <Input
+                  id="settings-transcription-prompt"
+                  type="text"
+                  value={transcriptionPrompt}
+                  onChange={(e) => setTranscriptionPrompt(e.target.value)}
+                  onBlur={() => {
+                    getClient()
+                      .api.settings[":key"].$put({
+                        param: { key: SETTINGS_KEYS.transcriptionPrompt },
+                        json: { value: transcriptionPrompt },
+                      })
+                      .catch(() => {});
+                  }}
+                  placeholder={t(
+                    "settings.recording.transcriptionPromptPlaceholder",
+                  )}
+                  className="max-w-md"
+                />
+              </Row>
+
+              <Row
+                last={!supportsBackgroundAudio}
+                label={t("settings.recording.sound")}
+                desc={t("settings.recording.soundDesc")}
+              >
+                <div className="flex items-center gap-2.5">
+                  {soundEnabled ? (
+                    <Volume2 className="text-muted-foreground h-4 w-4 shrink-0" />
+                  ) : (
+                    <VolumeOff className="text-muted-foreground h-4 w-4 shrink-0" />
+                  )}
+                  <Switch
+                    checked={soundEnabled}
+                    onCheckedChange={handleSoundToggle}
+                  />
+                </div>
+              </Row>
+
+              {supportsBackgroundAudio ? (
+                <Row
+                  label="Background audio"
+                  desc={
+                    isLinux
+                      ? "Duck lowers system volume. Pause pauses MPRIS media and lowers volume."
+                      : "Duck lowers volume. Pause pauses current media and lowers volume."
+                  }
+                  last
+                >
+                  <Segment
+                    compact
+                    options={audioPlaybackOptions}
+                    active={audioPlaybackMode}
+                    onSelect={handleAudioPlaybackModeChange}
+                  />
+                </Row>
+              ) : null}
+            </SettingsPanel>
+          )}
+
+          {activeSection === "display" && (
+            <SettingsPanel>
+              <Row
+                label={t("settings.display.theme")}
+                desc={t("settings.display.themeDesc")}
+              >
+                <Segment
+                  options={themeOptions.map((o) => ({
+                    id: o.value,
+                    label: t(
+                      `settings.display.theme${o.value.charAt(0).toUpperCase()}${o.value.slice(1)}`,
+                    ),
+                    icon: o.icon,
+                  }))}
+                  active={theme ?? "system"}
+                  onSelect={handleThemeChange}
+                />
+              </Row>
+              <Row
+                label={t("settings.display.widgetPosition")}
+                desc={t("settings.display.widgetPositionDesc")}
+                last
+              >
+                <Segment
+                  compact
+                  options={positionOptions}
+                  active={pillPosition}
+                  onSelect={handlePillPositionChange}
+                />
+              </Row>
+            </SettingsPanel>
+          )}
+
+          {activeSection === "permissions" && (
+            <SettingsPanel>
+              <Row
+                label={t("settings.permissions.microphone")}
+                desc={t("settings.permissions.microphoneDesc")}
+              >
+                <PermissionControl
+                  granted={micStatus === "granted"}
+                  checking={micStatus === "unknown"}
+                  actionLabel={
+                    micStatus === "denied" && canOpenMicSettings
+                      ? t("common.openSettings")
+                      : micStatus === "granted"
+                        ? null
+                        : t("common.allow")
+                  }
+                  external={micStatus === "denied" && canOpenMicSettings}
+                  onAction={
+                    micStatus === "denied" && canOpenMicSettings
+                      ? openMicSettings
+                      : requestMic
+                  }
+                  onManage={canOpenMicSettings ? openMicSettings : undefined}
+                />
+              </Row>
+              <Row
+                label={t("settings.permissions.accessibility")}
+                desc={
+                  isMac
+                    ? t("settings.permissions.accessibilityDescMac")
+                    : t("settings.permissions.accessibilityDescOther")
+                }
+                last
+              >
+                <PermissionControl
+                  granted={accessibilityStatus === true}
+                  checking={accessibilityStatus === null}
+                  actionLabel={
+                    accessibilityStatus === true
+                      ? null
+                      : isMac
+                        ? t("common.openSettings")
+                        : null
+                  }
+                  external={isMac}
+                  onAction={openAccessibility}
+                  onManage={isMac ? openAccessibility : undefined}
+                  note={
+                    !isMac && accessibilityStatus !== true
+                      ? t("settings.permissions.autoGranted")
+                      : undefined
+                  }
+                />
+              </Row>
+            </SettingsPanel>
+          )}
+          {activeSection === "computer-use" && (
+            <SettingsPanel>
+              <Row
+                label="Allow computer use"
+                desc="Let the Claude agent see your screen and control the mouse and keyboard. Powerful but risky — a misheard request can take actions on its own. Off by default."
+              >
+                <Switch
+                  checked={computerUse}
+                  onCheckedChange={handleComputerUseToggle}
+                />
+              </Row>
+              <Row
+                label="Desktop control helper"
+                desc="Freestyle uses a small bundled helper (cliclick) plus macOS Screen Recording and Accessibility permission to control the desktop."
+                last
+              >
+                <div className="flex items-center gap-3">
+                  <StatusDot
+                    granted={helperStatus?.ok === true}
+                    checking={helperStatus === null || installingHelper}
+                  />
+                  {helperStatus?.ok === true ? (
+                    <Check className="text-primary h-4 w-4" />
+                  ) : (
+                    <Button
+                      variant="ink"
+                      size="sm"
+                      onClick={handleInstallHelper}
+                      disabled={installingHelper}
+                    >
+                      {installingHelper ? "Installing…" : "Install helper"}
+                    </Button>
+                  )}
+                  {helperStatus && !helperStatus.ok && helperStatus.reason ? (
+                    <span className="text-muted-foreground max-w-xs text-xs">
+                      {helperStatus.reason}
+                    </span>
+                  ) : null}
+                </div>
+              </Row>
+            </SettingsPanel>
+          )}
+          {activeSection === "data" && (
+            <SettingsPanel>
+              <Row
+                label={t("settings.data.history")}
+                desc={t("settings.data.historyDesc")}
+                last
+              >
+                <Button variant="destructive" size="sm" onClick={clearHistory}>
+                  <Trash2 data-icon="inline-start" />
+                  {t("settings.data.clearHistory")}
+                </Button>
+              </Row>
+            </SettingsPanel>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1289,23 +1358,41 @@ export default function SettingsPage(): React.JSX.Element {
 // Layout primitives — Section / Row pattern from r-settings.jsx GeneralP1
 // ---------------------------------------------------------------------------
 
-function Section({
-  label,
-  tight,
-  children,
+function SettingsSidebar({
+  active,
+  onSelect,
 }: {
-  label: string;
-  tight?: boolean;
-  children: React.ReactNode;
-}) {
+  active: SettingsSectionId;
+  onSelect: (id: SettingsSectionId) => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+
   return (
-    <section className={cn(tight ? "mt-7" : "mt-8")}>
-      <h2 className="mono text-muted-foreground mb-1 text-[10px] font-semibold uppercase tracking-[0.18em]">
-        {label}
-      </h2>
-      <div className="flex flex-col">{children}</div>
-    </section>
+    <nav className="border-border flex h-full min-h-0 shrink-0 gap-1 overflow-x-auto pb-1 min-[900px]:flex-col min-[900px]:overflow-visible min-[900px]:border-r min-[900px]:pr-4 min-[900px]:pb-0">
+      {settingsSectionIds.map((id) => {
+        const isActive = id === active;
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => onSelect(id)}
+            className={cn(
+              "shrink-0 rounded-[7px] border px-2.5 py-1.5 text-left text-[13px] transition-colors min-[900px]:w-full",
+              isActive
+                ? "border-border bg-card text-foreground font-medium"
+                : "text-secondary-foreground/80 hover:bg-card/50 border-transparent font-normal",
+            )}
+          >
+            {t(`settings.sections.${id}`)}
+          </button>
+        );
+      })}
+    </nav>
   );
+}
+
+function SettingsPanel({ children }: { children: React.ReactNode }) {
+  return <div className="flex flex-col">{children}</div>;
 }
 
 function Row({
@@ -1390,6 +1477,7 @@ function PermissionControl({
   note?: string;
 }) {
   const { t } = useTranslation();
+
   return (
     <div className="flex items-center gap-3">
       <StatusDot granted={granted} checking={checking} />
@@ -1423,6 +1511,7 @@ function StatusDot({
   checking: boolean;
 }) {
   const { t } = useTranslation();
+
   return (
     <span
       className={cn(

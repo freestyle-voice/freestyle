@@ -767,7 +767,9 @@ function reconcileAgentBar(): void {
 }
 
 function sendAgentEvent(event: AgentEvent): void {
-  agentBarWindow?.webContents.send("agent:event", event);
+  if (agentBarWindow && !agentBarWindow.isDestroyed()) {
+    agentBarWindow.webContents.send("agent:event", event);
+  }
 }
 
 // Agent push-to-talk: hold to record, release to reveal the bar with the

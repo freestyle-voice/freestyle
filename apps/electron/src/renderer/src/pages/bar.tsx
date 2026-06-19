@@ -281,9 +281,9 @@ function reducer(state: ThreadState, action: Action): ThreadState {
           ...emptyThread(crypto.randomUUID()),
           runId: r.runId,
           sessionId: r.sessionId || null,
-          title: "Running agent",
+          title: r.title || "Running agent",
           status: r.status,
-          lastActivityAt: Date.now(),
+          lastActivityAt: r.startedAt,
         }));
       if (!fresh.length) return state;
       return { ...state, threads: [...fresh, ...state.threads] };
@@ -808,7 +808,7 @@ export default function BarPage(): React.JSX.Element {
                   ? runningCount > 1
                     ? `Working… (${runningCount})`
                     : "Working…"
-                  : "Claude Code"}
+                  : "Freestyle Code"}
               </span>
               <span
                 className={`h-1.5 w-1.5 rounded-full ${

@@ -2,8 +2,6 @@
  * Agent IPC surface (Voice OS). Registered once from main/index.ts. Keeps the
  * agent wiring out of the already-large index.ts.
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { AgentAuthMode, ComputerUseMode } from "@freestyle/validations";
 import { app, ipcMain, shell } from "electron";
 import { getPrereqStatus } from "./auth.js";
@@ -16,6 +14,7 @@ import {
 } from "./computer-use.js";
 import { getConversation, listConversations } from "./history.js";
 import type { AgentRunRegistry } from "./run-registry.js";
+import { readAgentSettings } from "./settings.js";
 
 interface AgentIpcDeps {
   registry: AgentRunRegistry;
@@ -41,16 +40,8 @@ interface AgentIpcDeps {
 
 /** cwd for runs + conversation history: configured `agentCwd`, else home. */
 function resolveCwd(): string {
-  try {
-    const settings = JSON.parse(
-      readFileSync(join(app.getPath("userData"), "settings.json"), "utf-8"),
-    ) as { agentCwd?: unknown };
-    if (typeof settings.agentCwd === "string" && settings.agentCwd.trim()) {
-      return settings.agentCwd;
-    }
-  } catch {
-    // fall through to home
-  }
+  const cwd = readAgentSettings().agentCwd;
+  if (typeof cwd === "string" && cwd.trim()) return cwd;
   return app.getPath("home");
 }
 

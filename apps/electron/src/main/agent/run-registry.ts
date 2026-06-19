@@ -45,6 +45,13 @@ function isTerminal(status: AgentRunStatus): boolean {
   return status === "done" || status === "error" || status === "canceled";
 }
 
+function deriveRunTitle(prompt: string): string {
+  const clean = prompt.replace(/\s+/g, " ").trim();
+  return clean.length > 42
+    ? `${clean.slice(0, 42)}…`
+    : clean || "Running agent";
+}
+
 interface ActiveRun {
   runId: string;
   manager: AgentSessionManager;
@@ -52,6 +59,8 @@ interface ActiveRun {
   status: AgentRunStatus;
   /** True if this run currently holds the computer-use lock. */
   computerUse: boolean;
+  title: string;
+  startedAt: number;
 }
 
 export class AgentRunRegistry {
@@ -71,11 +80,6 @@ export class AgentRunRegistry {
     this.maxConcurrency = opts?.maxConcurrency ?? DEFAULT_MAX_CONCURRENCY;
   }
 
-  /** Number of runs currently live (not yet terminal). */
-  liveCount(): number {
-    return this.runs.size;
-  }
-
   /** Snapshot of live runs, for re-syncing a freshly (re)mounted bar. */
   list(): AgentRunSummary[] {
     return [...this.runs.values()].map((r) => ({
@@ -83,6 +87,8 @@ export class AgentRunRegistry {
       sessionId: r.sessionId,
       status: r.status,
       computerUse: r.computerUse,
+      title: r.title,
+      startedAt: r.startedAt,
     }));
   }
 
@@ -126,6 +132,8 @@ export class AgentRunRegistry {
       sessionId: input.resume ?? "",
       status: "starting",
       computerUse,
+      title: deriveRunTitle(input.prompt),
+      startedAt: Date.now(),
     });
 
     log.info(

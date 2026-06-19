@@ -19,26 +19,17 @@ import { DatabaseSync } from "node:sqlite";
 import { createAppLogger } from "@freestyle/utils";
 import type { AgentAuthMode, AgentPrereqStatus } from "@freestyle/validations";
 import { app } from "electron";
+import { type AgentSettings, readAgentSettings } from "./settings.js";
 
 const log = createAppLogger("agent-auth");
 
 /** Dedicated key slot so agent cost/validation stay independent of dictation. */
 export const AGENT_KEY_PROVIDER = "claude-agent";
 
-function readSettingsFile(): Record<string, unknown> {
-  try {
-    return JSON.parse(
-      readFileSync(join(app.getPath("userData"), "settings.json"), "utf-8"),
-    );
-  } catch {
-    return {};
-  }
-}
-
-export function getAgentAuthMode(): AgentAuthMode {
-  return readSettingsFile().agentAuthMode === "api-key"
-    ? "api-key"
-    : "subscription";
+export function getAgentAuthMode(
+  settings: AgentSettings = readAgentSettings(),
+): AgentAuthMode {
+  return settings.agentAuthMode === "api-key" ? "api-key" : "subscription";
 }
 
 /**
@@ -94,9 +85,11 @@ export interface ResolvedAuth {
  * in subscription mode we strip any ambient ANTHROPIC_API_KEY so a key sitting
  * in the dev shell doesn't silently override the subscription login.
  */
-export function resolveAuth(): ResolvedAuth {
+export function resolveAuth(
+  settings: AgentSettings = readAgentSettings(),
+): ResolvedAuth {
   const apiKey = readAgentApiKey();
-  const requested = getAgentAuthMode();
+  const requested = getAgentAuthMode(settings);
   const env: NodeJS.ProcessEnv = { ...process.env };
 
   // api-key mode only takes effect when a key is actually stored; otherwise we
@@ -106,12 +99,14 @@ export function resolveAuth(): ResolvedAuth {
     return { mode: "api-key", env, apiKeyConfigured: true };
   }
 
-  env.ANTHROPIC_API_KEY = undefined;
+  delete env.ANTHROPIC_API_KEY;
   return { mode: "subscription", env, apiKeyConfigured: !!apiKey };
 }
 
-export function getPrereqStatus(): AgentPrereqStatus {
-  const authMode = getAgentAuthMode();
+export function getPrereqStatus(
+  settings: AgentSettings = readAgentSettings(),
+): AgentPrereqStatus {
+  const authMode = getAgentAuthMode(settings);
   const apiKeyConfigured = !!readAgentApiKey();
   const subscriptionLoggedIn = hasSubscriptionLogin();
   // Mirror resolveAuth()'s effective path: api-key mode uses the key only when
@@ -127,6 +122,8 @@ export function getPrereqStatus(): AgentPrereqStatus {
 }
 
 /** Convenience predicate for the run-time pre-flight gate. */
-export function isAuthReady(): boolean {
-  return getPrereqStatus().authReady;
+export function isAuthReady(
+  settings: AgentSettings = readAgentSettings(),
+): boolean {
+  return getPrereqStatus(settings).authReady;
 }

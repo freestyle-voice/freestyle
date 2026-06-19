@@ -20,7 +20,7 @@
  */
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { createAppLogger } from "@freestyle/utils";
-import type { AgentEvent } from "@freestyle/validations";
+import type { AgentEvent, AgentRunStatus } from "@freestyle/validations";
 import { hideGuidanceOverlay } from "../overlay.js";
 import { isAuthReady, resolveAuth } from "./auth.js";
 import {
@@ -29,8 +29,13 @@ import {
   computerUseSelfTest,
   createComputerUseServer,
 } from "./computer-use.js";
+import { readAgentSettings } from "./settings.js";
 
 const log = createAppLogger("agent-session");
+
+function isTerminalStatus(status: AgentRunStatus): boolean {
+  return status === "done" || status === "error" || status === "canceled";
+}
 
 /**
  * Map a raw SDK/transport error onto a clear, actionable message. The Agent SDK
@@ -117,21 +122,23 @@ export class AgentSessionManager {
     this.controller = controller;
     let sessionId = resume ?? "";
 
-    this.emit({
-      type: "status",
-      runId: this.runId,
-      sessionId,
-      status: "starting",
-    });
+    let terminalEmitted = false;
+    const emitStatus = (status: AgentRunStatus): void => {
+      if (isTerminalStatus(status)) terminalEmitted = true;
+      this.emit({ type: "status", runId: this.runId, sessionId, status });
+    };
 
-    const { env } = resolveAuth();
+    emitStatus("starting");
+
+    const settings = readAgentSettings();
+    const { env } = resolveAuth(settings);
 
     // Computer use (opt-in, experimental): when enabled, attach the macOS
     // desktop actuator as an in-process MCP server so the agent can screenshot,
     // click, and type on the real machine. Off by default — see computer-use.ts.
     // The registry decides this per run (only one run may hold the desktop at a
     // time); fall back to the global opt-in when called outside the registry.
-    const computerUse = computerUseFlag ?? computerUseEnabled();
+    const computerUse = computerUseFlag ?? computerUseEnabled(settings);
 
     try {
       // Pre-flight: catch missing computer-use prerequisites *before* launching,
@@ -139,7 +146,7 @@ export class AgentSessionManager {
       // mid-run with blank screenshots or no-op clicks. Reliable OS checks only,
       // so this is safe to hard-block on.
       if (computerUse) {
-        const prereqs = await computerUsePrereqs();
+        const prereqs = await computerUsePrereqs(settings);
         if (!prereqs.ok) {
           this.emit({
             type: "error",
@@ -149,18 +156,13 @@ export class AgentSessionManager {
               prereqs.reason ??
               "Computer use is enabled but its setup is incomplete. See Settings → Computer Use.",
           });
-          this.emit({
-            type: "status",
-            runId: this.runId,
-            sessionId,
-            status: "error",
-          });
+          emitStatus("error");
           return;
         }
         // Non-blocking functional check: surfaces *silent* actuator breakage
         // (a helper that's present but no longer actuates) in the logs without
         // failing the run, since prereqs already passed the hard checks.
-        const selfTest = await computerUseSelfTest();
+        const selfTest = await computerUseSelfTest(settings);
         if (!selfTest.ok) {
           log.warn(`computer-use self-test failed: ${selfTest.details}`);
         }
@@ -169,7 +171,7 @@ export class AgentSessionManager {
       // Auth is checked here as a *soft* heuristic: we warn early when no login
       // or key is detected, but still launch so a false negative can't lock out
       // a working subscription. Real auth failures are caught + humanized below.
-      if (!isAuthReady()) {
+      if (!isAuthReady(settings)) {
         log.warn("Launching agent run without a detected Claude login/API key");
       }
 
@@ -184,7 +186,7 @@ export class AgentSessionManager {
           // Every Claude Code tool, run without approval prompts.
           tools: { type: "preset", preset: "claude_code" },
           ...(computerUse
-            ? { mcpServers: { computer: createComputerUseServer() } }
+            ? { mcpServers: { computer: createComputerUseServer(settings) } }
             : {}),
           permissionMode: "bypassPermissions",
           allowDangerouslySkipPermissions: true,
@@ -193,16 +195,12 @@ export class AgentSessionManager {
       });
 
       for await (const msg of stream) {
+        log.debug(`[run ${this.runId}] agent message: ${msg.type}`);
         switch (msg.type) {
           case "system": {
             if (msg.subtype === "init") {
               sessionId = msg.session_id;
-              this.emit({
-                type: "status",
-                runId: this.runId,
-                sessionId,
-                status: "running",
-              });
+              emitStatus("running");
               this.emit({
                 type: "session_info",
                 runId: this.runId,
@@ -269,24 +267,14 @@ export class AgentSessionManager {
               durationMs: msg.duration_ms,
               stopReason: msg.stop_reason,
             });
-            this.emit({
-              type: "status",
-              runId: this.runId,
-              sessionId,
-              status: msg.is_error ? "error" : "done",
-            });
+            emitStatus(msg.is_error ? "error" : "done");
             break;
           }
         }
       }
     } catch (err) {
       if (this.canceled) {
-        this.emit({
-          type: "status",
-          runId: this.runId,
-          sessionId,
-          status: "canceled",
-        });
+        emitStatus("canceled");
       } else {
         const raw = err instanceof Error ? err.message : String(err);
         log.error(`Agent run failed: ${raw}`);
@@ -296,16 +284,21 @@ export class AgentSessionManager {
           sessionId,
           message: friendlyError(raw) ?? raw,
         });
-        this.emit({
-          type: "status",
-          runId: this.runId,
-          sessionId,
-          status: "error",
-        });
+        emitStatus("error");
       }
     } finally {
       this.running = false;
       this.controller = null;
+      if (!terminalEmitted) {
+        log.warn("Agent stream ended without a terminal status; synthesizing");
+        this.emit({
+          type: "error",
+          runId: this.runId,
+          sessionId,
+          message: "Agent stopped without returning a result.",
+        });
+        emitStatus("error");
+      }
       // Clear any guided ghost-cursor overlay left on screen (no-op in full
       // mode / when nothing was shown). Only the run that held computer use may
       // touch the shared overlay — otherwise a finishing parallel run would wipe

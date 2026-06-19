@@ -20,8 +20,6 @@
  * engine's bypass-permissions posture — enabling it widens the blast radius
  * considerably. Treat as experimental.
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import {
   createSdkMcpServer,
   type McpSdkServerConfigWithInstance,
@@ -32,27 +30,19 @@ import type {
   ComputerUseMode,
   ComputerUsePrereqs,
 } from "@freestyle/validations";
-import { app } from "electron";
 import { z } from "zod";
 import type { SelfTestResult } from "./desktop/index.js";
 import { getActuator } from "./desktop/index.js";
+import { type AgentSettings, readAgentSettings } from "./settings.js";
 
 const log = createAppLogger("agent-computer");
 
-function readSettings(): Record<string, unknown> {
-  try {
-    return JSON.parse(
-      readFileSync(join(app.getPath("userData"), "settings.json"), "utf-8"),
-    ) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
-
 /** Actuation mode (settings.json `agentComputerUseMode`). Defaults to the
  *  non-invasive `guided` mode. */
-export function computerUseMode(): ComputerUseMode {
-  return readSettings().agentComputerUseMode === "full" ? "full" : "guided";
+export function computerUseMode(
+  settings: AgentSettings = readAgentSettings(),
+): ComputerUseMode {
+  return settings.agentComputerUseMode === "full" ? "full" : "guided";
 }
 
 // ---------------------------------------------------------------------------
@@ -60,17 +50,10 @@ export function computerUseMode(): ComputerUseMode {
 // ---------------------------------------------------------------------------
 
 /** Full, honest prerequisite snapshot, probed live every call (cheap). */
-export async function computerUsePrereqs(): Promise<ComputerUsePrereqs> {
-  return getActuator(computerUseMode()).prereqs();
-}
-
-/** Boolean+reason view used by the run-time guard. */
-export async function computerUseAvailable(): Promise<{
-  ok: boolean;
-  reason?: string;
-}> {
-  const p = await getActuator(computerUseMode()).prereqs();
-  return { ok: p.ok, reason: p.reason };
+export async function computerUsePrereqs(
+  settings: AgentSettings = readAgentSettings(),
+): Promise<ComputerUsePrereqs> {
+  return getActuator(computerUseMode(settings)).prereqs();
 }
 
 /** Best-effort trigger for any first-run OS capture permission prompt. */
@@ -87,13 +70,17 @@ export async function installCliclick(): Promise<{
 }
 
 /** One-shot functional check (capture round-trip); logged at session start. */
-export async function computerUseSelfTest(): Promise<SelfTestResult> {
-  return getActuator(computerUseMode()).selfTest();
+export async function computerUseSelfTest(
+  settings: AgentSettings = readAgentSettings(),
+): Promise<SelfTestResult> {
+  return getActuator(computerUseMode(settings)).selfTest();
 }
 
 /** Whether the user has opted into computer use (settings.json `agentComputerUse`). */
-export function computerUseEnabled(): boolean {
-  return readSettings().agentComputerUse === true;
+export function computerUseEnabled(
+  settings: AgentSettings = readAgentSettings(),
+): boolean {
+  return settings.agentComputerUse === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,20 +105,6 @@ function err(message: string): ToolResult {
   };
 }
 
-/** Re-check prerequisites before every action so a permission revoked mid-run
- *  surfaces as a clear error instead of a silent no-op. */
-async function guarded(fn: () => Promise<ToolResult>): Promise<ToolResult> {
-  const avail = await computerUseAvailable();
-  if (!avail.ok) return err(avail.reason ?? "computer use unavailable");
-  try {
-    return await fn();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    log.warn(`computer-use action failed: ${msg}`);
-    return err(msg);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // MCP server — tools generated from the backend's capabilities
 // ---------------------------------------------------------------------------
@@ -147,10 +120,28 @@ const noteSchema = {
     ),
 };
 
-export function createComputerUseServer(): McpSdkServerConfigWithInstance {
-  const actuator = getActuator(computerUseMode());
+export function createComputerUseServer(
+  settings: AgentSettings = readAgentSettings(),
+): McpSdkServerConfigWithInstance {
+  const actuator = getActuator(computerUseMode(settings));
   const caps = actuator.capabilities();
   const guided = actuator.actuation === "guided";
+
+  /** Re-check prerequisites before every action so a permission revoked mid-run
+   *  surfaces as a clear error instead of a silent no-op. */
+  const guarded = async (
+    fn: () => Promise<ToolResult>,
+  ): Promise<ToolResult> => {
+    const prereqs = await actuator.prereqs();
+    if (!prereqs.ok) return err(prereqs.reason ?? "computer use unavailable");
+    try {
+      return await fn();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log.warn(`computer-use action failed: ${msg}`);
+      return err(msg);
+    }
+  };
 
   // In guided mode the agent points; the user acts. Phrase results so the model
   // waits for the user and verifies via a screenshot instead of assuming the

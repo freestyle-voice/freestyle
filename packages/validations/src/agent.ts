@@ -105,6 +105,10 @@ export interface AgentRunSummary {
   status: AgentRunStatus;
   /** True if this run currently holds the computer-use lock. */
   computerUse: boolean;
+  /** Title derived from the run's prompt, so a re-synced thread keeps its name. */
+  title: string;
+  /** When the run started (ms since epoch), so the rail sorts it by real recency. */
+  startedAt: number;
 }
 
 /** Snapshot of agent prerequisites, surfaced in the bar before a run. */

@@ -5,6 +5,8 @@ import type {
   AgentEvent,
   AgentMessage,
   AgentPrereqStatus,
+  AgentRunSummary,
+  AgentStartResult,
   ComputerUseMode,
   ComputerUsePrereqs,
   GuidanceEvent,
@@ -132,10 +134,12 @@ declare global {
         setAuthMode: (mode: AgentAuthMode) => void;
         start: (payload: {
           prompt: string;
+          runId: string;
           cwd?: string;
           resume?: string;
-        }) => Promise<{ ok: boolean; error?: string }>;
-        cancel: () => void;
+        }) => Promise<AgentStartResult>;
+        cancel: (runId: string) => void;
+        listRunning: () => Promise<AgentRunSummary[]>;
         listConversations: () => Promise<AgentConversation[]>;
         getConversation: (id: string) => Promise<AgentMessage[]>;
         setComposing: (composing: boolean) => void;

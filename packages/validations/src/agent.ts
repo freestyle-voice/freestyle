@@ -19,28 +19,47 @@ export interface AgentUsage {
   costUsd?: number;
 }
 
+/** A run's lifecycle status. */
+export type AgentRunStatus =
+  | "starting"
+  | "running"
+  | "done"
+  | "error"
+  | "canceled";
+
 /**
  * A normalized event streamed from a running agent session to the bar UI.
- * `sessionId` is the SDK session id once the `init` message arrives, or ""
- * before then.
+ *
+ * `runId` is the stable, client-supplied id for a single run — known from the
+ * moment a run is requested, so the UI can route events to the right thread
+ * even before the SDK assigns a session. Multiple runs stream concurrently;
+ * `runId` is what distinguishes them.
+ *
+ * `sessionId` is the SDK session id, populated once the `init` message arrives
+ * (or "" before then). It is the resumable conversation handle, NOT the run
+ * identity — a follow-up in the same conversation reuses `sessionId` under a
+ * fresh `runId`.
  */
 export type AgentEvent =
   | {
       type: "status";
+      runId: string;
       sessionId: string;
-      status: "starting" | "running" | "done" | "error" | "canceled";
+      status: AgentRunStatus;
     }
   | {
       type: "session_info";
+      runId: string;
       sessionId: string;
       model: string;
       /** SDK `apiKeySource`: "oauth" indicates a subscription login. */
       apiKeySource: string;
       cwd: string;
     }
-  | { type: "assistant_text"; sessionId: string; text: string }
+  | { type: "assistant_text"; runId: string; sessionId: string; text: string }
   | {
       type: "tool_use";
+      runId: string;
       sessionId: string;
       id: string;
       name: string;
@@ -48,6 +67,7 @@ export type AgentEvent =
     }
   | {
       type: "tool_result";
+      runId: string;
       sessionId: string;
       id: string;
       result: unknown;
@@ -55,12 +75,37 @@ export type AgentEvent =
     }
   | {
       type: "result";
+      runId: string;
       sessionId: string;
       usage: AgentUsage;
       durationMs: number;
       stopReason?: string | null;
     }
-  | { type: "error"; sessionId: string; message: string };
+  | { type: "error"; runId: string; sessionId: string; message: string };
+
+/** Result of requesting a new run from the registry. */
+export interface AgentStartResult {
+  ok: boolean;
+  /** Echoed run id (the one the caller supplied, or a minted fallback). */
+  runId: string;
+  /**
+   * Whether this run was granted control of the (singular) computer-use
+   * actuator. False when computer use is off, or when another live run already
+   * holds the desktop-control lock.
+   */
+  computerUse: boolean;
+  /** Present when `ok` is false. */
+  error?: string;
+}
+
+/** A live run, for re-syncing the bar after it (re)mounts. */
+export interface AgentRunSummary {
+  runId: string;
+  sessionId: string;
+  status: AgentRunStatus;
+  /** True if this run currently holds the computer-use lock. */
+  computerUse: boolean;
+}
 
 /** Snapshot of agent prerequisites, surfaced in the bar before a run. */
 export interface AgentPrereqStatus {

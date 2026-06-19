@@ -1,10 +1,14 @@
 /**
- * Agent Session Engine (Voice OS, Phase 0 — Part A).
+ * Agent Session Engine (Voice OS).
  *
- * Owns a SINGLE Claude Code agent run for the slice. Spawns the run via the
- * Claude Agent SDK's `query()`, iterates its async message stream, normalizes
- * each message to the shared `AgentEvent` contract, and forwards it via the
- * `emit` callback (wired to the bar window in main/index.ts).
+ * Owns ONE Claude Code agent run. One instance == one run; the
+ * `AgentRunRegistry` (see ./run-registry) creates an instance per run so many
+ * runs stream in parallel. Each instance is stamped with a stable `runId` at
+ * construction and tags every emitted event with it, so the registry/UI can
+ * route concurrent streams to the right thread. Spawns the run via the Claude
+ * Agent SDK's `query()`, iterates its async message stream, normalizes each
+ * message to the shared `AgentEvent` contract, and forwards it via the `emit`
+ * callback (the registry wires this to the bar window in main/index.ts).
  *
  * Tool/permission posture: FULL AUTONOMY by design (owner's decision) — the
  * agent gets every Claude Code tool via the `claude_code` preset and runs them
@@ -61,24 +65,40 @@ export class AgentSessionManager {
   private running = false;
   private canceled = false;
 
-  constructor(private readonly emit: (event: AgentEvent) => void) {}
+  /**
+   * @param runId Stable id for this run; stamped onto every emitted event.
+   * @param emit  Sink for normalized events (registry-wrapped per run).
+   */
+  constructor(
+    private readonly runId: string,
+    private readonly emit: (event: AgentEvent) => void,
+  ) {}
 
   isRunning(): boolean {
     return this.running;
   }
 
   /**
-   * Begin a run. Fire-and-forget: streaming happens via `emit`. Ignored if a
-   * run is already in flight (single-session slice).
+   * Begin the run. Fire-and-forget: streaming happens via `emit`. Ignored if
+   * this instance's run is already in flight (each instance runs exactly once
+   * at a time; concurrency across runs is handled by the registry).
+   *
+   * `computerUse` is decided by the registry (it holds the single-owner desktop
+   * lock); when omitted we fall back to the global opt-in.
    */
-  start(input: { prompt: string; cwd: string; resume?: string }): void {
+  start(input: {
+    prompt: string;
+    cwd: string;
+    resume?: string;
+    computerUse?: boolean;
+  }): void {
     if (this.running) {
-      log.warn("start() ignored — a session is already running");
+      log.warn("start() ignored — this run is already in flight");
       return;
     }
     this.running = true;
     this.canceled = false;
-    void this.run(input.prompt, input.cwd, input.resume);
+    void this.run(input.prompt, input.cwd, input.resume, input.computerUse);
   }
 
   cancel(): void {
@@ -91,19 +111,27 @@ export class AgentSessionManager {
     prompt: string,
     cwd: string,
     resume?: string,
+    computerUseFlag?: boolean,
   ): Promise<void> {
     const controller = new AbortController();
     this.controller = controller;
     let sessionId = resume ?? "";
 
-    this.emit({ type: "status", sessionId, status: "starting" });
+    this.emit({
+      type: "status",
+      runId: this.runId,
+      sessionId,
+      status: "starting",
+    });
 
     const { env } = resolveAuth();
 
     // Computer use (opt-in, experimental): when enabled, attach the macOS
     // desktop actuator as an in-process MCP server so the agent can screenshot,
     // click, and type on the real machine. Off by default — see computer-use.ts.
-    const computerUse = computerUseEnabled();
+    // The registry decides this per run (only one run may hold the desktop at a
+    // time); fall back to the global opt-in when called outside the registry.
+    const computerUse = computerUseFlag ?? computerUseEnabled();
 
     try {
       // Pre-flight: catch missing computer-use prerequisites *before* launching,
@@ -115,12 +143,18 @@ export class AgentSessionManager {
         if (!prereqs.ok) {
           this.emit({
             type: "error",
+            runId: this.runId,
             sessionId,
             message:
               prereqs.reason ??
               "Computer use is enabled but its setup is incomplete. See Settings → Computer Use.",
           });
-          this.emit({ type: "status", sessionId, status: "error" });
+          this.emit({
+            type: "status",
+            runId: this.runId,
+            sessionId,
+            status: "error",
+          });
           return;
         }
         // Non-blocking functional check: surfaces *silent* actuator breakage
@@ -163,9 +197,15 @@ export class AgentSessionManager {
           case "system": {
             if (msg.subtype === "init") {
               sessionId = msg.session_id;
-              this.emit({ type: "status", sessionId, status: "running" });
+              this.emit({
+                type: "status",
+                runId: this.runId,
+                sessionId,
+                status: "running",
+              });
               this.emit({
                 type: "session_info",
+                runId: this.runId,
                 sessionId,
                 model: msg.model,
                 apiKeySource: msg.apiKeySource,
@@ -180,12 +220,14 @@ export class AgentSessionManager {
               if (block.type === "text" && block.text) {
                 this.emit({
                   type: "assistant_text",
+                  runId: this.runId,
                   sessionId,
                   text: block.text,
                 });
               } else if (block.type === "tool_use") {
                 this.emit({
                   type: "tool_use",
+                  runId: this.runId,
                   sessionId,
                   id: block.id ?? "",
                   name: block.name ?? "",
@@ -203,6 +245,7 @@ export class AgentSessionManager {
                 if (block.type === "tool_result") {
                   this.emit({
                     type: "tool_result",
+                    runId: this.runId,
                     sessionId,
                     id: block.tool_use_id ?? "",
                     result: block.content,
@@ -216,6 +259,7 @@ export class AgentSessionManager {
           case "result": {
             this.emit({
               type: "result",
+              runId: this.runId,
               sessionId,
               usage: {
                 inputTokens: msg.usage?.input_tokens ?? 0,
@@ -227,6 +271,7 @@ export class AgentSessionManager {
             });
             this.emit({
               type: "status",
+              runId: this.runId,
               sessionId,
               status: msg.is_error ? "error" : "done",
             });
@@ -236,23 +281,36 @@ export class AgentSessionManager {
       }
     } catch (err) {
       if (this.canceled) {
-        this.emit({ type: "status", sessionId, status: "canceled" });
+        this.emit({
+          type: "status",
+          runId: this.runId,
+          sessionId,
+          status: "canceled",
+        });
       } else {
         const raw = err instanceof Error ? err.message : String(err);
         log.error(`Agent run failed: ${raw}`);
         this.emit({
           type: "error",
+          runId: this.runId,
           sessionId,
           message: friendlyError(raw) ?? raw,
         });
-        this.emit({ type: "status", sessionId, status: "error" });
+        this.emit({
+          type: "status",
+          runId: this.runId,
+          sessionId,
+          status: "error",
+        });
       }
     } finally {
       this.running = false;
       this.controller = null;
       // Clear any guided ghost-cursor overlay left on screen (no-op in full
-      // mode / when nothing was shown).
-      hideGuidanceOverlay();
+      // mode / when nothing was shown). Only the run that held computer use may
+      // touch the shared overlay — otherwise a finishing parallel run would wipe
+      // an active run's ghost cursor.
+      if (computerUse) hideGuidanceOverlay();
     }
   }
 }

@@ -5,6 +5,8 @@ import type {
   AgentEvent,
   AgentMessage,
   AgentPrereqStatus,
+  AgentRunSummary,
+  AgentStartResult,
   ComputerUseMode,
   ComputerUsePrereqs,
   GuidanceEvent,
@@ -270,11 +272,13 @@ const api = {
       ipcRenderer.send("agent:set-auth-mode", mode),
     start: (payload: {
       prompt: string;
+      runId: string;
       cwd?: string;
       resume?: string;
-    }): Promise<{ ok: boolean; error?: string }> =>
-      ipcRenderer.invoke("agent:start", payload),
-    cancel: (): void => ipcRenderer.send("agent:cancel"),
+    }): Promise<AgentStartResult> => ipcRenderer.invoke("agent:start", payload),
+    cancel: (runId: string): void => ipcRenderer.send("agent:cancel", runId),
+    listRunning: (): Promise<AgentRunSummary[]> =>
+      ipcRenderer.invoke("agent:list-running"),
     listConversations: (): Promise<AgentConversation[]> =>
       ipcRenderer.invoke("agent:list-conversations"),
     getConversation: (id: string): Promise<AgentMessage[]> =>

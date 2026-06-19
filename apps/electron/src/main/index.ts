@@ -83,7 +83,7 @@ import {
 } from "../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { registerAgentIpc } from "./agent/ipc";
-import { AgentSessionManager } from "./agent/session-manager";
+import { AgentRunRegistry } from "./agent/run-registry";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import { normalizeAccelerator } from "./hotkey-utils";
@@ -113,7 +113,7 @@ const APP_HEIGHT = 90;
 // only for hover hit-testing (it's a strict subset, so the state machine can't
 // oscillate). 268×84 is also tall enough to host the voice pill while recording.
 const AGENT_BAR_STRIP = { width: 268, height: 84 };
-const AGENT_BAR_EXPANDED = { width: 468, height: 600 };
+const AGENT_BAR_EXPANDED = { width: 720, height: 600 };
 let agentBarExpanded = false;
 // Show/hide is owned here: a single interval reconciles the panel against the
 // real OS cursor. DOM mouseleave is unreliable for a frameless, always-on-top
@@ -188,7 +188,7 @@ let agentBarWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let keyListener: NativeKeyListener | null = null;
 let agentKeyListener: NativeKeyListener | null = null;
-let agentSessionManager: AgentSessionManager | null = null;
+let agentRunRegistry: AgentRunRegistry | null = null;
 // Latching flag: set only once the native key listener has started
 // successfully, which requires Accessibility permission and therefore
 // proves it is granted. NOT set on the globalShortcut fallback, which
@@ -1936,9 +1936,9 @@ app.whenReady().then(async () => {
 
   // -- Agent (Voice OS, Phase 0): bar window, session engine, IPC, hotkey --
   createAgentBarWindow();
-  agentSessionManager = new AgentSessionManager(sendAgentEvent);
+  agentRunRegistry = new AgentRunRegistry(sendAgentEvent);
   registerAgentIpc({
-    sessionManager: agentSessionManager,
+    registry: agentRunRegistry,
     persistAuthMode: (mode) => writeSettings({ agentAuthMode: mode }),
     setComposing: (composing) => {
       agentBarComposing = composing;
@@ -2289,7 +2289,7 @@ app.on("will-quit", () => {
     agentKeyListener.stop();
     agentKeyListener = null;
   }
-  agentSessionManager?.cancel();
+  agentRunRegistry?.cancelAll();
   destroyOverlayWindow();
   if (micListener) {
     micListener.stop();
@@ -2331,7 +2331,7 @@ function cleanupBeforeQuit(): void {
     agentKeyListener.stop();
     agentKeyListener = null;
   }
-  agentSessionManager?.cancel();
+  agentRunRegistry?.cancelAll();
   if (micListener) {
     micListener.stop();
     micListener = null;

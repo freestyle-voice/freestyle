@@ -15,10 +15,10 @@ import {
   requestScreenRecording,
 } from "./computer-use.js";
 import { getConversation, listConversations } from "./history.js";
-import type { AgentSessionManager } from "./session-manager.js";
+import type { AgentRunRegistry } from "./run-registry.js";
 
 interface AgentIpcDeps {
-  sessionManager: AgentSessionManager;
+  registry: AgentRunRegistry;
   /** Persist the chosen auth mode through main's settings.json writer. */
   persistAuthMode: (mode: AgentAuthMode) => void;
   /** Track whether the bar is "busy" (recording or editing) so main's
@@ -69,22 +69,38 @@ export function registerAgentIpc(deps: AgentIpcDeps): void {
   ipcMain.handle("agent:start", (_event, payload: unknown) => {
     const obj =
       payload && typeof payload === "object"
-        ? (payload as { prompt?: unknown; cwd?: unknown; resume?: unknown })
+        ? (payload as {
+            prompt?: unknown;
+            cwd?: unknown;
+            resume?: unknown;
+            runId?: unknown;
+          })
         : {};
     const prompt = String(obj.prompt ?? "").trim();
-    if (!prompt) return { ok: false, error: "Empty prompt" };
+    const runId = typeof obj.runId === "string" ? obj.runId : "";
+    if (!prompt) {
+      return { ok: false, runId, computerUse: false, error: "Empty prompt" };
+    }
 
     const cwd =
       typeof obj.cwd === "string" && obj.cwd.trim() ? obj.cwd : resolveCwd();
     const resume = typeof obj.resume === "string" ? obj.resume : undefined;
 
-    deps.sessionManager.start({ prompt, cwd, resume });
-    return { ok: true };
+    // The renderer mints runId so it can correlate the synchronous "starting"
+    // event that the manager emits before this handler returns.
+    return deps.registry.start({
+      prompt,
+      cwd,
+      resume,
+      runId: runId || undefined,
+    });
   });
 
-  ipcMain.on("agent:cancel", () => {
-    deps.sessionManager.cancel();
+  ipcMain.on("agent:cancel", (_event, runId: unknown) => {
+    if (typeof runId === "string" && runId) deps.registry.cancel(runId);
   });
+
+  ipcMain.handle("agent:list-running", () => deps.registry.list());
 
   ipcMain.handle("agent:list-conversations", () =>
     listConversations(resolveCwd()),

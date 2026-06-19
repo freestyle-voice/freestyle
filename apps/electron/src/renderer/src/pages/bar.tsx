@@ -28,6 +28,7 @@ import {
   Link2,
   ListChecks,
   MousePointerClick,
+  Plus,
   Search,
   Terminal,
   TriangleAlert,
@@ -1241,9 +1242,10 @@ export default function BarPage(): React.JSX.Element {
               <button
                 type="button"
                 onClick={newConversation}
-                className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
               >
-                <span className="text-sm leading-none">+</span> New chat
+                <Plus className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1 truncate">New chat</span>
               </button>
               <button
                 type="button"
@@ -1258,6 +1260,11 @@ export default function BarPage(): React.JSX.Element {
               className="mt-1 flex-1 overflow-y-auto px-1 pb-2"
               style={{ scrollbarWidth: "none" }}
             >
+              {railItems.length > 0 && (
+                <div className="px-2 pb-1 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">
+                  Recent
+                </div>
+              )}
               {railItems.map((item) =>
                 item.kind === "thread" ? (
                   <button
@@ -1445,4 +1452,7 @@ const glowKeyframes = `
     50% { box-shadow: 0 0 10px 2px rgba(96,165,250,0.30), 0 0 18px 5px rgba(96,165,250,0.12); }
   }
   .glow-agent-busy { animation: glow-agent 1.6s ease-in-out infinite; }
+  :where(button:not(:disabled), [role="button"]:not([aria-disabled="true"]), a[href], label[for], select, summary) {
+    cursor: pointer;
+  }
 `;

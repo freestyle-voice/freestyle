@@ -11,6 +11,28 @@ import { Orb } from "@renderer/components/ui/orb";
 import { VoicePill } from "@renderer/components/ui/voice-pill";
 import { getApiBase, getAuthHeaders, refreshApiBase } from "@renderer/lib/api";
 import { Recorder } from "@renderer/lib/recorder";
+import type { LucideIcon } from "lucide-react";
+import {
+  Bot,
+  Camera,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  CircleHelp,
+  FilePen,
+  FilePlus,
+  FileText,
+  FolderSearch,
+  Globe,
+  Keyboard,
+  Link2,
+  ListChecks,
+  MousePointerClick,
+  Search,
+  Terminal,
+  TriangleAlert,
+  Wrench,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -24,10 +46,18 @@ type CaptureState = "idle" | "recording" | "transcribing";
 /** A thread's status: the SDK run states plus a pre-run "idle". */
 type RunStatus = "idle" | AgentRunStatus;
 
+type ToolStatus = "running" | "done" | "error";
+
 interface Item {
   id: string;
   role: "user" | "assistant" | "tool" | "error" | "info";
   text: string;
+  toolUseId?: string;
+  toolName?: string;
+  toolInput?: unknown;
+  toolResult?: string;
+  toolResultImages?: string[];
+  toolStatus?: ToolStatus;
 }
 
 /**
@@ -120,6 +150,298 @@ function formatToolInput(input: unknown): string {
   }
 }
 
+function prettyInput(input: unknown): string {
+  try {
+    return JSON.stringify(input, null, 2);
+  } catch {
+    return String(input);
+  }
+}
+
+function clamp(s: string, max = 6000): string {
+  return s.length > max
+    ? `${s.slice(0, max)}\n… (${s.length - max} more characters)`
+    : s;
+}
+
+function asString(v: unknown): string {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function baseName(p: string): string {
+  const parts = p.split(/[\\/]/);
+  return parts[parts.length - 1] || p;
+}
+
+function firstLine(s: string, max = 72): string {
+  const line = (s.split("\n").find((l) => l.trim()) ?? "").trim();
+  return line.length > max ? `${line.slice(0, max)}…` : line;
+}
+
+function coord(inp: Record<string, unknown>): string {
+  return typeof inp.x === "number" && typeof inp.y === "number"
+    ? `(${Math.round(inp.x)}, ${Math.round(inp.y)})`
+    : "";
+}
+
+interface ToolDisplay {
+  Icon: LucideIcon;
+  label: string;
+  detail: string;
+}
+
+function describeTool(name: string, input: unknown): ToolDisplay {
+  const inp = (input && typeof input === "object" ? input : {}) as Record<
+    string,
+    unknown
+  >;
+
+  switch (name) {
+    case "Read":
+      return {
+        Icon: FileText,
+        label: "Read",
+        detail: baseName(asString(inp.file_path)),
+      };
+    case "Write":
+      return {
+        Icon: FilePlus,
+        label: "Write",
+        detail: baseName(asString(inp.file_path)),
+      };
+    case "Edit":
+    case "MultiEdit":
+      return {
+        Icon: FilePen,
+        label: "Edit",
+        detail: baseName(asString(inp.file_path)),
+      };
+    case "NotebookEdit":
+      return {
+        Icon: FilePen,
+        label: "Edit notebook",
+        detail: baseName(asString(inp.notebook_path)),
+      };
+    case "Bash":
+      return {
+        Icon: Terminal,
+        label: "Bash",
+        detail: firstLine(asString(inp.command)),
+      };
+    case "Glob":
+      return {
+        Icon: FolderSearch,
+        label: "Find files",
+        detail: asString(inp.pattern),
+      };
+    case "Grep":
+      return { Icon: Search, label: "Search", detail: asString(inp.pattern) };
+    case "WebSearch":
+      return { Icon: Globe, label: "Web search", detail: asString(inp.query) };
+    case "WebFetch":
+      return { Icon: Link2, label: "Fetch", detail: asString(inp.url) };
+    case "Task":
+    case "Agent":
+      return {
+        Icon: Bot,
+        label: "Agent",
+        detail: asString(inp.description || inp.subagent_type),
+      };
+    case "TodoWrite": {
+      const n = Array.isArray(inp.todos) ? inp.todos.length : 0;
+      return {
+        Icon: ListChecks,
+        label: "Update todos",
+        detail: n ? `${n} items` : "",
+      };
+    }
+    case "AskUserQuestion":
+      return { Icon: CircleHelp, label: "Question", detail: "" };
+  }
+
+  if (name.startsWith("mcp__")) {
+    const [, server = "", toolName = ""] = name.split("__");
+    if (server === "computer") {
+      const map: Record<string, ToolDisplay> = {
+        screenshot: { Icon: Camera, label: "Screenshot", detail: "" },
+        left_click: {
+          Icon: MousePointerClick,
+          label: "Click",
+          detail: coord(inp),
+        },
+        right_click: {
+          Icon: MousePointerClick,
+          label: "Right-click",
+          detail: coord(inp),
+        },
+        double_click: {
+          Icon: MousePointerClick,
+          label: "Double-click",
+          detail: coord(inp),
+        },
+        move_cursor: {
+          Icon: MousePointerClick,
+          label: "Move cursor",
+          detail: coord(inp),
+        },
+        type_text: {
+          Icon: Keyboard,
+          label: "Type",
+          detail: firstLine(asString(inp.text), 40),
+        },
+        press_key: {
+          Icon: Keyboard,
+          label: "Press",
+          detail: asString(inp.keys),
+        },
+      };
+      return (
+        map[toolName] ?? {
+          Icon: Wrench,
+          label: toolName || "computer",
+          detail: "",
+        }
+      );
+    }
+    return { Icon: Wrench, label: toolName || server || name, detail: server };
+  }
+
+  return {
+    Icon: Wrench,
+    label: name || "Tool",
+    detail: firstLine(formatToolInput(input), 60),
+  };
+}
+
+function extractResultText(result: unknown): string {
+  if (result == null) return "";
+  if (typeof result === "string") return result;
+  if (Array.isArray(result)) {
+    const parts: string[] = [];
+    for (const block of result) {
+      if (typeof block === "string") parts.push(block);
+      else if (block && typeof block === "object") {
+        const b = block as { type?: unknown; text?: unknown };
+        if (b.type === "text" && typeof b.text === "string") parts.push(b.text);
+      }
+    }
+    if (parts.length) return parts.join("\n");
+  }
+  try {
+    return JSON.stringify(result, null, 2);
+  } catch {
+    return String(result);
+  }
+}
+
+function extractResultImages(result: unknown): string[] {
+  if (!Array.isArray(result)) return [];
+  const out: string[] = [];
+  for (const block of result) {
+    if (!block || typeof block !== "object") continue;
+    const b = block as {
+      type?: unknown;
+      data?: unknown;
+      mimeType?: unknown;
+      source?: { data?: unknown; media_type?: unknown };
+    };
+    if (b.type !== "image") continue;
+    if (typeof b.data === "string") {
+      const mime = typeof b.mimeType === "string" ? b.mimeType : "image/png";
+      out.push(`data:${mime};base64,${b.data}`);
+    } else if (b.source && typeof b.source.data === "string") {
+      const mime =
+        typeof b.source.media_type === "string"
+          ? b.source.media_type
+          : "image/png";
+      out.push(`data:${mime};base64,${b.source.data}`);
+    }
+  }
+  return out;
+}
+
+function ToolStatusGlyph({
+  status,
+}: {
+  status: ToolStatus;
+}): React.JSX.Element {
+  if (status === "running") {
+    return (
+      <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+    );
+  }
+  if (status === "error") {
+    return <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-red-400" />;
+  }
+  return <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500" />;
+}
+
+function ToolCall({ item }: { item: Item }): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const { Icon, label, detail } = describeTool(
+    item.toolName ?? "",
+    item.toolInput,
+  );
+  const status = item.toolStatus ?? "running";
+  const images = item.toolResultImages ?? [];
+  const result = item.toolResult?.trim() ?? "";
+  const hasBody = item.toolInput != null || result !== "" || images.length > 0;
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-border/70 bg-muted/30">
+      <button
+        type="button"
+        onClick={() => hasBody && setOpen((v) => !v)}
+        className={`flex w-full items-center gap-2 px-2 py-1.5 text-left ${
+          hasBody ? "cursor-pointer hover:bg-muted/50" : "cursor-default"
+        }`}
+      >
+        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className="shrink-0 text-xs font-medium text-foreground">
+          {label}
+        </span>
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
+          {detail}
+        </span>
+        <ToolStatusGlyph status={status} />
+        {hasBody &&
+          (open ? (
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+          ))}
+      </button>
+
+      {open && hasBody && (
+        <div className="space-y-2 border-t border-border/60 px-2 py-2">
+          {item.toolInput != null && (
+            <pre className="max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background/60 p-2 font-mono text-[10.5px] leading-relaxed text-muted-foreground">
+              {clamp(prettyInput(item.toolInput), 2000)}
+            </pre>
+          )}
+          {result !== "" && (
+            <pre
+              className={`max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background/60 p-2 font-mono text-[10.5px] leading-relaxed ${
+                status === "error" ? "text-red-400" : "text-muted-foreground"
+              }`}
+            >
+              {clamp(result)}
+            </pre>
+          )}
+          {images.map((src, i) => (
+            <img
+              key={`${item.id}-img-${i}`}
+              src={src}
+              alt="Tool screenshot"
+              className="max-h-56 w-auto rounded-md border border-border"
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Replace one thread by clientId via an updater; identity-stable if not found. */
 function mapThread(
   state: ThreadState,
@@ -146,25 +468,66 @@ function applyEvent(state: ThreadState, event: AgentEvent): ThreadState {
 
   let next = t0;
   switch (event.type) {
-    case "status":
-      next = { ...t0, status: event.status };
+    case "status": {
+      const finishing =
+        event.status === "done" ||
+        event.status === "error" ||
+        event.status === "canceled";
+      const settle: ToolStatus = event.status === "error" ? "error" : "done";
+      const items =
+        finishing && t0.items.some((it) => it.toolStatus === "running")
+          ? t0.items.map((it) =>
+              it.toolStatus === "running" ? { ...it, toolStatus: settle } : it,
+            )
+          : t0.items;
+      next = { ...t0, status: event.status, items };
       break;
+    }
     case "session_info":
       next = { ...t0, sessionId: event.sessionId };
       break;
     case "assistant_text":
       next = withItem("assistant", event.text);
       break;
-    case "tool_use":
-      next = withItem("tool", `${event.name}(${formatToolInput(event.input)})`);
+    case "tool_use": {
+      seq += 1;
+      next = {
+        ...t0,
+        items: [
+          ...t0.items,
+          {
+            id: `i${seq}`,
+            role: "tool",
+            text: "",
+            toolUseId: event.id,
+            toolName: event.name,
+            toolInput: event.input,
+            toolStatus: "running",
+          },
+        ],
+      };
       break;
+    }
+    case "tool_result": {
+      const ti = t0.items.findIndex((it) => it.toolUseId === event.id);
+      if (ti >= 0) {
+        const items = [...t0.items];
+        items[ti] = {
+          ...items[ti],
+          toolResult: extractResultText(event.result),
+          toolResultImages: extractResultImages(event.result),
+          toolStatus: event.isError ? "error" : "done",
+        };
+        next = { ...t0, items };
+      }
+      break;
+    }
     case "result":
       next = { ...t0, usage: event.usage };
       break;
     case "error":
       next = withItem("error", event.message);
       break;
-    // tool_result is intentionally not rendered (matches prior behavior).
   }
 
   if (next === t0) return state;
@@ -973,11 +1336,7 @@ export default function BarPage(): React.JSX.Element {
                 {item.role === "assistant" && (
                   <Markdown className="max-w-[92%]">{item.text}</Markdown>
                 )}
-                {item.role === "tool" && (
-                  <div className="font-mono text-[11px] text-blue-400 break-words">
-                    ⚙ {item.text}
-                  </div>
-                )}
+                {item.role === "tool" && <ToolCall item={item} />}
                 {item.role === "info" && (
                   <div className="text-[11px] italic text-muted-foreground">
                     {item.text}

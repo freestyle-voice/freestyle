@@ -1,4 +1,16 @@
 import { electronAPI } from "@electron-toolkit/preload";
+import type {
+  AgentAuthMode,
+  AgentConversation,
+  AgentEvent,
+  AgentMessage,
+  AgentPrereqStatus,
+  AgentRunSummary,
+  AgentStartResult,
+  ComputerUseMode,
+  ComputerUsePrereqs,
+  GuidanceEvent,
+} from "@freestyle/validations";
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   ActiveAudioPlaybackMode,
@@ -251,6 +263,77 @@ const api = {
     ): void => callback(state);
     ipcRenderer.on("mic:activity-changed", handler);
     return () => ipcRenderer.removeListener("mic:activity-changed", handler);
+  },
+  // --- Claude Code agent (Voice OS) ---
+  agent: {
+    prereqStatus: (): Promise<AgentPrereqStatus> =>
+      ipcRenderer.invoke("agent:prereq-status"),
+    setAuthMode: (mode: AgentAuthMode): void =>
+      ipcRenderer.send("agent:set-auth-mode", mode),
+    start: (payload: {
+      prompt: string;
+      runId: string;
+      cwd?: string;
+      resume?: string;
+    }): Promise<AgentStartResult> => ipcRenderer.invoke("agent:start", payload),
+    cancel: (runId: string): void => ipcRenderer.send("agent:cancel", runId),
+    listRunning: (): Promise<AgentRunSummary[]> =>
+      ipcRenderer.invoke("agent:list-running"),
+    listConversations: (): Promise<AgentConversation[]> =>
+      ipcRenderer.invoke("agent:list-conversations"),
+    getConversation: (id: string): Promise<AgentMessage[]> =>
+      ipcRenderer.invoke("agent:get-conversation", id),
+    setComposing: (composing: boolean): void =>
+      ipcRenderer.send("agent-bar:composing", composing),
+    reveal: (): void => ipcRenderer.send("agent-bar:reveal"),
+    setHoverRect: (
+      rect: { x: number; y: number; width: number; height: number } | null,
+    ): void => ipcRenderer.send("agent-bar:hover-rect", rect),
+    getComputerUse: (): Promise<boolean> =>
+      ipcRenderer.invoke("agent:computer-use:get"),
+    setComputerUse: (enabled: boolean): void =>
+      ipcRenderer.send("agent:computer-use:set", enabled),
+    getComputerUseMode: (): Promise<ComputerUseMode> =>
+      ipcRenderer.invoke("agent:computer-use:mode:get"),
+    setComputerUseMode: (mode: ComputerUseMode): void =>
+      ipcRenderer.send("agent:computer-use:mode:set", mode),
+    computerUseStatus: (): Promise<ComputerUsePrereqs> =>
+      ipcRenderer.invoke("agent:computer-use:status"),
+    installComputerUse: (): Promise<{ ok: boolean; reason?: string }> =>
+      ipcRenderer.invoke("agent:computer-use:install"),
+    requestScreenRecording: (): Promise<ComputerUsePrereqs> =>
+      ipcRenderer.invoke("agent:computer-use:request-screen-recording"),
+    onHotkeyDown: (callback: () => void): (() => void) => {
+      const handler = (): void => callback();
+      ipcRenderer.on("agent-hotkey:down", handler);
+      return () => ipcRenderer.removeListener("agent-hotkey:down", handler);
+    },
+    onHotkeyUp: (callback: () => void): (() => void) => {
+      const handler = (): void => callback();
+      ipcRenderer.on("agent-hotkey:up", handler);
+      return () => ipcRenderer.removeListener("agent-hotkey:up", handler);
+    },
+    onEvent: (callback: (event: AgentEvent) => void): (() => void) => {
+      const handler = (_: unknown, event: AgentEvent): void => callback(event);
+      ipcRenderer.on("agent:event", handler);
+      return () => ipcRenderer.removeListener("agent:event", handler);
+    },
+    onSetExpanded: (callback: (expanded: boolean) => void): (() => void) => {
+      const handler = (_: unknown, expanded: boolean): void =>
+        callback(expanded);
+      ipcRenderer.on("agent-bar:set-expanded", handler);
+      return () =>
+        ipcRenderer.removeListener("agent-bar:set-expanded", handler);
+    },
+  },
+  // Guided-mode ghost-cursor overlay (consumed only by the overlay window).
+  overlay: {
+    onGuidance: (callback: (event: GuidanceEvent) => void): (() => void) => {
+      const handler = (_: unknown, event: GuidanceEvent): void =>
+        callback(event);
+      ipcRenderer.on("overlay:guidance", handler);
+      return () => ipcRenderer.removeListener("overlay:guidance", handler);
+    },
   },
 };
 

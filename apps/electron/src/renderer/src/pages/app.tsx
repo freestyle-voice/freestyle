@@ -1,4 +1,4 @@
-import { Orb } from "@renderer/components/ui/orb";
+import { VoicePill } from "@renderer/components/ui/voice-pill";
 import { capture } from "@renderer/lib/analytics";
 import {
   getApiBase,
@@ -16,15 +16,7 @@ import {
 } from "../../../shared/audio-playback";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
-const BARS = 14;
-const RISE = 0.55;
-const FALL = 0.22;
-const SVG_WIDTH = 117;
-const SVG_HEIGHT = 25;
-
 type PillState = "idle" | "initializing" | "recording" | "transcribing";
-
-type BarMode = "connecting" | "listening" | "speaking";
 
 // ---------------------------------------------------------------------------
 // Sound
@@ -65,37 +57,12 @@ async function playTone(preset: TonePreset, volume = 0.3): Promise<void> {
   } catch {}
 }
 
-function smoothBars(prev: number[], next: number[]): number[] {
-  return prev.map((p, i) => {
-    const n = next[i] ?? 0;
-    const k = n > p ? RISE : FALL;
-    return p + (n - p) * k;
-  });
-}
-
 function formatTimer(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
-
-const PILL_WIDTH = 216;
-
-const pillInnerStyle: React.CSSProperties = {
-  height: 43,
-  width: PILL_WIDTH,
-  padding: "0 9px",
-  borderRadius: 25,
-  background: "var(--card)",
-  color: "var(--foreground)",
-  border: "1px solid var(--border)",
-  fontFamily: "'DM Sans', sans-serif",
-  fontSize: 13,
-  fontWeight: 500,
-  cursor: "grab",
-  WebkitAppRegion: "drag",
-} as React.CSSProperties;
 
 interface TranscribeResult {
   raw: string;
@@ -135,13 +102,6 @@ export default function AppPage(): React.JSX.Element {
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
-  const analyserCtxRef = useRef<AudioContext | null>(null);
-  const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const analyserNodeRef = useRef<AnalyserNode | null>(null);
-  const barsRef = useRef<number[]>(new Array(BARS).fill(0));
-  const barsSvgRef = useRef<SVGSVGElement>(null);
-  const volumeRef = useRef(0);
-  const rafRef = useRef<number>(0);
   const startTimeRef = useRef(0);
   const timerRef = useRef<number>(0);
   const wantsMicRef = useRef(false);
@@ -150,12 +110,6 @@ export default function AppPage(): React.JSX.Element {
   const appContextRef = useRef<string | null>(null);
   const pendingCommitRef = useRef(false);
   const pillActiveRef = useRef(false);
-  const barModeRef = useRef<BarMode | null>(null);
-  const scanIndexRef = useRef(0);
-  const scanTickRef = useRef(0);
-  const speakingStartRef = useRef(0);
-  const lastIpcTimeRef = useRef(0);
-  const freqDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
 
   const queueRef = useRef<QueueEntry[]>([]);
   const drainingRef = useRef(false);
@@ -172,7 +126,12 @@ export default function AppPage(): React.JSX.Element {
     [],
   );
 
-  const getInputVolume = useCallback(() => volumeRef.current, []);
+  // Mic stream handed to the voice pill while recording (drives its level bars).
+  const [pillStream, setPillStream] = useState<MediaStream | null>(null);
+  // The pill reports input volume each frame; forward it for system-audio ducking.
+  const handlePillVolume = useCallback((v: number) => {
+    window.api?.sendAudioLevel(v);
+  }, []);
 
   // ---- Queue drain ----
   // biome-ignore lint/correctness/useExhaustiveDependencies: drainQueue only reads refs plus hidePill, which is declared later in this component, so adding it to the deps array would reference it before initialization (TDZ). The empty array is intentional.
@@ -393,143 +352,12 @@ export default function AppPage(): React.JSX.Element {
     return streamerRef.current;
   }, []);
 
-  // ---- Bar animation loop ----
-  const applyBarsToSvg = useCallback(() => {
-    const svg = barsSvgRef.current;
-    if (!svg) return;
-    const lines = svg.querySelectorAll("line");
-    for (let i = 0; i < lines.length; i++) {
-      const val = barsRef.current[i] ?? 0;
-      const h = Math.max(2, val * SVG_HEIGHT * 1.25);
-      lines[i].setAttribute("y1", String((SVG_HEIGHT + h) / 2));
-      lines[i].setAttribute("y2", String((SVG_HEIGHT - h) / 2));
-      lines[i].style.opacity = String(0.5 + val * 0.5);
-    }
-  }, []);
-
-  const runBars = useCallback(() => {
-    const mode = barModeRef.current;
-    if (!mode) return;
-
-    if (mode === "connecting") {
-      const now = performance.now();
-      if (now - scanTickRef.current >= 150) {
-        scanTickRef.current = now;
-        scanIndexRef.current = (scanIndexRef.current + 1) % BARS;
-      }
-      const raw: number[] = [];
-      for (let i = 0; i < BARS; i++) {
-        const distA = Math.abs(i - scanIndexRef.current);
-        const distB = Math.abs(i - (BARS - 1 - scanIndexRef.current));
-        const dist = Math.min(distA, distB);
-        raw.push(dist === 0 ? 0.7 : dist === 1 ? 0.3 : 0.05);
-      }
-      barsRef.current = smoothBars(barsRef.current, raw);
-      volumeRef.current = 0.15;
-    } else if (mode === "listening") {
-      const analyser = analyserNodeRef.current;
-      const dataArray = freqDataRef.current;
-      if (analyser && dataArray) {
-        analyser.getByteFrequencyData(dataArray);
-        const sliceSize = Math.floor(analyser.frequencyBinCount / BARS);
-        const raw: number[] = [];
-        let totalSum = 0;
-        for (let i = 0; i < BARS; i++) {
-          let sum = 0;
-          for (let j = 0; j < sliceSize; j++)
-            sum += dataArray[i * sliceSize + j];
-          const val = sum / sliceSize / 255;
-          raw.push(val);
-          totalSum += val;
-        }
-        barsRef.current = smoothBars(barsRef.current, raw);
-        const volume = Math.min(1, (totalSum / BARS) * 2.5);
-        volumeRef.current = volume;
-        const now = performance.now();
-        if (now - lastIpcTimeRef.current >= 100) {
-          lastIpcTimeRef.current = now;
-          window.api?.sendAudioLevel(volume);
-        }
-      }
-    } else if (mode === "speaking") {
-      const time = (performance.now() - speakingStartRef.current) / 1000;
-      const raw: number[] = [];
-      for (let i = 0; i < BARS; i++) {
-        const wave = Math.sin(time * 2 + i * 0.5) * 0.3 + 0.5;
-        const noise = Math.sin(time * 7.3 + i * 2.1) * 0.1;
-        raw.push(Math.max(0.1, Math.min(1, wave + noise)));
-      }
-      barsRef.current = smoothBars(barsRef.current, raw);
-      volumeRef.current = 0.4;
-    }
-
-    applyBarsToSvg();
-    rafRef.current = requestAnimationFrame(runBars);
-  }, [applyBarsToSvg]);
-
-  // ---- Visualization control ----
-  const startBarAnimation = useCallback(
-    (mode: BarMode) => {
-      cancelAnimationFrame(rafRef.current);
-      barModeRef.current = mode;
-      if (mode === "connecting") {
-        scanIndexRef.current = 0;
-        scanTickRef.current = performance.now();
-      } else if (mode === "speaking") {
-        speakingStartRef.current = performance.now();
-      }
-      rafRef.current = requestAnimationFrame(runBars);
-    },
-    [runBars],
-  );
-
-  const startListening = useCallback(
-    (stream: MediaStream) => {
-      if (
-        !analyserCtxRef.current ||
-        analyserCtxRef.current.state === "closed"
-      ) {
-        analyserCtxRef.current = new AudioContext();
-      }
-      const ctx = analyserCtxRef.current;
-      try {
-        audioSourceRef.current?.disconnect();
-      } catch {}
-      try {
-        analyserNodeRef.current?.disconnect();
-      } catch {}
-
-      const source = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.4;
-      source.connect(analyser);
-      audioSourceRef.current = source;
-      analyserNodeRef.current = analyser;
-      freqDataRef.current = new Uint8Array(analyser.frequencyBinCount);
-
-      startBarAnimation("listening");
-    },
-    [startBarAnimation],
-  );
-
+  // The voice pill owns its analyser + bar animation; here we just stop the
+  // recording timer and drop the mic stream so the pill tears down.
   const stopVisualization = useCallback(() => {
-    cancelAnimationFrame(rafRef.current);
-    rafRef.current = 0;
-    barModeRef.current = null;
     clearInterval(timerRef.current);
     timerRef.current = 0;
-    try {
-      audioSourceRef.current?.disconnect();
-    } catch {}
-    try {
-      analyserNodeRef.current?.disconnect();
-    } catch {}
-    audioSourceRef.current = null;
-    analyserNodeRef.current = null;
-    freqDataRef.current = null;
-    barsRef.current = new Array(BARS).fill(0);
-    volumeRef.current = 0;
+    setPillStream(null);
     setElapsed(0);
   }, []);
 
@@ -553,16 +381,9 @@ export default function AppPage(): React.JSX.Element {
       hidePill();
     } else {
       setPillState("transcribing");
-      startBarAnimation("speaking");
       void drainQueue();
     }
-  }, [
-    hidePill,
-    setPillState,
-    startBarAnimation,
-    drainQueue,
-    isTranscriptionIdle,
-  ]);
+  }, [hidePill, setPillState, drainQueue, isTranscriptionIdle]);
 
   // ---- Start recording ----
   const startRecording = useCallback(
@@ -596,7 +417,6 @@ export default function AppPage(): React.JSX.Element {
         });
 
       setPillState("initializing");
-      startBarAnimation("connecting");
 
       try {
         if (_audioPlaybackMode !== "off") {
@@ -647,7 +467,7 @@ export default function AppPage(): React.JSX.Element {
           setElapsed(Date.now() - startTimeRef.current);
         }, 100);
 
-        startListening(stream);
+        setPillStream(stream);
         try {
           await streamer.startCapture(stream);
         } catch {}
@@ -662,14 +482,7 @@ export default function AppPage(): React.JSX.Element {
         );
       }
     },
-    [
-      startBarAnimation,
-      startListening,
-      hidePill,
-      getStreamer,
-      setPillState,
-      resumeTranscribingOrHide,
-    ],
+    [hidePill, getStreamer, setPillState, resumeTranscribingOrHide],
   );
 
   // ---- Commit recording ----
@@ -681,15 +494,7 @@ export default function AppPage(): React.JSX.Element {
     clearInterval(timerRef.current);
     timerRef.current = 0;
     setElapsed(0);
-    try {
-      audioSourceRef.current?.disconnect();
-    } catch {}
-    try {
-      analyserNodeRef.current?.disconnect();
-    } catch {}
-    audioSourceRef.current = null;
-    analyserNodeRef.current = null;
-    freqDataRef.current = null;
+    setPillStream(null);
 
     const recordingDuration = Date.now() - startTimeRef.current;
     if (recordingDuration < 500) {
@@ -702,7 +507,6 @@ export default function AppPage(): React.JSX.Element {
     }
 
     setPillState("transcribing");
-    startBarAnimation("speaking");
 
     if (recordingSessionUsesTransportRef.current && streamerRef.current) {
       recorderRef.current.cancel();
@@ -829,7 +633,6 @@ export default function AppPage(): React.JSX.Element {
   }, [
     hidePill,
     drainQueue,
-    startBarAnimation,
     restFallbackTranscribe,
     setPillState,
     resumeTranscribingOrHide,
@@ -1009,18 +812,6 @@ export default function AppPage(): React.JSX.Element {
   }, [cancelRecording]);
 
   // ---- Render ----
-  const gap = SVG_WIDTH / BARS;
-  const barWidth = Math.min(gap * 0.55, 5);
-
-  const topGlow =
-    state === "initializing"
-      ? "glow-initializing"
-      : state === "recording"
-        ? "glow-recording"
-        : state === "transcribing"
-          ? "glow-transcribing"
-          : "glow-idle";
-
   const badge =
     state === "recording"
       ? formatTimer(elapsed)
@@ -1028,152 +819,14 @@ export default function AppPage(): React.JSX.Element {
         ? `x${pendingCount}`
         : null;
 
-  const showBars =
-    state === "initializing" ||
-    state === "recording" ||
-    state === "transcribing";
-
-  const renderBars = (ref?: React.RefObject<SVGSVGElement | null>) => (
-    <svg
-      ref={ref}
-      width={SVG_WIDTH}
-      height={SVG_HEIGHT}
-      viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-      style={
-        {
-          display: "block",
-          flexShrink: 0,
-          WebkitAppRegion: "no-drag",
-        } as React.CSSProperties
-      }
-      role="img"
-      aria-label="Audio levels"
-    >
-      {Array.from({ length: BARS }, (_, i) => {
-        const x = gap * (i + 0.5);
-        return (
-          <line
-            key={i}
-            x1={x}
-            y1={SVG_HEIGHT / 2 + 1}
-            x2={x}
-            y2={SVG_HEIGHT / 2 - 1}
-            stroke="var(--muted-foreground)"
-            strokeWidth={barWidth}
-            strokeLinecap="round"
-            style={{ opacity: 0.5 }}
-          />
-        );
-      })}
-    </svg>
-  );
-
   return (
-    <div
-      className={`flex h-screen w-screen select-none ${
-        pillAlign === "start" ? "items-start" : "items-end"
-      } ${pillSide === "right" ? "justify-end pr-3" : "justify-center"}`}
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    >
-      <style>
-        {`
-          @keyframes glow-pulse-amber {
-            0%, 100% { box-shadow: 0 0 6px 2px rgba(251,191,36,0.12), 0 0 13px 3px rgba(251,191,36,0.05); }
-            50% { box-shadow: 0 0 10px 2px rgba(251,191,36,0.22), 0 0 16px 4px rgba(251,191,36,0.09); }
-          }
-          @keyframes glow-pulse-green {
-            0%, 100% { box-shadow: 0 0 6px 2px rgba(138,182,42,0.12), 0 0 13px 3px rgba(138,182,42,0.05); }
-            50% { box-shadow: 0 0 10px 2px rgba(138,182,42,0.20), 0 0 16px 4px rgba(138,182,42,0.08); }
-          }
-          @keyframes glow-pulse-blue {
-            0%, 100% { box-shadow: 0 0 6px 2px rgba(96,165,250,0.14), 0 0 13px 3px rgba(96,165,250,0.06); }
-            50% { box-shadow: 0 0 10px 2px rgba(96,165,250,0.22), 0 0 16px 4px rgba(96,165,250,0.09); }
-          }
-          .glow-initializing { animation: glow-pulse-amber 1s ease-in-out infinite; }
-          .glow-recording { animation: glow-pulse-green 2s ease-in-out infinite; }
-          .glow-transcribing { animation: glow-pulse-blue 1.5s ease-in-out infinite; }
-          .glow-idle { box-shadow: 0 0 5px 2px rgba(0,0,0,0.05); transition: box-shadow 300ms ease; }
-        `}
-      </style>
-
-      <div
-        style={{
-          marginBottom: pillAlign === "end" ? 8 : "auto",
-          marginTop: pillAlign === "start" ? 8 : "auto",
-        }}
-      >
-        <div
-          className={topGlow}
-          style={{
-            borderRadius: 25,
-            visibility: state === "idle" ? "hidden" : "visible",
-          }}
-        >
-          <div
-            className="inline-flex items-center gap-2.5"
-            style={pillInnerStyle}
-          >
-            <div
-              style={
-                {
-                  width: 29,
-                  height: 29,
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  flexShrink: 0,
-                  // Allow pointer events on the Orb even though the parent is draggable.
-                  WebkitAppRegion: "no-drag",
-                } as React.CSSProperties
-              }
-            >
-              <Orb
-                colors={
-                  state === "transcribing"
-                    ? ["#60A5FA", "#3B82F6"]
-                    : state === "initializing"
-                      ? ["#FBBF24", "#F59E0B"]
-                      : ["#8AB62A", "#6B8F12"]
-                }
-                agentState={
-                  state === "initializing"
-                    ? "talking"
-                    : state === "recording"
-                      ? "listening"
-                      : state === "transcribing"
-                        ? "talking"
-                        : null
-                }
-                getInputVolume={
-                  state === "recording" ? getInputVolume : undefined
-                }
-                className="h-full w-full"
-              />
-            </div>
-
-            {showBars && renderBars(barsSvgRef)}
-
-            {badge && (
-              <span
-                className="mono"
-                style={
-                  {
-                    fontSize: 10,
-                    letterSpacing: "0.06em",
-                    opacity: 0.6,
-                    flexShrink: 0,
-                    color: "var(--muted-foreground)",
-                    paddingRight: 5,
-                    // Restore pointer events on the badge label.
-                    WebkitAppRegion: "no-drag",
-                  } as React.CSSProperties
-                }
-              >
-                {badge}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+    <VoicePill
+      state={state}
+      stream={pillStream}
+      badge={badge}
+      align={pillAlign}
+      side={pillSide}
+      onVolume={handlePillVolume}
+    />
   );
 }

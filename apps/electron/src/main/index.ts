@@ -55,6 +55,7 @@ import {
   stopWhisperServer,
 } from "@freestyle/server";
 import { createAppLogger } from "@freestyle/utils";
+import type { AgentEvent } from "@freestyle/validations";
 import { serverUrlSchema } from "@freestyle/validations";
 import {
   app,
@@ -76,8 +77,13 @@ import { autoUpdater } from "electron-updater";
 import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
-import { getDefaultHotkey } from "../shared/hotkey-defaults";
+import {
+  getDefaultAgentHotkey,
+  getDefaultHotkey,
+} from "../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
+import { registerAgentIpc } from "./agent/ipc";
+import { AgentRunRegistry } from "./agent/run-registry";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import { normalizeAccelerator } from "./hotkey-utils";
@@ -85,6 +91,7 @@ import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
 import { MicListener } from "./mic-listener";
+import { destroyOverlayWindow } from "./overlay";
 import {
   isWaylandSession,
   pasteIntoFocusedApp,
@@ -99,6 +106,26 @@ const hotkeyRecorderLog = createAppLogger("hotkey-recorder");
 const DEFAULT_PORT = 4649;
 const APP_WIDTH = 260;
 const APP_HEIGHT = 90;
+// Agent bar lives at the top-center. The WINDOW is a fixed size (the expanded
+// footprint) and never resizes — collapse/expand is a pure renderer crossfade
+// (see bar.tsx); main only toggles click-through + focusability. AGENT_BAR_STRIP
+// is the slim collapsed strip's visible rect at the top of that window, used
+// only for hover hit-testing (it's a strict subset, so the state machine can't
+// oscillate). 268×84 is also tall enough to host the voice pill while recording.
+const AGENT_BAR_STRIP = { width: 268, height: 84 };
+const AGENT_BAR_EXPANDED = { width: 720, height: 600 };
+let agentBarExpanded = false;
+// Show/hide is owned here: a single interval reconciles the panel against the
+// real OS cursor. DOM mouseleave is unreliable for a frameless, always-on-top
+// panel (the cursor leaving via a screen edge often never fires it).
+let agentBarComposing = false;
+// Live hover hit-box reported by the renderer (window-relative CSS px) — the
+// real bounding rect of the visible collapsed pill, so hover matches exactly
+// what's drawn instead of the generous strip band. Null until first report.
+let agentBarHoverRect: Rect | null = null;
+let agentBarPoll: ReturnType<typeof setInterval> | null = null;
+let agentBarOutsideTicks = 0;
+const AGENT_BAR_COLLAPSE_TICKS = 3; // ~300ms grace at the 100ms cadence below
 
 // ---------------------------------------------------------------------------
 // settings.json helpers — single source for read/write of the lightweight
@@ -157,8 +184,11 @@ let httpServer: any = null;
 let serverPort = DEFAULT_PORT;
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
+let agentBarWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let keyListener: NativeKeyListener | null = null;
+let agentKeyListener: NativeKeyListener | null = null;
+let agentRunRegistry: AgentRunRegistry | null = null;
 // Latching flag: set only once the native key listener has started
 // successfully, which requires Accessibility permission and therefore
 // proves it is granted. NOT set on the globalShortcut fallback, which
@@ -223,6 +253,13 @@ function getDashboardURL(path = "/"): string {
     return `${process.env.ELECTRON_RENDERER_URL}${path}`;
   }
   return `app://renderer${path}`;
+}
+
+function getAgentBarURL(): string {
+  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
+    return `${process.env.ELECTRON_RENDERER_URL}/bar.html`;
+  }
+  return "app://renderer/bar.html";
 }
 
 // Tracks the exact coordinates of the last programmatic setPosition call.
@@ -462,6 +499,7 @@ function createSettingsWindow(initialPath?: string): void {
     if (hotkeyRecorder) {
       stopHotkeyRecorderProcess();
       scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
+      void registerAgentHotkey();
     }
     settingsWindow = null;
   });
@@ -569,6 +607,207 @@ function registerPillEscape(): void {
         mainWindow.webContents.send("pill:cancel");
       }
     });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Agent Bar (Voice OS) — a top-center notch that lives in two states: a slim
+// always-visible strip (collapsed) that expands into a conversation panel on
+// hover. Transparent + non-focusable while collapsed so it never steals focus
+// or blocks the desktop; agents keep streaming in the background either way.
+// ---------------------------------------------------------------------------
+
+type Rect = { x: number; y: number; width: number; height: number };
+
+/** The fixed window footprint (expanded size), top-center. Never changes. */
+function getAgentBarWindowBounds(): Rect {
+  const wa = screen.getPrimaryDisplay().workArea;
+  return {
+    x: Math.round(wa.x + (wa.width - AGENT_BAR_EXPANDED.width) / 2),
+    y: wa.y + 6,
+    width: AGENT_BAR_EXPANDED.width,
+    height: AGENT_BAR_EXPANDED.height,
+  };
+}
+
+/** The visible strip while collapsed: centered at the top of the window. Hover
+ *  here expands. A strict subset of the window rect, so hover/leave can't flap. */
+function getAgentBarStripRect(): Rect {
+  const win = getAgentBarWindowBounds();
+  // Prefer the renderer-reported pill rect so the hover target is exactly the
+  // visible pill (it tracks size changes: idle pill, "Working…", voice pill).
+  // It's always a subset of the window, so the expand/collapse state machine
+  // still can't flap. Fall back to the centered strip band before first report.
+  if (agentBarHoverRect) {
+    return {
+      x: Math.round(win.x + agentBarHoverRect.x),
+      y: Math.round(win.y + agentBarHoverRect.y),
+      width: Math.round(agentBarHoverRect.width),
+      height: Math.round(agentBarHoverRect.height),
+    };
+  }
+  return {
+    x: Math.round(win.x + (win.width - AGENT_BAR_STRIP.width) / 2),
+    y: win.y,
+    width: AGENT_BAR_STRIP.width,
+    height: AGENT_BAR_STRIP.height,
+  };
+}
+
+function createAgentBarWindow(): void {
+  agentBarExpanded = false;
+  agentBarWindow = new BrowserWindow({
+    ...getAgentBarWindowBounds(),
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    hasShadow: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false,
+    roundedCorners: true,
+    autoHideMenuBar: true,
+    ...(process.platform === "darwin" ? { type: "panel" as const } : {}),
+    ...(process.platform === "linux" ? { icon } : {}),
+    webPreferences: {
+      preload: join(__dirname, "../preload/index.js"),
+      sandbox: false,
+    },
+  });
+
+  agentBarWindow.setAlwaysOnTop(true, "screen-saver");
+  agentBarWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // Start collapsed: the window is full-size but mostly transparent, so make it
+  // click-through (only the strip region reacts, via the cursor poll below).
+  agentBarWindow.setIgnoreMouseEvents(true, { forward: true });
+
+  agentBarWindow.on("closed", () => {
+    if (agentBarPoll) {
+      clearInterval(agentBarPoll);
+      agentBarPoll = null;
+    }
+    agentBarWindow = null;
+    agentBarExpanded = false;
+  });
+
+  agentBarWindow.webContents.setWindowOpenHandler((details) => {
+    shell.openExternal(details.url);
+    return { action: "deny" };
+  });
+
+  // Always visible from launch, but never activates (showInactive).
+  agentBarWindow.webContents.once("did-finish-load", () => {
+    agentBarWindow?.showInactive();
+  });
+
+  agentBarWindow.loadURL(getAgentBarURL());
+  agentBarPoll = setInterval(reconcileAgentBar, 100);
+}
+
+/** Grow to the panel. `focus` only when the user explicitly invokes it (hotkey). */
+function expandAgentBar(focus: boolean): void {
+  if (!agentBarWindow) return;
+  if (!agentBarExpanded) {
+    agentBarExpanded = true;
+    agentBarOutsideTicks = 0;
+    // No resize — the window is already full-size. Just make it interactive and
+    // let the renderer crossfade the panel in.
+    agentBarWindow.setIgnoreMouseEvents(false);
+    agentBarWindow.setFocusable(true);
+    agentBarWindow.webContents.send("agent-bar:set-expanded", true);
+  }
+  if (focus) {
+    agentBarWindow.show();
+    agentBarWindow.focus();
+  }
+}
+
+/** Crossfade back to the slim strip: drop focus + restore click-through so the
+ *  big transparent window doesn't hold focus or block the desktop. No resize. */
+function collapseAgentBar(): void {
+  if (!agentBarWindow || !agentBarExpanded) return;
+  agentBarExpanded = false;
+  agentBarOutsideTicks = 0;
+  agentBarWindow.setFocusable(false);
+  agentBarWindow.setIgnoreMouseEvents(true, { forward: true });
+  agentBarWindow.webContents.send("agent-bar:set-expanded", false);
+}
+
+/**
+ * Single owner of show/hide. Hovering the slim strip opens the panel; leaving
+ * it (when not mid-record/edit) closes it after a short grace. The strip's rect
+ * is a strict subset of the panel's, so a point that triggers expand is always
+ * inside the panel — the state machine can't oscillate.
+ */
+function reconcileAgentBar(): void {
+  if (!agentBarWindow) return;
+  const p = screen.getCursorScreenPoint();
+  const m = 6; // small forgiveness margin around the edges
+  const within = (r: Rect): boolean =>
+    p.x >= r.x - m &&
+    p.x <= r.x + r.width + m &&
+    p.y >= r.y - m &&
+    p.y <= r.y + r.height + m;
+
+  // Collapsed: only the slim strip sub-rect is a hover target (the rest of the
+  // window is transparent + click-through). Expanded: stay open while the
+  // cursor is anywhere over the full panel.
+  if (!agentBarExpanded) {
+    agentBarOutsideTicks = 0;
+    if (within(getAgentBarStripRect())) expandAgentBar(false);
+    return;
+  }
+  if (within(getAgentBarWindowBounds()) || agentBarComposing) {
+    agentBarOutsideTicks = 0;
+    return;
+  }
+  agentBarOutsideTicks += 1;
+  if (agentBarOutsideTicks >= AGENT_BAR_COLLAPSE_TICKS) collapseAgentBar();
+}
+
+function sendAgentEvent(event: AgentEvent): void {
+  agentBarWindow?.webContents.send("agent:event", event);
+}
+
+// Agent push-to-talk: hold to record, release to reveal the bar with the
+// transcript. While recording we deliberately DON'T expand — the bar stays in
+// its slim collapsed pill (showing live mic feedback), matching the dictation
+// pill. The renderer reveals the full panel (via `agent-bar:reveal`) only once
+// a transcript lands, so the heavy bar never pops just because you held the
+// key. If the user is already hovering the expanded bar, it simply stays open.
+function sendAgentHotkeyDown(): void {
+  agentBarWindow?.webContents.send("agent-hotkey:down");
+}
+
+function sendAgentHotkeyUp(): void {
+  agentBarWindow?.webContents.send("agent-hotkey:up");
+}
+
+async function registerAgentHotkey(): Promise<void> {
+  if (agentKeyListener) {
+    agentKeyListener.stop();
+    agentKeyListener = null;
+  }
+
+  const accel = getDefaultAgentHotkey();
+  const listener = new NativeKeyListener({
+    hotkey: accel,
+    onKeyDown: sendAgentHotkeyDown,
+    onKeyUp: sendAgentHotkeyUp,
+    onError: (error) => hotkeyLog.warn(`Agent key listener error: ${error}`),
+    onReady: () => hotkeyLog.debug(`Agent key listener ready for "${accel}"`),
+  });
+  agentKeyListener = listener;
+
+  const started = await listener.start();
+  if (!started && agentKeyListener === listener) {
+    // No globalShortcut fallback in Phase 0 (it can't do hold-to-talk).
+    hotkeyLog.warn(
+      "Agent native key listener unavailable; agent hotkey disabled for this session.",
+    );
+    listener.stop();
+    agentKeyListener = null;
   }
 }
 
@@ -1300,10 +1539,14 @@ app.whenReady().then(async () => {
 
   // IPC: hotkey recording — global native listener + renderer DOM on macOS
   ipcMain.on("hotkey-record:start", () => {
-    // Pause the active hotkey listener so it doesn't fire during recording
+    // Pause the active hotkey listeners so they don't fire during recording
     if (keyListener) {
       keyListener.stop();
       keyListener = null;
+    }
+    if (agentKeyListener) {
+      agentKeyListener.stop();
+      agentKeyListener = null;
     }
     globalShortcut.unregisterAll();
 
@@ -1318,6 +1561,7 @@ app.whenReady().then(async () => {
       onCancel: () => {
         stopHotkeyRecorderProcess();
         scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
+        void registerAgentHotkey();
       },
       onError: (message) => {
         hotkeyRecorderLog.warn(message);
@@ -1337,6 +1581,7 @@ app.whenReady().then(async () => {
         ? hotkey
         : (currentHotkeyAccel ?? undefined),
     );
+    void registerAgentHotkey();
   });
 
   // When a server URL is configured, the app talks to that server instead of
@@ -1688,6 +1933,30 @@ app.whenReady().then(async () => {
     hotkeyPressed = false;
     scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
   });
+
+  // -- Agent (Voice OS, Phase 0): bar window, session engine, IPC, hotkey --
+  createAgentBarWindow();
+  agentRunRegistry = new AgentRunRegistry(sendAgentEvent);
+  registerAgentIpc({
+    registry: agentRunRegistry,
+    persistAuthMode: (mode) => writeSettings({ agentAuthMode: mode }),
+    setComposing: (composing) => {
+      agentBarComposing = composing;
+    },
+    setHoverRect: (rect) => {
+      agentBarHoverRect = rect;
+    },
+    revealBar: () => expandAgentBar(true),
+    persistComputerUse: (enabled) =>
+      writeSettings({ agentComputerUse: enabled }),
+    persistComputerUseMode: (mode) =>
+      writeSettings({ agentComputerUseMode: mode }),
+  });
+  void registerAgentHotkey().catch((err) => {
+    hotkeyLog.error(
+      `registerAgentHotkey failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
 });
 
 const DEFAULT_HOTKEY = getDefaultHotkey();
@@ -2016,6 +2285,12 @@ app.on("will-quit", () => {
     keyListener.stop();
     keyListener = null;
   }
+  if (agentKeyListener) {
+    agentKeyListener.stop();
+    agentKeyListener = null;
+  }
+  agentRunRegistry?.cancelAll();
+  destroyOverlayWindow();
   if (micListener) {
     micListener.stop();
     micListener = null;
@@ -2052,6 +2327,11 @@ function cleanupBeforeQuit(): void {
     keyListener.stop();
     keyListener = null;
   }
+  if (agentKeyListener) {
+    agentKeyListener.stop();
+    agentKeyListener = null;
+  }
+  agentRunRegistry?.cancelAll();
   if (micListener) {
     micListener.stop();
     micListener = null;

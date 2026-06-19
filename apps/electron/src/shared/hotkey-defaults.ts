@@ -20,3 +20,23 @@ export function getDefaultHotkey(platform: string = process.platform): string {
       return "Control+Super";
   }
 }
+
+/**
+ * Default push-to-talk hotkey for the Claude Code agent, distinct from the
+ * dictation hotkey above (Voice OS, Phase 0).
+ *
+ * - macOS: Right Command — a dedicated hold key that doesn't collide with the
+ *   Fn dictation key; observed by the native listener's right-modifier path.
+ * - Windows/Linux: Control+Shift+Space — a hold-friendly combo unlikely to
+ *   clash with the dictation defaults or common shortcuts.
+ */
+export function getDefaultAgentHotkey(
+  platform: string = process.platform,
+): string {
+  switch (platform) {
+    case "darwin":
+      return "RightCommand";
+    default:
+      return "Control+Shift+Space";
+  }
+}

@@ -13,6 +13,7 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "electron-vite preview",
     "compile:native": "node scripts/compile-native.js",
+    "vendor:cliclick": "FREESTYLE_INSTALL_CLICLICK=1 node scripts/compile-native.js",
     "predev": "npm run compile:native",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && npm run compile:native && electron-vite build",
@@ -28,6 +29,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.181",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@freestyle/server": "workspace:*",
@@ -50,13 +52,16 @@
     "react-hotkeys-hook": "^5.3.2",
     "react-i18next": "^17.0.8",
     "react-icons": "^5.6.0",
+    "react-markdown": "^10.1.0",
     "react-router": "^7.15.1",
+    "remark-gfm": "^4.0.1",
     "shadcn": "^4.8.0",
     "tailwind-merge": "^3.6.0",
     "three": "^0.184.0",
     "tw-animate-css": "^1.4.0",
     "winston": "^3.17.0",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^2.0.0",

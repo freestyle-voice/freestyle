@@ -1,3 +1,8 @@
+import type {
+  AgentPrereqStatus,
+  ComputerUseMode,
+  ComputerUsePrereqs,
+} from "@freestyle/validations";
 import { serverUrlSchema } from "@freestyle/validations";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { LanguageSelector } from "@renderer/components/language-selector";
@@ -83,6 +88,7 @@ const settingsSectionIds = [
   "recording",
   "display",
   "permissions",
+  "computer-use",
   "data",
 ] as const;
 
@@ -124,6 +130,16 @@ export default function SettingsPage(): React.JSX.Element {
   const [audioPlaybackMode, setAudioPlaybackMode] =
     useState<AudioPlaybackMode>("off");
   const [transcriptionPrompt, setTranscriptionPrompt] = useState("");
+  const [computerUse, setComputerUse] = useState(false);
+  const [computerUseMode, setComputerUseMode] =
+    useState<ComputerUseMode>("guided");
+  const [helperStatus, setHelperStatus] = useState<ComputerUsePrereqs | null>(
+    null,
+  );
+  const [agentPrereq, setAgentPrereq] = useState<AgentPrereqStatus | null>(
+    null,
+  );
+  const [installingHelper, setInstallingHelper] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -621,6 +637,98 @@ export default function SettingsPage(): React.JSX.Element {
     }
     await getClient().api.history.$delete();
   }, [t]);
+
+  // ---- Computer use (experimental) ----
+  useEffect(() => {
+    let active = true;
+    window.api?.agent
+      .getComputerUse()
+      .then((v) => {
+        if (active) setComputerUse(v);
+      })
+      .catch(() => {});
+    window.api?.agent
+      .computerUseStatus()
+      .then((s) => {
+        if (active) setHelperStatus(s);
+      })
+      .catch(() => {});
+    window.api?.agent
+      .getComputerUseMode()
+      .then((m) => {
+        if (active) setComputerUseMode(m);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleComputerUseToggle = useCallback((enabled: boolean) => {
+    setComputerUse(enabled);
+    window.api?.agent.setComputerUse(enabled);
+    if (enabled) {
+      window.api?.agent
+        .computerUseStatus()
+        .then(setHelperStatus)
+        .catch(() => {});
+    }
+  }, []);
+
+  const handleComputerUseModeChange = useCallback((mode: ComputerUseMode) => {
+    setComputerUseMode(mode);
+    window.api?.agent.setComputerUseMode(mode);
+    // Prereqs differ by mode (guided needs only Screen Recording), so refresh.
+    window.api?.agent
+      .computerUseStatus()
+      .then(setHelperStatus)
+      .catch(() => {});
+  }, []);
+
+  const handleInstallHelper = useCallback(async () => {
+    setInstallingHelper(true);
+    try {
+      await window.api?.agent.installComputerUse();
+      const status = await window.api?.agent.computerUseStatus();
+      if (status) setHelperStatus(status);
+    } finally {
+      setInstallingHelper(false);
+    }
+  }, []);
+
+  const handleGrantScreenRecording = useCallback(async () => {
+    // Opens System Settings → Screen Recording and triggers the OS prompt.
+    const status = await window.api?.agent.requestScreenRecording();
+    if (status) setHelperStatus(status);
+  }, []);
+
+  // While the Computer Use pane is open, re-probe prerequisites + Claude auth on
+  // a short interval so each item flips to "granted" live as the user grants it
+  // in System Settings (no manual refresh / app restart needed to see status).
+  useEffect(() => {
+    if (activeSection !== "computer-use") return;
+    let active = true;
+    const tick = (): void => {
+      window.api?.agent
+        .computerUseStatus()
+        .then((s) => {
+          if (active) setHelperStatus(s);
+        })
+        .catch(() => {});
+      window.api?.agent
+        .prereqStatus()
+        .then((s) => {
+          if (active) setAgentPrereq(s);
+        })
+        .catch(() => {});
+    };
+    tick();
+    const id = setInterval(tick, 1500);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [activeSection]);
 
   const handleSoundToggle = useCallback((enabled: boolean) => {
     setSoundEnabled(enabled);
@@ -1241,6 +1349,127 @@ export default function SettingsPage(): React.JSX.Element {
                   }
                 />
               </Row>
+            </SettingsPanel>
+          )}
+          {activeSection === "computer-use" && (
+            <SettingsPanel>
+              <Row
+                label="Allow computer use"
+                desc="Let the Claude agent see your screen and control the mouse and keyboard. Powerful but risky — a misheard request can take actions on its own. Off by default."
+              >
+                <Switch
+                  checked={computerUse}
+                  onCheckedChange={handleComputerUseToggle}
+                />
+              </Row>
+              {computerUse && (
+                <Row
+                  label="Mode"
+                  desc="Guided: the agent never touches your cursor — it shows a ghost cursor and captions pointing you to each step, and you perform it (non-invasive, great for learning). Full: the agent drives the mouse and keyboard itself."
+                >
+                  <SegmentedControl
+                    value={computerUseMode}
+                    onValueChange={(v) =>
+                      handleComputerUseModeChange(v as ComputerUseMode)
+                    }
+                    options={[
+                      { value: "guided", label: "Guided" },
+                      { value: "full", label: "Full control" },
+                    ]}
+                  />
+                </Row>
+              )}
+              {/* Claude sign-in — required for every agent run, not just
+                  computer use. We can't sign the user in from here, so we just
+                  report status and point them at `claude login`. */}
+              <Row
+                label="Claude account"
+                desc="The agent runs through Claude. Sign in with `claude login` in your terminal, or add a Claude API key, so runs can authenticate."
+              >
+                <PermissionControl
+                  granted={agentPrereq?.authReady === true}
+                  checking={agentPrereq === null}
+                  actionLabel={null}
+                  note={
+                    agentPrereq?.authReady === false
+                      ? "Not signed in — run `claude login` in a terminal, then reopen this panel."
+                      : undefined
+                  }
+                />
+              </Row>
+
+              {isMac ? (
+                <>
+                  <Row
+                    label="Desktop control helper"
+                    desc="A small bundled helper (cliclick) that moves the mouse and types. Shipped builds include it; dev builds can install it via Homebrew."
+                  >
+                    <div className="flex items-center gap-3">
+                      <StatusDot
+                        granted={helperStatus?.helper === "ok"}
+                        checking={helperStatus === null || installingHelper}
+                      />
+                      {helperStatus?.helper === "ok" ? (
+                        <Check className="text-primary h-4 w-4" />
+                      ) : (
+                        <Button
+                          variant="ink"
+                          size="sm"
+                          onClick={handleInstallHelper}
+                          disabled={installingHelper}
+                        >
+                          {installingHelper ? "Installing…" : "Install helper"}
+                        </Button>
+                      )}
+                    </div>
+                  </Row>
+
+                  <Row
+                    label="Accessibility"
+                    desc="macOS permission that lets the helper move the cursor, click, and type. You may need to restart Freestyle after granting it."
+                  >
+                    <PermissionControl
+                      granted={helperStatus?.accessibility === "ok"}
+                      checking={helperStatus === null}
+                      actionLabel={
+                        helperStatus?.accessibility === "ok"
+                          ? null
+                          : t("common.openSettings")
+                      }
+                      external
+                      onAction={openAccessibility}
+                      onManage={openAccessibility}
+                    />
+                  </Row>
+
+                  <Row
+                    label="Screen Recording"
+                    desc="macOS permission that lets the agent see your screen. Without it, screenshots come back blank. You may need to restart Freestyle after granting it."
+                    last
+                  >
+                    <PermissionControl
+                      granted={helperStatus?.screenRecording === "ok"}
+                      checking={helperStatus === null}
+                      actionLabel={
+                        helperStatus?.screenRecording === "ok"
+                          ? null
+                          : t("common.openSettings")
+                      }
+                      external
+                      onAction={handleGrantScreenRecording}
+                      onManage={handleGrantScreenRecording}
+                    />
+                  </Row>
+                </>
+              ) : (
+                <Row
+                  label="Desktop control"
+                  desc="Computer use is macOS-only in this build."
+                  last
+                >
+                  <StatusDot granted={false} checking={false} />
+                </Row>
+              )}
             </SettingsPanel>
           )}
           {activeSection === "data" && (

@@ -1,5 +1,17 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
 import type {
+  AgentAuthMode,
+  AgentConversation,
+  AgentEvent,
+  AgentMessage,
+  AgentPrereqStatus,
+  AgentRunSummary,
+  AgentStartResult,
+  ComputerUseMode,
+  ComputerUsePrereqs,
+  GuidanceEvent,
+} from "@freestyle/validations";
+import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
 } from "../shared/audio-playback";
@@ -116,6 +128,45 @@ declare global {
       onMicActivityChanged: (
         callback: (state: "active" | "inactive" | "unknown") => void,
       ) => () => void;
+      // Claude Code agent (Voice OS)
+      agent: {
+        prereqStatus: () => Promise<AgentPrereqStatus>;
+        setAuthMode: (mode: AgentAuthMode) => void;
+        start: (payload: {
+          prompt: string;
+          runId: string;
+          cwd?: string;
+          resume?: string;
+        }) => Promise<AgentStartResult>;
+        cancel: (runId: string) => void;
+        listRunning: () => Promise<AgentRunSummary[]>;
+        listConversations: () => Promise<AgentConversation[]>;
+        getConversation: (id: string) => Promise<AgentMessage[]>;
+        setComposing: (composing: boolean) => void;
+        reveal: () => void;
+        setHoverRect: (
+          rect: {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+          } | null,
+        ) => void;
+        getComputerUse: () => Promise<boolean>;
+        setComputerUse: (enabled: boolean) => void;
+        getComputerUseMode: () => Promise<ComputerUseMode>;
+        setComputerUseMode: (mode: ComputerUseMode) => void;
+        computerUseStatus: () => Promise<ComputerUsePrereqs>;
+        installComputerUse: () => Promise<{ ok: boolean; reason?: string }>;
+        requestScreenRecording: () => Promise<ComputerUsePrereqs>;
+        onHotkeyDown: (callback: () => void) => () => void;
+        onHotkeyUp: (callback: () => void) => () => void;
+        onEvent: (callback: (event: AgentEvent) => void) => () => void;
+        onSetExpanded: (callback: (expanded: boolean) => void) => () => void;
+      };
+      overlay: {
+        onGuidance: (callback: (event: GuidanceEvent) => void) => () => void;
+      };
     };
   }
 }

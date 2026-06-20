@@ -201,7 +201,7 @@ export default function TodayPage(): React.JSX.Element {
         {/* macOS drag region — the title bar area */}
         <div className="h-16 shrink-0" />
         <div
-          className="responsive-page-scroll flex-1 overflow-auto"
+          className="responsive-page-scroll flex-1 overflow-auto pt-4"
           style={
             {
               WebkitAppRegion: "no-drag",

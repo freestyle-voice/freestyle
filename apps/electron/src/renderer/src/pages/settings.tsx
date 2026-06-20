@@ -1179,6 +1179,7 @@ export default function SettingsPage(): React.JSX.Element {
               >
                 <Segment
                   compact
+                  wrap
                   options={positionOptions}
                   active={pillPosition}
                   onSelect={handlePillPositionChange}
@@ -1348,11 +1349,13 @@ function Segment({
   active,
   onSelect,
   compact,
+  wrap,
 }: {
   options: readonly SegmentOption[];
   active: string;
   onSelect: (id: string) => void;
   compact?: boolean;
+  wrap?: boolean;
 }) {
   return (
     <SegmentedControl
@@ -1364,6 +1367,7 @@ function Segment({
       value={active}
       onValueChange={onSelect}
       size={compact ? "sm" : "default"}
+      wrap={wrap}
     />
   );
 }

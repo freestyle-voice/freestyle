@@ -70,6 +70,7 @@ export interface MlxAsrStatus {
 }
 
 export const CLOUD_VOICE_PROVIDERS = [
+  "freestyle",
   "openai",
   "groq",
   "deepgram",
@@ -93,6 +94,7 @@ export const LLM_PROVIDERS = [
 ];
 
 export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  freestyle: "Freestyle",
   openai: "OpenAI",
   anthropic: "Anthropic",
   google: "Google",
@@ -171,6 +173,11 @@ export const VOICE_META: Record<
     note?: string;
   }
 > = {
+  "freestyle/cloud": {
+    speed: 5,
+    quality: 4,
+    note: "Hosted Freestyle transcription — uses your Freestyle account key",
+  },
   "groq/whisper-large-v3-turbo": {
     speed: 5,
     quality: 3,

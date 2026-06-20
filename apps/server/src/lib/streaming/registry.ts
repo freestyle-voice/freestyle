@@ -1,5 +1,6 @@
 import { DeepgramTranscriptionProvider } from "./providers/deepgram.js";
 import { ElevenLabsTranscriptionProvider } from "./providers/elevenlabs.js";
+import { FreestyleTranscriptionProvider } from "./providers/freestyle.js";
 import { GroqTranscriptionProvider } from "./providers/groq.js";
 import { MlxLocalTranscriptionProvider } from "./providers/mlx-local.js";
 import { OpenAITranscriptionProvider } from "./providers/openai.js";
@@ -15,6 +16,7 @@ const providers: TranscriptionProvider[] = [
   new SonioxTranscriptionProvider(),
   new WhisperLocalTranscriptionProvider(),
   new MlxLocalTranscriptionProvider(),
+  new FreestyleTranscriptionProvider(),
 ];
 
 const providerMap = new Map(providers.map((p) => [p.providerId, p]));

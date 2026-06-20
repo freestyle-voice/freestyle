@@ -239,7 +239,10 @@ interface UseHotkeyRecorderReturn {
 
 export function useHotkeyRecorder(
   onRecord: (accelerator: string) => void,
+  options?: { target?: "dictation" | "agent" },
 ): UseHotkeyRecorderReturn {
+  const targetRef = useRef(options?.target ?? "dictation");
+  targetRef.current = options?.target ?? "dictation";
   const [state, setState] = useState<RecorderState>("idle");
   const [draftCombo, setDraftCombo] = useState<HotkeyCombo>(EMPTY_COMBO);
   const [invalidReleaseNotice, setInvalidReleaseNotice] = useState(false);
@@ -314,8 +317,7 @@ export function useHotkeyRecorder(
     if (accel) {
       onRecordRef.current(accel);
     }
-    // Re-register the global listener with the new accelerator (single IPC)
-    window.api?.stopHotkeyRecording(accel);
+    window.api?.stopHotkeyRecording(accel, targetRef.current);
     recordingActiveRef.current = false;
     setState("idle");
     draftComboRef.current = EMPTY_COMBO;

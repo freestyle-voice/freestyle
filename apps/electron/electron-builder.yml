@@ -11,6 +11,10 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  # The Agent SDK ships a native Claude Code binary that cannot execute from
+  # inside an asar archive; unpack it so it can be spawned at runtime.
+  # (macOS: this binary must also be codesigned + notarized with the app.)
+  - node_modules/@anthropic-ai/claude-agent-sdk/**
 extraResources:
   - from: "resources/bin/${platform}-${arch}"
     to: "bin"

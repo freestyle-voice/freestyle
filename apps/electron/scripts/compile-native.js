@@ -12,7 +12,7 @@
  */
 
 import { execFileSync, execSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -104,6 +104,58 @@ function compileMacOS() {
         `  WARNING: Failed to compile ${bin.name}. Hotkey/paste may fall back to legacy mode.`,
       );
     }
+  }
+
+  vendorCliclick();
+}
+
+/**
+ * Bundle the `cliclick` desktop-control helper for computer use (Part D).
+ * Copy-only by default; pass FREESTYLE_INSTALL_CLICLICK=1 (the `vendor:cliclick`
+ * script) to `brew install` it first. Best-effort — never fails the build.
+ */
+function vendorCliclick() {
+  const out = join(outputDir, "cliclick");
+  if (existsSync(out)) {
+    console.log("  cliclick already vendored.");
+    return;
+  }
+  const which = () => {
+    try {
+      return execSync("command -v cliclick", { encoding: "utf8" }).trim();
+    } catch {
+      return "";
+    }
+  };
+
+  let src = which();
+  if (!src && process.env.FREESTYLE_INSTALL_CLICLICK === "1") {
+    const brew = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"].find(
+      existsSync,
+    );
+    if (brew) {
+      console.log("  Installing cliclick via Homebrew...");
+      run(brew, ["install", "cliclick"]);
+      src = which();
+    }
+  }
+
+  if (!src || !existsSync(src)) {
+    console.warn(
+      "  cliclick not found — computer use will be unavailable until it's installed. " +
+        "Run `pnpm --filter @freestyle/electron vendor:cliclick` to bundle it.",
+    );
+    return;
+  }
+
+  try {
+    // copyFileSync dereferences the Homebrew symlink, copying the standalone
+    // Mach-O so it ships (and gets codesigned) with the app.
+    copyFileSync(src, out);
+    chmodSync(out, 0o755);
+    console.log(`  Vendored cliclick -> ${out}`);
+  } catch (err) {
+    console.warn(`  WARNING: Failed to vendor cliclick: ${err.message}`);
   }
 }
 

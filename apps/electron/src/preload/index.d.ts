@@ -1,5 +1,18 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
 import type {
+  AgentAuthMode,
+  AgentCliStatus,
+  AgentConversation,
+  AgentEvent,
+  AgentMessage,
+  AgentPrereqStatus,
+  AgentRunSummary,
+  AgentStartResult,
+  ComputerUseMode,
+  ComputerUsePrereqs,
+  GuidanceEvent,
+} from "@freestyle/validations";
+import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
 } from "../shared/audio-playback";
@@ -44,7 +57,7 @@ declare global {
       setOnboardingComplete: () => void;
       startHotkeyRecording: () => void;
       pauseHotkeyRecording: () => void;
-      stopHotkeyRecording: (hotkey?: string) => void;
+      stopHotkeyRecording: (hotkey?: string, target?: string) => void;
       onHotkeyRecordModifiers: (
         callback: (modifiers: string[]) => void,
       ) => () => void;
@@ -116,6 +129,62 @@ declare global {
       onMicActivityChanged: (
         callback: (state: "active" | "inactive" | "unknown") => void,
       ) => () => void;
+      // Claude Code agent (Voice OS)
+      agent: {
+        prereqStatus: () => Promise<AgentPrereqStatus>;
+        setAuthMode: (mode: AgentAuthMode) => void;
+        cliStatus: () => Promise<AgentCliStatus>;
+        loginStart: () => Promise<{ ok: boolean; code: number | null }>;
+        onLoginOutput: (callback: (chunk: string) => void) => () => void;
+        openTerminalLogin: () => void;
+        updateAgentHotkey: (accel: string) => void;
+        onAgentHotkeyRecorded: (
+          callback: (result: {
+            ok: boolean;
+            accel: string;
+            reason?: string;
+          }) => void,
+        ) => () => void;
+        setBarAttention: (on: boolean) => void;
+        onBarAttention: (callback: (on: boolean) => void) => () => void;
+        start: (payload: {
+          prompt: string;
+          runId: string;
+          cwd?: string;
+          resume?: string;
+        }) => Promise<AgentStartResult>;
+        cancel: (runId: string) => void;
+        listRunning: () => Promise<AgentRunSummary[]>;
+        listConversations: (cwd?: string) => Promise<AgentConversation[]>;
+        getConversation: (id: string, cwd?: string) => Promise<AgentMessage[]>;
+        getProjects: () => Promise<{ current: string; recent: string[] }>;
+        pickProject: () => Promise<string | null>;
+        setProject: (cwd: string) => void;
+        setComposing: (composing: boolean) => void;
+        reveal: () => void;
+        setHoverRect: (
+          rect: {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+          } | null,
+        ) => void;
+        getComputerUse: () => Promise<boolean>;
+        setComputerUse: (enabled: boolean) => void;
+        getComputerUseMode: () => Promise<ComputerUseMode>;
+        setComputerUseMode: (mode: ComputerUseMode) => void;
+        computerUseStatus: () => Promise<ComputerUsePrereqs>;
+        installComputerUse: () => Promise<{ ok: boolean; reason?: string }>;
+        requestScreenRecording: () => Promise<ComputerUsePrereqs>;
+        onHotkeyDown: (callback: () => void) => () => void;
+        onHotkeyUp: (callback: () => void) => () => void;
+        onEvent: (callback: (event: AgentEvent) => void) => () => void;
+        onSetExpanded: (callback: (expanded: boolean) => void) => () => void;
+      };
+      overlay: {
+        onGuidance: (callback: (event: GuidanceEvent) => void) => () => void;
+      };
     };
   }
 }

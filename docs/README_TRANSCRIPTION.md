@@ -14,17 +14,21 @@
   <a href="https://discord.gg/Fmgt5yZCDu"><img src="https://img.shields.io/badge/Discord-Join%20Server-5865F2.svg?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
-Freestyle is voice control for Claude Code. Hold one hotkey from anywhere, say the task, and Freestyle turns your words into agents that read, edit, and run your code.
+Freestyle is the dictation app that converts your voice into text. Hold down a hotkey, talk, and clean text will appear wherever your cursor is. Speak 4X faster than you type. 
 
-You think faster than you type. Freestyle captures what you say and hands it off to Claude Code. Open source, local-first, and runs on the Claude Code subscription you already have. 
+Freestyle is free, open source, and local-first. Run a local model and your dictations never leave your device, or bring your own API key when you'd rather use a cloud provider.
 
 ### Features
 
-- **Voice dictation.** Hold a hotkey, talk, and Freestyle pastes the text wherever your cursor is.
-- **Claude Code by voice.** Hold another hotkey from any app, say what you want done, edit the transcript in the composer, and press Enter to start the agent.
-- **Concurrent agents.** Run several Claude Code tasks at the same time. 
-- **Computer use (experimental).** The agent can read your screen and control the mouse and keyboard. Guided mode tells you what to click instead.
-- **Your existing Claude subscription.** Freestyle uses your existing Claude subscription, no separate subscription required.
+- **Voice dictation** — hold the hotkey, speak, release to paste at your cursor in milliseconds.
+- **Choose your model provider** — OpenAI, Groq, Anthropic, Google, Deepgram, ElevenLabs. Bring your own API key. 
+- **Transcription cleaning** — grammar and punctuation cleanup via post-processing. No more "um, oh, but".
+- **Dictionary** — custom phrase replacements applied after transcription. (ex. `"type script"` → `TypeScript`).
+- **Contextual correction** — reformat your text based on where you're typing. Automatically format emails into email format.
+
+<p align="center">
+  <img src="media/home-page-demo.png" alt="Freestyle" width="800" />
+</p>
 
 ## Download
 
@@ -37,7 +41,7 @@ You think faster than you type. Freestyle captures what you say and hands it off
 
 ## Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, local development, and opening up a PR.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, local development, and opening up a PR. 
 
 Consider joining our [Discord server](https://discord.gg/Fmgt5yZCDu)! That's where project contributors communicate.
 

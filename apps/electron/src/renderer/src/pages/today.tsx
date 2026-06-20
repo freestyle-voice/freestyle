@@ -215,7 +215,7 @@ export default function TodayPage(): React.JSX.Element {
             <EmptyTimeline />
           ) : (
             <div className="relative mt-6 pl-[100px]">
-              <div className="bg-border absolute top-1.5 bottom-0 left-[75px] w-px" />
+              <div className="bg-border absolute -top-6 bottom-0 left-[75px] w-px" />
               {/* "Open slot" cap — represents the next, future session. With
                   reverse-chronological order it sits above the latest entry. */}
               <div className="relative mb-5">

@@ -1,5 +1,6 @@
 import {
   createVocabularySchema,
+  exportSchema,
   importVocabularySchema,
   updateVocabularySchema,
 } from "@freestyle/validations";
@@ -65,12 +66,19 @@ const vocabulary = new Hono()
       .all() as { term: string }[];
     return c.json(rows.map((r) => r.term));
   })
-  .get("/export/json", (c) => {
+  .post("/export", zValidator("json", exportSchema), (c) => {
+    const { type } = c.req.valid("json");
     const db = getDb();
     const rows = db
       .prepare("SELECT term, notes FROM vocabulary ORDER BY term ASC")
       .all() as { term: string; notes: string | null }[];
-    return c.json(rows);
+
+    switch (type) {
+      case "json":
+        return c.json(rows);
+      default:
+        return c.json({ error: `Unsupported export type: ${type}` }, 400);
+    }
   })
   .get("/:id", (c) => {
     const db = getDb();

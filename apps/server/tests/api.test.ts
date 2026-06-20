@@ -202,8 +202,8 @@ describe("Dictionary", () => {
     expect(data.skipped).toBe(0);
   });
 
-  it("GET /api/dictionary/export/json returns JSON export", async () => {
-    const res = await req("/api/dictionary/export/json");
+  it("POST /api/dictionary/export returns JSON export", async () => {
+    const res = await json("/api/dictionary/export", { type: "json" });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data)).toBe(true);
@@ -303,8 +303,8 @@ describe("Vocabulary", () => {
     expect(data.skipped).toBe(0);
   });
 
-  it("GET /api/vocabulary/export/json returns JSON export", async () => {
-    const res = await req("/api/vocabulary/export/json");
+  it("POST /api/vocabulary/export returns JSON export", async () => {
+    const res = await json("/api/vocabulary/export", { type: "json" });
     expect(res.status).toBe(200);
     expect(Array.isArray(await res.json())).toBe(true);
   });

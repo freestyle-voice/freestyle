@@ -129,6 +129,12 @@ export interface AgentPrereqStatus {
   authReady: boolean;
 }
 
+export interface AgentCliStatus {
+  installed: boolean;
+  version: string | null;
+  path: string | null;
+}
+
 /** State of a single setup prerequisite. */
 export type PrereqState = "ok" | "missing" | "denied" | "unknown";
 

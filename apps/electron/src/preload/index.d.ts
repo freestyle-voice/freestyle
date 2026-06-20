@@ -1,6 +1,7 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
 import type {
   AgentAuthMode,
+  AgentCliStatus,
   AgentConversation,
   AgentEvent,
   AgentMessage,
@@ -56,7 +57,7 @@ declare global {
       setOnboardingComplete: () => void;
       startHotkeyRecording: () => void;
       pauseHotkeyRecording: () => void;
-      stopHotkeyRecording: (hotkey?: string) => void;
+      stopHotkeyRecording: (hotkey?: string, target?: string) => void;
       onHotkeyRecordModifiers: (
         callback: (modifiers: string[]) => void,
       ) => () => void;
@@ -132,6 +133,20 @@ declare global {
       agent: {
         prereqStatus: () => Promise<AgentPrereqStatus>;
         setAuthMode: (mode: AgentAuthMode) => void;
+        cliStatus: () => Promise<AgentCliStatus>;
+        loginStart: () => Promise<{ ok: boolean; code: number | null }>;
+        onLoginOutput: (callback: (chunk: string) => void) => () => void;
+        openTerminalLogin: () => void;
+        updateAgentHotkey: (accel: string) => void;
+        onAgentHotkeyRecorded: (
+          callback: (result: {
+            ok: boolean;
+            accel: string;
+            reason?: string;
+          }) => void,
+        ) => () => void;
+        setBarAttention: (on: boolean) => void;
+        onBarAttention: (callback: (on: boolean) => void) => () => void;
         start: (payload: {
           prompt: string;
           runId: string;

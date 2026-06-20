@@ -214,13 +214,13 @@ export default function TodayPage(): React.JSX.Element {
           {isEmpty ? (
             <EmptyTimeline />
           ) : (
-            <div className="relative pl-[100px]">
+            <div className="relative mt-10 pl-[100px]">
               <div className="bg-border absolute top-0 bottom-0 left-[75px] w-px" />
               {/* "Open slot" cap — represents the next, future session. With
                   reverse-chronological order it sits above the latest entry. */}
-              <div className="relative mb-5">
-                <span className="border-border bg-background absolute top-1 -left-[30px] h-2.5 w-2.5 rounded-full border-[1.5px] border-dashed" />
-                <span className="serif-italic text-muted-foreground text-[18px]">
+              <div className="relative mb-7 pt-0.5">
+                <span className="border-border bg-background absolute top-[7px] -left-[30px] h-2.5 w-2.5 rounded-full border-[1.5px] border-dashed" />
+                <span className="serif-italic text-muted-foreground text-[18px] leading-relaxed">
                   {t("today.readyWhenYouAre")}
                 </span>
               </div>

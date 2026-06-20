@@ -5,9 +5,9 @@ import type {
   AgentRunSummary,
   AgentUsage,
 } from "@freestyle/validations";
+import claudeSprite from "@renderer/assets/claude-code-sprite.png";
 import { useMultibandVolume } from "@renderer/components/ui/bar-visualizer";
 import { Markdown } from "@renderer/components/ui/markdown";
-import { Orb } from "@renderer/components/ui/orb";
 import { VoicePill } from "@renderer/components/ui/voice-pill";
 import { getApiBase, getAuthHeaders, refreshApiBase } from "@renderer/lib/api";
 import { Recorder } from "@renderer/lib/recorder";
@@ -783,6 +783,7 @@ function VolumeBars({
 
 export default function BarPage(): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
+  const [attention, setAttention] = useState(false);
 
   const [state, dispatch] = useReducer(reducer, undefined, initThreadState);
   const active =
@@ -873,6 +874,8 @@ export default function BarPage(): React.JSX.Element {
     });
     return off;
   }, []);
+
+  useEffect(() => window.api.agent.onBarAttention?.(setAttention), []);
 
   useEffect(() => {
     const composing =
@@ -1086,15 +1089,6 @@ export default function BarPage(): React.JSX.Element {
     [send],
   );
 
-  const orbColors: [string, string] =
-    capture === "recording"
-      ? ["#8AB62A", "#6B8F12"]
-      : busy
-        ? ["#60A5FA", "#3B82F6"]
-        : ["#A78BFA", "#7C3AED"];
-  const orbState =
-    capture === "recording" ? "listening" : busy ? "talking" : null;
-
   // One unified, recency-sorted rail: open threads + past conversations not
   // already open, in a SINGLE list sorted by most-recent-use. Selection and
   // streaming don't change sort keys, so clicking around never reshuffles.
@@ -1136,6 +1130,16 @@ export default function BarPage(): React.JSX.Element {
       style={{ fontFamily: "'DM Sans', sans-serif" }}
     >
       <style>{glowKeyframes}</style>
+      <style>{`
+        .agent-attention {
+          animation: agentAttention 1.3s ease-in-out infinite;
+          border-color: var(--primary);
+        }
+        @keyframes agentAttention {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(216,113,79,0.0); transform: scale(1); }
+          50% { box-shadow: 0 0 0 7px rgba(216,113,79,0.22); transform: scale(1.06); }
+        }
+      `}</style>
 
       {/* Collapsed layer: slim strip (or the recording pill), pinned to the top
           band so it never shifts. Fades out as the panel takes over. */}
@@ -1158,21 +1162,19 @@ export default function BarPage(): React.JSX.Element {
             <div
               className={`flex items-center gap-2 rounded-full border border-border bg-card/95 px-3 py-1 text-xs text-foreground shadow-sm backdrop-blur ${
                 busy ? "glow-agent-busy" : ""
-              }`}
+              } ${attention ? "agent-attention" : ""}`}
             >
-              <div className="h-4 w-4 overflow-hidden rounded-full">
-                <Orb
-                  colors={orbColors}
-                  agentState={orbState}
-                  className="h-full w-full"
-                />
-              </div>
+              <img
+                src={claudeSprite}
+                alt=""
+                className="h-4 w-4 shrink-0 [image-rendering:pixelated]"
+              />
               <span className="text-muted-foreground">
                 {anyRunning
                   ? runningCount > 1
                     ? `Working… (${runningCount})`
                     : "Working…"
-                  : "Freestyle Code"}
+                  : "Ask Claude Code"}
               </span>
               <span
                 className={`h-1.5 w-1.5 rounded-full ${
@@ -1308,13 +1310,11 @@ export default function BarPage(): React.JSX.Element {
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Header */}
           <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-            <div className="h-5 w-5 overflow-hidden rounded-full">
-              <Orb
-                colors={orbColors}
-                agentState={orbState}
-                className="h-full w-full"
-              />
-            </div>
+            <img
+              src={claudeSprite}
+              alt=""
+              className="h-5 w-5 shrink-0 [image-rendering:pixelated]"
+            />
             <span className="flex-1 truncate text-sm font-semibold">
               {active.title}
             </span>
@@ -1357,15 +1357,6 @@ export default function BarPage(): React.JSX.Element {
             {activeRunning && (
               <p className="text-xs text-muted-foreground animate-pulse">
                 {active.status === "starting" ? "Starting…" : "Working…"}
-              </p>
-            )}
-            {active.usage && (
-              <p className="mt-2 text-[10px] text-muted-foreground">
-                {active.usage.inputTokens}↓ {active.usage.outputTokens}↑ tokens
-                {typeof active.usage.costUsd === "number"
-                  ? ` · $${active.usage.costUsd.toFixed(4)}`
-                  : ""}
-                {active.status === "canceled" ? " · canceled" : ""}
               </p>
             )}
           </div>

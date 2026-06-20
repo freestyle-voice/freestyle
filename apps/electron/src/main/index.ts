@@ -786,13 +786,14 @@ function sendAgentHotkeyUp(): void {
   agentBarWindow?.webContents.send("agent-hotkey:up");
 }
 
-async function registerAgentHotkey(): Promise<void> {
+async function registerAgentHotkey(accelOverride?: string): Promise<void> {
   if (agentKeyListener) {
     agentKeyListener.stop();
     agentKeyListener = null;
   }
 
-  const accel = getDefaultAgentHotkey();
+  const accel =
+    accelOverride ?? loadAgentHotkeyFromDB() ?? getDefaultAgentHotkey();
   const listener = new NativeKeyListener({
     hotkey: accel,
     onKeyDown: sendAgentHotkeyDown,
@@ -1576,15 +1577,40 @@ app.whenReady().then(async () => {
     stopHotkeyRecorderProcess();
   });
 
-  ipcMain.on("hotkey-record:stop", (_event, hotkey?: string) => {
-    stopHotkeyRecorderProcess();
-    scheduleHotkeyRegistration(
-      typeof hotkey === "string" && hotkey.length > 0
-        ? hotkey
-        : (currentHotkeyAccel ?? undefined),
-    );
-    void registerAgentHotkey();
-  });
+  ipcMain.on(
+    "hotkey-record:stop",
+    (event, hotkey?: string, target?: string) => {
+      stopHotkeyRecorderProcess();
+
+      if (target === "agent") {
+        scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
+        const collides =
+          !!hotkey && !!currentHotkeyAccel && hotkey === currentHotkeyAccel;
+        if (hotkey && !collides) {
+          void registerAgentHotkey(hotkey);
+          event.sender.send("agent-hotkey:recorded", {
+            ok: true,
+            accel: hotkey,
+          });
+        } else {
+          void registerAgentHotkey();
+          event.sender.send("agent-hotkey:recorded", {
+            ok: false,
+            reason: collides ? "collision" : "invalid",
+            accel: loadAgentHotkeyFromDB() ?? getDefaultAgentHotkey(),
+          });
+        }
+        return;
+      }
+
+      scheduleHotkeyRegistration(
+        typeof hotkey === "string" && hotkey.length > 0
+          ? hotkey
+          : (currentHotkeyAccel ?? undefined),
+      );
+      void registerAgentHotkey();
+    },
+  );
 
   // When a server URL is configured, the app talks to that server instead of
   // running one locally. Skip all local server startup in that case.
@@ -1930,6 +1956,16 @@ app.whenReady().then(async () => {
     scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
   });
 
+  ipcMain.on("agent-hotkey:update", (_event, accel: unknown) => {
+    if (typeof accel === "string" && accel) void registerAgentHotkey(accel);
+  });
+
+  ipcMain.on("agent-bar:attention", (_event, on: unknown) => {
+    if (agentBarWindow && !agentBarWindow.isDestroyed()) {
+      agentBarWindow.webContents.send("agent-bar:attention", on === true);
+    }
+  });
+
   ipcMain.on("hotkey:set-mode", (_event, mode: string) => {
     hotkeyActivationMode = mode === "toggle" ? "toggle" : "hold";
     hotkeyPressed = false;
@@ -2028,6 +2064,22 @@ function loadHotkeyFromDB(): string | undefined {
   } catch {
     // Ignore errors
   }
+  return undefined;
+}
+
+function loadAgentHotkeyFromDB(): string | undefined {
+  try {
+    const dbPath = process.env.FREESTYLE_DB_PATH;
+    if (dbPath) {
+      const { DatabaseSync } = require("node:sqlite");
+      const db = new DatabaseSync(dbPath);
+      const row = db
+        .prepare("SELECT value FROM settings WHERE key = ?")
+        .get(SETTINGS_KEYS.agentHotkey) as { value: string } | undefined;
+      db.close();
+      if (row?.value) return row.value;
+    }
+  } catch {}
   return undefined;
 }
 

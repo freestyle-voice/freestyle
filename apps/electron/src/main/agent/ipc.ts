@@ -5,6 +5,7 @@
 import type { AgentAuthMode, ComputerUseMode } from "@freestyle/validations";
 import { app, ipcMain, shell } from "electron";
 import { getPrereqStatus } from "./auth.js";
+import { detectClaudeCli, openTerminalLogin, runClaudeLogin } from "./cli.js";
 import {
   computerUseEnabled,
   computerUseMode,
@@ -56,6 +57,18 @@ export function registerAgentIpc(deps: AgentIpcDeps): void {
   ipcMain.on("agent:set-auth-mode", (_event, mode: unknown) => {
     deps.persistAuthMode(mode === "api-key" ? "api-key" : "subscription");
   });
+
+  ipcMain.handle("agent:cli-status", () => detectClaudeCli());
+
+  ipcMain.handle("agent:login-start", (event) =>
+    runClaudeLogin((chunk) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send("agent:login-output", chunk);
+      }
+    }),
+  );
+
+  ipcMain.on("agent:open-terminal-login", () => openTerminalLogin());
 
   ipcMain.handle("agent:start", (_event, payload: unknown) => {
     const obj =

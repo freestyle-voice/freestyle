@@ -239,7 +239,7 @@ export function TutorialDemo({
             rows={3}
             aria-label="Practice dictation area"
             placeholder="Click here, hold your hotkey, and speak — your words land right here."
-            className="placeholder:text-muted-foreground/70 text-foreground mt-2 block min-h-0 w-full resize-none border-none bg-transparent px-0 py-0 text-[17px] leading-[1.5] shadow-none outline-none focus-visible:border-none focus-visible:ring-0 dark:bg-transparent"
+            className="placeholder:text-muted-foreground/70 text-foreground mt-2 block min-h-[88px] w-full resize-none border-none bg-transparent px-0 py-1 text-[17px] leading-[1.5] shadow-none outline-none focus-visible:border-none focus-visible:ring-0 dark:bg-transparent"
           />
         ) : (
           // Result transcript

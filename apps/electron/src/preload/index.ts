@@ -1,6 +1,7 @@
 import { electronAPI } from "@electron-toolkit/preload";
 import type {
   AgentAuthMode,
+  AgentCliStatus,
   AgentConversation,
   AgentEvent,
   AgentMessage,
@@ -88,8 +89,8 @@ const api = {
   startHotkeyRecording: (): void => ipcRenderer.send("hotkey-record:start"),
   pauseHotkeyRecording: (): void =>
     ipcRenderer.send("hotkey-record:pause-recorder"),
-  stopHotkeyRecording: (hotkey?: string): void =>
-    ipcRenderer.send("hotkey-record:stop", hotkey),
+  stopHotkeyRecording: (hotkey?: string, target?: string): void =>
+    ipcRenderer.send("hotkey-record:stop", hotkey, target),
   onHotkeyRecordModifiers: (
     callback: (modifiers: string[]) => void,
   ): (() => void) => {
@@ -270,6 +271,40 @@ const api = {
       ipcRenderer.invoke("agent:prereq-status"),
     setAuthMode: (mode: AgentAuthMode): void =>
       ipcRenderer.send("agent:set-auth-mode", mode),
+    cliStatus: (): Promise<AgentCliStatus> =>
+      ipcRenderer.invoke("agent:cli-status"),
+    loginStart: (): Promise<{ ok: boolean; code: number | null }> =>
+      ipcRenderer.invoke("agent:login-start"),
+    onLoginOutput: (callback: (chunk: string) => void): (() => void) => {
+      const handler = (_: unknown, chunk: string): void => callback(chunk);
+      ipcRenderer.on("agent:login-output", handler);
+      return () => ipcRenderer.removeListener("agent:login-output", handler);
+    },
+    openTerminalLogin: (): void =>
+      ipcRenderer.send("agent:open-terminal-login"),
+    updateAgentHotkey: (accel: string): void =>
+      ipcRenderer.send("agent-hotkey:update", accel),
+    setBarAttention: (on: boolean): void =>
+      ipcRenderer.send("agent-bar:attention", on),
+    onBarAttention: (callback: (on: boolean) => void): (() => void) => {
+      const handler = (_: unknown, on: boolean): void => callback(on);
+      ipcRenderer.on("agent-bar:attention", handler);
+      return () => ipcRenderer.removeListener("agent-bar:attention", handler);
+    },
+    onAgentHotkeyRecorded: (
+      callback: (result: {
+        ok: boolean;
+        accel: string;
+        reason?: string;
+      }) => void,
+    ): (() => void) => {
+      const handler = (
+        _: unknown,
+        result: { ok: boolean; accel: string; reason?: string },
+      ): void => callback(result);
+      ipcRenderer.on("agent-hotkey:recorded", handler);
+      return () => ipcRenderer.removeListener("agent-hotkey:recorded", handler);
+    },
     start: (payload: {
       prompt: string;
       runId: string;

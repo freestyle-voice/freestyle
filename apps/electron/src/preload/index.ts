@@ -314,10 +314,16 @@ const api = {
     cancel: (runId: string): void => ipcRenderer.send("agent:cancel", runId),
     listRunning: (): Promise<AgentRunSummary[]> =>
       ipcRenderer.invoke("agent:list-running"),
-    listConversations: (): Promise<AgentConversation[]> =>
-      ipcRenderer.invoke("agent:list-conversations"),
-    getConversation: (id: string): Promise<AgentMessage[]> =>
-      ipcRenderer.invoke("agent:get-conversation", id),
+    listConversations: (cwd?: string): Promise<AgentConversation[]> =>
+      ipcRenderer.invoke("agent:list-conversations", cwd),
+    getConversation: (id: string, cwd?: string): Promise<AgentMessage[]> =>
+      ipcRenderer.invoke("agent:get-conversation", id, cwd),
+    getProjects: (): Promise<{ current: string; recent: string[] }> =>
+      ipcRenderer.invoke("agent:get-projects"),
+    pickProject: (): Promise<string | null> =>
+      ipcRenderer.invoke("agent:pick-project"),
+    setProject: (cwd: string): void =>
+      ipcRenderer.send("agent:set-project", cwd),
     setComposing: (composing: boolean): void =>
       ipcRenderer.send("agent-bar:composing", composing),
     reveal: (): void => ipcRenderer.send("agent-bar:reveal"),

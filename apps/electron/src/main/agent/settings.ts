@@ -4,6 +4,7 @@ import { app } from "electron";
 
 export interface AgentSettings {
   agentCwd?: string;
+  agentRecentProjects?: string[];
   agentAuthMode?: string;
   agentComputerUse?: boolean;
   agentComputerUseMode?: string;

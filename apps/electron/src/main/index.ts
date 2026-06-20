@@ -1989,6 +1989,8 @@ app.whenReady().then(async () => {
       writeSettings({ agentComputerUse: enabled }),
     persistComputerUseMode: (mode) =>
       writeSettings({ agentComputerUseMode: mode }),
+    persistProject: (cwd, recent) =>
+      writeSettings({ agentCwd: cwd, agentRecentProjects: recent }),
   });
   void registerAgentHotkey().catch((err) => {
     hotkeyLog.error(

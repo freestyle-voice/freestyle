@@ -22,6 +22,7 @@ import {
   FilePen,
   FilePlus,
   FileText,
+  Folder,
   FolderSearch,
   Globe,
   Keyboard,
@@ -74,6 +75,7 @@ interface Thread {
   runId: string | null;
   /** SDK session id once known — used to resume + reload history. */
   sessionId: string | null;
+  cwd: string;
   title: string;
   items: Item[];
   status: RunStatus;
@@ -115,11 +117,22 @@ type Action =
   | { kind: "select"; clientId: string }
   | { kind: "draft"; clientId: string; draft: string }
   | { kind: "draftAppend"; clientId: string; text: string }
-  | { kind: "send"; clientId: string; runId: string; prompt: string }
+  | {
+      kind: "send";
+      clientId: string;
+      runId: string;
+      prompt: string;
+      cwd: string;
+    }
   | { kind: "startFailed"; clientId: string; error: string }
   | { kind: "noCompute"; clientId: string }
   | { kind: "event"; event: AgentEvent }
-  | { kind: "openConversation"; clientId: string; conv: AgentConversation }
+  | {
+      kind: "openConversation";
+      clientId: string;
+      conv: AgentConversation;
+      cwd: string;
+    }
   | { kind: "loaded"; clientId: string; items: Item[] }
   | { kind: "adopt"; runs: AgentRunSummary[] };
 
@@ -128,6 +141,7 @@ function emptyThread(clientId: string): Thread {
     clientId,
     runId: null,
     sessionId: null,
+    cwd: "",
     title: NEW_CHAT_TITLE,
     items: [],
     status: "idle",
@@ -571,6 +585,7 @@ function reducer(state: ThreadState, action: Action): ThreadState {
           status: "starting" as RunStatus,
           usage: null,
           draft: "",
+          cwd: action.cwd || t.cwd,
           lastActivityAt: Date.now(),
           title:
             t.title === NEW_CHAT_TITLE ? deriveTitle(action.prompt) : t.title,
@@ -623,6 +638,7 @@ function reducer(state: ThreadState, action: Action): ThreadState {
       const t: Thread = {
         ...emptyThread(action.clientId),
         sessionId: action.conv.id,
+        cwd: action.cwd,
         title: action.conv.title,
         // Sort where the conversation already belongs by recency, so opening it
         // doesn't yank it to the top of the rail.
@@ -756,6 +772,89 @@ function relativeTime(ms: number): string {
   return `${Math.round(hr / 24)}d`;
 }
 
+function projectLabel(cwd: string): string {
+  if (!cwd) return "Choose project";
+  const parts = cwd.replace(/[/\\]+$/, "").split(/[/\\]/);
+  return parts[parts.length - 1] || cwd;
+}
+
+function ProjectPicker({
+  cwd,
+  recent,
+  onPick,
+  onChoose,
+}: {
+  cwd: string;
+  recent: string[];
+  onPick: (cwd: string) => void;
+  onChoose: () => void;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent): void => {
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        title={cwd || "Choose a project folder"}
+        className="flex max-w-[160px] items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <Folder className="h-3 w-3 shrink-0" />
+        <span className="truncate">{projectLabel(cwd)}</span>
+        <ChevronDown className="h-3 w-3 shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-50 mb-1 w-60 overflow-hidden rounded-lg border border-border bg-popover py-1 shadow-lg">
+          {recent.length > 0 && (
+            <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">
+              Recent projects
+            </div>
+          )}
+          {recent.map((p) => (
+            <button
+              type="button"
+              key={p}
+              onClick={() => {
+                onPick(p);
+                setOpen(false);
+              }}
+              className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted ${
+                p === cwd ? "text-foreground" : "text-muted-foreground"
+              }`}
+            >
+              <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+              <span className="flex-1 truncate">{projectLabel(p)}</span>
+              {p === cwd && <Check className="h-3.5 w-3.5 shrink-0" />}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              onChoose();
+              setOpen(false);
+            }}
+            className="mt-0.5 flex w-full items-center gap-2 border-t border-border px-2 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-muted"
+          >
+            <FolderSearch className="h-3.5 w-3.5 shrink-0" />
+            Choose folder…
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Live mic-level feedback — mirrors the dictation pill's volume meter so the
 // user has a haptic-style cue that audio is being captured.
 function VolumeBars({
@@ -791,6 +890,8 @@ export default function BarPage(): React.JSX.Element {
     state.threads[0];
 
   const [conversations, setConversations] = useState<AgentConversation[]>([]);
+  const [project, setProjectState] = useState("");
+  const [recentProjects, setRecentProjects] = useState<string[]>([]);
   const [computeOptIn, setComputeOptIn] = useState(false);
   const [capture, setCapture] = useState<CaptureState>("idle");
   const [notice, setNotice] = useState<string | null>(null);
@@ -838,14 +939,42 @@ export default function BarPage(): React.JSX.Element {
 
   // ---- Past conversations (left-rail history) ----
   const refreshConversations = useCallback(() => {
+    if (!project) return;
     window.api.agent
-      .listConversations()
+      .listConversations(project)
       .then(setConversations)
+      .catch(() => {});
+  }, [project]);
+
+  useEffect(() => {
+    window.api.agent
+      .getProjects()
+      .then(({ current, recent }) => {
+        setProjectState(current);
+        setRecentProjects(recent);
+      })
       .catch(() => {});
   }, []);
 
+  const changeProject = useCallback((cwd: string) => {
+    if (!cwd) return;
+    setProjectState(cwd);
+    setRecentProjects((prev) =>
+      [cwd, ...prev.filter((p) => p !== cwd)].slice(0, 8),
+    );
+    window.api.agent.setProject(cwd);
+  }, []);
+
+  const chooseProjectFolder = useCallback(() => {
+    window.api.agent
+      .pickProject()
+      .then((cwd) => {
+        if (cwd) changeProject(cwd);
+      })
+      .catch(() => {});
+  }, [changeProject]);
+
   useEffect(() => {
-    refreshConversations();
     window.api.agent
       .getComputerUse()
       .then(setComputeOptIn)
@@ -858,6 +987,10 @@ export default function BarPage(): React.JSX.Element {
         if (runs.length) dispatch({ kind: "adopt", runs });
       })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshConversations();
   }, [refreshConversations]);
 
   // ---- Expand/collapse is owned by main (cursor-driven). The bar only
@@ -996,10 +1129,11 @@ export default function BarPage(): React.JSX.Element {
     // Mint the runId here so we can route the synchronous "starting" event that
     // fires before agent.start() even resolves.
     const runId = crypto.randomUUID();
-    dispatch({ kind: "send", clientId: t.clientId, runId, prompt });
+    const cwd = t.sessionId ? t.cwd || project : project;
+    dispatch({ kind: "send", clientId: t.clientId, runId, prompt, cwd });
     setNotice(null);
     window.api.agent
-      .start({ prompt, runId, resume: t.sessionId ?? undefined })
+      .start({ prompt, runId, cwd, resume: t.sessionId ?? undefined })
       .then((r) => {
         if (!r.ok) {
           dispatch({
@@ -1018,7 +1152,7 @@ export default function BarPage(): React.JSX.Element {
           error: "Failed to start agent.",
         }),
       );
-  }, [active, computeOptIn]);
+  }, [active, computeOptIn, project]);
 
   const cancel = useCallback(() => {
     if (active.runId) window.api.agent.cancel(active.runId);
@@ -1029,24 +1163,27 @@ export default function BarPage(): React.JSX.Element {
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, []);
 
-  const openConversation = useCallback((conv: AgentConversation) => {
-    const clientId = crypto.randomUUID();
-    dispatch({ kind: "openConversation", clientId, conv });
-    window.api.agent
-      .getConversation(conv.id)
-      .then((msgs) => {
-        dispatch({
-          kind: "loaded",
-          clientId,
-          items: msgs.map((m, i) => ({
-            id: `h_${clientId}_${i}`,
-            role: m.role,
-            text: m.text,
-          })),
-        });
-      })
-      .catch(() => {});
-  }, []);
+  const openConversation = useCallback(
+    (conv: AgentConversation) => {
+      const clientId = crypto.randomUUID();
+      dispatch({ kind: "openConversation", clientId, conv, cwd: project });
+      window.api.agent
+        .getConversation(conv.id, project)
+        .then((msgs) => {
+          dispatch({
+            kind: "loaded",
+            clientId,
+            items: msgs.map((m, i) => ({
+              id: `h_${clientId}_${i}`,
+              role: m.role,
+              text: m.text,
+            })),
+          });
+        })
+        .catch(() => {});
+    },
+    [project],
+  );
 
   // ---- IPC wiring: hotkeys (re-bound when capture callbacks change) ----
   useEffect(() => {
@@ -1315,7 +1452,7 @@ export default function BarPage(): React.JSX.Element {
               alt=""
               className="h-5 w-5 shrink-0 [image-rendering:pixelated]"
             />
-            <span className="flex-1 truncate text-sm font-semibold">
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold">
               {active.title}
             </span>
             <span
@@ -1394,7 +1531,25 @@ export default function BarPage(): React.JSX.Element {
                 rows={1}
                 className="max-h-[180px] w-full resize-none overflow-y-auto bg-transparent px-3 pt-2.5 pb-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
               />
-              <div className="flex items-center justify-end px-2 pb-2">
+              <div className="flex items-center justify-between gap-2 px-2 pb-2">
+                {active.sessionId ? (
+                  <span
+                    title={active.cwd}
+                    className="flex min-w-0 items-center gap-1 px-1 text-[11px] text-muted-foreground"
+                  >
+                    <Folder className="h-3 w-3 shrink-0" />
+                    <span className="truncate">
+                      {projectLabel(active.cwd || project)}
+                    </span>
+                  </span>
+                ) : (
+                  <ProjectPicker
+                    cwd={project}
+                    recent={recentProjects}
+                    onPick={changeProject}
+                    onChoose={chooseProjectFolder}
+                  />
+                )}
                 {activeRunning ? (
                   <button
                     type="button"

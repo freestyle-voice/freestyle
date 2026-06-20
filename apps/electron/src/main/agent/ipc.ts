@@ -3,7 +3,7 @@
  * agent wiring out of the already-large index.ts.
  */
 import type { AgentAuthMode, ComputerUseMode } from "@freestyle/validations";
-import { app, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { getPrereqStatus } from "./auth.js";
 import { detectClaudeCli, openTerminalLogin, runClaudeLogin } from "./cli.js";
 import {
@@ -37,6 +37,7 @@ interface AgentIpcDeps {
   persistComputerUse: (enabled: boolean) => void;
   /** Persist the computer-use actuation mode (full vs guided). */
   persistComputerUseMode: (mode: ComputerUseMode) => void;
+  persistProject: (cwd: string, recent: string[]) => void;
 }
 
 /** cwd for runs + conversation history: configured `agentCwd`, else home. */
@@ -45,6 +46,8 @@ function resolveCwd(): string {
   if (typeof cwd === "string" && cwd.trim()) return cwd;
   return app.getPath("home");
 }
+
+const RECENT_PROJECTS_MAX = 8;
 
 let registered = false;
 
@@ -106,13 +109,49 @@ export function registerAgentIpc(deps: AgentIpcDeps): void {
 
   ipcMain.handle("agent:list-running", () => deps.registry.list());
 
-  ipcMain.handle("agent:list-conversations", () =>
-    listConversations(resolveCwd()),
+  ipcMain.handle("agent:list-conversations", (_event, cwd: unknown) =>
+    listConversations(
+      typeof cwd === "string" && cwd.trim() ? cwd : resolveCwd(),
+    ),
   );
 
-  ipcMain.handle("agent:get-conversation", (_event, id: unknown) =>
-    typeof id === "string" ? getConversation(id, resolveCwd()) : [],
+  ipcMain.handle(
+    "agent:get-conversation",
+    (_event, id: unknown, cwd: unknown) =>
+      typeof id === "string"
+        ? getConversation(
+            id,
+            typeof cwd === "string" && cwd.trim() ? cwd : resolveCwd(),
+          )
+        : [],
   );
+
+  ipcMain.handle("agent:get-projects", () => ({
+    current: resolveCwd(),
+    recent: readAgentSettings().agentRecentProjects ?? [],
+  }));
+
+  ipcMain.handle("agent:pick-project", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const opts: Electron.OpenDialogOptions = {
+      title: "Choose a project folder",
+      properties: ["openDirectory", "createDirectory"],
+    };
+    const res = win
+      ? await dialog.showOpenDialog(win, opts)
+      : await dialog.showOpenDialog(opts);
+    return res.canceled ? null : (res.filePaths[0] ?? null);
+  });
+
+  ipcMain.on("agent:set-project", (_event, cwd: unknown) => {
+    if (typeof cwd !== "string" || !cwd.trim()) return;
+    const prev = readAgentSettings().agentRecentProjects ?? [];
+    const recent = [cwd, ...prev.filter((p) => p !== cwd)].slice(
+      0,
+      RECENT_PROJECTS_MAX,
+    );
+    deps.persistProject(cwd, recent);
+  });
 
   ipcMain.on("agent-bar:composing", (_event, composing: unknown) => {
     deps.setComposing(composing === true);

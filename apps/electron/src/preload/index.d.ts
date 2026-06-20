@@ -155,8 +155,11 @@ declare global {
         }) => Promise<AgentStartResult>;
         cancel: (runId: string) => void;
         listRunning: () => Promise<AgentRunSummary[]>;
-        listConversations: () => Promise<AgentConversation[]>;
-        getConversation: (id: string) => Promise<AgentMessage[]>;
+        listConversations: (cwd?: string) => Promise<AgentConversation[]>;
+        getConversation: (id: string, cwd?: string) => Promise<AgentMessage[]>;
+        getProjects: () => Promise<{ current: string; recent: string[] }>;
+        pickProject: () => Promise<string | null>;
+        setProject: (cwd: string) => void;
         setComposing: (composing: boolean) => void;
         reveal: () => void;
         setHoverRect: (

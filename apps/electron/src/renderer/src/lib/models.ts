@@ -70,6 +70,7 @@ export interface MlxAsrStatus {
 }
 
 export const CLOUD_VOICE_PROVIDERS = [
+  "freestyle-cloud",
   "openai",
   "groq",
   "deepgram",

@@ -3,6 +3,9 @@ import { createAppLogger } from "@freestyle/utils";
 
 const log = createAppLogger("disk");
 
+/** Default head-room to require on top of a download's known size. */
+export const DOWNLOAD_FREE_BUFFER_BYTES = 256 * 1024 ** 2; // 256 MB
+
 function formatGiB(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }

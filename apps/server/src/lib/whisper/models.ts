@@ -17,7 +17,11 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { createAppLogger } from "@freestyle/utils";
-import { assertEnoughDiskSpace, describeDownloadError } from "../disk.js";
+import {
+  assertEnoughDiskSpace,
+  DOWNLOAD_FREE_BUFFER_BYTES,
+  describeDownloadError,
+} from "../disk.js";
 import { progressFetch } from "../hf/progress.js";
 import {
   getBinDir,
@@ -34,9 +38,6 @@ import {
 
 const log = createAppLogger("whisper");
 const execFile = promisify(execFileCallback);
-
-// Extra head-room required on top of a whisper model's size before downloading.
-const MODEL_FREE_BUFFER_BYTES = 256 * 1024 ** 2; // 256 MB
 
 export type DownloadStatus =
   | "not_downloaded"
@@ -213,7 +214,7 @@ export async function downloadModel(modelId: string): Promise<void> {
     // head-room) before spending bandwidth.
     await assertEnoughDiskSpace(
       getModelsDir(),
-      model.sizeBytes + MODEL_FREE_BUFFER_BYTES,
+      model.sizeBytes + DOWNLOAD_FREE_BUFFER_BYTES,
     );
 
     // Stream straight to the models dir — going through the HF cache would

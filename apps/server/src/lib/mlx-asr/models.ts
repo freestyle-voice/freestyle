@@ -3,7 +3,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { listFiles, snapshotDownload } from "@huggingface/hub";
 import { getDb } from "../db.js";
-import { assertEnoughDiskSpace, describeDownloadError } from "../disk.js";
+import {
+  assertEnoughDiskSpace,
+  DOWNLOAD_FREE_BUFFER_BYTES,
+  describeDownloadError,
+} from "../disk.js";
 import { progressFetch } from "../hf/progress.js";
 import {
   getMlxAsrModel,
@@ -69,9 +73,6 @@ function baseModelState(
     displayName: model.displayName,
   };
 }
-
-// Extra head-room required on top of the model's size before downloading.
-const MODEL_FREE_BUFFER_BYTES = 256 * 1024 ** 2; // 256 MB
 
 function hfCacheRoot(): string {
   return (
@@ -266,7 +267,7 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
     if (active.bytesTotal > 0) {
       await assertEnoughDiskSpace(
         hfCacheRoot(),
-        active.bytesTotal + MODEL_FREE_BUFFER_BYTES,
+        active.bytesTotal + DOWNLOAD_FREE_BUFFER_BYTES,
       );
     }
 

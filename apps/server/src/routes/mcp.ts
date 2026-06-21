@@ -2,6 +2,7 @@ import {
   createDictionarySchema,
   createFormatSchema,
   createVocabularySchema,
+  DEFAULT_CLEANUP_INTENSITY,
   updateDictionarySchema,
   updateFormatSchema,
   updateVocabularySchema,
@@ -51,6 +52,19 @@ const listParams = {
   search: z.string().optional().describe("Filter by keyword"),
 };
 
+function listQuery(args: {
+  limit: number;
+  offset: number;
+  search?: string;
+}): string {
+  const params = new URLSearchParams({
+    limit: String(args.limit),
+    offset: String(args.offset),
+  });
+  if (args.search) params.set("search", args.search);
+  return params.toString();
+}
+
 const idParam = { id: z.number().int().describe("Record ID") };
 
 const mcpServer = new McpServer({
@@ -68,13 +82,8 @@ mcpServer.tool(
   "format_list",
   "List formatting rules (output-style rules matched by app/context). Returns full rows, so no separate view-by-id is needed.",
   listParams,
-  async ({ limit, offset, search }) => {
-    const params = new URLSearchParams({
-      limit: String(limit),
-      offset: String(offset),
-    });
-    if (search) params.set("search", search);
-    const { data } = await call(formats, "GET", `/?${params}`);
+  async (args) => {
+    const { data } = await call(formats, "GET", `/?${listQuery(args)}`);
     return text(data);
   },
 );
@@ -135,13 +144,8 @@ mcpServer.tool(
   "dict_list",
   "List dictionary entries (exact post-transcription replacements). Returns full rows, so no separate view-by-id is needed.",
   listParams,
-  async ({ limit, offset, search }) => {
-    const params = new URLSearchParams({
-      limit: String(limit),
-      offset: String(offset),
-    });
-    if (search) params.set("search", search);
-    const { data } = await call(dictionary, "GET", `/?${params}`);
+  async (args) => {
+    const { data } = await call(dictionary, "GET", `/?${listQuery(args)}`);
     return text(data);
   },
 );
@@ -188,13 +192,8 @@ mcpServer.tool(
   "vocab_list",
   "List vocabulary terms (recognition bias hints for the speech model). Returns full rows, so no separate view-by-id is needed.",
   listParams,
-  async ({ limit, offset, search }) => {
-    const params = new URLSearchParams({
-      limit: String(limit),
-      offset: String(offset),
-    });
-    if (search) params.set("search", search);
-    const { data } = await call(vocabulary, "GET", `/?${params}`);
+  async (args) => {
+    const { data } = await call(vocabulary, "GET", `/?${listQuery(args)}`);
     return text(data);
   },
 );
@@ -240,13 +239,8 @@ mcpServer.tool(
   "history_list",
   "List transcription history (read-only). Use as evidence for which dictionary, vocabulary, or format rules to add.",
   listParams,
-  async ({ limit, offset, search }) => {
-    const params = new URLSearchParams({
-      limit: String(limit),
-      offset: String(offset),
-    });
-    if (search) params.set("search", search);
-    const { data } = await call(history, "GET", `/?${params}`);
+  async (args) => {
+    const { data } = await call(history, "GET", `/?${listQuery(args)}`);
     return text(data);
   },
 );
@@ -261,7 +255,7 @@ mcpServer.tool(
     const { data } = await call(settings, "GET", "/");
     const all = (data ?? {}) as Record<string, string>;
     return text({
-      cleanup_intensity: all.cleanup_intensity ?? "low",
+      cleanup_intensity: all.cleanup_intensity ?? DEFAULT_CLEANUP_INTENSITY,
       cleanup_custom_prompt: all.cleanup_custom_prompt ?? "",
     });
   },

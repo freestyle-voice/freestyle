@@ -14,21 +14,38 @@ const MAX_FILES = 5; // keep ~10 MB of history (size-rotated, tailable)
 // modules may have already created their namespaced loggers at import time.
 const registry = new Set<winston.Logger>();
 
+// One shared File transport for the whole process. Sharing a single instance
+// (rather than one per logger) is important: the per-namespace formatting is
+// already applied at the logger level, and a single write stream avoids the
+// size-rotation races that independent transports to the same file would hit.
+let fileTransport: winston.transport | null = null;
+
 // Initialised from the env var so the standalone server (and tests) can opt in
 // without code changes; the Electron app calls `enableFileLogging()` instead.
 let logDir: string | undefined = process.env.FREESTYLE_LOG_DIR || undefined;
 
-function createFileTransport(dir: string): winston.transport {
-  return new winston.transports.File({
-    filename: path.join(dir, LOG_FILE),
-    maxsize: MAX_SIZE,
-    maxFiles: MAX_FILES,
-    tailable: true,
-  });
+function getFileTransport(dir: string): winston.transport | null {
+  if (fileTransport) return fileTransport;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fileTransport = new winston.transports.File({
+      filename: path.join(dir, LOG_FILE),
+      maxsize: MAX_SIZE,
+      maxFiles: MAX_FILES,
+      tailable: true,
+    });
+  } catch {
+    // Logging must never crash the app; fall back to console-only.
+    fileTransport = null;
+  }
+  return fileTransport;
 }
 
-function hasFileTransport(logger: winston.Logger): boolean {
-  return logger.transports.some((t) => t instanceof winston.transports.File);
+function attachFileTransport(logger: winston.Logger, dir: string): void {
+  const transport = getFileTransport(dir);
+  if (!transport) return;
+  if (logger.transports.includes(transport)) return;
+  logger.add(transport);
 }
 
 export function createAppLogger(namespace: string): winston.Logger {
@@ -47,41 +64,20 @@ export function createAppLogger(namespace: string): winston.Logger {
     ],
   });
 
-  if (logDir) {
-    try {
-      logger.add(createFileTransport(logDir));
-    } catch {
-      // Logging must never crash the app.
-    }
-  }
+  if (logDir) attachFileTransport(logger, logDir);
 
   registry.add(logger);
   return logger;
 }
 
 /**
- * Persist logs to `<dir>/freestyle.log` (size-rotated, tailable). Attaches a
- * file transport to every logger created so far and every one created
+ * Persist logs to `<dir>/freestyle.log` (size-rotated, tailable). Attaches the
+ * shared file transport to every logger created so far and every one created
  * afterwards, so the call is order-independent — it works whether loggers were
  * built before or after the log directory became known. Idempotent.
  */
 export function enableFileLogging(dir: string): void {
-  if (logDir === dir) return;
-
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-  } catch {
-    // Directory may already exist or be uncreatable; the File transport will
-    // surface its own error without taking down the process.
-  }
-
+  if (logDir === dir && fileTransport) return;
   logDir = dir;
-  for (const logger of registry) {
-    if (hasFileTransport(logger)) continue;
-    try {
-      logger.add(createFileTransport(dir));
-    } catch {
-      // Best-effort per logger.
-    }
-  }
+  for (const logger of registry) attachFileTransport(logger, dir);
 }

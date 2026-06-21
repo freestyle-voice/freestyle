@@ -91,7 +91,8 @@
       "recording": "Recording",
       "display": "Display",
       "permissions": "Permissions",
-      "data": "Data"
+      "data": "Data",
+      "developer": "Developer"
     },
     "application": {
       "autoUpdate": "Automatic updates",
@@ -179,6 +180,16 @@
       "logs": "Diagnostic logs",
       "logsDesc": "App logs are saved to a file on your device. Open the folder to share them when reporting a problem.",
       "openLogs": "Open logs folder"
+    },
+    "developer": {
+      "mcp": "MCP server",
+      "mcpDesc": "Freestyle runs a local Model Context Protocol server so an AI agent (Claude Desktop, Cursor, etc.) can manage your dictionary, vocabulary, and format rules. Add the connection below to your MCP client.",
+      "mcpUrl": "Server URL",
+      "mcpConfig": "Client config (HTTP)",
+      "mcpRemoteConfig": "Client config (stdio via mcp-remote)",
+      "mcpRemoteNote": "Use this form for clients that don't support HTTP MCP servers directly, such as Claude Desktop.",
+      "copy": "Copy",
+      "copied": "Copied"
     }
   },
   "today": {

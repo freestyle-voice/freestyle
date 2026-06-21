@@ -9,7 +9,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
 import { CleanupIntensityCard } from "./cleanup-intensity";
@@ -20,6 +20,9 @@ import { PairCard } from "./pair-card";
 import type { ApiKeyEntry, ConfiguredModel } from "./types";
 import { useModels } from "./use-models";
 import { displayName } from "./utils";
+
+/** Managed STT provider that needs no key and runs its own cleanup. */
+const FREESTYLE_CLOUD_PROVIDER = "freestyle-cloud";
 
 export default function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation();
@@ -57,21 +60,30 @@ export default function ModelsPage(): React.JSX.Element {
 
   const onPickCloud = (model: AvailableModel): void => {
     if (modal?.kind !== "list") return;
+    const type = modal.type;
     const needsKey =
       model.provider_id !== "local-llm" &&
+      model.provider_id !== FREESTYLE_CLOUD_PROVIDER &&
       !m.keyProviders.has(model.provider_id);
     if (needsKey) {
       setKeyError(null);
       setModal({
         kind: "key",
-        type: modal.type,
+        type,
         provider: model.provider_id,
         modelName: model.model_name,
         pendingModel: model,
       });
       return;
     }
-    void m.configureModel(model, modal.type).then(closeModal);
+    void m.configureModel(model, type).then(() => {
+      // Freestyle Cloud runs its own cleanup; disable local post-processing
+      // so we surface the cloud's cleaned text without a second pass.
+      if (type === "voice" && model.provider_id === FREESTYLE_CLOUD_PROVIDER) {
+        m.setCleanup(false);
+      }
+      closeModal();
+    });
   };
 
   const onPickLocalVoice = (
@@ -117,6 +129,15 @@ export default function ModelsPage(): React.JSX.Element {
     })();
   };
 
+  // Self-correct a stale enabled setting (e.g. page opened with Freestyle Cloud
+  // already selected) so the backend never runs a redundant second cleanup
+  // pass. Kept above the loading early-return to satisfy the Rules of Hooks.
+  const cloudVoiceActive =
+    m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER;
+  useEffect(() => {
+    if (cloudVoiceActive && m.llmCleanup) m.setCleanup(false);
+  }, [cloudVoiceActive, m.llmCleanup, m.setCleanup]);
+
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
@@ -134,6 +155,10 @@ export default function ModelsPage(): React.JSX.Element {
   const hasLocalVoice = m.configured.some(
     (c) => c.provider === "local-whisper" || c.provider === "local-mlx",
   );
+
+  // Freestyle Cloud does its own cleanup, so local post-processing is locked
+  // off while it's the active voice provider.
+  const cleanupLocked = m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER;
 
   // Show the MLX warming control when MLX is the active voice engine, or the
   // platform supports MLX and at least one MLX model is downloaded.
@@ -156,9 +181,10 @@ export default function ModelsPage(): React.JSX.Element {
           onConfigureWarming={
             showMlxWarming ? () => setWarmingOpen(true) : undefined
           }
+          cleanupDisabled={cleanupLocked}
         />
 
-        {m.llmCleanup && (
+        {m.llmCleanup && !cleanupLocked && (
           <CleanupIntensityCard
             intensity={m.cleanupIntensity}
             customPrompt={m.cleanupCustomPrompt}

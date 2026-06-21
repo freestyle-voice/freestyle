@@ -111,6 +111,14 @@ const LOCAL_MLX_VOICE_MODELS: AvailableModel[] = [
 // registry is deliberately NOT merged for voice — untested model noise.
 const BUILTIN_VOICE_MODELS: AvailableModel[] = [
   {
+    provider_id: "freestyle-cloud",
+    provider_name: "Freestyle Cloud",
+    model_id: "freestyle-cloud/stt",
+    model_name: "Freestyle Cloud (Managed)",
+    family: "freestyle",
+    type: "voice",
+  },
+  {
     provider_id: "openai",
     provider_name: "OpenAI",
     model_id: "openai/gpt-4o-transcribe",

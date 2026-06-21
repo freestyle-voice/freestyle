@@ -1,5 +1,6 @@
 import { getDb } from "./db.js";
 import { MLX_ASR_PROVIDER_ID } from "./mlx-asr/constants.js";
+import { FREESTYLE_CLOUD_PROVIDER_ID } from "./streaming/providers/freestyle-cloud.js";
 import { getProvider, supportsSessionTransport } from "./streaming/registry.js";
 import type { StreamCallbacks, StreamSession } from "./streaming/types.js";
 import type { AsrVocabularyBias } from "./vocabulary-bias.js";
@@ -12,6 +13,13 @@ export {
 export type { StreamCallbacks, StreamSession } from "./streaming/types.js";
 
 const LOCAL_STT_PROVIDERS = new Set([WHISPER_PROVIDER_ID, MLX_ASR_PROVIDER_ID]);
+
+// Providers that need no user-supplied API key: on-device engines plus the
+// open Freestyle Cloud endpoint.
+const KEYLESS_STT_PROVIDERS = new Set([
+  ...LOCAL_STT_PROVIDERS,
+  FREESTYLE_CLOUD_PROVIDER_ID,
+]);
 
 export function openStreamingSession(opts: {
   providerId: string;
@@ -46,7 +54,7 @@ export function openStreamingSession(opts: {
 }
 
 export function getApiKeyForProvider(providerId: string): string | null {
-  if (LOCAL_STT_PROVIDERS.has(providerId)) return "local";
+  if (KEYLESS_STT_PROVIDERS.has(providerId)) return "local";
 
   const db = getDb();
   const row = db

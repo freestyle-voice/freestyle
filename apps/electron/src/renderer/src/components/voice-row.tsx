@@ -55,11 +55,13 @@ export function StatPair({
 export function Toggle({
   on,
   onChange,
+  disabled,
 }: {
   on: boolean;
   onChange: (next: boolean) => void;
+  disabled?: boolean;
 }): React.JSX.Element {
-  return <Switch checked={on} onCheckedChange={onChange} />;
+  return <Switch checked={on} onCheckedChange={onChange} disabled={disabled} />;
 }
 
 export function VoiceRow({

@@ -19,6 +19,7 @@ export function PairCard({
   onChangeVoice,
   onChangeLlm,
   onConfigureWarming,
+  cleanupDisabled,
 }: {
   voice: ConfiguredModel | undefined;
   llm: ConfiguredModel | undefined;
@@ -28,6 +29,11 @@ export function PairCard({
   onChangeLlm: () => void;
   /** When set, shows a "Configure model warming" link by the voice button. */
   onConfigureWarming?: () => void;
+  /**
+   * Locks the cleanup side when the voice provider runs its own cleanup
+   * (e.g. Freestyle Cloud), so local post-processing can't be toggled on.
+   */
+  cleanupDisabled?: boolean;
 }): React.JSX.Element {
   return (
     <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
@@ -54,15 +60,21 @@ export function PairCard({
       <div className="border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0">
         <PairSide
           kicker="AI cleanup · optional"
-          modelName={llmCleanup ? llm?.model_name : undefined}
+          modelName={
+            !cleanupDisabled && llmCleanup ? llm?.model_name : undefined
+          }
           providerName={
-            llmCleanup && llm ? displayName(llm.provider) : undefined
+            !cleanupDisabled && llmCleanup && llm
+              ? displayName(llm.provider)
+              : undefined
           }
           cta={llm ? "Change" : "Pick a model"}
-          toggle={llmCleanup}
+          toggle={!cleanupDisabled && llmCleanup}
           onToggle={onToggleCleanup}
           onChange={onChangeLlm}
-          dimmed={!llmCleanup}
+          dimmed={cleanupDisabled || !llmCleanup}
+          disabled={cleanupDisabled}
+          note={cleanupDisabled ? "Handled by Freestyle Cloud" : undefined}
         />
       </div>
     </section>
@@ -79,6 +91,8 @@ function PairSide({
   onToggle,
   onChange,
   dimmed,
+  disabled,
+  note,
   accessory,
 }: {
   kicker: string;
@@ -90,6 +104,10 @@ function PairSide({
   onToggle?: (next: boolean) => void;
   onChange: () => void;
   dimmed?: boolean;
+  /** Disables the toggle and the change action (provider handles this itself). */
+  disabled?: boolean;
+  /** Small caption shown under the model name. */
+  note?: React.ReactNode;
   accessory?: React.ReactNode;
 }): React.JSX.Element {
   return (
@@ -102,7 +120,11 @@ function PairSide({
       <div className="flex items-center justify-between">
         <Eyebrow text={kicker} accent={primary} mono={false} />
         {onToggle !== undefined && (
-          <Toggle on={!!toggle} onChange={(v) => onToggle(v)} />
+          <Toggle
+            on={!!toggle}
+            onChange={(v) => onToggle(v)}
+            disabled={disabled}
+          />
         )}
       </div>
       <div>
@@ -134,12 +156,16 @@ function PairSide({
             </span>
           </div>
         )}
+        {note && (
+          <div className="text-muted-foreground mt-1.5 text-[13px]">{note}</div>
+        )}
       </div>
       <div className="mt-auto flex items-center gap-2.5 pt-1">
         <Button
           variant={primary ? "ink" : "outline"}
           size="sm"
           onClick={onChange}
+          disabled={disabled}
         >
           {cta}
         </Button>

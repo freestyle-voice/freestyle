@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { listFiles, snapshotDownload } from "@huggingface/hub";
 import { getDb } from "../db.js";
+import { assertEnoughDiskSpace, describeDownloadError } from "../disk.js";
 import { progressFetch } from "../hf/progress.js";
 import {
   getMlxAsrModel,
@@ -68,6 +69,9 @@ function baseModelState(
     displayName: model.displayName,
   };
 }
+
+// Extra head-room required on top of the model's size before downloading.
+const MODEL_FREE_BUFFER_BYTES = 256 * 1024 ** 2; // 256 MB
 
 function hfCacheRoot(): string {
   return (
@@ -227,7 +231,7 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
       await ensureMlxRuntimeDownloaded();
       resetPythonProbe();
     } catch (err) {
-      active.error = err instanceof Error ? err.message : String(err);
+      active.error = describeDownloadError(err);
       throw err;
     }
 
@@ -258,6 +262,14 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
   }
 
   try {
+    // Fail fast if the model won't fit before streaming gigabytes from HF.
+    if (active.bytesTotal > 0) {
+      await assertEnoughDiskSpace(
+        hfCacheRoot(),
+        active.bytesTotal + MODEL_FREE_BUFFER_BYTES,
+      );
+    }
+
     await snapshotDownload({
       repo,
       cacheDir: hfCacheRoot(),
@@ -269,7 +281,7 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
       activeDownloads.delete(modelId);
       return;
     }
-    active.error = err instanceof Error ? err.message : String(err);
+    active.error = describeDownloadError(err);
     throw err;
   }
 }

@@ -17,6 +17,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { createAppLogger } from "@freestyle/utils";
+import { assertEnoughDiskSpace, describeDownloadError } from "../disk.js";
 import { progressFetch } from "../hf/progress.js";
 import {
   getBinDir,
@@ -33,6 +34,9 @@ import {
 
 const log = createAppLogger("whisper");
 const execFile = promisify(execFileCallback);
+
+// Extra head-room required on top of a whisper model's size before downloading.
+const MODEL_FREE_BUFFER_BYTES = 256 * 1024 ** 2; // 256 MB
 
 export type DownloadStatus =
   | "not_downloaded"
@@ -187,7 +191,7 @@ export async function downloadModel(modelId: string): Promise<void> {
     try {
       await ensureBinariesDownloaded();
     } catch (err) {
-      active.error = err instanceof Error ? err.message : String(err);
+      active.error = describeDownloadError(err);
       throw err;
     }
 
@@ -205,6 +209,13 @@ export async function downloadModel(modelId: string): Promise<void> {
   const tempPath = `${destPath}.downloading`;
 
   try {
+    // Fail fast if the volume can't hold the model file (plus a little
+    // head-room) before spending bandwidth.
+    await assertEnoughDiskSpace(
+      getModelsDir(),
+      model.sizeBytes + MODEL_FREE_BUFFER_BYTES,
+    );
+
     // Stream straight to the models dir — going through the HF cache would
     // store every model twice on disk.
     const url = `https://huggingface.co/${WHISPER_REPO}/resolve/${WHISPER_REPO_REVISION}/${model.fileName}`;
@@ -227,7 +238,7 @@ export async function downloadModel(modelId: string): Promise<void> {
       return;
     }
 
-    active.error = err instanceof Error ? err.message : String(err);
+    active.error = describeDownloadError(err);
     throw err;
   }
 }

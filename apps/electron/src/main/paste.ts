@@ -345,7 +345,9 @@ export async function pasteIntoFocusedApp(
   text: string,
   beforePaste?: () => Promise<void> | void,
 ): Promise<void> {
-  log.debug(`text: ${JSON.stringify(text)}`);
+  // Never log the transcript itself (it's persisted to the shared log file);
+  // length is enough to diagnose paste issues.
+  log.debug(`pasting ${text?.length ?? 0} chars`);
   if (!text?.trim()) return;
 
   const prior = clipboard.readText();

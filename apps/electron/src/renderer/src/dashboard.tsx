@@ -1,9 +1,11 @@
 import "./globals.css";
 import "./fonts.css";
 
+import { ErrorBoundary } from "@renderer/components/error-boundary";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import i18n from "@renderer/i18n";
 import { initApiBase } from "@renderer/lib/api";
+import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import OnboardingPage from "@renderer/onboarding";
 import DictionaryPage from "@renderer/pages/dictionary";
 import FormatsPage from "@renderer/pages/formats";
@@ -32,54 +34,57 @@ function PagePad(): React.JSX.Element {
 // Analytics is captured server-side (see apps/server/src/lib/posthog.ts);
 // the renderer ships no analytics SDK.
 initApiBase();
+installGlobalErrorHandlers();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <I18nextProvider i18n={i18n}>
-      <BrowserRouter>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <TooltipProvider>
-            <Routes>
-              <Route path="/" element={<Navigate to="/today" replace />} />
-              <Route path="/onboarding" element={<OnboardingPage />} />
+    <ErrorBoundary>
+      <I18nextProvider i18n={i18n}>
+        <BrowserRouter>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <TooltipProvider>
+              <Routes>
+                <Route path="/" element={<Navigate to="/today" replace />} />
+                <Route path="/onboarding" element={<OnboardingPage />} />
 
-              <Route element={<AppShell />}>
-                <Route path="/today" element={<TodayPage />} />
-                <Route element={<PagePad />}>
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route
-                    path="/settings/general"
-                    element={<Navigate to="/settings" replace />}
-                  />
-                  <Route path="/settings/models" element={<ModelsPage />} />
-                  <Route
-                    path="/settings/dictionary"
-                    element={<DictionaryPage />}
-                  />
-                  <Route
-                    path="/settings/vocabulary"
-                    element={<VocabularyPage />}
-                  />
-                  <Route path="/settings/formats" element={<FormatsPage />} />
-                  <Route path="/settings/history" element={<HistoryPage />} />
-                  <Route path="/help" element={<HelpPage />} />
-                  <Route
-                    path="/settings/permissions"
-                    element={<Navigate to="/settings" replace />}
-                  />
+                <Route element={<AppShell />}>
+                  <Route path="/today" element={<TodayPage />} />
+                  <Route element={<PagePad />}>
+                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route
+                      path="/settings/general"
+                      element={<Navigate to="/settings" replace />}
+                    />
+                    <Route path="/settings/models" element={<ModelsPage />} />
+                    <Route
+                      path="/settings/dictionary"
+                      element={<DictionaryPage />}
+                    />
+                    <Route
+                      path="/settings/vocabulary"
+                      element={<VocabularyPage />}
+                    />
+                    <Route path="/settings/formats" element={<FormatsPage />} />
+                    <Route path="/settings/history" element={<HistoryPage />} />
+                    <Route path="/help" element={<HelpPage />} />
+                    <Route
+                      path="/settings/permissions"
+                      element={<Navigate to="/settings" replace />}
+                    />
+                  </Route>
                 </Route>
-              </Route>
 
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </TooltipProvider>
-        </ThemeProvider>
-      </BrowserRouter>
-    </I18nextProvider>
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </TooltipProvider>
+          </ThemeProvider>
+        </BrowserRouter>
+      </I18nextProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

@@ -201,7 +201,7 @@ export default function TodayPage(): React.JSX.Element {
         {/* macOS drag region — the title bar area */}
         <div className="h-16 shrink-0" />
         <div
-          className="responsive-page-scroll flex-1 overflow-auto"
+          className="responsive-page-scroll flex-1 overflow-auto pt-4"
           style={
             {
               WebkitAppRegion: "no-drag",
@@ -214,8 +214,8 @@ export default function TodayPage(): React.JSX.Element {
           {isEmpty ? (
             <EmptyTimeline />
           ) : (
-            <div className="relative pl-[100px]">
-              <div className="bg-border absolute top-0 bottom-0 left-[75px] w-px" />
+            <div className="relative mt-6 pl-[100px]">
+              <div className="bg-border absolute -top-6 bottom-0 left-[75px] w-px" />
               {/* "Open slot" cap — represents the next, future session. With
                   reverse-chronological order it sits above the latest entry. */}
               <div className="relative mb-5">

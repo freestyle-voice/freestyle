@@ -1,5 +1,6 @@
+import { createAppLogger } from "@freestyle/utils";
 import { Hono } from "hono";
-import { capture, getDeviceId } from "../lib/posthog.js";
+import { capture, captureException, getDeviceId } from "../lib/posthog.js";
 import apiKeys from "./api-keys.js";
 import dictionary from "./dictionary.js";
 import formats from "./formats.js";
@@ -13,6 +14,8 @@ import stream from "./stream.js";
 import transcribe from "./transcribe.js";
 import vocabulary from "./vocabulary.js";
 import whisper from "./whisper.js";
+
+const clientLog = createAppLogger("renderer");
 
 const apiRouter = new Hono()
   .get("/health", (c) => c.json({ status: "ok", name: "freestyle" }))
@@ -33,6 +36,37 @@ const apiRouter = new Hono()
         ? (body.properties as Record<string, unknown>)
         : undefined;
     capture(body.event, properties);
+    return c.json({ ok: true });
+  })
+  // Crash/error reports from the renderer (window.onerror, unhandled
+  // rejections, React error boundary). Always persisted to the local log file
+  // for diagnostics; PostHog reporting is gated by the telemetry opt-out inside
+  // captureException. Only message/stack/source/context are accepted — callers
+  // must never include transcript or clipboard text.
+  .post("/client-error", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as {
+      message?: unknown;
+      stack?: unknown;
+      source?: unknown;
+      context?: unknown;
+    } | null;
+    if (!body || typeof body.message !== "string" || !body.message) {
+      return c.json({ error: "message required" }, 400);
+    }
+
+    const source = typeof body.source === "string" ? body.source : "renderer";
+    const stack = typeof body.stack === "string" ? body.stack : undefined;
+    const context =
+      body.context && typeof body.context === "object"
+        ? (body.context as Record<string, unknown>)
+        : undefined;
+
+    clientLog.error(`[${source}] ${body.message}${stack ? `\n${stack}` : ""}`);
+
+    const err = new Error(body.message);
+    if (stack) err.stack = stack;
+    captureException(err, { source, ...context });
+
     return c.json({ ok: true });
   })
   .route("/settings", settings)

@@ -27,6 +27,7 @@ import {
 import {
   checkServerAuth,
   checkServerHealth,
+  getApiBase,
   getClient,
   getLocalApiBase,
   refreshApiBase,
@@ -36,8 +37,10 @@ import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { cn } from "@renderer/lib/utils";
 import {
   Check,
+  Copy,
   Download,
   ExternalLink,
+  FolderOpen,
   Key,
   Keyboard,
   Languages,
@@ -84,6 +87,7 @@ const settingsSectionIds = [
   "display",
   "permissions",
   "data",
+  "developer",
 ] as const;
 
 type SettingsSectionId = (typeof settingsSectionIds)[number];
@@ -1179,6 +1183,7 @@ export default function SettingsPage(): React.JSX.Element {
               >
                 <Segment
                   compact
+                  wrap
                   options={positionOptions}
                   active={pillPosition}
                   onSelect={handlePillPositionChange}
@@ -1248,12 +1253,39 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.data.history")}
                 desc={t("settings.data.historyDesc")}
-                last
               >
                 <Button variant="destructive" size="sm" onClick={clearHistory}>
                   <Trash2 data-icon="inline-start" />
                   {t("settings.data.clearHistory")}
                 </Button>
+              </Row>
+              <Row
+                label={t("settings.data.logs")}
+                desc={t("settings.data.logsDesc")}
+                last
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    void window.api.openLogsFolder();
+                  }}
+                >
+                  <FolderOpen data-icon="inline-start" />
+                  {t("settings.data.openLogs")}
+                </Button>
+              </Row>
+            </SettingsPanel>
+          )}
+
+          {activeSection === "developer" && (
+            <SettingsPanel>
+              <Row
+                label={t("settings.developer.mcp")}
+                desc={t("settings.developer.mcpDesc")}
+                last
+              >
+                <McpConnect />
               </Row>
             </SettingsPanel>
           )}
@@ -1334,6 +1366,134 @@ function Row({
 }
 
 // ---------------------------------------------------------------------------
+// MCP connection — how to point an AI agent at the local server
+// ---------------------------------------------------------------------------
+
+function useCopy(): [boolean, (value: string) => void] {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback((value: string) => {
+    navigator.clipboard
+      .writeText(value)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {});
+  }, []);
+  return [copied, copy];
+}
+
+function CopyButton({
+  value,
+  className,
+}: {
+  value: string;
+  className?: string;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const [copied, copy] = useCopy();
+  return (
+    <button
+      type="button"
+      onClick={() => copy(value)}
+      className={cn(
+        "mono text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-[10.5px] font-medium tracking-[0.08em] uppercase transition-colors",
+        className,
+      )}
+    >
+      {copied ? (
+        <Check className="text-primary h-3 w-3" />
+      ) : (
+        <Copy className="h-3 w-3" />
+      )}
+      {copied ? t("settings.developer.copied") : t("settings.developer.copy")}
+    </button>
+  );
+}
+
+function CopyField({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}): React.JSX.Element {
+  return (
+    <div>
+      <div className="mono text-muted-foreground mb-1.5 text-[10.5px] tracking-[0.14em] uppercase">
+        {label}
+      </div>
+      <div className="border-border bg-secondary flex items-center gap-3 rounded-md border px-3 py-2">
+        <code className="mono text-foreground min-w-0 flex-1 truncate text-[12.5px]">
+          {value}
+        </code>
+        <CopyButton value={value} />
+      </div>
+    </div>
+  );
+}
+
+function CodeBlock({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+}): React.JSX.Element {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+        <div className="mono text-muted-foreground text-[10.5px] tracking-[0.14em] uppercase">
+          {label}
+        </div>
+        <CopyButton value={value} />
+      </div>
+      <pre className="border-border bg-secondary text-foreground mono overflow-x-auto rounded-md border p-3 text-[12px] leading-[1.6]">
+        {value}
+      </pre>
+      {note && (
+        <p className="text-muted-foreground mt-1.5 text-[12px] leading-[1.5]">
+          {note}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function McpConnect(): React.JSX.Element {
+  const { t } = useTranslation();
+  const mcpUrl = `${getApiBase()}/mcp`;
+  const httpConfig = JSON.stringify(
+    { mcpServers: { freestyle: { type: "http", url: mcpUrl } } },
+    null,
+    2,
+  );
+  const remoteConfig = JSON.stringify(
+    {
+      mcpServers: {
+        freestyle: { command: "npx", args: ["-y", "mcp-remote", mcpUrl] },
+      },
+    },
+    null,
+    2,
+  );
+
+  return (
+    <div className="flex max-w-[640px] flex-col gap-5">
+      <CopyField label={t("settings.developer.mcpUrl")} value={mcpUrl} />
+      <CodeBlock label={t("settings.developer.mcpConfig")} value={httpConfig} />
+      <CodeBlock
+        label={t("settings.developer.mcpRemoteConfig")}
+        value={remoteConfig}
+        note={t("settings.developer.mcpRemoteNote")}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Reusable controls
 // ---------------------------------------------------------------------------
 
@@ -1348,11 +1508,13 @@ function Segment({
   active,
   onSelect,
   compact,
+  wrap,
 }: {
   options: readonly SegmentOption[];
   active: string;
   onSelect: (id: string) => void;
   compact?: boolean;
+  wrap?: boolean;
 }) {
   return (
     <SegmentedControl
@@ -1364,6 +1526,7 @@ function Segment({
       value={active}
       onValueChange={onSelect}
       size={compact ? "sm" : "default"}
+      wrap={wrap}
     />
   );
 }

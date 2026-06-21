@@ -15,6 +15,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { assertEnoughDiskSpace, describeDownloadError } from "../disk.js";
 import {
   getManagedMlxWorkerPath,
   getMlxCacheDir,
@@ -23,6 +24,12 @@ import {
   MLX_ASR_MODELS,
 } from "./constants.js";
 import { getMlxAsrServerScriptPath } from "./python.js";
+
+// Disk head-room for the runtime download/extract. The worker archive expands
+// to several times its compressed size (scipy/numpy/mlx), and the archive and
+// extracted tree co-exist briefly during extraction.
+const RUNTIME_EXTRACT_RATIO = 4;
+const MIN_RUNTIME_FREE_BYTES = 2 * 1024 ** 3; // 2 GB floor
 
 const MLX_WORKER_ASSET_NAME = "mlx_asr_worker-darwin-arm64.tar.gz";
 const DEFAULT_MLX_WORKER_LATEST_URL = `https://github.com/freestyle-voice/freestyle/releases/latest/download/${MLX_WORKER_ASSET_NAME}`;
@@ -472,6 +479,17 @@ async function downloadRuntimeToDir(
     const contentLength = res.headers.get("content-length");
     if (contentLength) active.bytesTotal = Number.parseInt(contentLength, 10);
 
+    // Fail fast (before spending bandwidth) if the volume can't hold the
+    // compressed archive plus its much larger extracted bundle. The PyInstaller
+    // worker expands to several times the download size, so reserve ~4x the
+    // archive, with a conservative floor.
+    const archiveBytes = active.bytesTotal || 0;
+    const requiredBytes = Math.max(
+      MIN_RUNTIME_FREE_BYTES,
+      archiveBytes * RUNTIME_EXTRACT_RATIO,
+    );
+    await assertEnoughDiskSpace(destDir, requiredBytes);
+
     await pipeline(
       webBodyToReadable(res.body, active),
       createWriteStream(archivePath),
@@ -485,7 +503,7 @@ async function downloadRuntimeToDir(
   } catch (err) {
     rmSync(destDir, { recursive: true, force: true });
     if (active.controller.signal.aborted) return;
-    active.error = err instanceof Error ? err.message : String(err);
+    active.error = describeDownloadError(err);
     throw err;
   }
 }

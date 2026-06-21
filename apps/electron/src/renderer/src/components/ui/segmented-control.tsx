@@ -23,12 +23,17 @@ function SegmentedControl({
   onValueChange,
   size = "default",
   className,
+  wrap,
 }: {
   options: readonly SegmentedOption[];
   value: string;
   onValueChange: (value: string) => void;
   size?: "sm" | "default";
   className?: string;
+  // When true the track collapses into a 2-column grid on narrower windows
+  // (so options with longer labels don't overflow), expanding back to a
+  // single row once there's room. Useful for 4-option controls.
+  wrap?: boolean;
 }) {
   return (
     <ToggleGroup
@@ -41,6 +46,7 @@ function SegmentedControl({
       size={size}
       className={cn(
         "border-border bg-secondary max-w-full rounded-[9px] border p-[3px]",
+        wrap && "grid w-full grid-cols-2 min-[1360px]:flex min-[1360px]:w-fit",
         className,
       )}
     >
@@ -50,7 +56,10 @@ function SegmentedControl({
           <ToggleGroupItem
             key={o.value}
             value={o.value}
-            className="text-muted-foreground gap-1.5 rounded-md data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:font-medium data-[state=on]:shadow-sm"
+            className={cn(
+              "text-muted-foreground gap-1.5 rounded-md data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:font-medium data-[state=on]:shadow-sm",
+              wrap && "w-full justify-center min-[1360px]:w-auto",
+            )}
           >
             {Icon && <Icon data-icon="inline-start" />}
             {o.label}

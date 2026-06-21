@@ -1,8 +1,11 @@
 import {
   createDictionarySchema,
   createFormatSchema,
+  createVocabularySchema,
+  DEFAULT_CLEANUP_INTENSITY,
   updateDictionarySchema,
   updateFormatSchema,
+  updateVocabularySchema,
 } from "@freestyle/validations";
 import { StreamableHTTPTransport } from "@hono/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -11,6 +14,8 @@ import { z } from "zod/v3";
 import dictionary from "./dictionary.js";
 import formats from "./formats.js";
 import history from "./history.js";
+import settings from "./settings.js";
+import vocabulary from "./vocabulary.js";
 
 async function call(
   app: Hono,
@@ -47,6 +52,19 @@ const listParams = {
   search: z.string().optional().describe("Filter by keyword"),
 };
 
+function listQuery(args: {
+  limit: number;
+  offset: number;
+  search?: string;
+}): string {
+  const params = new URLSearchParams({
+    limit: String(args.limit),
+    offset: String(args.offset),
+  });
+  if (args.search) params.set("search", args.search);
+  return params.toString();
+}
+
 const idParam = { id: z.number().int().describe("Record ID") };
 
 const mcpServer = new McpServer({
@@ -55,36 +73,38 @@ const mcpServer = new McpServer({
 });
 
 // --- Format tools ---
+// Formatting rules shape the final output style based on the active app or
+// context. `app_pattern` is a pipe-delimited list of substrings (e.g.
+// "slack|discord") matched case-insensitively against the active context;
+// `instructions` describe how the text should be formatted there.
 
 mcpServer.tool(
   "format_list",
-  "List formatting rules with optional search and pagination",
+  "List formatting rules (output-style rules matched by app/context). Returns full rows, so no separate view-by-id is needed.",
   listParams,
-  async ({ limit, offset, search }) => {
-    const params = new URLSearchParams({
-      limit: String(limit),
-      offset: String(offset),
-    });
-    if (search) params.set("search", search);
-    const { data } = await call(formats, "GET", `/?${params}`);
+  async (args) => {
+    const { data } = await call(formats, "GET", `/?${listQuery(args)}`);
     return text(data);
   },
 );
 
 mcpServer.tool(
-  "format_view",
-  "View a single formatting rule by ID",
-  idParam,
-  async ({ id }) => {
-    const { data, ok } = await call(formats, "GET", `/${id}`);
-    if (!ok) return error(`Format rule #${id} not found`);
+  "format_match",
+  "Find which formatting rule applies to a given context string (e.g. an app name or window title). Returns the matching rule or null. Use this to check existing coverage before creating an overlapping rule.",
+  { context: z.string().describe("Context to match, e.g. app name or title") },
+  async ({ context }) => {
+    const { data } = await call(
+      formats,
+      "GET",
+      `/match?context=${encodeURIComponent(context)}`,
+    );
     return text(data);
   },
 );
 
 mcpServer.tool(
   "format_create",
-  "Create a new formatting rule",
+  "Create a formatting rule. `app_pattern` is a pipe-delimited list of substrings (e.g. 'slack|discord') matched against the active context; `instructions` describe the desired output style there.",
   createFormatSchema.shape,
   async (args) => {
     const { data, ok } = await call(formats, "POST", "/", args);
@@ -115,36 +135,24 @@ mcpServer.tool(
 );
 
 // --- Dictionary tools ---
+// Dictionary entries are EXACT text replacements applied AFTER transcription
+// (key -> value, e.g. "gpt" -> "GPT"). Use these to fix consistent
+// spelling/casing in the final output. For helping the recognizer hear a term
+// correctly in the first place, use the vocabulary tools instead.
 
 mcpServer.tool(
   "dict_list",
-  "List dictionary entries with optional search and pagination",
+  "List dictionary entries (exact post-transcription replacements). Returns full rows, so no separate view-by-id is needed.",
   listParams,
-  async ({ limit, offset, search }) => {
-    const params = new URLSearchParams({
-      limit: String(limit),
-      offset: String(offset),
-    });
-    if (search) params.set("search", search);
-    const { data } = await call(dictionary, "GET", `/?${params}`);
-    return text(data);
-  },
-);
-
-mcpServer.tool(
-  "dict_view",
-  "View a single dictionary entry by ID",
-  idParam,
-  async ({ id }) => {
-    const { data, ok } = await call(dictionary, "GET", `/${id}`);
-    if (!ok) return error(`Dictionary entry #${id} not found`);
+  async (args) => {
+    const { data } = await call(dictionary, "GET", `/?${listQuery(args)}`);
     return text(data);
   },
 );
 
 mcpServer.tool(
   "dict_create",
-  "Create a new dictionary entry (word replacement)",
+  "Create a dictionary entry: an exact replacement applied after transcription (`key` is the text to find, `value` is what to replace it with).",
   createDictionarySchema.shape,
   async (args) => {
     const { data, ok } = await call(dictionary, "POST", "/", args);
@@ -174,20 +182,82 @@ mcpServer.tool(
   },
 );
 
-// --- History tools ---
+// --- Vocabulary tools ---
+// Vocabulary terms are recognition BIAS hints applied BEFORE/DURING
+// transcription. Use these to help the speech recognizer correctly hear names,
+// jargon, and acronyms. `notes` can describe pronunciation or context. For
+// fixing already-transcribed text, use the dictionary tools instead.
+
+mcpServer.tool(
+  "vocab_list",
+  "List vocabulary terms (recognition bias hints for the speech model). Returns full rows, so no separate view-by-id is needed.",
+  listParams,
+  async (args) => {
+    const { data } = await call(vocabulary, "GET", `/?${listQuery(args)}`);
+    return text(data);
+  },
+);
+
+mcpServer.tool(
+  "vocab_create",
+  "Create a vocabulary term to bias recognition toward a name/jargon/acronym (`term` is the word or phrase; optional `notes` add context).",
+  createVocabularySchema.shape,
+  async (args) => {
+    const { data, ok } = await call(vocabulary, "POST", "/", args);
+    if (!ok) return error(data.error ?? "Failed to create vocabulary term");
+    return text(data);
+  },
+);
+
+mcpServer.tool(
+  "vocab_update",
+  "Update an existing vocabulary term",
+  { ...idParam, ...updateVocabularySchema.shape },
+  async ({ id, ...body }) => {
+    const { data, ok } = await call(vocabulary, "PUT", `/${id}`, body);
+    if (!ok) return error(data.error ?? `Vocabulary term #${id} not found`);
+    return text(data);
+  },
+);
+
+mcpServer.tool(
+  "vocab_delete",
+  "Delete a vocabulary term",
+  idParam,
+  async ({ id }) => {
+    await call(vocabulary, "DELETE", `/${id}`);
+    return text({ ok: true, id });
+  },
+);
+
+// --- History tools (read-only) ---
+// Transcription history is your evidence source: read it to spot recurring
+// jargon, names, or mistakes, then curate dictionary/vocabulary/format rules
+// accordingly. History is intentionally read-only over MCP.
 
 mcpServer.tool(
   "history_list",
-  "List transcription history with optional search and pagination",
+  "List transcription history (read-only). Use as evidence for which dictionary, vocabulary, or format rules to add.",
   listParams,
-  async ({ limit, offset, search }) => {
-    const params = new URLSearchParams({
-      limit: String(limit),
-      offset: String(offset),
-    });
-    if (search) params.set("search", search);
-    const { data } = await call(history, "GET", `/?${params}`);
+  async (args) => {
+    const { data } = await call(history, "GET", `/?${listQuery(args)}`);
     return text(data);
+  },
+);
+
+// --- Cleanup settings (read-only) ---
+
+mcpServer.tool(
+  "cleanup_get",
+  "Get the current post-processing cleanup style (intensity and any custom prompt). Read-only context to understand how transcripts are cleaned before suggesting changes.",
+  {},
+  async () => {
+    const { data } = await call(settings, "GET", "/");
+    const all = (data ?? {}) as Record<string, string>;
+    return text({
+      cleanup_intensity: all.cleanup_intensity ?? DEFAULT_CLEANUP_INTENSITY,
+      cleanup_custom_prompt: all.cleanup_custom_prompt ?? "",
+    });
   },
 );
 

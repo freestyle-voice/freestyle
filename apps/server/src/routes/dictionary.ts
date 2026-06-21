@@ -1,5 +1,6 @@
 import {
   createDictionarySchema,
+  exportSchema,
   updateDictionarySchema,
 } from "@freestyle/validations";
 import { zValidator } from "@hono/zod-validator";
@@ -137,12 +138,19 @@ const dictionary = new Hono()
     db.prepare("DELETE FROM dictionary WHERE id = ?").run(id);
     return c.json({ ok: true });
   })
-  .get("/export/json", (c) => {
+  .post("/export", zValidator("json", exportSchema), (c) => {
+    const { type } = c.req.valid("json");
     const db = getDb();
     const rows = db
       .prepare("SELECT key, value FROM dictionary ORDER BY key ASC")
       .all() as { key: string; value: string }[];
-    return c.json(rows);
+
+    switch (type) {
+      case "json":
+        return c.json(rows);
+      default:
+        return c.json({ error: `Unsupported export type: ${type}` }, 400);
+    }
   })
   .post("/import", async (c) => {
     const db = getDb();

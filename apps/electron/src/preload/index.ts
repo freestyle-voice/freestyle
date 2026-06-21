@@ -30,6 +30,9 @@ const api = {
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),
   getServerPort: (): Promise<number> => ipcRenderer.invoke("server:port"),
+  // Reveal the diagnostic logs folder (freestyle.log) in the OS file manager.
+  openLogsFolder: (): Promise<boolean> =>
+    ipcRenderer.invoke("logs:open-folder"),
   // Server URL ("" = use the bundled local server)
   getServerUrl: (): Promise<string> => ipcRenderer.invoke("server:url"),
   setServerUrl: (url: string): Promise<string> =>

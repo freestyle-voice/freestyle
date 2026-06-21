@@ -145,7 +145,9 @@ export default function DictionaryPage(): React.JSX.Element {
 
   const exportJson = useCallback(async () => {
     try {
-      const res = await getClient().api.dictionary.export.json.$get();
+      const res = await getClient().api.dictionary.export.$post({
+        json: { type: "json" },
+      });
       if (!res.ok) return;
       const data = await res.json();
       const blob = new Blob([JSON.stringify(data, null, 2)], {

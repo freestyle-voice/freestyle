@@ -38,6 +38,7 @@ import {
   Check,
   Download,
   ExternalLink,
+  FolderOpen,
   Key,
   Keyboard,
   Languages,
@@ -1249,11 +1250,26 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.data.history")}
                 desc={t("settings.data.historyDesc")}
-                last
               >
                 <Button variant="destructive" size="sm" onClick={clearHistory}>
                   <Trash2 data-icon="inline-start" />
                   {t("settings.data.clearHistory")}
+                </Button>
+              </Row>
+              <Row
+                label={t("settings.data.logs")}
+                desc={t("settings.data.logsDesc")}
+                last
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    void window.api.openLogsFolder();
+                  }}
+                >
+                  <FolderOpen data-icon="inline-start" />
+                  {t("settings.data.openLogs")}
                 </Button>
               </Row>
             </SettingsPanel>

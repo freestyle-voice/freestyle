@@ -176,7 +176,10 @@
       "history": "Transcription history",
       "historyDesc": "Permanently delete every saved session — this can't be undone.",
       "clearHistory": "Clear history",
-      "clearHistoryConfirm": "Clear all transcription history? This permanently deletes every saved session."
+      "clearHistoryConfirm": "Clear all transcription history? This permanently deletes every saved session.",
+      "logs": "Diagnostic logs",
+      "logsDesc": "App logs are saved to a file on your device. Open the folder to share them when reporting a problem.",
+      "openLogs": "Open logs folder"
     }
   },
   "today": {

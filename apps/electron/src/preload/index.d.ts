@@ -22,6 +22,7 @@ declare global {
       hidePill: () => void;
       showErrorDialog: (title: string, message: string) => Promise<void>;
       getServerPort: () => Promise<number>;
+      openLogsFolder: () => Promise<boolean>;
       getServerUrl: () => Promise<string>;
       setServerUrl: (url: string) => Promise<string>;
       getServerToken: () => Promise<string>;

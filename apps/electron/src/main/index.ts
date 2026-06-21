@@ -47,14 +47,16 @@ import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import {
   activateManagedMlxRuntimeForAppVersion,
   autoStartWhisperServer,
+  captureException,
   closeDb,
   prefetchManagedMlxRuntimeForAppRelease,
   reconcileUnsupportedMlxVoiceDefault,
+  shutdownPosthog,
   startServer as startFreestyleServer,
   stopMlxServer,
   stopWhisperServer,
 } from "@freestyle/server";
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger, enableFileLogging } from "@freestyle/utils";
 import { serverUrlSchema } from "@freestyle/validations";
 import {
   app,
@@ -95,6 +97,69 @@ import {
 const log = createAppLogger("electron");
 const hotkeyLog = createAppLogger("hotkey");
 const hotkeyRecorderLog = createAppLogger("hotkey-recorder");
+
+// Persist all logs (this process + the in-process server) to a single rotating
+// file so users can share diagnostics. `app.getPath("logs")` resolves to
+// ~/Library/Logs/Freestyle (macOS), %APPDATA%\Freestyle\logs (Windows), or
+// ~/.config/Freestyle/logs (Linux). enableFileLogging() is order-independent:
+// it also back-fills loggers that were created during module import.
+let logsDir = "";
+try {
+  logsDir = app.getPath("logs");
+  enableFileLogging(logsDir);
+  log.info(`File logging enabled at ${logsDir}`);
+} catch (err) {
+  log.error(`Failed to enable file logging: ${String(err)}`);
+}
+
+// Global crash handlers — without these, errors in the main process vanish
+// silently (no console in a packaged app). Log + report to PostHog, then for a
+// truly uncaught exception show a dialog and quit, since process state is
+// unknown after that point.
+let isHandlingFatal = false;
+process.on("uncaughtException", (err, origin) => {
+  if (isHandlingFatal) return;
+  isHandlingFatal = true;
+  log.error(`Uncaught exception (${origin}): ${err?.stack ?? String(err)}`);
+  try {
+    captureException(err, { source: "main", origin });
+  } catch {
+    // never let reporting block the crash path
+  }
+  try {
+    dialog.showMessageBoxSync({
+      type: "error",
+      title: "Freestyle ran into a problem",
+      message: "Freestyle hit an unexpected error and needs to close.",
+      detail:
+        `${String(err?.message ?? err)}\n\n` + `Logs are saved at:\n${logsDir}`,
+      buttons: ["Quit"],
+    });
+  } catch {
+    // dialog may be unavailable before the app is ready
+  }
+  void shutdownPosthog()
+    .catch(() => {})
+    .finally(() => app.exit(1));
+});
+
+process.on("unhandledRejection", (reason) => {
+  log.error(
+    `Unhandled rejection: ${
+      reason instanceof Error
+        ? (reason.stack ?? reason.message)
+        : String(reason)
+    }`,
+  );
+  try {
+    captureException(
+      reason instanceof Error ? reason : new Error(String(reason)),
+      { source: "main", kind: "unhandledRejection" },
+    );
+  } catch {
+    // best-effort
+  }
+});
 
 const DEFAULT_PORT = 4649;
 const APP_WIDTH = 260;
@@ -1189,6 +1254,22 @@ app.whenReady().then(async () => {
 
   // IPC: expose the server port to the renderer
   ipcMain.handle("server:port", () => serverPort);
+
+  // IPC: reveal the diagnostic log folder so users can share freestyle.log.
+  ipcMain.handle("logs:open-folder", async () => {
+    if (!logsDir) return false;
+    try {
+      const result = await shell.openPath(logsDir);
+      if (result) {
+        log.error(`Failed to open logs folder: ${result}`);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      log.error(`Failed to open logs folder: ${String(err)}`);
+      return false;
+    }
+  });
 
   // IPC: read the configured server URL ("" = use the local server)
   ipcMain.handle("server:url", () => getServerUrl());

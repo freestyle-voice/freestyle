@@ -35,6 +35,22 @@ describe("Root & Health", () => {
     const data = await res.json();
     expect(data).toEqual({ status: "ok", name: "freestyle" });
   });
+
+  it("POST /api/client-error requires a message", async () => {
+    const res = await json("/api/client-error", { stack: "x" });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /api/client-error accepts a renderer error report", async () => {
+    const res = await json("/api/client-error", {
+      message: "boom",
+      stack: "Error: boom\n  at foo",
+      source: "renderer",
+      context: { kind: "window.onerror" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
 });
 
 // ---------------------------------------------------------------------------

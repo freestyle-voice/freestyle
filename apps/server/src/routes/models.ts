@@ -114,7 +114,7 @@ const BUILTIN_VOICE_MODELS: AvailableModel[] = [
     provider_id: "freestyle-cloud",
     provider_name: "Freestyle Cloud",
     model_id: "freestyle-cloud/stt",
-    model_name: "Freestyle Cloud (Managed)",
+    model_name: "Freestyle Cloud",
     family: "freestyle",
     type: "voice",
   },

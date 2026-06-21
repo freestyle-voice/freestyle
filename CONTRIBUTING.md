@@ -94,3 +94,28 @@ feat: add new feature
 fix: resolve a bug
 chore: maintenance task
 ```
+
+## Freestyle Cloud backend (managed STT)
+
+Only needed if you're working on the **Freestyle Cloud** transcription provider. It's a separate Cloudflare Worker (the `cloud` repository) that exposes the `/v1/transcribe` endpoint, and the desktop app calls it when "Freestyle Cloud" is the selected voice model.
+
+1. In the cloud repo's `apps/server`, create local secrets from the template and add a Groq API key:
+
+   ```bash
+   cp apps/server/.dev.vars.example apps/server/.dev.vars
+   # set GROQ_API_KEY=... in .dev.vars
+   ```
+
+2. Start the Worker with Wrangler (defaults to `http://localhost:8787`):
+
+   ```bash
+   pnpm dev   # runs `wrangler dev`
+   ```
+
+3. Point the desktop app at it by setting this in `apps/electron/.env.local`, then restart `pnpm dev`:
+
+   ```
+   FREESTYLE_CLOUD_URL=http://localhost:8787
+   ```
+
+`.dev.vars` is gitignored — never commit real keys. For a deployed Worker, set secrets with `wrangler secret put GROQ_API_KEY` instead.

@@ -341,22 +341,14 @@ export function ModelList({
 }
 
 // ---------------------------------------------------------------------------
-// VoiceTiers — the simple picker: three meaningful choices, no model IDs.
+// VoiceTiers — the simple picker: two meaningful choices, no model IDs.
 // ---------------------------------------------------------------------------
 
-const ACCURATE_TIER: AvailableModel = {
-  provider_id: "openai",
-  provider_name: "OpenAI",
-  model_id: "openai/gpt-4o-transcribe",
-  model_name: "OpenAI Transcribe",
-  type: "voice",
-};
-
-const FASTEST_TIER: AvailableModel = {
-  provider_id: "groq",
-  provider_name: "Groq",
-  model_id: "groq/whisper-large-v3-turbo",
-  model_name: "Groq Whisper Turbo",
+const FREESTYLE_CLOUD_TIER: AvailableModel = {
+  provider_id: "freestyle-cloud",
+  provider_name: "Freestyle Cloud",
+  model_id: "freestyle-cloud/stt",
+  model_name: "Freestyle Cloud (Managed)",
   type: "voice",
 };
 
@@ -437,10 +429,20 @@ function VoiceTiers({
         </Button>
       </header>
 
-      <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
+        <TierCard
+          title="Freestyle Cloud"
+          badge="Recommended"
+          description="Managed by Freestyle. Fast and accurate, no setup or API key."
+          detail="No key needed"
+          selected={isSelected(
+            FREESTYLE_CLOUD_TIER.model_id,
+            FREESTYLE_CLOUD_TIER.provider_id,
+          )}
+          onClick={() => onPickCloud(FREESTYLE_CLOUD_TIER)}
+        />
         <TierCard
           title="Private"
-          badge="Recommended"
           description="Runs on your device. Nothing leaves it. Free."
           detail={
             downloading
@@ -464,24 +466,6 @@ function VoiceTiers({
             </p>
           )}
         </TierCard>
-        <TierCard
-          title="Most accurate"
-          description="OpenAI cloud — needs an API key (~$0.18/hr)."
-          detail={
-            m.keyProviders.has("openai") ? "Key added" : "We'll ask for a key"
-          }
-          selected={isSelected(ACCURATE_TIER.model_id, "openai")}
-          onClick={() => onPickCloud(ACCURATE_TIER)}
-        />
-        <TierCard
-          title="Fastest"
-          description="Groq cloud — needs an API key (~$0.04/hr)."
-          detail={
-            m.keyProviders.has("groq") ? "Key added" : "We'll ask for a key"
-          }
-          selected={isSelected(FASTEST_TIER.model_id, "groq")}
-          onClick={() => onPickCloud(FASTEST_TIER)}
-        />
       </div>
 
       <footer className="border-border flex items-center justify-between border-t px-5 py-3">

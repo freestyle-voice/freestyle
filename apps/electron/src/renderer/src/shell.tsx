@@ -23,6 +23,8 @@ type NavItem = {
   label: string;
   icon: LucideIcon;
   shortcut: string;
+  /** Renders in the bottom group of the sidebar instead of the top. */
+  footer?: boolean;
 };
 
 const STATIC_NAV: {
@@ -30,6 +32,7 @@ const STATIC_NAV: {
   icon: LucideIcon;
   shortcut: string;
   labelKey: string;
+  footer?: boolean;
 }[] = [
   { to: "/today", icon: BookOpen, shortcut: "1", labelKey: "shell.nav.today" },
   {
@@ -67,12 +70,14 @@ const STATIC_NAV: {
     icon: Settings,
     shortcut: "7",
     labelKey: "shell.nav.settings",
+    footer: true,
   },
   {
     to: "/help",
     icon: CircleHelp,
     shortcut: "8",
     labelKey: "shell.nav.help",
+    footer: true,
   },
 ];
 
@@ -140,6 +145,8 @@ export default function AppShell(): React.JSX.Element {
       })),
     [t],
   );
+  const mainNav = navItems.filter((item) => !item.footer);
+  const footerNav = navItems.filter((item) => item.footer);
 
   // Cmd/Ctrl+1..9 jumps between sidebar items
   useEffect(() => {
@@ -187,8 +194,9 @@ export default function AppShell(): React.JSX.Element {
           </span>
         </div>
 
-        <NavList items={navItems} />
+        <NavList items={mainNav} />
         <div className="flex-1" />
+        <NavList items={footerNav} />
         <div className="h-3" />
       </aside>
 

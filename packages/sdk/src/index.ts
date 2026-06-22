@@ -12,6 +12,12 @@ export type {
   Hooks,
   Register,
 } from "./hooks.js";
+export {
+  type LoaderLogger,
+  type LoadPluginsOptions,
+  loadPlugins,
+  type PluginEntry,
+} from "./loader.js";
 export { sortPlugins } from "./order.js";
 export { OutputMode } from "./output.js";
 export type {
@@ -24,4 +30,9 @@ export type {
   PluginOptions,
   PluginPreset,
 } from "./plugin.js";
+export {
+  type HookFailure,
+  PluginRegistry,
+  type PluginRegistryOptions,
+} from "./registry.js";
 export { type TextTransformer, transform } from "./transform.js";

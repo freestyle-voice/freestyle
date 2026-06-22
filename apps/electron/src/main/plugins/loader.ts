@@ -3,26 +3,23 @@ import type { HookFailure, PluginEntry } from "@freestyle/sdk";
 import { loadPlugins, type PluginRegistry } from "@freestyle/sdk";
 import { createAppLogger } from "@freestyle/utils";
 import { parsePluginsSetting, pluginEntryParts } from "@freestyle/validations";
-import { readSetting } from "../db.js";
-import { captureException } from "../posthog.js";
-import { buildPluginContext } from "./context.js";
+import { buildPluginContext, readSetting } from "./context.js";
 
 const log = createAppLogger("plugins");
 
 /**
- * Load all plugins for the server process via the shared SDK loader, returning
- * a ready-to-use {@link PluginRegistry}. Sources, in load order: npm/module
- * specifiers from the `plugins` setting, then local files in
- * `<userData>/plugins/`.
+ * Load all plugins for the Electron main process via the shared SDK loader.
+ * Same sources and ordering as the server host, but only `app`-host plugins
+ * (and host-agnostic ones) survive the `apply` filter.
  */
-export async function loadServerPlugins(): Promise<PluginRegistry> {
+export async function loadAppPlugins(): Promise<PluginRegistry> {
   const entries: PluginEntry[] = parsePluginsSetting(
     readSetting("plugins"),
   ).map((entry) => pluginEntryParts(entry));
   const localDir = pluginsDataDir();
 
   return loadPlugins({
-    host: "server",
+    host: "app",
     entries,
     ...(localDir ? { localDir } : {}),
     buildContext: buildPluginContext,
@@ -37,10 +34,9 @@ function reportHookFailure({ plugin, hook, error }: HookFailure): void {
       error instanceof Error ? error.message : String(error)
     }`,
   );
-  captureException(error, { plugin, hook });
 }
 
-/** `<userData>/plugins/`, derived from the db path the app sets at startup. */
+/** `<userData>/plugins/`, derived from the db path set at startup. */
 function pluginsDataDir(): string | null {
   const dbPath = process.env.FREESTYLE_DB_PATH;
   if (!dbPath) return null;

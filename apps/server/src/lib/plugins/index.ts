@@ -1,9 +1,7 @@
 import type { AppContext } from "@freestyle/sdk";
+import { PluginRegistry } from "@freestyle/sdk";
 import { parseAppContextPayload } from "../editor/app-context.js";
 import { loadServerPlugins } from "./loader.js";
-import { PluginRegistry } from "./registry.js";
-
-export { PluginRegistry } from "./registry.js";
 
 let registry: PluginRegistry = new PluginRegistry();
 let initialized = false;

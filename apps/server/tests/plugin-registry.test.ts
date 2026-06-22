@@ -1,7 +1,6 @@
 import type { Plugin } from "@freestyle/sdk";
-import { sortPlugins } from "@freestyle/sdk";
+import { PluginRegistry, sortPlugins } from "@freestyle/sdk";
 import { describe, expect, it, vi } from "vitest";
-import { PluginRegistry } from "../src/lib/plugins/registry.js";
 
 describe("PluginRegistry", () => {
   it("runs afterCleanup across plugins in order, chaining output", async () => {

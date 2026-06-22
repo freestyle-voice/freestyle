@@ -13,10 +13,10 @@ const api = {
   platform: process.platform as string,
   isE2E: process.env.FREESTYLE_E2E === "1",
   defaultHotkey: getDefaultHotkey(),
-  pasteText: (text: string): Promise<void> =>
-    ipcRenderer.invoke("paste:text", text),
-  copyText: (text: string): Promise<void> =>
-    ipcRenderer.invoke("copy:text", text),
+  pasteText: (text: string, appContext?: string | null): Promise<void> =>
+    ipcRenderer.invoke("paste:text", text, appContext ?? null),
+  copyText: (text: string, appContext?: string | null): Promise<void> =>
+    ipcRenderer.invoke("copy:text", text, appContext ?? null),
   prepareSystemAudio: (mode: ActiveAudioPlaybackMode): Promise<void> =>
     ipcRenderer.invoke("audio:prepare", mode),
   duckSystemAudio: (): Promise<void> => ipcRenderer.invoke("audio:duck"),

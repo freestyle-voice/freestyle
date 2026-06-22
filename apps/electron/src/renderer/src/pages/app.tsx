@@ -270,9 +270,9 @@ export default function AppPage(): React.JSX.Element {
 
       try {
         if (_outputMode === "clipboard") {
-          await window.api.copyText(finalText);
+          await window.api.copyText(finalText, appContextRef.current);
         } else {
-          await window.api.pasteText(finalText);
+          await window.api.pasteText(finalText, appContextRef.current);
         }
       } catch (err) {
         console.error("[pill] paste/copy failed:", err);

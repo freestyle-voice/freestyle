@@ -11,5 +11,8 @@
     }
   },
   "main": "./src/index.ts",
-  "peerDependencies": {}
+  "peerDependencies": {},
+  "devDependencies": {
+    "@types/node": "latest"
+  }
 }

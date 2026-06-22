@@ -1,25 +1,48 @@
-import type {
-  FreestyleEvent,
-  Hooks,
-  Plugin,
-  PluginConfig,
-} from "@freestyle/sdk";
-import { createAppLogger } from "@freestyle/utils";
-import { captureException } from "../posthog.js";
+import type { PluginConfig } from "./config.js";
+import type { FreestyleEvent } from "./events.js";
+import type { Hooks } from "./hooks.js";
+import type { Plugin } from "./plugin.js";
 
-const log = createAppLogger("plugins");
+/** Details of a hook handler that threw, passed to the host's error reporter. */
+export interface HookFailure {
+  plugin: string;
+  hook: string;
+  error: unknown;
+}
+
+export interface PluginRegistryOptions {
+  /**
+   * Called when a hook handler throws. The host decides how to report it
+   * (log + telemetry). Handler errors are always swallowed so one plugin can
+   * never crash the pipeline.
+   */
+  onError?: (failure: HookFailure) => void;
+}
+
+type HookInput<K extends keyof Hooks> =
+  NonNullable<Hooks[K]> extends (input: infer I, output: infer _O) => unknown
+    ? I
+    : never;
+
+type HookOutput<K extends keyof Hooks> =
+  NonNullable<Hooks[K]> extends (input: infer _I, output: infer O) => unknown
+    ? O
+    : never;
 
 /**
  * Holds the resolved, ordered plugins and runs their hooks. Plugins are already
  * sorted by `enforce` and host-filtered before being handed to the registry, so
  * running a hook is just iterating in order. Every handler is wrapped so one
- * misbehaving plugin can never crash a dictation.
+ * misbehaving plugin can never crash the host pipeline; failures are routed to
+ * the injected `onError` reporter.
  */
 export class PluginRegistry {
-  private plugins: Plugin[] = [];
+  private plugins: Plugin[];
+  private onError?: (failure: HookFailure) => void;
 
-  constructor(plugins: Plugin[] = []) {
+  constructor(plugins: Plugin[] = [], options: PluginRegistryOptions = {}) {
     this.plugins = plugins;
+    this.onError = options.onError;
   }
 
   get size(): number {
@@ -44,7 +67,7 @@ export class PluginRegistry {
       try {
         await handler(input, output);
       } catch (err) {
-        this.reportFailure(plugin.name, name, err);
+        this.report(plugin.name, name, err);
       }
     }
     return output;
@@ -57,7 +80,7 @@ export class PluginRegistry {
       try {
         await plugin.event({ event });
       } catch (err) {
-        this.reportFailure(plugin.name, "event", err);
+        this.report(plugin.name, "event", err);
       }
     }
   }
@@ -74,7 +97,7 @@ export class PluginRegistry {
         const partial = await plugin.config(merged);
         if (partial) merged = deepMerge(merged, partial);
       } catch (err) {
-        this.reportFailure(plugin.name, "config", err);
+        this.report(plugin.name, "config", err);
       }
     }
     return merged;
@@ -87,30 +110,15 @@ export class PluginRegistry {
       try {
         await plugin.dispose();
       } catch (err) {
-        this.reportFailure(plugin.name, "dispose", err);
+        this.report(plugin.name, "dispose", err);
       }
     }
   }
 
-  private reportFailure(pluginName: string, hook: string, err: unknown): void {
-    log.error(
-      `plugin "${pluginName}" failed in hook "${hook}": ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-    captureException(err, { plugin: pluginName, hook });
+  private report(plugin: string, hook: string, error: unknown): void {
+    this.onError?.({ plugin, hook, error });
   }
 }
-
-type HookInput<K extends keyof Hooks> =
-  NonNullable<Hooks[K]> extends (input: infer I, output: infer _O) => unknown
-    ? I
-    : never;
-
-type HookOutput<K extends keyof Hooks> =
-  NonNullable<Hooks[K]> extends (input: infer _I, output: infer O) => unknown
-    ? O
-    : never;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

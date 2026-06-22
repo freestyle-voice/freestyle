@@ -93,6 +93,11 @@ import {
   startLinuxPasteHelper,
   stopLinuxPasteHelper,
 } from "./paste";
+import {
+  plugins as appPlugins,
+  initAppPlugins,
+  parseAppContext,
+} from "./plugins/index";
 
 const log = createAppLogger("electron");
 const hotkeyLog = createAppLogger("hotkey");
@@ -632,6 +637,7 @@ function registerPillEscape(): void {
     globalShortcut.register("Escape", () => {
       if (mainWindow?.isVisible()) {
         mainWindow.webContents.send("pill:cancel");
+        void appPlugins().emit({ type: "recordingCancelled" });
       }
     });
   }
@@ -818,6 +824,50 @@ function hidePill(): void {
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Deliver final dictation text to the user's focused app. Runs the
+ * `beforeOutput` plugin hook first, which may rewrite the text or switch the
+ * delivery `mode` between paste, copy, and `none` (suppress). Emits the
+ * `outputDelivered` event with whatever mode was ultimately used.
+ */
+async function deliverOutput(
+  text: string,
+  mode: "paste" | "copy",
+  appContext: string | null,
+): Promise<void> {
+  const parsedContext = parseAppContext(appContext);
+  const out = await appPlugins().run(
+    "beforeOutput",
+    { ...(parsedContext ? { appContext: parsedContext } : {}) },
+    { text, mode },
+  );
+
+  try {
+    if (out.mode === "paste") {
+      if (!out.text) return;
+      await pasteIntoFocusedApp(out.text, async () => {
+        hidePill();
+        await wait(0);
+      });
+    } else if (out.mode === "copy") {
+      if (!out.text?.trim()) return;
+      clipboard.writeText(out.text);
+    }
+    // out.mode === "none" → suppressed; nothing is delivered.
+  } catch (err) {
+    // pasteIntoFocusedApp left the transcript on the clipboard — tell the user
+    // instead of letting the dictation silently vanish.
+    notifyPasteFailed();
+    throw err;
+  } finally {
+    void appPlugins().emit({
+      type: "outputDelivered",
+      text: out.text,
+      mode: out.mode,
+    });
+  }
 }
 
 function resetOnboarding(): void {
@@ -1188,25 +1238,20 @@ app.whenReady().then(async () => {
   });
 
   // IPC: paste text at cursor
-  ipcMain.handle("paste:text", async (_event, text: string) => {
-    try {
-      await pasteIntoFocusedApp(text, async () => {
-        hidePill();
-        await wait(0);
-      });
-    } catch (err) {
-      // pasteIntoFocusedApp left the transcript on the clipboard — tell the
-      // user instead of letting the dictation silently vanish.
-      notifyPasteFailed();
-      throw err;
-    }
-  });
+  ipcMain.handle(
+    "paste:text",
+    async (_event, text: string, appContext?: string | null) => {
+      await deliverOutput(text, "paste", appContext ?? null);
+    },
+  );
 
   // IPC: copy text to clipboard
-  ipcMain.handle("copy:text", async (_event, text: string) => {
-    if (!text?.trim()) return;
-    clipboard.writeText(text);
-  });
+  ipcMain.handle(
+    "copy:text",
+    async (_event, text: string, appContext?: string | null) => {
+      await deliverOutput(text, "copy", appContext ?? null);
+    },
+  );
 
   ipcMain.handle("audio:prepare", async (_event, mode: unknown) => {
     if (!isActiveAudioPlaybackMode(mode)) return;
@@ -1441,6 +1486,9 @@ app.whenReady().then(async () => {
     // Run non-critical server startup tasks now that the DB path is set
     reconcileUnsupportedMlxVoiceDefault();
     autoStartWhisperServer();
+
+    // Load app-host plugins (beforeOutput, etc.) now that the DB path is known.
+    void initAppPlugins();
 
     // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
     const startServer = (port: number): void => {
@@ -1861,6 +1909,7 @@ function loadHotkeyModeFromDB(): "hold" | "toggle" {
 
 function sendHotkeyDown(): void {
   showPill();
+  void appPlugins().emit({ type: "recordingStarted" });
   if (pillReadyPromise) {
     // The pill window is still loading — defer IPC until it can receive it.
     void pillReadyPromise.then(() => {
@@ -1874,6 +1923,7 @@ function sendHotkeyDown(): void {
 }
 
 function sendHotkeyUp(): void {
+  void appPlugins().emit({ type: "recordingCommitted" });
   if (pillReadyPromise) {
     // Preserve IPC ordering: hotkey:up must arrive after hotkey:down.
     void pillReadyPromise.then(() => {

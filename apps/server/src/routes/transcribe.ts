@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
 import { getLanguageSetting } from "../lib/language.js";
+import { parseAppContext, plugins } from "../lib/plugins/index.js";
 import { postProcess } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
@@ -107,6 +108,28 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       bias,
     });
     rawText = sanitizeTranscriptText(result.text);
+
+    // Plugin hook: rewrite the raw transcript before cleanup.
+    rawText = (
+      await plugins().run(
+        "transcribe.after",
+        {
+          providerId: defaults.voice.provider,
+          modelId: defaults.voice.model_id,
+          appContext: parseAppContext(appContext),
+        },
+        { text: rawText },
+      )
+    ).text;
+
+    void plugins().emit({
+      type: "server.transcribed",
+      text: rawText,
+      ...(result.durationInSeconds !== undefined
+        ? { durationInSeconds: result.durationInSeconds }
+        : {}),
+    });
+
     log.debug(
       `STT took ${Date.now() - t0}ms | rawText=${JSON.stringify(rawText).slice(0, 120)}`,
     );

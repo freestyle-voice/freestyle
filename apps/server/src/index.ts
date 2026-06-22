@@ -9,6 +9,7 @@ import {
   activateManagedMlxRuntimeForAppVersion,
   prefetchManagedMlxRuntimeForAppRelease,
 } from "./lib/mlx-asr/runtime.js";
+import { initServerPlugins } from "./lib/plugins/index.js";
 import { captureException, shutdownPosthog } from "./lib/posthog.js";
 import routes from "./routes";
 import { autoStartMlxAsrServer } from "./routes/mlx-asr.js";
@@ -88,6 +89,8 @@ export function startServer(
         websocket: { server: wss },
       },
       (info) => {
+        // Load plugins once the server is up; failures degrade to no plugins.
+        void initServerPlugins();
         resolve({ server, port: info.port });
       },
     );

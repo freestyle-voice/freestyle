@@ -42,6 +42,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@freestyle/sdk": "workspace:*",
     "@freestyle/utils": "workspace:*",
     "@freestyle/validations": "workspace:*",
     "@types/json-schema": "^7.0.15",

@@ -15,6 +15,7 @@ import {
   normalizeGroqModelId,
   prewarmGroqConnection,
 } from "./groq-http.js";
+import { parseAppContext, plugins } from "./plugins/index.js";
 import { capture, captureException } from "./posthog.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
 
@@ -129,6 +130,7 @@ export async function postProcess(
   const source = options.source ?? "batch";
   const ppStart = Date.now();
   const db = getDb();
+  const parsedContext = parseAppContext(appContext);
   const defaults = getDefaultModels();
   let inputTokens = 0;
   let outputTokens = 0;
@@ -163,13 +165,31 @@ export async function postProcess(
       );
     } else {
       const rewriteContext = getRewritePromptContext(appContext, db);
+
+      // Plugin hook: let plugins override the inferred writing register and
+      // append extra system-prompt fragments. Runs before prompt assembly so a
+      // register override actually feeds into buildRewritePrompt.
+      const promptHook = await plugins().run(
+        "cleanup.prompt",
+        {
+          text: normalizedRawText,
+          appContext: parsedContext,
+          inferredRegister: rewriteContext.registerMode,
+        },
+        { system: [] as string[], register: rewriteContext.registerMode },
+      );
+
       const { system, prompt } = buildRewritePrompt(normalizedRawText, {
         contextHint: rewriteContext.contextHint || undefined,
         language: options.language,
-        registerMode: rewriteContext.registerMode,
+        registerMode: promptHook.register ?? rewriteContext.registerMode,
         intensity: getCleanupIntensity(db),
         customPrompt: getCleanupCustomPrompt(db),
       });
+      const pluginSystem =
+        promptHook.system.length > 0
+          ? system + promptHook.system.map((s) => `\n\n${s}`).join("")
+          : system;
 
       handoffMs = Date.now() - handoffStart;
 
@@ -177,7 +197,7 @@ export async function postProcess(
         const chatModel = resolveChatModel(llm.provider, llm.model_id);
         const result = await generateText({
           model: chatModel,
-          system,
+          system: pluginSystem,
           prompt,
           temperature: 0,
           maxOutputTokens: maxOutputTokensForCleanup(normalizedRawText),
@@ -206,7 +226,26 @@ export async function postProcess(
   }
 
   const llmMs = Date.now() - llmStart;
+  const beforeTransform = cleanedText;
   cleanedText = applyDictionaryReplacements(cleanedText, db);
+
+  // Plugin hook: final text-rewrite chain, in the same stage as dictionary
+  // replacement. Each plugin sees the previous plugin's output.
+  cleanedText = (
+    await plugins().run(
+      "text.transform",
+      { appContext: parsedContext },
+      { text: cleanedText },
+    )
+  ).text;
+
+  if (cleanedText !== beforeTransform) {
+    void plugins().emit({
+      type: "server.cleaned",
+      before: beforeTransform,
+      after: cleanedText,
+    });
+  }
 
   if (inputTokens > 0 || outputTokens > 0) {
     try {

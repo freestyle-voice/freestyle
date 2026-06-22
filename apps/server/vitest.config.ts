@@ -8,6 +8,7 @@ export default defineConfig({
         __dirname,
         "../../packages/validations/src/index.ts",
       ),
+      "@freestyle/sdk": resolve(__dirname, "../../packages/sdk/src/index.ts"),
     },
   },
   test: {

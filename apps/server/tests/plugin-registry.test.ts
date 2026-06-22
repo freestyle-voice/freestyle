@@ -1,0 +1,99 @@
+import type { Plugin } from "@freestyle/sdk";
+import { describe, expect, it, vi } from "vitest";
+import { PluginRegistry } from "../src/lib/plugins/registry.js";
+
+describe("PluginRegistry", () => {
+  it("runs text.transform across plugins in order, chaining output", async () => {
+    const a: Plugin = {
+      name: "a",
+      "text.transform": (_i, o) => {
+        o.text = `${o.text}-a`;
+      },
+    };
+    const b: Plugin = {
+      name: "b",
+      "text.transform": (_i, o) => {
+        o.text = `${o.text}-b`;
+      },
+    };
+    const registry = new PluginRegistry([a, b]);
+
+    const result = await registry.run("text.transform", {}, { text: "start" });
+
+    expect(result.text).toBe("start-a-b");
+  });
+
+  it("isolates a throwing plugin so the chain continues", async () => {
+    const bad: Plugin = {
+      name: "bad",
+      "text.transform": () => {
+        throw new Error("boom");
+      },
+    };
+    const good: Plugin = {
+      name: "good",
+      "text.transform": (_i, o) => {
+        o.text = o.text.toUpperCase();
+      },
+    };
+    const registry = new PluginRegistry([bad, good]);
+
+    const result = await registry.run("text.transform", {}, { text: "ok" });
+
+    expect(result.text).toBe("OK");
+  });
+
+  it("deep-merges config partials in order", async () => {
+    const a: Plugin = {
+      name: "a",
+      config: () => ({ nested: { x: 1 }, top: "a" }),
+    };
+    const b: Plugin = {
+      name: "b",
+      config: () => ({ nested: { y: 2 }, top: "b" }),
+    };
+    const registry = new PluginRegistry([a, b]);
+
+    const merged = await registry.resolveConfig({});
+
+    expect(merged).toEqual({ nested: { x: 1, y: 2 }, top: "b" });
+  });
+
+  it("broadcasts events to every plugin's event hook", async () => {
+    const seen: string[] = [];
+    const a: Plugin = {
+      name: "a",
+      event: ({ event }) => {
+        seen.push(`a:${event.type}`);
+      },
+    };
+    const b: Plugin = {
+      name: "b",
+      event: ({ event }) => {
+        seen.push(`b:${event.type}`);
+      },
+    };
+    const registry = new PluginRegistry([a, b]);
+
+    await registry.emit({
+      type: "server.transcribed",
+      text: "hi",
+    });
+
+    expect(seen).toEqual(["a:server.transcribed", "b:server.transcribed"]);
+  });
+
+  it("runs dispose for each plugin", async () => {
+    const disposeA = vi.fn();
+    const disposeB = vi.fn();
+    const registry = new PluginRegistry([
+      { name: "a", dispose: disposeA },
+      { name: "b", dispose: disposeB },
+    ]);
+
+    await registry.dispose();
+
+    expect(disposeA).toHaveBeenCalledOnce();
+    expect(disposeB).toHaveBeenCalledOnce();
+  });
+});

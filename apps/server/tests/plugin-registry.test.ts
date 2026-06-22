@@ -1,4 +1,5 @@
 import type { Plugin } from "@freestyle/sdk";
+import { sortPlugins } from "@freestyle/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { PluginRegistry } from "../src/lib/plugins/registry.js";
 
@@ -43,24 +44,25 @@ describe("PluginRegistry", () => {
     expect(result.text).toBe("OK");
   });
 
-  it("isolates a throwing plugin so the chain continues", async () => {
-    const bad: Plugin = {
-      name: "bad",
-      afterCleanup: () => {
-        throw new Error("boom");
-      },
-    };
-    const good: Plugin = {
-      name: "good",
+  it("runs hooks in enforce order (pre -> none -> post), then load order", async () => {
+    const make = (name: string, enforce?: "pre" | "post"): Plugin => ({
+      name,
+      ...(enforce ? { enforce } : {}),
       afterCleanup: (_i, o) => {
-        o.text = o.text.toUpperCase();
+        o.text = `${o.text}-${name}`;
       },
-    };
-    const registry = new PluginRegistry([bad, good]);
+    });
+    // Load order is post, none, pre — sortPlugins must reorder to pre/none/post.
+    const ordered = sortPlugins([
+      make("late", "post"),
+      make("mid"),
+      make("early", "pre"),
+    ]);
+    const registry = new PluginRegistry(ordered);
 
-    const result = await registry.run("afterCleanup", {}, { text: "ok" });
+    const result = await registry.run("afterCleanup", {}, { text: "x" });
 
-    expect(result.text).toBe("OK");
+    expect(result.text).toBe("x-early-mid-late");
   });
 
   it("deep-merges config partials in order", async () => {

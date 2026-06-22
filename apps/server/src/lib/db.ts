@@ -32,3 +32,18 @@ export function closeDb(): void {
     db = null;
   }
 }
+
+/**
+ * Read a single value from the key/value `settings` table. Returns `undefined`
+ * when the key is unset or the database/table is not yet available.
+ */
+export function readSetting(key: string): string | undefined {
+  try {
+    const row = getDb()
+      .prepare("SELECT value FROM settings WHERE key = ?")
+      .get(key) as { value: string } | undefined;
+    return row?.value;
+  } catch {
+    return undefined;
+  }
+}

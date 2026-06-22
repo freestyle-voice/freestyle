@@ -11,7 +11,7 @@ import type {
 import { sortPlugins } from "@freestyle/sdk";
 import { createAppLogger } from "@freestyle/utils";
 import { parsePluginsSetting, pluginEntryParts } from "@freestyle/validations";
-import { getDb } from "../db.js";
+import { readSetting } from "../db.js";
 import { buildPluginContext } from "./context.js";
 import { PluginRegistry } from "./registry.js";
 
@@ -105,7 +105,11 @@ function safeInvoke(
   }
 }
 
-/** Import a module and return its factory exports (default + named functions). */
+/**
+ * Import a module and return its plugin factory. Only the **default export** is
+ * treated as a factory (Vite convention); this avoids accidentally invoking
+ * unrelated named helper exports or re-exports as if they were plugins.
+ */
 async function importFactories(specifier: string): Promise<PluginFactory[]> {
   let mod: PluginModule;
   try {
@@ -120,16 +124,11 @@ async function importFactories(specifier: string): Promise<PluginFactory[]> {
     return [];
   }
 
-  const factories: PluginFactory[] = [];
-  if (typeof mod.default === "function") factories.push(mod.default);
-  for (const [name, value] of Object.entries(mod)) {
-    if (name === "default") continue;
-    if (typeof value === "function") factories.push(value);
+  if (typeof mod.default !== "function") {
+    log.warn(`plugin "${specifier}" has no default export factory function`);
+    return [];
   }
-  if (factories.length === 0) {
-    log.warn(`plugin "${specifier}" exports no factory function`);
-  }
-  return factories;
+  return [mod.default];
 }
 
 function localPluginFiles(dir: string): string[] {
@@ -151,17 +150,6 @@ function pluginsDataDir(): string | null {
   const dbPath = process.env.FREESTYLE_DB_PATH;
   if (!dbPath) return null;
   return path.join(path.dirname(dbPath), "plugins");
-}
-
-function readSetting(key: string): string | undefined {
-  try {
-    const row = getDb()
-      .prepare("SELECT value FROM settings WHERE key = ?")
-      .get(key) as { value: string } | undefined;
-    return row?.value;
-  } catch {
-    return undefined;
-  }
 }
 
 function errMessage(err: unknown): string {

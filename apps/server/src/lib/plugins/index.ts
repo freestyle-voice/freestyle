@@ -1,4 +1,5 @@
 import type { AppContext } from "@freestyle/sdk";
+import { parseAppContextPayload } from "../editor/app-context.js";
 import { loadServerPlugins } from "./loader.js";
 import { PluginRegistry } from "./registry.js";
 
@@ -33,24 +34,14 @@ export function plugins(): PluginRegistry {
  * malformed input.
  */
 export function parseAppContext(raw: string | null): AppContext | undefined {
-  if (!raw) return undefined;
-  try {
-    const ctx = JSON.parse(raw) as {
-      app?: string;
-      url?: string;
-      title?: string;
-      windowTitle?: string;
-      bundleId?: string;
-    };
-    const result: AppContext = {};
-    if (ctx.app) result.appName = ctx.app;
-    if (ctx.windowTitle ?? ctx.title) {
-      result.windowTitle = ctx.windowTitle ?? ctx.title;
-    }
-    if (ctx.url) result.url = ctx.url;
-    if (ctx.bundleId) result.bundleId = ctx.bundleId;
-    return result;
-  } catch {
-    return undefined;
-  }
+  const ctx = parseAppContextPayload(raw);
+  if (!ctx) return undefined;
+
+  const result: AppContext = {};
+  if (ctx.app) result.appName = ctx.app;
+  const windowTitle = ctx.windowTitle ?? ctx.title;
+  if (windowTitle) result.windowTitle = windowTitle;
+  if (ctx.url) result.url = ctx.url;
+  if (ctx.bundleId) result.bundleId = ctx.bundleId;
+  return result;
 }

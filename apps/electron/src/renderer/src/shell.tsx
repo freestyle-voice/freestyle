@@ -1,5 +1,6 @@
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
+import { CloudProfileButton } from "@renderer/components/cloud-profile";
 import { LINKS } from "@renderer/lib/links";
 import { cn } from "@renderer/lib/utils";
 import type { LucideIcon } from "lucide-react";
@@ -197,6 +198,12 @@ export default function AppShell(): React.JSX.Element {
         <NavList items={mainNav} />
         <div className="flex-1" />
         <NavList items={footerNav} />
+        <div
+          className="border-sidebar-border mx-3 mt-2 border-t pt-2"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          <CloudProfileButton />
+        </div>
         <div className="h-3" />
       </aside>
 

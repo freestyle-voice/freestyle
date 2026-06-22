@@ -45,6 +45,9 @@ const api = {
   // Freestyle Cloud sign-in (OAuth device flow). Resolves with the signed-in
   // user; rejects if denied/expired/cancelled.
   cloudSignIn: (): Promise<CloudUser> => ipcRenderer.invoke("cloud:sign-in"),
+  // Aborts an in-flight sign-in (e.g. the user closed the browser tab).
+  cloudCancelSignIn: (): Promise<boolean> =>
+    ipcRenderer.invoke("cloud:cancel-sign-in"),
   cloudSignOut: (): Promise<boolean> => ipcRenderer.invoke("cloud:sign-out"),
   getCloudUser: (): Promise<CloudUser | null> =>
     ipcRenderer.invoke("cloud:user"),

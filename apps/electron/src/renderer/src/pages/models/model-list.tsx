@@ -8,6 +8,7 @@ import {
 } from "@renderer/components/ui/input-group";
 import { Progress } from "@renderer/components/ui/progress";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
+import { useCloudAuth } from "@renderer/lib/cloud-auth-context";
 import type {
   AvailableModel,
   VoiceItem,
@@ -22,6 +23,7 @@ import {
   Key,
   Laptop,
   Loader2,
+  LogIn,
   Mic,
   RefreshCw,
   Search,
@@ -369,6 +371,7 @@ function VoiceTiers({
   ) => void;
   onShowAll: () => void;
 }): React.JSX.Element {
+  const cloud = useCloudAuth();
   const privateItem = m.voiceItems.find(
     (it) => it.key === recommendedVoiceKey(m.voiceItems),
   );
@@ -433,8 +436,10 @@ function VoiceTiers({
         <TierCard
           title="Freestyle Cloud"
           badge="Recommended"
-          description="Managed by Freestyle. Fast and accurate, no setup or API key."
-          detail="No key needed"
+          description="Managed by Freestyle. Fast and accurate, no API key — just sign in."
+          detail={
+            cloud.user ? `Signed in as ${cloud.user.email}` : "Sign-in required"
+          }
           selected={isSelected(
             FREESTYLE_CLOUD_TIER.model_id,
             FREESTYLE_CLOUD_TIER.provider_id,
@@ -645,7 +650,9 @@ function ModelRow({
   row: Row;
   first: boolean;
 }): React.JSX.Element {
+  const cloud = useCloudAuth();
   const local = row.source === "local";
+  const isFreestyleCloud = row.provider === FREESTYLE_CLOUD_TIER.provider_id;
   const status = row.status ?? "not_downloaded";
   const downloading =
     local && (status === "downloading" || status === "verifying");
@@ -735,6 +742,17 @@ function ModelRow({
               </Button>
             )}
           </>
+        ) : isFreestyleCloud ? (
+          cloud.user ? (
+            <Button variant="ink" size="sm" onClick={row.onSelect}>
+              Use
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" onClick={row.onSelect}>
+              <LogIn data-icon="inline-start" />
+              Sign in to use
+            </Button>
+          )
         ) : row.hasKey ? (
           <Button variant="ink" size="sm" onClick={row.onSelect}>
             Use

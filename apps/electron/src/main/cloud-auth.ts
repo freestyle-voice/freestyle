@@ -31,6 +31,19 @@ interface StoredAuth {
 // never exposed to the renderer (which only ever sees the user profile).
 let current: { token: string; user: CloudUser } | null = null;
 let embeddedServerPort = 0;
+let signInAbort: AbortController | null = null;
+
+export class CloudSignInCancelledError extends Error {
+  constructor() {
+    super("Sign-in cancelled.");
+    this.name = "CloudSignInCancelledError";
+  }
+}
+
+/** Abort an in-flight device-flow sign-in (poll loop + pending requests). */
+export function cancelCloudSignIn(): void {
+  signInAbort?.abort();
+}
 
 /** Called once the embedded server is bound so we can push token updates. */
 export function setEmbeddedServerPort(port: number): void {
@@ -99,8 +112,22 @@ async function pushTokenToServer(token: string | null): Promise<void> {
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new CloudSignInCancelledError());
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        reject(new CloudSignInCancelledError());
+      },
+      { once: true },
+    );
+  });
 }
 
 interface DeviceCodeResponse {
@@ -117,12 +144,13 @@ async function pollForToken(
   deviceCode: string,
   intervalSeconds: number,
   expiresInSeconds: number,
+  signal: AbortSignal,
 ): Promise<string> {
   const deadline = Date.now() + expiresInSeconds * 1000;
   let intervalMs = Math.max(1, intervalSeconds) * 1000;
 
   while (Date.now() < deadline) {
-    await sleep(intervalMs);
+    await sleep(intervalMs, signal);
     const res = await fetch(`${base}/auth/device/token`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -131,6 +159,7 @@ async function pollForToken(
         device_code: deviceCode,
         client_id: CLIENT_ID,
       }),
+      signal,
     });
     const data = (await res.json().catch(() => ({}))) as {
       access_token?: string;
@@ -158,9 +187,14 @@ async function pollForToken(
   throw new Error("Sign-in timed out. Please try again.");
 }
 
-async function fetchMe(base: string, token: string): Promise<CloudUser> {
+async function fetchMe(
+  base: string,
+  token: string,
+  signal: AbortSignal,
+): Promise<CloudUser> {
   const res = await fetch(`${base}/v1/me`, {
     headers: { authorization: `Bearer ${token}` },
+    signal,
   });
   if (!res.ok) throw new Error(`Failed to load profile (${res.status})`);
   const data = (await res.json()) as { user: CloudUser };
@@ -176,37 +210,50 @@ export async function signInToCloud(opts?: {
   onUserCode?: (userCode: string) => void;
 }): Promise<CloudUser> {
   const base = cloudUrl();
+  signInAbort?.abort();
+  const controller = new AbortController();
+  signInAbort = controller;
+  const { signal } = controller;
 
-  const codeRes = await fetch(`${base}/auth/device/code`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ client_id: CLIENT_ID }),
-  });
-  if (!codeRes.ok) {
-    throw new Error(`Could not start sign-in (${codeRes.status})`);
+  try {
+    const codeRes = await fetch(`${base}/auth/device/code`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ client_id: CLIENT_ID }),
+      signal,
+    });
+    if (!codeRes.ok) {
+      throw new Error(`Could not start sign-in (${codeRes.status})`);
+    }
+    const code = (await codeRes.json()) as DeviceCodeResponse;
+    opts?.onUserCode?.(code.user_code);
+
+    // System browser (never an embedded webview): reuses the user's existing
+    // provider session and is required for the OAuth approval page.
+    await shell.openExternal(
+      code.verification_uri_complete || code.verification_uri,
+    );
+
+    const token = await pollForToken(
+      base,
+      code.device_code,
+      code.interval,
+      code.expires_in,
+      signal,
+    );
+    const user = await fetchMe(base, token, signal);
+
+    current = { token, user };
+    await persist(token, user);
+    await pushTokenToServer(token);
+    log.info(`signed in to Freestyle Cloud as ${user.email}`);
+    return user;
+  } catch (err) {
+    if (signal.aborted) throw new CloudSignInCancelledError();
+    throw err;
+  } finally {
+    if (signInAbort === controller) signInAbort = null;
   }
-  const code = (await codeRes.json()) as DeviceCodeResponse;
-  opts?.onUserCode?.(code.user_code);
-
-  // System browser (never an embedded webview): reuses the user's Google
-  // session and is required by Google for OAuth.
-  await shell.openExternal(
-    code.verification_uri_complete || code.verification_uri,
-  );
-
-  const token = await pollForToken(
-    base,
-    code.device_code,
-    code.interval,
-    code.expires_in,
-  );
-  const user = await fetchMe(base, token);
-
-  current = { token, user };
-  await persist(token, user);
-  await pushTokenToServer(token);
-  log.info(`signed in to Freestyle Cloud as ${user.email}`);
-  return user;
 }
 
 export async function signOutOfCloud(): Promise<void> {

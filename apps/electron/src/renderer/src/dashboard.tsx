@@ -1,10 +1,12 @@
 import "./globals.css";
 import "./fonts.css";
 
+import { CloudSignInModal } from "@renderer/components/cloud-signin-modal";
 import { ErrorBoundary } from "@renderer/components/error-boundary";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import i18n from "@renderer/i18n";
 import { initApiBase } from "@renderer/lib/api";
+import { CloudAuthProvider } from "@renderer/lib/cloud-auth-context";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import OnboardingPage from "@renderer/onboarding";
 import DictionaryPage from "@renderer/pages/dictionary";
@@ -48,39 +50,48 @@ createRoot(document.getElementById("root")!).render(
             disableTransitionOnChange
           >
             <TooltipProvider>
-              <Routes>
-                <Route path="/" element={<Navigate to="/today" replace />} />
-                <Route path="/onboarding" element={<OnboardingPage />} />
+              <CloudAuthProvider>
+                <CloudSignInModal />
+                <Routes>
+                  <Route path="/" element={<Navigate to="/today" replace />} />
+                  <Route path="/onboarding" element={<OnboardingPage />} />
 
-                <Route element={<AppShell />}>
-                  <Route path="/today" element={<TodayPage />} />
-                  <Route element={<PagePad />}>
-                    <Route path="/settings" element={<SettingsPage />} />
-                    <Route
-                      path="/settings/general"
-                      element={<Navigate to="/settings" replace />}
-                    />
-                    <Route path="/settings/models" element={<ModelsPage />} />
-                    <Route
-                      path="/settings/dictionary"
-                      element={<DictionaryPage />}
-                    />
-                    <Route
-                      path="/settings/vocabulary"
-                      element={<VocabularyPage />}
-                    />
-                    <Route path="/settings/formats" element={<FormatsPage />} />
-                    <Route path="/settings/history" element={<HistoryPage />} />
-                    <Route path="/help" element={<HelpPage />} />
-                    <Route
-                      path="/settings/permissions"
-                      element={<Navigate to="/settings" replace />}
-                    />
+                  <Route element={<AppShell />}>
+                    <Route path="/today" element={<TodayPage />} />
+                    <Route element={<PagePad />}>
+                      <Route path="/settings" element={<SettingsPage />} />
+                      <Route
+                        path="/settings/general"
+                        element={<Navigate to="/settings" replace />}
+                      />
+                      <Route path="/settings/models" element={<ModelsPage />} />
+                      <Route
+                        path="/settings/dictionary"
+                        element={<DictionaryPage />}
+                      />
+                      <Route
+                        path="/settings/vocabulary"
+                        element={<VocabularyPage />}
+                      />
+                      <Route
+                        path="/settings/formats"
+                        element={<FormatsPage />}
+                      />
+                      <Route
+                        path="/settings/history"
+                        element={<HistoryPage />}
+                      />
+                      <Route path="/help" element={<HelpPage />} />
+                      <Route
+                        path="/settings/permissions"
+                        element={<Navigate to="/settings" replace />}
+                      />
+                    </Route>
                   </Route>
-                </Route>
 
-                <Route path="*" element={<NotFoundPage />} />
-              </Routes>
+                  <Route path="*" element={<NotFoundPage />} />
+                </Routes>
+              </CloudAuthProvider>
             </TooltipProvider>
           </ThemeProvider>
         </BrowserRouter>

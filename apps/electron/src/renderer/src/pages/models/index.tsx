@@ -1,4 +1,5 @@
 import { Button } from "@renderer/components/ui/button";
+import { useCloudAuth } from "@renderer/lib/cloud-auth-context";
 import type { AvailableModel } from "@renderer/lib/models";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
@@ -13,13 +14,11 @@ import { useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
 import { CleanupIntensityCard } from "./cleanup-intensity";
-import { CloudAccountCard } from "./cloud-account";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { Eyebrow, PageHeader, PageShell } from "./page-chrome";
 import { PairCard } from "./pair-card";
 import type { ApiKeyEntry, ConfiguredModel } from "./types";
-import { useCloudAuth } from "./use-cloud-auth";
 import { useModels } from "./use-models";
 import { displayName } from "./utils";
 
@@ -204,8 +203,6 @@ export default function ModelsPage(): React.JSX.Element {
           }
           cleanupDisabled={cleanupLocked}
         />
-
-        <CloudAccountCard auth={cloudAuth} />
 
         {m.llmCleanup && !cleanupLocked && (
           <CleanupIntensityCard

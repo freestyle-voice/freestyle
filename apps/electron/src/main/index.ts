@@ -82,6 +82,7 @@ import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { AudioPlaybackController } from "./audio-control/controller";
 import {
+  cancelCloudSignIn,
   getCloudUser,
   loadStoredCloudToken,
   setEmbeddedServerPort,
@@ -1307,6 +1308,10 @@ app.whenReady().then(async () => {
       onUserCode: (userCode) => event.sender.send("cloud:user-code", userCode),
     }),
   );
+  ipcMain.handle("cloud:cancel-sign-in", () => {
+    cancelCloudSignIn();
+    return true;
+  });
   ipcMain.handle("cloud:sign-out", async () => {
     await signOutOfCloud();
     return true;

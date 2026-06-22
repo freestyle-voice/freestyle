@@ -29,6 +29,7 @@ declare global {
       getServerToken: () => Promise<string>;
       setServerToken: (token: string) => Promise<string>;
       cloudSignIn: () => Promise<CloudUser>;
+      cloudCancelSignIn: () => Promise<boolean>;
       cloudSignOut: () => Promise<boolean>;
       getCloudUser: () => Promise<CloudUser | null>;
       onCloudUserCode: (callback: (userCode: string) => void) => () => void;

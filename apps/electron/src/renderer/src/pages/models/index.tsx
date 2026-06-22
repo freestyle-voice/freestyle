@@ -13,11 +13,13 @@ import { useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
 import { CleanupIntensityCard } from "./cleanup-intensity";
+import { CloudAccountCard } from "./cloud-account";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { Eyebrow, PageHeader, PageShell } from "./page-chrome";
 import { PairCard } from "./pair-card";
 import type { ApiKeyEntry, ConfiguredModel } from "./types";
+import { useCloudAuth } from "./use-cloud-auth";
 import { useModels } from "./use-models";
 import { displayName } from "./utils";
 
@@ -27,6 +29,7 @@ const FREESTYLE_CLOUD_PROVIDER = "freestyle-cloud";
 export default function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const m = useModels();
+  const cloudAuth = useCloudAuth();
 
   const [modal, setModal] = useState<ModalState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -61,6 +64,24 @@ export default function ModelsPage(): React.JSX.Element {
   const onPickCloud = (model: AvailableModel): void => {
     if (modal?.kind !== "list") return;
     const type = modal.type;
+
+    // Freestyle Cloud requires a signed-in user — run the OAuth flow first,
+    // then configure (and disable local cleanup) only if sign-in succeeds.
+    if (
+      type === "voice" &&
+      model.provider_id === FREESTYLE_CLOUD_PROVIDER &&
+      !cloudAuth.user
+    ) {
+      void cloudAuth.signIn().then((user) => {
+        if (!user) return;
+        void m.configureModel(model, type).then(() => {
+          m.setCleanup(false);
+          closeModal();
+        });
+      });
+      return;
+    }
+
     const needsKey =
       model.provider_id !== "local-llm" &&
       model.provider_id !== FREESTYLE_CLOUD_PROVIDER &&
@@ -183,6 +204,8 @@ export default function ModelsPage(): React.JSX.Element {
           }
           cleanupDisabled={cleanupLocked}
         />
+
+        <CloudAccountCard auth={cloudAuth} />
 
         {m.llmCleanup && !cleanupLocked && (
           <CleanupIntensityCard

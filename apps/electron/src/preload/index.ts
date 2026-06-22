@@ -4,6 +4,7 @@ import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
 } from "../shared/audio-playback";
+import type { CloudUser } from "../shared/cloud-user";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 
 // Custom APIs for renderer
@@ -41,6 +42,18 @@ const api = {
   getServerToken: (): Promise<string> => ipcRenderer.invoke("server:token"),
   setServerToken: (token: string): Promise<string> =>
     ipcRenderer.invoke("server:set-token", token),
+  // Freestyle Cloud sign-in (OAuth device flow). Resolves with the signed-in
+  // user; rejects if denied/expired/cancelled.
+  cloudSignIn: (): Promise<CloudUser> => ipcRenderer.invoke("cloud:sign-in"),
+  cloudSignOut: (): Promise<boolean> => ipcRenderer.invoke("cloud:sign-out"),
+  getCloudUser: (): Promise<CloudUser | null> =>
+    ipcRenderer.invoke("cloud:user"),
+  // Fires while a sign-in is pending so the UI can show the device user code.
+  onCloudUserCode: (callback: (userCode: string) => void): (() => void) => {
+    const handler = (_e: unknown, code: string): void => callback(code);
+    ipcRenderer.on("cloud:user-code", handler);
+    return () => ipcRenderer.removeListener("cloud:user-code", handler);
+  },
   onHotkeyDown: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("hotkey:down", handler);

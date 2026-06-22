@@ -6,6 +6,10 @@ import { getLanguageSetting } from "../lib/language.js";
 import { postProcess } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
+import {
+  CloudAuthError,
+  FREESTYLE_CLOUD_PROVIDER_ID,
+} from "../lib/streaming/providers/freestyle-cloud.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import { getApiKeyForProvider } from "../lib/streaming-stt.js";
 import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
@@ -84,6 +88,10 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
   const apiKey = getApiKeyForProvider(defaults.voice.provider);
   if (!apiKey) {
+    // Freestyle Cloud has no stored key — a null token means "signed out".
+    if (defaults.voice.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
+      return c.json({ error: "cloud_auth_required" }, 401);
+    }
     return c.json(
       {
         error: `No API key configured for provider: ${defaults.voice.provider}`,
@@ -111,6 +119,10 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       `STT took ${Date.now() - t0}ms | rawText=${JSON.stringify(rawText).slice(0, 120)}`,
     );
   } catch (err) {
+    // Expired/invalid cloud session — ask the desktop app to re-authenticate.
+    if (err instanceof CloudAuthError) {
+      return c.json({ error: "cloud_auth_required" }, 401);
+    }
     captureException(err, {
       provider: defaults.voice.provider,
       model: defaults.voice.model_id,

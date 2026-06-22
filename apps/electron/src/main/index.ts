@@ -81,6 +81,14 @@ import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { AudioPlaybackController } from "./audio-control/controller";
+import {
+  getCloudUser,
+  loadStoredCloudToken,
+  setEmbeddedServerPort,
+  signInToCloud,
+  signOutOfCloud,
+  syncCloudTokenToServer,
+} from "./cloud-auth";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
@@ -1292,6 +1300,19 @@ app.whenReady().then(async () => {
     return getServerToken();
   });
 
+  // IPC: Freestyle Cloud sign-in (OAuth device flow). The user approves in the
+  // system browser; we forward the user code to the renderer for display.
+  ipcMain.handle("cloud:sign-in", async (event) =>
+    signInToCloud({
+      onUserCode: (userCode) => event.sender.send("cloud:user-code", userCode),
+    }),
+  );
+  ipcMain.handle("cloud:sign-out", async () => {
+    await signOutOfCloud();
+    return true;
+  });
+  ipcMain.handle("cloud:user", () => getCloudUser());
+
   ipcMain.handle(
     "dialog:show-error",
     async (_event, title: string, detail: string) => {
@@ -1442,12 +1463,17 @@ app.whenReady().then(async () => {
     reconcileUnsupportedMlxVoiceDefault();
     autoStartWhisperServer();
 
+    // Decrypt any stored Freestyle Cloud session token so the embedded server
+    // can attach it to managed STT calls from first launch.
+    const cloudAuthToken = (await loadStoredCloudToken()) ?? undefined;
+
     // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
     const startServer = (port: number): void => {
-      startFreestyleServer({ port, host: "127.0.0.1" })
+      startFreestyleServer({ port, host: "127.0.0.1", cloudAuthToken })
         .then(({ server, port: boundPort }) => {
           httpServer = server;
           serverPort = boundPort;
+          setEmbeddedServerPort(boundPort);
           log.info(`Server running on http://localhost:${boundPort}`);
         })
         .catch((err: NodeJS.ErrnoException) => {
@@ -1476,6 +1502,9 @@ app.whenReady().then(async () => {
 
     if (existingServer) {
       serverPort = DEFAULT_PORT;
+      setEmbeddedServerPort(DEFAULT_PORT);
+      // The reused server is a separate process; push our token to it.
+      void syncCloudTokenToServer();
       log.info(
         `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
       );

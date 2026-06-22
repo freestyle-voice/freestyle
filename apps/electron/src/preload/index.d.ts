@@ -3,6 +3,7 @@ import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
 } from "../shared/audio-playback";
+import type { CloudUser } from "../shared/cloud-user";
 
 declare global {
   interface Window {
@@ -27,6 +28,10 @@ declare global {
       setServerUrl: (url: string) => Promise<string>;
       getServerToken: () => Promise<string>;
       setServerToken: (token: string) => Promise<string>;
+      cloudSignIn: () => Promise<CloudUser>;
+      cloudSignOut: () => Promise<boolean>;
+      getCloudUser: () => Promise<CloudUser | null>;
+      onCloudUserCode: (callback: (userCode: string) => void) => () => void;
       onHotkeyDown: (callback: () => void) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;
       onPillCancel: (callback: () => void) => () => void;

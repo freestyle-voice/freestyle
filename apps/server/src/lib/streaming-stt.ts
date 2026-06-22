@@ -1,3 +1,4 @@
+import { getCloudAuthToken } from "./cloud-auth.js";
 import { getDb } from "./db.js";
 import { MLX_ASR_PROVIDER_ID } from "./mlx-asr/constants.js";
 import { FREESTYLE_CLOUD_PROVIDER_ID } from "./streaming/providers/freestyle-cloud.js";
@@ -13,13 +14,6 @@ export {
 export type { StreamCallbacks, StreamSession } from "./streaming/types.js";
 
 const LOCAL_STT_PROVIDERS = new Set([WHISPER_PROVIDER_ID, MLX_ASR_PROVIDER_ID]);
-
-// Providers that need no user-supplied API key: on-device engines plus the
-// open Freestyle Cloud endpoint.
-const KEYLESS_STT_PROVIDERS = new Set([
-  ...LOCAL_STT_PROVIDERS,
-  FREESTYLE_CLOUD_PROVIDER_ID,
-]);
 
 export function openStreamingSession(opts: {
   providerId: string;
@@ -54,7 +48,10 @@ export function openStreamingSession(opts: {
 }
 
 export function getApiKeyForProvider(providerId: string): string | null {
-  if (KEYLESS_STT_PROVIDERS.has(providerId)) return "local";
+  // On-device engines need no key.
+  if (LOCAL_STT_PROVIDERS.has(providerId)) return "local";
+  // Freestyle Cloud uses the signed-in user's session token (null = signed out).
+  if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return getCloudAuthToken();
 
   const db = getDb();
   const row = db

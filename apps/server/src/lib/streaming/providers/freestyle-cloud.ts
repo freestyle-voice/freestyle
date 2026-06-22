@@ -4,8 +4,20 @@ import type {
   TranscriptionProvider,
 } from "../types.js";
 
-/** Provider id used across the catalog, registry, and keyless lookup. */
+/** Provider id used across the catalog, registry, and credential lookup. */
 export const FREESTYLE_CLOUD_PROVIDER_ID = "freestyle-cloud";
+
+/**
+ * Thrown when the cloud rejects the request for auth reasons (missing/expired
+ * session). The transcribe route maps this to a `cloud_auth_required` response
+ * so the desktop app can prompt the user to sign in again.
+ */
+export class CloudAuthError extends Error {
+  constructor(message = "Freestyle Cloud sign-in required") {
+    super(message);
+    this.name = "CloudAuthError";
+  }
+}
 
 /**
  * Hosted Freestyle Cloud STT endpoint. Override with FREESTYLE_CLOUD_URL for
@@ -32,10 +44,11 @@ function resolveBaseUrl(): string {
 }
 
 /**
- * Managed STT via the Freestyle Cloud `/v1/transcribe` endpoint. The endpoint
- * is open (no API key) and runs its own cleanup pass, so the desktop app
- * disables local post-processing for this provider and surfaces the cloud's
- * `cleaned` text directly. Batch-only — no streaming.
+ * Managed STT via the Freestyle Cloud `/v1/transcribe` endpoint. Requires a
+ * signed-in user: `opts.apiKey` carries the cloud session token, attached as
+ * `Authorization: Bearer`. The endpoint runs its own cleanup pass, so the
+ * desktop app disables local post-processing for this provider and surfaces the
+ * cloud's `cleaned` text directly. Batch-only — no streaming.
  */
 export class FreestyleCloudTranscriptionProvider
   implements TranscriptionProvider
@@ -43,7 +56,13 @@ export class FreestyleCloudTranscriptionProvider
   readonly providerId = FREESTYLE_CLOUD_PROVIDER_ID;
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
-    const headers: Record<string, string> = {};
+    if (!opts.apiKey) {
+      throw new CloudAuthError();
+    }
+
+    const headers: Record<string, string> = {
+      authorization: `Bearer ${opts.apiKey}`,
+    };
     if (opts.language) headers["x-language"] = opts.language;
 
     // Audio reaches providers as a complete 16kHz mono 16-bit WAV; it's always
@@ -55,6 +74,9 @@ export class FreestyleCloudTranscriptionProvider
       body: new Blob([audio], { type: "audio/wav" }),
     });
 
+    if (res.status === 401) {
+      throw new CloudAuthError();
+    }
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
       throw new Error(

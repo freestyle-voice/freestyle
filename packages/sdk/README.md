@@ -17,8 +17,11 @@ hooks it implements.
 
 Plugins are loaded from two places:
 
-- **Local files** — drop a `.ts`/`.js` module into the plugins directory inside
-  your Freestyle user-data folder (`<userData>/plugins/`).
+- **Local files** — drop a `.js`, `.mjs`, or `.ts` module into the plugins
+  directory inside your Freestyle user-data folder (`<userData>/plugins/`).
+  `.ts` files are loaded via Node's native type-stripping, so stick to plain,
+  strippable TypeScript — no `enum`s, `namespace`s, or other constructs that
+  require emit.
 - **npm packages** — list package names in the `plugins` setting.
 
 Either way, import the types from this package:

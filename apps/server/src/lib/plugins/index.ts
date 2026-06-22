@@ -1,21 +1,31 @@
-import type { AppContext } from "@freestyle/sdk";
+import type { PluginConfig } from "@freestyle/sdk";
 import { PluginRegistry } from "@freestyle/sdk";
-import { parseAppContextPayload } from "../editor/app-context.js";
+import { createAppLogger } from "@freestyle/utils";
 import { loadServerPlugins } from "./loader.js";
 
+export { parseAppContext } from "@freestyle/sdk";
+
+const log = createAppLogger("plugins");
+
 let registry: PluginRegistry = new PluginRegistry();
+let resolvedConfig: PluginConfig = {};
 let initialized = false;
 
 /**
- * Load and install the server plugin registry. Safe to call once at boot; later
- * calls are ignored. Failures degrade to an empty registry so the dictation
- * pipeline always works.
+ * Load and install the server plugin registry, then run the `config` hook
+ * chain once so plugins can contribute boot-time configuration. Safe to call
+ * once at boot; later calls are ignored. Failures degrade to an empty registry
+ * so the dictation pipeline always works.
  */
 export async function initServerPlugins(): Promise<void> {
   if (initialized) return;
   initialized = true;
   try {
     registry = await loadServerPlugins();
+    resolvedConfig = await registry.resolveConfig({});
+    if (Object.keys(resolvedConfig).length > 0) {
+      log.info(`plugin config resolved: ${JSON.stringify(resolvedConfig)}`);
+    }
   } catch {
     registry = new PluginRegistry();
   }
@@ -26,20 +36,12 @@ export function plugins(): PluginRegistry {
   return registry;
 }
 
-/**
- * Parse the raw app-context JSON the client sends (see transcribe route) into
- * the SDK's {@link AppContext} shape handed to hooks. Tolerant of missing or
- * malformed input.
- */
-export function parseAppContext(raw: string | null): AppContext | undefined {
-  const ctx = parseAppContextPayload(raw);
-  if (!ctx) return undefined;
+/** The configuration contributed by plugins' `config` hooks at boot. */
+export function pluginConfig(): PluginConfig {
+  return resolvedConfig;
+}
 
-  const result: AppContext = {};
-  if (ctx.app) result.appName = ctx.app;
-  const windowTitle = ctx.windowTitle ?? ctx.title;
-  if (windowTitle) result.windowTitle = windowTitle;
-  if (ctx.url) result.url = ctx.url;
-  if (ctx.bundleId) result.bundleId = ctx.bundleId;
-  return result;
+/** Run every plugin's `dispose` hook (best-effort, on shutdown). */
+export function disposeServerPlugins(): Promise<void> {
+  return registry.dispose();
 }

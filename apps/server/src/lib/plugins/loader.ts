@@ -1,6 +1,9 @@
-import path from "node:path";
 import type { HookFailure, PluginEntry } from "@freestyle/sdk";
-import { loadPlugins, type PluginRegistry } from "@freestyle/sdk";
+import {
+  defaultLocalPluginsDir,
+  loadPlugins,
+  type PluginRegistry,
+} from "@freestyle/sdk";
 import { createAppLogger } from "@freestyle/utils";
 import { parsePluginsSetting, pluginEntryParts } from "@freestyle/validations";
 import { readSetting } from "../db.js";
@@ -19,7 +22,7 @@ export async function loadServerPlugins(): Promise<PluginRegistry> {
   const entries: PluginEntry[] = parsePluginsSetting(
     readSetting("plugins"),
   ).map((entry) => pluginEntryParts(entry));
-  const localDir = pluginsDataDir();
+  const localDir = defaultLocalPluginsDir();
 
   return loadPlugins({
     host: "server",
@@ -38,11 +41,4 @@ function reportHookFailure({ plugin, hook, error }: HookFailure): void {
     }`,
   );
   captureException(error, { plugin, hook });
-}
-
-/** `<userData>/plugins/`, derived from the db path the app sets at startup. */
-function pluginsDataDir(): string | null {
-  const dbPath = process.env.FREESTYLE_DB_PATH;
-  if (!dbPath) return null;
-  return path.join(path.dirname(dbPath), "plugins");
 }

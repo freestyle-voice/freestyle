@@ -1,24 +1,23 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type {
-  PluginContext,
-  PluginLogger,
-  SettingsReader,
-} from "@freestyle/sdk";
+import type { PluginContext, SettingsReader } from "@freestyle/sdk";
+import { createPluginLogger } from "@freestyle/sdk";
 import { createAppLogger } from "@freestyle/utils";
 
 /**
  * Read a single value from the `settings` table the server owns. The main
- * process opens a short-lived read connection to the same SQLite file (the
- * established pattern in this process — see hotkey loading). Returns
- * `undefined` when the key is unset or the database is unavailable.
+ * process opens a short-lived read-only connection to the same SQLite file
+ * (the established pattern in this process — see hotkey loading). Returns
+ * `undefined` when the key is unset or the database is unavailable. The
+ * existence + read-only checks ensure a read can never create the db file.
  */
 export function readSetting(key: string): string | undefined {
   const dbPath = process.env.FREESTYLE_DB_PATH;
-  if (!dbPath) return undefined;
+  if (!dbPath || !existsSync(dbPath)) return undefined;
   let db: DatabaseSync | undefined;
   try {
-    db = new DatabaseSync(dbPath);
+    db = new DatabaseSync(dbPath, { readOnly: true });
     const row = db
       .prepare("SELECT value FROM settings WHERE key = ?")
       .get(key) as { value: string } | undefined;
@@ -28,19 +27,6 @@ export function readSetting(key: string): string | undefined {
   } finally {
     db?.close();
   }
-}
-
-/** Wrap a namespaced winston logger in the SDK's {@link PluginLogger} shape. */
-function buildLogger(name: string): PluginLogger {
-  const log = createAppLogger(`plugin:${name}`);
-  const fmt = (message: string, extra?: Record<string, unknown>): string =>
-    extra ? `${message} ${JSON.stringify(extra)}` : message;
-  return {
-    debug: (message, extra) => log.debug(fmt(message, extra)),
-    info: (message, extra) => log.info(fmt(message, extra)),
-    warn: (message, extra) => log.warn(fmt(message, extra)),
-    error: (message, extra) => log.error(fmt(message, extra)),
-  };
 }
 
 /**
@@ -60,7 +46,7 @@ export function buildPluginContext(name: string): PluginContext {
     directory: process.env.FREESTYLE_DB_PATH
       ? path.dirname(process.env.FREESTYLE_DB_PATH)
       : process.cwd(),
-    logger: buildLogger(name),
+    logger: createPluginLogger(createAppLogger(`plugin:${name}`)),
     settings,
   };
 }

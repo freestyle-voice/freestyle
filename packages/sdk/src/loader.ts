@@ -32,6 +32,17 @@ export function discoverLocalPlugins(dir: string): string[] {
     .map((name) => path.join(dir, name));
 }
 
+/**
+ * The default local plugins directory: `<userData>/plugins/`, derived from the
+ * `FREESTYLE_DB_PATH` the host sets at startup. Returns `null` when the path is
+ * unset (e.g. a remote-server configuration with no local database).
+ */
+export function defaultLocalPluginsDir(): string | null {
+  const dbPath = process.env.FREESTYLE_DB_PATH;
+  if (!dbPath) return null;
+  return path.join(path.dirname(dbPath), "plugins");
+}
+
 /** A resolved plugin entry: a module specifier plus optional options. */
 export interface PluginEntry {
   specifier: string;

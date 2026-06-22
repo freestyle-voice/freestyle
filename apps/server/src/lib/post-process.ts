@@ -202,6 +202,11 @@ export async function postProcess(
         cleanedText = sanitizeTranscriptText(result.text);
       } catch (err) {
         captureException(err);
+        void plugins().emit({
+          type: "pipelineError",
+          stage: "cleanup",
+          message: err instanceof Error ? err.message : String(err),
+        });
         capture("post process failed", {
           provider: llm.provider,
           model: llm.model_id,

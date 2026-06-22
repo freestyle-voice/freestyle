@@ -132,6 +132,11 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       provider: defaults.voice.provider,
       model: defaults.voice.model_id,
     });
+    void plugins().emit({
+      type: "pipelineError",
+      stage: "transcribe",
+      message: err instanceof Error ? err.message : String(err),
+    });
     capture("transcription failed", {
       provider: defaults.voice.provider,
       model: defaults.voice.model_id,

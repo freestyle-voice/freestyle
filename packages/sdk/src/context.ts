@@ -10,6 +10,30 @@ export interface PluginLogger {
   error(message: string, extra?: Record<string, unknown>): void;
 }
 
+/** A minimal string-only logger, e.g. a winston logger from the host. */
+export interface BaseLogger {
+  debug(message: string): void;
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string): void;
+}
+
+/**
+ * Adapt a host's string logger into the {@link PluginLogger} shape, folding the
+ * optional `extra` object into the message. Shared by both hosts so the plugin
+ * logging format stays identical.
+ */
+export function createPluginLogger(base: BaseLogger): PluginLogger {
+  const fmt = (message: string, extra?: Record<string, unknown>): string =>
+    extra ? `${message} ${JSON.stringify(extra)}` : message;
+  return {
+    debug: (message, extra) => base.debug(fmt(message, extra)),
+    info: (message, extra) => base.info(fmt(message, extra)),
+    warn: (message, extra) => base.warn(fmt(message, extra)),
+    error: (message, extra) => base.error(fmt(message, extra)),
+  };
+}
+
 /**
  * Read-only access to the user's stored settings. Plugins receive a scoped,
  * namespaced view keyed by the plugin name, plus the ability to read global

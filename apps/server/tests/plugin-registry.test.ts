@@ -104,7 +104,7 @@ describe("PluginRegistry", () => {
     expect(seen).toEqual(["a:transcribed", "b:transcribed"]);
   });
 
-  it("runs dispose for each plugin", async () => {
+  it("runs dispose for each plugin, and only once across repeated calls", async () => {
     const disposeA = vi.fn();
     const disposeB = vi.fn();
     const registry = new PluginRegistry([
@@ -113,8 +113,32 @@ describe("PluginRegistry", () => {
     ]);
 
     await registry.dispose();
+    await registry.dispose();
 
     expect(disposeA).toHaveBeenCalledOnce();
     expect(disposeB).toHaveBeenCalledOnce();
+  });
+
+  it("routes hook-handler failures to onError", async () => {
+    const onError = vi.fn();
+    const registry = new PluginRegistry(
+      [
+        {
+          name: "boom",
+          afterCleanup: () => {
+            throw new Error("nope");
+          },
+        },
+      ],
+      { onError },
+    );
+
+    await registry.run("afterCleanup", {}, { text: "x" });
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError.mock.calls[0]?.[0]).toMatchObject({
+      plugin: "boom",
+      hook: "afterCleanup",
+    });
   });
 });

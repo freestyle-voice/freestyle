@@ -49,6 +49,7 @@ import {
   autoStartWhisperServer,
   captureException,
   closeDb,
+  disposeServerPlugins,
   prefetchManagedMlxRuntimeForAppRelease,
   reconcileUnsupportedMlxVoiceDefault,
   shutdownPosthog,
@@ -844,30 +845,43 @@ async function deliverOutput(
     { text, mode },
   );
 
+  // Nothing to deliver (empty text, or a plugin suppressed via "none"): report
+  // it as delivered with mode "none" so observers see a single, accurate event.
+  if (out.mode === "none" || !out.text?.trim()) {
+    void appPlugins().emit({
+      type: "outputDelivered",
+      text: out.text,
+      mode: "none",
+    });
+    return;
+  }
+
   try {
     if (out.mode === "paste") {
-      if (!out.text) return;
       await pasteIntoFocusedApp(out.text, async () => {
         hidePill();
         await wait(0);
       });
-    } else if (out.mode === "copy") {
-      if (!out.text?.trim()) return;
+    } else {
       clipboard.writeText(out.text);
     }
-    // out.mode === "none" → suppressed; nothing is delivered.
   } catch (err) {
     // pasteIntoFocusedApp left the transcript on the clipboard — tell the user
     // instead of letting the dictation silently vanish.
     notifyPasteFailed();
-    throw err;
-  } finally {
     void appPlugins().emit({
-      type: "outputDelivered",
-      text: out.text,
-      mode: out.mode,
+      type: "pipelineError",
+      stage: "output",
+      message: err instanceof Error ? err.message : String(err),
     });
+    throw err;
   }
+
+  void appPlugins().emit({
+    type: "outputDelivered",
+    text: out.text,
+    mode: out.mode,
+  });
 }
 
 function resetOnboarding(): void {
@@ -2175,6 +2189,8 @@ let isQuitting = false;
 let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 
 function cleanupBeforeQuit(): void {
+  void appPlugins().dispose();
+  void disposeServerPlugins().catch(() => {});
   audioPlaybackController.restoreSync();
   stopLinuxPasteHelper();
   stopWhisperServer().catch(() => {});

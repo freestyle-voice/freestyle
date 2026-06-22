@@ -1,5 +1,12 @@
+export { type AppContextPayload, parseAppContext } from "./app-context.js";
 export type { PluginConfig } from "./config.js";
-export type { PluginContext, PluginLogger, SettingsReader } from "./context.js";
+export {
+  type BaseLogger,
+  createPluginLogger,
+  type PluginContext,
+  type PluginLogger,
+  type SettingsReader,
+} from "./context.js";
 export type { AppContext, FreestyleEvent, PipelineStage } from "./events.js";
 export { default as examplePlugin } from "./example.js";
 export type {
@@ -13,6 +20,8 @@ export type {
   Register,
 } from "./hooks.js";
 export {
+  defaultLocalPluginsDir,
+  discoverLocalPlugins,
   type LoaderLogger,
   type LoadPluginsOptions,
   loadPlugins,

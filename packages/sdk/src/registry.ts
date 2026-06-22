@@ -40,6 +40,8 @@ export class PluginRegistry {
   private plugins: Plugin[];
   private onError?: (failure: HookFailure) => void;
 
+  private disposed = false;
+
   constructor(plugins: Plugin[] = [], options: PluginRegistryOptions = {}) {
     this.plugins = plugins;
     this.onError = options.onError;
@@ -103,8 +105,13 @@ export class PluginRegistry {
     return merged;
   }
 
-  /** Run every plugin's `dispose` hook (best-effort, on shutdown). */
+  /**
+   * Run every plugin's `dispose` hook (best-effort, on shutdown). Idempotent —
+   * safe to call from multiple shutdown seams; only the first call runs.
+   */
   async dispose(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
     for (const plugin of this.plugins) {
       if (!plugin.dispose) continue;
       try {

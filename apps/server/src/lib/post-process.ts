@@ -170,7 +170,7 @@ export async function postProcess(
       // append extra system-prompt fragments. Runs before prompt assembly so a
       // register override actually feeds into buildRewritePrompt.
       const promptHook = await plugins().run(
-        "cleanup.prompt",
+        "beforeCleanup",
         {
           text: normalizedRawText,
           appContext: parsedContext,
@@ -233,7 +233,7 @@ export async function postProcess(
   // replacement. Each plugin sees the previous plugin's output.
   cleanedText = (
     await plugins().run(
-      "text.transform",
+      "afterCleanup",
       { appContext: parsedContext },
       { text: cleanedText },
     )
@@ -241,7 +241,7 @@ export async function postProcess(
 
   if (cleanedText !== beforeTransform) {
     void plugins().emit({
-      type: "server.cleaned",
+      type: "cleaned",
       before: beforeTransform,
       after: cleanedText,
     });

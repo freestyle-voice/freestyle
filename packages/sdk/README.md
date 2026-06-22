@@ -48,7 +48,7 @@ export default function myPlugin(): Plugin {
     },
 
     // Rewrite the final, cleaned dictation.
-    "text.transform": (_input, output) => {
+    afterCleanup: (_input, output) => {
       output.text = output.text.replace(/\bteh\b/g, "the");
     },
   };
@@ -64,7 +64,7 @@ import { transform, type Plugin } from "@freestyle/sdk";
 export default function trim(): Plugin {
   return {
     name: "freestyle-plugin-trim",
-    "text.transform": transform((text) => text.trimEnd()),
+    afterCleanup: transform((text) => text.trimEnd()),
   };
 }
 ```
@@ -113,7 +113,7 @@ App-specific behavior is done by self-filtering on `input.appContext` inside the
 handler:
 
 ```ts
-"text.transform": (input, output) => {
+afterCleanup: (input, output) => {
   if (/slack/i.test(input.appContext?.appName ?? "")) {
     output.text = output.text.replace(/[.,!?]+$/, "");
   }
@@ -131,15 +131,15 @@ process (further narrowed by `apply`).
 | Hook | When it fires | You mutate |
 | --- | --- | --- |
 | `config` | Server boot, after settings load | _return_ a partial config (deep-merged) |
-| `transcribe.after` | Right after speech-to-text, before cleanup | `text` (raw transcript) |
-| `cleanup.prompt` | While the LLM cleanup prompt is assembled | `system[]`, `register` |
-| `text.transform` | On the final cleaned text (dictionary stage) | `text` (chained) |
+| `afterTranscribe` | Right after speech-to-text, before cleanup | `text` (raw transcript) |
+| `beforeCleanup` | While the LLM cleanup prompt is assembled (cleanup enabled only) | `system[]`, `register` |
+| `afterCleanup` | On the final text, always (dictionary stage) | `text` (chained) |
 
 ### App hooks (Electron main process)
 
 | Hook | When it fires | You mutate |
 | --- | --- | --- |
-| `output.before` | Just before text is delivered | `text`, `mode` |
+| `beforeOutput` | Just before text is delivered | `text`, `mode` |
 
 ### Both
 
@@ -151,7 +151,7 @@ process (further narrowed by `apply`).
 
 ## Output modes
 
-`output.before`'s `mode` controls delivery. `OutputMode` is a const object (use
+`beforeOutput`'s `mode` controls delivery. `OutputMode` is a const object (use
 the constant or the literal string):
 
 | Value | Constant | Behavior |
@@ -163,7 +163,7 @@ the constant or the literal string):
 ```ts
 import { OutputMode } from "@freestyle/sdk";
 
-"output.before": (input, output) => {
+beforeOutput: (input, output) => {
   if (/terminal/i.test(input.appContext?.appName ?? "")) {
     output.mode = OutputMode.Copy; // don't auto-paste into a terminal
   }
@@ -180,13 +180,13 @@ The read-only `event` hook receives a discriminated `FreestyleEvent`:
 ```ts
 event: ({ event }) => {
   switch (event.type) {
-    case "app.recording.started":   /* event.appContext */ break;
-    case "app.recording.committed": break;
-    case "app.recording.cancelled": break;
-    case "server.transcribed":      /* event.text, event.durationInSeconds */ break;
-    case "server.cleaned":          /* event.before, event.after */ break;
-    case "app.output.delivered":    /* event.text, event.mode ("none" = suppressed) */ break;
-    case "pipeline.error":          /* event.stage, event.message */ break;
+    case "recordingStarted":   /* event.appContext */ break;
+    case "recordingCommitted": break;
+    case "recordingCancelled": break;
+    case "transcribed":        /* event.text, event.durationInSeconds */ break;
+    case "cleaned":            /* event.before, event.after */ break;
+    case "outputDelivered":    /* event.text, event.mode ("none" = suppressed) */ break;
+    case "pipelineError":      /* event.stage, event.message */ break;
   }
 };
 ```
@@ -209,13 +209,13 @@ See [`src/events.ts`](./src/events.ts) for the full union.
 | `AppContext` | type | The app the user dictated into |
 | `OutputMode` | value+type | Delivery modes (`Paste`/`Copy`/`None`) |
 | `Register` | type | `"formal"` \| `"casual"` \| `"neutral"` |
-| `transform` | fn | Wrap a pure `(text) => text` into `text.transform` |
+| `transform` | fn | Wrap a pure `(text) => text` into `afterCleanup` |
 | `sortPlugins` | fn | Order plugins by `enforce` (used by loaders) |
 | `examplePlugin` | factory | Copy-pasteable reference plugin |
 
 ## Stability
 
-V1 focuses on the text-transform pipeline (`transcribe.after`,
-`cleanup.prompt`, `text.transform`, `output.before`) plus `event`/`config`.
+V1 focuses on the text pipeline (`afterTranscribe`, `beforeCleanup`,
+`afterCleanup`, `beforeOutput`) plus `event`/`config`.
 Custom speech-to-text providers and additional lifecycle hooks are planned but
 not yet part of the stable contract.

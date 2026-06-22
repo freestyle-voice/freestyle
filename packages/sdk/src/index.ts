@@ -3,14 +3,14 @@ export type { PluginContext, PluginLogger, SettingsReader } from "./context.js";
 export type { AppContext, FreestyleEvent, PipelineStage } from "./events.js";
 export { default as examplePlugin } from "./example.js";
 export type {
-  CleanupPromptInput,
+  AfterCleanupInput,
+  AfterTranscribeInput,
+  BeforeCleanupInput,
+  BeforeOutputInput,
   Handler,
   HookName,
   Hooks,
-  OutputBeforeInput,
   Register,
-  TextTransformInput,
-  TranscribeAfterInput,
 } from "./hooks.js";
 export { sortPlugins } from "./order.js";
 export { OutputMode } from "./output.js";

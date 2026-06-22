@@ -35,7 +35,7 @@ export type PluginOptions = Record<string, unknown>;
  *     setup({ logger }) {
  *       logger.info("ready");
  *     },
- *     "text.transform": (_input, output) => {
+ *     afterCleanup: (_input, output) => {
  *       output.text = output.text.replace(/\bteh\b/g, "the");
  *     },
  *   };

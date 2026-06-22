@@ -40,41 +40,39 @@ export interface Hooks {
    * (after built-in sanitization, before LLM cleanup). Edit `output.text` to
    * rewrite the raw transcript.
    */
-  "transcribe.after"?: Handler<TranscribeAfterInput, { text: string }>;
+  afterTranscribe?: Handler<AfterTranscribeInput, { text: string }>;
 
   /**
-   * [server] Fires while the LLM cleanup prompt is being assembled. Push
-   * additional system-prompt fragments or override the inferred writing
-   * register (formal/casual/neutral) for contextual correction.
+   * [server] Fires while the LLM cleanup prompt is being assembled, only when
+   * cleanup is enabled. Push additional system-prompt fragments or override the
+   * inferred writing register (formal/casual/neutral) for contextual
+   * correction.
    */
-  "cleanup.prompt"?: Handler<
-    CleanupPromptInput,
+  beforeCleanup?: Handler<
+    BeforeCleanupInput,
     { system: string[]; register?: Register }
   >;
 
   /**
-   * [server] The flagship text-rewrite seam. Fires on the final cleaned text,
-   * in the same stage as built-in dictionary replacement. Plugins form a
-   * chain: each receives the previous plugin's `output.text`. Edit
-   * `output.text` to transform the final dictation.
+   * [server] The flagship text-rewrite seam. Always fires on the final text,
+   * in the same stage as built-in dictionary replacement (whether or not
+   * cleanup ran). Plugins form a chain: each receives the previous plugin's
+   * `output.text`. Edit `output.text` to transform the final dictation.
    */
-  "text.transform"?: Handler<TextTransformInput, { text: string }>;
+  afterCleanup?: Handler<AfterCleanupInput, { text: string }>;
 
   /**
    * [app] Fires in the Electron main process just before final text is
    * delivered to the focused application. Edit `output.text`, or switch
    * `output.mode` between pasting, copying, and suppressing delivery.
    */
-  "output.before"?: Handler<
-    OutputBeforeInput,
-    { text: string; mode: OutputMode }
-  >;
+  beforeOutput?: Handler<BeforeOutputInput, { text: string; mode: OutputMode }>;
 }
 
 /** Writing register used to steer contextual correction. */
 export type Register = "formal" | "casual" | "neutral";
 
-export interface TranscribeAfterInput {
+export interface AfterTranscribeInput {
   /** The provider id that produced this transcript (e.g. "openai"). */
   providerId: string;
   /** The model id used for transcription. */
@@ -83,7 +81,7 @@ export interface TranscribeAfterInput {
   appContext?: AppContext;
 }
 
-export interface CleanupPromptInput {
+export interface BeforeCleanupInput {
   /** The raw transcript about to be cleaned. */
   text: string;
   /** Application the user was dictating into, if known. */
@@ -92,12 +90,12 @@ export interface CleanupPromptInput {
   inferredRegister: Register;
 }
 
-export interface TextTransformInput {
+export interface AfterCleanupInput {
   /** Application the user was dictating into, if known. */
   appContext?: AppContext;
 }
 
-export interface OutputBeforeInput {
+export interface BeforeOutputInput {
   /** Application receiving the text, if known. */
   appContext?: AppContext;
 }

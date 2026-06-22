@@ -1,4 +1,4 @@
-import type { Handler, TextTransformInput } from "./hooks.js";
+import type { AfterCleanupInput, Handler } from "./hooks.js";
 
 /**
  * A pure-ish text transformer: given the current text (and context), return the
@@ -6,13 +6,13 @@ import type { Handler, TextTransformInput } from "./hooks.js";
  */
 export type TextTransformer = (
   text: string,
-  input: TextTransformInput,
+  input: AfterCleanupInput,
 ) => string | Promise<string>;
 
 /**
  * Ergonomic helper for the most common plugin: a single text rewrite. Wraps a
- * pure `(text) => text` function into the `text.transform` hook shape so
- * authors don't deal with the `(input, output)` mutation convention.
+ * pure `(text) => text` function into the `afterCleanup` hook shape so authors
+ * don't deal with the `(input, output)` mutation convention.
  *
  * @example
  * ```ts
@@ -21,14 +21,14 @@ export type TextTransformer = (
  * export default function trim(): Plugin {
  *   return {
  *     name: "freestyle-plugin-trim",
- *     "text.transform": transform((text) => text.replace(/\s+$/, "")),
+ *     afterCleanup: transform((text) => text.replace(/\s+$/, "")),
  *   };
  * }
  * ```
  */
 export function transform(
   fn: TextTransformer,
-): Handler<TextTransformInput, { text: string }> {
+): Handler<AfterCleanupInput, { text: string }> {
   return async (input, output) => {
     output.text = await fn(output.text, input);
   };

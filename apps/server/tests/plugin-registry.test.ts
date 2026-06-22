@@ -3,22 +3,22 @@ import { describe, expect, it, vi } from "vitest";
 import { PluginRegistry } from "../src/lib/plugins/registry.js";
 
 describe("PluginRegistry", () => {
-  it("runs text.transform across plugins in order, chaining output", async () => {
+  it("runs afterCleanup across plugins in order, chaining output", async () => {
     const a: Plugin = {
       name: "a",
-      "text.transform": (_i, o) => {
+      afterCleanup: (_i, o) => {
         o.text = `${o.text}-a`;
       },
     };
     const b: Plugin = {
       name: "b",
-      "text.transform": (_i, o) => {
+      afterCleanup: (_i, o) => {
         o.text = `${o.text}-b`;
       },
     };
     const registry = new PluginRegistry([a, b]);
 
-    const result = await registry.run("text.transform", {}, { text: "start" });
+    const result = await registry.run("afterCleanup", {}, { text: "start" });
 
     expect(result.text).toBe("start-a-b");
   });
@@ -26,19 +26,39 @@ describe("PluginRegistry", () => {
   it("isolates a throwing plugin so the chain continues", async () => {
     const bad: Plugin = {
       name: "bad",
-      "text.transform": () => {
+      afterCleanup: () => {
         throw new Error("boom");
       },
     };
     const good: Plugin = {
       name: "good",
-      "text.transform": (_i, o) => {
+      afterCleanup: (_i, o) => {
         o.text = o.text.toUpperCase();
       },
     };
     const registry = new PluginRegistry([bad, good]);
 
-    const result = await registry.run("text.transform", {}, { text: "ok" });
+    const result = await registry.run("afterCleanup", {}, { text: "ok" });
+
+    expect(result.text).toBe("OK");
+  });
+
+  it("isolates a throwing plugin so the chain continues", async () => {
+    const bad: Plugin = {
+      name: "bad",
+      afterCleanup: () => {
+        throw new Error("boom");
+      },
+    };
+    const good: Plugin = {
+      name: "good",
+      afterCleanup: (_i, o) => {
+        o.text = o.text.toUpperCase();
+      },
+    };
+    const registry = new PluginRegistry([bad, good]);
+
+    const result = await registry.run("afterCleanup", {}, { text: "ok" });
 
     expect(result.text).toBe("OK");
   });
@@ -76,11 +96,11 @@ describe("PluginRegistry", () => {
     const registry = new PluginRegistry([a, b]);
 
     await registry.emit({
-      type: "server.transcribed",
+      type: "transcribed",
       text: "hi",
     });
 
-    expect(seen).toEqual(["a:server.transcribed", "b:server.transcribed"]);
+    expect(seen).toEqual(["a:transcribed", "b:transcribed"]);
   });
 
   it("runs dispose for each plugin", async () => {

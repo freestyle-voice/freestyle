@@ -18,18 +18,18 @@ export default function examplePlugin(): Plugin {
 
     // Observe pipeline events (read-only).
     event: ({ event }) => {
-      if (event.type === "server.transcribed") {
+      if (event.type === "transcribed") {
         // analytics, notification, etc.
       }
     },
 
     // Rewrite the final cleaned text. `transform` wraps a pure function.
-    "text.transform": transform((text) =>
+    afterCleanup: transform((text) =>
       text.replace(/\bteh\b/g, "the").replace(/\s+$/, ""),
     ),
 
     // Adjust delivery in the Electron main process; self-filter on appContext.
-    "output.before": (input, output) => {
+    beforeOutput: (input, output) => {
       output.text = output.text.trimEnd();
       if (/terminal|iterm|wezterm/i.test(input.appContext?.appName ?? "")) {
         output.mode = OutputMode.Copy;

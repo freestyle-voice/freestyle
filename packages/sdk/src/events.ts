@@ -5,20 +5,18 @@ import type { OutputMode } from "./output.js";
  * pipeline. Plugins observe these through the read-only `event` hook; they
  * cannot influence behavior here — use the mutating hooks for that.
  *
- * Events originate from two processes:
- * - `server.*` events fire inside the Freestyle server (transcription,
- *   cleanup).
- * - `app.*` events fire inside the Electron main process (recording
- *   lifecycle, output/paste).
+ * The originating process is inferred from `PluginContext.host`:
+ * `recording*` and `output*` events fire in the Electron main process;
+ * `transcribed`/`cleaned` fire in the server.
  */
 export type FreestyleEvent =
-  | { type: "app.recording.started"; appContext?: AppContext }
-  | { type: "app.recording.committed" }
-  | { type: "app.recording.cancelled" }
-  | { type: "server.transcribed"; text: string; durationInSeconds?: number }
-  | { type: "server.cleaned"; before: string; after: string }
-  | { type: "app.output.delivered"; text: string; mode: OutputMode }
-  | { type: "pipeline.error"; stage: PipelineStage; message: string };
+  | { type: "recordingStarted"; appContext?: AppContext }
+  | { type: "recordingCommitted" }
+  | { type: "recordingCancelled" }
+  | { type: "transcribed"; text: string; durationInSeconds?: number }
+  | { type: "cleaned"; before: string; after: string }
+  | { type: "outputDelivered"; text: string; mode: OutputMode }
+  | { type: "pipelineError"; stage: PipelineStage; message: string };
 
 export type PipelineStage =
   | "capture"

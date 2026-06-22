@@ -112,7 +112,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     // Plugin hook: rewrite the raw transcript before cleanup.
     rawText = (
       await plugins().run(
-        "transcribe.after",
+        "afterTranscribe",
         {
           providerId: defaults.voice.provider,
           modelId: defaults.voice.model_id,
@@ -123,7 +123,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     ).text;
 
     void plugins().emit({
-      type: "server.transcribed",
+      type: "transcribed",
       text: rawText,
       ...(result.durationInSeconds !== undefined
         ? { durationInSeconds: result.durationInSeconds }

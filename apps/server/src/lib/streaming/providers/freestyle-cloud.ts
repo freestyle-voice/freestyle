@@ -23,8 +23,7 @@ export class CloudAuthError extends Error {
  * Hosted Freestyle Cloud STT endpoint. Override with FREESTYLE_CLOUD_URL for
  * local development (e.g. http://localhost:8787 against `wrangler dev`).
  */
-// TODO: replace with the real deployed Worker URL before shipping.
-const DEFAULT_BASE_URL = "https://freestyle-server.freestyle.workers.dev";
+const DEFAULT_BASE_URL = "https://freestyle-server.matt8p.workers.dev";
 const TRANSCRIBE_PATH = "/v1/transcribe";
 
 interface CloudTranscribeResponse {

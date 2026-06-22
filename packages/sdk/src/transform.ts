@@ -1,4 +1,4 @@
-import type { TextTransformInput } from "./hooks.js";
+import type { Handler, TextTransformInput } from "./hooks.js";
 
 /**
  * A pure-ish text transformer: given the current text (and context), return the
@@ -18,18 +18,18 @@ export type TextTransformer = (
  * ```ts
  * import { transform, type Plugin } from "@freestyle/sdk";
  *
- * const trimTrailing = transform((text) => text.replace(/\s+$/, ""));
- *
- * export const TrimPlugin: Plugin = async () => ({
- *   "text.transform": trimTrailing,
- * });
+ * export default function trim(): Plugin {
+ *   return {
+ *     name: "freestyle-plugin-trim",
+ *     "text.transform": transform((text) => text.replace(/\s+$/, "")),
+ *   };
+ * }
  * ```
  */
-export function transform(fn: TextTransformer) {
-  return async (
-    input: TextTransformInput,
-    output: { text: string },
-  ): Promise<void> => {
+export function transform(
+  fn: TextTransformer,
+): Handler<TextTransformInput, { text: string }> {
+  return async (input, output) => {
     output.text = await fn(output.text, input);
   };
 }

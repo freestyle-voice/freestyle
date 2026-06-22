@@ -1,24 +1,27 @@
-export type {
-  PluginContext,
-  PluginLogger,
-  SettingsReader,
-} from "./context.js";
-export type {
-  AppContext,
-  FreestyleEvent,
-  OutputMode,
-  PipelineStage,
-} from "./events.js";
-export { ExamplePlugin } from "./example.js";
+export type { PluginConfig } from "./config.js";
+export type { PluginContext, PluginLogger, SettingsReader } from "./context.js";
+export type { AppContext, FreestyleEvent, PipelineStage } from "./events.js";
+export { default as examplePlugin } from "./example.js";
 export type {
   CleanupPromptInput,
+  Handler,
   HookName,
   Hooks,
   OutputBeforeInput,
-  PluginConfig,
   Register,
   TextTransformInput,
   TranscribeAfterInput,
 } from "./hooks.js";
-export type { Plugin, PluginModule, PluginOptions } from "./plugin.js";
+export { sortPlugins } from "./order.js";
+export { OutputMode } from "./output.js";
+export type {
+  Apply,
+  Enforce,
+  Host,
+  Plugin,
+  PluginFactory,
+  PluginModule,
+  PluginOptions,
+  PluginPreset,
+} from "./plugin.js";
 export { type TextTransformer, transform } from "./transform.js";

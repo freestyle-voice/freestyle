@@ -1,42 +1,80 @@
 import type { PluginContext } from "./context.js";
 import type { Hooks } from "./hooks.js";
 
+/** Adjusts a plugin's position in hook chains, like Vite's `enforce`. */
+export type Enforce = "pre" | "post";
+
+/** Which host process a plugin applies to. */
+export type Host = "server" | "app";
+
 /**
- * Free-form options a plugin can be configured with, supplied either as the
- * second element of a `[name, options]` tuple in the `plugins` setting or via
- * the plugin's own namespaced settings.
+ * Gates whether a plugin is loaded. A bare host string, or a predicate
+ * evaluated against the load context.
+ */
+export type Apply = Host | ((ctx: { host: Host }) => boolean);
+
+/**
+ * Free-form options a plugin can be configured with, supplied as the second
+ * element of a `[name, options]` tuple in the `plugins` setting.
  */
 export type PluginOptions = Record<string, unknown>;
 
 /**
- * A Freestyle plugin: an async factory that receives its execution context and
- * returns the hooks it implements. The factory runs once per process at load
- * time; the returned hooks run many times across the dictation pipeline.
+ * A Freestyle plugin: a named object carrying optional metadata and the hooks
+ * it implements (Vite-style). Hooks live flat on the object.
  *
  * @example
  * ```ts
  * import type { Plugin } from "@freestyle/sdk";
  *
- * export const MyPlugin: Plugin = async ({ logger }) => {
- *   logger.info("ready");
+ * export default function myPlugin(): Plugin {
  *   return {
- *     "text.transform": async (_input, output) => {
+ *     name: "freestyle-plugin-my",
+ *     enforce: "pre",
+ *     apply: "server",
+ *     setup({ logger }) {
+ *       logger.info("ready");
+ *     },
+ *     "text.transform": (_input, output) => {
  *       output.text = output.text.replace(/\bteh\b/g, "the");
  *     },
  *   };
- * };
+ * }
  * ```
  */
-export type Plugin = (
-  context: PluginContext,
-  options?: PluginOptions,
-) => Promise<Hooks> | Hooks;
+export interface Plugin extends Hooks {
+  /** Required, stable identifier. Shown in logs, telemetry, and settings UI. */
+  name: string;
+  /** Position in hook chains: `"pre"` first, `"post"` last, unset in between. */
+  enforce?: Enforce;
+  /** Restrict which host process loads this plugin. Defaults to both. */
+  apply?: Apply;
+  /**
+   * Lifecycle hook run once, before any other hook, with the execution
+   * context. Capture what you need (logger, settings) in a closure.
+   */
+  setup?: (ctx: PluginContext) => void | Promise<void>;
+  /** Lifecycle hook run once on teardown (process shutdown). */
+  dispose?: () => void | Promise<void>;
+}
+
+/**
+ * A plugin entry may be a single plugin, a preset (array of plugins, flattened
+ * by the loader), or a falsy value (ignored — handy for conditional enabling).
+ */
+export type PluginPreset = Plugin | Plugin[] | false | null | undefined;
+
+/**
+ * The user-facing factory: a function returning a plugin or preset, optionally
+ * configured with options. This is what a plugin module exports.
+ */
+export type PluginFactory = (options?: PluginOptions) => PluginPreset;
 
 /**
  * The shape of a plugin module. A module's default export, or any named export
- * that is a function, is treated as a {@link Plugin}.
+ * that is a function, is treated as a {@link PluginFactory}.
  */
 export interface PluginModule {
-  default?: Plugin;
-  [name: string]: Plugin | undefined;
+  default?: PluginFactory;
+  [name: string]: PluginFactory | undefined;
 }

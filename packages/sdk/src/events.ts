@@ -1,3 +1,5 @@
+import type { OutputMode } from "./output.js";
+
 /**
  * Discriminated union of events emitted across the Freestyle dictation
  * pipeline. Plugins observe these through the read-only `event` hook; they
@@ -5,7 +7,7 @@
  *
  * Events originate from two processes:
  * - `server.*` events fire inside the Freestyle server (transcription,
- *   cleanup, history).
+ *   cleanup).
  * - `app.*` events fire inside the Electron main process (recording
  *   lifecycle, output/paste).
  */
@@ -25,12 +27,9 @@ export type PipelineStage =
   | "transform"
   | "output";
 
-/** How final text is delivered to the user's focused application. */
-export type OutputMode = "paste" | "copy";
-
 /**
  * Best-effort description of the application the user was dictating into,
- * captured per-recording. Used by contextual-correction hooks. Every field is
+ * captured per-recording. Used for app-aware logic in hooks. Every field is
  * optional because OS introspection can fail or be unavailable.
  */
 export interface AppContext {

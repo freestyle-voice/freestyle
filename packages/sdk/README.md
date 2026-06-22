@@ -3,11 +3,15 @@
 The plugin SDK for [Freestyle](../../README.md) — the local-first voice
 dictation app. This package is the **public contract** for writing plugins that
 extend the dictation pipeline: rewrite transcripts, inject cleanup prompts,
-transform final text, and adjust how text is delivered.
+transform final text, and control how text is delivered.
 
 It ships **types and small helpers only** — no runtime dependencies. The plugin
-loaders that discover, run, and sandbox plugins live in the apps that host them
-(`apps/server` for pipeline hooks, `apps/electron` for output hooks).
+loaders that discover, order, run, and sandbox plugins live in the apps that
+host them (`apps/server` for pipeline hooks, `apps/electron` for output hooks).
+
+The design is inspired by [Vite's plugin API](https://vite.dev/guide/api-plugin):
+a plugin is a **named object** with optional `enforce`/`apply` metadata and the
+hooks it implements.
 
 ## Installing
 
@@ -25,23 +29,30 @@ import type { Plugin } from "@freestyle/sdk";
 
 ## Writing a plugin
 
-A plugin is an async factory that receives a context and returns the hooks it
-implements. The factory runs **once** per process at load time; the hooks it
-returns run **many times** across the dictation pipeline.
+A plugin module exports a **factory** — a function returning a named plugin
+object (or an array of them). The factory runs once at load; its hooks run many
+times across the dictation pipeline. Use the `setup` lifecycle hook to capture
+context (logger, settings) in a closure.
 
 ```ts
 import type { Plugin } from "@freestyle/sdk";
 
-export const MyPlugin: Plugin = async ({ logger }) => {
-  logger.info("ready");
-
+export default function myPlugin(): Plugin {
   return {
+    name: "freestyle-plugin-my",
+    enforce: "pre", // optional — chain position
+    apply: "server", // optional — host gating
+
+    setup({ logger }) {
+      logger.info("ready");
+    },
+
     // Rewrite the final, cleaned dictation.
-    "text.transform": async (_input, output) => {
+    "text.transform": (_input, output) => {
       output.text = output.text.replace(/\bteh\b/g, "the");
     },
   };
-};
+}
 ```
 
 For the common single-rewrite case, use the `transform` helper to skip the
@@ -50,37 +61,76 @@ For the common single-rewrite case, use the `transform` helper to skip the
 ```ts
 import { transform, type Plugin } from "@freestyle/sdk";
 
-export const TrimPlugin: Plugin = async () => ({
-  "text.transform": transform((text) => text.trimEnd()),
-});
+export default function trim(): Plugin {
+  return {
+    name: "freestyle-plugin-trim",
+    "text.transform": transform((text) => text.trimEnd()),
+  };
+}
 ```
 
-A copy-pasteable reference is exported as `ExamplePlugin` (see
+A copy-pasteable reference is exported as `examplePlugin` (see
 [`src/example.ts`](./src/example.ts)).
+
+## Plugin object
+
+| Field | Required | Purpose |
+| --- | --- | --- |
+| `name` | yes | Stable identifier — shown in logs, telemetry, and settings UI |
+| `enforce` | no | `"pre"` runs first, `"post"` runs last, unset runs in between |
+| `apply` | no | `"server"` \| `"app"` \| `(ctx) => boolean` — which host loads the plugin |
+| `setup` | no | Lifecycle: run once with `PluginContext` before any hook |
+| `dispose` | no | Lifecycle: run once on teardown |
+| _hooks_ | no | Any of the hooks below, flat on the object |
+
+### Presets and conditional plugins
+
+A factory may return an **array** (a preset, flattened by the loader) and entries
+may be **falsy** (ignored — handy for toggles):
+
+```ts
+export default function pack(opts?: { extras?: boolean }): Plugin[] {
+  return [base(), opts?.extras !== false && extras()].filter(Boolean) as Plugin[];
+}
+```
+
+In settings, a plugin entry can carry options: `["@acme/pack", { "extras": true }]`.
 
 ## How hooks run
 
-- Every hook is **optional** and **async**.
-- For a given hook, all implementing plugins run **in load order**, each awaited
-  in sequence (npm packages first, then local files).
+- Every hook is **optional** and may be **async**.
+- Plugins are ordered by `enforce` (`"pre"` → unset → `"post"`), then by load
+  order within each band (npm packages first, then local files). The sort is
+  stable.
+- For a given hook, all implementing plugins run **in that resolved order**, each
+  awaited in sequence.
 - Mutating hooks receive a read-only `input` (what's happening) and a mutable
-  `output` you **edit in place** to influence behavior. Return values are
-  ignored.
-- A misbehaving hook is caught and logged by the host; it won't crash a
-  dictation.
+  `output` you **edit in place**. Return values are ignored, except `config`.
+- A misbehaving hook is caught and logged by the host (by `name`); it won't crash
+  a dictation.
+
+App-specific behavior is done by self-filtering on `input.appContext` inside the
+handler:
+
+```ts
+"text.transform": (input, output) => {
+  if (/slack/i.test(input.appContext?.appName ?? "")) {
+    output.text = output.text.replace(/[.,!?]+$/, "");
+  }
+},
+```
 
 ## Hooks
 
-Hooks are split by the process that runs them. A single plugin module may
-implement hooks from both groups — each loader only invokes the hooks belonging
-to its process.
+Hooks are split by the process that runs them. A single plugin may implement
+hooks from both groups — each loader only invokes the hooks belonging to its
+process (further narrowed by `apply`).
 
 ### Server hooks (dictation backend)
 
 | Hook | When it fires | You mutate |
 | --- | --- | --- |
-| `config` | Server boot, after settings load | resolved config |
-| `event` | Any server pipeline event | — (read-only) |
+| `config` | Server boot, after settings load | _return_ a partial config (deep-merged) |
 | `transcribe.after` | Right after speech-to-text, before cleanup | `text` (raw transcript) |
 | `cleanup.prompt` | While the LLM cleanup prompt is assembled | `system[]`, `register` |
 | `text.transform` | On the final cleaned text (dictionary stage) | `text` (chained) |
@@ -89,26 +139,54 @@ to its process.
 
 | Hook | When it fires | You mutate |
 | --- | --- | --- |
-| `event` | Any app-side event | — (read-only) |
-| `output.before` | Just before text is pasted/copied | `text`, `mode` |
+| `output.before` | Just before text is delivered | `text`, `mode` |
 
-### Lifecycle
+### Both
 
-| Hook | When it fires |
-| --- | --- |
-| `dispose` | Plugin teardown (process shutdown) |
+| Hook | When it fires | Notes |
+| --- | --- | --- |
+| `event` | Any pipeline event | Read-only observer |
+| `setup` | Once, before any hook | Receives `PluginContext` |
+| `dispose` | Once, on teardown | — |
+
+## Output modes
+
+`output.before`'s `mode` controls delivery. `OutputMode` is a const object (use
+the constant or the literal string):
+
+| Value | Constant | Behavior |
+| --- | --- | --- |
+| `"paste"` | `OutputMode.Paste` | Write to clipboard and synthesize Cmd/Ctrl+V into the focused app |
+| `"copy"` | `OutputMode.Copy` | Write to clipboard only; user pastes manually |
+| `"none"` | `OutputMode.None` | Suppress delivery — nothing is pasted or copied |
+
+```ts
+import { OutputMode } from "@freestyle/sdk";
+
+"output.before": (input, output) => {
+  if (/terminal/i.test(input.appContext?.appName ?? "")) {
+    output.mode = OutputMode.Copy; // don't auto-paste into a terminal
+  }
+},
+```
+
+Setting `mode` to `"none"` hints the app it has nothing to deliver — useful for
+voice-command plugins that consume the utterance instead of typing it.
 
 ## Events
 
 The read-only `event` hook receives a discriminated `FreestyleEvent`:
 
 ```ts
-event: async ({ event }) => {
+event: ({ event }) => {
   switch (event.type) {
-    case "server.transcribed": /* event.text, event.durationInSeconds */ break;
-    case "server.cleaned":     /* event.before, event.after */ break;
-    case "app.output.delivered": /* event.text, event.mode */ break;
-    case "pipeline.error":     /* event.stage, event.message */ break;
+    case "app.recording.started":   /* event.appContext */ break;
+    case "app.recording.committed": break;
+    case "app.recording.cancelled": break;
+    case "server.transcribed":      /* event.text, event.durationInSeconds */ break;
+    case "server.cleaned":          /* event.before, event.after */ break;
+    case "app.output.delivered":    /* event.text, event.mode ("none" = suppressed) */ break;
+    case "pipeline.error":          /* event.stage, event.message */ break;
   }
 };
 ```
@@ -119,17 +197,21 @@ See [`src/events.ts`](./src/events.ts) for the full union.
 
 | Export | Kind | Purpose |
 | --- | --- | --- |
-| `Plugin` | type | The plugin factory signature |
-| `Hooks` | type | The full hook surface |
-| `PluginContext` | type | What every plugin factory receives |
+| `Plugin` | type | The named plugin object |
+| `PluginFactory` | type | The exported factory signature |
+| `PluginPreset` | type | `Plugin \| Plugin[] \| false \| null \| undefined` |
 | `PluginOptions` | type | Free-form plugin configuration |
 | `PluginModule` | type | Shape of a loadable plugin module |
+| `Hooks` | type | The full hook surface |
+| `PluginContext` | type | What `setup` receives |
+| `Enforce` / `Apply` / `Host` | type | Ordering and host-gating metadata |
 | `FreestyleEvent` | type | Discriminated event union |
 | `AppContext` | type | The app the user dictated into |
-| `OutputMode` | type | `"paste"` \| `"copy"` |
+| `OutputMode` | value+type | Delivery modes (`Paste`/`Copy`/`None`) |
 | `Register` | type | `"formal"` \| `"casual"` \| `"neutral"` |
 | `transform` | fn | Wrap a pure `(text) => text` into `text.transform` |
-| `ExamplePlugin` | value | Copy-pasteable reference plugin |
+| `sortPlugins` | fn | Order plugins by `enforce` (used by loaders) |
+| `examplePlugin` | factory | Copy-pasteable reference plugin |
 
 ## Stability
 

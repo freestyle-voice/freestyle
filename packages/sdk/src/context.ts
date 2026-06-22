@@ -1,6 +1,7 @@
 /**
- * A minimal structured logger handed to every plugin. Mirrors the shape of the
- * app's Winston logger so plugin authors don't need to reach for `console`.
+ * A minimal structured logger handed to every plugin via `setup`. Mirrors the
+ * shape of the app's Winston logger so plugin authors don't reach for
+ * `console`.
  */
 export interface PluginLogger {
   debug(message: string, extra?: Record<string, unknown>): void;
@@ -11,7 +12,7 @@ export interface PluginLogger {
 
 /**
  * Read-only access to the user's stored settings. Plugins receive a scoped,
- * namespaced view keyed by the plugin id, plus the ability to read global
+ * namespaced view keyed by the plugin name, plus the ability to read global
  * settings values. Writes are intentionally not exposed in V1.
  */
 export interface SettingsReader {
@@ -22,13 +23,14 @@ export interface SettingsReader {
 }
 
 /**
- * The execution context every plugin factory receives. It is the same shape in
- * both the server and the Electron main process; process-specific hooks simply
- * go unused in the process that doesn't run them.
+ * The execution context delivered to a plugin's `setup` lifecycle hook, once,
+ * before any other hook runs. Plugins capture what they need in a closure. It
+ * is the same shape in both the server and the Electron main process; the
+ * `host` field distinguishes them.
  */
 export interface PluginContext {
-  /** Stable identifier derived from the plugin's package/file name. */
-  id: string;
+  /** The plugin's declared `name`. */
+  name: string;
   /** Which process is loading this plugin. */
   host: "server" | "app";
   /** Absolute path to the user data directory (db, settings, plugins live here). */

@@ -1,5 +1,5 @@
 {
-  "name": "@freestyle/validations",
+  "name": "@freestyle/sdk",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -22,10 +22,8 @@
       "default": "./dist/index.cjs"
     }
   },
-  "peerDependencies": {
-    "zod": "^4.4.3"
-  },
   "devDependencies": {
+    "@types/node": "^22.19.1",
     "pkgroll": "^2.27.0",
     "typescript": "^5.8.3"
   }

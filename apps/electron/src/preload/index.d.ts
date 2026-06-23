@@ -11,8 +11,8 @@ declare global {
       platform: string;
       isE2E: boolean;
       defaultHotkey: string;
-      pasteText: (text: string) => Promise<void>;
-      copyText: (text: string) => Promise<void>;
+      pasteText: (text: string, appContext?: string | null) => Promise<void>;
+      copyText: (text: string, appContext?: string | null) => Promise<void>;
       prepareSystemAudio: (mode: ActiveAudioPlaybackMode) => Promise<void>;
       duckSystemAudio: () => Promise<void>;
       restoreSystemAudio: () => Promise<void>;
@@ -110,6 +110,8 @@ declare global {
       onAudioLevel: (callback: (level: number) => void) => () => void;
       // Transcription completion broadcast
       sendTranscriptionDone: () => void;
+      sendRecordingCommitted: () => void;
+      sendRecordingCancelled: () => void;
       onTranscriptionDone: (callback: () => void) => () => void;
       // Fullscreen state
       onFullscreenChanged: (

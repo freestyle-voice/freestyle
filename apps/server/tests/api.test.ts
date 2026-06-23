@@ -112,6 +112,31 @@ describe("Settings", () => {
     const res = await json("/api/settings/bad", {}, "PUT");
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
+
+  it("PUT accepts a valid plugins setting", async () => {
+    const value = JSON.stringify(["freestyle-plugin-example"]);
+
+    const res = await json("/api/settings/plugins", { value }, "PUT");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ key: "plugins", value });
+  });
+
+  it("PUT rejects malformed plugins settings", async () => {
+    const invalidJson = await json(
+      "/api/settings/plugins",
+      { value: "not json" },
+      "PUT",
+    );
+    expect(invalidJson.status).toBe(400);
+
+    const invalidShape = await json(
+      "/api/settings/plugins",
+      { value: JSON.stringify([["plugin", "not-options"]]) },
+      "PUT",
+    );
+    expect(invalidShape.status).toBe(400);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -5,6 +5,11 @@ import { getDb } from "../lib/db.js";
 import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
 import { FreestyleCloudAuthError } from "../lib/freestyle-cloud.js";
 import { getLanguageSetting } from "../lib/language.js";
+import {
+  FreestyleEventType,
+  parseAppContext,
+  plugins,
+} from "../lib/plugins/index.js";
 import { postProcess, prewarmPostProcess } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
@@ -246,7 +251,7 @@ const stream = new Hono().get(
             }
             ws.send(JSON.stringify({ type: "partial", text }));
           },
-          onFinal: (rawText) => {
+          onFinal: async (rawText) => {
             if (upstream !== session) return;
             rawText = sanitizeTranscriptText(rawText);
             const durationMs = Date.now() - sessionStartTime;
@@ -254,10 +259,30 @@ const stream = new Hono().get(
               closeUpstreamSession(session);
             }
 
+            // Plugin hook: rewrite the raw transcript before cleanup, matching
+            // the batch /transcribe route so streaming dictations get the same
+            // afterTranscribe + transcribed surfaces.
+            rawText = (
+              await plugins().run(
+                "afterTranscribe",
+                {
+                  providerId: voiceDefaults!.provider,
+                  modelId: voiceDefaults!.model_id,
+                  appContext: parseAppContext(appContext),
+                },
+                { text: rawText },
+              )
+            ).text;
+
             if (!rawText?.trim()) {
               ws.send(JSON.stringify({ type: "final", text: "" }));
               return;
             }
+
+            void plugins().emit({
+              type: FreestyleEventType.Transcribed,
+              text: rawText,
+            });
 
             const useFastHandoff =
               canStream && voiceDefaults!.provider === "soniox";

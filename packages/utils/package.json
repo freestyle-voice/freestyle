@@ -3,15 +3,30 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "pkgroll --minify"
+  },
   "exports": {
-    ".": {
-      "development": "./src/index.ts",
-      "import": "./src/index.ts",
-      "default": "./src/index.ts"
+    "import": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "require": {
+      "types": "./dist/index.d.cts",
+      "default": "./dist/index.cjs"
     }
   },
-  "main": "./src/index.ts",
   "peerDependencies": {
     "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "pkgroll": "^2.27.0",
+    "typescript": "^5.8.3"
   }
 }

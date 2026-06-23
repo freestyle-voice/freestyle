@@ -11,7 +11,7 @@
  *   - FREESTYLE_AUTH_TOKEN — if set, require this bearer token on requests.
  */
 
-import { closeDb, startServer } from "./index.js";
+import { closeDb, disposeServerPlugins, startServer } from "./index.js";
 
 const port = process.env.PORT ? Number(process.env.PORT) : 4649;
 const host = process.env.HOST ?? "0.0.0.0";
@@ -43,6 +43,7 @@ console.log(`Freestyle server running on http://${host}:${boundPort}`);
 
 function shutdown(signal: string): void {
   console.log(`Received ${signal}, shutting down...`);
+  void disposeServerPlugins().catch(() => {});
   server.close(() => {
     try {
       closeDb();

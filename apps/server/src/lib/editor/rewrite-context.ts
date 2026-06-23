@@ -1,12 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
+import { parseAppContextPayload } from "./app-context.js";
 import type { RewriteRegisterMode } from "./prompts.js";
-
-interface AppContextPayload {
-  app?: string;
-  url?: string;
-  title?: string;
-  windowTitle?: string;
-}
 
 interface FormatRuleRow {
   app_pattern: string;
@@ -60,17 +54,16 @@ const CASUAL_FALLBACK_PATTERNS = [
 export function buildMatchContext(rawContext: string | null): string {
   if (!rawContext) return "";
 
-  try {
-    const ctx = JSON.parse(rawContext) as AppContextPayload;
-    const parts: string[] = [];
-    if (ctx.url) parts.push(ctx.url);
-    if (ctx.title) parts.push(ctx.title);
-    if (ctx.windowTitle) parts.push(ctx.windowTitle);
-    if (ctx.app) parts.push(ctx.app);
-    return parts.join(" ");
-  } catch {
-    return rawContext;
-  }
+  const ctx = parseAppContextPayload(rawContext);
+  // Fall back to the raw string when the payload isn't valid JSON.
+  if (!ctx) return rawContext;
+
+  const parts: string[] = [];
+  if (ctx.url) parts.push(ctx.url);
+  if (ctx.title) parts.push(ctx.title);
+  if (ctx.windowTitle) parts.push(ctx.windowTitle);
+  if (ctx.app) parts.push(ctx.app);
+  return parts.join(" ");
 }
 
 function inferRegisterModeFromLabel(

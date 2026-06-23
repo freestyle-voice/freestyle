@@ -288,9 +288,9 @@ export default function AppPage(): React.JSX.Element {
 
       try {
         if (_outputMode === "clipboard") {
-          await window.api.copyText(finalText);
+          await window.api.copyText(finalText, appContextRef.current);
         } else {
-          await window.api.pasteText(finalText);
+          await window.api.pasteText(finalText, appContextRef.current);
         }
       } catch (err) {
         console.error("[pill] paste/copy failed:", err);
@@ -741,10 +741,12 @@ export default function AppPage(): React.JSX.Element {
       recorderRef.current.releaseStream();
       window.api?.restoreSystemAudio().catch(() => {});
       streamerRef.current?.cancel();
+      window.api?.sendRecordingCancelled();
       resumeTranscribingOrHide();
       return;
     }
 
+    window.api?.sendRecordingCommitted();
     setPillState("transcribing");
     startBarAnimation("speaking");
 
@@ -901,6 +903,7 @@ export default function AppPage(): React.JSX.Element {
     recorderRef.current.cancel();
     recorderRef.current.releaseStream();
     window.api?.restoreSystemAudio().catch(() => {});
+    window.api?.sendRecordingCancelled();
     hidePill();
   }, [hidePill]);
 

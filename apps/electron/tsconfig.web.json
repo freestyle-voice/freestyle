@@ -14,6 +14,9 @@
     "baseUrl": ".",
     "paths": {
       "@renderer/*": ["src/renderer/src/*"],
+      "@freestyle/sdk": ["../../packages/sdk/src/index.ts"],
+      "@freestyle/server": ["../server/src/index.ts"],
+      "@freestyle/utils": ["../../packages/utils/src/index.ts"],
       "@freestyle/validations": ["../../packages/validations/src/index.ts"]
     }
   }

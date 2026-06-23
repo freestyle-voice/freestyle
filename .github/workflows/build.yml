@@ -49,7 +49,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build server (generates type declarations)
-        run: pnpm --filter @freestyle/server build
+        run: pnpm turbo build --filter=@freestyle/server
 
       - name: Typecheck electron (web)
         working-directory: apps/electron
@@ -96,7 +96,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev
 
       - name: Build server
-        run: pnpm --filter @freestyle/server build
+        run: pnpm turbo build --filter=@freestyle/server
 
       - name: Build electron app
         working-directory: apps/electron
@@ -126,7 +126,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build server
-        run: pnpm --filter @freestyle/server build
+        run: pnpm turbo build --filter=@freestyle/server
 
       - name: Install native build dependencies
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev binutils
@@ -174,7 +174,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build server
-        run: pnpm --filter @freestyle/server build
+        run: pnpm turbo build --filter=@freestyle/server
 
       - name: Build MLX ASR worker archive
         run: ./scripts/build_mlx_asr_worker.sh
@@ -225,7 +225,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build server
-        run: pnpm --filter @freestyle/server build
+        run: pnpm turbo build --filter=@freestyle/server
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1

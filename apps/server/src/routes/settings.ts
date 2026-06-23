@@ -2,6 +2,7 @@ import {
   cleanupCustomPromptSchema,
   cleanupIntensitySchema,
   localLlmConfigSchema,
+  pluginsSettingSchema,
   settingValueSchema,
 } from "@freestyle/validations";
 import { zValidator } from "@hono/zod-validator";
@@ -51,6 +52,17 @@ const settings = new Hono()
       const parsed = cleanupCustomPromptSchema.safeParse(body.value);
       if (!parsed.success) {
         return c.json({ error: "Custom prompt is too long" }, 400);
+      }
+    } else if (key === "plugins") {
+      let parsedJson: unknown;
+      try {
+        parsedJson = JSON.parse(body.value);
+      } catch {
+        return c.json({ error: "Invalid plugins setting" }, 400);
+      }
+      const parsed = pluginsSettingSchema.safeParse(parsedJson);
+      if (!parsed.success) {
+        return c.json({ error: "Invalid plugins setting" }, 400);
       }
     }
 

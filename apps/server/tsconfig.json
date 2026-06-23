@@ -12,8 +12,15 @@
     "declarationDir": "./dist",
     "emitDeclarationOnly": true,
     "paths": {
+      "@freestyle/sdk": ["../../packages/sdk/src/index.ts"],
+      "@freestyle/utils": ["../../packages/utils/src/index.ts"],
       "@freestyle/validations": ["../../packages/validations/src/index.ts"]
     }
   },
-  "include": ["src/**/*", "../../packages/validations/src/**/*"]
+  "include": [
+    "src/**/*",
+    "../../packages/sdk/src/**/*",
+    "../../packages/utils/src/**/*",
+    "../../packages/validations/src/**/*"
+  ]
 }

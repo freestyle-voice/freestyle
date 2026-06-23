@@ -49,6 +49,7 @@ import {
   autoStartWhisperServer,
   captureException,
   closeDb,
+  disposeServerPlugins,
   prefetchManagedMlxRuntimeForAppRelease,
   reconcileUnsupportedMlxVoiceDefault,
   shutdownPosthog,
@@ -93,6 +94,14 @@ import {
   startLinuxPasteHelper,
   stopLinuxPasteHelper,
 } from "./paste";
+import {
+  plugins as appPlugins,
+  FreestyleEventType,
+  initAppPlugins,
+  OutputMode,
+  PipelineStage,
+  parseAppContext,
+} from "./plugins/index";
 
 const log = createAppLogger("electron");
 const hotkeyLog = createAppLogger("hotkey");
@@ -215,6 +224,28 @@ function getServerUrl(): string {
 function getServerToken(): string {
   const raw = readSettings().serverToken;
   return typeof raw === "string" ? raw.trim() : "";
+}
+
+/**
+ * Base URL the app uses to reach the Freestyle server: the configured remote
+ * URL, or the locally-run server on the resolved port. The DB lives behind the
+ * server, so all server-owned data (settings, plugins) is read through it.
+ */
+function getServerBaseUrl(): string {
+  return getServerUrl() || `http://127.0.0.1:${serverPort}`;
+}
+
+/**
+ * Load the app-host plugin registry, reading the `plugins` list and plugin
+ * settings from the server over HTTP. Called once the server is reachable; the
+ * underlying init is idempotent, so repeated calls are harmless.
+ */
+function initPluginsForServer(): void {
+  void initAppPlugins({
+    baseUrl: getServerBaseUrl(),
+    token: getServerToken(),
+    directory: app.getPath("userData"),
+  });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -820,6 +851,63 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Deliver final dictation text to the user's focused app. Runs the
+ * `beforeOutput` plugin hook first, which may rewrite the text or switch the
+ * delivery `mode` between paste, copy, and `none` (suppress). Emits the
+ * `outputDelivered` event with whatever mode was ultimately used.
+ */
+async function deliverOutput(
+  text: string,
+  mode: typeof OutputMode.Paste | typeof OutputMode.Clipboard,
+  appContext: string | null,
+): Promise<void> {
+  const parsedContext = parseAppContext(appContext);
+  const out = await appPlugins().run(
+    "beforeOutput",
+    { ...(parsedContext ? { appContext: parsedContext } : {}) },
+    { text, mode },
+  );
+
+  // Nothing to deliver (empty text, or a plugin suppressed via None): report
+  // it as delivered with mode None so observers see a single, accurate event.
+  if (out.mode === OutputMode.None || !out.text?.trim()) {
+    void appPlugins().emit({
+      type: FreestyleEventType.OutputDelivered,
+      text: out.text,
+      mode: OutputMode.None,
+    });
+    return;
+  }
+
+  try {
+    if (out.mode === OutputMode.Paste) {
+      await pasteIntoFocusedApp(out.text, async () => {
+        hidePill();
+        await wait(0);
+      });
+    } else {
+      clipboard.writeText(out.text);
+    }
+  } catch (err) {
+    // pasteIntoFocusedApp left the transcript on the clipboard — tell the user
+    // instead of letting the dictation silently vanish.
+    notifyPasteFailed();
+    void appPlugins().emit({
+      type: FreestyleEventType.PipelineError,
+      stage: PipelineStage.Output,
+      message: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
+
+  void appPlugins().emit({
+    type: FreestyleEventType.OutputDelivered,
+    text: out.text,
+    mode: out.mode,
+  });
+}
+
 function resetOnboarding(): void {
   writeSettings({ onboardingComplete: false });
   showSettingsWindow("/onboarding");
@@ -1188,25 +1276,20 @@ app.whenReady().then(async () => {
   });
 
   // IPC: paste text at cursor
-  ipcMain.handle("paste:text", async (_event, text: string) => {
-    try {
-      await pasteIntoFocusedApp(text, async () => {
-        hidePill();
-        await wait(0);
-      });
-    } catch (err) {
-      // pasteIntoFocusedApp left the transcript on the clipboard — tell the
-      // user instead of letting the dictation silently vanish.
-      notifyPasteFailed();
-      throw err;
-    }
-  });
+  ipcMain.handle(
+    "paste:text",
+    async (_event, text: string, appContext?: string | null) => {
+      await deliverOutput(text, OutputMode.Paste, appContext ?? null);
+    },
+  );
 
   // IPC: copy text to clipboard
-  ipcMain.handle("copy:text", async (_event, text: string) => {
-    if (!text?.trim()) return;
-    clipboard.writeText(text);
-  });
+  ipcMain.handle(
+    "copy:text",
+    async (_event, text: string, appContext?: string | null) => {
+      await deliverOutput(text, OutputMode.Clipboard, appContext ?? null);
+    },
+  );
 
   ipcMain.handle("audio:prepare", async (_event, mode: unknown) => {
     if (!isActiveAudioPlaybackMode(mode)) return;
@@ -1250,6 +1333,14 @@ app.whenReady().then(async () => {
   // history-driven views (Today, History) can refetch without polling.
   ipcMain.on("transcription:done", () => {
     settingsWindow?.webContents.send("transcription:done");
+  });
+
+  ipcMain.on("recording:committed", () => {
+    void appPlugins().emit({ type: FreestyleEventType.RecordingCommitted });
+  });
+
+  ipcMain.on("recording:cancelled", () => {
+    void appPlugins().emit({ type: FreestyleEventType.RecordingCancelled });
   });
 
   // IPC: expose the server port to the renderer
@@ -1455,6 +1546,7 @@ app.whenReady().then(async () => {
 
   if (serverUrl) {
     log.info(`Using configured Freestyle server at ${serverUrl}`);
+    initPluginsForServer();
   } else {
     // Set database path for the server before any API calls
     process.env.FREESTYLE_DB_PATH = join(
@@ -1478,6 +1570,7 @@ app.whenReady().then(async () => {
           httpServer = server;
           serverPort = boundPort;
           log.info(`Server running on http://localhost:${boundPort}`);
+          initPluginsForServer();
         })
         .catch((err: NodeJS.ErrnoException) => {
           if (err.code === "EADDRINUSE" && port === DEFAULT_PORT) {
@@ -1508,6 +1601,7 @@ app.whenReady().then(async () => {
       log.info(
         `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
       );
+      initPluginsForServer();
     } else {
       startServer(DEFAULT_PORT);
     }
@@ -1890,6 +1984,7 @@ function loadHotkeyModeFromDB(): "hold" | "toggle" {
 
 function sendHotkeyDown(): void {
   showPill();
+  void appPlugins().emit({ type: FreestyleEventType.RecordingStarted });
   if (pillReadyPromise) {
     // The pill window is still loading — defer IPC until it can receive it.
     void pillReadyPromise.then(() => {
@@ -2154,6 +2249,8 @@ let isQuitting = false;
 let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 
 function cleanupBeforeQuit(): void {
+  void appPlugins().dispose();
+  void disposeServerPlugins().catch(() => {});
   audioPlaybackController.restoreSync();
   stopLinuxPasteHelper();
   stopWhisperServer().catch(() => {});

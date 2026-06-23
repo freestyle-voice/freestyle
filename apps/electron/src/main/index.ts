@@ -1503,7 +1503,6 @@ app.whenReady().then(async () => {
 
   if (serverUrl) {
     log.info(`Using configured Freestyle server at ${serverUrl}`);
-    // The configured server is already up; load app-host plugins from it.
     initPluginsForServer();
   } else {
     // Set database path for the server before any API calls
@@ -1528,8 +1527,6 @@ app.whenReady().then(async () => {
           httpServer = server;
           serverPort = boundPort;
           log.info(`Server running on http://localhost:${boundPort}`);
-          // Load app-host plugins now the server is listening (settings come
-          // from it over HTTP).
           initPluginsForServer();
         })
         .catch((err: NodeJS.ErrnoException) => {
@@ -1561,7 +1558,6 @@ app.whenReady().then(async () => {
       log.info(
         `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
       );
-      // Reusing a server that's already up; load app-host plugins from it.
       initPluginsForServer();
     } else {
       startServer(DEFAULT_PORT);

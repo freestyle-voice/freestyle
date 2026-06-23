@@ -65,6 +65,14 @@ export default function ModelsPage(): React.JSX.Element {
     (model) =>
       model.type === "llm" && model.provider_id === FREESTYLE_CLOUD_PROVIDER,
   );
+  const cloudVoiceActive =
+    m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER;
+  const cloudCleanupActive =
+    m.llmCleanup && m.defaultLlm?.provider === FREESTYLE_CLOUD_PROVIDER;
+
+  const fallbackLocalVoice = m.voiceItems.find(
+    (item) => item.kind === "local" && item.status === "ready" && item.defId,
+  );
 
   const ensureCloudAuth = async (): Promise<boolean> => {
     if (cloudAuth.user) return true;
@@ -86,6 +94,7 @@ export default function ModelsPage(): React.JSX.Element {
     void (async () => {
       if (!(await ensureCloudAuth())) return;
       await m.configureModel(freestyleVoice, "voice");
+      if (cloudCleanupActive) m.setCleanup(false);
     })();
   };
 
@@ -93,6 +102,13 @@ export default function ModelsPage(): React.JSX.Element {
     if (!freestyleCleanup) return;
     void (async () => {
       if (!(await ensureCloudAuth())) return;
+      if (cloudVoiceActive && fallbackLocalVoice?.defId) {
+        await m.selectLocalVoice(
+          fallbackLocalVoice.defId,
+          fallbackLocalVoice.name,
+          fallbackLocalVoice.localEngine,
+        );
+      }
       await m.configureModel(freestyleCleanup, "llm");
       m.setCleanup(true);
     })();
@@ -196,20 +212,12 @@ export default function ModelsPage(): React.JSX.Element {
     (c) => c.provider === "local-whisper" || c.provider === "local-mlx",
   );
 
-  const cloudVoiceActive =
-    m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER;
-  const cloudCleanupActive =
-    m.llmCleanup && m.defaultLlm?.provider === FREESTYLE_CLOUD_PROVIDER;
   // Only the all-in-one route owns cleanup. Cloud transcription can still feed
   // a custom cleanup model.
   const cleanupLocked = cloudVoiceActive && cloudCleanupActive;
 
-  // Show the MLX warming control when MLX is the active voice engine, or the
-  // platform supports MLX and at least one MLX model is downloaded.
-  const showMlxWarming =
-    m.defaultVoice?.provider === "local-mlx" ||
-    (!!m.mlxStatus?.platformSupported &&
-      m.mlxStatus.models.some((model) => model.status === "ready"));
+  // Model warming only applies to the active local MLX worker.
+  const showMlxWarming = m.defaultVoice?.provider === "local-mlx";
 
   return (
     <PageShell>
@@ -477,7 +485,7 @@ function FreestyleCloudModeCard({
                 : "bg-secondary text-muted-foreground",
             )}
           >
-            {signedIn ? "Account connected" : "Sign-in required"}
+            {signedIn ? "Connected" : "Sign-in required"}
           </span>
           {!signedIn && (
             <Button variant="outline" size="sm" onClick={onSignIn}>

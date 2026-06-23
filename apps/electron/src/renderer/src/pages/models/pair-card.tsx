@@ -29,10 +29,7 @@ export function PairCard({
   onChangeLlm: () => void;
   /** When set, shows a "Configure model warming" link by the voice button. */
   onConfigureWarming?: () => void;
-  /**
-   * Locks the cleanup side when the voice provider runs its own cleanup
-   * (e.g. Freestyle Cloud), so local post-processing can't be toggled on.
-   */
+  /** True when cleanup is part of a combined transcription request. */
   cleanupDisabled?: boolean;
 }): React.JSX.Element {
   return (
@@ -60,21 +57,20 @@ export function PairCard({
       <div className="border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0">
         <PairSide
           kicker="AI cleanup · optional"
-          modelName={
-            !cleanupDisabled && llmCleanup ? llm?.model_name : undefined
-          }
+          modelName={llmCleanup ? llm?.model_name : undefined}
           providerName={
-            !cleanupDisabled && llmCleanup && llm
-              ? displayName(llm.provider)
-              : undefined
+            llmCleanup && llm ? displayName(llm.provider) : undefined
           }
           cta={llm ? "Change" : "Pick a model"}
-          toggle={!cleanupDisabled && llmCleanup}
+          toggle={llmCleanup}
           onToggle={onToggleCleanup}
           onChange={onChangeLlm}
-          dimmed={cleanupDisabled || !llmCleanup}
-          disabled={cleanupDisabled}
-          note={cleanupDisabled ? "Handled by Freestyle Cloud" : undefined}
+          dimmed={!llmCleanup}
+          note={
+            cleanupDisabled
+              ? "Combined with transcription in one Freestyle Cloud request"
+              : undefined
+          }
         />
       </div>
     </section>

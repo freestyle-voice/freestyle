@@ -199,7 +199,7 @@ export default function TodayPage(): React.JSX.Element {
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
         <div
-          className="responsive-page-scroll flex-1 overflow-auto pt-20"
+          className="responsive-page-scroll flex-1 overflow-auto pt-20 !pb-5"
           style={
             {
               WebkitAppRegion: "no-drag",

@@ -1515,15 +1515,17 @@ function CopyField({
   value: string;
 }): React.JSX.Element {
   return (
-    <div className="grid gap-1.5 min-[760px]:grid-cols-[150px_minmax(0,1fr)] min-[760px]:items-start min-[760px]:gap-4">
-      <div className="mono text-muted-foreground pt-2.5 text-[10.5px] tracking-[0.14em] uppercase">
-        {label}
+    <div className="border-border bg-secondary/45 rounded-[12px] border p-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="mono text-muted-foreground text-[10.5px] tracking-[0.14em] uppercase">
+          {label}
+        </div>
+        <CopyButton value={value} />
       </div>
-      <div className="border-border bg-secondary flex items-center gap-3 rounded-md border px-3 py-2">
+      <div className="border-border bg-background/45 flex items-center gap-3 rounded-md border px-3 py-2">
         <code className="mono text-foreground min-w-0 flex-1 truncate text-[12.5px]">
           {value}
         </code>
-        <CopyButton value={value} />
       </div>
     </div>
   );
@@ -1539,23 +1541,23 @@ function CodeBlock({
   note?: string;
 }): React.JSX.Element {
   return (
-    <div className="grid gap-1.5 min-[760px]:grid-cols-[150px_minmax(0,1fr)] min-[760px]:items-start min-[760px]:gap-4">
-      <div className="flex items-center justify-between gap-3 pt-2.5 min-[760px]:block min-[760px]:pt-0">
-        <div className="mono text-muted-foreground text-[10.5px] tracking-[0.14em] uppercase min-[760px]:pt-2.5">
-          {label}
+    <div className="border-border bg-secondary/45 overflow-hidden rounded-[12px] border">
+      <div className="flex items-start justify-between gap-3 border-b border-border/70 px-3 py-2.5">
+        <div className="min-w-0">
+          <div className="mono text-muted-foreground text-[10.5px] tracking-[0.14em] uppercase">
+            {label}
+          </div>
+          {note && (
+            <p className="text-muted-foreground mt-1 text-[12px] leading-[1.45]">
+              {note}
+            </p>
+          )}
         </div>
-        <CopyButton value={value} className="min-[760px]:mt-2" />
+        <CopyButton value={value} className="mt-0.5" />
       </div>
-      <div className="min-w-0">
-        <pre className="border-border bg-secondary text-foreground mono max-h-[260px] overflow-auto rounded-md border p-3 text-[12px] leading-[1.6]">
-          {value}
-        </pre>
-        {note && (
-          <p className="text-muted-foreground mt-1.5 text-[12px] leading-[1.5]">
-            {note}
-          </p>
-        )}
-      </div>
+      <pre className="text-foreground mono max-h-[240px] overflow-auto bg-background/35 p-3 text-[12px] leading-[1.55]">
+        {value}
+      </pre>
     </div>
   );
 }
@@ -1579,14 +1581,28 @@ function McpConnect(): React.JSX.Element {
   );
 
   return (
-    <div className="border-border bg-card flex w-full flex-col gap-4 rounded-[14px] border p-4">
-      <CopyField label={t("settings.developer.mcpUrl")} value={mcpUrl} />
-      <CodeBlock label={t("settings.developer.mcpConfig")} value={httpConfig} />
-      <CodeBlock
-        label={t("settings.developer.mcpRemoteConfig")}
-        value={remoteConfig}
-        note={t("settings.developer.mcpRemoteNote")}
-      />
+    <div className="border-border bg-card w-full rounded-[14px] border p-4">
+      <div className="mb-4 flex flex-col gap-1.5">
+        <div className="mono text-primary text-[10px] uppercase tracking-[0.16em]">
+          Local MCP endpoint
+        </div>
+        <p className="text-muted-foreground max-w-[680px] text-[12.5px] leading-relaxed">
+          Use HTTP for clients that support streamable MCP. Use the stdio bridge
+          for clients that still need a command.
+        </p>
+      </div>
+      <div className="space-y-3">
+        <CopyField label={t("settings.developer.mcpUrl")} value={mcpUrl} />
+        <CodeBlock
+          label={t("settings.developer.mcpConfig")}
+          value={httpConfig}
+        />
+        <CodeBlock
+          label={t("settings.developer.mcpRemoteConfig")}
+          value={remoteConfig}
+          note={t("settings.developer.mcpRemoteNote")}
+        />
+      </div>
     </div>
   );
 }

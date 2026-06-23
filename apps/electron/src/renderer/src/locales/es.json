@@ -172,6 +172,8 @@
       "autoGranted": "Concedido automáticamente"
     },
     "data": {
+      "pauseHistory": "Pausar historial",
+      "pauseHistoryDesc": "Deja de guardar nuevas sesiones de transcripción en el historial hasta que lo desactives.",
       "history": "Historial de transcripciones",
       "historyDesc": "Elimina permanentemente todas las sesiones guardadas — esto no se puede deshacer.",
       "clearHistory": "Borrar historial",
@@ -215,6 +217,9 @@
     "sessionPlural": "Sesiones",
     "searchSingular": "Buscar {{total}} transcripción…",
     "searchPlural": "Buscar {{total}} transcripciones…",
+    "pausedTitle": "El historial está pausado",
+    "pausedDesc": "Las nuevas transcripciones no se están guardando en el historial ahora mismo.",
+    "pausedSettings": "Abrir ajustes de datos",
     "emptyTitle": "Nada grabado aún.",
     "emptyDesc": "Mantén tu atajo en cualquier lugar de {{phrase}}, habla, suéltalo. Tu primera transcripción aparecerá aquí.",
     "noResultsSearch": "No hay transcripciones que coincidan con esa búsqueda.",

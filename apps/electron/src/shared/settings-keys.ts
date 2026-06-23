@@ -4,6 +4,7 @@ export const SETTINGS_KEYS = {
   freestyleCloudPanelExpanded: "freestyle_cloud_panel_expanded",
   hotkey: "hotkey",
   hotkeyMode: "hotkey_mode",
+  historyPaused: "history_paused",
   language: "language",
   llmCleanup: "llm_cleanup",
   localLlmApiKey: "local_llm_api_key",

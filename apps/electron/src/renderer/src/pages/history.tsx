@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router";
+import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
 interface HistoryEntry {
   id: number;
@@ -115,6 +117,7 @@ export default function HistoryPage(): React.JSX.Element {
   const [search, setSearch] = useState("");
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [historyPaused, setHistoryPaused] = useState(false);
   const [activePreset, setActivePreset] = useState<
     "today" | "weekly" | "monthly" | "all-time" | "custom"
   >("weekly");
@@ -195,9 +198,22 @@ export default function HistoryPage(): React.JSX.Element {
     }
   }, [page, search, startDate, endDate]);
 
+  const loadHistoryPaused = useCallback(async () => {
+    try {
+      const res = await getClient().api.settings[":key"].$get({
+        param: { key: SETTINGS_KEYS.historyPaused },
+      });
+      const data = res.ok ? await res.json() : null;
+      setHistoryPaused(data?.value === "true");
+    } catch {
+      setHistoryPaused(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
-  }, [loadData]);
+    loadHistoryPaused();
+  }, [loadData, loadHistoryPaused]);
 
   useEffect(() => {
     const remove = window.api?.onTranscriptionDone(() => {
@@ -259,6 +275,8 @@ export default function HistoryPage(): React.JSX.Element {
         }
       >
         <PageHeader title={t("history.title")} />
+
+        {historyPaused && <HistoryPausedNotice />}
 
         {isGenuineEmpty ? (
           <EmptyState />
@@ -692,6 +710,25 @@ function FeedItem({
       >
         “{text}”
       </p>
+    </div>
+  );
+}
+
+function HistoryPausedNotice(): React.JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div className="border-yellow-500/35 bg-yellow-300/15 mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border px-4 py-3 text-yellow-950 dark:border-yellow-300/35 dark:bg-yellow-400/15 dark:text-yellow-100">
+      <div className="min-w-0">
+        <div className="text-[13px] font-semibold">
+          {t("history.pausedTitle")}
+        </div>
+        <p className="mt-0.5 text-[12px] leading-snug opacity-80">
+          {t("history.pausedDesc")}
+        </p>
+      </div>
+      <Button asChild variant="outline" size="sm" className="shrink-0">
+        <Link to="/settings#data">{t("history.pausedSettings")}</Link>
+      </Button>
     </div>
   );
 }

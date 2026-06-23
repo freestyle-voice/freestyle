@@ -172,6 +172,8 @@
       "autoGranted": "Autoconsentito"
     },
     "data": {
+      "pauseHistory": "Metti in pausa la cronologia",
+      "pauseHistoryDesc": "Interrompe il salvataggio delle nuove sessioni di trascrizione nella cronologia finché non lo disattivi.",
       "history": "Cronologia delle trascrizioni",
       "historyDesc": "Elimina permanentemente tutte le sessioni salvate.",
       "clearHistory": "Cancella cronologia",
@@ -215,6 +217,9 @@
     "sessionPlural": "sessioni",
     "searchSingular": "Cerca in {{total}} trascrizione...",
     "searchPlural": "Cerca in {{total}} trascrizioni...",
+    "pausedTitle": "La cronologia è in pausa",
+    "pausedDesc": "Le nuove trascrizioni non vengono salvate nella cronologia in questo momento.",
+    "pausedSettings": "Apri impostazioni dati",
     "emptyTitle": "Niente di registrato ancora.",
     "emptyDesc": "Tieni premuto il tasto di scelta rapida, parla, rilascia. La tua prima trascrizione apparirà qui.",
     "noResultsSearch": "nessuna trascrizione corrisponde alla ricerca.",

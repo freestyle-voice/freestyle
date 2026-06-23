@@ -172,6 +172,8 @@
       "autoGranted": "Accordé automatiquement"
     },
     "data": {
+      "pauseHistory": "Suspendre l'historique",
+      "pauseHistoryDesc": "Arrête d'enregistrer les nouvelles sessions de transcription dans l'historique jusqu'à désactivation.",
       "history": "Historique des transcriptions",
       "historyDesc": "Supprime définitivement toutes les sessions enregistrées — cette action est irréversible.",
       "clearHistory": "Effacer l'historique",
@@ -215,6 +217,9 @@
     "sessionPlural": "Sessions",
     "searchSingular": "Chercher {{total}} transcription…",
     "searchPlural": "Chercher {{total}} transcriptions…",
+    "pausedTitle": "L'historique est suspendu",
+    "pausedDesc": "Les nouvelles transcriptions ne sont pas enregistrées dans l'historique pour le moment.",
+    "pausedSettings": "Ouvrir les réglages Données",
     "emptyTitle": "Rien d'enregistré pour l'instant.",
     "emptyDesc": "Maintenez votre raccourci partout sur {{phrase}}, parlez, relâchez. Votre première transcription apparaîtra ici.",
     "noResultsSearch": "Aucune transcription ne correspond à cette recherche.",

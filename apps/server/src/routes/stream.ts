@@ -1,9 +1,9 @@
 import { createAppLogger } from "@freestyle/utils";
 import { upgradeWebSocket } from "@hono/node-server";
 import { Hono } from "hono";
-import { getDb } from "../lib/db.js";
 import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
 import { FreestyleCloudAuthError } from "../lib/freestyle-cloud.js";
+import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import { getLanguageSetting } from "../lib/language.js";
 import {
   FreestyleEventType,
@@ -333,24 +333,19 @@ const stream = new Hono().get(
                   ws.send(JSON.stringify({ type: "final", text: pp.cleaned }));
                 }
                 try {
-                  const db = getDb();
-                  db.prepare(
-                    `INSERT INTO transcription_history
-                       (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                  ).run(
+                  saveProcessedHistory({
                     rawText,
-                    pp.cleaned !== rawText ? pp.cleaned : null,
-                    voiceDefaults!.provider,
-                    voiceDefaults!.model_id,
-                    pp.llmProvider,
-                    pp.llmModel,
+                    cleanedText: pp.cleaned !== rawText ? pp.cleaned : null,
+                    voiceProvider: voiceDefaults!.provider,
+                    voiceModel: voiceDefaults!.model_id,
+                    llmProvider: pp.llmProvider,
+                    llmModel: pp.llmModel,
                     durationMs,
                     audioDurationMs,
-                    pp.inputTokens,
-                    pp.outputTokens,
-                    pp.costUsd,
-                  );
+                    inputTokens: pp.inputTokens,
+                    outputTokens: pp.outputTokens,
+                    costUsd: pp.costUsd,
+                  });
                 } catch (err) {
                   log.error(`Failed to save history: ${err}`);
                 }
@@ -374,18 +369,13 @@ const stream = new Hono().get(
                   ws.send(JSON.stringify({ type: "final", text: rawText }));
                 }
                 try {
-                  const db = getDb();
-                  db.prepare(
-                    `INSERT INTO transcription_history
-                       (raw_text, voice_provider, voice_model, duration_ms, audio_duration_ms)
-                       VALUES (?, ?, ?, ?, ?)`,
-                  ).run(
+                  saveRawHistory({
                     rawText,
-                    voiceDefaults!.provider,
-                    voiceDefaults!.model_id,
+                    voiceProvider: voiceDefaults!.provider,
+                    voiceModel: voiceDefaults!.model_id,
                     durationMs,
                     audioDurationMs,
-                  );
+                  });
                 } catch {}
               });
           },

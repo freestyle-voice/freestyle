@@ -172,6 +172,8 @@
       "autoGranted": "Automatisch gewährt"
     },
     "data": {
+      "pauseHistory": "Verlauf pausieren",
+      "pauseHistoryDesc": "Keine neuen Transkriptionssitzungen im Verlauf speichern, bis Sie dies wieder deaktivieren.",
       "history": "Transkriptionsverlauf",
       "historyDesc": "Alle gespeicherten Sitzungen dauerhaft löschen — dies kann nicht rückgängig gemacht werden.",
       "clearHistory": "Verlauf löschen",
@@ -215,6 +217,9 @@
     "sessionPlural": "Sitzungen",
     "searchSingular": "{{total}} Transkript durchsuchen…",
     "searchPlural": "{{total}} Transkripte suchen…",
+    "pausedTitle": "Verlauf ist pausiert",
+    "pausedDesc": "Neue Transkriptionen werden derzeit nicht im Verlauf gespeichert.",
+    "pausedSettings": "Dateneinstellungen öffnen",
     "emptyTitle": "Noch nichts aufgenommen.",
     "emptyDesc": "Halten Sie Ihre Tastenkombination überall auf {{phrase}}, sprechen Sie, lassen Sie los. Ihr erstes Transkript erscheint hier.",
     "noResultsSearch": "keine Transkripte entsprechen dieser Suche.",

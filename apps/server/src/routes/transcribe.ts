@@ -1,6 +1,6 @@
 import { createAppLogger } from "@freestyle/utils";
 import { Hono } from "hono";
-import { getDb } from "../lib/db.js";
+import { getDb, readSetting } from "../lib/db.js";
 import { applyDictionaryReplacements } from "../lib/dictionary-replacements.js";
 import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
 import {
@@ -8,6 +8,7 @@ import {
   FreestyleCloudAuthError,
   transcribeWithFreestyleCloud,
 } from "../lib/freestyle-cloud.js";
+import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import { getLanguageSetting } from "../lib/language.js";
 import {
   FreestyleEventType,
@@ -15,19 +16,25 @@ import {
   parseAppContext,
   plugins,
 } from "../lib/plugins/index.js";
-import { isLlmCleanupEnabled, postProcess } from "../lib/post-process.js";
+import { postProcess } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { invalidateSession } from "../lib/sessions.js";
 import { CloudAuthError } from "../lib/streaming/providers/freestyle-cloud.js";
 import { getProvider } from "../lib/streaming/registry.js";
-import {
-  getApiKeyForProvider,
-  voiceProviderCategory,
-} from "../lib/streaming-stt.js";
+import { getApiKeyForProvider } from "../lib/streaming-stt.js";
 import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
 
 const log = createAppLogger("transcribe");
+
+function routeVoiceProviderCategory(
+  providerId: string,
+): "local" | "byok" | "freestyle_cloud" {
+  if (providerId === "local-whisper" || providerId === "local-mlx")
+    return "local";
+  if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return "freestyle_cloud";
+  return "byok";
+}
 
 /**
  * The client percent-encodes the x-app-context header so non-Latin1
@@ -120,7 +127,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   const freestyleCleanupActive =
     !skipPostProcess &&
     defaults.llm?.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
-    isLlmCleanupEnabled();
+    readSetting("llm_cleanup") === "true";
 
   if (voiceProvider === FREESTYLE_CLOUD_PROVIDER_ID && freestyleCleanupActive) {
     try {
@@ -141,30 +148,26 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       const outputTokens = result.usage?.outputTokens ?? 0;
 
       try {
-        db.prepare(
-          `INSERT INTO transcription_history
-             (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(
+        saveProcessedHistory({
           rawText,
-          cleaned !== rawText ? cleaned : null,
+          cleanedText: cleaned !== rawText ? cleaned : null,
           voiceProvider,
           voiceModel,
-          FREESTYLE_CLOUD_PROVIDER_ID,
-          defaults.llm?.model_id ?? "freestyle-cloud/post-process",
+          llmProvider: FREESTYLE_CLOUD_PROVIDER_ID,
+          llmModel: defaults.llm?.model_id ?? "freestyle-cloud/post-process",
           durationMs,
           audioDurationMs,
           inputTokens,
           outputTokens,
-          0,
-        );
+          costUsd: 0,
+        });
       } catch (err) {
         log.error(`Failed to save history: ${err}`);
       }
 
       capture("transcription completed", {
         provider: voiceProvider,
-        provider_category: voiceProviderCategory(voiceProvider),
+        provider_category: routeVoiceProviderCategory(voiceProvider),
         model: voiceModel,
         duration_ms: durationMs,
         audio_duration_ms: audioDurationMs,
@@ -180,7 +183,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         raw: rawText,
         cleaned,
         model: voiceModel,
-        provider_category: voiceProviderCategory(voiceProvider),
+        provider_category: routeVoiceProviderCategory(voiceProvider),
         durationMs,
       });
     } catch (err) {
@@ -249,7 +252,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     });
     capture("transcription failed", {
       provider: defaults.voice.provider,
-      provider_category: voiceProviderCategory(defaults.voice.provider),
+      provider_category: routeVoiceProviderCategory(defaults.voice.provider),
       model: defaults.voice.model_id,
       error: err instanceof Error ? err.message : String(err),
     });
@@ -283,18 +286,20 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
   if (skipPostProcess) {
     try {
-      db.prepare(
-        `INSERT INTO transcription_history
-           (raw_text, voice_provider, voice_model, duration_ms, audio_duration_ms)
-           VALUES (?, ?, ?, ?, ?)`,
-      ).run(rawText, voiceProvider, voiceModel, durationMs, audioDurationMs);
+      saveRawHistory({
+        rawText,
+        voiceProvider,
+        voiceModel,
+        durationMs,
+        audioDurationMs,
+      });
     } catch (err) {
       log.error(`Failed to save history: ${err}`);
     }
 
     capture("transcription completed", {
       provider: voiceProvider,
-      provider_category: voiceProviderCategory(voiceProvider),
+      provider_category: routeVoiceProviderCategory(voiceProvider),
       model: voiceModel,
       duration_ms: durationMs,
       audio_duration_ms: audioDurationMs,
@@ -305,7 +310,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       raw: rawText,
       cleaned: rawText,
       model: voiceModel,
-      provider_category: voiceProviderCategory(voiceProvider),
+      provider_category: routeVoiceProviderCategory(voiceProvider),
       durationMs,
     });
   }
@@ -329,23 +334,19 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   );
 
   try {
-    db.prepare(
-      `INSERT INTO transcription_history
-         (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
+    saveProcessedHistory({
       rawText,
-      pp.cleaned !== rawText ? pp.cleaned : null,
+      cleanedText: pp.cleaned !== rawText ? pp.cleaned : null,
       voiceProvider,
       voiceModel,
-      pp.llmProvider,
-      pp.llmModel,
-      Date.now() - start,
+      llmProvider: pp.llmProvider,
+      llmModel: pp.llmModel,
+      durationMs: Date.now() - start,
       audioDurationMs,
-      pp.inputTokens,
-      pp.outputTokens,
-      pp.costUsd,
-    );
+      inputTokens: pp.inputTokens,
+      outputTokens: pp.outputTokens,
+      costUsd: pp.costUsd,
+    });
   } catch (err) {
     log.error(`Failed to save history: ${err}`);
   }
@@ -354,7 +355,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
   capture("transcription completed", {
     provider: voiceProvider,
-    provider_category: voiceProviderCategory(voiceProvider),
+    provider_category: routeVoiceProviderCategory(voiceProvider),
     model: voiceModel,
     duration_ms: durationMs,
     audio_duration_ms: audioDurationMs,
@@ -370,7 +371,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     raw: rawText,
     cleaned: pp.cleaned,
     model: voiceModel,
-    provider_category: voiceProviderCategory(voiceProvider),
+    provider_category: routeVoiceProviderCategory(voiceProvider),
     durationMs,
   });
 });

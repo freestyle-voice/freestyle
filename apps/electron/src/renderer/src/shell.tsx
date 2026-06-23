@@ -214,11 +214,11 @@ export default function AppShell(): React.JSX.Element {
 
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <div
-          className="pointer-events-none absolute inset-x-0 top-0 z-10 h-3"
+          className="absolute inset-x-0 top-0 z-10 h-3"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         />
         <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-2"
+          className="absolute inset-x-0 bottom-0 z-10 h-2"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         />
         <div

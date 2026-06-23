@@ -500,15 +500,6 @@ function FreestyleCloudModeCard({
   canUse: boolean;
   cleanupDisabled: boolean;
 }): React.JSX.Element {
-  const routeLabel =
-    voiceActive && cleanupActive
-      ? "All-in-one active"
-      : voiceActive
-        ? "Transcription active"
-        : cleanupActive
-          ? "Cleanup active"
-          : "Not configured";
-
   return (
     <section className="border-border bg-card overflow-hidden rounded-[14px] border">
       <div className="flex flex-col gap-4 border-b border-border/70 px-5 py-4 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
@@ -523,30 +514,24 @@ function FreestyleCloudModeCard({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="bg-secondary text-muted-foreground rounded-full px-2.5 py-1 text-[11px]">
-            {routeLabel}
-          </span>
-          <span
-            className={cn(
-              "rounded-full px-2.5 py-1 text-[11px]",
-              signedIn
-                ? "bg-accent text-accent-foreground"
-                : "bg-secondary text-muted-foreground",
-            )}
-          >
-            {signedIn ? "Connected" : "Sign-in required"}
-          </span>
           {!signedIn && (
             <Button variant="outline" size="sm" onClick={onSignIn}>
               Sign in
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={onToggleExpanded}>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={onToggleExpanded}
+            aria-label={
+              expanded
+                ? "Hide Freestyle Cloud options"
+                : "Show Freestyle Cloud options"
+            }
+          >
             <ChevronDown
-              data-icon="inline-start"
               className={cn("transition-transform", expanded && "rotate-180")}
             />
-            {expanded ? "Hide options" : "Show options"}
           </Button>
         </div>
       </div>

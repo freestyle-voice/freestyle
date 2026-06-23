@@ -5,9 +5,10 @@ dictation app. This package is the **public contract** for writing plugins that
 extend the dictation pipeline: rewrite transcripts, inject cleanup prompts,
 transform final text, and control how text is delivered.
 
-It ships **types and small helpers only** — no runtime dependencies. The plugin
-loaders that discover, order, run, and sandbox plugins live in the apps that
-host them (`apps/server` for pipeline hooks, `apps/electron` for output hooks).
+It ships the plugin contract plus small host-agnostic runtime helpers (loader,
+registry, ordering, transforms). The server and Electron hosts inject their own
+settings, directories, logging, and error reporting. Plugin hooks are isolated so
+one throwing plugin cannot crash a dictation, but plugins still run in-process.
 
 The design is inspired by [Vite's plugin API](https://vite.dev/guide/api-plugin):
 a plugin is a **named object** with optional `enforce` metadata and the hooks it
@@ -242,6 +243,8 @@ See [`src/events.ts`](./src/events.ts) for the full union.
 | `Register` | type | `"formal"` \| `"casual"` \| `"neutral"` |
 | `transform` | fn | Wrap a pure `(text) => text` into `afterCleanup` |
 | `sortPlugins` | fn | Order plugins by `enforce` (used by loaders) |
+| `loadPlugins` / `discoverLocalPlugins` / `defaultLocalPluginsDir` | fn | Host helpers for discovering and loading plugin modules |
+| `PluginRegistry` | class | Host helper for running hooks, emitting events, resolving config, and disposing plugins |
 
 ## Stability
 

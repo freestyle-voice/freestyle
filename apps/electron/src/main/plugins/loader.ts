@@ -1,9 +1,6 @@
+import path from "node:path";
 import type { HookFailure, PluginEntry } from "@freestyle/sdk";
-import {
-  defaultLocalPluginsDir,
-  loadPlugins,
-  type PluginRegistry,
-} from "@freestyle/sdk";
+import { loadPlugins, type PluginRegistry } from "@freestyle/sdk";
 import type { AppType } from "@freestyle/server";
 import { createAppLogger } from "@freestyle/utils";
 import { parsePluginsSetting, pluginEntryParts } from "@freestyle/validations";
@@ -20,6 +17,8 @@ export interface ServerTarget {
   baseUrl: string;
   /** Optional bearer token for a configured server ("" = none). */
   token?: string;
+  /** Electron's local user-data directory; app-host plugins live under it. */
+  directory: string;
 }
 
 /**
@@ -38,12 +37,13 @@ export async function loadAppPlugins(
   const entries: PluginEntry[] = parsePluginsSetting(snapshot.plugins).map(
     (entry) => pluginEntryParts(entry),
   );
-  const localDir = defaultLocalPluginsDir();
+  const localDir = path.join(target.directory, "plugins");
 
   return loadPlugins({
     entries,
-    ...(localDir ? { localDir } : {}),
-    buildContext: (name) => buildPluginContext(name, snapshot),
+    localDir,
+    buildContext: (name) =>
+      buildPluginContext(name, snapshot, target.directory),
     logger: log,
     onError: reportHookFailure,
   });

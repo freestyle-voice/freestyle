@@ -96,9 +96,8 @@ export function startServer(
         hostname: host,
         websocket: { server: wss },
       },
-      (info) => {
-        // Load plugins once the server is up; failures degrade to no plugins.
-        void initServerPlugins();
+      async (info) => {
+        await initServerPlugins();
         resolve({ server, port: info.port });
       },
     );

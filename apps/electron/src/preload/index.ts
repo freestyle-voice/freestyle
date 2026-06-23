@@ -230,6 +230,8 @@ const api = {
   // Fired by the pill after a successful transcription + paste, so other
   // windows (Today, History) can refetch without polling.
   sendTranscriptionDone: (): void => ipcRenderer.send("transcription:done"),
+  sendRecordingCommitted: (): void => ipcRenderer.send("recording:committed"),
+  sendRecordingCancelled: (): void => ipcRenderer.send("recording:cancelled"),
   onTranscriptionDone: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("transcription:done", handler);

@@ -108,6 +108,8 @@ declare global {
       onAudioLevel: (callback: (level: number) => void) => () => void;
       // Transcription completion broadcast
       sendTranscriptionDone: () => void;
+      sendRecordingCommitted: () => void;
+      sendRecordingCancelled: () => void;
       onTranscriptionDone: (callback: () => void) => () => void;
       // Fullscreen state
       onFullscreenChanged: (

@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { PluginContext, SettingsReader } from "@freestyle/sdk";
 import { createPluginLogger } from "@freestyle/sdk";
 import { createAppLogger } from "@freestyle/utils";
@@ -19,6 +18,7 @@ export type SettingsSnapshot = Readonly<Record<string, string>>;
 export function buildPluginContext(
   name: string,
   snapshot: SettingsSnapshot,
+  directory: string,
 ): PluginContext {
   const settings: SettingsReader = {
     get: (key) => snapshot[key],
@@ -28,9 +28,7 @@ export function buildPluginContext(
   return {
     name,
     mode: "app",
-    directory: process.env.FREESTYLE_DB_PATH
-      ? path.dirname(process.env.FREESTYLE_DB_PATH)
-      : process.cwd(),
+    directory,
     logger: createPluginLogger(createAppLogger(`plugin:${name}`)),
     settings,
   };

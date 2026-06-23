@@ -241,7 +241,11 @@ function getServerBaseUrl(): string {
  * underlying init is idempotent, so repeated calls are harmless.
  */
 function initPluginsForServer(): void {
-  void initAppPlugins({ baseUrl: getServerBaseUrl(), token: getServerToken() });
+  void initAppPlugins({
+    baseUrl: getServerBaseUrl(),
+    token: getServerToken(),
+    directory: app.getPath("userData"),
+  });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -659,9 +663,6 @@ function registerPillEscape(): void {
     globalShortcut.register("Escape", () => {
       if (mainWindow?.isVisible()) {
         mainWindow.webContents.send("pill:cancel");
-        void appPlugins().emit({
-          type: FreestyleEventType.RecordingCancelled,
-        });
       }
     });
   }
@@ -1334,6 +1335,14 @@ app.whenReady().then(async () => {
     settingsWindow?.webContents.send("transcription:done");
   });
 
+  ipcMain.on("recording:committed", () => {
+    void appPlugins().emit({ type: FreestyleEventType.RecordingCommitted });
+  });
+
+  ipcMain.on("recording:cancelled", () => {
+    void appPlugins().emit({ type: FreestyleEventType.RecordingCancelled });
+  });
+
   // IPC: expose the server port to the renderer
   ipcMain.handle("server:port", () => serverPort);
 
@@ -1960,7 +1969,6 @@ function sendHotkeyDown(): void {
 }
 
 function sendHotkeyUp(): void {
-  void appPlugins().emit({ type: FreestyleEventType.RecordingCommitted });
   if (pillReadyPromise) {
     // Preserve IPC ordering: hotkey:up must arrive after hotkey:down.
     void pillReadyPromise.then(() => {

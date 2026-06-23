@@ -697,10 +697,12 @@ export default function AppPage(): React.JSX.Element {
       recorderRef.current.releaseStream();
       window.api?.restoreSystemAudio().catch(() => {});
       streamerRef.current?.cancel();
+      window.api?.sendRecordingCancelled();
       resumeTranscribingOrHide();
       return;
     }
 
+    window.api?.sendRecordingCommitted();
     setPillState("transcribing");
     startBarAnimation("speaking");
 
@@ -847,6 +849,7 @@ export default function AppPage(): React.JSX.Element {
     recorderRef.current.cancel();
     recorderRef.current.releaseStream();
     window.api?.restoreSystemAudio().catch(() => {});
+    window.api?.sendRecordingCancelled();
     hidePill();
   }, [hidePill]);
 

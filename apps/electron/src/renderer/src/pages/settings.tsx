@@ -685,9 +685,8 @@ export default function SettingsPage(): React.JSX.Element {
       className="flex min-h-0 flex-1 flex-col"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
-      <div className="h-9 shrink-0" />
       <div
-        className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 min-[900px]:grid-cols-[180px_minmax(0,1fr)]"
+        className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 pt-9 min-[900px]:grid-cols-[180px_minmax(0,1fr)]"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         <div className="min-[900px]:col-span-2">
@@ -793,142 +792,31 @@ export default function SettingsPage(): React.JSX.Element {
               </Row>
               <Row
                 label="Server URL"
-                desc="Leave empty to use the built-in local server. Point this at a self-hosted Freestyle server (e.g. http://your-vm:4649) to use that instead, with an access token if it requires one. Restart the app after changing this."
+                desc="Use the built-in server, or point Freestyle at a self-hosted server. Restart the app after changing this."
                 last
               >
-                <div className="flex w-full max-w-md flex-col gap-2.5">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        "mono inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-[3px] text-[9px] uppercase tracking-[0.14em]",
-                        savedServerUrl
-                          ? "bg-secondary text-secondary-foreground"
-                          : "bg-accent text-accent-foreground",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full",
-                          savedServerUrl ? "bg-muted-foreground" : "bg-primary",
-                        )}
-                      />
-                      {savedServerUrl ? "Custom server" : "Local server"}
-                    </span>
-                    {savedServerUrl && (
-                      <span className="text-muted-foreground min-w-0 truncate text-xs">
-                        {savedServerUrl}
-                      </span>
-                    )}
-                  </div>
-                  <InputGroup>
-                    <InputGroupInput
-                      id="settings-server-url"
-                      type="text"
-                      value={serverUrlInput}
-                      aria-invalid={!!serverUrlError}
-                      onChange={(e) => {
-                        setServerUrlInput(e.target.value);
-                        setServerTest("idle");
-                        setServerUrlError(null);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSaveServer();
-                      }}
-                      placeholder="http://127.0.0.1:4649 (local)"
-                    />
-                    <InputGroupAddon>
-                      <Server />
-                    </InputGroupAddon>
-                  </InputGroup>
-                  <InputGroup
-                    className={cn(!serverUrlInput.trim() && "opacity-55")}
-                  >
-                    <InputGroupInput
-                      id="settings-server-token"
-                      type={showToken ? "text" : "password"}
-                      value={serverTokenInput}
-                      onChange={(e) => {
-                        setServerTokenInput(e.target.value);
-                        setServerTest("idle");
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSaveServer();
-                      }}
-                      placeholder="Access token (optional)"
-                    />
-                    <InputGroupAddon>
-                      <Key />
-                    </InputGroupAddon>
-                    {serverTokenInput && (
-                      <RevealToggle
-                        revealed={showToken}
-                        onToggle={() => setShowToken((v) => !v)}
-                        label="token"
-                      />
-                    )}
-                  </InputGroup>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ink"
-                      size="sm"
-                      onClick={handleSaveServer}
-                      disabled={
-                        serverUrlInput.trim() === savedServerUrl.trim() &&
-                        serverTokenInput.trim() === savedServerToken.trim()
-                      }
-                    >
-                      {t("common.save")}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        testServer(serverUrlInput, serverTokenInput)
-                      }
-                      disabled={serverTest === "testing"}
-                    >
-                      Test connection
-                    </Button>
-                    {(savedServerUrl ||
-                      savedServerToken ||
-                      serverUrlInput.trim() ||
-                      serverTokenInput.trim()) && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleResetServer}
-                        className="text-muted-foreground"
-                      >
-                        Reset to local
-                      </Button>
-                    )}
-                    {serverTest === "testing" && (
-                      <span className="text-muted-foreground text-xs">
-                        Testing...
-                      </span>
-                    )}
-                    {serverTest === "ok" && (
-                      <span className="text-primary inline-flex items-center gap-1 text-xs">
-                        <Check className="h-3.5 w-3.5" /> Connected
-                      </span>
-                    )}
-                    {serverTest === "unreachable" && (
-                      <span className="text-destructive text-xs">
-                        Unreachable
-                      </span>
-                    )}
-                    {serverTest === "unauthorized" && (
-                      <span className="text-destructive text-xs">
-                        Token rejected
-                      </span>
-                    )}
-                  </div>
-                  {serverUrlError && (
-                    <span className="text-destructive text-xs">
-                      {serverUrlError}
-                    </span>
-                  )}
-                </div>
+                <ServerConnectionCard
+                  savedServerUrl={savedServerUrl}
+                  savedServerToken={savedServerToken}
+                  serverUrlInput={serverUrlInput}
+                  serverTokenInput={serverTokenInput}
+                  serverUrlError={serverUrlError}
+                  serverTest={serverTest}
+                  showToken={showToken}
+                  onUrlChange={(value) => {
+                    setServerUrlInput(value);
+                    setServerTest("idle");
+                    setServerUrlError(null);
+                  }}
+                  onTokenChange={(value) => {
+                    setServerTokenInput(value);
+                    setServerTest("idle");
+                  }}
+                  onToggleToken={() => setShowToken((v) => !v)}
+                  onSave={handleSaveServer}
+                  onTest={() => testServer(serverUrlInput, serverTokenInput)}
+                  onReset={handleResetServer}
+                />
               </Row>
             </SettingsPanel>
           )}
@@ -1362,6 +1250,203 @@ function Row({
       </div>
       <div className="min-w-0">{children}</div>
     </div>
+  );
+}
+
+type ServerTestState =
+  | "idle"
+  | "testing"
+  | "ok"
+  | "unreachable"
+  | "unauthorized";
+
+function ServerConnectionCard({
+  savedServerUrl,
+  savedServerToken,
+  serverUrlInput,
+  serverTokenInput,
+  serverUrlError,
+  serverTest,
+  showToken,
+  onUrlChange,
+  onTokenChange,
+  onToggleToken,
+  onSave,
+  onTest,
+  onReset,
+}: {
+  savedServerUrl: string;
+  savedServerToken: string;
+  serverUrlInput: string;
+  serverTokenInput: string;
+  serverUrlError: string | null;
+  serverTest: ServerTestState;
+  showToken: boolean;
+  onUrlChange: (value: string) => void;
+  onTokenChange: (value: string) => void;
+  onToggleToken: () => void;
+  onSave: () => void;
+  onTest: () => void;
+  onReset: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const urlChanged = serverUrlInput.trim() !== savedServerUrl.trim();
+  const tokenChanged = serverTokenInput.trim() !== savedServerToken.trim();
+  const canReset =
+    !!savedServerUrl ||
+    !!savedServerToken ||
+    !!serverUrlInput.trim() ||
+    !!serverTokenInput.trim();
+  const usingLocal = !savedServerUrl;
+
+  return (
+    <div className="border-border bg-card w-full max-w-3xl overflow-hidden rounded-[14px] border">
+      <div className="flex flex-col gap-3 border-b border-border/70 px-4 py-3.5 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "mono inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] uppercase tracking-[0.14em]",
+                usingLocal
+                  ? "bg-accent text-accent-foreground"
+                  : "bg-secondary text-secondary-foreground",
+              )}
+            >
+              <span
+                className={cn(
+                  "size-1.5 rounded-full",
+                  usingLocal ? "bg-primary" : "bg-muted-foreground",
+                )}
+              />
+              {usingLocal ? "Local server" : "Remote server"}
+            </span>
+            {savedServerUrl && (
+              <span className="text-muted-foreground min-w-0 truncate text-[12px]">
+                {savedServerUrl}
+              </span>
+            )}
+          </div>
+          <p className="text-muted-foreground mt-1.5 text-[12px] leading-relaxed">
+            Leave the URL blank for the built-in local server. Add a token only
+            when the remote server requires bearer auth.
+          </p>
+        </div>
+        <ConnectionStatus state={serverTest} />
+      </div>
+
+      <div className="space-y-3 p-4">
+        <div className="grid gap-3 min-[760px]:grid-cols-[minmax(0,1.25fr)_minmax(220px,0.75fr)]">
+          <div className="block min-w-0">
+            <span className="mono text-muted-foreground mb-1.5 block text-[10px] uppercase tracking-[0.14em]">
+              Server endpoint
+            </span>
+            <InputGroup>
+              <InputGroupInput
+                id="settings-server-url"
+                type="text"
+                value={serverUrlInput}
+                aria-invalid={!!serverUrlError}
+                onChange={(e) => onUrlChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onSave();
+                }}
+                placeholder="http://127.0.0.1:4649"
+              />
+              <InputGroupAddon>
+                <Server />
+              </InputGroupAddon>
+            </InputGroup>
+          </div>
+
+          <div className="block min-w-0">
+            <span className="mono text-muted-foreground mb-1.5 block text-[10px] uppercase tracking-[0.14em]">
+              Access token
+            </span>
+            <InputGroup className={cn(!serverUrlInput.trim() && "opacity-60")}>
+              <InputGroupInput
+                id="settings-server-token"
+                type={showToken ? "text" : "password"}
+                value={serverTokenInput}
+                onChange={(e) => onTokenChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onSave();
+                }}
+                placeholder="Optional"
+              />
+              <InputGroupAddon>
+                <Key />
+              </InputGroupAddon>
+              {serverTokenInput && (
+                <RevealToggle
+                  revealed={showToken}
+                  onToggle={onToggleToken}
+                  label="token"
+                />
+              )}
+            </InputGroup>
+          </div>
+        </div>
+
+        {serverUrlError && (
+          <p className="text-destructive text-[12px]">{serverUrlError}</p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <Button
+            variant="ink"
+            size="sm"
+            onClick={onSave}
+            disabled={!urlChanged && !tokenChanged}
+          >
+            {t("common.save")}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onTest}
+            disabled={serverTest === "testing"}
+          >
+            Test connection
+          </Button>
+          {canReset && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onReset}
+              className="text-muted-foreground"
+            >
+              Reset to local
+            </Button>
+          )}
+          {(urlChanged || tokenChanged) && (
+            <span className="text-muted-foreground ml-auto text-[11.5px]">
+              Restart required after saving
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConnectionStatus({ state }: { state: ServerTestState }) {
+  if (state === "idle") return null;
+  if (state === "testing") {
+    return (
+      <span className="text-muted-foreground text-[12px]">Testing...</span>
+    );
+  }
+  if (state === "ok") {
+    return (
+      <span className="text-primary inline-flex items-center gap-1 text-[12px]">
+        <Check className="size-3.5" /> Connected
+      </span>
+    );
+  }
+  return (
+    <span className="text-destructive text-[12px]">
+      {state === "unauthorized" ? "Token rejected" : "Unreachable"}
+    </span>
   );
 }
 

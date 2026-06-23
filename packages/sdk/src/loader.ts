@@ -4,7 +4,6 @@ import { pathToFileURL } from "node:url";
 import type { PluginContext } from "./context.js";
 import { sortPlugins } from "./order.js";
 import type {
-  Host,
   Plugin,
   PluginFactory,
   PluginModule,
@@ -57,8 +56,6 @@ export interface LoaderLogger {
 }
 
 export interface LoadPluginsOptions {
-  /** Which host is loading — used to evaluate each plugin's `apply` gate. */
-  host: Host;
   /**
    * npm / module specifier entries (from the `plugins` setting), in load order.
    * Loaded before local files.
@@ -83,19 +80,20 @@ export interface LoadPluginsOptions {
 }
 
 /**
- * Discover, instantiate, host-filter, set up, and order plugins, returning a
- * ready-to-use {@link PluginRegistry}. Host-agnostic: callers inject the entry
- * list, local files, context builder, and logger. Both the server and the
- * Electron main process use this.
+ * Discover, instantiate, set up, and order plugins, returning a ready-to-use
+ * {@link PluginRegistry}. Host-agnostic: callers inject the entry list, local
+ * files, context builder, and logger. Both the server and the Electron main
+ * process use this. Every plugin is loaded; each hook only runs in the host
+ * that invokes it, so no host filtering happens here.
  *
  * Order of operations: entries (in order) → local files (in order) → flatten
- * presets / drop falsy → filter by `apply` → run `setup` in load order → sort
- * by `enforce` (stable).
+ * presets / drop falsy → run `setup` in load order → sort by `enforce`
+ * (stable).
  */
 export async function loadPlugins(
   options: LoadPluginsOptions,
 ): Promise<PluginRegistry> {
-  const { host, buildContext, logger, onError } = options;
+  const { buildContext, logger, onError } = options;
   const resolved: Plugin[] = [];
 
   for (const entry of options.entries ?? []) {
@@ -117,8 +115,7 @@ export async function loadPlugins(
     if (factory) collect(resolved, safeInvoke(factory, file, logger));
   }
 
-  const applicable = resolved.filter((plugin) => appliesToHost(plugin, host));
-  for (const plugin of applicable) {
+  for (const plugin of resolved) {
     if (!plugin.setup) continue;
     try {
       await plugin.setup(buildContext(plugin.name));
@@ -127,20 +124,13 @@ export async function loadPlugins(
     }
   }
 
-  const ordered = sortPlugins(applicable);
+  const ordered = sortPlugins(resolved);
   if (ordered.length > 0) {
     logger.info(
       `loaded ${ordered.length} plugin(s): ${ordered.map((p) => p.name).join(", ")}`,
     );
   }
   return new PluginRegistry(ordered, { onError });
-}
-
-function appliesToHost(plugin: Plugin, host: Host): boolean {
-  const apply = plugin.apply;
-  if (apply === undefined) return true;
-  if (typeof apply === "function") return apply({ host });
-  return apply === host;
 }
 
 /** Push a plugin/preset/falsy result into the accumulator, flattening arrays. */

@@ -30,11 +30,10 @@ export {
 export { sortPlugins } from "./order.js";
 export { OutputMode } from "./output.js";
 export type {
-  Apply,
   Enforce,
-  Host,
   Plugin,
   PluginFactory,
+  PluginMode,
   PluginModule,
   PluginOptions,
   PluginPreset,

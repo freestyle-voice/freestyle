@@ -47,16 +47,16 @@ export interface SettingsReader {
 }
 
 /**
- * The execution context delivered to a plugin's `setup` lifecycle hook, once,
- * before any other hook runs. Plugins capture what they need in a closure. It
- * is the same shape in both the server and the Electron main process; the
- * `host` field distinguishes them.
+ * The execution context delivered to a plugin's `setup` lifecycle hook, once
+ * per host, before any other hook runs. Plugins capture what they need in a
+ * closure. It is the same shape in both the server and the Electron main
+ * process; the `mode` field distinguishes them.
  */
 export interface PluginContext {
   /** The plugin's declared `name`. */
   name: string;
-  /** Which process is loading this plugin. */
-  host: "server" | "app";
+  /** Which process this plugin is running in. */
+  mode: "server" | "app";
   /** Absolute path to the user data directory (db, settings, plugins live here). */
   directory: string;
   /** Structured logger scoped to this plugin. */

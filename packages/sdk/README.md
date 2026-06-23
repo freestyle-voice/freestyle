@@ -10,8 +10,8 @@ loaders that discover, order, run, and sandbox plugins live in the apps that
 host them (`apps/server` for pipeline hooks, `apps/electron` for output hooks).
 
 The design is inspired by [Vite's plugin API](https://vite.dev/guide/api-plugin):
-a plugin is a **named object** with optional `enforce`/`apply` metadata and the
-hooks it implements.
+a plugin is a **named object** with optional `enforce` metadata and the hooks it
+implements.
 
 ## Installing
 
@@ -44,10 +44,9 @@ export default function myPlugin(): Plugin {
   return {
     name: "freestyle-plugin-my",
     enforce: "pre", // optional — chain position
-    apply: "server", // optional — host gating
 
-    setup({ logger }) {
-      logger.info("ready");
+    setup({ logger, mode }) {
+      logger.info(`ready on ${mode}`); // mode: "server" | "app"
     },
 
     // Rewrite the final, cleaned dictation.
@@ -81,10 +80,38 @@ A copy-pasteable reference is exported as `examplePlugin` (see
 | --- | --- | --- |
 | `name` | yes | Stable identifier — shown in logs, telemetry, and settings UI |
 | `enforce` | no | `"pre"` runs first, `"post"` runs last, unset runs in between |
-| `apply` | no | `"server"` \| `"app"` \| `(ctx) => boolean` — which host loads the plugin |
-| `setup` | no | Lifecycle: run once with `PluginContext` before any hook |
-| `dispose` | no | Lifecycle: run once on teardown |
+| `setup` | no | Lifecycle: run once per host with `PluginContext` before any hook |
+| `dispose` | no | Lifecycle: run once per host on teardown |
 | _hooks_ | no | Any of the hooks below, flat on the object |
+
+### Hosts, routing, and `mode`
+
+A plugin is loaded into **both** processes — the server (transcription/cleanup)
+and the Electron main process (output) — with no host gating to configure. Each
+hook automatically runs only where it belongs:
+
+- `afterTranscribe`, `beforeCleanup`, `afterCleanup` run on the **server**.
+- `beforeOutput` runs in the **app**.
+- `event` runs in both, but every event type is emitted by exactly one process,
+  so a handler is **delivered each event once** — never duplicated.
+
+The only thing that runs in both processes is `setup`/`dispose` (once per host).
+When your setup logic differs by process, branch on `ctx.mode`:
+
+```ts
+export default (): Plugin => ({
+  name: "freestyle-plugin-stats",
+  setup({ logger, mode }) {
+    if (mode === "server") {
+      // open a server-only resource
+    }
+    logger.info(`ready on ${mode}`);
+  },
+  event: ({ event }) => {
+    /* sees server and app events, each once */
+  },
+});
+```
 
 ### Presets and conditional plugins
 
@@ -126,8 +153,8 @@ afterCleanup: (input, output) => {
 ## Hooks
 
 Hooks are split by the process that runs them. A single plugin may implement
-hooks from both groups — each loader only invokes the hooks belonging to its
-process (further narrowed by `apply`).
+hooks from both groups — each host only invokes the hooks belonging to its
+process.
 
 ### Server hooks (dictation backend)
 
@@ -207,7 +234,7 @@ See [`src/events.ts`](./src/events.ts) for the full union.
 | `PluginModule` | type | Shape of a loadable plugin module |
 | `Hooks` | type | The full hook surface |
 | `PluginContext` | type | What `setup` receives |
-| `Enforce` / `Apply` / `Host` | type | Ordering and host-gating metadata |
+| `Enforce` / `PluginMode` | type | Hook-chain ordering and the `setup` host indicator |
 | `FreestyleEvent` | type | Discriminated event union |
 | `AppContext` | type | The app the user dictated into |
 | `OutputMode` | value+type | Delivery modes (`Paste`/`Copy`/`None`) |

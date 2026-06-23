@@ -10,10 +10,10 @@ export default function examplePlugin(): Plugin {
   return {
     name: "freestyle-plugin-example",
     enforce: "pre",
-    apply: "server",
 
-    setup({ logger }) {
-      logger.info("example plugin loaded");
+    // Runs once per host; `mode` tells you which process you're in.
+    setup({ logger, mode }) {
+      logger.info(`example plugin loaded on ${mode}`);
     },
 
     // Observe pipeline events (read-only).

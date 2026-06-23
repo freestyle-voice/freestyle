@@ -17,7 +17,7 @@ export function buildPluginContext(name: string): PluginContext {
 
   return {
     name,
-    host: "server",
+    mode: "server",
     directory: process.env.FREESTYLE_DB_PATH
       ? path.dirname(process.env.FREESTYLE_DB_PATH)
       : process.cwd(),

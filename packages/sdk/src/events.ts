@@ -5,9 +5,10 @@ import type { OutputMode } from "./output.js";
  * pipeline. Plugins observe these through the read-only `event` hook; they
  * cannot influence behavior here — use the mutating hooks for that.
  *
- * The originating process is inferred from `PluginContext.host`:
- * `recording*` and `output*` events fire in the Electron main process;
- * `transcribed`/`cleaned` fire in the server.
+ * Each event type is emitted by exactly one process — `recording*` and
+ * `output*` fire in the Electron main process; `transcribed`/`cleaned` fire in
+ * the server — so an `event` handler is delivered each event exactly once even
+ * when the plugin is loaded in both processes.
  */
 export type FreestyleEvent =
   | { type: "recordingStarted"; appContext?: AppContext }

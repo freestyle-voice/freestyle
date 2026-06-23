@@ -25,7 +25,6 @@ export async function loadServerPlugins(): Promise<PluginRegistry> {
   const localDir = defaultLocalPluginsDir();
 
   return loadPlugins({
-    host: "server",
     entries,
     ...(localDir ? { localDir } : {}),
     buildContext: buildPluginContext,

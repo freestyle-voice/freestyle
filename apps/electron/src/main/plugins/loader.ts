@@ -12,8 +12,8 @@ const log = createAppLogger("plugins");
 
 /**
  * Load all plugins for the Electron main process via the shared SDK loader.
- * Same sources and ordering as the server host, but only `app`-host plugins
- * (and host-agnostic ones) survive the `apply` filter.
+ * Same sources and ordering as the server host; each plugin's app-side hooks
+ * (e.g. `beforeOutput`) run here while its server hooks run in the server.
  */
 export async function loadAppPlugins(): Promise<PluginRegistry> {
   const entries: PluginEntry[] = parsePluginsSetting(
@@ -22,7 +22,6 @@ export async function loadAppPlugins(): Promise<PluginRegistry> {
   const localDir = defaultLocalPluginsDir();
 
   return loadPlugins({
-    host: "app",
     entries,
     ...(localDir ? { localDir } : {}),
     buildContext: buildPluginContext,

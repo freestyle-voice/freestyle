@@ -1,6 +1,6 @@
 import { cn } from "@renderer/lib/utils";
 import { Check, Key, Sparkles } from "lucide-react";
-import { Badge } from "./ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
@@ -11,6 +11,37 @@ export const PROVIDER_FILTER_MARKS: Record<string, string> = {
   groq: "GQ",
   mistral: "M",
 };
+
+function providerLogoUrl(providerId: string): string | undefined {
+  const slug = providerId.trim().toLowerCase();
+  return slug ? `https://models.dev/logos/${slug}.svg` : undefined;
+}
+
+export function ProviderAvatar({
+  providerId,
+  providerName,
+  className,
+}: {
+  providerId: string;
+  providerName: string;
+  className?: string;
+}): React.JSX.Element {
+  const fallback =
+    PROVIDER_FILTER_MARKS[providerId] ?? providerName.slice(0, 2);
+
+  return (
+    <Avatar size="sm" className={cn("bg-background", className)}>
+      <AvatarImage
+        src={providerLogoUrl(providerId)}
+        alt=""
+        className="p-[2px] dark:invert dark:group-data-[variant=default]/button:invert-0"
+      />
+      <AvatarFallback className="text-[8px] font-semibold uppercase leading-none">
+        {fallback}
+      </AvatarFallback>
+    </Avatar>
+  );
+}
 
 export const MODEL_ROW_PAGE_SIZE = 20;
 
@@ -25,15 +56,11 @@ export function ProviderModelHeader({
 }): React.JSX.Element {
   return (
     <div className="border-border bg-card text-muted-foreground sticky top-0 z-10 flex items-center gap-1.5 border-b px-5 py-1.5 text-[10px] font-semibold uppercase tracking-wider">
-      {PROVIDER_FILTER_MARKS[providerId] && (
-        <Badge
-          variant="outline"
-          className="h-4 min-w-4 border-current/35 px-1 text-[8px] leading-none"
-          aria-hidden="true"
-        >
-          {PROVIDER_FILTER_MARKS[providerId]}
-        </Badge>
-      )}
+      <ProviderAvatar
+        providerId={providerId}
+        providerName={providerName}
+        className="size-4"
+      />
       <span>{providerName}</span>
       {!hasKey && (
         <span className="text-destructive ml-2 normal-case tracking-normal">

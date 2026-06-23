@@ -1,9 +1,13 @@
-import { PROVIDER_FILTER_MARKS } from "@renderer/components/model-row";
+import {
+  PROVIDER_FILTER_MARKS,
+  ProviderAvatar,
+} from "@renderer/components/model-row";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import {
   InputGroup,
+  InputGroupAddon,
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
 import { Progress } from "@renderer/components/ui/progress";
@@ -283,16 +287,18 @@ export function ModelList({
         >
           {type === "voice" ? "All voice models" : "Cleanup model"}
         </span>
-        <div className="border-border bg-background ml-3 flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2.5 py-1">
-          <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-          <Input
+        <InputGroup className="ml-3 h-9 flex-1 rounded-md">
+          <InputGroupAddon>
+            <Search />
+          </InputGroupAddon>
+          <InputGroupInput
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search…"
-            className="placeholder:text-muted-foreground/70 h-auto min-w-0 flex-1 rounded-none border-none bg-transparent px-0 py-0 text-[12.5px] shadow-none focus-visible:ring-0"
+            className="placeholder:text-muted-foreground/70 text-[12.5px]"
           />
-        </div>
+        </InputGroup>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -609,6 +615,7 @@ function FilterBar({
       {providers.map((p) => (
         <Chip
           key={p.id}
+          providerId={p.id}
           label={p.label}
           mark={p.mark}
           on={active === p.id}
@@ -620,11 +627,13 @@ function FilterBar({
 }
 
 function Chip({
+  providerId,
   label,
   mark,
   on,
   onClick,
 }: {
+  providerId?: string;
   label: string;
   mark?: string;
   on: boolean;
@@ -638,12 +647,11 @@ function Chip({
       className="gap-1.5 rounded-full"
     >
       {mark && (
-        <span
-          className="border-current/35 inline-flex h-4 min-w-4 items-center justify-center rounded-full border px-1 text-[8px] font-semibold leading-none"
-          aria-hidden="true"
-        >
-          {mark}
-        </span>
+        <ProviderAvatar
+          providerId={providerId ?? ""}
+          providerName={label}
+          className="size-4"
+        />
       )}
       {label}
     </Button>

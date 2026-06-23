@@ -1,6 +1,7 @@
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
 import { CloudProfileButton } from "@renderer/components/cloud-profile";
+import { Badge } from "@renderer/components/ui/badge";
 import { LINKS } from "@renderer/lib/links";
 import { cn } from "@renderer/lib/utils";
 import type { LucideIcon } from "lucide-react";
@@ -194,9 +195,12 @@ export default function AppShell(): React.JSX.Element {
             Freestyle
           </span>
           {import.meta.env.DEV && (
-            <span className="mono bg-secondary text-muted-foreground rounded-[5px] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em]">
+            <Badge
+              variant="outline"
+              className="mono h-4 border-yellow-500/30 bg-yellow-500/15 px-1.5 text-[9px] text-yellow-700 uppercase tracking-[0.12em] dark:text-yellow-300"
+            >
               dev
-            </span>
+            </Badge>
           )}
         </div>
 

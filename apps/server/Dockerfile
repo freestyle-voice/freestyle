@@ -30,8 +30,9 @@ COPY . .
 # app's postinstall rebuilds native modules we don't need here).
 RUN pnpm install --frozen-lockfile --filter @freestyle/server... --ignore-scripts
 
-# Build the server bundle (workspace deps are inlined by pkgroll).
-RUN pnpm --filter @freestyle/server build
+# Build the server bundle. Build workspace deps first (they emit to dist/),
+# then the server, which pkgroll inlines them into.
+RUN pnpm --filter "@freestyle/server..." build
 
 # Produce a self-contained deployment with production deps only.
 RUN pnpm --filter @freestyle/server deploy --prod --legacy /app

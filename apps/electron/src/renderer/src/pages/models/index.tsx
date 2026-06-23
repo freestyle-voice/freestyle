@@ -472,11 +472,11 @@ function FreestyleCloudModeCard({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Cloud className="text-primary size-4" />
-            <Eyebrow text="Freestyle Cloud routing" />
+            <Eyebrow text="Freestyle Cloud" />
           </div>
           <p className="text-muted-foreground mt-1.5 max-w-[620px] text-[13px] leading-relaxed">
-            Choose where the managed service participates. Keep your own models,
-            use cloud cleanup, or send audio once for the fastest full pass.
+            Fast, managed transcription and cleanup from Freestyle. Use it for
+            speech-to-text, polishing text, or both in one pass.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -501,16 +501,16 @@ function FreestyleCloudModeCard({
       <div className="grid grid-cols-1 gap-px bg-border/70 min-[860px]:grid-cols-3">
         <CloudRouteOption
           icon={Mic}
-          title="Transcribe"
-          description="Cloud turns audio into text. Your selected cleanup model still edits it."
+          title="Transcription"
+          description="Use Freestyle Cloud for speech-to-text, then clean up with your selected model."
           active={voiceActive && !cleanupActive}
           disabled={!canUse}
           onClick={onUseTranscription}
         />
         <CloudRouteOption
           icon={Sparkles}
-          title="Clean up"
-          description="Keep your current transcription model and send only the text to Cloud."
+          title="Cleanup"
+          description="Keep your current transcription model and let Freestyle Cloud polish the text."
           active={!voiceActive && cleanupActive}
           disabled={!canUse || cleanupDisabled}
           onClick={onUseCleanup}
@@ -518,7 +518,7 @@ function FreestyleCloudModeCard({
         <CloudRouteOption
           icon={Cloud}
           title="All-in-one"
-          description="One Cloud request handles audio, transcript, and cleanup together."
+          description="Send audio once for Freestyle Cloud to transcribe and polish in a single pass."
           active={voiceActive && cleanupActive}
           disabled={!canUse}
           onClick={onUseBoth}

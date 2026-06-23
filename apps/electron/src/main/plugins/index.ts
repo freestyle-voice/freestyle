@@ -1,7 +1,12 @@
 import { PluginRegistry } from "@freestyle/sdk";
 import { loadAppPlugins, type ServerTarget } from "./loader.js";
 
-export { OutputMode, parseAppContext } from "@freestyle/sdk";
+export {
+  FreestyleEventType,
+  OutputMode,
+  PipelineStage,
+  parseAppContext,
+} from "@freestyle/sdk";
 export type { ServerTarget } from "./loader.js";
 
 let registry: PluginRegistry = new PluginRegistry();

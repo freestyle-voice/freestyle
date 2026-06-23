@@ -4,7 +4,11 @@ import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
 import { getLanguageSetting } from "../lib/language.js";
-import { parseAppContext, plugins } from "../lib/plugins/index.js";
+import {
+  FreestyleEventType,
+  parseAppContext,
+  plugins,
+} from "../lib/plugins/index.js";
 import { postProcess, prewarmPostProcess } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
@@ -271,7 +275,10 @@ const stream = new Hono().get(
               return;
             }
 
-            void plugins().emit({ type: "transcribed", text: rawText });
+            void plugins().emit({
+              type: FreestyleEventType.Transcribed,
+              text: rawText,
+            });
 
             const useFastHandoff =
               canStream && voiceDefaults!.provider === "soniox";

@@ -96,8 +96,10 @@ import {
 } from "./paste";
 import {
   plugins as appPlugins,
+  FreestyleEventType,
   initAppPlugins,
   OutputMode,
+  PipelineStage,
   parseAppContext,
 } from "./plugins/index";
 
@@ -657,7 +659,9 @@ function registerPillEscape(): void {
     globalShortcut.register("Escape", () => {
       if (mainWindow?.isVisible()) {
         mainWindow.webContents.send("pill:cancel");
-        void appPlugins().emit({ type: "recordingCancelled" });
+        void appPlugins().emit({
+          type: FreestyleEventType.RecordingCancelled,
+        });
       }
     });
   }
@@ -868,7 +872,7 @@ async function deliverOutput(
   // it as delivered with mode None so observers see a single, accurate event.
   if (out.mode === OutputMode.None || !out.text?.trim()) {
     void appPlugins().emit({
-      type: "outputDelivered",
+      type: FreestyleEventType.OutputDelivered,
       text: out.text,
       mode: OutputMode.None,
     });
@@ -889,15 +893,15 @@ async function deliverOutput(
     // instead of letting the dictation silently vanish.
     notifyPasteFailed();
     void appPlugins().emit({
-      type: "pipelineError",
-      stage: "output",
+      type: FreestyleEventType.PipelineError,
+      stage: PipelineStage.Output,
       message: err instanceof Error ? err.message : String(err),
     });
     throw err;
   }
 
   void appPlugins().emit({
-    type: "outputDelivered",
+    type: FreestyleEventType.OutputDelivered,
     text: out.text,
     mode: out.mode,
   });
@@ -1942,7 +1946,7 @@ function loadHotkeyModeFromDB(): "hold" | "toggle" {
 
 function sendHotkeyDown(): void {
   showPill();
-  void appPlugins().emit({ type: "recordingStarted" });
+  void appPlugins().emit({ type: FreestyleEventType.RecordingStarted });
   if (pillReadyPromise) {
     // The pill window is still loading — defer IPC until it can receive it.
     void pillReadyPromise.then(() => {
@@ -1956,7 +1960,7 @@ function sendHotkeyDown(): void {
 }
 
 function sendHotkeyUp(): void {
-  void appPlugins().emit({ type: "recordingCommitted" });
+  void appPlugins().emit({ type: FreestyleEventType.RecordingCommitted });
   if (pillReadyPromise) {
     // Preserve IPC ordering: hotkey:up must arrive after hotkey:down.
     void pillReadyPromise.then(() => {

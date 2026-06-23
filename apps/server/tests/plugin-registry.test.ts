@@ -1,5 +1,9 @@
 import type { Plugin } from "@freestyle/sdk";
-import { PluginRegistry, sortPlugins } from "@freestyle/sdk";
+import {
+  FreestyleEventType,
+  PluginRegistry,
+  sortPlugins,
+} from "@freestyle/sdk";
 import { describe, expect, it, vi } from "vitest";
 
 describe("PluginRegistry", () => {
@@ -97,7 +101,7 @@ describe("PluginRegistry", () => {
     const registry = new PluginRegistry([a, b]);
 
     await registry.emit({
-      type: "transcribed",
+      type: FreestyleEventType.Transcribed,
       text: "hi",
     });
 

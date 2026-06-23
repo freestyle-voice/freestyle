@@ -3,7 +3,11 @@ import { PluginRegistry } from "@freestyle/sdk";
 import { createAppLogger } from "@freestyle/utils";
 import { loadServerPlugins } from "./loader.js";
 
-export { parseAppContext } from "@freestyle/sdk";
+export {
+  FreestyleEventType,
+  PipelineStage,
+  parseAppContext,
+} from "@freestyle/sdk";
 
 const log = createAppLogger("plugins");
 

@@ -15,7 +15,12 @@ import {
   normalizeGroqModelId,
   prewarmGroqConnection,
 } from "./groq-http.js";
-import { parseAppContext, plugins } from "./plugins/index.js";
+import {
+  FreestyleEventType,
+  PipelineStage,
+  parseAppContext,
+  plugins,
+} from "./plugins/index.js";
 import { capture, captureException } from "./posthog.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
 
@@ -203,8 +208,8 @@ export async function postProcess(
       } catch (err) {
         captureException(err);
         void plugins().emit({
-          type: "pipelineError",
-          stage: "cleanup",
+          type: FreestyleEventType.PipelineError,
+          stage: PipelineStage.Cleanup,
           message: err instanceof Error ? err.message : String(err),
         });
         capture("post process failed", {
@@ -235,7 +240,7 @@ export async function postProcess(
   // plugin) changed the text, reporting the full raw -> final transformation.
   if (cleanedText !== normalizedRawText) {
     void plugins().emit({
-      type: "cleaned",
+      type: FreestyleEventType.Cleaned,
       before: normalizedRawText,
       after: cleanedText,
     });

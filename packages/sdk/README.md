@@ -205,15 +205,17 @@ voice-command plugins that consume the utterance instead of typing it.
 The read-only `event` hook receives a discriminated `FreestyleEvent`:
 
 ```ts
+import { FreestyleEventType } from "@freestyle/sdk";
+
 event: ({ event }) => {
   switch (event.type) {
-    case "recordingStarted":   break;
-    case "recordingCommitted": break;
-    case "recordingCancelled": break;
-    case "transcribed":        /* event.text, event.durationInSeconds */ break;
-    case "cleaned":            /* event.before, event.after */ break;
-    case "outputDelivered":    /* event.text, event.mode ("none" = suppressed) */ break;
-    case "pipelineError":      /* event.stage, event.message */ break;
+    case FreestyleEventType.RecordingStarted:   break;
+    case FreestyleEventType.RecordingCommitted: break;
+    case FreestyleEventType.RecordingCancelled: break;
+    case FreestyleEventType.Transcribed:        /* event.text, event.durationInSeconds */ break;
+    case FreestyleEventType.Cleaned:            /* event.before, event.after */ break;
+    case FreestyleEventType.OutputDelivered:    /* event.text, event.mode (OutputMode.None = suppressed) */ break;
+    case FreestyleEventType.PipelineError:      /* event.stage, event.message */ break;
   }
 };
 ```
@@ -233,8 +235,10 @@ See [`src/events.ts`](./src/events.ts) for the full union.
 | `PluginContext` | type | What `setup` receives |
 | `Enforce` / `PluginMode` | type | Hook-chain ordering and the `setup` host indicator |
 | `FreestyleEvent` | type | Discriminated event union |
+| `FreestyleEventType` | value+type | Event kinds (`Transcribed`/`OutputDelivered`/…) |
+| `PipelineStage` | value+type | Error stages (`Capture`/`Transcribe`/`Cleanup`/`Transform`/`Output`) |
 | `AppContext` | type | The app the user dictated into |
-| `OutputMode` | value+type | Delivery modes (`Paste`/`Copy`/`None`) |
+| `OutputMode` | value+type | Delivery modes (`Paste`/`Clipboard`/`None`) |
 | `Register` | type | `"formal"` \| `"casual"` \| `"neutral"` |
 | `transform` | fn | Wrap a pure `(text) => text` into `afterCleanup` |
 | `sortPlugins` | fn | Order plugins by `enforce` (used by loaders) |

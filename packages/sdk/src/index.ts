@@ -7,7 +7,8 @@ export {
   type PluginLogger,
   type SettingsReader,
 } from "./context.js";
-export type { AppContext, FreestyleEvent, PipelineStage } from "./events.js";
+export type { AppContext, FreestyleEvent } from "./events.js";
+export { FreestyleEventType, PipelineStage } from "./events.js";
 export type {
   AfterCleanupInput,
   AfterTranscribeInput,

@@ -223,6 +223,24 @@ function getServerToken(): string {
   return typeof raw === "string" ? raw.trim() : "";
 }
 
+/**
+ * Base URL the app uses to reach the Freestyle server: the configured remote
+ * URL, or the locally-run server on the resolved port. The DB lives behind the
+ * server, so all server-owned data (settings, plugins) is read through it.
+ */
+function getServerBaseUrl(): string {
+  return getServerUrl() || `http://127.0.0.1:${serverPort}`;
+}
+
+/**
+ * Load the app-host plugin registry, reading the `plugins` list and plugin
+ * settings from the server over HTTP. Called once the server is reachable; the
+ * underlying init is idempotent, so repeated calls are harmless.
+ */
+function initPluginsForServer(): void {
+  void initAppPlugins({ baseUrl: getServerBaseUrl(), token: getServerToken() });
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let httpServer: any = null;
 let serverPort = DEFAULT_PORT;
@@ -1485,6 +1503,8 @@ app.whenReady().then(async () => {
 
   if (serverUrl) {
     log.info(`Using configured Freestyle server at ${serverUrl}`);
+    // The configured server is already up; load app-host plugins from it.
+    initPluginsForServer();
   } else {
     // Set database path for the server before any API calls
     process.env.FREESTYLE_DB_PATH = join(
@@ -1501,9 +1521,6 @@ app.whenReady().then(async () => {
     reconcileUnsupportedMlxVoiceDefault();
     autoStartWhisperServer();
 
-    // Load app-host plugins (beforeOutput, etc.) now that the DB path is known.
-    void initAppPlugins();
-
     // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
     const startServer = (port: number): void => {
       startFreestyleServer({ port, host: "127.0.0.1" })
@@ -1511,6 +1528,9 @@ app.whenReady().then(async () => {
           httpServer = server;
           serverPort = boundPort;
           log.info(`Server running on http://localhost:${boundPort}`);
+          // Load app-host plugins now the server is listening (settings come
+          // from it over HTTP).
+          initPluginsForServer();
         })
         .catch((err: NodeJS.ErrnoException) => {
           if (err.code === "EADDRINUSE" && port === DEFAULT_PORT) {
@@ -1541,6 +1561,8 @@ app.whenReady().then(async () => {
       log.info(
         `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
       );
+      // Reusing a server that's already up; load app-host plugins from it.
+      initPluginsForServer();
     } else {
       startServer(DEFAULT_PORT);
     }

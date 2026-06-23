@@ -1,43 +1,28 @@
-import { existsSync } from "node:fs";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import type { PluginContext, SettingsReader } from "@freestyle/sdk";
 import { createPluginLogger } from "@freestyle/sdk";
 import { createAppLogger } from "@freestyle/utils";
 
 /**
- * Read a single value from the `settings` table the server owns. The main
- * process opens a short-lived read-only connection to the same SQLite file
- * (the established pattern in this process — see hotkey loading). Returns
- * `undefined` when the key is unset or the database is unavailable. The
- * existence + read-only checks ensure a read can never create the db file.
+ * A read-only snapshot of the server's `settings` table, fetched once over HTTP
+ * when the app plugin registry is loaded. The app never touches the database
+ * directly — the server owns it and may be remote — so settings are resolved
+ * from this snapshot the server hands back.
  */
-export function readSetting(key: string): string | undefined {
-  const dbPath = process.env.FREESTYLE_DB_PATH;
-  if (!dbPath || !existsSync(dbPath)) return undefined;
-  let db: DatabaseSync | undefined;
-  try {
-    db = new DatabaseSync(dbPath, { readOnly: true });
-    const row = db
-      .prepare("SELECT value FROM settings WHERE key = ?")
-      .get(key) as { value: string } | undefined;
-    return row?.value;
-  } catch {
-    return undefined;
-  } finally {
-    db?.close();
-  }
-}
+export type SettingsSnapshot = Readonly<Record<string, string>>;
 
 /**
- * Build the context handed to an app-host plugin's `setup` hook. Settings reads
- * hit the same `settings` table the server uses; namespaced plugin keys live
- * under `plugin:<name>:<key>`.
+ * Build the context handed to an app-host plugin's `setup` hook. Settings are
+ * served synchronously from the snapshot the server provided; namespaced plugin
+ * keys live under `plugin:<name>:<key>`, matching the server host.
  */
-export function buildPluginContext(name: string): PluginContext {
+export function buildPluginContext(
+  name: string,
+  snapshot: SettingsSnapshot,
+): PluginContext {
   const settings: SettingsReader = {
-    get: (key) => readSetting(key),
-    getOwn: (key) => readSetting(`plugin:${name}:${key}`),
+    get: (key) => snapshot[key],
+    getOwn: (key) => snapshot[`plugin:${name}:${key}`],
   };
 
   return {

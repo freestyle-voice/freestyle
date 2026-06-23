@@ -1,5 +1,5 @@
 import { Button } from "@renderer/components/ui/button";
-import { useCloudAuth } from "@renderer/lib/cloud-auth-context";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import type { AvailableModel } from "@renderer/lib/models";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
@@ -54,6 +54,39 @@ export default function ModelsPage(): React.JSX.Element {
     setSaving(false);
   };
 
+  const freestyleVoice = m.available.find(
+    (model) =>
+      model.type === "voice" && model.provider_id === FREESTYLE_CLOUD_PROVIDER,
+  );
+  const freestyleCleanup = m.available.find(
+    (model) =>
+      model.type === "llm" && model.provider_id === FREESTYLE_CLOUD_PROVIDER,
+  );
+
+  const ensureCloudAuth = async (): Promise<boolean> => {
+    if (cloudAuth.user) return true;
+    return !!(await cloudAuth.signIn());
+  };
+
+  const useFreestyleCloudForBoth = (): void => {
+    if (!freestyleVoice || !freestyleCleanup) return;
+    void (async () => {
+      if (!(await ensureCloudAuth())) return;
+      await m.configureModel(freestyleVoice, "voice");
+      await m.configureModel(freestyleCleanup, "llm");
+      m.setCleanup(true);
+    })();
+  };
+
+  const useFreestyleCloudForCleanup = (): void => {
+    if (!freestyleCleanup) return;
+    void (async () => {
+      if (!(await ensureCloudAuth())) return;
+      await m.configureModel(freestyleCleanup, "llm");
+      m.setCleanup(true);
+    })();
+  };
+
   const openVoice = (): void => setModal({ kind: "list", type: "voice" });
   const openLlm = (): void => {
     m.setCleanup(true);
@@ -65,16 +98,12 @@ export default function ModelsPage(): React.JSX.Element {
     const type = modal.type;
 
     // Freestyle Cloud requires a signed-in user — run the OAuth flow first,
-    // then configure (and disable local cleanup) only if sign-in succeeds.
-    if (
-      type === "voice" &&
-      model.provider_id === FREESTYLE_CLOUD_PROVIDER &&
-      !cloudAuth.user
-    ) {
+    // then configure only if sign-in succeeds.
+    if (model.provider_id === FREESTYLE_CLOUD_PROVIDER && !cloudAuth.user) {
       void cloudAuth.signIn().then((user) => {
         if (!user) return;
         void m.configureModel(model, type).then(() => {
-          m.setCleanup(false);
+          if (type === "voice") m.setCleanup(false);
           closeModal();
         });
       });
@@ -165,9 +194,8 @@ export default function ModelsPage(): React.JSX.Element {
   if (m.loading) {
     return (
       <PageShell>
-        <div className="flex items-center justify-center py-24">
-          <p className="text-muted-foreground text-sm">{t("models.loading")}</p>
-        </div>
+        <PageHeader title={t("models.title")} />
+        <ModelsLoadingSkeleton />
       </PageShell>
     );
   }
@@ -191,6 +219,18 @@ export default function ModelsPage(): React.JSX.Element {
     <PageShell>
       <PageHeader title={t("models.title")} />
       <div className="space-y-6">
+        <FreestyleCloudModeCard
+          signedInEmail={cloudAuth.user?.email ?? null}
+          voiceActive={m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER}
+          cleanupActive={
+            m.llmCleanup && m.defaultLlm?.provider === FREESTYLE_CLOUD_PROVIDER
+          }
+          onSignIn={() => void cloudAuth.signIn()}
+          onSignOut={() => void cloudAuth.signOut()}
+          onUseBoth={useFreestyleCloudForBoth}
+          onUseCleanup={useFreestyleCloudForCleanup}
+          canUse={!!freestyleVoice && !!freestyleCleanup}
+        />
         <PairCard
           voice={m.defaultVoice}
           llm={m.defaultLlm}
@@ -307,6 +347,187 @@ export default function ModelsPage(): React.JSX.Element {
         />
       )}
     </PageShell>
+  );
+}
+
+function SkeletonLine({
+  className,
+}: {
+  className?: string;
+}): React.JSX.Element {
+  return (
+    <div
+      className={cn(
+        "bg-muted/60 relative overflow-hidden rounded-full",
+        "before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.4s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent",
+        className,
+      )}
+    />
+  );
+}
+
+function ModelsLoadingSkeleton(): React.JSX.Element {
+  return (
+    <div className="space-y-6" role="status" aria-label="Loading models">
+      <style>{`
+        @keyframes shimmer {
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
+
+      <section className="border-border bg-card rounded-[14px] border p-5">
+        <div className="flex flex-col gap-4 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
+          <div className="min-w-0 flex-1">
+            <SkeletonLine className="h-3 w-28" />
+            <SkeletonLine className="mt-3 h-5 w-64 max-w-full" />
+            <SkeletonLine className="mt-3 h-3 w-full max-w-[560px]" />
+            <SkeletonLine className="mt-2 h-3 w-4/5 max-w-[460px]" />
+            <div className="mt-4 flex flex-wrap gap-2">
+              <SkeletonLine className="h-7 w-28" />
+              <SkeletonLine className="h-7 w-24" />
+              <SkeletonLine className="h-7 w-36" />
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <SkeletonLine className="h-9 w-20 rounded-md" />
+            <SkeletonLine className="h-9 w-32 rounded-md" />
+            <SkeletonLine className="h-9 w-28 rounded-md" />
+          </div>
+        </div>
+      </section>
+
+      <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
+        {["voice", "cleanup"].map((key) => (
+          <div
+            key={key}
+            className={cn(
+              "flex min-h-[140px] flex-col gap-3",
+              key === "cleanup" &&
+                "border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0",
+            )}
+          >
+            <SkeletonLine className="h-3 w-40" />
+            <SkeletonLine className="h-6 w-52 max-w-full" />
+            <SkeletonLine className="h-3 w-32" />
+            <div className="mt-auto flex items-center gap-3">
+              <SkeletonLine className="h-9 w-24 rounded-md" />
+              <SkeletonLine className="h-5 w-28" />
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="border-border bg-card rounded-[14px] border p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <SkeletonLine className="h-3 w-28" />
+            <SkeletonLine className="mt-3 h-5 w-44" />
+            <SkeletonLine className="mt-3 h-3 w-full max-w-[420px]" />
+          </div>
+          <SkeletonLine className="h-8 w-24 rounded-md" />
+        </div>
+        <div className="mt-5 space-y-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <SkeletonLine className="h-4 w-40" />
+                <SkeletonLine className="mt-2 h-3 w-64 max-w-full" />
+              </div>
+              <SkeletonLine className="h-8 w-16 rounded-md" />
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function FreestyleCloudModeCard({
+  signedInEmail,
+  voiceActive,
+  cleanupActive,
+  onSignIn,
+  onSignOut,
+  onUseBoth,
+  onUseCleanup,
+  canUse,
+}: {
+  signedInEmail: string | null;
+  voiceActive: boolean;
+  cleanupActive: boolean;
+  onSignIn: () => void;
+  onSignOut: () => void;
+  onUseBoth: () => void;
+  onUseCleanup: () => void;
+  canUse: boolean;
+}): React.JSX.Element {
+  return (
+    <section className="border-border bg-card rounded-[14px] border p-5">
+      <div className="flex flex-col gap-4 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
+        <div className="min-w-0">
+          <Eyebrow text="Freestyle Cloud" />
+          <h2 className="text-foreground mt-1 text-[18px] font-semibold">
+            Managed transcription and cleanup
+          </h2>
+          <p className="text-muted-foreground mt-1 max-w-[620px] text-[13px] leading-relaxed">
+            Use Freestyle Cloud for transcription, AI cleanup, or both in one
+            fast pass. You can stay signed in even when using your own models.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span
+              className={cn(
+                "rounded-full px-2.5 py-1 text-[11px]",
+                voiceActive
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-muted-foreground",
+              )}
+            >
+              Transcription {voiceActive ? "on" : "off"}
+            </span>
+            <span
+              className={cn(
+                "rounded-full px-2.5 py-1 text-[11px]",
+                cleanupActive
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-muted-foreground",
+              )}
+            >
+              Cleanup {cleanupActive ? "on" : "off"}
+            </span>
+            <span className="bg-secondary text-muted-foreground rounded-full px-2.5 py-1 text-[11px]">
+              {signedInEmail ? `Signed in as ${signedInEmail}` : "Signed out"}
+            </span>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {signedInEmail ? (
+            <Button variant="outline" size="sm" onClick={onSignOut}>
+              Sign out
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" onClick={onSignIn}>
+              Sign in
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!canUse}
+            onClick={onUseCleanup}
+          >
+            Use for cleanup
+          </Button>
+          <Button
+            variant="ink"
+            size="sm"
+            disabled={!canUse}
+            onClick={onUseBoth}
+          >
+            Use for both
+          </Button>
+        </div>
+      </div>
+    </section>
   );
 }
 

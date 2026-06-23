@@ -238,7 +238,7 @@ export default function AppShell(): React.JSX.Element {
         </div>
 
         <main
-          className="flex min-h-0 flex-1 flex-col overflow-auto"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
           style={{ scrollbarWidth: "none" } as React.CSSProperties}
         >
           <Outlet />

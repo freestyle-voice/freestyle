@@ -6,6 +6,7 @@ import {
   CircleDollarSign,
   Download,
   Key,
+  LogIn,
   RefreshCw,
   Target,
   Trash2,
@@ -99,6 +100,7 @@ export function VoiceRow({
     /(not installed|not found|missing|FREESTYLE|Python)/i.test(
       item.state.error,
     );
+  const isFreestyleCloud = item.available?.provider_id === "freestyle-cloud";
   return (
     <div
       className={cn(
@@ -346,8 +348,12 @@ export function VoiceRow({
             size="sm"
             onClick={() => item.available && onSelectCloud(item.available)}
           >
-            <Key data-icon="inline-start" />
-            Add key
+            {isFreestyleCloud ? (
+              <LogIn data-icon="inline-start" />
+            ) : (
+              <Key data-icon="inline-start" />
+            )}
+            {isFreestyleCloud ? "Sign in" : "Add key"}
           </Button>
         )}
       </div>

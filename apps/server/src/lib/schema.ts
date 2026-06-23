@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 const DEFAULT_FORMAT_RULES = [
   {
@@ -272,6 +272,24 @@ export function initSchema(db: DatabaseSync): void {
         legacy.instructions,
       );
     }
+  }
+
+  if (currentVersion < 9) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id INTEGER PRIMARY KEY CHECK(id = 1),
+        token TEXT NOT NULL,
+        refresh_token TEXT,
+        expires_at INTEGER,
+        issued_at INTEGER,
+        user_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        name TEXT,
+        image TEXT,
+        host TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
   }
 
   // Upsert schema version

@@ -8,7 +8,7 @@ import {
 } from "@renderer/components/ui/input-group";
 import { Progress } from "@renderer/components/ui/progress";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
-import { useCloudAuth } from "@renderer/lib/cloud-auth-context";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import type {
   AvailableModel,
   VoiceItem,
@@ -156,7 +156,9 @@ function buildLlmRows(
         selected:
           m.defaultLlm?.model_id === model.model_id &&
           m.defaultLlm?.provider === model.provider_id,
-        hasKey: m.keyProviders.has(providerId),
+        hasKey:
+          providerId === FREESTYLE_CLOUD_TIER.provider_id ||
+          m.keyProviders.has(providerId),
         onSelect: () => h.onPickCloud(model),
       });
     }

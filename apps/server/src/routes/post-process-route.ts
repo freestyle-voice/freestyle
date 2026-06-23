@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { FreestyleCloudAuthError } from "../lib/freestyle-cloud.js";
 import { getLanguageSetting } from "../lib/language.js";
 import { postProcess } from "../lib/post-process.js";
 
@@ -13,10 +14,18 @@ const postProcessRoute = new Hono().post("/", async (c) => {
   const language =
     typeof body.language === "string" ? body.language : getLanguageSetting();
 
-  const pp = await postProcess(body.text, appContext, {
-    language,
-    source: "multi_segment",
-  });
+  let pp: Awaited<ReturnType<typeof postProcess>>;
+  try {
+    pp = await postProcess(body.text, appContext, {
+      language,
+      source: "multi_segment",
+    });
+  } catch (err) {
+    if (err instanceof FreestyleCloudAuthError) {
+      return c.json({ error: "cloud_auth_required" }, 401);
+    }
+    throw err;
+  }
 
   return c.json({
     cleaned: pp.cleaned,

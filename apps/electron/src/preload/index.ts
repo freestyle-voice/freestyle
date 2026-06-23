@@ -4,7 +4,6 @@ import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
 } from "../shared/audio-playback";
-import type { CloudUser } from "../shared/cloud-user";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 
 // Custom APIs for renderer
@@ -34,6 +33,8 @@ const api = {
   // Reveal the diagnostic logs folder (freestyle.log) in the OS file manager.
   openLogsFolder: (): Promise<boolean> =>
     ipcRenderer.invoke("logs:open-folder"),
+  openExternal: (url: string): Promise<boolean> =>
+    ipcRenderer.invoke("open:external", url),
   // Server URL ("" = use the bundled local server)
   getServerUrl: (): Promise<string> => ipcRenderer.invoke("server:url"),
   setServerUrl: (url: string): Promise<string> =>
@@ -42,23 +43,8 @@ const api = {
   getServerToken: (): Promise<string> => ipcRenderer.invoke("server:token"),
   setServerToken: (token: string): Promise<string> =>
     ipcRenderer.invoke("server:set-token", token),
-  // Freestyle Cloud sign-in (OAuth device flow). Resolves with the signed-in
-  // user; rejects if denied/expired/cancelled.
-  cloudSignIn: (): Promise<CloudUser> => ipcRenderer.invoke("cloud:sign-in"),
-  // Aborts an in-flight sign-in (e.g. the user closed the browser tab).
-  cloudCancelSignIn: (): Promise<boolean> =>
-    ipcRenderer.invoke("cloud:cancel-sign-in"),
-  cloudSignOut: (): Promise<boolean> => ipcRenderer.invoke("cloud:sign-out"),
   cloudPromptSignIn: (): Promise<boolean> =>
     ipcRenderer.invoke("cloud:prompt-sign-in"),
-  getCloudUser: (): Promise<CloudUser | null> =>
-    ipcRenderer.invoke("cloud:user"),
-  // Fires while a sign-in is pending so the UI can show the device user code.
-  onCloudUserCode: (callback: (userCode: string) => void): (() => void) => {
-    const handler = (_e: unknown, code: string): void => callback(code);
-    ipcRenderer.on("cloud:user-code", handler);
-    return () => ipcRenderer.removeListener("cloud:user-code", handler);
-  },
   onHotkeyDown: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("hotkey:down", handler);

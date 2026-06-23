@@ -88,7 +88,7 @@ export function identifyCloudUser(user: CloudIdentity): void {
     if (!isEnabled()) return;
     const client = getClient();
     // Merge the prior anonymous (device) person into the identified user.
-    client.alias({ distinctId: getDeviceId(), alias: user.id });
+    client.alias({ distinctId: user.id, alias: getDeviceId() });
     client.identify({
       distinctId: user.id,
       properties: { email: user.email, name: user.name ?? undefined },

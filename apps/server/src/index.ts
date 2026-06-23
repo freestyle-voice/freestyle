@@ -4,7 +4,6 @@ import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { WebSocketServer } from "ws";
 import { authMiddleware, setAuthToken } from "./lib/auth.js";
-import { setCloudAuthToken } from "./lib/cloud-auth.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
   activateManagedMlxRuntimeForAppVersion,
@@ -59,12 +58,6 @@ export interface StartServerOptions {
    * server, but set this for standalone/remote deployments.
    */
   token?: string;
-  /**
-   * Freestyle Cloud session token, attached by the `freestyle-cloud`
-   * transcription provider as `Authorization: Bearer`. Owned by the Electron
-   * main process; updated at runtime via `PUT /api/cloud-auth`.
-   */
-  cloudAuthToken?: string;
 }
 
 export interface RunningServer {
@@ -82,9 +75,8 @@ export interface RunningServer {
 export function startServer(
   options: StartServerOptions = {},
 ): Promise<RunningServer> {
-  const { port = 4649, host = "127.0.0.1", token, cloudAuthToken } = options;
+  const { port = 4649, host = "127.0.0.1", token } = options;
   setAuthToken(token);
-  setCloudAuthToken(cloudAuthToken);
   const wss = new WebSocketServer({ noServer: true });
 
   return new Promise((resolve, reject) => {

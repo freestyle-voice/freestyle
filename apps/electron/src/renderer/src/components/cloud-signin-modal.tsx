@@ -4,7 +4,7 @@ import {
   DialogContent,
   DialogTitle,
 } from "@renderer/components/ui/dialog";
-import { useCloudAuth } from "@renderer/lib/cloud-auth-context";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import { Loader2 } from "lucide-react";
 
 export function CloudSignInModal(): React.JSX.Element | null {

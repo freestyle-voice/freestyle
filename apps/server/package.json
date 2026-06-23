@@ -34,6 +34,7 @@
     "@huggingface/hub": "^2.13.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^6.0.191",
+    "better-auth": "^1.6.20",
     "hono": "^4.12.22",
     "hono-rate-limiter": "^0.5.3",
     "posthog-node": "^5.35.8",

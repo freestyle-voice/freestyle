@@ -11,12 +11,18 @@ import { sanitizeTranscriptText } from "./editor/model-hints.js";
 import { buildRewritePrompt } from "./editor/prompts.js";
 import { getRewritePromptContext } from "./editor/rewrite-context.js";
 import {
+  FREESTYLE_CLOUD_PROVIDER_ID,
+  FreestyleCloudAuthError,
+  postProcessWithFreestyleCloud,
+} from "./freestyle-cloud.js";
+import {
   getGroqChatModel,
   normalizeGroqModelId,
   prewarmGroqConnection,
 } from "./groq-http.js";
 import { capture, captureException } from "./posthog.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
+import { getSessionToken } from "./sessions.js";
 
 const log = createAppLogger("post-process");
 
@@ -58,7 +64,7 @@ function readSetting(
   return row?.value;
 }
 
-function isLlmCleanupEnabled(db: ReturnType<typeof getDb>): boolean {
+export function isLlmCleanupEnabled(db: ReturnType<typeof getDb>): boolean {
   return readSetting(db, "llm_cleanup") === "true";
 }
 
@@ -157,7 +163,21 @@ export async function postProcess(
   let handoffMs = 0;
 
   if (llm && isLlmCleanupEnabled(db)) {
-    if (!(await isCleanupModelSupported(llm.provider, llm.model_id))) {
+    if (llm.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
+      const token = getSessionToken();
+      if (!token) throw new FreestyleCloudAuthError();
+      const result = await postProcessWithFreestyleCloud({
+        token,
+        text: normalizedRawText,
+        appContext,
+        language: options.language,
+      });
+      inputTokens = result.usage?.inputTokens ?? 0;
+      outputTokens = result.usage?.outputTokens ?? 0;
+      llmProvider = llm.provider;
+      llmModel = llm.model_id;
+      cleanedText = sanitizeTranscriptText(result.cleaned);
+    } else if (!(await isCleanupModelSupported(llm.provider, llm.model_id))) {
       log.warn(
         `Skipping LLM cleanup: unsupported cleanup model ${llm.provider}/${llm.model_id}`,
       );

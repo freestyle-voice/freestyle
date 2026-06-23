@@ -6,7 +6,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@renderer/components/ui/dropdown-menu";
-import { useCloudAuth } from "@renderer/lib/cloud-auth-context";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import { cn } from "@renderer/lib/utils";
 import { ChevronsUpDown, Cloud, Loader2, LogIn, LogOut } from "lucide-react";
 

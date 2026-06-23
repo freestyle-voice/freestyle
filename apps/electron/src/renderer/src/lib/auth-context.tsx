@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import type { CloudUser } from "../../../shared/cloud-user";
+import { getClient } from "./api";
 
 export interface UseCloudAuth {
   user: CloudUser | null;
@@ -33,9 +34,14 @@ function useCloudAuthState(): UseCloudAuth {
   const cancelledRef = useRef(false);
 
   useEffect(() => {
-    window.api
-      .getCloudUser()
-      .then(setUser)
+    getClient()
+      .api.auth.status.$get()
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.user ?? null;
+      })
+      .then((u) => setUser(u))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -45,18 +51,46 @@ function useCloudAuthState(): UseCloudAuth {
     setSigningIn(true);
     setError(null);
     setUserCode(null);
-    const off = window.api.onCloudUserCode((code) => setUserCode(code));
     try {
-      const u = await window.api.cloudSignIn();
-      setUser(u);
-      return u;
+      const codeRes = await getClient().api.auth.device.code.$post();
+      if (!codeRes.ok)
+        throw new Error(`Could not start sign-in (${codeRes.status})`);
+      const code = await codeRes.json();
+      setUserCode(code.user_code);
+      await window.api.openExternal(
+        code.verification_uri_complete || code.verification_uri,
+      );
+
+      const deadline = Date.now() + code.expires_in * 1000;
+      let intervalMs = Math.max(1, code.interval) * 1000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        if (cancelledRef.current) return null;
+        const tokenRes = await getClient().api.auth.device.token.$post({
+          json: { device_code: code.device_code },
+        });
+        if (tokenRes.status === 202) continue;
+        if (tokenRes.status === 429) {
+          intervalMs += 5000;
+          continue;
+        }
+        if (!tokenRes.ok) {
+          const body = (await tokenRes.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          throw new Error(body?.error ?? `Sign-in failed (${tokenRes.status})`);
+        }
+        const data = await tokenRes.json();
+        setUser(data.user);
+        return data.user;
+      }
+      throw new Error("Sign-in timed out. Please try again.");
     } catch (err) {
       if (!cancelledRef.current) {
         setError(err instanceof Error ? err.message : "Sign-in failed");
       }
       return null;
     } finally {
-      off();
       setSigningIn(false);
       setUserCode(null);
     }
@@ -64,11 +98,14 @@ function useCloudAuthState(): UseCloudAuth {
 
   const cancelSignIn = useCallback((): void => {
     cancelledRef.current = true;
-    void window.api.cloudCancelSignIn();
+    setSigningIn(false);
+    setUserCode(null);
   }, []);
 
   const signOut = useCallback(async (): Promise<void> => {
-    await window.api.cloudSignOut().catch(() => {});
+    await getClient()
+      .api.auth["sign-out"].$post()
+      .catch(() => {});
     setUser(null);
   }, []);
 

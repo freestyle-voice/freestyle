@@ -26,7 +26,7 @@ import {
 } from "@renderer/hooks/use-hotkey-recorder";
 import { capture } from "@renderer/lib/analytics";
 import { getClient } from "@renderer/lib/api";
-import { useCloudAuth } from "@renderer/lib/cloud-auth-context";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import { defaultLanguage, ONBOARDING_LANGUAGES } from "@renderer/lib/languages";
 import {
   type AvailableModel,
@@ -397,7 +397,11 @@ export default function OnboardingPage(): React.JSX.Element {
     (model: AvailableModel) => {
       if (model.provider_id === FREESTYLE_CLOUD_PROVIDER_ID) {
         if (cloudUser) commitFreestyleCloudDefault();
-        else void cloudSignIn();
+        else {
+          void cloudSignIn().then((user) => {
+            if (user) commitFreestyleCloudDefault();
+          });
+        }
         return;
       }
       setSelectedModel(model);
@@ -1327,11 +1331,11 @@ function ModelSelectorOverlay({
       from: "selector",
     });
     onSelectCloud(model);
-    if (
-      model.provider_id === FREESTYLE_CLOUD_PROVIDER_ID ||
-      keyProviders.has(model.provider_id)
-    ) {
+    if (keyProviders.has(model.provider_id)) {
       onClose();
+    } else if (model.provider_id === FREESTYLE_CLOUD_PROVIDER_ID) {
+      // Keep the selector open while the account flow runs; close only after
+      // cloudUser updates and the selected model becomes ready.
     } else {
       capture("onboarding_cloud_key_entry_viewed", {
         provider: model.provider_id,

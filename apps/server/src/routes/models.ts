@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import {
+  FREESTYLE_CLOUD_CLEANUP_MODEL_ID,
+  FREESTYLE_CLOUD_PROVIDER_ID,
+  FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID,
+} from "../lib/freestyle-cloud.js";
+import {
   LEGACY_MLX_ASR_MODELS,
   MLX_ASR_MODELS,
   MLX_ASR_PROVIDER_ID,
@@ -111,9 +116,9 @@ const LOCAL_MLX_VOICE_MODELS: AvailableModel[] = [
 // registry is deliberately NOT merged for voice — untested model noise.
 const BUILTIN_VOICE_MODELS: AvailableModel[] = [
   {
-    provider_id: "freestyle-cloud",
+    provider_id: FREESTYLE_CLOUD_PROVIDER_ID,
     provider_name: "Freestyle Cloud",
-    model_id: "freestyle-cloud/stt",
+    model_id: FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID,
     model_name: "Freestyle Cloud",
     family: "freestyle",
     type: "voice",
@@ -193,6 +198,15 @@ const CURATED_LLM_IDS = new Set([
 
 const BUILTIN_LLM_MODELS: AvailableModel[] = [
   {
+    provider_id: FREESTYLE_CLOUD_PROVIDER_ID,
+    provider_name: "Freestyle Cloud",
+    model_id: FREESTYLE_CLOUD_CLEANUP_MODEL_ID,
+    model_name: "Freestyle Cloud Cleanup",
+    family: "freestyle",
+    type: "llm",
+    curated: true,
+  },
+  {
     provider_id: "groq",
     provider_name: "Groq",
     model_id: "mistral-saba-24b",
@@ -259,6 +273,7 @@ export async function isCleanupModelSupported(
   modelId: string,
 ): Promise<boolean> {
   if (providerId === "local-llm") return true;
+  if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return true;
 
   try {
     const registry = await fetchModelsFromRegistry();

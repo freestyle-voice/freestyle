@@ -1,4 +1,6 @@
 import { getDb } from "./db.js";
+import { revertFreestyleCloudDefaults } from "./freestyle-cloud-defaults.js";
+import { resetCloudIdentity } from "./posthog.js";
 
 export interface CloudUser {
   id: string;
@@ -48,6 +50,12 @@ export function clearSession(): void {
   getDb().prepare("DELETE FROM sessions WHERE id = 1").run();
 }
 
+export function invalidateSession(): void {
+  clearSession();
+  resetCloudIdentity();
+  revertFreestyleCloudDefaults();
+}
+
 export function getSession(): Session | null {
   const row = getDb()
     .prepare(
@@ -56,7 +64,7 @@ export function getSession(): Session | null {
     .get() as SessionRow | undefined;
   if (!row) return null;
   if (row.expires_at && Date.now() > row.expires_at) {
-    clearSession();
+    invalidateSession();
     return null;
   }
   return rowToSession(row);

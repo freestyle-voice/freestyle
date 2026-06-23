@@ -166,17 +166,29 @@ export async function postProcess(
     if (llm.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
       const token = getSessionToken();
       if (!token) throw new FreestyleCloudAuthError();
-      const result = await postProcessWithFreestyleCloud({
-        token,
-        text: normalizedRawText,
-        appContext,
-        language: options.language,
-      });
-      inputTokens = result.usage?.inputTokens ?? 0;
-      outputTokens = result.usage?.outputTokens ?? 0;
-      llmProvider = llm.provider;
-      llmModel = llm.model_id;
-      cleanedText = sanitizeTranscriptText(result.cleaned);
+      try {
+        const result = await postProcessWithFreestyleCloud({
+          token,
+          text: normalizedRawText,
+          appContext,
+          language: options.language,
+        });
+        inputTokens = result.usage?.inputTokens ?? 0;
+        outputTokens = result.usage?.outputTokens ?? 0;
+        llmProvider = llm.provider;
+        llmModel = llm.model_id;
+        cleanedText = sanitizeTranscriptText(result.cleaned);
+      } catch (err) {
+        if (err instanceof FreestyleCloudAuthError) throw err;
+        captureException(err);
+        capture("post process failed", {
+          provider: llm.provider,
+          model: llm.model_id,
+          source,
+        });
+        log.error(`Freestyle Cloud cleanup failed: ${err}`);
+        cleanedText = normalizedRawText;
+      }
     } else if (!(await isCleanupModelSupported(llm.provider, llm.model_id))) {
       log.warn(
         `Skipping LLM cleanup: unsupported cleanup model ${llm.provider}/${llm.model_id}`,

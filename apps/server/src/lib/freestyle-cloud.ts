@@ -18,6 +18,16 @@ export class FreestyleCloudAuthError extends Error {
   }
 }
 
+export class DeviceFlowError extends Error {
+  constructor(
+    readonly code: string,
+    message = code,
+  ) {
+    super(message);
+    this.name = "DeviceFlowError";
+  }
+}
+
 export interface DeviceCodeResult {
   device_code: string;
   user_code: string;
@@ -97,14 +107,18 @@ export async function pollDeviceToken(
 
   const code = authClientErrorCode(error);
   if (code === "authorization_pending" || code === "slow_down") {
-    const err = new Error(code);
-    err.name = code;
-    throw err;
+    throw new DeviceFlowError(code);
   }
-  if (code === "access_denied") throw new Error("Sign-in was denied.");
+  if (code === "access_denied") {
+    throw new DeviceFlowError(code, "Sign-in was denied.");
+  }
   if (code === "expired_token") {
-    throw new Error("Sign-in request expired. Please try again.");
+    throw new DeviceFlowError(
+      code,
+      "Sign-in request expired. Please try again.",
+    );
   }
+  if (code === "invalid_grant") throw new DeviceFlowError(code);
   throw new Error(authClientErrorMessage(error, "Device token request failed"));
 }
 

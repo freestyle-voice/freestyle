@@ -105,6 +105,7 @@ export default function OnboardingPage(): React.JSX.Element {
     loading: cloudLoading,
     signingIn: cloudSigningIn,
     error: cloudError,
+    refresh: cloudRefresh,
     signIn: cloudSignIn,
   } = useCloudAuth();
   const prevSignedIn = useRef(false);
@@ -396,12 +397,12 @@ export default function OnboardingPage(): React.JSX.Element {
   const selectCloudModel = useCallback(
     (model: AvailableModel) => {
       if (model.provider_id === FREESTYLE_CLOUD_PROVIDER_ID) {
-        if (cloudUser) commitFreestyleCloudDefault();
-        else {
-          void cloudSignIn().then((user) => {
-            if (user) commitFreestyleCloudDefault();
-          });
-        }
+        void (async () => {
+          const user = cloudUser ? await cloudRefresh() : await cloudSignIn();
+          if (!user) return;
+          commitFreestyleCloudDefault();
+          setShowSelector(false);
+        })();
         return;
       }
       setSelectedModel(model);
@@ -420,6 +421,7 @@ export default function OnboardingPage(): React.JSX.Element {
       apiKeyForm,
       commitCloudModel,
       cloudUser,
+      cloudRefresh,
       cloudSignIn,
       commitFreestyleCloudDefault,
     ],

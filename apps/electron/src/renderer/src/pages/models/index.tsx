@@ -75,7 +75,7 @@ export default function ModelsPage(): React.JSX.Element {
   );
 
   const ensureCloudAuth = async (): Promise<boolean> => {
-    if (cloudAuth.user) return true;
+    if (cloudAuth.user && (await cloudAuth.refresh())) return true;
     return !!(await cloudAuth.signIn());
   };
 
@@ -124,13 +124,13 @@ export default function ModelsPage(): React.JSX.Element {
     if (modal?.kind !== "list") return;
     const type = modal.type;
 
-    // Freestyle Cloud requires a signed-in user — run the OAuth flow first,
-    // then configure only if sign-in succeeds.
-    if (model.provider_id === FREESTYLE_CLOUD_PROVIDER && !cloudAuth.user) {
-      void cloudAuth.signIn().then((user) => {
-        if (!user) return;
-        void m.configureModel(model, type).then(closeModal);
-      });
+    // Freestyle Cloud requires a fresh signed-in server session.
+    if (model.provider_id === FREESTYLE_CLOUD_PROVIDER) {
+      void (async () => {
+        if (!(await ensureCloudAuth())) return;
+        await m.configureModel(model, type);
+        closeModal();
+      })();
       return;
     }
 
@@ -232,6 +232,7 @@ export default function ModelsPage(): React.JSX.Element {
           onUseBoth={useFreestyleCloudForBoth}
           onUseCleanup={useFreestyleCloudForCleanup}
           canUse={!!freestyleVoice && !!freestyleCleanup}
+          cleanupDisabled={cloudVoiceActive && !fallbackLocalVoice}
         />
         <PairCard
           voice={m.defaultVoice}
@@ -453,6 +454,7 @@ function FreestyleCloudModeCard({
   onUseBoth,
   onUseCleanup,
   canUse,
+  cleanupDisabled,
 }: {
   signedIn: boolean;
   voiceActive: boolean;
@@ -462,6 +464,7 @@ function FreestyleCloudModeCard({
   onUseBoth: () => void;
   onUseCleanup: () => void;
   canUse: boolean;
+  cleanupDisabled: boolean;
 }): React.JSX.Element {
   return (
     <section className="border-border bg-card overflow-hidden rounded-[14px] border">
@@ -509,7 +512,7 @@ function FreestyleCloudModeCard({
           title="Clean up"
           description="Keep your current transcription model and send only the text to Cloud."
           active={!voiceActive && cleanupActive}
-          disabled={!canUse}
+          disabled={!canUse || cleanupDisabled}
           onClick={onUseCleanup}
         />
         <CloudRouteOption

@@ -5,6 +5,18 @@ const LOCAL_VOICE_PROVIDERS = ["local-mlx", "local-whisper"];
 
 export function revertFreestyleCloudDefaults(): void {
   const db = getDb();
+  const llm = db
+    .prepare(
+      "SELECT provider FROM model_configs WHERE type = 'llm' AND is_default = 1 LIMIT 1",
+    )
+    .get() as { provider: string } | undefined;
+  if (llm?.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
+    db.prepare(
+      `INSERT INTO settings (key, value, updated_at) VALUES ('llm_cleanup', 'false', datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = 'false', updated_at = datetime('now')`,
+    ).run();
+  }
+
   const current = db
     .prepare(
       "SELECT provider FROM model_configs WHERE type = 'voice' AND is_default = 1 LIMIT 1",

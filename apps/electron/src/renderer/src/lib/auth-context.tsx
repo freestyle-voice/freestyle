@@ -16,6 +16,7 @@ export interface UseCloudAuth {
   /** Device user code, surfaced while a sign-in is pending. */
   userCode: string | null;
   error: string | null;
+  refresh: () => Promise<CloudUser | null>;
   signIn: () => Promise<CloudUser | null>;
   /** Abort an in-flight sign-in (driven from the pending modal). */
   cancelSignIn: () => void;
@@ -33,18 +34,22 @@ function useCloudAuthState(): UseCloudAuth {
   const [error, setError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
 
-  useEffect(() => {
-    getClient()
+  const refresh = useCallback(async (): Promise<CloudUser | null> => {
+    const user = await getClient()
       .api.auth.status.$get()
       .then(async (res) => {
         if (!res.ok) return null;
         const data = await res.json();
         return data.user ?? null;
       })
-      .then((u) => setUser(u))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => null);
+    setUser(user);
+    return user;
   }, []);
+
+  useEffect(() => {
+    refresh().finally(() => setLoading(false));
+  }, [refresh]);
 
   const signIn = useCallback(async (): Promise<CloudUser | null> => {
     cancelledRef.current = false;
@@ -115,6 +120,7 @@ function useCloudAuthState(): UseCloudAuth {
     signingIn,
     userCode,
     error,
+    refresh,
     signIn,
     cancelSignIn,
     signOut,

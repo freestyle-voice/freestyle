@@ -256,6 +256,16 @@ export default function AppPage(): React.JSX.Element {
           if (res.ok) {
             const data = await res.json();
             finalText = data.cleaned || combined;
+          } else if (res.status === 401) {
+            const body = (await res.json().catch(() => null)) as {
+              error?: string;
+            } | null;
+            if (body?.error === "cloud_auth_required") {
+              hidePill();
+              void window.api.cloudPromptSignIn();
+              return;
+            }
+            finalText = combined;
           } else {
             finalText = combined;
           }

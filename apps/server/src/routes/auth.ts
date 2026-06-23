@@ -1,21 +1,41 @@
 import { Hono } from "hono";
 import {
+  DeviceFlowError,
   fetchCloudUser,
   freestyleCloudUrl,
   pollDeviceToken,
   requestDeviceCode,
   signOutCloud,
 } from "../lib/freestyle-cloud.js";
-import { revertFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js";
-import { identifyCloudUser, resetCloudIdentity } from "../lib/posthog.js";
+import { identifyCloudUser } from "../lib/posthog.js";
 import {
-  clearSession,
   getSession,
   getSessionUser,
+  invalidateSession,
   setSession,
 } from "../lib/sessions.js";
 
+function isTrustedRendererOrigin(origin: string | undefined): boolean {
+  if (!origin) return true;
+  if (origin.startsWith("app://")) return true;
+  try {
+    const url = new URL(origin);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+    );
+  } catch {
+    return false;
+  }
+}
+
 const auth = new Hono()
+  .use("*", async (c, next) => {
+    if (!isTrustedRendererOrigin(c.req.header("origin"))) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+    return next();
+  })
   .get("/status", (c) => {
     const user = getSessionUser();
     return c.json({ authenticated: !!user, user });
@@ -47,11 +67,17 @@ const auth = new Hono()
       identifyCloudUser(user);
       return c.json({ authenticated: true, user });
     } catch (err) {
-      if (err instanceof Error && err.name === "authorization_pending") {
-        return c.json({ error: "authorization_pending" }, 202);
-      }
-      if (err instanceof Error && err.name === "slow_down") {
-        return c.json({ error: "slow_down" }, 429);
+      if (err instanceof DeviceFlowError) {
+        if (err.code === "authorization_pending") {
+          return c.json({ error: err.code }, 202);
+        }
+        if (err.code === "slow_down") return c.json({ error: err.code }, 429);
+        if (err.code === "access_denied")
+          return c.json({ error: err.code }, 403);
+        if (err.code === "expired_token")
+          return c.json({ error: err.code }, 410);
+        if (err.code === "invalid_grant")
+          return c.json({ error: err.code }, 400);
       }
       throw err;
     }
@@ -61,9 +87,7 @@ const auth = new Hono()
     if (session) {
       await signOutCloud(session.token).catch(() => {});
     }
-    clearSession();
-    resetCloudIdentity();
-    revertFreestyleCloudDefaults();
+    invalidateSession();
     return c.json({ ok: true });
   });
 

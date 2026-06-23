@@ -1,6 +1,7 @@
 import { createAppLogger } from "@freestyle/utils";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { applyDictionaryReplacements } from "../lib/dictionary-replacements.js";
 import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
@@ -11,7 +12,7 @@ import { getLanguageSetting } from "../lib/language.js";
 import { isLlmCleanupEnabled, postProcess } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
-import { clearSession } from "../lib/sessions.js";
+import { invalidateSession } from "../lib/sessions.js";
 import { CloudAuthError } from "../lib/streaming/providers/freestyle-cloud.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import {
@@ -124,7 +125,10 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         mode: "combined",
       });
       rawText = sanitizeTranscriptText(result.raw ?? "");
-      const cleaned = sanitizeTranscriptText(result.cleaned ?? rawText);
+      const cleaned = applyDictionaryReplacements(
+        sanitizeTranscriptText(result.cleaned ?? rawText),
+        db,
+      );
       const durationMs = Date.now() - start;
       const inputTokens = result.usage?.inputTokens ?? 0;
       const outputTokens = result.usage?.outputTokens ?? 0;
@@ -174,7 +178,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       });
     } catch (err) {
       if (err instanceof FreestyleCloudAuthError) {
-        clearSession();
+        invalidateSession();
         return c.json({ error: "cloud_auth_required" }, 401);
       }
       captureException(err, { provider: voiceProvider, model: voiceModel });
@@ -209,7 +213,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   } catch (err) {
     // Expired/invalid cloud session — ask the desktop app to re-authenticate.
     if (err instanceof CloudAuthError) {
-      clearSession();
+      invalidateSession();
       return c.json({ error: "cloud_auth_required" }, 401);
     }
     captureException(err, {
@@ -280,7 +284,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     });
   } catch (err) {
     if (err instanceof FreestyleCloudAuthError) {
-      clearSession();
+      invalidateSession();
       return c.json({ error: "cloud_auth_required" }, 401);
     }
     throw err;

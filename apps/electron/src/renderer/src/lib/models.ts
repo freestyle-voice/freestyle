@@ -88,6 +88,7 @@ export const VOICE_PROVIDERS = [
 ];
 
 export const LLM_PROVIDERS = [
+  FREESTYLE_CLOUD_PROVIDER_ID,
   "openai",
   "anthropic",
   "google",

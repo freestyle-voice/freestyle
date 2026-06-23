@@ -1507,6 +1507,29 @@ function CopyButton({
   );
 }
 
+function CopyValueButton({
+  value,
+  children,
+  variant = "outline",
+}: {
+  value: string;
+  children: React.ReactNode;
+  variant?: React.ComponentProps<typeof Button>["variant"];
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const [copied, copy] = useCopy();
+  return (
+    <Button variant={variant} size="sm" onClick={() => copy(value)}>
+      {copied ? (
+        <Check data-icon="inline-start" />
+      ) : (
+        <Copy data-icon="inline-start" />
+      )}
+      {copied ? t("settings.developer.copied") : children}
+    </Button>
+  );
+}
+
 function CopyField({
   label,
   value,
@@ -1515,18 +1538,16 @@ function CopyField({
   value: string;
 }): React.JSX.Element {
   return (
-    <div className="border-border bg-secondary/45 rounded-[12px] border px-3 py-2.5">
-      <div className="mb-1.5 flex items-center justify-between gap-3">
-        <div className="mono text-muted-foreground text-[10.5px] tracking-[0.14em] uppercase">
-          {label}
-        </div>
-        <CopyButton value={value} />
+    <div className="border-border bg-secondary/45 flex min-w-0 items-center gap-3 rounded-[10px] border px-3 py-2.5">
+      <div className="mono text-muted-foreground hidden shrink-0 text-[10.5px] tracking-[0.14em] uppercase min-[760px]:block">
+        {label}
       </div>
-      <div className="border-border bg-background/45 flex items-center gap-3 rounded-md border px-3 py-2">
+      <div className="bg-background/45 border-border flex min-w-0 flex-1 items-center rounded-md border px-3 py-2">
         <code className="mono text-foreground min-w-0 flex-1 truncate text-[12.5px]">
           {value}
         </code>
       </div>
+      <CopyButton value={value} />
     </div>
   );
 }
@@ -1565,6 +1586,7 @@ function CodeBlock({
 function McpConnect(): React.JSX.Element {
   const { t } = useTranslation();
   const [mode, setMode] = useState<"http" | "stdio">("http");
+  const [showConfig, setShowConfig] = useState(false);
   const mcpUrl = `${getApiBase()}/mcp`;
   const httpConfig = JSON.stringify(
     { mcpServers: { freestyle: { type: "http", url: mcpUrl } } },
@@ -1589,21 +1611,26 @@ function McpConnect(): React.JSX.Element {
     mode === "http"
       ? "Use this for Claude, Cursor, and clients that support streamable HTTP."
       : t("settings.developer.mcpRemoteNote");
+  const modeTitle = mode === "http" ? "Streamable HTTP" : "stdio bridge";
+  const modeDesc =
+    mode === "http"
+      ? "Best for clients that accept an MCP server URL directly."
+      : "Use when the client asks for a command instead of a URL.";
 
   return (
     <div className="border-border bg-card w-full rounded-[14px] border p-4">
-      <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <div className="space-y-3">
-          <div>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 min-[760px]:flex-row min-[760px]:items-start min-[760px]:justify-between">
+          <div className="min-w-0">
             <div className="mono text-primary text-[10px] uppercase tracking-[0.16em]">
-              Local MCP endpoint
+              Connect an MCP client
             </div>
-            <p className="text-muted-foreground mt-1.5 text-[12.5px] leading-relaxed">
-              Copy the endpoint or paste a client config. HTTP is preferred;
-              stdio is only for clients that need a command bridge.
+            <p className="text-muted-foreground mt-1.5 max-w-[620px] text-[12.5px] leading-relaxed">
+              Pick the client style, then copy the ready-to-paste config. The
+              JSON is available if you want to inspect it.
             </p>
           </div>
-          <div className="bg-secondary/45 border-border inline-flex rounded-[10px] border p-1">
+          <div className="bg-secondary/45 border-border inline-flex shrink-0 rounded-[10px] border p-1">
             <Button
               variant={mode === "http" ? "default" : "ghost"}
               size="xs"
@@ -1622,11 +1649,42 @@ function McpConnect(): React.JSX.Element {
             </Button>
           </div>
         </div>
+
         <CopyField label={t("settings.developer.mcpUrl")} value={mcpUrl} />
+
+        <div className="border-border bg-secondary/35 flex flex-col gap-3 rounded-[12px] border p-3 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
+          <div className="min-w-0">
+            <div className="text-foreground text-[13.5px] font-medium">
+              {modeTitle}
+            </div>
+            <p className="text-muted-foreground mt-0.5 text-[12px] leading-relaxed">
+              {modeDesc}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <CopyValueButton value={activeConfig} variant="ink">
+              Copy config
+            </CopyValueButton>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowConfig((v) => !v)}
+            >
+              {showConfig ? "Hide config" : "Show config"}
+            </Button>
+          </div>
+        </div>
       </div>
-      <div className="mt-3">
-        <CodeBlock label={activeLabel} value={activeConfig} note={activeNote} />
-      </div>
+
+      {showConfig && (
+        <div className="mt-3">
+          <CodeBlock
+            label={activeLabel}
+            value={activeConfig}
+            note={activeNote}
+          />
+        </div>
+      )}
     </div>
   );
 }

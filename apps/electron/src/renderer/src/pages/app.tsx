@@ -101,6 +101,7 @@ interface TranscribeResult {
   raw: string;
   cleaned: string;
   error?: string;
+  cloudAuthRequired?: boolean;
 }
 
 /**
@@ -215,6 +216,11 @@ export default function AppPage(): React.JSX.Element {
 
       const nonEmpty = results.filter((r) => r.raw.trim());
       if (nonEmpty.length === 0) {
+        if (results.some((r) => r.cloudAuthRequired)) {
+          hidePill();
+          void window.api.cloudPromptSignIn();
+          return;
+        }
         const errMsg = results.find((r) => r.error)?.error;
         if (errMsg) {
           hidePill();
@@ -333,7 +339,20 @@ export default function AppPage(): React.JSX.Element {
         headers,
       })
         .then(async (res) => {
-          if (!res.ok) return { raw: "", cleaned: "", error: errorMsg };
+          if (!res.ok) {
+            const body = (await res.json().catch(() => null)) as {
+              error?: string;
+            } | null;
+            if (res.status === 401 && body?.error === "cloud_auth_required") {
+              return {
+                raw: "",
+                cleaned: "",
+                error: "Sign in to Freestyle Cloud",
+                cloudAuthRequired: true,
+              };
+            }
+            return { raw: "", cleaned: "", error: errorMsg };
+          }
           const data = (await res.json()) as { raw?: string; cleaned?: string };
           return {
             raw: (data.raw || "").trim(),
@@ -797,6 +816,14 @@ export default function AppPage(): React.JSX.Element {
             error?: string;
             detail?: string;
           } | null;
+          if (res.status === 401 && body?.error === "cloud_auth_required") {
+            return {
+              raw: "",
+              cleaned: "",
+              error: "Sign in to Freestyle Cloud",
+              cloudAuthRequired: true,
+            };
+          }
           const msg =
             body?.detail ||
             body?.error ||

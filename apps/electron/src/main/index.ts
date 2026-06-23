@@ -1318,6 +1318,25 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle("cloud:user", () => getCloudUser());
 
+  ipcMain.handle("cloud:prompt-sign-in", async () => {
+    const { response } = await dialog.showMessageBox({
+      type: "info",
+      message: "Sign in to Freestyle Cloud",
+      detail:
+        "Freestyle Cloud transcription needs you to be signed in. Sign in now, or switch to an on-device model in Settings.",
+      buttons: ["Sign In", "Not Now"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response !== 0) return false;
+    try {
+      await signInToCloud();
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
   ipcMain.handle(
     "dialog:show-error",
     async (_event, title: string, detail: string) => {

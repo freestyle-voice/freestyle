@@ -31,6 +31,7 @@ declare global {
       cloudSignIn: () => Promise<CloudUser>;
       cloudCancelSignIn: () => Promise<boolean>;
       cloudSignOut: () => Promise<boolean>;
+      cloudPromptSignIn: () => Promise<boolean>;
       getCloudUser: () => Promise<CloudUser | null>;
       onCloudUserCode: (callback: (userCode: string) => void) => () => void;
       onHotkeyDown: (callback: () => void) => () => void;

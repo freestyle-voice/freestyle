@@ -49,6 +49,8 @@ const api = {
   cloudCancelSignIn: (): Promise<boolean> =>
     ipcRenderer.invoke("cloud:cancel-sign-in"),
   cloudSignOut: (): Promise<boolean> => ipcRenderer.invoke("cloud:sign-out"),
+  cloudPromptSignIn: (): Promise<boolean> =>
+    ipcRenderer.invoke("cloud:prompt-sign-in"),
   getCloudUser: (): Promise<CloudUser | null> =>
     ipcRenderer.invoke("cloud:user"),
   // Fires while a sign-in is pending so the UI can show the device user code.

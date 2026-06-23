@@ -9,7 +9,7 @@ export type { CloudUser };
 const log = createAppLogger("cloud-auth");
 
 // Keep in sync with the freestyle-cloud provider's default in apps/server.
-const DEFAULT_CLOUD_URL = "https://freestyle-server.matt8p.workers.dev";
+const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 const CLIENT_ID = "freestyle-desktop";
 const DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
 

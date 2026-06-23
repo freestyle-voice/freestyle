@@ -1,5 +1,7 @@
 import { apiKeySchema } from "@freestyle/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
+import markDark from "@renderer/assets/mark-dark.svg";
+import markLight from "@renderer/assets/mark-light.svg";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { Button } from "@renderer/components/ui/button";
@@ -24,10 +26,13 @@ import {
 } from "@renderer/hooks/use-hotkey-recorder";
 import { capture } from "@renderer/lib/analytics";
 import { getClient } from "@renderer/lib/api";
+import { useCloudAuth } from "@renderer/lib/cloud-auth-context";
 import { defaultLanguage, ONBOARDING_LANGUAGES } from "@renderer/lib/languages";
 import {
   type AvailableModel,
   buildVoiceItems,
+  FREESTYLE_CLOUD_MODEL_ID,
+  FREESTYLE_CLOUD_PROVIDER_ID,
   formatBytes,
   type MlxAsrStatus,
   PROVIDER_DISPLAY_NAMES,
@@ -54,10 +59,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
+import type { CloudUser } from "../../shared/cloud-user";
 import { getDefaultHotkey } from "../../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../../shared/settings-keys";
 
-type Step = "permissions" | "language" | "tutorial";
+type Step = "permissions" | "cloud" | "language" | "tutorial";
 
 const PLATFORM =
   (typeof window !== "undefined" && window.api?.platform) ||
@@ -91,8 +97,17 @@ const RECOMMENDED_WHISPER_DEF = "small-q5_1";
 
 export default function OnboardingPage(): React.JSX.Element {
   const navigate = useNavigate();
-  const [step, setStep] = useState<Step>("permissions");
+  const [step, setStep] = useState<Step>("cloud");
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const {
+    user: cloudUser,
+    loading: cloudLoading,
+    signingIn: cloudSigningIn,
+    error: cloudError,
+    signIn: cloudSignIn,
+  } = useCloudAuth();
+  const prevSignedIn = useRef(false);
 
   // Permissions state
   const [micStatus, setMicStatus] = useState<string>("unknown");
@@ -352,8 +367,39 @@ export default function OnboardingPage(): React.JSX.Element {
     });
   }, []);
 
+  const commitFreestyleCloudDefault = useCallback(() => {
+    const model = available.find(
+      (m) =>
+        m.provider_id === FREESTYLE_CLOUD_PROVIDER_ID && m.type === "voice",
+    );
+    if (model) {
+      setSelectedModel(model);
+      setSelectedWhisperDefId(null);
+      setSelectedMlxDefId(null);
+    }
+    const modelId = model?.model_id ?? FREESTYLE_CLOUD_MODEL_ID;
+    const modelName = model?.model_name ?? "Freestyle Cloud";
+    getClient()
+      .api.models.configured.$post({
+        json: {
+          provider: FREESTYLE_CLOUD_PROVIDER_ID,
+          model_id: modelId,
+          model_name: modelName,
+          type: "voice",
+          is_default: true,
+        },
+      })
+      .catch(() => {});
+    capture("onboarding_cloud_default_set", { model_id: modelId });
+  }, [available]);
+
   const selectCloudModel = useCallback(
     (model: AvailableModel) => {
+      if (model.provider_id === FREESTYLE_CLOUD_PROVIDER_ID) {
+        if (cloudUser) commitFreestyleCloudDefault();
+        else void cloudSignIn();
+        return;
+      }
       setSelectedModel(model);
       setSelectedWhisperDefId(null);
       setSelectedMlxDefId(null);
@@ -365,7 +411,14 @@ export default function OnboardingPage(): React.JSX.Element {
         apiKeyForm.reset({ provider: model.provider_id, key: "" });
       }
     },
-    [apiKeys, apiKeyForm, commitCloudModel],
+    [
+      apiKeys,
+      apiKeyForm,
+      commitCloudModel,
+      cloudUser,
+      cloudSignIn,
+      commitFreestyleCloudDefault,
+    ],
   );
 
   const selectLocalModel = useCallback(
@@ -374,15 +427,18 @@ export default function OnboardingPage(): React.JSX.Element {
       name: string,
       engine?: "whisper" | "mlx",
       source: "auto" | "selector" = "selector",
+      makeDefault = true,
     ) => {
-      if (engine === "mlx") {
-        setSelectedMlxDefId(defId);
-        setSelectedWhisperDefId(null);
-      } else {
-        setSelectedWhisperDefId(defId);
-        setSelectedMlxDefId(null);
+      if (makeDefault) {
+        if (engine === "mlx") {
+          setSelectedMlxDefId(defId);
+          setSelectedWhisperDefId(null);
+        } else {
+          setSelectedWhisperDefId(defId);
+          setSelectedMlxDefId(null);
+        }
+        setSelectedModel(null);
       }
-      setSelectedModel(null);
       const provider = engine === "mlx" ? "local-mlx" : "local-whisper";
       getClient()
         .api.models.configured.$post({
@@ -391,18 +447,20 @@ export default function OnboardingPage(): React.JSX.Element {
             model_id: `${provider}/${defId}`,
             model_name: name,
             type: "voice",
-            is_default: true,
+            is_default: makeDefault,
           },
         })
         .catch(() => {});
-      // The funnel's model-step event: with auto-setup this fires for every
-      // user; `source` separates the silent default from explicit picks.
-      capture("onboarding_model_completed", {
-        model_id: `${provider}/${defId}`,
-        kind: "local",
-        provider,
-        source,
-      });
+      if (makeDefault) {
+        // The funnel's model-step event: with auto-setup this fires for every
+        // user; `source` separates the silent default from explicit picks.
+        capture("onboarding_model_completed", {
+          model_id: `${provider}/${defId}`,
+          kind: "local",
+          provider,
+          source,
+        });
+      }
     },
     [],
   );
@@ -450,6 +508,7 @@ export default function OnboardingPage(): React.JSX.Element {
     selectedWhisperModelId: selectedWhisperDefId ?? undefined,
     selectedMlxModelId: selectedMlxDefId ?? undefined,
     keyProviders: apiKeys,
+    cloudSignedIn: !!cloudUser,
   });
 
   // Resolve the opinionated recommendation: Qwen3 on-device when MLX can run,
@@ -463,17 +522,26 @@ export default function OnboardingPage(): React.JSX.Element {
   const recommended: VoiceItem | undefined =
     mlxQwen && mlxStatus?.canRun ? mlxQwen : (whisperBase ?? mlxQwen);
 
-  // Auto-setup: once the MLX capability check settles, commit the platform
-  // default and start its download in the background — the user never has
-  // to choose a model. The selector stays available as an escape hatch.
+  // Auto-setup: once the MLX capability check and cloud session both settle,
+  // commit a default and start downloads in the background — the user never
+  // has to choose a model. Signed in → Freestyle Cloud is the default; the
+  // on-device model is still set up underneath as an offline/signed-out
+  // fallback. Signed out → the on-device model is the default.
   useEffect(() => {
-    if (autoPicked.current || !mlxResolved || !recommended?.defId) return;
+    if (
+      autoPicked.current ||
+      cloudLoading ||
+      !mlxResolved ||
+      !recommended?.defId
+    )
+      return;
     autoPicked.current = true;
     selectLocalModel(
       recommended.defId,
       recommended.name,
       recommended.localEngine,
       "auto",
+      !cloudUser,
     );
     if (recommended.status === "not_downloaded" && !window.api?.isE2E) {
       capture("onboarding_model_auto_setup", {
@@ -481,7 +549,24 @@ export default function OnboardingPage(): React.JSX.Element {
       });
       downloadLocalModel(recommended.defId, recommended.localEngine);
     }
-  }, [recommended, selectLocalModel, mlxResolved, downloadLocalModel]);
+    if (cloudUser) commitFreestyleCloudDefault();
+  }, [
+    recommended,
+    selectLocalModel,
+    mlxResolved,
+    downloadLocalModel,
+    cloudLoading,
+    cloudUser,
+    commitFreestyleCloudDefault,
+  ]);
+
+  useEffect(() => {
+    const signedIn = !!cloudUser;
+    if (signedIn && !prevSignedIn.current && autoPicked.current) {
+      commitFreestyleCloudDefault();
+    }
+    prevSignedIn.current = signedIn;
+  }, [cloudUser, commitFreestyleCloudDefault]);
 
   // Pre-warm the local engine the moment its download lands, so the first
   // dictation in the tutorial is fast.
@@ -635,9 +720,33 @@ export default function OnboardingPage(): React.JSX.Element {
             onOpenMicSettings={openMicSettings}
             onOpenAccessibility={openAccessibility}
             onRecheckLinuxSetup={recheckLinuxSetup}
+            onBack={() => {
+              capture("onboarding_permissions_back_clicked");
+              setStep("cloud");
+            }}
             onContinue={() => {
               capture("onboarding_permissions_completed");
               setStep("language");
+            }}
+          />
+        )}
+
+        {step === "cloud" && (
+          <CloudStep
+            user={cloudUser}
+            signingIn={cloudSigningIn}
+            error={cloudError}
+            onSignIn={() => {
+              capture("onboarding_cloud_signin_clicked");
+              void cloudSignIn();
+            }}
+            onContinue={() => {
+              capture("onboarding_cloud_completed", { signed_in: true });
+              setStep("permissions");
+            }}
+            onSkip={() => {
+              capture("onboarding_cloud_skipped");
+              setStep("permissions");
             }}
           />
         )}
@@ -690,6 +799,8 @@ export default function OnboardingPage(): React.JSX.Element {
         )}
       </div>
 
+      {step === "cloud" && <CloudTermsFooter />}
+
       {showSelector && (
         <ModelSelectorOverlay
           source={selectorSource}
@@ -736,6 +847,7 @@ function PermissionsStep({
   onOpenMicSettings,
   onOpenAccessibility,
   onRecheckLinuxSetup,
+  onBack,
   onContinue,
 }: {
   micStatus: string;
@@ -745,6 +857,7 @@ function PermissionsStep({
   onOpenMicSettings: () => void;
   onOpenAccessibility: () => void;
   onRecheckLinuxSetup: () => void;
+  onBack: () => void;
   onContinue: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
@@ -842,18 +955,23 @@ function PermissionsStep({
         )}
       </div>
 
-      <div className="mt-7 flex items-center justify-end gap-3.5">
-        {!allGranted && (
-          <span className="mono text-muted-foreground text-[10.5px] tracking-[0.1em] uppercase">
-            {IS_MAC
-              ? t("onboarding.permissions.grantBoth")
-              : t("onboarding.permissions.grantAccess")}
-          </span>
-        )}
-        <Button variant="ink" disabled={!allGranted} onClick={onContinue}>
-          {t("common.continue")}
-          <ArrowRight data-icon="inline-end" />
+      <div className="mt-7 flex items-center justify-between gap-3.5">
+        <Button variant="outline" onClick={onBack}>
+          {t("common.back")}
         </Button>
+        <div className="flex items-center gap-3.5">
+          {!allGranted && (
+            <span className="mono text-muted-foreground text-[10.5px] tracking-[0.1em] uppercase">
+              {IS_MAC
+                ? t("onboarding.permissions.grantBoth")
+                : t("onboarding.permissions.grantAccess")}
+            </span>
+          )}
+          <Button variant="ink" disabled={!allGranted} onClick={onContinue}>
+            {t("common.continue")}
+            <ArrowRight data-icon="inline-end" />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -923,7 +1041,153 @@ function PermButton({
 }
 
 // ---------------------------------------------------------------------------
-// Step 2 — Language (the model sets itself up in the background)
+// Step 1 — Welcome + Freestyle Cloud sign-in (optional, skippable)
+// ---------------------------------------------------------------------------
+function GitHubMark({ className }: { className?: string }): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
+    </svg>
+  );
+}
+
+function CloudStep({
+  user,
+  signingIn,
+  error,
+  onSignIn,
+  onContinue,
+  onSkip,
+}: {
+  user: CloudUser | null;
+  signingIn: boolean;
+  error: string | null;
+  onSignIn: () => void;
+  onContinue: () => void;
+  onSkip: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="flex w-full max-w-[420px] flex-col items-center text-center">
+      <img
+        src={markLight}
+        alt="Freestyle"
+        className="block h-14 w-14 dark:hidden"
+      />
+      <img
+        src={markDark}
+        alt="Freestyle"
+        className="hidden h-14 w-14 dark:block"
+      />
+
+      <h1 className="serif text-foreground mt-6 mb-0 text-[44px] leading-[1.0] font-normal tracking-[-0.025em]">
+        <span>Welcome to </span>
+        <span className="serif-italic text-primary">Freestyle</span>
+      </h1>
+
+      {user ? (
+        <div className="border-border bg-card mt-6 flex w-full items-center gap-3 rounded-[12px] border p-4 text-left">
+          {user.image ? (
+            <img
+              src={user.image}
+              alt=""
+              className="size-9 shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <div className="bg-accent border-primary/20 flex size-9 shrink-0 items-center justify-center rounded-full border">
+              <Check className="text-accent-foreground size-4" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className="text-foreground truncate text-[14px] font-medium">
+              {user.name || user.email}
+            </div>
+            <div className="text-muted-foreground truncate text-[12px]">
+              {user.name ? `Signed in · ${user.email}` : "Signed in"}
+            </div>
+          </div>
+          <Check className="text-accent-foreground size-4 shrink-0" />
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onSignIn}
+          disabled={signingIn}
+          className="mt-6 flex w-full items-center justify-center gap-2.5 rounded-[11px] bg-zinc-900 px-5 py-3 text-[14px] font-medium text-white transition-colors hover:bg-zinc-800 disabled:pointer-events-none disabled:opacity-60"
+        >
+          {signingIn ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Signing in…
+            </>
+          ) : (
+            <>
+              <GitHubMark className="size-[18px]" />
+              Sign in / Create account
+            </>
+          )}
+        </button>
+      )}
+
+      {error && (
+        <p className="text-destructive mt-3 text-[12px] leading-snug">
+          {error}
+        </p>
+      )}
+
+      {user ? (
+        <Button variant="ink" onClick={onContinue} className="mt-6 w-full">
+          Continue
+          <ArrowRight data-icon="inline-end" />
+        </Button>
+      ) : (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onSkip}
+          disabled={signingIn}
+          className="text-muted-foreground mt-2 h-auto px-2 py-1 text-[12px]"
+        >
+          Skip for now
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function CloudTermsFooter(): React.JSX.Element {
+  return (
+    <p className="text-muted-foreground shrink-0 px-6 pb-8 text-center text-[11px] leading-[1.7]">
+      By continuing, you agree to our{" "}
+      <a
+        href="https://freestylevoice.com/terms"
+        target="_blank"
+        rel="noreferrer"
+        className="text-foreground underline underline-offset-2"
+      >
+        Terms of Service
+      </a>
+      <br />
+      and{" "}
+      <a
+        href="https://freestylevoice.com/privacy"
+        target="_blank"
+        rel="noreferrer"
+        className="text-foreground underline underline-offset-2"
+      >
+        Privacy Policy
+      </a>
+      .
+    </p>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 3 — Language (the model sets itself up in the background)
 // ---------------------------------------------------------------------------
 function LanguageStep({
   language,
@@ -1055,7 +1319,10 @@ function ModelSelectorOverlay({
       from: "selector",
     });
     onSelectCloud(model);
-    if (keyProviders.has(model.provider_id)) {
+    if (
+      model.provider_id === FREESTYLE_CLOUD_PROVIDER_ID ||
+      keyProviders.has(model.provider_id)
+    ) {
       onClose();
     } else {
       capture("onboarding_cloud_key_entry_viewed", {

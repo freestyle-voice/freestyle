@@ -4,13 +4,16 @@ import type { AvailableModel } from "@renderer/lib/models";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   CheckCircle,
+  Cloud,
   Key,
   Laptop,
+  Mic,
   Pencil,
+  Sparkles,
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
 import { CleanupIntensityCard } from "./cleanup-intensity";
@@ -78,6 +81,14 @@ export default function ModelsPage(): React.JSX.Element {
     })();
   };
 
+  const useFreestyleCloudForTranscription = (): void => {
+    if (!freestyleVoice) return;
+    void (async () => {
+      if (!(await ensureCloudAuth())) return;
+      await m.configureModel(freestyleVoice, "voice");
+    })();
+  };
+
   const useFreestyleCloudForCleanup = (): void => {
     if (!freestyleCleanup) return;
     void (async () => {
@@ -102,10 +113,7 @@ export default function ModelsPage(): React.JSX.Element {
     if (model.provider_id === FREESTYLE_CLOUD_PROVIDER && !cloudAuth.user) {
       void cloudAuth.signIn().then((user) => {
         if (!user) return;
-        void m.configureModel(model, type).then(() => {
-          if (type === "voice") m.setCleanup(false);
-          closeModal();
-        });
+        void m.configureModel(model, type).then(closeModal);
       });
       return;
     }
@@ -125,14 +133,7 @@ export default function ModelsPage(): React.JSX.Element {
       });
       return;
     }
-    void m.configureModel(model, type).then(() => {
-      // Freestyle Cloud runs its own cleanup; disable local post-processing
-      // so we surface the cloud's cleaned text without a second pass.
-      if (type === "voice" && model.provider_id === FREESTYLE_CLOUD_PROVIDER) {
-        m.setCleanup(false);
-      }
-      closeModal();
-    });
+    void m.configureModel(model, type).then(closeModal);
   };
 
   const onPickLocalVoice = (
@@ -178,15 +179,6 @@ export default function ModelsPage(): React.JSX.Element {
     })();
   };
 
-  // Self-correct a stale enabled setting (e.g. page opened with Freestyle Cloud
-  // already selected) so the backend never runs a redundant second cleanup
-  // pass. Kept above the loading early-return to satisfy the Rules of Hooks.
-  const cloudVoiceActive =
-    m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER;
-  useEffect(() => {
-    if (cloudVoiceActive && m.llmCleanup) m.setCleanup(false);
-  }, [cloudVoiceActive, m.llmCleanup, m.setCleanup]);
-
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
@@ -204,9 +196,13 @@ export default function ModelsPage(): React.JSX.Element {
     (c) => c.provider === "local-whisper" || c.provider === "local-mlx",
   );
 
-  // Freestyle Cloud does its own cleanup, so local post-processing is locked
-  // off while it's the active voice provider.
-  const cleanupLocked = m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER;
+  const cloudVoiceActive =
+    m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER;
+  const cloudCleanupActive =
+    m.llmCleanup && m.defaultLlm?.provider === FREESTYLE_CLOUD_PROVIDER;
+  // Only the all-in-one route owns cleanup. Cloud transcription can still feed
+  // a custom cleanup model.
+  const cleanupLocked = cloudVoiceActive && cloudCleanupActive;
 
   // Show the MLX warming control when MLX is the active voice engine, or the
   // platform supports MLX and at least one MLX model is downloaded.
@@ -221,12 +217,11 @@ export default function ModelsPage(): React.JSX.Element {
       <div className="space-y-6">
         <FreestyleCloudModeCard
           signedInEmail={cloudAuth.user?.email ?? null}
-          voiceActive={m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER}
-          cleanupActive={
-            m.llmCleanup && m.defaultLlm?.provider === FREESTYLE_CLOUD_PROVIDER
-          }
+          voiceActive={cloudVoiceActive}
+          cleanupActive={cloudCleanupActive}
           onSignIn={() => void cloudAuth.signIn()}
           onSignOut={() => void cloudAuth.signOut()}
+          onUseTranscription={useFreestyleCloudForTranscription}
           onUseBoth={useFreestyleCloudForBoth}
           onUseCleanup={useFreestyleCloudForCleanup}
           canUse={!!freestyleVoice && !!freestyleCleanup}
@@ -448,6 +443,7 @@ function FreestyleCloudModeCard({
   cleanupActive,
   onSignIn,
   onSignOut,
+  onUseTranscription,
   onUseBoth,
   onUseCleanup,
   canUse,
@@ -457,49 +453,36 @@ function FreestyleCloudModeCard({
   cleanupActive: boolean;
   onSignIn: () => void;
   onSignOut: () => void;
+  onUseTranscription: () => void;
   onUseBoth: () => void;
   onUseCleanup: () => void;
   canUse: boolean;
 }): React.JSX.Element {
+  const signedIn = !!signedInEmail;
   return (
-    <section className="border-border bg-card rounded-[14px] border p-5">
-      <div className="flex flex-col gap-4 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
+    <section className="border-border bg-card overflow-hidden rounded-[14px] border">
+      <div className="flex flex-col gap-4 border-b border-border/70 px-5 py-4 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
         <div className="min-w-0">
-          <Eyebrow text="Freestyle Cloud" />
-          <h2 className="text-foreground mt-1 text-[18px] font-semibold">
-            Managed transcription and cleanup
-          </h2>
-          <p className="text-muted-foreground mt-1 max-w-[620px] text-[13px] leading-relaxed">
-            Use Freestyle Cloud for transcription, AI cleanup, or both in one
-            fast pass. You can stay signed in even when using your own models.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span
-              className={cn(
-                "rounded-full px-2.5 py-1 text-[11px]",
-                voiceActive
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-muted-foreground",
-              )}
-            >
-              Transcription {voiceActive ? "on" : "off"}
-            </span>
-            <span
-              className={cn(
-                "rounded-full px-2.5 py-1 text-[11px]",
-                cleanupActive
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-muted-foreground",
-              )}
-            >
-              Cleanup {cleanupActive ? "on" : "off"}
-            </span>
-            <span className="bg-secondary text-muted-foreground rounded-full px-2.5 py-1 text-[11px]">
-              {signedInEmail ? `Signed in as ${signedInEmail}` : "Signed out"}
-            </span>
+          <div className="flex items-center gap-2">
+            <Cloud className="text-primary size-4" />
+            <Eyebrow text="Freestyle Cloud routing" />
           </div>
+          <p className="text-muted-foreground mt-1.5 max-w-[620px] text-[13px] leading-relaxed">
+            Choose where the managed service participates. Keep your own models,
+            use cloud cleanup, or send audio once for the fastest full pass.
+          </p>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
+        <div className="flex shrink-0 items-center gap-2">
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-1 text-[11px]",
+              signedIn
+                ? "bg-accent text-accent-foreground"
+                : "bg-secondary text-muted-foreground",
+            )}
+          >
+            {signedInEmail ?? "Signed out"}
+          </span>
           {signedInEmail ? (
             <Button variant="outline" size="sm" onClick={onSignOut}>
               Sign out
@@ -509,25 +492,88 @@ function FreestyleCloudModeCard({
               Sign in
             </Button>
           )}
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!canUse}
-            onClick={onUseCleanup}
-          >
-            Use for cleanup
-          </Button>
-          <Button
-            variant="ink"
-            size="sm"
-            disabled={!canUse}
-            onClick={onUseBoth}
-          >
-            Use for both
-          </Button>
         </div>
       </div>
+
+      <div className="grid grid-cols-1 gap-px bg-border/70 min-[860px]:grid-cols-3">
+        <CloudRouteOption
+          icon={Mic}
+          title="Transcribe"
+          description="Cloud turns audio into text. Your selected cleanup model still edits it."
+          active={voiceActive && !cleanupActive}
+          disabled={!canUse}
+          onClick={onUseTranscription}
+        />
+        <CloudRouteOption
+          icon={Sparkles}
+          title="Clean up"
+          description="Keep your current transcription model and send only the text to Cloud."
+          active={!voiceActive && cleanupActive}
+          disabled={!canUse}
+          onClick={onUseCleanup}
+        />
+        <CloudRouteOption
+          icon={Cloud}
+          title="All-in-one"
+          description="One Cloud request handles audio, transcript, and cleanup together."
+          active={voiceActive && cleanupActive}
+          disabled={!canUse}
+          onClick={onUseBoth}
+          accent
+        />
+      </div>
     </section>
+  );
+}
+
+function CloudRouteOption({
+  icon: Icon,
+  title,
+  description,
+  active,
+  disabled,
+  onClick,
+  accent,
+}: {
+  icon: typeof Cloud;
+  title: string;
+  description: string;
+  active: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  accent?: boolean;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "bg-card hover:bg-secondary/40 group flex min-h-[118px] flex-col items-start p-4 text-left transition-colors disabled:cursor-default disabled:opacity-60",
+        active && "bg-primary/[0.08] hover:bg-primary/[0.1]",
+      )}
+    >
+      <span
+        className={cn(
+          "flex size-8 items-center justify-center rounded-[9px] border",
+          active
+            ? "border-primary/30 bg-accent text-accent-foreground"
+            : "border-border bg-secondary text-muted-foreground",
+          accent && !active && "text-primary",
+        )}
+      >
+        <Icon className="size-4" />
+      </span>
+      <span className="mt-3 flex w-full items-center gap-2">
+        <span className="text-foreground text-[14px] font-semibold">
+          {title}
+        </span>
+        {active && <CheckCircle className="text-primary ml-auto size-4" />}
+      </span>
+      <span className="text-muted-foreground mt-1 text-[12px] leading-relaxed">
+        {description}
+      </span>
+    </button>
   );
 }
 

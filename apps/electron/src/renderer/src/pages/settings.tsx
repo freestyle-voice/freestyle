@@ -1515,8 +1515,8 @@ function CopyField({
   value: string;
 }): React.JSX.Element {
   return (
-    <div className="border-border bg-secondary/45 rounded-[12px] border p-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
+    <div className="border-border bg-secondary/45 rounded-[12px] border px-3 py-2.5">
+      <div className="mb-1.5 flex items-center justify-between gap-3">
         <div className="mono text-muted-foreground text-[10.5px] tracking-[0.14em] uppercase">
           {label}
         </div>
@@ -1564,6 +1564,7 @@ function CodeBlock({
 
 function McpConnect(): React.JSX.Element {
   const { t } = useTranslation();
+  const [mode, setMode] = useState<"http" | "stdio">("http");
   const mcpUrl = `${getApiBase()}/mcp`;
   const httpConfig = JSON.stringify(
     { mcpServers: { freestyle: { type: "http", url: mcpUrl } } },
@@ -1579,29 +1580,52 @@ function McpConnect(): React.JSX.Element {
     null,
     2,
   );
+  const activeConfig = mode === "http" ? httpConfig : remoteConfig;
+  const activeLabel =
+    mode === "http"
+      ? t("settings.developer.mcpConfig")
+      : t("settings.developer.mcpRemoteConfig");
+  const activeNote =
+    mode === "http"
+      ? "Use this for Claude, Cursor, and clients that support streamable HTTP."
+      : t("settings.developer.mcpRemoteNote");
 
   return (
     <div className="border-border bg-card w-full rounded-[14px] border p-4">
-      <div className="mb-4 flex flex-col gap-1.5">
-        <div className="mono text-primary text-[10px] uppercase tracking-[0.16em]">
-          Local MCP endpoint
+      <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <div className="space-y-3">
+          <div>
+            <div className="mono text-primary text-[10px] uppercase tracking-[0.16em]">
+              Local MCP endpoint
+            </div>
+            <p className="text-muted-foreground mt-1.5 text-[12.5px] leading-relaxed">
+              Copy the endpoint or paste a client config. HTTP is preferred;
+              stdio is only for clients that need a command bridge.
+            </p>
+          </div>
+          <div className="bg-secondary/45 border-border inline-flex rounded-[10px] border p-1">
+            <Button
+              variant={mode === "http" ? "default" : "ghost"}
+              size="xs"
+              onClick={() => setMode("http")}
+              className="rounded-[7px]"
+            >
+              HTTP
+            </Button>
+            <Button
+              variant={mode === "stdio" ? "default" : "ghost"}
+              size="xs"
+              onClick={() => setMode("stdio")}
+              className="rounded-[7px]"
+            >
+              stdio bridge
+            </Button>
+          </div>
         </div>
-        <p className="text-muted-foreground max-w-[680px] text-[12.5px] leading-relaxed">
-          Use HTTP for clients that support streamable MCP. Use the stdio bridge
-          for clients that still need a command.
-        </p>
-      </div>
-      <div className="space-y-3">
         <CopyField label={t("settings.developer.mcpUrl")} value={mcpUrl} />
-        <CodeBlock
-          label={t("settings.developer.mcpConfig")}
-          value={httpConfig}
-        />
-        <CodeBlock
-          label={t("settings.developer.mcpRemoteConfig")}
-          value={remoteConfig}
-          note={t("settings.developer.mcpRemoteNote")}
-        />
+      </div>
+      <div className="mt-3">
+        <CodeBlock label={activeLabel} value={activeConfig} note={activeNote} />
       </div>
     </div>
   );

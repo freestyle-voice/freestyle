@@ -3,10 +3,12 @@ import { upgradeWebSocket } from "@hono/node-server";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
+import { FreestyleCloudAuthError } from "../lib/freestyle-cloud.js";
 import { getLanguageSetting } from "../lib/language.js";
 import { postProcess, prewarmPostProcess } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
+import { invalidateSession } from "../lib/sessions.js";
 import { shouldKeepStreamingUpstreamAlive } from "../lib/streaming/session-policy.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
 import {
@@ -329,6 +331,19 @@ const stream = new Hono().get(
                 }
               })
               .catch((err) => {
+                if (err instanceof FreestyleCloudAuthError) {
+                  invalidateSession();
+                  if (!closed) {
+                    ws.send(
+                      JSON.stringify({
+                        type: "error",
+                        code: "cloud_auth_required",
+                        message: "Sign in to Freestyle Cloud",
+                      }),
+                    );
+                  }
+                  return;
+                }
                 captureException(err);
                 if (!closed) {
                   ws.send(JSON.stringify({ type: "final", text: rawText }));

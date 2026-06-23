@@ -214,14 +214,14 @@ export default function AppShell(): React.JSX.Element {
 
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <div
-          className="absolute right-3 top-2.5 z-20 flex items-center gap-2"
+          className="border-border/70 bg-background/92 absolute top-0 right-0 z-40 flex items-center gap-1.5 rounded-bl-[14px] border-b border-l px-3 py-2 shadow-[0_10px_28px_-22px_rgba(0,0,0,0.55)] backdrop-blur-sm"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
           <a
             href={LINKS.repo}
             target="_blank"
             rel="noopener noreferrer"
-            className="border-transparent hover:border-border hover:bg-card text-foreground inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors"
+            className="text-foreground hover:bg-card/70 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors"
           >
             <SiGithub className="h-3.5 w-3.5" />
             Star the repo
@@ -231,14 +231,14 @@ export default function AppShell(): React.JSX.Element {
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Join our Discord"
-            className="border-transparent hover:border-border hover:bg-card text-foreground inline-flex items-center justify-center rounded-md border p-1.5 transition-colors"
+            className="text-foreground hover:bg-card/70 inline-flex items-center justify-center rounded-md p-1.5 transition-colors"
           >
             <SiDiscord className="h-3.5 w-3.5" />
           </a>
         </div>
 
         <main
-          className="flex min-h-0 flex-1 flex-col overflow-auto"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
           style={{ scrollbarWidth: "none" } as React.CSSProperties}
         >
           <Outlet />

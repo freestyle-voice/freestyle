@@ -88,6 +88,7 @@ export const VOICE_PROVIDERS = [
 ];
 
 export const LLM_PROVIDERS = [
+  FREESTYLE_CLOUD_PROVIDER_ID,
   "openai",
   "anthropic",
   "google",
@@ -106,6 +107,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   soniox: "Soniox",
   mistral: "Mistral",
   openrouter: "OpenRouter",
+  "freestyle-cloud": "Freestyle Cloud",
   "local-llm": "Local LLM",
   "local-whisper": "Local Whisper",
   "local-mlx": "Local MLX",

@@ -8,7 +8,7 @@ import {
 } from "@renderer/components/ui/input-group";
 import { Progress } from "@renderer/components/ui/progress";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
-import { useCloudAuth } from "@renderer/lib/cloud-auth-context";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import type {
   AvailableModel,
   VoiceItem,
@@ -156,7 +156,9 @@ function buildLlmRows(
         selected:
           m.defaultLlm?.model_id === model.model_id &&
           m.defaultLlm?.provider === model.provider_id,
-        hasKey: m.keyProviders.has(providerId),
+        hasKey:
+          providerId === FREESTYLE_CLOUD_TIER.provider_id ||
+          m.keyProviders.has(providerId),
         onSelect: () => h.onPickCloud(model),
       });
     }
@@ -241,8 +243,7 @@ export function ModelList({
   const q = search.toLowerCase();
   // Curated-only for LLM until expanded; searching always searches everything.
   const curatedOnly = type === "llm" && !showAllLlm && !q;
-  const visible = rows.filter((r) => {
-    if (curatedOnly && !r.curated) return false;
+  const filteredRows = rows.filter((r) => {
     if (filter === "cloud" && r.source !== "cloud") return false;
     if (filter === "local" && r.source !== "local") return false;
     if (
@@ -255,8 +256,12 @@ export function ModelList({
     if (q && !`${r.name} ${r.meta}`.toLowerCase().includes(q)) return false;
     return true;
   });
+  const visible = filteredRows.filter((r) => {
+    if (curatedOnly && !r.curated) return false;
+    return true;
+  });
   const hiddenCount = curatedOnly
-    ? rows.length - rows.filter((r) => r.curated).length
+    ? filteredRows.length - filteredRows.filter((r) => r.curated).length
     : 0;
 
   const showLocalLlmForm =

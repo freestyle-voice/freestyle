@@ -26,7 +26,7 @@ import {
 } from "@renderer/hooks/use-hotkey-recorder";
 import { capture } from "@renderer/lib/analytics";
 import { getClient } from "@renderer/lib/api";
-import { useCloudAuth } from "@renderer/lib/cloud-auth-context";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import { defaultLanguage, ONBOARDING_LANGUAGES } from "@renderer/lib/languages";
 import {
   type AvailableModel,
@@ -105,6 +105,7 @@ export default function OnboardingPage(): React.JSX.Element {
     loading: cloudLoading,
     signingIn: cloudSigningIn,
     error: cloudError,
+    refresh: cloudRefresh,
     signIn: cloudSignIn,
   } = useCloudAuth();
   const prevSignedIn = useRef(false);
@@ -396,8 +397,12 @@ export default function OnboardingPage(): React.JSX.Element {
   const selectCloudModel = useCallback(
     (model: AvailableModel) => {
       if (model.provider_id === FREESTYLE_CLOUD_PROVIDER_ID) {
-        if (cloudUser) commitFreestyleCloudDefault();
-        else void cloudSignIn();
+        void (async () => {
+          const user = cloudUser ? await cloudRefresh() : await cloudSignIn();
+          if (!user) return;
+          commitFreestyleCloudDefault();
+          setShowSelector(false);
+        })();
         return;
       }
       setSelectedModel(model);
@@ -416,6 +421,7 @@ export default function OnboardingPage(): React.JSX.Element {
       apiKeyForm,
       commitCloudModel,
       cloudUser,
+      cloudRefresh,
       cloudSignIn,
       commitFreestyleCloudDefault,
     ],
@@ -1327,11 +1333,11 @@ function ModelSelectorOverlay({
       from: "selector",
     });
     onSelectCloud(model);
-    if (
-      model.provider_id === FREESTYLE_CLOUD_PROVIDER_ID ||
-      keyProviders.has(model.provider_id)
-    ) {
+    if (keyProviders.has(model.provider_id)) {
       onClose();
+    } else if (model.provider_id === FREESTYLE_CLOUD_PROVIDER_ID) {
+      // Keep the selector open while the account flow runs; close only after
+      // cloudUser updates and the selected model becomes ready.
     } else {
       capture("onboarding_cloud_key_entry_viewed", {
         provider: model.provider_id,

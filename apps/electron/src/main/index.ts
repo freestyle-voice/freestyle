@@ -81,15 +81,6 @@ import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { AudioPlaybackController } from "./audio-control/controller";
-import {
-  cancelCloudSignIn,
-  getCloudUser,
-  loadStoredCloudToken,
-  setEmbeddedServerPort,
-  signInToCloud,
-  signOutOfCloud,
-  syncCloudTokenToServer,
-} from "./cloud-auth";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
@@ -1280,6 +1271,20 @@ app.whenReady().then(async () => {
     }
   });
 
+  ipcMain.handle("open:external", async (_event, url: unknown) => {
+    if (typeof url !== "string") return false;
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        return false;
+      }
+      await shell.openExternal(parsed.toString());
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
   // IPC: read the configured server URL ("" = use the local server)
   ipcMain.handle("server:url", () => getServerUrl());
 
@@ -1301,40 +1306,19 @@ app.whenReady().then(async () => {
     return getServerToken();
   });
 
-  // IPC: Freestyle Cloud sign-in (OAuth device flow). The user approves in the
-  // system browser; we forward the user code to the renderer for display.
-  ipcMain.handle("cloud:sign-in", async (event) =>
-    signInToCloud({
-      onUserCode: (userCode) => event.sender.send("cloud:user-code", userCode),
-    }),
-  );
-  ipcMain.handle("cloud:cancel-sign-in", () => {
-    cancelCloudSignIn();
-    return true;
-  });
-  ipcMain.handle("cloud:sign-out", async () => {
-    await signOutOfCloud();
-    return true;
-  });
-  ipcMain.handle("cloud:user", () => getCloudUser());
-
   ipcMain.handle("cloud:prompt-sign-in", async () => {
     const { response } = await dialog.showMessageBox({
       type: "info",
       message: "Sign in to Freestyle Cloud",
       detail:
-        "Freestyle Cloud transcription needs you to be signed in. Sign in now, or switch to an on-device model in Settings.",
-      buttons: ["Sign In", "Not Now"],
+        "Freestyle Cloud needs you to sign in before it can transcribe or clean up text. Open Models settings to sign in or switch providers.",
+      buttons: ["Open Models", "Not Now"],
       defaultId: 0,
       cancelId: 1,
     });
     if (response !== 0) return false;
-    try {
-      await signInToCloud();
-      return true;
-    } catch {
-      return false;
-    }
+    showSettingsWindow("/settings/models");
+    return true;
   });
 
   ipcMain.handle(
@@ -1487,18 +1471,12 @@ app.whenReady().then(async () => {
     reconcileUnsupportedMlxVoiceDefault();
     autoStartWhisperServer();
 
-    // Decrypt any stored Freestyle Cloud session token so the embedded server
-    // can attach it to managed STT calls from first launch.
-    const cloudAuthToken = (await loadStoredCloudToken()) ?? undefined;
-
     // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
     const startServer = (port: number): void => {
-      startFreestyleServer({ port, host: "127.0.0.1", cloudAuthToken })
+      startFreestyleServer({ port, host: "127.0.0.1" })
         .then(({ server, port: boundPort }) => {
           httpServer = server;
           serverPort = boundPort;
-          setEmbeddedServerPort(boundPort);
-          void syncCloudTokenToServer();
           log.info(`Server running on http://localhost:${boundPort}`);
         })
         .catch((err: NodeJS.ErrnoException) => {
@@ -1527,9 +1505,6 @@ app.whenReady().then(async () => {
 
     if (existingServer) {
       serverPort = DEFAULT_PORT;
-      setEmbeddedServerPort(DEFAULT_PORT);
-      // The reused server is a separate process; push our token to it.
-      void syncCloudTokenToServer();
       log.info(
         `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
       );

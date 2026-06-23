@@ -1,7 +1,7 @@
-import { getCloudAuthToken } from "./cloud-auth.js";
 import { getDb } from "./db.js";
+import { FREESTYLE_CLOUD_PROVIDER_ID } from "./freestyle-cloud.js";
 import { MLX_ASR_PROVIDER_ID } from "./mlx-asr/constants.js";
-import { FREESTYLE_CLOUD_PROVIDER_ID } from "./streaming/providers/freestyle-cloud.js";
+import { getSessionToken } from "./sessions.js";
 import { getProvider, supportsSessionTransport } from "./streaming/registry.js";
 import type { StreamCallbacks, StreamSession } from "./streaming/types.js";
 import type { AsrVocabularyBias } from "./vocabulary-bias.js";
@@ -61,7 +61,7 @@ export function getApiKeyForProvider(providerId: string): string | null {
   // On-device engines need no key.
   if (LOCAL_STT_PROVIDERS.has(providerId)) return "local";
   // Freestyle Cloud uses the signed-in user's session token (null = signed out).
-  if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return getCloudAuthToken();
+  if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return getSessionToken();
 
   const db = getDb();
   const row = db

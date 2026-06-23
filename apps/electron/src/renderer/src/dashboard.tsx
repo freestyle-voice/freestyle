@@ -6,7 +6,7 @@ import { ErrorBoundary } from "@renderer/components/error-boundary";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import i18n from "@renderer/i18n";
 import { initApiBase } from "@renderer/lib/api";
-import { CloudAuthProvider } from "@renderer/lib/cloud-auth-context";
+import { CloudAuthProvider } from "@renderer/lib/auth-context";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import OnboardingPage from "@renderer/onboarding";
 import DictionaryPage from "@renderer/pages/dictionary";
@@ -27,7 +27,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router";
 
 function PagePad(): React.JSX.Element {
   return (
-    <div className="responsive-route-pad flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <Outlet />
     </div>
   );

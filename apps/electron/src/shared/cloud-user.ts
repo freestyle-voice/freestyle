@@ -2,6 +2,6 @@
 export interface CloudUser {
   id: string;
   email: string;
-  name?: string;
+  name?: string | null;
   image?: string | null;
 }

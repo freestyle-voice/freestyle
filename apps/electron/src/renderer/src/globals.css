@@ -180,10 +180,6 @@
 }
 
 @layer components {
-  .responsive-route-pad {
-    padding: 2.25rem 3rem;
-  }
-
   .responsive-page-scroll {
     padding-inline: 3rem;
     padding-bottom: 3rem;
@@ -202,10 +198,6 @@
   }
 
   @media (max-width: 1080px) {
-    .responsive-route-pad {
-      padding: 2rem;
-    }
-
     .responsive-page-scroll {
       padding-inline: 2rem;
       padding-bottom: 2rem;
@@ -220,10 +212,6 @@
   }
 
   @media (max-width: 820px) {
-    .responsive-route-pad {
-      padding: 1.5rem 1rem;
-    }
-
     .responsive-page-scroll {
       padding-inline: 1rem;
       padding-bottom: 1.5rem;

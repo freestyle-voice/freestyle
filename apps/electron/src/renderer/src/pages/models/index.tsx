@@ -1,17 +1,23 @@
 import { Button } from "@renderer/components/ui/button";
-import { useCloudAuth } from "@renderer/lib/cloud-auth-context";
+import { getClient } from "@renderer/lib/api";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import type { AvailableModel } from "@renderer/lib/models";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   CheckCircle,
+  ChevronDown,
+  Cloud,
   Key,
   Laptop,
+  Mic,
   Pencil,
+  Sparkles,
   Trash2,
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 
 import { CleanupIntensityCard } from "./cleanup-intensity";
 import { MlxWarmingDialog } from "./mlx-memory-section";
@@ -43,6 +49,7 @@ export default function ModelsPage(): React.JSX.Element {
     string | null
   >(null);
   const [warmingOpen, setWarmingOpen] = useState(false);
+  const [cloudPanelExpanded, setCloudPanelExpanded] = useState(true);
 
   // -------------------------------------------------------------------------
   // Modal flow
@@ -52,6 +59,63 @@ export default function ModelsPage(): React.JSX.Element {
     setModal(null);
     setKeyError(null);
     setSaving(false);
+  };
+
+  const freestyleVoice = m.available.find(
+    (model) =>
+      model.type === "voice" && model.provider_id === FREESTYLE_CLOUD_PROVIDER,
+  );
+  const freestyleCleanup = m.available.find(
+    (model) =>
+      model.type === "llm" && model.provider_id === FREESTYLE_CLOUD_PROVIDER,
+  );
+  const cloudVoiceActive =
+    m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER;
+  const cloudCleanupActive =
+    m.llmCleanup && m.defaultLlm?.provider === FREESTYLE_CLOUD_PROVIDER;
+
+  const fallbackLocalVoice = m.voiceItems.find(
+    (item) => item.kind === "local" && item.status === "ready" && item.defId,
+  );
+
+  const ensureCloudAuth = async (): Promise<boolean> => {
+    if (cloudAuth.user && (await cloudAuth.refresh())) return true;
+    return !!(await cloudAuth.signIn());
+  };
+
+  const useFreestyleCloudForBoth = (): void => {
+    if (!freestyleVoice || !freestyleCleanup) return;
+    void (async () => {
+      if (!(await ensureCloudAuth())) return;
+      await m.configureModel(freestyleVoice, "voice");
+      await m.configureModel(freestyleCleanup, "llm");
+      m.setCleanup(true);
+    })();
+  };
+
+  const useFreestyleCloudForTranscription = (): void => {
+    if (!freestyleVoice) return;
+    void (async () => {
+      if (!(await ensureCloudAuth())) return;
+      await m.configureModel(freestyleVoice, "voice");
+      if (cloudCleanupActive) m.setCleanup(false);
+    })();
+  };
+
+  const useFreestyleCloudForCleanup = (): void => {
+    if (!freestyleCleanup) return;
+    void (async () => {
+      if (!(await ensureCloudAuth())) return;
+      if (cloudVoiceActive && fallbackLocalVoice?.defId) {
+        await m.selectLocalVoice(
+          fallbackLocalVoice.defId,
+          fallbackLocalVoice.name,
+          fallbackLocalVoice.localEngine,
+        );
+      }
+      await m.configureModel(freestyleCleanup, "llm");
+      m.setCleanup(true);
+    })();
   };
 
   const openVoice = (): void => setModal({ kind: "list", type: "voice" });
@@ -64,20 +128,13 @@ export default function ModelsPage(): React.JSX.Element {
     if (modal?.kind !== "list") return;
     const type = modal.type;
 
-    // Freestyle Cloud requires a signed-in user — run the OAuth flow first,
-    // then configure (and disable local cleanup) only if sign-in succeeds.
-    if (
-      type === "voice" &&
-      model.provider_id === FREESTYLE_CLOUD_PROVIDER &&
-      !cloudAuth.user
-    ) {
-      void cloudAuth.signIn().then((user) => {
-        if (!user) return;
-        void m.configureModel(model, type).then(() => {
-          m.setCleanup(false);
-          closeModal();
-        });
-      });
+    // Freestyle Cloud requires a fresh signed-in server session.
+    if (model.provider_id === FREESTYLE_CLOUD_PROVIDER) {
+      void (async () => {
+        if (!(await ensureCloudAuth())) return;
+        await m.configureModel(model, type);
+        closeModal();
+      })();
       return;
     }
 
@@ -96,14 +153,7 @@ export default function ModelsPage(): React.JSX.Element {
       });
       return;
     }
-    void m.configureModel(model, type).then(() => {
-      // Freestyle Cloud runs its own cleanup; disable local post-processing
-      // so we surface the cloud's cleaned text without a second pass.
-      if (type === "voice" && model.provider_id === FREESTYLE_CLOUD_PROVIDER) {
-        m.setCleanup(false);
-      }
-      closeModal();
-    });
+    void m.configureModel(model, type).then(closeModal);
   };
 
   const onPickLocalVoice = (
@@ -149,14 +199,40 @@ export default function ModelsPage(): React.JSX.Element {
     })();
   };
 
-  // Self-correct a stale enabled setting (e.g. page opened with Freestyle Cloud
-  // already selected) so the backend never runs a redundant second cleanup
-  // pass. Kept above the loading early-return to satisfy the Rules of Hooks.
-  const cloudVoiceActive =
-    m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER;
+  const hasLocalVoice = m.configured.some(
+    (c) => c.provider === "local-whisper" || c.provider === "local-mlx",
+  );
+  // Only the all-in-one route owns cleanup. Cloud transcription can still feed
+  // a custom cleanup model.
+  const cleanupLocked = cloudVoiceActive && cloudCleanupActive;
+  // Model warming only applies to the active local MLX worker.
+  const showMlxWarming = m.defaultVoice?.provider === "local-mlx";
+
   useEffect(() => {
-    if (cloudVoiceActive && m.llmCleanup) m.setCleanup(false);
-  }, [cloudVoiceActive, m.llmCleanup, m.setCleanup]);
+    getClient()
+      .api.settings[":key"].$get({
+        param: { key: SETTINGS_KEYS.freestyleCloudPanelExpanded },
+      })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = await res.json();
+        if ("value" in data) setCloudPanelExpanded(data.value !== "false");
+      })
+      .catch(() => {});
+  }, []);
+
+  const toggleCloudPanel = (): void => {
+    setCloudPanelExpanded((current) => {
+      const next = !current;
+      getClient()
+        .api.settings[":key"].$put({
+          param: { key: SETTINGS_KEYS.freestyleCloudPanelExpanded },
+          json: { value: String(next) },
+        })
+        .catch(() => {});
+      return next;
+    });
+  };
 
   // -------------------------------------------------------------------------
   // Render
@@ -165,32 +241,29 @@ export default function ModelsPage(): React.JSX.Element {
   if (m.loading) {
     return (
       <PageShell>
-        <div className="flex items-center justify-center py-24">
-          <p className="text-muted-foreground text-sm">{t("models.loading")}</p>
-        </div>
+        <PageHeader title={t("models.title")} />
+        <ModelsLoadingSkeleton />
       </PageShell>
     );
   }
-
-  const hasLocalVoice = m.configured.some(
-    (c) => c.provider === "local-whisper" || c.provider === "local-mlx",
-  );
-
-  // Freestyle Cloud does its own cleanup, so local post-processing is locked
-  // off while it's the active voice provider.
-  const cleanupLocked = m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER;
-
-  // Show the MLX warming control when MLX is the active voice engine, or the
-  // platform supports MLX and at least one MLX model is downloaded.
-  const showMlxWarming =
-    m.defaultVoice?.provider === "local-mlx" ||
-    (!!m.mlxStatus?.platformSupported &&
-      m.mlxStatus.models.some((model) => model.status === "ready"));
 
   return (
     <PageShell>
       <PageHeader title={t("models.title")} />
       <div className="space-y-6">
+        <FreestyleCloudModeCard
+          signedIn={!!cloudAuth.user}
+          voiceActive={cloudVoiceActive}
+          cleanupActive={cloudCleanupActive}
+          expanded={cloudPanelExpanded}
+          onSignIn={() => void cloudAuth.signIn()}
+          onToggleExpanded={toggleCloudPanel}
+          onUseTranscription={useFreestyleCloudForTranscription}
+          onUseBoth={useFreestyleCloudForBoth}
+          onUseCleanup={useFreestyleCloudForCleanup}
+          canUse={!!freestyleVoice && !!freestyleCleanup}
+          cleanupDisabled={cloudVoiceActive && !fallbackLocalVoice}
+        />
         <PairCard
           voice={m.defaultVoice}
           llm={m.defaultLlm}
@@ -307,6 +380,243 @@ export default function ModelsPage(): React.JSX.Element {
         />
       )}
     </PageShell>
+  );
+}
+
+function SkeletonLine({
+  className,
+}: {
+  className?: string;
+}): React.JSX.Element {
+  return (
+    <div
+      className={cn(
+        "bg-muted/60 relative overflow-hidden rounded-full",
+        "before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.4s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent",
+        className,
+      )}
+    />
+  );
+}
+
+function ModelsLoadingSkeleton(): React.JSX.Element {
+  return (
+    <div className="space-y-6" role="status" aria-label="Loading models">
+      <style>{`
+        @keyframes shimmer {
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
+
+      <section className="border-border bg-card rounded-[14px] border p-5">
+        <div className="flex flex-col gap-4 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
+          <div className="min-w-0 flex-1">
+            <SkeletonLine className="h-3 w-28" />
+            <SkeletonLine className="mt-3 h-5 w-64 max-w-full" />
+            <SkeletonLine className="mt-3 h-3 w-full max-w-[560px]" />
+            <SkeletonLine className="mt-2 h-3 w-4/5 max-w-[460px]" />
+            <div className="mt-4 flex flex-wrap gap-2">
+              <SkeletonLine className="h-7 w-28" />
+              <SkeletonLine className="h-7 w-24" />
+              <SkeletonLine className="h-7 w-36" />
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <SkeletonLine className="h-9 w-20 rounded-md" />
+            <SkeletonLine className="h-9 w-32 rounded-md" />
+            <SkeletonLine className="h-9 w-28 rounded-md" />
+          </div>
+        </div>
+      </section>
+
+      <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
+        {["voice", "cleanup"].map((key) => (
+          <div
+            key={key}
+            className={cn(
+              "flex min-h-[140px] flex-col gap-3",
+              key === "cleanup" &&
+                "border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0",
+            )}
+          >
+            <SkeletonLine className="h-3 w-40" />
+            <SkeletonLine className="h-6 w-52 max-w-full" />
+            <SkeletonLine className="h-3 w-32" />
+            <div className="mt-auto flex items-center gap-3">
+              <SkeletonLine className="h-9 w-24 rounded-md" />
+              <SkeletonLine className="h-5 w-28" />
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="border-border bg-card rounded-[14px] border p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <SkeletonLine className="h-3 w-28" />
+            <SkeletonLine className="mt-3 h-5 w-44" />
+            <SkeletonLine className="mt-3 h-3 w-full max-w-[420px]" />
+          </div>
+          <SkeletonLine className="h-8 w-24 rounded-md" />
+        </div>
+        <div className="mt-5 space-y-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <SkeletonLine className="h-4 w-40" />
+                <SkeletonLine className="mt-2 h-3 w-64 max-w-full" />
+              </div>
+              <SkeletonLine className="h-8 w-16 rounded-md" />
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function FreestyleCloudModeCard({
+  signedIn,
+  voiceActive,
+  cleanupActive,
+  expanded,
+  onSignIn,
+  onToggleExpanded,
+  onUseTranscription,
+  onUseBoth,
+  onUseCleanup,
+  canUse,
+  cleanupDisabled,
+}: {
+  signedIn: boolean;
+  voiceActive: boolean;
+  cleanupActive: boolean;
+  expanded: boolean;
+  onSignIn: () => void;
+  onToggleExpanded: () => void;
+  onUseTranscription: () => void;
+  onUseBoth: () => void;
+  onUseCleanup: () => void;
+  canUse: boolean;
+  cleanupDisabled: boolean;
+}): React.JSX.Element {
+  return (
+    <section className="border-border bg-card overflow-hidden rounded-[14px] border">
+      <div className="flex flex-col gap-4 border-b border-border/70 px-5 py-4 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Cloud className="text-primary size-4" />
+            <Eyebrow text="Freestyle Cloud" />
+          </div>
+          <p className="text-muted-foreground mt-1.5 max-w-[620px] text-[13px] leading-relaxed">
+            Fast, managed transcription and cleanup from Freestyle. Use it for
+            speech-to-text, polishing text, or both in one pass.
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {!signedIn && (
+            <Button variant="outline" size="sm" onClick={onSignIn}>
+              Sign in
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={onToggleExpanded}
+            aria-label={
+              expanded
+                ? "Hide Freestyle Cloud options"
+                : "Show Freestyle Cloud options"
+            }
+          >
+            <ChevronDown
+              className={cn("transition-transform", expanded && "rotate-180")}
+            />
+          </Button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="grid grid-cols-1 gap-px bg-border/70 min-[860px]:grid-cols-3">
+          <CloudRouteOption
+            icon={Mic}
+            title="Transcription"
+            description="Use Freestyle Cloud for speech-to-text, then clean up with your selected model."
+            active={voiceActive && !cleanupActive}
+            disabled={!canUse}
+            onClick={onUseTranscription}
+          />
+          <CloudRouteOption
+            icon={Sparkles}
+            title="Cleanup"
+            description="Keep your current transcription model and let Freestyle Cloud polish the text."
+            active={!voiceActive && cleanupActive}
+            disabled={!canUse || cleanupDisabled}
+            onClick={onUseCleanup}
+          />
+          <CloudRouteOption
+            icon={Cloud}
+            title="All-in-one"
+            description="Send audio once for Freestyle Cloud to transcribe and polish in a single pass."
+            active={voiceActive && cleanupActive}
+            disabled={!canUse}
+            onClick={onUseBoth}
+            accent
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CloudRouteOption({
+  icon: Icon,
+  title,
+  description,
+  active,
+  disabled,
+  onClick,
+  accent,
+}: {
+  icon: typeof Cloud;
+  title: string;
+  description: string;
+  active: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  accent?: boolean;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "bg-card hover:bg-secondary/40 group flex min-h-[118px] flex-col items-start p-4 text-left transition-colors disabled:cursor-default disabled:opacity-60",
+        active && "bg-primary/[0.08] hover:bg-primary/[0.1]",
+      )}
+    >
+      <span
+        className={cn(
+          "flex size-8 items-center justify-center rounded-[9px] border",
+          active
+            ? "border-primary/30 bg-accent text-accent-foreground"
+            : "border-border bg-secondary text-muted-foreground",
+          accent && !active && "text-primary",
+        )}
+      >
+        <Icon className="size-4" />
+      </span>
+      <span className="mt-3 flex w-full items-center gap-2">
+        <span className="text-foreground text-[14px] font-semibold">
+          {title}
+        </span>
+        {active && <CheckCircle className="text-primary ml-auto size-4" />}
+      </span>
+      <span className="text-muted-foreground mt-1 text-[12px] leading-relaxed">
+        {description}
+      </span>
+    </button>
   );
 }
 

@@ -168,7 +168,7 @@ export function TutorialDemo({
   return (
     <div className="border-border bg-card flex flex-col items-center gap-5 rounded-[16px] border px-7 py-7">
       {/* Instructional sentence */}
-      <div className="text-center">
+      <div className="select-none text-center">
         <div className="serif text-foreground text-[34px] leading-[1.1] font-normal tracking-tight">
           <StepWord active={phase === "idle"}>Press</StepWord>{" "}
           <span className="inline-block align-middle">

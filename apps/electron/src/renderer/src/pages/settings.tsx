@@ -30,6 +30,7 @@ import {
   getApiBase,
   getClient,
   getLocalApiBase,
+  getServerToken,
   refreshApiBase,
 } from "@renderer/lib/api";
 import { LANGUAGES } from "@renderer/lib/languages";
@@ -685,7 +686,7 @@ export default function SettingsPage(): React.JSX.Element {
       className="flex min-h-0 flex-1 flex-col"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
-      <div className="h-9 shrink-0" />
+      <div className="h-7 shrink-0" />
       <div
         className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 min-[900px]:grid-cols-[180px_minmax(0,1fr)]"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -793,142 +794,32 @@ export default function SettingsPage(): React.JSX.Element {
               </Row>
               <Row
                 label="Server URL"
-                desc="Leave empty to use the built-in local server. Point this at a self-hosted Freestyle server (e.g. http://your-vm:4649) to use that instead, with an access token if it requires one. Restart the app after changing this."
+                desc="Use the built-in server, or point Freestyle at a self-hosted server. Restart the app after changing this."
+                stacked
                 last
               >
-                <div className="flex w-full max-w-md flex-col gap-2.5">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        "mono inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-[3px] text-[9px] uppercase tracking-[0.14em]",
-                        savedServerUrl
-                          ? "bg-secondary text-secondary-foreground"
-                          : "bg-accent text-accent-foreground",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full",
-                          savedServerUrl ? "bg-muted-foreground" : "bg-primary",
-                        )}
-                      />
-                      {savedServerUrl ? "Custom server" : "Local server"}
-                    </span>
-                    {savedServerUrl && (
-                      <span className="text-muted-foreground min-w-0 truncate text-xs">
-                        {savedServerUrl}
-                      </span>
-                    )}
-                  </div>
-                  <InputGroup>
-                    <InputGroupInput
-                      id="settings-server-url"
-                      type="text"
-                      value={serverUrlInput}
-                      aria-invalid={!!serverUrlError}
-                      onChange={(e) => {
-                        setServerUrlInput(e.target.value);
-                        setServerTest("idle");
-                        setServerUrlError(null);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSaveServer();
-                      }}
-                      placeholder="http://127.0.0.1:4649 (local)"
-                    />
-                    <InputGroupAddon>
-                      <Server />
-                    </InputGroupAddon>
-                  </InputGroup>
-                  <InputGroup
-                    className={cn(!serverUrlInput.trim() && "opacity-55")}
-                  >
-                    <InputGroupInput
-                      id="settings-server-token"
-                      type={showToken ? "text" : "password"}
-                      value={serverTokenInput}
-                      onChange={(e) => {
-                        setServerTokenInput(e.target.value);
-                        setServerTest("idle");
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSaveServer();
-                      }}
-                      placeholder="Access token (optional)"
-                    />
-                    <InputGroupAddon>
-                      <Key />
-                    </InputGroupAddon>
-                    {serverTokenInput && (
-                      <RevealToggle
-                        revealed={showToken}
-                        onToggle={() => setShowToken((v) => !v)}
-                        label="token"
-                      />
-                    )}
-                  </InputGroup>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ink"
-                      size="sm"
-                      onClick={handleSaveServer}
-                      disabled={
-                        serverUrlInput.trim() === savedServerUrl.trim() &&
-                        serverTokenInput.trim() === savedServerToken.trim()
-                      }
-                    >
-                      {t("common.save")}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        testServer(serverUrlInput, serverTokenInput)
-                      }
-                      disabled={serverTest === "testing"}
-                    >
-                      Test connection
-                    </Button>
-                    {(savedServerUrl ||
-                      savedServerToken ||
-                      serverUrlInput.trim() ||
-                      serverTokenInput.trim()) && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleResetServer}
-                        className="text-muted-foreground"
-                      >
-                        Reset to local
-                      </Button>
-                    )}
-                    {serverTest === "testing" && (
-                      <span className="text-muted-foreground text-xs">
-                        Testing...
-                      </span>
-                    )}
-                    {serverTest === "ok" && (
-                      <span className="text-primary inline-flex items-center gap-1 text-xs">
-                        <Check className="h-3.5 w-3.5" /> Connected
-                      </span>
-                    )}
-                    {serverTest === "unreachable" && (
-                      <span className="text-destructive text-xs">
-                        Unreachable
-                      </span>
-                    )}
-                    {serverTest === "unauthorized" && (
-                      <span className="text-destructive text-xs">
-                        Token rejected
-                      </span>
-                    )}
-                  </div>
-                  {serverUrlError && (
-                    <span className="text-destructive text-xs">
-                      {serverUrlError}
-                    </span>
-                  )}
-                </div>
+                <ServerConnectionCard
+                  savedServerUrl={savedServerUrl}
+                  savedServerToken={savedServerToken}
+                  serverUrlInput={serverUrlInput}
+                  serverTokenInput={serverTokenInput}
+                  serverUrlError={serverUrlError}
+                  serverTest={serverTest}
+                  showToken={showToken}
+                  onUrlChange={(value) => {
+                    setServerUrlInput(value);
+                    setServerTest("idle");
+                    setServerUrlError(null);
+                  }}
+                  onTokenChange={(value) => {
+                    setServerTokenInput(value);
+                    setServerTest("idle");
+                  }}
+                  onToggleToken={() => setShowToken((v) => !v)}
+                  onSave={handleSaveServer}
+                  onTest={() => testServer(serverUrlInput, serverTokenInput)}
+                  onReset={handleResetServer}
+                />
               </Row>
             </SettingsPanel>
           )}
@@ -1283,6 +1174,7 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.developer.mcp")}
                 desc={t("settings.developer.mcpDesc")}
+                stacked
                 last
               >
                 <McpConnect />
@@ -1341,16 +1233,20 @@ function Row({
   desc,
   children,
   last,
+  stacked,
 }: {
   label: string;
   desc: string;
   children: React.ReactNode;
   last?: boolean;
+  stacked?: boolean;
 }) {
   return (
     <div
       className={cn(
         "grid grid-cols-1 items-start gap-3 py-[22px] min-[1080px]:grid-cols-[220px_minmax(0,1fr)] min-[1080px]:gap-8 min-[1280px]:grid-cols-[280px_minmax(0,1fr)] min-[1280px]:gap-9",
+        stacked &&
+          "min-[1080px]:grid-cols-1 min-[1080px]:gap-4 min-[1280px]:grid-cols-1 min-[1280px]:gap-4",
         !last && "border-border border-b",
       )}
     >
@@ -1362,6 +1258,208 @@ function Row({
       </div>
       <div className="min-w-0">{children}</div>
     </div>
+  );
+}
+
+type ServerTestState =
+  | "idle"
+  | "testing"
+  | "ok"
+  | "unreachable"
+  | "unauthorized";
+
+function ServerConnectionCard({
+  savedServerUrl,
+  savedServerToken,
+  serverUrlInput,
+  serverTokenInput,
+  serverUrlError,
+  serverTest,
+  showToken,
+  onUrlChange,
+  onTokenChange,
+  onToggleToken,
+  onSave,
+  onTest,
+  onReset,
+}: {
+  savedServerUrl: string;
+  savedServerToken: string;
+  serverUrlInput: string;
+  serverTokenInput: string;
+  serverUrlError: string | null;
+  serverTest: ServerTestState;
+  showToken: boolean;
+  onUrlChange: (value: string) => void;
+  onTokenChange: (value: string) => void;
+  onToggleToken: () => void;
+  onSave: () => void;
+  onTest: () => void;
+  onReset: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const urlChanged = serverUrlInput.trim() !== savedServerUrl.trim();
+  const tokenChanged = serverTokenInput.trim() !== savedServerToken.trim();
+  const canReset =
+    !!savedServerUrl ||
+    !!savedServerToken ||
+    !!serverUrlInput.trim() ||
+    !!serverTokenInput.trim();
+  const usingLocal = !savedServerUrl;
+
+  return (
+    <div className="border-border bg-card w-full rounded-[14px] border p-3.5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={cn(
+              "mono inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] uppercase tracking-[0.14em]",
+              usingLocal
+                ? "bg-accent text-accent-foreground"
+                : "bg-secondary text-secondary-foreground",
+            )}
+          >
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                usingLocal ? "bg-primary" : "bg-muted-foreground",
+              )}
+            />
+            {usingLocal ? "Local server" : "Remote server"}
+          </span>
+          {savedServerUrl && (
+            <span className="text-muted-foreground min-w-0 truncate text-[12px]">
+              {savedServerUrl}
+            </span>
+          )}
+        </div>
+        <ConnectionStatus state={serverTest} />
+      </div>
+
+      <div className="space-y-2.5">
+        <ServerFieldRow label="Endpoint">
+          <InputGroup>
+            <InputGroupInput
+              id="settings-server-url"
+              type="text"
+              value={serverUrlInput}
+              aria-invalid={!!serverUrlError}
+              onChange={(e) => onUrlChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onSave();
+              }}
+              placeholder="http://127.0.0.1:4649"
+            />
+            <InputGroupAddon>
+              <Server />
+            </InputGroupAddon>
+          </InputGroup>
+        </ServerFieldRow>
+
+        <ServerFieldRow label="Token">
+          <InputGroup className={cn(!serverUrlInput.trim() && "opacity-60")}>
+            <InputGroupInput
+              id="settings-server-token"
+              type={showToken ? "text" : "password"}
+              value={serverTokenInput}
+              onChange={(e) => onTokenChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onSave();
+              }}
+              placeholder="Optional access token"
+            />
+            <InputGroupAddon>
+              <Key />
+            </InputGroupAddon>
+            {serverTokenInput && (
+              <RevealToggle
+                revealed={showToken}
+                onToggle={onToggleToken}
+                label="token"
+              />
+            )}
+          </InputGroup>
+        </ServerFieldRow>
+
+        {serverUrlError && (
+          <p className="text-destructive pl-0 text-[12px] min-[760px]:pl-[104px]">
+            {serverUrlError}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 pt-1 min-[760px]:pl-[104px]">
+          <Button
+            variant="ink"
+            size="sm"
+            onClick={onSave}
+            disabled={!urlChanged && !tokenChanged}
+          >
+            {t("common.save")}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onTest}
+            disabled={serverTest === "testing"}
+          >
+            Test connection
+          </Button>
+          {canReset && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onReset}
+              className="text-muted-foreground"
+            >
+              Reset to local
+            </Button>
+          )}
+          {(urlChanged || tokenChanged) && (
+            <span className="text-muted-foreground ml-auto text-[11.5px]">
+              Restart required after saving
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ServerFieldRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className="grid items-center gap-1.5 min-[760px]:grid-cols-[88px_minmax(0,1fr)] min-[760px]:gap-4">
+      <div className="mono text-muted-foreground text-[10px] uppercase tracking-[0.14em]">
+        {label}
+      </div>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function ConnectionStatus({ state }: { state: ServerTestState }) {
+  if (state === "idle") return null;
+  if (state === "testing") {
+    return (
+      <span className="text-muted-foreground text-[12px]">Testing...</span>
+    );
+  }
+  if (state === "ok") {
+    return (
+      <span className="text-primary inline-flex items-center gap-1 text-[12px]">
+        <Check className="size-3.5" /> Connected
+      </span>
+    );
+  }
+  return (
+    <span className="text-destructive text-[12px]">
+      {state === "unauthorized" ? "Token rejected" : "Unreachable"}
+    </span>
   );
 }
 
@@ -1411,6 +1509,29 @@ function CopyButton({
   );
 }
 
+function CopyValueButton({
+  value,
+  children,
+  variant = "outline",
+}: {
+  value: string;
+  children: React.ReactNode;
+  variant?: React.ComponentProps<typeof Button>["variant"];
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const [copied, copy] = useCopy();
+  return (
+    <Button variant={variant} size="sm" onClick={() => copy(value)}>
+      {copied ? (
+        <Check data-icon="inline-start" />
+      ) : (
+        <Copy data-icon="inline-start" />
+      )}
+      {copied ? t("settings.developer.copied") : children}
+    </Button>
+  );
+}
+
 function CopyField({
   label,
   value,
@@ -1419,16 +1540,16 @@ function CopyField({
   value: string;
 }): React.JSX.Element {
   return (
-    <div>
-      <div className="mono text-muted-foreground mb-1.5 text-[10.5px] tracking-[0.14em] uppercase">
+    <div className="border-border bg-secondary/45 flex min-w-0 items-center gap-3 rounded-[10px] border px-3 py-2.5">
+      <div className="mono text-muted-foreground hidden shrink-0 text-[10.5px] tracking-[0.14em] uppercase min-[760px]:block">
         {label}
       </div>
-      <div className="border-border bg-secondary flex items-center gap-3 rounded-md border px-3 py-2">
+      <div className="bg-background/45 border-border flex min-w-0 flex-1 items-center rounded-md border px-3 py-2">
         <code className="mono text-foreground min-w-0 flex-1 truncate text-[12.5px]">
           {value}
         </code>
-        <CopyButton value={value} />
       </div>
+      <CopyButton value={value} />
     </div>
   );
 }
@@ -1443,52 +1564,150 @@ function CodeBlock({
   note?: string;
 }): React.JSX.Element {
   return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between gap-3">
-        <div className="mono text-muted-foreground text-[10.5px] tracking-[0.14em] uppercase">
-          {label}
+    <div className="border-border bg-secondary/45 overflow-hidden rounded-[12px] border">
+      <div className="flex items-start justify-between gap-3 border-b border-border/70 px-3 py-2.5">
+        <div className="min-w-0">
+          <div className="mono text-muted-foreground text-[10.5px] tracking-[0.14em] uppercase">
+            {label}
+          </div>
+          {note && (
+            <p className="text-muted-foreground mt-1 text-[12px] leading-[1.45]">
+              {note}
+            </p>
+          )}
         </div>
-        <CopyButton value={value} />
+        <CopyButton value={value} className="mt-0.5" />
       </div>
-      <pre className="border-border bg-secondary text-foreground mono overflow-x-auto rounded-md border p-3 text-[12px] leading-[1.6]">
+      <pre className="text-foreground mono max-h-[240px] overflow-auto bg-background/35 p-3 text-[12px] leading-[1.55]">
         {value}
       </pre>
-      {note && (
-        <p className="text-muted-foreground mt-1.5 text-[12px] leading-[1.5]">
-          {note}
-        </p>
-      )}
     </div>
   );
 }
 
 function McpConnect(): React.JSX.Element {
   const { t } = useTranslation();
+  const [mode, setMode] = useState<"http" | "stdio">("http");
+  const [showConfig, setShowConfig] = useState(false);
   const mcpUrl = `${getApiBase()}/mcp`;
+  const serverToken = getServerToken();
   const httpConfig = JSON.stringify(
-    { mcpServers: { freestyle: { type: "http", url: mcpUrl } } },
+    {
+      mcpServers: {
+        freestyle: {
+          type: "http",
+          url: mcpUrl,
+          ...(serverToken
+            ? { headers: { Authorization: `Bearer ${serverToken}` } }
+            : {}),
+        },
+      },
+    },
     null,
     2,
   );
   const remoteConfig = JSON.stringify(
     {
       mcpServers: {
-        freestyle: { command: "npx", args: ["-y", "mcp-remote", mcpUrl] },
+        freestyle: {
+          command: "npx",
+          args: [
+            "-y",
+            "mcp-remote",
+            mcpUrl,
+            ...(serverToken
+              ? ["--header", `Authorization: Bearer ${serverToken}`]
+              : []),
+          ],
+        },
       },
     },
     null,
     2,
   );
+  const activeConfig = mode === "http" ? httpConfig : remoteConfig;
+  const activeLabel =
+    mode === "http"
+      ? t("settings.developer.mcpConfig")
+      : t("settings.developer.mcpRemoteConfig");
+  const activeNote =
+    mode === "http"
+      ? "Use this for Claude, Cursor, and clients that support streamable HTTP."
+      : t("settings.developer.mcpRemoteNote");
+  const modeTitle = mode === "http" ? "Streamable HTTP" : "stdio bridge";
+  const modeDesc =
+    mode === "http"
+      ? "Best for clients that accept an MCP server URL directly."
+      : "Use when the client asks for a command instead of a URL.";
 
   return (
-    <div className="flex max-w-[640px] flex-col gap-5">
-      <CopyField label={t("settings.developer.mcpUrl")} value={mcpUrl} />
-      <CodeBlock label={t("settings.developer.mcpConfig")} value={httpConfig} />
-      <CodeBlock
-        label={t("settings.developer.mcpRemoteConfig")}
-        value={remoteConfig}
-        note={t("settings.developer.mcpRemoteNote")}
-      />
+    <div className="border-border bg-card w-full rounded-[14px] border p-4">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 min-[760px]:flex-row min-[760px]:items-start min-[760px]:justify-between">
+          <div className="min-w-0">
+            <div className="mono text-primary text-[10px] uppercase tracking-[0.16em]">
+              Connect an MCP client
+            </div>
+            <p className="text-muted-foreground mt-1.5 max-w-[620px] text-[12.5px] leading-relaxed">
+              Pick the client style, then copy the ready-to-paste config. The
+              JSON is available if you want to inspect it.
+            </p>
+          </div>
+          <div className="bg-secondary/45 border-border inline-flex shrink-0 rounded-[10px] border p-1">
+            <Button
+              variant={mode === "http" ? "default" : "ghost"}
+              size="xs"
+              onClick={() => setMode("http")}
+              className="rounded-[7px]"
+            >
+              HTTP
+            </Button>
+            <Button
+              variant={mode === "stdio" ? "default" : "ghost"}
+              size="xs"
+              onClick={() => setMode("stdio")}
+              className="rounded-[7px]"
+            >
+              stdio bridge
+            </Button>
+          </div>
+        </div>
+
+        <CopyField label={t("settings.developer.mcpUrl")} value={mcpUrl} />
+
+        <div className="border-border bg-secondary/35 flex flex-col gap-3 rounded-[12px] border p-3 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
+          <div className="min-w-0">
+            <div className="text-foreground text-[13.5px] font-medium">
+              {modeTitle}
+            </div>
+            <p className="text-muted-foreground mt-0.5 text-[12px] leading-relaxed">
+              {modeDesc}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <CopyValueButton value={activeConfig} variant="ink">
+              Copy config
+            </CopyValueButton>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowConfig((v) => !v)}
+            >
+              {showConfig ? "Hide config" : "Show config"}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {showConfig && (
+        <div className="mt-3">
+          <CodeBlock
+            label={activeLabel}
+            value={activeConfig}
+            note={activeNote}
+          />
+        </div>
+      )}
     </div>
   );
 }

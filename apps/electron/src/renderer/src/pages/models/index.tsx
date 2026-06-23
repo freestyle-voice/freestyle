@@ -1,9 +1,11 @@
 import { Button } from "@renderer/components/ui/button";
+import { getClient } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import type { AvailableModel } from "@renderer/lib/models";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   CheckCircle,
+  ChevronDown,
   Cloud,
   Key,
   Laptop,
@@ -15,6 +17,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 
 import { CleanupIntensityCard } from "./cleanup-intensity";
 import { MlxWarmingDialog } from "./mlx-memory-section";
@@ -87,7 +90,6 @@ export default function ModelsPage(): React.JSX.Element {
       await m.configureModel(freestyleVoice, "voice");
       await m.configureModel(freestyleCleanup, "llm");
       m.setCleanup(true);
-      setCloudPanelExpanded(false);
     })();
   };
 
@@ -97,7 +99,6 @@ export default function ModelsPage(): React.JSX.Element {
       if (!(await ensureCloudAuth())) return;
       await m.configureModel(freestyleVoice, "voice");
       if (cloudCleanupActive) m.setCleanup(false);
-      setCloudPanelExpanded(false);
     })();
   };
 
@@ -114,7 +115,6 @@ export default function ModelsPage(): React.JSX.Element {
       }
       await m.configureModel(freestyleCleanup, "llm");
       m.setCleanup(true);
-      setCloudPanelExpanded(false);
     })();
   };
 
@@ -205,13 +205,34 @@ export default function ModelsPage(): React.JSX.Element {
   // Only the all-in-one route owns cleanup. Cloud transcription can still feed
   // a custom cleanup model.
   const cleanupLocked = cloudVoiceActive && cloudCleanupActive;
-  const cloudRouteActive = cloudVoiceActive || cloudCleanupActive;
   // Model warming only applies to the active local MLX worker.
   const showMlxWarming = m.defaultVoice?.provider === "local-mlx";
 
   useEffect(() => {
-    if (!m.loading) setCloudPanelExpanded(!cloudRouteActive);
-  }, [m.loading, cloudRouteActive]);
+    getClient()
+      .api.settings[":key"].$get({
+        param: { key: SETTINGS_KEYS.freestyleCloudPanelExpanded },
+      })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = await res.json();
+        if ("value" in data) setCloudPanelExpanded(data.value !== "false");
+      })
+      .catch(() => {});
+  }, []);
+
+  const toggleCloudPanel = (): void => {
+    setCloudPanelExpanded((current) => {
+      const next = !current;
+      getClient()
+        .api.settings[":key"].$put({
+          param: { key: SETTINGS_KEYS.freestyleCloudPanelExpanded },
+          json: { value: String(next) },
+        })
+        .catch(() => {});
+      return next;
+    });
+  };
 
   // -------------------------------------------------------------------------
   // Render
@@ -236,7 +257,7 @@ export default function ModelsPage(): React.JSX.Element {
           cleanupActive={cloudCleanupActive}
           expanded={cloudPanelExpanded}
           onSignIn={() => void cloudAuth.signIn()}
-          onToggleExpanded={() => setCloudPanelExpanded((v) => !v)}
+          onToggleExpanded={toggleCloudPanel}
           onUseTranscription={useFreestyleCloudForTranscription}
           onUseBoth={useFreestyleCloudForBoth}
           onUseCleanup={useFreestyleCloudForCleanup}
@@ -520,11 +541,13 @@ function FreestyleCloudModeCard({
               Sign in
             </Button>
           )}
-          {(voiceActive || cleanupActive) && (
-            <Button variant="outline" size="sm" onClick={onToggleExpanded}>
-              {expanded ? "Hide" : "Change"}
-            </Button>
-          )}
+          <Button variant="outline" size="sm" onClick={onToggleExpanded}>
+            <ChevronDown
+              data-icon="inline-start"
+              className={cn("transition-transform", expanded && "rotate-180")}
+            />
+            {expanded ? "Hide options" : "Show options"}
+          </Button>
         </div>
       </div>
 

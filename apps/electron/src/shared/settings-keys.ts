@@ -1,6 +1,7 @@
 export const SETTINGS_KEYS = {
   cleanupCustomPrompt: "cleanup_custom_prompt",
   cleanupIntensity: "cleanup_intensity",
+  freestyleCloudPanelExpanded: "freestyle_cloud_panel_expanded",
   hotkey: "hotkey",
   hotkeyMode: "hotkey_mode",
   language: "language",

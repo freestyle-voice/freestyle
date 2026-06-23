@@ -222,33 +222,3 @@ event: ({ event }) => {
 ```
 
 See [`src/events.ts`](./src/events.ts) for the full union.
-
-## API reference
-
-| Export | Kind | Purpose |
-| --- | --- | --- |
-| `Plugin` | type | The named plugin object |
-| `PluginFactory` | type | The exported factory signature |
-| `PluginPreset` | type | `Plugin \| Plugin[] \| false \| null \| undefined` |
-| `PluginOptions` | type | Free-form plugin configuration |
-| `PluginModule` | type | Shape of a loadable plugin module |
-| `Hooks` | type | The full hook surface |
-| `PluginContext` | type | What `setup` receives |
-| `Enforce` / `PluginMode` | type | Hook-chain ordering and the `setup` host indicator |
-| `FreestyleEvent` | type | Discriminated event union |
-| `FreestyleEventType` | value+type | Event kinds (`Transcribed`/`OutputDelivered`/…) |
-| `PipelineStage` | value+type | Error stages (`Capture`/`Transcribe`/`Cleanup`/`Transform`/`Output`) |
-| `AppContext` | type | The app the user dictated into |
-| `OutputMode` | value+type | Delivery modes (`Paste`/`Clipboard`/`None`) |
-| `Register` | type | `"formal"` \| `"casual"` \| `"neutral"` |
-| `transform` | fn | Wrap a pure `(text) => text` into `afterCleanup` |
-| `sortPlugins` | fn | Order plugins by `enforce` (used by loaders) |
-| `loadPlugins` / `discoverLocalPlugins` / `defaultLocalPluginsDir` | fn | Host helpers for discovering and loading plugin modules |
-| `PluginRegistry` | class | Host helper for running hooks, emitting events, resolving config, and disposing plugins |
-
-## Stability
-
-V1 focuses on the text pipeline (`afterTranscribe`, `beforeCleanup`,
-`afterCleanup`, `beforeOutput`) plus `event`/`config`.
-Custom speech-to-text providers and additional lifecycle hooks are planned but
-not yet part of the stable contract.

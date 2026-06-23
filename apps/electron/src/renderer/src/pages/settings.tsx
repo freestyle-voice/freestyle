@@ -125,6 +125,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [outputMode, setOutputMode] = useState("paste");
   const [pillPosition, setPillPosition] = useState("bottom-center");
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [historyPaused, setHistoryPaused] = useState(false);
   const [audioPlaybackMode, setAudioPlaybackMode] =
     useState<AudioPlaybackMode>("off");
   const [transcriptionPrompt, setTranscriptionPrompt] = useState("");
@@ -371,6 +372,15 @@ export default function SettingsPage(): React.JSX.Element {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.value === "false") setSoundEnabled(false);
+      })
+      .catch(() => {});
+    getClient()
+      .api.settings[":key"].$get({
+        param: { key: SETTINGS_KEYS.historyPaused },
+      })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.value === "true") setHistoryPaused(true);
       })
       .catch(() => {});
     void (async () => {
@@ -632,6 +642,16 @@ export default function SettingsPage(): React.JSX.Element {
       .api.settings[":key"].$put({
         param: { key: SETTINGS_KEYS.soundEnabled },
         json: { value: String(enabled) },
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleHistoryPausedToggle = useCallback((paused: boolean) => {
+    setHistoryPaused(paused);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.historyPaused },
+        json: { value: String(paused) },
       })
       .catch(() => {});
   }, []);
@@ -1250,6 +1270,15 @@ export default function SettingsPage(): React.JSX.Element {
           )}
           {activeSection === "data" && (
             <SettingsPanel>
+              <Row
+                label={t("settings.data.pauseHistory")}
+                desc={t("settings.data.pauseHistoryDesc")}
+              >
+                <Switch
+                  checked={historyPaused}
+                  onCheckedChange={handleHistoryPausedToggle}
+                />
+              </Row>
               <Row
                 label={t("settings.data.history")}
                 desc={t("settings.data.historyDesc")}

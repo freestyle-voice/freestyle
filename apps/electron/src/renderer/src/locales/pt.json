@@ -172,6 +172,8 @@
       "autoGranted": "Auto-concedido"
     },
     "data": {
+      "pauseHistory": "Pausar histórico",
+      "pauseHistoryDesc": "Pare de salvar novas sessões de transcrição no histórico até desativar esta opção.",
       "history": "Histórico de transcrição",
       "historyDesc": "Excluir permanentemente todas as sessões salvas.",
       "clearHistory": "Limpar histórico",

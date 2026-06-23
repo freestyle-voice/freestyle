@@ -172,6 +172,8 @@
       "autoGranted": "Automatisch gewährt"
     },
     "data": {
+      "pauseHistory": "Verlauf pausieren",
+      "pauseHistoryDesc": "Keine neuen Transkriptionssitzungen im Verlauf speichern, bis Sie dies wieder deaktivieren.",
       "history": "Transkriptionsverlauf",
       "historyDesc": "Alle gespeicherten Sitzungen dauerhaft löschen — dies kann nicht rückgängig gemacht werden.",
       "clearHistory": "Verlauf löschen",

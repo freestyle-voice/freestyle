@@ -172,6 +172,8 @@
       "autoGranted": "Autoconsentito"
     },
     "data": {
+      "pauseHistory": "Metti in pausa la cronologia",
+      "pauseHistoryDesc": "Interrompe il salvataggio delle nuove sessioni di trascrizione nella cronologia finché non lo disattivi.",
       "history": "Cronologia delle trascrizioni",
       "historyDesc": "Elimina permanentemente tutte le sessioni salvate.",
       "clearHistory": "Cancella cronologia",

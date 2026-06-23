@@ -3,6 +3,7 @@ export const SETTINGS_KEYS = {
   cleanupIntensity: "cleanup_intensity",
   hotkey: "hotkey",
   hotkeyMode: "hotkey_mode",
+  historyPaused: "history_paused",
   language: "language",
   llmCleanup: "llm_cleanup",
   localLlmApiKey: "local_llm_api_key",

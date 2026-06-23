@@ -174,6 +174,8 @@
       "autoGranted": "Auto-granted"
     },
     "data": {
+      "pauseHistory": "Pause history",
+      "pauseHistoryDesc": "Stop saving new transcription sessions to history until you turn this off.",
       "history": "Transcription history",
       "historyDesc": "Permanently delete every saved session — this can't be undone.",
       "clearHistory": "Clear history",

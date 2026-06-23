@@ -172,6 +172,8 @@
       "autoGranted": "Accordé automatiquement"
     },
     "data": {
+      "pauseHistory": "Suspendre l'historique",
+      "pauseHistoryDesc": "Arrête d'enregistrer les nouvelles sessions de transcription dans l'historique jusqu'à désactivation.",
       "history": "Historique des transcriptions",
       "historyDesc": "Supprime définitivement toutes les sessions enregistrées — cette action est irréversible.",
       "clearHistory": "Effacer l'historique",

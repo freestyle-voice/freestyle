@@ -1,7 +1,7 @@
 import { createAppLogger } from "@freestyle/utils";
 import { Hono } from "hono";
-import { getDb } from "../lib/db.js";
 import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
+import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import { getLanguageSetting } from "../lib/language.js";
 import {
   FreestyleEventType,
@@ -74,7 +74,6 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     );
   }
 
-  const db = getDb();
   let rawText: string;
   let transcribeDurationInSeconds: number | undefined;
   const language = getLanguageSetting();
@@ -181,11 +180,13 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
   if (skipPostProcess) {
     try {
-      db.prepare(
-        `INSERT INTO transcription_history
-           (raw_text, voice_provider, voice_model, duration_ms, audio_duration_ms)
-           VALUES (?, ?, ?, ?, ?)`,
-      ).run(rawText, voiceProvider, voiceModel, durationMs, audioDurationMs);
+      saveRawHistory({
+        rawText,
+        voiceProvider,
+        voiceModel,
+        durationMs,
+        audioDurationMs,
+      });
     } catch (err) {
       log.error(`Failed to save history: ${err}`);
     }
@@ -216,23 +217,19 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   );
 
   try {
-    db.prepare(
-      `INSERT INTO transcription_history
-         (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
+    saveProcessedHistory({
       rawText,
-      pp.cleaned !== rawText ? pp.cleaned : null,
+      cleanedText: pp.cleaned !== rawText ? pp.cleaned : null,
       voiceProvider,
       voiceModel,
-      pp.llmProvider,
-      pp.llmModel,
-      Date.now() - start,
+      llmProvider: pp.llmProvider,
+      llmModel: pp.llmModel,
+      durationMs: Date.now() - start,
       audioDurationMs,
-      pp.inputTokens,
-      pp.outputTokens,
-      pp.costUsd,
-    );
+      inputTokens: pp.inputTokens,
+      outputTokens: pp.outputTokens,
+      costUsd: pp.costUsd,
+    });
   } catch (err) {
     log.error(`Failed to save history: ${err}`);
   }

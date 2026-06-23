@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import app from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
+import {
+  HISTORY_PAUSED_SETTING_KEY,
+  isHistoryPaused,
+  saveRawHistory,
+} from "../src/lib/history-store.js";
 
 // ---------------------------------------------------------------------------
 // Helper – shorthand for making requests against the Hono app
@@ -136,6 +141,24 @@ describe("Settings", () => {
       "PUT",
     );
     expect(invalidShape.status).toBe(400);
+  });
+
+  it("reads history pause setting", async () => {
+    expect(isHistoryPaused()).toBe(false);
+
+    await json(
+      `/api/settings/${HISTORY_PAUSED_SETTING_KEY}`,
+      { value: "true" },
+      "PUT",
+    );
+    expect(isHistoryPaused()).toBe(true);
+
+    await json(
+      `/api/settings/${HISTORY_PAUSED_SETTING_KEY}`,
+      { value: "false" },
+      "PUT",
+    );
+    expect(isHistoryPaused()).toBe(false);
   });
 });
 
@@ -523,6 +546,9 @@ describe("History", () => {
   beforeEach(() => {
     const db = getDb();
     db.exec("DELETE FROM transcription_history");
+    db.prepare("DELETE FROM settings WHERE key = ?").run(
+      HISTORY_PAUSED_SETTING_KEY,
+    );
   });
 
   it("GET /api/history returns empty list initially", async () => {
@@ -531,6 +557,49 @@ describe("History", () => {
     const data = await res.json();
     expect(data.items).toEqual([]);
     expect(data.total).toBe(0);
+  });
+
+  it("does not save history while paused", async () => {
+    const db = getDb();
+    await json(
+      `/api/settings/${HISTORY_PAUSED_SETTING_KEY}`,
+      { value: "true" },
+      "PUT",
+    );
+
+    expect(
+      saveRawHistory({
+        rawText: "Hidden text",
+        voiceProvider: "voice",
+        voiceModel: "model",
+        durationMs: 1000,
+        audioDurationMs: 1000,
+      }),
+    ).toBe(false);
+
+    const row = db
+      .prepare("SELECT COUNT(*) as count FROM transcription_history")
+      .get() as { count: number };
+    expect(row.count).toBe(0);
+  });
+
+  it("saves history when not paused", () => {
+    const db = getDb();
+
+    expect(
+      saveRawHistory({
+        rawText: "Visible text",
+        voiceProvider: "voice",
+        voiceModel: "model",
+        durationMs: 1000,
+        audioDurationMs: 1000,
+      }),
+    ).toBe(true);
+
+    const row = db
+      .prepare("SELECT raw_text FROM transcription_history")
+      .get() as { raw_text: string };
+    expect(row.raw_text).toBe("Visible text");
   });
 
   it("GET /api/history/stats returns zero stats initially", async () => {

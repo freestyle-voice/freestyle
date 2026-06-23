@@ -1300,98 +1300,86 @@ function ServerConnectionCard({
   const usingLocal = !savedServerUrl;
 
   return (
-    <div className="border-border bg-card w-full max-w-3xl overflow-hidden rounded-[14px] border">
-      <div className="flex flex-col gap-3 border-b border-border/70 px-4 py-3.5 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
+    <div className="border-border bg-card w-full max-w-3xl rounded-[14px] border p-3.5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={cn(
+              "mono inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] uppercase tracking-[0.14em]",
+              usingLocal
+                ? "bg-accent text-accent-foreground"
+                : "bg-secondary text-secondary-foreground",
+            )}
+          >
             <span
               className={cn(
-                "mono inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] uppercase tracking-[0.14em]",
-                usingLocal
-                  ? "bg-accent text-accent-foreground"
-                  : "bg-secondary text-secondary-foreground",
+                "size-1.5 rounded-full",
+                usingLocal ? "bg-primary" : "bg-muted-foreground",
               )}
-            >
-              <span
-                className={cn(
-                  "size-1.5 rounded-full",
-                  usingLocal ? "bg-primary" : "bg-muted-foreground",
-                )}
-              />
-              {usingLocal ? "Local server" : "Remote server"}
+            />
+            {usingLocal ? "Local server" : "Remote server"}
+          </span>
+          {savedServerUrl && (
+            <span className="text-muted-foreground min-w-0 truncate text-[12px]">
+              {savedServerUrl}
             </span>
-            {savedServerUrl && (
-              <span className="text-muted-foreground min-w-0 truncate text-[12px]">
-                {savedServerUrl}
-              </span>
-            )}
-          </div>
-          <p className="text-muted-foreground mt-1.5 text-[12px] leading-relaxed">
-            Leave the URL blank for the built-in local server. Add a token only
-            when the remote server requires bearer auth.
-          </p>
+          )}
         </div>
         <ConnectionStatus state={serverTest} />
       </div>
 
-      <div className="space-y-3 p-4">
-        <div className="grid gap-3 min-[760px]:grid-cols-[minmax(0,1.25fr)_minmax(220px,0.75fr)]">
-          <div className="block min-w-0">
-            <span className="mono text-muted-foreground mb-1.5 block text-[10px] uppercase tracking-[0.14em]">
-              Server endpoint
-            </span>
-            <InputGroup>
-              <InputGroupInput
-                id="settings-server-url"
-                type="text"
-                value={serverUrlInput}
-                aria-invalid={!!serverUrlError}
-                onChange={(e) => onUrlChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") onSave();
-                }}
-                placeholder="http://127.0.0.1:4649"
-              />
-              <InputGroupAddon>
-                <Server />
-              </InputGroupAddon>
-            </InputGroup>
-          </div>
+      <div className="space-y-2.5">
+        <ServerFieldRow label="Endpoint">
+          <InputGroup>
+            <InputGroupInput
+              id="settings-server-url"
+              type="text"
+              value={serverUrlInput}
+              aria-invalid={!!serverUrlError}
+              onChange={(e) => onUrlChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onSave();
+              }}
+              placeholder="http://127.0.0.1:4649"
+            />
+            <InputGroupAddon>
+              <Server />
+            </InputGroupAddon>
+          </InputGroup>
+        </ServerFieldRow>
 
-          <div className="block min-w-0">
-            <span className="mono text-muted-foreground mb-1.5 block text-[10px] uppercase tracking-[0.14em]">
-              Access token
-            </span>
-            <InputGroup className={cn(!serverUrlInput.trim() && "opacity-60")}>
-              <InputGroupInput
-                id="settings-server-token"
-                type={showToken ? "text" : "password"}
-                value={serverTokenInput}
-                onChange={(e) => onTokenChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") onSave();
-                }}
-                placeholder="Optional"
+        <ServerFieldRow label="Token">
+          <InputGroup className={cn(!serverUrlInput.trim() && "opacity-60")}>
+            <InputGroupInput
+              id="settings-server-token"
+              type={showToken ? "text" : "password"}
+              value={serverTokenInput}
+              onChange={(e) => onTokenChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onSave();
+              }}
+              placeholder="Optional access token"
+            />
+            <InputGroupAddon>
+              <Key />
+            </InputGroupAddon>
+            {serverTokenInput && (
+              <RevealToggle
+                revealed={showToken}
+                onToggle={onToggleToken}
+                label="token"
               />
-              <InputGroupAddon>
-                <Key />
-              </InputGroupAddon>
-              {serverTokenInput && (
-                <RevealToggle
-                  revealed={showToken}
-                  onToggle={onToggleToken}
-                  label="token"
-                />
-              )}
-            </InputGroup>
-          </div>
-        </div>
+            )}
+          </InputGroup>
+        </ServerFieldRow>
 
         {serverUrlError && (
-          <p className="text-destructive text-[12px]">{serverUrlError}</p>
+          <p className="text-destructive pl-0 text-[12px] min-[760px]:pl-[88px]">
+            {serverUrlError}
+          </p>
         )}
 
-        <div className="flex flex-wrap items-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2 pt-1 min-[760px]:pl-[88px]">
           <Button
             variant="ink"
             size="sm"
@@ -1425,6 +1413,23 @@ function ServerConnectionCard({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ServerFieldRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className="grid items-center gap-1.5 min-[760px]:grid-cols-[72px_minmax(0,1fr)] min-[760px]:gap-4">
+      <div className="mono text-muted-foreground text-[10px] uppercase tracking-[0.14em]">
+        {label}
+      </div>
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }

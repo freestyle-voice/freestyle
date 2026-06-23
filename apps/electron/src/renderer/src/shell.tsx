@@ -214,6 +214,14 @@ export default function AppShell(): React.JSX.Element {
 
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <div
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 h-3"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        />
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-2"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        />
+        <div
           className="border-border/70 bg-background/92 absolute top-0 right-0 z-20 flex items-center gap-1.5 rounded-bl-[14px] border-b border-l px-3 py-2 shadow-[0_10px_28px_-22px_rgba(0,0,0,0.55)] backdrop-blur-sm"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >

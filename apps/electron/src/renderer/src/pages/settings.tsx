@@ -1172,6 +1172,7 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.developer.mcp")}
                 desc={t("settings.developer.mcpDesc")}
+                stacked
                 last
               >
                 <McpConnect />
@@ -1514,8 +1515,8 @@ function CopyField({
   value: string;
 }): React.JSX.Element {
   return (
-    <div>
-      <div className="mono text-muted-foreground mb-1.5 text-[10.5px] tracking-[0.14em] uppercase">
+    <div className="grid gap-1.5 min-[760px]:grid-cols-[150px_minmax(0,1fr)] min-[760px]:items-start min-[760px]:gap-4">
+      <div className="mono text-muted-foreground pt-2.5 text-[10.5px] tracking-[0.14em] uppercase">
         {label}
       </div>
       <div className="border-border bg-secondary flex items-center gap-3 rounded-md border px-3 py-2">
@@ -1538,21 +1539,23 @@ function CodeBlock({
   note?: string;
 }): React.JSX.Element {
   return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between gap-3">
-        <div className="mono text-muted-foreground text-[10.5px] tracking-[0.14em] uppercase">
+    <div className="grid gap-1.5 min-[760px]:grid-cols-[150px_minmax(0,1fr)] min-[760px]:items-start min-[760px]:gap-4">
+      <div className="flex items-center justify-between gap-3 pt-2.5 min-[760px]:block min-[760px]:pt-0">
+        <div className="mono text-muted-foreground text-[10.5px] tracking-[0.14em] uppercase min-[760px]:pt-2.5">
           {label}
         </div>
-        <CopyButton value={value} />
+        <CopyButton value={value} className="min-[760px]:mt-2" />
       </div>
-      <pre className="border-border bg-secondary text-foreground mono overflow-x-auto rounded-md border p-3 text-[12px] leading-[1.6]">
-        {value}
-      </pre>
-      {note && (
-        <p className="text-muted-foreground mt-1.5 text-[12px] leading-[1.5]">
-          {note}
-        </p>
-      )}
+      <div className="min-w-0">
+        <pre className="border-border bg-secondary text-foreground mono max-h-[260px] overflow-auto rounded-md border p-3 text-[12px] leading-[1.6]">
+          {value}
+        </pre>
+        {note && (
+          <p className="text-muted-foreground mt-1.5 text-[12px] leading-[1.5]">
+            {note}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -1576,7 +1579,7 @@ function McpConnect(): React.JSX.Element {
   );
 
   return (
-    <div className="flex max-w-[640px] flex-col gap-5">
+    <div className="border-border bg-card flex w-full flex-col gap-4 rounded-[14px] border p-4">
       <CopyField label={t("settings.developer.mcpUrl")} value={mcpUrl} />
       <CodeBlock label={t("settings.developer.mcpConfig")} value={httpConfig} />
       <CodeBlock

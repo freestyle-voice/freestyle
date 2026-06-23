@@ -10,7 +10,7 @@ export const OutputMode = {
   /** Write to the clipboard and synthesize Cmd/Ctrl+V into the focused app. */
   Paste: "paste",
   /** Write to the clipboard only; the user pastes manually. */
-  Copy: "copy",
+  Clipboard: "clipboard",
   /**
    * Suppress delivery entirely — nothing is pasted or copied. Hints the app
    * that it has nothing to do (e.g. a voice-command plugin consumed the

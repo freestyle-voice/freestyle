@@ -854,7 +854,7 @@ function wait(ms: number): Promise<void> {
  */
 async function deliverOutput(
   text: string,
-  mode: typeof OutputMode.Paste | typeof OutputMode.Copy,
+  mode: typeof OutputMode.Paste | typeof OutputMode.Clipboard,
   appContext: string | null,
 ): Promise<void> {
   const parsedContext = parseAppContext(appContext);
@@ -1282,7 +1282,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     "copy:text",
     async (_event, text: string, appContext?: string | null) => {
-      await deliverOutput(text, OutputMode.Copy, appContext ?? null);
+      await deliverOutput(text, OutputMode.Clipboard, appContext ?? null);
     },
   );
 

@@ -184,7 +184,7 @@ the constant or the literal string):
 | Value | Constant | Behavior |
 | --- | --- | --- |
 | `"paste"` | `OutputMode.Paste` | Write to clipboard and synthesize Cmd/Ctrl+V into the focused app |
-| `"copy"` | `OutputMode.Copy` | Write to clipboard only; user pastes manually |
+| `"clipboard"` | `OutputMode.Clipboard` | Write to clipboard only; user pastes manually |
 | `"none"` | `OutputMode.None` | Suppress delivery — nothing is pasted or copied |
 
 ```ts
@@ -192,7 +192,7 @@ import { OutputMode } from "@freestyle/sdk";
 
 beforeOutput: (input, output) => {
   if (/terminal/i.test(input.appContext?.appName ?? "")) {
-    output.mode = OutputMode.Copy; // don't auto-paste into a terminal
+    output.mode = OutputMode.Clipboard; // don't auto-paste into a terminal
   }
 },
 ```

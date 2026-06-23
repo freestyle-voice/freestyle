@@ -33,6 +33,8 @@ function useCloudAuthState(): UseCloudAuth {
   const [userCode, setUserCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
+  const signInPromiseRef = useRef<Promise<CloudUser | null> | null>(null);
+  const signInAttemptRef = useRef(0);
 
   const refresh = useCallback(async (): Promise<CloudUser | null> => {
     const user = await getClient()
@@ -52,11 +54,15 @@ function useCloudAuthState(): UseCloudAuth {
   }, [refresh]);
 
   const signIn = useCallback(async (): Promise<CloudUser | null> => {
+    if (signInPromiseRef.current) return signInPromiseRef.current;
+
     cancelledRef.current = false;
+    const attempt = ++signInAttemptRef.current;
     setSigningIn(true);
     setError(null);
     setUserCode(null);
-    try {
+
+    const run = async (): Promise<CloudUser | null> => {
       const codeRes = await getClient().api.auth.device.code.$post();
       if (!codeRes.ok)
         throw new Error(`Could not start sign-in (${codeRes.status})`);
@@ -71,6 +77,7 @@ function useCloudAuthState(): UseCloudAuth {
       while (Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
         if (cancelledRef.current) return null;
+        if (attempt !== signInAttemptRef.current) return null;
         const tokenRes = await getClient().api.auth.device.token.$post({
           json: { device_code: code.device_code },
         });
@@ -86,23 +93,35 @@ function useCloudAuthState(): UseCloudAuth {
           throw new Error(body?.error ?? `Sign-in failed (${tokenRes.status})`);
         }
         const data = await tokenRes.json();
+        if (attempt !== signInAttemptRef.current) return null;
         setUser(data.user);
         return data.user;
       }
       throw new Error("Sign-in timed out. Please try again.");
-    } catch (err) {
-      if (!cancelledRef.current) {
-        setError(err instanceof Error ? err.message : "Sign-in failed");
-      }
-      return null;
-    } finally {
-      setSigningIn(false);
-      setUserCode(null);
-    }
+    };
+
+    signInPromiseRef.current = run()
+      .catch((err) => {
+        if (!cancelledRef.current) {
+          setError(err instanceof Error ? err.message : "Sign-in failed");
+        }
+        return null;
+      })
+      .finally(() => {
+        if (attempt === signInAttemptRef.current) {
+          signInPromiseRef.current = null;
+          setSigningIn(false);
+          setUserCode(null);
+        }
+      });
+
+    return signInPromiseRef.current;
   }, []);
 
   const cancelSignIn = useCallback((): void => {
     cancelledRef.current = true;
+    signInAttemptRef.current += 1;
+    signInPromiseRef.current = null;
     setSigningIn(false);
     setUserCode(null);
   }, []);

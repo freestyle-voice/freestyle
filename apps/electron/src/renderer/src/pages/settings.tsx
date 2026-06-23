@@ -30,6 +30,7 @@ import {
   getApiBase,
   getClient,
   getLocalApiBase,
+  getServerToken,
   refreshApiBase,
 } from "@renderer/lib/api";
 import { LANGUAGES } from "@renderer/lib/languages";
@@ -1589,15 +1590,36 @@ function McpConnect(): React.JSX.Element {
   const [mode, setMode] = useState<"http" | "stdio">("http");
   const [showConfig, setShowConfig] = useState(false);
   const mcpUrl = `${getApiBase()}/mcp`;
+  const serverToken = getServerToken();
   const httpConfig = JSON.stringify(
-    { mcpServers: { freestyle: { type: "http", url: mcpUrl } } },
+    {
+      mcpServers: {
+        freestyle: {
+          type: "http",
+          url: mcpUrl,
+          ...(serverToken
+            ? { headers: { Authorization: `Bearer ${serverToken}` } }
+            : {}),
+        },
+      },
+    },
     null,
     2,
   );
   const remoteConfig = JSON.stringify(
     {
       mcpServers: {
-        freestyle: { command: "npx", args: ["-y", "mcp-remote", mcpUrl] },
+        freestyle: {
+          command: "npx",
+          args: [
+            "-y",
+            "mcp-remote",
+            mcpUrl,
+            ...(serverToken
+              ? ["--header", `Authorization: Bearer ${serverToken}`]
+              : []),
+          ],
+        },
       },
     },
     null,

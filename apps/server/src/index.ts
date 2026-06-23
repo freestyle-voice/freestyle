@@ -10,6 +10,7 @@ import {
   prefetchManagedMlxRuntimeForAppRelease,
 } from "./lib/mlx-asr/runtime.js";
 import { captureException, shutdownPosthog } from "./lib/posthog.js";
+import { trustedOriginMiddleware } from "./lib/trusted-origin.js";
 import routes from "./routes";
 import { autoStartMlxAsrServer } from "./routes/mlx-asr.js";
 import { autoStartWhisperServer } from "./routes/whisper.js";
@@ -18,6 +19,7 @@ process.on("SIGINT", () => shutdownPosthog().finally(() => process.exit(0)));
 process.on("SIGTERM", () => shutdownPosthog().finally(() => process.exit(0)));
 
 const app = new Hono()
+  .use(trustedOriginMiddleware)
   // CORS for renderer requests (skip WebSocket upgrades)
   .use((c, next) => {
     if (c.req.header("upgrade")?.toLowerCase() === "websocket") {

@@ -15,6 +15,16 @@ export type { StreamCallbacks, StreamSession } from "./streaming/types.js";
 
 const LOCAL_STT_PROVIDERS = new Set([WHISPER_PROVIDER_ID, MLX_ASR_PROVIDER_ID]);
 
+export type VoiceProviderCategory = "local" | "byok" | "freestyle_cloud";
+
+export function voiceProviderCategory(
+  providerId: string,
+): VoiceProviderCategory {
+  if (LOCAL_STT_PROVIDERS.has(providerId)) return "local";
+  if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return "freestyle_cloud";
+  return "byok";
+}
+
 export function openStreamingSession(opts: {
   providerId: string;
   apiKey: string;

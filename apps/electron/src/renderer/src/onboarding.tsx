@@ -738,14 +738,22 @@ export default function OnboardingPage(): React.JSX.Element {
             error={cloudError}
             onSignIn={() => {
               capture("onboarding_cloud_signin_clicked");
-              void cloudSignIn();
+              void cloudSignIn().then((u) => {
+                if (u) capture("onboarding_cloud_signin_succeeded");
+              });
             }}
             onContinue={() => {
-              capture("onboarding_cloud_completed", { signed_in: true });
+              capture("onboarding_cloud_step_completed", {
+                signed_in: true,
+                skipped: false,
+              });
               setStep("permissions");
             }}
             onSkip={() => {
-              capture("onboarding_cloud_skipped");
+              capture("onboarding_cloud_step_completed", {
+                signed_in: false,
+                skipped: true,
+              });
               setStep("permissions");
             }}
           />

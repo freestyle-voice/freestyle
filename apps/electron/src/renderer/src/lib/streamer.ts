@@ -25,6 +25,7 @@ export interface StreamerCallbacks {
     streaming: boolean;
     sessionTransport: boolean;
     model: string;
+    providerCategory?: string;
   }) => void;
 }
 
@@ -219,6 +220,7 @@ export class Streamer {
         model?: string;
         streaming?: boolean;
         sessionTransport?: boolean;
+        providerCategory?: string;
       };
       try {
         msg = JSON.parse(e.data);
@@ -238,6 +240,7 @@ export class Streamer {
             streaming: this.streamingSupported,
             sessionTransport: this.sessionTransportSupported,
             model: msg.model ?? "",
+            providerCategory: msg.providerCategory,
           });
           break;
         case "session.ready":

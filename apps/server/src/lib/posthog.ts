@@ -70,6 +70,38 @@ export function getDeviceId(): string {
   }
 }
 
+let _userDistinctId: string | null = null;
+
+function activeDistinctId(): string {
+  return _userDistinctId ?? getDeviceId();
+}
+
+export interface CloudIdentity {
+  id: string;
+  email: string;
+  name?: string | null;
+}
+
+export function identifyCloudUser(user: CloudIdentity): void {
+  _userDistinctId = user.id;
+  try {
+    if (!isEnabled()) return;
+    const client = getClient();
+    // Merge the prior anonymous (device) person into the identified user.
+    client.alias({ distinctId: getDeviceId(), alias: user.id });
+    client.identify({
+      distinctId: user.id,
+      properties: { email: user.email, name: user.name ?? undefined },
+    });
+  } catch {
+    // Never let analytics errors affect the app
+  }
+}
+
+export function resetCloudIdentity(): void {
+  _userDistinctId = null;
+}
+
 export function capture(
   event: string,
   properties?: Record<string, unknown>,
@@ -77,7 +109,7 @@ export function capture(
   try {
     if (!isEnabled()) return;
     getClient().capture({
-      distinctId: getDeviceId(),
+      distinctId: activeDistinctId(),
       event,
       properties: { ...properties, environment: getEnvironment() },
     });
@@ -92,7 +124,7 @@ export function captureException(
 ): void {
   try {
     if (!isEnabled()) return;
-    getClient().captureException(error, getDeviceId(), {
+    getClient().captureException(error, activeDistinctId(), {
       ...additionalProperties,
       environment: getEnvironment(),
     });

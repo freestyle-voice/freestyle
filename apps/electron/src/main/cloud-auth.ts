@@ -105,7 +105,10 @@ async function pushTokenToServer(token: string | null): Promise<void> {
     await fetch(`http://127.0.0.1:${embeddedServerPort}/api/cloud-auth`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({
+        token,
+        user: token ? (current?.user ?? null) : null,
+      }),
     });
   } catch (err) {
     log.warn(`failed to push cloud token to embedded server: ${err}`);

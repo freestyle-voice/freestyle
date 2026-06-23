@@ -102,6 +102,7 @@ interface TranscribeResult {
   cleaned: string;
   error?: string;
   cloudAuthRequired?: boolean;
+  providerCategory?: string;
 }
 
 /**
@@ -131,6 +132,7 @@ export default function AppPage(): React.JSX.Element {
   const [pillSide, setPillSide] = useState<"center" | "right">("center");
   const supportsSessionTransportRef = useRef(false);
   const recordingSessionUsesTransportRef = useRef(false);
+  const providerCategoryRef = useRef<string | null>(null);
 
   const [pendingCount, setPendingCount] = useState(0);
 
@@ -288,11 +290,16 @@ export default function AppPage(): React.JSX.Element {
       // North-star usage metric: fires exactly once per completed dictation,
       // at the single point where single-chunk, multi-chunk, and
       // session-transport paths converge and text is delivered to the user.
+      const providerCategory =
+        nonEmpty.find((r) => r.providerCategory)?.providerCategory ??
+        providerCategoryRef.current ??
+        undefined;
       capture("dictation completed", {
         segments: nonEmpty.length,
         multi_segment: nonEmpty.length > 1,
         output_mode: _outputMode,
         char_count: finalText.length,
+        provider_category: providerCategory,
       });
 
       if (
@@ -353,10 +360,15 @@ export default function AppPage(): React.JSX.Element {
             }
             return { raw: "", cleaned: "", error: errorMsg };
           }
-          const data = (await res.json()) as { raw?: string; cleaned?: string };
+          const data = (await res.json()) as {
+            raw?: string;
+            cleaned?: string;
+            provider_category?: string;
+          };
           return {
             raw: (data.raw || "").trim(),
             cleaned: (data.cleaned || data.raw || "").trim(),
+            providerCategory: data.provider_category,
           };
         })
         .catch(() => ({ raw: "", cleaned: "", error: errorMsg }));
@@ -373,6 +385,9 @@ export default function AppPage(): React.JSX.Element {
         {
           onConfig: (config) => {
             supportsSessionTransportRef.current = config.sessionTransport;
+            if (config.providerCategory) {
+              providerCategoryRef.current = config.providerCategory;
+            }
             if (wantsMicRef.current) {
               recordingSessionUsesTransportRef.current =
                 config.sessionTransport;
@@ -833,10 +848,12 @@ export default function AppPage(): React.JSX.Element {
         const data = (await res.json()) as {
           raw?: string;
           cleaned?: string;
+          provider_category?: string;
         };
         return {
           raw: (data.raw || "").trim(),
           cleaned: (data.cleaned || data.raw || "").trim(),
+          providerCategory: data.provider_category,
         };
       })
       .catch((err) => {

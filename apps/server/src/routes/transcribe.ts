@@ -11,7 +11,10 @@ import {
   FREESTYLE_CLOUD_PROVIDER_ID,
 } from "../lib/streaming/providers/freestyle-cloud.js";
 import { getProvider } from "../lib/streaming/registry.js";
-import { getApiKeyForProvider } from "../lib/streaming-stt.js";
+import {
+  getApiKeyForProvider,
+  voiceProviderCategory,
+} from "../lib/streaming-stt.js";
 import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
 
 const log = createAppLogger("transcribe");
@@ -129,6 +132,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     });
     capture("transcription failed", {
       provider: defaults.voice.provider,
+      provider_category: voiceProviderCategory(defaults.voice.provider),
       model: defaults.voice.model_id,
       error: err instanceof Error ? err.message : String(err),
     });
@@ -169,6 +173,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
     capture("transcription completed", {
       provider: voiceProvider,
+      provider_category: voiceProviderCategory(voiceProvider),
       model: voiceModel,
       duration_ms: durationMs,
       audio_duration_ms: audioDurationMs,
@@ -179,6 +184,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       raw: rawText,
       cleaned: rawText,
       model: voiceModel,
+      provider_category: voiceProviderCategory(voiceProvider),
       durationMs,
     });
   }
@@ -218,6 +224,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
   capture("transcription completed", {
     provider: voiceProvider,
+    provider_category: voiceProviderCategory(voiceProvider),
     model: voiceModel,
     duration_ms: durationMs,
     audio_duration_ms: audioDurationMs,
@@ -233,6 +240,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     raw: rawText,
     cleaned: pp.cleaned,
     model: voiceModel,
+    provider_category: voiceProviderCategory(voiceProvider),
     durationMs,
   });
 });

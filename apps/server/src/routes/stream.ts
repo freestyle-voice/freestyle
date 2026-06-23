@@ -15,6 +15,7 @@ import {
   type StreamSession,
   supportsSessionTransport,
   supportsStreaming,
+  voiceProviderCategory,
 } from "../lib/streaming-stt.js";
 import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
 
@@ -176,6 +177,7 @@ const stream = new Hono().get(
           model: modelShort,
           streaming: canStream,
           sessionTransport: canUseSessionTransport,
+          providerCategory: voiceProviderCategory(voice.provider),
         }),
       );
 
@@ -288,6 +290,9 @@ const stream = new Hono().get(
                 }
                 capture("streaming transcription completed", {
                   provider: voiceDefaults!.provider,
+                  provider_category: voiceProviderCategory(
+                    voiceDefaults!.provider,
+                  ),
                   model: voiceDefaults!.model_id,
                   duration_ms: durationMs,
                   audio_duration_ms: audioDurationMs,

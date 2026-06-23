@@ -1498,6 +1498,7 @@ app.whenReady().then(async () => {
           httpServer = server;
           serverPort = boundPort;
           setEmbeddedServerPort(boundPort);
+          void syncCloudTokenToServer();
           log.info(`Server running on http://localhost:${boundPort}`);
         })
         .catch((err: NodeJS.ErrnoException) => {

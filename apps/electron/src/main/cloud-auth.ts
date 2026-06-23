@@ -1,6 +1,8 @@
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createAppLogger } from "@freestyle/utils";
+import { createAuthClient } from "better-auth/client";
+import { deviceAuthorizationClient } from "better-auth/client/plugins";
 import { app, safeStorage, shell } from "electron";
 import type { CloudUser } from "../shared/cloud-user";
 
@@ -18,6 +20,34 @@ function cloudUrl(): string {
     /\/+$/,
     "",
   );
+}
+
+function createCloudAuthClient(base: string) {
+  return createAuthClient({
+    baseURL: `${base}/auth`,
+    disableDefaultFetchPlugins: true,
+    plugins: [deviceAuthorizationClient()],
+  });
+}
+
+function authClientErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const e = error as Record<string, unknown>;
+  return typeof e.error === "string"
+    ? e.error
+    : typeof e.code === "string"
+      ? e.code
+      : undefined;
+}
+
+function authClientErrorMessage(error: unknown, fallback: string): string {
+  if (!error || typeof error !== "object") return fallback;
+  const e = error as Record<string, unknown>;
+  return typeof e.message === "string"
+    ? e.message
+    : typeof e.error_description === "string"
+      ? e.error_description
+      : fallback;
 }
 
 interface StoredAuth {
@@ -133,17 +163,8 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-interface DeviceCodeResponse {
-  device_code: string;
-  user_code: string;
-  verification_uri: string;
-  verification_uri_complete?: string;
-  expires_in: number;
-  interval: number;
-}
-
 async function pollForToken(
-  base: string,
+  authClient: ReturnType<typeof createCloudAuthClient>,
   deviceCode: string,
   intervalSeconds: number,
   expiresInSeconds: number,
@@ -154,24 +175,16 @@ async function pollForToken(
 
   while (Date.now() < deadline) {
     await sleep(intervalMs, signal);
-    const res = await fetch(`${base}/auth/device/token`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        grant_type: DEVICE_GRANT,
-        device_code: deviceCode,
-        client_id: CLIENT_ID,
-      }),
-      signal,
+    const { data, error } = await authClient.device.token({
+      grant_type: DEVICE_GRANT,
+      device_code: deviceCode,
+      client_id: CLIENT_ID,
+      fetchOptions: { signal },
     });
-    const data = (await res.json().catch(() => ({}))) as {
-      access_token?: string;
-      error?: string;
-    };
 
-    if (res.ok && data.access_token) return data.access_token;
+    if (data?.access_token) return data.access_token;
 
-    switch (data.error) {
+    switch (authClientErrorCode(error)) {
       case "authorization_pending":
         break;
       case "slow_down":
@@ -183,7 +196,7 @@ async function pollForToken(
         throw new Error("Sign-in request expired. Please try again.");
       default:
         throw new Error(
-          data.error || `Device token request failed (${res.status})`,
+          authClientErrorMessage(error, "Device token request failed"),
         );
     }
   }
@@ -213,22 +226,20 @@ export async function signInToCloud(opts?: {
   onUserCode?: (userCode: string) => void;
 }): Promise<CloudUser> {
   const base = cloudUrl();
+  const authClient = createCloudAuthClient(base);
   signInAbort?.abort();
   const controller = new AbortController();
   signInAbort = controller;
   const { signal } = controller;
 
   try {
-    const codeRes = await fetch(`${base}/auth/device/code`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ client_id: CLIENT_ID }),
-      signal,
+    const { data: code, error } = await authClient.device.code({
+      client_id: CLIENT_ID,
+      fetchOptions: { signal },
     });
-    if (!codeRes.ok) {
-      throw new Error(`Could not start sign-in (${codeRes.status})`);
+    if (error || !code) {
+      throw new Error(authClientErrorMessage(error, "Could not start sign-in"));
     }
-    const code = (await codeRes.json()) as DeviceCodeResponse;
     opts?.onUserCode?.(code.user_code);
 
     // System browser (never an embedded webview): reuses the user's existing
@@ -238,7 +249,7 @@ export async function signInToCloud(opts?: {
     );
 
     const token = await pollForToken(
-      base,
+      authClient,
       code.device_code,
       code.interval,
       code.expires_in,

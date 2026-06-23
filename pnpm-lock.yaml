@@ -257,20 +257,40 @@ importers:
   packages/sdk:
     devDependencies:
       '@types/node':
-        specifier: latest
-        version: 26.0.0
+        specifier: ^22.19.1
+        version: 22.19.19
+      pkgroll:
+        specifier: ^2.27.0
+        version: 2.27.0(typescript@5.9.3)(vite@7.3.3(@types/node@22.19.19)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
   packages/utils:
     dependencies:
       winston:
         specifier: ^3.17.0
         version: 3.19.0
+    devDependencies:
+      pkgroll:
+        specifier: ^2.27.0
+        version: 2.27.0(typescript@5.9.3)(vite@7.3.3(@types/node@26.0.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
   packages/validations:
     dependencies:
       zod:
         specifier: ^4.4.3
         version: 4.4.3
+    devDependencies:
+      pkgroll:
+        specifier: ^2.27.0
+        version: 2.27.0(typescript@5.9.3)(vite@7.3.3(@types/node@26.0.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
 packages:
 
@@ -7395,7 +7415,7 @@ snapshots:
     dependencies:
       '@types/http-cache-semantics': 4.2.0
       '@types/keyv': 3.1.4
-      '@types/node': 22.19.19
+      '@types/node': 26.0.0
       '@types/responselike': 1.0.3
 
   '@types/chai@5.2.3':
@@ -7415,7 +7435,7 @@ snapshots:
 
   '@types/fs-extra@9.0.13':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 26.0.0
 
   '@types/http-cache-semantics@4.2.0': {}
 
@@ -7423,7 +7443,7 @@ snapshots:
 
   '@types/keyv@3.1.4':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 26.0.0
 
   '@types/ms@2.1.0': {}
 
@@ -7443,7 +7463,7 @@ snapshots:
 
   '@types/plist@3.0.5':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 26.0.0
       xmlbuilder: 15.1.1
     optional: true
 
@@ -7463,11 +7483,11 @@ snapshots:
 
   '@types/responselike@1.0.3':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 26.0.0
 
   '@types/set-cookie-parser@2.4.10':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 26.0.0
 
   '@types/stats.js@0.17.4': {}
 
@@ -7497,7 +7517,7 @@ snapshots:
 
   '@types/yauzl@2.10.3':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 26.0.0
     optional: true
 
   '@use-gesture/core@10.3.1': {}
@@ -9314,6 +9334,25 @@ snapshots:
 
   pkce-challenge@5.0.1: {}
 
+  pkgroll@2.27.0(typescript@5.9.3)(vite@7.3.3(@types/node@22.19.19)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)):
+    dependencies:
+      '@rollup/plugin-alias': 6.0.0(rollup@4.60.4)
+      '@rollup/plugin-commonjs': 29.0.2(rollup@4.60.4)
+      '@rollup/plugin-dynamic-import-vars': 2.1.5(rollup@4.60.4)
+      '@rollup/plugin-json': 6.1.0(rollup@4.60.4)
+      '@rollup/plugin-node-resolve': 16.0.3(rollup@4.60.4)
+      cjs-module-lexer: 2.2.0
+      esbuild: 0.26.0
+      magic-string: 0.30.21
+      rollup: 4.60.4
+      rollup-plugin-import-trace: 1.0.1(rollup@4.60.4)(vite@7.3.3(@types/node@22.19.19)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))
+      rollup-pluginutils: 2.8.2
+      yaml: 2.9.0
+    optionalDependencies:
+      typescript: 5.9.3
+    transitivePeerDependencies:
+      - vite
+
   pkgroll@2.27.0(typescript@5.9.3)(vite@7.3.3(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)):
     dependencies:
       '@rollup/plugin-alias': 6.0.0(rollup@4.60.4)
@@ -9326,6 +9365,25 @@ snapshots:
       magic-string: 0.30.21
       rollup: 4.60.4
       rollup-plugin-import-trace: 1.0.1(rollup@4.60.4)(vite@7.3.3(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))
+      rollup-pluginutils: 2.8.2
+      yaml: 2.9.0
+    optionalDependencies:
+      typescript: 5.9.3
+    transitivePeerDependencies:
+      - vite
+
+  pkgroll@2.27.0(typescript@5.9.3)(vite@7.3.3(@types/node@26.0.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)):
+    dependencies:
+      '@rollup/plugin-alias': 6.0.0(rollup@4.60.4)
+      '@rollup/plugin-commonjs': 29.0.2(rollup@4.60.4)
+      '@rollup/plugin-dynamic-import-vars': 2.1.5(rollup@4.60.4)
+      '@rollup/plugin-json': 6.1.0(rollup@4.60.4)
+      '@rollup/plugin-node-resolve': 16.0.3(rollup@4.60.4)
+      cjs-module-lexer: 2.2.0
+      esbuild: 0.26.0
+      magic-string: 0.30.21
+      rollup: 4.60.4
+      rollup-plugin-import-trace: 1.0.1(rollup@4.60.4)(vite@7.3.3(@types/node@26.0.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))
       rollup-pluginutils: 2.8.2
       yaml: 2.9.0
     optionalDependencies:
@@ -9641,10 +9699,20 @@ snapshots:
       sprintf-js: 1.1.3
     optional: true
 
+  rollup-plugin-import-trace@1.0.1(rollup@4.60.4)(vite@7.3.3(@types/node@22.19.19)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)):
+    optionalDependencies:
+      rollup: 4.60.4
+      vite: 7.3.3(@types/node@22.19.19)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
+
   rollup-plugin-import-trace@1.0.1(rollup@4.60.4)(vite@7.3.3(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)):
     optionalDependencies:
       rollup: 4.60.4
       vite: 7.3.3(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
+
+  rollup-plugin-import-trace@1.0.1(rollup@4.60.4)(vite@7.3.3(@types/node@26.0.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)):
+    optionalDependencies:
+      rollup: 4.60.4
+      vite: 7.3.3(@types/node@26.0.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
 
   rollup-pluginutils@2.8.2:
     dependencies:
@@ -10196,6 +10264,23 @@ snapshots:
       lightningcss: 1.32.0
       tsx: 4.22.4
       yaml: 2.9.0
+
+  vite@7.3.3(@types/node@26.0.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0):
+    dependencies:
+      esbuild: 0.27.7
+      fdir: 6.5.0(picomatch@4.0.4)
+      picomatch: 4.0.4
+      postcss: 8.5.15
+      rollup: 4.60.4
+      tinyglobby: 0.2.16
+    optionalDependencies:
+      '@types/node': 26.0.0
+      fsevents: 2.3.3
+      jiti: 2.7.0
+      lightningcss: 1.32.0
+      tsx: 4.22.4
+      yaml: 2.9.0
+    optional: true
 
   vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@5.9.3))(vite@7.3.3(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)):
     dependencies:

@@ -216,11 +216,10 @@ export default function ModelsPage(): React.JSX.Element {
       <PageHeader title={t("models.title")} />
       <div className="space-y-6">
         <FreestyleCloudModeCard
-          signedInEmail={cloudAuth.user?.email ?? null}
+          signedIn={!!cloudAuth.user}
           voiceActive={cloudVoiceActive}
           cleanupActive={cloudCleanupActive}
           onSignIn={() => void cloudAuth.signIn()}
-          onSignOut={() => void cloudAuth.signOut()}
           onUseTranscription={useFreestyleCloudForTranscription}
           onUseBoth={useFreestyleCloudForBoth}
           onUseCleanup={useFreestyleCloudForCleanup}
@@ -438,27 +437,24 @@ function ModelsLoadingSkeleton(): React.JSX.Element {
 }
 
 function FreestyleCloudModeCard({
-  signedInEmail,
+  signedIn,
   voiceActive,
   cleanupActive,
   onSignIn,
-  onSignOut,
   onUseTranscription,
   onUseBoth,
   onUseCleanup,
   canUse,
 }: {
-  signedInEmail: string | null;
+  signedIn: boolean;
   voiceActive: boolean;
   cleanupActive: boolean;
   onSignIn: () => void;
-  onSignOut: () => void;
   onUseTranscription: () => void;
   onUseBoth: () => void;
   onUseCleanup: () => void;
   canUse: boolean;
 }): React.JSX.Element {
-  const signedIn = !!signedInEmail;
   return (
     <section className="border-border bg-card overflow-hidden rounded-[14px] border">
       <div className="flex flex-col gap-4 border-b border-border/70 px-5 py-4 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
@@ -481,13 +477,9 @@ function FreestyleCloudModeCard({
                 : "bg-secondary text-muted-foreground",
             )}
           >
-            {signedInEmail ?? "Signed out"}
+            {signedIn ? "Account connected" : "Sign-in required"}
           </span>
-          {signedInEmail ? (
-            <Button variant="outline" size="sm" onClick={onSignOut}>
-              Sign out
-            </Button>
-          ) : (
+          {!signedIn && (
             <Button variant="outline" size="sm" onClick={onSignIn}>
               Sign in
             </Button>

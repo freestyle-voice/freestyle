@@ -31,7 +31,9 @@ COPY . .
 RUN pnpm install --frozen-lockfile --filter @freestyle/server... --ignore-scripts
 
 # Build the server bundle. Build workspace deps first (they emit to dist/),
-# then the server, which pkgroll inlines them into.
+# then the server, which pkgroll inlines them into. The scoped install above
+# omits the root `turbo`, so order the build with pnpm's `...` filter here
+# rather than `turbo build` (which CI uses).
 RUN pnpm --filter "@freestyle/server..." build
 
 # Produce a self-contained deployment with production deps only.

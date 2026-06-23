@@ -185,11 +185,6 @@ export default function AppShell(): React.JSX.Element {
           <span className="serif text-foreground text-[19px] font-medium tracking-tight">
             Freestyle
           </span>
-          {import.meta.env.DEV && (
-            <span className="mono rounded-full border border-yellow-400/50 bg-yellow-300 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.14em] text-yellow-950 uppercase shadow-[0_0_18px_rgba(250,204,21,0.28)] dark:border-yellow-300/40 dark:bg-yellow-400 dark:text-yellow-950">
-              Dev
-            </span>
-          )}
         </div>
 
         <NavList items={navItems} />

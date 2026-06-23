@@ -186,7 +186,6 @@
 
   .responsive-page-scroll {
     padding-inline: 3rem;
-    padding-bottom: 3rem;
   }
 
   .responsive-standalone-pad {
@@ -208,7 +207,6 @@
 
     .responsive-page-scroll {
       padding-inline: 2rem;
-      padding-bottom: 2rem;
     }
   }
 
@@ -226,7 +224,6 @@
 
     .responsive-page-scroll {
       padding-inline: 1rem;
-      padding-bottom: 1.5rem;
     }
 
     .responsive-standalone-pad {

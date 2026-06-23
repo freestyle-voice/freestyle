@@ -793,6 +793,7 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label="Server URL"
                 desc="Use the built-in server, or point Freestyle at a self-hosted server. Restart the app after changing this."
+                stacked
                 last
               >
                 <ServerConnectionCard
@@ -1229,16 +1230,20 @@ function Row({
   desc,
   children,
   last,
+  stacked,
 }: {
   label: string;
   desc: string;
   children: React.ReactNode;
   last?: boolean;
+  stacked?: boolean;
 }) {
   return (
     <div
       className={cn(
         "grid grid-cols-1 items-start gap-3 py-[22px] min-[1080px]:grid-cols-[220px_minmax(0,1fr)] min-[1080px]:gap-8 min-[1280px]:grid-cols-[280px_minmax(0,1fr)] min-[1280px]:gap-9",
+        stacked &&
+          "min-[1080px]:grid-cols-1 min-[1080px]:gap-4 min-[1280px]:grid-cols-1 min-[1280px]:gap-4",
         !last && "border-border border-b",
       )}
     >
@@ -1300,7 +1305,7 @@ function ServerConnectionCard({
   const usingLocal = !savedServerUrl;
 
   return (
-    <div className="border-border bg-card w-full max-w-3xl rounded-[14px] border p-3.5">
+    <div className="border-border bg-card w-full rounded-[14px] border p-3.5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span
@@ -1374,12 +1379,12 @@ function ServerConnectionCard({
         </ServerFieldRow>
 
         {serverUrlError && (
-          <p className="text-destructive pl-0 text-[12px] min-[760px]:pl-[88px]">
+          <p className="text-destructive pl-0 text-[12px] min-[760px]:pl-[104px]">
             {serverUrlError}
           </p>
         )}
 
-        <div className="flex flex-wrap items-center gap-2 pt-1 min-[760px]:pl-[88px]">
+        <div className="flex flex-wrap items-center gap-2 pt-1 min-[760px]:pl-[104px]">
           <Button
             variant="ink"
             size="sm"
@@ -1425,7 +1430,7 @@ function ServerFieldRow({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <div className="grid items-center gap-1.5 min-[760px]:grid-cols-[72px_minmax(0,1fr)] min-[760px]:gap-4">
+    <div className="grid items-center gap-1.5 min-[760px]:grid-cols-[88px_minmax(0,1fr)] min-[760px]:gap-4">
       <div className="mono text-muted-foreground text-[10px] uppercase tracking-[0.14em]">
         {label}
       </div>

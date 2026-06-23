@@ -97,6 +97,7 @@ import {
 import {
   plugins as appPlugins,
   initAppPlugins,
+  OutputMode,
   parseAppContext,
 } from "./plugins/index";
 
@@ -853,7 +854,7 @@ function wait(ms: number): Promise<void> {
  */
 async function deliverOutput(
   text: string,
-  mode: "paste" | "copy",
+  mode: typeof OutputMode.Paste | typeof OutputMode.Copy,
   appContext: string | null,
 ): Promise<void> {
   const parsedContext = parseAppContext(appContext);
@@ -863,19 +864,19 @@ async function deliverOutput(
     { text, mode },
   );
 
-  // Nothing to deliver (empty text, or a plugin suppressed via "none"): report
-  // it as delivered with mode "none" so observers see a single, accurate event.
-  if (out.mode === "none" || !out.text?.trim()) {
+  // Nothing to deliver (empty text, or a plugin suppressed via None): report
+  // it as delivered with mode None so observers see a single, accurate event.
+  if (out.mode === OutputMode.None || !out.text?.trim()) {
     void appPlugins().emit({
       type: "outputDelivered",
       text: out.text,
-      mode: "none",
+      mode: OutputMode.None,
     });
     return;
   }
 
   try {
-    if (out.mode === "paste") {
+    if (out.mode === OutputMode.Paste) {
       await pasteIntoFocusedApp(out.text, async () => {
         hidePill();
         await wait(0);
@@ -1273,7 +1274,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     "paste:text",
     async (_event, text: string, appContext?: string | null) => {
-      await deliverOutput(text, "paste", appContext ?? null);
+      await deliverOutput(text, OutputMode.Paste, appContext ?? null);
     },
   );
 
@@ -1281,7 +1282,7 @@ app.whenReady().then(async () => {
   ipcMain.handle(
     "copy:text",
     async (_event, text: string, appContext?: string | null) => {
-      await deliverOutput(text, "copy", appContext ?? null);
+      await deliverOutput(text, OutputMode.Copy, appContext ?? null);
     },
   );
 

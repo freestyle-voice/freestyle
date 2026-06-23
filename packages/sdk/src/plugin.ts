@@ -68,10 +68,9 @@ export type PluginPreset = Plugin | Plugin[] | false | null | undefined;
 export type PluginFactory = (options?: PluginOptions) => PluginPreset;
 
 /**
- * The shape of a plugin module. A module's default export, or any named export
- * that is a function, is treated as a {@link PluginFactory}.
+ * The shape of a plugin module. Only the module's **default export** is treated
+ * as a {@link PluginFactory}; named exports are ignored by the loader.
  */
 export interface PluginModule {
   default?: PluginFactory;
-  [name: string]: PluginFactory | undefined;
 }

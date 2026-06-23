@@ -11,7 +11,7 @@ import type { OutputMode } from "./output.js";
  * when the plugin is loaded in both processes.
  */
 export type FreestyleEvent =
-  | { type: "recordingStarted"; appContext?: AppContext }
+  | { type: "recordingStarted" }
   | { type: "recordingCommitted" }
   | { type: "recordingCancelled" }
   | { type: "transcribed"; text: string; durationInSeconds?: number }

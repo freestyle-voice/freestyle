@@ -8,7 +8,6 @@ export {
   type SettingsReader,
 } from "./context.js";
 export type { AppContext, FreestyleEvent, PipelineStage } from "./events.js";
-export { default as examplePlugin } from "./example.js";
 export type {
   AfterCleanupInput,
   AfterTranscribeInput,

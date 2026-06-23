@@ -71,9 +71,6 @@ export default function trim(): Plugin {
 }
 ```
 
-A copy-pasteable reference is exported as `examplePlugin` (see
-[`src/example.ts`](./src/example.ts)).
-
 ## Plugin object
 
 | Field | Required | Purpose |
@@ -210,7 +207,7 @@ The read-only `event` hook receives a discriminated `FreestyleEvent`:
 ```ts
 event: ({ event }) => {
   switch (event.type) {
-    case "recordingStarted":   /* event.appContext */ break;
+    case "recordingStarted":   break;
     case "recordingCommitted": break;
     case "recordingCancelled": break;
     case "transcribed":        /* event.text, event.durationInSeconds */ break;
@@ -241,7 +238,6 @@ See [`src/events.ts`](./src/events.ts) for the full union.
 | `Register` | type | `"formal"` \| `"casual"` \| `"neutral"` |
 | `transform` | fn | Wrap a pure `(text) => text` into `afterCleanup` |
 | `sortPlugins` | fn | Order plugins by `enforce` (used by loaders) |
-| `examplePlugin` | factory | Copy-pasteable reference plugin |
 
 ## Stability
 

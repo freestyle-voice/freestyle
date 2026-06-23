@@ -685,8 +685,9 @@ export default function SettingsPage(): React.JSX.Element {
       className="flex min-h-0 flex-1 flex-col"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
+      <div className="h-7 shrink-0" />
       <div
-        className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 pt-9 min-[900px]:grid-cols-[180px_minmax(0,1fr)]"
+        className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 min-[900px]:grid-cols-[180px_minmax(0,1fr)]"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         <div className="min-[900px]:col-span-2">

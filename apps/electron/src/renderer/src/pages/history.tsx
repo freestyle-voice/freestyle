@@ -248,8 +248,9 @@ export default function HistoryPage(): React.JSX.Element {
       className="flex h-full min-h-0 flex-col"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
+      <div className="h-7 shrink-0" />
       <div
-        className="responsive-page-scroll flex-1 overflow-auto pt-9"
+        className="responsive-page-scroll flex-1 overflow-auto"
         style={
           {
             WebkitAppRegion: "no-drag",

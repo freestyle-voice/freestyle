@@ -1,4 +1,5 @@
 import type { FreestyleBridge } from "@freestyle/sdk";
+import { toWav16k } from "./to-wav.js";
 
 /**
  * Transcribe-files page. Uploads each chosen/dropped audio file to the local
@@ -60,8 +61,18 @@ async function transcribe(file: File): Promise<void> {
   }
 
   try {
+    // Freestyle's transcription providers expect 16 kHz mono PCM WAV, so decode
+    // and resample the dropped file (wav/mp3/m4a/…) before uploading.
+    let wav: Blob;
+    try {
+      wav = await toWav16k(file);
+    } catch {
+      row.fail("Could not decode this audio file.");
+      return;
+    }
+
     const form = new FormData();
-    form.append("audio", file);
+    form.append("audio", new File([wav], "audio.wav", { type: "audio/wav" }));
     const res = await bridge.api("/api/transcribe", {
       method: "POST",
       body: form,

@@ -175,6 +175,9 @@ function discoverLocalDir(dir: string): DiscoveredPlugin[] {
 
   const out: DiscoveredPlugin[] = [];
   for (const name of names) {
+    // Skip dotfiles, including the installer's transient `.<slug>-*` staging
+    // dirs that exist mid-install.
+    if (name.startsWith(".")) continue;
     const full = path.join(dir, name);
     const pkgJsonPath = path.join(full, "package.json");
     if (!fs.existsSync(pkgJsonPath)) continue;

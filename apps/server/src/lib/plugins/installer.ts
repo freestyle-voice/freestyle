@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { pluginSlug } from "@freestyle/sdk";
 import { createAppLogger } from "@freestyle/utils";
@@ -92,14 +91,16 @@ export async function installPackage(
 
   const slug = pluginSlug(resolved.name);
   const dest = path.join(pluginsDir, slug);
-  const staging = await fs.mkdtemp(path.join(os.tmpdir(), "freestyle-plugin-"));
+  // Stage inside the plugins dir (not the OS temp dir) so the final rename is
+  // an atomic, same-filesystem move — `/tmp` is often a separate mount.
+  await fs.mkdir(pluginsDir, { recursive: true });
+  const staging = await fs.mkdtemp(path.join(pluginsDir, `.${slug}-`));
 
   try {
     // npm tarballs wrap everything under a top-level `package/` directory, so
     // strip it. Feed the in-memory bytes through tar's unpack stream.
     await extractBuffer(bytes, staging);
     await fs.rm(dest, { recursive: true, force: true });
-    await fs.mkdir(path.dirname(dest), { recursive: true });
     await fs.rename(staging, dest);
   } catch (err) {
     await fs.rm(staging, { recursive: true, force: true }).catch(() => {});

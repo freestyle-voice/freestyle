@@ -59,9 +59,6 @@ export function discoverPlugins(
   const seenDirs = new Set<string>();
 
   const entries = parsePluginsSetting(pluginsSetting);
-  log.info(
-    `discovery: plugins setting=${JSON.stringify(pluginsSetting ?? null)} (${entries.length} entr${entries.length === 1 ? "y" : "ies"})`,
-  );
 
   for (const entry of entries) {
     const { specifier } = pluginEntryParts(entry);
@@ -91,7 +88,6 @@ function discoverPackage(specifier: string): DiscoveredPlugin | null {
     log.warn(`could not resolve plugin package "${specifier}"`);
     return null;
   }
-  log.info(`discovery: resolved "${specifier}" -> ${pkgJsonPath}`);
   return readManifest(pkgJsonPath, specifier, false);
 }
 

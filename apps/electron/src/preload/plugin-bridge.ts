@@ -34,13 +34,19 @@ type SerializedBody =
       >;
     };
 
-/** Convert a fetch body into an IPC-serializable shape for the main proxy. */
-async function serializeBody(
-  body: BodyInit | null | undefined,
-): Promise<SerializedBody> {
+/**
+ * Convert a fetch body into an IPC-serializable shape for the main proxy.
+ *
+ * The body originates in the page's main world while this runs in the preload's
+ * isolated world — a different JS realm — so `instanceof FormData`/`Blob` is
+ * unreliable. Detect these types structurally (duck-typing) instead.
+ */
+async function serializeBody(body: unknown): Promise<SerializedBody> {
   if (body == null) return { kind: "none" };
   if (typeof body === "string") return { kind: "text", value: body };
-  if (body instanceof FormData) {
+
+  // FormData: has an iterable entries() yielding [name, value] pairs.
+  if (isFormDataLike(body)) {
     const fields: Extract<SerializedBody, { kind: "form" }>["fields"] = [];
     for (const [name, value] of body.entries()) {
       if (typeof value === "string") {
@@ -49,17 +55,24 @@ async function serializeBody(
         fields.push({
           type: "file",
           name,
-          filename: value.name,
-          mime: value.type,
+          filename: typeof value.name === "string" ? value.name : "file",
+          mime: typeof value.type === "string" ? value.type : "",
           data: await value.arrayBuffer(),
         });
       }
     }
     return { kind: "form", fields };
   }
-  if (body instanceof Blob) {
-    return { kind: "binary", data: await body.arrayBuffer(), type: body.type };
+
+  // Blob/File: has arrayBuffer() + size.
+  if (isBlobLike(body)) {
+    return {
+      kind: "binary",
+      data: await body.arrayBuffer(),
+      type: typeof body.type === "string" ? body.type : "",
+    };
   }
+
   if (body instanceof ArrayBuffer) {
     return { kind: "binary", data: body, type: "" };
   }
@@ -69,8 +82,35 @@ async function serializeBody(
     copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
     return { kind: "binary", data: copy.buffer, type: "" };
   }
-  // Fallback: stringify anything else.
   return { kind: "text", value: String(body) };
+}
+
+interface FormDataLike {
+  entries(): IterableIterator<[string, string | BlobLike]>;
+}
+interface BlobLike {
+  arrayBuffer(): Promise<ArrayBuffer>;
+  type?: unknown;
+  name?: unknown;
+  size: number;
+}
+
+function isFormDataLike(value: unknown): value is FormDataLike {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { entries?: unknown }).entries === "function" &&
+    typeof (value as { getAll?: unknown }).getAll === "function"
+  );
+}
+
+function isBlobLike(value: unknown): value is BlobLike {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { arrayBuffer?: unknown }).arrayBuffer === "function" &&
+    typeof (value as { size?: unknown }).size === "number"
+  );
 }
 
 let config: BridgeConfig = { serverUrl: "" };

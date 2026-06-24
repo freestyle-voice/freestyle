@@ -102,6 +102,7 @@ import {
   OutputMode,
   PipelineStage,
   parseAppContext,
+  reloadAppPlugins,
   setPluginEnabled,
 } from "./plugins/index";
 import {
@@ -617,8 +618,12 @@ function createSettingsWindow(initialPath?: string): void {
     window: settingsWindow,
     getBridgeConfig: getPluginBridgeConfig,
     getDiscoverySources: getPluginDiscoverySources,
-    setPluginEnabled: (specifier, enabled) =>
-      setPluginEnabled(getServerTarget(), specifier, enabled),
+    setPluginEnabled: async (specifier, enabled) => {
+      // Persist + reload the server's registry, then rebuild the app-host
+      // registry so app-side hooks for this plugin start/stop immediately.
+      await setPluginEnabled(getServerTarget(), specifier, enabled);
+      await reloadAppPlugins(getServerTarget());
+    },
     onAction: handlePluginAction,
   });
   void getPluginDiscoverySources().then(

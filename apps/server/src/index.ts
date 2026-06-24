@@ -110,7 +110,10 @@ export function startServer(
 
 export { closeDb } from "./lib/db.js";
 export { stopMlxServer } from "./lib/mlx-asr/server.js";
-export { disposeServerPlugins } from "./lib/plugins/index.js";
+export {
+  disposeServerPlugins,
+  reloadServerPlugins,
+} from "./lib/plugins/index.js";
 export { captureException, shutdownPosthog } from "./lib/posthog.js";
 export { stopServer as stopWhisperServer } from "./lib/whisper/server.js";
 export {

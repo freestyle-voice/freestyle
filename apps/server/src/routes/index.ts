@@ -9,6 +9,7 @@ import history from "./history.js";
 import mcp from "./mcp.js";
 import mlxAsr from "./mlx-asr.js";
 import models from "./models.js";
+import pluginsRoute from "./plugins.js";
 import postProcessRoute from "./post-process-route.js";
 import settings from "./settings.js";
 import stream from "./stream.js";
@@ -80,6 +81,7 @@ const apiRouter = new Hono()
   .route("/vocabulary", vocabulary)
   .route("/formats", formats)
   .route("/post-process", postProcessRoute)
+  .route("/plugins", pluginsRoute)
   .route("/whisper", whisper)
   .route("/mlx-asr", mlxAsr);
 

@@ -111,6 +111,44 @@ export default (): Plugin => ({
 });
 ```
 
+> **Per-host installation.** The server may be **remote**, so the two hosts have
+> separate `node_modules`. A plugin only loads where it's actually installed: a
+> server-only plugin loads on the server (and is silently skipped on the desktop),
+> and vice-versa. The `plugins` / `disabled_plugins` settings are **server-owned
+> and shared** — both hosts honor them. Enabling/disabling a plugin reloads
+> **both** registries (the desktop's and the server's), so its hooks start or stop
+> immediately everywhere it runs, with no restart.
+
+### Calling the server from a UI page
+
+A plugin's UI page is sandboxed and can't reach the server directly. Use the
+`window.freestyle` bridge: `api()` proxies a `fetch` through the host, and
+`serverUrl` / `token` are provided for building your own client. For a fully
+typed client, install `@freestyle/server` as a **dev dependency** (for its
+`AppType` only — it's a type-only import, nothing ships at runtime) and hand
+Hono's `hc` the bridge's `fetch`:
+
+```ts
+import { hc } from "hono/client";
+import type { AppType } from "@freestyle/server";
+
+const client = hc<AppType>(window.freestyle.serverUrl, {
+  // Route every request through the host bridge (handles auth + sandboxing).
+  fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+    window.freestyle.api(
+      typeof input === "string" ? input : input.toString(),
+      init,
+    ),
+});
+
+const res = await client.api.transcribe.$post({ form: { audio } });
+```
+
+The SDK intentionally does **not** re-export `AppType`: the server already
+depends on the SDK, so re-exporting it would create a build cycle. Importing the
+type straight from `@freestyle/server` keeps the dependency graph acyclic, and
+because it's a `import type` it adds no runtime weight to your plugin bundle.
+
 ### Presets and conditional plugins
 
 A factory may return an **array** (a preset, flattened by the loader) and entries

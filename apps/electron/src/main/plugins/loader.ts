@@ -92,6 +92,20 @@ export async function setPluginEnabled(
     },
     { init: { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) } },
   );
+
+  // Ask the server to reload its own plugin registry so the change takes effect
+  // on the server side too (it's a separate process, possibly remote). The
+  // caller reloads the app-host registry separately.
+  try {
+    await client.api.plugins.reload.$post(
+      {},
+      { init: { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) } },
+    );
+  } catch (err) {
+    log.warn(
+      `server plugin reload failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 /**

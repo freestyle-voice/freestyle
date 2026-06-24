@@ -1,6 +1,11 @@
 import type { HostActions } from "@freestyle/sdk";
 import { createAppLogger } from "@freestyle/utils";
 import { type BrowserWindow, ipcMain } from "electron";
+import type {
+  PluginFetchRequest,
+  PluginFetchResponse,
+  SerializedBody,
+} from "../../shared/bridge-protocol";
 import type { DiscoveredPlugin } from "./manifest.js";
 import {
   getDiscoveredPlugins,
@@ -166,41 +171,6 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
     },
   );
 }
-
-/** A request proxied from a plugin page's bridge `api()` call. */
-interface PluginFetchRequest {
-  path: string;
-  method: string;
-  headers: Record<string, string>;
-  body: SerializedBody;
-}
-
-interface PluginFetchResponse {
-  ok: boolean;
-  status: number;
-  statusText: string;
-  headers: Record<string, string>;
-  body: ArrayBuffer;
-}
-
-/** IPC-serializable request body (mirrors the preload's serializeBody). */
-type SerializedBody =
-  | { kind: "none" }
-  | { kind: "text"; value: string }
-  | { kind: "binary"; data: ArrayBuffer; type: string }
-  | {
-      kind: "form";
-      fields: Array<
-        | { type: "text"; name: string; value: string }
-        | {
-            type: "file";
-            name: string;
-            filename: string;
-            mime: string;
-            data: ArrayBuffer;
-          }
-      >;
-    };
 
 /** Reconstruct a fetch body from its serialized form. */
 function deserializeBody(body: SerializedBody): BodyInit | undefined {

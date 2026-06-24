@@ -67,14 +67,10 @@ export default function PluginPage(): React.JSX.Element {
     const observer = new ResizeObserver(sync);
     observer.observe(el);
     window.addEventListener("resize", sync);
-    // The dashboard content area can scroll; track it too.
-    const scrollParent = el.closest(".responsive-page-scroll");
-    scrollParent?.addEventListener("scroll", sync);
 
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", sync);
-      scrollParent?.removeEventListener("scroll", sync);
       window.api.hidePluginView();
     };
   }, [slug, pageId]);

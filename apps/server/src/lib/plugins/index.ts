@@ -24,6 +24,22 @@ let initialized = false;
 export async function initServerPlugins(): Promise<void> {
   if (initialized) return;
   initialized = true;
+  await loadIntoRegistry();
+}
+
+/**
+ * Reload the server plugin registry from the current `plugins`/`disabled_plugins`
+ * settings. Used when a plugin is enabled/disabled at runtime: the old
+ * registry is disposed and a fresh one is built so disabled plugins' hooks stop
+ * firing immediately, without a server restart.
+ */
+export async function reloadServerPlugins(): Promise<void> {
+  const previous = registry;
+  await loadIntoRegistry();
+  await previous.dispose().catch(() => {});
+}
+
+async function loadIntoRegistry(): Promise<void> {
   try {
     registry = await loadServerPlugins();
     resolvedConfig = await registry.resolveConfig({});
@@ -32,6 +48,7 @@ export async function initServerPlugins(): Promise<void> {
     }
   } catch {
     registry = new PluginRegistry();
+    resolvedConfig = {};
   }
 }
 

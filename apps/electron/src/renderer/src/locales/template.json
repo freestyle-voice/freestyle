@@ -372,7 +372,6 @@
     }
   },
   "plugins": {
-    "eyebrow": "Extend Freestyle",
     "titleAccent": "Plugins",
     "subtitle": "Install plugins to add features. Each runs in the dictation pipeline and can ship its own page.",
     "tabs": {
@@ -384,7 +383,8 @@
     "empty": "Install a plugin to add features. Browse the available ones or add your own.",
     "localBadge": "Local",
     "open": "Open",
-    "toggleEnabled": "Enable plugin",
+    "enablePlugin": "Enable plugin",
+    "disablePlugin": "Disable plugin",
     "detail": {
       "title": "Details",
       "back": "Plugins",

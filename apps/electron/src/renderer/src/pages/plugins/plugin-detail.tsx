@@ -139,7 +139,9 @@ function Detail({
           <Switch
             checked={plugin.enabled}
             onCheckedChange={(v) => void onToggle(v)}
-            aria-label={t("plugins.toggleEnabled")}
+            aria-label={t(
+              plugin.enabled ? "plugins.disablePlugin" : "plugins.enablePlugin",
+            )}
           />
         </div>
       </div>

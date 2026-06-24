@@ -1,5 +1,9 @@
 import type { FreestyleBridge, HostActions } from "@freestyle/sdk";
 import { contextBridge, ipcRenderer } from "electron";
+import type {
+  PluginFetchResponse,
+  SerializedBody,
+} from "../shared/bridge-protocol";
 
 /**
  * Preload injected into every plugin UI page (running in a sandboxed
@@ -14,25 +18,6 @@ interface BridgeConfig {
   token?: string;
   tokens?: Record<string, string>;
 }
-
-/** An IPC-serializable form of a request body (see also main's ui-host). */
-type SerializedBody =
-  | { kind: "none" }
-  | { kind: "text"; value: string }
-  | { kind: "binary"; data: ArrayBuffer; type: string }
-  | {
-      kind: "form";
-      fields: Array<
-        | { type: "text"; name: string; value: string }
-        | {
-            type: "file";
-            name: string;
-            filename: string;
-            mime: string;
-            data: ArrayBuffer;
-          }
-      >;
-    };
 
 /**
  * Convert a fetch body into an IPC-serializable shape for the main proxy.
@@ -177,13 +162,7 @@ const bridge: FreestyleBridge = {
       method: init?.method ?? "GET",
       headers,
       body,
-    })) as {
-      ok: boolean;
-      status: number;
-      statusText: string;
-      headers: Record<string, string>;
-      body: ArrayBuffer;
-    };
+    })) as PluginFetchResponse;
 
     // A native Response can't survive the contextBridge boundary (its prototype
     // is stripped), so return a plain object with method members — contextBridge
@@ -196,7 +175,10 @@ const bridge: FreestyleBridge = {
       headers: res.headers,
       arrayBuffer: () => Promise.resolve(bytes),
       text: () => Promise.resolve(new TextDecoder().decode(bytes)),
-      json: () => Promise.resolve(JSON.parse(new TextDecoder().decode(bytes))),
+      json: <T = unknown>(): Promise<T> => {
+        const str = new TextDecoder().decode(bytes);
+        return Promise.resolve(str ? (JSON.parse(str) as T) : (null as T));
+      },
     };
   },
 

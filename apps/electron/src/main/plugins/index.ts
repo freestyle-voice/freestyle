@@ -29,6 +29,21 @@ export async function initAppPlugins(target: ServerTarget): Promise<void> {
   }
 }
 
+/**
+ * Rebuild the app-host plugin registry from the current settings. Called when a
+ * plugin is enabled/disabled so its app-side hooks (e.g. `beforeOutput`) start
+ * or stop firing immediately, without an app restart.
+ */
+export async function reloadAppPlugins(target: ServerTarget): Promise<void> {
+  const previous = registry;
+  try {
+    registry = await loadAppPlugins(target);
+  } catch {
+    registry = new PluginRegistry();
+  }
+  await previous.dispose().catch(() => {});
+}
+
 /** The active registry. Returns an empty one before init runs. */
 export function plugins(): PluginRegistry {
   return registry;

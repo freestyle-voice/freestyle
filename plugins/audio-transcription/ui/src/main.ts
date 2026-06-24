@@ -71,11 +71,13 @@ async function transcribe(file: File): Promise<void> {
       return;
     }
 
-    const form = new FormData();
-    form.append("audio", new File([wav], "audio.wav", { type: "audio/wav" }));
+    // Send the WAV bytes as a raw body (not multipart): an ArrayBuffer survives
+    // the host bridge intact, whereas a FormData/File is mangled crossing the
+    // sandbox boundary. The server accepts a raw audio body too.
     const res = await bridge.api("/api/transcribe", {
       method: "POST",
-      body: form,
+      headers: { "content-type": "audio/wav" },
+      body: await wav.arrayBuffer(),
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => "");

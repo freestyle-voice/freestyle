@@ -73,16 +73,26 @@ async function serializeBody(body: unknown): Promise<SerializedBody> {
     };
   }
 
-  if (body instanceof ArrayBuffer) {
-    return { kind: "binary", data: body, type: "" };
-  }
+  // ArrayBuffer (cross-realm safe: check byteLength, exclude typed-array views).
   if (ArrayBuffer.isView(body)) {
     const view = body as ArrayBufferView;
     const copy = new Uint8Array(view.byteLength);
     copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
     return { kind: "binary", data: copy.buffer, type: "" };
   }
+  if (isArrayBufferLike(body)) {
+    return { kind: "binary", data: body, type: "" };
+  }
   return { kind: "text", value: String(body) };
+}
+
+function isArrayBufferLike(value: unknown): value is ArrayBuffer {
+  return (
+    value instanceof ArrayBuffer ||
+    (typeof value === "object" &&
+      value !== null &&
+      Object.prototype.toString.call(value) === "[object ArrayBuffer]")
+  );
 }
 
 interface FormDataLike {

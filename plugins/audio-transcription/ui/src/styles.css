@@ -154,6 +154,9 @@ body {
 }
 
 .result-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
   font-size: 12px;
   color: var(--muted-foreground);
@@ -163,25 +166,72 @@ body {
   color: var(--destructive);
 }
 
-.result-copy {
+.spinner {
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 1.6s;
+  }
+}
+
+.result-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-left: auto;
-  font: inherit;
-  font-size: 12px;
-  padding: 4px 12px;
+}
+
+.result-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: 7px;
   background: transparent;
-  color: var(--foreground);
+  color: var(--muted-foreground);
   cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 
-.result-copy:hover {
-  background: var(--secondary);
+.result-action:hover {
+  color: var(--foreground);
+  border-color: var(--muted-foreground);
+}
+
+.result-action svg {
+  width: 15px;
+  height: 15px;
 }
 
 .result-text {
   margin: 12px 0 0;
   max-width: 680px;
+  white-space: pre-wrap;
+}
+
+/* Clamp long transcripts to a few lines; Copy/Download expose the full text. */
+.result-text.is-clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
   white-space: pre-wrap;
 }
 

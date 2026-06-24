@@ -131,9 +131,23 @@ function createRow(fileName: string): Row {
   name.className = "result-name";
   name.textContent = fileName;
 
+  // While the request is in flight we show a spinner + label. The server
+  // returns the whole transcript in one response (no progress stream), so an
+  // indeterminate spinner is the honest signal; an elapsed timer gives the user
+  // a sense of how long a long file is taking.
   const status = document.createElement("span");
   status.className = "result-status";
-  status.textContent = "Transcribing…";
+  const spinner = document.createElement("span");
+  spinner.className = "spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  const statusLabel = document.createElement("span");
+  statusLabel.textContent = "Transcribing…";
+  status.append(spinner, statusLabel);
+
+  const startedAt = Date.now();
+  const timer = window.setInterval(() => {
+    statusLabel.textContent = `Transcribing… ${formatElapsed(Date.now() - startedAt)}`;
+  }, 1000);
 
   head.append(name, status);
   el.append(head);
@@ -141,25 +155,18 @@ function createRow(fileName: string): Row {
   return {
     el,
     done(text, meta) {
+      window.clearInterval(timer);
       status.remove();
       const body = document.createElement("p");
       body.className = "result-text";
       body.textContent = text || "(no speech detected)";
       el.append(body);
 
+      // Long transcripts are clamped to a few lines; Copy and Download always
+      // operate on the full text below.
       if (text) {
-        const copy = document.createElement("button");
-        copy.className = "result-copy";
-        copy.type = "button";
-        copy.textContent = "Copy";
-        copy.addEventListener("click", () => {
-          void bridge?.invoke("copy", { text });
-          copy.textContent = "Copied";
-          window.setTimeout(() => {
-            copy.textContent = "Copy";
-          }, 1200);
-        });
-        head.append(copy);
+        body.classList.add("is-clamped");
+        head.append(buildActions(text, fileName));
       }
 
       const metrics = formatMetrics(meta);
@@ -175,8 +182,12 @@ function createRow(fileName: string): Row {
       }
     },
     fail(message) {
-      status.textContent = "Failed";
-      status.classList.add("is-error");
+      window.clearInterval(timer);
+      status.remove();
+      const failed = document.createElement("span");
+      failed.className = "result-status is-error";
+      failed.textContent = "Failed";
+      head.append(failed);
       const body = document.createElement("p");
       body.className = "result-text is-error";
       body.textContent = message;
@@ -184,6 +195,79 @@ function createRow(fileName: string): Row {
     },
   };
 }
+
+/** Elapsed time as `12s` or `2:05` for the in-flight status label. */
+function formatElapsed(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  if (total < 60) return `${total}s`;
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** Copy + Download icon buttons that act on the full transcript text. */
+function buildActions(text: string, fileName: string): HTMLDivElement {
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+
+  const copy = iconButton(ICON_COPY, "Copy transcript");
+  copy.addEventListener("click", () => {
+    void bridge?.invoke("copy", { text });
+    flash(copy, ICON_CHECK);
+  });
+
+  const download = iconButton(ICON_DOWNLOAD, "Download transcript");
+  download.addEventListener("click", () => downloadText(text, fileName));
+
+  actions.append(copy, download);
+  return actions;
+}
+
+/** Build a small square icon button containing the given inline SVG. */
+function iconButton(svg: string, label: string): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.className = "result-action";
+  btn.type = "button";
+  btn.title = label;
+  btn.setAttribute("aria-label", label);
+  btn.innerHTML = svg;
+  return btn;
+}
+
+/** Briefly swap a button's icon (e.g. to a checkmark after copying). */
+function flash(btn: HTMLButtonElement, svg: string): void {
+  const original = btn.innerHTML;
+  btn.innerHTML = svg;
+  window.setTimeout(() => {
+    btn.innerHTML = original;
+  }, 1200);
+}
+
+/**
+ * Save the transcript as a .txt file. The sandboxed page can't reach the host's
+ * native save dialog, so we trigger an in-page object-URL download — Electron
+ * handles it like any browser download.
+ */
+function downloadText(text: string, fileName: string): void {
+  const base = fileName.replace(/\.[^./\\]+$/, "") || "transcript";
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${base}.txt`;
+  a.style.display = "none";
+  document.body.append(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+const ICON_COPY =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+const ICON_CHECK =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
+const ICON_DOWNLOAD =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></svg>';
 
 /** Build the short metric chips shown under a transcript. */
 function formatMetrics(meta: ResultMeta): string[] {

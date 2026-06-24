@@ -1,9 +1,15 @@
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
-import { Card } from "@renderer/components/ui/card";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import type { PluginInfo } from "@shared/plugins";
-import { Check, Copy, Puzzle } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  Copy,
+  type LucideIcon,
+  icons as lucideIcons,
+  Puzzle,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -112,11 +118,17 @@ function PluginCard({ plugin }: { plugin: PluginInfo }): React.JSX.Element {
   const navigate = useNavigate();
   const page = plugin.pages[0];
 
+  const Icon = resolveIcon(page?.icon);
+
   return (
-    <Card className="flex items-center gap-4 p-5">
+    <div className="border-border bg-card hover:border-foreground/15 group flex items-center gap-4 rounded-[14px] border p-4 transition-colors">
+      <div className="border-border bg-accent/40 flex size-11 shrink-0 items-center justify-center rounded-[10px] border">
+        <Icon className="text-primary size-5" strokeWidth={1.7} />
+      </div>
+
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-foreground truncate text-[15px] font-medium">
+          <span className="text-foreground truncate text-[14.5px] font-medium">
             {displayName(plugin)}
           </span>
           {plugin.local ? (
@@ -129,25 +141,36 @@ function PluginCard({ plugin }: { plugin: PluginInfo }): React.JSX.Element {
           ) : null}
         </div>
         {plugin.description ? (
-          <p className="text-muted-foreground mt-1 line-clamp-2 text-[13px]">
+          <p className="text-muted-foreground mt-0.5 line-clamp-1 text-[13px]">
             {plugin.description}
           </p>
         ) : null}
-        <span className="mono text-muted-foreground mt-2 block text-[10px] uppercase tracking-[0.14em]">
+        <span className="mono text-muted-foreground mt-1.5 block text-[10px] uppercase tracking-[0.14em]">
           {t("plugins.pageCount", { count: plugin.pages.length })}
         </span>
       </div>
+
       {page ? (
         <Button
           variant="outline"
           size="sm"
+          className="shrink-0"
           onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
         >
           {t("plugins.open")}
+          <ArrowRight data-icon="inline-end" />
         </Button>
       ) : null}
-    </Card>
+    </div>
   );
+}
+
+/** Resolve a lucide icon name from a plugin manifest, falling back to Puzzle. */
+function resolveIcon(name: string | undefined): LucideIcon {
+  if (name && name in lucideIcons) {
+    return lucideIcons[name as keyof typeof lucideIcons];
+  }
+  return Puzzle;
 }
 
 function BrowseTab(): React.JSX.Element {
@@ -160,7 +183,7 @@ function BrowseTab(): React.JSX.Element {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card className="p-6">
+      <div className="border-border bg-card rounded-[14px] border p-6">
         <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
           {t("plugins.browse.registrySoonEyebrow")}
         </span>
@@ -170,9 +193,9 @@ function BrowseTab(): React.JSX.Element {
         <p className="text-muted-foreground mt-1 text-[13px] leading-[1.5]">
           {t("plugins.browse.registrySoonBody")}
         </p>
-      </Card>
+      </div>
 
-      <Card className="p-6">
+      <div className="border-border bg-card rounded-[14px] border p-6">
         <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
           {t("plugins.browse.manualEyebrow")}
         </span>
@@ -184,7 +207,7 @@ function BrowseTab(): React.JSX.Element {
           {t("plugins.browse.manualLocal")}
         </p>
         <CodeExample value="<userData>/plugins/my-plugin/" />
-      </Card>
+      </div>
     </div>
   );
 }
@@ -219,10 +242,18 @@ function CodeExample({ value }: { value: string }): React.JSX.Element {
   );
 }
 
-/** Strip a `freestyle-plugin-` / `@scope/plugin-` prefix for a friendlier name. */
+/**
+ * Turn a package name into a friendly title: strip the scope and any
+ * `(freestyle-)plugin-` prefix, then Title Case the remaining words.
+ */
 function displayName(plugin: PluginInfo): string {
-  return plugin.name
+  const base = plugin.name
     .replace(/^@[^/]+\//, "")
     .replace(/^freestyle-plugin-/, "")
     .replace(/^plugin-/, "");
+  return base
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }

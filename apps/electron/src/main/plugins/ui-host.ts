@@ -117,6 +117,98 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
       }
     },
   );
+
+  // Proxy a plugin page's server API request. The page can't fetch the loopback
+  // server directly (mixed content from its secure custom-scheme origin), so
+  // main performs the request and returns a serialized response.
+  ipcMain.handle(
+    "plugin-bridge:fetch",
+    async (_e, req: PluginFetchRequest): Promise<PluginFetchResponse> => {
+      const config = deps.getBridgeConfig();
+      const url = `${config.serverUrl}${req.path}`;
+      const headers = new Headers(req.headers);
+      if (config.token) headers.set("Authorization", `Bearer ${config.token}`);
+
+      const res = await fetch(url, {
+        method: req.method,
+        headers,
+        body: deserializeBody(req.body),
+      });
+
+      const resHeaders: Record<string, string> = {};
+      res.headers.forEach((value, key) => {
+        resHeaders[key] = value;
+      });
+      return {
+        ok: res.ok,
+        status: res.status,
+        statusText: res.statusText,
+        headers: resHeaders,
+        body: await res.arrayBuffer(),
+      };
+    },
+  );
+}
+
+/** A request proxied from a plugin page's bridge `api()` call. */
+interface PluginFetchRequest {
+  path: string;
+  method: string;
+  headers: Record<string, string>;
+  body: SerializedBody;
+}
+
+interface PluginFetchResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: ArrayBuffer;
+}
+
+/** IPC-serializable request body (mirrors the preload's serializeBody). */
+type SerializedBody =
+  | { kind: "none" }
+  | { kind: "text"; value: string }
+  | { kind: "binary"; data: ArrayBuffer; type: string }
+  | {
+      kind: "form";
+      fields: Array<
+        | { type: "text"; name: string; value: string }
+        | {
+            type: "file";
+            name: string;
+            filename: string;
+            mime: string;
+            data: ArrayBuffer;
+          }
+      >;
+    };
+
+/** Reconstruct a fetch body from its serialized form. */
+function deserializeBody(body: SerializedBody): BodyInit | undefined {
+  switch (body.kind) {
+    case "none":
+      return undefined;
+    case "text":
+      return body.value;
+    case "binary":
+      return body.data;
+    case "form": {
+      const form = new FormData();
+      for (const field of body.fields) {
+        if (field.type === "text") {
+          form.append(field.name, field.value);
+        } else {
+          form.append(
+            field.name,
+            new File([field.data], field.filename, { type: field.mime }),
+          );
+        }
+      }
+      return form;
+    }
+  }
 }
 
 /** Re-scan installed plugins; returns the serialized list for the renderer. */

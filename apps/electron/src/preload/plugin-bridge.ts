@@ -15,6 +15,64 @@ interface BridgeConfig {
   tokens?: Record<string, string>;
 }
 
+/** An IPC-serializable form of a request body (see also main's ui-host). */
+type SerializedBody =
+  | { kind: "none" }
+  | { kind: "text"; value: string }
+  | { kind: "binary"; data: ArrayBuffer; type: string }
+  | {
+      kind: "form";
+      fields: Array<
+        | { type: "text"; name: string; value: string }
+        | {
+            type: "file";
+            name: string;
+            filename: string;
+            mime: string;
+            data: ArrayBuffer;
+          }
+      >;
+    };
+
+/** Convert a fetch body into an IPC-serializable shape for the main proxy. */
+async function serializeBody(
+  body: BodyInit | null | undefined,
+): Promise<SerializedBody> {
+  if (body == null) return { kind: "none" };
+  if (typeof body === "string") return { kind: "text", value: body };
+  if (body instanceof FormData) {
+    const fields: Extract<SerializedBody, { kind: "form" }>["fields"] = [];
+    for (const [name, value] of body.entries()) {
+      if (typeof value === "string") {
+        fields.push({ type: "text", name, value });
+      } else {
+        fields.push({
+          type: "file",
+          name,
+          filename: value.name,
+          mime: value.type,
+          data: await value.arrayBuffer(),
+        });
+      }
+    }
+    return { kind: "form", fields };
+  }
+  if (body instanceof Blob) {
+    return { kind: "binary", data: await body.arrayBuffer(), type: body.type };
+  }
+  if (body instanceof ArrayBuffer) {
+    return { kind: "binary", data: body, type: "" };
+  }
+  if (ArrayBuffer.isView(body)) {
+    const view = body as ArrayBufferView;
+    const copy = new Uint8Array(view.byteLength);
+    copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+    return { kind: "binary", data: copy.buffer, type: "" };
+  }
+  // Fallback: stringify anything else.
+  return { kind: "text", value: String(body) };
+}
+
 let config: BridgeConfig = { serverUrl: "" };
 
 function applyTokens(tokens: Record<string, string> | undefined): void {
@@ -54,10 +112,34 @@ const bridge: FreestyleBridge = {
 
   async api(path, init) {
     await ready;
-    const url = `${config.serverUrl}${path}`;
-    const headers = new Headers(init?.headers);
-    if (config.token) headers.set("Authorization", `Bearer ${config.token}`);
-    return fetch(url, { ...init, headers });
+    // Proxy the request through the main process. A direct fetch from this
+    // sandboxed `freestyle-plugin://` (secure) origin to the loopback
+    // `http://127.0.0.1` server would be blocked as mixed content, so main
+    // (Node, no such restriction) performs the actual request.
+    const headers: Record<string, string> = {};
+    new Headers(init?.headers).forEach((value, key) => {
+      headers[key] = value;
+    });
+
+    const body = await serializeBody(init?.body);
+    const res = (await ipcRenderer.invoke("plugin-bridge:fetch", {
+      path,
+      method: init?.method ?? "GET",
+      headers,
+      body,
+    })) as {
+      ok: boolean;
+      status: number;
+      statusText: string;
+      headers: Record<string, string>;
+      body: ArrayBuffer;
+    };
+
+    return new Response(res.body, {
+      status: res.status,
+      statusText: res.statusText,
+      headers: res.headers,
+    });
   },
 
   invoke<C extends keyof HostActions>(channel: C, payload: HostActions[C]) {

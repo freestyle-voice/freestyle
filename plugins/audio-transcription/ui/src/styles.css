@@ -32,9 +32,9 @@ body {
 }
 
 .page {
-  max-width: 720px;
+  max-width: 680px;
   margin: 0 auto;
-  padding: 48px 32px 64px;
+  padding: 20px 28px 40px;
 }
 
 .eyebrow {
@@ -72,8 +72,8 @@ body {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  margin-top: 28px;
-  padding: 44px 24px;
+  margin-top: 20px;
+  padding: 36px 24px;
   text-align: center;
   border: 1px dashed var(--border);
   border-radius: 14px;

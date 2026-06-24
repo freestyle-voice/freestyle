@@ -58,8 +58,9 @@ export function registerPluginProtocol(): void {
 export function refreshDiscoveredPlugins(
   pluginsSetting: string | undefined,
   userDataDir: string,
+  disabled: ReadonlySet<string> = new Set(),
 ): DiscoveredPlugin[] {
-  discovered = discoverPlugins(pluginsSetting, userDataDir);
+  discovered = discoverPlugins(pluginsSetting, userDataDir, disabled);
   log.info(
     `discovered ${discovered.length} plugin(s); ${discovered.reduce(
       (n, p) => n + p.pages.length,

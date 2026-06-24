@@ -7,6 +7,10 @@ export interface PluginInfo {
   slug: string;
   specifier: string;
   local: boolean;
+  /** Whether the plugin is currently enabled. */
+  enabled: boolean;
+  /** Plugin version from its `package.json`, when present. */
+  version?: string;
   description?: string;
   author?: string;
   /** Plugin-level icon name (lucide) declared via `freestyle.icon`. */

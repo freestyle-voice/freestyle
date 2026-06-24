@@ -27,6 +27,8 @@ export interface DiscoveredPlugin {
   specifier: string;
   /** Absolute path to the plugin package root (the dir holding package.json). */
   dir: string;
+  /** Version from `package.json`, when present. */
+  version?: string;
   /** Human-readable description from `package.json`, when present. */
   description?: string;
   /** Author string from `package.json`, when present. */
@@ -35,6 +37,8 @@ export interface DiscoveredPlugin {
   icon?: string;
   /** Whether this is a local-dir plugin (vs an installed package). */
   local: boolean;
+  /** Whether the plugin is currently enabled (not in `disabled_plugins`). */
+  enabled: boolean;
   /** UI pages the plugin contributes. */
   pages: PluginUIPage[];
 }
@@ -49,6 +53,7 @@ export interface DiscoveredPlugin {
 export function discoverPlugins(
   pluginsSetting: string | undefined,
   userDataDir: string,
+  disabled: ReadonlySet<string> = new Set(),
 ): DiscoveredPlugin[] {
   const out: DiscoveredPlugin[] = [];
   const seenDirs = new Set<string>();
@@ -63,6 +68,7 @@ export function discoverPlugins(
     const discovered = discoverPackage(specifier);
     if (discovered && !seenDirs.has(discovered.dir)) {
       seenDirs.add(discovered.dir);
+      discovered.enabled = !disabled.has(discovered.specifier);
       out.push(discovered);
     }
   }
@@ -70,6 +76,7 @@ export function discoverPlugins(
   for (const local of discoverLocalDir(path.join(userDataDir, "plugins"))) {
     if (!seenDirs.has(local.dir)) {
       seenDirs.add(local.dir);
+      local.enabled = !disabled.has(local.specifier);
       out.push(local);
     }
   }
@@ -163,6 +170,7 @@ function discoverLocalDir(dir: string): DiscoveredPlugin[] {
 
 interface RawPackageJson {
   name?: unknown;
+  version?: unknown;
   description?: unknown;
   author?: unknown;
   freestyle?: unknown;
@@ -195,7 +203,9 @@ function readManifest(
     specifier,
     dir,
     local,
+    enabled: true,
     pages: parsePluginPages(pkg.freestyle),
+    ...(typeof pkg.version === "string" ? { version: pkg.version } : {}),
     ...(typeof pkg.description === "string"
       ? { description: pkg.description }
       : {}),

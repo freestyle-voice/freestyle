@@ -125,6 +125,10 @@ declare global {
       // Plugins
       listPlugins: () => Promise<PluginInfo[]>;
       refreshPlugins: () => Promise<PluginInfo[]>;
+      setPluginEnabled: (
+        specifier: string,
+        enabled: boolean,
+      ) => Promise<PluginInfo[]>;
       showPluginView: (
         slug: string,
         pageId: string,

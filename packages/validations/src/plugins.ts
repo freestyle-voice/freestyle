@@ -44,3 +44,29 @@ export function pluginEntryParts(entry: PluginEntry): {
     ? { specifier: entry }
     : { specifier: entry[0], options: entry[1] };
 }
+
+/**
+ * The persisted `disabled_plugins` setting: a list of plugin specifiers the
+ * user has turned off. Disabled plugins remain installed (still shown in the
+ * hub) but their hooks don't load and their pages aren't shown.
+ */
+export const disabledPluginsSettingSchema = z.array(z.string().min(1));
+
+export type DisabledPluginsSetting = z.infer<
+  typeof disabledPluginsSettingSchema
+>;
+
+/** Coerce a persisted JSON string into a list of disabled plugin specifiers. */
+export function parseDisabledPlugins(
+  value: string | null | undefined,
+): DisabledPluginsSetting {
+  if (!value) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return [];
+  }
+  const result = disabledPluginsSettingSchema.safeParse(parsed);
+  return result.success ? result.data : [];
+}

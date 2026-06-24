@@ -97,11 +97,12 @@ import {
 import {
   plugins as appPlugins,
   FreestyleEventType,
-  fetchPluginsSetting,
+  fetchPluginSettings,
   initAppPlugins,
   OutputMode,
   PipelineStage,
   parseAppContext,
+  setPluginEnabled,
 } from "./plugins/index";
 import {
   initPluginUiHost,
@@ -251,8 +252,9 @@ function initPluginsForServer(): void {
   void initAppPlugins(getServerTarget());
   // Refresh UI plugin discovery now that the server (and `plugins` setting) is
   // reachable. No-op if the settings window hasn't been created yet.
-  void getPluginDiscoverySources().then(({ pluginsSetting, userDataDir }) =>
-    refreshPluginUi(pluginsSetting, userDataDir),
+  void getPluginDiscoverySources().then(
+    ({ pluginsSetting, userDataDir, disabledPlugins }) =>
+      refreshPluginUi(pluginsSetting, userDataDir, disabledPlugins),
   );
 }
 
@@ -615,10 +617,13 @@ function createSettingsWindow(initialPath?: string): void {
     window: settingsWindow,
     getBridgeConfig: getPluginBridgeConfig,
     getDiscoverySources: getPluginDiscoverySources,
+    setPluginEnabled: (specifier, enabled) =>
+      setPluginEnabled(getServerTarget(), specifier, enabled),
     onAction: handlePluginAction,
   });
-  void getPluginDiscoverySources().then(({ pluginsSetting, userDataDir }) =>
-    refreshPluginUi(pluginsSetting, userDataDir),
+  void getPluginDiscoverySources().then(
+    ({ pluginsSetting, userDataDir, disabledPlugins }) =>
+      refreshPluginUi(pluginsSetting, userDataDir, disabledPlugins),
   );
 
   const startPath = !onboardingDone ? "/onboarding" : (initialPath ?? "/today");
@@ -649,15 +654,22 @@ function getPluginBridgeConfig(): BridgeConfig {
 }
 
 /**
- * Resolve the `plugins` setting (over HTTP, so a remote server works too) plus
- * the user-data dir for UI plugin discovery.
+ * Resolve the `plugins` setting + disabled set (over HTTP, so a remote server
+ * works too) plus the user-data dir for UI plugin discovery.
  */
 async function getPluginDiscoverySources(): Promise<{
   pluginsSetting: string | undefined;
   userDataDir: string;
+  disabledPlugins: ReadonlySet<string>;
 }> {
-  const pluginsSetting = await fetchPluginsSetting(getServerTarget());
-  return { pluginsSetting, userDataDir: app.getPath("userData") };
+  const { pluginsSetting, disabled } = await fetchPluginSettings(
+    getServerTarget(),
+  );
+  return {
+    pluginsSetting,
+    userDataDir: app.getPath("userData"),
+    disabledPlugins: disabled,
+  };
 }
 
 /** Perform a host action requested by a plugin UI page over the bridge. */

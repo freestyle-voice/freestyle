@@ -381,9 +381,15 @@
     "loading": "Loading plugins…",
     "empty": "No plugins installed yet.",
     "localBadge": "Local",
-    "pageCount": "{{count}} page",
-    "pageCount_other": "{{count}} pages",
     "open": "Open",
+    "toggleEnabled": "Enable plugin",
+    "detail": {
+      "back": "Plugins",
+      "notFound": "This plugin is no longer installed.",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "pages": "Pages"
+    },
     "browse": {
       "registrySoonEyebrow": "Registry",
       "registrySoonTitle": "A searchable plugin registry is coming soon",

@@ -5,7 +5,11 @@ import {
   type PluginRegistry,
 } from "@freestyle/sdk";
 import { createAppLogger } from "@freestyle/utils";
-import { parsePluginsSetting, pluginEntryParts } from "@freestyle/validations";
+import {
+  parseDisabledPlugins,
+  parsePluginsSetting,
+  pluginEntryParts,
+} from "@freestyle/validations";
 import { readSetting } from "../db.js";
 import { captureException } from "../posthog.js";
 import { buildPluginContext } from "./context.js";
@@ -16,12 +20,15 @@ const log = createAppLogger("plugins");
  * Load all plugins for the server process via the shared SDK loader, returning
  * a ready-to-use {@link PluginRegistry}. Sources, in load order: npm/module
  * specifiers from the `plugins` setting, then local files in
- * `<userData>/plugins/`.
+ * `<userData>/plugins/`. Specifiers in `disabled_plugins` are skipped.
  */
 export async function loadServerPlugins(): Promise<PluginRegistry> {
-  const entries: PluginEntry[] = parsePluginsSetting(
-    readSetting("plugins"),
-  ).map((entry) => pluginEntryParts(entry));
+  const disabled = new Set(
+    parseDisabledPlugins(readSetting("disabled_plugins")),
+  );
+  const entries: PluginEntry[] = parsePluginsSetting(readSetting("plugins"))
+    .map((entry) => pluginEntryParts(entry))
+    .filter((entry) => !disabled.has(entry.specifier));
   const localDir = defaultLocalPluginsDir();
 
   return loadPlugins({

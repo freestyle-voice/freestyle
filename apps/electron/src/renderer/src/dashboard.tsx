@@ -15,6 +15,7 @@ import HelpPage from "@renderer/pages/help";
 import HistoryPage from "@renderer/pages/history";
 import ModelsPage from "@renderer/pages/models";
 import NotFoundPage from "@renderer/pages/not-found";
+import PluginDetailPage from "@renderer/pages/plugins/plugin-detail";
 import PluginPage from "@renderer/pages/plugins/plugin-page";
 import PluginsPage from "@renderer/pages/plugins/plugins";
 import SettingsPage from "@renderer/pages/settings";
@@ -85,6 +86,10 @@ createRoot(document.getElementById("root")!).render(
                       />
                       <Route path="/help" element={<HelpPage />} />
                       <Route path="/plugins" element={<PluginsPage />} />
+                      <Route
+                        path="/plugins/:slug"
+                        element={<PluginDetailPage />}
+                      />
                       <Route
                         path="/plugins/:slug/:pageId"
                         element={<PluginPage />}

@@ -71,6 +71,12 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     return c.json({ error: "Empty audio data" }, 400);
   }
 
+  log.debug(
+    `received audio: ${audioData.length} bytes, header=${String.fromCharCode(
+      ...audioData.slice(0, 4),
+    )} contentType=${contentType.slice(0, 40)}`,
+  );
+
   const appContext = decodeAppContext(c.req.header("x-app-context"));
 
   let audioDurationMs = 0;

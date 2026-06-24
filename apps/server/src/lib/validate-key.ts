@@ -86,7 +86,10 @@ async function validateDeepgram(apiKey: string): Promise<ValidationResult> {
 }
 
 async function validateElevenLabs(apiKey: string): Promise<ValidationResult> {
-  const res = await fetch("https://api.elevenlabs.io/v1/user", {
+  // Use /v1/models, which a Speech-to-Text-scoped key can reach. /v1/user
+  // requires the user_read permission, so a valid STT-only key would 401 there
+  // and be wrongly rejected.
+  const res = await fetch("https://api.elevenlabs.io/v1/models", {
     headers: { "xi-api-key": apiKey },
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });

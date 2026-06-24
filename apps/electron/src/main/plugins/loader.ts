@@ -3,7 +3,11 @@ import type { HookFailure, PluginEntry } from "@freestyle/sdk";
 import { loadPlugins, type PluginRegistry } from "@freestyle/sdk";
 import type { AppType } from "@freestyle/server";
 import { createAppLogger } from "@freestyle/utils";
-import { parsePluginsSetting, pluginEntryParts } from "@freestyle/validations";
+import {
+  parseDisabledPlugins,
+  parsePluginsSetting,
+  pluginEntryParts,
+} from "@freestyle/validations";
 import { hc } from "hono/client";
 import { buildPluginContext, type SettingsSnapshot } from "./context.js";
 
@@ -34,9 +38,10 @@ export async function loadAppPlugins(
 ): Promise<PluginRegistry> {
   const snapshot = await fetchSettings(target);
 
-  const entries: PluginEntry[] = parsePluginsSetting(snapshot.plugins).map(
-    (entry) => pluginEntryParts(entry),
-  );
+  const disabled = new Set(parseDisabledPlugins(snapshot.disabled_plugins));
+  const entries: PluginEntry[] = parsePluginsSetting(snapshot.plugins)
+    .map((entry) => pluginEntryParts(entry))
+    .filter((entry) => !disabled.has(entry.specifier));
   const localDir = path.join(target.directory, "plugins");
 
   return loadPlugins({
@@ -50,15 +55,43 @@ export async function loadAppPlugins(
 }
 
 /**
- * Fetch just the `plugins` setting value over HTTP. Used by the UI plugin
- * discovery (which needs the same list as hook loading, including for a remote
- * server). Returns `undefined` when unset or unreachable.
+ * Fetch the `plugins` list and the set of disabled specifiers over HTTP. Used
+ * by the UI plugin discovery (which needs the same data as hook loading,
+ * including for a remote server).
  */
-export async function fetchPluginsSetting(
+export async function fetchPluginSettings(
   target: ServerTarget,
-): Promise<string | undefined> {
+): Promise<{ pluginsSetting: string | undefined; disabled: Set<string> }> {
   const snapshot = await fetchSettings(target);
-  return snapshot.plugins;
+  return {
+    pluginsSetting: snapshot.plugins,
+    disabled: new Set(parseDisabledPlugins(snapshot.disabled_plugins)),
+  };
+}
+
+/**
+ * Persist a plugin's enabled state by updating the `disabled_plugins` setting
+ * over HTTP. Adding to the list disables the plugin; removing re-enables it.
+ */
+export async function setPluginEnabled(
+  target: ServerTarget,
+  specifier: string,
+  enabled: boolean,
+): Promise<void> {
+  const { disabled } = await fetchPluginSettings(target);
+  if (enabled) disabled.delete(specifier);
+  else disabled.add(specifier);
+
+  const client = hc<AppType>(target.baseUrl, {
+    headers: target.token ? { Authorization: `Bearer ${target.token}` } : {},
+  });
+  await client.api.settings[":key"].$put(
+    {
+      param: { key: "disabled_plugins" },
+      json: { value: JSON.stringify([...disabled]) },
+    },
+    { init: { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) } },
+  );
 }
 
 /**

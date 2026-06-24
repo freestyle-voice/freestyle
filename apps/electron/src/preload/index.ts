@@ -267,6 +267,11 @@ const api = {
   listPlugins: (): Promise<PluginInfo[]> => ipcRenderer.invoke("plugins:list"),
   refreshPlugins: (): Promise<PluginInfo[]> =>
     ipcRenderer.invoke("plugins:refresh"),
+  setPluginEnabled: (
+    specifier: string,
+    enabled: boolean,
+  ): Promise<PluginInfo[]> =>
+    ipcRenderer.invoke("plugins:set-enabled", specifier, enabled),
   showPluginView: (
     slug: string,
     pageId: string,

@@ -1,18 +1,13 @@
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
+import { Switch } from "@renderer/components/ui/switch";
 import type { PluginInfo } from "@shared/plugins";
-import {
-  ArrowRight,
-  Check,
-  Copy,
-  type LucideIcon,
-  icons as lucideIcons,
-  Puzzle,
-} from "lucide-react";
+import { Check, ChevronRight, Copy, Puzzle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
+import { pluginDisplayName, resolvePluginIcon } from "./helpers";
 
 type Tab = "installed" | "browse";
 
@@ -73,7 +68,11 @@ export default function PluginsPage(): React.JSX.Element {
         />
 
         {tab === "installed" ? (
-          <InstalledTab loading={loading} plugins={plugins} />
+          <InstalledTab
+            loading={loading}
+            plugins={plugins}
+            onChange={setPlugins}
+          />
         ) : (
           <BrowseTab />
         )}
@@ -85,9 +84,11 @@ export default function PluginsPage(): React.JSX.Element {
 function InstalledTab({
   loading,
   plugins,
+  onChange,
 }: {
   loading: boolean;
   plugins: PluginInfo[];
+  onChange: (plugins: PluginInfo[]) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
 
@@ -107,73 +108,73 @@ function InstalledTab({
   return (
     <div className="flex flex-col gap-3">
       {plugins.map((plugin) => (
-        <PluginCard key={plugin.name} plugin={plugin} />
+        <PluginCard key={plugin.name} plugin={plugin} onChange={onChange} />
       ))}
     </div>
   );
 }
 
-function PluginCard({ plugin }: { plugin: PluginInfo }): React.JSX.Element {
+function PluginCard({
+  plugin,
+  onChange,
+}: {
+  plugin: PluginInfo;
+  onChange: (plugins: PluginInfo[]) => void;
+}): React.JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const page = plugin.pages[0];
+  const Icon = resolvePluginIcon(plugin.icon ?? plugin.pages[0]?.icon);
 
-  const Icon = resolveIcon(plugin.icon ?? page?.icon);
+  const toggle = async (enabled: boolean): Promise<void> => {
+    onChange(await window.api.setPluginEnabled(plugin.specifier, enabled));
+  };
 
   return (
-    <div className="border-border bg-card hover:border-foreground/15 group flex items-center gap-4 rounded-[14px] border p-4 transition-colors">
-      <div className="border-border bg-accent/40 flex size-11 shrink-0 items-center justify-center rounded-[10px] border">
-        <Icon className="text-primary size-5" strokeWidth={1.7} />
-      </div>
+    <div className="border-border bg-card hover:border-foreground/15 flex w-full items-center gap-4 rounded-[14px] border p-4 text-left transition-colors">
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-4"
+        onClick={() => navigate(`/plugins/${plugin.slug}`)}
+      >
+        <div className="border-border bg-accent/40 flex size-11 shrink-0 items-center justify-center rounded-[10px] border">
+          <Icon className="text-primary size-5" strokeWidth={1.7} />
+        </div>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-foreground truncate text-[14.5px] font-medium">
-            {displayName(plugin)}
-          </span>
-          {plugin.local ? (
-            <Badge
-              variant="outline"
-              className="mono text-[9px] tracking-[0.14em]"
-            >
-              {t("plugins.localBadge")}
-            </Badge>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-foreground truncate text-[14.5px] font-medium">
+              {pluginDisplayName(plugin)}
+            </span>
+            {plugin.version ? (
+              <span className="mono text-muted-foreground text-[10px]">
+                v{plugin.version}
+              </span>
+            ) : null}
+            {plugin.local ? (
+              <Badge
+                variant="outline"
+                className="mono text-[9px] tracking-[0.14em]"
+              >
+                {t("plugins.localBadge")}
+              </Badge>
+            ) : null}
+          </div>
+          {plugin.description ? (
+            <p className="text-muted-foreground mt-0.5 line-clamp-1 text-[13px]">
+              {plugin.description}
+            </p>
           ) : null}
         </div>
-        {plugin.description ? (
-          <p className="text-muted-foreground mt-0.5 line-clamp-1 text-[13px]">
-            {plugin.description}
-          </p>
-        ) : null}
-      </div>
+        <ChevronRight className="text-muted-foreground size-4 shrink-0" />
+      </button>
 
-      {page ? (
-        <Button
-          variant="outline"
-          size="sm"
-          className="shrink-0"
-          onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
-        >
-          {t("plugins.open")}
-          <ArrowRight data-icon="inline-end" />
-        </Button>
-      ) : null}
+      <Switch
+        checked={plugin.enabled}
+        onCheckedChange={(v) => void toggle(v)}
+        aria-label={t("plugins.toggleEnabled")}
+      />
     </div>
   );
-}
-
-/**
- * Resolve a lucide icon by name, accepting PascalCase (`FileMusic`) or
- * kebab-case (`file-music`). Falls back to a puzzle piece.
- */
-function resolveIcon(name: string | undefined): LucideIcon {
-  if (!name) return Puzzle;
-  const pascal = name
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join("");
-  return (lucideIcons as Record<string, LucideIcon>)[pascal] ?? Puzzle;
 }
 
 function BrowseTab(): React.JSX.Element {
@@ -243,20 +244,4 @@ function CodeExample({ value }: { value: string }): React.JSX.Element {
       </Button>
     </div>
   );
-}
-
-/**
- * Turn a package name into a friendly title: strip the scope and any
- * `(freestyle-)plugin-` prefix, then Title Case the remaining words.
- */
-function displayName(plugin: PluginInfo): string {
-  const base = plugin.name
-    .replace(/^@[^/]+\//, "")
-    .replace(/^freestyle-plugin-/, "")
-    .replace(/^plugin-/, "");
-  return base
-    .split(/[-_]/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
 }

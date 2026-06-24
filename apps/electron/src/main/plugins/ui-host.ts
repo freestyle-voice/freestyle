@@ -31,7 +31,10 @@ export interface PluginUiHostDeps {
   getDiscoverySources: () => Promise<{
     pluginsSetting: string | undefined;
     userDataDir: string;
+    disabledPlugins: ReadonlySet<string>;
   }>;
+  /** Persist a plugin's enabled state (writes the `disabled_plugins` setting). */
+  setPluginEnabled: (specifier: string, enabled: boolean) => Promise<void>;
   /** Perform a host action requested by a plugin page. */
   onAction: <C extends keyof HostActions>(
     channel: C,
@@ -68,10 +71,22 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
   );
 
   ipcMain.handle("plugins:refresh", async () => {
-    const { pluginsSetting, userDataDir } = await deps.getDiscoverySources();
-    refreshDiscoveredPlugins(pluginsSetting, userDataDir);
+    const { pluginsSetting, userDataDir, disabledPlugins } =
+      await deps.getDiscoverySources();
+    refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);
     return serializePlugins(getDiscoveredPlugins());
   });
+
+  ipcMain.handle(
+    "plugins:set-enabled",
+    async (_e, specifier: string, enabled: boolean) => {
+      await deps.setPluginEnabled(specifier, enabled);
+      const { pluginsSetting, userDataDir, disabledPlugins } =
+        await deps.getDiscoverySources();
+      refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);
+      return serializePlugins(getDiscoveredPlugins());
+    },
+  );
 
   ipcMain.handle(
     "plugin-view:show",
@@ -126,14 +141,16 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
     async (_e, req: PluginFetchRequest): Promise<PluginFetchResponse> => {
       const config = deps.getBridgeConfig();
       const url = `${config.serverUrl}${req.path}`;
+      const body = deserializeBody(req.body);
+
       const headers = new Headers(req.headers);
       if (config.token) headers.set("Authorization", `Bearer ${config.token}`);
+      // For a FormData body, undici must generate the multipart Content-Type
+      // (with its boundary). A caller-supplied content-type would suppress that
+      // and leave the server unable to parse the parts, so drop it here.
+      if (req.body.kind === "form") headers.delete("content-type");
 
-      const res = await fetch(url, {
-        method: req.method,
-        headers,
-        body: deserializeBody(req.body),
-      });
+      const res = await fetch(url, { method: req.method, headers, body });
 
       const resHeaders: Record<string, string> = {};
       res.headers.forEach((value, key) => {
@@ -215,8 +232,9 @@ function deserializeBody(body: SerializedBody): BodyInit | undefined {
 export function refreshPluginUi(
   pluginsSetting: string | undefined,
   userDataDir: string,
+  disabled: ReadonlySet<string> = new Set(),
 ): ReturnType<typeof serializePlugins> {
-  refreshDiscoveredPlugins(pluginsSetting, userDataDir);
+  refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabled);
   return serializePlugins(getDiscoveredPlugins());
 }
 
@@ -227,7 +245,9 @@ function serializePlugins(plugins: readonly DiscoveredPlugin[]) {
     slug: p.slug,
     specifier: p.specifier,
     local: p.local,
+    enabled: p.enabled,
     pages: p.pages,
+    ...(p.version ? { version: p.version } : {}),
     ...(p.description ? { description: p.description } : {}),
     ...(p.author ? { author: p.author } : {}),
     ...(p.icon ? { icon: p.icon } : {}),

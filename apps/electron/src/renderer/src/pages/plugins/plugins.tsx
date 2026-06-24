@@ -3,7 +3,7 @@ import { Button } from "@renderer/components/ui/button";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import { Switch } from "@renderer/components/ui/switch";
 import type { PluginInfo } from "@shared/plugins";
-import { Check, ChevronRight, Copy, Puzzle } from "lucide-react";
+import { ArrowRight, Check, Copy, Info, Puzzle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -125,54 +125,70 @@ function PluginCard({
   const navigate = useNavigate();
   const Icon = resolvePluginIcon(plugin.icon ?? plugin.pages[0]?.icon);
 
+  const page = plugin.pages[0];
+
   const toggle = async (enabled: boolean): Promise<void> => {
     onChange(await window.api.setPluginEnabled(plugin.specifier, enabled));
   };
 
   return (
-    <div className="border-border bg-card hover:border-foreground/15 flex w-full items-center gap-4 rounded-[14px] border p-4 text-left transition-colors">
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 items-center gap-4"
-        onClick={() => navigate(`/plugins/${plugin.slug}`)}
-      >
-        <div className="border-border bg-accent/40 flex size-11 shrink-0 items-center justify-center rounded-[10px] border">
-          <Icon className="text-primary size-5" strokeWidth={1.7} />
-        </div>
+    <div className="border-border bg-card hover:border-foreground/15 flex w-full items-center gap-4 rounded-[14px] border p-4 transition-colors">
+      <div className="border-border bg-accent/40 flex size-11 shrink-0 items-center justify-center rounded-[10px] border">
+        <Icon className="text-primary size-5" strokeWidth={1.7} />
+      </div>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="text-foreground truncate text-[14.5px] font-medium">
-              {pluginDisplayName(plugin)}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-foreground truncate text-[14.5px] font-medium">
+            {pluginDisplayName(plugin)}
+          </span>
+          {plugin.version ? (
+            <span className="mono text-muted-foreground text-[10px]">
+              v{plugin.version}
             </span>
-            {plugin.version ? (
-              <span className="mono text-muted-foreground text-[10px]">
-                v{plugin.version}
-              </span>
-            ) : null}
-            {plugin.local ? (
-              <Badge
-                variant="outline"
-                className="mono text-[9px] tracking-[0.14em]"
-              >
-                {t("plugins.localBadge")}
-              </Badge>
-            ) : null}
-          </div>
-          {plugin.description ? (
-            <p className="text-muted-foreground mt-0.5 line-clamp-1 text-[13px]">
-              {plugin.description}
-            </p>
+          ) : null}
+          {plugin.local ? (
+            <Badge
+              variant="outline"
+              className="mono text-[9px] tracking-[0.14em]"
+            >
+              {t("plugins.localBadge")}
+            </Badge>
           ) : null}
         </div>
-        <ChevronRight className="text-muted-foreground size-4 shrink-0" />
-      </button>
+        {plugin.description ? (
+          <p className="text-muted-foreground mt-0.5 line-clamp-1 text-[13px]">
+            {plugin.description}
+          </p>
+        ) : null}
+      </div>
 
-      <Switch
-        checked={plugin.enabled}
-        onCheckedChange={(v) => void toggle(v)}
-        aria-label={t("plugins.toggleEnabled")}
-      />
+      <div className="flex shrink-0 items-center gap-2">
+        {page ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!plugin.enabled}
+            onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
+          >
+            {t("plugins.open")}
+            <ArrowRight data-icon="inline-end" />
+          </Button>
+        ) : null}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("plugins.detail.title")}
+          onClick={() => navigate(`/plugins/${plugin.slug}`)}
+        >
+          <Info className="text-muted-foreground" />
+        </Button>
+        <Switch
+          checked={plugin.enabled}
+          onCheckedChange={(v) => void toggle(v)}
+          aria-label={t("plugins.toggleEnabled")}
+        />
+      </div>
     </div>
   );
 }

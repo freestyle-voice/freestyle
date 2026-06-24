@@ -384,6 +384,7 @@
     "open": "Open",
     "toggleEnabled": "Enable plugin",
     "detail": {
+      "title": "Details",
       "back": "Plugins",
       "notFound": "This plugin is no longer installed.",
       "enabled": "Enabled",

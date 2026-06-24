@@ -23,11 +23,15 @@ export interface PluginUiHostDeps {
   window: BrowserWindow;
   /** Resolve the bridge config (server URL/token + theme tokens) on demand. */
   getBridgeConfig: () => BridgeConfig;
-  /** Current `plugins` setting value + the user-data dir, for discovery. */
-  getDiscoverySources: () => {
+  /**
+   * Resolve the current `plugins` setting value + the user-data dir for
+   * discovery. Async because the setting is read from the (possibly remote)
+   * server over HTTP.
+   */
+  getDiscoverySources: () => Promise<{
     pluginsSetting: string | undefined;
     userDataDir: string;
-  };
+  }>;
   /** Perform a host action requested by a plugin page. */
   onAction: <C extends keyof HostActions>(
     channel: C,
@@ -63,8 +67,8 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
     serializePlugins(getDiscoveredPlugins()),
   );
 
-  ipcMain.handle("plugins:refresh", () => {
-    const { pluginsSetting, userDataDir } = deps.getDiscoverySources();
+  ipcMain.handle("plugins:refresh", async () => {
+    const { pluginsSetting, userDataDir } = await deps.getDiscoverySources();
     refreshDiscoveredPlugins(pluginsSetting, userDataDir);
     return serializePlugins(getDiscoveredPlugins());
   });
@@ -73,11 +77,11 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
     "plugin-view:show",
     (
       _e,
-      pluginName: string,
+      slug: string,
       pageId: string,
       bounds: ViewBounds,
       tokens?: Record<string, string>,
-    ) => viewManager?.show(pluginName, pageId, bounds, tokens) ?? false,
+    ) => viewManager?.show(slug, pageId, bounds, tokens) ?? false,
   );
 
   ipcMain.on("plugin-view:set-bounds", (_e, bounds: ViewBounds) => {
@@ -87,6 +91,13 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
   ipcMain.on("plugin-view:hide", () => {
     viewManager?.hide();
   });
+
+  // The plugin frame's preload fetches its bridge config (server URL/token +
+  // theme tokens) over IPC, so the token never appears in process arguments.
+  ipcMain.handle(
+    "plugin-bridge:config",
+    () => viewManager?.getConfig() ?? null,
+  );
 
   ipcMain.handle(
     "plugin-bridge:action",
@@ -121,6 +132,7 @@ export function refreshPluginUi(
 function serializePlugins(plugins: readonly DiscoveredPlugin[]) {
   return plugins.map((p) => ({
     name: p.name,
+    slug: p.slug,
     specifier: p.specifier,
     local: p.local,
     pages: p.pages,

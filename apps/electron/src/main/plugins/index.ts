@@ -8,6 +8,7 @@ export {
   parseAppContext,
 } from "@freestyle/sdk";
 export type { ServerTarget } from "./loader.js";
+export { fetchPluginsSetting } from "./loader.js";
 
 let registry: PluginRegistry = new PluginRegistry();
 let initialized = false;

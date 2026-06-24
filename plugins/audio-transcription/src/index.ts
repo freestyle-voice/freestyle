@@ -11,7 +11,7 @@ import type { Plugin } from "@freestyle/sdk";
  */
 export default function audioTranscriptionPlugin(): Plugin {
   return {
-    name: "freestyle-plugin-audio-transcription",
+    name: "@freestyle/plugin-audio-transcription",
     setup({ logger, mode }) {
       logger.info(`audio-transcription ready on ${mode}`);
     },

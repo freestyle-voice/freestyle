@@ -1,11 +1,12 @@
-import type { FreestyleBridge, HostActions, HostEvents } from "@freestyle/sdk";
+import type { FreestyleBridge, HostActions } from "@freestyle/sdk";
 import { contextBridge, ipcRenderer } from "electron";
 
 /**
  * Preload injected into every plugin UI page (running in a sandboxed
  * WebContentsView). Exposes the `window.freestyle` bridge — the only privileged
  * surface available to plugin web content. Host config (server URL/token and
- * theme tokens) is passed as preload arguments by the view manager.
+ * theme tokens) is fetched from the main process over IPC, keeping the token
+ * out of process arguments.
  */
 
 interface BridgeConfig {
@@ -14,19 +15,7 @@ interface BridgeConfig {
   tokens?: Record<string, string>;
 }
 
-function readConfig(): BridgeConfig {
-  // The view manager appends `--freestyle-config=<json>` to the preload args.
-  const prefix = "--freestyle-config=";
-  const arg = process.argv.find((a) => a.startsWith(prefix));
-  if (!arg) return { serverUrl: "" };
-  try {
-    return JSON.parse(arg.slice(prefix.length)) as BridgeConfig;
-  } catch {
-    return { serverUrl: "" };
-  }
-}
-
-const config = readConfig();
+let config: BridgeConfig = { serverUrl: "" };
 
 function applyTokens(tokens: Record<string, string> | undefined): void {
   if (!tokens) return;
@@ -36,22 +25,35 @@ function applyTokens(tokens: Record<string, string> | undefined): void {
   }
 }
 
-// Apply theme tokens as soon as the document is available.
-if (config.tokens) {
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () =>
-      applyTokens(config.tokens),
-    );
-  } else {
-    applyTokens(config.tokens);
-  }
-}
+// Fetch config as early as possible and apply theme tokens once the document
+// is ready. The bridge methods read `config` lazily, so they work regardless of
+// when this resolves.
+const ready = ipcRenderer
+  .invoke("plugin-bridge:config")
+  .then((value: BridgeConfig | null) => {
+    if (value) config = value;
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", () =>
+        applyTokens(config.tokens),
+      );
+    } else {
+      applyTokens(config.tokens);
+    }
+  })
+  .catch(() => {
+    /* leave defaults */
+  });
 
 const bridge: FreestyleBridge = {
-  serverUrl: config.serverUrl,
-  ...(config.token ? { token: config.token } : {}),
+  get serverUrl() {
+    return config.serverUrl;
+  },
+  get token() {
+    return config.token;
+  },
 
-  api(path, init) {
+  async api(path, init) {
+    await ready;
     const url = `${config.serverUrl}${path}`;
     const headers = new Headers(init?.headers);
     if (config.token) headers.set("Authorization", `Bearer ${config.token}`);
@@ -60,17 +62,6 @@ const bridge: FreestyleBridge = {
 
   invoke<C extends keyof HostActions>(channel: C, payload: HostActions[C]) {
     return ipcRenderer.invoke("plugin-bridge:action", channel, payload);
-  },
-
-  on<E extends keyof HostEvents>(
-    event: E,
-    listener: (payload: HostEvents[E]) => void,
-  ) {
-    const wrapped = (_e: unknown, payload: HostEvents[E]): void =>
-      listener(payload);
-    ipcRenderer.on(`plugin-bridge:event:${event}`, wrapped);
-    return () =>
-      ipcRenderer.removeListener(`plugin-bridge:event:${event}`, wrapped);
   },
 };
 

@@ -268,12 +268,12 @@ const api = {
   refreshPlugins: (): Promise<PluginInfo[]> =>
     ipcRenderer.invoke("plugins:refresh"),
   showPluginView: (
-    pluginName: string,
+    slug: string,
     pageId: string,
     bounds: PluginViewBounds,
     tokens?: Record<string, string>,
   ): Promise<boolean> =>
-    ipcRenderer.invoke("plugin-view:show", pluginName, pageId, bounds, tokens),
+    ipcRenderer.invoke("plugin-view:show", slug, pageId, bounds, tokens),
   setPluginViewBounds: (bounds: PluginViewBounds): void =>
     ipcRenderer.send("plugin-view:set-bounds", bounds),
   hidePluginView: (): void => ipcRenderer.send("plugin-view:hide"),

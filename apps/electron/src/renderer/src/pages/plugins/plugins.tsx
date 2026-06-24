@@ -139,7 +139,7 @@ function PluginCard({ plugin }: { plugin: PluginInfo }): React.JSX.Element {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => navigate(`/plugins/${plugin.name}/${page.id}`)}
+          onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
         >
           {t("plugins.open")}
         </Button>

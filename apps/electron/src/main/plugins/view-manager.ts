@@ -27,7 +27,11 @@ export interface BridgeConfig {
 export class PluginViewManager {
   private view: WebContentsView | null = null;
   private window: BrowserWindow | null = null;
-  private current: { pluginName: string; pageId: string } | null = null;
+  private current: { slug: string; pageId: string } | null = null;
+  /** Config for the current view, fetched by its preload over IPC on load. */
+  private pendingConfig:
+    | (BridgeConfig & { tokens?: Record<string, string> })
+    | null = null;
 
   constructor(
     private readonly preloadPath: string,
@@ -44,51 +48,57 @@ export class PluginViewManager {
   }
 
   /**
-   * Show `pluginName`/`pageId` at `bounds`. Loads the page's entry over the
+   * Show `slug`/`pageId` at `bounds`. Loads the page's entry over the
    * `freestyle-plugin://` scheme. Returns false when the page can't be found.
-   * The view is recreated when the target page changes so the bridge config
-   * (server URL/token/theme) is re-injected via preload args.
+   * The view is recreated when the target page changes so its preload picks up
+   * the current bridge config (fetched over IPC).
    */
   show(
-    pluginName: string,
+    slug: string,
     pageId: string,
     bounds: ViewBounds,
     tokens?: Record<string, string>,
   ): boolean {
     if (!this.window) return false;
 
-    const plugin = getDiscoveredPlugins().find((p) => p.name === pluginName);
+    const plugin = getDiscoveredPlugins().find((p) => p.slug === slug);
     const page = plugin?.pages.find((p) => p.id === pageId);
     if (!plugin || !page) {
-      log.warn(`unknown plugin page ${pluginName}/${pageId}`);
+      log.warn(`unknown plugin page ${slug}/${pageId}`);
       return false;
     }
 
-    const same =
-      this.current?.pluginName === pluginName &&
-      this.current?.pageId === pageId;
+    const same = this.current?.slug === slug && this.current?.pageId === pageId;
     if (same && this.view) {
       this.setBounds(bounds);
       return true;
     }
 
-    // Recreate the view for a new page so preload args carry fresh config.
+    // Recreate the view for a new page so the bridge config is re-injected.
     this.destroyView();
-    const config = JSON.stringify({ ...this.resolveConfig(), tokens });
     this.view = new WebContentsView({
       webPreferences: {
         preload: this.preloadPath,
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,
-        additionalArguments: [`--freestyle-config=${config}`],
       },
     });
+    this.pendingConfig = { ...this.resolveConfig(), tokens };
     this.window.contentView.addChildView(this.view);
     this.setBounds(bounds);
-    this.current = { pluginName, pageId };
-    void this.view.webContents.loadURL(pluginPageUrl(plugin.name, page.entry));
+    this.current = { slug, pageId };
+    void this.view.webContents
+      .loadURL(pluginPageUrl(plugin.slug, page.entry))
+      .catch(() => {
+        // Navigation can be superseded by a rapid page switch; ignore.
+      });
     return true;
+  }
+
+  /** The config the current plugin view's preload should receive over IPC. */
+  getConfig(): (BridgeConfig & { tokens?: Record<string, string> }) | null {
+    return this.pendingConfig;
   }
 
   /** Update the view's position/size (on resize, scroll, or layout change). */
@@ -114,6 +124,7 @@ export class PluginViewManager {
     this.view.webContents.close();
     this.view = null;
     this.current = null;
+    this.pendingConfig = null;
   }
 }
 

@@ -50,6 +50,18 @@ export async function loadAppPlugins(
 }
 
 /**
+ * Fetch just the `plugins` setting value over HTTP. Used by the UI plugin
+ * discovery (which needs the same list as hook loading, including for a remote
+ * server). Returns `undefined` when unset or unreachable.
+ */
+export async function fetchPluginsSetting(
+  target: ServerTarget,
+): Promise<string | undefined> {
+  const snapshot = await fetchSettings(target);
+  return snapshot.plugins;
+}
+
+/**
  * Fetch the server's `settings` table over HTTP. Returns an empty snapshot when
  * the server is unreachable or rejects the request — plugins then load with no
  * settings rather than blocking output delivery.

@@ -29,6 +29,21 @@ export interface PluginManifest {
   contributes?: PluginContributes;
 }
 
+/**
+ * Derive a URL- and route-safe slug from a package name, e.g.
+ * `@freestyle/plugin-audio-transcription` → `freestyle-plugin-audio-transcription`.
+ * Used as the `freestyle-plugin://` host and the `/plugins/:slug/...` route
+ * segment, since package names can contain `@` and `/` which are unsafe in both.
+ */
+export function pluginSlug(name: string): string {
+  return name
+    .replace(/^@/, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

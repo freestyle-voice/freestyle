@@ -86,7 +86,7 @@ createRoot(document.getElementById("root")!).render(
                       <Route path="/help" element={<HelpPage />} />
                       <Route path="/plugins" element={<PluginsPage />} />
                       <Route
-                        path="/plugins/:pluginName/:pageId"
+                        path="/plugins/:slug/:pageId"
                         element={<PluginPage />}
                       />
                       <Route

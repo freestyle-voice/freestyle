@@ -40,9 +40,10 @@ export function registerPluginSchemePrivileges(): void {
 export function registerPluginProtocol(): void {
   protocol.handle(PLUGIN_SCHEME, (request) => {
     const url = new URL(request.url);
-    // URL shape: freestyle-plugin://<pluginName>/<assetPath>
-    const pluginName = decodeURIComponent(url.hostname);
-    const filePath = resolvePluginAsset(discovered, pluginName, url.pathname);
+    // URL shape: freestyle-plugin://<pluginSlug>/<assetPath>. The slug is
+    // already URL-safe (no @ or /), so the host round-trips cleanly through
+    // Chromium's standard-scheme canonicalization.
+    const filePath = resolvePluginAsset(discovered, url.hostname, url.pathname);
     if (!filePath) {
       return new Response("Not found", { status: 404 });
     }
@@ -74,8 +75,7 @@ export function getDiscoveredPlugins(): DiscoveredPlugin[] {
 }
 
 /** Build the `freestyle-plugin://` URL for a plugin page's entry asset. */
-export function pluginPageUrl(pluginName: string, entry: string): string {
-  const host = encodeURIComponent(pluginName);
+export function pluginPageUrl(pluginSlug: string, entry: string): string {
   const assetPath = entry.split("/").map(encodeURIComponent).join("/");
-  return `${PLUGIN_SCHEME}://${host}/${assetPath}`;
+  return `${PLUGIN_SCHEME}://${pluginSlug}/${assetPath}`;
 }

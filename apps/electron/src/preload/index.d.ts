@@ -126,7 +126,7 @@ declare global {
       listPlugins: () => Promise<PluginInfo[]>;
       refreshPlugins: () => Promise<PluginInfo[]>;
       showPluginView: (
-        pluginName: string,
+        slug: string,
         pageId: string,
         bounds: PluginViewBounds,
         tokens?: Record<string, string>,

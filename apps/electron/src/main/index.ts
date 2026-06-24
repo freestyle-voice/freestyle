@@ -97,6 +97,7 @@ import {
 import {
   plugins as appPlugins,
   FreestyleEventType,
+  fetchPluginsSetting,
   initAppPlugins,
   OutputMode,
   PipelineStage,
@@ -247,14 +248,12 @@ function getServerBaseUrl(): string {
  * underlying init is idempotent, so repeated calls are harmless.
  */
 function initPluginsForServer(): void {
-  void initAppPlugins({
-    baseUrl: getServerBaseUrl(),
-    token: getServerToken(),
-    directory: app.getPath("userData"),
-  });
-  // Refresh UI plugin discovery now that the database (and `plugins` setting)
-  // is reachable. No-op if the settings window hasn't been created yet.
-  refreshPluginUi(readPluginsSetting(), app.getPath("userData"));
+  void initAppPlugins(getServerTarget());
+  // Refresh UI plugin discovery now that the server (and `plugins` setting) is
+  // reachable. No-op if the settings window hasn't been created yet.
+  void getPluginDiscoverySources().then(({ pluginsSetting, userDataDir }) =>
+    refreshPluginUi(pluginsSetting, userDataDir),
+  );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -615,16 +614,29 @@ function createSettingsWindow(initialPath?: string): void {
   initPluginUiHost({
     window: settingsWindow,
     getBridgeConfig: getPluginBridgeConfig,
-    getDiscoverySources: () => ({
-      pluginsSetting: readPluginsSetting(),
-      userDataDir: app.getPath("userData"),
-    }),
+    getDiscoverySources: getPluginDiscoverySources,
     onAction: handlePluginAction,
   });
-  refreshPluginUi(readPluginsSetting(), app.getPath("userData"));
+  void getPluginDiscoverySources().then(({ pluginsSetting, userDataDir }) =>
+    refreshPluginUi(pluginsSetting, userDataDir),
+  );
 
   const startPath = !onboardingDone ? "/onboarding" : (initialPath ?? "/today");
   settingsWindow.loadURL(getDashboardURL(startPath));
+}
+
+/** The (possibly remote) server target for plugin settings/discovery. */
+function getServerTarget(): {
+  baseUrl: string;
+  token?: string;
+  directory: string;
+} {
+  const token = getServerToken();
+  return {
+    baseUrl: getServerBaseUrl(),
+    ...(token ? { token } : {}),
+    directory: app.getPath("userData"),
+  };
 }
 
 /** Bridge config (server URL/token) injected into plugin UI frames. */
@@ -636,34 +648,24 @@ function getPluginBridgeConfig(): BridgeConfig {
   };
 }
 
-/** Read the `plugins` setting directly from the local SQLite database. */
-function readPluginsSetting(): string | undefined {
-  try {
-    const dbPath = process.env.FREESTYLE_DB_PATH;
-    if (!dbPath) return undefined;
-    const { DatabaseSync } = require("node:sqlite");
-    const db = new DatabaseSync(dbPath, { readOnly: true });
-    const row = db
-      .prepare("SELECT value FROM settings WHERE key = 'plugins'")
-      .get() as { value: string } | undefined;
-    db.close();
-    return row?.value;
-  } catch {
-    return undefined;
-  }
+/**
+ * Resolve the `plugins` setting (over HTTP, so a remote server works too) plus
+ * the user-data dir for UI plugin discovery.
+ */
+async function getPluginDiscoverySources(): Promise<{
+  pluginsSetting: string | undefined;
+  userDataDir: string;
+}> {
+  const pluginsSetting = await fetchPluginsSetting(getServerTarget());
+  return { pluginsSetting, userDataDir: app.getPath("userData") };
 }
 
 /** Perform a host action requested by a plugin UI page over the bridge. */
-async function handlePluginAction(
+function handlePluginAction(
   channel: keyof import("@freestyle/sdk").HostActions,
   payload: unknown,
-): Promise<void> {
+): void {
   switch (channel) {
-    case "paste": {
-      const { text } = payload as { text: string };
-      if (text) await pasteIntoFocusedApp(text, async () => {});
-      break;
-    }
     case "copy": {
       const { text } = payload as { text: string };
       if (text) clipboard.writeText(text);

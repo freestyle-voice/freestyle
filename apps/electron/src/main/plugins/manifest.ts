@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { type PluginUIPage, parsePluginPages } from "@freestyle/sdk";
+import {
+  type PluginUIPage,
+  parsePluginPages,
+  pluginSlug,
+} from "@freestyle/sdk";
 import { createAppLogger } from "@freestyle/utils";
 import { parsePluginsSetting, pluginEntryParts } from "@freestyle/validations";
 
@@ -13,6 +17,12 @@ const require = createRequire(import.meta.url);
 export interface DiscoveredPlugin {
   /** The package name from its `package.json` (or the local file name). */
   name: string;
+  /**
+   * A URL- and route-safe identifier derived from {@link name}. Used as the
+   * `freestyle-plugin://` host and the `/plugins/:slug/...` route segment, since
+   * package names can contain `@` and `/` which are unsafe in both.
+   */
+  slug: string;
   /** The install/specifier the plugin was discovered from. */
   specifier: string;
   /** Absolute path to the plugin package root (the dir holding package.json). */
@@ -118,8 +128,10 @@ function readManifest(
   }
 
   const dir = path.dirname(pkgJsonPath);
+  const name = typeof pkg.name === "string" ? pkg.name : path.basename(dir);
   return {
-    name: typeof pkg.name === "string" ? pkg.name : path.basename(dir),
+    name,
+    slug: pluginSlug(name),
     specifier,
     dir,
     local,
@@ -138,10 +150,10 @@ function readManifest(
  */
 export function resolvePluginAsset(
   plugins: readonly DiscoveredPlugin[],
-  pluginName: string,
+  pluginSlug: string,
   assetPath: string,
 ): string | null {
-  const plugin = plugins.find((p) => p.name === pluginName);
+  const plugin = plugins.find((p) => p.slug === pluginSlug);
   if (!plugin) return null;
 
   const decoded = decodeURIComponent(assetPath).replace(/^\/+/, "");

@@ -21,34 +21,21 @@ export interface FreestyleBridge {
    * });
    */
   api(path: string, init?: RequestInit): Promise<Response>;
-  /** Invoke a host action (paste text, show a toast, navigate, …). */
+  /** Invoke a host action (copy text, show a toast, navigate, …). */
   invoke<C extends keyof HostActions>(
     channel: C,
     payload: HostActions[C],
   ): Promise<void>;
-  /** Subscribe to a host event; returns an unsubscribe function. */
-  on<E extends keyof HostEvents>(
-    event: E,
-    listener: (payload: HostEvents[E]) => void,
-  ): () => void;
 }
 
 /** Actions a plugin page can ask the host to perform. */
 export interface HostActions {
-  /** Paste text into the user's focused application. */
-  paste: { text: string };
   /** Copy text to the clipboard. */
   copy: { text: string };
   /** Show a transient notification. */
   toast: { message: string; variant?: "info" | "success" | "error" };
   /** Navigate the host to an app route (e.g. back to the Plugins hub). */
   navigate: { to: string };
-}
-
-/** Events a plugin page can subscribe to. */
-export interface HostEvents {
-  /** The host theme changed; payload carries the new design tokens. */
-  themechange: { tokens: Record<string, string>; dark: boolean };
 }
 
 declare global {

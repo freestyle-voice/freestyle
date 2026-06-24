@@ -43,8 +43,8 @@ function readTokens(): Record<string, string> {
  * and tears the view down on unmount.
  */
 export default function PluginPage(): React.JSX.Element {
-  const { pluginName, pageId } = useParams<{
-    pluginName: string;
+  const { slug, pageId } = useParams<{
+    slug: string;
     pageId: string;
   }>();
   const navigate = useNavigate();
@@ -52,7 +52,7 @@ export default function PluginPage(): React.JSX.Element {
 
   // Show the native view and keep its bounds in sync with the placeholder.
   useLayoutEffect(() => {
-    if (!pluginName || !pageId) return;
+    if (!slug || !pageId) return;
     const el = placeholderRef.current;
     if (!el) return;
 
@@ -61,7 +61,7 @@ export default function PluginPage(): React.JSX.Element {
       return { x: r.x, y: r.y, width: r.width, height: r.height };
     };
 
-    void window.api.showPluginView(pluginName, pageId, measure(), readTokens());
+    void window.api.showPluginView(slug, pageId, measure(), readTokens());
 
     const sync = (): void => window.api.setPluginViewBounds(measure());
     const observer = new ResizeObserver(sync);
@@ -77,7 +77,7 @@ export default function PluginPage(): React.JSX.Element {
       scrollParent?.removeEventListener("scroll", sync);
       window.api.hidePluginView();
     };
-  }, [pluginName, pageId]);
+  }, [slug, pageId]);
 
   // Plugin pages can ask the host to navigate (e.g. back to the hub).
   useEffect(() => {

@@ -230,5 +230,6 @@ function serializePlugins(plugins: readonly DiscoveredPlugin[]) {
     pages: p.pages,
     ...(p.description ? { description: p.description } : {}),
     ...(p.author ? { author: p.author } : {}),
+    ...(p.icon ? { icon: p.icon } : {}),
   }));
 }

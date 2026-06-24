@@ -32,9 +32,8 @@ body {
 }
 
 .page {
-  max-width: 680px;
-  margin: 0 auto;
-  padding: 20px 28px 40px;
+  width: 100%;
+  padding: 20px 32px 40px;
 }
 
 .eyebrow {

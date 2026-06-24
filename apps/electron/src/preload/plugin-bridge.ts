@@ -135,11 +135,19 @@ const bridge: FreestyleBridge = {
       body: ArrayBuffer;
     };
 
-    return new Response(res.body, {
+    // A native Response can't survive the contextBridge boundary (its prototype
+    // is stripped), so return a plain object with method members — contextBridge
+    // proxies functions, so json()/text()/arrayBuffer() work in the page.
+    const bytes = res.body;
+    return {
+      ok: res.ok,
       status: res.status,
       statusText: res.statusText,
       headers: res.headers,
-    });
+      arrayBuffer: () => Promise.resolve(bytes),
+      text: () => Promise.resolve(new TextDecoder().decode(bytes)),
+      json: () => Promise.resolve(JSON.parse(new TextDecoder().decode(bytes))),
+    };
   },
 
   invoke<C extends keyof HostActions>(channel: C, payload: HostActions[C]) {

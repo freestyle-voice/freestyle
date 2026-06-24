@@ -11,21 +11,39 @@ export interface FreestyleBridge {
   /** Bearer token for the server API, when one is configured. */
   readonly token?: string;
   /**
-   * Pre-authed `fetch` to a server API path. The `path` is appended to
+   * Pre-authed request to a server API path. The `path` is appended to
    * {@link serverUrl}; the bearer token (if any) is attached automatically.
+   * The request is proxied through the host (the sandboxed page can't reach the
+   * loopback server directly), so this resolves a lightweight
+   * {@link FreestyleResponse} rather than a native `Response`.
    *
    * @example
    * const res = await window.freestyle.api("/api/transcribe", {
    *   method: "POST",
    *   body: formData,
    * });
+   * if (res.ok) console.log(await res.json());
    */
-  api(path: string, init?: RequestInit): Promise<Response>;
+  api(path: string, init?: RequestInit): Promise<FreestyleResponse>;
   /** Invoke a host action (copy text, show a toast, navigate, …). */
   invoke<C extends keyof HostActions>(
     channel: C,
     payload: HostActions[C],
   ): Promise<void>;
+}
+
+/**
+ * The result of a {@link FreestyleBridge.api} call. A minimal, host-bridgeable
+ * stand-in for `Response` exposing the parts plugins need.
+ */
+export interface FreestyleResponse {
+  readonly ok: boolean;
+  readonly status: number;
+  readonly statusText: string;
+  readonly headers: Record<string, string>;
+  json<T = unknown>(): Promise<T>;
+  text(): Promise<string>;
+  arrayBuffer(): Promise<ArrayBuffer>;
 }
 
 /** Actions a plugin page can ask the host to perform. */

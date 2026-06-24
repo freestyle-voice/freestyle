@@ -9,12 +9,12 @@
     "dist"
   ],
   "freestyle": {
+    "icon": "FileMusic",
     "contributes": {
       "pages": [
         {
           "id": "transcribe-files",
           "title": "Transcribe Files",
-          "icon": "FileAudio",
           "entry": "dist/ui/index.html"
         }
       ]

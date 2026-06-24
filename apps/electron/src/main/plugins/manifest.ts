@@ -4,6 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   type PluginUIPage,
+  parsePluginIcon,
   parsePluginPages,
   pluginSlug,
 } from "@freestyle/sdk";
@@ -30,6 +31,8 @@ export interface DiscoveredPlugin {
   description?: string;
   /** Author string from `package.json`, when present. */
   author?: string;
+  /** Icon name (lucide) the plugin declares via `freestyle.icon`, if any. */
+  icon?: string;
   /** Whether this is a local-dir plugin (vs an installed package). */
   local: boolean;
   /** UI pages the plugin contributes. */
@@ -185,6 +188,7 @@ function readManifest(
 
   const dir = path.dirname(pkgJsonPath);
   const name = typeof pkg.name === "string" ? pkg.name : path.basename(dir);
+  const icon = parsePluginIcon(pkg.freestyle);
   return {
     name,
     slug: pluginSlug(name),
@@ -196,6 +200,7 @@ function readManifest(
       ? { description: pkg.description }
       : {}),
     ...(typeof pkg.author === "string" ? { author: pkg.author } : {}),
+    ...(icon ? { icon } : {}),
   };
 }
 

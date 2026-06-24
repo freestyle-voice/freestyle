@@ -26,6 +26,13 @@ export interface PluginContributes {
 
 /** The `freestyle` block of a plugin's `package.json`. */
 export interface PluginManifest {
+  /**
+   * Icon shown for the plugin in the Plugins hub. Must be the name of an icon
+   * from the app's icon set (lucide), in PascalCase (e.g. `"FileMusic"`) or
+   * kebab-case (e.g. `"file-music"`). Falls back to a default when omitted or
+   * unknown.
+   */
+  icon?: string;
   contributes?: PluginContributes;
 }
 
@@ -79,4 +86,14 @@ export function parsePluginPages(freestyleField: unknown): PluginUIPage[] {
     });
   }
   return result;
+}
+
+/**
+ * Read the plugin-level `freestyle.icon` from a `package.json`'s `freestyle`
+ * field. Returns `undefined` when absent or not a non-empty string.
+ */
+export function parsePluginIcon(freestyleField: unknown): string | undefined {
+  if (!isRecord(freestyleField)) return undefined;
+  const { icon } = freestyleField;
+  return typeof icon === "string" && icon ? icon : undefined;
 }

@@ -9,6 +9,8 @@ export interface PluginInfo {
   local: boolean;
   description?: string;
   author?: string;
+  /** Plugin-level icon name (lucide) declared via `freestyle.icon`. */
+  icon?: string;
   pages: PluginUIPage[];
 }
 

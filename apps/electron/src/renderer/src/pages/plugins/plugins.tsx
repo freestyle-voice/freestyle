@@ -118,7 +118,7 @@ function PluginCard({ plugin }: { plugin: PluginInfo }): React.JSX.Element {
   const navigate = useNavigate();
   const page = plugin.pages[0];
 
-  const Icon = resolveIcon(page?.icon);
+  const Icon = resolveIcon(plugin.icon ?? page?.icon);
 
   return (
     <div className="border-border bg-card hover:border-foreground/15 group flex items-center gap-4 rounded-[14px] border p-4 transition-colors">
@@ -145,9 +145,6 @@ function PluginCard({ plugin }: { plugin: PluginInfo }): React.JSX.Element {
             {plugin.description}
           </p>
         ) : null}
-        <span className="mono text-muted-foreground mt-1.5 block text-[10px] uppercase tracking-[0.14em]">
-          {t("plugins.pageCount", { count: plugin.pages.length })}
-        </span>
       </div>
 
       {page ? (
@@ -165,12 +162,18 @@ function PluginCard({ plugin }: { plugin: PluginInfo }): React.JSX.Element {
   );
 }
 
-/** Resolve a lucide icon name from a plugin manifest, falling back to Puzzle. */
+/**
+ * Resolve a lucide icon by name, accepting PascalCase (`FileMusic`) or
+ * kebab-case (`file-music`). Falls back to a puzzle piece.
+ */
 function resolveIcon(name: string | undefined): LucideIcon {
-  if (name && name in lucideIcons) {
-    return lucideIcons[name as keyof typeof lucideIcons];
-  }
-  return Puzzle;
+  if (!name) return Puzzle;
+  const pascal = name
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join("");
+  return (lucideIcons as Record<string, LucideIcon>)[pascal] ?? Puzzle;
 }
 
 function BrowseTab(): React.JSX.Element {

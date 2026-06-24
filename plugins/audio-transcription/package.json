@@ -1,7 +1,6 @@
 {
   "name": "@freestyle/plugin-audio-transcription",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "Transcribe audio files by dropping them into Freestyle.",
   "main": "dist/index.js",

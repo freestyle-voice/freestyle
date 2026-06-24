@@ -39,6 +39,12 @@ export interface DiscoveredPlugin {
   local: boolean;
   /** Whether the plugin is currently enabled (not in `disabled_plugins`). */
   enabled: boolean;
+  /**
+   * True when the specifier is listed in the `plugins` setting but couldn't be
+   * resolved on disk (e.g. a stale entry). Surfaced so the user can uninstall
+   * it; it contributes no UI pages and its hooks don't load.
+   */
+  missing?: boolean;
   /** Raw README markdown read from the package dir, when present. */
   readme?: string;
   /** UI pages the plugin contributes. */
@@ -66,7 +72,13 @@ export function discoverPlugins(
   for (const entry of entries) {
     const { specifier } = pluginEntryParts(entry);
     const discovered = discoverPackage(specifier, localPluginsDir);
-    if (discovered && !seenDirs.has(discovered.dir)) {
+    if (!discovered) {
+      // A setting entry that resolves nowhere (e.g. a stale specifier). Surface
+      // it so the user can uninstall it from the hub.
+      out.push(missingPlugin(specifier, !disabled.has(specifier)));
+      continue;
+    }
+    if (!seenDirs.has(discovered.dir)) {
       seenDirs.add(discovered.dir);
       discovered.enabled = !disabled.has(discovered.specifier);
       out.push(discovered);
@@ -88,8 +100,9 @@ export function discoverPlugins(
 
 /**
  * Resolve an installed package specifier to a {@link DiscoveredPlugin}. Tries
- * Node/workspace resolution first, then the local plugins dir (where the
- * installer materializes downloaded packages, keyed by {@link pluginSlug}).
+ * Node resolution first, then the local plugins dir (where the installer
+ * materializes downloaded packages, keyed by {@link pluginSlug}). Returns
+ * `null` when the specifier resolves nowhere.
  */
 function discoverPackage(
   specifier: string,
@@ -107,16 +120,30 @@ function discoverPackage(
     return readManifest(localPkgJson, specifier, true);
   }
 
-  log.warn(`could not resolve plugin package "${specifier}"`);
   return null;
 }
 
+/** A placeholder for a `plugins` setting entry that resolves nowhere. */
+function missingPlugin(specifier: string, enabled: boolean): DiscoveredPlugin {
+  return {
+    name: specifier,
+    slug: pluginSlug(specifier),
+    specifier,
+    dir: "",
+    local: false,
+    enabled,
+    missing: true,
+    pages: [],
+  };
+}
+
 /**
- * Resolve a package's `package.json`. First tries Node resolution from several
- * base paths (a bundled Electron main has an unpredictable `import.meta.url`,
- * and the plugin may live in the app's `node_modules`). Falls back to scanning
- * the monorepo's `plugins/` workspace by package name, so first-party plugins
- * resolve in dev even before `pnpm install` links them into `node_modules`.
+ * Resolve a package's `package.json` via Node resolution from several base
+ * paths (a bundled Electron main has an unpredictable `import.meta.url`, and the
+ * plugin may live in the app's `node_modules`). Returns `null` when unresolved;
+ * the caller then checks the local plugins dir. There is intentionally no repo
+ * `plugins/` workspace fallback: the UI must match the hook loader, which only
+ * loads packages from `node_modules` or the local plugins dir.
  */
 function resolvePackageJson(specifier: string): string | null {
   const target = `${specifier}/package.json`;
@@ -130,35 +157,6 @@ function resolvePackageJson(specifier: string): string | null {
       return createRequire(base).resolve(target);
     } catch {
       // try the next base
-    }
-  }
-  return resolveFromWorkspace(specifier);
-}
-
-/**
- * Locate a package by name inside the monorepo's `plugins/` directory. Only
- * relevant in a dev checkout; returns `null` in a packaged app where there is
- * no workspace.
- */
-function resolveFromWorkspace(specifier: string): string | null {
-  // out/main/index.js -> apps/electron -> <repo root>
-  const repoRoot = path.resolve(__dirname, "../../../..");
-  const pluginsDir = path.join(repoRoot, "plugins");
-  let names: string[];
-  try {
-    names = fs.readdirSync(pluginsDir);
-  } catch {
-    return null;
-  }
-  for (const name of names) {
-    const pkgJsonPath = path.join(pluginsDir, name, "package.json");
-    try {
-      const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8")) as {
-        name?: unknown;
-      };
-      if (pkg.name === specifier) return pkgJsonPath;
-    } catch {
-      // not a readable package; skip
     }
   }
   return null;

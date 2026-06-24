@@ -1,10 +1,11 @@
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
+import { Input } from "@renderer/components/ui/input";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import { Switch } from "@renderer/components/ui/switch";
 import type { PluginCatalogEntry, PluginInfo } from "@shared/plugins";
-import { ArrowRight, Info, Puzzle, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { ArrowRight, Info, Puzzle, Search, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { pluginDisplayName, resolvePluginIcon } from "./helpers";
@@ -16,6 +17,7 @@ export default function PluginsPage(): React.JSX.Element {
   const [tab, setTab] = useState<Tab>("browse");
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,22 +56,36 @@ export default function PluginsPage(): React.JSX.Element {
           </p>
         </header>
 
-        <SegmentedControl
-          value={tab}
-          onValueChange={(v) => setTab(v as Tab)}
-          className="mb-5 w-fit"
-          options={[
-            { value: "browse", label: t("plugins.tabs.browse") },
-            { value: "installed", label: t("plugins.tabs.installed") },
-          ]}
-        />
+        <div className="mb-5 flex items-center gap-3">
+          <SegmentedControl
+            value={tab}
+            onValueChange={(v) => setTab(v as Tab)}
+            className="w-fit"
+            options={[
+              { value: "browse", label: t("plugins.tabs.browse") },
+              { value: "installed", label: t("plugins.tabs.installed") },
+            ]}
+          />
+          <div className="relative max-w-[280px] flex-1">
+            <Search className="text-muted-foreground/70 pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2" />
+            <Input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("plugins.searchPlaceholder")}
+              aria-label={t("plugins.searchPlaceholder")}
+              className="h-9 pl-9 text-[13px]"
+            />
+          </div>
+        </div>
 
         {tab === "browse" ? (
-          <BrowseTab installed={plugins} onChange={setPlugins} />
+          <BrowseTab installed={plugins} query={query} onChange={setPlugins} />
         ) : (
           <InstalledTab
             loading={loading}
             plugins={plugins}
+            query={query}
             onChange={setPlugins}
           />
         )}
@@ -78,16 +94,36 @@ export default function PluginsPage(): React.JSX.Element {
   );
 }
 
+/** Case-insensitive substring match across a plugin's display fields. */
+function matchesQuery(
+  query: string,
+  fields: Array<string | undefined>,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return fields.some((f) => f?.toLowerCase().includes(q));
+}
+
 function InstalledTab({
   loading,
   plugins,
+  query,
   onChange,
 }: {
   loading: boolean;
   plugins: PluginInfo[];
+  query: string;
   onChange: (plugins: PluginInfo[]) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
+
+  const filtered = useMemo(
+    () =>
+      plugins.filter((p) =>
+        matchesQuery(query, [pluginDisplayName(p), p.description, p.specifier]),
+      ),
+    [plugins, query],
+  );
 
   if (loading) {
     return (
@@ -111,10 +147,21 @@ function InstalledTab({
       </div>
     );
   }
+  if (filtered.length === 0) {
+    return (
+      <p className="text-muted-foreground py-10 text-center text-sm">
+        {t("plugins.noResults")}
+      </p>
+    );
+  }
   return (
     <div className="flex flex-col gap-3">
-      {plugins.map((plugin) => (
-        <PluginCard key={plugin.name} plugin={plugin} onChange={onChange} />
+      {filtered.map((plugin) => (
+        <PluginCard
+          key={plugin.specifier}
+          plugin={plugin}
+          onChange={onChange}
+        />
       ))}
     </div>
   );
@@ -153,7 +200,7 @@ function PluginCard({
       <div className="border-border bg-secondary flex size-11 shrink-0 items-center justify-center rounded-[10px] border">
         <Icon
           className={
-            plugin.enabled
+            plugin.enabled && !plugin.missing
               ? "text-primary size-5"
               : "text-muted-foreground size-5"
           }
@@ -171,7 +218,14 @@ function PluginCard({
               v{plugin.version}
             </span>
           ) : null}
-          {plugin.local ? (
+          {plugin.missing ? (
+            <Badge
+              variant="outline"
+              className="mono text-destructive border-destructive/40 text-[9px] tracking-[0.14em]"
+            >
+              {t("plugins.missingBadge")}
+            </Badge>
+          ) : plugin.local ? (
             <Badge
               variant="outline"
               className="mono text-[9px] tracking-[0.14em]"
@@ -180,33 +234,37 @@ function PluginCard({
             </Badge>
           ) : null}
         </div>
-        {plugin.description ? (
-          <p className="text-muted-foreground mt-0.5 line-clamp-1 text-[13px]">
-            {plugin.description}
-          </p>
-        ) : null}
+        <p className="text-muted-foreground mt-0.5 line-clamp-1 text-[13px]">
+          {plugin.missing
+            ? t("plugins.missingHint")
+            : (plugin.description ?? plugin.specifier)}
+        </p>
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {page ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!plugin.enabled}
-            onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
-          >
-            {t("plugins.open")}
-            <ArrowRight data-icon="inline-end" />
-          </Button>
-        ) : null}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t("plugins.detail.title")}
-          onClick={() => navigate(`/plugins/${plugin.slug}`)}
-        >
-          <Info className="text-muted-foreground" />
-        </Button>
+        {plugin.missing ? null : (
+          <>
+            {page ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!plugin.enabled}
+                onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
+              >
+                {t("plugins.open")}
+                <ArrowRight data-icon="inline-end" />
+              </Button>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("plugins.detail.title")}
+              onClick={() => navigate(`/plugins/${plugin.slug}`)}
+            >
+              <Info className="text-muted-foreground" />
+            </Button>
+          </>
+        )}
         <Button
           variant="ghost"
           size="icon-sm"
@@ -216,13 +274,15 @@ function PluginCard({
         >
           <Trash2 className="text-muted-foreground" />
         </Button>
-        <Switch
-          checked={plugin.enabled}
-          onCheckedChange={(v) => void toggle(v)}
-          aria-label={t(
-            plugin.enabled ? "plugins.disablePlugin" : "plugins.enablePlugin",
-          )}
-        />
+        {plugin.missing ? null : (
+          <Switch
+            checked={plugin.enabled}
+            onCheckedChange={(v) => void toggle(v)}
+            aria-label={t(
+              plugin.enabled ? "plugins.disablePlugin" : "plugins.enablePlugin",
+            )}
+          />
+        )}
       </div>
     </div>
   );
@@ -230,9 +290,11 @@ function PluginCard({
 
 function BrowseTab({
   installed,
+  query,
   onChange,
 }: {
   installed: PluginInfo[];
+  query: string;
   onChange: (plugins: PluginInfo[]) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
@@ -254,6 +316,19 @@ function BrowseTab({
     };
   }, []);
 
+  const installedBySpecifier = useMemo(
+    () => new Map(installed.map((p) => [p.specifier, p])),
+    [installed],
+  );
+
+  const filtered = useMemo(
+    () =>
+      (catalog ?? []).filter((e) =>
+        matchesQuery(query, [e.title, e.description, e.npmName, e.author]),
+      ),
+    [catalog, query],
+  );
+
   if (error) {
     return (
       <p className="text-muted-foreground py-10 text-center text-sm">
@@ -268,28 +343,38 @@ function BrowseTab({
       </p>
     );
   }
-  const installedNames = new Set(installed.map((p) => p.specifier));
+  if (filtered.length === 0) {
+    return (
+      <p className="text-muted-foreground py-10 text-center text-sm">
+        {t("plugins.noResults")}
+      </p>
+    );
+  }
   return (
     <div className="flex flex-col gap-3">
-      {catalog.map((entry) => (
-        <CatalogCard
-          key={entry.npmName}
-          entry={entry}
-          installed={installedNames.has(entry.npmName)}
-          onChange={onChange}
-        />
-      ))}
+      {filtered.map((entry) => {
+        // If a catalog plugin is already installed, render the full installed
+        // card so it can be opened/used directly — not just an "Installed" pill.
+        const installedPlugin = installedBySpecifier.get(entry.npmName);
+        return installedPlugin ? (
+          <PluginCard
+            key={entry.npmName}
+            plugin={installedPlugin}
+            onChange={onChange}
+          />
+        ) : (
+          <CatalogCard key={entry.npmName} entry={entry} onChange={onChange} />
+        );
+      })}
     </div>
   );
 }
 
 function CatalogCard({
   entry,
-  installed,
   onChange,
 }: {
   entry: PluginCatalogEntry;
-  installed: boolean;
   onChange: (plugins: PluginInfo[]) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
@@ -337,23 +422,14 @@ function CatalogCard({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {installed ? (
-          <Badge
-            variant="outline"
-            className="mono text-[9px] tracking-[0.14em]"
-          >
-            {t("plugins.installed")}
-          </Badge>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy}
-            onClick={() => void install()}
-          >
-            {busy ? t("plugins.installing") : t("plugins.install")}
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={() => void install()}
+        >
+          {busy ? t("plugins.installing") : t("plugins.install")}
+        </Button>
       </div>
     </div>
   );

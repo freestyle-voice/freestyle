@@ -244,6 +244,7 @@ function serializePlugins(plugins: readonly DiscoveredPlugin[]) {
     local: p.local,
     enabled: p.enabled,
     pages: p.pages,
+    ...(p.missing ? { missing: true } : {}),
     ...(p.version ? { version: p.version } : {}),
     ...(p.description ? { description: p.description } : {}),
     ...(p.author ? { author: p.author } : {}),

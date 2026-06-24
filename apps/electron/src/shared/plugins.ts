@@ -9,6 +9,8 @@ export interface PluginInfo {
   local: boolean;
   /** Whether the plugin is currently enabled. */
   enabled: boolean;
+  /** True when listed in the `plugins` setting but not resolvable on disk. */
+  missing?: boolean;
   /** Plugin version from its `package.json`, when present. */
   version?: string;
   description?: string;

@@ -19,7 +19,9 @@ export default function PluginsPage(): React.JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setPlugins(await window.api.listPlugins());
+      // Actively re-scan installed plugins each time the hub opens, so the list
+      // is correct even if discovery hadn't completed when the app started.
+      setPlugins(await window.api.refreshPlugins());
     } finally {
       setLoading(false);
     }

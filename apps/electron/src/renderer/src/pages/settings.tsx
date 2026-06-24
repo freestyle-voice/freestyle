@@ -1,4 +1,4 @@
-import { serverUrlSchema } from "@freestyle/validations";
+import { serverUrlSchema } from "@freestyle-voice/validations";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { LanguageSelector } from "@renderer/components/language-selector";
 import { Button } from "@renderer/components/ui/button";

@@ -7,7 +7,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
 import { AUDIO_CONTROL_CMD_TIMEOUT_MS } from "./audio-control-constants";
 
 const log = createAppLogger("linux-media-playback");

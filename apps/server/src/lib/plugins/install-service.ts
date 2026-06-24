@@ -1,5 +1,8 @@
-import { defaultLocalPluginsDir } from "@freestyle/sdk";
-import { parsePluginsSetting, pluginEntryParts } from "@freestyle/validations";
+import {
+  parsePluginsSetting,
+  pluginEntryParts,
+} from "@freestyle-voice/validations";
+import { defaultLocalPluginsDir } from "freestyle-voice";
 import { readSetting, writeSetting } from "../db.js";
 import { reloadServerPlugins } from "./index.js";
 import {

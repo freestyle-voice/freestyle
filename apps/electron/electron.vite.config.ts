@@ -4,10 +4,12 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "electron-vite";
 
 const workspaceAliases = {
-  "@freestyle/sdk": resolve("../../packages/sdk/src/index.ts"),
-  "@freestyle/server": resolve("../server/src/index.ts"),
-  "@freestyle/utils": resolve("../../packages/utils/src/index.ts"),
-  "@freestyle/validations": resolve("../../packages/validations/src/index.ts"),
+  "freestyle-voice": resolve("../../packages/sdk/src/index.ts"),
+  "@freestyle-voice/server": resolve("../server/src/index.ts"),
+  "@freestyle-voice/utils": resolve("../../packages/utils/src/index.ts"),
+  "@freestyle-voice/validations": resolve(
+    "../../packages/validations/src/index.ts",
+  ),
 };
 
 export default defineConfig({

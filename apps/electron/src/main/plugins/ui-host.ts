@@ -1,6 +1,6 @@
-import type { HostActions } from "@freestyle/sdk";
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
 import { type BrowserWindow, ipcMain } from "electron";
+import type { HostActions } from "freestyle-voice";
 import type {
   PluginFetchRequest,
   PluginFetchResponse,

@@ -21,7 +21,7 @@ export interface CatalogEntry {
 
 export const PLUGIN_CATALOG: CatalogEntry[] = [
   {
-    npmName: "@freestyle/plugin-audio-transcription",
+    npmName: "@freestyle-voice/plugin-audio-transcription",
     title: "Audio Transcription",
     description:
       "Transcribe audio files by dropping them into Freestyle. Adds a Transcribe Files page with copy and download.",

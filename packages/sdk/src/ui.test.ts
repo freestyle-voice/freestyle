@@ -3,8 +3,8 @@ import { parsePluginPages, pluginSlug } from "./ui.js";
 
 describe("pluginSlug", () => {
   it("makes scoped package names URL/route-safe", () => {
-    expect(pluginSlug("@freestyle/plugin-audio-transcription")).toBe(
-      "freestyle-plugin-audio-transcription",
+    expect(pluginSlug("@freestyle-voice/plugin-audio-transcription")).toBe(
+      "freestyle-voice-plugin-audio-transcription",
     );
   });
 

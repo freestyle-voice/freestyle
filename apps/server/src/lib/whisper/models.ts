@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
 import {
   assertEnoughDiskSpace,
   DOWNLOAD_FREE_BUFFER_BYTES,

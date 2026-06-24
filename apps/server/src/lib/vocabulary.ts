@@ -1,4 +1,4 @@
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
 import { getDb } from "./db.js";
 
 const log = createAppLogger("vocabulary");

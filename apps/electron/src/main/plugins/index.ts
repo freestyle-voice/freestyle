@@ -1,4 +1,4 @@
-import { PluginRegistry } from "@freestyle/sdk";
+import { PluginRegistry } from "freestyle-voice";
 import { loadAppPlugins, type ServerTarget } from "./loader.js";
 
 export {
@@ -6,7 +6,7 @@ export {
   OutputMode,
   PipelineStage,
   parseAppContext,
-} from "@freestyle/sdk";
+} from "freestyle-voice";
 export type { ServerTarget } from "./loader.js";
 export {
   fetchCatalog,

@@ -2,14 +2,17 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { createAppLogger } from "@freestyle-voice/utils";
+import {
+  parsePluginsSetting,
+  pluginEntryParts,
+} from "@freestyle-voice/validations";
 import {
   type PluginUIPage,
   parsePluginIcon,
   parsePluginPages,
   pluginSlug,
-} from "@freestyle/sdk";
-import { createAppLogger } from "@freestyle/utils";
-import { parsePluginsSetting, pluginEntryParts } from "@freestyle/validations";
+} from "freestyle-voice";
 
 const log = createAppLogger("plugins-ui");
 

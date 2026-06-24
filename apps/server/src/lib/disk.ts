@@ -1,5 +1,5 @@
 import { statfs } from "node:fs/promises";
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
 
 const log = createAppLogger("disk");
 

@@ -49,7 +49,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build server (generates type declarations)
-        run: pnpm turbo build --filter=@freestyle/server
+        run: pnpm turbo build --filter=@freestyle-voice/server
 
       - name: Typecheck electron (web)
         working-directory: apps/electron
@@ -71,7 +71,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Run server tests
-        run: pnpm --filter @freestyle/server run test
+        run: pnpm --filter @freestyle-voice/server run test
 
   test-electron:
     name: Test (Electron E2E)
@@ -96,7 +96,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev
 
       - name: Build server
-        run: pnpm turbo build --filter=@freestyle/server
+        run: pnpm turbo build --filter=@freestyle-voice/server
 
       - name: Build electron app
         working-directory: apps/electron
@@ -107,7 +107,7 @@ jobs:
 
       - name: Run Electron E2E tests
         timeout-minutes: 5
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm --filter @freestyle/electron run test:e2e
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm --filter @freestyle-voice/electron run test:e2e
 
   build-linux:
     name: Build (Linux)
@@ -126,7 +126,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build server
-        run: pnpm turbo build --filter=@freestyle/server
+        run: pnpm turbo build --filter=@freestyle-voice/server
 
       - name: Install native build dependencies
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev binutils
@@ -174,7 +174,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build server
-        run: pnpm turbo build --filter=@freestyle/server
+        run: pnpm turbo build --filter=@freestyle-voice/server
 
       - name: Build MLX ASR worker archive
         run: ./scripts/build_mlx_asr_worker.sh
@@ -225,7 +225,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build server
-        run: pnpm turbo build --filter=@freestyle/server
+        run: pnpm turbo build --filter=@freestyle-voice/server
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1

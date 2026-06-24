@@ -1,4 +1,4 @@
-# `@freestyle/sdk`
+# `freestyle-voice`
 
 The plugin SDK for [Freestyle](../../README.md) — the local-first voice
 dictation app. This package is the **public contract** for writing plugins that
@@ -28,7 +28,7 @@ Plugins are loaded from two places:
 Either way, import the types from this package:
 
 ```ts
-import type { Plugin } from "@freestyle/sdk";
+import type { Plugin } from "freestyle-voice";
 ```
 
 ## Writing a plugin
@@ -39,7 +39,7 @@ times across the dictation pipeline. Use the `setup` lifecycle hook to capture
 context (logger, settings) in a closure.
 
 ```ts
-import type { Plugin } from "@freestyle/sdk";
+import type { Plugin } from "freestyle-voice";
 
 export default function myPlugin(): Plugin {
   return {
@@ -62,7 +62,7 @@ For the common single-rewrite case, use the `transform` helper to skip the
 `(input, output)` mutation convention:
 
 ```ts
-import { transform, type Plugin } from "@freestyle/sdk";
+import { transform, type Plugin } from "freestyle-voice";
 
 export default function trim(): Plugin {
   return {
@@ -124,13 +124,13 @@ export default (): Plugin => ({
 A plugin's UI page is sandboxed and can't reach the server directly. Use the
 `window.freestyle` bridge: `api()` proxies a `fetch` through the host, and
 `serverUrl` / `token` are provided for building your own client. For a fully
-typed client, install `@freestyle/server` as a **dev dependency** (for its
+typed client, install `@freestyle-voice/server` as a **dev dependency** (for its
 `AppType` only — it's a type-only import, nothing ships at runtime) and hand
 Hono's `hc` the bridge's `fetch`:
 
 ```ts
 import { hc } from "hono/client";
-import type { AppType } from "@freestyle/server";
+import type { AppType } from "@freestyle-voice/server";
 
 const client = hc<AppType>(window.freestyle.serverUrl, {
   // Route every request through the host bridge (handles auth + sandboxing).
@@ -146,7 +146,7 @@ const res = await client.api.transcribe.$post({ form: { audio } });
 
 The SDK intentionally does **not** re-export `AppType`: the server already
 depends on the SDK, so re-exporting it would create a build cycle. Importing the
-type straight from `@freestyle/server` keeps the dependency graph acyclic, and
+type straight from `@freestyle-voice/server` keeps the dependency graph acyclic, and
 because it's a `import type` it adds no runtime weight to your plugin bundle.
 
 ### Presets and conditional plugins
@@ -227,7 +227,7 @@ the constant or the literal string):
 | `"none"` | `OutputMode.None` | Suppress delivery — nothing is pasted or copied |
 
 ```ts
-import { OutputMode } from "@freestyle/sdk";
+import { OutputMode } from "freestyle-voice";
 
 beforeOutput: (input, output) => {
   if (/terminal/i.test(input.appContext?.appName ?? "")) {
@@ -244,7 +244,7 @@ voice-command plugins that consume the utterance instead of typing it.
 The read-only `event` hook receives a discriminated `FreestyleEvent`:
 
 ```ts
-import { FreestyleEventType } from "@freestyle/sdk";
+import { FreestyleEventType } from "freestyle-voice";
 
 event: ({ event }) => {
   switch (event.type) {

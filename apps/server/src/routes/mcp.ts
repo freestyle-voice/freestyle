@@ -6,7 +6,7 @@ import {
   updateDictionarySchema,
   updateFormatSchema,
   updateVocabularySchema,
-} from "@freestyle/validations";
+} from "@freestyle-voice/validations";
 import { StreamableHTTPTransport } from "@hono/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Hono } from "hono";

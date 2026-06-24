@@ -1,5 +1,5 @@
 {
-  "name": "@freestyle/server",
+  "name": "@freestyle-voice/server",
   "type": "module",
   "scripts": {
     "build": "tsc --emitDeclarationOnly && pkgroll --minify",
@@ -44,9 +44,9 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@freestyle/sdk": "workspace:*",
-    "@freestyle/utils": "workspace:*",
-    "@freestyle/validations": "workspace:*",
+    "freestyle-voice": "workspace:*",
+    "@freestyle-voice/utils": "workspace:*",
+    "@freestyle-voice/validations": "workspace:*",
     "@types/json-schema": "^7.0.15",
     "@types/node": "latest",
     "@types/ws": "^8.18.1",

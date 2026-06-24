@@ -3,7 +3,7 @@
 import {
   CLEANUP_PRESET_PROMPTS,
   type CleanupIntensity,
-} from "@freestyle/validations";
+} from "@freestyle-voice/validations";
 
 export type RewriteRegisterMode = "neutral" | "formal" | "casual";
 

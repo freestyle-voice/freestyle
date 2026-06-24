@@ -11,10 +11,12 @@
     "types": ["electron-vite/node"],
     "baseUrl": ".",
     "paths": {
-      "@freestyle/sdk": ["../../packages/sdk/src/index.ts"],
-      "@freestyle/server": ["../server/src/index.ts"],
-      "@freestyle/utils": ["../../packages/utils/src/index.ts"],
-      "@freestyle/validations": ["../../packages/validations/src/index.ts"]
+      "freestyle-voice": ["../../packages/sdk/src/index.ts"],
+      "@freestyle-voice/server": ["../server/src/index.ts"],
+      "@freestyle-voice/utils": ["../../packages/utils/src/index.ts"],
+      "@freestyle-voice/validations": [
+        "../../packages/validations/src/index.ts"
+      ]
     }
   }
 }

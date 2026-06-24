@@ -1,4 +1,4 @@
-import type { AppType } from "@freestyle/server";
+import type { AppType } from "@freestyle-voice/server";
 import { hc } from "hono/client";
 
 const DEFAULT_PORT = 4649;

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
 import { type BrowserWindow, WebContentsView } from "electron";
 import { getDiscoveredPlugins, PLUGIN_SCHEME, pluginPageUrl } from "./ui.js";
 

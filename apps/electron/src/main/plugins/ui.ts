@@ -1,5 +1,5 @@
 import { pathToFileURL } from "node:url";
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
 import { net, protocol } from "electron";
 import {
   type DiscoveredPlugin,

@@ -1,5 +1,5 @@
-import type { FreestyleBridge, HostActions } from "@freestyle/sdk";
 import { contextBridge, ipcRenderer } from "electron";
+import type { FreestyleBridge, HostActions } from "freestyle-voice";
 import type {
   PluginFetchResponse,
   SerializedBody,

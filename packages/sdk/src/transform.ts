@@ -16,7 +16,7 @@ export type TextTransformer = (
  *
  * @example
  * ```ts
- * import { transform, type Plugin } from "@freestyle/sdk";
+ * import { transform, type Plugin } from "freestyle-voice";
  *
  * export default function trim(): Plugin {
  *   return {

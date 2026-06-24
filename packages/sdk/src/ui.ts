@@ -38,7 +38,7 @@ export interface PluginManifest {
 
 /**
  * Derive a URL- and route-safe slug from a package name, e.g.
- * `@freestyle/plugin-audio-transcription` → `freestyle-plugin-audio-transcription`.
+ * `@freestyle-voice/plugin-audio-transcription` → `freestyle-voice-plugin-audio-transcription`.
  * Used as the `freestyle-plugin://` host and the `/plugins/:slug/...` route
  * segment, since package names can contain `@` and `/` which are unsafe in both.
  */

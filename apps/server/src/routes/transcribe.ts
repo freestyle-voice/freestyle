@@ -1,4 +1,4 @@
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
 import { Hono } from "hono";
 import { getDb, readSetting } from "../lib/db.js";
 import { applyDictionaryReplacements } from "../lib/dictionary-replacements.js";

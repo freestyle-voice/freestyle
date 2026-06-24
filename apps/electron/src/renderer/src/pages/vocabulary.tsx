@@ -1,7 +1,7 @@
 import {
   type CreateVocabularyInput,
   createVocabularySchema,
-} from "@freestyle/validations";
+} from "@freestyle-voice/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";

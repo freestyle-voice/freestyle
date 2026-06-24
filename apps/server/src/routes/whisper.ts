@@ -1,4 +1,4 @@
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
 import { Hono } from "hono";
 import { capture } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";

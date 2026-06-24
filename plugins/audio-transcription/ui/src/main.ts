@@ -1,4 +1,4 @@
-import type { FreestyleBridge } from "@freestyle/sdk";
+import type { FreestyleBridge } from "freestyle-voice";
 import { toWav16k } from "./to-wav.js";
 
 /**

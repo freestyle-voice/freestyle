@@ -56,9 +56,9 @@ import {
   startServer as startFreestyleServer,
   stopMlxServer,
   stopWhisperServer,
-} from "@freestyle/server";
-import { createAppLogger, enableFileLogging } from "@freestyle/utils";
-import { serverUrlSchema } from "@freestyle/validations";
+} from "@freestyle-voice/server";
+import { createAppLogger, enableFileLogging } from "@freestyle-voice/utils";
+import { serverUrlSchema } from "@freestyle-voice/validations";
 import {
   app,
   BrowserWindow,
@@ -693,7 +693,7 @@ async function getPluginDiscoverySources(): Promise<{
 
 /** Perform a host action requested by a plugin UI page over the bridge. */
 function handlePluginAction(
-  channel: keyof import("@freestyle/sdk").HostActions,
+  channel: keyof import("freestyle-voice").HostActions,
   payload: unknown,
 ): void {
   switch (channel) {

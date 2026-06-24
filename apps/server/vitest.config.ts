@@ -4,12 +4,12 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
-      "@freestyle/validations": resolve(
+      "@freestyle-voice/validations": resolve(
         __dirname,
         "../../packages/validations/src/index.ts",
       ),
-      "@freestyle/sdk": resolve(__dirname, "../../packages/sdk/src/index.ts"),
-      "@freestyle/utils": resolve(
+      "freestyle-voice": resolve(__dirname, "../../packages/sdk/src/index.ts"),
+      "@freestyle-voice/utils": resolve(
         __dirname,
         "../../packages/utils/src/index.ts",
       ),

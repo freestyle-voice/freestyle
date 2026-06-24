@@ -1,8 +1,8 @@
-import type { CleanupIntensity } from "@freestyle/validations";
+import type { CleanupIntensity } from "@freestyle-voice/validations";
 import {
   DEFAULT_CLEANUP_INTENSITY,
   parseCleanupIntensity,
-} from "@freestyle/validations";
+} from "@freestyle-voice/validations";
 import { getClient } from "@renderer/lib/api";
 import type {
   AvailableModel,

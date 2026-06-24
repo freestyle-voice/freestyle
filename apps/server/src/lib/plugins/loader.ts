@@ -1,15 +1,15 @@
-import type { HookFailure, PluginEntry } from "@freestyle/sdk";
-import {
-  defaultLocalPluginsDir,
-  loadPlugins,
-  type PluginRegistry,
-} from "@freestyle/sdk";
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
 import {
   parseDisabledPlugins,
   parsePluginsSetting,
   pluginEntryParts,
-} from "@freestyle/validations";
+} from "@freestyle-voice/validations";
+import type { HookFailure, PluginEntry } from "freestyle-voice";
+import {
+  defaultLocalPluginsDir,
+  loadPlugins,
+  type PluginRegistry,
+} from "freestyle-voice";
 import { readSetting } from "../db.js";
 import { captureException } from "../posthog.js";
 import { buildPluginContext } from "./context.js";

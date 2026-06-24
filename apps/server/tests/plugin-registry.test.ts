@@ -1,9 +1,9 @@
-import type { Plugin } from "@freestyle/sdk";
+import type { Plugin } from "freestyle-voice";
 import {
   FreestyleEventType,
   PluginRegistry,
   sortPlugins,
-} from "@freestyle/sdk";
+} from "freestyle-voice";
 import { describe, expect, it, vi } from "vitest";
 
 describe("PluginRegistry", () => {

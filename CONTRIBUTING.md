@@ -56,13 +56,13 @@ If you have any questions, our Discord server is the place to ask.
 
 ```bash
 # macOS
-pnpm --filter @freestyle/electron build:mac
+pnpm --filter @freestyle-voice/electron build:mac
 
 # Windows
-pnpm --filter @freestyle/electron build:win
+pnpm --filter @freestyle-voice/electron build:win
 
 # Linux
-pnpm --filter @freestyle/electron build:linux
+pnpm --filter @freestyle-voice/electron build:linux
 ```
 
 ## Project structure
@@ -75,7 +75,7 @@ pnpm --filter @freestyle/electron build:linux
 1. Create a branch from `main`
 2. Make your changes
 3. Run `pnpm biome check .` to verify lint and formatting
-4. Run `pnpm --filter @freestyle/electron typecheck:web` to verify types
+4. Run `pnpm --filter @freestyle-voice/electron typecheck:web` to verify types
 5. Commit — husky runs biome on staged files automatically
 6. Open a PR against `main`
 

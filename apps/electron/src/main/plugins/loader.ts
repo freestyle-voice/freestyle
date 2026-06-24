@@ -1,18 +1,18 @@
 import path from "node:path";
-import type { HookFailure, PluginEntry } from "@freestyle/sdk";
-import { loadPlugins, type PluginRegistry } from "@freestyle/sdk";
-import type { AppType } from "@freestyle/server";
+import type { AppType } from "@freestyle-voice/server";
 import {
   installPackage,
   resolvePackage,
   uninstallPackage,
-} from "@freestyle/server";
-import { createAppLogger } from "@freestyle/utils";
+} from "@freestyle-voice/server";
+import { createAppLogger } from "@freestyle-voice/utils";
 import {
   parseDisabledPlugins,
   parsePluginsSetting,
   pluginEntryParts,
-} from "@freestyle/validations";
+} from "@freestyle-voice/validations";
+import type { HookFailure, PluginEntry } from "freestyle-voice";
+import { loadPlugins, type PluginRegistry } from "freestyle-voice";
 import { hc } from "hono/client";
 import { buildPluginContext, type SettingsSnapshot } from "./context.js";
 

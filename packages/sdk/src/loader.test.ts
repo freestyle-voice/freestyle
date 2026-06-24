@@ -23,8 +23,8 @@ function writePackage(slug: string, pkg: Record<string, unknown>): string {
 
 describe("resolveLocalPackage", () => {
   it("resolves a scoped specifier to its slug folder + main entry", () => {
-    const pkgDir = writePackage("freestyle-plugin-x", {
-      name: "@freestyle/plugin-x",
+    const pkgDir = writePackage("freestyle-voice-plugin-x", {
+      name: "@freestyle-voice/plugin-x",
       main: "dist/index.js",
     });
     fs.mkdirSync(path.join(pkgDir, "dist"));
@@ -33,7 +33,7 @@ describe("resolveLocalPackage", () => {
       "export default 1;",
     );
 
-    expect(resolveLocalPackage(dir, "@freestyle/plugin-x")).toBe(
+    expect(resolveLocalPackage(dir, "@freestyle-voice/plugin-x")).toBe(
       path.join(pkgDir, "dist", "index.js"),
     );
   });
@@ -48,7 +48,7 @@ describe("resolveLocalPackage", () => {
   });
 
   it("returns null when the folder or entry is missing", () => {
-    expect(resolveLocalPackage(dir, "@freestyle/absent")).toBeNull();
+    expect(resolveLocalPackage(dir, "@freestyle-voice/absent")).toBeNull();
 
     // Folder + manifest exist, but the main file doesn't.
     writePackage("plugin-z", { name: "plugin-z", main: "dist/index.js" });

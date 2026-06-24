@@ -2,7 +2,7 @@ import {
   CLEANUP_CUSTOM_PROMPT_MAX,
   CLEANUP_PRESET_PROMPTS,
   type CleanupIntensity,
-} from "@freestyle/validations";
+} from "@freestyle-voice/validations";
 import {
   Accordion,
   AccordionContent,

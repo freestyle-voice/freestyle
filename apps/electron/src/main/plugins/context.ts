@@ -1,6 +1,6 @@
-import type { PluginContext, SettingsReader } from "@freestyle/sdk";
-import { createPluginLogger } from "@freestyle/sdk";
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
+import type { PluginContext, SettingsReader } from "freestyle-voice";
+import { createPluginLogger } from "freestyle-voice";
 
 /**
  * A read-only snapshot of the server's `settings` table, fetched once over HTTP

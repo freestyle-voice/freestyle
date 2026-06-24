@@ -1,5 +1,5 @@
 {
-  "name": "@freestyle/plugin-audio-transcription",
+  "name": "@freestyle-voice/plugin-audio-transcription",
   "version": "0.1.0",
   "type": "module",
   "description": "Transcribe audio files by dropping them into Freestyle.",
@@ -24,7 +24,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p ui/tsconfig.json"
   },
   "dependencies": {
-    "@freestyle/sdk": "workspace:*"
+    "freestyle-voice": "workspace:*"
   },
   "devDependencies": {
     "pkgroll": "^2.27.0",

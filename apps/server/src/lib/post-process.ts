@@ -1,7 +1,7 @@
 import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
-import { createAppLogger } from "@freestyle/utils";
-import type { CleanupIntensity } from "@freestyle/validations";
-import { parseCleanupIntensity } from "@freestyle/validations";
+import { createAppLogger } from "@freestyle-voice/utils";
+import type { CleanupIntensity } from "@freestyle-voice/validations";
+import { parseCleanupIntensity } from "@freestyle-voice/validations";
 import { generateText } from "ai";
 import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
 import { getDb, readSetting } from "./db.js";

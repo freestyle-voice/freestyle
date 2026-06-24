@@ -1,7 +1,7 @@
 import path from "node:path";
-import type { PluginContext, SettingsReader } from "@freestyle/sdk";
-import { createPluginLogger } from "@freestyle/sdk";
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
+import type { PluginContext, SettingsReader } from "freestyle-voice";
+import { createPluginLogger } from "freestyle-voice";
 import { readSetting } from "../db.js";
 
 /**

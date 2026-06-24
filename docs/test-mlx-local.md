@@ -55,7 +55,7 @@ Use this when you want to verify the **frozen worker tarball** path (what users 
 
 ```bash
 rm -rf ~/.cache/freestyle/mlx-asr/runtime
-pnpm --filter @freestyle/electron build:mlx-asr-worker
+pnpm --filter @freestyle-voice/electron build:mlx-asr-worker
 python3 -m http.server 8765 -d dist
 ```
 
@@ -80,7 +80,7 @@ Only when you need to validate signing, notarization, or a DMG install:
 
 ```bash
 rm -rf ~/.cache/freestyle/mlx-asr/runtime
-CSC_IDENTITY_AUTO_DISCOVERY=false pnpm --filter @freestyle/electron build:mac
+CSC_IDENTITY_AUTO_DISCOVERY=false pnpm --filter @freestyle-voice/electron build:mac
 ./scripts/sign_mac_app.sh apps/electron/dist/mac-arm64/Freestyle.app
 FREESTYLE_MLX_ASR_WORKER_URL=http://127.0.0.1:8765/mlx_asr_worker-darwin-arm64.tar.gz \
   "apps/electron/dist/mac-arm64/Freestyle.app/Contents/MacOS/Freestyle"

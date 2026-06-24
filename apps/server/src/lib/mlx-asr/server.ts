@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
 import { getDb } from "../db.js";
 import { getMlxAsrModel, isAppleSiliconMac } from "./constants.js";
 import {

@@ -4,7 +4,7 @@
 
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
 import {
   AUDIO_CONTROL_CMD_TIMEOUT_MS,
   DUCKED_VOLUME,

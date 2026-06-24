@@ -4,11 +4,11 @@
  * context matcher and the plugin pipeline read this same payload, so the shape
  * and parse live in one place to keep them from diverging.
  *
- * The payload shape is owned by `@freestyle/sdk` (re-exported here); this module
+ * The payload shape is owned by `freestyle-voice` (re-exported here); this module
  * adds the server-side raw-payload parser used by the rewrite matcher.
  */
 
-import type { AppContextPayload } from "@freestyle/sdk";
+import type { AppContextPayload } from "freestyle-voice";
 
 export type { AppContextPayload };
 

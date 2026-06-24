@@ -2,7 +2,7 @@ import {
   createDictionarySchema,
   exportSchema,
   updateDictionarySchema,
-} from "@freestyle/validations";
+} from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";

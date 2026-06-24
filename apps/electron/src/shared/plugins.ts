@@ -1,4 +1,4 @@
-import type { PluginUIPage } from "@freestyle/sdk";
+import type { PluginUIPage } from "freestyle-voice";
 
 /** Serialized plugin info sent from main to the renderer (no absolute paths). */
 export interface PluginInfo {

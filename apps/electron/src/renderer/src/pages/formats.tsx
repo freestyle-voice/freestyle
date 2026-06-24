@@ -1,5 +1,5 @@
-import type { CreateFormatInput } from "@freestyle/validations";
-import { createFormatSchema } from "@freestyle/validations";
+import type { CreateFormatInput } from "@freestyle-voice/validations";
+import { createFormatSchema } from "@freestyle-voice/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";

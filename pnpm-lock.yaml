@@ -32,19 +32,13 @@ importers:
       '@electron-toolkit/utils':
         specifier: ^4.0.0
         version: 4.0.0(electron@39.8.10)
-      '@freestyle/plugin-audio-transcription':
-        specifier: workspace:*
-        version: link:../../plugins/audio-transcription
-      '@freestyle/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      '@freestyle/server':
+      '@freestyle-voice/server':
         specifier: workspace:*
         version: link:../server
-      '@freestyle/utils':
+      '@freestyle-voice/utils':
         specifier: workspace:*
         version: link:../../packages/utils
-      '@freestyle/validations':
+      '@freestyle-voice/validations':
         specifier: workspace:*
         version: link:../../packages/validations
       '@hono/node-server':
@@ -68,6 +62,9 @@ importers:
       electron-updater:
         specifier: ^6.3.9
         version: 6.8.3
+      freestyle-voice:
+        specifier: workspace:*
+        version: link:../../packages/sdk
       hono:
         specifier: ^4.12.22
         version: 4.12.22
@@ -238,13 +235,10 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
-      '@freestyle/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      '@freestyle/utils':
+      '@freestyle-voice/utils':
         specifier: workspace:*
         version: link:../../packages/utils
-      '@freestyle/validations':
+      '@freestyle-voice/validations':
         specifier: workspace:*
         version: link:../../packages/validations
       '@types/json-schema':
@@ -256,6 +250,9 @@ importers:
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
+      freestyle-voice:
+        specifier: workspace:*
+        version: link:../../packages/sdk
       pkgroll:
         specifier: ^2.27.0
         version: 2.27.0(typescript@5.9.3)(vite@7.3.3(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -309,7 +306,7 @@ importers:
 
   plugins/audio-transcription:
     dependencies:
-      '@freestyle/sdk':
+      freestyle-voice:
         specifier: workspace:*
         version: link:../../packages/sdk
     devDependencies:

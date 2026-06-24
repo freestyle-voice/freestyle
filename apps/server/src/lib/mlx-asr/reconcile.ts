@@ -1,4 +1,4 @@
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
 import { getDb } from "../db.js";
 import { WHISPER_MODELS, WHISPER_PROVIDER_ID } from "../whisper/constants.js";
 import { getModelStatus as getWhisperModelStatus } from "../whisper/models.js";

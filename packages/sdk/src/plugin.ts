@@ -24,7 +24,7 @@ export type PluginOptions = Record<string, unknown>;
  *
  * @example
  * ```ts
- * import type { Plugin } from "@freestyle/sdk";
+ * import type { Plugin } from "freestyle-voice";
  *
  * export default function myPlugin(): Plugin {
  *   return {

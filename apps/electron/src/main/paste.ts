@@ -4,7 +4,7 @@ import {
   execFile,
   spawn,
 } from "node:child_process";
-import { createAppLogger } from "@freestyle/utils";
+import { createAppLogger } from "@freestyle-voice/utils";
 import { clipboard } from "electron";
 import { isLinuxTerminalFocused } from "./linux-terminal-focus";
 import { getNativeBinaryPath } from "./native-binary";

@@ -85,9 +85,7 @@ export default function PluginPage(): React.JSX.Element {
       className="flex h-full min-h-0 flex-col"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
-      {/* Reserve a top strip so the native view starts below the floating
-          social bar (top-right) and doesn't occlude it. */}
-      <div className="h-9 shrink-0" />
+      <div className="h-7 shrink-0" />
       <div
         ref={placeholderRef}
         className="flex-1"

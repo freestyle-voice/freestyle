@@ -19,7 +19,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SiDiscord, SiGithub } from "react-icons/si";
-import { NavLink, Outlet, useNavigate } from "react-router";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 
 type NavItem = {
   to: string;
@@ -143,8 +143,14 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
 
 export default function AppShell(): React.JSX.Element {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { t } = useTranslation();
+
+  // A plugin page renders a native WebContentsView that paints above the DOM,
+  // so the floating social bar would be occluded. Hide it while a plugin page
+  // is open. Matches /plugins/<slug>/<pageId>.
+  const onPluginPage = /^\/plugins\/[^/]+\/[^/]+/.test(location.pathname);
 
   const navItems: NavItem[] = useMemo(
     () =>
@@ -227,6 +233,7 @@ export default function AppShell(): React.JSX.Element {
         <div
           className={cn(
             "border-border/70 bg-background/92 absolute top-0 right-0 z-40 flex items-center gap-1.5 rounded-bl-[14px] border-b border-l px-3 py-2 shadow-[0_10px_28px_-22px_rgba(0,0,0,0.55)] backdrop-blur-sm",
+            onPluginPage && "hidden",
           )}
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >

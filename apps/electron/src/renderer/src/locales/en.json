@@ -379,7 +379,8 @@
       "browse": "Browse"
     },
     "loading": "Loading plugins…",
-    "empty": "No plugins installed yet.",
+    "emptyTitle": "No plugins yet",
+    "empty": "Install a plugin to add features. Browse the available ones or add your own.",
     "localBadge": "Local",
     "open": "Open",
     "toggleEnabled": "Enable plugin",

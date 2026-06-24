@@ -42,17 +42,14 @@ export default function PluginsPage(): React.JSX.Element {
         className="responsive-page-scroll flex-1 overflow-auto"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
-        <header className="mb-6">
-          <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
-            {t("plugins.eyebrow")}
-          </span>
-          <h1 className="serif text-foreground m-0 mt-2 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
+        <header className="mb-7">
+          <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
             <span className="serif-italic text-primary">
               {t("plugins.titleAccent")}
             </span>
             <span>.</span>
           </h1>
-          <p className="text-muted-foreground mt-2 max-w-[580px] text-[14px] leading-[1.5]">
+          <p className="text-muted-foreground mt-2.5 max-w-[580px] text-[14px] leading-[1.5]">
             {t("plugins.subtitle")}
           </p>
         </header>
@@ -94,14 +91,23 @@ function InstalledTab({
 
   if (loading) {
     return (
-      <p className="text-muted-foreground text-sm">{t("plugins.loading")}</p>
+      <p className="text-muted-foreground py-10 text-center text-sm">
+        {t("plugins.loading")}
+      </p>
     );
   }
   if (plugins.length === 0) {
     return (
       <div className="border-border bg-card rounded-[14px] border border-dashed px-9 py-[52px] text-center">
-        <Puzzle className="text-muted-foreground mx-auto mb-3 h-6 w-6" />
-        <p className="text-muted-foreground text-sm">{t("plugins.empty")}</p>
+        <div className="border-border bg-secondary mx-auto mb-4 flex size-12 items-center justify-center rounded-[12px] border">
+          <Puzzle className="text-muted-foreground size-5" strokeWidth={1.7} />
+        </div>
+        <h2 className="serif text-foreground m-0 text-[22px] leading-tight">
+          {t("plugins.emptyTitle")}
+        </h2>
+        <p className="text-muted-foreground mx-auto mt-1.5 max-w-[360px] text-[13px] leading-[1.5]">
+          {t("plugins.empty")}
+        </p>
       </div>
     );
   }
@@ -132,9 +138,16 @@ function PluginCard({
   };
 
   return (
-    <div className="border-border bg-card hover:border-foreground/15 flex w-full items-center gap-4 rounded-[14px] border p-4 transition-colors">
-      <div className="border-border bg-accent/40 flex size-11 shrink-0 items-center justify-center rounded-[10px] border">
-        <Icon className="text-primary size-5" strokeWidth={1.7} />
+    <div className="border-border bg-card hover:bg-card/70 flex w-full items-center gap-4 rounded-[14px] border p-5 transition-colors">
+      <div className="border-border bg-secondary flex size-11 shrink-0 items-center justify-center rounded-[10px] border">
+        <Icon
+          className={
+            plugin.enabled
+              ? "text-primary size-5"
+              : "text-muted-foreground size-5"
+          }
+          strokeWidth={1.7}
+        />
       </div>
 
       <div className="min-w-0 flex-1">

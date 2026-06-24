@@ -33,7 +33,19 @@ body {
 
 .page {
   width: 100%;
-  padding: 20px 32px 40px;
+  padding: 28px 48px 48px;
+}
+
+@media (max-width: 1080px) {
+  .page {
+    padding: 28px 32px 48px;
+  }
+}
+
+@media (max-width: 820px) {
+  .page {
+    padding: 28px 16px 48px;
+  }
 }
 
 .eyebrow {
@@ -49,9 +61,9 @@ body {
   margin: 0;
   font-family: "Instrument Serif", Georgia, serif;
   font-weight: 400;
-  font-size: 44px;
-  line-height: 1;
-  letter-spacing: -0.02em;
+  font-size: 48px;
+  line-height: 0.95;
+  letter-spacing: -0.025em;
 }
 
 .title em {
@@ -79,6 +91,10 @@ body {
   background: var(--card);
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.dropzone:hover {
+  border-color: var(--muted-foreground);
 }
 
 .dropzone.is-dragging {
@@ -120,7 +136,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--card);
-  padding: 16px 18px;
+  padding: 20px 22px;
 }
 
 .result-head {
@@ -160,11 +176,12 @@ body {
 }
 
 .result-copy:hover {
-  background: var(--background);
+  background: var(--secondary);
 }
 
 .result-text {
-  margin: 10px 0 0;
+  margin: 12px 0 0;
+  max-width: 680px;
   white-space: pre-wrap;
 }
 
@@ -184,7 +201,7 @@ body {
 .result-meta span {
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted-foreground);
 }

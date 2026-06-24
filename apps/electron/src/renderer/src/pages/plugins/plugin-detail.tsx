@@ -57,11 +57,11 @@ export default function PluginDetailPage(): React.JSX.Element {
         </Button>
 
         {loading ? (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground py-10 text-center text-sm">
             {t("plugins.loading")}
           </p>
         ) : !plugin ? (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground py-10 text-center text-sm">
             {t("plugins.detail.notFound")}
           </p>
         ) : (
@@ -86,16 +86,23 @@ function Detail({
 
   return (
     <div>
-      <div className="flex items-start gap-5">
-        <div className="border-border bg-accent/40 flex size-16 shrink-0 items-center justify-center rounded-[14px] border">
-          <Icon className="text-primary size-8" strokeWidth={1.6} />
+      <div className="flex items-center gap-4">
+        <div className="border-border bg-secondary flex size-12 shrink-0 items-center justify-center rounded-[12px] border">
+          <Icon
+            className={
+              plugin.enabled
+                ? "text-primary size-6"
+                : "text-muted-foreground size-6"
+            }
+            strokeWidth={1.6}
+          />
         </div>
 
         <div className="min-w-0 flex-1">
-          <h1 className="serif text-foreground m-0 text-[32px] leading-none">
+          <h1 className="serif text-foreground m-0 text-[32px] leading-[1]">
             {pluginDisplayName(plugin)}
           </h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
             {plugin.version ? (
               <span className="mono text-muted-foreground text-[11px]">
                 v{plugin.version}
@@ -143,7 +150,7 @@ function Detail({
         </p>
       ) : null}
 
-      <p className="mono text-muted-foreground mt-4 text-[10px] uppercase tracking-[0.14em]">
+      <p className="mono text-muted-foreground mt-4 text-[12px]">
         {plugin.specifier}
       </p>
 

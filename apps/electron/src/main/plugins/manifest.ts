@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   type PluginUIPage,
   parsePluginPages,
@@ -10,8 +11,6 @@ import { createAppLogger } from "@freestyle/utils";
 import { parsePluginsSetting, pluginEntryParts } from "@freestyle/validations";
 
 const log = createAppLogger("plugins-ui");
-
-const require = createRequire(import.meta.url);
 
 /** A discovered plugin and (if it ships any) its UI pages. */
 export interface DiscoveredPlugin {
@@ -51,7 +50,12 @@ export function discoverPlugins(
   const out: DiscoveredPlugin[] = [];
   const seenDirs = new Set<string>();
 
-  for (const entry of parsePluginsSetting(pluginsSetting)) {
+  const entries = parsePluginsSetting(pluginsSetting);
+  log.info(
+    `discovery: plugins setting=${JSON.stringify(pluginsSetting ?? null)} (${entries.length} entr${entries.length === 1 ? "y" : "ies"})`,
+  );
+
+  for (const entry of entries) {
     const { specifier } = pluginEntryParts(entry);
     const discovered = discoverPackage(specifier);
     if (discovered && !seenDirs.has(discovered.dir)) {
@@ -72,14 +76,36 @@ export function discoverPlugins(
 
 /** Resolve an installed package specifier to a {@link DiscoveredPlugin}. */
 function discoverPackage(specifier: string): DiscoveredPlugin | null {
-  let pkgJsonPath: string;
-  try {
-    pkgJsonPath = require.resolve(`${specifier}/package.json`);
-  } catch {
+  const pkgJsonPath = resolvePackageJson(specifier);
+  if (!pkgJsonPath) {
     log.warn(`could not resolve plugin package "${specifier}"`);
     return null;
   }
+  log.info(`discovery: resolved "${specifier}" -> ${pkgJsonPath}`);
   return readManifest(pkgJsonPath, specifier, false);
+}
+
+/**
+ * Resolve a package's `package.json`, trying several base paths. A bundled
+ * Electron main has an unpredictable `import.meta.url`, and the plugin may live
+ * in the app's `node_modules` rather than the bundle's — so we attempt
+ * resolution from the main bundle, the app root, and the cwd.
+ */
+function resolvePackageJson(specifier: string): string | null {
+  const target = `${specifier}/package.json`;
+  const bases = [
+    import.meta.url,
+    pathToFileURL(path.join(__dirname, "index.js")).href,
+    pathToFileURL(path.join(process.cwd(), "index.js")).href,
+  ];
+  for (const base of bases) {
+    try {
+      return createRequire(base).resolve(target);
+    } catch {
+      // try the next base
+    }
+  }
+  return null;
 }
 
 /** Discover local plugin files/folders under `<userData>/plugins/`. */

@@ -3,7 +3,7 @@ import { Button } from "@renderer/components/ui/button";
 import { Card } from "@renderer/components/ui/card";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import type { PluginInfo } from "@shared/plugins";
-import { Puzzle } from "lucide-react";
+import { Check, Copy, Puzzle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -152,12 +152,69 @@ function PluginCard({ plugin }: { plugin: PluginInfo }): React.JSX.Element {
 
 function BrowseTab(): React.JSX.Element {
   const { t } = useTranslation();
+  const settingExample = JSON.stringify(
+    ["@your-org/freestyle-plugin-example"],
+    null,
+    2,
+  );
+
   return (
-    <div className="border-border bg-card rounded-[14px] border border-dashed px-9 py-[52px] text-center">
-      <p className="text-foreground text-sm">{t("plugins.browseSoonTitle")}</p>
-      <p className="text-muted-foreground mt-1 text-[13px]">
-        {t("plugins.browseSoonBody")}
-      </p>
+    <div className="flex flex-col gap-4">
+      <Card className="p-6">
+        <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
+          {t("plugins.browse.registrySoonEyebrow")}
+        </span>
+        <p className="text-foreground mt-2 text-sm">
+          {t("plugins.browse.registrySoonTitle")}
+        </p>
+        <p className="text-muted-foreground mt-1 text-[13px] leading-[1.5]">
+          {t("plugins.browse.registrySoonBody")}
+        </p>
+      </Card>
+
+      <Card className="p-6">
+        <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
+          {t("plugins.browse.manualEyebrow")}
+        </span>
+        <p className="text-muted-foreground mt-2 text-[13px] leading-[1.5]">
+          {t("plugins.browse.manualNpm")}
+        </p>
+        <CodeExample value={settingExample} />
+        <p className="text-muted-foreground mt-4 text-[13px] leading-[1.5]">
+          {t("plugins.browse.manualLocal")}
+        </p>
+        <CodeExample value="<userData>/plugins/my-plugin/" />
+      </Card>
+    </div>
+  );
+}
+
+function CodeExample({ value }: { value: string }): React.JSX.Element {
+  const [copied, setCopied] = useState(false);
+  const copy = (): void => {
+    void navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    });
+  };
+  return (
+    <div className="border-border bg-secondary/40 relative mt-2 rounded-[9px] border">
+      <pre className="mono text-foreground overflow-auto p-3 pr-12 text-[12px] leading-[1.55]">
+        {value}
+      </pre>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="absolute right-1.5 top-1.5"
+        onClick={copy}
+        aria-label="Copy"
+      >
+        {copied ? (
+          <Check className="text-primary" />
+        ) : (
+          <Copy className="text-muted-foreground" />
+        )}
+      </Button>
     </div>
   );
 }

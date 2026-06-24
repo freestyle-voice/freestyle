@@ -385,7 +385,13 @@
     "pageCount": "{{count}} page",
     "pageCount_other": "{{count}} pages",
     "open": "Open",
-    "browseSoonTitle": "Browsing is coming soon",
-    "browseSoonBody": "You'll be able to search and install plugins here. For now, add plugins locally or via the plugins setting."
+    "browse": {
+      "registrySoonEyebrow": "Registry",
+      "registrySoonTitle": "A searchable plugin registry is coming soon",
+      "registrySoonBody": "You'll be able to browse and install plugins right here. For now, add them manually with the steps below.",
+      "manualEyebrow": "Add a plugin",
+      "manualNpm": "Install an npm package, then add its name to the \"plugins\" setting (a JSON array):",
+      "manualLocal": "Or drop a plugin folder into your local plugins directory:"
+    }
   }
 }

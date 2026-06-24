@@ -6,8 +6,7 @@
   "description": "Transcribe audio files by dropping them into Freestyle.",
   "main": "dist/index.js",
   "files": [
-    "dist",
-    "ui/dist"
+    "dist"
   ],
   "freestyle": {
     "contributes": {
@@ -16,7 +15,7 @@
           "id": "transcribe-files",
           "title": "Transcribe Files",
           "icon": "FileAudio",
-          "entry": "ui/dist/index.html"
+          "entry": "dist/ui/index.html"
         }
       ]
     }

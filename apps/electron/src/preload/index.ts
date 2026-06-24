@@ -5,6 +5,7 @@ import type {
   AudioPlaybackMode,
 } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
+import type { PluginInfo, PluginViewBounds } from "../shared/plugins";
 
 // Custom APIs for renderer
 const api = {
@@ -260,6 +261,26 @@ const api = {
     ): void => callback(state);
     ipcRenderer.on("mic:activity-changed", handler);
     return () => ipcRenderer.removeListener("mic:activity-changed", handler);
+  },
+
+  // --- Plugins ---
+  listPlugins: (): Promise<PluginInfo[]> => ipcRenderer.invoke("plugins:list"),
+  refreshPlugins: (): Promise<PluginInfo[]> =>
+    ipcRenderer.invoke("plugins:refresh"),
+  showPluginView: (
+    pluginName: string,
+    pageId: string,
+    bounds: PluginViewBounds,
+    tokens?: Record<string, string>,
+  ): Promise<boolean> =>
+    ipcRenderer.invoke("plugin-view:show", pluginName, pageId, bounds, tokens),
+  setPluginViewBounds: (bounds: PluginViewBounds): void =>
+    ipcRenderer.send("plugin-view:set-bounds", bounds),
+  hidePluginView: (): void => ipcRenderer.send("plugin-view:hide"),
+  onPluginNavigate: (callback: (to: string) => void): (() => void) => {
+    const handler = (_: unknown, to: string): void => callback(to);
+    ipcRenderer.on("plugin:navigate", handler);
+    return () => ipcRenderer.removeListener("plugin:navigate", handler);
   },
 };
 

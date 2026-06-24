@@ -1,4 +1,9 @@
 export { type AppContextPayload, parseAppContext } from "./app-context.js";
+export type {
+  FreestyleBridge,
+  HostActions,
+  HostEvents,
+} from "./bridge.js";
 export type { PluginConfig } from "./config.js";
 export {
   type BaseLogger,
@@ -44,3 +49,9 @@ export {
   type PluginRegistryOptions,
 } from "./registry.js";
 export { type TextTransformer, transform } from "./transform.js";
+export {
+  type PluginContributes,
+  type PluginManifest,
+  type PluginUIPage,
+  parsePluginPages,
+} from "./ui.js";

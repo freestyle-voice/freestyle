@@ -27,7 +27,16 @@ export default defineConfig({
       },
     },
   },
-  preload: {},
+  preload: {
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve("src/preload/index.ts"),
+          "plugin-bridge": resolve("src/preload/plugin-bridge.ts"),
+        },
+      },
+    },
+  },
   renderer: {
     define: {
       "process.platform": JSON.stringify(process.platform),
@@ -36,6 +45,7 @@ export default defineConfig({
       alias: {
         ...workspaceAliases,
         "@renderer": resolve("src/renderer/src"),
+        "@shared": resolve("src/shared"),
       },
     },
     plugins: [react(), tailwindcss()],

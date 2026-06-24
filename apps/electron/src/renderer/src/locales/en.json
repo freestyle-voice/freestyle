@@ -365,8 +365,26 @@
       "vocabulary": "Vocabulary",
       "formats": "Formats",
       "models": "Models",
+      "plugins": "Plugins",
       "settings": "Settings",
       "help": "Help"
     }
+  },
+  "plugins": {
+    "eyebrow": "Extend Freestyle",
+    "titleAccent": "Plugins",
+    "subtitle": "Install plugins to add features. Each runs in the dictation pipeline and can ship its own page.",
+    "tabs": {
+      "installed": "Installed",
+      "browse": "Browse"
+    },
+    "loading": "Loading plugins…",
+    "empty": "No plugins installed yet.",
+    "localBadge": "Local",
+    "pageCount": "{{count}} page",
+    "pageCount_other": "{{count}} pages",
+    "open": "Open",
+    "browseSoonTitle": "Browsing is coming soon",
+    "browseSoonBody": "You'll be able to search and install plugins here. For now, add plugins locally or via the plugins setting."
   }
 }

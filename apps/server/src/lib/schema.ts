@@ -297,4 +297,28 @@ export function initSchema(db: DatabaseSync): void {
     INSERT INTO schema_version (id, version) VALUES (1, ${SCHEMA_VERSION})
     ON CONFLICT(id) DO UPDATE SET version = ${SCHEMA_VERSION}
   `);
+
+  seedDefaultPlugins(db);
+}
+
+/** First-party plugins enabled by default for new installs. */
+const DEFAULT_PLUGINS = ["@freestyle/plugin-audio-transcription"];
+
+/**
+ * Seed the `plugins` setting with the first-party defaults, but only when the
+ * user hasn't configured it yet (never overwrites an existing value). If a
+ * default specifier can't be resolved at runtime the loader simply skips it, so
+ * this is safe even when a default plugin isn't installed.
+ */
+function seedDefaultPlugins(db: DatabaseSync): void {
+  const existing = db
+    .prepare("SELECT value FROM settings WHERE key = 'plugins'")
+    .get() as { value: string } | undefined;
+  if (existing !== undefined) return;
+
+  db.prepare(
+    `INSERT INTO settings (key, value, updated_at)
+     VALUES ('plugins', ?, datetime('now'))
+     ON CONFLICT(key) DO NOTHING`,
+  ).run(JSON.stringify(DEFAULT_PLUGINS));
 }

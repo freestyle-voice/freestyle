@@ -102,6 +102,12 @@ import {
   PipelineStage,
   parseAppContext,
 } from "./plugins/index";
+import {
+  initPluginUiHost,
+  refreshPluginUi,
+  registerPluginUiPrivileges,
+} from "./plugins/ui-host";
+import type { BridgeConfig } from "./plugins/view-manager";
 
 const log = createAppLogger("electron");
 const hotkeyLog = createAppLogger("hotkey");
@@ -246,6 +252,9 @@ function initPluginsForServer(): void {
     token: getServerToken(),
     directory: app.getPath("userData"),
   });
+  // Refresh UI plugin discovery now that the database (and `plugins` setting)
+  // is reachable. No-op if the settings window hasn't been created yet.
+  refreshPluginUi(readPluginsSetting(), app.getPath("userData"));
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -287,6 +296,10 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
+
+// Register the freestyle-plugin:// scheme that serves plugin UI assets. Must
+// also run before app.ready.
+registerPluginUiPrivileges();
 
 function registerAppProtocol(): void {
   protocol.handle("app", (request) => {
@@ -597,8 +610,78 @@ function createSettingsWindow(initialPath?: string): void {
     }
   }
 
+  // Wire the plugin UI host (asset protocol, view manager, IPC) to this window
+  // and do an initial plugin discovery scan.
+  initPluginUiHost({
+    window: settingsWindow,
+    getBridgeConfig: getPluginBridgeConfig,
+    getDiscoverySources: () => ({
+      pluginsSetting: readPluginsSetting(),
+      userDataDir: app.getPath("userData"),
+    }),
+    onAction: handlePluginAction,
+  });
+  refreshPluginUi(readPluginsSetting(), app.getPath("userData"));
+
   const startPath = !onboardingDone ? "/onboarding" : (initialPath ?? "/today");
   settingsWindow.loadURL(getDashboardURL(startPath));
+}
+
+/** Bridge config (server URL/token) injected into plugin UI frames. */
+function getPluginBridgeConfig(): BridgeConfig {
+  const token = getServerToken();
+  return {
+    serverUrl: getServerBaseUrl(),
+    ...(token ? { token } : {}),
+  };
+}
+
+/** Read the `plugins` setting directly from the local SQLite database. */
+function readPluginsSetting(): string | undefined {
+  try {
+    const dbPath = process.env.FREESTYLE_DB_PATH;
+    if (!dbPath) return undefined;
+    const { DatabaseSync } = require("node:sqlite");
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    const row = db
+      .prepare("SELECT value FROM settings WHERE key = 'plugins'")
+      .get() as { value: string } | undefined;
+    db.close();
+    return row?.value;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Perform a host action requested by a plugin UI page over the bridge. */
+async function handlePluginAction(
+  channel: keyof import("@freestyle/sdk").HostActions,
+  payload: unknown,
+): Promise<void> {
+  switch (channel) {
+    case "paste": {
+      const { text } = payload as { text: string };
+      if (text) await pasteIntoFocusedApp(text, async () => {});
+      break;
+    }
+    case "copy": {
+      const { text } = payload as { text: string };
+      if (text) clipboard.writeText(text);
+      break;
+    }
+    case "toast": {
+      const { message } = payload as { message: string };
+      if (message && Notification.isSupported()) {
+        new Notification({ title: "Freestyle", body: message }).show();
+      }
+      break;
+    }
+    case "navigate": {
+      const { to } = payload as { to: string };
+      settingsWindow?.webContents.send("plugin:navigate", to);
+      break;
+    }
+  }
 }
 
 /**

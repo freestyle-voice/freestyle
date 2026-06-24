@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Transcribe Files</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="head">
+        <p class="eyebrow">Audio transcription</p>
+        <h1 class="title"><em>Transcribe</em> files.</h1>
+        <p class="lede">
+          Drop audio files below. Each is transcribed by your local server and
+          cleaned up, just like a dictation.
+        </p>
+      </header>
+
+      <label id="dropzone" class="dropzone" for="file-input">
+        <input
+          id="file-input"
+          class="sr-only"
+          type="file"
+          accept="audio/*"
+          multiple
+        />
+        <span class="dropzone-title">Drop audio files here</span>
+        <span class="dropzone-hint">or click to choose — wav, mp3, m4a, …</span>
+      </label>
+
+      <ul id="results" class="results"></ul>
+    </main>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

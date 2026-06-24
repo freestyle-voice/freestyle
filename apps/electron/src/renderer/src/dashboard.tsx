@@ -15,6 +15,8 @@ import HelpPage from "@renderer/pages/help";
 import HistoryPage from "@renderer/pages/history";
 import ModelsPage from "@renderer/pages/models";
 import NotFoundPage from "@renderer/pages/not-found";
+import PluginPage from "@renderer/pages/plugins/plugin-page";
+import PluginsPage from "@renderer/pages/plugins/plugins";
 import SettingsPage from "@renderer/pages/settings";
 import TodayPage from "@renderer/pages/today";
 import VocabularyPage from "@renderer/pages/vocabulary";
@@ -82,6 +84,11 @@ createRoot(document.getElementById("root")!).render(
                         element={<HistoryPage />}
                       />
                       <Route path="/help" element={<HelpPage />} />
+                      <Route path="/plugins" element={<PluginsPage />} />
+                      <Route
+                        path="/plugins/:pluginName/:pageId"
+                        element={<PluginPage />}
+                      />
                       <Route
                         path="/settings/permissions"
                         element={<Navigate to="/settings" replace />}

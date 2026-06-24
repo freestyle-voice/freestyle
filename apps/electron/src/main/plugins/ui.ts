@@ -1,0 +1,81 @@
+import { pathToFileURL } from "node:url";
+import { createAppLogger } from "@freestyle/utils";
+import { net, protocol } from "electron";
+import {
+  type DiscoveredPlugin,
+  discoverPlugins,
+  resolvePluginAsset,
+} from "./manifest.js";
+
+const log = createAppLogger("plugins-ui");
+
+/** The custom scheme that serves plugin UI assets. */
+export const PLUGIN_SCHEME = "freestyle-plugin";
+
+let discovered: DiscoveredPlugin[] = [];
+
+/**
+ * Privilege registration for the plugin scheme. Must run before `app.ready`
+ * (alongside the `app://` scheme registration).
+ */
+export function registerPluginSchemePrivileges(): void {
+  protocol.registerSchemesAsPrivileged([
+    {
+      scheme: PLUGIN_SCHEME,
+      privileges: {
+        standard: true,
+        secure: true,
+        supportFetchAPI: true,
+        corsEnabled: true,
+      },
+    },
+  ]);
+}
+
+/**
+ * Register the `freestyle-plugin://<pluginName>/<assetPath>` handler. Serves
+ * files **only** from the requested plugin's package directory; any path that
+ * escapes the plugin root (or names an unknown plugin) is rejected.
+ */
+export function registerPluginProtocol(): void {
+  protocol.handle(PLUGIN_SCHEME, (request) => {
+    const url = new URL(request.url);
+    // URL shape: freestyle-plugin://<pluginName>/<assetPath>
+    const pluginName = decodeURIComponent(url.hostname);
+    const filePath = resolvePluginAsset(discovered, pluginName, url.pathname);
+    if (!filePath) {
+      return new Response("Not found", { status: 404 });
+    }
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
+}
+
+/**
+ * Re-scan installed plugins from the current `plugins` setting + local dir.
+ * Call after the server is reachable and whenever the plugin list changes.
+ */
+export function refreshDiscoveredPlugins(
+  pluginsSetting: string | undefined,
+  userDataDir: string,
+): DiscoveredPlugin[] {
+  discovered = discoverPlugins(pluginsSetting, userDataDir);
+  log.info(
+    `discovered ${discovered.length} plugin(s); ${discovered.reduce(
+      (n, p) => n + p.pages.length,
+      0,
+    )} UI page(s)`,
+  );
+  return discovered;
+}
+
+/** The current discovered plugins (empty until {@link refreshDiscoveredPlugins}). */
+export function getDiscoveredPlugins(): DiscoveredPlugin[] {
+  return discovered;
+}
+
+/** Build the `freestyle-plugin://` URL for a plugin page's entry asset. */
+export function pluginPageUrl(pluginName: string, entry: string): string {
+  const host = encodeURIComponent(pluginName);
+  const assetPath = entry.split("/").map(encodeURIComponent).join("/");
+  return `${PLUGIN_SCHEME}://${host}/${assetPath}`;
+}

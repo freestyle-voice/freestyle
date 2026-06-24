@@ -13,6 +13,7 @@ import {
   Cpu,
   FileText,
   Languages,
+  Puzzle,
   Settings,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -68,16 +69,22 @@ const STATIC_NAV: {
     labelKey: "shell.nav.models",
   },
   {
+    to: "/plugins",
+    icon: Puzzle,
+    shortcut: "7",
+    labelKey: "shell.nav.plugins",
+  },
+  {
     to: "/settings",
     icon: Settings,
-    shortcut: "7",
+    shortcut: "8",
     labelKey: "shell.nav.settings",
     footer: true,
   },
   {
     to: "/help",
     icon: CircleHelp,
-    shortcut: "8",
+    shortcut: "9",
     labelKey: "shell.nav.help",
     footer: true,
   },

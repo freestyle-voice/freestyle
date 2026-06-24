@@ -32,6 +32,9 @@ importers:
       '@electron-toolkit/utils':
         specifier: ^4.0.0
         version: 4.0.0(electron@39.8.10)
+      '@freestyle/plugin-audio-transcription':
+        specifier: workspace:*
+        version: link:../../plugins/audio-transcription
       '@freestyle/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk

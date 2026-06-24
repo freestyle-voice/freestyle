@@ -17,7 +17,14 @@ permissions:
 
 jobs:
   publish:
-    if: github.event.label.name == 'accepted' && github.event.issue.state == 'open'
+    # Only the app release. Craft titles package publish issues with a
+    # subdirectory ("<owner>/<repo>/<path>@<version>"); the app issue has none
+    # ("<owner>/<repo>@<version>"). Skip subdirectory issues — publish-package.yml
+    # handles those. This needs no changes when new package pipelines are added.
+    if: >-
+      github.event.label.name == 'accepted' &&
+      github.event.issue.state == 'open' &&
+      !contains(github.event.issue.title, format('{0}/', github.repository))
     runs-on: ubuntu-latest
     name: Publish release
     environment: production

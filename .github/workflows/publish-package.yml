@@ -1,0 +1,167 @@
+# Publish pipeline for packages (SDK + plugins).
+#
+# Mirrors publish.yml (the app pipeline) but for npm packages. Triggered when
+# the "accepted" label is added to a Craft publish-request issue.
+#
+# Routing is title-based and fully generic. Craft titles package publish issues
+# as `publish: <owner>/<repo>/<path>@<version>` (the subdirectory is present
+# only for package releases — the app release issue is `.../<repo>@<version>`
+# with no subdirectory). We:
+#   1. only run when the title contains a subdirectory (-> it's a package), and
+#   2. parse the package path + version straight from the title, then read that
+#      package's release-branch prefix from its own .craft.yml.
+# Adding a new plugin therefore requires NO changes to this file.
+#
+# Auth: npm Trusted Publishing via OIDC (no NPM_TOKEN). Requires
+# `id-token: write` and npm >= 11.5.1 (Node 24 ships a new-enough npm; we also
+# upgrade to be safe). Craft auto-detects the OIDC environment and skips token
+# auth. NOTE: the first publish of a brand-new package name usually must be done
+# once manually (or with a token) before a trusted publisher can be configured
+# on npmjs.com.
+
+name: Publish Package
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+  id-token: write # required for npm OIDC trusted publishing
+
+jobs:
+  publish:
+    # Only package publish issues: "accepted", open, and the title carries a
+    # subdirectory ("<owner>/<repo>/..."). The app issue has no subdirectory and
+    # is handled by publish.yml.
+    if: >-
+      github.event.label.name == 'accepted' &&
+      github.event.issue.state == 'open' &&
+      contains(github.event.issue.title, format('{0}/', github.repository))
+    runs-on: ubuntu-latest
+    name: Publish package release
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - name: Generate GitHub App token
+        id: token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          # Start on the default branch; we read the package's config here and
+          # then check out its release branch once we know the prefix.
+          fetch-depth: 0
+          token: ${{ steps.token.outputs.token }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Node 24 ships an npm new enough (>= 11.5.1) for OIDC trusted publishing.
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          cache: "pnpm"
+
+      - name: Ensure npm supports trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Install Craft
+        run: |
+          CRAFT_URL=$(curl -fsSL https://api.github.com/repos/getsentry/craft/releases/latest \
+            | jq -r '.assets[] | select(.name == "craft") | .browser_download_url')
+          sudo curl -fsSL -o /usr/local/bin/craft "$CRAFT_URL"
+          sudo chmod +x /usr/local/bin/craft
+
+      - name: Parse package + version from issue title
+        id: pkg
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Title: "publish: <owner>/<repo>/<path>@<version>"
+          rest="${ISSUE_TITLE#publish: }"      # <owner>/<repo>/<path>@<version>
+          version="${rest##*@}"                # <version>
+          pathver="${rest%@*}"                 # <owner>/<repo>/<path>
+          path="${pathver#${REPO}/}"           # <path> (e.g. packages/sdk)
+
+          if [[ -z "$path" || "$path" == "$pathver" || -z "$version" ]]; then
+            echo "::error::Could not parse package/version from title: $ISSUE_TITLE"
+            exit 1
+          fi
+          if [[ ! -f "$path/.craft.yml" ]]; then
+            echo "::error::No .craft.yml at $path"
+            exit 1
+          fi
+
+          prefix=$(cd "$path" && craft config | jq -r '.releaseBranchPrefix // empty')
+          if [[ -z "$prefix" ]]; then
+            echo "::error::No releaseBranchPrefix in $path/.craft.yml"
+            exit 1
+          fi
+
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "branch=$prefix/$version" >> "$GITHUB_OUTPUT"
+          echo "Resolved: path=$path version=$version branch=$prefix/$version"
+
+      - name: Check out release branch
+        run: |
+          set -euo pipefail
+          branch="${{ steps.pkg.outputs.branch }}"
+          # Fetch straight into a matching local ref to avoid checkout DWIM ambiguity.
+          git fetch origin "refs/heads/${branch}:refs/heads/${branch}"
+          git checkout "${branch}"
+
+      - name: Set git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Wait for package artifacts on release branch
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: |
+          set -euo pipefail
+          branch="${{ steps.pkg.outputs.branch }}"
+          echo "Waiting for Package Artifacts on $branch..."
+          run_id=$(gh run list --workflow "Package Artifacts" --branch "$branch" \
+            --json databaseId --jq '.[0].databaseId')
+          if [[ -z "$run_id" || "$run_id" == "null" ]]; then
+            echo "::error::No Package Artifacts run found for branch $branch"
+            exit 1
+          fi
+          gh run watch "$run_id" --exit-status
+
+      - name: Publish with Craft
+        working-directory: ${{ steps.pkg.outputs.path }}
+        run: craft publish "${{ steps.pkg.outputs.version }}" --no-input --no-status-check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_API_TOKEN: ${{ steps.token.outputs.token }}
+          # NOTE: no NPM_TOKEN — Craft auto-detects the OIDC environment and uses
+          # npm Trusted Publishing. Provenance attestations are generated
+          # automatically by trusted publishing; we don't force NPM_CONFIG_PROVENANCE
+          # (forcing it can hard-fail depending on repo visibility).
+
+      - name: Close issue on success
+        if: success()
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: |
+          gh issue close "${{ github.event.issue.number }}" \
+            --comment "Published **${{ steps.pkg.outputs.path }}@${{ steps.pkg.outputs.version }}** successfully.
+          [Workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+
+      - name: Handle failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" \
+            --body "Publish failed. See [run logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          gh issue edit "${{ github.event.issue.number }}" --remove-label accepted

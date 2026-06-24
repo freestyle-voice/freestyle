@@ -1,0 +1,77 @@
+# Builds the npm tarball that Craft publishes for package releases.
+#
+# Triggered when `craft prepare` (release-package.yml) pushes a package release
+# branch. Craft's npm target downloads the artifact uploaded here (named after
+# the commit SHA, per Craft's GitHub artifact provider) and runs `npm publish`
+# on it during the publish step.
+#
+# IMPORTANT: we use `pnpm pack` (not `npm pack`) so the plugin's
+# `freestyle-voice: workspace:*` dependency is rewritten to a real version
+# range in the published tarball. Plain `npm pack` does not understand the
+# workspace: protocol.
+
+name: Package Artifacts
+on:
+  push:
+    branches:
+      - "release-sdk/**"
+      - "release-plugin-**"
+
+concurrency:
+  group: package-artifacts-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    name: Build & pack package tarball
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: "package.json"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Resolve package from branch
+        id: pkg
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          case "$BRANCH" in
+            release-sdk/*)
+              echo "path=packages/sdk" >> "$GITHUB_OUTPUT"
+              echo "name=freestyle-voice" >> "$GITHUB_OUTPUT"
+              ;;
+            release-plugin-audio-transcription/*)
+              echo "path=plugins/audio-transcription" >> "$GITHUB_OUTPUT"
+              echo "name=@freestyle-voice/plugin-audio-transcription" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::No package mapping for branch $BRANCH"
+              exit 1
+              ;;
+          esac
+
+      - name: Build package (and its workspace deps)
+        run: pnpm turbo build --filter ${{ steps.pkg.outputs.name }}
+
+      - name: "Pack tarball (rewrites workspace: protocol)"
+        working-directory: ${{ steps.pkg.outputs.path }}
+        run: pnpm pack
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # Craft's GitHub artifact provider expects the artifact named after
+          # the release-branch HEAD commit SHA.
+          name: ${{ github.sha }}
+          path: ${{ steps.pkg.outputs.path }}/*.tgz
+          if-no-files-found: error

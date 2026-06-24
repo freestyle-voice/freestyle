@@ -1,6 +1,21 @@
 {
   "name": "freestyle-voice",
   "version": "0.1.0",
+  "description": "The plugin SDK for Freestyle — write plugins that extend the local-first voice dictation pipeline.",
+  "license": "MIT",
+  "homepage": "https://github.com/freestyle-voice/freestyle/tree/main/packages/sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/freestyle-voice/freestyle.git",
+    "directory": "packages/sdk"
+  },
+  "keywords": [
+    "freestyle",
+    "voice",
+    "dictation",
+    "plugin",
+    "sdk"
+  ],
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -8,6 +23,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "pkgroll --minify",
     "test": "vitest run"

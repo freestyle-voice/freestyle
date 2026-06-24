@@ -1,0 +1,32 @@
+# Craft config for the `freestyle-voice` SDK package.
+#
+# This is an INDEPENDENT release pipeline, separate from the Electron app
+# (root .craft.yml) and from each plugin. Craft is run with its working
+# directory set to this folder (see .github/workflows/release-package.yml),
+# so findConfigFile() picks up THIS .craft.yml.
+#
+# Independence is achieved via:
+#   - tagPrefix          -> namespaced git tags (freestyle-voice@1.2.3)
+#   - releaseBranchPrefix -> namespaced release branches (release-sdk/1.2.3)
+#   - changelog.filePath  -> this package's own CHANGELOG.md (relative to here)
+minVersion: "2.21.1"
+
+# Versions are chosen explicitly per dispatch (no auto bump). Craft bumps
+# this package's package.json to the version passed to `craft prepare`.
+versioning:
+  policy: manual
+
+# Resolves to packages/sdk/CHANGELOG.md (relative to this config's directory).
+changelog:
+  filePath: CHANGELOG.md
+  policy: auto
+
+# Keep release branches from colliding with the app pipeline (release/<v>)
+# and with other packages.
+releaseBranchPrefix: release-sdk
+
+targets:
+  - name: npm
+    access: public
+  - name: github
+    tagPrefix: "freestyle-voice@"

@@ -3,10 +3,27 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Transcribe audio files by dropping them into Freestyle.",
+  "license": "MIT",
+  "homepage": "https://github.com/freestyle-voice/freestyle/tree/main/plugins/audio-transcription#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/freestyle-voice/freestyle.git",
+    "directory": "plugins/audio-transcription"
+  },
+  "keywords": [
+    "freestyle",
+    "freestyle-plugin",
+    "voice",
+    "dictation",
+    "transcription"
+  ],
   "main": "dist/index.js",
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "freestyle": {
     "icon": "FileMusic",
     "contributes": {

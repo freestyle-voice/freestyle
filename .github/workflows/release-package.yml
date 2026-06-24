@@ -1,0 +1,102 @@
+# Independent release pipeline for publishable packages (SDK + plugins).
+#
+# Separate from the app release (release.yml). It runs `craft prepare` with its
+# working directory pointed at the chosen package, so Craft uses that package's
+# own .craft.yml (its own version, tag prefix, release branch prefix, CHANGELOG).
+#
+# The getsentry/craft action creates the publish-request issue with a title of
+# the form:  `publish: <owner>/<repo>/<path>@<version>`
+# (e.g. `publish: freestyle-voice/freestyle/packages/sdk@1.2.0`). That embedded
+# subdirectory is what publish-package.yml uses to route the publish back to the
+# right package — no labels required.
+#
+# To add a new plugin: drop a .craft.yml in its dir and add it to the `package`
+# choices + the `case` in the "Resolve package path" step below. Nothing else.
+
+name: Release Package
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Which package to release
+        required: true
+        type: choice
+        options:
+          - sdk
+          - plugin-audio-transcription
+      version:
+        description: 'Explicit version to release (e.g. 1.2.0)'
+        required: true
+        type: string
+      merge_target:
+        description: Target branch to merge into
+        required: false
+        default: "main"
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  # Serialize per package; different packages can still release in parallel.
+  group: release-package-${{ github.event.inputs.package }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    name: Prepare ${{ github.event.inputs.package }} ${{ github.event.inputs.version }}
+    steps:
+      - name: Generate GitHub App token
+        id: token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.token.outputs.token }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: "package.json"
+          cache: "pnpm"
+
+      - name: Resolve package path
+        id: pkg
+        env:
+          PKG: ${{ github.event.inputs.package }}
+        run: |
+          case "$PKG" in
+            sdk)                        echo "path=packages/sdk" >> "$GITHUB_OUTPUT" ;;
+            plugin-audio-transcription) echo "path=plugins/audio-transcription" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::Unknown package: $PKG"; exit 1 ;;
+          esac
+
+      - name: Craft prepare
+        id: craft
+        uses: getsentry/craft@v2
+        with:
+          version: ${{ github.event.inputs.version }}
+          merge_target: ${{ github.event.inputs.merge_target }}
+          publish_repo: self
+          path: ${{ steps.pkg.outputs.path }}
+        env:
+          GITHUB_TOKEN: ${{ steps.token.outputs.token }}
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Release prepared"
+            echo "- Package: \`${{ github.event.inputs.package }}\` (\`${{ steps.pkg.outputs.path }}\`)"
+            echo "- Version: \`${{ steps.craft.outputs.version || github.event.inputs.version }}\`"
+            echo "- Release branch: \`${{ steps.craft.outputs.branch }}\`"
+            echo "- Publish request: ${{ steps.craft.outputs.issue_url }}"
+            echo ""
+            echo "Add the **accepted** label to the publish issue to publish."
+          } >> "$GITHUB_STEP_SUMMARY"

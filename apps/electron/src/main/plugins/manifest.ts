@@ -86,10 +86,11 @@ function discoverPackage(specifier: string): DiscoveredPlugin | null {
 }
 
 /**
- * Resolve a package's `package.json`, trying several base paths. A bundled
- * Electron main has an unpredictable `import.meta.url`, and the plugin may live
- * in the app's `node_modules` rather than the bundle's — so we attempt
- * resolution from the main bundle, the app root, and the cwd.
+ * Resolve a package's `package.json`. First tries Node resolution from several
+ * base paths (a bundled Electron main has an unpredictable `import.meta.url`,
+ * and the plugin may live in the app's `node_modules`). Falls back to scanning
+ * the monorepo's `plugins/` workspace by package name, so first-party plugins
+ * resolve in dev even before `pnpm install` links them into `node_modules`.
  */
 function resolvePackageJson(specifier: string): string | null {
   const target = `${specifier}/package.json`;
@@ -103,6 +104,35 @@ function resolvePackageJson(specifier: string): string | null {
       return createRequire(base).resolve(target);
     } catch {
       // try the next base
+    }
+  }
+  return resolveFromWorkspace(specifier);
+}
+
+/**
+ * Locate a package by name inside the monorepo's `plugins/` directory. Only
+ * relevant in a dev checkout; returns `null` in a packaged app where there is
+ * no workspace.
+ */
+function resolveFromWorkspace(specifier: string): string | null {
+  // out/main/index.js -> apps/electron -> <repo root>
+  const repoRoot = path.resolve(__dirname, "../../../..");
+  const pluginsDir = path.join(repoRoot, "plugins");
+  let names: string[];
+  try {
+    names = fs.readdirSync(pluginsDir);
+  } catch {
+    return null;
+  }
+  for (const name of names) {
+    const pkgJsonPath = path.join(pluginsDir, name, "package.json");
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8")) as {
+        name?: unknown;
+      };
+      if (pkg.name === specifier) return pkgJsonPath;
+    } catch {
+      // not a readable package; skip
     }
   }
   return null;

@@ -34,6 +34,10 @@ function getFileTransport(dir: string): winston.transport | null {
       maxFiles: MAX_FILES,
       tailable: true,
     });
+    // This single transport is intentionally shared across every namespaced
+    // logger in the process, so the default 10-listener cap is exceeded by
+    // design. Lift it (0 = unlimited) to avoid spurious MaxListeners warnings.
+    fileTransport.setMaxListeners(0);
   } catch {
     // Logging must never crash the app; fall back to console-only.
     fileTransport = null;

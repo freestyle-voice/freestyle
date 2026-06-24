@@ -39,6 +39,8 @@ export interface DiscoveredPlugin {
   local: boolean;
   /** Whether the plugin is currently enabled (not in `disabled_plugins`). */
   enabled: boolean;
+  /** Raw README markdown read from the package dir, when present. */
+  readme?: string;
   /** UI pages the plugin contributes. */
   pages: PluginUIPage[];
 }
@@ -193,6 +195,7 @@ function readManifest(
   const dir = path.dirname(pkgJsonPath);
   const name = typeof pkg.name === "string" ? pkg.name : path.basename(dir);
   const icon = parsePluginIcon(pkg.freestyle);
+  const readme = readReadme(dir);
   return {
     name,
     slug: pluginSlug(name),
@@ -207,7 +210,25 @@ function readManifest(
       : {}),
     ...(typeof pkg.author === "string" ? { author: pkg.author } : {}),
     ...(icon ? { icon } : {}),
+    ...(readme ? { readme } : {}),
   };
+}
+
+/** Read a plugin's README markdown from its package dir, if present. */
+function readReadme(dir: string): string | undefined {
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return undefined;
+  }
+  const match = names.find((n) => /^readme(\.(md|markdown|txt))?$/i.test(n));
+  if (!match) return undefined;
+  try {
+    return fs.readFileSync(path.join(dir, match), "utf8");
+  } catch {
+    return undefined;
+  }
 }
 
 /**

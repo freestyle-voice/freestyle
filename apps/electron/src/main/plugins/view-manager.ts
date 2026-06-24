@@ -84,6 +84,10 @@ export class PluginViewManager {
         sandbox: false,
       },
     });
+    // Paint the app background immediately so there's no white flash before the
+    // page's own stylesheet loads.
+    const bg = tokens?.["--background"];
+    if (bg) this.view.setBackgroundColor(toHexColor(bg));
     this.pendingConfig = { ...this.resolveConfig(), tokens };
     this.window.contentView.addChildView(this.view);
     this.setBounds(bounds);
@@ -126,6 +130,12 @@ export class PluginViewManager {
     this.current = null;
     this.pendingConfig = null;
   }
+}
+
+/** Normalize a CSS color token to a `#RRGGBB` hex Electron accepts. */
+function toHexColor(value: string): string {
+  const v = value.trim();
+  return /^#[0-9a-fA-F]{3,8}$/.test(v) ? v : "#000000";
 }
 
 /** Absolute path to the plugin-bridge preload, resolved from the main bundle. */

@@ -86,8 +86,20 @@ body {
   border-style: solid;
 }
 
+.dropzone-icon {
+  width: 26px;
+  height: 26px;
+  margin-bottom: 4px;
+  color: var(--muted-foreground);
+}
+
+.dropzone.is-dragging .dropzone-icon {
+  color: var(--primary);
+}
+
 .dropzone-title {
   font-size: 15px;
+  font-weight: 500;
 }
 
 .dropzone-hint {
@@ -158,4 +170,21 @@ body {
 
 .result-text.is-error {
   color: var(--destructive);
+}
+
+.result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.result-meta span {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
 }

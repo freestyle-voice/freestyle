@@ -251,5 +251,6 @@ function serializePlugins(plugins: readonly DiscoveredPlugin[]) {
     ...(p.description ? { description: p.description } : {}),
     ...(p.author ? { author: p.author } : {}),
     ...(p.icon ? { icon: p.icon } : {}),
+    ...(p.readme ? { readme: p.readme } : {}),
   }));
 }

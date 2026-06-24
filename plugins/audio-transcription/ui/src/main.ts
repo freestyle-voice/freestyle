@@ -87,16 +87,36 @@ async function transcribe(file: File): Promise<void> {
     const data = (await res.json()) as {
       raw?: string;
       cleaned?: string;
+      model?: string;
+      durationMs?: number;
+      audioDurationMs?: number;
+      costUsd?: number;
     };
-    row.done(data.cleaned ?? data.raw ?? "");
+    row.done(data.cleaned ?? data.raw ?? "", {
+      ...(data.model ? { model: data.model } : {}),
+      ...(typeof data.durationMs === "number"
+        ? { durationMs: data.durationMs }
+        : {}),
+      ...(typeof data.audioDurationMs === "number"
+        ? { audioDurationMs: data.audioDurationMs }
+        : {}),
+      ...(typeof data.costUsd === "number" ? { costUsd: data.costUsd } : {}),
+    });
   } catch (err) {
     row.fail(err instanceof Error ? err.message : String(err));
   }
 }
 
+interface ResultMeta {
+  model?: string;
+  durationMs?: number;
+  audioDurationMs?: number;
+  costUsd?: number;
+}
+
 interface Row {
   el: HTMLLIElement;
-  done(text: string): void;
+  done(text: string, meta: ResultMeta): void;
   fail(message: string): void;
 }
 
@@ -120,7 +140,7 @@ function createRow(fileName: string): Row {
 
   return {
     el,
-    done(text) {
+    done(text, meta) {
       status.remove();
       const body = document.createElement("p");
       body.className = "result-text";
@@ -141,6 +161,18 @@ function createRow(fileName: string): Row {
         });
         head.append(copy);
       }
+
+      const metrics = formatMetrics(meta);
+      if (metrics.length > 0) {
+        const footer = document.createElement("div");
+        footer.className = "result-meta";
+        for (const m of metrics) {
+          const chip = document.createElement("span");
+          chip.textContent = m;
+          footer.append(chip);
+        }
+        el.append(footer);
+      }
     },
     fail(message) {
       status.textContent = "Failed";
@@ -151,4 +183,25 @@ function createRow(fileName: string): Row {
       el.append(body);
     },
   };
+}
+
+/** Build the short metric chips shown under a transcript. */
+function formatMetrics(meta: ResultMeta): string[] {
+  const chips: string[] = [];
+  if (typeof meta.audioDurationMs === "number" && meta.audioDurationMs > 0) {
+    chips.push(`${(meta.audioDurationMs / 1000).toFixed(1)}s audio`);
+  }
+  if (typeof meta.durationMs === "number" && meta.durationMs > 0) {
+    chips.push(`${(meta.durationMs / 1000).toFixed(1)}s processing`);
+  }
+  if (meta.model) chips.push(stripProvider(meta.model));
+  if (typeof meta.costUsd === "number" && meta.costUsd > 0) {
+    chips.push(`$${meta.costUsd.toFixed(4)}`);
+  }
+  return chips;
+}
+
+function stripProvider(model: string): string {
+  const slash = model.indexOf("/");
+  return slash >= 0 ? model.slice(slash + 1) : model;
 }

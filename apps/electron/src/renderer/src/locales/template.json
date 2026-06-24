@@ -390,7 +390,7 @@
       "notFound": "This plugin is no longer installed.",
       "enabled": "Enabled",
       "disabled": "Disabled",
-      "pages": "Pages"
+      "noReadme": "This plugin doesn't include a README."
     },
     "browse": {
       "registrySoonEyebrow": "Registry",

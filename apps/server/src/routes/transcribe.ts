@@ -379,6 +379,11 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     model: voiceModel,
     provider_category: routeVoiceProviderCategory(voiceProvider),
     durationMs,
+    audioDurationMs,
+    llmModel: pp.llmModel,
+    inputTokens: pp.inputTokens,
+    outputTokens: pp.outputTokens,
+    costUsd: pp.costUsd,
   });
 });
 

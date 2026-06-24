@@ -15,6 +15,8 @@ export interface PluginInfo {
   author?: string;
   /** Plugin-level icon name (lucide) declared via `freestyle.icon`. */
   icon?: string;
+  /** Raw README markdown shipped with the plugin, when present. */
+  readme?: string;
   pages: PluginUIPage[];
 }
 

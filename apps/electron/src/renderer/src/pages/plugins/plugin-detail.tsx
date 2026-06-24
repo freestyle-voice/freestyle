@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { pluginDisplayName, resolvePluginIcon } from "./helpers";
+import { PluginReadme } from "./plugin-readme";
 
 export default function PluginDetailPage(): React.JSX.Element {
   const { slug } = useParams<{ slug: string }>();
@@ -81,6 +82,7 @@ function Detail({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const Icon = resolvePluginIcon(plugin.icon ?? plugin.pages[0]?.icon);
+  const page = plugin.pages[0];
 
   return (
     <div>
@@ -115,12 +117,18 @@ function Detail({
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="text-muted-foreground text-[12px]">
-            {plugin.enabled
-              ? t("plugins.detail.enabled")
-              : t("plugins.detail.disabled")}
-          </span>
+        <div className="flex shrink-0 items-center gap-3">
+          {page ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!plugin.enabled}
+              onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
+            >
+              {t("plugins.open")}
+              <ArrowRight data-icon="inline-end" />
+            </Button>
+          ) : null}
           <Switch
             checked={plugin.enabled}
             onCheckedChange={(v) => void onToggle(v)}
@@ -130,45 +138,26 @@ function Detail({
       </div>
 
       {plugin.description ? (
-        <p className="text-foreground mt-5 max-w-[640px] text-[14px] leading-[1.6]">
+        <p className="text-foreground mt-5 max-w-[680px] text-[14px] leading-[1.6]">
           {plugin.description}
         </p>
       ) : null}
 
-      <p className="mono text-muted-foreground mt-6 text-[10px] uppercase tracking-[0.14em]">
+      <p className="mono text-muted-foreground mt-4 text-[10px] uppercase tracking-[0.14em]">
         {plugin.specifier}
       </p>
 
-      {plugin.pages.length > 0 ? (
-        <section className="mt-7">
-          <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
-            {t("plugins.detail.pages")}
-          </span>
-          <div className="mt-3 flex flex-col gap-2">
-            {plugin.pages.map((page) => {
-              const PageIcon = resolvePluginIcon(page.icon ?? plugin.icon);
-              return (
-                <button
-                  type="button"
-                  key={page.id}
-                  disabled={!plugin.enabled}
-                  onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
-                  className="border-border bg-card hover:border-foreground/15 flex items-center gap-3 rounded-[12px] border p-3.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <PageIcon
-                    className="text-muted-foreground size-4 shrink-0"
-                    strokeWidth={1.7}
-                  />
-                  <span className="text-foreground flex-1 text-[14px]">
-                    {page.title}
-                  </span>
-                  <ArrowRight className="text-muted-foreground size-4" />
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
+      <hr className="border-border mt-6" />
+
+      {plugin.readme ? (
+        <div className="mt-6">
+          <PluginReadme source={plugin.readme} />
+        </div>
+      ) : (
+        <p className="text-muted-foreground mt-6 text-[13px]">
+          {t("plugins.detail.noReadme")}
+        </p>
+      )}
     </div>
   );
 }

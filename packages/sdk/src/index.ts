@@ -31,6 +31,7 @@ export {
   type LoadPluginsOptions,
   loadPlugins,
   type PluginEntry,
+  resolveLocalPackage,
 } from "./loader.js";
 export { sortPlugins } from "./order.js";
 export { OutputMode } from "./output.js";

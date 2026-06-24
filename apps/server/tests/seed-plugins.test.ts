@@ -9,30 +9,26 @@ function readSetting(db: DatabaseSync, key: string): string | undefined {
   return row?.value;
 }
 
-describe("seedDefaultPlugins (via initSchema)", () => {
-  it("seeds the default plugins setting on a fresh database", () => {
+describe("plugins setting on a fresh database", () => {
+  it("does not seed any plugins (install is explicit, via the catalog)", () => {
     const db = new DatabaseSync(":memory:");
     initSchema(db);
 
-    const value = readSetting(db, "plugins");
-    expect(value).toBeDefined();
-    expect(JSON.parse(value as string)).toContain(
-      "@freestyle/plugin-audio-transcription",
-    );
+    expect(readSetting(db, "plugins")).toBeUndefined();
   });
 
   it("never overwrites a user-configured plugins setting", () => {
     const db = new DatabaseSync(":memory:");
     initSchema(db);
 
-    // Simulate a user who removed every plugin.
-    db.prepare("UPDATE settings SET value = ? WHERE key = 'plugins'").run(
-      JSON.stringify([]),
-    );
+    db.prepare(
+      "INSERT INTO settings (key, value, updated_at) VALUES ('plugins', ?, datetime('now'))",
+    ).run(JSON.stringify(["@acme/plugin-x"]));
 
-    // Re-running init (e.g. on the next boot / a migration) must preserve it.
     initSchema(db);
 
-    expect(JSON.parse(readSetting(db, "plugins") as string)).toEqual([]);
+    expect(JSON.parse(readSetting(db, "plugins") as string)).toEqual([
+      "@acme/plugin-x",
+    ]);
   });
 });

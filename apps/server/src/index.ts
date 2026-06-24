@@ -114,6 +114,13 @@ export {
   disposeServerPlugins,
   reloadServerPlugins,
 } from "./lib/plugins/index.js";
+export {
+  type InstalledPackage,
+  installPackage,
+  type ResolvedPackage,
+  resolvePackage,
+  uninstallPackage,
+} from "./lib/plugins/installer.js";
 export { captureException, shutdownPosthog } from "./lib/posthog.js";
 export { stopServer as stopWhisperServer } from "./lib/whisper/server.js";
 export {

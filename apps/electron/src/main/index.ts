@@ -97,13 +97,16 @@ import {
 import {
   plugins as appPlugins,
   FreestyleEventType,
+  fetchCatalog,
   fetchPluginSettings,
   initAppPlugins,
+  installPlugin,
   OutputMode,
   PipelineStage,
   parseAppContext,
   reloadAppPlugins,
   setPluginEnabled,
+  uninstallPlugin,
 } from "./plugins/index";
 import {
   initPluginUiHost,
@@ -624,6 +627,15 @@ function createSettingsWindow(initialPath?: string): void {
       await setPluginEnabled(getServerTarget(), specifier, enabled);
       await reloadAppPlugins(getServerTarget());
     },
+    getCatalog: () => fetchCatalog(getServerTarget()),
+    installPlugin: async (npmName, version) => {
+      await installPlugin(getServerTarget(), npmName, version);
+      await reloadAppPlugins(getServerTarget());
+    },
+    uninstallPlugin: async (specifier) => {
+      await uninstallPlugin(getServerTarget(), specifier);
+      await reloadAppPlugins(getServerTarget());
+    },
     onAction: handlePluginAction,
   });
   void getPluginDiscoverySources().then(
@@ -640,12 +652,14 @@ function getServerTarget(): {
   baseUrl: string;
   token?: string;
   directory: string;
+  remote: boolean;
 } {
   const token = getServerToken();
   return {
     baseUrl: getServerBaseUrl(),
     ...(token ? { token } : {}),
     directory: app.getPath("userData"),
+    remote: getServerUrl() !== "",
   };
 }
 

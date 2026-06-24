@@ -2,6 +2,11 @@ import path from "node:path";
 import type { HookFailure, PluginEntry } from "@freestyle/sdk";
 import { loadPlugins, type PluginRegistry } from "@freestyle/sdk";
 import type { AppType } from "@freestyle/server";
+import {
+  installPackage,
+  resolvePackage,
+  uninstallPackage,
+} from "@freestyle/server";
 import { createAppLogger } from "@freestyle/utils";
 import {
   parseDisabledPlugins,
@@ -23,6 +28,12 @@ export interface ServerTarget {
   token?: string;
   /** Electron's local user-data directory; app-host plugins live under it. */
   directory: string;
+  /**
+   * Whether the server is a configured *remote* one. When false, the embedded
+   * server shares this app's user-data dir, so a server-side install already
+   * materializes the package for the desktop too (no local mirror needed).
+   */
+  remote: boolean;
 }
 
 /**
@@ -105,6 +116,72 @@ export async function setPluginEnabled(
     log.warn(
       `server plugin reload failed: ${err instanceof Error ? err.message : String(err)}`,
     );
+  }
+}
+
+const INSTALL_TIMEOUT_MS = 60_000;
+
+/** Fetch the installable plugin catalog from the server. */
+export async function fetchCatalog(target: ServerTarget): Promise<unknown> {
+  const client = hc<AppType>(target.baseUrl, {
+    headers: target.token ? { Authorization: `Bearer ${target.token}` } : {},
+  });
+  const res = await client.api.plugins.catalog.$get(
+    {},
+    { init: { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) } },
+  );
+  if (!res.ok) throw new Error(`catalog fetch failed: HTTP ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Install a plugin by npm name. The server installs into its own plugins dir
+ * and updates the `plugins` setting; for a *remote* server we additionally
+ * materialize the package into this desktop's plugins dir so app-side hooks and
+ * the UI page load locally.
+ */
+export async function installPlugin(
+  target: ServerTarget,
+  npmName: string,
+  version?: string,
+): Promise<void> {
+  const client = hc<AppType>(target.baseUrl, {
+    headers: target.token ? { Authorization: `Bearer ${target.token}` } : {},
+  });
+  const res = await client.api.plugins.install.$post(
+    { json: { npmName, ...(version ? { version } : {}) } },
+    { init: { signal: AbortSignal.timeout(INSTALL_TIMEOUT_MS) } },
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `install failed: HTTP ${res.status}`);
+  }
+
+  if (target.remote) {
+    const resolved = await resolvePackage(npmName, version);
+    await installPackage(path.join(target.directory, "plugins"), resolved);
+  }
+}
+
+/** Uninstall a plugin by specifier (server +, for remote configs, desktop). */
+export async function uninstallPlugin(
+  target: ServerTarget,
+  specifier: string,
+): Promise<void> {
+  const client = hc<AppType>(target.baseUrl, {
+    headers: target.token ? { Authorization: `Bearer ${target.token}` } : {},
+  });
+  const res = await client.api.plugins.uninstall.$post(
+    { json: { specifier } },
+    { init: { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) } },
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `uninstall failed: HTTP ${res.status}`);
+  }
+
+  if (target.remote) {
+    await uninstallPackage(path.join(target.directory, "plugins"), specifier);
   }
 }
 

@@ -60,11 +60,12 @@ export function discoverPlugins(
   const out: DiscoveredPlugin[] = [];
   const seenDirs = new Set<string>();
 
+  const localPluginsDir = path.join(userDataDir, "plugins");
   const entries = parsePluginsSetting(pluginsSetting);
 
   for (const entry of entries) {
     const { specifier } = pluginEntryParts(entry);
-    const discovered = discoverPackage(specifier);
+    const discovered = discoverPackage(specifier, localPluginsDir);
     if (discovered && !seenDirs.has(discovered.dir)) {
       seenDirs.add(discovered.dir);
       discovered.enabled = !disabled.has(discovered.specifier);
@@ -72,7 +73,9 @@ export function discoverPlugins(
     }
   }
 
-  for (const local of discoverLocalDir(path.join(userDataDir, "plugins"))) {
+  // Also surface packages dropped directly into the local plugins dir that
+  // aren't listed in the `plugins` setting (manual installs).
+  for (const local of discoverLocalDir(localPluginsDir)) {
     if (!seenDirs.has(local.dir)) {
       seenDirs.add(local.dir);
       local.enabled = !disabled.has(local.specifier);
@@ -83,14 +86,29 @@ export function discoverPlugins(
   return out;
 }
 
-/** Resolve an installed package specifier to a {@link DiscoveredPlugin}. */
-function discoverPackage(specifier: string): DiscoveredPlugin | null {
+/**
+ * Resolve an installed package specifier to a {@link DiscoveredPlugin}. Tries
+ * Node/workspace resolution first, then the local plugins dir (where the
+ * installer materializes downloaded packages, keyed by {@link pluginSlug}).
+ */
+function discoverPackage(
+  specifier: string,
+  localPluginsDir: string,
+): DiscoveredPlugin | null {
   const pkgJsonPath = resolvePackageJson(specifier);
-  if (!pkgJsonPath) {
-    log.warn(`could not resolve plugin package "${specifier}"`);
-    return null;
+  if (pkgJsonPath) return readManifest(pkgJsonPath, specifier, false);
+
+  const localPkgJson = path.join(
+    localPluginsDir,
+    pluginSlug(specifier),
+    "package.json",
+  );
+  if (fs.existsSync(localPkgJson)) {
+    return readManifest(localPkgJson, specifier, true);
   }
-  return readManifest(pkgJsonPath, specifier, false);
+
+  log.warn(`could not resolve plugin package "${specifier}"`);
+  return null;
 }
 
 /**
@@ -160,10 +178,25 @@ function discoverLocalDir(dir: string): DiscoveredPlugin[] {
     const full = path.join(dir, name);
     const pkgJsonPath = path.join(full, "package.json");
     if (!fs.existsSync(pkgJsonPath)) continue;
-    const discovered = readManifest(pkgJsonPath, full, true);
+    // Use the package's own name as the specifier so enable/disable (keyed by
+    // specifier in `disabled_plugins`) matches, rather than the dir path.
+    const pkgName = readPackageName(pkgJsonPath) ?? full;
+    const discovered = readManifest(pkgJsonPath, pkgName, true);
     if (discovered) out.push(discovered);
   }
   return out;
+}
+
+/** Read just the `name` field from a package.json, or `null` if unreadable. */
+function readPackageName(pkgJsonPath: string): string | null {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8")) as {
+      name?: unknown;
+    };
+    return typeof pkg.name === "string" && pkg.name ? pkg.name : null;
+  } catch {
+    return null;
+  }
 }
 
 interface RawPackageJson {

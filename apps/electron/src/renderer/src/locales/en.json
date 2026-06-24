@@ -382,6 +382,10 @@
     "empty": "Install a plugin to add features. Browse the available ones or add your own.",
     "localBadge": "Local",
     "open": "Open",
+    "install": "Install",
+    "installing": "Installing…",
+    "installed": "Installed",
+    "uninstall": "Uninstall plugin",
     "enablePlugin": "Enable plugin",
     "disablePlugin": "Disable plugin",
     "detail": {
@@ -393,12 +397,7 @@
       "noReadme": "This plugin doesn't include a README."
     },
     "browse": {
-      "registrySoonEyebrow": "Registry",
-      "registrySoonTitle": "A searchable plugin registry is coming soon",
-      "registrySoonBody": "You'll be able to browse and install plugins right here. For now, add them manually with the steps below.",
-      "manualEyebrow": "Add a plugin",
-      "manualNpm": "Install an npm package, then add its name to the \"plugins\" setting (a JSON array):",
-      "manualLocal": "Or drop a plugin folder into your local plugins directory:"
+      "error": "Couldn't load the plugin catalog. Check your connection and try again."
     }
   }
 }

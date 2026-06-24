@@ -20,6 +20,16 @@ export interface PluginInfo {
   pages: PluginUIPage[];
 }
 
+/** A catalog entry the user can install from the Browse tab. */
+export interface PluginCatalogEntry {
+  npmName: string;
+  title: string;
+  description: string;
+  icon?: string;
+  homepage?: string;
+  author?: string;
+}
+
 /** Bounds (in dashboard-window content coordinates) for a hosted plugin view. */
 export interface PluginViewBounds {
   x: number;

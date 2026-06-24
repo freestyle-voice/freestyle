@@ -47,3 +47,13 @@ export function readSetting(key: string): string | undefined {
     return undefined;
   }
 }
+
+/** Upsert a settings row. */
+export function writeSetting(key: string, value: string): void {
+  getDb()
+    .prepare(
+      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+    )
+    .run(key, value);
+}

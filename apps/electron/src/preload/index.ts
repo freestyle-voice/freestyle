@@ -5,7 +5,11 @@ import type {
   AudioPlaybackMode,
 } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
-import type { PluginInfo, PluginViewBounds } from "../shared/plugins";
+import type {
+  PluginCatalogEntry,
+  PluginInfo,
+  PluginViewBounds,
+} from "../shared/plugins";
 
 // Custom APIs for renderer
 const api = {
@@ -272,6 +276,12 @@ const api = {
     enabled: boolean,
   ): Promise<PluginInfo[]> =>
     ipcRenderer.invoke("plugins:set-enabled", specifier, enabled),
+  getPluginCatalog: (): Promise<{ plugins: PluginCatalogEntry[] }> =>
+    ipcRenderer.invoke("plugins:catalog"),
+  installPlugin: (npmName: string, version?: string): Promise<PluginInfo[]> =>
+    ipcRenderer.invoke("plugins:install", npmName, version),
+  uninstallPlugin: (specifier: string): Promise<PluginInfo[]> =>
+    ipcRenderer.invoke("plugins:uninstall", specifier),
   showPluginView: (
     slug: string,
     pageId: string,

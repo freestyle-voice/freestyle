@@ -40,6 +40,12 @@ export interface PluginUiHostDeps {
   }>;
   /** Persist a plugin's enabled state (writes the `disabled_plugins` setting). */
   setPluginEnabled: (specifier: string, enabled: boolean) => Promise<void>;
+  /** Fetch the installable plugin catalog from the server. */
+  getCatalog: () => Promise<unknown>;
+  /** Install a plugin by npm name (server + desktop). */
+  installPlugin: (npmName: string, version?: string) => Promise<void>;
+  /** Uninstall a plugin by specifier (server + desktop). */
+  uninstallPlugin: (specifier: string) => Promise<void>;
   /** Perform a host action requested by a plugin page. */
   onAction: <C extends keyof HostActions>(
     channel: C,
@@ -92,6 +98,27 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
       return serializePlugins(getDiscoveredPlugins());
     },
   );
+
+  ipcMain.handle("plugins:catalog", () => deps.getCatalog());
+
+  ipcMain.handle(
+    "plugins:install",
+    async (_e, npmName: string, version: string | undefined) => {
+      await deps.installPlugin(npmName, version);
+      const { pluginsSetting, userDataDir, disabledPlugins } =
+        await deps.getDiscoverySources();
+      refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);
+      return serializePlugins(getDiscoveredPlugins());
+    },
+  );
+
+  ipcMain.handle("plugins:uninstall", async (_e, specifier: string) => {
+    await deps.uninstallPlugin(specifier);
+    const { pluginsSetting, userDataDir, disabledPlugins } =
+      await deps.getDiscoverySources();
+    refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);
+    return serializePlugins(getDiscoveredPlugins());
+  });
 
   ipcMain.handle(
     "plugin-view:show",

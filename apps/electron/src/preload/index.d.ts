@@ -3,7 +3,11 @@ import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
 } from "../shared/audio-playback";
-import type { PluginInfo, PluginViewBounds } from "../shared/plugins";
+import type {
+  PluginCatalogEntry,
+  PluginInfo,
+  PluginViewBounds,
+} from "../shared/plugins";
 
 declare global {
   interface Window {
@@ -129,6 +133,12 @@ declare global {
         specifier: string,
         enabled: boolean,
       ) => Promise<PluginInfo[]>;
+      getPluginCatalog: () => Promise<{ plugins: PluginCatalogEntry[] }>;
+      installPlugin: (
+        npmName: string,
+        version?: string,
+      ) => Promise<PluginInfo[]>;
+      uninstallPlugin: (specifier: string) => Promise<PluginInfo[]>;
       showPluginView: (
         slug: string,
         pageId: string,

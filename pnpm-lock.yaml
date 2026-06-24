@@ -225,6 +225,9 @@ importers:
       posthog-node:
         specifier: ^5.35.8
         version: 5.35.8
+      tar:
+        specifier: ^7.5.15
+        version: 7.5.15
       winston:
         specifier: ^3.17.0
         version: 3.19.0

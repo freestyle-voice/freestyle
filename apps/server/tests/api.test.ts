@@ -63,14 +63,12 @@ describe("Root & Health", () => {
 // ---------------------------------------------------------------------------
 
 describe("Settings", () => {
-  it("GET /api/settings returns only seeded defaults initially", async () => {
+  it("GET /api/settings is empty on a fresh database", async () => {
     const res = await req("/api/settings");
     expect(res.status).toBe(200);
     const data = await res.json();
-    // A fresh database seeds the first-party `plugins` default; nothing else.
-    expect(data).toEqual({
-      plugins: JSON.stringify(["@freestyle/plugin-audio-transcription"]),
-    });
+    // Nothing is seeded; plugins are installed explicitly via the catalog.
+    expect(data).toEqual({});
   });
 
   it("PUT then GET a setting", async () => {

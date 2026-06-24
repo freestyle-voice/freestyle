@@ -30,7 +30,6 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
-    "@freestyle/plugin-audio-transcription": "workspace:*",
     "@freestyle/sdk": "workspace:*",
     "@freestyle/server": "workspace:*",
     "@freestyle/utils": "workspace:*",

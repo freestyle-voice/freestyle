@@ -2,18 +2,18 @@ import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import { Switch } from "@renderer/components/ui/switch";
-import type { PluginInfo } from "@shared/plugins";
-import { ArrowRight, Check, Copy, Info, Puzzle } from "lucide-react";
+import type { PluginCatalogEntry, PluginInfo } from "@shared/plugins";
+import { ArrowRight, Info, Puzzle, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { pluginDisplayName, resolvePluginIcon } from "./helpers";
 
-type Tab = "installed" | "browse";
+type Tab = "browse" | "installed";
 
 export default function PluginsPage(): React.JSX.Element {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<Tab>("installed");
+  const [tab, setTab] = useState<Tab>("browse");
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -59,19 +59,19 @@ export default function PluginsPage(): React.JSX.Element {
           onValueChange={(v) => setTab(v as Tab)}
           className="mb-5 w-fit"
           options={[
-            { value: "installed", label: t("plugins.tabs.installed") },
             { value: "browse", label: t("plugins.tabs.browse") },
+            { value: "installed", label: t("plugins.tabs.installed") },
           ]}
         />
 
-        {tab === "installed" ? (
+        {tab === "browse" ? (
+          <BrowseTab installed={plugins} onChange={setPlugins} />
+        ) : (
           <InstalledTab
             loading={loading}
             plugins={plugins}
             onChange={setPlugins}
           />
-        ) : (
-          <BrowseTab />
         )}
       </div>
     </div>
@@ -133,8 +133,19 @@ function PluginCard({
 
   const page = plugin.pages[0];
 
+  const [busy, setBusy] = useState(false);
+
   const toggle = async (enabled: boolean): Promise<void> => {
     onChange(await window.api.setPluginEnabled(plugin.specifier, enabled));
+  };
+
+  const uninstall = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      onChange(await window.api.uninstallPlugin(plugin.specifier));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -196,81 +207,154 @@ function PluginCard({
         >
           <Info className="text-muted-foreground" />
         </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("plugins.uninstall")}
+          disabled={busy}
+          onClick={() => void uninstall()}
+        >
+          <Trash2 className="text-muted-foreground" />
+        </Button>
         <Switch
           checked={plugin.enabled}
           onCheckedChange={(v) => void toggle(v)}
-          aria-label={t("plugins.toggleEnabled")}
+          aria-label={t(
+            plugin.enabled ? "plugins.disablePlugin" : "plugins.enablePlugin",
+          )}
         />
       </div>
     </div>
   );
 }
 
-function BrowseTab(): React.JSX.Element {
+function BrowseTab({
+  installed,
+  onChange,
+}: {
+  installed: PluginInfo[];
+  onChange: (plugins: PluginInfo[]) => void;
+}): React.JSX.Element {
   const { t } = useTranslation();
-  const settingExample = JSON.stringify(
-    ["@your-org/freestyle-plugin-example"],
-    null,
-    2,
-  );
+  const [catalog, setCatalog] = useState<PluginCatalogEntry[] | null>(null);
+  const [error, setError] = useState(false);
 
+  useEffect(() => {
+    let active = true;
+    window.api
+      .getPluginCatalog()
+      .then((res) => {
+        if (active) setCatalog(res.plugins);
+      })
+      .catch(() => {
+        if (active) setError(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (error) {
+    return (
+      <p className="text-muted-foreground py-10 text-center text-sm">
+        {t("plugins.browse.error")}
+      </p>
+    );
+  }
+  if (!catalog) {
+    return (
+      <p className="text-muted-foreground py-10 text-center text-sm">
+        {t("plugins.loading")}
+      </p>
+    );
+  }
+  const installedNames = new Set(installed.map((p) => p.specifier));
   return (
-    <div className="flex flex-col gap-4">
-      <div className="border-border bg-card rounded-[14px] border p-6">
-        <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
-          {t("plugins.browse.registrySoonEyebrow")}
-        </span>
-        <p className="text-foreground mt-2 text-sm">
-          {t("plugins.browse.registrySoonTitle")}
-        </p>
-        <p className="text-muted-foreground mt-1 text-[13px] leading-[1.5]">
-          {t("plugins.browse.registrySoonBody")}
-        </p>
-      </div>
-
-      <div className="border-border bg-card rounded-[14px] border p-6">
-        <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
-          {t("plugins.browse.manualEyebrow")}
-        </span>
-        <p className="text-muted-foreground mt-2 text-[13px] leading-[1.5]">
-          {t("plugins.browse.manualNpm")}
-        </p>
-        <CodeExample value={settingExample} />
-        <p className="text-muted-foreground mt-4 text-[13px] leading-[1.5]">
-          {t("plugins.browse.manualLocal")}
-        </p>
-        <CodeExample value="<userData>/plugins/my-plugin/" />
-      </div>
+    <div className="flex flex-col gap-3">
+      {catalog.map((entry) => (
+        <CatalogCard
+          key={entry.npmName}
+          entry={entry}
+          installed={installedNames.has(entry.npmName)}
+          onChange={onChange}
+        />
+      ))}
     </div>
   );
 }
 
-function CodeExample({ value }: { value: string }): React.JSX.Element {
-  const [copied, setCopied] = useState(false);
-  const copy = (): void => {
-    void navigator.clipboard.writeText(value).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    });
+function CatalogCard({
+  entry,
+  installed,
+  onChange,
+}: {
+  entry: PluginCatalogEntry;
+  installed: boolean;
+  onChange: (plugins: PluginInfo[]) => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const Icon = resolvePluginIcon(entry.icon);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const install = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      onChange(await window.api.installPlugin(entry.npmName));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
   };
+
   return (
-    <div className="border-border bg-secondary/40 relative mt-2 rounded-[9px] border">
-      <pre className="mono text-foreground overflow-auto p-3 pr-12 text-[12px] leading-[1.55]">
-        {value}
-      </pre>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="absolute right-1.5 top-1.5"
-        onClick={copy}
-        aria-label="Copy"
-      >
-        {copied ? (
-          <Check className="text-primary" />
+    <div className="border-border bg-card flex w-full items-center gap-4 rounded-[14px] border p-5">
+      <div className="border-border bg-secondary flex size-11 shrink-0 items-center justify-center rounded-[10px] border">
+        <Icon className="text-primary size-5" strokeWidth={1.7} />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-foreground truncate text-[14.5px] font-medium">
+            {entry.title}
+          </span>
+          {entry.author ? (
+            <span className="mono text-muted-foreground text-[10px]">
+              {entry.author}
+            </span>
+          ) : null}
+        </div>
+        <p className="text-muted-foreground mt-0.5 line-clamp-1 text-[13px]">
+          {entry.description}
+        </p>
+        {error ? (
+          <p className="text-destructive mt-1 line-clamp-2 text-[12px]">
+            {error}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
+        {installed ? (
+          <Badge
+            variant="outline"
+            className="mono text-[9px] tracking-[0.14em]"
+          >
+            {t("plugins.installed")}
+          </Badge>
         ) : (
-          <Copy className="text-muted-foreground" />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() => void install()}
+          >
+            {busy ? t("plugins.installing") : t("plugins.install")}
+          </Button>
         )}
-      </Button>
+      </div>
     </div>
   );
 }

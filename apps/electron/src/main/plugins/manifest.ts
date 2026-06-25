@@ -281,7 +281,7 @@ export function resolvePluginAsset(
   const plugin = plugins.find((p) => p.slug === pluginSlug);
   // A missing plugin has no directory (`dir: ""`); resolving against it would
   // fall back to `process.cwd()` and could leak files from the app root.
-  if (!plugin || !plugin.dir) return null;
+  if (!plugin?.dir) return null;
 
   const decoded = decodeURIComponent(assetPath).replace(/^\/+/, "");
   const resolved = path.resolve(plugin.dir, decoded);

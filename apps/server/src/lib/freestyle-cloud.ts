@@ -70,6 +70,12 @@ function authClientErrorMessage(error: unknown, fallback: string): string {
       : fallback;
 }
 
+function authClientErrorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const e = error as Record<string, unknown>;
+  return typeof e.status === "number" ? e.status : undefined;
+}
+
 export function freestyleCloudUrl(): string {
   return (process.env.FREESTYLE_CLOUD_URL || DEFAULT_CLOUD_URL).replace(
     /\/+$/,
@@ -123,14 +129,18 @@ export async function pollDeviceToken(
 }
 
 export async function fetchCloudUser(token: string): Promise<CloudUser> {
-  const res = await fetch(`${freestyleCloudUrl()}/v1/me`, {
-    headers: { authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(10_000),
+  const { data, error } = await createCloudAuthClient().getSession({
+    fetchOptions: {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10_000),
+    },
   });
-  if (res.status === 401) throw new FreestyleCloudAuthError();
-  if (!res.ok) throw new Error(`Failed to load profile (${res.status})`);
-  const data = (await res.json()) as { user: CloudUser };
-  return data.user;
+  if (authClientErrorStatus(error) === 401) throw new FreestyleCloudAuthError();
+  if (error || !data?.user) {
+    throw new Error(authClientErrorMessage(error, "Failed to load profile"));
+  }
+  const { id, email, name, image } = data.user;
+  return { id, email, name, image };
 }
 
 export async function signOutCloud(token: string): Promise<void> {

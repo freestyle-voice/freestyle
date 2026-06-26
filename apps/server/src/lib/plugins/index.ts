@@ -1,6 +1,8 @@
 import { createAppLogger } from "@freestyle-voice/utils";
-import type { PluginConfig } from "freestyle-voice";
+import type { Plugin, PluginConfig } from "freestyle-voice";
 import { PluginRegistry } from "freestyle-voice";
+import { authPlugin } from "./builtin/auth.js";
+import { cloudSyncPlugin } from "./builtin/cloud-sync.js";
 import { loadServerPlugins } from "./loader.js";
 
 export {
@@ -14,16 +16,28 @@ const log = createAppLogger("plugins");
 let registry: PluginRegistry = new PluginRegistry();
 let resolvedConfig: PluginConfig = {};
 let initialized = false;
+let builtinPlugins: Plugin[] = [];
+
+export interface InitServerPluginsOptions {
+  /** Bearer token for the auth plugin. Empty/omitted = auth disabled. */
+  token?: string;
+}
 
 /**
  * Load and install the server plugin registry, then run the `config` hook
  * chain once so plugins can contribute boot-time configuration. Safe to call
  * once at boot; later calls are ignored. Failures degrade to an empty registry
  * so the dictation pipeline always works.
+ *
+ * Built-in plugins (auth, cloud-sync) are always present and cannot be
+ * disabled by users.
  */
-export async function initServerPlugins(): Promise<void> {
+export async function initServerPlugins(
+  options: InitServerPluginsOptions = {},
+): Promise<void> {
   if (initialized) return;
   initialized = true;
+  builtinPlugins = [authPlugin(options.token), cloudSyncPlugin()];
   await loadIntoRegistry();
 }
 
@@ -32,6 +46,10 @@ export async function initServerPlugins(): Promise<void> {
  * settings. Used when a plugin is enabled/disabled at runtime: the old
  * registry is disposed and a fresh one is built so disabled plugins' hooks stop
  * firing immediately, without a server restart.
+ *
+ * Note: plugin middleware is mounted at app construction time and is NOT
+ * updated by a reload. Only hook handlers are affected. Middleware changes
+ * require a full server restart.
  */
 export async function reloadServerPlugins(): Promise<void> {
   const previous = registry;
@@ -41,7 +59,7 @@ export async function reloadServerPlugins(): Promise<void> {
 
 async function loadIntoRegistry(): Promise<void> {
   try {
-    registry = await loadServerPlugins();
+    registry = await loadServerPlugins(builtinPlugins);
     resolvedConfig = await registry.resolveConfig({});
     if (Object.keys(resolvedConfig).length > 0) {
       log.info(`plugin config resolved: ${JSON.stringify(resolvedConfig)}`);

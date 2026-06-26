@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import app from "../src/index.js";
+import createApp from "../src/index.js";
 import { clearSession, getSession, setSession } from "../src/lib/sessions.js";
+
+const app = createApp();
 
 vi.mock("../src/lib/freestyle-cloud.js", async (importOriginal) => {
   const actual =

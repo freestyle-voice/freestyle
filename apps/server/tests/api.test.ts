@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import app from "../src/index.js";
+import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
 import {
   HISTORY_PAUSED_SETTING_KEY,
   isHistoryPaused,
   saveRawHistory,
 } from "../src/lib/history-store.js";
+
+const app = createApp();
 
 // ---------------------------------------------------------------------------
 // Helper – shorthand for making requests against the Hono app

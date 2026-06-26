@@ -8,11 +8,9 @@ import {
 } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { getDb, readSetting } from "../lib/db.js";
-import { syncCleanupPreferences } from "../lib/freestyle-cloud.js";
+import { getDb } from "../lib/db.js";
 import { applyMlxAsrRetentionPolicy } from "../lib/mlx-asr/server.js";
 import { capture } from "../lib/posthog.js";
-import { getSessionToken } from "../lib/sessions.js";
 
 const settings = new Hono()
   .get("/", (c) => {
@@ -87,20 +85,6 @@ const settings = new Hono()
 
     if (key === "mlx_asr_keep_alive_minutes") {
       applyMlxAsrRetentionPolicy();
-    }
-
-    // Sync cleanup preferences to Freestyle Cloud when signed in.
-    if (key === "cleanup_intensity" || key === "cleanup_custom_prompt") {
-      const token = getSessionToken();
-      if (token) {
-        const intensity = readSetting("cleanup_intensity") ?? "low";
-        const customPrompt = readSetting("cleanup_custom_prompt");
-        void syncCleanupPreferences({ token, intensity, customPrompt }).catch(
-          () => {
-            // Best-effort sync — don't fail the local save if cloud is unreachable.
-          },
-        );
-      }
     }
 
     // Don't capture internal/system keys

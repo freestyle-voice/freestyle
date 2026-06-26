@@ -1,3 +1,4 @@
+import type { MiddlewareHandler } from "hono";
 import type { PluginContext } from "./context.js";
 import type { Hooks } from "./hooks.js";
 
@@ -53,6 +54,13 @@ export interface Plugin extends Hooks {
   setup?: (ctx: PluginContext) => void | Promise<void>;
   /** Lifecycle hook run once per host on teardown (process shutdown). */
   dispose?: () => void | Promise<void>;
+  /**
+   * [server] Hono middleware contributed by this plugin. Mounted onto the
+   * server app in resolved plugin order (`enforce: "pre"` → none → `"post"`),
+   * after the hardcoded security middleware (trusted-origin, CORS) and before
+   * routes.
+   */
+  middleware?: MiddlewareHandler[];
 }
 
 /**

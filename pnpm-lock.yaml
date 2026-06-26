@@ -268,6 +268,9 @@ importers:
       '@types/node':
         specifier: ^22.19.1
         version: 22.19.19
+      hono:
+        specifier: ^4.12.22
+        version: 4.12.22
       pkgroll:
         specifier: ^2.27.0
         version: 2.27.0(typescript@5.9.3)(vite@7.3.3(@types/node@22.19.19)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))

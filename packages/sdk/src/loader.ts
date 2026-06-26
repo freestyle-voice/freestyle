@@ -83,6 +83,12 @@ export interface LoaderLogger {
 
 export interface LoadPluginsOptions {
   /**
+   * Pre-instantiated built-in plugins. Loaded first (before entries and local
+   * files), always present, and never filtered by disabled lists. Their
+   * `setup` hook is still called in load order.
+   */
+  builtin?: Plugin[];
+  /**
    * npm / module specifier entries (from the `plugins` setting), in load order.
    * Loaded before local files.
    */
@@ -112,15 +118,20 @@ export interface LoadPluginsOptions {
  * process use this. Every plugin is loaded; each hook only runs in the host
  * that invokes it, so no host filtering happens here.
  *
- * Order of operations: entries (in order) → local files (in order) → flatten
- * presets / drop falsy → run `setup` in load order → sort by `enforce`
- * (stable).
+ * Order of operations: built-in plugins (in order) → entries (in order) →
+ * local files (in order) → flatten presets / drop falsy → run `setup` in load
+ * order → sort by `enforce` (stable).
  */
 export async function loadPlugins(
   options: LoadPluginsOptions,
 ): Promise<PluginRegistry> {
   const { buildContext, logger, onError } = options;
   const resolved: Plugin[] = [];
+
+  // Built-in plugins are added first, before any user plugins.
+  for (const plugin of options.builtin ?? []) {
+    resolved.push(plugin);
+  }
 
   for (const entry of options.entries ?? []) {
     // Resolve installed packages that live in the local plugins dir (added to

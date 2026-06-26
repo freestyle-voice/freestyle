@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import app from "../src/index.js";
-import { setAuthToken } from "../src/lib/auth.js";
+import createApp from "../src/index.js";
+import { authMiddleware, setAuthToken } from "../src/lib/auth.js";
+
+const app = createApp([authMiddleware]);
 
 const TOKEN = "test-secret";
 

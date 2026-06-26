@@ -4,7 +4,7 @@ import {
   parsePluginsSetting,
   pluginEntryParts,
 } from "@freestyle-voice/validations";
-import type { HookFailure, PluginEntry } from "freestyle-voice";
+import type { HookFailure, Plugin, PluginEntry } from "freestyle-voice";
 import {
   defaultLocalPluginsDir,
   loadPlugins,
@@ -18,11 +18,14 @@ const log = createAppLogger("plugins");
 
 /**
  * Load all plugins for the server process via the shared SDK loader, returning
- * a ready-to-use {@link PluginRegistry}. Sources, in load order: npm/module
- * specifiers from the `plugins` setting, then local files in
- * `<userData>/plugins/`. Specifiers in `disabled_plugins` are skipped.
+ * a ready-to-use {@link PluginRegistry}. Sources, in load order: built-in
+ * plugins (always present), npm/module specifiers from the `plugins` setting,
+ * then local files in `<userData>/plugins/`. Specifiers in `disabled_plugins`
+ * are skipped; built-in plugins are never skippable.
  */
-export async function loadServerPlugins(): Promise<PluginRegistry> {
+export async function loadServerPlugins(
+  builtin: Plugin[] = [],
+): Promise<PluginRegistry> {
   const disabled = new Set(
     parseDisabledPlugins(readSetting("disabled_plugins")),
   );
@@ -33,6 +36,7 @@ export async function loadServerPlugins(): Promise<PluginRegistry> {
 
   return loadPlugins({
     entries,
+    builtin,
     ...(localDir ? { localDir } : {}),
     buildContext: buildPluginContext,
     logger: log,

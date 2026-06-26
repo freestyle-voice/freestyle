@@ -40,8 +40,17 @@
       "default": "./dist/index.cjs"
     }
   },
+  "peerDependencies": {
+    "hono": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "hono": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/node": "^22.19.1",
+    "hono": "^4.12.22",
     "pkgroll": "^2.27.0",
     "typescript": "^5.8.3",
     "vitest": "^4.1.7"

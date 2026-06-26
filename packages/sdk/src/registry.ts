@@ -1,3 +1,4 @@
+import type { MiddlewareHandler } from "hono";
 import type { PluginConfig } from "./config.js";
 import type { FreestyleEvent } from "./events.js";
 import type { Hooks } from "./hooks.js";
@@ -49,6 +50,22 @@ export class PluginRegistry {
 
   get size(): number {
     return this.plugins.length;
+  }
+
+  /**
+   * Collect all middleware contributed by plugins, in resolved order. Each
+   * plugin's `middleware` array is flattened into a single ordered list.
+   */
+  collectMiddleware(): MiddlewareHandler[] {
+    const handlers: MiddlewareHandler[] = [];
+    for (const plugin of this.plugins) {
+      if (plugin.middleware) {
+        for (const mw of plugin.middleware) {
+          handlers.push(mw);
+        }
+      }
+    }
+    return handlers;
   }
 
   /**

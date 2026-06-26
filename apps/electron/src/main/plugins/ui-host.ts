@@ -54,11 +54,6 @@ export interface PluginUiHostDeps {
 
 let viewManager: PluginViewManager | null = null;
 
-/**
- * Privilege descriptor for the plugin asset scheme. Must be registered together
- * with the `app://` scheme in the single `registerSchemesAsPrivileged` call in
- * the main entry — Electron honors only one such call before `app.ready`.
- */
 export { PLUGIN_SCHEME_PRIVILEGE } from "./ui.js";
 
 /**

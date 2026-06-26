@@ -288,12 +288,6 @@ function stopHotkeyRecorderProcess(): void {
   hotkeyRecorder = null;
 }
 
-// Register the custom app:// protocol that serves the renderer files, alongside
-// the freestyle-plugin:// scheme for plugin UI assets. Electron honors only one
-// registerSchemesAsPrivileged call before app.ready, so every privileged scheme
-// must share it — splitting them drops the earlier scheme's privileges (e.g.
-// app:// losing `secure`, which makes navigator.mediaDevices undefined).
-// All non-file app:// paths fall back to index.html so BrowserRouter works in production.
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "app",

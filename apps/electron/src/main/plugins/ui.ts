@@ -14,12 +14,6 @@ export const PLUGIN_SCHEME = "freestyle-plugin";
 
 let discovered: DiscoveredPlugin[] = [];
 
-/**
- * Privilege descriptor for the plugin scheme. Registered together with the
- * `app://` scheme in a single `registerSchemesAsPrivileged` call in the main
- * entry — Electron honors only one such call, so all privileged schemes must
- * share it.
- */
 export const PLUGIN_SCHEME_PRIVILEGE: Electron.CustomScheme = {
   scheme: PLUGIN_SCHEME,
   privileges: {

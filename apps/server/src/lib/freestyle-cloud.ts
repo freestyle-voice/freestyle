@@ -185,7 +185,7 @@ export async function transcribeWithFreestyleCloud(opts: {
   if (opts.language) headers["x-language"] = opts.language;
   if (opts.appContext)
     headers["x-app-context"] = encodeURIComponent(opts.appContext);
-  if (opts.mode === "raw") headers["x-freestyle-mode"] = "transcribe";
+  if (opts.mode === "raw") headers["x-skip-post-process"] = "true";
   const audio = opts.audio as Uint8Array<ArrayBuffer>;
 
   return cloudJson<CloudTranscribeResult>("/v1/transcribe", opts.token, {
@@ -211,6 +211,25 @@ export async function postProcessWithFreestyleCloud(opts: {
       text: opts.text,
       appContext: opts.appContext ?? null,
       language: opts.language,
+    }),
+  });
+}
+
+/**
+ * Sync cleanup preferences (intensity + custom prompt) to Freestyle Cloud.
+ * Called whenever the user changes their cleanup settings locally.
+ */
+export async function syncCleanupPreferences(opts: {
+  token: string;
+  intensity: string;
+  customPrompt?: string | null;
+}): Promise<void> {
+  await cloudJson("/v1/preferences", opts.token, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      intensity: opts.intensity,
+      customPrompt: opts.customPrompt ?? null,
     }),
   });
 }

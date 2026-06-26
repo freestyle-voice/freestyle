@@ -64,11 +64,11 @@ export function isLlmCleanupEnabled(): boolean {
   return readSetting("llm_cleanup") === "true";
 }
 
-function getCleanupIntensity(): CleanupIntensity {
+export function getCleanupIntensity(): CleanupIntensity {
   return parseCleanupIntensity(readSetting("cleanup_intensity"));
 }
 
-function getCleanupCustomPrompt(): string | undefined {
+export function getCleanupCustomPrompt(): string | undefined {
   return readSetting("cleanup_custom_prompt");
 }
 

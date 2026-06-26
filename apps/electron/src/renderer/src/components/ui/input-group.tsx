@@ -7,6 +7,7 @@ import type * as React from "react";
 
 function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
+    // biome-ignore lint/a11y/useSemanticElements: intentional ARIA grouping; <fieldset> would add default chrome and expects a <legend>.
     <div
       data-slot="input-group"
       role="group"
@@ -46,6 +47,8 @@ function InputGroupAddon({
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>) {
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: onClick is a pointer-only convenience that focuses the sibling input; keyboard users tab directly to it.
+    // biome-ignore lint/a11y/useSemanticElements: intentional ARIA grouping; <fieldset> would add default chrome and expects a <legend>.
     <div
       role="group"
       data-slot="input-group-addon"

@@ -34,7 +34,7 @@ process.on("SIGTERM", () => shutdownServer().finally(() => process.exit(0)));
  * so `middleware` contributions are available at construction time.
  */
 function createApp(pluginMiddleware: MiddlewareHandler[] = []) {
-  const app = new Hono()
+  const base = new Hono()
     .use(trustedOriginMiddleware)
     // CORS for renderer requests (skip WebSocket upgrades)
     .use((c, next) => {
@@ -46,10 +46,10 @@ function createApp(pluginMiddleware: MiddlewareHandler[] = []) {
 
   // Mount plugin middleware in resolved order (enforce: pre → none → post).
   for (const mw of pluginMiddleware) {
-    app.use(mw);
+    base.use(mw);
   }
 
-  app
+  const app = base
     .onError((err, c) => {
       // Let Hono's own exceptions (e.g. bearerAuth's 401) keep their response,
       // but still report genuine server errors.

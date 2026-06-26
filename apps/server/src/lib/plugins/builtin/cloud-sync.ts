@@ -66,8 +66,8 @@ const cloudSyncMiddleware: MiddlewareHandler = async (c, next) => {
 
 /**
  * Built-in Freestyle Cloud sync plugin. Watches for successful mutations on
- * data routes (settings, dictionary, vocabulary, formats) and pushes changes
- * to Freestyle Cloud in the background when the user is signed in.
+ * the cleanup preference settings (see `SYNC_ROUTES`) and pushes changes to
+ * Freestyle Cloud in the background when the user is signed in.
  *
  * Uses `enforce: "post"` so it runs after all other middleware (including auth)
  * and after the route handler has committed the write to SQLite.

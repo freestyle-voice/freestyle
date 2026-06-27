@@ -43,6 +43,14 @@ export interface DeviceTokenResult {
   expires_in?: number;
 }
 
+export interface CloudUsageBalance {
+  remaining: number;
+  limit: number;
+  totalConsumed: number;
+  windowStart: string;
+  resetsAt: string;
+}
+
 export interface CloudTranscribeResult {
   raw: string;
   cleaned: string;
@@ -231,5 +239,18 @@ export async function syncCleanupPreferences(opts: {
       intensity: opts.intensity,
       customPrompt: opts.customPrompt ?? null,
     }),
+  });
+}
+
+/**
+ * Fetch the current usage balance from Freestyle Cloud.
+ * Returns remaining credits, limit, total consumed, and window reset time.
+ */
+export async function fetchCloudUsage(
+  token: string,
+): Promise<CloudUsageBalance> {
+  return cloudJson<CloudUsageBalance>("/v1/usage", token, {
+    method: "GET",
+    signal: AbortSignal.timeout(10_000),
   });
 }

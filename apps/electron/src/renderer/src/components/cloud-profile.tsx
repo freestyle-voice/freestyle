@@ -6,7 +6,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@renderer/components/ui/dropdown-menu";
+import { Progress } from "@renderer/components/ui/progress";
 import { useCloudAuth } from "@renderer/lib/auth-context";
+import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
 import { cn } from "@renderer/lib/utils";
 import { ChevronsUpDown, Cloud, Loader2, LogIn, LogOut } from "lucide-react";
 
@@ -15,6 +17,7 @@ const ROW =
 
 export function CloudProfileButton(): React.JSX.Element {
   const { user, loading, signingIn, signIn, signOut } = useCloudAuth();
+  const balance = useCloudUsage(!!user);
 
   if (loading) {
     return (
@@ -103,6 +106,23 @@ export function CloudProfileButton(): React.JSX.Element {
             {user.email}
           </div>
         </div>
+        {balance && (
+          <>
+            <DropdownMenuSeparator />
+            <div className="px-1.5 py-1.5">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-muted-foreground text-[10.5px]">
+                  Credits
+                </span>
+                <span className="text-muted-foreground text-[10.5px] tabular-nums">
+                  {balance.remaining.toLocaleString()} /{" "}
+                  {balance.limit.toLocaleString()}
+                </span>
+              </div>
+              <Progress value={usagePercent(balance)} className="h-1" />
+            </div>
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onSelect={() => void signOut()}>
           <LogOut />

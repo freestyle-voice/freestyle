@@ -1,6 +1,8 @@
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { Progress } from "@renderer/components/ui/progress";
 import { getClient } from "@renderer/lib/api";
+import { useCloudAuth } from "@renderer/lib/auth-context";
+import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
 import { cn } from "@renderer/lib/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -115,6 +117,8 @@ function buildModelBuckets(entries: HistoryEntry[]): UsageBucket[] {
 
 export default function TodayPage(): React.JSX.Element {
   const { t } = useTranslation();
+  const { user } = useCloudAuth();
+  const cloudUsage = useCloudUsage(!!user);
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
 
   const loadToday = useCallback(async () => {
@@ -261,6 +265,36 @@ export default function TodayPage(): React.JSX.Element {
             buckets.map((b) => <UsageBar key={b.label} {...b} />)
           )}
         </section>
+
+        {cloudUsage && (
+          <section>
+            <RailLabel>Cloud Usage</RailLabel>
+            <div className="mb-2 flex items-baseline gap-2.5">
+              <span className="serif-italic text-foreground text-[26px] leading-none min-w-[70px]">
+                {cloudUsage.remaining.toLocaleString()}
+              </span>
+              <span className="mono text-muted-foreground text-[10px] leading-snug tracking-[0.12em] uppercase">
+                credits left
+              </span>
+            </div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="mono text-muted-foreground text-[10px] tracking-[0.1em]">
+                {usagePercent(cloudUsage)}% used
+              </span>
+              <span className="mono text-muted-foreground text-[10px]">
+                / {cloudUsage.limit.toLocaleString()}
+              </span>
+            </div>
+            <Progress value={usagePercent(cloudUsage)} className="h-1" />
+            <p className="text-muted-foreground mt-2 text-[10.5px]">
+              Resets{" "}
+              {new Date(cloudUsage.resetsAt).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+              })}
+            </p>
+          </section>
+        )}
 
         <section>
           <RailLabel>{t("today.activity24h")}</RailLabel>

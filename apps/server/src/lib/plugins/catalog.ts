@@ -27,4 +27,12 @@ export const PLUGIN_CATALOG: CatalogEntry[] = [
     icon: "FileMusic",
     author: "Freestyle",
   },
+  {
+    npmName: "@freestyle-voice/profanity-filter",
+    title: "Profanity Filter",
+    description:
+      "Swap curse words for wholesome, funnier stand-ins as you dictate.",
+    icon: "Sparkles",
+    author: "Freestyle",
+  },
 ];

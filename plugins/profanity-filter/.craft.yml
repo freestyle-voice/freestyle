@@ -1,0 +1,22 @@
+# Craft config for the `@freestyle-voice/profanity-filter` package.
+#
+# INDEPENDENT release pipeline (see packages/sdk/.craft.yml for the rationale).
+# To add a new plugin pipeline: copy this file into the new plugin dir and
+# change `tagPrefix` + `releaseBranchPrefix` to a unique value, then add the
+# plugin to the `package` input choices in release-package.yml.
+minVersion: "2.21.1"
+
+versioning:
+  policy: manual
+
+changelog:
+  filePath: CHANGELOG.md
+  policy: auto
+
+releaseBranchPrefix: release-plugin-profanity-filter
+
+targets:
+  - name: npm
+    access: public
+  - name: github
+    tagPrefix: "plugin-profanity-filter@"

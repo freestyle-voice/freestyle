@@ -24,6 +24,7 @@ on:
         options:
           - sdk
           - plugin-audio-transcription
+          - profanity-filter
       version:
         description: 'Explicit version to release (e.g. 1.2.0)'
         required: true
@@ -74,6 +75,7 @@ jobs:
           case "$PKG" in
             sdk)                        echo "path=packages/sdk" >> "$GITHUB_OUTPUT" ;;
             plugin-audio-transcription) echo "path=plugins/audio-transcription" >> "$GITHUB_OUTPUT" ;;
+            profanity-filter)           echo "path=plugins/profanity-filter" >> "$GITHUB_OUTPUT" ;;
             *) echo "::error::Unknown package: $PKG"; exit 1 ;;
           esac
 

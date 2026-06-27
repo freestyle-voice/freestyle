@@ -54,6 +54,10 @@ jobs:
               echo "path=plugins/audio-transcription" >> "$GITHUB_OUTPUT"
               echo "name=@freestyle-voice/plugin-audio-transcription" >> "$GITHUB_OUTPUT"
               ;;
+            release-plugin-profanity-filter/*)
+              echo "path=plugins/profanity-filter" >> "$GITHUB_OUTPUT"
+              echo "name=@freestyle-voice/profanity-filter" >> "$GITHUB_OUTPUT"
+              ;;
             *)
               echo "::error::No package mapping for branch $BRANCH"
               exit 1

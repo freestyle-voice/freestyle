@@ -14,6 +14,7 @@ import postProcessRoute from "./post-process-route.js";
 import settings from "./settings.js";
 import stream from "./stream.js";
 import transcribe from "./transcribe.js";
+import usage from "./usage.js";
 import vocabulary from "./vocabulary.js";
 import whisper from "./whisper.js";
 
@@ -81,6 +82,7 @@ const apiRouter = new Hono()
   .route("/vocabulary", vocabulary)
   .route("/formats", formats)
   .route("/post-process", postProcessRoute)
+  .route("/usage", usage)
   .route("/plugins", pluginsRoute)
   .route("/whisper", whisper)
   .route("/mlx-asr", mlxAsr);

@@ -1,4 +1,4 @@
-# `freestyle-voice`
+# Freestyle Voice
 
 The plugin SDK for [Freestyle](../../README.md) — the local-first voice
 dictation app. This package is the **public contract** for writing plugins that

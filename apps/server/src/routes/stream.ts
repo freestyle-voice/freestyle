@@ -2,7 +2,10 @@ import { createAppLogger } from "@freestyle-voice/utils";
 import { upgradeWebSocket } from "@hono/node-server";
 import { Hono } from "hono";
 import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
-import { FreestyleCloudAuthError } from "../lib/freestyle-cloud.js";
+import {
+  FREESTYLE_CLOUD_PROVIDER_ID,
+  FreestyleCloudAuthError,
+} from "../lib/freestyle-cloud.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import { getLanguageSetting } from "../lib/language.js";
 import {
@@ -257,6 +260,61 @@ const stream = new Hono().get(
             const durationMs = Date.now() - sessionStartTime;
             if (!shouldKeepStreamingUpstreamAlive(voice.provider)) {
               closeUpstreamSession(session);
+            }
+
+            // Freestyle Cloud streaming: the cloud DO already ran STT +
+            // Groq LLM post-processing. The text is already cleaned — skip
+            // local postProcess() and deliver directly.
+            if (voice.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
+              const cleanedText = rawText?.trim() || "";
+
+              void plugins().emit({
+                type: FreestyleEventType.Transcribed,
+                text: cleanedText,
+              });
+
+              const sttAfterCommitMs =
+                commitTime > 0 ? Date.now() - commitTime : durationMs;
+              if (LOG_PIPELINE_LATENCY) {
+                log.info(
+                  `[pipeline] cloud_stream stt_after_commit=${sttAfterCommitMs}ms session=${durationMs}ms | ${voice.provider}/${voiceDefaults!.model_id}`,
+                );
+              }
+              capture("streaming transcription completed", {
+                provider: voiceDefaults!.provider,
+                provider_category: voiceProviderCategory(
+                  voiceDefaults!.provider,
+                ),
+                model: voiceDefaults!.model_id,
+                duration_ms: durationMs,
+                audio_duration_ms: audioDurationMs,
+                llm_provider: FREESTYLE_CLOUD_PROVIDER_ID,
+                llm_model: "freestyle-cloud/post-process",
+                input_tokens: 0,
+                output_tokens: 0,
+                cost_usd: 0,
+              });
+              if (!closed) {
+                ws.send(JSON.stringify({ type: "final", text: cleanedText }));
+              }
+              try {
+                saveProcessedHistory({
+                  rawText: cleanedText,
+                  cleanedText: null,
+                  voiceProvider: voiceDefaults!.provider,
+                  voiceModel: voiceDefaults!.model_id,
+                  llmProvider: FREESTYLE_CLOUD_PROVIDER_ID,
+                  llmModel: "freestyle-cloud/post-process",
+                  durationMs,
+                  audioDurationMs,
+                  inputTokens: 0,
+                  outputTokens: 0,
+                  costUsd: 0,
+                });
+              } catch (err) {
+                log.error(`Failed to save history: ${err}`);
+              }
+              return;
             }
 
             // Plugin hook: rewrite the raw transcript before cleanup, matching

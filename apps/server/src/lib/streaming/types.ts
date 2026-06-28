@@ -17,6 +17,10 @@ export interface StreamSession {
    * Audio may be sent before this completes; providers should buffer it.
    */
   waitUntilReady?(): Promise<void>;
+  /** Update the app context forwarded to the upstream provider (if supported). */
+  setContext?(context: string | null): void;
+  /** Set the audio duration (ms) to include with the next commit (if supported). */
+  setAudioDurationMs?(ms: number): void;
   commit(): void;
   cancel(): void;
   close(): void;

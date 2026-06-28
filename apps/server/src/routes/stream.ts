@@ -558,6 +558,7 @@ const stream = new Hono().get(
         switch (msg.type) {
           case "context":
             appContext = msg.context ?? null;
+            upstream?.setContext?.(appContext);
             break;
           case "start": {
             sessionStartTime = Date.now();
@@ -613,9 +614,11 @@ const stream = new Hono().get(
             commitTime = Date.now();
             if (msg.audioDurationMs && msg.audioDurationMs > 0) {
               audioDurationMs = msg.audioDurationMs;
+              upstream?.setAudioDurationMs?.(audioDurationMs);
             }
             if (msg.context !== undefined) {
               appContext = msg.context;
+              upstream?.setContext?.(appContext);
             }
             if (
               upstream &&

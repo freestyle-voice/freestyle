@@ -82,6 +82,10 @@ export class FreestyleCloudTranscriptionProvider
 
     let configured = false;
     let closed = false;
+    // Track context and audio duration so we can forward them with commit.
+    // The stream route sets these via context messages and the commit payload.
+    let currentContext: string | null = null;
+    let currentAudioDurationMs = 0;
 
     ws.on("open", () => {
       configured = true;
@@ -152,6 +156,8 @@ export class FreestyleCloudTranscriptionProvider
       reset(): void {
         // For freestyle-cloud, reset means sending a new "start" to the DO
         // which will close the old upstream and open a fresh one.
+        currentAudioDurationMs = 0;
+        currentContext = null;
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(
             JSON.stringify({
@@ -162,9 +168,27 @@ export class FreestyleCloudTranscriptionProvider
         }
       },
 
+      setContext(context: string | null): void {
+        currentContext = context;
+        // Also forward to the DO so it can use it for post-processing.
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "context", context: context ?? "" }));
+        }
+      },
+
+      setAudioDurationMs(ms: number): void {
+        currentAudioDurationMs = ms;
+      },
+
       commit(): void {
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "commit" }));
+          ws.send(
+            JSON.stringify({
+              type: "commit",
+              audioDurationMs: currentAudioDurationMs,
+              context: currentContext,
+            }),
+          );
         }
       },
 
@@ -172,6 +196,7 @@ export class FreestyleCloudTranscriptionProvider
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "cancel" }));
         }
+        currentAudioDurationMs = 0;
       },
 
       close(): void {

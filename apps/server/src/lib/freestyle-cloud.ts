@@ -91,6 +91,16 @@ export function freestyleCloudUrl(): string {
   );
 }
 
+/**
+ * Build the WebSocket URL for the cloud streaming STT endpoint.
+ * Converts `https://` → `wss://` and `http://` → `ws://`.
+ */
+export function freestyleCloudStreamWsUrl(): string {
+  const base = freestyleCloudUrl();
+  const wsBase = base.replace(/^http/, "ws");
+  return `${wsBase}/v1/stream`;
+}
+
 function createCloudAuthClient() {
   return createAuthClient({
     baseURL: `${freestyleCloudUrl()}/auth`,

@@ -86,7 +86,6 @@
       "desc": "Ändert die Sprache der App-Oberfläche."
     },
     "sections": {
-      "interface": "Oberfläche",
       "application": "Anwendung",
       "recording": "Aufnahme",
       "display": "Anzeige",

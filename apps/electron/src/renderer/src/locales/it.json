@@ -86,7 +86,6 @@
       "desc": "Modifica la lingua dell'interfaccia dell'app."
     },
     "sections": {
-      "interface": "Interfaccia",
       "application": "Applicazione",
       "recording": "Registrazione",
       "display": "Display",

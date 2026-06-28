@@ -86,7 +86,6 @@
       "desc": "Alterar o idioma da interface do aplicativo."
     },
     "sections": {
-      "interface": "Interface",
       "application": "Aplicativo",
       "recording": "Gravação",
       "display": "Exibição",

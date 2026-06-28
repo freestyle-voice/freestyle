@@ -58,7 +58,6 @@ import {
   stopWhisperServer,
 } from "@freestyle-voice/server";
 import { createAppLogger, enableFileLogging } from "@freestyle-voice/utils";
-import { serverUrlSchema } from "@freestyle-voice/validations";
 import {
   app,
   BrowserWindow,
@@ -223,28 +222,12 @@ function writeSettings(patch: Record<string, unknown>): void {
 }
 
 /**
- * The configured Freestyle server URL, if the user has set one. When present,
- * the app connects to that server instead of running one locally. Returns an
- * empty string when using the default local server.
- */
-function getServerUrl(): string {
-  const parsed = serverUrlSchema.safeParse(readSettings().serverUrl);
-  return parsed.success ? parsed.data : "";
-}
-
-/** Optional bearer token sent to a configured server ("" = none). */
-function getServerToken(): string {
-  const raw = readSettings().serverToken;
-  return typeof raw === "string" ? raw.trim() : "";
-}
-
-/**
- * Base URL the app uses to reach the Freestyle server: the configured remote
- * URL, or the locally-run server on the resolved port. The DB lives behind the
- * server, so all server-owned data (settings, plugins) is read through it.
+ * Base URL the app uses to reach the locally-run Freestyle server on the
+ * resolved port. The DB lives behind the server, so all server-owned data
+ * (settings, plugins) is read through it.
  */
 function getServerBaseUrl(): string {
-  return getServerUrl() || `http://127.0.0.1:${serverPort}`;
+  return `http://127.0.0.1:${serverPort}`;
 }
 
 /**
@@ -642,28 +625,21 @@ function createSettingsWindow(initialPath?: string): void {
   settingsWindow.loadURL(getDashboardURL(startPath));
 }
 
-/** The (possibly remote) server target for plugin settings/discovery. */
+/** The local server target for plugin settings/discovery. */
 function getServerTarget(): {
   baseUrl: string;
-  token?: string;
   directory: string;
-  remote: boolean;
 } {
-  const token = getServerToken();
   return {
     baseUrl: getServerBaseUrl(),
-    ...(token ? { token } : {}),
     directory: app.getPath("userData"),
-    remote: getServerUrl() !== "",
   };
 }
 
-/** Bridge config (server URL/token) injected into plugin UI frames. */
+/** Bridge config (server URL) injected into plugin UI frames. */
 function getPluginBridgeConfig(): BridgeConfig {
-  const token = getServerToken();
   return {
     serverUrl: getServerBaseUrl(),
-    ...(token ? { token } : {}),
   };
 }
 
@@ -1487,27 +1463,6 @@ app.whenReady().then(async () => {
     }
   });
 
-  // IPC: read the configured server URL ("" = use the local server)
-  ipcMain.handle("server:url", () => getServerUrl());
-
-  // IPC: persist the server URL. Takes effect for API/WebSocket calls
-  // immediately; switching between local and a configured URL requires a
-  // restart to start/stop the local server. Invalid values are ignored.
-  ipcMain.handle("server:set-url", (_event, url: unknown) => {
-    const parsed = serverUrlSchema.safeParse(url);
-    if (parsed.success) writeSettings({ serverUrl: parsed.data });
-    return getServerUrl();
-  });
-
-  // IPC: read/persist the optional bearer token for a configured server.
-  ipcMain.handle("server:token", () => getServerToken());
-  ipcMain.handle("server:set-token", (_event, token: unknown) => {
-    writeSettings({
-      serverToken: typeof token === "string" ? token.trim() : "",
-    });
-    return getServerToken();
-  });
-
   ipcMain.handle("cloud:prompt-sign-in", async () => {
     const { response } = await dialog.showMessageBox({
       type: "info",
@@ -1651,74 +1606,58 @@ app.whenReady().then(async () => {
     );
   });
 
-  // When a server URL is configured, the app talks to that server instead of
-  // running one locally. Skip all local server startup in that case.
-  const serverUrl = getServerUrl();
+  // Set database path for the server before any API calls
+  process.env.FREESTYLE_DB_PATH = join(app.getPath("userData"), "freestyle.db");
 
-  if (serverUrl) {
-    log.info(`Using configured Freestyle server at ${serverUrl}`);
-    initPluginsForServer();
-  } else {
-    // Set database path for the server before any API calls
-    process.env.FREESTYLE_DB_PATH = join(
-      app.getPath("userData"),
-      "freestyle.db",
-    );
-
-    process.env.FREESTYLE_ENV = is.dev ? "development" : "production";
-    if (!is.dev) {
-      process.env.FREESTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
-    }
-
-    // Run non-critical server startup tasks now that the DB path is set
-    reconcileUnsupportedMlxVoiceDefault();
-    autoStartWhisperServer();
-
-    // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
-    const startServer = (port: number): void => {
-      startFreestyleServer({ port, host: "127.0.0.1" })
-        .then(({ server, port: boundPort }) => {
-          httpServer = server;
-          serverPort = boundPort;
-          log.info(`Server running on http://localhost:${boundPort}`);
-          initPluginsForServer();
-        })
-        .catch((err: NodeJS.ErrnoException) => {
-          if (err.code === "EADDRINUSE" && port === DEFAULT_PORT) {
-            log.warn(
-              `Port ${DEFAULT_PORT} in use, falling back to random port`,
-            );
-            startServer(0);
-          } else {
-            log.error(`Server failed to start: ${err}`);
-          }
-        });
-    };
-
-    // Check if a Freestyle server is already running on the default port.
-    let existingServer = false;
-    try {
-      const res = await net.fetch(
-        `http://127.0.0.1:${DEFAULT_PORT}/api/health`,
-      );
-      if (res.ok) {
-        const data = (await res.json()) as { status?: string; name?: string };
-        existingServer = data?.status === "ok" && data?.name === "freestyle";
-      }
-    } catch {}
-
-    if (existingServer) {
-      serverPort = DEFAULT_PORT;
-      log.info(
-        `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
-      );
-      initPluginsForServer();
-    } else {
-      startServer(DEFAULT_PORT);
-    }
+  process.env.FREESTYLE_ENV = is.dev ? "development" : "production";
+  if (!is.dev) {
+    process.env.FREESTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
   }
 
-  if (!serverUrl && !is.dev) {
+  // Run non-critical server startup tasks now that the DB path is set
+  reconcileUnsupportedMlxVoiceDefault();
+  autoStartWhisperServer();
+
+  // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
+  const startServer = (port: number): void => {
+    startFreestyleServer({ port, host: "127.0.0.1" })
+      .then(({ server, port: boundPort }) => {
+        httpServer = server;
+        serverPort = boundPort;
+        log.info(`Server running on http://localhost:${boundPort}`);
+        initPluginsForServer();
+      })
+      .catch((err: NodeJS.ErrnoException) => {
+        if (err.code === "EADDRINUSE" && port === DEFAULT_PORT) {
+          log.warn(`Port ${DEFAULT_PORT} in use, falling back to random port`);
+          startServer(0);
+        } else {
+          log.error(`Server failed to start: ${err}`);
+        }
+      });
+  };
+
+  // Check if a Freestyle server is already running on the default port.
+  let existingServer = false;
+  try {
+    const res = await net.fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`);
+    if (res.ok) {
+      const data = (await res.json()) as { status?: string; name?: string };
+      existingServer = data?.status === "ok" && data?.name === "freestyle";
+    }
+  } catch {}
+
+  if (existingServer) {
+    serverPort = DEFAULT_PORT;
+    log.info(
+      `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
+    );
+    initPluginsForServer();
+  } else {
+    startServer(DEFAULT_PORT);
+  }
+
+  if (!is.dev) {
     void activateManagedMlxRuntimeForAppVersion(app.getVersion()).catch(
       (err) => {
         log.warn(

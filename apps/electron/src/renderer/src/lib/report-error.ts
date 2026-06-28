@@ -1,4 +1,4 @@
-import { getApiBase, getAuthHeaders } from "@renderer/lib/api";
+import { getApiBase } from "@renderer/lib/api";
 
 /**
  * Report a renderer-side error to the server, which always persists it to the
@@ -16,7 +16,7 @@ export function reportError(
     const err = error instanceof Error ? error : new Error(String(error));
     fetch(`${getApiBase()}/api/client-error`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: err.message || "Unknown error",
         stack: err.stack,

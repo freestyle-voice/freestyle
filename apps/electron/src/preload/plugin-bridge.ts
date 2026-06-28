@@ -8,14 +8,12 @@ import type {
 /**
  * Preload injected into every plugin UI page (running in a sandboxed
  * WebContentsView). Exposes the `window.freestyle` bridge — the only privileged
- * surface available to plugin web content. Host config (server URL/token and
- * theme tokens) is fetched from the main process over IPC, keeping the token
- * out of process arguments.
+ * surface available to plugin web content. Host config (server URL and theme
+ * tokens) is fetched from the main process over IPC.
  */
 
 interface BridgeConfig {
   serverUrl: string;
-  token?: string;
   tokens?: Record<string, string>;
 }
 
@@ -140,9 +138,6 @@ const ready = ipcRenderer
 const bridge: FreestyleBridge = {
   get serverUrl() {
     return config.serverUrl;
-  },
-  get token() {
-    return config.token;
   },
 
   async api(path, init) {

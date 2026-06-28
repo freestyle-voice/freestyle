@@ -1,7 +1,6 @@
 import { createAppLogger } from "@freestyle-voice/utils";
 import type { Plugin, PluginConfig } from "freestyle-voice";
 import { PluginRegistry } from "freestyle-voice";
-import { authPlugin } from "./builtin/auth.js";
 import { cloudSyncPlugin } from "./builtin/cloud-sync.js";
 import { loadServerPlugins } from "./loader.js";
 
@@ -18,26 +17,19 @@ let resolvedConfig: PluginConfig = {};
 let initialized = false;
 let builtinPlugins: Plugin[] = [];
 
-export interface InitServerPluginsOptions {
-  /** Bearer token for the auth plugin. Empty/omitted = auth disabled. */
-  token?: string;
-}
-
 /**
  * Load and install the server plugin registry, then run the `config` hook
  * chain once so plugins can contribute boot-time configuration. Safe to call
  * once at boot; later calls are ignored. Failures degrade to an empty registry
  * so the dictation pipeline always works.
  *
- * Built-in plugins (auth, cloud-sync) are always present and cannot be
- * disabled by users.
+ * Built-in plugins (cloud-sync) are always present and cannot be disabled by
+ * users.
  */
-export async function initServerPlugins(
-  options: InitServerPluginsOptions = {},
-): Promise<void> {
+export async function initServerPlugins(): Promise<void> {
   if (initialized) return;
   initialized = true;
-  builtinPlugins = [authPlugin(options.token), cloudSyncPlugin()];
+  builtinPlugins = [cloudSyncPlugin()];
   await loadIntoRegistry();
 }
 

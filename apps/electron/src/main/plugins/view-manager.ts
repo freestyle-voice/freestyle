@@ -16,7 +16,6 @@ export interface ViewBounds {
 /** Server config injected into the plugin frame's bridge. */
 export interface BridgeConfig {
   serverUrl: string;
-  token?: string;
 }
 
 /**

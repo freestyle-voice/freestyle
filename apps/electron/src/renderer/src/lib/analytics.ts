@@ -1,4 +1,4 @@
-import { getApiBase, getAuthHeaders } from "@renderer/lib/api";
+import { getApiBase } from "@renderer/lib/api";
 
 /**
  * Capture a PostHog event from the renderer.
@@ -19,7 +19,7 @@ export function capture(
   try {
     fetch(`${getApiBase()}/api/telemetry`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ event, properties }),
       // Survive the renderer navigating away (e.g. when onboarding completes).
       keepalive: true,

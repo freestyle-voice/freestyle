@@ -86,7 +86,6 @@
       "desc": "Changez la langue de l'interface de l'app."
     },
     "sections": {
-      "interface": "Interface",
       "application": "Application",
       "recording": "Enregistrement",
       "display": "Affichage",

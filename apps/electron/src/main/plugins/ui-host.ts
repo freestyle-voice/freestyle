@@ -25,7 +25,7 @@ const log = createAppLogger("plugins-ui");
 export interface PluginUiHostDeps {
   /** The dashboard window the plugin views overlay. */
   window: BrowserWindow;
-  /** Resolve the bridge config (server URL/token + theme tokens) on demand. */
+  /** Resolve the bridge config (server URL + theme tokens) on demand. */
   getBridgeConfig: () => BridgeConfig;
   /**
    * Resolve the current `plugins` setting value + the user-data dir for
@@ -132,8 +132,8 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
     viewManager?.hide();
   });
 
-  // The plugin frame's preload fetches its bridge config (server URL/token +
-  // theme tokens) over IPC, so the token never appears in process arguments.
+  // The plugin frame's preload fetches its bridge config (server URL + theme
+  // tokens) over IPC.
   ipcMain.handle(
     "plugin-bridge:config",
     () => viewManager?.getConfig() ?? null,
@@ -169,7 +169,6 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
       const body = deserializeBody(req.body);
 
       const headers = new Headers(req.headers);
-      if (config.token) headers.set("Authorization", `Bearer ${config.token}`);
       // For a FormData body, undici must generate the multipart Content-Type
       // (with its boundary). A caller-supplied content-type would suppress that
       // and leave the server unable to parse the parts, so drop it here.

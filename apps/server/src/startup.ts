@@ -8,14 +8,12 @@
  *   - FREESTYLE_DB_PATH (required) — path to the SQLite database file.
  *   - PORT  — port to listen on (default 4649).
  *   - HOST  — interface to bind to (default 0.0.0.0, all interfaces).
- *   - FREESTYLE_AUTH_TOKEN — if set, require this bearer token on requests.
  */
 
 import { closeDb, disposeServerPlugins, startServer } from "./index.js";
 
 const port = process.env.PORT ? Number(process.env.PORT) : 4649;
 const host = process.env.HOST ?? "0.0.0.0";
-const token = process.env.FREESTYLE_AUTH_TOKEN;
 
 if (Number.isNaN(port)) {
   console.error(`Invalid PORT value: ${process.env.PORT}`);
@@ -32,7 +30,6 @@ if (!process.env.FREESTYLE_DB_PATH) {
 const { server, port: boundPort } = await startServer({
   port,
   host,
-  token,
 }).catch((err) => {
   console.error(
     `Failed to start server: ${err instanceof Error ? err.message : String(err)}`,

@@ -79,12 +79,6 @@ export interface StartServerOptions {
    * (e.g. when running the server standalone inside a container/VM).
    */
   host?: string;
-  /**
-   * Bearer token required for API/WebSocket requests. When omitted (or empty),
-   * the server is unauthenticated — appropriate for the loopback Electron
-   * server, but set this for standalone/remote deployments.
-   */
-  token?: string;
 }
 
 export interface RunningServer {
@@ -100,17 +94,17 @@ export interface RunningServer {
  * standalone container entrypoint (see startup.ts).
  *
  * Plugins are loaded first so their contributed middleware is available when the
- * Hono app is constructed. Built-in plugins (auth, cloud-sync) are always
- * present; user plugins are discovered from settings + disk.
+ * Hono app is constructed. Built-in plugins (cloud-sync) are always present;
+ * user plugins are discovered from settings + disk.
  */
 export async function startServer(
   options: StartServerOptions = {},
 ): Promise<RunningServer> {
-  const { port = 4649, host = "127.0.0.1", token } = options;
+  const { port = 4649, host = "127.0.0.1" } = options;
 
   // Load plugins (built-in + user) before constructing the app so middleware
   // contributions are mounted at the correct position in the chain.
-  await initServerPlugins({ token });
+  await initServerPlugins();
 
   const pluginMiddleware = plugins().collectMiddleware();
   const app = createApp(pluginMiddleware);

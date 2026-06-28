@@ -323,22 +323,6 @@ importers:
         specifier: ^7.3.3
         version: 7.3.3(@types/node@26.0.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
 
-  plugins/example:
-    dependencies:
-      freestyle-voice:
-        specifier: workspace:*
-        version: link:../../packages/sdk
-    devDependencies:
-      pkgroll:
-        specifier: ^2.27.0
-        version: 2.27.0(typescript@5.9.3)(vite@7.3.3(@types/node@26.0.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))
-      typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
-      vite:
-        specifier: ^7.3.3
-        version: 7.3.3(@types/node@26.0.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
-
   plugins/profanity-filter:
     dependencies:
       freestyle-voice:

@@ -40,14 +40,6 @@ const api = {
     ipcRenderer.invoke("logs:open-folder"),
   openExternal: (url: string): Promise<boolean> =>
     ipcRenderer.invoke("open:external", url),
-  // Server URL ("" = use the bundled local server)
-  getServerUrl: (): Promise<string> => ipcRenderer.invoke("server:url"),
-  setServerUrl: (url: string): Promise<string> =>
-    ipcRenderer.invoke("server:set-url", url),
-  // Optional bearer token for a configured server ("" = none)
-  getServerToken: (): Promise<string> => ipcRenderer.invoke("server:token"),
-  setServerToken: (token: string): Promise<string> =>
-    ipcRenderer.invoke("server:set-token", token),
   cloudPromptSignIn: (): Promise<boolean> =>
     ipcRenderer.invoke("cloud:prompt-sign-in"),
   onHotkeyDown: (callback: () => void): (() => void) => {

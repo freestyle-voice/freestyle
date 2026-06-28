@@ -1,6 +1,6 @@
 /**
  * The bridge API injected into a plugin's UI page as `window.freestyle`. It is
- * the only privileged surface available to plugin web content: a pre-authed way
+ * the only privileged surface available to plugin web content: a proxied way
  * to call the local server API, trigger a small set of host actions, observe
  * host events, and read theme tokens. Everything else in the page is sandboxed
  * web content with no Node or IPC access.
@@ -8,11 +8,8 @@
 export interface FreestyleBridge {
   /** Base URL of the local Freestyle server (e.g. `http://127.0.0.1:4649`). */
   readonly serverUrl: string;
-  /** Bearer token for the server API, when one is configured. */
-  readonly token?: string;
   /**
-   * Pre-authed request to a server API path. The `path` is appended to
-   * {@link serverUrl}; the bearer token (if any) is attached automatically.
+   * Request to a server API path. The `path` is appended to {@link serverUrl}.
    * The request is proxied through the host (the sandboxed page can't reach the
    * loopback server directly), so this resolves a lightweight
    * {@link FreestyleResponse} rather than a native `Response`.

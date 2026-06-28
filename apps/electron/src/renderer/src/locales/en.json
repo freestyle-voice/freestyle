@@ -86,7 +86,6 @@
       "desc": "Change the language of the app interface."
     },
     "sections": {
-      "interface": "Interface",
       "application": "Application",
       "recording": "Recording",
       "display": "Display",

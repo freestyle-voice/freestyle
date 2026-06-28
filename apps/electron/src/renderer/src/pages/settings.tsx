@@ -1,14 +1,7 @@
-import { serverUrlSchema } from "@freestyle-voice/validations";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { LanguageSelector } from "@renderer/components/language-selector";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@renderer/components/ui/input-group";
-import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import {
   Select,
@@ -24,15 +17,7 @@ import {
   keyDisplayLabel,
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
-import {
-  checkServerAuth,
-  checkServerHealth,
-  getApiBase,
-  getClient,
-  getLocalApiBase,
-  getServerToken,
-  refreshApiBase,
-} from "@renderer/lib/api";
+import { getApiBase, getClient } from "@renderer/lib/api";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { cn } from "@renderer/lib/utils";
@@ -42,14 +27,12 @@ import {
   Download,
   ExternalLink,
   FolderOpen,
-  Key,
   Keyboard,
   Languages,
   Mic,
   Monitor,
   Moon,
   Pause,
-  Server,
   Sun,
   Trash2,
   Volume2,
@@ -82,9 +65,8 @@ const audioPlaybackOptions = [
 ] as const;
 
 const settingsSectionIds = [
-  "interface",
-  "application",
   "recording",
+  "application",
   "display",
   "permissions",
   "data",
@@ -97,7 +79,7 @@ function parseSettingsSection(hash: string): SettingsSectionId {
   const id = hash.replace(/^#/, "");
   return (settingsSectionIds as readonly string[]).includes(id)
     ? (id as SettingsSectionId)
-    : "application";
+    : "recording";
 }
 
 interface AudioDevice {
@@ -140,15 +122,6 @@ export default function SettingsPage(): React.JSX.Element {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
     parseSettingsSection(window.location.hash),
   );
-  const [serverUrlInput, setServerUrlInput] = useState("");
-  const [savedServerUrl, setSavedServerUrl] = useState("");
-  const [serverTokenInput, setServerTokenInput] = useState("");
-  const [savedServerToken, setSavedServerToken] = useState("");
-  const [showToken, setShowToken] = useState(false);
-  const [serverUrlError, setServerUrlError] = useState<string | null>(null);
-  const [serverTest, setServerTest] = useState<
-    "idle" | "testing" | "ok" | "unreachable" | "unauthorized"
-  >("idle");
 
   // Radix SelectItem cannot use an empty-string value, so the "system default"
   // microphone (stored as "") is represented by this sentinel at the Select
@@ -445,22 +418,6 @@ export default function SettingsPage(): React.JSX.Element {
       .then((v) => setShowOnLaunch(v))
       .catch(() => {});
 
-    // Server URL + token ("" = local server / no auth)
-    window.api
-      ?.getServerUrl()
-      .then((url) => {
-        setSavedServerUrl(url);
-        setServerUrlInput(url);
-      })
-      .catch(() => {});
-    window.api
-      ?.getServerToken()
-      .then((token) => {
-        setSavedServerToken(token);
-        setServerTokenInput(token);
-      })
-      .catch(() => {});
-
     // Auto-updater events
     const removeAvail = window.api?.onUpdateAvailable((info) => {
       setUpdateAvailable(info.version);
@@ -572,62 +529,6 @@ export default function SettingsPage(): React.JSX.Element {
   const handleShowOnLaunchToggle = useCallback((enabled: boolean) => {
     setShowOnLaunch(enabled);
     window.api?.setShowDashboardOnLaunch(enabled);
-  }, []);
-
-  const testServer = useCallback(async (rawUrl: string, token: string) => {
-    const parsed = serverUrlSchema.safeParse(rawUrl);
-    if (!parsed.success) {
-      setServerUrlError(parsed.error.issues[0].message);
-      setServerTest("idle");
-      return;
-    }
-    const base = parsed.data || getLocalApiBase();
-    setServerTest("testing");
-    if (!(await checkServerHealth(base, 5000))) {
-      setServerTest("unreachable");
-      return;
-    }
-    // Always probe an authenticated endpoint so we catch both a wrong token and
-    // a server that requires a token when none was entered.
-    if (!(await checkServerAuth(base, token.trim(), 5000))) {
-      setServerTest("unauthorized");
-      return;
-    }
-    setServerTest("ok");
-  }, []);
-
-  const handleSaveServer = useCallback(async () => {
-    const parsed = serverUrlSchema.safeParse(serverUrlInput);
-    if (!parsed.success) {
-      setServerUrlError(parsed.error.issues[0].message);
-      return;
-    }
-    setServerUrlError(null);
-    const savedUrl =
-      (await window.api?.setServerUrl(parsed.data)) ?? parsed.data;
-    const savedToken =
-      (await window.api?.setServerToken(serverTokenInput)) ??
-      serverTokenInput.trim();
-    setSavedServerUrl(savedUrl);
-    setServerUrlInput(savedUrl);
-    setSavedServerToken(savedToken);
-    setServerTokenInput(savedToken);
-    // Apply the new base/token to this window's client immediately. Switching
-    // the local server on/off still needs a restart (see the row description).
-    await refreshApiBase();
-    await testServer(savedUrl, savedToken);
-  }, [serverUrlInput, serverTokenInput, testServer]);
-
-  const handleResetServer = useCallback(async () => {
-    const savedUrl = (await window.api?.setServerUrl("")) ?? "";
-    const savedToken = (await window.api?.setServerToken("")) ?? "";
-    setSavedServerUrl(savedUrl);
-    setServerUrlInput(savedUrl);
-    setSavedServerToken(savedToken);
-    setServerTokenInput(savedToken);
-    setServerUrlError(null);
-    setServerTest("idle");
-    await refreshApiBase();
   }, []);
 
   const clearHistory = useCallback(async () => {
@@ -771,20 +672,14 @@ export default function SettingsPage(): React.JSX.Element {
             {activeSectionLabel}
           </h2>
 
-          {activeSection === "interface" && (
+          {activeSection === "application" && (
             <SettingsPanel>
               <Row
                 label={t("settings.interfaceLanguage.label")}
                 desc={t("settings.interfaceLanguage.desc")}
-                last
               >
                 <LanguageSelector />
               </Row>
-            </SettingsPanel>
-          )}
-
-          {activeSection === "application" && (
-            <SettingsPanel>
               <Row
                 label={t("settings.application.autoUpdate")}
                 desc={t("settings.application.autoUpdateDesc")}
@@ -806,39 +701,11 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.application.showOnLaunch")}
                 desc={t("settings.application.showOnLaunchDesc")}
+                last
               >
                 <Switch
                   checked={showOnLaunch}
                   onCheckedChange={handleShowOnLaunchToggle}
-                />
-              </Row>
-              <Row
-                label="Server URL"
-                desc="Use the built-in server, or point Freestyle at a self-hosted server. Restart the app after changing this."
-                stacked
-                last
-              >
-                <ServerConnectionCard
-                  savedServerUrl={savedServerUrl}
-                  savedServerToken={savedServerToken}
-                  serverUrlInput={serverUrlInput}
-                  serverTokenInput={serverTokenInput}
-                  serverUrlError={serverUrlError}
-                  serverTest={serverTest}
-                  showToken={showToken}
-                  onUrlChange={(value) => {
-                    setServerUrlInput(value);
-                    setServerTest("idle");
-                    setServerUrlError(null);
-                  }}
-                  onTokenChange={(value) => {
-                    setServerTokenInput(value);
-                    setServerTest("idle");
-                  }}
-                  onToggleToken={() => setShowToken((v) => !v)}
-                  onSave={handleSaveServer}
-                  onTest={() => testServer(serverUrlInput, serverTokenInput)}
-                  onReset={handleResetServer}
                 />
               </Row>
             </SettingsPanel>
@@ -1290,208 +1157,6 @@ function Row({
   );
 }
 
-type ServerTestState =
-  | "idle"
-  | "testing"
-  | "ok"
-  | "unreachable"
-  | "unauthorized";
-
-function ServerConnectionCard({
-  savedServerUrl,
-  savedServerToken,
-  serverUrlInput,
-  serverTokenInput,
-  serverUrlError,
-  serverTest,
-  showToken,
-  onUrlChange,
-  onTokenChange,
-  onToggleToken,
-  onSave,
-  onTest,
-  onReset,
-}: {
-  savedServerUrl: string;
-  savedServerToken: string;
-  serverUrlInput: string;
-  serverTokenInput: string;
-  serverUrlError: string | null;
-  serverTest: ServerTestState;
-  showToken: boolean;
-  onUrlChange: (value: string) => void;
-  onTokenChange: (value: string) => void;
-  onToggleToken: () => void;
-  onSave: () => void;
-  onTest: () => void;
-  onReset: () => void;
-}): React.JSX.Element {
-  const { t } = useTranslation();
-  const urlChanged = serverUrlInput.trim() !== savedServerUrl.trim();
-  const tokenChanged = serverTokenInput.trim() !== savedServerToken.trim();
-  const canReset =
-    !!savedServerUrl ||
-    !!savedServerToken ||
-    !!serverUrlInput.trim() ||
-    !!serverTokenInput.trim();
-  const usingLocal = !savedServerUrl;
-
-  return (
-    <div className="border-border bg-card w-full rounded-[14px] border p-3.5">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={cn(
-              "mono inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] uppercase tracking-[0.14em]",
-              usingLocal
-                ? "bg-accent text-accent-foreground"
-                : "bg-secondary text-secondary-foreground",
-            )}
-          >
-            <span
-              className={cn(
-                "size-1.5 rounded-full",
-                usingLocal ? "bg-primary" : "bg-muted-foreground",
-              )}
-            />
-            {usingLocal ? "Local server" : "Remote server"}
-          </span>
-          {savedServerUrl && (
-            <span className="text-muted-foreground min-w-0 truncate text-[12px]">
-              {savedServerUrl}
-            </span>
-          )}
-        </div>
-        <ConnectionStatus state={serverTest} />
-      </div>
-
-      <div className="space-y-2.5">
-        <ServerFieldRow label="Endpoint">
-          <InputGroup>
-            <InputGroupInput
-              id="settings-server-url"
-              type="text"
-              value={serverUrlInput}
-              aria-invalid={!!serverUrlError}
-              onChange={(e) => onUrlChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onSave();
-              }}
-              placeholder="http://127.0.0.1:4649"
-            />
-            <InputGroupAddon>
-              <Server />
-            </InputGroupAddon>
-          </InputGroup>
-        </ServerFieldRow>
-
-        <ServerFieldRow label="Token">
-          <InputGroup className={cn(!serverUrlInput.trim() && "opacity-60")}>
-            <InputGroupInput
-              id="settings-server-token"
-              type={showToken ? "text" : "password"}
-              value={serverTokenInput}
-              onChange={(e) => onTokenChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onSave();
-              }}
-              placeholder="Optional access token"
-            />
-            <InputGroupAddon>
-              <Key />
-            </InputGroupAddon>
-            {serverTokenInput && (
-              <RevealToggle
-                revealed={showToken}
-                onToggle={onToggleToken}
-                label="token"
-              />
-            )}
-          </InputGroup>
-        </ServerFieldRow>
-
-        {serverUrlError && (
-          <p className="text-destructive pl-0 text-[12px] min-[760px]:pl-[104px]">
-            {serverUrlError}
-          </p>
-        )}
-
-        <div className="flex flex-wrap items-center gap-2 pt-1 min-[760px]:pl-[104px]">
-          <Button
-            variant="ink"
-            size="sm"
-            onClick={onSave}
-            disabled={!urlChanged && !tokenChanged}
-          >
-            {t("common.save")}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onTest}
-            disabled={serverTest === "testing"}
-          >
-            Test connection
-          </Button>
-          {canReset && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onReset}
-              className="text-muted-foreground"
-            >
-              Reset to local
-            </Button>
-          )}
-          {(urlChanged || tokenChanged) && (
-            <span className="text-muted-foreground ml-auto text-[11.5px]">
-              Restart required after saving
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ServerFieldRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <div className="grid items-center gap-1.5 min-[760px]:grid-cols-[88px_minmax(0,1fr)] min-[760px]:gap-4">
-      <div className="mono text-muted-foreground text-[10px] uppercase tracking-[0.14em]">
-        {label}
-      </div>
-      <div className="min-w-0">{children}</div>
-    </div>
-  );
-}
-
-function ConnectionStatus({ state }: { state: ServerTestState }) {
-  if (state === "idle") return null;
-  if (state === "testing") {
-    return (
-      <span className="text-muted-foreground text-[12px]">Testing...</span>
-    );
-  }
-  if (state === "ok") {
-    return (
-      <span className="text-primary inline-flex items-center gap-1 text-[12px]">
-        <Check className="size-3.5" /> Connected
-      </span>
-    );
-  }
-  return (
-    <span className="text-destructive text-[12px]">
-      {state === "unauthorized" ? "Token rejected" : "Unreachable"}
-    </span>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // MCP connection — how to point an AI agent at the local server
 // ---------------------------------------------------------------------------
@@ -1619,16 +1284,12 @@ function McpConnect(): React.JSX.Element {
   const [mode, setMode] = useState<"http" | "stdio">("http");
   const [showConfig, setShowConfig] = useState(false);
   const mcpUrl = `${getApiBase()}/mcp`;
-  const serverToken = getServerToken();
   const httpConfig = JSON.stringify(
     {
       mcpServers: {
         freestyle: {
           type: "http",
           url: mcpUrl,
-          ...(serverToken
-            ? { headers: { Authorization: `Bearer ${serverToken}` } }
-            : {}),
         },
       },
     },
@@ -1640,14 +1301,7 @@ function McpConnect(): React.JSX.Element {
       mcpServers: {
         freestyle: {
           command: "npx",
-          args: [
-            "-y",
-            "mcp-remote",
-            mcpUrl,
-            ...(serverToken
-              ? ["--header", `Authorization: Bearer ${serverToken}`]
-              : []),
-          ],
+          args: ["-y", "mcp-remote", mcpUrl],
         },
       },
     },

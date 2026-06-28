@@ -1,10 +1,5 @@
 import path from "node:path";
 import type { AppType } from "@freestyle-voice/server";
-import {
-  installPackage,
-  resolvePackage,
-  uninstallPackage,
-} from "@freestyle-voice/server";
 import { createAppLogger } from "@freestyle-voice/utils";
 import {
   parseDisabledPlugins,
@@ -20,20 +15,12 @@ const log = createAppLogger("plugins");
 
 const FETCH_TIMEOUT_MS = 5000;
 
-/** Where the app reaches the (possibly remote) Freestyle server. */
+/** Where the app reaches the local Freestyle server. */
 export interface ServerTarget {
-  /** Base URL, e.g. `http://127.0.0.1:4649` or a configured remote server. */
+  /** Base URL, e.g. `http://127.0.0.1:4649`. */
   baseUrl: string;
-  /** Optional bearer token for a configured server ("" = none). */
-  token?: string;
   /** Electron's local user-data directory; app-host plugins live under it. */
   directory: string;
-  /**
-   * Whether the server is a configured *remote* one. When false, the embedded
-   * server shares this app's user-data dir, so a server-side install already
-   * materializes the package for the desktop too (no local mirror needed).
-   */
-  remote: boolean;
 }
 
 /**
@@ -93,9 +80,7 @@ export async function setPluginEnabled(
   if (enabled) disabled.delete(specifier);
   else disabled.add(specifier);
 
-  const client = hc<AppType>(target.baseUrl, {
-    headers: target.token ? { Authorization: `Bearer ${target.token}` } : {},
-  });
+  const client = hc<AppType>(target.baseUrl);
   await client.api.settings[":key"].$put(
     {
       param: { key: "disabled_plugins" },
@@ -123,9 +108,7 @@ const INSTALL_TIMEOUT_MS = 60_000;
 
 /** Fetch the installable plugin catalog from the server. */
 export async function fetchCatalog(target: ServerTarget): Promise<unknown> {
-  const client = hc<AppType>(target.baseUrl, {
-    headers: target.token ? { Authorization: `Bearer ${target.token}` } : {},
-  });
+  const client = hc<AppType>(target.baseUrl);
   const res = await client.api.plugins.catalog.$get(
     {},
     { init: { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) } },
@@ -136,18 +119,16 @@ export async function fetchCatalog(target: ServerTarget): Promise<unknown> {
 
 /**
  * Install a plugin by npm name. The server installs into its own plugins dir
- * and updates the `plugins` setting; for a *remote* server we additionally
- * materialize the package into this desktop's plugins dir so app-side hooks and
- * the UI page load locally.
+ * and updates the `plugins` setting; since the embedded server shares this
+ * app's user-data dir, that install already materializes the package for the
+ * desktop too.
  */
 export async function installPlugin(
   target: ServerTarget,
   npmName: string,
   version?: string,
 ): Promise<void> {
-  const client = hc<AppType>(target.baseUrl, {
-    headers: target.token ? { Authorization: `Bearer ${target.token}` } : {},
-  });
+  const client = hc<AppType>(target.baseUrl);
   const res = await client.api.plugins.install.$post(
     { json: { npmName, ...(version ? { version } : {}) } },
     { init: { signal: AbortSignal.timeout(INSTALL_TIMEOUT_MS) } },
@@ -156,21 +137,14 @@ export async function installPlugin(
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `install failed: HTTP ${res.status}`);
   }
-
-  if (target.remote) {
-    const resolved = await resolvePackage(npmName, version);
-    await installPackage(path.join(target.directory, "plugins"), resolved);
-  }
 }
 
-/** Uninstall a plugin by specifier (server +, for remote configs, desktop). */
+/** Uninstall a plugin by specifier. */
 export async function uninstallPlugin(
   target: ServerTarget,
   specifier: string,
 ): Promise<void> {
-  const client = hc<AppType>(target.baseUrl, {
-    headers: target.token ? { Authorization: `Bearer ${target.token}` } : {},
-  });
+  const client = hc<AppType>(target.baseUrl);
   const res = await client.api.plugins.uninstall.$post(
     { json: { specifier } },
     { init: { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) } },
@@ -178,10 +152,6 @@ export async function uninstallPlugin(
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `uninstall failed: HTTP ${res.status}`);
-  }
-
-  if (target.remote) {
-    await uninstallPackage(path.join(target.directory, "plugins"), specifier);
   }
 }
 
@@ -192,9 +162,7 @@ export async function uninstallPlugin(
  */
 async function fetchSettings(target: ServerTarget): Promise<SettingsSnapshot> {
   try {
-    const client = hc<AppType>(target.baseUrl, {
-      headers: target.token ? { Authorization: `Bearer ${target.token}` } : {},
-    });
+    const client = hc<AppType>(target.baseUrl);
     const res = await client.api.settings.$get(
       {},
       { init: { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) } },

@@ -86,7 +86,6 @@
       "desc": "アプリのインターフェース表示言語を変更します。"
     },
     "sections": {
-      "interface": "インターフェース",
       "application": "アプリケーション",
       "recording": "録音",
       "display": "表示",

@@ -133,6 +133,22 @@ export function initSchema(db: DatabaseSync): void {
     .get() as { version: number } | undefined;
   const currentVersion = row?.version ?? 0;
 
+  if (currentVersion >= SCHEMA_VERSION) return;
+
+  // Run all migrations inside a transaction so a failure mid-way rolls back
+  // cleanly instead of leaving the DB in a partial state (e.g. some tables
+  // created but the version not yet bumped).
+  db.exec("BEGIN");
+  try {
+    _applyMigrations(db, currentVersion);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+function _applyMigrations(db: DatabaseSync, currentVersion: number): void {
   if (currentVersion < 1) {
     db.exec(`
       CREATE TABLE IF NOT EXISTS settings (

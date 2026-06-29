@@ -13,15 +13,20 @@ export function getDb(): DatabaseSync {
     );
   }
 
-  db = new DatabaseSync(dbPath);
+  const instance = new DatabaseSync(dbPath);
 
   // Performance and safety pragmas
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA busy_timeout = 5000");
-  db.exec("PRAGMA foreign_keys = ON");
-  db.exec("PRAGMA synchronous = NORMAL");
+  instance.exec("PRAGMA journal_mode = WAL");
+  instance.exec("PRAGMA busy_timeout = 5000");
+  instance.exec("PRAGMA foreign_keys = ON");
+  instance.exec("PRAGMA synchronous = NORMAL");
 
-  initSchema(db);
+  initSchema(instance);
+
+  // Cache only after schema init succeeds — if initSchema() throws, the next
+  // getDb() call will retry from scratch instead of returning an instance
+  // with missing tables.
+  db = instance;
 
   return db;
 }

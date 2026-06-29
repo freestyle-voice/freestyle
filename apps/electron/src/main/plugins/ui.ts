@@ -13,6 +13,7 @@ const log = createAppLogger("plugins-ui");
 export const PLUGIN_SCHEME = "freestyle-plugin";
 
 let discovered: DiscoveredPlugin[] = [];
+let protocolRegistered = false;
 
 export const PLUGIN_SCHEME_PRIVILEGE: Electron.CustomScheme = {
   scheme: PLUGIN_SCHEME,
@@ -28,8 +29,13 @@ export const PLUGIN_SCHEME_PRIVILEGE: Electron.CustomScheme = {
  * Register the `freestyle-plugin://<pluginName>/<assetPath>` handler. Serves
  * files **only** from the requested plugin's package directory; any path that
  * escapes the plugin root (or names an unknown plugin) is rejected.
+ *
+ * Safe to call multiple times — the protocol is only registered once.
  */
 export function registerPluginProtocol(): void {
+  if (protocolRegistered) return;
+  protocolRegistered = true;
+
   protocol.handle(PLUGIN_SCHEME, (request) => {
     const url = new URL(request.url);
     // URL shape: freestyle-plugin://<pluginSlug>/<assetPath>. The slug is

@@ -53,15 +53,20 @@ export interface PluginUiHostDeps {
 }
 
 let viewManager: PluginViewManager | null = null;
+let currentDeps: PluginUiHostDeps | null = null;
+let ipcRegistered = false;
 
 export { PLUGIN_SCHEME_PRIVILEGE } from "./ui.js";
 
 /**
  * Wire up the plugin UI host: the asset protocol, the view manager, and all
- * IPC. Call once after the dashboard window exists. Plugin discovery is
- * refreshed lazily via {@link refreshPluginUi}.
+ * IPC. Safe to call multiple times (e.g. when the settings window is closed
+ * and re-opened) — the protocol and IPC handlers are registered only once,
+ * while the window and deps reference are updated on every call.
  */
 export function initPluginUiHost(deps: PluginUiHostDeps): void {
+  currentDeps = deps;
+
   registerPluginProtocol();
 
   viewManager = new PluginViewManager(
@@ -70,13 +75,16 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
   );
   viewManager.attachWindow(deps.window);
 
+  if (ipcRegistered) return;
+  ipcRegistered = true;
+
   ipcMain.handle("plugins:list", () =>
     serializePlugins(getDiscoveredPlugins()),
   );
 
   ipcMain.handle("plugins:refresh", async () => {
     const { pluginsSetting, userDataDir, disabledPlugins } =
-      await deps.getDiscoverySources();
+      await currentDeps!.getDiscoverySources();
     refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);
     return serializePlugins(getDiscoveredPlugins());
   });
@@ -84,31 +92,31 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
   ipcMain.handle(
     "plugins:set-enabled",
     async (_e, specifier: string, enabled: boolean) => {
-      await deps.setPluginEnabled(specifier, enabled);
+      await currentDeps!.setPluginEnabled(specifier, enabled);
       const { pluginsSetting, userDataDir, disabledPlugins } =
-        await deps.getDiscoverySources();
+        await currentDeps!.getDiscoverySources();
       refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);
       return serializePlugins(getDiscoveredPlugins());
     },
   );
 
-  ipcMain.handle("plugins:catalog", () => deps.getCatalog());
+  ipcMain.handle("plugins:catalog", () => currentDeps!.getCatalog());
 
   ipcMain.handle(
     "plugins:install",
     async (_e, npmName: string, version: string | undefined) => {
-      await deps.installPlugin(npmName, version);
+      await currentDeps!.installPlugin(npmName, version);
       const { pluginsSetting, userDataDir, disabledPlugins } =
-        await deps.getDiscoverySources();
+        await currentDeps!.getDiscoverySources();
       refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);
       return serializePlugins(getDiscoveredPlugins());
     },
   );
 
   ipcMain.handle("plugins:uninstall", async (_e, specifier: string) => {
-    await deps.uninstallPlugin(specifier);
+    await currentDeps!.uninstallPlugin(specifier);
     const { pluginsSetting, userDataDir, disabledPlugins } =
-      await deps.getDiscoverySources();
+      await currentDeps!.getDiscoverySources();
     refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);
     return serializePlugins(getDiscoveredPlugins());
   });
@@ -147,7 +155,7 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
       payload: HostActions[C],
     ) => {
       try {
-        await deps.onAction(channel, payload);
+        await currentDeps!.onAction(channel, payload);
       } catch (err) {
         log.error(
           `plugin action "${String(channel)}" failed: ${
@@ -164,7 +172,7 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
   ipcMain.handle(
     "plugin-bridge:fetch",
     async (_e, req: PluginFetchRequest): Promise<PluginFetchResponse> => {
-      const config = deps.getBridgeConfig();
+      const config = currentDeps!.getBridgeConfig();
       const url = `${config.serverUrl}${req.path}`;
       const body = deserializeBody(req.body);
 

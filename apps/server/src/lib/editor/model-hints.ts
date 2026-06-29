@@ -41,12 +41,13 @@ function stripTrailingFinTags(text: string): string {
  * blank-line paragraph breaks intact.
  */
 export function collapseAsrLineBreaks(text: string): string {
-  const PARAGRAPH = "\u0000";
-  return text
-    .replace(/\r\n/g, "\n")
-    .replace(/[ \t]*\n{2,}[ \t]*/g, PARAGRAPH)
-    .replace(/[ \t]*\n[ \t]*/g, " ")
-    .replace(new RegExp(PARAGRAPH, "g"), "\n\n");
+  // Replace each run of whitespace that spans one or more line breaks with a
+  // single space, unless the run contains a blank line (two or more breaks),
+  // in which case keep a single paragraph break.
+  return text.replace(/[^\S\n]*(?:\r?\n[^\S\n]*)+/g, (run) => {
+    const breaks = (run.match(/\r?\n/g) ?? []).length;
+    return breaks >= 2 ? "\n\n" : " ";
+  });
 }
 
 export function sanitizeTranscriptText(text: string): string {

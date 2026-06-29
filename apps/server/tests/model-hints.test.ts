@@ -40,6 +40,10 @@ describe("collapseAsrLineBreaks", () => {
     expect(collapseAsrLineBreaks("One.\n\n\n\nTwo.")).toBe("One.\n\nTwo.");
   });
 
+  it("collapses a paragraph break with interleaved whitespace cleanly", () => {
+    expect(collapseAsrLineBreaks("One.\n\n  \nTwo.")).toBe("One.\n\nTwo.");
+  });
+
   it("normalizes Windows CRLF line endings", () => {
     expect(collapseAsrLineBreaks("Line one.\r\nLine two.")).toBe(
       "Line one. Line two.",

@@ -78,9 +78,9 @@ const whisper = new Hono()
     const cancelled = cancelDownload(modelId);
     return c.json({ ok: cancelled });
   })
-  .delete("/models/:model", (c) => {
+  .delete("/models/:model", async (c) => {
     const modelId = c.req.param("model");
-    const deleted = deleteModel(modelId);
+    const deleted = await deleteModel(modelId);
 
     if (deleted) {
       capture("whisper model deleted", { model_id: modelId });

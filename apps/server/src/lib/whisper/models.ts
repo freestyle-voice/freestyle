@@ -252,11 +252,17 @@ export function cancelDownload(modelId: string): boolean {
   return true;
 }
 
-export function deleteModel(modelId: string): boolean {
+export async function deleteModel(modelId: string): Promise<boolean> {
   const model = getWhisperModel(modelId);
   if (!model) return false;
 
   cancelDownload(modelId);
+
+  // Stop the whisper server before deleting — on Windows the server
+  // process holds the model file open, so unlinkSync would fail with
+  // EPERM/EBUSY while it's running.
+  const { stopServer } = await import("./server.js");
+  await stopServer();
 
   const path = getModelPath(model);
   try {

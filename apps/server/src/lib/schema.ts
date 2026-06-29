@@ -140,7 +140,7 @@ export function initSchema(db: DatabaseSync): void {
   // created but the version not yet bumped).
   db.exec("BEGIN");
   try {
-    _applyMigrations(db, currentVersion);
+    applyMigrations(db, currentVersion);
     db.exec("COMMIT");
   } catch (err) {
     db.exec("ROLLBACK");
@@ -148,7 +148,7 @@ export function initSchema(db: DatabaseSync): void {
   }
 }
 
-function _applyMigrations(db: DatabaseSync, currentVersion: number): void {
+function applyMigrations(db: DatabaseSync, currentVersion: number): void {
   if (currentVersion < 1) {
     db.exec(`
       CREATE TABLE IF NOT EXISTS settings (

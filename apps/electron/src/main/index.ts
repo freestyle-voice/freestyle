@@ -357,12 +357,17 @@ function getPillAlignmentForCustom(): "custom-top" | "custom-bottom" {
   return wy < midY ? "custom-top" : "custom-bottom";
 }
 
-// Preset positions are relative to the primary display. Custom positions
-// can be on any display — they are saved as absolute screen coordinates
-// and bounds-checked on restore.
+// Preset positions follow the display under the cursor so the pill appears
+// on whichever monitor the user is working on. Custom positions can be on
+// any display — they are saved as absolute screen coordinates and
+// bounds-checked on restore.
 function getAppWindowPosition(): { x: number; y: number } {
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width, height } = primaryDisplay.workAreaSize;
+  // Anchor preset positions to the display containing the cursor rather than
+  // the primary display, so multi-monitor users see the pill where they are.
+  const activeDisplay = screen.getDisplayNearestPoint(
+    screen.getCursorScreenPoint(),
+  );
+  const { x: waX, y: waY, width, height } = activeDisplay.workArea;
 
   // Read pill position preference
   const position = (readSettings().pillPosition as string) || "bottom-center";
@@ -374,13 +379,16 @@ function getAppWindowPosition(): { x: number; y: number } {
   const topOverlap = 0;
   switch (position) {
     case "top-center":
-      return { x: Math.round((width - APP_WIDTH) / 2), y: topOverlap };
+      return {
+        x: waX + Math.round((width - APP_WIDTH) / 2),
+        y: waY + topOverlap,
+      };
     case "top-right":
-      return { x: width - APP_WIDTH, y: topOverlap };
+      return { x: waX + width - APP_WIDTH, y: waY + topOverlap };
     case "bottom-right":
       return {
-        x: width - APP_WIDTH,
-        y: height - APP_HEIGHT + bottomOverlap,
+        x: waX + width - APP_WIDTH,
+        y: waY + height - APP_HEIGHT + bottomOverlap,
       };
     case "custom": {
       const custom = readSettings().pillCustomPosition as
@@ -413,14 +421,14 @@ function getAppWindowPosition(): { x: number; y: number } {
         });
       }
       return {
-        x: Math.round((width - APP_WIDTH) / 2),
-        y: height - APP_HEIGHT + bottomOverlap,
+        x: waX + Math.round((width - APP_WIDTH) / 2),
+        y: waY + height - APP_HEIGHT + bottomOverlap,
       };
     }
     default:
       return {
-        x: Math.round((width - APP_WIDTH) / 2),
-        y: height - APP_HEIGHT + bottomOverlap,
+        x: waX + Math.round((width - APP_WIDTH) / 2),
+        y: waY + height - APP_HEIGHT + bottomOverlap,
       };
   }
 }

@@ -7,9 +7,14 @@ import {
 } from "../src/lib/editor/prompts.js";
 
 describe("buildLanguageBlock", () => {
-  it("returns nothing for auto-detect", () => {
-    expect(buildLanguageBlock("auto")).toBe("");
-    expect(buildLanguageBlock(undefined)).toBe("");
+  it("keeps the source language for auto-detect instead of translating", () => {
+    for (const value of ["auto", undefined]) {
+      const block = buildLanguageBlock(value);
+      expect(block).toContain(
+        "return the final edited text in the same language and script",
+      );
+      expect(block).toContain("Do not translate");
+    }
   });
 
   it("adds a same-language constraint for known languages", () => {

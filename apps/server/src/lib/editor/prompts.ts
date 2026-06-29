@@ -79,11 +79,14 @@ function normalizeLanguageCode(language: string): string {
   return language.trim().toLowerCase().replace(/_/g, "-");
 }
 
+const AUTO_LANGUAGE_CONSTRAINT =
+  "\n\nLanguage constraint: return the final edited text in the same language and script as the transcript. Do not translate to English or any other language. If the transcript mixes languages, preserve each span in the language spoken. The English examples in the instructions above demonstrate editing behavior only; they do not change the output language.";
+
 export function buildLanguageBlock(language: string | undefined): string {
-  if (!language?.trim()) return "";
+  if (!language?.trim()) return AUTO_LANGUAGE_CONSTRAINT;
 
   const normalized = normalizeLanguageCode(language);
-  if (normalized === "auto") return "";
+  if (normalized === "auto") return AUTO_LANGUAGE_CONSTRAINT;
 
   const baseCode = normalized.split("-")[0] ?? normalized;
   const label = LANGUAGE_LABELS[normalized] ?? LANGUAGE_LABELS[baseCode];

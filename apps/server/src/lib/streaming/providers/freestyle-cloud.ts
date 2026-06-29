@@ -1,9 +1,13 @@
+import WebSocket from "ws";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,
+  freestyleCloudStreamWsUrl,
   transcribeWithFreestyleCloud,
 } from "../../freestyle-cloud.js";
 import type {
+  StreamingSessionOptions,
+  StreamSession,
   TranscribeOptions,
   TranscribeResult,
   TranscriptionProvider,
@@ -15,11 +19,26 @@ export {
 };
 
 /**
- * Managed STT via the Freestyle Cloud `/v1/transcribe` endpoint. Requires a
- * signed-in user: `opts.apiKey` carries the cloud session token, attached as
- * `Authorization: Bearer`. The endpoint runs its own cleanup pass, so the
- * desktop app disables local post-processing for this provider and surfaces the
- * cloud's `cleaned` text directly. Batch-only — no streaming.
+ * Cloud message types received from the SttSession Durable Object.
+ */
+interface CloudServerMessage {
+  type: "config" | "session.ready" | "partial" | "final" | "error";
+  text?: string;
+  model?: string;
+  streaming?: boolean;
+  message?: string;
+  code?: string;
+}
+
+/**
+ * Managed STT via Freestyle Cloud. Supports both batch (POST /v1/transcribe)
+ * and streaming (WSS /v1/stream) modes.
+ *
+ * In streaming mode, the cloud Durable Object handles Soniox STT + Groq LLM
+ * post-processing. The `onFinal` callback delivers already-cleaned text, so
+ * the desktop pipeline must skip local post-processing.
+ *
+ * `opts.apiKey` carries the cloud session token (from device auth flow).
  */
 export class FreestyleCloudTranscriptionProvider
   implements TranscriptionProvider
@@ -44,6 +63,148 @@ export class FreestyleCloudTranscriptionProvider
   }
 
   supportsStreaming(_modelId: string): boolean {
-    return false;
+    return true;
+  }
+
+  openStreamingSession(opts: StreamingSessionOptions): StreamSession {
+    const { apiKey, model, language, callbacks } = opts;
+
+    if (!apiKey) {
+      throw new FreestyleCloudAuthError();
+    }
+
+    const wsUrl = freestyleCloudStreamWsUrl();
+    const ws = new WebSocket(wsUrl, {
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+      },
+    });
+
+    let configured = false;
+    let closed = false;
+    // Track context and audio duration so we can forward them with commit.
+    // The stream route sets these via context messages and the commit payload.
+    let currentContext: string | null = null;
+    let currentAudioDurationMs = 0;
+
+    ws.on("open", () => {
+      configured = true;
+      // Send a start message to the DO to open the upstream Soniox session.
+      ws.send(
+        JSON.stringify({
+          type: "start",
+          language: language || undefined,
+        }),
+      );
+    });
+
+    ws.on("message", (raw) => {
+      let msg: CloudServerMessage;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        return;
+      }
+
+      switch (msg.type) {
+        case "config":
+          // Initial config from the DO — no action needed, wait for session.ready.
+          break;
+        case "session.ready":
+          callbacks.onReady(msg.model || model);
+          break;
+        case "partial":
+          if (msg.text) callbacks.onPartial(msg.text);
+          break;
+        case "final":
+          // The cloud DO already ran Groq LLM post-processing.
+          // Deliver as-is — the desktop must NOT re-run postProcess().
+          callbacks.onFinal(msg.text ?? "");
+          break;
+        case "error":
+          if (
+            msg.code === "cloud_auth_required" ||
+            msg.code === "usage_exceeded"
+          ) {
+            callbacks.onError(msg.message ?? "Cloud error");
+          } else {
+            callbacks.onError(msg.message ?? "Unknown cloud error");
+          }
+          break;
+      }
+    });
+
+    ws.on("error", (err) => {
+      if (!closed) {
+        callbacks.onError(
+          err instanceof Error ? err.message : "Cloud WebSocket error",
+        );
+      }
+    });
+
+    ws.on("close", () => {
+      closed = true;
+      callbacks.onClose();
+    });
+
+    return {
+      sendAudio(chunk: ArrayBuffer): void {
+        if (ws.readyState !== WebSocket.OPEN || !configured) return;
+        ws.send(Buffer.from(chunk));
+      },
+
+      reset(): void {
+        // For freestyle-cloud, reset means sending a new "start" to the DO
+        // which will close the old upstream and open a fresh one.
+        currentAudioDurationMs = 0;
+        currentContext = null;
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(
+            JSON.stringify({
+              type: "start",
+              language: language || undefined,
+            }),
+          );
+        }
+      },
+
+      setContext(context: string | null): void {
+        currentContext = context;
+        // Also forward to the DO so it can use it for post-processing.
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "context", context: context ?? "" }));
+        }
+      },
+
+      setAudioDurationMs(ms: number): void {
+        currentAudioDurationMs = ms;
+      },
+
+      commit(): void {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(
+            JSON.stringify({
+              type: "commit",
+              audioDurationMs: currentAudioDurationMs,
+              context: currentContext,
+            }),
+          );
+        }
+      },
+
+      cancel(): void {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "cancel" }));
+        }
+        currentAudioDurationMs = 0;
+      },
+
+      close(): void {
+        closed = true;
+        if (ws.readyState <= WebSocket.OPEN) {
+          ws.close();
+        }
+      },
+    };
   }
 }

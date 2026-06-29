@@ -31,6 +31,24 @@ function stripTrailingFinTags(text: string): string {
   return text.replace(/(?:\s*<\/?fin>\s*)+$/gi, "").trim();
 }
 
+/**
+ * Collapse spurious line breaks emitted by local ASR engines.
+ *
+ * whisper.cpp and MLX ASR put each decoded speech segment on its own line, so
+ * a single dictated paragraph comes back peppered with `\n` between segments.
+ * Those breaks are decoder artifacts, not content, and an ASR-time prompt
+ * cannot suppress them. Collapse single line breaks into spaces while keeping
+ * blank-line paragraph breaks intact.
+ */
+export function collapseAsrLineBreaks(text: string): string {
+  const PARAGRAPH = "\u0000";
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]*\n{2,}[ \t]*/g, PARAGRAPH)
+    .replace(/[ \t]*\n[ \t]*/g, " ")
+    .replace(new RegExp(PARAGRAPH, "g"), "\n\n");
+}
+
 export function sanitizeTranscriptText(text: string): string {
   let cleaned = stripWrappingQuotes(text);
   cleaned = stripTrailingFinTags(cleaned);

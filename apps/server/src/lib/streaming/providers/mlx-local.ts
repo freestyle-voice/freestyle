@@ -1,4 +1,5 @@
 import { createAppLogger } from "@freestyle-voice/utils";
+import { collapseAsrLineBreaks } from "../../editor/model-hints.js";
 import { MLX_ASR_PROVIDER_ID } from "../../mlx-asr/constants.js";
 import { resolveMlxLanguage } from "../../mlx-asr/language.js";
 import { getMlxModelStatus } from "../../mlx-asr/models.js";
@@ -49,7 +50,7 @@ export class MlxLocalTranscriptionProvider implements TranscriptionProvider {
 
     log.debug(`inference took ${Date.now() - t0}ms`);
 
-    return { text: text.trim() };
+    return { text: collapseAsrLineBreaks(text).trim() };
   }
 
   supportsStreaming(_modelId: string): boolean {
@@ -197,7 +198,7 @@ class MlxLocalSessionTransport implements StreamSession {
         if (this.closed || this.canceled || generation !== this.generation) {
           return;
         }
-        this.opts.callbacks.onFinal(text.trim());
+        this.opts.callbacks.onFinal(collapseAsrLineBreaks(text).trim());
         applyMlxAsrRetentionPolicy();
       })
       .catch((err: Error) => {

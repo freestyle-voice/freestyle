@@ -1,4 +1,5 @@
 import { createAppLogger } from "@freestyle-voice/utils";
+import { collapseAsrLineBreaks } from "../../editor/model-hints.js";
 import { isServerBinaryAvailable } from "../../whisper/binary.js";
 import { WHISPER_PROVIDER_ID } from "../../whisper/constants.js";
 import { ensureBinariesDownloaded } from "../../whisper/models.js";
@@ -84,5 +85,5 @@ async function transcribeViaServer(
   }
 
   const data = (await res.json()) as { text?: string };
-  return { text: data.text?.trim() ?? "" };
+  return { text: collapseAsrLineBreaks(data.text ?? "").trim() };
 }

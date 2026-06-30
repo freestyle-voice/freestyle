@@ -6,6 +6,8 @@ import type {
 import type {
   PluginCatalogEntry,
   PluginInfo,
+  PluginUpdateCheck,
+  PluginUpdateResult,
   PluginViewBounds,
 } from "../shared/plugins";
 
@@ -135,6 +137,9 @@ declare global {
         version?: string,
       ) => Promise<PluginInfo[]>;
       uninstallPlugin: (specifier: string) => Promise<PluginInfo[]>;
+      checkPluginUpdates: (
+        plugins: PluginUpdateCheck[],
+      ) => Promise<PluginUpdateResult[]>;
       showPluginView: (
         slug: string,
         pageId: string,

@@ -10,6 +10,7 @@ import {
 } from "@renderer/components/ui/sheet";
 import { getClient } from "@renderer/lib/api";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   ChevronLeft,
@@ -111,13 +112,8 @@ const PAGE_SIZE = 20;
 
 export default function HistoryPage(): React.JSX.Element {
   const { t } = useTranslation();
-  const [entries, setEntries] = useState<HistoryEntry[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [historyPaused, setHistoryPaused] = useState(false);
   const [activePreset, setActivePreset] = useState<
     "today" | "weekly" | "monthly" | "all-time" | "custom"
   >("weekly");
@@ -165,73 +161,75 @@ export default function HistoryPage(): React.JSX.Element {
 
   const filterCount = activePreset !== "all-time" ? 1 : 0;
 
-  const loadData = useCallback(async () => {
-    try {
-      const query: Record<string, string> = {
+  const queryClient = useQueryClient();
+
+  const { data: historyData, isLoading: loading } = useQuery({
+    queryKey: ["history", page, search, startDate, endDate],
+    queryFn: async () => {
+      const q: Record<string, string> = {
         limit: String(PAGE_SIZE),
         offset: String(page * PAGE_SIZE),
         orderBy: "-created_at",
       };
-      if (search) query.search = search;
-      if (startDate) query.start_date = startDate;
-      if (endDate) query.end_date = endDate;
+      if (search) q.search = search;
+      if (startDate) q.start_date = startDate;
+      if (endDate) q.end_date = endDate;
 
-      const statsQuery: Record<string, string> = {};
-      if (startDate) statsQuery.start_date = startDate;
-      if (endDate) statsQuery.end_date = endDate;
+      const statsQ: Record<string, string> = {};
+      if (startDate) statsQ.start_date = startDate;
+      if (endDate) statsQ.end_date = endDate;
 
       const client = getClient();
       const [histRes, statsRes] = await Promise.all([
-        client.api.history.$get({ query }),
-        client.api.history.stats.$get({ query: statsQuery }),
+        client.api.history.$get({ query: q }),
+        client.api.history.stats.$get({ query: statsQ }),
       ]);
-      if (histRes.ok) {
-        const data = await histRes.json();
-        setEntries(data.items);
-        setTotal(data.total);
-      }
-      if (statsRes.ok) setStats(await statsRes.json());
-    } catch (err) {
-      console.error("Failed to load history:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, search, startDate, endDate]);
+      const items = histRes.ok
+        ? ((await histRes.json()) as { items: HistoryEntry[]; total: number })
+        : { items: [] as HistoryEntry[], total: 0 };
+      const statsData = statsRes.ok ? ((await statsRes.json()) as Stats) : null;
+      return { ...items, stats: statsData };
+    },
+  });
 
-  const loadHistoryPaused = useCallback(async () => {
-    try {
+  const entries = historyData?.items ?? [];
+  const total = historyData?.total ?? 0;
+  const stats = historyData?.stats ?? null;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const { data: historyPausedData } = useQuery({
+    queryKey: ["setting", SETTINGS_KEYS.historyPaused],
+    queryFn: async () => {
       const res = await getClient().api.settings[":key"].$get({
         param: { key: SETTINGS_KEYS.historyPaused },
       });
       const data = res.ok ? await res.json() : null;
-      setHistoryPaused(data?.value === "true");
-    } catch {
-      setHistoryPaused(false);
-    }
-  }, []);
+      return data?.value === "true";
+    },
+  });
+  const historyPaused = historyPausedData ?? false;
 
-  useEffect(() => {
-    loadData();
-    loadHistoryPaused();
-  }, [loadData, loadHistoryPaused]);
-
+  // Refetch when the pill reports a completed transcription.
   useEffect(() => {
     const remove = window.api?.onTranscriptionDone(() => {
-      loadData();
+      void queryClient.invalidateQueries({ queryKey: ["history"] });
     });
     return () => remove?.();
-  }, [loadData]);
+  }, [queryClient]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const invalidate = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ["history"] }),
+    [queryClient],
+  );
 
   const deleteEntry = useCallback(
     async (id: number) => {
       await getClient().api.history[":id"].$delete({
         param: { id: String(id) },
       });
-      loadData();
+      void invalidate();
     },
-    [loadData],
+    [invalidate],
   );
 
   // Group entries by day for the feed.

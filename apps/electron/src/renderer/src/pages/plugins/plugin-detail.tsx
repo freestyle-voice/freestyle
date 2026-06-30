@@ -1,39 +1,60 @@
+import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { Switch } from "@renderer/components/ui/switch";
-import type { PluginInfo } from "@shared/plugins";
-import { ArrowLeft, ArrowRight } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import type { PluginInfo, PluginUpdateResult } from "@shared/plugins";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { pluginDisplayName, resolvePluginIcon } from "./helpers";
 import { PluginReadme } from "./plugin-readme";
 
+const ONE_HOUR = 60 * 60 * 1000;
+
 export default function PluginDetailPage(): React.JSX.Element {
   const { slug } = useParams<{ slug: string }>();
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [plugin, setPlugin] = useState<PluginInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const all = await window.api.refreshPlugins();
-      setPlugin(all.find((p) => p.slug === slug) ?? null);
-    } finally {
-      setLoading(false);
-    }
-  }, [slug]);
+  const { data: allPlugins, isLoading: loading } = useQuery({
+    queryKey: ["plugins"],
+    queryFn: () => window.api.refreshPlugins(),
+  });
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const plugin = allPlugins?.find((p) => p.slug === slug) ?? null;
 
   const toggle = async (enabled: boolean): Promise<void> => {
     if (!plugin) return;
     const all = await window.api.setPluginEnabled(plugin.specifier, enabled);
-    setPlugin(all.find((p) => p.slug === slug) ?? null);
+    queryClient.setQueryData(["plugins"], all);
   };
+
+  // Reuse the same query key family as the plugins list page so caching is
+  // shared — if the list page already checked, this page gets a cache hit.
+  const updateEntries = useMemo(
+    () =>
+      plugin?.version && !plugin.missing
+        ? [{ name: plugin.specifier, currentVersion: plugin.version }]
+        : [],
+    [plugin],
+  );
+
+  const { data: updatesMap } = useQuery({
+    queryKey: ["plugin-updates", updateEntries],
+    queryFn: async () => {
+      if (updateEntries.length === 0)
+        return new Map<string, PluginUpdateResult>();
+      const results = await window.api.checkPluginUpdates(updateEntries);
+      return new Map(results.map((r) => [r.name, r]));
+    },
+    staleTime: ONE_HOUR,
+    retry: 1,
+    enabled: !!plugin,
+  });
+
+  const update = plugin ? updatesMap?.get(plugin.specifier) : undefined;
 
   return (
     <div
@@ -64,7 +85,7 @@ export default function PluginDetailPage(): React.JSX.Element {
             {t("plugins.detail.notFound")}
           </p>
         ) : (
-          <Detail plugin={plugin} onToggle={toggle} />
+          <Detail plugin={plugin} onToggle={toggle} update={update} />
         )}
       </div>
     </div>
@@ -74,14 +95,31 @@ export default function PluginDetailPage(): React.JSX.Element {
 function Detail({
   plugin,
   onToggle,
+  update,
 }: {
   plugin: PluginInfo;
   onToggle: (enabled: boolean) => void | Promise<void>;
+  update?: PluginUpdateResult;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const Icon = resolvePluginIcon(plugin.icon ?? plugin.pages[0]?.icon);
   const page = plugin.pages[0];
+  const [updating, setUpdating] = useState(false);
+
+  const doUpdate = async (): Promise<void> => {
+    setUpdating(true);
+    try {
+      const all = await window.api.installPlugin(plugin.specifier);
+      queryClient.setQueryData(["plugins"], all);
+      void queryClient.invalidateQueries({ queryKey: ["plugin-updates"] });
+    } catch {
+      // Install errors surface via the server; no UI toast needed here.
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   return (
     <div>
@@ -107,6 +145,16 @@ function Detail({
                 v{plugin.version}
               </span>
             ) : null}
+            {update?.updateAvailable ? (
+              <Badge
+                variant="outline"
+                className="mono text-primary border-primary/40 text-[9px] tracking-[0.14em]"
+              >
+                {t("plugins.updateAvailable", {
+                  version: update.latestVersion,
+                })}
+              </Badge>
+            ) : null}
             {plugin.author ? (
               <span className="text-muted-foreground text-[12px]">
                 {plugin.author}
@@ -116,6 +164,17 @@ function Detail({
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
+          {update?.updateAvailable ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={updating}
+              onClick={() => void doUpdate()}
+            >
+              {updating ? <Loader2 className="animate-spin" /> : null}
+              {updating ? t("plugins.updating") : t("plugins.update")}
+            </Button>
+          ) : null}
           {page ? (
             <Button
               variant="outline"

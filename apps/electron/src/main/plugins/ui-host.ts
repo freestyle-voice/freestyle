@@ -6,6 +6,10 @@ import type {
   PluginFetchResponse,
   SerializedBody,
 } from "../../shared/bridge-protocol";
+import type {
+  PluginUpdateCheck,
+  PluginUpdateResult,
+} from "../../shared/plugins";
 import type { DiscoveredPlugin } from "./manifest.js";
 import {
   getDiscoveredPlugins,
@@ -45,6 +49,10 @@ export interface PluginUiHostDeps {
   installPlugin: (npmName: string, version?: string) => Promise<void>;
   /** Uninstall a plugin by specifier (server + desktop). */
   uninstallPlugin: (specifier: string) => Promise<void>;
+  /** Check for available plugin updates via the npm registry. */
+  checkForUpdates: (
+    plugins: PluginUpdateCheck[],
+  ) => Promise<PluginUpdateResult[]>;
   /** Perform a host action requested by a plugin page. */
   onAction: <C extends keyof HostActions>(
     channel: C,
@@ -120,6 +128,10 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
     refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);
     return serializePlugins(getDiscoveredPlugins());
   });
+
+  ipcMain.handle("plugins:check-updates", (_e, plugins: PluginUpdateCheck[]) =>
+    currentDeps!.checkForUpdates(plugins),
+  );
 
   ipcMain.handle(
     "plugin-view:show",

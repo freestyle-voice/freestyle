@@ -38,18 +38,20 @@
     "hono": "^4.12.22",
     "hono-rate-limiter": "^0.5.3",
     "posthog-node": "^5.35.8",
+    "semver": "^7.8.5",
     "tar": "^7.5.15",
     "winston": "^3.17.0",
     "ws": "^8.21.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "freestyle-voice": "workspace:*",
     "@freestyle-voice/utils": "workspace:*",
     "@freestyle-voice/validations": "workspace:*",
     "@types/json-schema": "^7.0.15",
+    "@types/semver": "^7.7.1",
     "@types/node": "latest",
     "@types/ws": "^8.18.1",
+    "freestyle-voice": "workspace:*",
     "pkgroll": "^2.27.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.7"

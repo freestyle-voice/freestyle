@@ -1,5 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import * as semver from "semver";
 import { z } from "zod";
 import { PLUGIN_CATALOG } from "../lib/plugins/catalog.js";
 import { reloadServerPlugins } from "../lib/plugins/index.js";
@@ -7,6 +8,7 @@ import {
   installServerPlugin,
   uninstallServerPlugin,
 } from "../lib/plugins/install-service.js";
+import { resolvePackage } from "../lib/plugins/installer.js";
 
 /**
  * Plugin lifecycle endpoints. The `plugins` / `disabled_plugins` settings are
@@ -22,6 +24,15 @@ const installSchema = z.object({
 
 const uninstallSchema = z.object({
   specifier: z.string().min(1),
+});
+
+const checkUpdatesSchema = z.object({
+  plugins: z.array(
+    z.object({
+      name: z.string().min(1),
+      currentVersion: z.string().min(1),
+    }),
+  ),
 });
 
 const plugins = new Hono()
@@ -55,6 +66,34 @@ const plugins = new Hono()
         500,
       );
     }
+  })
+  .post("/check-updates", zValidator("json", checkUpdatesSchema), async (c) => {
+    const { plugins: entries } = c.req.valid("json");
+    const results = await Promise.allSettled(
+      entries.map(async (entry) => {
+        const resolved = await resolvePackage(entry.name);
+        const updateAvailable =
+          !!semver.valid(entry.currentVersion) &&
+          !!semver.valid(resolved.version) &&
+          semver.lt(entry.currentVersion, resolved.version);
+        return {
+          name: entry.name,
+          latestVersion: resolved.version,
+          updateAvailable,
+        };
+      }),
+    );
+    return c.json({
+      updates: results.map((r, i) =>
+        r.status === "fulfilled"
+          ? r.value
+          : {
+              name: entries[i].name,
+              latestVersion: entries[i].currentVersion,
+              updateAvailable: false,
+            },
+      ),
+    });
   });
 
 export default plugins;

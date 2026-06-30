@@ -9,6 +9,7 @@ export {
 } from "freestyle-voice";
 export type { ServerTarget } from "./loader.js";
 export {
+  checkForUpdates,
   fetchCatalog,
   fetchPluginSettings,
   installPlugin,

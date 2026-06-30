@@ -9,6 +9,10 @@ import {
 import type { HookFailure, PluginEntry } from "freestyle-voice";
 import { loadPlugins, type PluginRegistry } from "freestyle-voice";
 import { hc } from "hono/client";
+import type {
+  PluginUpdateCheck,
+  PluginUpdateResult,
+} from "../../shared/plugins";
 import { buildPluginContext, type SettingsSnapshot } from "./context.js";
 
 const log = createAppLogger("plugins");
@@ -153,6 +157,23 @@ export async function uninstallPlugin(
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `uninstall failed: HTTP ${res.status}`);
   }
+}
+
+/** Check the npm registry for newer versions of the given plugins. */
+export async function checkForUpdates(
+  target: ServerTarget,
+  plugins: PluginUpdateCheck[],
+): Promise<PluginUpdateResult[]> {
+  const client = hc<AppType>(target.baseUrl);
+  const res = await client.api.plugins["check-updates"].$post(
+    { json: { plugins } },
+    { init: { signal: AbortSignal.timeout(INSTALL_TIMEOUT_MS) } },
+  );
+  if (!res.ok) {
+    throw new Error(`check-updates failed: HTTP ${res.status}`);
+  }
+  const body = (await res.json()) as { updates: PluginUpdateResult[] };
+  return body.updates;
 }
 
 /**

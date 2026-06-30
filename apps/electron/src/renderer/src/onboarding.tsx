@@ -721,7 +721,7 @@ export default function OnboardingPage(): React.JSX.Element {
   }, [localSetupModel, downloadLocalModel]);
 
   const retryLocalDownload = useCallback(() => {
-    if (!localSetupModel?.defId) return;
+    if (!localSetupModel?.defId || window.api?.isE2E) return;
     capture("onboarding_model_download_started", {
       model_id: localSetupModel.modelId,
       retry: true,

@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 const DEFAULT_FORMAT_RULES = [
   {
@@ -306,6 +306,14 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         updated_at INTEGER NOT NULL
       )
     `);
+  }
+
+  if (currentVersion < 10) {
+    db.exec(
+      `UPDATE model_configs
+         SET model_name = replace(model_name, 'Freestyle Cloud', 'Freestyle Transcribe')
+       WHERE provider = 'freestyle-cloud' AND model_name LIKE 'Freestyle Cloud%'`,
+    );
   }
 
   // Upsert schema version

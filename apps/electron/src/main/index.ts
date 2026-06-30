@@ -1510,9 +1510,9 @@ app.whenReady().then(async () => {
   ipcMain.handle("cloud:prompt-sign-in", async () => {
     const { response } = await dialog.showMessageBox({
       type: "info",
-      message: "Sign in to Freestyle Cloud",
+      message: "Sign in to Freestyle Transcribe",
       detail:
-        "Freestyle Cloud needs you to sign in before it can transcribe or clean up text. Open Models settings to sign in or switch providers.",
+        "Freestyle Transcribe needs you to sign in before it can transcribe or clean up text. Open Models settings to sign in or switch providers.",
       buttons: ["Open Models", "Not Now"],
       defaultId: 0,
       cancelId: 1,

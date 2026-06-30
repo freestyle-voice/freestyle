@@ -68,7 +68,7 @@ export function PairCard({
           dimmed={!llmCleanup}
           note={
             cleanupDisabled
-              ? "Combined with transcription in one Freestyle Cloud request"
+              ? "Combined with transcription in one Freestyle Transcribe request"
               : undefined
           }
         />

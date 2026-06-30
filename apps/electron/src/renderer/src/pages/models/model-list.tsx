@@ -359,9 +359,9 @@ export function ModelList({
 
 const FREESTYLE_CLOUD_TIER: AvailableModel = {
   provider_id: "freestyle-cloud",
-  provider_name: "Freestyle Cloud",
+  provider_name: "Freestyle Transcribe",
   model_id: "freestyle-cloud/stt",
-  model_name: "Freestyle Cloud (Managed)",
+  model_name: "Freestyle Transcribe (Managed)",
   type: "voice",
 };
 
@@ -445,7 +445,7 @@ function VoiceTiers({
 
       <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
         <TierCard
-          title="Freestyle Cloud"
+          title="Freestyle Transcribe"
           badge="Recommended"
           description="Managed by Freestyle. Fast and accurate, no API key — just sign in."
           detail={

@@ -362,7 +362,7 @@ export default function AppPage(): React.JSX.Element {
               return {
                 raw: "",
                 cleaned: "",
-                error: "Sign in to Freestyle Cloud",
+                error: "Sign in to Freestyle Transcribe",
                 cloudAuthRequired: true,
               };
             }
@@ -862,7 +862,7 @@ export default function AppPage(): React.JSX.Element {
             return {
               raw: "",
               cleaned: "",
-              error: "Sign in to Freestyle Cloud",
+              error: "Sign in to Freestyle Transcribe",
               cloudAuthRequired: true,
             };
           }

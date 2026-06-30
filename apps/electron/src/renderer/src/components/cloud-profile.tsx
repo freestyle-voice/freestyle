@@ -34,7 +34,7 @@ export function CloudProfileButton(): React.JSX.Element {
         <div className="flex items-center gap-1.5">
           <Cloud className="text-primary size-3.5 shrink-0" />
           <span className="text-foreground text-[12.5px] font-medium">
-            Freestyle Cloud
+            Freestyle Transcribe
           </span>
         </div>
         <p className="text-muted-foreground mt-1 text-[11px] leading-snug">

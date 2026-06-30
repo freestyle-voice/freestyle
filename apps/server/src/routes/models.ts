@@ -117,9 +117,9 @@ const LOCAL_MLX_VOICE_MODELS: AvailableModel[] = [
 const BUILTIN_VOICE_MODELS: AvailableModel[] = [
   {
     provider_id: FREESTYLE_CLOUD_PROVIDER_ID,
-    provider_name: "Freestyle Cloud",
+    provider_name: "Freestyle Transcribe",
     model_id: FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID,
-    model_name: "Freestyle Cloud",
+    model_name: "Freestyle Transcribe",
     family: "freestyle",
     type: "voice",
   },
@@ -199,9 +199,9 @@ const CURATED_LLM_IDS = new Set([
 const BUILTIN_LLM_MODELS: AvailableModel[] = [
   {
     provider_id: FREESTYLE_CLOUD_PROVIDER_ID,
-    provider_name: "Freestyle Cloud",
+    provider_name: "Freestyle Transcribe",
     model_id: FREESTYLE_CLOUD_CLEANUP_MODEL_ID,
-    model_name: "Freestyle Cloud Cleanup",
+    model_name: "Freestyle Transcribe Cleanup",
     family: "freestyle",
     type: "llm",
     curated: true,

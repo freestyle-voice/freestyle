@@ -358,7 +358,7 @@ const stream = new Hono().get(
                       JSON.stringify({
                         type: "error",
                         code: "cloud_auth_required",
-                        message: "Sign in to Freestyle Cloud",
+                        message: "Sign in to Freestyle Transcribe",
                       }),
                     );
                   }

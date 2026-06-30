@@ -385,7 +385,7 @@ export default function OnboardingPage(): React.JSX.Element {
       setSelectedMlxDefId(null);
     }
     const modelId = model?.model_id ?? FREESTYLE_CLOUD_MODEL_ID;
-    const modelName = model?.model_name ?? "Freestyle Cloud";
+    const modelName = model?.model_name ?? "Freestyle Transcribe";
     getClient()
       .api.models.configured.$post({
         json: {

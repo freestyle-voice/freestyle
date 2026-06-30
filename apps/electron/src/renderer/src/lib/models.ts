@@ -107,7 +107,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   soniox: "Soniox",
   mistral: "Mistral",
   openrouter: "OpenRouter",
-  "freestyle-cloud": "Freestyle Cloud",
+  "freestyle-cloud": "Freestyle Transcribe",
   "local-llm": "Local LLM",
   "local-whisper": "Local Whisper",
   "local-mlx": "Local MLX",

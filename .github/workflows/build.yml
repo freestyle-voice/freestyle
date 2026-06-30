@@ -45,8 +45,7 @@ jobs:
           fi
 
           git diff --name-only \
-            "${{ github.event.pull_request.base.sha }}..." \
-            HEAD > changed-files.txt
+            "${{ github.event.pull_request.base.sha }}...HEAD" > changed-files.txt
 
           run_quality=false
           run_electron=false

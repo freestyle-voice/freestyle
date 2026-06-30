@@ -1,0 +1,93 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  "rules": {
+    // Export cleanup is a larger existing backlog. Keep the initial CI gate
+    // focused on unused files, dependencies, unresolved imports, and binaries.
+    "exports": "off",
+    "types": "off",
+    "enumMembers": "off",
+    "namespaceMembers": "off"
+  },
+  "ignoreBinaries": [
+    "cmake",
+    "install_name_tool",
+    "objdump",
+    "pactl",
+    "pkg-config",
+    "powershell",
+    "powershell.exe",
+    "python3"
+  ],
+  "ignoreFiles": [
+    "apps/electron/src/preload/*.d.ts",
+    // Existing unused shadcn-style components kept as design-system inventory.
+    "apps/electron/src/renderer/src/components/ui/bar-visualizer.tsx",
+    "apps/electron/src/renderer/src/components/ui/card.tsx",
+    "apps/electron/src/renderer/src/components/ui/tabs.tsx",
+    "apps/electron/src/renderer/src/env.d.ts",
+    "plugins/*/ui/vite-env.d.ts",
+    "plugins/audio-transcription/ui/src/styles.css"
+  ],
+  "workspaces": {
+    "apps/electron": {
+      "entry": [
+        "electron.vite.config.ts",
+        "src/main/index.ts",
+        "src/preload/index.ts",
+        "src/preload/plugin-bridge.ts",
+        "src/renderer/src/dashboard.tsx",
+        "src/renderer/src/components/pill.tsx",
+        "tests/**/*.ts",
+        "scripts/**/*.{js,mjs}"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx,d.ts,css}",
+        "scripts/**/*.{js,mjs,ts}",
+        "tests/**/*.ts",
+        "*.config.ts"
+      ],
+      "paths": {
+        "@renderer/*": ["src/renderer/src/*"],
+        "@shared/*": ["src/shared/*"],
+        "freestyle-voice": ["../../packages/sdk/src/index.ts"],
+        "@freestyle-voice/server": ["../server/src/index.ts"],
+        "@freestyle-voice/utils": ["../../packages/utils/src/index.ts"],
+        "@freestyle-voice/validations": [
+          "../../packages/validations/src/index.ts"
+        ]
+      },
+      "ignoreDependencies": [
+        "@hono/node-server",
+        "@types/ws",
+        "node:sqlite",
+        "playwright",
+        "react-hotkeys-hook",
+        "ws"
+      ]
+    },
+    "apps/server": {
+      "entry": [
+        "src/startup.ts",
+        "scripts/benchmark-post-process.ts",
+        "tests/**/*.test.ts"
+      ],
+      "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "tests/**/*.ts"],
+      "paths": {
+        "freestyle-voice": ["../../packages/sdk/src/index.ts"],
+        "@freestyle-voice/utils": ["../../packages/utils/src/index.ts"],
+        "@freestyle-voice/validations": [
+          "../../packages/validations/src/index.ts"
+        ]
+      },
+      "ignoreDependencies": ["@types/json-schema", "node:sqlite"]
+    },
+    "plugins/*": {
+      "entry": ["src/index.ts", "ui/src/main.{ts,tsx}"],
+      "project": [
+        "src/**/*.{ts,tsx}",
+        "ui/src/**/*.{ts,tsx,css}",
+        "ui/vite-env.d.ts"
+      ]
+    }
+  }
+}

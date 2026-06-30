@@ -62,6 +62,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  type Display,
   dialog,
   globalShortcut,
   ipcMain,
@@ -357,26 +358,33 @@ function getPillAlignmentForCustom(): "custom-top" | "custom-bottom" {
   return wy < midY ? "custom-top" : "custom-bottom";
 }
 
-// Preset positions follow the display under the cursor so the pill appears
-// on whichever monitor the user is working on. Custom positions can be on
-// any display — they are saved as absolute screen coordinates and
-// bounds-checked on restore.
-function getAppWindowPosition(): { x: number; y: number } {
-  // Anchor preset positions to the display containing the cursor rather than
-  // the primary display, so multi-monitor users see the pill where they are.
-  const activeDisplay = screen.getDisplayNearestPoint(
-    screen.getCursorScreenPoint(),
+// Computes a preset pill slot for a specific display. The pill is aligned
+// inside the window via CSS (justify-center or justify-end).
+//
+// Bottom positions normally sit slightly past the work-area edge so the pill
+// hugs the dock/taskbar. But that only looks right when a dock/taskbar
+// actually reserves space on this display: on a dockless monitor (common for
+// secondary/vertical displays) the work area reaches the physical edge, so
+// the same overlap pushes the pill off-screen and it clips against the
+// border. Detect the reserved bottom strip and only overlap when it exists;
+// otherwise leave a small gap above the edge.
+function presetPositionForDisplay(
+  display: Display,
+  position: string,
+): { x: number; y: number } {
+  const { x: waX, y: waY, width, height } = display.workArea;
+
+  const bottomInset = Math.max(
+    0,
+    display.bounds.y +
+      display.bounds.height -
+      (display.workArea.y + display.workArea.height),
   );
-  const { x: waX, y: waY, width, height } = activeDisplay.workArea;
-
-  // Read pill position preference
-  const position = (readSettings().pillPosition as string) || "bottom-center";
-
-  // The pill is aligned inside the window via CSS (justify-center or
-  // justify-end). Push bottom positions 10px past the work area edge
-  // so the pill sits closer to the dock/taskbar.
-  const bottomOverlap = 14;
+  // +14 nudges the pill into an existing dock strip; -8 leaves a gap above
+  // the physical edge on dockless displays.
+  const bottomOffset = bottomInset > 0 ? 14 : -8;
   const topOverlap = 0;
+
   switch (position) {
     case "top-center":
       return {
@@ -388,49 +396,64 @@ function getAppWindowPosition(): { x: number; y: number } {
     case "bottom-right":
       return {
         x: waX + width - APP_WIDTH,
-        y: waY + height - APP_HEIGHT + bottomOverlap,
+        y: waY + height - APP_HEIGHT + bottomOffset,
       };
-    case "custom": {
-      const custom = readSettings().pillCustomPosition as
-        | { x: number; y: number }
-        | undefined;
-      if (
-        custom &&
-        typeof custom.x === "number" &&
-        typeof custom.y === "number"
-      ) {
-        const display = screen.getDisplayMatching({
-          x: custom.x,
-          y: custom.y,
-          width: APP_WIDTH,
-          height: APP_HEIGHT,
-        });
-        const wa = display.workArea;
-        if (
-          custom.x >= wa.x &&
-          custom.x + APP_WIDTH <= wa.x + wa.width &&
-          custom.y >= wa.y &&
-          custom.y <= wa.y + wa.height
-        ) {
-          return custom;
-        }
-        // Saved position is off-screen; reset to default.
-        writeSettings({
-          pillPosition: "bottom-center",
-          pillCustomPosition: undefined,
-        });
-      }
-      return {
-        x: waX + Math.round((width - APP_WIDTH) / 2),
-        y: waY + height - APP_HEIGHT + bottomOverlap,
-      };
-    }
     default:
       return {
         x: waX + Math.round((width - APP_WIDTH) / 2),
-        y: waY + height - APP_HEIGHT + bottomOverlap,
+        y: waY + height - APP_HEIGHT + bottomOffset,
       };
   }
+}
+
+// Preset positions follow the display under the cursor so the pill appears
+// on whichever monitor the user is working on. Custom positions can be on
+// any display — they are saved as absolute screen coordinates and
+// bounds-checked on restore.
+function getAppWindowPosition(): { x: number; y: number } {
+  // Anchor preset positions to the display containing the cursor rather than
+  // the primary display, so multi-monitor users see the pill where they are.
+  const activeDisplay = screen.getDisplayNearestPoint(
+    screen.getCursorScreenPoint(),
+  );
+
+  // Read pill position preference
+  const position = (readSettings().pillPosition as string) || "bottom-center";
+
+  if (position === "custom") {
+    const custom = readSettings().pillCustomPosition as
+      | { x: number; y: number }
+      | undefined;
+    if (
+      custom &&
+      typeof custom.x === "number" &&
+      typeof custom.y === "number"
+    ) {
+      const display = screen.getDisplayMatching({
+        x: custom.x,
+        y: custom.y,
+        width: APP_WIDTH,
+        height: APP_HEIGHT,
+      });
+      const wa = display.workArea;
+      if (
+        custom.x >= wa.x &&
+        custom.x + APP_WIDTH <= wa.x + wa.width &&
+        custom.y >= wa.y &&
+        custom.y <= wa.y + wa.height
+      ) {
+        return custom;
+      }
+      // Saved position is off-screen; reset to default.
+      writeSettings({
+        pillPosition: "bottom-center",
+        pillCustomPosition: undefined,
+      });
+    }
+    return presetPositionForDisplay(activeDisplay, "bottom-center");
+  }
+
+  return presetPositionForDisplay(activeDisplay, position);
 }
 
 function createAppWindow(): void {
@@ -493,7 +516,18 @@ function createAppWindow(): void {
     // Ignore sub-threshold moves so accidental bumps don't override the preset.
     const currentSetting = readSettings().pillPosition as string;
     if (currentSetting !== "custom") {
-      const presetPos = getAppWindowPosition();
+      // Compare against the preset slot on the display the window is actually
+      // on — not the cursor's display. Using the cursor here let a trailing
+      // settle event (fired after the cursor had moved to another monitor)
+      // look like a manual drag, which latched pillPosition to "custom" and
+      // froze the pill on one screen.
+      const windowDisplay = screen.getDisplayMatching({
+        x: nx,
+        y: ny,
+        width: APP_WIDTH,
+        height: APP_HEIGHT,
+      });
+      const presetPos = presetPositionForDisplay(windowDisplay, currentSetting);
       if (Math.abs(nx - presetPos.x) < 10 && Math.abs(ny - presetPos.y) < 10)
         return;
     }

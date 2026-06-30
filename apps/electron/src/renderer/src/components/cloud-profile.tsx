@@ -30,7 +30,7 @@ export function CloudProfileButton(): React.JSX.Element {
 
   if (!user) {
     return (
-      <div className="border-border bg-card rounded-[10px] border p-3">
+      <div className="glass-card rounded-[10px] border p-3">
         <div className="flex items-center gap-1.5">
           <Cloud className="text-primary size-3.5 shrink-0" />
           <span className="text-foreground text-[12.5px] font-medium">

@@ -110,7 +110,7 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
                 className={cn(
                   "flex items-center gap-2.5 rounded-[7px] border px-2.5 py-1.5 text-[13px] transition-colors",
                   isActive
-                    ? "border-border bg-card text-foreground font-medium"
+                    ? "glass-nav-active text-foreground font-medium"
                     : "text-secondary-foreground/80 hover:bg-card/50 border-transparent font-normal",
                 )}
               >

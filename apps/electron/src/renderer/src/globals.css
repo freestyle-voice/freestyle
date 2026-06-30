@@ -97,6 +97,10 @@
   --glass-topbar: rgba(244, 240, 228, 0.92);
   --glass-border: rgba(214, 205, 184, 0.54);
   --glass-shadow: rgba(22, 20, 15, 0.22);
+  --glass-nav-active: rgba(255, 253, 247, 0.72);
+  --glass-nav-active-border: rgba(214, 205, 184, 0.7);
+  --glass-card: rgba(255, 253, 247, 0.6);
+  --glass-card-border: rgba(214, 205, 184, 0.66);
 }
 
 /*
@@ -144,6 +148,10 @@
   --glass-topbar: rgba(22, 20, 15, 0.9);
   --glass-border: rgba(58, 54, 45, 0.52);
   --glass-shadow: rgba(0, 0, 0, 0.42);
+  --glass-nav-active: rgba(255, 250, 235, 0.065);
+  --glass-nav-active-border: rgba(255, 250, 235, 0.1);
+  --glass-card: rgba(255, 250, 235, 0.07);
+  --glass-card-border: rgba(255, 250, 235, 0.12);
 }
 
 @layer base {
@@ -221,6 +229,22 @@
     background: var(--glass-topbar);
     border-color: var(--glass-border);
     box-shadow: 0 10px 28px -22px var(--glass-shadow);
+  }
+
+  /* Frosted highlight for the active sidebar nav item so it reads as selected
+     without the hard opaque block that bg-card produced over the glass. */
+  .glass-nav-active {
+    background: var(--glass-nav-active);
+    border-color: var(--glass-nav-active-border);
+    box-shadow: inset 0 1px 0 0 var(--glass-nav-active-border);
+  }
+
+  /* Frosted card surface (e.g. the cloud promo) so it blends with the glass
+     sidebar instead of reading as a hard opaque rectangle. */
+  .glass-card {
+    background: var(--glass-card);
+    border-color: var(--glass-card-border);
+    box-shadow: inset 0 1px 0 0 var(--glass-card-border);
   }
 
   @supports ((backdrop-filter: blur(24px)) or (-webkit-backdrop-filter: blur(24px))) {

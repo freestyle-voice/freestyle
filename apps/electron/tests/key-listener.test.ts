@@ -72,6 +72,16 @@ test("Fn-first chord within the grace window does not activate solo Fn", async (
   expect(events).toEqual([]);
 });
 
+test("rapid solo Fn release inside the grace window does not activate", async () => {
+  const { listener, events } = createFnListener();
+
+  listener.handleLine("FN_DOWN");
+  listener.handleLine("FN_UP");
+  await wait(75);
+
+  expect(events).toEqual([]);
+});
+
 test("adding a modifier after solo Fn activation keeps hold-to-talk active", async () => {
   const { listener, events } = createFnListener();
 

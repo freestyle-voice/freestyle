@@ -38,8 +38,6 @@ export interface DiscoveredPlugin {
   author?: string;
   /** Icon name (lucide) the plugin declares via `freestyle.icon`, if any. */
   icon?: string;
-  /** Whether this is a local-dir plugin (vs an installed package). */
-  local: boolean;
   /** Whether the plugin is currently enabled (not in `disabled_plugins`). */
   enabled: boolean;
   /**
@@ -112,7 +110,7 @@ function discoverPackage(
   localPluginsDir: string,
 ): DiscoveredPlugin | null {
   const pkgJsonPath = resolvePackageJson(specifier);
-  if (pkgJsonPath) return readManifest(pkgJsonPath, specifier, false);
+  if (pkgJsonPath) return readManifest(pkgJsonPath, specifier);
 
   const localPkgJson = path.join(
     localPluginsDir,
@@ -120,7 +118,7 @@ function discoverPackage(
     "package.json",
   );
   if (fs.existsSync(localPkgJson)) {
-    return readManifest(localPkgJson, specifier, true);
+    return readManifest(localPkgJson, specifier);
   }
 
   return null;
@@ -133,7 +131,6 @@ function missingPlugin(specifier: string, enabled: boolean): DiscoveredPlugin {
     slug: pluginSlug(specifier),
     specifier,
     dir: "",
-    local: false,
     enabled,
     missing: true,
     pages: [],
@@ -185,7 +182,7 @@ function discoverLocalDir(dir: string): DiscoveredPlugin[] {
     // Use the package's own name as the specifier so enable/disable (keyed by
     // specifier in `disabled_plugins`) matches, rather than the dir path.
     const pkgName = readPackageName(pkgJsonPath) ?? full;
-    const discovered = readManifest(pkgJsonPath, pkgName, true);
+    const discovered = readManifest(pkgJsonPath, pkgName);
     if (discovered) out.push(discovered);
   }
   return out;
@@ -215,7 +212,6 @@ interface RawPackageJson {
 function readManifest(
   pkgJsonPath: string,
   specifier: string,
-  local: boolean,
 ): DiscoveredPlugin | null {
   let pkg: RawPackageJson;
   try {
@@ -238,7 +234,6 @@ function readManifest(
     slug: pluginSlug(name),
     specifier,
     dir,
-    local,
     enabled: true,
     pages: parsePluginPages(pkg.freestyle),
     ...(typeof pkg.version === "string" ? { version: pkg.version } : {}),

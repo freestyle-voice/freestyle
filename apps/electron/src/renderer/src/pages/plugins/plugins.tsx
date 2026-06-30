@@ -225,13 +225,6 @@ function PluginCard({
             >
               {t("plugins.missingBadge")}
             </Badge>
-          ) : plugin.local ? (
-            <Badge
-              variant="outline"
-              className="mono text-[9px] tracking-[0.14em]"
-            >
-              {t("plugins.localBadge")}
-            </Badge>
           ) : null}
         </div>
         <p className="text-muted-foreground mt-0.5 line-clamp-1 text-[13px]">

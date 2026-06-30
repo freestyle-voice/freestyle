@@ -241,7 +241,6 @@ function serializePlugins(plugins: readonly DiscoveredPlugin[]) {
     name: p.name,
     slug: p.slug,
     specifier: p.specifier,
-    local: p.local,
     enabled: p.enabled,
     pages: p.pages,
     ...(p.missing ? { missing: true } : {}),

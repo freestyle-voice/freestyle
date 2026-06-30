@@ -1,4 +1,3 @@
-import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { Switch } from "@renderer/components/ui/switch";
 import type { PluginInfo } from "@shared/plugins";
@@ -112,14 +111,6 @@ function Detail({
               <span className="text-muted-foreground text-[12px]">
                 {plugin.author}
               </span>
-            ) : null}
-            {plugin.local ? (
-              <Badge
-                variant="outline"
-                className="mono text-[9px] tracking-[0.14em]"
-              >
-                {t("plugins.localBadge")}
-              </Badge>
             ) : null}
           </div>
         </div>

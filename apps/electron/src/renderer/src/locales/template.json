@@ -380,7 +380,6 @@
     "loading": "Loading plugins…",
     "emptyTitle": "No plugins yet",
     "empty": "Install a plugin to add features. Browse the available ones or add your own.",
-    "localBadge": "Local",
     "missingBadge": "Missing",
     "missingHint": "Listed but not installed on disk. Uninstall to remove it.",
     "open": "Open",

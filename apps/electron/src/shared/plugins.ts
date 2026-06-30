@@ -6,7 +6,6 @@ export interface PluginInfo {
   /** URL/route-safe id; used for `/plugins/:slug/...` and the asset host. */
   slug: string;
   specifier: string;
-  local: boolean;
   /** Whether the plugin is currently enabled. */
   enabled: boolean;
   /** True when listed in the `plugins` setting but not resolvable on disk. */

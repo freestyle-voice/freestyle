@@ -52,6 +52,14 @@ function PagePad(): React.JSX.Element {
 initApiBase();
 installGlobalErrorHandlers();
 
+// Opt into the translucent "glass" surfaces only on macOS, where the window is
+// transparent and backed by native vibrancy. On other platforms the window
+// stays opaque, so surfaces remain solid (see globals.css). Set synchronously
+// before the first paint to avoid a flash of the wrong background.
+if (window.api?.platform === "darwin") {
+  document.documentElement.classList.add("glass");
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>

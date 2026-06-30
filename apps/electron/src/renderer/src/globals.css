@@ -204,36 +204,73 @@
 }
 
 @layer components {
-  /* Transparent blur-only container so per-pane tints don't stack on top of a
-     shared background. This is what lets the sidebar be glassier than the main
-     content rather than always more solid. */
+  /*
+   * Surfaces are SOLID by default so that non-transparent windows render
+   * correctly. Only macOS sets the window to `transparent` + native vibrancy
+   * (see createSettingsWindow); on Windows/Linux the window stays opaque, so
+   * translucent surfaces would composite over the window's default (white)
+   * background and wash the theme out.
+   *
+   * The translucent "glass" treatment is therefore opt-in via `html.glass`,
+   * a class added in the renderer entry only when window.api.platform is
+   * "darwin". Everything below the `html.glass` rules is macOS-only.
+   */
   .glass-window-shell {
-    background: transparent;
+    background: var(--glass-window-solid);
   }
 
-  /* The main content pane: the "solid" surface. */
   .glass-content {
     background: var(--glass-window-solid);
-    background: var(--glass-window);
   }
 
-  /* The sidebar: the genuinely glassy surface. */
   .glass-sidebar {
     background: var(--glass-sidebar-solid);
-    background: var(--glass-sidebar);
-    border-color: var(--glass-border);
+    border-color: var(--border);
   }
 
   .glass-topbar {
     background: var(--glass-topbar-solid);
+    border-color: var(--border);
+    box-shadow: 0 10px 28px -22px var(--glass-shadow);
+  }
+
+  .glass-nav-active {
+    background: var(--card);
+    border-color: var(--border);
+  }
+
+  .glass-card {
+    background: var(--card);
+    border-color: var(--border);
+  }
+
+  /*
+   * macOS glass treatment. The shell becomes a transparent, blur-only
+   * container so per-pane tints don't stack on a shared background (which is
+   * what lets the sidebar read as glassier than the solid main content). The
+   * backdrop blur lives only on the shell to avoid redundant nested filters.
+   */
+  html.glass .glass-window-shell {
+    background: transparent;
+  }
+
+  html.glass .glass-content {
+    background: var(--glass-window);
+  }
+
+  html.glass .glass-sidebar {
+    background: var(--glass-sidebar);
+    border-color: var(--glass-border);
+  }
+
+  html.glass .glass-topbar {
     background: var(--glass-topbar);
     border-color: var(--glass-border);
-    box-shadow: 0 10px 28px -22px var(--glass-shadow);
   }
 
   /* Frosted highlight for the active sidebar nav item so it reads as selected
      without the hard opaque block that bg-card produced over the glass. */
-  .glass-nav-active {
+  html.glass .glass-nav-active {
     background: var(--glass-nav-active);
     border-color: var(--glass-nav-active-border);
     box-shadow: inset 0 1px 0 0 var(--glass-nav-active-border);
@@ -241,36 +278,51 @@
 
   /* Frosted card surface (e.g. the cloud promo) so it blends with the glass
      sidebar instead of reading as a hard opaque rectangle. */
-  .glass-card {
+  html.glass .glass-card {
     background: var(--glass-card);
     border-color: var(--glass-card-border);
     box-shadow: inset 0 1px 0 0 var(--glass-card-border);
   }
 
   @supports ((backdrop-filter: blur(24px)) or (-webkit-backdrop-filter: blur(24px))) {
-    .glass-window-shell,
-    .glass-sidebar,
-    .glass-topbar {
+    html.glass .glass-window-shell {
       -webkit-backdrop-filter: blur(28px) saturate(1.25);
       backdrop-filter: blur(28px) saturate(1.25);
     }
   }
 
+  /* Honor the OS "reduce transparency" setting even on macOS. */
   @media (prefers-reduced-transparency: reduce) {
-    .glass-window-shell {
+    html.glass .glass-window-shell {
+      background: var(--glass-window-solid);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+
+    html.glass .glass-content {
       background: var(--glass-window-solid);
     }
 
-    .glass-content {
-      background: var(--glass-window-solid);
-    }
-
-    .glass-sidebar {
+    html.glass .glass-sidebar {
       background: var(--glass-sidebar-solid);
+      border-color: var(--border);
     }
 
-    .glass-topbar {
+    html.glass .glass-topbar {
       background: var(--glass-topbar-solid);
+      border-color: var(--border);
+    }
+
+    html.glass .glass-nav-active {
+      background: var(--card);
+      border-color: var(--border);
+      box-shadow: none;
+    }
+
+    html.glass .glass-card {
+      background: var(--card);
+      border-color: var(--border);
+      box-shadow: none;
     }
   }
 

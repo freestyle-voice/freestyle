@@ -59,6 +59,7 @@
       "ignoreDependencies": [
         "@hono/node-server",
         "@types/ws",
+        "node:sqlite",
         "playwright",
         "react-hotkeys-hook",
         "ws"
@@ -86,7 +87,7 @@
       "vitest": {
         "entry": ["tests/**/*.test.ts", "tests/setup.ts"]
       },
-      "ignoreDependencies": ["@types/json-schema"]
+      "ignoreDependencies": ["@types/json-schema", "node:sqlite"]
     },
     "plugins/*": {
       "entry": ["src/index.ts", "ui/src/main.{ts,tsx}"],

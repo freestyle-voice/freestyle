@@ -217,6 +217,7 @@ export class HotkeyRecorder {
           : line
               .slice("FN_DOWN:".length)
               .split(",")
+              // Token set is defined by macos-key-listener.swift's FN_DOWN:mods emitter.
               .map((part) => MAC_FLAG_MODIFIERS[part.trim().toLowerCase()])
               .filter((part): part is string => Boolean(part));
       this.sendModifiers([...this.pendingModifiers, ...chordMods, "Fn"]);

@@ -33,6 +33,8 @@ const BINARY_NAMES: Record<string, string> = {
   linux: "linux-key-listener",
 };
 
+const MAC_SOLO_FN_CHORD_GRACE_MS = 50;
+
 /**
  * Convert an Electron accelerator to the format expected by the native binary.
  * The native binaries accept Electron-style accelerator format directly.
@@ -138,6 +140,7 @@ export class NativeKeyListener {
   private macFlagState = new Set<string>();
   private macFnDown = false;
   private macHotkeyActive = false;
+  private macSoloFnTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: KeyListenerOptions) {
     this.options = options;
@@ -270,7 +273,7 @@ export class NativeKeyListener {
       const isSoloFn = line === "FN_DOWN";
       if (hotkey === "fn" || hotkey === "globe") {
         if (isSoloFn) {
-          this.options.onKeyDown();
+          this.scheduleMacSoloFnDown();
         }
       } else {
         this.checkMacHotkeyMatch();
@@ -279,8 +282,12 @@ export class NativeKeyListener {
     }
     if (line === "FN_UP") {
       this.macFnDown = false;
+      this.cancelMacSoloFnDown();
       if (hotkey === "fn" || hotkey === "globe") {
-        this.options.onKeyUp();
+        if (this.macHotkeyActive) {
+          this.macHotkeyActive = false;
+          this.options.onKeyUp();
+        }
       } else {
         this.checkMacCompoundRelease();
       }
@@ -291,6 +298,7 @@ export class NativeKeyListener {
     if (line.startsWith("RIGHT_MOD_DOWN:")) {
       const modName = line.slice(15); // e.g., "RightOption"
       this.macModState.add(modName.toLowerCase());
+      this.cancelMacSoloFnDownIfChorded();
       this.checkMacHotkeyMatch();
       return;
     }
@@ -334,6 +342,7 @@ export class NativeKeyListener {
               .filter(Boolean)
           : [],
       );
+      this.cancelMacSoloFnDownIfChorded();
       this.checkMacCompoundRelease();
       this.checkMacHotkeyMatch();
       return;
@@ -377,6 +386,34 @@ export class NativeKeyListener {
     }
   }
 
+  private scheduleMacSoloFnDown(): void {
+    this.cancelMacSoloFnDown();
+    this.macSoloFnTimer = setTimeout(() => {
+      this.macSoloFnTimer = null;
+      if (!this.macFnDown || this.hasMacNonFnModifierActive()) return;
+      this.macHotkeyActive = true;
+      this.options.onKeyDown();
+    }, MAC_SOLO_FN_CHORD_GRACE_MS);
+  }
+
+  private cancelMacSoloFnDown(): void {
+    if (!this.macSoloFnTimer) return;
+    clearTimeout(this.macSoloFnTimer);
+    this.macSoloFnTimer = null;
+  }
+
+  private cancelMacSoloFnDownIfChorded(): void {
+    if (!this.macSoloFnTimer || !this.hasMacNonFnModifierActive()) return;
+    this.cancelMacSoloFnDown();
+  }
+
+  private hasMacNonFnModifierActive(): boolean {
+    for (const category of this.currentMacModifierCategories()) {
+      if (category !== "fn") return true;
+    }
+    return false;
+  }
+
   /** Match compound hotkeys like Alt+Space using modifier flags + key events. */
   private handleMacKeyEvent(key: string, down: boolean): void {
     const { modifiers, key: hotkeyKey } = parseHotkeyParts(this.options.hotkey);
@@ -412,6 +449,9 @@ export class NativeKeyListener {
 
     const hotkey = this.options.hotkey.toLowerCase();
     const { modifiers, key: hotkeyKey } = parseHotkeyParts(this.options.hotkey);
+
+    // Solo Fn/Globe is edge-triggered through scheduleMacSoloFnDown().
+    if (hotkey === "fn" || hotkey === "globe") return;
 
     // Direct right-modifier hotkey (e.g., hotkey is literally "RightOption")
     if (this.macModState.has(macRightModifierKey(hotkey))) {
@@ -484,6 +524,7 @@ export class NativeKeyListener {
    */
   stop(): void {
     this.destroyed = true;
+    this.cancelMacSoloFnDown();
 
     if (this.restartTimer) {
       clearTimeout(this.restartTimer);
@@ -512,6 +553,7 @@ export class NativeKeyListener {
       clearTimeout(this.restartTimer);
       this.restartTimer = null;
     }
+    this.cancelMacSoloFnDown();
     if (this.process) {
       try {
         this.process.kill("SIGTERM");

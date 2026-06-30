@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { app } from "electron";
 
-const isDev = !app.isPackaged;
+const isDev = !app?.isPackaged;
 
 const platform = process.platform;
 const arch = process.arch;

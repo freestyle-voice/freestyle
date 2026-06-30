@@ -97,7 +97,7 @@ export function ModelSetupPanel({
           {isActive && (
             <div className="mt-3 space-y-1.5">
               <Progress
-                value={hasProgress ? (progress?.percent ?? 0) : undefined}
+                value={hasProgress ? (progress?.percent ?? 0) : 100}
                 className={cn("h-[6px]", !hasProgress && "animate-pulse")}
               />
               <div className="text-muted-foreground mono flex justify-between text-[10px]">

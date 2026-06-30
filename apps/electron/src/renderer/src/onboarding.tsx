@@ -132,6 +132,12 @@ export default function OnboardingPage(): React.JSX.Element {
   const [language, setLanguage] = useState<string>(defaultLanguage);
   const autoPicked = useRef(false);
   const warmed = useRef(false);
+  // Tracks the most recent explicit local pick so cloud users who briefly
+  // selected a different on-device model still download the right one.
+  const lastLocalSetupRef = useRef<{
+    defId: string;
+    engine: "whisper" | "mlx";
+  } | null>(null);
   // True once we know whether MLX can run on this machine — so the auto-pick
   // waits for the Qwen-vs-Whisper decision instead of settling on Whisper
   // Base while the MLX status request is still in flight.
@@ -439,9 +445,12 @@ export default function OnboardingPage(): React.JSX.Element {
         if (engine === "mlx") {
           setSelectedMlxDefId(defId);
           setSelectedWhisperDefId(null);
-        } else {
+        } else if (engine === "whisper") {
           setSelectedWhisperDefId(defId);
           setSelectedMlxDefId(null);
+        }
+        if (engine) {
+          lastLocalSetupRef.current = { defId, engine };
         }
         setSelectedModel(null);
       }
@@ -529,19 +538,24 @@ export default function OnboardingPage(): React.JSX.Element {
     mlxQwen && mlxStatus?.canRun ? mlxQwen : (whisperBase ?? mlxQwen);
 
   // Auto-setup: once the MLX capability check and cloud session both settle,
-  // commit a default local model. Signed in → Freestyle Cloud is the default;
-  // the on-device model is still offered as an offline fallback. Signed out →
-  // the on-device model is the default. Download starts when the user taps
-  // Download on the setup panel.
+  // commit a default local model. Signed in → Freestyle Cloud is the default
+  // and the on-device fallback downloads silently in the background. Signed
+  // out → the on-device model is the default; download starts from the
+  // setup panel when the user taps Download.
   useEffect(() => {
     if (
       autoPicked.current ||
       cloudLoading ||
       !mlxResolved ||
-      !recommended?.defId
+      !recommended?.defId ||
+      !recommended.localEngine
     )
       return;
     autoPicked.current = true;
+    lastLocalSetupRef.current = {
+      defId: recommended.defId,
+      engine: recommended.localEngine,
+    };
     selectLocalModel(
       recommended.defId,
       recommended.name,
@@ -549,11 +563,20 @@ export default function OnboardingPage(): React.JSX.Element {
       "auto",
       !cloudUser,
     );
-    if (cloudUser) commitFreestyleCloudDefault();
+    if (cloudUser) {
+      commitFreestyleCloudDefault();
+      if (recommended.status === "not_downloaded" && !window.api?.isE2E) {
+        capture("onboarding_model_auto_setup", {
+          model_id: recommended.modelId,
+        });
+        downloadLocalModel(recommended.defId, recommended.localEngine);
+      }
+    }
   }, [
     recommended,
     selectLocalModel,
     mlxResolved,
+    downloadLocalModel,
     cloudLoading,
     cloudUser,
     commitFreestyleCloudDefault,
@@ -670,8 +693,18 @@ export default function OnboardingPage(): React.JSX.Element {
     !!chosen &&
     (chosen.kind === "cloud" ? !!chosen.hasKey : chosen.status === "ready");
 
-  const localSetupModel = chosen?.kind === "local" ? chosen : recommended;
-  const localSetupOptional = !!cloudUser && chosen?.kind === "cloud";
+  const localSetupModel = ((): VoiceItem | undefined => {
+    if (chosen?.kind === "local") return chosen;
+    if (lastLocalSetupRef.current) {
+      const { defId, engine } = lastLocalSetupRef.current;
+      return allVoiceItems.find(
+        (v) =>
+          v.kind === "local" && v.defId === defId && v.localEngine === engine,
+      );
+    }
+    return recommended;
+  })();
+  const showLocalSetupPanel = !cloudUser;
   const mustHaveLocalReady = chosen?.kind === "local" && !chosenReady;
   const localSetupActive =
     localSetupModel?.kind === "local" &&
@@ -689,6 +722,10 @@ export default function OnboardingPage(): React.JSX.Element {
 
   const retryLocalDownload = useCallback(() => {
     if (!localSetupModel?.defId) return;
+    capture("onboarding_model_download_started", {
+      model_id: localSetupModel.modelId,
+      retry: true,
+    });
     downloadLocalModel(localSetupModel.defId, localSetupModel.localEngine);
   }, [localSetupModel, downloadLocalModel]);
 
@@ -757,8 +794,7 @@ export default function OnboardingPage(): React.JSX.Element {
           <LanguageStep
             language={language}
             onSelect={saveLanguage}
-            localModel={localSetupModel}
-            localSetupOptional={localSetupOptional}
+            localModel={showLocalSetupPanel ? localSetupModel : undefined}
             onDownloadLocal={startLocalDownload}
             onRetryLocal={retryLocalDownload}
             onBack={() => {
@@ -782,8 +818,7 @@ export default function OnboardingPage(): React.JSX.Element {
             captureHint={captureHint}
             modelReady={chosenReady}
             modelName={chosen?.name}
-            localModel={localSetupModel}
-            localSetupOptional={localSetupOptional}
+            localModel={showLocalSetupPanel ? localSetupModel : undefined}
             onDownloadLocal={startLocalDownload}
             onRetryLocal={retryLocalDownload}
             canFinish={!mustHaveLocalReady}
@@ -1207,7 +1242,6 @@ function LanguageStep({
   language,
   onSelect,
   localModel,
-  localSetupOptional,
   onDownloadLocal,
   onRetryLocal,
   onBack,
@@ -1216,7 +1250,6 @@ function LanguageStep({
   language: string;
   onSelect: (id: string) => void;
   localModel: VoiceItem | undefined;
-  localSetupOptional: boolean;
   onDownloadLocal: () => void;
   onRetryLocal: () => void;
   onBack: () => void;
@@ -1256,7 +1289,6 @@ function LanguageStep({
 
       <ModelSetupPanel
         model={localModel}
-        optional={localSetupOptional}
         onDownload={onDownloadLocal}
         onRetry={onRetryLocal}
       />
@@ -1592,7 +1624,6 @@ function TutorialStep({
   modelReady,
   modelName,
   localModel,
-  localSetupOptional,
   onDownloadLocal,
   onRetryLocal,
   canFinish,
@@ -1611,7 +1642,6 @@ function TutorialStep({
   modelReady: boolean;
   modelName?: string;
   localModel: VoiceItem | undefined;
-  localSetupOptional: boolean;
   onDownloadLocal: () => void;
   onRetryLocal: () => void;
   canFinish: boolean;
@@ -1634,7 +1664,6 @@ function TutorialStep({
 
       <ModelSetupPanel
         model={localModel}
-        optional={localSetupOptional}
         onDownload={onDownloadLocal}
         onRetry={onRetryLocal}
       />

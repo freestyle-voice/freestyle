@@ -89,6 +89,14 @@
   --sidebar-accent-foreground: #16140F;
   --sidebar-border: #D6CDB8;
   --sidebar-ring: #6B8F12;
+  --glass-window-solid: #F4F0E4;
+  --glass-window: rgba(244, 240, 228, 0.82);
+  --glass-sidebar-solid: #ECE7D6;
+  --glass-sidebar: rgba(244, 240, 228, 0.68);
+  --glass-topbar-solid: #F4F0E4;
+  --glass-topbar: rgba(244, 240, 228, 0.92);
+  --glass-border: rgba(214, 205, 184, 0.54);
+  --glass-shadow: rgba(22, 20, 15, 0.22);
 }
 
 /*
@@ -128,6 +136,14 @@
   --sidebar-accent-foreground: #ECE7D6;
   --sidebar-border: #3A362D;
   --sidebar-ring: #8AB62A;
+  --glass-window-solid: #16140F;
+  --glass-window: rgba(22, 20, 15, 0.82);
+  --glass-sidebar-solid: #1E1C16;
+  --glass-sidebar: rgba(22, 20, 15, 0.64);
+  --glass-topbar-solid: #16140F;
+  --glass-topbar: rgba(22, 20, 15, 0.9);
+  --glass-border: rgba(58, 54, 45, 0.52);
+  --glass-shadow: rgba(0, 0, 0, 0.42);
 }
 
 @layer base {
@@ -180,6 +196,60 @@
 }
 
 @layer components {
+  /* Transparent blur-only container so per-pane tints don't stack on top of a
+     shared background. This is what lets the sidebar be glassier than the main
+     content rather than always more solid. */
+  .glass-window-shell {
+    background: transparent;
+  }
+
+  /* The main content pane: the "solid" surface. */
+  .glass-content {
+    background: var(--glass-window-solid);
+    background: var(--glass-window);
+  }
+
+  /* The sidebar: the genuinely glassy surface. */
+  .glass-sidebar {
+    background: var(--glass-sidebar-solid);
+    background: var(--glass-sidebar);
+    border-color: var(--glass-border);
+  }
+
+  .glass-topbar {
+    background: var(--glass-topbar-solid);
+    background: var(--glass-topbar);
+    border-color: var(--glass-border);
+    box-shadow: 0 10px 28px -22px var(--glass-shadow);
+  }
+
+  @supports ((backdrop-filter: blur(24px)) or (-webkit-backdrop-filter: blur(24px))) {
+    .glass-window-shell,
+    .glass-sidebar,
+    .glass-topbar {
+      -webkit-backdrop-filter: blur(28px) saturate(1.25);
+      backdrop-filter: blur(28px) saturate(1.25);
+    }
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .glass-window-shell {
+      background: var(--glass-window-solid);
+    }
+
+    .glass-content {
+      background: var(--glass-window-solid);
+    }
+
+    .glass-sidebar {
+      background: var(--glass-sidebar-solid);
+    }
+
+    .glass-topbar {
+      background: var(--glass-topbar-solid);
+    }
+  }
+
   .responsive-page-scroll {
     padding-inline: 3rem;
     padding-bottom: 3rem;

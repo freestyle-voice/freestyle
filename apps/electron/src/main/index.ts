@@ -574,6 +574,14 @@ function createSettingsWindow(initialPath?: string): void {
     minHeight: 480,
     show: false,
     autoHideMenuBar: true,
+    ...(process.platform === "darwin"
+      ? {
+          backgroundColor: "#00000000",
+          transparent: true,
+          vibrancy: "under-window" as const,
+          visualEffectState: "active" as const,
+        }
+      : {}),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition:
       process.platform === "darwin" ? { x: 16, y: 16 } : undefined,

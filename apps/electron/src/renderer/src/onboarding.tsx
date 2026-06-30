@@ -730,7 +730,7 @@ export default function OnboardingPage(): React.JSX.Element {
   }, [localSetupModel, downloadLocalModel]);
 
   return (
-    <div className="bg-background flex h-screen flex-col">
+    <div className="glass-window-shell glass-content flex h-screen flex-col">
       {!isFullscreen && (
         <div
           className="h-9 shrink-0"

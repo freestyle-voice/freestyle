@@ -59,7 +59,6 @@
       "ignoreDependencies": [
         "@hono/node-server",
         "@types/ws",
-        "node:sqlite",
         "playwright",
         "react-hotkeys-hook",
         "ws"
@@ -71,7 +70,12 @@
         "scripts/benchmark-post-process.ts",
         "tests/**/*.test.ts"
       ],
-      "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts", "tests/**/*.ts"],
+      "project": [
+        "src/**/*.{ts,tsx}",
+        "scripts/**/*.ts",
+        "tests/**/*.ts",
+        "*.config.ts"
+      ],
       "paths": {
         "freestyle-voice": ["../../packages/sdk/src/index.ts"],
         "@freestyle-voice/utils": ["../../packages/utils/src/index.ts"],
@@ -79,7 +83,10 @@
           "../../packages/validations/src/index.ts"
         ]
       },
-      "ignoreDependencies": ["@types/json-schema", "node:sqlite"]
+      "vitest": {
+        "entry": ["tests/**/*.test.ts", "tests/setup.ts"]
+      },
+      "ignoreDependencies": ["@types/json-schema"]
     },
     "plugins/*": {
       "entry": ["src/index.ts", "ui/src/main.{ts,tsx}"],

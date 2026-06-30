@@ -1618,6 +1618,9 @@ app.whenReady().then(async () => {
   process.env.FREESTYLE_DB_PATH = join(app.getPath("userData"), "freestyle.db");
 
   process.env.FREESTYLE_ENV = is.dev ? "development" : "production";
+  // Expose the app version to the in-process server so PostHog events
+  // (including autocaptured exceptions) carry the release they came from.
+  process.env.FREESTYLE_APP_VERSION = app.getVersion();
   if (!is.dev) {
     process.env.FREESTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
   }

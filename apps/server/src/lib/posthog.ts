@@ -38,6 +38,14 @@ function getClient(): PostHog {
     host: POSTHOG_HOST,
     enableExceptionAutocapture: true,
   });
+  // Super properties: attached to every event for the client's lifetime
+  // (manual capture, captureException, and autocaptured exceptions), so each
+  // event records the release and environment it came from. Event-level
+  // properties still override these.
+  _client.register({
+    app_version: process.env.FREESTYLE_APP_VERSION ?? "unknown",
+    environment: getEnvironment(),
+  });
   return _client;
 }
 
@@ -111,7 +119,7 @@ export function capture(
     getClient().capture({
       distinctId: activeDistinctId(),
       event,
-      properties: { ...properties, environment: getEnvironment() },
+      properties,
     });
   } catch {
     // Never let analytics errors affect the app
@@ -124,10 +132,11 @@ export function captureException(
 ): void {
   try {
     if (!isEnabled()) return;
-    getClient().captureException(error, activeDistinctId(), {
-      ...additionalProperties,
-      environment: getEnvironment(),
-    });
+    getClient().captureException(
+      error,
+      activeDistinctId(),
+      additionalProperties,
+    );
   } catch {
     // Never let analytics errors affect the app
   }

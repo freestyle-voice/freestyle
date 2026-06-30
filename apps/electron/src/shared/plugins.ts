@@ -31,6 +31,19 @@ export interface PluginCatalogEntry {
   author?: string;
 }
 
+/** Input for a plugin update check: the installed name + version. */
+export interface PluginUpdateCheck {
+  name: string;
+  currentVersion: string;
+}
+
+/** Result of a single plugin's update check. */
+export interface PluginUpdateResult {
+  name: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+}
+
 /** Bounds (in dashboard-window content coordinates) for a hosted plugin view. */
 export interface PluginViewBounds {
   x: number;

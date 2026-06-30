@@ -22,11 +22,22 @@ import SettingsPage from "@renderer/pages/settings";
 import TodayPage from "@renderer/pages/today";
 import VocabularyPage from "@renderer/pages/vocabulary";
 import AppShell from "@renderer/shell";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Avoid refetching on window focus in a desktop app — the user may
+      // switch back and forth between the dashboard and other apps frequently.
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 function PagePad(): React.JSX.Element {
   return (
@@ -52,59 +63,67 @@ createRoot(document.getElementById("root")!).render(
             enableSystem
             disableTransitionOnChange
           >
-            <TooltipProvider>
-              <CloudAuthProvider>
-                <CloudSignInModal />
-                <Routes>
-                  <Route path="/" element={<Navigate to="/today" replace />} />
-                  <Route path="/onboarding" element={<OnboardingPage />} />
+            <QueryClientProvider client={queryClient}>
+              <TooltipProvider>
+                <CloudAuthProvider>
+                  <CloudSignInModal />
+                  <Routes>
+                    <Route
+                      path="/"
+                      element={<Navigate to="/today" replace />}
+                    />
+                    <Route path="/onboarding" element={<OnboardingPage />} />
 
-                  <Route element={<AppShell />}>
-                    <Route path="/today" element={<TodayPage />} />
-                    <Route element={<PagePad />}>
-                      <Route path="/settings" element={<SettingsPage />} />
-                      <Route
-                        path="/settings/general"
-                        element={<Navigate to="/settings" replace />}
-                      />
-                      <Route path="/settings/models" element={<ModelsPage />} />
-                      <Route
-                        path="/settings/dictionary"
-                        element={<DictionaryPage />}
-                      />
-                      <Route
-                        path="/settings/vocabulary"
-                        element={<VocabularyPage />}
-                      />
-                      <Route
-                        path="/settings/formats"
-                        element={<FormatsPage />}
-                      />
-                      <Route
-                        path="/settings/history"
-                        element={<HistoryPage />}
-                      />
-                      <Route path="/help" element={<HelpPage />} />
-                      <Route path="/plugins" element={<PluginsPage />} />
-                      <Route
-                        path="/plugins/:slug"
-                        element={<PluginDetailPage />}
-                      />
-                      <Route
-                        path="/plugins/:slug/:pageId"
-                        element={<PluginPage />}
-                      />
-                      <Route
-                        path="/settings/permissions"
-                        element={<Navigate to="/settings" replace />}
-                      />
+                    <Route element={<AppShell />}>
+                      <Route path="/today" element={<TodayPage />} />
+                      <Route element={<PagePad />}>
+                        <Route path="/settings" element={<SettingsPage />} />
+                        <Route
+                          path="/settings/general"
+                          element={<Navigate to="/settings" replace />}
+                        />
+                        <Route
+                          path="/settings/models"
+                          element={<ModelsPage />}
+                        />
+                        <Route
+                          path="/settings/dictionary"
+                          element={<DictionaryPage />}
+                        />
+                        <Route
+                          path="/settings/vocabulary"
+                          element={<VocabularyPage />}
+                        />
+                        <Route
+                          path="/settings/formats"
+                          element={<FormatsPage />}
+                        />
+                        <Route
+                          path="/settings/history"
+                          element={<HistoryPage />}
+                        />
+                        <Route path="/help" element={<HelpPage />} />
+                        <Route path="/plugins" element={<PluginsPage />} />
+                        <Route
+                          path="/plugins/:slug"
+                          element={<PluginDetailPage />}
+                        />
+                        <Route
+                          path="/plugins/:slug/:pageId"
+                          element={<PluginPage />}
+                        />
+                        <Route
+                          path="/settings/permissions"
+                          element={<Navigate to="/settings" replace />}
+                        />
+                      </Route>
                     </Route>
-                  </Route>
 
-                  <Route path="*" element={<NotFoundPage />} />
-                </Routes>
-              </CloudAuthProvider>
-            </TooltipProvider>
+                    <Route path="*" element={<NotFoundPage />} />
+                  </Routes>
+                </CloudAuthProvider>
+              </TooltipProvider>
+            </QueryClientProvider>
           </ThemeProvider>
         </BrowserRouter>
       </I18nextProvider>

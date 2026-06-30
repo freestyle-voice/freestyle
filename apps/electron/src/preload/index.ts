@@ -8,6 +8,8 @@ import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type {
   PluginCatalogEntry,
   PluginInfo,
+  PluginUpdateCheck,
+  PluginUpdateResult,
   PluginViewBounds,
 } from "../shared/plugins";
 
@@ -274,6 +276,10 @@ const api = {
     ipcRenderer.invoke("plugins:install", npmName, version),
   uninstallPlugin: (specifier: string): Promise<PluginInfo[]> =>
     ipcRenderer.invoke("plugins:uninstall", specifier),
+  checkPluginUpdates: (
+    plugins: PluginUpdateCheck[],
+  ): Promise<PluginUpdateResult[]> =>
+    ipcRenderer.invoke("plugins:check-updates", plugins),
   showPluginView: (
     slug: string,
     pageId: string,

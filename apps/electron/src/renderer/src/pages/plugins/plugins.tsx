@@ -3,14 +3,51 @@ import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import { Switch } from "@renderer/components/ui/switch";
-import type { PluginCatalogEntry, PluginInfo } from "@shared/plugins";
-import { ArrowRight, Info, Puzzle, Search, Trash2 } from "lucide-react";
+import type {
+  PluginCatalogEntry,
+  PluginInfo,
+  PluginUpdateResult,
+} from "@shared/plugins";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ArrowRight,
+  Info,
+  Loader2,
+  Puzzle,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { pluginDisplayName, resolvePluginIcon } from "./helpers";
 
 type Tab = "browse" | "installed";
+
+const ONE_HOUR = 60 * 60 * 1000;
+
+/** Build a stable query key + fetch function for the plugin update check. */
+function usePluginUpdates(plugins: PluginInfo[]) {
+  const entries = useMemo(
+    () =>
+      plugins
+        .filter((p) => p.version && !p.missing)
+        .map((p) => ({ name: p.specifier, currentVersion: p.version! })),
+    [plugins],
+  );
+
+  return useQuery({
+    queryKey: ["plugin-updates", entries],
+    queryFn: async () => {
+      if (entries.length === 0) return new Map<string, PluginUpdateResult>();
+      const results = await window.api.checkPluginUpdates(entries);
+      return new Map(results.map((r) => [r.name, r]));
+    },
+    staleTime: ONE_HOUR,
+    // Don't retry aggressively — registry checks are best-effort.
+    retry: 1,
+  });
+}
 
 export default function PluginsPage(): React.JSX.Element {
   const { t } = useTranslation();
@@ -33,6 +70,8 @@ export default function PluginsPage(): React.JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const { data: updatesMap } = usePluginUpdates(plugins);
 
   return (
     <div
@@ -80,13 +119,19 @@ export default function PluginsPage(): React.JSX.Element {
         </div>
 
         {tab === "browse" ? (
-          <BrowseTab installed={plugins} query={query} onChange={setPlugins} />
+          <BrowseTab
+            installed={plugins}
+            query={query}
+            onChange={setPlugins}
+            updates={updatesMap}
+          />
         ) : (
           <InstalledTab
             loading={loading}
             plugins={plugins}
             query={query}
             onChange={setPlugins}
+            updates={updatesMap}
           />
         )}
       </div>
@@ -109,11 +154,13 @@ function InstalledTab({
   plugins,
   query,
   onChange,
+  updates,
 }: {
   loading: boolean;
   plugins: PluginInfo[];
   query: string;
   onChange: (plugins: PluginInfo[]) => void;
+  updates?: Map<string, PluginUpdateResult>;
 }): React.JSX.Element {
   const { t } = useTranslation();
 
@@ -161,6 +208,7 @@ function InstalledTab({
           key={plugin.specifier}
           plugin={plugin}
           onChange={onChange}
+          update={updates?.get(plugin.specifier)}
         />
       ))}
     </div>
@@ -170,17 +218,21 @@ function InstalledTab({
 function PluginCard({
   plugin,
   onChange,
+  update,
 }: {
   plugin: PluginInfo;
   onChange: (plugins: PluginInfo[]) => void;
+  update?: PluginUpdateResult;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const Icon = resolvePluginIcon(plugin.icon ?? plugin.pages[0]?.icon);
 
   const page = plugin.pages[0];
 
   const [busy, setBusy] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   const toggle = async (enabled: boolean): Promise<void> => {
     onChange(await window.api.setPluginEnabled(plugin.specifier, enabled));
@@ -192,6 +244,19 @@ function PluginCard({
       onChange(await window.api.uninstallPlugin(plugin.specifier));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const doUpdate = async (): Promise<void> => {
+    setUpdating(true);
+    try {
+      onChange(await window.api.installPlugin(plugin.specifier));
+      // Invalidate the update-check cache so the badge disappears immediately.
+      void queryClient.invalidateQueries({ queryKey: ["plugin-updates"] });
+    } catch {
+      // Install errors surface via the server; no UI toast needed here.
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -218,6 +283,16 @@ function PluginCard({
               v{plugin.version}
             </span>
           ) : null}
+          {update?.updateAvailable ? (
+            <Badge
+              variant="outline"
+              className="mono text-primary border-primary/40 text-[9px] tracking-[0.14em]"
+            >
+              {t("plugins.updateAvailable", {
+                version: update.latestVersion,
+              })}
+            </Badge>
+          ) : null}
           {plugin.missing ? (
             <Badge
               variant="outline"
@@ -237,6 +312,17 @@ function PluginCard({
       <div className="flex shrink-0 items-center gap-2">
         {plugin.missing ? null : (
           <>
+            {update?.updateAvailable ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={updating}
+                onClick={() => void doUpdate()}
+              >
+                {updating ? <Loader2 className="animate-spin" /> : null}
+                {updating ? t("plugins.updating") : t("plugins.update")}
+              </Button>
+            ) : null}
             {page ? (
               <Button
                 variant="outline"
@@ -285,10 +371,12 @@ function BrowseTab({
   installed,
   query,
   onChange,
+  updates,
 }: {
   installed: PluginInfo[];
   query: string;
   onChange: (plugins: PluginInfo[]) => void;
+  updates?: Map<string, PluginUpdateResult>;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const [catalog, setCatalog] = useState<PluginCatalogEntry[] | null>(null);
@@ -354,6 +442,7 @@ function BrowseTab({
             key={entry.npmName}
             plugin={installedPlugin}
             onChange={onChange}
+            update={updates?.get(installedPlugin.specifier)}
           />
         ) : (
           <CatalogCard key={entry.npmName} entry={entry} onChange={onChange} />

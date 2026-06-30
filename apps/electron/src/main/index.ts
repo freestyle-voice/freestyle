@@ -96,6 +96,7 @@ import {
 } from "./paste";
 import {
   plugins as appPlugins,
+  checkForUpdates,
   FreestyleEventType,
   fetchCatalog,
   fetchPluginSettings,
@@ -656,6 +657,7 @@ function createSettingsWindow(initialPath?: string): void {
       await uninstallPlugin(getServerTarget(), specifier);
       await reloadAppPlugins(getServerTarget());
     },
+    checkForUpdates: (plugins) => checkForUpdates(getServerTarget(), plugins),
     onAction: handlePluginAction,
   });
   void getPluginDiscoverySources().then(

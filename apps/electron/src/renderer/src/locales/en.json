@@ -56,7 +56,6 @@
     },
     "modelSetup": {
       "title": "Download your private voice model",
-      "optionalTitle": "Set up offline dictation",
       "idleDesc": "{{name}} runs on {{phrase}} and needs a one-time download{{size}}.",
       "downloading": "Downloading {{name}}…",
       "downloadingDesc": "This stays on {{phrase}} — nothing is sent to the cloud.",
@@ -68,7 +67,6 @@
       "retry": "Try again",
       "errorTitle": "Couldn't finish setup",
       "errorFallback": "Something went wrong while downloading the model.",
-      "optionalHint": "Optional — skip if you're using cloud only",
       "waitingToFinish": "Download your voice model to continue",
       "waitingWhileDownloading": "Finish once the download completes"
     },

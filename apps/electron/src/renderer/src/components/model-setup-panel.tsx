@@ -10,15 +10,12 @@ type ModelSetupPanelProps = {
   model: VoiceItem | undefined;
   onDownload: () => void;
   onRetry: () => void;
-  /** When true, offline setup is encouraged but not required to continue. */
-  optional?: boolean;
 };
 
 export function ModelSetupPanel({
   model,
   onDownload,
   onRetry,
-  optional = false,
 }: ModelSetupPanelProps): React.JSX.Element | null {
   const { t } = useTranslation();
 
@@ -41,7 +38,7 @@ export function ModelSetupPanel({
   return (
     <div
       className={cn(
-        "bg-card border-border mt-6 w-full rounded-[12px] border px-4 py-3.5",
+        "bg-card border-border mt-6 w-full rounded-[14px] border px-4 py-3.5",
         isError && "border-destructive/40",
       )}
       role={isActive ? "status" : undefined}
@@ -73,9 +70,7 @@ export function ModelSetupPanel({
                   : t("onboarding.modelSetup.downloading", {
                       name: model.name,
                     })
-                : optional
-                  ? t("onboarding.modelSetup.optionalTitle")
-                  : t("onboarding.modelSetup.title")}
+                : t("onboarding.modelSetup.title")}
           </p>
 
           <p className="text-muted-foreground mt-1 text-[12px] leading-snug">
@@ -146,12 +141,6 @@ export function ModelSetupPanel({
               <RefreshCw data-icon="inline-start" />
               {t("onboarding.modelSetup.retry")}
             </Button>
-          )}
-
-          {optional && isIdle && (
-            <p className="text-muted-foreground mono mt-2 text-[10px] tracking-wide uppercase">
-              {t("onboarding.modelSetup.optionalHint")}
-            </p>
           )}
         </div>
       </div>

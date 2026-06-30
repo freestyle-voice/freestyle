@@ -7,6 +7,7 @@ import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
@@ -35,11 +36,33 @@ const PAGE_SIZE = 20;
 
 export default function VocabularyPage(): React.JSX.Element {
   const { t } = useTranslation();
-  const [entries, setEntries] = useState<VocabularyEntry[]>([]);
-  const [total, setTotal] = useState(0);
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ["vocabulary", page, search],
+    queryFn: async () => {
+      const q: Record<string, string> = {
+        limit: String(PAGE_SIZE),
+        offset: String(page * PAGE_SIZE),
+        orderBy: "-created_at",
+      };
+      if (search) q.search = search;
+      const res = await getClient().api.vocabulary.$get({ query: q });
+      if (!res.ok) return { items: [] as VocabularyEntry[], total: 0 };
+      return (await res.json()) as { items: VocabularyEntry[]; total: number };
+    },
+  });
+
+  const entries = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const invalidate = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ["vocabulary"] }),
+    [queryClient],
+  );
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -54,34 +77,6 @@ export default function VocabularyPage(): React.JSX.Element {
     resolver: zodResolver(createVocabularySchema),
     defaultValues: { term: "", notes: "" },
   });
-
-  const loadData = useCallback(async () => {
-    try {
-      const query: Record<string, string> = {
-        limit: String(PAGE_SIZE),
-        offset: String(page * PAGE_SIZE),
-        orderBy: "-created_at",
-      };
-      if (search) query.search = search;
-
-      const res = await getClient().api.vocabulary.$get({ query });
-      if (res.ok) {
-        const data = await res.json();
-        setEntries(data.items);
-        setTotal(data.total);
-      }
-    } catch (err) {
-      console.error("Failed to load vocabulary:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, search]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const resetForm = useCallback(() => {
     setShowForm(false);
@@ -127,12 +122,12 @@ export default function VocabularyPage(): React.JSX.Element {
         }
 
         resetForm();
-        loadData();
+        void invalidate();
       } catch {
         setFormError(t("vocabulary.failedToSave"));
       }
     },
-    [editingId, resetForm, loadData, t],
+    [editingId, resetForm, invalidate, t],
   );
 
   const deleteEntry = useCallback(
@@ -144,13 +139,13 @@ export default function VocabularyPage(): React.JSX.Element {
         if (entries.length === 1 && page > 0) {
           setPage(page - 1);
         } else {
-          loadData();
+          void invalidate();
         }
       } catch (err) {
         console.error("Failed to delete vocabulary entry:", err);
       }
     },
-    [loadData, entries.length, page],
+    [invalidate, entries.length, page],
   );
 
   const importRef = useRef<HTMLInputElement>(null);
@@ -211,14 +206,14 @@ export default function VocabularyPage(): React.JSX.Element {
           const detail = await res.text().catch(() => "");
           setImportError(detail || `Import failed (HTTP ${res.status})`);
         } else {
-          loadData();
+          void invalidate();
         }
       } catch {
         setImportError(t("vocabulary.importFailed"));
       }
       if (importRef.current) importRef.current.value = "";
     },
-    [loadData, t],
+    [invalidate, t],
   );
 
   if (loading) {

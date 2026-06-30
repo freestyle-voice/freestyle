@@ -17,7 +17,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { pluginDisplayName, resolvePluginIcon } from "./helpers";
@@ -52,24 +52,17 @@ function usePluginUpdates(plugins: PluginInfo[]) {
 export default function PluginsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("browse");
-  const [plugins, setPlugins] = useState<PluginInfo[]>([]);
-  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const queryClient = useQueryClient();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Actively re-scan installed plugins each time the hub opens, so the list
-      // is correct even if discovery hadn't completed when the app started.
-      setPlugins(await window.api.refreshPlugins());
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data: plugins = [], isLoading: loading } = useQuery({
+    queryKey: ["plugins"],
+    queryFn: () => window.api.refreshPlugins(),
+  });
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const setPlugins = (updated: PluginInfo[]) => {
+    queryClient.setQueryData(["plugins"], updated);
+  };
 
   const { data: updatesMap } = usePluginUpdates(plugins);
 
@@ -379,23 +372,15 @@ function BrowseTab({
   updates?: Map<string, PluginUpdateResult>;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const [catalog, setCatalog] = useState<PluginCatalogEntry[] | null>(null);
-  const [error, setError] = useState(false);
 
-  useEffect(() => {
-    let active = true;
-    window.api
-      .getPluginCatalog()
-      .then((res) => {
-        if (active) setCatalog(res.plugins);
-      })
-      .catch(() => {
-        if (active) setError(true);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const { data: catalog, isError: error } = useQuery({
+    queryKey: ["plugin-catalog"],
+    queryFn: async () => {
+      const res = await window.api.getPluginCatalog();
+      return res.plugins;
+    },
+    retry: 1,
+  });
 
   const installedBySpecifier = useMemo(
     () => new Map(installed.map((p) => [p.specifier, p])),

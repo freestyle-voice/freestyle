@@ -4,7 +4,8 @@ import { getClient } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
 import { cn } from "@renderer/lib/utils";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 // ---------------------------------------------------------------------------
@@ -119,39 +120,30 @@ export default function TodayPage(): React.JSX.Element {
   const { t } = useTranslation();
   const { user } = useCloudAuth();
   const cloudUsage = useCloudUsage(!!user);
-  const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
+  const queryClient = useQueryClient();
 
-  const loadToday = useCallback(async () => {
-    try {
+  const { data: entries = null } = useQuery({
+    queryKey: ["today-history"],
+    queryFn: async () => {
       const res = await getClient().api.history.$get({
         query: { limit: "200", orderBy: "-created_at" },
       });
-      if (!res.ok) {
-        setEntries([]);
-        return;
-      }
+      if (!res.ok) return [];
       const data = await res.json();
       const now = new Date();
-      const todaysEntries = (data.items as HistoryEntry[]).filter((e) =>
+      return (data.items as HistoryEntry[]).filter((e) =>
         isSameLocalDay(parseUtc(e.created_at), now),
       );
-      setEntries(todaysEntries);
-    } catch {
-      setEntries([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadToday();
-  }, [loadToday]);
+    },
+  });
 
   // Refetch when the pill reports a completed transcription.
   useEffect(() => {
     const remove = window.api?.onTranscriptionDone(() => {
-      loadToday();
+      void queryClient.invalidateQueries({ queryKey: ["today-history"] });
     });
     return () => remove?.();
-  }, [loadToday]);
+  }, [queryClient]);
 
   const stats = useMemo(() => {
     if (!entries) return null;

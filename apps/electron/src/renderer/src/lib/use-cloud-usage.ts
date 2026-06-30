@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { getClient } from "./api";
 
 export interface CloudUsageBalance {
@@ -21,35 +22,28 @@ export function usagePercent(balance: CloudUsageBalance): number {
  * Returns null when not signed in or if the fetch fails (best-effort).
  */
 export function useCloudUsage(signedIn: boolean): CloudUsageBalance | null {
-  const [balance, setBalance] = useState<CloudUsageBalance | null>(null);
+  const queryClient = useQueryClient();
 
-  const refresh = useCallback(async () => {
-    try {
+  const { data } = useQuery({
+    queryKey: ["cloud-usage"],
+    queryFn: async () => {
       const res = await getClient().api.usage.$get();
-      if (!res.ok) return;
-      const data = (await res.json()) as CloudUsageBalance;
-      setBalance(data);
-    } catch {
-      /* ignore — best-effort */
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!signedIn) {
-      setBalance(null);
-      return;
-    }
-    refresh();
-  }, [signedIn, refresh]);
+      if (!res.ok) return null;
+      return (await res.json()) as CloudUsageBalance;
+    },
+    enabled: signedIn,
+    // Best-effort — don't retry aggressively.
+    retry: 1,
+  });
 
   // Refresh after each transcription completes.
   useEffect(() => {
     if (!signedIn) return;
     const remove = window.api?.onTranscriptionDone(() => {
-      refresh();
+      void queryClient.invalidateQueries({ queryKey: ["cloud-usage"] });
     });
     return () => remove?.();
-  }, [signedIn, refresh]);
+  }, [signedIn, queryClient]);
 
-  return balance;
+  return signedIn ? (data ?? null) : null;
 }

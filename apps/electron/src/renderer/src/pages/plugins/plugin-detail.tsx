@@ -4,7 +4,7 @@ import { Switch } from "@renderer/components/ui/switch";
 import type { PluginInfo, PluginUpdateResult } from "@shared/plugins";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { pluginDisplayName, resolvePluginIcon } from "./helpers";
@@ -16,27 +16,19 @@ export default function PluginDetailPage(): React.JSX.Element {
   const { slug } = useParams<{ slug: string }>();
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [plugin, setPlugin] = useState<PluginInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const all = await window.api.refreshPlugins();
-      setPlugin(all.find((p) => p.slug === slug) ?? null);
-    } finally {
-      setLoading(false);
-    }
-  }, [slug]);
+  const { data: allPlugins, isLoading: loading } = useQuery({
+    queryKey: ["plugins"],
+    queryFn: () => window.api.refreshPlugins(),
+  });
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const plugin = allPlugins?.find((p) => p.slug === slug) ?? null;
 
   const toggle = async (enabled: boolean): Promise<void> => {
     if (!plugin) return;
     const all = await window.api.setPluginEnabled(plugin.specifier, enabled);
-    setPlugin(all.find((p) => p.slug === slug) ?? null);
+    queryClient.setQueryData(["plugins"], all);
   };
 
   // Reuse the same query key family as the plugins list page so caching is
@@ -93,12 +85,7 @@ export default function PluginDetailPage(): React.JSX.Element {
             {t("plugins.detail.notFound")}
           </p>
         ) : (
-          <Detail
-            plugin={plugin}
-            onToggle={toggle}
-            update={update}
-            onPluginChange={setPlugin}
-          />
+          <Detail plugin={plugin} onToggle={toggle} update={update} />
         )}
       </div>
     </div>
@@ -109,12 +96,10 @@ function Detail({
   plugin,
   onToggle,
   update,
-  onPluginChange,
 }: {
   plugin: PluginInfo;
   onToggle: (enabled: boolean) => void | Promise<void>;
   update?: PluginUpdateResult;
-  onPluginChange: (plugin: PluginInfo | null) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -127,7 +112,7 @@ function Detail({
     setUpdating(true);
     try {
       const all = await window.api.installPlugin(plugin.specifier);
-      onPluginChange(all.find((p) => p.slug === plugin.slug) ?? null);
+      queryClient.setQueryData(["plugins"], all);
       void queryClient.invalidateQueries({ queryKey: ["plugin-updates"] });
     } catch {
       // Install errors surface via the server; no UI toast needed here.

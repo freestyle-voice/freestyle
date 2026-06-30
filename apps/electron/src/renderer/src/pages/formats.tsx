@@ -7,8 +7,9 @@ import { Input } from "@renderer/components/ui/input";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 
@@ -24,8 +25,19 @@ interface FormatRule {
 
 export default function FormatsPage(): React.JSX.Element {
   const { t } = useTranslation();
-  const [rules, setRules] = useState<FormatRule[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
+  const { data: rules = [], isLoading: loading } = useQuery({
+    queryKey: ["formats"],
+    queryFn: async () => {
+      const res = await getClient().api.formats.$get({
+        query: { limit: "200" },
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.items ?? data) as FormatRule[];
+    },
+  });
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -35,25 +47,10 @@ export default function FormatsPage(): React.JSX.Element {
     defaultValues: { label: "", app_pattern: "", instructions: "" },
   });
 
-  const loadData = useCallback(async () => {
-    try {
-      const res = await getClient().api.formats.$get({
-        query: { limit: "200" },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setRules(data.items ?? data);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const invalidate = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ["formats"] }),
+    [queryClient],
+  );
 
   const resetForm = useCallback(() => {
     setShowForm(false);
@@ -96,12 +93,12 @@ export default function FormatsPage(): React.JSX.Element {
         }
 
         resetForm();
-        loadData();
+        void invalidate();
       } catch {
         setFormError(t("formats.failedToSave"));
       }
     },
-    [editingId, resetForm, loadData, t],
+    [editingId, resetForm, invalidate, t],
   );
 
   const deleteRule = useCallback(
@@ -109,15 +106,15 @@ export default function FormatsPage(): React.JSX.Element {
       await getClient().api.formats[":id"].$delete({
         param: { id: String(id) },
       });
-      loadData();
+      void invalidate();
     },
-    [loadData],
+    [invalidate],
   );
 
   const resetDefaults = useCallback(async () => {
     await getClient().api.formats.reset.$post();
-    loadData();
-  }, [loadData]);
+    void invalidate();
+  }, [invalidate]);
 
   const defaultRules = rules.filter((r) => r.is_default === 1);
   const customRules = rules.filter((r) => r.is_default === 0);

@@ -8,6 +8,7 @@ import { Input } from "@renderer/components/ui/input";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Book,
   ChevronLeft,
@@ -20,7 +21,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -37,11 +38,33 @@ const PAGE_SIZE = 20;
 
 export default function DictionaryPage(): React.JSX.Element {
   const { t } = useTranslation();
-  const [entries, setEntries] = useState<DictionaryEntry[]>([]);
-  const [total, setTotal] = useState(0);
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ["dictionary", page, search],
+    queryFn: async () => {
+      const q: Record<string, string> = {
+        limit: String(PAGE_SIZE),
+        offset: String(page * PAGE_SIZE),
+        orderBy: "-created_at",
+      };
+      if (search) q.search = search;
+      const res = await getClient().api.dictionary.$get({ query: q });
+      if (!res.ok) return { items: [] as DictionaryEntry[], total: 0 };
+      return (await res.json()) as { items: DictionaryEntry[]; total: number };
+    },
+  });
+
+  const entries = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const invalidate = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ["dictionary"] }),
+    [queryClient],
+  );
 
   // Add/edit form
   const [showForm, setShowForm] = useState(false);
@@ -57,34 +80,6 @@ export default function DictionaryPage(): React.JSX.Element {
     resolver: zodResolver(createDictionarySchema),
     defaultValues: { key: "", value: "" },
   });
-
-  const loadData = useCallback(async () => {
-    try {
-      const query: Record<string, string> = {
-        limit: String(PAGE_SIZE),
-        offset: String(page * PAGE_SIZE),
-        orderBy: "-created_at",
-      };
-      if (search) query.search = search;
-
-      const res = await getClient().api.dictionary.$get({ query });
-      if (res.ok) {
-        const data = await res.json();
-        setEntries(data.items);
-        setTotal(data.total);
-      }
-    } catch (err) {
-      console.error("Failed to load dictionary:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, search]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const resetForm = useCallback(() => {
     setShowForm(false);
@@ -123,12 +118,12 @@ export default function DictionaryPage(): React.JSX.Element {
         }
 
         resetForm();
-        loadData();
+        void invalidate();
       } catch {
         setFormError(t("dictionary.failedToSave"));
       }
     },
-    [editingId, resetForm, loadData, t],
+    [editingId, resetForm, invalidate, t],
   );
 
   const deleteEntry = useCallback(
@@ -136,9 +131,9 @@ export default function DictionaryPage(): React.JSX.Element {
       await getClient().api.dictionary[":id"].$delete({
         param: { id: String(id) },
       });
-      loadData();
+      void invalidate();
     },
-    [loadData],
+    [invalidate],
   );
 
   const importRef = useRef<HTMLInputElement>(null);
@@ -172,13 +167,13 @@ export default function DictionaryPage(): React.JSX.Element {
         const text = await file.text();
         const data = JSON.parse(text);
         await getClient().api.dictionary.import.$post({ json: data });
-        loadData();
+        void invalidate();
       } catch {
         // ignore
       }
       if (importRef.current) importRef.current.value = "";
     },
-    [loadData],
+    [invalidate],
   );
 
   if (loading) {

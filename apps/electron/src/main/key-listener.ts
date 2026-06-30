@@ -264,11 +264,14 @@ export class NativeKeyListener {
 
     const hotkey = this.options.hotkey.toLowerCase();
 
-    // Fn/Globe key
-    if (line === "FN_DOWN") {
+    // Fn/Globe key — FN_DOWN is solo only; FN_DOWN:mods tracks Fn held with chords.
+    if (line === "FN_DOWN" || line.startsWith("FN_DOWN:")) {
       this.macFnDown = true;
+      const isSoloFn = line === "FN_DOWN";
       if (hotkey === "fn" || hotkey === "globe") {
-        this.options.onKeyDown();
+        if (isSoloFn) {
+          this.options.onKeyDown();
+        }
       } else {
         this.checkMacHotkeyMatch();
       }

@@ -210,8 +210,16 @@ export class HotkeyRecorder {
       return;
     }
 
-    if (line === "FN_DOWN") {
-      this.sendModifiers([...this.pendingModifiers, "Fn"]);
+    if (line === "FN_DOWN" || line.startsWith("FN_DOWN:")) {
+      const chordMods =
+        line === "FN_DOWN"
+          ? []
+          : line
+              .slice("FN_DOWN:".length)
+              .split(",")
+              .map((part) => MAC_FLAG_MODIFIERS[part.trim().toLowerCase()])
+              .filter((part): part is string => Boolean(part));
+      this.sendModifiers([...this.pendingModifiers, ...chordMods, "Fn"]);
       return;
     }
 

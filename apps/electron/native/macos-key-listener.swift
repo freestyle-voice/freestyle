@@ -330,7 +330,17 @@ guard let monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, h
 
     if containsFn && !fnIsDown {
         fnIsDown = true
-        emit("FN_DOWN")
+        let otherMods = flags.intersection(modifierMask)
+        if otherMods.isEmpty {
+            emit("FN_DOWN")
+        } else {
+            var parts: [String] = []
+            if otherMods.contains(.control) { parts.append("control") }
+            if otherMods.contains(.option) { parts.append("option") }
+            if otherMods.contains(.shift) { parts.append("shift") }
+            if otherMods.contains(.command) { parts.append("command") }
+            emit("FN_DOWN:" + parts.joined(separator: ","))
+        }
     } else if !containsFn && fnIsDown {
         fnIsDown = false
         emit("FN_UP")

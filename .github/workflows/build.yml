@@ -45,7 +45,7 @@ jobs:
           fi
 
           git diff --name-only \
-            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.base.sha }}..." \
             HEAD > changed-files.txt
 
           run_quality=false
@@ -66,19 +66,19 @@ jobs:
             esac
 
             case "$file" in
-              apps/electron/*|apps/server/*|packages/*|scripts/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
+              apps/electron/*|apps/server/*|packages/*|scripts/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
                 run_electron=true
                 ;;
             esac
 
             case "$file" in
-              apps/server/*|packages/sdk/*|packages/utils/*|packages/validations/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
+              apps/server/*|packages/sdk/*|packages/utils/*|packages/validations/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
                 run_server_image=true
                 ;;
             esac
 
             case "$file" in
-              plugins/*|packages/sdk/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
+              plugins/*|packages/sdk/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
                 run_plugins=true
                 ;;
             esac

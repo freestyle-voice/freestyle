@@ -147,6 +147,11 @@ export default function AppPage(): React.JSX.Element {
   const appContextRef = useRef<string | null>(null);
   const pendingCommitRef = useRef(false);
   const pillActiveRef = useRef(false);
+  // Tracks the in-flight prepareSystemAudio() (ducking) call. Ducking runs
+  // concurrently with mic acquisition, so every restore must wait for this
+  // to settle — otherwise a restore that lands before the duck applies is a
+  // no-op and leaves the system volume stuck low.
+  const duckingPromiseRef = useRef<Promise<unknown> | undefined>(undefined);
   const barModeRef = useRef<BarMode | null>(null);
   const scanIndexRef = useRef(0);
   const scanTickRef = useRef(0);
@@ -596,6 +601,15 @@ export default function AppPage(): React.JSX.Element {
     isTranscriptionIdle,
   ]);
 
+  // Restore the system volume, but only after any in-flight duck has settled
+  // so the restore can't be a no-op that leaves the volume stuck low.
+  const restoreSystemAudioSafely = useCallback(async (): Promise<void> => {
+    try {
+      await duckingPromiseRef.current;
+      await window.api?.restoreSystemAudio();
+    } catch {}
+  }, []);
+
   // ---- Start recording ----
   const startRecording = useCallback(
     async (forReRecord = false) => {
@@ -630,17 +644,22 @@ export default function AppPage(): React.JSX.Element {
       setPillState("initializing");
       startBarAnimation("connecting");
 
-      try {
-        if (_audioPlaybackMode !== "off") {
-          await window.api
-            ?.prepareSystemAudio(_audioPlaybackMode)
-            .catch(() => {});
-        }
-        if (!wantsMicRef.current) {
-          window.api?.restoreSystemAudio().catch(() => {});
-          return;
-        }
+      // Play the start cue immediately, before ducking lowers the system
+      // volume — otherwise the tone is attenuated to DUCKED_VOLUME and is
+      // effectively inaudible.
+      playTone("start");
 
+      // Duck/pause system audio concurrently with mic acquisition. The pause
+      // path can spawn a slow media-control subprocess; awaiting it before
+      // getUserMedia is what made the "initializing" state drag on. Restores
+      // go through restoreSystemAudioSafely(), which waits on this promise so a
+      // cancel can't race the duck.
+      duckingPromiseRef.current =
+        _audioPlaybackMode !== "off"
+          ? window.api?.prepareSystemAudio(_audioPlaybackMode).catch(() => {})
+          : undefined;
+
+      try {
         recordingSessionUsesTransportRef.current =
           supportsSessionTransportRef.current;
 
@@ -649,7 +668,7 @@ export default function AppPage(): React.JSX.Element {
         if (!wantsMicRef.current) {
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
-          window.api?.restoreSystemAudio().catch(() => {});
+          void restoreSystemAudioSafely();
           if (forReRecord) {
             resumeTranscribingOrHide();
           }
@@ -660,7 +679,7 @@ export default function AppPage(): React.JSX.Element {
           wantsMicRef.current = false;
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
-          window.api?.restoreSystemAudio().catch(() => {});
+          void restoreSystemAudioSafely();
           streamerRef.current?.cancel();
           if (forReRecord) {
             resumeTranscribingOrHide();
@@ -670,7 +689,6 @@ export default function AppPage(): React.JSX.Element {
           return;
         }
 
-        playTone("start");
         setPillState("recording");
         recordingActiveRef.current = true;
         startTimeRef.current = Date.now();
@@ -686,7 +704,7 @@ export default function AppPage(): React.JSX.Element {
       } catch (err) {
         pendingCommitRef.current = false;
         recorderRef.current.releaseStream();
-        window.api?.restoreSystemAudio().catch(() => {});
+        void restoreSystemAudioSafely();
         hidePill();
         window.api.showErrorDialog(
           "Recording Failed",
@@ -701,6 +719,7 @@ export default function AppPage(): React.JSX.Element {
       getStreamer,
       setPillState,
       resumeTranscribingOrHide,
+      restoreSystemAudioSafely,
     ],
   );
 
@@ -708,7 +727,19 @@ export default function AppPage(): React.JSX.Element {
   const commitRecording = useCallback(async () => {
     wantsMicRef.current = false;
     recordingActiveRef.current = false;
-    playTone("stop");
+
+    // Restore the system volume first, then play the stop cue so it isn't
+    // muted by ducking. Fire-and-forget so the transcription pipeline below
+    // isn't blocked on the restore. This runs on every commit path, so the
+    // branches below don't restore again. Gate on whether this session ducked
+    // (not the current mode setting, which can change mid-recording) so a
+    // toggle to "off" while recording can't strand the volume low.
+    void (async () => {
+      if (duckingPromiseRef.current) {
+        await restoreSystemAudioSafely();
+      }
+      playTone("stop");
+    })();
 
     clearInterval(timerRef.current);
     timerRef.current = 0;
@@ -727,7 +758,6 @@ export default function AppPage(): React.JSX.Element {
     if (recordingDuration < 500) {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
-      window.api?.restoreSystemAudio().catch(() => {});
       streamerRef.current?.cancel();
       window.api?.sendRecordingCancelled();
       resumeTranscribingOrHide();
@@ -741,7 +771,6 @@ export default function AppPage(): React.JSX.Element {
     if (recordingSessionUsesTransportRef.current && streamerRef.current) {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
-      window.api?.restoreSystemAudio().catch(() => {});
 
       setPendingCount((c) => c + 1);
       const transcribePromise = new Promise<TranscribeResult>((resolve) => {
@@ -781,7 +810,6 @@ export default function AppPage(): React.JSX.Element {
       wavBlob = streamerRef.current?.getWavBlob() ?? null;
     }
     recorderRef.current.releaseStream();
-    window.api?.restoreSystemAudio().catch(() => {});
 
     if (!pillActiveRef.current) {
       return;
@@ -877,6 +905,7 @@ export default function AppPage(): React.JSX.Element {
     setPillState,
     resumeTranscribingOrHide,
     isTranscriptionIdle,
+    restoreSystemAudioSafely,
   ]);
 
   // ---- Cancel ----
@@ -889,10 +918,10 @@ export default function AppPage(): React.JSX.Element {
     streamerRef.current?.cancel();
     recorderRef.current.cancel();
     recorderRef.current.releaseStream();
-    window.api?.restoreSystemAudio().catch(() => {});
+    void restoreSystemAudioSafely();
     window.api?.sendRecordingCancelled();
     hidePill();
-  }, [hidePill]);
+  }, [hidePill, restoreSystemAudioSafely]);
 
   // ---- Preferences ----
   const applyPillPosition = useCallback((pos: string | null | undefined) => {

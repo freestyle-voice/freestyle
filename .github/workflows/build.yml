@@ -15,8 +15,86 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      run_quality: ${{ steps.paths.outputs.run_quality }}
+      run_electron: ${{ steps.paths.outputs.run_electron }}
+      run_server_image: ${{ steps.paths.outputs.run_server_image }}
+      run_plugins: ${{ steps.paths.outputs.run_plugins }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed paths
+        id: paths
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            {
+              echo "run_quality=true"
+              echo "run_electron=true"
+              echo "run_server_image=true"
+              echo "run_plugins=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git diff --name-only \
+            "${{ github.event.pull_request.base.sha }}" \
+            HEAD > changed-files.txt
+
+          run_quality=false
+          run_electron=false
+          run_server_image=false
+          run_plugins=false
+
+          echo "Changed files:"
+          while IFS= read -r file; do
+            echo "- $file"
+
+            case "$file" in
+              docs/*|*.md)
+                ;;
+              *)
+                run_quality=true
+                ;;
+            esac
+
+            case "$file" in
+              apps/electron/*|apps/server/*|packages/*|scripts/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
+                run_electron=true
+                ;;
+            esac
+
+            case "$file" in
+              apps/server/*|packages/sdk/*|packages/utils/*|packages/validations/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
+                run_server_image=true
+                ;;
+            esac
+
+            case "$file" in
+              plugins/*|packages/sdk/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
+                run_plugins=true
+                ;;
+            esac
+          done < changed-files.txt
+
+          {
+            echo "run_quality=$run_quality"
+            echo "run_electron=$run_electron"
+            echo "run_server_image=$run_server_image"
+            echo "run_plugins=$run_plugins"
+          } >> "$GITHUB_OUTPUT"
+
   lint:
     name: Lint
+    needs: [changes]
+    if: needs.changes.outputs.run_quality == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,6 +131,8 @@ jobs:
 
   typecheck:
     name: Typecheck
+    needs: [changes]
+    if: needs.changes.outputs.run_electron == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,6 +155,8 @@ jobs:
 
   test-server:
     name: Test (Server API)
+    needs: [changes]
+    if: needs.changes.outputs.run_electron == 'true' || needs.changes.outputs.run_server_image == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -93,7 +175,8 @@ jobs:
 
   test-electron:
     name: Test (Electron E2E)
-    needs: [test-server]
+    needs: [changes, test-server]
+    if: needs.changes.outputs.run_electron == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -108,10 +191,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y xvfb libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libgtk-3-0 libgbm1 libasound2t64 libx11-xcb1
-
-      - name: Install native build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev
+        run: sudo apt-get update && sudo apt-get install -y xvfb libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libgtk-3-0 libgbm1 libasound2t64 libx11-xcb1 libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev
 
       - name: Build server
         run: pnpm turbo build --filter=@freestyle-voice/server
@@ -127,9 +207,30 @@ jobs:
         timeout-minutes: 5
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm --filter @freestyle-voice/electron run test:e2e
 
+  build-plugins:
+    name: Build plugins
+    needs: [changes, lint]
+    if: needs.changes.outputs.run_plugins == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: "package.json"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build plugin packages
+        run: pnpm turbo build --filter=@freestyle-voice/plugin-audio-transcription --filter=@freestyle-voice/profanity-filter
+
   build-linux:
     name: Build (Linux)
-    needs: [lint, typecheck, test-server]
+    needs: [changes, lint, typecheck, test-server]
+    if: needs.changes.outputs.run_electron == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -173,7 +274,8 @@ jobs:
 
   build-mac:
     name: Build (macOS)
-    needs: [lint, typecheck, test-server]
+    needs: [changes, lint, typecheck, test-server]
+    if: needs.changes.outputs.run_electron == 'true'
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -228,7 +330,8 @@ jobs:
 
   build-windows:
     name: Build (Windows)
-    needs: [lint, typecheck, test-server]
+    needs: [changes, lint, typecheck, test-server]
+    if: needs.changes.outputs.run_electron == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -269,7 +372,8 @@ jobs:
 
   build-server-image:
     name: Build server image
-    needs: [lint, typecheck, test-server]
+    needs: [changes, lint, test-server]
+    if: needs.changes.outputs.run_server_image == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -315,11 +419,13 @@ jobs:
     name: CI Status
     if: always()
     needs:
+      - changes
       - lint
       - knip
       - typecheck
       - test-server
       - test-electron
+      - build-plugins
       - build-linux
       - build-mac
       - build-windows
@@ -327,7 +433,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check CI result
-        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
         run: |
-          echo "CI failed, was cancelled, or a required job was skipped"
+          echo "CI failed or was cancelled"
           exit 1

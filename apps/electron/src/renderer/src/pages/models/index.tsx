@@ -51,6 +51,13 @@ export default function ModelsPage(): React.JSX.Element {
   const [warmingOpen, setWarmingOpen] = useState(false);
   const [cloudPanelExpanded, setCloudPanelExpanded] = useState(true);
 
+  const cloudUserId = cloudAuth.user?.id ?? null;
+  const reloadModels = m.reload;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetch when the signed-in user changes so the sign-in switch to Freestyle Transcribe (and the sign-out revert) is reflected.
+  useEffect(() => {
+    void reloadModels();
+  }, [cloudUserId, reloadModels]);
+
   // -------------------------------------------------------------------------
   // Modal flow
   // -------------------------------------------------------------------------

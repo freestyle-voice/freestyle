@@ -87,6 +87,7 @@ export interface UseModels {
   saveCleanupCustomPrompt: () => Promise<void>;
   saveMlxKeepAliveMinutes: (minutes: number) => void;
   deleteProvider: (provider: string) => Promise<void>;
+  reload: () => Promise<void>;
 }
 
 export function useModels(): UseModels {
@@ -655,5 +656,6 @@ export function useModels(): UseModels {
     saveCleanupCustomPrompt,
     saveMlxKeepAliveMinutes,
     deleteProvider,
+    reload: loadData,
   };
 }

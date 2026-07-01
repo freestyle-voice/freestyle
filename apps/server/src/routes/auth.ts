@@ -7,7 +7,8 @@ import {
   requestDeviceCode,
   signOutCloud,
 } from "../lib/freestyle-cloud.js";
-import { identifyCloudUser } from "../lib/posthog.js";
+import { applyFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js";
+import { capture, identifyCloudUser } from "../lib/posthog.js";
 import {
   getSession,
   getSessionUser,
@@ -51,7 +52,12 @@ const auth = new Hono()
         user,
         host: freestyleCloudUrl(),
       });
+      applyFreestyleCloudDefaults();
       identifyCloudUser(user);
+      capture("freestyle_default_applied_on_signin", {
+        voice: true,
+        cleanup: true,
+      });
       return c.json({ authenticated: true, user });
     } catch (err) {
       if (err instanceof DeviceFlowError) {

@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import createApp from "../src/index.js";
+import { getDb, readSetting } from "../src/lib/db.js";
+import { getDefaultModels } from "../src/lib/providers.js";
 import { clearSession, getSession, setSession } from "../src/lib/sessions.js";
 
 const app = createApp();
@@ -100,5 +102,112 @@ describe("/api/auth", () => {
 
     expect(res.status).toBe(403);
     await expect(res.json()).resolves.toEqual({ error: "access_denied" });
+  });
+});
+
+describe("Freestyle Transcribe default on sign-in", () => {
+  async function signIn(): Promise<Response> {
+    const cloud = await import("../src/lib/freestyle-cloud.js");
+    vi.mocked(cloud.pollDeviceToken).mockResolvedValueOnce({
+      access_token: "access-token",
+      refresh_token: "refresh-token",
+      expires_in: 3600,
+    });
+    return app.request("/api/auth/device/token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ device_code: "device-code" }),
+    });
+  }
+
+  function insertLocalVoiceDefault(): void {
+    const db = getDb();
+    db.prepare(
+      "UPDATE model_configs SET is_default = 0 WHERE type = 'voice'",
+    ).run();
+    db.prepare(
+      `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
+       VALUES ('local-whisper', 'local-whisper/base-q5_1', 'Whisper Base', 'voice', 1)
+       ON CONFLICT(provider, model_id, type) DO UPDATE SET is_default = 1`,
+    ).run();
+  }
+
+  beforeEach(() => {
+    const db = getDb();
+    db.prepare("DELETE FROM model_configs").run();
+    db.prepare("DELETE FROM settings WHERE key = 'llm_cleanup'").run();
+  });
+
+  it("makes Freestyle the default for voice and cleanup, and enables cleanup", async () => {
+    const res = await signIn();
+    expect(res.status).toBe(200);
+
+    const defaults = getDefaultModels();
+    expect(defaults.voice?.provider).toBe("freestyle-cloud");
+    expect(defaults.voice?.model_id).toBe("freestyle-cloud/stt");
+    expect(defaults.llm?.provider).toBe("freestyle-cloud");
+    expect(defaults.llm?.model_id).toBe("freestyle-cloud/post-process");
+    expect(readSetting("llm_cleanup")).toBe("true");
+  });
+
+  it("overrides an existing local voice default and turns cleanup on", async () => {
+    insertLocalVoiceDefault();
+    getDb()
+      .prepare(
+        "INSERT INTO settings (key, value) VALUES ('llm_cleanup', 'false')",
+      )
+      .run();
+
+    await signIn();
+
+    const defaults = getDefaultModels();
+    expect(defaults.voice?.provider).toBe("freestyle-cloud");
+    expect(defaults.llm?.provider).toBe("freestyle-cloud");
+    expect(readSetting("llm_cleanup")).toBe("true");
+  });
+
+  it("persists a local model chosen after sign-in (no re-switch)", async () => {
+    await signIn();
+
+    const res = await app.request("/api/models/configured", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: "local-whisper",
+        model_id: "local-whisper/base-q5_1",
+        model_name: "Whisper Base",
+        type: "voice",
+        is_default: true,
+      }),
+    });
+    expect(res.status).toBe(201);
+
+    expect(getDefaultModels().voice?.provider).toBe("local-whisper");
+  });
+
+  it("reverts to a local model and disables cleanup on sign-out", async () => {
+    insertLocalVoiceDefault();
+    await signIn();
+    expect(getDefaultModels().voice?.provider).toBe("freestyle-cloud");
+
+    const res = await app.request("/api/auth/sign-out", { method: "POST" });
+    expect(res.status).toBe(200);
+
+    expect(getDefaultModels().voice?.provider).toBe("local-whisper");
+    expect(readSetting("llm_cleanup")).toBe("false");
+  });
+
+  it("re-applies the Freestyle bundle when signing in again", async () => {
+    insertLocalVoiceDefault();
+    await signIn();
+    await app.request("/api/auth/sign-out", { method: "POST" });
+    expect(getDefaultModels().voice?.provider).toBe("local-whisper");
+
+    await signIn();
+
+    const defaults = getDefaultModels();
+    expect(defaults.voice?.provider).toBe("freestyle-cloud");
+    expect(defaults.llm?.provider).toBe("freestyle-cloud");
+    expect(readSetting("llm_cleanup")).toBe("true");
   });
 });

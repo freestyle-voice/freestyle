@@ -1,6 +1,6 @@
 {
   "name": "create-freestyle-plugin",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "type": "module",
   "description": "Create a Freestyle voice plugin from a starter template.",
   "license": "MIT",

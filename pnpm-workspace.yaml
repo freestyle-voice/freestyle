@@ -2,3 +2,8 @@ packages:
   - "apps/*"
   - "packages/*"
   - "plugins/*"
+allowBuilds:
+  electron: true
+  esbuild: true
+  electron-winstaller: false
+  msw: false

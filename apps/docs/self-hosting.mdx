@@ -1,0 +1,117 @@
+---
+title: "Self-hosting"
+description: "Run the Freestyle server standalone with Docker."
+---
+
+The Freestyle server can run independently of the Electron app as a standalone Docker container. This is useful for headless setups, shared team servers, or integrating Freestyle's API into other tools.
+
+The image is published to GitHub Container Registry at `ghcr.io/freestyle-voice/freestyle-server`.
+
+## Quick start
+
+```bash
+docker run -d \
+  --name freestyle \
+  -p 4649:4649 \
+  -v freestyle-data:/data \
+  ghcr.io/freestyle-voice/freestyle-server
+```
+
+The server is now available at `http://localhost:4649`. Verify with:
+
+```bash
+curl http://localhost:4649/api/health
+# {"status":"ok","name":"freestyle"}
+```
+
+## Docker Compose
+
+```yaml
+services:
+  freestyle:
+    image: ghcr.io/freestyle-voice/freestyle-server
+    ports:
+      - "4649:4649"
+    volumes:
+      - freestyle-data:/data
+    environment:
+      - FREESTYLE_AUTH_TOKEN=your-secret-token
+    restart: unless-stopped
+
+volumes:
+  freestyle-data:
+```
+
+## Environment variables
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `FREESTYLE_DB_PATH` | `/data/freestyle.db` | Path to the SQLite database file. The `/data` volume persists it across restarts. |
+| `PORT` | `4649` | Port to listen on. |
+| `HOST` | `0.0.0.0` | Interface to bind to. |
+| `FREESTYLE_AUTH_TOKEN` | _(none)_ | When set, all API requests must include a `Bearer` token in the `Authorization` header. Recommended for any network-exposed deployment. |
+| `FREESTYLE_ENV` | `production` | App environment flag. |
+| `DO_NOT_TRACK` | _(none)_ | Set to `1` to disable all telemetry. |
+
+## Persistent data
+
+The SQLite database stores all your settings, dictionary, vocabulary, formats, and transcription history. Mount a volume at `/data` to persist it:
+
+```bash
+-v freestyle-data:/data
+```
+
+If no volume is mounted, data is lost when the container is removed.
+
+## Health check
+
+The container has a built-in health check that pings `GET /api/health` every 30 seconds. Docker reports the container as `healthy` when the endpoint responds.
+
+```bash
+docker inspect --format='{{.State.Health.Status}}' freestyle
+# healthy
+```
+
+## Authentication
+
+For any deployment exposed beyond localhost, set `FREESTYLE_AUTH_TOKEN`:
+
+```bash
+docker run -d \
+  -p 4649:4649 \
+  -v freestyle-data:/data \
+  -e FREESTYLE_AUTH_TOKEN=my-secret-token \
+  ghcr.io/freestyle-voice/freestyle-server
+```
+
+Then include the token in all API requests:
+
+```bash
+curl -H "Authorization: Bearer my-secret-token" \
+  http://localhost:4649/api/settings
+```
+
+The `/api/health` endpoint is always exempt from authentication.
+
+## Connecting the desktop app
+
+You can point the Electron app at a remote Freestyle server instead of using its embedded one. This is useful for sharing settings, dictionary, and vocabulary across machines.
+
+<Note>
+  Remote server support is an advanced configuration. The desktop app is designed to work out of the box with its embedded server.
+</Note>
+
+## Plugins
+
+Plugins work the same way in the standalone server. Install them with the API:
+
+```bash
+curl -X POST http://localhost:4649/api/plugins/install \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"npmName": "@freestyle-voice/profanity-filter"}'
+```
+
+## MCP integration
+
+The standalone server exposes the same MCP endpoint at `/mcp`, so AI tools like Cursor, Claude, and VS Code can connect to manage your dictionary, vocabulary, and formats. See the [MCP guide](/mcp) for details.

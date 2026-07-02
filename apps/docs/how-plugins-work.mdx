@@ -1,0 +1,69 @@
+---
+title: "How plugins work"
+description: "The pipeline, the hooks, and where your code runs."
+---
+
+Plugins are custom services that you build that live inside of Freestyle's dictation pipeline. Some of the things that you can do with plugins, just to throw some ideas out there. 
+
+- Rewrite transcriptions on each step. Do some custom modifications that Freestyle as is cannot do.
+- Tweak the post-processing feed-up step whatever way that you like. 
+- Reroute the output. Send transcriptions to any external service of your own. 
+
+## An overview of Freestyle's Stack
+
+- The **server** owns transcription, cleanup, settings, and the plugin database. Most hooks run here.
+- The **app** (the Electron client) owns audio capture, the UI, and delivering text to your window. A couple of hooks run here.
+
+You write one plugin object. Freestyle calls each hook in the right process.
+
+## The pipeline
+
+```
+User presses hotkey
+        |
+        v
+[APP]    Capture audio  ......... event: recordingStarted
+        |
+        v
+[SERVER] Speech-to-text -> raw transcript
+        |                  |-- afterTranscribe   (rewrite the raw text)
+        |                  +-- event: transcribed
+        v
+[SERVER] AI cleanup (optional)
+        |                  |-- beforeCleanup     (shape the prompt + register)
+        |                  |-- dictionary + LLM rewrite
+        |                  |-- afterCleanup      (rewrite the final text)
+        |                  +-- event: cleaned
+        v
+[APP]    Deliver output
+        |                  |-- beforeOutput      (rewrite, suppress, or reroute)
+        |                  +-- event: outputDelivered
+        v
+Text appears in your focused app
+```
+
+Building a plugin allows you to modify what happens at each step of Freestyle's dictation pipeline. The SDK offers hooks like `afterTranscribe` and `beforeOutput` that lets you control the inputs and the outputs at each step of the pipeline. In those hooks you can write functions that can do anything as long as it runs properly in a node environment.
+
+## Where plugins live
+
+Installed plugins sit in the user-data directory under `plugins/<slug>/`. Two settings control loading:
+
+- `plugins`: a JSON array of specifiers, or `[specifier, options]` tuples.
+- `disabled_plugins`: specifiers to skip.
+
+```json
+[
+  "@freestyle-voice/profanity-filter",
+  ["@freestyle-voice/plugin-audio-transcription", { "disableDefaults": true }]
+]
+```
+
+Most people manage these in **Settings → Plugins**.
+
+## Sandboxing
+
+- Each plugin's settings live under `plugin:<name>:<key>`, isolated from other plugins.
+- A throwing hook is caught and reported. It won't break the pipeline.
+- UI pages run in a sandboxed `freestyle-plugin://` origin with no direct filesystem or network access. They reach the server only through `window.freestyle`.
+
+Next: [build your first plugin](/first-plugin).

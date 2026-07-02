@@ -1,0 +1,164 @@
+---
+title: "API reference"
+description: "The Freestyle server HTTP API — all endpoints, their methods, and what they do."
+---
+
+The Freestyle server is a [Hono](https://hono.dev) app that runs on `http://127.0.0.1:4649` by default. All endpoints are under `/api` unless noted otherwise.
+
+<Note>
+  Plugin UI pages should use `window.freestyle.api()` instead of calling these endpoints directly. The bridge handles authentication and sandboxing automatically. See the [SDK reference](/sdk-reference#the-ui-bridge).
+</Note>
+
+## Health and diagnostics
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/health` | Health check. Returns `{ "status": "ok", "name": "freestyle" }`. Always exempt from auth. |
+
+## Settings
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/settings` | List all settings as a `{ key: value }` map. |
+| `GET` | `/api/settings/:key` | Get a single setting by key. |
+| `PUT` | `/api/settings/:key` | Upsert a setting. Per-key validation for `cleanup_intensity`, `cleanup_custom_prompt`, `plugins`, and `disabled_plugins`. |
+| `DELETE` | `/api/settings/:key` | Delete a setting. |
+| `POST` | `/api/settings/local-llm/test` | Test connectivity to a local LLM server. Fetches `/v1/models` and returns the model list. |
+
+## Models
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/models/available` | List all available models — cloud registry, curated catalog, and local whisper/MLX/LLM. |
+| `GET` | `/api/models/configured` | List user-configured models from DB (voice + LLM), ordered by type and default status. |
+| `POST` | `/api/models/configured` | Add or upsert a model configuration. Body: `{ provider, model_id, model_name, type, is_default? }`. |
+| `PUT` | `/api/models/configured/:id/default` | Set a model config as the default for its type. |
+| `DELETE` | `/api/models/configured/:id` | Delete a model configuration. |
+
+## Transcription
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `POST` | `/api/transcribe` | Main transcription endpoint. Accepts audio as multipart form data or raw binary. Transcribes via configured voice provider and optionally runs LLM cleanup. Headers: `x-app-context` (JSON), `x-audio-duration-ms`, `x-skip-post-process`. |
+| `GET` | `/stream` | WebSocket endpoint for real-time streaming transcription. Handles binary audio frames and JSON control messages (`context`, `start`, `commit`, `cancel`). |
+| `POST` | `/api/post-process` | Run LLM cleanup on text independently. Body: `{ text, appContext?, language? }`. |
+
+## API keys
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/keys` | List all stored API keys (provider, last-4 hint, status). |
+| `GET` | `/api/keys/:provider` | Check if a key exists for a provider. |
+| `POST` | `/api/keys` | Store or upsert an API key. Body: `{ provider, key }`. |
+| `POST` | `/api/keys/validate` | Validate a key without storing it. |
+| `POST` | `/api/keys/:provider/revalidate` | Re-validate the stored key for a provider. |
+| `DELETE` | `/api/keys/:provider` | Delete the stored key for a provider. |
+
+## Dictionary
+
+Post-transcription text replacements. Say the key, get the value.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/dictionary` | List entries with pagination and search. Query: `limit`, `offset`, `search`, `orderBy`. |
+| `GET` | `/api/dictionary/all` | Get all entries ordered by key length DESC (for matching). |
+| `GET` | `/api/dictionary/:id` | Get a single entry. |
+| `POST` | `/api/dictionary` | Create an entry. Body: `{ key, value }`. Returns 409 on duplicate key. |
+| `PUT` | `/api/dictionary/:id` | Update an entry. |
+| `DELETE` | `/api/dictionary/:id` | Delete an entry. |
+| `POST` | `/api/dictionary/export` | Export as JSON. Body: `{ type: "json" }`. |
+| `POST` | `/api/dictionary/import` | Import entries. Body: array of `{ key, value }`. Uses INSERT OR IGNORE, returns `{ imported, skipped }`. |
+
+## Vocabulary
+
+Recognition bias terms — help the speech model hear specific words correctly.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/vocabulary` | List terms with pagination and search. |
+| `GET` | `/api/vocabulary/all` | Get all terms ordered by length DESC (for ASR injection). |
+| `GET` | `/api/vocabulary/:id` | Get a single term. |
+| `POST` | `/api/vocabulary` | Create a term. Body: `{ term, notes? }`. Returns 409 on duplicate. |
+| `PUT` | `/api/vocabulary/:id` | Update a term. |
+| `DELETE` | `/api/vocabulary/:id` | Delete a term. |
+| `POST` | `/api/vocabulary/export` | Export as JSON. Body: `{ type: "json" }`. |
+| `POST` | `/api/vocabulary/import` | Import terms. Body: array of `{ term, notes? }`. Returns `{ imported, skipped }`. |
+
+## Formats
+
+Output formatting rules matched by the app you're typing in.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/formats` | List format rules with pagination and search. |
+| `GET` | `/api/formats/:id` | Get a single format rule. |
+| `GET` | `/api/formats/match` | Context-aware format matching. Query: `context`. Returns matching rule or `null`. User rules take priority over defaults. |
+| `POST` | `/api/formats` | Create a format rule. Body: `{ app_pattern, label, instructions }`. |
+| `PUT` | `/api/formats/:id` | Update a format rule. |
+| `DELETE` | `/api/formats/:id` | Delete a format rule. |
+| `POST` | `/api/formats/reset` | Reset to defaults. Deletes all user-created rules. |
+
+## History
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/history` | List transcription history with pagination, search, date filtering, and sort. Query: `limit`, `offset`, `search`, `start_date`, `end_date`, `orderBy`. |
+| `GET` | `/api/history/stats` | Aggregate stats: total sessions, duration, tokens, cost, words, today's stats. Optional date range. |
+| `GET` | `/api/history/:id` | Get a single history entry. |
+| `DELETE` | `/api/history/:id` | Delete a single history entry. |
+| `DELETE` | `/api/history` | Clear all transcription history. |
+
+## Plugins
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `POST` | `/api/plugins/reload` | Reload server-side plugin registry. Re-reads settings and re-runs `setup()`. |
+| `GET` | `/api/plugins/catalog` | Return the built-in plugin catalog. |
+| `POST` | `/api/plugins/install` | Install a plugin from npm. Body: `{ npmName, version? }`. Downloads, stages atomically, adds specifier, and reloads. |
+| `POST` | `/api/plugins/uninstall` | Uninstall a plugin. Body: `{ specifier }`. Removes package and specifier. |
+| `POST` | `/api/plugins/check-updates` | Check for updates against npm. Body: `{ plugins: [{ name, currentVersion }] }`. |
+
+## Auth (Freestyle Cloud)
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/auth/status` | Current auth status and user info. |
+| `POST` | `/api/auth/device/code` | Request a device authorization code for Freestyle Cloud sign-in. |
+| `POST` | `/api/auth/device/token` | Poll for device token. On success, sets session and applies cloud defaults. |
+| `POST` | `/api/auth/sign-out` | Sign out from Freestyle Cloud. |
+
+## Cloud usage
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/usage` | Fetch Freestyle Cloud usage and balance. Requires active cloud session. |
+
+## Local models (Whisper)
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/whisper/status` | Full local Whisper status: binary availability, server state, model statuses, definitions. |
+| `POST` | `/api/whisper/models/:model/download` | Start downloading a Whisper model. |
+| `POST` | `/api/whisper/models/:model/cancel` | Cancel an in-progress download. |
+| `DELETE` | `/api/whisper/models/:model` | Delete a downloaded model. |
+| `POST` | `/api/whisper/server/start` | Start the local Whisper server. Body: `{ modelId? }`. |
+| `POST` | `/api/whisper/server/stop` | Stop the local Whisper server. |
+
+## Local models (MLX ASR)
+
+Apple Silicon only.
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/mlx-asr/status` | Full MLX ASR status: platform support, Python availability, model statuses, setup hints. Query: `refresh=1` to re-probe. |
+| `POST` | `/api/mlx-asr/models/:model/download` | Start downloading an MLX model. |
+| `POST` | `/api/mlx-asr/models/:model/cancel` | Cancel an in-progress download. |
+| `DELETE` | `/api/mlx-asr/models/:model` | Delete a downloaded model. |
+| `POST` | `/api/mlx-asr/server/start` | Start the local MLX ASR server. Body: `{ modelId? }`. |
+| `POST` | `/api/mlx-asr/server/stop` | Stop the local MLX ASR server. |
+
+## MCP
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `ALL` | `/mcp` | MCP Streamable HTTP transport endpoint. See the [MCP integration guide](/mcp) for details. |

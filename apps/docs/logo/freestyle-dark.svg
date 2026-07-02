@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="160" viewBox="0 0 640 160" role="img" aria-label="Freestyle">
+  <title>Freestyle</title>
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@1&amp;display=swap');
+      .wm { font-family: 'Instrument Serif', 'Times New Roman', serif; font-style: italic; font-size: 96px; letter-spacing: -0.015em; fill: #F4F0E4; }
+      .dot { fill: #8AB62A; }
+    </style>
+  </defs>
+  <g transform="translate(20, 20) scale(1.2)">
+    <polyline points="8.00,50.00 9.40,49.85 10.80,49.42 12.20,48.76 13.60,47.98 15.00,47.18 16.40,46.50 17.80,46.06 19.20,45.96 20.60,46.29 22.00,47.08 23.40,48.34 24.80,50.00 26.20,51.96 27.60,54.08 29.00,56.19 30.40,58.08 31.80,59.58 33.20,60.50 34.60,60.71 36.00,60.10 37.40,58.66 38.80,56.42 40.20,53.47 41.60,50.00 43.00,46.23 44.40,42.42 45.80,38.86 47.20,35.85 48.60,33.66 50.00,32.50 51.40,32.53 52.80,33.83 54.20,36.39 55.60,40.08 57.00,44.72 58.40,50.00 59.80,55.59 61.20,61.08 62.60,66.09 64.00,70.21 65.40,73.10 66.80,74.50 68.20,74.23 69.60,72.23 71.00,68.56 72.40,63.42 73.80,57.10 75.20,50.00 76.60,42.60 78.00,35.42 79.40,28.96 80.80,23.73 82.20,20.14 83.60,18.50 85.00,19.01 86.40,21.71 87.80,26.49 89.20,33.08 90.60,41.09 92.00,50.00" fill="none" stroke="#8AB62A" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="165" y="115" class="wm">freestyle<tspan class="dot">.</tspan></text>
+</svg>

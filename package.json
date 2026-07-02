@@ -2,8 +2,9 @@
   "name": "@freestyle-voice/workspace",
   "private": true,
   "scripts": {
-    "build": "turbo build",
-    "dev": "turbo dev",
+    "build": "turbo build --filter=!docs",
+    "dev": "turbo dev --filter=!docs",
+    "dev:docs": "turbo dev --filter=docs",
     "format": "biome check --write .",
     "knip": "knip",
     "test": "turbo test",

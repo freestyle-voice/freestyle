@@ -1,0 +1,158 @@
+---
+title: "Your first plugin"
+description: "Build a plugin by walking through the profanity filter example."
+---
+
+The `profanity-filter` plugin in the repo is a complete, small example. It swaps curse words for wholesome stand-ins as you dictate. Let's walk through it.
+
+A plugin has two halves: **plugin code** (`src/index.ts` → `dist/index.js`, bundled with `pkgroll`) and **optional UI pages** (`ui/` → `dist/ui/`, built with `vite`).
+
+```
+profanity-filter/
+├── package.json
+├── src/
+│   ├── index.ts          # the plugin (default export)
+│   └── replacements.ts   # the word list + matching logic
+└── ui/                   # the settings page (React)
+    └── src/App.tsx
+```
+
+## 1. The manifest
+
+Freestyle reads the `freestyle` field in `package.json`. `main` points at the built code, and each page in `contributes.pages` adds a screen inside the app.
+
+```json
+{
+  "name": "@freestyle-voice/profanity-filter",
+  "type": "module",
+  "main": "dist/index.js",
+  "files": ["dist"],
+  "freestyle": {
+    "icon": "Sparkles",
+    "contributes": {
+      "pages": [
+        { "id": "profanity-filter", "title": "Profanity Filter", "entry": "dist/ui/index.html" }
+      ]
+    }
+  },
+  "scripts": { "build": "pkgroll --minify && vite build" },
+  "dependencies": { "freestyle-voice": "workspace:*" }
+}
+```
+
+## 2. The plugin
+
+`src/index.ts` exports a factory that returns a `Plugin`. The factory takes user `options`, builds its word list, and returns three things: a `setup` hook, server `middleware`, and an `afterCleanup` hook that does the actual swapping.
+
+```ts
+import type { Plugin, PluginOptions } from "freestyle-voice";
+import { buildMatchers, clean, DEFAULT_REPLACEMENTS } from "./replacements.js";
+
+export default function profanityFilter(options?: PluginOptions): Plugin {
+  const opts = (options ?? {}) as { disableDefaults?: boolean; preserveCase?: boolean };
+  const preserveCase = opts.preserveCase !== false;
+  const map = { ...(opts.disableDefaults ? {} : DEFAULT_REPLACEMENTS) };
+  const matchers = buildMatchers(map);
+
+  return {
+    name: "@freestyle-voice/profanity-filter",
+
+    setup({ logger, mode }) {
+      logger.info(`ready on ${mode} (${matchers.length} substitutions)`);
+    },
+
+    afterCleanup(_input, output) {
+      output.text = clean(output.text, matchers, preserveCase);
+    },
+  };
+}
+```
+
+`afterCleanup` is the last text transform on the server, so it runs after cleanup and the dictionary. It mutates `output.text` in place.
+
+<Tip>
+  Need a one-liner instead? The `transform` helper wraps a plain string function into an `afterCleanup` hook:
+  ```ts
+  import { transform } from "freestyle-voice";
+  // afterCleanup: transform((text) => text.replace(/\s+$/, "")),
+  ```
+</Tip>
+
+## 3. Talk to the UI (optional)
+
+The plugin serves its word list to its settings page with Hono `middleware`:
+
+```ts
+const route = "/api/plugins/freestyle-voice-profanity-filter/replacements";
+
+const replacementsApi = async (c, next) => {
+  if (c.req.path !== route) return next();
+  return c.json({ preserveCase, replacements: entries });
+};
+
+// add to the returned plugin:  middleware: [replacementsApi],
+```
+
+The page fetches it through the bridge:
+
+```ts
+const res = await window.freestyle.api(route);
+const data = await res.json();
+```
+
+## 4. Build and install
+
+```bash
+pnpm install
+pnpm build
+```
+
+Copy the built package into the user-data directory under `plugins/freestyle-voice-profanity-filter/`, add its specifier to the `plugins` setting (or install via **Settings → Plugins**), then restart the app. Dictate a curse word and watch it get swapped.
+
+## Configure it
+
+Options come from the `plugins` setting as `[specifier, options]`:
+
+```json
+["@freestyle-voice/profanity-filter", { "preserveCase": true, "disableDefaults": false }]
+```
+
+## The API bridge
+
+Your UI page is sandboxed. It can't touch the filesystem or reach the local server directly. Instead, Freestyle injects `window.freestyle`, a small pre-authenticated bridge. It's the only privileged surface a page gets.
+
+It does three things:
+
+- **`api(path, init?)`** calls a server route. The bearer token and loopback origin are handled for you, so use it instead of `fetch`. It returns a `FreestyleResponse` (`ok`, `status`, `headers`, `json()` / `text()` / `arrayBuffer()`).
+- **`invoke(channel, payload)`** runs a host action: `copy`, `toast`, or `navigate`.
+- **`serverUrl`** and **`token`** are there if you need the raw values.
+
+Always guard for the bridge first, since the page can be opened outside the host during development:
+
+```ts
+import type { FreestyleBridge } from "freestyle-voice";
+
+const bridge: FreestyleBridge | undefined = window.freestyle;
+if (!bridge) throw new Error("Host bridge unavailable.");
+
+// Read your plugin's data from its own middleware route.
+const res = await bridge.api("/api/plugins/freestyle-voice-profanity-filter/replacements");
+if (!res.ok) throw new Error(`server returned ${res.status}`);
+const data = await res.json();
+
+// POST works too. Send a Blob or ArrayBuffer, not FormData.
+await bridge.api("/api/transcribe", {
+  method: "POST",
+  headers: { "content-type": "audio/wav" },
+  body: audioBytes,
+});
+
+// Host actions.
+await bridge.invoke("copy", { text: "copied!" });
+await bridge.invoke("toast", { message: "Saved", variant: "success" });
+await bridge.invoke("navigate", { to: "/plugins" });
+```
+
+See the full shape in the [SDK reference](/sdk-reference#the-ui-bridge).
+
+Next: the full [SDK reference](/sdk-reference).

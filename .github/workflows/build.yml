@@ -57,7 +57,7 @@ jobs:
             echo "- $file"
 
             case "$file" in
-              docs/*|*.md)
+              docs/*|apps/docs/*|*.md)
                 ;;
               *)
                 run_quality=true

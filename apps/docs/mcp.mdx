@@ -1,0 +1,115 @@
+---
+title: "MCP integration"
+description: "Let AI tools manage your Freestyle settings through Model Context Protocol."
+---
+
+Freestyle exposes an [MCP](https://modelcontextprotocol.io) (Model Context Protocol) endpoint that lets AI tools read and write your dictionary, vocabulary, formats, and cleanup settings. This means your coding agent can add dictionary entries, create format rules, or check your transcription history without you opening the app.
+
+## Connecting your AI tool
+
+The MCP endpoint runs at `http://127.0.0.1:4649/mcp` using the Streamable HTTP transport. Point your tool at this URL:
+
+<Tabs>
+  <Tab title="Cursor">
+    Add to your `.cursor/mcp.json`:
+
+    ```json
+    {
+      "mcpServers": {
+        "freestyle": {
+          "url": "http://127.0.0.1:4649/mcp"
+        }
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Claude Desktop">
+    Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+    ```json
+    {
+      "mcpServers": {
+        "freestyle": {
+          "url": "http://127.0.0.1:4649/mcp"
+        }
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="VS Code">
+    Add to your VS Code settings (`.vscode/mcp.json`):
+
+    ```json
+    {
+      "servers": {
+        "freestyle": {
+          "type": "http",
+          "url": "http://127.0.0.1:4649/mcp"
+        }
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  If you've set `FREESTYLE_AUTH_TOKEN`, you'll need to include the token in the MCP config. Refer to your tool's docs for how to pass headers with MCP connections.
+</Note>
+
+## Available tools
+
+Freestyle's MCP server exposes 15 tools across 5 domains.
+
+### Format tools
+
+Manage output formatting rules that reshape your transcript based on which app you're typing in.
+
+| Tool | Description |
+| --- | --- |
+| `format_list` | List all formatting rules. Returns full rows including pattern, label, and instructions. |
+| `format_match` | Find which formatting rule applies to a given context (e.g. an app name or window title). Returns the matching rule or `null`. |
+| `format_create` | Create a formatting rule. `app_pattern` is pipe-delimited substrings, `instructions` describe the output style. |
+| `format_update` | Update an existing formatting rule by ID. |
+| `format_delete` | Delete a formatting rule by ID. |
+
+### Dictionary tools
+
+Manage post-transcription text replacements (spoken phrase → replacement text).
+
+| Tool | Description |
+| --- | --- |
+| `dict_list` | List all dictionary entries. Returns key-value pairs. |
+| `dict_create` | Create a dictionary entry. The `key` is matched in the transcript and replaced with the `value`. |
+| `dict_update` | Update an existing dictionary entry by ID. |
+| `dict_delete` | Delete a dictionary entry by ID. |
+
+### Vocabulary tools
+
+Manage recognition bias terms that help the speech model recognize specific words before transcription.
+
+| Tool | Description |
+| --- | --- |
+| `vocab_list` | List all vocabulary terms and notes. |
+| `vocab_create` | Create a vocabulary term to bias the speech model toward recognizing a name, acronym, or jargon. |
+| `vocab_update` | Update an existing vocabulary term by ID. |
+| `vocab_delete` | Delete a vocabulary term by ID. |
+
+### History tools
+
+| Tool | Description |
+| --- | --- |
+| `history_list` | List transcription history (read-only). Useful as evidence for which dictionary, vocabulary, or format rules to add. |
+
+### Cleanup settings
+
+| Tool | Description |
+| --- | --- |
+| `cleanup_get` | Get the current post-processing cleanup style (intensity and any custom prompt). Read-only. |
+
+## Example workflows
+
+**Teaching your agent your jargon:** After a few transcription sessions, your agent can read `history_list` to spot recurring misrecognitions, then call `dict_create` or `vocab_create` to fix them automatically.
+
+**Setting up a new app format:** Tell your agent "When I dictate into Linear, format the text as a concise issue description." It can call `format_create` with `app_pattern: "linear"` and appropriate instructions.
+
+**Auditing your settings:** Ask your agent to `format_list`, `dict_list`, and `vocab_list` to get a full picture of your customizations.

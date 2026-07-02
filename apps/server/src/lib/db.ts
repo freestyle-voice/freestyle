@@ -62,3 +62,12 @@ export function writeSetting(key: string, value: string): void {
     )
     .run(key, value);
 }
+
+/** Delete a settings row by key. No-op if the key doesn't exist. */
+export function deleteSetting(key: string): void {
+  try {
+    getDb().prepare("DELETE FROM settings WHERE key = ?").run(key);
+  } catch {
+    // DB may not be available yet — swallow.
+  }
+}

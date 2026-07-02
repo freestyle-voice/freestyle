@@ -37,13 +37,28 @@ export function createPluginLogger(base: BaseLogger): PluginLogger {
 /**
  * Read-only access to the user's stored settings. Plugins receive a scoped,
  * namespaced view keyed by the plugin name, plus the ability to read global
- * settings values. Writes are intentionally not exposed in V1.
+ * settings values.
  */
 export interface SettingsReader {
   /** Read a global setting value by key, or `undefined` if unset. */
   get(key: string): string | undefined;
   /** Read a value from this plugin's own namespaced settings. */
   getOwn(key: string): string | undefined;
+}
+
+/**
+ * Per-plugin persistent key-value storage. Values are JSON-serialized into the
+ * host's database, automatically scoped by the plugin's name so plugins can
+ * never collide. Think of it as `localStorage` for plugins — simple, durable,
+ * and portable across machines when the database is synced.
+ */
+export interface PluginStorage {
+  /** Read a stored value by key. Returns `undefined` if unset. */
+  get<T = unknown>(key: string): Promise<T | undefined>;
+  /** Write a JSON-serializable value by key. */
+  set(key: string, value: unknown): Promise<void>;
+  /** Remove a key. */
+  delete(key: string): Promise<void>;
 }
 
 /**
@@ -63,4 +78,6 @@ export interface PluginContext {
   logger: PluginLogger;
   /** Read-only settings access. */
   settings: SettingsReader;
+  /** Per-plugin persistent storage (JSON key-value, scoped by plugin name). */
+  storage: PluginStorage;
 }

@@ -10,6 +10,7 @@ export {
   createPluginLogger,
   type PluginContext,
   type PluginLogger,
+  type PluginStorage,
   type SettingsReader,
 } from "./context.js";
 export type { AppContext, FreestyleEvent } from "./events.js";

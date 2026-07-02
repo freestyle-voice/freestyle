@@ -1,6 +1,6 @@
 {
   "name": "freestyle-voice",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "description": "The plugin SDK for Freestyle — write plugins that extend the local-first voice dictation pipeline.",
   "license": "MIT",
   "homepage": "https://github.com/freestyle-voice/freestyle/tree/main/packages/sdk#readme",

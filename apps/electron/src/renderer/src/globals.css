@@ -90,17 +90,17 @@
   --sidebar-border: #D6CDB8;
   --sidebar-ring: #6B8F12;
   --glass-window-solid: #F4F0E4;
-  --glass-window: rgba(244, 240, 228, 0.82);
+  --glass-window: #F4F0E4;
   --glass-sidebar-solid: #ECE7D6;
-  --glass-sidebar: rgba(244, 240, 228, 0.68);
+  --glass-sidebar: rgba(236, 231, 214, 0.9);
   --glass-topbar-solid: #F4F0E4;
-  --glass-topbar: rgba(244, 240, 228, 0.92);
-  --glass-border: rgba(214, 205, 184, 0.54);
-  --glass-shadow: rgba(22, 20, 15, 0.22);
-  --glass-nav-active: rgba(255, 253, 247, 0.72);
-  --glass-nav-active-border: rgba(214, 205, 184, 0.7);
-  --glass-card: rgba(255, 253, 247, 0.6);
-  --glass-card-border: rgba(214, 205, 184, 0.66);
+  --glass-topbar: rgba(244, 240, 228, 0.96);
+  --glass-border: rgba(214, 205, 184, 0.72);
+  --glass-shadow: rgba(22, 20, 15, 0.18);
+  --glass-nav-active: rgba(251, 248, 238, 0.94);
+  --glass-nav-active-border: rgba(214, 205, 184, 0.82);
+  --glass-card: rgba(251, 248, 238, 0.9);
+  --glass-card-border: rgba(214, 205, 184, 0.78);
 }
 
 /*
@@ -288,6 +288,13 @@
     html.glass .glass-window-shell {
       -webkit-backdrop-filter: blur(28px) saturate(1.25);
       backdrop-filter: blur(28px) saturate(1.25);
+    }
+
+    /* Light mode: desaturate the blur so colorful wallpapers don't muddy the
+       warm cream palette. Dark mode keeps the richer saturation. */
+    html.glass:not(.dark) .glass-window-shell {
+      -webkit-backdrop-filter: blur(32px) saturate(0.82);
+      backdrop-filter: blur(32px) saturate(0.82);
     }
   }
 

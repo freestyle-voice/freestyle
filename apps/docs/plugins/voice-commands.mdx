@@ -1,0 +1,66 @@
+---
+title: "Voice Commands"
+description: "Turn spoken trigger phrases into actions — run Shortcuts, call webhooks, open URLs, or execute scripts by voice."
+---
+
+The Voice Commands plugin lets you define commands like _"post to Slack…"_ or _"add a reminder…"_. When your dictation matches a trigger, Freestyle runs the matching action **instead of typing the text**.
+
+> "post to Slack that I'll be five minutes late" → posts _"I'll be five minutes late"_ to your Slack webhook
+>
+> "add a reminder to buy milk" → runs your **Add to Reminders** macOS Shortcut with _"buy milk"_
+
+## Install
+
+```bash
+npm install @freestyle-voice/commands
+```
+
+Or install from **Settings → Plugins** inside the app.
+
+## How it works
+
+Detection runs on the server's `afterTranscribe` hook, in three stages:
+
+1. **Prefilter** — a cheap, deterministic phrase match gates everything. If your speech contains no trigger phrase, nothing else runs and the transcript is dictated normally. No LLM call, no added latency.
+2. **Agent** — when a trigger matches, a multi-step tool-calling agent (using the LLM you've already configured for cleanup) decides whether it's really a command and extracts the payload — the part of your speech that isn't the trigger words.
+3. **Action** — the command fires. The utterance is _consumed_: cleanup is skipped and no text is delivered to the focused app.
+
+<Note>If no cleanup LLM is configured, detection falls back to a deterministic match (the longest matching trigger wins) so commands still work — just without the smarter intent check and payload extraction.</Note>
+
+The plugin reuses your configured cleanup model and API keys through the SDK's [`PluginLlm`](/sdk-reference#pluginllm) capability, so there's no separate provider or key to set up.
+
+## Action types
+
+| Action | What it does |
+| --- | --- |
+| **Run Shortcut** | Runs a macOS Shortcut by name; the payload is piped to its input. **macOS only** — hidden on other platforms. |
+| **Call webhook** | `POST` the payload as JSON (`{ "input": "…" }`), or `GET` it as an `input` query parameter. |
+| **Open URL / app** | Opens a URL or app scheme with the platform opener. `{{input}}` is substituted (URL-encoded). |
+| **Run script** | Runs a shell command. `{{input}}` is substituted and the raw payload is also exposed as the `$FREESTYLE_COMMAND_INPUT` environment variable. |
+
+<Warning>Script actions run arbitrary shell commands with your dictation as input. Only use commands you trust, and be mindful that spoken text is substituted into the command string.</Warning>
+
+## UI page
+
+The plugin adds a **Voice Commands** page inside the app (accessible from **Plugins → Voice Commands → Open**). From there you can:
+
+- **Add** a command with a name, one or more trigger phrases, a description, and an action.
+- **Edit** or **delete** existing commands, and **enable/disable** them without deleting.
+- **Try a phrase** — type an utterance to run the real detection pipeline and see whether (and which) command fires.
+
+The **description** you give each command matters: it's used as the tool description the agent reads to decide when to run the command and what payload to extract. A clear description like _"Posts the dictated message to the team Slack channel"_ works better than a terse one.
+
+Every change is saved through the `window.freestyle` host bridge to the plugin's own CRUD endpoint and persisted with plugin storage, so it survives restarts and takes effect on the next dictation.
+
+## Build from source
+
+```bash
+pnpm install
+pnpm --filter @freestyle-voice/commands build
+```
+
+This runs `pkgroll --minify` (server-side plugin code, bundling the AI SDK) followed by `vite build` (UI page).
+
+## Source
+
+[`plugins/voice-commands/`](https://github.com/freestyle-voice/freestyle/tree/main/plugins/voice-commands) in the monorepo.

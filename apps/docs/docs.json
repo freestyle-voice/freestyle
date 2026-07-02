@@ -50,7 +50,11 @@
           {
             "group": "Plugin catalog",
             "icon": "package",
-            "pages": ["plugins/profanity-filter", "plugins/audio-transcription"]
+            "pages": [
+              "plugins/profanity-filter",
+              "plugins/audio-transcription",
+              "plugins/voice-commands"
+            ]
           }
         ]
       },

@@ -36,7 +36,7 @@ Each hook is optional. Mutating hooks get a read-only `input` and an `output` yo
 | --- | --- | --- |
 | `setup(ctx)` | on load | read settings, init state |
 | `dispose()` | on unload | clean up |
-| `afterTranscribe(input, output)` | after speech-to-text [server] | rewrite `output.text` |
+| `afterTranscribe(input, output)` | after speech-to-text [server] | rewrite `output.text`, or set `output.consumed = true` |
 | `beforeCleanup(input, output)` | building the AI prompt [server] | push to `output.system`, set `output.register` |
 | `afterCleanup(input, output)` | after cleanup + dictionary [server] | rewrite `output.text` |
 | `beforeOutput(input, output)` | before delivery [app] | rewrite `output.text`, set `output.mode` |
@@ -54,6 +54,19 @@ beforeOutput(input, output) {
 }
 ```
 
+### Consuming an utterance
+
+`afterTranscribe` can do more than rewrite text — set `output.consumed = true` to signal that the plugin handled the utterance entirely (for example, it triggered a voice command). The host then **skips LLM cleanup and delivers nothing** to the focused app: the dictation is treated as an action, not text to type.
+
+```ts
+afterTranscribe(input, output) {
+  if (isCommand(output.text)) {
+    runCommand(output.text);
+    output.consumed = true; // no cleanup, no output
+  }
+}
+```
+
 ## PluginContext
 
 Passed to `setup`.
@@ -66,6 +79,7 @@ interface PluginContext {
   logger: PluginLogger;        // debug / info / warn / error
   settings: SettingsReader;    // read-only settings access
   storage: PluginStorage;      // read/write per-plugin key-value storage
+  llm?: PluginLlm;             // [server] the host's configured LLM, when available
 }
 
 interface SettingsReader {
@@ -75,6 +89,37 @@ interface SettingsReader {
 ```
 
 <Note>Settings are read-only. Pass runtime config through factory `options` and read it back with `getOwn`. For state your plugin needs to write, use `storage`.</Note>
+
+## PluginLlm
+
+Access to the host's configured language model, so server-side plugins can run their own LLM calls (classification, tool-calling agents, and so on) **reusing the user's default cleanup model and stored API keys** — no separate provider or key configuration required.
+
+```ts
+interface PluginLlm {
+  getModel(): unknown;         // an AI SDK LanguageModel — cast at the call site
+  readonly providerId: string; // e.g. "openai", "groq"
+  readonly modelId: string;
+}
+```
+
+`llm` is present **only in the server process** (`mode: "server"`) and **only when the user has a default LLM model configured**, so always guard with `if (ctx.llm)`. Capture it in `setup` and use it from your hooks:
+
+```ts
+import { generateText, type LanguageModel } from "ai";
+
+let model: LanguageModel | null = null;
+
+setup(ctx) {
+  if (ctx.llm) model = ctx.llm.getModel() as LanguageModel;
+},
+async afterTranscribe(input, output) {
+  if (!model) return;
+  const { text } = await generateText({ model, prompt: output.text });
+  output.text = text;
+}
+```
+
+`getModel()` is typed `unknown` in the SDK to avoid a hard dependency on the `ai` package — cast the result to `LanguageModel` (from `ai`) at the call site. Bundle `ai` in your plugin's `devDependencies`; installed plugins don't get a transitive `npm install`.
 
 ## PluginStorage
 

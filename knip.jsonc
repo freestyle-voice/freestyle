@@ -26,7 +26,10 @@
     "apps/electron/src/renderer/src/components/ui/tabs.tsx",
     "apps/electron/src/renderer/src/env.d.ts",
     "plugins/*/ui/vite-env.d.ts",
-    "plugins/audio-transcription/ui/src/styles.css"
+    "plugins/audio-transcription/ui/src/styles.css",
+    // Templates are standalone starter projects downloaded by create-freestyle-plugin,
+    // not workspace code. They are never imported or built within the monorepo.
+    "templates/**"
   ],
   "workspaces": {
     "apps/electron": {
@@ -88,6 +91,10 @@
         "entry": ["tests/**/*.test.ts", "tests/setup.ts"]
       },
       "ignoreDependencies": ["@types/json-schema", "node:sqlite"]
+    },
+    "packages/create-freestyle-plugin": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts"]
     },
     "plugins/*": {
       "entry": ["src/index.ts", "ui/src/main.{ts,tsx}"],

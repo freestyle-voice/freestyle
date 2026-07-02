@@ -98,16 +98,25 @@ jobs:
             exit 1
           fi
 
-          prefix=$(cd "$path" && craft config | jq -r '.releaseBranchPrefix // empty')
+          config=$(cd "$path" && craft config)
+          prefix=$(echo "$config" | jq -r '.releaseBranchPrefix // empty')
           if [[ -z "$prefix" ]]; then
             echo "::error::No releaseBranchPrefix in $path/.craft.yml"
             exit 1
           fi
 
+          # The GitHub target's tagPrefix (e.g. "freestyle-voice@") plus the
+          # version gives the release tag Craft creates. We use it below to keep
+          # package releases out of GitHub's "Latest" selection so the Electron
+          # auto-updater keeps resolving the app release (which alone carries the
+          # latest*.yml update feeds).
+          tagPrefix=$(echo "$config" | jq -r '.targets[] | select(.name=="github") | .tagPrefix // empty')
+
           echo "path=$path" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "branch=$prefix/$version" >> "$GITHUB_OUTPUT"
-          echo "Resolved: path=$path version=$version branch=$prefix/$version"
+          echo "tag=${tagPrefix}${version}" >> "$GITHUB_OUTPUT"
+          echo "Resolved: path=$path version=$version branch=$prefix/$version tag=${tagPrefix}${version}"
 
       - name: Check out release branch
         run: |
@@ -147,6 +156,21 @@ jobs:
           # npm Trusted Publishing. Provenance attestations are generated
           # automatically by trusted publishing; we don't force NPM_CONFIG_PROVENANCE
           # (forcing it can hard-fail depending on repo visibility).
+
+      # Package/plugin tags (e.g. freestyle-voice@0.4.0) are semver-parsed by
+      # GitHub's default `make_latest: legacy` rule, so a package version that
+      # numerically exceeds the app version steals the "Latest" release badge.
+      # electron-updater's GitHubProvider resolves updates via /releases/latest,
+      # and package releases have no latest*.yml feed — so this breaks app
+      # auto-updates. Pin package releases to make_latest=false; GitHub then
+      # re-selects the newest app release (which carries the update feeds).
+      - name: Exclude package release from "Latest"
+        if: success()
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: |
+          gh release edit "${{ steps.pkg.outputs.tag }}" \
+            --repo "${{ github.repository }}" --latest=false
 
       - name: Close issue on success
         if: success()

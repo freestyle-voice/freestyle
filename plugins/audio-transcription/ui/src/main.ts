@@ -9,9 +9,14 @@ import { toWav16k } from "./to-wav.js";
 
 const bridge: FreestyleBridge | undefined = window.freestyle;
 
+const backBtn = requireEl<HTMLButtonElement>("#back-btn");
 const dropzone = requireEl<HTMLLabelElement>("#dropzone");
 const fileInput = requireEl<HTMLInputElement>("#file-input");
 const results = requireEl<HTMLUListElement>("#results");
+
+backBtn.addEventListener("click", () => {
+  bridge?.invoke("navigate", { to: "/plugins" });
+});
 
 function requireEl<T extends Element>(selector: string): T {
   const el = document.querySelector<T>(selector);

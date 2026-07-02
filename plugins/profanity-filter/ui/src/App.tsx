@@ -326,28 +326,16 @@ export function App() {
   return (
     <main className="page">
       <BackButton />
-      <header className="head">
-        <div className="head-row">
-          <div>
-            <p className="eyebrow">Profanity filter</p>
-            <h1 className="title">
-              <em>Filtered</em> words.
-            </h1>
-          </div>
-          <button
-            type="button"
-            className="reset-btn"
-            disabled={resetting}
-            onClick={() => void resetToDefaults()}
-          >
-            {resetting ? "Resetting…" : "Reset to defaults"}
-          </button>
-        </div>
-        <p className="lede">
-          {state.status === "ready"
-            ? `${state.data.count} words and phrases are swapped for wholesome, funnier stand-ins.`
-            : "Loading filter data…"}
-        </p>
+      <header className="head-row">
+        <h1 className="page-title">Filtered words</h1>
+        <button
+          type="button"
+          className="reset-btn"
+          disabled={resetting}
+          onClick={() => void resetToDefaults()}
+        >
+          {resetting ? "Resetting…" : "Reset to defaults"}
+        </button>
       </header>
 
       {state.status === "error" && (

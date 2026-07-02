@@ -115,6 +115,7 @@ function AddWordForm({ onAdd }: { onAdd: () => void }) {
 
   return (
     <form className="add-form" onSubmit={(e) => void submit(e)}>
+      <span className="add-label">Add a word</span>
       <div className="add-fields">
         <input
           className="add-input"
@@ -276,7 +277,10 @@ function WordList({
   return (
     <section className="card">
       <div className="list-head">
-        <h2>Filtered words</h2>
+        <h2>
+          Filtered words
+          <span className="list-count">{entries.length}</span>
+        </h2>
         <input
           className="search"
           type="search"

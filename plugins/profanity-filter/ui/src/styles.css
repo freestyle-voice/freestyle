@@ -29,7 +29,8 @@ body {
 }
 
 .page {
-  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
   padding: 28px 48px 48px;
   display: flex;
   flex-direction: column;
@@ -131,6 +132,7 @@ body {
   color: var(--muted-foreground);
   cursor: pointer;
   white-space: nowrap;
+  flex-shrink: 0;
   transition: color 0.15s ease, border-color 0.15s ease;
 }
 
@@ -178,6 +180,16 @@ p {
   padding: 16px 20px;
 }
 
+.add-label {
+  display: block;
+  margin: 0 0 10px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted-foreground);
+}
+
 .add-fields {
   display: flex;
   gap: 8px;
@@ -205,8 +217,13 @@ p {
   outline-offset: 1px;
 }
 
+.add-input::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.7;
+}
+
 .add-btn {
-  padding: 8px 16px;
+  padding: 8px 18px;
   background: var(--primary);
   color: var(--primary-foreground);
   border: none;
@@ -216,6 +233,7 @@ p {
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
+  flex-shrink: 0;
   transition: opacity 0.15s ease;
 }
 
@@ -241,27 +259,42 @@ p {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
 }
 
 .list-head h2 {
   margin: 0;
 }
 
+.list-count {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  margin-left: 8px;
+  font-weight: 400;
+}
+
 .search {
-  width: 180px;
+  width: 200px;
   font: inherit;
   font-size: 13px;
   color: inherit;
   background: var(--input, color-mix(in srgb, currentColor 5%, transparent));
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 8px 11px;
+  padding: 7px 11px;
 }
 
 .search:focus {
   outline: 2px solid var(--ring, var(--accent));
   outline-offset: 1px;
+}
+
+.search::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.7;
 }
 
 .word-grid {
@@ -270,27 +303,36 @@ p {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
 .word-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 0;
+  gap: 10px;
+  padding: 8px 6px;
   font-size: 13px;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 8%, transparent);
+  border-radius: 8px;
+  transition: background 0.1s ease;
+}
+
+.word-row:not(:last-child) {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.word-row:hover {
+  background: color-mix(in srgb, var(--border) 20%, transparent);
 }
 
 .word {
   font-weight: 600;
-  min-width: 110px;
+  min-width: 120px;
   flex-shrink: 0;
 }
 
 .arrow {
   color: var(--muted-foreground);
   flex-shrink: 0;
+  font-size: 12px;
 }
 
 .alts {
@@ -321,32 +363,36 @@ p {
 .row-btn {
   padding: 3px 8px;
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: 6px;
   font: inherit;
   font-size: 11px;
   color: var(--muted-foreground);
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
 .row-btn:hover {
   color: var(--foreground);
-  border-color: var(--muted-foreground);
+  border-color: var(--border);
+  background: var(--card);
 }
 
 .delete-btn:hover {
   color: var(--destructive);
-  border-color: var(--destructive);
+  border-color: color-mix(in srgb, var(--destructive) 40%, transparent);
+  background: color-mix(in srgb, var(--destructive) 6%, transparent);
 }
 
 .save-btn:hover {
   color: var(--primary);
-  border-color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
 }
 
 .cancel-btn:hover {
   color: var(--muted-foreground);
+  border-color: var(--border);
 }
 
 /* ---- Inline edit ---- */

@@ -29,7 +29,9 @@
     "plugins/audio-transcription/ui/src/styles.css",
     // Templates are standalone starter projects downloaded by create-freestyle-plugin,
     // not workspace code. They are never imported or built within the monorepo.
-    "templates/**"
+    "templates/**",
+    // Docs site is a standalone Mintlify project, not a pnpm workspace member.
+    "apps/docs/**"
   ],
   "workspaces": {
     "apps/electron": {

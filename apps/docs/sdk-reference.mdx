@@ -1,0 +1,201 @@
+---
+title: "SDK reference"
+description: "Everything you can do in a Freestyle plugin."
+---
+
+Import everything from `freestyle-voice`.
+
+```ts
+import {
+  transform, OutputMode, FreestyleEventType, PipelineStage,
+  type Plugin, type PluginContext, type PluginOptions,
+  type FreestyleEvent, type AppContext, type Register,
+} from "freestyle-voice";
+```
+
+## Plugin
+
+The object your factory returns. The default export is `(options?: PluginOptions) => Plugin | Plugin[] | false | null`. Return `false` or `null` to disable based on options.
+
+```ts
+interface Plugin {
+  name: string;                       // required, stable identifier
+  enforce?: "pre" | "post";           // run first or last across all hooks
+  setup?: (ctx: PluginContext) => void | Promise<void>;
+  dispose?: () => void | Promise<void>;
+  middleware?: MiddlewareHandler[];   // Hono handlers (server)
+  // plus any of the hooks below
+}
+```
+
+## Hooks
+
+Each hook is optional. Mutating hooks get a read-only `input` and an `output` you change in place. They chain across plugins in order.
+
+| Hook | Runs | Do |
+| --- | --- | --- |
+| `setup(ctx)` | on load | read settings, init state |
+| `dispose()` | on unload | clean up |
+| `afterTranscribe(input, output)` | after speech-to-text [server] | rewrite `output.text` |
+| `beforeCleanup(input, output)` | building the AI prompt [server] | push to `output.system`, set `output.register` |
+| `afterCleanup(input, output)` | after cleanup + dictionary [server] | rewrite `output.text` |
+| `beforeOutput(input, output)` | before delivery [app] | rewrite `output.text`, set `output.mode` |
+| `event({ event })` | throughout [both] | observe only, no mutation |
+| `config(existing)` | boot [server] | return partial config to deep-merge |
+
+Hook inputs: `afterTranscribe` gets `{ providerId, modelId, appContext? }`, `beforeCleanup` gets `{ text, appContext?, inferredRegister }`, `afterCleanup` and `beforeOutput` get `{ appContext? }`. `Register` is `"formal" | "casual" | "neutral"`.
+
+```ts
+beforeOutput(input, output) {
+  if (output.text.startsWith("!")) {
+    output.text = "";
+    output.mode = OutputMode.None; // eat it as a command
+  }
+}
+```
+
+## PluginContext
+
+Passed to `setup`.
+
+```ts
+interface PluginContext {
+  name: string;
+  mode: "server" | "app";
+  directory: string;           // absolute path to the user-data dir
+  logger: PluginLogger;        // debug / info / warn / error
+  settings: SettingsReader;
+}
+
+interface SettingsReader {
+  get(key: string): string | undefined;     // a global setting
+  getOwn(key: string): string | undefined;  // this plugin's namespaced setting
+}
+```
+
+<Note>Settings are read-only. Pass runtime config through factory `options` and read it back with `getOwn`.</Note>
+
+## Events
+
+```ts
+const FreestyleEventType = {
+  RecordingStarted: "recordingStarted",
+  RecordingCommitted: "recordingCommitted",
+  RecordingCancelled: "recordingCancelled",
+  Transcribed: "transcribed",
+  Cleaned: "cleaned",
+  OutputDelivered: "outputDelivered",
+  PipelineError: "pipelineError",
+};
+
+type FreestyleEvent =
+  | { type: "recordingStarted" }
+  | { type: "recordingCommitted" }
+  | { type: "recordingCancelled" }
+  | { type: "transcribed"; text: string; durationInSeconds?: number }
+  | { type: "cleaned"; before: string; after: string }
+  | { type: "outputDelivered"; text: string; mode: OutputMode }
+  | { type: "pipelineError"; stage: PipelineStage; message: string };
+```
+
+`PipelineStage` is `"capture" | "transcribe" | "cleanup" | "transform" | "output"`.
+
+## AppContext
+
+Best-effort info about the focused app, on several hook inputs.
+
+```ts
+interface AppContext {
+  appName?: string;
+  windowTitle?: string;
+  url?: string;
+  bundleId?: string;
+}
+```
+
+## OutputMode
+
+How a transcript is delivered. Set `output.mode` in `beforeOutput`.
+
+```ts
+const OutputMode = {
+  Paste: "paste",          // copy, then simulate Cmd/Ctrl+V
+  Clipboard: "clipboard",  // copy only
+  None: "none",            // suppress
+};
+```
+
+## transform
+
+Wraps a plain text function into an `afterCleanup` hook.
+
+```ts
+function transform(
+  fn: (text: string, input: AfterCleanupInput) => string | Promise<string>,
+): Handler<AfterCleanupInput, { text: string }>;
+```
+
+## The UI bridge
+
+Plugin pages are sandboxed: no filesystem, no direct network. Freestyle injects `window.freestyle` as the one privileged surface. Use it to call the server and trigger host actions. See [a worked example](/first-plugin#the-api-bridge) in the first-plugin guide.
+
+```ts
+interface FreestyleBridge {
+  readonly serverUrl: string;  // e.g. http://127.0.0.1:4649
+  readonly token?: string;     // bearer token, when configured
+  api(path: string, init?: RequestInit): Promise<FreestyleResponse>;
+  invoke<C extends keyof HostActions>(channel: C, payload: HostActions[C]): Promise<void>;
+}
+
+interface FreestyleResponse {
+  readonly ok: boolean;
+  readonly status: number;
+  readonly statusText: string;
+  readonly headers: Record<string, string>;
+  json<T = unknown>(): Promise<T>;
+  text(): Promise<string>;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+interface HostActions {
+  copy: { text: string };
+  toast: { message: string; variant?: "info" | "success" | "error" };
+  navigate: { to: string };
+}
+```
+
+**`api(path, init?)`** appends `path` to `serverUrl`, attaches the token, and proxies the request through the host, so it resolves a `FreestyleResponse` rather than a native `Response`. Use it instead of `fetch`.
+
+```ts
+const res = await window.freestyle.api("/api/plugins/my-plugin/data");
+if (res.ok) console.log(await res.json());
+```
+
+**`invoke(channel, payload)`** asks the host to do something:
+
+```ts
+await window.freestyle.invoke("copy", { text: "copied!" });
+await window.freestyle.invoke("toast", { message: "Done", variant: "success" });
+await window.freestyle.invoke("navigate", { to: "/plugins" });
+```
+
+`window.freestyle` is only present inside a hosted plugin page, so guard for it (`if (!window.freestyle) ...`) before use.
+
+## Manifest
+
+The `freestyle` field in `package.json`.
+
+```json
+{
+  "freestyle": {
+    "icon": "Sparkles",
+    "contributes": {
+      "pages": [
+        { "id": "my-page", "title": "My Page", "entry": "dist/ui/index.html", "icon": "Settings" }
+      ]
+    }
+  }
+}
+```
+
+`icon` is a [lucide](https://lucide.dev) name.

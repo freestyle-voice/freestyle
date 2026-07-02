@@ -1,0 +1,94 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Freestyle",
+  "colors": {
+    "primary": "#6B8F12",
+    "light": "#8AB62A",
+    "dark": "#4A6309"
+  },
+  "favicon": "/favicon.svg",
+  "icons": {
+    "library": "lucide"
+  },
+  "logo": {
+    "light": "/logo/freestyle-light.svg",
+    "dark": "/logo/freestyle-dark.svg",
+    "href": "https://freestylevoice.com"
+  },
+  "background": {
+    "decoration": "gradient"
+  },
+  "styling": {
+    "eyebrows": "breadcrumbs"
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "icon": "rocket",
+        "pages": ["index", "user-guide", "contributing"]
+      },
+      {
+        "group": "Plugins",
+        "icon": "puzzle",
+        "pages": [
+          "how-plugins-work",
+          "development-setup",
+          "first-plugin",
+          "sdk-reference",
+          {
+            "group": "Plugin catalog",
+            "icon": "package",
+            "pages": ["plugins/profanity-filter", "plugins/audio-transcription"]
+          }
+        ]
+      },
+      {
+        "group": "Advanced",
+        "icon": "settings",
+        "pages": ["api-reference", "mcp", "self-hosting"]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Blog",
+          "href": "https://freestylevoice.com/blog",
+          "icon": "newspaper"
+        }
+      ]
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "type": "github",
+        "href": "https://github.com/freestyle-voice/freestyle"
+      },
+      {
+        "type": "discord",
+        "href": "https://discord.gg/Fmgt5yZCDu"
+      }
+    ]
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/FreestyleVoice",
+      "github": "https://github.com/freestyle-voice/freestyle",
+      "discord": "https://discord.gg/Fmgt5yZCDu"
+    }
+  }
+}

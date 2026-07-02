@@ -1,0 +1,49 @@
+---
+title: "Development setup"
+description: "Get the Freestyle repo running locally before you build a plugin."
+---
+
+Plugins live in the Freestyle monorepo, so set that up first. The [CONTRIBUTING.md](https://github.com/freestyle-voice/freestyle/blob/main/CONTRIBUTING.md) has the full details.
+
+## Prerequisites
+
+- Node.js 22+
+- pnpm 10+
+
+## Setup
+
+<Steps>
+  <Step title="Clone the repo">
+    ```bash
+    git clone https://github.com/freestyle-voice/freestyle.git
+    cd freestyle
+    ```
+  </Step>
+  <Step title="Install dependencies">
+    ```bash
+    pnpm install
+    ```
+  </Step>
+  <Step title="Start it">
+    ```bash
+    pnpm dev
+    ```
+
+    This runs the Electron app with hot reload. The embedded server starts on its own. On first launch, macOS asks for **Microphone** and **Accessibility** access.
+  </Step>
+</Steps>
+
+## Layout
+
+- `apps/electron`: the desktop app (main process + React renderer).
+- `apps/server`: the embedded Hono API.
+- `packages/sdk`: the `freestyle-voice` package you build plugins against.
+- `plugins`: the example plugins.
+
+## Build
+
+```bash
+pnpm --filter @freestyle-voice/electron build:mac   # or build:win / build:linux
+```
+
+Next: see [how plugins work](/how-plugins-work).

@@ -1,0 +1,77 @@
+---
+title: "Profanity Filter"
+description: "Swap curse words for wholesome, lighthearted stand-ins as you dictate."
+---
+
+The Profanity Filter plugin keeps your dictation family-friendly — and funnier. Curse words are swapped for wholesome stand-ins on the fly.
+
+> "what the hell is this damn thing" → "what the heck is this dang thing"
+>
+> "are you shitting me" → "are you shooting me"
+>
+> "son of a bitch" → "son of a biscuit"
+
+## Install
+
+```bash
+npm install @freestyle-voice/profanity-filter
+```
+
+Or install from **Settings → Plugins** inside the app.
+
+## How it works
+
+A deterministic text rewrite on the server's `afterCleanup` hook — the final text-rewrite stage, same place as dictionary replacement. No LLM, no added latency.
+
+- **Word-boundary matching** — case-insensitive, so "class" and "hello" are never touched.
+- **Phrase priority** — multi-word phrases beat their component words ("son of a bitch" → "son of a biscuit", not "son of a meanie").
+- **Case mirroring** — "SHIT" → "SUGAR", "Damn" → "Dang".
+- **Variety** — where a word has several alternatives, repeats cycle through them.
+
+Identity-based slurs are intentionally **not** included — this is a playful filter, not a euphemism generator for those.
+
+## UI page
+
+The plugin adds a **Profanity Filter** page inside the app (accessible from **Plugins → Profanity Filter → Open**). The page:
+
+- Explains how the filter works
+- Lets you preview any sentence live
+- Lists every word being swapped
+
+It reads the live, effective list (defaults + your overrides) from a small read-only endpoint through the `window.freestyle` host bridge.
+
+## Configuration
+
+Tweak it via the `[name, options]` tuple form in the `plugins` setting:
+
+```jsonc
+[
+  ["@freestyle-voice/profanity-filter", {
+    "replacements": {
+      "fuck": ["fishsticks", "fiddlesticks"],
+      "crap": "kerfuffle"
+    },
+    "disableDefaults": false,
+    "preserveCase": true
+  }]
+]
+```
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `replacements` | `Record<string, string \| string[]>` | `{}` | Add or override substitutions (merged over the defaults). A string or an array of alternatives. |
+| `disableDefaults` | `boolean` | `false` | Use only your own `replacements`, ignoring the built-in list. |
+| `preserveCase` | `boolean` | `true` | Mirror the matched word's casing onto the replacement. |
+
+## Build from source
+
+```bash
+pnpm install
+pnpm --filter @freestyle-voice/profanity-filter build
+```
+
+This runs `pkgroll --minify` (server-side plugin code) followed by `vite build` (UI page).
+
+## Source
+
+[`plugins/profanity-filter/`](https://github.com/freestyle-voice/freestyle/tree/main/plugins/profanity-filter) in the monorepo.

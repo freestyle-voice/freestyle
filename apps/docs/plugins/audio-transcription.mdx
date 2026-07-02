@@ -1,0 +1,58 @@
+---
+title: "Audio Transcription"
+description: "Transcribe audio files by dropping them into Freestyle — no microphone needed."
+---
+
+The Audio Transcription plugin adds a **Transcribe Files** page where you can drop or pick audio files and get clean text back, using the same local or cloud transcription model you've configured for dictation.
+
+## Install
+
+```bash
+npm install @freestyle-voice/plugin-audio-transcription
+```
+
+Or install from **Settings → Plugins** inside the app.
+
+## Usage
+
+<Steps>
+  <Step title="Open the plugin page">
+    Go to **Plugins → Audio Transcription → Open**.
+  </Step>
+  <Step title="Drop your files">
+    Drop one or more audio files onto the page, or click to choose from your filesystem.
+  </Step>
+  <Step title="Get your transcript">
+    Each file is transcribed and cleaned up. Copy the result with one click.
+  </Step>
+</Steps>
+
+### Supported formats
+
+`wav`, `mp3`, `m4a`, `ogg`, and `flac`. Files are decoded and resampled to 16 kHz mono in the browser before being sent to the server, so any common format works regardless of the provider.
+
+## Privacy
+
+Audio is sent only to the Freestyle server you've configured — your local machine by default. Nothing leaves your device unless you've set up a cloud provider.
+
+## How it works
+
+The plugin's page talks to the server's `/api/transcribe` endpoint through the Freestyle plugin bridge (`window.freestyle.api`). It ships no model of its own and reuses your configured voice model and cleanup settings.
+
+This means:
+- If you're using a local model (whisper.cpp, MLX), audio stays on your machine.
+- If you're using a cloud provider (OpenAI, Groq, etc.), audio is sent to that provider — same as dictation.
+- Cleanup intensity and dictionary replacements apply to file transcriptions too.
+
+## Build from source
+
+```bash
+pnpm install
+pnpm --filter @freestyle-voice/plugin-audio-transcription build
+```
+
+This runs `pkgroll --minify` (server-side plugin code) followed by `vite build` (UI page).
+
+## Source
+
+[`plugins/audio-transcription/`](https://github.com/freestyle-voice/freestyle/tree/main/plugins/audio-transcription) in the monorepo.

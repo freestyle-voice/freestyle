@@ -1,0 +1,125 @@
+---
+title: "Contributing"
+description: "Set up the project, understand the codebase, and open your first PR."
+---
+
+Thank you for considering contributing to Freestyle. Contributors mean a lot to us — it's people like you that grow our community and make this project so fun to work on.
+
+<Card title="Join our Discord" icon="discord" href="https://discord.gg/Fmgt5yZCDu">
+  This is where contributors communicate. All project discussions happen here. If you have any questions, Discord is the place to ask.
+</Card>
+
+## Prerequisites
+
+- **Node.js 22+**
+- **pnpm 10+**
+
+## Setup
+
+<Steps>
+  <Step title="Fork and clone">
+    ```bash
+    git clone https://github.com/freestyle-voice/freestyle.git
+    cd freestyle
+    ```
+  </Step>
+  <Step title="Install dependencies">
+    ```bash
+    pnpm install
+    ```
+  </Step>
+  <Step title="Start development">
+    ```bash
+    pnpm dev
+    ```
+
+    This starts the Electron app with hot-reloading via `electron-vite`. The embedded Hono server starts automatically on a local port.
+
+    On first launch, macOS will prompt for:
+    1. **Microphone** access
+    2. **Accessibility** access (required for paste simulation and global key listener)
+  </Step>
+</Steps>
+
+## Project structure
+
+| Directory | What it is |
+| --- | --- |
+| `apps/electron` | Electron desktop app (main process + React renderer) |
+| `apps/server` | Hono API server (embedded in the Electron app, also runs standalone via Docker) |
+| `apps/docs` | This documentation site (Mintlify) |
+| `packages/sdk` | The `freestyle-voice` npm package — the public plugin SDK |
+| `packages/validations` | Shared Zod validation schemas |
+| `packages/utils` | Shared utilities (logger, etc.) |
+| `packages/create-freestyle-plugin` | CLI scaffolding tool (`npx create-freestyle-plugin`) |
+| `plugins/profanity-filter` | First-party plugin — swaps curse words for wholesome stand-ins |
+| `plugins/audio-transcription` | First-party plugin — transcribe audio files via drag-and-drop |
+| `templates/` | Starter templates downloaded by `create-freestyle-plugin` |
+| `scripts/` | Build helpers, plugin link/unlink, MLX ASR worker |
+
+## Build
+
+```bash
+# macOS
+pnpm --filter @freestyle-voice/electron build:mac
+
+# Windows
+pnpm --filter @freestyle-voice/electron build:win
+
+# Linux
+pnpm --filter @freestyle-voice/electron build:linux
+```
+
+## Development workflow
+
+1. Create a branch from `main`
+2. Make your changes
+3. Run `pnpm biome check .` to verify lint and formatting
+4. Run `pnpm --filter @freestyle-voice/electron typecheck:web` to verify types
+5. Commit — husky runs Biome on staged files automatically
+6. Open a PR against `main`
+
+## Code style
+
+- **Biome** for linting and formatting (not ESLint/Prettier)
+- 2-space indentation, 80-char line width
+- Imports are auto-sorted by Biome
+
+## Commit messages
+
+Follow conventional commits:
+
+```
+feat: add new feature
+fix: resolve a bug
+chore: maintenance task
+```
+
+## Freestyle Cloud backend
+
+<Note>
+  Only needed if you're working on the **Freestyle Cloud** transcription provider. Most contributors can skip this section.
+</Note>
+
+The Freestyle Cloud backend is a separate Cloudflare Worker that exposes the `/v1/transcribe` endpoint. The desktop app calls it when "Freestyle Cloud" is the selected voice model.
+
+1. In the cloud repo's `apps/server`, create local secrets from the template:
+
+    ```bash
+    cp apps/server/.dev.vars.example apps/server/.dev.vars
+    # set GROQ_API_KEY=... in .dev.vars
+    ```
+
+2. Start the Worker with Wrangler (defaults to `http://localhost:8787`):
+
+    ```bash
+    pnpm dev   # runs wrangler dev
+    ```
+
+3. Point the desktop app at it by adding this to `apps/electron/.env.local`, then restart `pnpm dev`:
+
+    ```
+    FREESTYLE_CLOUD_URL=http://localhost:8787
+    ```
+
+`.dev.vars` is gitignored — never commit real keys.

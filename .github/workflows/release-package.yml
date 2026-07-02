@@ -23,6 +23,7 @@ on:
         type: choice
         options:
           - sdk
+          - create-freestyle-plugin
           - plugin-audio-transcription
           - profanity-filter
       version:
@@ -74,6 +75,7 @@ jobs:
         run: |
           case "$PKG" in
             sdk)                        echo "path=packages/sdk" >> "$GITHUB_OUTPUT" ;;
+            create-freestyle-plugin)    echo "path=packages/create-freestyle-plugin" >> "$GITHUB_OUTPUT" ;;
             plugin-audio-transcription) echo "path=plugins/audio-transcription" >> "$GITHUB_OUTPUT" ;;
             profanity-filter)           echo "path=plugins/profanity-filter" >> "$GITHUB_OUTPUT" ;;
             *) echo "::error::Unknown package: $PKG"; exit 1 ;;

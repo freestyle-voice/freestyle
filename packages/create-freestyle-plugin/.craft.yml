@@ -1,0 +1,19 @@
+# Craft config for the `create-freestyle-plugin` package.
+#
+# INDEPENDENT release pipeline (see packages/sdk/.craft.yml for the rationale).
+minVersion: "2.21.1"
+
+versioning:
+  policy: manual
+
+changelog:
+  filePath: CHANGELOG.md
+  policy: auto
+
+releaseBranchPrefix: release-create-freestyle-plugin
+
+targets:
+  - name: npm
+    access: public
+  - name: github
+    tagPrefix: "create-freestyle-plugin@"

@@ -15,6 +15,7 @@ on:
   push:
     branches:
       - "release-sdk/**"
+      - "release-create-freestyle-plugin/**"
       - "release-plugin-**"
 
 concurrency:
@@ -49,6 +50,10 @@ jobs:
             release-sdk/*)
               echo "path=packages/sdk" >> "$GITHUB_OUTPUT"
               echo "name=freestyle-voice" >> "$GITHUB_OUTPUT"
+              ;;
+            release-create-freestyle-plugin/*)
+              echo "path=packages/create-freestyle-plugin" >> "$GITHUB_OUTPUT"
+              echo "name=create-freestyle-plugin" >> "$GITHUB_OUTPUT"
               ;;
             release-plugin-audio-transcription/*)
               echo "path=plugins/audio-transcription" >> "$GITHUB_OUTPUT"

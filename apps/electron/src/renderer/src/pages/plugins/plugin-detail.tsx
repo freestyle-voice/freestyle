@@ -10,13 +10,15 @@ import {
 import type { PluginInfo, PluginUpdateResult } from "@shared/plugins";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Loader2, MoreHorizontal } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
-import { pluginDisplayName, resolvePluginIcon } from "./helpers";
+import {
+  pluginDisplayName,
+  resolvePluginIcon,
+  usePluginUpdates,
+} from "./helpers";
 import { PluginReadme } from "./plugin-readme";
-
-const ONE_HOUR = 60 * 60 * 1000;
 
 export default function PluginDetailPage(): React.JSX.Element {
   const { slug } = useParams<{ slug: string }>();
@@ -37,29 +39,7 @@ export default function PluginDetailPage(): React.JSX.Element {
     queryClient.setQueryData(["plugins"], all);
   };
 
-  // Reuse the same query key family as the plugins list page so caching is
-  // shared — if the list page already checked, this page gets a cache hit.
-  const updateEntries = useMemo(
-    () =>
-      plugin?.version && !plugin.missing
-        ? [{ name: plugin.specifier, currentVersion: plugin.version }]
-        : [],
-    [plugin],
-  );
-
-  const { data: updatesMap } = useQuery({
-    queryKey: ["plugin-updates", updateEntries],
-    queryFn: async () => {
-      if (updateEntries.length === 0)
-        return new Map<string, PluginUpdateResult>();
-      const results = await window.api.checkPluginUpdates(updateEntries);
-      return new Map(results.map((r) => [r.name, r]));
-    },
-    staleTime: ONE_HOUR,
-    retry: 1,
-    enabled: !!plugin,
-  });
-
+  const { data: updatesMap } = usePluginUpdates(plugin ? [plugin] : []);
   const update = plugin ? updatesMap?.get(plugin.specifier) : undefined;
 
   return (

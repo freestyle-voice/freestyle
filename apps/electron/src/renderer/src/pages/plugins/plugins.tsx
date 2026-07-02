@@ -25,34 +25,13 @@ import {
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
-import { pluginDisplayName, resolvePluginIcon } from "./helpers";
+import {
+  pluginDisplayName,
+  resolvePluginIcon,
+  usePluginUpdates,
+} from "./helpers";
 
 type Tab = "browse" | "installed";
-
-const ONE_HOUR = 60 * 60 * 1000;
-
-/** Build a stable query key + fetch function for the plugin update check. */
-function usePluginUpdates(plugins: PluginInfo[]) {
-  const entries = useMemo(
-    () =>
-      plugins
-        .filter((p) => p.version && !p.missing)
-        .map((p) => ({ name: p.specifier, currentVersion: p.version! })),
-    [plugins],
-  );
-
-  return useQuery({
-    queryKey: ["plugin-updates", entries],
-    queryFn: async () => {
-      if (entries.length === 0) return new Map<string, PluginUpdateResult>();
-      const results = await window.api.checkPluginUpdates(entries);
-      return new Map(results.map((r) => [r.name, r]));
-    },
-    staleTime: ONE_HOUR,
-    // Don't retry aggressively — registry checks are best-effort.
-    retry: 1,
-  });
-}
 
 export default function PluginsPage(): React.JSX.Element {
   const { t } = useTranslation();

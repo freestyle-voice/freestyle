@@ -191,7 +191,7 @@ function WordRow({
         <>
           <span className="alts">
             {entry.alternatives.map((a, i) => (
-              <span key={a} className="alt">
+              <span key={`${a}-${i}`} className="alt">
                 {a}
                 {i < entry.alternatives.length - 1 ? " · " : ""}
               </span>

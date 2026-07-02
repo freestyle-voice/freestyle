@@ -2,6 +2,7 @@
 
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { downloadTemplate } from "@bluwy/giget-core";
 import confirm from "@inquirer/confirm";
@@ -10,7 +11,8 @@ import select from "@inquirer/select";
 import { Option, program } from "commander";
 import pc from "picocolors";
 
-const version = "0.0.1";
+const require = createRequire(import.meta.url);
+const { version } = require("../package.json") as { version: string };
 
 const config = {
   user: "freestyle-voice",
@@ -58,14 +60,15 @@ function detectPackageManager(): string {
 
 /** Slugify a project name for use as a package name. */
 function toPackageName(name: string): string {
-  return name
+  const slug = name
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9\-._~@/]/g, "")
+    .replace(/[^a-z0-9\-._~]/g, "")
     .replace(/^[._]/, "")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+  return slug || "my-freestyle-plugin";
 }
 
 // ---------------------------------------------------------------------------

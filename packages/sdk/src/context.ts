@@ -62,6 +62,31 @@ export interface PluginStorage {
 }
 
 /**
+ * Access to the host's configured language model, exposed to server-side
+ * plugins so they can run their own LLM calls (classification, tool-calling
+ * agents, etc.) reusing the user's default cleanup model and API keys — no
+ * separate provider or key configuration required.
+ *
+ * Present only in the server process (`mode: "server"`) and only when the user
+ * has a default LLM model configured. Always guard with `if (ctx.llm)`.
+ */
+export interface PluginLlm {
+  /**
+   * Resolve a ready-to-use AI SDK `LanguageModel` backed by the user's default
+   * cleanup model and stored provider key. Pass the returned value straight to
+   * the AI SDK's `generateText` / `streamText` `model` option.
+   *
+   * Typed as `unknown` in the SDK to avoid a hard dependency on the `ai`
+   * package; cast to `LanguageModel` (from `ai`) at the call site.
+   */
+  getModel(): unknown;
+  /** The provider id of the resolved model (e.g. "openai", "groq"). */
+  readonly providerId: string;
+  /** The model id of the resolved model. */
+  readonly modelId: string;
+}
+
+/**
  * The execution context delivered to a plugin's `setup` lifecycle hook, once
  * per host, before any other hook runs. Plugins capture what they need in a
  * closure. It is the same shape in both the server and the Electron main
@@ -80,4 +105,10 @@ export interface PluginContext {
   settings: SettingsReader;
   /** Per-plugin persistent storage (JSON key-value, scoped by plugin name). */
   storage: PluginStorage;
+  /**
+   * [server] Access to the host's configured LLM. Present only in the server
+   * process and only when a default LLM model is configured; `undefined`
+   * otherwise. Always guard with `if (ctx.llm)`.
+   */
+  llm?: PluginLlm;
 }

@@ -224,18 +224,30 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     });
     rawText = sanitizeTranscriptText(result.text);
 
-    // Plugin hook: rewrite the raw transcript before cleanup.
-    rawText = (
-      await plugins().run(
-        "afterTranscribe",
-        {
-          providerId: defaults.voice.provider,
-          modelId: defaults.voice.model_id,
-          appContext: parseAppContext(appContext),
-        },
-        { text: rawText },
-      )
-    ).text;
+    // Plugin hook: rewrite the raw transcript before cleanup. A plugin may also
+    // mark the utterance as `consumed` (e.g. it triggered a voice command), in
+    // which case we skip cleanup and deliver no text.
+    const afterTranscribe = await plugins().run(
+      "afterTranscribe",
+      {
+        providerId: defaults.voice.provider,
+        modelId: defaults.voice.model_id,
+        appContext: parseAppContext(appContext),
+      },
+      { text: rawText },
+    );
+    rawText = afterTranscribe.text;
+    if (afterTranscribe.consumed) {
+      log.debug("afterTranscribe consumed the utterance; skipping cleanup");
+      return c.json({
+        raw: "",
+        cleaned: "",
+        model: defaults.voice.model_id,
+        durationMs: Date.now() - start,
+        audioDurationMs,
+        consumed: true,
+      });
+    }
     transcribeDurationInSeconds = result.durationInSeconds;
 
     log.debug(

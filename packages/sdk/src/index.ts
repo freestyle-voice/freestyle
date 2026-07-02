@@ -9,6 +9,7 @@ export {
   type BaseLogger,
   createPluginLogger,
   type PluginContext,
+  type PluginLlm,
   type PluginLogger,
   type PluginStorage,
   type SettingsReader,
@@ -18,6 +19,7 @@ export { FreestyleEventType, PipelineStage } from "./events.js";
 export type {
   AfterCleanupInput,
   AfterTranscribeInput,
+  AfterTranscribeOutput,
   BeforeCleanupInput,
   BeforeOutputInput,
   Handler,

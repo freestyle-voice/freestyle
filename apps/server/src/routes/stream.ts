@@ -261,20 +261,21 @@ const stream = new Hono().get(
 
             // Plugin hook: rewrite the raw transcript before cleanup, matching
             // the batch /transcribe route so streaming dictations get the same
-            // afterTranscribe + transcribed surfaces.
-            rawText = (
-              await plugins().run(
-                "afterTranscribe",
-                {
-                  providerId: voiceDefaults!.provider,
-                  modelId: voiceDefaults!.model_id,
-                  appContext: parseAppContext(appContext),
-                },
-                { text: rawText },
-              )
-            ).text;
+            // afterTranscribe + transcribed surfaces. A plugin may also mark the
+            // utterance as `consumed` (e.g. a voice command fired), in which
+            // case we skip cleanup and deliver no text.
+            const afterTranscribe = await plugins().run(
+              "afterTranscribe",
+              {
+                providerId: voiceDefaults!.provider,
+                modelId: voiceDefaults!.model_id,
+                appContext: parseAppContext(appContext),
+              },
+              { text: rawText },
+            );
+            rawText = afterTranscribe.text;
 
-            if (!rawText?.trim()) {
+            if (afterTranscribe.consumed || !rawText?.trim()) {
               ws.send(JSON.stringify({ type: "final", text: "" }));
               return;
             }

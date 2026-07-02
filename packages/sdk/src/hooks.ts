@@ -38,9 +38,13 @@ export interface Hooks {
   /**
    * [server] Fires immediately after speech-to-text produces a raw transcript
    * (after built-in sanitization, before LLM cleanup). Edit `output.text` to
-   * rewrite the raw transcript.
+   * rewrite the raw transcript, or set `output.consumed = true` to signal that
+   * the utterance was handled entirely by the plugin (e.g. it triggered a voice
+   * command). When `consumed` is set, the host skips LLM cleanup and delivers
+   * nothing to the focused application — the dictation is treated as an action,
+   * not text to type.
    */
-  afterTranscribe?: Handler<AfterTranscribeInput, { text: string }>;
+  afterTranscribe?: Handler<AfterTranscribeInput, AfterTranscribeOutput>;
 
   /**
    * [server] Fires while the LLM cleanup prompt is being assembled, only when
@@ -79,6 +83,17 @@ export interface AfterTranscribeInput {
   modelId: string;
   /** Application the user was dictating into, if known. */
   appContext?: AppContext;
+}
+
+export interface AfterTranscribeOutput {
+  /** The (possibly rewritten) transcript. Delivered to the app unless consumed. */
+  text: string;
+  /**
+   * Set to `true` when the plugin has fully handled this utterance and no text
+   * should be produced. The host then skips LLM cleanup and suppresses output
+   * delivery. Defaults to falsy (normal dictation).
+   */
+  consumed?: boolean;
 }
 
 export interface BeforeCleanupInput {

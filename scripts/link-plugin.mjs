@@ -27,6 +27,16 @@ import path from "node:path";
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Detect which package manager invoked this script via npm_config_user_agent. */
+function detectPackageManager() {
+  const ua = process.env.npm_config_user_agent;
+  if (!ua) return "npm";
+  if (ua.startsWith("pnpm")) return "pnpm";
+  if (ua.startsWith("bun")) return "bun";
+  if (ua.startsWith("yarn")) return "yarn";
+  return "npm";
+}
+
 /** Derive a URL/route-safe slug from a package name (mirrors SDK pluginSlug). */
 function pluginSlug(name) {
   return name
@@ -97,6 +107,7 @@ function devName(name) {
 // ---------------------------------------------------------------------------
 
 const unlink = process.argv.includes("--unlink");
+const pm = detectPackageManager();
 
 // Resolve the plugin's package.json from CWD (the plugin's root).
 const pluginRoot = process.cwd();
@@ -140,7 +151,7 @@ if (unlink) {
 if (pkg.scripts?.build) {
   console.log("Building plugin...");
   try {
-    execSync("npm run build", { cwd: pluginRoot, stdio: "inherit" });
+    execSync(`${pm} run build`, { cwd: pluginRoot, stdio: "inherit" });
   } catch {
     console.error("Build failed. Fix the errors above and try again.");
     process.exit(1);
@@ -192,7 +203,7 @@ if (!trySymlink(distDir, distLink)) {
   console.log("Symlink failed — falling back to copy...");
   copyDir(distDir, distLink);
   console.log(
-    "Note: changes won't be reflected live. Re-run `pnpm run link` after each build.",
+    `Note: changes won't be reflected live. Re-run \`${pm} run link\` after each build.`,
   );
 }
 
@@ -217,7 +228,7 @@ if (fs.lstatSync(distLink).isSymbolicLink()) {
     `  dist/ → ${distDir} (symlinked — changes are live after rebuild)`,
   );
 } else {
-  console.log(`  dist/ copied (re-run \`pnpm run link\` after changes)`);
+  console.log(`  dist/ copied (re-run \`${pm} run link\` after changes)`);
 }
 console.log();
 console.log(

@@ -271,11 +271,13 @@ async function main(targetDir: string | undefined, options: Options) {
   if (!shouldInstall) {
     console.log(`  ${pc.gray(packageManager)} install`);
   }
+  // Always use the `<pm> run <script>` form: `build` and `link` collide with
+  // built-in package-manager commands (e.g. `bun build`, `pnpm/yarn/bun link`),
+  // which would run the wrong thing.
+  const run = `${packageManager} run`;
+  console.log(`  ${pc.gray(run)} build`);
   console.log(
-    `  ${pc.gray(packageManager === "npm" ? "npm run" : packageManager)} build`,
-  );
-  console.log(
-    `  ${pc.gray(packageManager === "npm" ? "npm run" : packageManager)} link    ${pc.gray("# symlink into Freestyle for testing")}`,
+    `  ${pc.gray(run)} link    ${pc.gray("# symlink into Freestyle for testing")}`,
   );
   console.log();
 }

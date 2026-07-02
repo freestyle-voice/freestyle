@@ -138,6 +138,15 @@ export class PluginViewManager {
     this.attached = false;
   }
 
+  /**
+   * Discard any cached view so the next {@link show} reloads the page from
+   * disk. Call after a plugin is installed, updated, or uninstalled — otherwise
+   * a view kept alive across {@link hide} would re-attach stale plugin code.
+   */
+  invalidate(): void {
+    this.destroyView();
+  }
+
   private destroyView(): void {
     if (!this.view) return;
     if (this.attached && this.window && !this.window.isDestroyed()) {

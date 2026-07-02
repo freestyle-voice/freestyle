@@ -28,6 +28,28 @@ async function fetchReplacements(): Promise<ReplacementsResponse> {
   return res.json<ReplacementsResponse>();
 }
 
+/**
+ * Send a mutating request to the replacements API and throw the server's error
+ * message on a non-OK response. Shared by the add, edit, and delete flows so
+ * failures surface consistently instead of being silently swallowed.
+ */
+async function mutateReplacements(
+  method: "POST" | "PUT" | "DELETE",
+  body: Record<string, unknown>,
+): Promise<void> {
+  const res = await getBridge().api(ROUTE, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res
+      .json<{ error?: string }>()
+      .catch(() => ({}) as { error?: string });
+    throw new Error(err.error ?? `server returned ${res.status}`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
@@ -79,15 +101,10 @@ function AddWordForm() {
         .filter(Boolean);
       if (alternatives.length === 0)
         throw new Error("At least one replacement is required");
-      const res = await getBridge().api(ROUTE, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word: data.word.trim(), alternatives }),
+      await mutateReplacements("POST", {
+        word: data.word.trim(),
+        alternatives,
       });
-      if (!res.ok) {
-        const body = await res.json<{ error?: string }>();
-        throw new Error(body.error ?? `server returned ${res.status}`);
-      }
     },
     onSuccess: () => {
       reset();
@@ -234,34 +251,24 @@ function WordList({ entries }: { entries: Entry[] }) {
     : entries;
 
   const deleteMutation = useMutation({
-    mutationFn: async (word: string) => {
-      await getBridge().api(ROUTE, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word }),
-      });
-    },
+    mutationFn: (word: string) => mutateReplacements("DELETE", { word }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["replacements"] }),
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({
+    mutationFn: ({
       word,
       alternatives,
     }: {
       word: string;
       alternatives: string[];
-    }) => {
-      await getBridge().api(ROUTE, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word, alternatives }),
-      });
-    },
+    }) => mutateReplacements("PUT", { word, alternatives }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["replacements"] }),
   });
+
+  const rowError = deleteMutation.error ?? updateMutation.error;
 
   return (
     <section className="card">
@@ -278,6 +285,11 @@ function WordList({ entries }: { entries: Entry[] }) {
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
+      {rowError ? (
+        <p className="add-error">
+          {rowError instanceof Error ? rowError.message : String(rowError)}
+        </p>
+      ) : null}
       {filtered.length === 0 ? (
         <p className="muted">No matches.</p>
       ) : (

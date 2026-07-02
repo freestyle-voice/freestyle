@@ -114,6 +114,9 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
     "plugins:install",
     async (_e, npmName: string, version: string | undefined) => {
       await currentDeps!.installPlugin(npmName, version);
+      // Installing doubles as updating (reinstall). Drop any cached view so the
+      // next open loads the new code instead of the stale, still-alive one.
+      viewManager?.invalidate();
       const { pluginsSetting, userDataDir, disabledPlugins } =
         await currentDeps!.getDiscoverySources();
       refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);
@@ -123,6 +126,8 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
 
   ipcMain.handle("plugins:uninstall", async (_e, specifier: string) => {
     await currentDeps!.uninstallPlugin(specifier);
+    // Tear down any cached view for the removed plugin.
+    viewManager?.invalidate();
     const { pluginsSetting, userDataDir, disabledPlugins } =
       await currentDeps!.getDiscoverySources();
     refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);

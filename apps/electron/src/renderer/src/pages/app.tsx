@@ -468,14 +468,38 @@ export default function AppPage(): React.JSX.Element {
       const dataArray = freqDataRef.current;
       if (analyser && dataArray) {
         analyser.getByteFrequencyData(dataArray);
-        const sliceSize = Math.floor(analyser.frequencyBinCount / BARS);
+        const VOICE_MIN = 80;
+        const VOICE_MAX = 4000;
+
+        const sampleRate = analyser.context.sampleRate;
+        const binWidth = sampleRate / analyser.fftSize;
+
         const raw: number[] = [];
         let totalSum = 0;
+
         for (let i = 0; i < BARS; i++) {
+          const startFreq = VOICE_MIN * (VOICE_MAX / VOICE_MIN) ** (i / BARS);
+
+          const endFreq =
+            VOICE_MIN * (VOICE_MAX / VOICE_MIN) ** ((i + 1) / BARS);
+
+          const startBin = Math.max(0, Math.floor(startFreq / binWidth));
+
+          const endBin = Math.min(
+            analyser.frequencyBinCount,
+            Math.ceil(endFreq / binWidth),
+          );
+
           let sum = 0;
-          for (let j = 0; j < sliceSize; j++)
-            sum += dataArray[i * sliceSize + j];
-          const val = sum / sliceSize / 255;
+
+          for (let j = startBin; j < endBin; j++) {
+            sum += dataArray[j];
+          }
+
+          const count = Math.max(1, endBin - startBin);
+
+          const val = sum / count / 255;
+
           raw.push(val);
           totalSum += val;
         }
@@ -538,7 +562,7 @@ export default function AppPage(): React.JSX.Element {
 
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
+      analyser.fftSize = 1024;
       analyser.smoothingTimeConstant = 0.4;
       source.connect(analyser);
       audioSourceRef.current = source;

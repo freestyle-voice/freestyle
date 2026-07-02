@@ -27,6 +27,12 @@ export interface PluginContributes {
 /** The `freestyle` block of a plugin's `package.json`. */
 export interface PluginManifest {
   /**
+   * Human-readable name shown in the Plugins hub. When omitted, the app
+   * derives a display name from the package name (stripping scope and
+   * `freestyle-plugin-` prefix, then Title Casing).
+   */
+  displayName?: string;
+  /**
    * Icon shown for the plugin in the Plugins hub. Must be the name of an icon
    * from the app's icon set (lucide), in PascalCase (e.g. `"FileMusic"`) or
    * kebab-case (e.g. `"file-music"`). Falls back to a default when omitted or
@@ -96,4 +102,18 @@ export function parsePluginIcon(freestyleField: unknown): string | undefined {
   if (!isRecord(freestyleField)) return undefined;
   const { icon } = freestyleField;
   return typeof icon === "string" && icon ? icon : undefined;
+}
+
+/**
+ * Read the plugin-level `freestyle.displayName` from a `package.json`'s
+ * `freestyle` field. Returns `undefined` when absent or not a non-empty string.
+ */
+export function parsePluginDisplayName(
+  freestyleField: unknown,
+): string | undefined {
+  if (!isRecord(freestyleField)) return undefined;
+  const { displayName } = freestyleField;
+  return typeof displayName === "string" && displayName.trim()
+    ? displayName.trim()
+    : undefined;
 }

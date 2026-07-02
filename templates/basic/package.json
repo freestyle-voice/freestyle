@@ -14,6 +14,10 @@
   "files": [
     "dist"
   ],
+  "freestyle": {
+    "displayName": "My Plugin",
+    "icon": "Puzzle"
+  },
   "scripts": {
     "build": "pkgroll --minify",
     "typecheck": "tsc --noEmit",

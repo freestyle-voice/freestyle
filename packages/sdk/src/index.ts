@@ -55,6 +55,7 @@ export {
   type PluginContributes,
   type PluginManifest,
   type PluginUIPage,
+  parsePluginDisplayName,
   parsePluginIcon,
   parsePluginPages,
   pluginSlug,

@@ -259,6 +259,7 @@ function serializePlugins(plugins: readonly DiscoveredPlugin[]) {
     ...(p.version ? { version: p.version } : {}),
     ...(p.description ? { description: p.description } : {}),
     ...(p.author ? { author: p.author } : {}),
+    ...(p.displayName ? { displayName: p.displayName } : {}),
     ...(p.icon ? { icon: p.icon } : {}),
     ...(p.readme ? { readme: p.readme } : {}),
   }));

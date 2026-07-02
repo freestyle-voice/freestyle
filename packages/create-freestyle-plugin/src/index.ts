@@ -213,9 +213,14 @@ async function main(targetDir: string | undefined, options: Options) {
     const pkgName = toPackageName(projectName);
     pkg.name = pkgName;
 
-    // Update the plugin's internal name to match
-    if (pkg.freestyle?.contributes?.pages?.[0]?.title === "My Plugin") {
-      pkg.freestyle.contributes.pages[0].title = projectName;
+    // Update the plugin's display name and page title to match
+    if (pkg.freestyle) {
+      if (pkg.freestyle.displayName === "My Plugin") {
+        pkg.freestyle.displayName = projectName;
+      }
+      if (pkg.freestyle.contributes?.pages?.[0]?.title === "My Plugin") {
+        pkg.freestyle.contributes.pages[0].title = projectName;
+      }
     }
 
     fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);

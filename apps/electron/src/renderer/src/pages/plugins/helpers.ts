@@ -20,10 +20,12 @@ export function resolvePluginIcon(name: string | undefined): LucideIcon {
 }
 
 /**
- * Turn a package name into a friendly title: strip the scope and any
- * `(freestyle-)plugin-` prefix, then Title Case the remaining words.
+ * Return the plugin's display name. Prefers `freestyle.displayName` from the
+ * manifest; falls back to deriving a friendly title from the package name
+ * (strip scope and `(freestyle-)plugin-` prefix, then Title Case).
  */
 export function pluginDisplayName(plugin: PluginInfo): string {
+  if (plugin.displayName) return plugin.displayName;
   const base = plugin.name
     .replace(/^@[^/]+\//, "")
     .replace(/^freestyle-plugin-/, "")

@@ -15,6 +15,7 @@
     "dist"
   ],
   "freestyle": {
+    "displayName": "My Plugin",
     "icon": "Puzzle",
     "contributes": {
       "pages": [

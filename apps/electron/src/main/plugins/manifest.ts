@@ -9,6 +9,7 @@ import {
 } from "@freestyle-voice/validations";
 import {
   type PluginUIPage,
+  parsePluginDisplayName,
   parsePluginIcon,
   parsePluginPages,
   pluginSlug,
@@ -36,6 +37,8 @@ export interface DiscoveredPlugin {
   description?: string;
   /** Author string from `package.json`, when present. */
   author?: string;
+  /** Human-readable display name from `freestyle.displayName`, if any. */
+  displayName?: string;
   /** Icon name (lucide) the plugin declares via `freestyle.icon`, if any. */
   icon?: string;
   /** Whether the plugin is currently enabled (not in `disabled_plugins`). */
@@ -227,6 +230,7 @@ function readManifest(
 
   const dir = path.dirname(pkgJsonPath);
   const name = typeof pkg.name === "string" ? pkg.name : path.basename(dir);
+  const displayName = parsePluginDisplayName(pkg.freestyle);
   const icon = parsePluginIcon(pkg.freestyle);
   const readme = readReadme(dir);
   return {
@@ -241,6 +245,7 @@ function readManifest(
       ? { description: pkg.description }
       : {}),
     ...(typeof pkg.author === "string" ? { author: pkg.author } : {}),
+    ...(displayName ? { displayName } : {}),
     ...(icon ? { icon } : {}),
     ...(readme ? { readme } : {}),
   };

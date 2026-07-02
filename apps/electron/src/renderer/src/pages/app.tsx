@@ -11,6 +11,12 @@ import {
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
 const BARS = 14;
+// Human-voice band used to spread the visualizer bars (#366). Mapping FFT bins
+// linearly across the full 0–Nyquist range piled almost all energy into the
+// first bar, since speech sits below a few kHz; bars are log-spaced over this
+// band instead so height is distributed across them.
+const VOICE_MIN_HZ = 80;
+const VOICE_MAX_HZ = 4000;
 const RISE = 0.55;
 const FALL = 0.22;
 const SVG_WIDTH = 117;
@@ -468,14 +474,25 @@ export default function AppPage(): React.JSX.Element {
       const dataArray = freqDataRef.current;
       if (analyser && dataArray) {
         analyser.getByteFrequencyData(dataArray);
-        const sliceSize = Math.floor(analyser.frequencyBinCount / BARS);
+        const binCount = analyser.frequencyBinCount;
+        const nyquist = analyser.context.sampleRate / 2;
+        const freqToBin = (hz: number) =>
+          Math.min(
+            binCount - 1,
+            Math.max(0, Math.round((hz / nyquist) * (binCount - 1))),
+          );
+        const ratio = VOICE_MAX_HZ / VOICE_MIN_HZ;
         const raw: number[] = [];
         let totalSum = 0;
         for (let i = 0; i < BARS; i++) {
+          const loBin = freqToBin(VOICE_MIN_HZ * ratio ** (i / BARS));
+          const hiBin = Math.max(
+            loBin + 1,
+            freqToBin(VOICE_MIN_HZ * ratio ** ((i + 1) / BARS)),
+          );
           let sum = 0;
-          for (let j = 0; j < sliceSize; j++)
-            sum += dataArray[i * sliceSize + j];
-          const val = sum / sliceSize / 255;
+          for (let j = loBin; j < hiBin; j++) sum += dataArray[j];
+          const val = sum / (hiBin - loBin) / 255;
           raw.push(val);
           totalSum += val;
         }
@@ -538,7 +555,9 @@ export default function AppPage(): React.JSX.Element {
 
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
+      // 2048 → 1024 bins (~23 Hz each at 48 kHz), enough resolution to
+      // log-spread the voice band across the bars (#366).
+      analyser.fftSize = 2048;
       analyser.smoothingTimeConstant = 0.4;
       source.connect(analyser);
       audioSourceRef.current = source;

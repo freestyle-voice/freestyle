@@ -1,0 +1,46 @@
+{
+  "name": "create-freestyle-plugin",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Create a Freestyle voice plugin from a starter template.",
+  "license": "MIT",
+  "homepage": "https://github.com/freestyle-voice/freestyle/tree/main/packages/create-freestyle-plugin#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/freestyle-voice/freestyle.git",
+    "directory": "packages/create-freestyle-plugin"
+  },
+  "keywords": [
+    "freestyle",
+    "freestyle-plugin",
+    "create",
+    "scaffold",
+    "cli"
+  ],
+  "bin": {
+    "create-freestyle-plugin": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "pkgroll --minify",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bluwy/giget-core": "^0.1.7",
+    "@inquirer/confirm": "^5.1.10",
+    "@inquirer/input": "^4.1.10",
+    "@inquirer/select": "^4.2.0",
+    "commander": "^13.1.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "pkgroll": "^2.27.0",
+    "typescript": "^5.8.3"
+  }
+}

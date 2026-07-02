@@ -1,0 +1,30 @@
+{
+  "name": "freestyle-plugin-starter",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "A Freestyle voice dictation plugin.",
+  "license": "MIT",
+  "keywords": [
+    "freestyle",
+    "freestyle-plugin",
+    "voice",
+    "dictation"
+  ],
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "pkgroll --minify",
+    "typecheck": "tsc --noEmit",
+    "link": "node scripts/link-plugin.mjs",
+    "unlink": "node scripts/link-plugin.mjs --unlink"
+  },
+  "dependencies": {
+    "freestyle-voice": "^0.1.0"
+  },
+  "devDependencies": {
+    "pkgroll": "^2.27.0",
+    "typescript": "^5.8.3"
+  }
+}

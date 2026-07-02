@@ -1,0 +1,49 @@
+{
+  "name": "freestyle-plugin-starter",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "A Freestyle voice dictation plugin with a UI page.",
+  "license": "MIT",
+  "keywords": [
+    "freestyle",
+    "freestyle-plugin",
+    "voice",
+    "dictation"
+  ],
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "freestyle": {
+    "icon": "Puzzle",
+    "contributes": {
+      "pages": [
+        {
+          "id": "main",
+          "title": "My Plugin",
+          "entry": "dist/ui/index.html"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "pkgroll --minify && vite build",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p ui/tsconfig.json",
+    "link": "node scripts/link-plugin.mjs",
+    "unlink": "node scripts/link-plugin.mjs --unlink"
+  },
+  "dependencies": {
+    "freestyle-voice": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.1",
+    "hono": "^4.12.22",
+    "pkgroll": "^2.27.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "typescript": "^5.8.3",
+    "vite": "^7.3.3"
+  }
+}

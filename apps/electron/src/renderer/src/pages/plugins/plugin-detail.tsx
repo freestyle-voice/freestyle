@@ -1,9 +1,15 @@
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
-import { Switch } from "@renderer/components/ui/switch";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@renderer/components/ui/dropdown-menu";
 import type { PluginInfo, PluginUpdateResult } from "@shared/plugins";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, MoreHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
@@ -85,7 +91,15 @@ export default function PluginDetailPage(): React.JSX.Element {
             {t("plugins.detail.notFound")}
           </p>
         ) : (
-          <Detail plugin={plugin} onToggle={toggle} update={update} />
+          <Detail
+            plugin={plugin}
+            onToggle={toggle}
+            onUninstall={async () => {
+              await window.api.uninstallPlugin(plugin.specifier);
+              navigate("/plugins");
+            }}
+            update={update}
+          />
         )}
       </div>
     </div>
@@ -95,10 +109,12 @@ export default function PluginDetailPage(): React.JSX.Element {
 function Detail({
   plugin,
   onToggle,
+  onUninstall,
   update,
 }: {
   plugin: PluginInfo;
   onToggle: (enabled: boolean) => void | Promise<void>;
+  onUninstall: () => void | Promise<void>;
   update?: PluginUpdateResult;
 }): React.JSX.Element {
   const { t } = useTranslation();
@@ -186,13 +202,33 @@ function Detail({
               <ArrowRight data-icon="inline-end" />
             </Button>
           ) : null}
-          <Switch
-            checked={plugin.enabled}
-            onCheckedChange={(v) => void onToggle(v)}
-            aria-label={t(
-              plugin.enabled ? "plugins.disablePlugin" : "plugins.enablePlugin",
-            )}
-          />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("plugins.more")}
+              >
+                <MoreHorizontal className="text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => void onToggle(!plugin.enabled)}>
+                {t(
+                  plugin.enabled
+                    ? "plugins.disablePlugin"
+                    : "plugins.enablePlugin",
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => void onUninstall()}
+              >
+                {t("plugins.uninstall")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

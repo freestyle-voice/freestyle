@@ -46,9 +46,21 @@ The plugin adds a **Voice Commands** page inside the app (accessible from **Plug
 
 - **Add** a command with a name, one or more trigger phrases, a description, and an action.
 - **Edit** or **delete** existing commands, and **enable/disable** them without deleting.
-- **Try a phrase** — type an utterance to run the real detection pipeline and see whether (and which) command fires.
 
 The **description** you give each command matters: it's used as the tool description the agent reads to decide when to run the command and what payload to extract. A clear description like _"Posts the dictated message to the team Slack channel"_ works better than a terse one.
+
+## Starter commands
+
+On first run the plugin seeds a few ready-to-use commands so it works out of the box. They all use the cross-platform **Open URL / app** action — no keys, scripts, or setup required:
+
+| Command | Say | Opens |
+| --- | --- | --- |
+| **Web search** | _"search the web for…"_, _"search the internet for…"_ | a Google search for the payload |
+| **YouTube search** | _"search youtube for…"_, _"find on youtube…"_ | a YouTube search |
+| **Maps directions** | _"get directions to…"_, _"navigate to…"_ | Google Maps for the destination |
+| **Wikipedia lookup** | _"look up on wikipedia…"_, _"search wikipedia for…"_ | a Wikipedia search |
+
+Edit, disable, or delete them freely — they're seeded only once, when no commands have ever been saved, so anything you remove won't reappear.
 
 Every change is saved through the `window.freestyle` host bridge to the plugin's own CRUD endpoint and persisted with plugin storage, so it survives restarts and takes effect on the next dictation.
 

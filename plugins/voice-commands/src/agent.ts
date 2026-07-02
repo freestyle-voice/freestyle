@@ -55,6 +55,7 @@ export async function runAgent(opts: {
             ),
         }),
         execute: async ({ input }) => {
+          logger.info(`agent chose "${command.name}" (input="${input}")`);
           try {
             const detail = await execute(command, input);
             result.fired = true;
@@ -76,13 +77,31 @@ export async function runAgent(opts: {
     ]),
   );
 
-  await generateText({
-    model,
-    tools,
-    stopWhen: stepCountIs(3),
-    system: SYSTEM_PROMPT,
-    prompt: `Utterance: "${transcript}"`,
-  });
+  logger.debug(
+    `agent: calling model with ${commands.length} tool(s) [${commands
+      .map((c) => c.id)
+      .join(", ")}]`,
+  );
+
+  try {
+    const { steps, finishReason } = await generateText({
+      model,
+      tools,
+      stopWhen: stepCountIs(3),
+      system: SYSTEM_PROMPT,
+      prompt: `Utterance: "${transcript}"`,
+    });
+    logger.debug(
+      `agent: model finished (steps=${steps.length}, finishReason=${finishReason})`,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error(`agent: model call failed: ${message}`);
+    if (err instanceof Error && err.stack) logger.debug(err.stack);
+    // Surface a clear, actionable message to the caller (the /test endpoint
+    // returns it to the UI; afterTranscribe logs and ignores it).
+    throw new Error(`LLM agent failed: ${message}`);
+  }
 
   return result;
 }

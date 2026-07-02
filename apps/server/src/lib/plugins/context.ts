@@ -9,7 +9,11 @@ import type {
 import { createPluginLogger } from "freestyle-voice";
 import { deleteSetting, readSetting, writeSetting } from "../db.js";
 import { getGroqChatModel } from "../groq-http.js";
-import { createChatModel, getDefaultModels } from "../providers.js";
+import {
+  createChatModel,
+  getDefaultModels,
+  providerSupportsChatModel,
+} from "../providers.js";
 
 const STORAGE_PREFIX = "plugin:";
 
@@ -22,6 +26,11 @@ const STORAGE_PREFIX = "plugin:";
 function buildPluginLlm(): PluginLlm | undefined {
   const llm = getDefaultModels().llm;
   if (!llm) return undefined;
+  // Only expose the capability for providers that can actually build a chat
+  // model. The `freestyle-cloud` default resolves to the post-process cleanup
+  // endpoint, which is not a tool-calling chat model — advertising it would make
+  // `getModel()` throw and silently break plugins that rely on the LLM.
+  if (!providerSupportsChatModel(llm.provider)) return undefined;
   return {
     providerId: llm.provider,
     modelId: llm.model_id,

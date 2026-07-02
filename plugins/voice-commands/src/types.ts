@@ -39,6 +39,20 @@ export type CommandAction =
   | ShellAction
   | ShortcutAction;
 
+/** Outcome of running the detection pipeline over an utterance. */
+export interface DetectionResult {
+  /** Names of the commands whose triggers matched the prefilter. */
+  matched: string[];
+  /** Whether a command actually fired (action executed). */
+  fired: boolean;
+  /** The command that fired, if any. */
+  command?: string;
+  /** Human-readable detail of what happened (or the failure message). */
+  detail?: string;
+  /** Whether the LLM agent path ran (vs the deterministic fallback). */
+  llm: boolean;
+}
+
 /** A user-defined voice command: trigger phrases → an action. */
 export interface VoiceCommand {
   /** Stable id (generated on create). */

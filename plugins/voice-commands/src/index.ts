@@ -3,11 +3,11 @@ import type { LanguageModel } from "ai";
 import type { Plugin, PluginLlm, PluginLogger } from "freestyle-voice";
 import { runAction } from "./actions.js";
 import { runAgent } from "./agent.js";
-import { createCommandsApi, type TestResult } from "./api.js";
+import { createCommandsApi } from "./api.js";
 import { PLUGIN_NAME } from "./constants.js";
 import { matchCommands, normalize, stripTrigger } from "./prefilter.js";
 import { CommandStore } from "./store.js";
-import type { VoiceCommand } from "./types.js";
+import type { DetectionResult, VoiceCommand } from "./types.js";
 
 /**
  * Voice Commands — turn spoken trigger phrases into actions. A cheap
@@ -17,39 +17,71 @@ import type { VoiceCommand } from "./types.js";
  */
 export default function voiceCommands(): Plugin {
   const store = new CommandStore();
-  let logger: PluginLogger | null = null;
+  // Starts as a no-op logger and is replaced with the host logger in `setup`;
+  // the API and hooks read it lazily so early calls never hit a null.
+  let logger: PluginLogger = nullLogger;
   let llm: PluginLlm | null = null;
 
   /** Execute a single command's action with the extracted input. */
-  const execute = (command: VoiceCommand, input: string): Promise<string> =>
-    runAction(command.action, input, logger ?? nullLogger);
+  const execute = (command: VoiceCommand, input: string): Promise<string> => {
+    logger.info(`executing "${command.name}" action=${command.action.type}`);
+    return runAction(command.action, input, logger);
+  };
 
   /**
    * The full detection pipeline shared by the `afterTranscribe` hook and the
    * `/test` endpoint: prefilter, then either the LLM agent or a deterministic
    * fallback when no model is configured.
    */
-  async function detect(text: string): Promise<TestResult> {
+  async function detect(text: string): Promise<DetectionResult> {
     const matched = matchCommands(text, store.list());
     const names = matched.map((c) => c.name);
+    logger.debug(
+      `prefilter: ${matched.length}/${store.list().length} command(s) matched${
+        names.length ? ` [${names.join(", ")}]` : ""
+      }`,
+    );
     if (matched.length === 0) {
       return { matched: names, fired: false, llm: Boolean(llm) };
     }
 
     if (llm) {
-      const result = await runAgent({
-        model: llm.getModel() as LanguageModel,
-        transcript: text,
-        commands: matched,
-        execute,
-        logger: logger ?? nullLogger,
-      });
-      return { matched: names, llm: true, ...result };
+      try {
+        // Resolve the model lazily here so a misconfigured/unsupported provider
+        // throws inside this try and degrades to the deterministic path rather
+        // than aborting detection entirely.
+        const model = llm.getModel() as LanguageModel;
+        logger.info(
+          `running agent (model=${llm.providerId}/${llm.modelId}) over ${matched.length} candidate(s)`,
+        );
+        const result = await runAgent({
+          model,
+          transcript: text,
+          commands: matched,
+          execute,
+          logger,
+        });
+        logger.info(
+          result.fired
+            ? `agent fired "${result.command}"`
+            : "agent decided: not a command",
+        );
+        return { matched: names, llm: true, ...result };
+      } catch (err) {
+        // The LLM was advertised but is unusable (bad key, unsupported model,
+        // network failure). Don't drop the command — fall through to the
+        // deterministic match so a clear trigger phrase still fires.
+        const message = err instanceof Error ? err.message : String(err);
+        logger.warn(
+          `LLM agent unavailable (${message}) — using deterministic fallback`,
+        );
+      }
     }
 
-    // No LLM configured — fall back to firing the best deterministic match.
+    // No usable LLM — fall back to firing the best deterministic match.
     const command = pickBestMatch(text, matched);
     const input = stripTrigger(text, command);
+    logger.info(`deterministic fallback firing "${command.name}"`);
     try {
       const detail = await execute(command, input);
       return {
@@ -61,7 +93,7 @@ export default function voiceCommands(): Plugin {
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      logger?.error(`command "${command.name}" failed: ${message}`);
+      logger.error(`command "${command.name}" failed: ${message}`);
       return {
         matched: names,
         fired: true,
@@ -74,8 +106,8 @@ export default function voiceCommands(): Plugin {
 
   const middleware = createCommandsApi({
     store,
-    runTest: detect,
     platform: process.platform,
+    getLogger: () => logger,
   });
 
   return {
@@ -88,7 +120,7 @@ export default function voiceCommands(): Plugin {
       await store.load(ctx.storage);
       logger.info(
         `voice-commands ready on ${ctx.mode} (${store.list().length} commands, llm=${
-          llm ? llm.modelId : "none"
+          llm ? `${llm.providerId}/${llm.modelId}` : "none"
         })`,
       );
     },
@@ -96,11 +128,19 @@ export default function voiceCommands(): Plugin {
     async afterTranscribe(_input, output) {
       const text = output.text?.trim();
       if (!text) return;
-      const result = await detect(text);
-      if (result.fired) {
-        logger?.info(`voice command fired: ${result.command}`);
-        output.consumed = true;
-        output.text = "";
+      try {
+        const result = await detect(text);
+        if (result.fired) {
+          logger.info(`voice command consumed utterance: ${result.command}`);
+          output.consumed = true;
+          output.text = "";
+        }
+      } catch (err) {
+        // Never let a detection failure break the dictation pipeline — log it
+        // and fall through so the raw transcript is delivered as normal text.
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error(`afterTranscribe detection failed: ${message}`);
+        if (err instanceof Error && err.stack) logger.debug(err.stack);
       }
     },
   };

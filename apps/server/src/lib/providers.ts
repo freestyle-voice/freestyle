@@ -74,6 +74,16 @@ function findFactory(providerId: string) {
   return null;
 }
 
+/**
+ * Whether a provider can produce a general-purpose chat model (i.e. one usable
+ * by plugins for tool-calling). Cloud pseudo-providers such as `freestyle-cloud`
+ * — whose only "model" is the fixed post-process cleanup endpoint, not a chat
+ * completion API — have no factory and return `false`.
+ */
+export function providerSupportsChatModel(providerId: string): boolean {
+  return findFactory(providerId) !== null;
+}
+
 function getChatModelId(providerId: string, modelId: string): string {
   if (
     PROVIDER_PREFIXED_CHAT_MODELS.has(providerId) &&

@@ -61,6 +61,7 @@ export async function runAction(
   input: string,
   logger: PluginLogger,
 ): Promise<string> {
+  logger.debug(`runAction type=${action.type} input="${input}"`);
   switch (action.type) {
     case "webhook": {
       const method = action.method ?? "POST";

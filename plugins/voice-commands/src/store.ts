@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { PluginStorage } from "freestyle-voice";
+import { DEFAULT_COMMANDS } from "./defaults.js";
 import type { CommandAction, VoiceCommand } from "./types.js";
 
 const STORAGE_KEY = "commands";
+const SEEDED_KEY = "seeded";
 
 export interface CommandDraft {
   name: string;
@@ -24,7 +26,24 @@ export class CommandStore {
   async load(storage: PluginStorage): Promise<void> {
     this.storage = storage;
     const stored = await storage.get<VoiceCommand[]>(STORAGE_KEY);
-    this.commands = Array.isArray(stored) ? stored : [];
+    const seeded = (await storage.get<boolean>(SEEDED_KEY)) === true;
+    // Once we've seeded, honour whatever the user has now — including an empty
+    // list they cleared out — so deleted defaults never come back. We must key
+    // off an explicit marker, not "is `stored` an array?", because an empty
+    // array is ambiguous: it could mean "user deleted everything" or "an older
+    // build left a stale []" — only the marker tells them apart.
+    if (seeded) {
+      this.commands = Array.isArray(stored) ? stored : [];
+      return;
+    }
+    // First run (or a stale empty list from before seeding existed): seed the
+    // starter commands so the plugin works out of the box, then mark it done.
+    this.commands = DEFAULT_COMMANDS.map((draft) => ({
+      id: randomUUID(),
+      ...draft,
+    }));
+    await this.persist();
+    await storage.set(SEEDED_KEY, true);
   }
 
   list(): VoiceCommand[] {

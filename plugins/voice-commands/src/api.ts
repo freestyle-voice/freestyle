@@ -1,3 +1,4 @@
+import type { PluginLogger } from "freestyle-voice";
 import type { MiddlewareHandler } from "hono";
 import { z } from "zod";
 import { ROUTE_BASE } from "./constants.js";
@@ -23,21 +24,16 @@ const draftSchema = z.object({
   enabled: z.boolean().default(true),
 });
 
-/** Result of a dry-run/test detection over a sample utterance. */
-export interface TestResult {
-  matched: string[];
-  fired: boolean;
-  command?: string;
-  detail?: string;
-  llm: boolean;
-}
-
 export interface CommandsApiDeps {
   store: CommandStore;
-  /** Run the real detection pipeline (prefilter → agent) against sample text. */
-  runTest: (text: string) => Promise<TestResult>;
   /** The host OS platform (`process.platform`), surfaced to the UI. */
   platform: NodeJS.Platform;
+  /**
+   * Resolve the current plugin logger. A getter (not the logger itself) because
+   * the API is built when the plugin factory runs, before `setup` has handed us
+   * the real logger — the getter closes over the mutable reference.
+   */
+  getLogger: () => PluginLogger;
 }
 
 /**
@@ -47,7 +43,7 @@ export interface CommandsApiDeps {
  * `next()` for anything else.
  */
 export function createCommandsApi(deps: CommandsApiDeps): MiddlewareHandler {
-  const { store, runTest, platform } = deps;
+  const { store, platform, getLogger } = deps;
   const isMac = platform === "darwin";
 
   return async (c, next) => {
@@ -56,54 +52,56 @@ export function createCommandsApi(deps: CommandsApiDeps): MiddlewareHandler {
 
     const sub = path.slice(ROUTE_BASE.length);
     const method = c.req.method;
+    const log = getLogger();
+    log.debug(`api ${method} ${sub || "/"}`);
 
-    // GET /platform — capability probe for the UI (hides macOS-only options).
-    if (sub === "/platform" && method === "GET") {
-      return c.json({ platform, isMac });
-    }
+    try {
+      // GET /platform — capability probe for the UI (hides macOS-only options).
+      if (sub === "/platform" && method === "GET") {
+        return c.json({ platform, isMac });
+      }
 
-    // GET /commands — list all commands.
-    if (sub === "/commands" && method === "GET") {
-      return c.json({ commands: store.list(), platform, isMac });
-    }
+      // GET /commands — list all commands.
+      if (sub === "/commands" && method === "GET") {
+        return c.json({ commands: store.list(), platform, isMac });
+      }
 
-    // POST /commands — create.
-    if (sub === "/commands" && method === "POST") {
-      const parsed = await parseDraft(c, isMac);
-      if ("error" in parsed) return c.json({ error: parsed.error }, 400);
-      const command = await store.create(parsed.draft);
-      return c.json({ command }, 201);
-    }
-
-    // POST /test — run detection against a sample utterance.
-    if (sub === "/test" && method === "POST") {
-      const body = await c.req
-        .json<{ text?: string }>()
-        .catch(() => ({}) as { text?: string });
-      const text = (body.text ?? "").trim();
-      if (!text) return c.json({ error: "text is required" }, 400);
-      return c.json(await runTest(text));
-    }
-
-    // /commands/:id — update / delete.
-    const idMatch = sub.match(/^\/commands\/([^/]+)$/);
-    if (idMatch) {
-      const id = decodeURIComponent(idMatch[1]);
-      if (method === "PUT") {
+      // POST /commands — create.
+      if (sub === "/commands" && method === "POST") {
         const parsed = await parseDraft(c, isMac);
         if ("error" in parsed) return c.json({ error: parsed.error }, 400);
-        const command = await store.update(id, parsed.draft);
-        if (!command) return c.json({ error: "command not found" }, 404);
-        return c.json({ command });
+        const command = await store.create(parsed.draft);
+        log.info(`created command "${command.name}" (${command.id})`);
+        return c.json({ command }, 201);
       }
-      if (method === "DELETE") {
-        const ok = await store.remove(id);
-        if (!ok) return c.json({ error: "command not found" }, 404);
-        return c.json({ ok: true });
-      }
-    }
 
-    return next();
+      // /commands/:id — update / delete.
+      const idMatch = sub.match(/^\/commands\/([^/]+)$/);
+      if (idMatch) {
+        const id = decodeURIComponent(idMatch[1]);
+        if (method === "PUT") {
+          const parsed = await parseDraft(c, isMac);
+          if ("error" in parsed) return c.json({ error: parsed.error }, 400);
+          const command = await store.update(id, parsed.draft);
+          if (!command) return c.json({ error: "command not found" }, 404);
+          log.info(`updated command "${command.name}" (${id})`);
+          return c.json({ command });
+        }
+        if (method === "DELETE") {
+          const ok = await store.remove(id);
+          if (!ok) return c.json({ error: "command not found" }, 404);
+          log.info(`deleted command ${id}`);
+          return c.json({ ok: true });
+        }
+      }
+
+      return next();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error(`api ${method} ${sub || "/"} failed: ${message}`);
+      if (err instanceof Error && err.stack) log.debug(err.stack);
+      return c.json({ error: message }, 500);
+    }
   };
 }
 

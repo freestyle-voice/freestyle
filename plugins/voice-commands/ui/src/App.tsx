@@ -16,14 +16,6 @@ interface CommandsResponse {
   isMac: boolean;
 }
 
-interface TestResult {
-  matched: string[];
-  fired: boolean;
-  command?: string;
-  detail?: string;
-  llm: boolean;
-}
-
 const ACTION_LABELS: Record<ActionType, string> = {
   shortcut: "Run Shortcut",
   webhook: "Call webhook",
@@ -386,80 +378,6 @@ function CommandRow({
   );
 }
 
-function TestBox() {
-  const [text, setText] = useState("");
-  const mutation = useMutation({
-    mutationFn: async (value: string): Promise<TestResult> => {
-      const res = await getBridge().api(`${ROUTE}/test`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: value }),
-      });
-      if (!res.ok) {
-        const err = await res
-          .json<{ error?: string }>()
-          .catch(() => ({}) as { error?: string });
-        throw new Error(err.error ?? `server returned ${res.status}`);
-      }
-      return res.json<TestResult>();
-    },
-  });
-
-  const result = mutation.data;
-
-  return (
-    <section className="card">
-      <h2>Try a phrase</h2>
-      <p className="muted">
-        Speak — or type — an utterance to see whether it triggers a command.
-        This runs the real pipeline and will execute the matched action.
-      </p>
-      <div className="field-row">
-        <input
-          className="input field-grow"
-          placeholder="post to slack that I'll be five minutes late"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && text.trim()) mutation.mutate(text.trim());
-          }}
-        />
-        <button
-          type="button"
-          className="primary-btn"
-          disabled={mutation.isPending || !text.trim()}
-          onClick={() => mutation.mutate(text.trim())}
-        >
-          {mutation.isPending ? "Running…" : "Run"}
-        </button>
-      </div>
-      {mutation.error ? (
-        <p className="error-text">{mutation.error.message}</p>
-      ) : null}
-      {result ? (
-        <div className={`test-result${result.fired ? " fired" : ""}`}>
-          {result.fired ? (
-            <p>
-              <strong>Fired:</strong> {result.command}
-              {result.detail ? ` — ${result.detail}` : ""}
-            </p>
-          ) : result.matched.length > 0 ? (
-            <p>Matched {result.matched.join(", ")}, but no command was run.</p>
-          ) : (
-            <p>No command matched — this would be dictated as normal text.</p>
-          )}
-          {!result.llm ? (
-            <p className="hint">
-              No cleanup LLM is configured, so matching is deterministic (first
-              trigger wins).
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
 export function App() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["commands"],
@@ -535,7 +453,6 @@ export function App() {
               ))}
             </ul>
           )}
-          <TestBox />
         </>
       )}
     </main>

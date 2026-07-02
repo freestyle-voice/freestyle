@@ -337,9 +337,15 @@ importers:
 
   plugins/profanity-filter:
     dependencies:
+      '@tanstack/react-query':
+        specifier: ^5.101.2
+        version: 5.101.2(react@19.2.6)
       freestyle-voice:
         specifier: workspace:*
         version: link:../../packages/sdk
+      react-hook-form:
+        specifier: ^7.76.1
+        version: 7.76.1(react@19.2.6)
     devDependencies:
       '@types/react':
         specifier: ^19.2.7

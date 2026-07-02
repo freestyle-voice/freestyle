@@ -46,6 +46,7 @@
     "freestyle-voice": "workspace:*"
   },
   "devDependencies": {
+    "@tanstack/react-query": "^5.101.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.1.1",
@@ -53,6 +54,7 @@
     "pkgroll": "^2.27.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
+    "react-hook-form": "^7.76.1",
     "typescript": "^5.8.3",
     "vite": "^7.3.3"
   }

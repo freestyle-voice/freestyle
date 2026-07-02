@@ -1,5 +1,7 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FreestyleBridge } from "freestyle-voice";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useForm } from "react-hook-form";
 
 const ROUTE = "/api/plugins/freestyle-voice-profanity-filter/replacements";
 
@@ -14,39 +16,21 @@ interface ReplacementsResponse {
   replacements: Entry[];
 }
 
-type Load =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; data: ReplacementsResponse };
-
-function useReplacements() {
-  const [state, setState] = useState<Load>({ status: "loading" });
-
-  const load = useCallback(async () => {
-    const bridge: FreestyleBridge | undefined = window.freestyle;
-    if (!bridge) {
-      setState({ status: "error", message: "Host bridge unavailable." });
-      return;
-    }
-    try {
-      const res = await bridge.api(ROUTE);
-      if (!res.ok) throw new Error(`server returned ${res.status}`);
-      const data = await res.json<ReplacementsResponse>();
-      setState({ status: "ready", data });
-    } catch (err) {
-      setState({
-        status: "error",
-        message: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  return { state, reload: load };
+function getBridge(): FreestyleBridge {
+  const b = window.freestyle;
+  if (!b) throw new Error("Host bridge unavailable.");
+  return b;
 }
+
+async function fetchReplacements(): Promise<ReplacementsResponse> {
+  const res = await getBridge().api(ROUTE);
+  if (!res.ok) throw new Error(`server returned ${res.status}`);
+  return res.json<ReplacementsResponse>();
+}
+
+// ---------------------------------------------------------------------------
+// Components
+// ---------------------------------------------------------------------------
 
 function BackButton() {
   return (
@@ -73,69 +57,71 @@ function BackButton() {
   );
 }
 
-function AddWordForm({ onAdd }: { onAdd: () => void }) {
-  const [word, setWord] = useState("");
-  const [alts, setAlts] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+interface AddFormValues {
+  word: string;
+  alternatives: string;
+}
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const bridge = window.freestyle;
-    if (!bridge) return;
+function AddWordForm() {
+  const queryClient = useQueryClient();
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<AddFormValues>();
 
-    const trimmedWord = word.trim();
-    const alternatives = alts
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!trimmedWord || alternatives.length === 0) return;
-
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await bridge.api(ROUTE, {
+  const mutation = useMutation({
+    mutationFn: async (data: AddFormValues) => {
+      const alternatives = data.alternatives
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (alternatives.length === 0)
+        throw new Error("At least one replacement is required");
+      const res = await getBridge().api(ROUTE, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word: trimmedWord, alternatives }),
+        body: JSON.stringify({ word: data.word.trim(), alternatives }),
       });
       if (!res.ok) {
         const body = await res.json<{ error?: string }>();
         throw new Error(body.error ?? `server returned ${res.status}`);
       }
-      setWord("");
-      setAlts("");
-      onAdd();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
+    },
+    onSuccess: () => {
+      reset();
+      queryClient.invalidateQueries({ queryKey: ["replacements"] });
+    },
+  });
+
+  const onSubmit = handleSubmit((data) => mutation.mutate(data));
 
   return (
-    <form className="add-form" onSubmit={(e) => void submit(e)}>
+    <form className="add-form" onSubmit={onSubmit}>
       <span className="add-label">Add a word</span>
       <div className="add-fields">
         <input
           className="add-input"
           type="text"
           placeholder="Word or phrase…"
-          value={word}
-          onChange={(e) => setWord(e.target.value)}
+          {...register("word", { required: true })}
+          aria-invalid={errors.word ? "true" : undefined}
         />
         <input
           className="add-input add-input-wide"
           type="text"
           placeholder="Replacements (comma-separated)…"
-          value={alts}
-          onChange={(e) => setAlts(e.target.value)}
+          {...register("alternatives", { required: true })}
+          aria-invalid={errors.alternatives ? "true" : undefined}
         />
-        <button type="submit" className="add-btn" disabled={busy}>
-          {busy ? "Adding…" : "Add"}
+        <button type="submit" className="add-btn" disabled={mutation.isPending}>
+          {mutation.isPending ? "Adding…" : "Add"}
         </button>
       </div>
-      {error ? <p className="add-error">{error}</p> : null}
+      {mutation.error ? (
+        <p className="add-error">{mutation.error.message}</p>
+      ) : null}
     </form>
   );
 }
@@ -235,14 +221,9 @@ function WordRow({
   );
 }
 
-function WordList({
-  entries,
-  onReload,
-}: {
-  entries: Entry[];
-  onReload: () => void;
-}) {
+function WordList({ entries }: { entries: Entry[] }) {
   const [query, setQuery] = useState("");
+  const queryClient = useQueryClient();
   const q = query.trim().toLowerCase();
   const filtered = q
     ? entries.filter(
@@ -252,27 +233,35 @@ function WordList({
       )
     : entries;
 
-  const bridge = window.freestyle;
+  const deleteMutation = useMutation({
+    mutationFn: async (word: string) => {
+      await getBridge().api(ROUTE, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ word }),
+      });
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["replacements"] }),
+  });
 
-  const deleteWord = async (word: string) => {
-    if (!bridge) return;
-    await bridge.api(ROUTE, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ word }),
-    });
-    onReload();
-  };
-
-  const updateWord = async (word: string, alternatives: string[]) => {
-    if (!bridge) return;
-    await bridge.api(ROUTE, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ word, alternatives }),
-    });
-    onReload();
-  };
+  const updateMutation = useMutation({
+    mutationFn: async ({
+      word,
+      alternatives,
+    }: {
+      word: string;
+      alternatives: string[];
+    }) => {
+      await getBridge().api(ROUTE, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ word, alternatives }),
+      });
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["replacements"] }),
+  });
 
   return (
     <section className="card">
@@ -297,8 +286,10 @@ function WordList({
             <WordRow
               key={e.word}
               entry={e}
-              onDelete={() => void deleteWord(e.word)}
-              onUpdate={(alts) => void updateWord(e.word, alts)}
+              onDelete={() => deleteMutation.mutate(e.word)}
+              onUpdate={(alts) =>
+                updateMutation.mutate({ word: e.word, alternatives: alts })
+              }
             />
           ))}
         </ul>
@@ -308,20 +299,20 @@ function WordList({
 }
 
 export function App() {
-  const { state, reload } = useReplacements();
-  const [resetting, setResetting] = useState(false);
+  const queryClient = useQueryClient();
 
-  const resetToDefaults = async () => {
-    const bridge = window.freestyle;
-    if (!bridge) return;
-    setResetting(true);
-    try {
-      await bridge.api(`${ROUTE}/reset`, { method: "POST" });
-      await reload();
-    } finally {
-      setResetting(false);
-    }
-  };
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["replacements"],
+    queryFn: fetchReplacements,
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: async () => {
+      await getBridge().api(`${ROUTE}/reset`, { method: "POST" });
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["replacements"] }),
+  });
 
   return (
     <main className="page">
@@ -331,23 +322,28 @@ export function App() {
         <button
           type="button"
           className="reset-btn"
-          disabled={resetting}
-          onClick={() => void resetToDefaults()}
+          disabled={resetMutation.isPending}
+          onClick={() => resetMutation.mutate()}
         >
-          {resetting ? "Resetting…" : "Reset to defaults"}
+          {resetMutation.isPending ? "Resetting…" : "Reset to defaults"}
         </button>
       </header>
 
-      {state.status === "error" && (
+      {isLoading && <p className="muted">Loading…</p>}
+
+      {error && (
         <section className="card error">
-          <p>Couldn't load the filter: {state.message}</p>
+          <p>
+            Couldn't load the filter:{" "}
+            {error instanceof Error ? error.message : String(error)}
+          </p>
         </section>
       )}
 
-      {state.status === "ready" && (
+      {data && (
         <>
-          <AddWordForm onAdd={() => void reload()} />
-          <WordList entries={state.data.replacements} onReload={reload} />
+          <AddWordForm />
+          <WordList entries={data.replacements} />
         </>
       )}
     </main>

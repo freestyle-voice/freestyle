@@ -27,6 +27,8 @@ export class PluginViewManager {
   private view: WebContentsView | null = null;
   private window: BrowserWindow | null = null;
   private current: { slug: string; pageId: string } | null = null;
+  /** Whether the view is currently attached (visible) in the window. */
+  private attached = false;
   /** Config for the current view, fetched by its preload over IPC on load. */
   private pendingConfig:
     | (BridgeConfig & { tokens?: Record<string, string> })
@@ -49,8 +51,11 @@ export class PluginViewManager {
   /**
    * Show `slug`/`pageId` at `bounds`. Loads the page's entry over the
    * `freestyle-plugin://` scheme. Returns false when the page can't be found.
-   * The view is recreated when the target page changes so its preload picks up
-   * the current bridge config (fetched over IPC).
+   *
+   * When the same page is re-shown (e.g. navigating back after hide), the
+   * existing view is re-attached without recreating it — no white flash or
+   * reload. The view is only destroyed and rebuilt when switching to a
+   * different plugin page.
    */
   show(
     slug: string,
@@ -68,12 +73,18 @@ export class PluginViewManager {
     }
 
     const same = this.current?.slug === slug && this.current?.pageId === pageId;
+
+    // Same page, view still alive — just re-attach if hidden and update bounds.
     if (same && this.view) {
+      if (!this.attached) {
+        this.window.contentView.addChildView(this.view);
+        this.attached = true;
+      }
       this.setBounds(bounds);
       return true;
     }
 
-    // Recreate the view for a new page so the bridge config is re-injected.
+    // Different page — destroy the old view and create a new one.
     this.destroyView();
     this.view = new WebContentsView({
       webPreferences: {
@@ -89,6 +100,7 @@ export class PluginViewManager {
     if (bg) this.view.setBackgroundColor(toHexColor(bg));
     this.pendingConfig = { ...this.resolveConfig(), tokens };
     this.window.contentView.addChildView(this.view);
+    this.attached = true;
     this.setBounds(bounds);
     this.current = { slug, pageId };
     void this.view.webContents
@@ -114,19 +126,27 @@ export class PluginViewManager {
     });
   }
 
-  /** Hide and tear down the current plugin view (on navigating away). */
+  /**
+   * Detach the current plugin view from the window without destroying it.
+   * The view stays alive so re-opening the same page is instant (no reload).
+   */
   hide(): void {
-    this.destroyView();
+    if (!this.view || !this.attached) return;
+    if (this.window && !this.window.isDestroyed()) {
+      this.window.contentView.removeChildView(this.view);
+    }
+    this.attached = false;
   }
 
   private destroyView(): void {
     if (!this.view) return;
-    if (this.window && !this.window.isDestroyed()) {
+    if (this.attached && this.window && !this.window.isDestroyed()) {
       this.window.contentView.removeChildView(this.view);
     }
     this.view.webContents.close();
     this.view = null;
     this.current = null;
+    this.attached = false;
     this.pendingConfig = null;
   }
 }

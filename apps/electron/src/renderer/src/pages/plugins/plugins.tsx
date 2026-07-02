@@ -1,8 +1,14 @@
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@renderer/components/ui/dropdown-menu";
 import { Input } from "@renderer/components/ui/input";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
-import { Switch } from "@renderer/components/ui/switch";
 import type {
   PluginCatalogEntry,
   PluginInfo,
@@ -11,11 +17,10 @@ import type {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
-  Info,
   Loader2,
+  MoreHorizontal,
   Puzzle,
   Search,
-  Trash2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -303,58 +308,65 @@ function PluginCard({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {plugin.missing ? null : (
-          <>
-            {update?.updateAvailable ? (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={updating}
-                onClick={() => void doUpdate()}
-              >
-                {updating ? <Loader2 className="animate-spin" /> : null}
-                {updating ? t("plugins.updating") : t("plugins.update")}
-              </Button>
-            ) : null}
-            {page ? (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!plugin.enabled}
-                onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
-              >
-                {t("plugins.open")}
-                <ArrowRight data-icon="inline-end" />
-              </Button>
-            ) : null}
+        {!plugin.missing && update?.updateAvailable ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={updating}
+            onClick={() => void doUpdate()}
+          >
+            {updating ? <Loader2 className="animate-spin" /> : null}
+            {updating ? t("plugins.updating") : t("plugins.update")}
+          </Button>
+        ) : null}
+        {!plugin.missing && page ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!plugin.enabled}
+            onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
+          >
+            {t("plugins.open")}
+            <ArrowRight data-icon="inline-end" />
+          </Button>
+        ) : null}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={t("plugins.detail.title")}
-              onClick={() => navigate(`/plugins/${plugin.slug}`)}
+              aria-label={t("plugins.more")}
             >
-              <Info className="text-muted-foreground" />
+              <MoreHorizontal className="text-muted-foreground" />
             </Button>
-          </>
-        )}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={t("plugins.uninstall")}
-          disabled={busy}
-          onClick={() => void uninstall()}
-        >
-          <Trash2 className="text-muted-foreground" />
-        </Button>
-        {plugin.missing ? null : (
-          <Switch
-            checked={plugin.enabled}
-            onCheckedChange={(v) => void toggle(v)}
-            aria-label={t(
-              plugin.enabled ? "plugins.disablePlugin" : "plugins.enablePlugin",
-            )}
-          />
-        )}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {!plugin.missing ? (
+              <>
+                <DropdownMenuItem
+                  onClick={() => navigate(`/plugins/${plugin.slug}`)}
+                >
+                  {t("plugins.detail.title")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void toggle(!plugin.enabled)}>
+                  {t(
+                    plugin.enabled
+                      ? "plugins.disablePlugin"
+                      : "plugins.enablePlugin",
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
+            <DropdownMenuItem
+              variant="destructive"
+              disabled={busy}
+              onClick={() => void uninstall()}
+            >
+              {t("plugins.uninstall")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );

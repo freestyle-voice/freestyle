@@ -1,10 +1,18 @@
 :root {
-  color-scheme: light dark;
-  font-family:
-    system-ui,
-    -apple-system,
-    sans-serif;
-  --radius: 10px;
+  /* Host injects the real Freestyle tokens; these are fallbacks. */
+  --background: #f4f0e4;
+  --foreground: #16140f;
+  --card: #fbf8ee;
+  --primary: #6b8f12;
+  --primary-foreground: #fbf8ee;
+  --muted-foreground: #7b7461;
+  --border: #d6cdb8;
+  --destructive: #dd6e4e;
+  --accent: #6b8f12;
+  --accent-foreground: #16140f;
+  --input: #ebe6d4;
+  --ring: #6b8f12;
+  --radius: 14px;
 }
 
 * {
@@ -13,27 +21,114 @@
 
 body {
   margin: 0;
-  padding: 24px;
-  background: var(--background, #fff);
-  color: var(--foreground, #111);
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .page {
-  max-width: 720px;
-  margin: 0 auto;
+  width: 100%;
+  padding: 28px 48px 48px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
-.page-head h1 {
-  margin: 0 0 4px;
-  font-size: 22px;
+@media (max-width: 1080px) {
+  .page {
+    padding: 28px 32px 48px;
+  }
+}
+
+@media (max-width: 820px) {
+  .page {
+    padding: 28px 16px 48px;
+  }
+}
+
+/* ---- Back button ---- */
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px 4px 6px;
+  margin: 0 0 -8px -6px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.back-btn:hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+/* ---- Header ---- */
+
+.head {
+  margin-bottom: 4px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--muted-foreground);
+}
+
+.title {
+  margin: 0;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  font-size: 48px;
+  line-height: 0.95;
+  letter-spacing: -0.025em;
+}
+
+.title em {
+  font-style: italic;
+  color: var(--primary);
+}
+
+.lede {
+  margin: 12px 0 0;
+  max-width: 540px;
+  color: var(--muted-foreground);
+}
+
+.muted {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+/* ---- Cards ---- */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 14px);
+  padding: 20px 22px;
+}
+
+.card.error {
+  border-color: var(--destructive);
+  color: var(--destructive);
 }
 
 h2 {
   margin: 0 0 8px;
   font-size: 15px;
+  font-weight: 500;
 }
 
 p {
@@ -41,48 +136,16 @@ p {
   line-height: 1.5;
 }
 
-.muted {
-  color: var(--muted-foreground, #6b7280);
-  font-size: 13px;
-}
-
-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  background: color-mix(in srgb, currentColor 10%, transparent);
-  padding: 1px 4px;
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.card {
-  background: var(--card, transparent);
-  border: 1px solid var(--border, color-mix(in srgb, currentColor 14%, transparent));
-  border-radius: var(--radius, 10px);
-  padding: 16px;
-}
-
-.card.error {
-  border-color: var(--destructive, #e5484d);
-  color: var(--destructive, #e5484d);
-}
-
-.how-list {
-  margin: 8px 0 0;
-  padding-left: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-  line-height: 1.5;
-}
+/* ---- Try-it demo ---- */
 
 .demo-input,
 .search {
   width: 100%;
   font: inherit;
+  font-size: 14px;
   color: inherit;
   background: var(--input, color-mix(in srgb, currentColor 5%, transparent));
-  border: 1px solid var(--border, color-mix(in srgb, currentColor 18%, transparent));
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 9px 11px;
   resize: vertical;
@@ -90,7 +153,7 @@ code {
 
 .demo-input:focus,
 .search:focus {
-  outline: 2px solid var(--ring, var(--accent, #6366f1));
+  outline: 2px solid var(--ring, var(--accent));
   outline-offset: 1px;
 }
 
@@ -98,7 +161,7 @@ code {
   margin-top: 10px;
   padding: 11px;
   border-radius: 8px;
-  border: 1px dashed var(--border, color-mix(in srgb, currentColor 18%, transparent));
+  border: 1px dashed var(--border);
   background: color-mix(in srgb, currentColor 4%, transparent);
   min-height: 42px;
   line-height: 1.5;
@@ -107,9 +170,11 @@ code {
 
 .demo-output.is-changed {
   border-style: solid;
-  border-color: var(--accent, #6366f1);
-  background: color-mix(in srgb, var(--accent, #6366f1) 10%, transparent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
+
+/* ---- Word list ---- */
 
 .list-head {
   display: flex;
@@ -142,7 +207,7 @@ code {
   gap: 8px;
   padding: 5px 0;
   font-size: 13px;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 8%, transparent);
+  border-bottom: 1px solid var(--border);
 }
 
 .word {
@@ -151,13 +216,13 @@ code {
 }
 
 .arrow {
-  color: var(--muted-foreground, #9ca3af);
+  color: var(--muted-foreground);
 }
 
 .alts {
-  color: var(--muted-foreground, #6b7280);
+  color: var(--muted-foreground);
 }
 
 .alt {
-  color: var(--accent-foreground, var(--foreground, inherit));
+  color: var(--accent-foreground, var(--foreground));
 }

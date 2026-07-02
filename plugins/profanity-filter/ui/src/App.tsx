@@ -58,42 +58,27 @@ function useReplacements(): Load {
   return state;
 }
 
-function HowItWorks({
-  count,
-  preserveCase,
-}: {
-  count: number;
-  preserveCase: boolean;
-}) {
+function BackButton() {
+  const handleBack = () => {
+    window.freestyle?.invoke("navigate", { to: "/plugins" });
+  };
   return (
-    <section className="card">
-      <h2>How it works</h2>
-      <p className="muted">
-        As you dictate, the filter rewrites the final text in Freestyle's
-        <code> afterCleanup </code> stage — the same step as dictionary
-        replacement. It's deterministic (no AI) and adds no latency.
-      </p>
-      <ul className="how-list">
-        <li>
-          <strong>{count}</strong> curse words and phrases are swapped for
-          wholesome, funnier stand-ins.
-        </li>
-        <li>
-          Matching is <strong>case-insensitive</strong> and on{" "}
-          <strong>word boundaries</strong> — so “class” and “hello” are never
-          touched.
-        </li>
-        <li>
-          <strong>Phrases win over words</strong> — “son of a bitch” → “son of a
-          biscuit”, not “son of a meanie”.
-        </li>
-        <li>
-          Casing is {preserveCase ? <strong>mirrored</strong> : "not mirrored"}{" "}
-          {preserveCase ? "(SHIT → SUGAR, Damn → Dang)" : ""}, and words with
-          several options cycle through them for variety.
-        </li>
-      </ul>
-    </section>
+    <button type="button" className="back-btn" onClick={handleBack}>
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m15 18-6-6 6-6" />
+      </svg>
+      Plugins
+    </button>
   );
 }
 
@@ -116,7 +101,7 @@ function TryIt({
     <section className="card">
       <h2>Try it</h2>
       <p className="muted">
-        Type a sentence to preview exactly what the filter would produce.
+        Type a sentence to preview what the filter produces.
       </p>
       <textarea
         className="demo-input"
@@ -191,14 +176,18 @@ export function App() {
 
   return (
     <main className="page">
-      <header className="page-head">
-        <h1>Profanity Filter</h1>
-        <p className="muted">
-          Keeps your dictation family-friendly — and funnier.
+      <BackButton />
+      <header className="head">
+        <p className="eyebrow">Profanity filter</p>
+        <h1 className="title">
+          <em>Filtered</em> words.
+        </h1>
+        <p className="lede">
+          {state.status === "ready"
+            ? `${state.data.count} words and phrases are swapped for wholesome, funnier stand-ins.`
+            : "Loading filter data…"}
         </p>
       </header>
-
-      {state.status === "loading" && <p className="muted">Loading…</p>}
 
       {state.status === "error" && (
         <section className="card error">
@@ -208,10 +197,6 @@ export function App() {
 
       {state.status === "ready" && (
         <>
-          <HowItWorks
-            count={state.data.count}
-            preserveCase={state.data.preserveCase}
-          />
           <TryIt map={map} preserveCase={state.data.preserveCase} />
           <WordList entries={state.data.replacements} />
         </>

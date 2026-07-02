@@ -397,6 +397,7 @@
     "missingBadge": "Missing",
     "missingHint": "Listed but not installed on disk. Uninstall to remove it.",
     "open": "Open",
+    "more": "More options",
     "install": "Install",
     "installing": "Installing…",
     "update": "Update",

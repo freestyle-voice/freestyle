@@ -1,4 +1,19 @@
 # Changelog
+## 0.3.4
+
+### New Features ✨
+
+- Add docs site to monorepo at apps/docs by @MathurAditya724 in [#374](https://github.com/freestyle-voice/freestyle/pull/374)
+
+### Bug Fixes 🐛
+
+- (electron) Improve light mode macOS glass readability by @siddharthkul in [#378](https://github.com/freestyle-voice/freestyle/pull/378)
+- Support pnpm 11 electron installs by @tigerisaac in [#377](https://github.com/freestyle-voice/freestyle/pull/377)
+
+### Documentation 📚
+
+- Add Features section and plugin dev link workflow by @MathurAditya724 in [#375](https://github.com/freestyle-voice/freestyle/pull/375)
+
 ## 0.3.3
 
 ### New Features ✨

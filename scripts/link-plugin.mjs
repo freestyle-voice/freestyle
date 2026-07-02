@@ -7,12 +7,12 @@
  *   node scripts/link-plugin.mjs          # link (build + symlink into Freestyle's plugins dir)
  *   node scripts/link-plugin.mjs --unlink # unlink (remove the dev symlink)
  *
- * The script creates a wrapper directory at `<userData>/plugins/dev-<slug>/`
+ * The script creates a wrapper directory at `<userData>/plugins/<slug>-dev/`
  * that symlinks back to the plugin's built output. This lets a dev copy coexist
  * alongside a production (npm-installed) copy of the same plugin:
  *
- *   <userData>/plugins/freestyle-voice-profanity-filter/   ← npm install
- *   <userData>/plugins/dev-freestyle-voice-profanity-filter/ ← this script
+ *   <userData>/plugins/freestyle-voice-profanity-filter/     ← npm install
+ *   <userData>/plugins/freestyle-voice-profanity-filter-dev/ ← this script
  *
  * On Windows, if symlinks fail (requires Developer Mode), the script falls back
  * to copying the built files instead.
@@ -45,18 +45,18 @@ function freestyleUserData() {
       os.homedir(),
       "Library",
       "Application Support",
-      "freestyle",
+      "Freestyle",
     );
   }
   if (platform === "win32") {
     const appData = process.env.APPDATA;
     if (!appData) throw new Error("APPDATA environment variable is not set");
-    return path.join(appData, "freestyle");
+    return path.join(appData, "Freestyle");
   }
   // Linux / other: XDG_CONFIG_HOME or ~/.config
   const configHome =
     process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
-  return path.join(configHome, "freestyle");
+  return path.join(configHome, "Freestyle");
 }
 
 /** Try to create a symlink; return false if it fails (e.g. Windows without dev mode). */
@@ -81,6 +81,15 @@ function copyDir(src, dest) {
       fs.copyFileSync(srcPath, destPath);
     }
   }
+}
+
+/**
+ * Append `-dev` to a scoped or unscoped package name.
+ * @freestyle-voice/profanity-filter → @freestyle-voice/profanity-filter-dev
+ * my-plugin → my-plugin-dev
+ */
+function devName(name) {
+  return `${name}-dev`;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,7 +117,7 @@ if (!pluginName) {
 }
 
 const slug = pluginSlug(pluginName);
-const devSlug = `dev-${slug}`;
+const devSlug = `${slug}-dev`;
 const pluginsDir = path.join(freestyleUserData(), "plugins");
 const devDir = path.join(pluginsDir, devSlug);
 
@@ -159,9 +168,9 @@ if (fs.existsSync(devDir)) {
 // coexist with a production install of the same plugin.
 fs.mkdirSync(devDir, { recursive: true });
 
-// Generate a dev package.json with a modified name so it gets a unique slug.
+// Generate a dev package.json with a suffixed name so it gets a unique slug.
 const devPkg = {
-  name: `dev-${pluginName}`,
+  name: devName(pluginName),
   version: pkg.version || "0.0.0-dev",
   description: `[DEV] ${pkg.description || pluginName}`,
   main: pkg.main || "dist/index.js",

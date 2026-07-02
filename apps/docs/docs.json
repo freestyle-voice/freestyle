@@ -30,6 +30,16 @@
         "pages": ["index", "user-guide", "contributing"]
       },
       {
+        "group": "Features",
+        "icon": "sliders-horizontal",
+        "pages": [
+          "features/cleanup",
+          "features/dictionary",
+          "features/vocabulary",
+          "features/formats"
+        ]
+      },
+      {
         "group": "Plugins",
         "icon": "puzzle",
         "pages": [

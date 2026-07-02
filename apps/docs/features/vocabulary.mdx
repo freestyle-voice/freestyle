@@ -1,0 +1,58 @@
+---
+title: "Vocabulary"
+description: "Help the speech model recognize names, brands, and jargon correctly."
+---
+
+Speech models transcribe everyday words well but stumble on the unusual ones — coworker names, product names, acronyms, and technical jargon they've never heard. **Vocabulary** feeds those terms to the model *before* it transcribes, so it knows to expect them.
+
+Add a term like `Kubernetes`, `Anthropic`, or a colleague's name, and the model is far more likely to spell it right instead of guessing at a phonetic lookalike.
+
+## Vocabulary vs. dictionary
+
+This is the key distinction, and it trips people up:
+
+<CardGroup cols={2}>
+  <Card title="Vocabulary" icon="ear-listen">
+    Changes **how your audio is heard**. It biases the speech model *before* transcription so it recognizes tricky words. It's a nudge, not a guarantee.
+  </Card>
+  <Card title="Dictionary" icon="arrow-right-arrow-left">
+    Rewrites **text after** transcription. It's an exact, deterministic find-and-replace. See [Dictionary](/features/dictionary).
+  </Card>
+</CardGroup>
+
+Rule of thumb: use **vocabulary** to help the model *hear* a word, and the **dictionary** to force an *exact* spelling or expansion.
+
+## Add a term
+
+<Steps>
+  <Step title="Open Vocabulary">
+    Find it in the sidebar.
+  </Step>
+  <Step title="Add the term">
+    Enter the word or phrase (up to 200 characters). Optionally add a **note** to remind yourself what it is — notes are for your own reference and aren't sent to the model.
+  </Step>
+</Steps>
+
+You can search terms and import or export them as JSON (up to 1,000 entries per import).
+
+## Model support varies
+
+Vocabulary is only as good as the speech model's support for it, and that differs by provider. Freestyle sends terms in whatever form each model accepts, and the Vocabulary page tells you what your current model supports.
+
+| Provider / model | How terms are used | Multi-word phrases? |
+| --- | --- | --- |
+| **OpenAI, Groq, whisper.cpp** | Injected as an initial prompt (~900-char budget) | Yes |
+| **Deepgram Nova-3** | Sent as keyterms (up to 100; fewer while streaming) | Yes |
+| **Deepgram Nova-2** | Sent as keywords, split into single words | Single words only |
+| **ElevenLabs (Scribe v2)** | Sent as keyterms (length-capped) | Short terms only |
+| **Soniox** | Sent as context terms (up to 100) | Yes |
+| **Local MLX models** | Injected as a "Technical terms" prompt | Yes |
+| **Other models** | Not supported — terms are ignored | — |
+
+<Note>
+  Because there's a size budget, only your most relevant terms are sent when the list is long. Keep the list focused on words the model actually gets wrong.
+</Note>
+
+## When it runs
+
+Vocabulary is the **first** step in the pipeline — it shapes the transcription itself, before any [cleanup](/features/cleanup) or [dictionary](/features/dictionary) replacement happens. It applies to both batch and streaming transcription.

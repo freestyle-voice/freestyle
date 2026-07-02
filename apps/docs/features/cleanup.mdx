@@ -1,0 +1,76 @@
+---
+title: "AI cleanup"
+description: "Turn raw, rambly speech into polished text with a language model."
+---
+
+Speech is messy. You backtrack, you say "um", you start a sentence three times before it lands. **Cleanup** runs your raw transcript through a language model that fixes it up before the text reaches your app — so what you *meant* to say is what gets typed.
+
+It's optional and off until you pick a cleanup model. Turn it on under **Settings → Models**.
+
+## What it does
+
+Every cleanup level does the same core job: add punctuation and capitalization, drop filler words, and resolve the moments where you correct yourself mid-sentence. The difference is how far it goes beyond that.
+
+<Note>
+  When you retract something ("send it to marketing, actually no, to legal"), cleanup keeps only your final intent ("Send it to legal.") — the abandoned wording is dropped, not left in the text.
+</Note>
+
+## Cleanup intensity
+
+Pick how aggressive the edit should be under **Settings → Models**.
+
+| Level | What it does | Before → after |
+| --- | --- | --- |
+| **Low** | Smallest possible edits. Punctuation, capitalization, filler removal, and self-corrections only. Keeps your exact wording, including casual shorthand like "gonna" and "cuz". | "um so we're gonna push the demo back a bit cuz we found some issues" → "We're gonna push the demo back a bit cuz we found some issues." |
+| **Medium** | Sentence-level grammar and phrasing fixes without changing meaning, order, or detail. Reads like you wrote it carefully. | "i was thinking like maybe we could uh push the the deadline to friday because the designs aren't ready" → "I was thinking maybe we could push the deadline to Friday, because the designs aren't ready yet." |
+| **High** | Rephrases and reorders for flow and concision while preserving every fact, instruction, and caveat. | "so there's like three things we gotta do um update the docs and uh notify support oh and the server needs a restart" → a clean numbered list of the three tasks. |
+| **Custom** | Write your own instructions and control exactly how text is rewritten. | Whatever you tell it to do. |
+
+<Warning>
+  No level translates your text or invents facts. Cleanup always keeps the same language and script you spoke in, and never adds content you didn't say.
+</Warning>
+
+### List detection
+
+At every level, when you dictate a sequence ("first… second… then…" or "one… two… three…"), cleanup formats it as a proper list instead of a run-on sentence. Ordered steps become numbered lists; plain item lists become bullets.
+
+## Custom prompts
+
+Need something specific — always draft in the third person, always output Markdown, always keep a certain tone? Choose **Custom** intensity, hit **View / edit prompt**, and write your own instructions.
+
+<Tip>
+  Editing any built-in preset automatically switches you to **Custom** and seeds the editor with that preset's text, so you can tweak from a solid starting point without overwriting the built-ins.
+</Tip>
+
+## Where cleanup runs
+
+You can run cleanup on any of these, chosen under **Settings → Models**:
+
+- **Freestyle Transcribe** — transcription and cleanup in one fast pass.
+- **A local LLM** — runs on your device, nothing leaves your computer.
+- **A cloud model** — bring your own key for **OpenAI**, **Anthropic**, **Google**, **Groq**, or **Mistral**.
+
+Cleanup also adapts to *where* you're typing: if a [format](/features/formats) matches the active app, its instructions steer the rewrite (for example, a more formal register for email). See [Formats](/features/formats) for details.
+
+## How it fits the pipeline
+
+Cleanup is one stage in a larger flow. Roughly:
+
+<Steps>
+  <Step title="Vocabulary biases recognition">
+    Your [vocabulary](/features/vocabulary) terms are sent to the speech model so tricky names and jargon come through correctly.
+  </Step>
+  <Step title="Speech is transcribed">
+    Your audio becomes raw text.
+  </Step>
+  <Step title="Cleanup rewrites the text">
+    The language model tidies it up at your chosen intensity (this step).
+  </Step>
+  <Step title="Dictionary applies replacements">
+    Your [dictionary](/features/dictionary) swaps exact phrases in the cleaned text. This runs even when cleanup is off.
+  </Step>
+</Steps>
+
+<Note>
+  If cleanup fails for any reason (a provider hiccup, an unsupported model), Freestyle falls back to your raw transcript rather than losing your words.
+</Note>

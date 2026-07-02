@@ -15,7 +15,7 @@ import {
 
 ## Plugin
 
-The object your factory returns. The default export is `(options?: PluginOptions) => Plugin | Plugin[] | false | null`. Return `false` or `null` to disable based on options.
+The object your factory returns. The default export is `(options?: PluginOptions) => Plugin | Plugin[] | false | null | undefined`. Return an array to ship a preset of plugins, or a falsy value to disable based on options.
 
 ```ts
 interface Plugin {
@@ -64,7 +64,8 @@ interface PluginContext {
   mode: "server" | "app";
   directory: string;           // absolute path to the user-data dir
   logger: PluginLogger;        // debug / info / warn / error
-  settings: SettingsReader;
+  settings: SettingsReader;    // read-only settings access
+  storage: PluginStorage;      // read/write per-plugin key-value storage
 }
 
 interface SettingsReader {
@@ -73,7 +74,29 @@ interface SettingsReader {
 }
 ```
 
-<Note>Settings are read-only. Pass runtime config through factory `options` and read it back with `getOwn`.</Note>
+<Note>Settings are read-only. Pass runtime config through factory `options` and read it back with `getOwn`. For state your plugin needs to write, use `storage`.</Note>
+
+## PluginStorage
+
+Per-plugin persistent key-value storage, scoped by plugin name so plugins never collide. Values are JSON-serialized into the host database (and sync across machines when the database is synced). Think of it as `localStorage` for plugins.
+
+```ts
+interface PluginStorage {
+  get<T = unknown>(key: string): Promise<T | undefined>;
+  set(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+```
+
+Capture it in `setup` and use it from your hooks or middleware:
+
+```ts
+setup(ctx) {
+  const saved = await ctx.storage.get<MyState>("state");
+  // ...
+  await ctx.storage.set("state", nextState);
+}
+```
 
 ## Events
 

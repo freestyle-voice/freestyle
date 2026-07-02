@@ -42,23 +42,34 @@ Freestyle reads the `freestyle` field in `package.json`. `main` points at the bu
 
 ## 2. The plugin
 
-`src/index.ts` exports a factory that returns a `Plugin`. The factory takes user `options`, builds its word list, and returns three things: a `setup` hook, server `middleware`, and an `afterCleanup` hook that does the actual swapping.
+`src/index.ts` exports a factory that returns a `Plugin`. The factory reads user `options`, keeps its word list in a closure, and returns a `setup` hook (which loads the list from persistent storage), server `middleware` (a small CRUD API), and an `afterCleanup` hook that does the actual swapping.
 
 ```ts
-import type { Plugin, PluginOptions } from "freestyle-voice";
+import type { Plugin, PluginOptions, PluginStorage } from "freestyle-voice";
 import { buildMatchers, clean, DEFAULT_REPLACEMENTS } from "./replacements.js";
 
+const STORAGE_KEY = "replacements";
+
 export default function profanityFilter(options?: PluginOptions): Plugin {
-  const opts = (options ?? {}) as { disableDefaults?: boolean; preserveCase?: boolean };
+  const opts = (options ?? {}) as { preserveCase?: boolean };
   const preserveCase = opts.preserveCase !== false;
-  const map = { ...(opts.disableDefaults ? {} : DEFAULT_REPLACEMENTS) };
-  const matchers = buildMatchers(map);
+
+  // Mutable state — seeded in setup(), mutated by the CRUD routes.
+  let map = {};
+  let matchers = buildMatchers(map);
+  let storage: PluginStorage | null = null;
 
   return {
     name: "@freestyle-voice/profanity-filter",
 
-    setup({ logger, mode }) {
-      logger.info(`ready on ${mode} (${matchers.length} substitutions)`);
+    async setup(ctx) {
+      storage = ctx.storage;
+      // Load the saved list, or seed the defaults on first run.
+      const stored = await storage.get(STORAGE_KEY);
+      map = stored && typeof stored === "object" ? stored : { ...DEFAULT_REPLACEMENTS };
+      if (!stored) await storage.set(STORAGE_KEY, map);
+      matchers = buildMatchers(map);
+      ctx.logger.info(`ready on ${ctx.mode} (${matchers.length} substitutions)`);
     },
 
     afterCleanup(_input, output) {
@@ -68,7 +79,7 @@ export default function profanityFilter(options?: PluginOptions): Plugin {
 }
 ```
 
-`afterCleanup` is the last text transform on the server, so it runs after cleanup and the dictionary. It mutates `output.text` in place.
+`afterCleanup` is the last text transform on the server, so it runs after cleanup and the dictionary. It mutates `output.text` in place. The word list is persisted with [`PluginStorage`](/sdk-reference#pluginstorage) (`ctx.storage`), so edits made in the UI survive restarts.
 
 <Tip>
   Need a one-liner instead? The `transform` helper wraps a plain string function into an `afterCleanup` hook:
@@ -80,42 +91,97 @@ export default function profanityFilter(options?: PluginOptions): Plugin {
 
 ## 3. Talk to the UI (optional)
 
-The plugin serves its word list to its settings page with Hono `middleware`:
+The plugin exposes a small CRUD API to its settings page with Hono `middleware`, all under one route prefix. The handler branches on method and persists every change through `storage`:
 
 ```ts
-const route = "/api/plugins/freestyle-voice-profanity-filter/replacements";
+const ROUTE = "/api/plugins/freestyle-voice-profanity-filter/replacements";
 
-const replacementsApi = async (c, next) => {
-  if (c.req.path !== route) return next();
-  return c.json({ preserveCase, replacements: entries });
+const handler = async (c, next) => {
+  if (!c.req.path.startsWith(ROUTE)) return next();
+
+  // GET  -> list all words
+  // POST -> add a word { word, alternatives }
+  // PUT  -> update a word
+  // DELETE -> remove a word
+  // POST /reset -> restore defaults
+  // ...each mutation updates `map`, rebuilds `matchers`, and calls storage.set()
 };
 
-// add to the returned plugin:  middleware: [replacementsApi],
+// add to the returned plugin:  middleware: [handler],
 ```
 
-The page fetches it through the bridge:
+The page reads and writes through the bridge:
 
 ```ts
-const res = await window.freestyle.api(route);
-const data = await res.json();
+// list
+const res = await window.freestyle.api(ROUTE);
+const { replacements } = await res.json();
+
+// add
+await window.freestyle.api(ROUTE, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ word: "heck", alternatives: ["heck", "gosh"] }),
+});
 ```
 
-## 4. Build and install
+## 4. Test it with `link`
+
+You don't need to publish to npm to try your plugin. The repo ships a helper that builds your plugin and links it straight into Freestyle. Wire it into your plugin's `package.json` once:
+
+```json
+{
+  "scripts": {
+    "build": "pkgroll --minify && vite build",
+    "link": "node ../../scripts/link-plugin.mjs",
+    "unlink": "node ../../scripts/link-plugin.mjs --unlink"
+  }
+}
+```
+
+Then, from your plugin's directory:
 
 ```bash
-pnpm install
-pnpm build
+pnpm run link
 ```
 
-Copy the built package into the user-data directory under `plugins/freestyle-voice-profanity-filter/`, add its specifier to the `plugins` setting (or install via **Settings → Plugins**), then restart the app. Dictate a curse word and watch it get swapped.
+This builds the plugin and creates a `<slug>-dev` copy inside Freestyle's user-data `plugins/` directory, symlinked back to your `dist/`. The `-dev` suffix means it can sit alongside a real npm-installed copy of the same plugin without clashing.
+
+<Steps>
+  <Step title="Restart Freestyle">
+    Open (or restart) the app and go to **Settings → Plugins**. Your plugin shows up in the installed list with a `[DEV]` label.
+  </Step>
+  <Step title="Enable it">
+    Toggle it on from there. Linking alone puts the files in place — enabling is what activates its hooks and middleware.
+  </Step>
+  <Step title="Iterate">
+    Because `dist/` is symlinked, changes go live after a rebuild. Run `pnpm build`, then reload the plugin (or restart the app) to pick up your edits.
+  </Step>
+</Steps>
+
+Dictate a curse word and watch it get swapped. When you're done, remove the dev copy:
+
+```bash
+pnpm run unlink
+```
+
+<Note>
+  On Windows, symlinks need Developer Mode. If it isn't enabled, `link` falls back to copying your `dist/` — in that case re-run `pnpm run link` after each build to pick up changes.
+</Note>
+
+### Shipping it
+
+Once it's working, publish the package to npm (`npm publish`) and users can install it by name from **Settings → Plugins**, or you can add its specifier to the `plugins` setting directly.
 
 ## Configure it
 
-Options come from the `plugins` setting as `[specifier, options]`:
+Options come from the `plugins` setting as `[specifier, options]`. The profanity filter takes a single option, `preserveCase` (default `true`), which mirrors the matched word's casing onto its replacement:
 
 ```json
-["@freestyle-voice/profanity-filter", { "preserveCase": true, "disableDefaults": false }]
+["@freestyle-voice/profanity-filter", { "preserveCase": true }]
 ```
+
+The word list itself isn't a static option — it's managed from the plugin's UI page (add, edit, delete, reset) and persisted with `storage`.
 
 ## The API bridge
 

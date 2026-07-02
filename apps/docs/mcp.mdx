@@ -53,7 +53,7 @@ The MCP endpoint runs at `http://127.0.0.1:4649/mcp` using the Streamable HTTP t
 </Tabs>
 
 <Note>
-  If you've set `FREESTYLE_AUTH_TOKEN`, you'll need to include the token in the MCP config. Refer to your tool's docs for how to pass headers with MCP connections.
+  The MCP endpoint has no authentication of its own — it's meant to be reached over loopback on the same machine. If you run the server on a remote host, front it with a reverse proxy or tunnel that adds auth (see [Self-hosting → Security](/self-hosting#security)).
 </Note>
 
 ## Available tools

@@ -34,8 +34,6 @@ services:
       - "4649:4649"
     volumes:
       - freestyle-data:/data
-    environment:
-      - FREESTYLE_AUTH_TOKEN=your-secret-token
     restart: unless-stopped
 
 volumes:
@@ -44,12 +42,13 @@ volumes:
 
 ## Environment variables
 
+The Docker image sets `FREESTYLE_DB_PATH`, `HOST`, `PORT`, and `FREESTYLE_ENV` for you. `FREESTYLE_DB_PATH` is required — the server refuses to start without it (the image defaults it to `/data/freestyle.db`).
+
 | Variable | Default | Description |
 | --- | --- | --- |
-| `FREESTYLE_DB_PATH` | `/data/freestyle.db` | Path to the SQLite database file. The `/data` volume persists it across restarts. |
+| `FREESTYLE_DB_PATH` | `/data/freestyle.db` (in image) | Path to the SQLite database file. Required. The `/data` volume persists it across restarts. |
 | `PORT` | `4649` | Port to listen on. |
 | `HOST` | `0.0.0.0` | Interface to bind to. |
-| `FREESTYLE_AUTH_TOKEN` | _(none)_ | When set, all API requests must include a `Bearer` token in the `Authorization` header. Recommended for any network-exposed deployment. |
 | `FREESTYLE_ENV` | `production` | App environment flag. |
 | `DO_NOT_TRACK` | _(none)_ | Set to `1` to disable all telemetry. |
 
@@ -72,26 +71,15 @@ docker inspect --format='{{.State.Health.Status}}' freestyle
 # healthy
 ```
 
-## Authentication
+## Security
 
-For any deployment exposed beyond localhost, set `FREESTYLE_AUTH_TOKEN`:
+<Warning>
+  The server has **no built-in authentication**. It's designed to run on loopback (as the desktop app's embedded backend) or on a trusted private network. Don't expose it directly to the public internet.
+</Warning>
 
-```bash
-docker run -d \
-  -p 4649:4649 \
-  -v freestyle-data:/data \
-  -e FREESTYLE_AUTH_TOKEN=my-secret-token \
-  ghcr.io/freestyle-voice/freestyle-server
-```
+The only access control the server enforces is a trusted-origin check: state-changing requests (anything other than `GET`/`HEAD`/`OPTIONS`) and WebSocket upgrades are rejected with `403` unless they come from a trusted origin (`localhost`, `127.0.0.1`, or the app's own `app://` origin) or omit the `Origin` header. This blocks cross-origin browser attacks, but it is **not** a substitute for authentication — a plain `curl` with no `Origin` header is treated as trusted.
 
-Then include the token in all API requests:
-
-```bash
-curl -H "Authorization: Bearer my-secret-token" \
-  http://localhost:4649/api/settings
-```
-
-The `/api/health` endpoint is always exempt from authentication.
+If you need to reach the server from other machines, put it behind a reverse proxy (nginx, Caddy, Traefik) or a tunnel that adds authentication and TLS, and keep the container bound to a private interface.
 
 ## Connecting the desktop app
 
@@ -108,7 +96,6 @@ Plugins work the same way in the standalone server. Install them with the API:
 ```bash
 curl -X POST http://localhost:4649/api/plugins/install \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
   -d '{"npmName": "@freestyle-voice/profanity-filter"}'
 ```
 

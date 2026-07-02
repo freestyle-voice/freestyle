@@ -1,0 +1,59 @@
+---
+title: "Dictionary"
+description: "Swap spoken phrases for exact text after transcription."
+---
+
+The **Dictionary** does one thing reliably: after your speech is transcribed, it finds phrases you've defined and replaces them with the exact text you want. Say the **key**, get the **value**.
+
+It's perfect for anything you type the same way every time but don't want to spell out loud:
+
+- `my address` → your full street address
+- `type script` → `TypeScript`
+- `my email` → `you@example.com`
+- `sig` → a full email signature
+
+## How it benefits your output
+
+Speech models guess at spelling and spacing, especially for brand names, technical terms, and anything with punctuation. The dictionary removes the guesswork: a matched key is replaced with your value **character-for-character**, every time. No capitalization drift, no `Type Script` when you meant `TypeScript`.
+
+Because it runs on text (not audio), it's deterministic — unlike [vocabulary](/features/vocabulary), which only nudges the speech model.
+
+## Add an entry
+
+<Steps>
+  <Step title="Open Dictionary">
+    Find it in the sidebar.
+  </Step>
+  <Step title="Add entry">
+    Click **Add entry**, type the spoken phrase as the **key** and the replacement as the **value**, then save.
+  </Step>
+  <Step title="Dictate">
+    It works immediately — no restart needed.
+  </Step>
+</Steps>
+
+You can search your entries, and import or export the whole list as JSON.
+
+## Matching rules
+
+- **Case-insensitive keys.** Keys are stored lowercase and matched regardless of how you say them, so `TypeScript`, `typescript`, and `type script` all match a `type script` key.
+- **Whole-word matching.** For most languages, a key only matches on word boundaries, so `cat` won't rewrite the middle of "category". Chinese, Japanese, and Korean text (which isn't space-separated) matches anywhere.
+- **Longest key wins.** When multiple keys could match, longer keys are applied first — so a specific multi-word phrase takes priority over a shorter one it contains.
+- **Value is verbatim.** Your value is inserted exactly as typed, including its capitalization and punctuation.
+
+## When it runs
+
+The dictionary is applied **after** [AI cleanup](/features/cleanup), on the final text — and it runs **even if cleanup is turned off**. That ordering means cleanup can reshape your sentence freely, and your exact replacements still land last.
+
+## Import & export
+
+Move your dictionary between machines or back it up as JSON. The format is a plain array of objects:
+
+```json
+[
+  { "key": "type script", "value": "TypeScript" },
+  { "key": "my address", "value": "123 Main St, Springfield" }
+]
+```
+
+On import, entries with a key you already have are skipped rather than overwritten, and the response tells you how many were imported vs. skipped.

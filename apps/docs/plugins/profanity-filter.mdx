@@ -32,26 +32,23 @@ Identity-based slurs are intentionally **not** included — this is a playful fi
 
 ## UI page
 
-The plugin adds a **Profanity Filter** page inside the app (accessible from **Plugins → Profanity Filter → Open**). The page:
+The plugin adds a **Profanity Filter** page inside the app (accessible from **Plugins → Profanity Filter → Open**). It's a full editor for the word list, so you don't need to touch config or restart the app to change what gets swapped. The page lets you:
 
-- Explains how the filter works
-- Lets you preview any sentence live
-- Lists every word being swapped
+- **Add** a word or phrase with one or more replacements (repeats cycle through them)
+- **Edit** the replacements for any existing word inline
+- **Delete** words you don't want filtered
+- **Search** the list
+- **Reset to defaults** to restore the built-in list
 
-It reads the live, effective list (defaults + your overrides) from a small read-only endpoint through the `window.freestyle` host bridge.
+Every change is saved through the `window.freestyle` host bridge to the plugin's own CRUD endpoint and persisted with plugin storage, so it survives restarts and takes effect on the next dictation.
 
 ## Configuration
 
-Tweak it via the `[name, options]` tuple form in the `plugins` setting:
+The word list is managed from the UI page above. The only static option is `preserveCase`, set via the `[name, options]` tuple form in the `plugins` setting:
 
 ```jsonc
 [
   ["@freestyle-voice/profanity-filter", {
-    "replacements": {
-      "fuck": ["fishsticks", "fiddlesticks"],
-      "crap": "kerfuffle"
-    },
-    "disableDefaults": false,
     "preserveCase": true
   }]
 ]
@@ -59,9 +56,7 @@ Tweak it via the `[name, options]` tuple form in the `plugins` setting:
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `replacements` | `Record<string, string \| string[]>` | `{}` | Add or override substitutions (merged over the defaults). A string or an array of alternatives. |
-| `disableDefaults` | `boolean` | `false` | Use only your own `replacements`, ignoring the built-in list. |
-| `preserveCase` | `boolean` | `true` | Mirror the matched word's casing onto the replacement. |
+| `preserveCase` | `boolean` | `true` | Mirror the matched word's casing onto the replacement (e.g. `SHIT` → `SUGAR`, `Damn` → `Dang`). |
 
 ## Build from source
 

@@ -5,11 +5,19 @@ description: "Going over some of the features in Freestyle"
 
 ## Dictate with the hotkey
 
-The default hotkey is **Option+Space** on macOS and **Alt+Space** on Windows and Linux. There are two ways to use it:
+Freestyle picks a sensible default hotkey per platform:
+
+| Platform | Default hotkey |
+| --- | --- |
+| macOS | **Fn (Globe)** — the dedicated dictation key, no modifier conflicts |
+| Windows | **Control+Super** (Ctrl + Windows key) |
+| Linux | **Alt+Super** |
+
+Dictation defaults to **Hold (push-to-talk)**. There are two activation modes:
 
 <CardGroup cols={2}>
   <Card title="Hold (push-to-talk)" icon="hand-pointer">
-    Hold to record, release to transcribe. Great for quick bursts.
+    Hold to record, release to transcribe. Great for quick bursts. This is the default.
   </Card>
   <Card title="Toggle" icon="toggle-on">
     Press once to start, press again to stop. Great for longer dictation.
@@ -17,6 +25,10 @@ The default hotkey is **Option+Space** on macOS and **Alt+Space** on Windows and
 </CardGroup>
 
 To change it, go to **Settings → Recording**. Pick **Hold** or **Toggle** under **Activation**, and click the current shortcut to rebind it (it needs a modifier key or a side mouse button).
+
+<Note>
+  On Linux, true hold-to-talk needs access to the input device. If it isn't available, Freestyle falls back to toggle mode and tells you how to enable it.
+</Note>
 
 Under **Output mode** you can choose **Paste into app** (text is typed straight into the active window) or **Copy to clipboard** (you paste it yourself). Clipboard mode helps with apps where auto-paste misbehaves.
 
@@ -46,7 +58,7 @@ Freestyle runs local models on your device or connects to cloud providers with y
     - **Parakeet** Great open source model from NVIDIA.
   </Tab>
   <Tab title="Cloud (your own key)">
-    Often faster and more accurate, but needs internet and a key. Supported providers: **OpenAI**, **Groq**, **Anthropic**, **Google**, **Deepgram**, and **ElevenLabs**.
+    Often faster and more accurate, but needs internet and a key. Supported transcription providers: **OpenAI**, **Groq**, **Deepgram**, **ElevenLabs**, and **Soniox**.
 
     1. Open **Settings → Models** and pick a provider.
     2. Paste your API key. Keys live in your system keychain, never logged or sent to us.
@@ -54,50 +66,24 @@ Freestyle runs local models on your device or connects to cloud providers with y
   </Tab>
 </Tabs>
 
-## Clean up with AI
+## Shape the final text
 
-Raw speech is messy. Freestyle can run your transcript through a language model to tidy it up. Set this under **Settings → Models** after you pick an LLM model (separate from your voice model).
+Freestyle has four features that turn raw speech into exactly the text you want. Each has its own page with examples and details:
 
-Choose a **cleanup intensity**:
-
-| Level | What it does |
-| --- | --- |
-| **Low** | Fixes punctuation and obvious slips. Keeps your exact words. |
-| **Medium** | Cleans grammar and phrasing without changing meaning. |
-| **High** | Rephrases and reorders for flow, keeping your meaning. |
-| **Custom** | Write your own instructions. |
-
-For **Custom**, hit **View / edit prompt** and say exactly how you want text rewritten. Editing any preset switches you to Custom so the built-ins stay put.
-
-## Build a dictionary
-
-The **Dictionary** (in the sidebar) swaps short spoken phrases for longer text. Say the key, get the value.
-
-For example, `my address` could expand to your full street address, or `type script` could become `TypeScript`.
-
-To add one, open **Dictionary**, click **Add entry**, type the phrase as the **key** and the replacement as the **value**, and save. It works right away. You can search entries and import or export them as JSON.
-
-## Sharpen recognition with vocabulary
-
-The **Vocabulary** page helps the model recognize tricky words like names, brands, and jargon *before* transcription. Add a term plus an optional note.
-
-Quick way to remember the difference: vocabulary changes *how audio is heard*, the dictionary rewrites text *after*.
-
-<Note>
-  Vocabulary support varies by model. Some handle multi-word phrases, some only boost single words, and a few skip it entirely. The page tells you what your model supports.
-</Note>
-
-## Format for the app you're in
-
-**Formats** reshape your transcript based on *where* you're typing. Dictate into Gmail and get an email, dictate into Slack and stay casual.
-
-To add one, open **Formats**, click **Add format**, then:
-
-1. Give it a **label** like "Email".
-2. Set an **app pattern** that matches the app name, URL, or window title. Patterns are pipe-separated and case-insensitive, like `mail.google.com | outlook | Spark`.
-3. Write the **instructions**, like "Format as a professional email with a greeting, body, and sign-off."
-
-Freestyle ships with defaults you can edit. Editing one makes it a custom rule (it gets a **CUSTOM** badge). **Reset to defaults** undoes your changes.
+<CardGroup cols={2}>
+  <Card title="AI cleanup" icon="sparkles" href="/features/cleanup">
+    Run your transcript through a language model to fix punctuation, drop filler, and polish phrasing — at the intensity you choose.
+  </Card>
+  <Card title="Dictionary" icon="arrow-right-arrow-left" href="/features/dictionary">
+    Swap spoken phrases for exact text after transcription, like `type script` → `TypeScript`.
+  </Card>
+  <Card title="Vocabulary" icon="ear-listen" href="/features/vocabulary">
+    Teach the speech model tricky names, brands, and jargon so it spells them right.
+  </Card>
+  <Card title="Formats" icon="wand-magic-sparkles" href="/features/formats">
+    Reshape text based on the app you're in — an email in Gmail, a casual note in Slack.
+  </Card>
+</CardGroup>
 
 ## Next steps
 

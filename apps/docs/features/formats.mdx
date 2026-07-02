@@ -1,0 +1,50 @@
+---
+title: "Formats"
+description: "Reshape your transcript based on the app you're dictating into."
+---
+
+The way you want text to look depends on *where* it's going. A message to Slack should stay casual; an email in Gmail wants a greeting and a sign-off; a commit message wants a terse imperative line. **Formats** apply the right style automatically based on the app or site you're dictating into.
+
+Dictate the same rambled thought into two apps and get two appropriately-shaped results — without changing a setting.
+
+## How it benefits your output
+
+A format attaches **instructions** to an **app pattern**. When the active app matches, those instructions steer the [AI cleanup](/features/cleanup) step, so the model doesn't just tidy your words — it shapes them for the destination.
+
+For example, an "Email" format matching `mail.google.com` might instruct: *"Format as a professional email with a greeting, body, and sign-off."* Say "hey can you send me the report thanks" into Gmail and you get a proper email; say it into Slack and it stays a quick message.
+
+## Add a format
+
+<Steps>
+  <Step title="Open Formats">
+    Find it in the sidebar and click **Add format**.
+  </Step>
+  <Step title="Label it">
+    Give it a name like "Email" or "Commit message".
+  </Step>
+  <Step title="Set an app pattern">
+    Enter a pattern that matches the app name, URL, or window title. Patterns are **pipe-separated** and **case-insensitive**, and match if any piece appears anywhere in the context — for example `mail.google.com | outlook | Spark`.
+  </Step>
+  <Step title="Write the instructions">
+    Describe how the text should be shaped, like "Format as a professional email with a greeting, body, and sign-off."
+  </Step>
+</Steps>
+
+## Matching rules
+
+- **Substring match.** A pattern piece matches when it appears anywhere in the app context (name, URL, or window title). `mail.google.com` matches the full Gmail URL.
+- **Case-insensitive.** Casing never matters.
+- **Your rules win.** Custom formats take priority over the built-in defaults, so you can override a default's behavior for a given app.
+- **First match applies.** Only the first matching format is used per dictation.
+
+## Defaults and custom rules
+
+Freestyle ships with sensible default formats you can use as-is or tweak. Editing a default turns it into a custom rule (it gets a **CUSTOM** badge). **Reset to defaults** removes all your custom rules and restores the built-in set.
+
+<Note>
+  Formats work by steering the cleanup model, so they only take effect when [AI cleanup](/features/cleanup) is enabled. With cleanup off, your transcript isn't reshaped and formats have nothing to hook into.
+</Note>
+
+## Where it fits
+
+Formats influence the [cleanup](/features/cleanup) stage — after transcription, before the [dictionary](/features/dictionary) applies its exact replacements. They decide *how* the text is written; the dictionary then swaps in any exact phrases you've defined.

@@ -13,7 +13,10 @@ The Freestyle server is a [Hono](https://hono.dev) app that runs on `http://127.
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/api/health` | Health check. Returns `{ "status": "ok", "name": "freestyle" }`. Always exempt from auth. |
+| `GET` | `/api/health` | Health check. Returns `{ "status": "ok", "name": "freestyle" }`. |
+| `GET` | `/api/device-id` | Return the anonymous telemetry device id: `{ "deviceId": "..." }`. |
+| `POST` | `/api/telemetry` | Record a renderer-side product event. Body: `{ event, properties? }`. Honors the telemetry opt-out and `DO_NOT_TRACK`. |
+| `POST` | `/api/client-error` | Report a renderer crash/error for local logging (and PostHog when telemetry is on). Body: `{ message, stack?, source?, context? }`. |
 
 ## Settings
 

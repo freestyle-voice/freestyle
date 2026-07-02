@@ -35,12 +35,18 @@ function getToneCtx(): AudioContext {
 }
 
 type TonePreset = "start" | "stop";
+// Warmer, lower tones than the original 880/660 Hz, with a longer envelope, so
+// the start/stop indicator is a gentle blip rather than a harsh pop (#365).
 const TONE_PRESETS: Record<TonePreset, { freq: number; ms: number }> = {
-  start: { freq: 880, ms: 100 },
-  stop: { freq: 660, ms: 100 },
+  start: { freq: 587.33, ms: 140 }, // D5
+  stop: { freq: 440, ms: 140 }, // A4
 };
 
-async function playTone(preset: TonePreset, volume = 0.3): Promise<void> {
+// Fade the tone in over a few ms instead of jumping to full volume instantly.
+// The instant onset was the main source of the harsh "click" in the pop.
+const TONE_ATTACK_S = 0.02;
+
+async function playTone(preset: TonePreset, volume = 0.2): Promise<void> {
   if (!_soundEnabled) return;
   const { freq, ms } = TONE_PRESETS[preset];
   try {
@@ -50,12 +56,16 @@ async function playTone(preset: TonePreset, volume = 0.3): Promise<void> {
     const gain = ctx.createGain();
     osc.type = "sine";
     osc.frequency.value = freq;
-    gain.gain.setValueAtTime(volume, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + ms / 1000);
+    const now = ctx.currentTime;
+    const dur = ms / 1000;
+    const attack = Math.min(TONE_ATTACK_S, dur * 0.3);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(volume, now + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
     osc.connect(gain);
     gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + ms / 1000);
+    osc.start(now);
+    osc.stop(now + dur);
   } catch {}
 }
 

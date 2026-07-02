@@ -32,21 +32,19 @@ body {
 }
 
 .page {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 8px 48px 48px;
+  padding: 0 3rem 3rem;
 }
 
 @media (max-width: 1080px) {
   .page {
-    padding: 8px 32px 48px;
+    padding: 0 2rem 2rem;
   }
 }
 
 @media (max-width: 820px) {
   .page {
-    padding: 8px 16px 48px;
-}
+    padding: 0 1rem 1.5rem;
+  }
 }
 
 .back-btn {

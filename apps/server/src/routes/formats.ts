@@ -5,6 +5,10 @@ import {
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import {
+  buildMatchableContext,
+  patternMatchesContext,
+} from "../lib/editor/context-match.js";
 
 interface FormatRow {
   id: number;
@@ -75,8 +79,8 @@ const formats = new Hono()
   .get("/match", (c) => {
     const db = getDb();
     const context = c.req.query("context") ?? "";
-    if (!context) return c.json(null);
-    const contextLower = context.toLowerCase();
+    const matchCtx = buildMatchableContext(context || null);
+    if (!matchCtx) return c.json(null);
 
     const rows = db
       .prepare("SELECT * FROM format_rules ORDER BY is_default ASC, id DESC")
@@ -84,11 +88,8 @@ const formats = new Hono()
 
     // User rules (is_default=0) take priority over defaults (is_default=1)
     for (const row of rows) {
-      const patterns = row.app_pattern.split("|").map((p) => p.trim());
-      for (const pattern of patterns) {
-        if (pattern && contextLower.includes(pattern.toLowerCase())) {
-          return c.json(row);
-        }
+      if (patternMatchesContext(matchCtx, row.app_pattern)) {
+        return c.json(row);
       }
     }
 

@@ -1,67 +1,87 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
+// Patterns follow context-match.ts semantics: domain/phrase entries match as
+// substrings of url+title+app; bare words match the app name, a window-title
+// segment ("Inbox - Gmail" -> "gmail"), or the URL host. The bare words give
+// Windows/Linux parity, where context payloads carry no URL.
 const DEFAULT_FORMAT_RULES = [
   {
-    pattern: "mail.google.com|outlook|yahoo.com|proton",
+    pattern: "mail.google.com|yahoo.com|proton mail|gmail|outlook|mail",
     label: "Email",
     instructions:
       "If the transcript clearly dictates an email, preserve greeting/sign-off only if spoken, keep paragraph breaks clean, and do not invent a subject line.",
   },
   {
-    pattern: "slack.com|Slack",
+    pattern: "slack.com|slack",
     label: "Slack",
     instructions:
       "Keep the wording intact. Add only light punctuation and paragraph breaks.",
   },
   {
-    pattern: "discord.com|Discord",
+    pattern: "discord.com|discord",
     label: "Discord",
     instructions:
       "Keep the wording intact. Add only light punctuation and paragraph breaks.",
   },
   {
-    pattern: "github.com|GitLab",
+    pattern: "github.com|gitlab.com|github|gitlab",
     label: "Code Platform",
     instructions:
       "Keep technical wording exact. Preserve explicit markdown, code blocks, or lists only if they were clearly dictated.",
   },
   {
-    pattern: "docs.google.com|notion.so|Notion",
+    pattern: "docs.google.com|notion.so|google docs|notion",
     label: "Document",
     instructions:
       "Preserve paragraph breaks and headings only when they are already clearly implied by the transcript.",
   },
   {
-    pattern: "Code|Cursor|Terminal|iTerm",
+    pattern: "code|cursor|terminal|iterm",
     label: "Code Editor",
     instructions:
       "Keep technical terms exact. Do not rewrite for tone or style.",
   },
   {
-    pattern: "Messages|WhatsApp|Telegram",
+    pattern: "web.whatsapp.com|messages|whatsapp|telegram",
     label: "Messaging",
     instructions: "Keep the wording intact. Add only light punctuation.",
   },
   {
-    pattern: "x.com|twitter.com",
+    pattern: "x.com|twitter.com|twitter|x",
     label: "X/Twitter",
     instructions:
       "Keep the wording intact. Do not shorten or rewrite for length.",
   },
   {
-    pattern: "linkedin.com",
+    pattern: "linkedin.com|linkedin",
     label: "LinkedIn",
     instructions:
       "Keep the wording intact. Add only light punctuation and paragraph breaks.",
   },
   {
-    pattern: "chatgpt.com|claude.ai|perplexity",
+    pattern: "chatgpt.com|claude.ai|perplexity.ai|chatgpt|claude|perplexity",
     label: "AI Chat",
     instructions:
       "Keep the wording intact. Preserve explicit prompt structure only if it was clearly dictated.",
   },
+] as const;
+
+const V11_DEFAULT_PATTERN_UPDATES = [
+  {
+    label: "Email",
+    oldPattern: "mail.google.com|outlook|yahoo.com|proton",
+  },
+  { label: "Slack", oldPattern: "slack.com|Slack" },
+  { label: "Discord", oldPattern: "discord.com|Discord" },
+  { label: "Code Platform", oldPattern: "github.com|GitLab" },
+  { label: "Document", oldPattern: "docs.google.com|notion.so|Notion" },
+  { label: "Code Editor", oldPattern: "Code|Cursor|Terminal|iTerm" },
+  { label: "Messaging", oldPattern: "Messages|WhatsApp|Telegram" },
+  { label: "X/Twitter", oldPattern: "x.com|twitter.com" },
+  { label: "LinkedIn", oldPattern: "linkedin.com" },
+  { label: "AI Chat", oldPattern: "chatgpt.com|claude.ai|perplexity" },
 ] as const;
 
 const LEGACY_DEFAULT_FORMAT_RULES = [
@@ -314,6 +334,17 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
          SET model_name = replace(model_name, 'Freestyle Cloud', 'Freestyle Transcribe')
        WHERE provider = 'freestyle-cloud' AND model_name LIKE 'Freestyle Cloud%'`,
     );
+  }
+
+  if (currentVersion < 11) {
+    // Only untouched default rules migrate; user-edited patterns are left alone.
+    const updateStmt = db.prepare(
+      "UPDATE format_rules SET app_pattern = ?, updated_at = datetime('now') WHERE app_pattern = ? AND label = ? AND is_default = 1",
+    );
+    for (const { label, oldPattern } of V11_DEFAULT_PATTERN_UPDATES) {
+      const next = DEFAULT_FORMAT_RULES.find((r) => r.label === label);
+      if (next) updateStmt.run(next.pattern, oldPattern, label);
+    }
   }
 
   // Upsert schema version

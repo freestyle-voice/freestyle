@@ -943,8 +943,80 @@ async function getWindowsFrontmostApp(): Promise<string | null> {
   }
 }
 
-// -- Linux (X11): Get active window name + title via xdotool --
+// -- Linux: Get active window name + title (Wayland compositors + X11) --
 async function getLinuxFrontmostApp(): Promise<string | null> {
+  if (isWaylandSession()) {
+    return (
+      (await getSwayFrontmostApp()) ??
+      (await getGnomeFrontmostApp()) ??
+      (await getLinuxX11FrontmostApp())
+    );
+  }
+  return getLinuxX11FrontmostApp();
+}
+
+interface SwayNode {
+  focused?: boolean;
+  name?: string;
+  app_id?: string | null;
+  window_properties?: { class?: string };
+  nodes?: SwayNode[];
+  floating_nodes?: SwayNode[];
+}
+
+function findFocusedSwayNode(node: SwayNode): SwayNode | null {
+  if (node.focused) return node;
+  for (const child of [...(node.nodes ?? []), ...(node.floating_nodes ?? [])]) {
+    const hit = findFocusedSwayNode(child);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+async function getSwayFrontmostApp(): Promise<string | null> {
+  try {
+    const output = await execAsync("swaymsg", ["-t", "get_tree"], 2000);
+    const focused = findFocusedSwayNode(JSON.parse(output) as SwayNode);
+    if (!focused) return null;
+    return JSON.stringify({
+      app: focused.app_id ?? focused.window_properties?.class ?? "Unknown",
+      windowTitle: focused.name ?? "",
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function getGnomeFrontmostApp(): Promise<string | null> {
+  try {
+    const output = await execAsync(
+      "gdbus",
+      [
+        "call",
+        "--session",
+        "--dest",
+        "org.gnome.Shell",
+        "--object-path",
+        "/org/gnome/Shell/Introspect",
+        "--method",
+        "org.gnome.Shell.Introspect.GetWindows",
+      ],
+      2000,
+    );
+    for (const win of output.split(/uint64 \d+:/).slice(1)) {
+      if (!/'has-focus':\s*<true>/.test(win)) continue;
+      const app =
+        /'wm-class':\s*<'((?:[^'\\]|\\.)*)'>/.exec(win)?.[1] ?? "Unknown";
+      const title = /'title':\s*<'((?:[^'\\]|\\.)*)'>/.exec(win)?.[1] ?? "";
+      return JSON.stringify({ app, windowTitle: title });
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function getLinuxX11FrontmostApp(): Promise<string | null> {
   try {
     const windowTitle = await execAsync(
       "xdotool",

@@ -1,5 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import { parseAppContextPayload } from "./app-context.js";
+import {
+  buildMatchableContext,
+  type MatchableContext,
+  patternMatchesContext,
+} from "./context-match.js";
 import type { RewriteRegisterMode } from "./prompts.js";
 
 interface FormatRuleRow {
@@ -24,47 +29,11 @@ const FORMAL_RULE_LABELS = new Set([
 
 const CASUAL_RULE_LABELS = new Set(["Discord", "Messaging", "X/Twitter"]);
 
-const FORMAL_FALLBACK_PATTERNS = [
-  "gmail",
-  "mail",
-  "outlook",
-  "yahoo",
-  "proton",
-  "slack",
-  "linkedin",
-  "docs.google.com",
-  "notion",
-  "github",
-  "gitlab",
-  "cursor",
-  "terminal",
-  "iterm",
-  "code",
-];
+const FORMAL_FALLBACK_PATTERN =
+  "gmail|mail|outlook|yahoo|proton mail|slack|linkedin|docs.google.com|notion|github|gitlab|cursor|terminal|iterm|code";
 
-const CASUAL_FALLBACK_PATTERNS = [
-  "discord",
-  "messages",
-  "whatsapp",
-  "telegram",
-  "twitter",
-  "x.com",
-];
-
-export function buildMatchContext(rawContext: string | null): string {
-  if (!rawContext) return "";
-
-  const ctx = parseAppContextPayload(rawContext);
-  // Fall back to the raw string when the payload isn't valid JSON.
-  if (!ctx) return rawContext;
-
-  const parts: string[] = [];
-  if (ctx.url) parts.push(ctx.url);
-  if (ctx.title) parts.push(ctx.title);
-  if (ctx.windowTitle) parts.push(ctx.windowTitle);
-  if (ctx.app) parts.push(ctx.app);
-  return parts.join(" ");
-}
+const CASUAL_FALLBACK_PATTERN =
+  "discord|messages|whatsapp|telegram|twitter|x.com";
 
 function inferRegisterModeFromLabel(
   label: string | undefined,
@@ -75,16 +44,11 @@ function inferRegisterModeFromLabel(
   return "neutral";
 }
 
-function inferRegisterModeFromMatchText(
-  matchText: string,
+function inferRegisterModeFromContext(
+  ctx: MatchableContext,
 ): RewriteRegisterMode {
-  const lower = matchText.toLowerCase();
-  if (FORMAL_FALLBACK_PATTERNS.some((pattern) => lower.includes(pattern))) {
-    return "formal";
-  }
-  if (CASUAL_FALLBACK_PATTERNS.some((pattern) => lower.includes(pattern))) {
-    return "casual";
-  }
+  if (patternMatchesContext(ctx, FORMAL_FALLBACK_PATTERN)) return "formal";
+  if (patternMatchesContext(ctx, CASUAL_FALLBACK_PATTERN)) return "casual";
   return "neutral";
 }
 
@@ -92,15 +56,10 @@ export function getRewritePromptContext(
   rawContext: string | null,
   db: DatabaseSync,
 ): RewritePromptContext {
-  if (!rawContext) {
+  const matchCtx = buildMatchableContext(rawContext);
+  if (!matchCtx) {
     return { contextHint: "", registerMode: "neutral" };
   }
-
-  const matchStr = buildMatchContext(rawContext);
-  if (!matchStr) {
-    return { contextHint: "", registerMode: "neutral" };
-  }
-  const matchStrLower = matchStr.toLowerCase();
 
   try {
     const rows = db
@@ -110,38 +69,31 @@ export function getRewritePromptContext(
       .all() as unknown as FormatRuleRow[];
 
     for (const row of rows) {
-      const patterns = row.app_pattern.split("|").map((p) => p.trim());
-      for (const pattern of patterns) {
-        if (pattern && matchStrLower.includes(pattern.toLowerCase())) {
-          const registerModeFromLabel = inferRegisterModeFromLabel(row.label);
-          return {
-            contextHint: row.instructions,
-            registerMode:
-              registerModeFromLabel === "neutral"
-                ? inferRegisterModeFromMatchText(matchStr)
-                : registerModeFromLabel,
-          };
-        }
+      if (patternMatchesContext(matchCtx, row.app_pattern)) {
+        const registerModeFromLabel = inferRegisterModeFromLabel(row.label);
+        return {
+          contextHint: row.instructions,
+          registerMode:
+            registerModeFromLabel === "neutral"
+              ? inferRegisterModeFromContext(matchCtx)
+              : registerModeFromLabel,
+        };
       }
     }
   } catch {
     // format_rules table may not exist yet
   }
 
-  try {
-    const ctx = JSON.parse(rawContext) as { app?: string };
-    if (ctx.app) {
-      return {
-        contextHint: `The user is dictating in ${ctx.app}.`,
-        registerMode: inferRegisterModeFromMatchText(matchStr),
-      };
-    }
-  } catch {
-    // not JSON
+  const ctx = parseAppContextPayload(rawContext);
+  if (ctx?.app) {
+    return {
+      contextHint: `The user is dictating in ${ctx.app}.`,
+      registerMode: inferRegisterModeFromContext(matchCtx),
+    };
   }
 
   return {
     contextHint: "",
-    registerMode: inferRegisterModeFromMatchText(matchStr),
+    registerMode: inferRegisterModeFromContext(matchCtx),
   };
 }

@@ -56,4 +56,49 @@ describe("getRewritePromptContext", () => {
         .registerMode,
     ).toBe("casual");
   });
+
+  it("matches web apps from window-title segments when no URL is available", () => {
+    const gmail = getRewritePromptContext(
+      JSON.stringify({
+        app: "firefox",
+        windowTitle: "Inbox (2) - matthew@gmail.com - Gmail",
+      }),
+      makeDb(),
+    );
+    expect(gmail.registerMode).toBe("formal");
+    expect(gmail.contextHint).toContain("email");
+
+    const slack = getRewritePromptContext(
+      JSON.stringify({
+        app: "chromium",
+        windowTitle: "general (Channel) - Acme - Slack",
+      }),
+      makeDb(),
+    );
+    expect(slack.registerMode).toBe("formal");
+    expect(slack.contextHint).toContain("punctuation");
+  });
+
+  it("does not match bare-word patterns against prose inside titles", () => {
+    const ctx = getRewritePromptContext(
+      JSON.stringify({
+        app: "firefox",
+        windowTitle: "How to code in Rust - Mozilla Firefox",
+      }),
+      makeDb(),
+    );
+
+    expect(ctx.registerMode).toBe("neutral");
+    expect(ctx.contextHint).toBe("The user is dictating in firefox.");
+  });
+
+  it("matches app names for desktop apps", () => {
+    const ctx = getRewritePromptContext(
+      JSON.stringify({ app: "Code", windowTitle: "index.ts — freestyle" }),
+      makeDb(),
+    );
+
+    expect(ctx.contextHint).toContain("technical terms");
+    expect(ctx.registerMode).toBe("formal");
+  });
 });

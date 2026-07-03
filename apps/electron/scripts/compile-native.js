@@ -73,7 +73,7 @@ function compileMacOS() {
     {
       name: "macos-fast-paste",
       src: "macos-fast-paste.swift",
-      frameworks: ["Cocoa"],
+      frameworks: ["Cocoa", "Carbon"],
     },
     {
       name: "macos-mic-listener",

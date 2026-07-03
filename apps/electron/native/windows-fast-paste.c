@@ -19,6 +19,20 @@
 #include <stdio.h>
 #include <string.h>
 
+/* Resolve the virtual key that types 'v' under the focused window's
+ * keyboard layout, so paste works on non-QWERTY layouts. */
+static WORD resolve_v_vk(void) {
+    HKL hkl = NULL;
+    HWND fg = GetForegroundWindow();
+    if (fg) {
+        DWORD tid = GetWindowThreadProcessId(fg, NULL);
+        hkl = GetKeyboardLayout(tid);
+    }
+    SHORT scan = hkl ? VkKeyScanExW(L'v', hkl) : VkKeyScanW(L'v');
+    if (scan == -1) return 'V';
+    return (WORD)(scan & 0xFF);
+}
+
 int main(int argc, char* argv[]) {
     int use_shift = 0;
 
@@ -27,6 +41,8 @@ int main(int argc, char* argv[]) {
             use_shift = 1;
         }
     }
+
+    WORD v_vk = resolve_v_vk();
 
     int nInputs = use_shift ? 8 : 6;
     INPUT inputs[8];
@@ -47,12 +63,12 @@ int main(int argc, char* argv[]) {
 
     /* V down */
     inputs[idx].type = INPUT_KEYBOARD;
-    inputs[idx].ki.wVk = 'V';
+    inputs[idx].ki.wVk = v_vk;
     idx++;
 
     /* V up */
     inputs[idx].type = INPUT_KEYBOARD;
-    inputs[idx].ki.wVk = 'V';
+    inputs[idx].ki.wVk = v_vk;
     inputs[idx].ki.dwFlags = KEYEVENTF_KEYUP;
     idx++;
 

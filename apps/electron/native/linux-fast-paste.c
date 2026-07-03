@@ -52,6 +52,22 @@
 #include <errno.h>
 #endif
 
+#define EVDEV_KEY_V 47
+
+/* Resolve the evdev keycode that produces 'v' under the active keyboard
+ * layout, via X11/XWayland (X keycode = evdev code + 8). Falls back to the
+ * QWERTY position when no X display is reachable. */
+static int resolve_v_evdev_keycode(void) {
+    int code = EVDEV_KEY_V;
+    Display *dpy = XOpenDisplay(NULL);
+    if (dpy) {
+        KeyCode kc = XKeysymToKeycode(dpy, XK_v);
+        if (kc >= 8) code = kc - 8;
+        XCloseDisplay(dpy);
+    }
+    return code;
+}
+
 #ifdef HAVE_GIO
 #include <gio/gio.h>
 
@@ -62,7 +78,6 @@
 
 #define PORTAL_KEY_LEFTCTRL  29
 #define PORTAL_KEY_LEFTSHIFT 42
-#define PORTAL_KEY_V         47
 
 static int portal_exit_code = 0;
 
@@ -73,6 +88,7 @@ typedef struct {
     char            *restore_token;
     guint            signal_id;
     int              use_shift;
+    int              v_keycode;
 } PortalData;
 
 static char *get_sender_path(GDBusConnection *conn) {
@@ -118,7 +134,7 @@ static void portal_send_paste(PortalData *app) {
     g_dbus_connection_call_sync(app->conn, PORTAL_BUS, PORTAL_PATH,
         PORTAL_IFACE, "NotifyKeyboardKeycode",
         g_variant_new("(o@a{sv}iu)", app->session_handle, opts,
-                       (gint32)PORTAL_KEY_V, (guint32)1),
+                       (gint32)app->v_keycode, (guint32)1),
         NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, &err);
     if (err) { fprintf(stderr, "V press: %s\n", err->message); g_clear_error(&err); }
 
@@ -128,7 +144,7 @@ static void portal_send_paste(PortalData *app) {
     g_dbus_connection_call_sync(app->conn, PORTAL_BUS, PORTAL_PATH,
         PORTAL_IFACE, "NotifyKeyboardKeycode",
         g_variant_new("(o@a{sv}iu)", app->session_handle, opts,
-                       (gint32)PORTAL_KEY_V, (guint32)0),
+                       (gint32)app->v_keycode, (guint32)0),
         NULL, G_DBUS_CALL_FLAGS_NONE, -1, NULL, &err);
     if (err) { fprintf(stderr, "V release: %s\n", err->message); g_clear_error(&err); }
 
@@ -294,6 +310,7 @@ static gboolean on_portal_timeout(gpointer user_data) {
 static int paste_via_portal(int use_shift, const char *restore_token) {
     PortalData app = { 0 };
     app.use_shift = use_shift;
+    app.v_keycode = resolve_v_evdev_keycode();
     if (restore_token) app.restore_token = g_strdup(restore_token);
 
     GError *err = NULL;
@@ -453,12 +470,17 @@ static int create_uinput_keyboard(void) {
         return -3;
     }
 
-    if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0 ||
-        ioctl(fd, UI_SET_KEYBIT, KEY_LEFTCTRL) < 0 ||
-        ioctl(fd, UI_SET_KEYBIT, KEY_LEFTSHIFT) < 0 ||
-        ioctl(fd, UI_SET_KEYBIT, KEY_V) < 0) {
+    if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0) {
         close(fd);
         return -4;
+    }
+    /* Enable the whole basic key range so a layout-resolved keycode
+     * (Dvorak/AZERTY V position) is always emittable. */
+    for (int code = 1; code < 248; code++) {
+        if (ioctl(fd, UI_SET_KEYBIT, code) < 0) {
+            close(fd);
+            return -4;
+        }
     }
 
     struct uinput_setup usetup;
@@ -480,6 +502,8 @@ static int create_uinput_keyboard(void) {
 }
 
 static void send_uinput_paste(int fd, int use_shift) {
+    int v_keycode = resolve_v_evdev_keycode();
+
     emit_input(fd, EV_KEY, KEY_LEFTCTRL, 1);
     emit_input(fd, EV_SYN, SYN_REPORT, 0);
 
@@ -490,11 +514,11 @@ static void send_uinput_paste(int fd, int use_shift) {
 
     usleep(8000);
 
-    emit_input(fd, EV_KEY, KEY_V, 1);
+    emit_input(fd, EV_KEY, v_keycode, 1);
     emit_input(fd, EV_SYN, SYN_REPORT, 0);
     usleep(8000);
 
-    emit_input(fd, EV_KEY, KEY_V, 0);
+    emit_input(fd, EV_KEY, v_keycode, 0);
     emit_input(fd, EV_SYN, SYN_REPORT, 0);
 
     usleep(8000);

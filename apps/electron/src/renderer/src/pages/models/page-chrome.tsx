@@ -1,7 +1,7 @@
 import { cn } from "@renderer/lib/utils";
 
 // ---------------------------------------------------------------------------
-// PageShell — draggable topbar + padded scroll area, matches history/dictionary/formats
+// PageShell — draggable topbar + padded scroll area, matches history/dictionary/tone
 // ---------------------------------------------------------------------------
 
 export function PageShell({

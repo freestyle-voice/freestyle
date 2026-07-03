@@ -3,6 +3,7 @@ import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
 } from "../shared/audio-playback";
+import type { OpenAppCandidate } from "../shared/open-apps";
 import type {
   PluginCatalogEntry,
   PluginInfo,
@@ -88,6 +89,7 @@ declare global {
       setShowDashboardOnLaunch: (enabled: boolean) => void;
       // Context-aware dictation
       getFrontmostApp: () => Promise<string | null>;
+      getOpenAppCandidates: () => Promise<OpenAppCandidate[]>;
       // Pill position
       getPillPosition: () => Promise<string>;
       setPillPosition: (position: string) => void;

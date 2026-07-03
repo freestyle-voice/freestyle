@@ -1,5 +1,18 @@
+import {
+  type CleanupAppAssignment,
+  type CleanupEmailTone,
+  type CleanupOverallTone,
+  type CleanupPersonalTone,
+  type CleanupWorkTone,
+  parseCleanupAppAssignments,
+  parseCleanupEmailTone,
+  parseCleanupOverallTone,
+  parseCleanupPersonalTone,
+  parseCleanupWorkTone,
+} from "@freestyle-voice/validations";
 import { createAuthClient } from "better-auth/client";
 import { deviceAuthorizationClient } from "better-auth/client/plugins";
+import { readSetting } from "./db.js";
 import type { CloudUser } from "./sessions.js";
 import { CLOUD_TRANSCRIBE_TIMEOUT_MS } from "./streaming/types.js";
 
@@ -245,13 +258,18 @@ export async function postProcessWithFreestyleCloud(opts: {
 }
 
 /**
- * Sync cleanup preferences (intensity + custom prompt) to Freestyle Cloud.
+ * Sync cleanup preferences to Freestyle Cloud.
  * Called whenever the user changes their cleanup settings locally.
  */
 export async function syncCleanupPreferences(opts: {
   token: string;
   intensity: string;
   customPrompt?: string | null;
+  personalTone?: CleanupPersonalTone;
+  workTone?: CleanupWorkTone;
+  emailTone?: CleanupEmailTone;
+  overallTone?: CleanupOverallTone;
+  appAssignments?: CleanupAppAssignment[];
 }): Promise<void> {
   await cloudJson("/v1/preferences", opts.token, {
     method: "PUT",
@@ -259,7 +277,38 @@ export async function syncCleanupPreferences(opts: {
     body: JSON.stringify({
       intensity: opts.intensity,
       customPrompt: opts.customPrompt ?? null,
+      personalTone: opts.personalTone,
+      workTone: opts.workTone,
+      emailTone: opts.emailTone,
+      overallTone: opts.overallTone,
+      appAssignments: opts.appAssignments,
     }),
+  });
+}
+
+/**
+ * Read the current local cleanup settings and push them to Freestyle Cloud.
+ * Shared by the settings-write sync middleware and the post-sign-in hook, so
+ * preferences configured while signed out reach the cloud without waiting for
+ * the next edit. Async so a failed local read surfaces as a rejection the
+ * caller can swallow.
+ */
+export async function pushLocalCleanupPreferences(
+  token: string,
+): Promise<void> {
+  await syncCleanupPreferences({
+    token,
+    intensity: readSetting("cleanup_intensity") ?? "low",
+    customPrompt: readSetting("cleanup_custom_prompt"),
+    personalTone: parseCleanupPersonalTone(
+      readSetting("cleanup_personal_tone"),
+    ),
+    workTone: parseCleanupWorkTone(readSetting("cleanup_work_tone")),
+    emailTone: parseCleanupEmailTone(readSetting("cleanup_email_tone")),
+    overallTone: parseCleanupOverallTone(readSetting("cleanup_overall_tone")),
+    appAssignments: parseCleanupAppAssignments(
+      readSetting("cleanup_app_assignments"),
+    ),
   });
 }
 

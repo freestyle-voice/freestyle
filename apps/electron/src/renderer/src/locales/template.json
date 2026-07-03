@@ -311,27 +311,188 @@
     "failedToSave": "Failed to save entry.",
     "importFailed": "Import failed — file must be valid JSON."
   },
-  "formats": {
-    "title": "Formats",
-    "loading": "Loading formats…",
-    "addFormat": "Add format",
-    "resetToDefaults": "Reset to defaults",
-    "editFormat": "Edit format",
-    "newFormat": "New format",
-    "labelField": "Label",
-    "appPatternField": "App pattern · pipe-separated",
-    "appPatternHint": "Matched against the app name, URL, and page title. Case-insensitive.",
-    "instructionsField": "Instructions · sent to the LLM",
-    "labelPlaceholder": "e.g. \"Email\" or \"Slack\"",
-    "appPatternPlaceholder": "e.g. mail.google.com | outlook | Spark",
-    "instructionsPlaceholder": "Tell the LLM how to format the text…",
-    "cancel": "Cancel",
-    "update": "Update",
-    "addFormatBtn": "Add format",
-    "custom": "Custom",
-    "defaults": "Defaults",
-    "empty": "no formats yet — add one above.",
-    "failedToSave": "Failed to save."
+  "tone": {
+    "title": "Tone",
+    "subtitle": "How much Freestyle cleans up — and how it sounds in each app.",
+    "loading": "Loading tone…",
+    "routesFrom": "Routes from",
+    "tabs": {
+      "cleanup": "Cleanup",
+      "personal": "Personal",
+      "work": "Work",
+      "email": "Email",
+      "everythingElse": "Everything else"
+    },
+    "cleanup": {
+      "eyebrow": "Cleanup",
+      "title": "Tidy up as I talk.",
+      "desc": "How much to fix before your words land.",
+      "currentMode": "Current mode",
+      "toggleLabel": "Cleanup",
+      "off": "Off",
+      "offDesc": "Cleanup is off. Dictation lands exactly as transcribed — your strength and tones are saved for when you turn it back on.",
+      "strengthLabel": "Strength",
+      "noModelTitle": "No cleanup model selected.",
+      "noModelDesc": "Choose one in Models. These settings apply as soon as a model is configured.",
+      "noModelCta": "Open Models",
+      "preview": {
+        "rawLabel": "Raw transcript",
+        "rawSample": "hey uh can you send the latest version i think the footer link is still wrong",
+        "resultLabel": "What lands",
+        "customLabel": "Your rules"
+      },
+      "cards": {
+        "off": {
+          "title": "Off",
+          "desc": "Exactly as transcribed.",
+          "sample": "hey uh can you send the latest version i think the footer link is still wrong"
+        },
+        "low": {
+          "title": "Low",
+          "desc": "Punctuation and caps.",
+          "sample": "Hey, uh, can you send the latest version? I think the footer link is still wrong."
+        },
+        "medium": {
+          "title": "Medium",
+          "desc": "Grammar and phrasing.",
+          "sample": "Hey, can you send the latest version? I think the footer link is still wrong."
+        },
+        "high": {
+          "title": "High",
+          "desc": "Rewritten for flow.",
+          "sample": "Can you send the latest version? I think the footer link is still wrong."
+        },
+        "custom": {
+          "title": "Custom",
+          "desc": "Your own instructions.",
+          "sample": "Your prompt decides how much to rewrite, tighten, or preserve."
+        }
+      }
+    },
+    "apps": {
+      "addedLabel": "Also routed here",
+      "add": "Add route",
+      "placeholder": "App name or website",
+      "useCurrent": "Use current app",
+      "detecting": "Detecting…",
+      "confirm": "Add",
+      "cancel": "Cancel",
+      "remove": "Remove",
+      "hint": "Add any app or website that should use this tone.",
+      "anyUnlisted": "Any app we don't recognize",
+      "dialogTitle": "Add routes",
+      "currentRoutes": "Added here",
+      "currentRoute": "Already added here",
+      "includedByDefault": "Included here by default",
+      "openApps": "Open apps",
+      "openAppsEmpty": "No open apps found right now. Open the app you want, then refresh.",
+      "loadingOpenApps": "Looking for open apps…",
+      "refresh": "Refresh",
+      "pickApp": "Add this app",
+      "moveFrom": "Moves from {{destination}}",
+      "websiteLabel": "Website",
+      "websitePlaceholder": "reddit.com or x.com",
+      "addWebsite": "Add website",
+      "matchByDomain": "Matches by domain",
+      "kindApp": "App",
+      "kindSite": "Website"
+    },
+    "personal": {
+      "eyebrow": "Personal texts",
+      "title": "Texting voice.",
+      "desc": "Used in Messages, WhatsApp, Telegram, and Discord.",
+      "cards": {
+        "polished": {
+          "title": "Polished",
+          "desc": "Caps and full punctuation.",
+          "sample": "Hey, I'm running about 10 minutes late. I'll be there soon."
+        },
+        "casual": {
+          "title": "Casual",
+          "desc": "Light punctuation.",
+          "sample": "Hey I'm running about 10 min late, I'll be there soon"
+        },
+        "very_casual": {
+          "title": "Very casual",
+          "desc": "Lowercase and shorthand.",
+          "sample": "running like 10 min late be there soon"
+        }
+      }
+    },
+    "work": {
+      "eyebrow": "Work correspondence",
+      "title": "Work voice.",
+      "desc": "Used in Slack, LinkedIn, and recognized work chat surfaces.",
+      "preview": {
+        "sender": "Alex",
+        "time": "2:14 PM"
+      },
+      "cards": {
+        "direct": {
+          "title": "Direct",
+          "desc": "Short and to the point.",
+          "sample": "Reviewed the doc. A couple changes are still needed: tighten the intro and update the footer links."
+        },
+        "friendly": {
+          "title": "Enthusiastic",
+          "desc": "Upbeat and warm.",
+          "sample": "I reviewed the doc and it's looking really close! A couple changes are still needed, mostly the intro and footer links."
+        },
+        "formal": {
+          "title": "Formal",
+          "desc": "Formal and full.",
+          "sample": "I reviewed the document. A few revisions are still required, particularly in the introduction and footer links."
+        }
+      }
+    },
+    "email": {
+      "eyebrow": "Emails",
+      "title": "Email voice.",
+      "desc": "Used in Gmail, Outlook, Apple Mail, and Proton.",
+      "preview": {
+        "to": "Sam",
+        "subject": "Thursday meeting + next steps"
+      },
+      "cards": {
+        "casual": {
+          "title": "Casual",
+          "desc": "Short and conversational.",
+          "sample": "Hi Sam,\n\nJust confirming we're still on for Thursday at 2. I'll send the revised plan tomorrow morning. Let me know if you want anything else added.\n\nThanks,"
+        },
+        "warm": {
+          "title": "Warm",
+          "desc": "Smooth and tactful.",
+          "sample": "Hi Sam,\n\nJust confirming that we're still set for Thursday at 2. I'll send over the revised plan tomorrow morning, and I'm happy to add anything else you'd like covered.\n\nThanks,"
+        },
+        "formal": {
+          "title": "Formal",
+          "desc": "Formal and structured.",
+          "sample": "Hi Sam,\n\nI'm writing to confirm our meeting on Thursday at 2:00 PM. I will send the revised plan tomorrow morning. Please let me know if there is anything else you would like included.\n\nThank you,"
+        }
+      }
+    },
+    "everythingElse": {
+      "eyebrow": "Everything else",
+      "title": "Everything else.",
+      "desc": "Anywhere that isn't a chat or email.",
+      "cards": {
+        "casual": {
+          "title": "Casual",
+          "desc": "Relaxed and light.",
+          "sample": "just pushed the fix, should be good to test now"
+        },
+        "neutral": {
+          "title": "Neutral",
+          "desc": "Clean and balanced.",
+          "sample": "Just pushed the fix. Should be good to test now."
+        },
+        "professional": {
+          "title": "Professional",
+          "desc": "Polished and composed.",
+          "sample": "I've pushed the fix; it should be ready to test now."
+        }
+      }
+    }
   },
   "models": {
     "title": "Models",
@@ -357,10 +518,10 @@
       "levelHigh": "High",
       "levelCustom": "Custom",
       "desc": {
-        "low": "Minimal edits — fix punctuation, capitalization, and obvious slips while keeping your exact wording and meaning.",
-        "medium": "Balanced — clean up grammar and awkward phrasing for readability, without changing your meaning or reordering your points.",
-        "high": "Polished — free to rephrase, reframe, and reorder for clarity and flow, while faithfully preserving your meaning and facts.",
-        "custom": "Custom — your own instructions control how the transcript is cleaned up."
+        "low": "Fix punctuation, capitalization, and obvious slips. Keep wording and order.",
+        "medium": "Also smooth grammar and awkward phrasing. Keep meaning and order.",
+        "high": "Can rewrite, reorder, and combine sentences for flow. Keep meaning and facts.",
+        "custom": "Uses your own cleanup instructions."
       },
       "promptLabel": "Cleanup prompt",
       "promptToggle": "View / edit prompt",
@@ -378,7 +539,7 @@
       "history": "History",
       "dictionary": "Dictionary",
       "vocabulary": "Vocabulary",
-      "formats": "Formats",
+      "tone": "Tone",
       "models": "Models",
       "plugins": "Plugins",
       "settings": "Settings",

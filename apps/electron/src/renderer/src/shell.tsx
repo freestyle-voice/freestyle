@@ -58,10 +58,10 @@ const STATIC_NAV: {
     labelKey: "shell.nav.vocabulary",
   },
   {
-    to: "/settings/formats",
+    to: "/settings/tone",
     icon: FileText,
     shortcut: "5",
-    labelKey: "shell.nav.formats",
+    labelKey: "shell.nav.tone",
   },
   {
     to: "/settings/models",

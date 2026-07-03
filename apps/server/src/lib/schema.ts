@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 // Patterns follow context-match.ts semantics: domain/phrase entries match as
 // substrings of url+title+app; bare words match the app name, a window-title
@@ -344,6 +344,29 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     for (const { label, oldPattern } of V11_DEFAULT_PATTERN_UPDATES) {
       const next = DEFAULT_FORMAT_RULES.find((r) => r.label === label);
       if (next) updateStmt.run(next.pattern, oldPattern, label);
+    }
+  }
+
+  if (currentVersion < 12) {
+    // The tone system replaces per-app format rules. Preserve any custom rules
+    // the user created (as a settings backup) and drop the legacy table.
+    try {
+      const customRules = db
+        .prepare(
+          "SELECT * FROM format_rules WHERE is_default = 0 ORDER BY id ASC",
+        )
+        .all() as Record<string, unknown>[];
+
+      if (customRules.length > 0) {
+        db.prepare(
+          `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+        ).run("legacy_format_rules_backup", JSON.stringify(customRules));
+      }
+
+      db.exec("DROP TABLE IF EXISTS format_rules");
+    } catch {
+      // Older or partially migrated databases may not have the table anymore.
     }
   }
 

@@ -1,99 +1,191 @@
-import type { DatabaseSync } from "node:sqlite";
+import type {
+  CleanupAppAssignment,
+  CleanupToneDestination,
+} from "@freestyle-voice/validations";
 import { parseAppContextPayload } from "./app-context.js";
-import {
-  buildMatchableContext,
-  type MatchableContext,
-  patternMatchesContext,
-} from "./context-match.js";
-import type { RewriteRegisterMode } from "./prompts.js";
-
-interface FormatRuleRow {
-  app_pattern: string;
-  label?: string;
-  instructions: string;
-}
 
 export interface RewritePromptContext {
-  contextHint: string;
-  registerMode: RewriteRegisterMode;
+  destination: CleanupToneDestination;
+  personalSurface: "discord" | null;
 }
 
-const FORMAL_RULE_LABELS = new Set([
-  "Email",
-  "Slack",
-  "LinkedIn",
-  "Document",
-  "Code Platform",
-  "Code Editor",
+const EMAIL_APP_NAMES = new Set([
+  "mail",
+  "outlook",
+  "microsoft outlook",
+  "mimestream",
+  "superhuman",
+  "spark",
+  "spark desktop",
+  "canary mail",
+  "thunderbird",
+  "airmail",
+  "em client",
+  "postbox",
+  "hey",
 ]);
 
-const CASUAL_RULE_LABELS = new Set(["Discord", "Messaging", "X/Twitter"]);
+const WORK_APP_NAMES = new Set([
+  "slack",
+  "linkedin",
+  "teams",
+  "microsoft teams",
+]);
 
-const FORMAL_FALLBACK_PATTERN =
-  "gmail|mail|outlook|yahoo|proton mail|slack|linkedin|docs.google.com|notion|github|gitlab|cursor|terminal|iterm|code";
+const PERSONAL_APP_NAMES = new Set([
+  "messages",
+  "imessage",
+  "whatsapp",
+  "telegram",
+  "discord",
+]);
 
-const CASUAL_FALLBACK_PATTERN =
-  "discord|messages|whatsapp|telegram|twitter|x.com";
+const EMAIL_PATTERNS = [
+  "mail.google.com",
+  "workspace.google.com/mail",
+  "gmail",
+  "outlook.office.com",
+  "outlook.live.com",
+  "outlook.office365.com",
+  "outlook.office",
+  "outlook",
+  "mail.yahoo.com",
+  "mail.yahoo",
+  "yahoo mail",
+  "mail.proton.me",
+  "proton.me/mail",
+  "protonmail.com",
+  "proton mail",
+  "superhuman",
+  "spark mail",
+  "mimestream",
+  "app.fastmail.com",
+  "fastmail",
+  "hey.com",
+  "hey email",
+  "icloud.com/mail",
+  "mail.app",
+  "apple mail",
+  "canary mail",
+] as const;
 
-function inferRegisterModeFromLabel(
-  label: string | undefined,
-): RewriteRegisterMode {
-  if (!label) return "neutral";
-  if (FORMAL_RULE_LABELS.has(label)) return "formal";
-  if (CASUAL_RULE_LABELS.has(label)) return "casual";
-  return "neutral";
+const WORK_PATTERNS = [
+  "slack.com",
+  "slack",
+  "linkedin.com",
+  "linkedin",
+  "teams.microsoft.com",
+  "microsoft teams",
+  "teams",
+] as const;
+
+const PERSONAL_PATTERNS = [
+  "messages",
+  "imessage",
+  "whatsapp",
+  "telegram",
+  "discord.com",
+  "discord",
+] as const;
+
+const DISCORD_PATTERNS = ["discord.com", "discord"] as const;
+
+export function buildMatchContext(rawContext: string | null): string {
+  if (!rawContext) return "";
+
+  const ctx = parseAppContextPayload(rawContext);
+  if (!ctx) return rawContext;
+
+  const parts: string[] = [];
+  if (ctx.url) parts.push(ctx.url);
+  if (ctx.title) parts.push(ctx.title);
+  if (ctx.windowTitle) parts.push(ctx.windowTitle);
+  if (ctx.app) parts.push(ctx.app);
+  return parts.join(" ");
 }
 
-function inferRegisterModeFromContext(
-  ctx: MatchableContext,
-): RewriteRegisterMode {
-  if (patternMatchesContext(ctx, FORMAL_FALLBACK_PATTERN)) return "formal";
-  if (patternMatchesContext(ctx, CASUAL_FALLBACK_PATTERN)) return "casual";
-  return "neutral";
+function matchesAny(matchText: string, patterns: readonly string[]): boolean {
+  return patterns.some((pattern) => matchText.includes(pattern));
+}
+
+function normalizeAppName(appName: string | undefined): string {
+  return appName?.trim().toLowerCase() ?? "";
+}
+
+/**
+ * Find a user assignment that routes this context into a group. App-kind
+ * assignments must match the frontmost app name exactly; site-kind assignments
+ * match anywhere in the URL/window text. App matches are checked first so a
+ * precise native-app rule wins over a looser site substring.
+ */
+function matchUserAssignment(
+  assignments: readonly CleanupAppAssignment[],
+  appName: string,
+  matchText: string,
+): CleanupToneDestination | null {
+  for (let index = assignments.length - 1; index >= 0; index -= 1) {
+    const a = assignments[index]!;
+    if (a.kind === "app" && appName && appName === a.match) {
+      return a.destination;
+    }
+  }
+  for (let index = assignments.length - 1; index >= 0; index -= 1) {
+    const a = assignments[index]!;
+    if (a.kind === "site" && matchText.includes(a.match)) {
+      return a.destination;
+    }
+  }
+  return null;
 }
 
 export function getRewritePromptContext(
   rawContext: string | null,
-  db: DatabaseSync,
+  assignments: readonly CleanupAppAssignment[] = [],
 ): RewritePromptContext {
-  const matchCtx = buildMatchableContext(rawContext);
-  if (!matchCtx) {
-    return { contextHint: "", registerMode: "neutral" };
-  }
-
-  try {
-    const rows = db
-      .prepare(
-        "SELECT app_pattern, label, instructions FROM format_rules ORDER BY is_default ASC, id DESC",
-      )
-      .all() as unknown as FormatRuleRow[];
-
-    for (const row of rows) {
-      if (patternMatchesContext(matchCtx, row.app_pattern)) {
-        const registerModeFromLabel = inferRegisterModeFromLabel(row.label);
-        return {
-          contextHint: row.instructions,
-          registerMode:
-            registerModeFromLabel === "neutral"
-              ? inferRegisterModeFromContext(matchCtx)
-              : registerModeFromLabel,
-        };
-      }
-    }
-  } catch {
-    // format_rules table may not exist yet
+  if (!rawContext) {
+    return { destination: "overall", personalSurface: null };
   }
 
   const ctx = parseAppContextPayload(rawContext);
-  if (ctx?.app) {
+  const appName = normalizeAppName(ctx?.app);
+  const matchText = buildMatchContext(rawContext).toLowerCase();
+  const personalSurface =
+    matchesAny(appName, DISCORD_PATTERNS) ||
+    matchesAny(matchText, DISCORD_PATTERNS)
+      ? "discord"
+      : null;
+
+  // User assignments override the built-in routing so people can pull an app
+  // into whichever group they prefer.
+  const assigned = matchUserAssignment(assignments, appName, matchText);
+  if (assigned) {
     return {
-      contextHint: `The user is dictating in ${ctx.app}.`,
-      registerMode: inferRegisterModeFromContext(matchCtx),
+      destination: assigned,
+      personalSurface: assigned === "personal" ? personalSurface : null,
     };
   }
 
-  return {
-    contextHint: "",
-    registerMode: inferRegisterModeFromContext(matchCtx),
-  };
+  if (EMAIL_APP_NAMES.has(appName)) {
+    return { destination: "email", personalSurface: null };
+  }
+  if (WORK_APP_NAMES.has(appName)) {
+    return { destination: "work", personalSurface: null };
+  }
+  if (PERSONAL_APP_NAMES.has(appName)) {
+    return { destination: "personal", personalSurface };
+  }
+
+  if (!matchText) return { destination: "overall", personalSurface: null };
+
+  if (matchesAny(matchText, EMAIL_PATTERNS)) {
+    return { destination: "email", personalSurface: null };
+  }
+  if (matchesAny(matchText, WORK_PATTERNS)) {
+    return { destination: "work", personalSurface: null };
+  }
+  if (matchesAny(matchText, PERSONAL_PATTERNS)) {
+    return { destination: "personal", personalSurface };
+  }
+
+  return { destination: "overall", personalSurface: null };
 }

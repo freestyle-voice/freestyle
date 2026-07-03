@@ -80,6 +80,7 @@ import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
+import type { OpenAppCandidate } from "../shared/open-apps";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
@@ -827,6 +828,47 @@ function execAsync(
   });
 }
 
+function getFreestyleAppExclusions(): Set<string> {
+  return new Set(
+    [app.getName(), app.name, "Freestyle", "Electron"]
+      .map((name) => name?.trim().toLowerCase())
+      .filter((name): name is string => Boolean(name)),
+  );
+}
+
+function normalizeOpenAppCandidates(
+  rawLabels: readonly string[],
+): OpenAppCandidate[] {
+  const exclusions = getFreestyleAppExclusions();
+  const deduped = new Map<string, OpenAppCandidate>();
+
+  for (const rawLabel of rawLabels) {
+    const label = rawLabel.replace(/\s+/g, " ").trim();
+    if (!label) continue;
+
+    const match = label.toLowerCase();
+    if (exclusions.has(match)) continue;
+
+    if (!deduped.has(match)) {
+      deduped.set(match, { label, match });
+    }
+  }
+
+  return [...deduped.values()].sort((a, b) =>
+    a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+  );
+}
+
+function parseContextAppLabel(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as { app?: string };
+    return parsed.app ? [parsed.app] : [];
+  } catch {
+    return [raw];
+  }
+}
+
 // -- macOS: Get frontmost app + browser tab context via AppleScript --
 async function getMacFrontmostApp(): Promise<string | null> {
   try {
@@ -902,6 +944,23 @@ async function getMacFrontmostApp(): Promise<string | null> {
   }
 }
 
+async function getMacOpenAppCandidates(): Promise<OpenAppCandidate[]> {
+  try {
+    const result = await execAsync(
+      "osascript",
+      [
+        "-e",
+        'tell application "System Events" to get name of every application process whose background only is false and visible is true',
+      ],
+      2000,
+    );
+
+    return normalizeOpenAppCandidates(result.split(","));
+  } catch {
+    return [];
+  }
+}
+
 // -- Windows: Get foreground window process name + title via PowerShell --
 async function getWindowsFrontmostApp(): Promise<string | null> {
   try {
@@ -940,6 +999,37 @@ async function getWindowsFrontmostApp(): Promise<string | null> {
     return JSON.stringify({ app: result });
   } catch {
     return null;
+  }
+}
+
+async function getWindowsOpenAppCandidates(): Promise<OpenAppCandidate[]> {
+  try {
+    const script = `
+      $apps = Get-Process |
+        Where-Object { $_.MainWindowTitle -and $_.ProcessName } |
+        Select-Object -Property ProcessName |
+        Sort-Object ProcessName -Unique |
+        ConvertTo-Json -Compress
+      $apps
+    `;
+    const result = await execAsync(
+      "powershell",
+      ["-NoProfile", "-Command", script],
+      3000,
+    );
+
+    const parsed = JSON.parse(result) as
+      | { ProcessName?: string }
+      | Array<{ ProcessName?: string }>;
+    const apps = Array.isArray(parsed) ? parsed : [parsed];
+
+    return normalizeOpenAppCandidates(
+      apps
+        .map((entry) => entry.ProcessName?.trim())
+        .filter((entry): entry is string => Boolean(entry)),
+    );
+  } catch {
+    return [];
   }
 }
 
@@ -1043,6 +1133,43 @@ async function getLinuxX11FrontmostApp(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function getLinuxOpenAppCandidates(): Promise<OpenAppCandidate[]> {
+  try {
+    const result = await execAsync("wmctrl", ["-lx"], 2000);
+    const labels = result
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const parts = line.split(/\s+/);
+        const wmClass = parts[3] ?? "";
+        return wmClass.split(".").at(-1)?.replace(/[_-]+/g, " ") ?? "";
+      });
+
+    const candidates = normalizeOpenAppCandidates(labels);
+    if (candidates.length > 0) return candidates;
+  } catch {
+    // Fall back to the current app only when a visible window list is unavailable.
+  }
+
+  return normalizeOpenAppCandidates(
+    parseContextAppLabel(await getLinuxFrontmostApp()),
+  );
+}
+
+async function getOpenAppCandidates(): Promise<OpenAppCandidate[]> {
+  if (process.platform === "darwin") {
+    return getMacOpenAppCandidates();
+  }
+  if (process.platform === "win32") {
+    return getWindowsOpenAppCandidates();
+  }
+  if (process.platform === "linux") {
+    return getLinuxOpenAppCandidates();
+  }
+  return [];
 }
 
 function hidePill(): void {
@@ -2011,6 +2138,14 @@ app.whenReady().then(async () => {
       // graceful fallback
     }
     return null;
+  });
+
+  ipcMain.handle("system:open-app-candidates", async () => {
+    try {
+      return await getOpenAppCandidates();
+    } catch {
+      return [];
+    }
   });
 
   // -- Pill position setting --

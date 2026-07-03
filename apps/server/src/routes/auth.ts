@@ -1,9 +1,11 @@
+import { createAppLogger } from "@freestyle-voice/utils";
 import { Hono } from "hono";
 import {
   DeviceFlowError,
   fetchCloudUser,
   freestyleCloudUrl,
   pollDeviceToken,
+  pushLocalCleanupPreferences,
   requestDeviceCode,
   signOutCloud,
 } from "../lib/freestyle-cloud.js";
@@ -16,6 +18,8 @@ import {
   setSession,
 } from "../lib/sessions.js";
 import { isTrustedRendererOrigin } from "../lib/trusted-origin.js";
+
+const log = createAppLogger("auth");
 
 const auth = new Hono()
   .use("*", async (c, next) => {
@@ -57,6 +61,13 @@ const auth = new Hono()
       capture("freestyle_default_applied_on_signin", {
         voice: true,
         cleanup: true,
+      });
+      // Push any cleanup preferences configured while signed out so the cloud
+      // post-processor picks them up immediately, without waiting for an edit.
+      void pushLocalCleanupPreferences(token.access_token).catch((err) => {
+        log.warn(
+          `cleanup preference sync after sign-in failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       });
       return c.json({ authenticated: true, user });
     } catch (err) {

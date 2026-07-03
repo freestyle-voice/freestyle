@@ -45,12 +45,12 @@ export interface Hooks {
   /**
    * [server] Fires while the LLM cleanup prompt is being assembled, only when
    * cleanup is enabled. Push additional system-prompt fragments or override the
-   * inferred writing register (formal/casual/neutral) for contextual
+   * inferred destination (overall/personal/work/email) for contextual
    * correction.
    */
   beforeCleanup?: Handler<
     BeforeCleanupInput,
-    { system: string[]; register?: Register }
+    { system: string[]; destination?: CleanupToneDestination }
   >;
 
   /**
@@ -69,8 +69,8 @@ export interface Hooks {
   beforeOutput?: Handler<BeforeOutputInput, { text: string; mode: OutputMode }>;
 }
 
-/** Writing register used to steer contextual correction. */
-export type Register = "formal" | "casual" | "neutral";
+/** The destination bucket used to steer contextual cleanup. */
+export type CleanupToneDestination = "overall" | "personal" | "work" | "email";
 
 export interface AfterTranscribeInput {
   /** The provider id that produced this transcript (e.g. "openai"). */
@@ -86,8 +86,8 @@ export interface BeforeCleanupInput {
   text: string;
   /** Application the user was dictating into, if known. */
   appContext?: AppContext;
-  /** The register the built-in logic inferred, before plugin overrides. */
-  inferredRegister: Register;
+  /** The destination the built-in logic inferred, before plugin overrides. */
+  destination: CleanupToneDestination;
 }
 
 export interface AfterCleanupInput {

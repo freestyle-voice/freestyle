@@ -1,8 +1,7 @@
 import { createAppLogger } from "@freestyle-voice/utils";
 import type { Plugin } from "freestyle-voice";
 import type { MiddlewareHandler } from "hono";
-import { readSetting } from "../../db.js";
-import { syncCleanupPreferences } from "../../freestyle-cloud.js";
+import { pushLocalCleanupPreferences } from "../../freestyle-cloud.js";
 import { getSessionToken } from "../../sessions.js";
 
 const log = createAppLogger("cloud-sync");
@@ -17,6 +16,11 @@ const SYNC_ROUTES: Record<string, Set<string>> = {
   // Settings that affect cloud state.
   "/api/settings/cleanup_intensity": new Set(["PUT"]),
   "/api/settings/cleanup_custom_prompt": new Set(["PUT"]),
+  "/api/settings/cleanup_personal_tone": new Set(["PUT"]),
+  "/api/settings/cleanup_work_tone": new Set(["PUT"]),
+  "/api/settings/cleanup_email_tone": new Set(["PUT"]),
+  "/api/settings/cleanup_overall_tone": new Set(["PUT"]),
+  "/api/settings/cleanup_app_assignments": new Set(["PUT"]),
 };
 
 /**
@@ -35,21 +39,13 @@ function shouldSync(path: string, method: string): string | null {
  * errors — failures never interrupt the response pipeline.
  */
 function syncCleanup(): void {
-  try {
-    const token = getSessionToken();
-    if (!token) return;
-    const intensity = readSetting("cleanup_intensity") ?? "low";
-    const customPrompt = readSetting("cleanup_custom_prompt");
-    void syncCleanupPreferences({ token, intensity, customPrompt }).catch(
-      (err) => {
-        log.warn(
-          `cloud sync failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      },
+  const token = getSessionToken();
+  if (!token) return;
+  void pushLocalCleanupPreferences(token).catch((err) => {
+    log.warn(
+      `cloud sync failed: ${err instanceof Error ? err.message : String(err)}`,
     );
-  } catch {
-    // Swallow — never interrupt the pipeline.
-  }
+  });
 }
 
 const cloudSyncMiddleware: MiddlewareHandler = async (c, next) => {

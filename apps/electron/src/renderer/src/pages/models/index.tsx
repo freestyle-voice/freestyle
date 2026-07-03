@@ -19,7 +19,6 @@ import { useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 
-import { CleanupIntensityCard } from "./cleanup-intensity";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { Eyebrow, PageHeader, PageShell } from "./page-chrome";
@@ -78,8 +77,8 @@ export default function ModelsPage(): React.JSX.Element {
   );
   const cloudVoiceActive =
     m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER;
-  const cloudCleanupActive =
-    m.llmCleanup && m.defaultLlm?.provider === FREESTYLE_CLOUD_PROVIDER;
+  const cloudCleanupSelected =
+    m.defaultLlm?.provider === FREESTYLE_CLOUD_PROVIDER;
 
   const fallbackLocalVoice = m.voiceItems.find(
     (item) => item.kind === "local" && item.status === "ready" && item.defId,
@@ -96,7 +95,6 @@ export default function ModelsPage(): React.JSX.Element {
       if (!(await ensureCloudAuth())) return;
       await m.configureModel(freestyleVoice, "voice");
       await m.configureModel(freestyleCleanup, "llm");
-      m.setCleanup(true);
     })();
   };
 
@@ -105,7 +103,6 @@ export default function ModelsPage(): React.JSX.Element {
     void (async () => {
       if (!(await ensureCloudAuth())) return;
       await m.configureModel(freestyleVoice, "voice");
-      if (cloudCleanupActive) m.setCleanup(false);
     })();
   };
 
@@ -121,15 +118,11 @@ export default function ModelsPage(): React.JSX.Element {
         );
       }
       await m.configureModel(freestyleCleanup, "llm");
-      m.setCleanup(true);
     })();
   };
 
   const openVoice = (): void => setModal({ kind: "list", type: "voice" });
-  const openLlm = (): void => {
-    m.setCleanup(true);
-    setModal({ kind: "list", type: "llm" });
-  };
+  const openLlm = (): void => setModal({ kind: "list", type: "llm" });
 
   const onPickCloud = (model: AvailableModel): void => {
     if (modal?.kind !== "list") return;
@@ -209,9 +202,6 @@ export default function ModelsPage(): React.JSX.Element {
   const hasLocalVoice = m.configured.some(
     (c) => c.provider === "local-whisper" || c.provider === "local-mlx",
   );
-  // Only the all-in-one route owns cleanup. Cloud transcription can still feed
-  // a custom cleanup model.
-  const cleanupLocked = cloudVoiceActive && cloudCleanupActive;
   // Model warming only applies to the active local MLX worker.
   const showMlxWarming = m.defaultVoice?.provider === "local-mlx";
 
@@ -260,8 +250,8 @@ export default function ModelsPage(): React.JSX.Element {
       <div className="space-y-6">
         <FreestyleCloudModeCard
           signedIn={!!cloudAuth.user}
-          voiceActive={cloudVoiceActive}
-          cleanupActive={cloudCleanupActive}
+          voiceSelected={cloudVoiceActive}
+          cleanupSelected={cloudCleanupSelected}
           expanded={cloudPanelExpanded}
           onSignIn={() => void cloudAuth.signIn()}
           onToggleExpanded={toggleCloudPanel}
@@ -274,27 +264,13 @@ export default function ModelsPage(): React.JSX.Element {
         <PairCard
           voice={m.defaultVoice}
           llm={m.defaultLlm}
-          llmCleanup={m.llmCleanup}
-          onToggleCleanup={m.setCleanup}
+          cleanupEnabled={m.llmCleanup}
           onChangeVoice={openVoice}
           onChangeLlm={openLlm}
           onConfigureWarming={
             showMlxWarming ? () => setWarmingOpen(true) : undefined
           }
-          cleanupDisabled={cleanupLocked}
         />
-
-        {m.llmCleanup && !cleanupLocked && (
-          <CleanupIntensityCard
-            intensity={m.cleanupIntensity}
-            customPrompt={m.cleanupCustomPrompt}
-            customPromptDirty={m.customPromptDirty}
-            savingCustomPrompt={m.savingCustomPrompt}
-            onIntensityChange={m.setCleanupIntensity}
-            onCustomPromptChange={m.setCleanupCustomPrompt}
-            onSaveCustomPrompt={m.saveCleanupCustomPrompt}
-          />
-        )}
 
         <KeysSection
           apiKeys={m.apiKeys}
@@ -484,8 +460,8 @@ function ModelsLoadingSkeleton(): React.JSX.Element {
 
 function FreestyleCloudModeCard({
   signedIn,
-  voiceActive,
-  cleanupActive,
+  voiceSelected,
+  cleanupSelected,
   expanded,
   onSignIn,
   onToggleExpanded,
@@ -496,8 +472,8 @@ function FreestyleCloudModeCard({
   cleanupDisabled,
 }: {
   signedIn: boolean;
-  voiceActive: boolean;
-  cleanupActive: boolean;
+  voiceSelected: boolean;
+  cleanupSelected: boolean;
   expanded: boolean;
   onSignIn: () => void;
   onToggleExpanded: () => void;
@@ -516,8 +492,8 @@ function FreestyleCloudModeCard({
             <Eyebrow text="Freestyle Transcribe" />
           </div>
           <p className="text-muted-foreground mt-1.5 max-w-[620px] text-[13px] leading-relaxed">
-            Fast, managed transcription and cleanup from Freestyle. Use it for
-            speech-to-text, polishing text, or both in one pass.
+            Choose Freestyle Cloud as the transcription model, the cleanup
+            model, or both.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -549,7 +525,7 @@ function FreestyleCloudModeCard({
             icon={Mic}
             title="Transcription"
             description="Use Freestyle Transcribe for speech-to-text, then clean up with your selected model."
-            active={voiceActive && !cleanupActive}
+            active={voiceSelected && !cleanupSelected}
             disabled={!canUse}
             onClick={onUseTranscription}
           />
@@ -557,7 +533,7 @@ function FreestyleCloudModeCard({
             icon={Sparkles}
             title="Cleanup"
             description="Keep your current transcription model and let Freestyle Transcribe polish the text."
-            active={!voiceActive && cleanupActive}
+            active={!voiceSelected && cleanupSelected}
             disabled={!canUse || cleanupDisabled}
             onClick={onUseCleanup}
           />
@@ -565,7 +541,7 @@ function FreestyleCloudModeCard({
             icon={Cloud}
             title="All-in-one"
             description="Send audio once for Freestyle Transcribe to transcribe and polish in a single pass."
-            active={voiceActive && cleanupActive}
+            active={voiceSelected && cleanupSelected}
             disabled={!canUse}
             onClick={onUseBoth}
             accent

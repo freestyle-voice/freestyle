@@ -5,6 +5,7 @@ import type {
   AudioPlaybackMode,
 } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
+import type { OpenAppCandidate } from "../shared/open-apps";
 import type {
   PluginCatalogEntry,
   PluginInfo,
@@ -166,6 +167,8 @@ const api = {
   // Context-aware dictation
   getFrontmostApp: (): Promise<string | null> =>
     ipcRenderer.invoke("system:frontmost-app"),
+  getOpenAppCandidates: (): Promise<OpenAppCandidate[]> =>
+    ipcRenderer.invoke("system:open-app-candidates"),
   // Pill position
   getPillPosition: (): Promise<string> =>
     ipcRenderer.invoke("settings:pill-position"),

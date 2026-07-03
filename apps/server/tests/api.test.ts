@@ -121,6 +121,50 @@ describe("Settings", () => {
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
 
+  it("accepts valid tone preset settings", async () => {
+    const personal = await json(
+      "/api/settings/cleanup_personal_tone",
+      { value: "casual" },
+      "PUT",
+    );
+    const work = await json(
+      "/api/settings/cleanup_work_tone",
+      { value: "friendly" },
+      "PUT",
+    );
+    const email = await json(
+      "/api/settings/cleanup_email_tone",
+      { value: "warm" },
+      "PUT",
+    );
+
+    expect(personal.status).toBe(200);
+    expect(work.status).toBe(200);
+    expect(email.status).toBe(200);
+  });
+
+  it("rejects invalid tone preset settings", async () => {
+    const personal = await json(
+      "/api/settings/cleanup_personal_tone",
+      { value: "corporate" },
+      "PUT",
+    );
+    const work = await json(
+      "/api/settings/cleanup_work_tone",
+      { value: "playful" },
+      "PUT",
+    );
+    const email = await json(
+      "/api/settings/cleanup_email_tone",
+      { value: "ultra_formal" },
+      "PUT",
+    );
+
+    expect(personal.status).toBe(400);
+    expect(work.status).toBe(400);
+    expect(email.status).toBe(400);
+  });
+
   it("PUT accepts a valid plugins setting", async () => {
     const value = JSON.stringify(["freestyle-plugin-example"]);
 
@@ -374,107 +418,6 @@ describe("Vocabulary", () => {
     const res = await json("/api/vocabulary/export", { type: "json" });
     expect(res.status).toBe(200);
     expect(Array.isArray(await res.json())).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Format Rules CRUD
-// ---------------------------------------------------------------------------
-
-describe("Formats", () => {
-  it("GET /api/formats returns seeded defaults", async () => {
-    const res = await req("/api/formats");
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.total).toBeGreaterThan(0);
-    // The schema seeds 10 default format rules
-    expect(data.items.length).toBeGreaterThanOrEqual(10);
-  });
-
-  it("POST creates a custom format", async () => {
-    const res = await json("/api/formats", {
-      app_pattern: "figma.com|Figma",
-      label: "Figma",
-      instructions: "Design-focused, concise annotations.",
-    });
-    expect(res.status).toBe(201);
-    const data = await res.json();
-    expect(data.label).toBe("Figma");
-  });
-
-  it("GET /:id returns a format", async () => {
-    const create = await json("/api/formats", {
-      app_pattern: "test-app",
-      label: "Test",
-      instructions: "Test instructions.",
-    });
-    const { id } = await create.json();
-
-    const get = await req(`/api/formats/${id}`);
-    expect(get.status).toBe(200);
-    const data = await get.json();
-    expect(data.label).toBe("Test");
-  });
-
-  it("PUT updates a format", async () => {
-    const create = await json("/api/formats", {
-      app_pattern: "update-me",
-      label: "Before",
-      instructions: "Old instructions.",
-    });
-    const { id } = await create.json();
-
-    const put = await json(
-      `/api/formats/${id}`,
-      { label: "After", instructions: "New instructions." },
-      "PUT",
-    );
-    expect(put.status).toBe(200);
-
-    const get = await req(`/api/formats/${id}`);
-    const data = await get.json();
-    expect(data.label).toBe("After");
-    expect(data.instructions).toBe("New instructions.");
-  });
-
-  it("DELETE removes a format", async () => {
-    const create = await json("/api/formats", {
-      app_pattern: "delete-me",
-      label: "ToDelete",
-      instructions: "Will be deleted.",
-    });
-    const { id } = await create.json();
-
-    const del = await req(`/api/formats/${id}`, { method: "DELETE" });
-    expect(del.status).toBe(200);
-
-    const get = await req(`/api/formats/${id}`);
-    expect(get.status).toBe(404);
-  });
-
-  it("GET /api/formats/match matches by context", async () => {
-    // The seed data includes a Slack rule with pattern "slack.com|Slack"
-    const res = await req("/api/formats/match?context=slack.com");
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data).not.toBeNull();
-    expect(data.label).toBe("Slack");
-  });
-
-  it("GET /api/formats/match returns null for unknown context", async () => {
-    const res = await req("/api/formats/match?context=unknownapp");
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data).toBeNull();
-  });
-
-  it("GET /api/formats supports search", async () => {
-    const res = await req("/api/formats?search=Email");
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.items.some((i: { label: string }) => i.label === "Email")).toBe(
-      true,
-    );
   });
 });
 

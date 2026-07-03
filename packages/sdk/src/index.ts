@@ -20,10 +20,10 @@ export type {
   AfterTranscribeInput,
   BeforeCleanupInput,
   BeforeOutputInput,
+  CleanupToneDestination,
   Handler,
   HookName,
   Hooks,
-  Register,
 } from "./hooks.js";
 export {
   defaultLocalPluginsDir,

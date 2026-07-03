@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 const DEFAULT_FORMAT_RULES = [
   {
@@ -314,6 +314,27 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
          SET model_name = replace(model_name, 'Freestyle Cloud', 'Freestyle Transcribe')
        WHERE provider = 'freestyle-cloud' AND model_name LIKE 'Freestyle Cloud%'`,
     );
+  }
+
+  if (currentVersion < 11) {
+    try {
+      const customRules = db
+        .prepare(
+          "SELECT * FROM format_rules WHERE is_default = 0 ORDER BY id ASC",
+        )
+        .all() as Record<string, unknown>[];
+
+      if (customRules.length > 0) {
+        db.prepare(
+          `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+        ).run("legacy_format_rules_backup", JSON.stringify(customRules));
+      }
+
+      db.exec("DROP TABLE IF EXISTS format_rules");
+    } catch {
+      // Older or partially migrated databases may not have the table anymore.
+    }
   }
 
   // Upsert schema version

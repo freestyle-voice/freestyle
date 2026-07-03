@@ -1,10 +1,8 @@
 import {
   createDictionarySchema,
-  createFormatSchema,
   createVocabularySchema,
   DEFAULT_CLEANUP_INTENSITY,
   updateDictionarySchema,
-  updateFormatSchema,
   updateVocabularySchema,
 } from "@freestyle-voice/validations";
 import { StreamableHTTPTransport } from "@hono/mcp";
@@ -12,7 +10,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Hono } from "hono";
 import { z } from "zod/v3";
 import dictionary from "./dictionary.js";
-import formats from "./formats.js";
 import history from "./history.js";
 import settings from "./settings.js";
 import vocabulary from "./vocabulary.js";
@@ -71,68 +68,6 @@ const mcpServer = new McpServer({
   name: "freestyle",
   version: "0.0.2",
 });
-
-// --- Format tools ---
-// Formatting rules shape the final output style based on the active app or
-// context. `app_pattern` is a pipe-delimited list of substrings (e.g.
-// "slack|discord") matched case-insensitively against the active context;
-// `instructions` describe how the text should be formatted there.
-
-mcpServer.tool(
-  "format_list",
-  "List formatting rules (output-style rules matched by app/context). Returns full rows, so no separate view-by-id is needed.",
-  listParams,
-  async (args) => {
-    const { data } = await call(formats, "GET", `/?${listQuery(args)}`);
-    return text(data);
-  },
-);
-
-mcpServer.tool(
-  "format_match",
-  "Find which formatting rule applies to a given context string (e.g. an app name or window title). Returns the matching rule or null. Use this to check existing coverage before creating an overlapping rule.",
-  { context: z.string().describe("Context to match, e.g. app name or title") },
-  async ({ context }) => {
-    const { data } = await call(
-      formats,
-      "GET",
-      `/match?context=${encodeURIComponent(context)}`,
-    );
-    return text(data);
-  },
-);
-
-mcpServer.tool(
-  "format_create",
-  "Create a formatting rule. `app_pattern` is a pipe-delimited list of substrings (e.g. 'slack|discord') matched against the active context; `instructions` describe the desired output style there.",
-  createFormatSchema.shape,
-  async (args) => {
-    const { data, ok } = await call(formats, "POST", "/", args);
-    if (!ok) return error(data.error ?? "Failed to create format rule");
-    return text(data);
-  },
-);
-
-mcpServer.tool(
-  "format_update",
-  "Update an existing formatting rule",
-  { ...idParam, ...updateFormatSchema.shape },
-  async ({ id, ...body }) => {
-    const { data, ok } = await call(formats, "PUT", `/${id}`, body);
-    if (!ok) return error(data.error ?? `Format rule #${id} not found`);
-    return text({ ok: true, id });
-  },
-);
-
-mcpServer.tool(
-  "format_delete",
-  "Delete a formatting rule",
-  idParam,
-  async ({ id }) => {
-    await call(formats, "DELETE", `/${id}`);
-    return text({ ok: true, id });
-  },
-);
 
 // --- Dictionary tools ---
 // Dictionary entries are EXACT text replacements applied AFTER transcription
@@ -232,12 +167,12 @@ mcpServer.tool(
 
 // --- History tools (read-only) ---
 // Transcription history is your evidence source: read it to spot recurring
-// jargon, names, or mistakes, then curate dictionary/vocabulary/format rules
+// jargon, names, or mistakes, then curate dictionary or vocabulary entries
 // accordingly. History is intentionally read-only over MCP.
 
 mcpServer.tool(
   "history_list",
-  "List transcription history (read-only). Use as evidence for which dictionary, vocabulary, or format rules to add.",
+  "List transcription history (read-only). Use as evidence for which dictionary or vocabulary entries to add.",
   listParams,
   async (args) => {
     const { data } = await call(history, "GET", `/?${listQuery(args)}`);

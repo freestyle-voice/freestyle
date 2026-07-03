@@ -1,8 +1,8 @@
 import {
-  createDictionarySchema,
   createFormatSchema,
   createVocabularySchema,
   DEFAULT_CLEANUP_INTENSITY,
+  dictionarySchema,
   updateDictionarySchema,
   updateFormatSchema,
   updateVocabularySchema,
@@ -153,7 +153,7 @@ mcpServer.tool(
 mcpServer.tool(
   "dict_create",
   "Create a dictionary entry: an exact replacement applied after transcription (`key` is the text to find, `value` is what to replace it with).",
-  createDictionarySchema.shape,
+  dictionarySchema.shape,
   async (args) => {
     const { data, ok } = await call(dictionary, "POST", "/", args);
     if (!ok) return error(data.error ?? "Failed to create dictionary entry");

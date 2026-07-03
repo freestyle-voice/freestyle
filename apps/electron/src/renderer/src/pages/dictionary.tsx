@@ -1,6 +1,6 @@
 import {
-  type CreateDictionaryInput,
-  createDictionarySchema,
+  type DictionaryInput,
+  dictionarySchema,
 } from "@freestyle-voice/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@renderer/components/ui/button";
@@ -76,8 +76,8 @@ export default function DictionaryPage(): React.JSX.Element {
     handleSubmit,
     reset: resetFormValues,
     formState: { errors: formErrors },
-  } = useForm<CreateDictionaryInput>({
-    resolver: zodResolver(createDictionarySchema),
+  } = useForm<DictionaryInput>({
+    resolver: zodResolver(dictionarySchema),
     defaultValues: { key: "", value: "" },
   });
 
@@ -99,7 +99,7 @@ export default function DictionaryPage(): React.JSX.Element {
   );
 
   const saveEntry = useCallback(
-    async (data: CreateDictionaryInput) => {
+    async (data: DictionaryInput) => {
       setFormError(null);
 
       try {

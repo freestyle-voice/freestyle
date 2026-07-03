@@ -1,5 +1,5 @@
 import {
-  createDictionarySchema,
+  dictionarySchema,
   exportSchema,
   updateDictionarySchema,
 } from "@freestyle-voice/validations";
@@ -82,7 +82,7 @@ const dictionary = new Hono()
     if (!row) return c.json({ error: "Not found" }, 404);
     return c.json(row);
   })
-  .post("/", zValidator("json", createDictionarySchema), async (c) => {
+  .post("/", zValidator("json", dictionarySchema), async (c) => {
     const db = getDb();
     const body = c.req.valid("json");
 

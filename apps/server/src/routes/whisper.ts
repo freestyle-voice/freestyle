@@ -8,7 +8,12 @@ import {
   isServerBinaryAvailable,
 } from "../lib/whisper/binary.js";
 
-import { getModelsDir, WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
+import {
+  getModelsDir,
+  isSupportedWhisperArch,
+  unsupportedArchMessage,
+  WHISPER_PROVIDER_ID,
+} from "../lib/whisper/constants.js";
 import {
   cancelDownload,
   clearDownloadError,
@@ -31,6 +36,10 @@ const log = createAppLogger("whisper");
 const whisper = new Hono()
   .get("/status", (c) => {
     return c.json({
+      archSupported: isSupportedWhisperArch(),
+      archUnsupportedReason: isSupportedWhisperArch()
+        ? null
+        : unsupportedArchMessage(),
       binaryAvailable: isBinaryAvailable(),
       binaryDownloading: isBinaryDownloading(),
       serverBinaryAvailable: isServerBinaryAvailable(),

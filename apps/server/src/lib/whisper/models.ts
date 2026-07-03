@@ -29,7 +29,9 @@ import {
   getModelPath,
   getModelsDir,
   getWhisperModel,
+  isSupportedWhisperArch,
   LEGACY_WHISPER_MODELS,
+  unsupportedArchMessage,
   WHISPER_CPP_VERSION,
   WHISPER_MODELS,
   WHISPER_REPO,
@@ -354,6 +356,9 @@ export function isBinaryDownloading(): boolean {
 }
 
 export async function ensureBinariesDownloaded(): Promise<void> {
+  if (!isSupportedWhisperArch()) {
+    throw new Error(unsupportedArchMessage());
+  }
   const { isServerBinaryAvailable, resetBinaryCache } = await import(
     "./binary.js"
   );

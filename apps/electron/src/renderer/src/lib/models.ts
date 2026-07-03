@@ -36,6 +36,8 @@ export interface WhisperModelDownloadState {
 }
 
 export interface WhisperStatus {
+  archSupported?: boolean;
+  archUnsupportedReason?: string | null;
   binaryAvailable: boolean;
   binaryDownloading: boolean;
   serverBinaryAvailable: boolean;

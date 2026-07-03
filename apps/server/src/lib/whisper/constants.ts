@@ -138,15 +138,18 @@ export function getModelPath(model: WhisperModelDef): string {
   return join(getModelsDir(), model.fileName);
 }
 
+// Linux arm64 is served by the source build, which produces the same
+// binary names as x64. win32 stays x64-only: the prebuilt release zip has
+// no arm64 variant and there is no Windows source-build path.
 const BINARY_NAMES: Record<string, Record<string, string>> = {
   darwin: { arm64: "whisper-cli", x64: "whisper-cli" },
-  linux: { x64: "whisper-cli" },
+  linux: { x64: "whisper-cli", arm64: "whisper-cli" },
   win32: { x64: "whisper-cli.exe" },
 };
 
 const SERVER_NAMES: Record<string, Record<string, string>> = {
   darwin: { arm64: "whisper-server", x64: "whisper-server" },
-  linux: { x64: "whisper-server" },
+  linux: { x64: "whisper-server", arm64: "whisper-server" },
   win32: { x64: "whisper-server.exe" },
 };
 
@@ -160,6 +163,14 @@ export function getServerBinaryName(): string | null {
   const platform = process.platform;
   const arch = process.arch;
   return SERVER_NAMES[platform]?.[arch] ?? null;
+}
+
+export function isSupportedWhisperArch(): boolean {
+  return getServerBinaryName() !== null;
+}
+
+export function unsupportedArchMessage(): string {
+  return `Local Whisper transcription is not supported on ${process.platform}/${process.arch}. Choose a cloud model instead.`;
 }
 
 export function getResourcesDir(): string {

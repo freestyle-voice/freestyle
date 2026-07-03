@@ -325,23 +325,119 @@ async function pasteLinuxLegacy(
   }
 }
 
-// Native binaries inject keystrokes directly at the OS level, so the target
-// app receives them much faster than shell-spawned commands. Settle times
-// are reduced accordingly. If using the legacy fallback, the original higher
-// values are used.
+// The settle delay runs between sending the paste keystroke and restoring the
+// prior clipboard. It is invisible to the user (the transcript has already
+// been pasted) but it is the only protection against slow targets (remote
+// desktop, loaded IDEs) that process Ctrl/Cmd+V after we restore — those
+// would paste the OLD clipboard. Keep it generous.
 const PASTE_SETTLE_MS: Record<string, number> = {
-  darwin: 150,
-  win32: 150,
-  linux: 100,
+  darwin: 300,
+  win32: 300,
+  linux: 300,
 };
 
 const PASTE_SETTLE_LEGACY_MS: Record<string, number> = {
   darwin: 500,
   win32: 600,
-  linux: 300,
+  linux: 500,
 };
 
-export async function pasteIntoFocusedApp(
+function pasteSettleMs(method: PasteMethod): number {
+  const override = Number(process.env.FREESTYLE_PASTE_SETTLE_MS);
+  if (Number.isFinite(override) && override >= 0) return override;
+  const table = method === "native" ? PASTE_SETTLE_MS : PASTE_SETTLE_LEGACY_MS;
+  return table[process.platform] ?? 500;
+}
+
+// Clipboard flavors Electron can read back and re-write. Anything else
+// (file copies, app-private data) cannot be snapshotted, so overwriting it
+// with plain text on restore would destroy the user's copy.
+const RESTORABLE_TEXT_FORMATS = new Set([
+  "text/plain",
+  "text/html",
+  "text/rtf",
+]);
+
+type ClipboardSnapshot =
+  | { restorable: false }
+  | {
+      restorable: true;
+      text: string;
+      html?: string;
+      rtf?: string;
+      image?: Electron.NativeImage;
+    };
+
+function snapshotClipboard(): ClipboardSnapshot {
+  try {
+    const formats = clipboard.availableFormats();
+    const unknown = formats.filter(
+      (f) => !RESTORABLE_TEXT_FORMATS.has(f) && !f.startsWith("image/"),
+    );
+    if (unknown.length > 0) {
+      log.debug(
+        `clipboard holds non-restorable formats (${unknown.join(", ")}); leaving transcript on clipboard after paste`,
+      );
+      return { restorable: false };
+    }
+    const hasImage = formats.some((f) => f.startsWith("image/"));
+    return {
+      restorable: true,
+      text: clipboard.readText(),
+      html: formats.includes("text/html") ? clipboard.readHTML() : undefined,
+      rtf: formats.includes("text/rtf") ? clipboard.readRTF() : undefined,
+      image: hasImage ? clipboard.readImage() : undefined,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn(`Failed to snapshot clipboard: ${message}`);
+    return { restorable: false };
+  }
+}
+
+function restoreClipboard(
+  snapshot: ClipboardSnapshot,
+  transcript: string,
+): void {
+  if (!snapshot.restorable) return;
+  try {
+    // If the clipboard no longer holds our transcript, the user (or another
+    // app) copied something during the settle window — don't clobber it.
+    if (clipboard.readText() !== transcript) {
+      log.debug("clipboard changed since paste; skipping restore");
+      return;
+    }
+    const data: Electron.Data = { text: snapshot.text };
+    if (snapshot.html !== undefined) data.html = snapshot.html;
+    if (snapshot.rtf !== undefined) data.rtf = snapshot.rtf;
+    if (snapshot.image && !snapshot.image.isEmpty()) {
+      data.image = snapshot.image;
+    }
+    clipboard.write(data);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn(`Failed to restore clipboard: ${message}`);
+  }
+}
+
+// Serialized: two overlapping dictations must not interleave their clipboard
+// save/paste/restore sequences.
+let pasteChain: Promise<void> = Promise.resolve();
+
+export function pasteIntoFocusedApp(
+  text: string,
+  beforePaste?: () => Promise<void> | void,
+): Promise<void> {
+  const run = (): Promise<void> => doPasteIntoFocusedApp(text, beforePaste);
+  const result = pasteChain.then(run, run);
+  pasteChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+async function doPasteIntoFocusedApp(
   text: string,
   beforePaste?: () => Promise<void> | void,
 ): Promise<void> {
@@ -350,7 +446,7 @@ export async function pasteIntoFocusedApp(
   log.debug(`pasting ${text?.length ?? 0} chars`);
   if (!text?.trim()) return;
 
-  const prior = clipboard.readText();
+  const prior = snapshotClipboard();
   clipboard.writeText(text);
 
   let pasted = false;
@@ -376,20 +472,12 @@ export async function pasteIntoFocusedApp(
     }
     pasted = true;
 
-    const settleTable =
-      method === "native" ? PASTE_SETTLE_MS : PASTE_SETTLE_LEGACY_MS;
-    const settleMs = settleTable[process.platform] ?? 500;
-    await new Promise((r) => setTimeout(r, settleMs));
+    await new Promise((r) => setTimeout(r, pasteSettleMs(method)));
   } finally {
     // When every paste backend failed, the clipboard is the only copy of the
     // transcript the user still has — leave it there instead of restoring.
     if (pasted) {
-      try {
-        clipboard.writeText(prior);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        log.warn(`Failed to restore clipboard: ${message}`);
-      }
+      restoreClipboard(prior, text);
     }
   }
 }

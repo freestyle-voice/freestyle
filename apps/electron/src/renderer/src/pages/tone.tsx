@@ -621,6 +621,7 @@ function CleanupTonePanel({
         {CLEANUP_OPTIONS.map((option, index) => {
           const selected = option.value === value;
           return (
+            {/* biome-ignore lint/a11y/useSemanticElements: intentional ARIA radio pattern with styled card buttons */}
             <button
               key={option.value}
               type="button"
@@ -849,6 +850,7 @@ function SubsetTonePanel<T extends string>({
           const sample = t(option.sampleKey);
 
           return (
+            {/* biome-ignore lint/a11y/useSemanticElements: intentional ARIA radio pattern with styled card buttons */}
             <button
               key={option.value}
               type="button"

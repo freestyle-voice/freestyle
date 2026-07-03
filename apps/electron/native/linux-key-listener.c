@@ -6,8 +6,6 @@
  * Outputs "KEY_DOWN" and "KEY_UP" to stdout.
  *
  * Requires read access to /dev/input/event* (typically via input group).
- * If /dev/input is not accessible this listener fails to start and the
- * app falls back to Electron globalShortcut (toggle mode) instead.
  *
  * Compile: gcc -O2 linux-key-listener.c -o linux-key-listener
  *

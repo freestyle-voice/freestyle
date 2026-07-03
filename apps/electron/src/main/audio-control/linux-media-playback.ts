@@ -193,15 +193,9 @@ function runCmdSync(command: string, args: string[]): void {
       timeout: AUDIO_CONTROL_CMD_TIMEOUT_MS,
       stdio: "ignore",
     });
-  } catch {
-    // Quit cleanup should never block app shutdown on media resume failure.
-  }
+  } catch {}
 }
 
-/**
- * Synchronous variant for quit cleanup — the async resume never completes
- * once the process starts exiting, leaving the user's media paused.
- */
 export function resumePlaybackSync(): void {
   if (pausedMprisServices.length === 0) return;
 

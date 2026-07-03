@@ -19,10 +19,6 @@ function currentDucker(): VolumeDucker | null {
   return duckers[process.platform] ?? null;
 }
 
-// If the app dies while ducked (crash, SIGKILL, power loss), the in-memory
-// pre-duck snapshot is lost and the user's system volume stays stuck at the
-// ducked level. Persist the snapshot around each duck so the next launch can
-// recover it.
 function recoveryFilePath(): string {
   return join(app.getPath("userData"), "duck-recovery.json");
 }
@@ -44,9 +40,7 @@ function persistRecoverySnapshot(snapshot: unknown): void {
 function clearRecoverySnapshot(): void {
   try {
     unlinkSync(recoveryFilePath());
-  } catch {
-    // Already gone
-  }
+  } catch {}
 }
 
 export async function duckVolume(): Promise<boolean> {
@@ -68,19 +62,14 @@ export function restoreVolumeSync(): boolean {
   return restored;
 }
 
-/**
- * Restore volume left ducked by a previous run that died mid-dictation.
- * Call once at startup. No-op when the previous run exited cleanly.
- */
 export async function recoverDuckedVolumeFromCrash(): Promise<void> {
   let state: { platform?: string; snapshot?: unknown };
   try {
     state = JSON.parse(readFileSync(recoveryFilePath(), "utf8"));
   } catch {
-    return; // No recovery file — the previous run exited cleanly.
+    return;
   }
 
-  // Clear before restoring so a failing restore can't repeat every launch.
   clearRecoverySnapshot();
   if (state?.platform !== process.platform) return;
 

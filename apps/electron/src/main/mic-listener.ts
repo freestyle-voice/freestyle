@@ -115,9 +115,6 @@ export class MicListener {
 
     this.process.on("close", (code) => {
       this.process = null;
-      // Restart only on abnormal exit — a clean exit (e.g. pactl present but
-      // the PulseAudio socket is gone) would otherwise respawn every 5s
-      // forever.
       if (!this.destroyed && code !== 0) {
         this.scheduleRestart();
       }

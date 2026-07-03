@@ -25,11 +25,6 @@ interface KeyListenerOptions {
   onKeyUp: KeyEventCallback;
   onError?: (error: string) => void;
   onReady?: () => void;
-  /**
-   * Fired when the listener gives up restarting for good (restart cap
-   * exceeded). The listener ran at some point but is now permanently dead —
-   * callers should install a fallback so the hotkey keeps working.
-   */
   onPermanentFailure?: () => void;
 }
 

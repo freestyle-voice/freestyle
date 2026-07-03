@@ -1,20 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * Verifies that every native binary the app depends on was compiled AND
- * made it into the packaged build. Run after `electron-builder` in CI.
- *
- * Without this check, a toolchain failure on a CI runner ships an
- * installer whose hotkey/paste/mic features silently degrade to legacy
- * fallbacks (see specs/app-stability-audit.md §3.6).
- *
- * Checks two locations:
- *  1. Source:   resources/bin/<platform>-<arch>/          (compile:native output)
- *  2. Packaged: dist/<unpacked>/.../Resources|resources/bin/  (electron-builder extraResources)
- *
- * Pass --source-only to skip the packaged check (e.g. before packaging).
- */
-
 import { readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,7 +11,6 @@ const platform = process.platform;
 const arch = process.arch;
 const sourceOnly = process.argv.includes("--source-only");
 
-// Keep in sync with compile-native.js and src/main/native-binary.ts.
 const EXPECTED = {
   darwin: [
     "macos-key-listener",
@@ -54,7 +38,6 @@ function findPackagedBinDir() {
   const dist = join(ROOT, "dist");
   try {
     if (platform === "darwin") {
-      // dist/mac[-arm64]/Freestyle.app/Contents/Resources/bin
       for (const entry of readdirSync(dist)) {
         if (!entry.startsWith("mac")) continue;
         const macDir = join(dist, entry);
@@ -68,9 +51,7 @@ function findPackagedBinDir() {
     } else {
       return join(dist, "linux-unpacked", "resources", "bin");
     }
-  } catch {
-    // fall through
-  }
+  } catch {}
   return null;
 }
 

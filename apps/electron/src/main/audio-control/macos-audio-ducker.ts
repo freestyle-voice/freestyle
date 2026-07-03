@@ -108,8 +108,6 @@ export class MacosVolumeDucker implements VolumeDucker {
     const binaryPath = getNativeBinaryPath("macos-output-volume");
     if (!binaryPath) return false;
 
-    // Only recover when the system still looks ducked — if the user already
-    // fixed the volume by hand, don't yank it back down/up.
     const current = parseSnapshot(await execFileText(binaryPath, ["get"]));
     if (current.previousVolume > DUCKED_VOLUME + 0.05) return false;
 

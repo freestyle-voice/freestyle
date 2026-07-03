@@ -5,8 +5,6 @@ const CJK_SCRIPT_RE =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const WORDLIKE_CHAR_CLASS = "[\\p{L}\\p{N}\\p{M}_]";
 
-// A key always compiles to the same regex, so cache compiled patterns across
-// transcripts instead of recompiling every dictionary row per dictation.
 const REGEX_CACHE_MAX = 5000;
 const regexCache = new Map<string, RegExp>();
 
@@ -52,8 +50,6 @@ export function applyDictionaryReplacements(
     const matchedIds: number[] = [];
     for (const { id, key, value } of dictRows) {
       const regex = buildDictionaryRegex(key);
-      // Function replacer: values are inserted literally, so `$&`, `$1`,
-      // `` $` `` etc. in a user's replacement are never interpreted.
       const nextText = cleanedText.replace(regex, () => value);
       if (nextText !== cleanedText) {
         matchedIds.push(id);

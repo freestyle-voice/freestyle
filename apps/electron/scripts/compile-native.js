@@ -25,9 +25,6 @@ const platform = process.platform;
 const arch = process.arch;
 const outputDir = join(BIN_DIR, `${platform}-${arch}`);
 
-// Binaries that failed to compile. Local dev tolerates missing binaries
-// (features degrade to legacy fallbacks), but CI must never package a
-// build that silently lost its native binaries.
 const failures = [];
 
 function ensureDir(dir) {

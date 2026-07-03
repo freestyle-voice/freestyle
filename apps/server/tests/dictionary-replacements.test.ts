@@ -111,7 +111,6 @@ describe("applyDictionaryReplacements", () => {
     expect(applyDictionaryReplacements("brb in five", db)).toBe(
       "be right back in five",
     );
-    // Second call exercises the cached regex; global-flag state must not leak.
     expect(applyDictionaryReplacements("brb brb", db)).toBe(
       "be right back be right back",
     );

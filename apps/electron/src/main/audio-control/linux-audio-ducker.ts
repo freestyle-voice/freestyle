@@ -199,7 +199,6 @@ export class LinuxVolumeDucker implements VolumeDucker {
       return false;
     }
 
-    // wpctl volumes are 0-1 scalars; pactl volumes are percentages.
     const duckedLevel =
       snapshot.method === "wpctl"
         ? DUCKED_VOLUME
@@ -207,8 +206,6 @@ export class LinuxVolumeDucker implements VolumeDucker {
     const epsilon = snapshot.method === "wpctl" ? 0.05 : 5;
     if (snapshot.previousVolume <= duckedLevel) return false;
 
-    // Only recover when the system still looks ducked — if the user already
-    // fixed the volume by hand, don't yank it back down/up.
     const current = await readVolume();
     if (!current || current.method !== snapshot.method) return false;
     if (current.previousVolume > duckedLevel + epsilon) return false;

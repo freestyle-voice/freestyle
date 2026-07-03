@@ -1398,8 +1398,6 @@ app.on("second-instance", () => {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
   void startLinuxPasteHelper();
-  // If a previous run died while dictating, the system volume may still be
-  // stuck at the ducked level — restore it before anything else.
   void recoverDuckedVolumeFromCrash();
 
   // Set app user model id for windows
@@ -2121,10 +2119,6 @@ function sendHotkeyUp(): void {
   settingsWindow?.webContents.send("hotkey:up");
 }
 
-// Hold-to-talk relies on a KEY_UP that is not guaranteed to arrive (macOS
-// event monitors can drop key-ups; a dying listener process emits nothing).
-// If a hold-mode press never sees its release, force the release instead of
-// leaving the mic hot and the hotkey dead until app restart.
 const HOTKEY_STUCK_TIMEOUT_MS = 5 * 60 * 1000;
 let hotkeyStuckTimer: NodeJS.Timeout | null = null;
 
@@ -2211,8 +2205,6 @@ function notifyPasteFailed(): void {
   if (process.platform === "linux") {
     if (isWaylandSession()) {
       const desktop = (process.env.XDG_CURRENT_DESKTOP ?? "").toLowerCase();
-      // wtype doesn't work on GNOME/Mutter (no virtual-keyboard protocol) —
-      // don't send GNOME users to install a tool that can't help them.
       hint = desktop.includes("gnome")
         ? " If a permission dialog appears on the next paste, allow Freestyle to control input."
         : " If a permission dialog appears on the next paste, allow it — or install wtype (e.g. sudo apt install wtype).";
@@ -2311,11 +2303,6 @@ async function registerHotkey(hotkey?: string): Promise<void> {
         hotkeyLog.debug(`Native key listener ready for "${accel}"`);
       },
       onPermanentFailure: () => {
-        // The listener started fine and then died for good (event tap torn
-        // down, repeated crashes past the restart cap). Without this, the
-        // user has no hotkey, no fallback, and no explanation until app
-        // restart — install the globalShortcut fallback the same way a
-        // failed initial start does.
         if (keyListener !== listener) return;
         hotkeyLog.error(
           "Native key listener permanently failed; falling back to Electron globalShortcut (toggle mode).",
@@ -2352,8 +2339,6 @@ async function registerHotkey(hotkey?: string): Promise<void> {
 
     if (started) {
       accessibilityConfirmed = true;
-      // A healthy native listener means hold-to-talk works again; re-arm the
-      // degradation notice so a later regression in this session notifies.
       hotkeyDegradedNotified = false;
     } else {
       hotkeyLog.warn(

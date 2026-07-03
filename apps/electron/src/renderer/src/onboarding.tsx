@@ -79,7 +79,7 @@ const DEFAULT_HOTKEY =
   getDefaultHotkey();
 
 // Linux system-setup state reported by the main process (input-group access
-// for the hotkey listener, /dev/uinput or xdotool/wtype for pasting).
+// for the hotkey listener, xdotool/wtype for the paste fallback).
 type LinuxSetup = {
   wayland: boolean;
   inputAccess: boolean;
@@ -984,9 +984,6 @@ function PermissionsStep({
           />
         )}
 
-        {/* On Wayland, /dev/uinput access (or the RemoteDesktop portal)
-            handles pasting without wtype — only warn when neither the
-            primary path nor the fallback tool is available. */}
         {IS_LINUX &&
           linuxSetup &&
           !linuxSetup.pasteTool &&

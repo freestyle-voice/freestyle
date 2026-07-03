@@ -150,8 +150,6 @@ function handleLinuxUinputLine(line: string): void {
 }
 
 export function startLinuxPasteHelper(force = false): Promise<boolean> {
-  // `force` lets the cross-family fallback try uinput even when the session
-  // was detected as X11 (env-based detection can misclassify).
   if (process.platform !== "linux" || (!force && !isWaylandSession())) {
     return Promise.resolve(false);
   }
@@ -288,9 +286,6 @@ function linuxPasteArgs(isTerminal: boolean): string[] {
   return isTerminal ? ["--terminal"] : [];
 }
 
-// The XDG RemoteDesktop portal grants a persistable input-injection session.
-// The native binary prints a restore token on success; reusing it makes every
-// paste after the first permission dialog silent.
 function portalTokenPath(): string {
   return join(app.getPath("userData"), "portal-restore-token");
 }
@@ -316,9 +311,7 @@ function savePortalToken(token: string): void {
 function clearPortalToken(): void {
   try {
     unlinkSync(portalTokenPath());
-  } catch {
-    // Already gone
-  }
+  } catch {}
 }
 
 async function pasteLinuxPortal(isTerminal: boolean): Promise<boolean> {
@@ -330,8 +323,6 @@ async function pasteLinuxPortal(isTerminal: boolean): Promise<boolean> {
   if (token) args.push("--restore-token", token);
 
   try {
-    // The binary's internal portal timeout is 10s (covers the first-use
-    // permission dialog); give the process a little extra before killing it.
     const { code, stdout } = await execFileWithOutput(binaryPath, args, 15_000);
     if (code === 0) {
       const newToken = stdout.trim().split("\n").pop()?.trim();
@@ -339,8 +330,6 @@ async function pasteLinuxPortal(isTerminal: boolean): Promise<boolean> {
       return true;
     }
     if (token && (code === 2 || code === 3)) {
-      // The saved grant was revoked — drop the stale token so the next
-      // attempt re-prompts instead of failing forever.
       clearPortalToken();
     }
     log.warn(`Portal paste failed (exit ${code})`);
@@ -375,9 +364,6 @@ async function pasteLinux(isTerminal: boolean): Promise<PasteMethod> {
     await pasteLinuxLegacy(false, isTerminal);
     return "legacy";
   } catch (err) {
-    // Session-type detection is env-var based and can misclassify (e.g. a
-    // Wayland session without XDG_SESSION_TYPE) — cross-try the Wayland
-    // injectors before giving up.
     log.warn("X11 paste backends failed, cross-trying Wayland backends");
     if (await sendPersistentUinputPaste(isTerminal, true)) return "native";
     if (await pasteLinuxPortal(isTerminal)) return "native";
@@ -390,8 +376,6 @@ async function pasteLinuxWayland(isTerminal: boolean): Promise<PasteMethod> {
     return "native";
   }
 
-  // GNOME/Mutter doesn't implement the virtual-keyboard protocol wtype
-  // needs, so the RemoteDesktop portal is the standard fallback there.
   log.warn("Persistent uinput paste failed, trying RemoteDesktop portal");
   if (await pasteLinuxPortal(isTerminal)) {
     return "native";
@@ -402,7 +386,6 @@ async function pasteLinuxWayland(isTerminal: boolean): Promise<PasteMethod> {
     await pasteLinuxLegacy(true, isTerminal);
     return "legacy";
   } catch (err) {
-    // Cross-try the X11 injectors in case the session was misdetected.
     log.warn("Wayland paste backends failed, cross-trying X11 backends");
     const binary = getNativeBinaryPath("linux-fast-paste");
     if (binary) {
@@ -436,11 +419,6 @@ async function pasteLinuxLegacy(
   }
 }
 
-// The settle delay runs between sending the paste keystroke and restoring the
-// prior clipboard. It is invisible to the user (the transcript has already
-// been pasted) but it is the only protection against slow targets (remote
-// desktop, loaded IDEs) that process Ctrl/Cmd+V after we restore — those
-// would paste the OLD clipboard. Keep it generous.
 const PASTE_SETTLE_MS: Record<string, number> = {
   darwin: 300,
   win32: 300,
@@ -460,9 +438,6 @@ function pasteSettleMs(method: PasteMethod): number {
   return table[process.platform] ?? 500;
 }
 
-// Clipboard flavors Electron can read back and re-write. Anything else
-// (file copies, app-private data) cannot be snapshotted, so overwriting it
-// with plain text on restore would destroy the user's copy.
 const RESTORABLE_TEXT_FORMATS = new Set([
   "text/plain",
   "text/html",
@@ -512,8 +487,6 @@ function restoreClipboard(
 ): void {
   if (!snapshot.restorable) return;
   try {
-    // If the clipboard no longer holds our transcript, the user (or another
-    // app) copied something during the settle window — don't clobber it.
     if (clipboard.readText() !== transcript) {
       log.debug("clipboard changed since paste; skipping restore");
       return;
@@ -531,8 +504,6 @@ function restoreClipboard(
   }
 }
 
-// Serialized: two overlapping dictations must not interleave their clipboard
-// save/paste/restore sequences.
 let pasteChain: Promise<void> = Promise.resolve();
 
 export function pasteIntoFocusedApp(

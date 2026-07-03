@@ -15,10 +15,6 @@ export interface LinuxSetupStatus {
   wayland: boolean;
   /** Can read at least one /dev/input/event* device (global hotkey listener). */
   inputAccess: boolean;
-  /**
-   * Can write /dev/uinput — the primary Wayland paste path. Without it,
-   * Wayland pastes fall back to the RemoteDesktop portal, then wtype.
-   */
   uinputAccess: boolean;
   /** The paste fallback tool this session needs (xdotool or wtype). */
   pasteToolRequired: string;

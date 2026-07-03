@@ -151,6 +151,51 @@ export function prewarmPostProcess(): void {
 }
 
 /**
+ * Final text-rewrite stage that must run on every dictation regardless of
+ * where cleanup happened — local LLM cleanup, Freestyle Cloud's combined
+ * STT+cleanup, or no cleanup at all. Applies the user's dictionary
+ * replacements, then runs the `afterCleanup` plugin hook (each plugin sees the
+ * previous plugin's output).
+ *
+ * These steps used to live inside {@link postProcess}, so any path that
+ * bypassed it (the Freestyle Cloud combined paths) silently dropped them. This
+ * helper decouples them so callers can apply them to already-cleaned text.
+ *
+ * Dictionary replacement is skipped for empty text (nothing to replace), but
+ * the `afterCleanup` hook always fires so plugins observe a consistent
+ * lifecycle. When `rawForCleanedEvent` is provided, a single `Cleaned` event is
+ * emitted whenever the final text differs from it.
+ */
+export async function applyFinalRewrites(
+  text: string,
+  appContext: string | null,
+  rawForCleanedEvent?: string,
+): Promise<string> {
+  let out = text;
+  if (out.trim()) {
+    out = applyDictionaryReplacements(out, getDb());
+  }
+
+  out = (
+    await plugins().run(
+      "afterCleanup",
+      { appContext: parseAppContext(appContext) },
+      { text: out },
+    )
+  ).text;
+
+  if (rawForCleanedEvent !== undefined && out !== rawForCleanedEvent) {
+    void plugins().emit({
+      type: FreestyleEventType.Cleaned,
+      before: rawForCleanedEvent,
+      after: out,
+    });
+  }
+
+  return out;
+}
+
+/**
  * Run LLM cleanup and dictionary replacements on transcribed text.
  * Returns the cleaned text plus metadata for history tracking.
  */
@@ -162,7 +207,6 @@ export async function postProcess(
   const normalizedRawText = sanitizeTranscriptText(rawText);
   const source = options.source ?? "batch";
   const ppStart = Date.now();
-  const db = getDb();
   const parsedContext = parseAppContext(appContext);
   const defaults = getDefaultModels();
   let inputTokens = 0;
@@ -310,27 +354,13 @@ export async function postProcess(
   }
 
   const llmMs = Date.now() - llmStart;
-  cleanedText = applyDictionaryReplacements(cleanedText, db);
-
-  // Plugin hook: final text-rewrite chain, in the same stage as dictionary
-  // replacement. Each plugin sees the previous plugin's output.
-  cleanedText = (
-    await plugins().run(
-      "afterCleanup",
-      { appContext: parsedContext },
-      { text: cleanedText },
-    )
-  ).text;
-
-  // Emit once per dictation whenever any stage (LLM cleanup, dictionary, or a
-  // plugin) changed the text, reporting the full raw -> final transformation.
-  if (cleanedText !== normalizedRawText) {
-    void plugins().emit({
-      type: FreestyleEventType.Cleaned,
-      before: normalizedRawText,
-      after: cleanedText,
-    });
-  }
+  // Dictionary replacement + `afterCleanup` plugin hook + `Cleaned` event. Runs
+  // on the full raw -> final transformation for this dictation.
+  cleanedText = await applyFinalRewrites(
+    cleanedText,
+    appContext,
+    normalizedRawText,
+  );
 
   if (inputTokens > 0 || outputTokens > 0) {
     try {

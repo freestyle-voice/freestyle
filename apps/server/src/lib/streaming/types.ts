@@ -11,7 +11,7 @@ export interface StreamCallbacks {
   onReady: (model: string) => void;
   onPartial: (text: string) => void;
   onFinal: (text: string) => void;
-  onError: (message: string) => void;
+  onError: (message: string, code?: string) => void;
   onClose: () => void;
 }
 

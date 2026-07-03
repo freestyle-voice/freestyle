@@ -19,7 +19,7 @@ export interface StreamerCallbacks {
   onPartial: (text: string) => void;
   onFinal: (text: string) => void;
   onCleaned?: (text: string) => void;
-  onError: (message: string) => void;
+  onError: (message: string, code?: string) => void;
   onReady: () => void;
   onConfig: (config: {
     streaming: boolean;
@@ -214,6 +214,7 @@ export class Streamer {
         type: string;
         text?: string;
         message?: string;
+        code?: string;
         model?: string;
         streaming?: boolean;
         sessionTransport?: boolean;
@@ -254,7 +255,7 @@ export class Streamer {
           this.callbacks.onCleaned?.(msg.text ?? "");
           break;
         case "error":
-          this.callbacks.onError(msg.message ?? "Unknown error");
+          this.callbacks.onError(msg.message ?? "Unknown error", msg.code);
           break;
       }
     });

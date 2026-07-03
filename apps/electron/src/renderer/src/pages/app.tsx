@@ -96,8 +96,13 @@ interface TranscribeResult {
   cleaned: string;
   error?: string;
   cloudAuthRequired?: boolean;
+  usageExceeded?: boolean;
   providerCategory?: string;
 }
+
+const USAGE_LIMIT_DIALOG_TITLE = "Usage limit reached";
+const USAGE_LIMIT_DIALOG_MESSAGE =
+  "You've used all of your Freestyle Cloud transcription for now. It resets soon — or switch to a local or bring-your-own-key model in Settings > Models.";
 
 /**
  * The app context (process name + window title) can contain characters
@@ -220,6 +225,14 @@ export default function AppPage(): React.JSX.Element {
         if (results.some((r) => r.cloudAuthRequired)) {
           hidePill();
           void window.api.cloudPromptSignIn();
+          return;
+        }
+        if (results.some((r) => r.usageExceeded)) {
+          hidePill();
+          window.api.showErrorDialog(
+            USAGE_LIMIT_DIALOG_TITLE,
+            USAGE_LIMIT_DIALOG_MESSAGE,
+          );
           return;
         }
         const errMsg = results.find((r) => r.error)?.error;
@@ -366,6 +379,14 @@ export default function AppPage(): React.JSX.Element {
                 cloudAuthRequired: true,
               };
             }
+            if (res.status === 429 && body?.error === "usage_exceeded") {
+              return {
+                raw: "",
+                cleaned: "",
+                error: USAGE_LIMIT_DIALOG_MESSAGE,
+                usageExceeded: true,
+              };
+            }
             return { raw: "", cleaned: "", error: errorMsg };
           }
           const data = (await res.json()) as {
@@ -407,8 +428,34 @@ export default function AppPage(): React.JSX.Element {
           resolver({ raw: text, cleaned: text });
         },
         onCleaned: () => {},
-        onError: (msg) => {
+        onError: (msg, code) => {
           const resolver = streamResolverRef.current;
+          // Cloud auth expiry and usage limits are terminal — don't fall back
+          // to REST (it would just re-hit the same cloud error). Surface them
+          // directly, or flag the pending result so the drain loop does.
+          if (code === "cloud_auth_required") {
+            streamResolverRef.current = null;
+            if (resolver) {
+              resolver({ raw: "", cleaned: "", cloudAuthRequired: true });
+            } else if (pillActiveRef.current) {
+              hidePill();
+              void window.api.cloudPromptSignIn();
+            }
+            return;
+          }
+          if (code === "usage_exceeded") {
+            streamResolverRef.current = null;
+            if (resolver) {
+              resolver({ raw: "", cleaned: "", usageExceeded: true });
+            } else if (pillActiveRef.current) {
+              hidePill();
+              window.api.showErrorDialog(
+                USAGE_LIMIT_DIALOG_TITLE,
+                USAGE_LIMIT_DIALOG_MESSAGE,
+              );
+            }
+            return;
+          }
           if (resolver) {
             streamResolverRef.current = null;
             const fallback = restFallbackTranscribe(msg);
@@ -864,6 +911,14 @@ export default function AppPage(): React.JSX.Element {
               cleaned: "",
               error: "Sign in to Freestyle Transcribe",
               cloudAuthRequired: true,
+            };
+          }
+          if (res.status === 429 && body?.error === "usage_exceeded") {
+            return {
+              raw: "",
+              cleaned: "",
+              error: USAGE_LIMIT_DIALOG_MESSAGE,
+              usageExceeded: true,
             };
           }
           const msg =

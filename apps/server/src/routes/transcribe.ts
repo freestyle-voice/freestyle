@@ -1,11 +1,11 @@
 import { createAppLogger } from "@freestyle-voice/utils";
 import { Hono } from "hono";
-import { getDb, readSetting } from "../lib/db.js";
-import { applyDictionaryReplacements } from "../lib/dictionary-replacements.js";
+import { readSetting } from "../lib/db.js";
 import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,
+  FreestyleCloudUsageError,
   transcribeWithFreestyleCloud,
 } from "../lib/freestyle-cloud.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
@@ -17,6 +17,7 @@ import {
   plugins,
 } from "../lib/plugins/index.js";
 import {
+  applyFinalRewrites,
   getCleanupAppAssignments,
   getCleanupCustomPrompt,
   getCleanupEmailTone,
@@ -107,7 +108,6 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     );
   }
 
-  const db = getDb();
   let rawText: string;
   let transcribeDurationInSeconds: number | undefined;
   const language = getLanguageSetting();
@@ -161,9 +161,12 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         appAssignments: getCleanupAppAssignments(),
       });
       rawText = sanitizeTranscriptText(result.raw ?? "");
-      const cleaned = applyDictionaryReplacements(
+      // The cloud already ran STT + LLM cleanup; still apply the local-only
+      // dictionary replacements and `afterCleanup` plugin hook on the way out.
+      const cleaned = await applyFinalRewrites(
         sanitizeTranscriptText(result.cleaned ?? rawText),
-        db,
+        appContext,
+        rawText,
       );
       const durationMs = Date.now() - start;
       const inputTokens = result.usage?.inputTokens ?? 0;
@@ -212,6 +215,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       if (err instanceof FreestyleCloudAuthError) {
         invalidateSession();
         return c.json({ error: "cloud_auth_required" }, 401);
+      }
+      if (err instanceof FreestyleCloudUsageError) {
+        return c.json({ error: "usage_exceeded", resetsAt: err.resetsAt }, 429);
       }
       captureException(err, { provider: voiceProvider, model: voiceModel });
       return c.json(
@@ -349,6 +355,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     if (err instanceof FreestyleCloudAuthError) {
       invalidateSession();
       return c.json({ error: "cloud_auth_required" }, 401);
+    }
+    if (err instanceof FreestyleCloudUsageError) {
+      return c.json({ error: "usage_exceeded", resetsAt: err.resetsAt }, 429);
     }
     throw err;
   }

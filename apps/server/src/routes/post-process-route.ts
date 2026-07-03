@@ -1,5 +1,8 @@
 import { Hono } from "hono";
-import { FreestyleCloudAuthError } from "../lib/freestyle-cloud.js";
+import {
+  FreestyleCloudAuthError,
+  FreestyleCloudUsageError,
+} from "../lib/freestyle-cloud.js";
 import { getLanguageSetting } from "../lib/language.js";
 import { postProcess } from "../lib/post-process.js";
 import { invalidateSession } from "../lib/sessions.js";
@@ -25,6 +28,9 @@ const postProcessRoute = new Hono().post("/", async (c) => {
     if (err instanceof FreestyleCloudAuthError) {
       invalidateSession();
       return c.json({ error: "cloud_auth_required" }, 401);
+    }
+    if (err instanceof FreestyleCloudUsageError) {
+      return c.json({ error: "usage_exceeded", resetsAt: err.resetsAt }, 429);
     }
     throw err;
   }

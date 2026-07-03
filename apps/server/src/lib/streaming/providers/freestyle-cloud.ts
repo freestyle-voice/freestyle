@@ -139,14 +139,9 @@ export class FreestyleCloudTranscriptionProvider
           callbacks.onFinal(msg.text ?? "");
           break;
         case "error":
-          if (
-            msg.code === "cloud_auth_required" ||
-            msg.code === "usage_exceeded"
-          ) {
-            callbacks.onError(msg.message ?? "Cloud error");
-          } else {
-            callbacks.onError(msg.message ?? "Unknown cloud error");
-          }
+          // Forward the cloud's error code (e.g. "usage_exceeded",
+          // "cloud_auth_required") so the stream route can act on it.
+          callbacks.onError(msg.message ?? "Unknown cloud error", msg.code);
           break;
       }
     });

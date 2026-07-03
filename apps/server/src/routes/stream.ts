@@ -5,6 +5,7 @@ import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,
+  FreestyleCloudUsageError,
 } from "../lib/freestyle-cloud.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import { getLanguageSetting } from "../lib/language.js";
@@ -14,6 +15,7 @@ import {
   plugins,
 } from "../lib/plugins/index.js";
 import {
+  applyFinalRewrites,
   getCleanupAppAssignments,
   getCleanupCustomPrompt,
   getCleanupEmailTone,
@@ -292,16 +294,59 @@ const stream = new Hono().get(
               closeUpstreamSession(session);
             }
 
-            // Freestyle Cloud streaming: the cloud DO already ran STT +
-            // Groq LLM post-processing. The text is already cleaned — skip
-            // local postProcess() and deliver directly.
+            // Freestyle Cloud streaming. The cloud DO returns cleaned text when
+            // post-processing is on, or the raw transcript when it is off
+            // (`skipPostProcess = !isLlmCleanupEnabled()` was sent on connect).
             if (voice.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
-              const cleanedText = rawText?.trim() || "";
+              const cloudHandledPostProcess = isLlmCleanupEnabled();
+              const cloudText = rawText?.trim() || "";
+              let text = cloudText;
 
-              void plugins().emit({
-                type: FreestyleEventType.Transcribed,
-                text: cleanedText,
-              });
+              if (!cloudHandledPostProcess) {
+                // Post-processing off: cloudText IS the raw transcript, so this
+                // is the only cloud case where we have a real raw transcript.
+                // Emit Transcribed and run afterTranscribe (voice-commands,
+                // etc.), mirroring the local path.
+                void plugins().emit({
+                  type: FreestyleEventType.Transcribed,
+                  text,
+                });
+                text = (
+                  await plugins().run(
+                    "afterTranscribe",
+                    {
+                      providerId: voiceDefaults!.provider,
+                      modelId: voiceDefaults!.model_id,
+                      appContext: parseAppContext(appContext),
+                    },
+                    { text },
+                  )
+                ).text;
+                // A plugin may consume/suppress the transcript (empty result).
+                if (!text.trim()) {
+                  if (!closed) {
+                    ws.send(JSON.stringify({ type: "final", text: "" }));
+                  }
+                  return;
+                }
+              }
+              // When the cloud handled post-processing there is no separable raw
+              // transcript, so we neither emit Transcribed nor run
+              // afterTranscribe. The dictionary + afterCleanup hook are
+              // local-only, so still apply them here in both cases.
+
+              const finalText = await applyFinalRewrites(
+                text,
+                appContext,
+                cloudText,
+              );
+
+              const llmProvider = cloudHandledPostProcess
+                ? FREESTYLE_CLOUD_PROVIDER_ID
+                : null;
+              const llmModel = cloudHandledPostProcess
+                ? "freestyle-cloud/post-process"
+                : null;
 
               const sttAfterCommitMs =
                 commitTime > 0 ? Date.now() - commitTime : durationMs;
@@ -318,23 +363,23 @@ const stream = new Hono().get(
                 model: voiceDefaults!.model_id,
                 duration_ms: durationMs,
                 audio_duration_ms: audioDurationMs,
-                llm_provider: FREESTYLE_CLOUD_PROVIDER_ID,
-                llm_model: "freestyle-cloud/post-process",
+                llm_provider: llmProvider,
+                llm_model: llmModel,
                 input_tokens: 0,
                 output_tokens: 0,
                 cost_usd: 0,
               });
               if (!closed) {
-                ws.send(JSON.stringify({ type: "final", text: cleanedText }));
+                ws.send(JSON.stringify({ type: "final", text: finalText }));
               }
               try {
                 saveProcessedHistory({
-                  rawText: cleanedText,
-                  cleanedText: null,
+                  rawText: cloudText,
+                  cleanedText: finalText !== cloudText ? finalText : null,
                   voiceProvider: voiceDefaults!.provider,
                   voiceModel: voiceDefaults!.model_id,
-                  llmProvider: FREESTYLE_CLOUD_PROVIDER_ID,
-                  llmModel: "freestyle-cloud/post-process",
+                  llmProvider,
+                  llmModel,
                   durationMs,
                   audioDurationMs,
                   inputTokens: 0,
@@ -452,6 +497,18 @@ const stream = new Hono().get(
                   }
                   return;
                 }
+                if (err instanceof FreestyleCloudUsageError) {
+                  if (!closed) {
+                    ws.send(
+                      JSON.stringify({
+                        type: "error",
+                        code: "usage_exceeded",
+                        message: "Freestyle Cloud usage limit reached",
+                      }),
+                    );
+                  }
+                  return;
+                }
                 captureException(err);
                 if (!closed) {
                   ws.send(JSON.stringify({ type: "final", text: rawText }));
@@ -467,7 +524,7 @@ const stream = new Hono().get(
                 } catch {}
               });
           },
-          onError: (message) => {
+          onError: (message, code) => {
             if (upstream !== session) return;
             sessionTransportUnavailable = true;
             ws.send(
@@ -478,7 +535,13 @@ const stream = new Hono().get(
                 model: modelShort,
               }),
             );
-            ws.send(JSON.stringify({ type: "error", message }));
+            ws.send(
+              JSON.stringify({
+                type: "error",
+                ...(code ? { code } : {}),
+                message,
+              }),
+            );
             upstream = null;
             try {
               session.close();

@@ -2,10 +2,11 @@ import type { DatabaseSync } from "node:sqlite";
 
 const SCHEMA_VERSION = 12;
 
-// Patterns follow context-match.ts semantics: domain/phrase entries match as
-// substrings of url+title+app; bare words match the app name, a window-title
-// segment ("Inbox - Gmail" -> "gmail"), or the URL host. The bare words give
-// Windows/Linux parity, where context payloads carry no URL.
+// Legacy default format-rule patterns (used only by pre-v12 migrations below):
+// domain/phrase entries match as substrings of url+title+app; bare words match
+// the app name, a window-title segment ("Inbox - Gmail" -> "gmail"), or the URL
+// host. The bare words give Windows/Linux parity, where context payloads carry
+// no URL.
 const DEFAULT_FORMAT_RULES = [
   {
     pattern: "mail.google.com|yahoo.com|proton mail|gmail|outlook|mail",

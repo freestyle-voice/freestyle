@@ -35,6 +35,19 @@ export class DeviceFlowError extends Error {
   }
 }
 
+/**
+ * Thrown when Freestyle Cloud rejects a request because the user exhausted
+ * their usage allowance (HTTP 429). Distinct from a generic request failure so
+ * callers can surface an actionable "limit reached" message instead of a 500,
+ * and so it is never reported to error tracking as an app defect.
+ */
+export class FreestyleCloudUsageError extends Error {
+  constructor(readonly resetsAt: string | null = null) {
+    super("Freestyle Cloud usage limit reached");
+    this.name = "FreestyleCloudUsageError";
+  }
+}
+
 export interface DeviceCodeResult {
   device_code: string;
   user_code: string;
@@ -190,6 +203,17 @@ async function cloudJson<T>(
     signal: init.signal ?? AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
   });
   if (res.status === 401) throw new FreestyleCloudAuthError();
+  if (res.status === 429) {
+    const resetsAt = await res
+      .json()
+      .then((b) =>
+        b && typeof (b as { resetsAt?: unknown }).resetsAt === "string"
+          ? (b as { resetsAt: string }).resetsAt
+          : null,
+      )
+      .catch(() => null);
+    throw new FreestyleCloudUsageError(resetsAt);
+  }
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new Error(

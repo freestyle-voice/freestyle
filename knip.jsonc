@@ -23,7 +23,6 @@
     // Existing unused shadcn-style components kept as design-system inventory.
     "apps/electron/src/renderer/src/components/ui/bar-visualizer.tsx",
     "apps/electron/src/renderer/src/components/ui/card.tsx",
-    "apps/electron/src/renderer/src/components/ui/tabs.tsx",
     "apps/electron/src/renderer/src/env.d.ts",
     "plugins/*/ui/vite-env.d.ts",
     "plugins/audio-transcription/ui/src/styles.css",
@@ -74,6 +73,7 @@
       "entry": [
         "src/startup.ts",
         "scripts/benchmark-post-process.ts",
+        "scripts/tone-benchmark.ts",
         "tests/**/*.test.ts"
       ],
       "project": [

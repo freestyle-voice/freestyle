@@ -16,6 +16,8 @@ export const SETTINGS_KEYS = {
   localLlmUrl: "local_llm_url",
   micDeviceId: "mic_device_id",
   mlxAsrKeepAliveMinutes: "mlx_asr_keep_alive_minutes",
+  networkCaCertPath: "network_ca_cert_path",
+  networkProxyUrl: "network_proxy_url",
   outputMode: "output_mode",
   soundEnabled: "sound_enabled",
   theme: "theme",

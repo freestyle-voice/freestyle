@@ -4,6 +4,7 @@ import {
   describeDownloadError,
   InsufficientDiskSpaceError,
 } from "../src/lib/disk.js";
+import { ProxyInterceptionError } from "../src/lib/download-guard.js";
 
 describe("describeDownloadError", () => {
   it("maps our own out-of-space error to a friendly sentence", () => {
@@ -38,6 +39,25 @@ describe("describeDownloadError", () => {
       new Error("Model download failed: HTTP 404\nstack frame\nstack frame"),
     );
     expect(msg).toBe("Model download failed: HTTP 404");
+  });
+
+  it("preserves an actionable proxy-interception message verbatim", () => {
+    const err = new ProxyInterceptionError("Your network intercepted this…");
+    expect(describeDownloadError(err)).toBe("Your network intercepted this…");
+  });
+
+  it("turns a bare 'fetch failed' into proxy/CA guidance", () => {
+    const msg = describeDownloadError(new TypeError("fetch failed"));
+    expect(msg).toMatch(/proxy/i);
+    expect(msg).toMatch(/Settings . Network/i);
+    expect(msg).not.toBe("fetch failed");
+  });
+
+  it("turns a TLS certificate error into proxy/CA guidance", () => {
+    const msg = describeDownloadError(
+      new Error("unable to verify the first certificate"),
+    );
+    expect(msg).toMatch(/certificate/i);
   });
 });
 

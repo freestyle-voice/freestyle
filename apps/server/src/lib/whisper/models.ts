@@ -23,6 +23,7 @@ import {
   DOWNLOAD_FREE_BUFFER_BYTES,
   describeDownloadError,
 } from "../disk.js";
+import { assertNotProxyPage } from "../download-guard.js";
 import { progressFetch } from "../hf/progress.js";
 import {
   getBinDir,
@@ -231,6 +232,9 @@ export async function downloadModel(modelId: string): Promise<void> {
     if (!res.ok || !res.body) {
       throw modelDownloadHttpError(res.status);
     }
+    // A corporate proxy may answer with a coaching/click-through HTML page
+    // instead of the binary; catch it before we write garbage to disk.
+    assertNotProxyPage(res, url, model.sizeBytes);
     const total = Number(res.headers.get("content-length"));
     if (total > 0) active.bytesTotal = total;
     const hash = createHash("sha256");

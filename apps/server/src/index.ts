@@ -9,6 +9,7 @@ import {
   activateManagedMlxRuntimeForAppVersion,
   prefetchManagedMlxRuntimeForAppRelease,
 } from "./lib/mlx-asr/runtime.js";
+import { configureNetwork } from "./lib/network.js";
 import {
   disposeServerPlugins,
   initServerPlugins,
@@ -101,6 +102,10 @@ export async function startServer(
 ): Promise<RunningServer> {
   const { port = 4649, host = "127.0.0.1" } = options;
 
+  // Install the global network dispatcher (corporate proxy + custom CA) before
+  // anything issues a fetch, so model downloads and cloud/API calls honor it.
+  configureNetwork();
+
   // Load plugins (built-in + user) before constructing the app so middleware
   // contributions are mounted at the correct position in the chain.
   await initServerPlugins();
@@ -128,6 +133,7 @@ export async function startServer(
 
 export { closeDb } from "./lib/db.js";
 export { stopMlxServer } from "./lib/mlx-asr/server.js";
+export { configureNetwork } from "./lib/network.js";
 export {
   disposeServerPlugins,
   reloadServerPlugins,

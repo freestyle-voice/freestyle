@@ -1,4 +1,5 @@
 import {
+  caCertPathSettingSchema,
   cleanupAppAssignmentsSchema,
   cleanupCustomPromptSchema,
   cleanupEmailToneSchema,
@@ -9,12 +10,18 @@ import {
   disabledPluginsSettingSchema,
   localLlmConfigSchema,
   pluginsSettingSchema,
+  proxyUrlSettingSchema,
   settingValueSchema,
 } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { applyMlxAsrRetentionPolicy } from "../lib/mlx-asr/server.js";
+import {
+  CA_CERT_PATH_SETTING,
+  configureNetwork,
+  PROXY_URL_SETTING,
+} from "../lib/network.js";
 import { capture } from "../lib/posthog.js";
 import { applyWhisperRetentionPolicy } from "../lib/whisper/server.js";
 
@@ -113,6 +120,19 @@ const settings = new Hono()
       if (!parsed.success) {
         return c.json({ error: "Invalid disabled_plugins setting" }, 400);
       }
+    } else if (key === PROXY_URL_SETTING) {
+      const parsed = proxyUrlSettingSchema.safeParse(body.value);
+      if (!parsed.success) {
+        return c.json(
+          { error: parsed.error.issues[0]?.message ?? "Invalid proxy URL" },
+          400,
+        );
+      }
+    } else if (key === CA_CERT_PATH_SETTING) {
+      const parsed = caCertPathSettingSchema.safeParse(body.value);
+      if (!parsed.success) {
+        return c.json({ error: "Invalid CA certificate path" }, 400);
+      }
     }
 
     db.prepare(
@@ -125,6 +145,11 @@ const settings = new Hono()
     }
     if (key === "whisper_keep_alive_minutes") {
       applyWhisperRetentionPolicy();
+    }
+    // Re-install the global dispatcher so proxy/CA changes take effect for the
+    // next download without an app restart.
+    if (key === PROXY_URL_SETTING || key === CA_CERT_PATH_SETTING) {
+      configureNetwork();
     }
 
     // Don't capture internal/system keys

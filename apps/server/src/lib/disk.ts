@@ -1,5 +1,10 @@
 import { statfs } from "node:fs/promises";
 import { createAppLogger } from "@freestyle-voice/utils";
+import {
+  isLikelyProxyOrTlsFailure,
+  ProxyInterceptionError,
+  proxyOrTlsFailureMessage,
+} from "./download-guard.js";
 
 const log = createAppLogger("disk");
 
@@ -75,9 +80,21 @@ export function describeDownloadError(err: unknown): string {
     )} and try again.`;
   }
 
+  // A detected proxy/coaching page already carries actionable guidance.
+  if (err instanceof ProxyInterceptionError) {
+    return err.message;
+  }
+
   const raw = err instanceof Error ? err.message : String(err);
   if (/ENOSPC/i.test(raw) || /no space left on device/i.test(raw)) {
     return "Not enough disk space to finish the download. Free up some space and try again.";
+  }
+
+  // Bare connection/TLS failures ("fetch failed", cert errors) on a managed
+  // network almost always mean a proxy or custom CA is required. Replace the
+  // opaque message with something the user can act on.
+  if (isLikelyProxyOrTlsFailure(err)) {
+    return proxyOrTlsFailureMessage();
   }
 
   const firstLine =

@@ -107,6 +107,7 @@
       "display": "Display",
       "permissions": "Permissions",
       "data": "Data",
+      "network": "Network",
       "developer": "Developer"
     },
     "application": {
@@ -197,6 +198,19 @@
       "logs": "Diagnostic logs",
       "logsDesc": "App logs are saved to a file on your device. Open the folder to share them when reporting a problem.",
       "openLogs": "Open logs folder"
+    },
+    "network": {
+      "intro": "For managed or corporate networks. Route model downloads and cloud requests through a proxy, and trust a custom certificate authority. Leave blank to use your system defaults or standard proxy environment variables.",
+      "proxy": "Proxy URL",
+      "proxyDesc": "Send downloads and API requests through this proxy (e.g. http://proxy.corp:8080). Overrides HTTP_PROXY / HTTPS_PROXY.",
+      "proxyPlaceholder": "http://proxy.example.com:8080",
+      "caCert": "Custom CA certificate",
+      "caCertDesc": "Path to a PEM certificate bundle to trust for TLS, in addition to the system store. Overrides NODE_EXTRA_CA_CERTS.",
+      "caCertPlaceholder": "/path/to/corporate-ca.pem",
+      "save": "Save",
+      "saved": "Saved",
+      "invalidProxy": "Enter a valid http://, https:// or socks:// URL, or leave it blank.",
+      "envNote": "The app also honors HTTP_PROXY, HTTPS_PROXY, NO_PROXY, NODE_EXTRA_CA_CERTS and SSL_CERT_FILE from the environment."
     },
     "developer": {
       "mcp": "MCP server",

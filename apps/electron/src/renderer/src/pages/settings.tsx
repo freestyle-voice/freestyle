@@ -71,6 +71,7 @@ const settingsSectionIds = [
   "display",
   "permissions",
   "data",
+  "network",
   "developer",
 ] as const;
 
@@ -120,6 +121,8 @@ export default function SettingsPage(): React.JSX.Element {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
+  const [proxyUrl, setProxyUrl] = useState("");
+  const [caCertPath, setCaCertPath] = useState("");
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
     parseSettingsSection(window.location.hash),
   );
@@ -398,6 +401,24 @@ export default function SettingsPage(): React.JSX.Element {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.value) setTranscriptionPrompt(data.value);
+      })
+      .catch(() => {});
+    getClient()
+      .api.settings[":key"].$get({
+        param: { key: SETTINGS_KEYS.networkProxyUrl },
+      })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.value) setProxyUrl(data.value);
+      })
+      .catch(() => {});
+    getClient()
+      .api.settings[":key"].$get({
+        param: { key: SETTINGS_KEYS.networkCaCertPath },
+      })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.value) setCaCertPath(data.value);
       })
       .catch(() => {});
 
@@ -1066,6 +1087,15 @@ export default function SettingsPage(): React.JSX.Element {
             </SettingsPanel>
           )}
 
+          {activeSection === "network" && (
+            <NetworkPanel
+              proxyUrl={proxyUrl}
+              caCertPath={caCertPath}
+              onProxyUrlChange={setProxyUrl}
+              onCaCertPathChange={setCaCertPath}
+            />
+          )}
+
           {activeSection === "developer" && (
             <SettingsPanel>
               <Row
@@ -1393,6 +1423,103 @@ function McpConnect(): React.JSX.Element {
         </div>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Network — enterprise proxy / custom CA configuration
+// ---------------------------------------------------------------------------
+
+function NetworkPanel({
+  proxyUrl,
+  caCertPath,
+  onProxyUrlChange,
+  onCaCertPathChange,
+}: {
+  proxyUrl: string;
+  caCertPath: string;
+  onProxyUrlChange: (value: string) => void;
+  onCaCertPathChange: (value: string) => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const [proxyError, setProxyError] = useState<string | null>(null);
+
+  const saveSetting = useCallback(
+    async (key: string, value: string): Promise<boolean> => {
+      const res = await getClient().api.settings[":key"].$put({
+        param: { key },
+        json: { value },
+      });
+      return res.ok;
+    },
+    [],
+  );
+
+  const handleProxyBlur = useCallback(async () => {
+    const ok = await saveSetting(
+      SETTINGS_KEYS.networkProxyUrl,
+      proxyUrl.trim(),
+    ).catch(() => false);
+    setProxyError(ok ? null : t("settings.network.invalidProxy"));
+  }, [proxyUrl, saveSetting, t]);
+
+  const handleCaCertBlur = useCallback(() => {
+    void saveSetting(SETTINGS_KEYS.networkCaCertPath, caCertPath.trim()).catch(
+      () => {},
+    );
+  }, [caCertPath, saveSetting]);
+
+  return (
+    <SettingsPanel>
+      <p className="text-muted-foreground border-border border-b pb-5 text-[13px] leading-[1.6]">
+        {t("settings.network.intro")}
+      </p>
+      <Row
+        label={t("settings.network.proxy")}
+        desc={t("settings.network.proxyDesc")}
+        stacked
+      >
+        <div className="flex max-w-md flex-col gap-1.5">
+          <Input
+            id="settings-network-proxy"
+            type="text"
+            spellCheck={false}
+            autoComplete="off"
+            value={proxyUrl}
+            onChange={(e) => {
+              onProxyUrlChange(e.target.value);
+              setProxyError(null);
+            }}
+            onBlur={handleProxyBlur}
+            placeholder={t("settings.network.proxyPlaceholder")}
+          />
+          {proxyError && (
+            <span className="text-destructive text-xs">{proxyError}</span>
+          )}
+        </div>
+      </Row>
+      <Row
+        label={t("settings.network.caCert")}
+        desc={t("settings.network.caCertDesc")}
+        stacked
+        last
+      >
+        <Input
+          id="settings-network-ca-cert"
+          type="text"
+          spellCheck={false}
+          autoComplete="off"
+          value={caCertPath}
+          onChange={(e) => onCaCertPathChange(e.target.value)}
+          onBlur={handleCaCertBlur}
+          placeholder={t("settings.network.caCertPlaceholder")}
+          className="max-w-md"
+        />
+      </Row>
+      <p className="text-muted-foreground pt-1 text-[12px] leading-[1.5]">
+        {t("settings.network.envNote")}
+      </p>
+    </SettingsPanel>
   );
 }
 

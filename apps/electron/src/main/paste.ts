@@ -4,8 +4,10 @@ import {
   execFile,
   spawn,
 } from "node:child_process";
+import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { createAppLogger } from "@freestyle-voice/utils";
-import { clipboard } from "electron";
+import { app, clipboard } from "electron";
 import { isLinuxTerminalFocused } from "./linux-terminal-focus";
 import { getNativeBinaryPath } from "./native-binary";
 
@@ -28,9 +30,13 @@ async function tryExecAsync(cmd: string, label: string): Promise<boolean> {
   }
 }
 
-function execFileAsync(path: string, args: string[] = []): Promise<number> {
+function execFileWithOutput(
+  path: string,
+  args: string[] = [],
+  timeoutMs?: number,
+): Promise<{ code: number; stdout: string }> {
   return new Promise((resolve, reject) => {
-    execFile(path, args, (err) => {
+    execFile(path, args, { timeout: timeoutMs }, (err, stdout) => {
       if (err) {
         const status = (err as { status?: unknown }).status;
         const exitCode =
@@ -40,15 +46,23 @@ function execFileAsync(path: string, args: string[] = []): Promise<number> {
               ? err.code
               : undefined;
         if (exitCode !== undefined) {
-          resolve(exitCode);
+          resolve({ code: exitCode, stdout: stdout ?? "" });
         } else {
           reject(err);
         }
       } else {
-        resolve(0);
+        resolve({ code: 0, stdout: stdout ?? "" });
       }
     });
   });
+}
+
+async function execFileAsync(
+  path: string,
+  args: string[] = [],
+): Promise<number> {
+  const { code } = await execFileWithOutput(path, args);
+  return code;
 }
 
 export function isWaylandSession(): boolean {
@@ -135,8 +149,10 @@ function handleLinuxUinputLine(line: string): void {
   }
 }
 
-export function startLinuxPasteHelper(): Promise<boolean> {
-  if (process.platform !== "linux" || !isWaylandSession()) {
+export function startLinuxPasteHelper(force = false): Promise<boolean> {
+  // `force` lets the cross-family fallback try uinput even when the session
+  // was detected as X11 (env-based detection can misclassify).
+  if (process.platform !== "linux" || (!force && !isWaylandSession())) {
     return Promise.resolve(false);
   }
   if (linuxUinputHelper && linuxUinputReady) {
@@ -223,9 +239,10 @@ export function stopLinuxPasteHelper(): void {
 
 async function sendPersistentUinputPaste(
   isTerminal: boolean,
+  force = false,
 ): Promise<boolean> {
   const run = async (): Promise<boolean> => {
-    if (!(await startLinuxPasteHelper())) return false;
+    if (!(await startLinuxPasteHelper(force))) return false;
     const helper = linuxUinputHelper;
     if (!helper?.stdin.writable) return false;
 
@@ -271,6 +288,70 @@ function linuxPasteArgs(isTerminal: boolean): string[] {
   return isTerminal ? ["--terminal"] : [];
 }
 
+// The XDG RemoteDesktop portal grants a persistable input-injection session.
+// The native binary prints a restore token on success; reusing it makes every
+// paste after the first permission dialog silent.
+function portalTokenPath(): string {
+  return join(app.getPath("userData"), "portal-restore-token");
+}
+
+function readPortalToken(): string | null {
+  try {
+    const token = readFileSync(portalTokenPath(), "utf8").trim();
+    return token || null;
+  } catch {
+    return null;
+  }
+}
+
+function savePortalToken(token: string): void {
+  try {
+    writeFileSync(portalTokenPath(), token, "utf8");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn(`Failed to persist portal restore token: ${message}`);
+  }
+}
+
+function clearPortalToken(): void {
+  try {
+    unlinkSync(portalTokenPath());
+  } catch {
+    // Already gone
+  }
+}
+
+async function pasteLinuxPortal(isTerminal: boolean): Promise<boolean> {
+  const binaryPath = getNativeBinaryPath("linux-fast-paste");
+  if (!binaryPath) return false;
+
+  const args = ["--portal", ...linuxPasteArgs(isTerminal)];
+  const token = readPortalToken();
+  if (token) args.push("--restore-token", token);
+
+  try {
+    // The binary's internal portal timeout is 10s (covers the first-use
+    // permission dialog); give the process a little extra before killing it.
+    const { code, stdout } = await execFileWithOutput(binaryPath, args, 15_000);
+    if (code === 0) {
+      const newToken = stdout.trim().split("\n").pop()?.trim();
+      if (newToken) savePortalToken(newToken);
+      return true;
+    }
+    if (token && (code === 2 || code === 3)) {
+      // The saved grant was revoked — drop the stale token so the next
+      // attempt re-prompts instead of failing forever.
+      clearPortalToken();
+    }
+    log.warn(`Portal paste failed (exit ${code})`);
+    return false;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn(`Portal paste error: ${message}`);
+    return false;
+  }
+}
+
 async function pasteLinux(isTerminal: boolean): Promise<PasteMethod> {
   const binaryPath = getNativeBinaryPath("linux-fast-paste");
   const wayland = isWaylandSession();
@@ -284,17 +365,24 @@ async function pasteLinux(isTerminal: boolean): Promise<PasteMethod> {
       binaryPath,
       linuxPasteArgs(isTerminal),
     );
-    if (exitCode !== 0) {
-      log.warn(
-        `Native paste failed (exit ${exitCode}), falling back to xdotool`,
-      );
-      await pasteLinuxLegacy(false, isTerminal);
-      return "legacy";
+    if (exitCode === 0) {
+      return "native";
     }
-    return "native";
+    log.warn(`Native paste failed (exit ${exitCode}), falling back to xdotool`);
   }
-  await pasteLinuxLegacy(false, isTerminal);
-  return "legacy";
+
+  try {
+    await pasteLinuxLegacy(false, isTerminal);
+    return "legacy";
+  } catch (err) {
+    // Session-type detection is env-var based and can misclassify (e.g. a
+    // Wayland session without XDG_SESSION_TYPE) — cross-try the Wayland
+    // injectors before giving up.
+    log.warn("X11 paste backends failed, cross-trying Wayland backends");
+    if (await sendPersistentUinputPaste(isTerminal, true)) return "native";
+    if (await pasteLinuxPortal(isTerminal)) return "native";
+    throw err;
+  }
 }
 
 async function pasteLinuxWayland(isTerminal: boolean): Promise<PasteMethod> {
@@ -302,9 +390,32 @@ async function pasteLinuxWayland(isTerminal: boolean): Promise<PasteMethod> {
     return "native";
   }
 
-  log.warn("Persistent uinput paste failed, falling back to wtype");
-  await pasteLinuxLegacy(true, isTerminal);
-  return "legacy";
+  // GNOME/Mutter doesn't implement the virtual-keyboard protocol wtype
+  // needs, so the RemoteDesktop portal is the standard fallback there.
+  log.warn("Persistent uinput paste failed, trying RemoteDesktop portal");
+  if (await pasteLinuxPortal(isTerminal)) {
+    return "native";
+  }
+
+  log.warn("Portal paste failed, falling back to wtype");
+  try {
+    await pasteLinuxLegacy(true, isTerminal);
+    return "legacy";
+  } catch (err) {
+    // Cross-try the X11 injectors in case the session was misdetected.
+    log.warn("Wayland paste backends failed, cross-trying X11 backends");
+    const binary = getNativeBinaryPath("linux-fast-paste");
+    if (binary) {
+      const exitCode = await execFileAsync(binary, linuxPasteArgs(isTerminal));
+      if (exitCode === 0) return "native";
+    }
+    try {
+      await pasteLinuxLegacy(false, isTerminal);
+      return "legacy";
+    } catch {
+      throw err;
+    }
+  }
 }
 
 async function pasteLinuxLegacy(

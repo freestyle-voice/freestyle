@@ -2205,8 +2205,17 @@ function notifyPasteFailed(): void {
   const shortcut = process.platform === "darwin" ? "Cmd+V" : "Ctrl+V";
   let hint = "";
   if (process.platform === "linux") {
-    const tool = isWaylandSession() ? "wtype" : "xdotool";
-    hint = ` Installing ${tool} may fix this (e.g. sudo apt install ${tool}).`;
+    if (isWaylandSession()) {
+      const desktop = (process.env.XDG_CURRENT_DESKTOP ?? "").toLowerCase();
+      // wtype doesn't work on GNOME/Mutter (no virtual-keyboard protocol) —
+      // don't send GNOME users to install a tool that can't help them.
+      hint = desktop.includes("gnome")
+        ? " If a permission dialog appears on the next paste, allow Freestyle to control input."
+        : " If a permission dialog appears on the next paste, allow it — or install wtype (e.g. sudo apt install wtype).";
+    } else {
+      hint =
+        " Installing xdotool may fix this (e.g. sudo apt install xdotool).";
+    }
   }
   if (Notification.isSupported()) {
     new Notification({

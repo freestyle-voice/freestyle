@@ -68,6 +68,7 @@ const api = {
   checkLinuxSetup: (): Promise<{
     wayland: boolean;
     inputAccess: boolean;
+    uinputAccess: boolean;
     pasteToolRequired: string;
     pasteTool: string | null;
   } | null> => ipcRenderer.invoke("permissions:check-linux-setup"),

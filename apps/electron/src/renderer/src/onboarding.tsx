@@ -79,10 +79,11 @@ const DEFAULT_HOTKEY =
   getDefaultHotkey();
 
 // Linux system-setup state reported by the main process (input-group access
-// for the hotkey listener, xdotool/wtype for the paste fallback).
+// for the hotkey listener, /dev/uinput or xdotool/wtype for pasting).
 type LinuxSetup = {
   wayland: boolean;
   inputAccess: boolean;
+  uinputAccess: boolean;
   pasteToolRequired: string;
   pasteTool: string | null;
 };
@@ -983,25 +984,31 @@ function PermissionsStep({
           />
         )}
 
-        {IS_LINUX && linuxSetup && !linuxSetup.pasteTool && (
-          <PermCard
-            icon={ClipboardPaste}
-            title={t("onboarding.permissions.pasteTool.title")}
-            desc={
-              <Trans
-                i18nKey="onboarding.permissions.pasteTool.desc"
-                values={{ tool: linuxSetup.pasteToolRequired }}
-                components={{ code: <code className="text-foreground" /> }}
-              />
-            }
-            granted={false}
-            action={
-              <PermButton onClick={onRecheckLinuxSetup}>
-                {t("common.recheck")}
-              </PermButton>
-            }
-          />
-        )}
+        {/* On Wayland, /dev/uinput access (or the RemoteDesktop portal)
+            handles pasting without wtype — only warn when neither the
+            primary path nor the fallback tool is available. */}
+        {IS_LINUX &&
+          linuxSetup &&
+          !linuxSetup.pasteTool &&
+          !(linuxSetup.wayland && linuxSetup.uinputAccess) && (
+            <PermCard
+              icon={ClipboardPaste}
+              title={t("onboarding.permissions.pasteTool.title")}
+              desc={
+                <Trans
+                  i18nKey="onboarding.permissions.pasteTool.desc"
+                  values={{ tool: linuxSetup.pasteToolRequired }}
+                  components={{ code: <code className="text-foreground" /> }}
+                />
+              }
+              granted={false}
+              action={
+                <PermButton onClick={onRecheckLinuxSetup}>
+                  {t("common.recheck")}
+                </PermButton>
+              }
+            />
+          )}
       </div>
 
       <div className="mt-7 flex items-center justify-between gap-3.5">

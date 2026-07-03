@@ -41,6 +41,7 @@ declare global {
       checkLinuxSetup: () => Promise<{
         wayland: boolean;
         inputAccess: boolean;
+        uinputAccess: boolean;
         pasteToolRequired: string;
         pasteTool: string | null;
       } | null>;

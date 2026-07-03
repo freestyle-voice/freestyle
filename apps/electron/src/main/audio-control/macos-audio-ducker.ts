@@ -90,6 +90,41 @@ export class MacosVolumeDucker implements VolumeDucker {
     this.active = false;
   }
 
+  snapshotForRecovery(): unknown {
+    return this.snapshot;
+  }
+
+  async recoverFromSnapshot(raw: unknown): Promise<boolean> {
+    if (process.platform !== "darwin") return false;
+    const snapshot = raw as Partial<DeviceVolumeSnapshot<number>> | null;
+    if (
+      typeof snapshot?.previousVolume !== "number" ||
+      typeof snapshot.deviceId !== "number" ||
+      snapshot.previousVolume <= DUCKED_VOLUME
+    ) {
+      return false;
+    }
+
+    const binaryPath = getNativeBinaryPath("macos-output-volume");
+    if (!binaryPath) return false;
+
+    // Only recover when the system still looks ducked — if the user already
+    // fixed the volume by hand, don't yank it back down/up.
+    const current = parseSnapshot(await execFileText(binaryPath, ["get"]));
+    if (current.previousVolume > DUCKED_VOLUME + 0.05) return false;
+
+    try {
+      await execFileText(binaryPath, [
+        "set",
+        String(snapshot.previousVolume),
+        String(snapshot.deviceId),
+      ]);
+    } catch {
+      await execFileText(binaryPath, ["set", String(snapshot.previousVolume)]);
+    }
+    return true;
+  }
+
   restoreSync(): boolean {
     if (process.platform !== "darwin") return true;
     if (!this.active) return true;

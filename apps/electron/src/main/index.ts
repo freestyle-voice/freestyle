@@ -82,6 +82,7 @@ import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { AudioPlaybackController } from "./audio-control/controller";
+import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
@@ -1397,6 +1398,9 @@ app.on("second-instance", () => {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
   void startLinuxPasteHelper();
+  // If a previous run died while dictating, the system volume may still be
+  // stuck at the ducked level — restore it before anything else.
+  void recoverDuckedVolumeFromCrash();
 
   // Set app user model id for windows
   electronApp.setAppUserModelId("com.freestyle.app");

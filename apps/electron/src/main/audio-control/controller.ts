@@ -117,7 +117,7 @@ export class AudioPlaybackController {
       if (process.platform === "darwin") {
         this.macosMediaPlayback.restoreSync();
       } else if (process.platform === "linux") {
-        void linuxMediaPlayback.resumePlayback();
+        linuxMediaPlayback.resumePlaybackSync();
       } else if (process.platform === "win32") {
         windowsMediaPlayback.resumePlaybackSync();
       }

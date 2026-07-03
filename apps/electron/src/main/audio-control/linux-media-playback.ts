@@ -5,7 +5,7 @@
  * 2. Optional playerctl when installed
  */
 
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { createAppLogger } from "@freestyle-voice/utils";
 import { AUDIO_CONTROL_CMD_TIMEOUT_MS } from "./audio-control-constants";
@@ -183,6 +183,42 @@ export async function resumePlayback(): Promise<void> {
   }
 
   log.info(`Resumed ${pausedMprisServices.length} MPRIS target(s)`);
+
+  pausedMprisServices = [];
+}
+
+function runCmdSync(command: string, args: string[]): void {
+  try {
+    execFileSync(command, args, {
+      timeout: AUDIO_CONTROL_CMD_TIMEOUT_MS,
+      stdio: "ignore",
+    });
+  } catch {
+    // Quit cleanup should never block app shutdown on media resume failure.
+  }
+}
+
+/**
+ * Synchronous variant for quit cleanup — the async resume never completes
+ * once the process starts exiting, leaving the user's media paused.
+ */
+export function resumePlaybackSync(): void {
+  if (pausedMprisServices.length === 0) return;
+
+  for (const target of pausedMprisServices) {
+    if (target.startsWith(MPRIS_PREFIX)) {
+      runCmdSync("busctl", [
+        "--user",
+        "call",
+        target,
+        MPRIS_PATH,
+        MPRIS_PLAYER,
+        "Play",
+      ]);
+    } else {
+      runCmdSync("playerctl", ["-p", target, "play"]);
+    }
+  }
 
   pausedMprisServices = [];
 }

@@ -316,6 +316,7 @@
     "subtitle": "How much Freestyle cleans up — and how it sounds in each app.",
     "loading": "Loading tone…",
     "routesFrom": "Routes from",
+    "previewLabel": "Preview",
     "tabs": {
       "cleanup": "Cleanup",
       "personal": "Personal",
@@ -401,6 +402,9 @@
       "eyebrow": "Personal texts",
       "title": "Texting voice.",
       "desc": "Used in Messages, WhatsApp, Telegram, and Discord.",
+      "preview": {
+        "rawSample": "hey um i'm running like 10 minutes late i'll be there soon"
+      },
       "cards": {
         "polished": {
           "title": "Polished",
@@ -425,7 +429,8 @@
       "desc": "Used in Slack, LinkedIn, and recognized work chat surfaces.",
       "preview": {
         "sender": "Alex",
-        "time": "2:14 PM"
+        "time": "2:14 PM",
+        "rawSample": "reviewed the doc um a couple changes are still needed uh tighten the intro and update the footer links"
       },
       "cards": {
         "direct": {
@@ -451,7 +456,8 @@
       "desc": "Used in Gmail, Outlook, Apple Mail, and Proton.",
       "preview": {
         "to": "Sam",
-        "subject": "Thursday meeting + next steps"
+        "subject": "Thursday meeting + next steps",
+        "rawSample": "hi sam um just confirming we're still on for thursday at 2 uh i'll send the revised plan tomorrow morning let me know if you want anything else added thanks"
       },
       "cards": {
         "casual": {
@@ -475,6 +481,9 @@
       "eyebrow": "Everything else",
       "title": "Everything else.",
       "desc": "Anywhere that isn't a chat or email.",
+      "preview": {
+        "rawSample": "just pushed the fix uh should be good to test now"
+      },
       "cards": {
         "casual": {
           "title": "Casual",

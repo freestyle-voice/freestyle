@@ -9,6 +9,7 @@ import {
 } from "@renderer/components/ui/dropdown-menu";
 import { Input } from "@renderer/components/ui/input";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
+import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import type {
   PluginCatalogEntry,
   PluginInfo,
@@ -33,9 +34,16 @@ import {
 
 type Tab = "browse" | "installed";
 
+const isTab = (value: string): value is Tab =>
+  value === "browse" || value === "installed";
+
 export default function PluginsPage(): React.JSX.Element {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<Tab>("browse");
+  const [tab, setTab] = usePersistentState<Tab>(
+    "plugins.activeTab",
+    "browse",
+    isTab,
+  );
   const [query, setQuery] = useState("");
   const queryClient = useQueryClient();
 

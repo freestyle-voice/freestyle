@@ -37,9 +37,10 @@ import {
   TabsTrigger,
 } from "@renderer/components/ui/tabs";
 import { Textarea } from "@renderer/components/ui/textarea";
+import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
 import { cn } from "@renderer/lib/utils";
-import { Check, CheckCircle2, Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
@@ -57,6 +58,17 @@ type ToneTab =
   | "cleanup"
   | Exclude<CleanupToneDestination, "overall">
   | "everythingElse";
+
+const TONE_TABS: readonly ToneTab[] = [
+  "cleanup",
+  "personal",
+  "work",
+  "email",
+  "everythingElse",
+];
+
+const isToneTab = (value: string): value is ToneTab =>
+  (TONE_TABS as readonly string[]).includes(value);
 
 type CleanupCardValue = CleanupIntensity | "off";
 
@@ -207,7 +219,11 @@ export default function TonePage(): React.JSX.Element {
   );
   const [assignments, setAssignments] = useState<CleanupAppAssignment[]>([]);
   const [hasCleanupModel, setHasCleanupModel] = useState(false);
-  const [activeTab, setActiveTab] = useState<ToneTab>("cleanup");
+  const [activeTab, setActiveTab] = usePersistentState<ToneTab>(
+    "tone.activeTab",
+    "cleanup",
+    isToneTab,
+  );
 
   const customPromptDirty = cleanupCustomPrompt !== savedCleanupCustomPrompt;
 
@@ -586,6 +602,10 @@ function CleanupTonePanel({
     [onChange],
   );
 
+  const activeOption =
+    CLEANUP_OPTIONS.find((option) => option.value === value) ??
+    CLEANUP_OPTIONS[0]!;
+
   return (
     <div className="space-y-6">
       <section className="border-t border-border/70 pt-5">
@@ -613,110 +633,139 @@ function CleanupTonePanel({
         </div>
       ) : null}
 
-      <div
-        role="radiogroup"
-        aria-label={t("tone.cleanup.title")}
-        className="grid grid-cols-2 gap-3 min-[560px]:grid-cols-3 min-[960px]:grid-cols-5"
-      >
-        {CLEANUP_OPTIONS.map((option, index) => {
-          const selected = option.value === value;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              tabIndex={selected ? 0 : -1}
-              onClick={() => onChange(option.value)}
-              onKeyDown={(event) => handleOptionKeyDown(event, index)}
-              className={cn(
-                "border-border bg-card flex flex-col rounded-[18px] border p-4 text-left transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
-                "hover:border-foreground/20 hover:bg-card/90",
-                selected && "border-primary/35 bg-accent/45",
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <p className="serif text-foreground text-[26px] leading-none tracking-[-0.03em]">
-                  {t(option.titleKey)}
-                </p>
+      <div className="space-y-5">
+        <div
+          role="radiogroup"
+          aria-label={t("tone.cleanup.title")}
+          className="grid grid-cols-2 gap-2.5 min-[560px]:grid-cols-3 min-[1000px]:grid-cols-5"
+        >
+          {CLEANUP_OPTIONS.map((option, index) => {
+            const selected = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => onChange(option.value)}
+                onKeyDown={(event) => handleOptionKeyDown(event, index)}
+                className={cn(
+                  "group border-border bg-card relative flex flex-col gap-1.5 overflow-hidden rounded-[14px] border py-3.5 pr-3.5 pl-5 text-left transition-all duration-150 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
+                  "hover:border-foreground/20 hover:bg-card/90",
+                  selected && "border-primary/40 bg-accent/45",
+                )}
+              >
                 <span
+                  aria-hidden="true"
                   className={cn(
-                    "flex size-6 shrink-0 items-center justify-center rounded-full border",
+                    "absolute left-0 top-1/2 w-1 -translate-y-1/2 rounded-r-full transition-all duration-150",
                     selected
-                      ? "border-primary/35 bg-primary text-primary-foreground"
-                      : "border-border bg-background text-transparent",
+                      ? "bg-primary h-9"
+                      : "bg-foreground/15 h-0 group-hover:h-5",
                   )}
-                >
-                  <CheckCircle2 className="size-3.5" />
-                </span>
+                />
+                <div className="flex items-center justify-between gap-1.5">
+                  <p className="serif text-foreground text-[21px] leading-none tracking-[-0.03em]">
+                    {t(option.titleKey)}
+                  </p>
+                  <span
+                    className={cn(
+                      "flex size-[18px] shrink-0 items-center justify-center rounded-full border transition-colors duration-150",
+                      selected
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border/70 bg-transparent text-transparent group-hover:border-foreground/25",
+                    )}
+                  >
+                    <Check
+                      className="size-2.5"
+                      strokeWidth={3}
+                      aria-hidden="true"
+                    />
+                  </span>
+                </div>
+                <p className="text-muted-foreground text-[11.5px] leading-[1.4]">
+                  {t(option.descKey)}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+
+        {value === "custom" ? (
+          <div className="border-border bg-card rounded-[18px] border p-5">
+            <div className="mb-2.5 flex items-center justify-between gap-3">
+              <Eyebrow text={t("models.cleanup.promptLabel")} />
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0"
+                onClick={onResetToPreset}
+              >
+                {t("models.cleanup.resetToPresets")}
+              </Button>
+            </div>
+            <p className="text-muted-foreground mb-3 text-[12.5px] leading-[1.55]">
+              {t("models.cleanup.presetHint")}
+            </p>
+            <Textarea
+              value={cleanupCustomPrompt}
+              maxLength={CLEANUP_CUSTOM_PROMPT_MAX}
+              onChange={(event) => onCustomPromptChange(event.target.value)}
+              spellCheck={false}
+              className="mono min-h-[180px] resize-y text-[12px] leading-[1.65]"
+              aria-label={t("models.cleanup.promptLabel")}
+            />
+            <div className="text-muted-foreground mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px]">
+              <span>{t("models.cleanup.customHint")}</span>
+              <Button
+                variant="ink"
+                size="sm"
+                onClick={onSaveCustomPrompt}
+                disabled={savingCustomPrompt || !customPromptDirty}
+              >
+                {savingCustomPrompt ? (
+                  <>
+                    <Loader2 className="animate-spin" />
+                    {t("models.cleanup.saving")}
+                  </>
+                ) : customPromptDirty ? (
+                  t("models.cleanup.save")
+                ) : (
+                  <>
+                    <Check />
+                    {t("models.cleanup.saved")}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="border-border bg-card rounded-[18px] border p-5">
+            <div className="grid gap-5 min-[720px]:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] min-[720px]:gap-8">
+              <div>
+                <Eyebrow text={t("tone.cleanup.preview.rawLabel")} />
+                <p className="text-muted-foreground mt-2.5 text-[13.5px] leading-[1.6]">
+                  {t("tone.cleanup.preview.rawSample")}
+                </p>
               </div>
-              <p className="text-muted-foreground mt-1.5 text-[12px] leading-[1.4]">
-                {t(option.descKey)}
-              </p>
-              <div className="mt-3.5">
+              <div className="min-[720px]:border-border/60 min-[720px]:border-l min-[720px]:pl-8">
+                <div className="mb-2.5 flex items-center justify-between gap-2">
+                  <Eyebrow
+                    text={t("tone.cleanup.preview.resultLabel")}
+                    accent
+                  />
+                  <Eyebrow text={t(activeOption.titleKey)} />
+                </div>
                 <CleanupPreview
-                  result={t(option.sampleKey)}
-                  selected={selected}
+                  result={t(activeOption.sampleKey)}
+                  selected={false}
                 />
               </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {value === "custom" ? (
-        <section className="border-border bg-card rounded-[20px] border p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0 max-w-[58ch]">
-              <Eyebrow text={t("models.cleanup.promptLabel")} />
-              <p className="text-muted-foreground mt-3 text-[13px] leading-[1.6]">
-                {t("models.cleanup.presetHint")}
-              </p>
             </div>
-            <Button
-              variant="link"
-              size="sm"
-              className="h-auto p-0"
-              onClick={onResetToPreset}
-            >
-              {t("models.cleanup.resetToPresets")}
-            </Button>
           </div>
-
-          <Textarea
-            value={cleanupCustomPrompt}
-            maxLength={CLEANUP_CUSTOM_PROMPT_MAX}
-            onChange={(event) => onCustomPromptChange(event.target.value)}
-            spellCheck={false}
-            className="mono mt-4 min-h-[190px] resize-y text-[12px] leading-[1.65]"
-            aria-label={t("models.cleanup.promptLabel")}
-          />
-
-          <div className="text-muted-foreground mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px]">
-            <span>{t("models.cleanup.customHint")}</span>
-            <Button
-              variant="ink"
-              size="sm"
-              onClick={onSaveCustomPrompt}
-              disabled={savingCustomPrompt || !customPromptDirty}
-            >
-              {savingCustomPrompt ? (
-                <>
-                  <Loader2 className="animate-spin" />
-                  {t("models.cleanup.saving")}
-                </>
-              ) : customPromptDirty ? (
-                t("models.cleanup.save")
-              ) : (
-                <>
-                  <Check />
-                  {t("models.cleanup.saved")}
-                </>
-              )}
-            </Button>
-          </div>
-        </section>
-      ) : null}
+        )}
+      </div>
     </div>
   );
 }
@@ -787,6 +836,42 @@ function SubsetTonePanel<T extends string>({
     [onChange, options],
   );
 
+  const renderPreview = (
+    sample: string,
+    selected: boolean,
+  ): React.JSX.Element => {
+    if (previewKind === "personal") {
+      return <TextMessagePreview sample={sample} selected={selected} />;
+    }
+    if (previewKind === "work") {
+      return (
+        <WorkChatPreview
+          sample={sample}
+          selected={selected}
+          sender={t("tone.work.preview.sender")}
+          time={t("tone.work.preview.time")}
+        />
+      );
+    }
+    if (previewKind === "email") {
+      return (
+        <EmailPreview
+          body={sample}
+          selected={selected}
+          to={t("tone.email.preview.to")}
+          subject={t("tone.email.preview.subject")}
+        />
+      );
+    }
+    return <NotePreview sample={sample} selected={selected} />;
+  };
+
+  const activeOption = options.find((o) => o.value === value) ?? options[0]!;
+  const rawSampleKey =
+    previewKind === "overall"
+      ? "tone.everythingElse.preview.rawSample"
+      : `tone.${previewKind}.preview.rawSample`;
+
   return (
     <div className="space-y-6">
       <section className="grid gap-5 border-t border-border/70 pt-5 min-[980px]:grid-cols-[minmax(0,1fr)_300px] min-[980px]:items-start">
@@ -839,75 +924,83 @@ function SubsetTonePanel<T extends string>({
         </div>
       </section>
 
-      <div
-        role="radiogroup"
-        aria-label={title}
-        className="grid grid-cols-1 gap-4 min-[720px]:grid-cols-3"
-      >
-        {options.map((option, index) => {
-          const selected = option.value === value;
-          const sample = t(option.sampleKey);
-
-          return (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              tabIndex={selected ? 0 : -1}
-              onClick={() => onChange(option.value)}
-              onKeyDown={(event) => handleOptionKeyDown(event, index)}
-              className={cn(
-                "border-border bg-card rounded-[20px] border p-5 text-left transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
-                "hover:border-foreground/20 hover:bg-card/90",
-                selected && "border-primary/35 bg-accent/45",
-              )}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="serif text-foreground text-[29px] leading-none tracking-[-0.04em]">
+      <div className="grid gap-4 min-[820px]:grid-cols-[minmax(0,300px)_minmax(0,1fr)] min-[820px]:items-start">
+        <div
+          role="radiogroup"
+          aria-label={title}
+          className="flex flex-col gap-2.5"
+        >
+          {options.map((option, index) => {
+            const selected = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => onChange(option.value)}
+                onKeyDown={(event) => handleOptionKeyDown(event, index)}
+                className={cn(
+                  "group border-border bg-card relative flex items-center gap-3 overflow-hidden rounded-[16px] border py-4 pr-4 pl-5 text-left transition-all duration-150 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none",
+                  "hover:border-foreground/20 hover:bg-card/90",
+                  selected && "border-primary/40 bg-accent/45",
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute left-0 top-1/2 w-1 -translate-y-1/2 rounded-r-full transition-all duration-150",
+                    selected
+                      ? "bg-primary h-9"
+                      : "bg-foreground/15 h-0 group-hover:h-5",
+                  )}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="serif text-foreground text-[24px] leading-none tracking-[-0.03em]">
                     {t(option.titleKey)}
                   </p>
-                  <p className="text-muted-foreground mt-3 text-[13px] leading-[1.55]">
+                  <p className="text-muted-foreground mt-2 text-[12.5px] leading-[1.45]">
                     {t(option.descKey)}
                   </p>
                 </div>
                 <span
                   className={cn(
-                    "flex size-7 shrink-0 items-center justify-center rounded-full border",
+                    "flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors duration-150",
                     selected
-                      ? "border-primary/35 bg-primary text-primary-foreground"
-                      : "border-border bg-background text-transparent",
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border/70 bg-transparent text-transparent group-hover:border-foreground/25",
                   )}
                 >
-                  <CheckCircle2 className="size-4" />
+                  <Check
+                    className="size-3"
+                    strokeWidth={3}
+                    aria-hidden="true"
+                  />
                 </span>
-              </div>
+              </button>
+            );
+          })}
+        </div>
 
-              <div className="mt-6">
-                {previewKind === "personal" ? (
-                  <TextMessagePreview sample={sample} selected={selected} />
-                ) : previewKind === "work" ? (
-                  <WorkChatPreview
-                    sample={sample}
-                    selected={selected}
-                    sender={t("tone.work.preview.sender")}
-                    time={t("tone.work.preview.time")}
-                  />
-                ) : previewKind === "email" ? (
-                  <EmailPreview
-                    body={sample}
-                    selected={selected}
-                    to={t("tone.email.preview.to")}
-                    subject={t("tone.email.preview.subject")}
-                  />
-                ) : (
-                  <NotePreview sample={sample} selected={selected} />
-                )}
-              </div>
-            </button>
-          );
-        })}
+        <div>
+          <div className="mb-2.5 flex items-center justify-between gap-2">
+            <Eyebrow text={t("tone.previewLabel")} />
+            <Eyebrow text={t(activeOption.titleKey)} accent />
+          </div>
+          <div className="space-y-1.5">
+            <Eyebrow text={t("tone.cleanup.preview.rawLabel")} />
+            <p className="text-muted-foreground text-[13px] leading-[1.55]">
+              {t(rawSampleKey)}
+            </p>
+          </div>
+          <div className="my-3.5 flex items-center gap-2.5">
+            <span className="border-border/70 h-px flex-1 border-t" />
+            <Eyebrow text={t("tone.cleanup.preview.resultLabel")} accent />
+            <span className="border-border/70 h-px flex-1 border-t" />
+          </div>
+          {renderPreview(t(activeOption.sampleKey), false)}
+        </div>
       </div>
     </div>
   );

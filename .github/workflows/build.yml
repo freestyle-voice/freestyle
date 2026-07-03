@@ -261,6 +261,10 @@ jobs:
         working-directory: apps/electron
         run: pnpm run build:linux
 
+      - name: Verify native binaries in package
+        working-directory: apps/electron
+        run: node scripts/verify-native-binaries.mjs
+
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -269,7 +273,7 @@ jobs:
             apps/electron/dist/*.AppImage
             apps/electron/dist/*.deb
             apps/electron/dist/latest*.yml
-          if-no-files-found: warn
+          if-no-files-found: error
 
   build-mac:
     name: Build (macOS)
@@ -315,6 +319,10 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
+      - name: Verify native binaries in package
+        working-directory: apps/electron
+        run: node scripts/verify-native-binaries.mjs
+
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -325,7 +333,7 @@ jobs:
             apps/electron/dist/*.zip
             apps/electron/dist/latest*.yml
             apps/electron/dist/*.blockmap
-          if-no-files-found: warn
+          if-no-files-found: error
 
   build-windows:
     name: Build (Windows)
@@ -358,6 +366,10 @@ jobs:
         working-directory: apps/electron
         run: pnpm run build:win
 
+      - name: Verify native binaries in package
+        working-directory: apps/electron
+        run: node scripts/verify-native-binaries.mjs
+
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -367,7 +379,7 @@ jobs:
             apps/electron/dist/*.msi
             apps/electron/dist/latest*.yml
             apps/electron/dist/*.blockmap
-          if-no-files-found: warn
+          if-no-files-found: error
 
   build-server-image:
     name: Build server image

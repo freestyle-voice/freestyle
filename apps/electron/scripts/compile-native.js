@@ -25,6 +25,11 @@ const platform = process.platform;
 const arch = process.arch;
 const outputDir = join(BIN_DIR, `${platform}-${arch}`);
 
+// Binaries that failed to compile. Local dev tolerates missing binaries
+// (features degrade to legacy fallbacks), but CI must never package a
+// build that silently lost its native binaries.
+const failures = [];
+
 function ensureDir(dir) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
@@ -100,6 +105,7 @@ function compileMacOS() {
       chmodSync(out, 0o755);
       console.log(`  -> ${out}`);
     } else {
+      failures.push(bin.name);
       console.warn(
         `  WARNING: Failed to compile ${bin.name}. Hotkey/paste may fall back to legacy mode.`,
       );
@@ -149,6 +155,7 @@ function compileWindows() {
     }
 
     if (!ok) {
+      failures.push(bin.name);
       console.warn(
         `  WARNING: Failed to compile ${bin.name}. Feature may fall back to legacy mode.`,
       );
@@ -219,6 +226,7 @@ function compileLinux() {
         chmodSync(out, 0o755);
         console.log(`  -> ${out} (XTest only)`);
       } else {
+        failures.push("linux-fast-paste");
         console.warn("  WARNING: Failed to compile linux-fast-paste.");
       }
     }
@@ -234,6 +242,7 @@ function compileLinux() {
       chmodSync(out, 0o755);
       console.log(`  -> ${out}`);
     } else {
+      failures.push("linux-key-listener");
       console.warn("  WARNING: Failed to compile linux-key-listener.");
     }
   }
@@ -258,6 +267,14 @@ switch (platform) {
     console.log(
       `[compile:native] Unsupported platform: ${platform}, skipping.`,
     );
+}
+
+if (failures.length > 0 && process.env.CI) {
+  console.error(
+    `\n[compile:native] FAILED in CI: could not compile ${failures.join(", ")}.\n` +
+      "Packaged builds must never ship without their native binaries.\n",
+  );
+  process.exit(1);
 }
 
 console.log("\n[compile:native] Done.\n");

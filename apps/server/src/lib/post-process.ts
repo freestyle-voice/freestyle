@@ -167,6 +167,8 @@ export async function postProcess(
           text: normalizedRawText,
           appContext,
           language: options.language,
+          intensity: getCleanupIntensity(),
+          customPrompt: getCleanupCustomPrompt(),
         });
         inputTokens = result.usage?.inputTokens ?? 0;
         outputTokens = result.usage?.outputTokens ?? 0;

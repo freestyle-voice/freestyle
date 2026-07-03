@@ -67,7 +67,7 @@ export class FreestyleCloudTranscriptionProvider
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
-    const { apiKey, model, language, callbacks } = opts;
+    const { apiKey, model, language, cleanup, callbacks } = opts;
 
     if (!apiKey) {
       throw new FreestyleCloudAuthError();
@@ -80,6 +80,21 @@ export class FreestyleCloudTranscriptionProvider
       },
     });
 
+    // The DO applies cleanup preferences on `start`. Mirror the batch
+    // `/v2/transcribe` payload: send `skipPostProcess` plus intensity/custom
+    // prompt so the cloud cleans (or skips) and bills exactly like batch.
+    const buildStartMessage = () => ({
+      type: "start" as const,
+      language: language || undefined,
+      skipPostProcess: cleanup?.skipPostProcess ?? false,
+      ...(cleanup && !cleanup.skipPostProcess
+        ? {
+            intensity: cleanup.intensity,
+            customPrompt: cleanup.customPrompt,
+          }
+        : {}),
+    });
+
     let configured = false;
     let closed = false;
     // Track context and audio duration so we can forward them with commit.
@@ -90,12 +105,7 @@ export class FreestyleCloudTranscriptionProvider
     ws.on("open", () => {
       configured = true;
       // Send a start message to the DO to open the upstream Soniox session.
-      ws.send(
-        JSON.stringify({
-          type: "start",
-          language: language || undefined,
-        }),
-      );
+      ws.send(JSON.stringify(buildStartMessage()));
     });
 
     ws.on("message", (raw) => {
@@ -159,12 +169,7 @@ export class FreestyleCloudTranscriptionProvider
         currentAudioDurationMs = 0;
         currentContext = null;
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(
-            JSON.stringify({
-              type: "start",
-              language: language || undefined,
-            }),
-          );
+          ws.send(JSON.stringify(buildStartMessage()));
         }
       },
 

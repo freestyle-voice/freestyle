@@ -13,7 +13,13 @@ import {
   parseAppContext,
   plugins,
 } from "../lib/plugins/index.js";
-import { postProcess, prewarmPostProcess } from "../lib/post-process.js";
+import {
+  getCleanupCustomPrompt,
+  getCleanupIntensity,
+  isLlmCleanupEnabled,
+  postProcess,
+  prewarmPostProcess,
+} from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { invalidateSession } from "../lib/sessions.js";
@@ -234,6 +240,19 @@ const stream = new Hono().get(
 
       upstreamConfigKey = config.key;
 
+      // Freestyle Cloud post-processes server-side, so forward the desktop's
+      // cleanup settings in the streaming payload — matching the batch
+      // `/v2/transcribe` path. When cleanup is disabled, `skipPostProcess`
+      // tells the cloud to return the raw transcript (and bill accordingly).
+      const cleanup =
+        voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
+          ? {
+              skipPostProcess: !isLlmCleanupEnabled(),
+              intensity: getCleanupIntensity(),
+              customPrompt: getCleanupCustomPrompt(),
+            }
+          : undefined;
+
       const token = ++readyToken;
       const session = openStreamingSession({
         providerId: voice.provider,
@@ -241,6 +260,7 @@ const stream = new Hono().get(
         model: voice.model_id,
         language: config.language,
         bias: config.bias,
+        cleanup,
         callbacks: {
           onReady: (readyModel) => {
             if (upstream !== session) return;

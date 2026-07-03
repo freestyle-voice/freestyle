@@ -98,7 +98,7 @@ export function freestyleCloudUrl(): string {
 export function freestyleCloudStreamWsUrl(): string {
   const base = freestyleCloudUrl();
   const wsBase = base.replace(/^http/, "ws");
-  return `${wsBase}/v1/stream`;
+  return `${wsBase}/v2/stream`;
 }
 
 function createCloudAuthClient() {

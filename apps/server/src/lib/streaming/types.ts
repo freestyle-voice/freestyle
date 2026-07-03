@@ -46,6 +46,20 @@ export interface TranscribeResult {
   durationInSeconds?: number;
 }
 
+/**
+ * Cleanup preferences forwarded to providers that post-process server-side
+ * (currently only freestyle-cloud). Local/BYOK providers ignore these — the
+ * desktop runs its own `postProcess()` for those.
+ */
+export interface StreamCleanupPreferences {
+  /** When true, the provider should return the raw transcript with no LLM cleanup. */
+  skipPostProcess: boolean;
+  /** Cleanup intensity preset (only meaningful when `skipPostProcess` is false). */
+  intensity?: string;
+  /** Custom cleanup prompt (only used when intensity is "custom"). */
+  customPrompt?: string;
+}
+
 export interface StreamingSessionOptions {
   apiKey: string;
   model: string;
@@ -56,6 +70,11 @@ export interface StreamingSessionOptions {
   language?: string;
   /** ASR-only vocabulary bias for the first recognition pass. */
   bias?: AsrVocabularyBias | null;
+  /**
+   * Cleanup preferences for server-side post-processing providers. Mirrors the
+   * batch `/v2/transcribe` payload so streaming and batch behave identically.
+   */
+  cleanup?: StreamCleanupPreferences;
   callbacks: StreamCallbacks;
 }
 

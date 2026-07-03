@@ -3,7 +3,11 @@ import { FREESTYLE_CLOUD_PROVIDER_ID } from "./freestyle-cloud.js";
 import { MLX_ASR_PROVIDER_ID } from "./mlx-asr/constants.js";
 import { getSessionToken } from "./sessions.js";
 import { getProvider, supportsSessionTransport } from "./streaming/registry.js";
-import type { StreamCallbacks, StreamSession } from "./streaming/types.js";
+import type {
+  StreamCallbacks,
+  StreamCleanupPreferences,
+  StreamSession,
+} from "./streaming/types.js";
 import type { AsrVocabularyBias } from "./vocabulary-bias.js";
 import { WHISPER_PROVIDER_ID } from "./whisper/constants.js";
 
@@ -31,9 +35,11 @@ export function openStreamingSession(opts: {
   model: string;
   language?: string;
   bias?: AsrVocabularyBias | null;
+  cleanup?: StreamCleanupPreferences;
   callbacks: StreamCallbacks;
 }): StreamSession {
-  const { providerId, apiKey, model, language, bias, callbacks } = opts;
+  const { providerId, apiKey, model, language, bias, cleanup, callbacks } =
+    opts;
 
   const provider = getProvider(providerId);
   if (!provider) {
@@ -53,6 +59,7 @@ export function openStreamingSession(opts: {
     model,
     language,
     bias,
+    cleanup,
     callbacks,
   });
 }

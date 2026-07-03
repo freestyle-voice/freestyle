@@ -1,7 +1,6 @@
 import { createAppLogger } from "@freestyle-voice/utils";
 import type { Plugin, PluginConfig } from "freestyle-voice";
 import { PluginRegistry } from "freestyle-voice";
-import { cloudSyncPlugin } from "./builtin/cloud-sync.js";
 import { loadServerPlugins } from "./loader.js";
 
 export {
@@ -23,13 +22,14 @@ let builtinPlugins: Plugin[] = [];
  * once at boot; later calls are ignored. Failures degrade to an empty registry
  * so the dictation pipeline always works.
  *
- * Built-in plugins (cloud-sync) are always present and cannot be disabled by
- * users.
+ * Built-in plugins are always present and cannot be disabled by users. There
+ * are currently none — cleanup preferences travel in the v2 request payload,
+ * so the previous cloud-sync plugin is no longer needed.
  */
 export async function initServerPlugins(): Promise<void> {
   if (initialized) return;
   initialized = true;
-  builtinPlugins = [cloudSyncPlugin()];
+  builtinPlugins = [];
   await loadIntoRegistry();
 }
 

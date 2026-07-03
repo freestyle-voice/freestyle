@@ -17,8 +17,13 @@ import {
   plugins,
 } from "../lib/plugins/index.js";
 import {
+  getCleanupAppAssignments,
   getCleanupCustomPrompt,
+  getCleanupEmailTone,
   getCleanupIntensity,
+  getCleanupOverallTone,
+  getCleanupPersonalTone,
+  getCleanupWorkTone,
   postProcess,
 } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
@@ -149,6 +154,11 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         mode: "combined",
         intensity: getCleanupIntensity(),
         customPrompt: getCleanupCustomPrompt(),
+        personalTone: getCleanupPersonalTone(),
+        workTone: getCleanupWorkTone(),
+        emailTone: getCleanupEmailTone(),
+        overallTone: getCleanupOverallTone(),
+        appAssignments: getCleanupAppAssignments(),
       });
       rawText = sanitizeTranscriptText(result.raw ?? "");
       const cleaned = applyDictionaryReplacements(

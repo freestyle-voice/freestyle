@@ -14,8 +14,13 @@ import {
   plugins,
 } from "../lib/plugins/index.js";
 import {
+  getCleanupAppAssignments,
   getCleanupCustomPrompt,
+  getCleanupEmailTone,
   getCleanupIntensity,
+  getCleanupOverallTone,
+  getCleanupPersonalTone,
+  getCleanupWorkTone,
   isLlmCleanupEnabled,
   postProcess,
   prewarmPostProcess,
@@ -250,6 +255,11 @@ const stream = new Hono().get(
               skipPostProcess: !isLlmCleanupEnabled(),
               intensity: getCleanupIntensity(),
               customPrompt: getCleanupCustomPrompt(),
+              personalTone: getCleanupPersonalTone(),
+              workTone: getCleanupWorkTone(),
+              emailTone: getCleanupEmailTone(),
+              overallTone: getCleanupOverallTone(),
+              appAssignments: getCleanupAppAssignments(),
             }
           : undefined;
 

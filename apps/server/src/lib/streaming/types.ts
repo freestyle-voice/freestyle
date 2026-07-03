@@ -1,3 +1,10 @@
+import type {
+  CleanupAppAssignment,
+  CleanupEmailTone,
+  CleanupOverallTone,
+  CleanupPersonalTone,
+  CleanupWorkTone,
+} from "@freestyle-voice/validations";
 import type { AsrVocabularyBias } from "../vocabulary-bias.js";
 
 export interface StreamCallbacks {
@@ -58,6 +65,16 @@ export interface StreamCleanupPreferences {
   intensity?: string;
   /** Custom cleanup prompt (only used when intensity is "custom"). */
   customPrompt?: string;
+  /** Preferred tone when the destination reads like a personal message. */
+  personalTone?: CleanupPersonalTone;
+  /** Preferred tone when the destination reads like work correspondence. */
+  workTone?: CleanupWorkTone;
+  /** Preferred tone when the destination looks like email. */
+  emailTone?: CleanupEmailTone;
+  /** Preferred tone for destinations that do not match a specific category. */
+  overallTone?: CleanupOverallTone;
+  /** Per-app/site destination overrides that steer server-side tone routing. */
+  appAssignments?: CleanupAppAssignment[];
 }
 
 export interface StreamingSessionOptions {

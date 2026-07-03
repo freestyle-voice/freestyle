@@ -193,8 +193,9 @@ export async function postProcess(
 
   if (llm && isLlmCleanupEnabled()) {
     if (llm.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
-      // Tone destination currently applies only to the local/direct-model path.
-      // Freestyle Cloud assembles its cleanup prompts server-side.
+      // Freestyle Cloud assembles its cleanup prompts server-side: it resolves
+      // the destination from appContext + appAssignments and applies the tone
+      // preferences we forward here, mirroring the local/direct-model path.
       const token = getSessionToken();
       if (!token) throw new FreestyleCloudAuthError();
       try {
@@ -205,6 +206,11 @@ export async function postProcess(
           language: options.language,
           intensity: getCleanupIntensity(),
           customPrompt: getCleanupCustomPrompt(),
+          personalTone: getCleanupPersonalTone(),
+          workTone: getCleanupWorkTone(),
+          emailTone: getCleanupEmailTone(),
+          overallTone: getCleanupOverallTone(),
+          appAssignments: getCleanupAppAssignments(),
         });
         inputTokens = result.usage?.inputTokens ?? 0;
         outputTokens = result.usage?.outputTokens ?? 0;

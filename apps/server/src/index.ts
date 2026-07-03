@@ -94,8 +94,7 @@ export interface RunningServer {
  * standalone container entrypoint (see startup.ts).
  *
  * Plugins are loaded first so their contributed middleware is available when the
- * Hono app is constructed. Built-in plugins (cloud-sync) are always present;
- * user plugins are discovered from settings + disk.
+ * Hono app is constructed. User plugins are discovered from settings + disk.
  */
 export async function startServer(
   options: StartServerOptions = {},

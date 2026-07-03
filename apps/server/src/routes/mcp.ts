@@ -1,5 +1,4 @@
 import {
-  createDictionarySchema,
   createVocabularySchema,
   DEFAULT_CLEANUP_INTENSITY,
   dictionarySchema,

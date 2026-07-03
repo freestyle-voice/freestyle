@@ -81,8 +81,10 @@ export class FreestyleCloudTranscriptionProvider
     });
 
     // The DO applies cleanup preferences on `start`. Mirror the batch
-    // `/v2/transcribe` payload: send `skipPostProcess` plus intensity/custom
-    // prompt so the cloud cleans (or skips) and bills exactly like batch.
+    // `/v2/transcribe` payload: send `skipPostProcess` plus intensity, custom
+    // prompt, and destination-aware tones so the cloud cleans (or skips) and
+    // bills exactly like batch. `appAssignments` travels as a real array over
+    // the JSON WebSocket message.
     const buildStartMessage = () => ({
       type: "start" as const,
       language: language || undefined,
@@ -91,6 +93,11 @@ export class FreestyleCloudTranscriptionProvider
         ? {
             intensity: cleanup.intensity,
             customPrompt: cleanup.customPrompt,
+            personalTone: cleanup.personalTone,
+            workTone: cleanup.workTone,
+            emailTone: cleanup.emailTone,
+            overallTone: cleanup.overallTone,
+            appAssignments: cleanup.appAssignments,
           }
         : {}),
     });

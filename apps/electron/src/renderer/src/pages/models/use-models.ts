@@ -10,9 +10,9 @@ import type {
   VoiceItem,
   WhisperStatus,
 } from "@renderer/lib/models";
+import { IS_MAC } from "@renderer/lib/platform";
 import { useCallback, useEffect, useState } from "react";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
-
 import { DEFAULT_MLX_KEEP_ALIVE_MINUTES } from "./constants";
 import type { ApiKeyEntry, ConfiguredModel } from "./types";
 import {
@@ -20,9 +20,6 @@ import {
   clampMlxKeepAliveMinutes,
   groupByProvider,
 } from "./utils";
-
-const IS_MAC =
-  typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
 
 export interface LocalLlmState {
   url: string;

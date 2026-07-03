@@ -7,6 +7,7 @@ import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { getClient } from "@renderer/lib/api";
+import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -227,7 +228,7 @@ export default function DictionaryPage(): React.JSX.Element {
                   className="placeholder:text-muted-foreground/80 text-foreground flex-1 bg-transparent text-[13px] outline-none"
                 />
                 <span className="mono text-muted-foreground text-[10px]">
-                  ⌘ K
+                  {SEARCH_SHORTCUT_LABEL}
                 </span>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2.5">

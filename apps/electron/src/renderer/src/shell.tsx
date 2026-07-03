@@ -3,6 +3,7 @@ import markLight from "@renderer/assets/mark-light.svg";
 import { CloudProfileButton } from "@renderer/components/cloud-profile";
 import { Badge } from "@renderer/components/ui/badge";
 import { LINKS } from "@renderer/lib/links";
+import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform";
 import { cn } from "@renderer/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -129,7 +130,7 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
                       : "text-muted-foreground/60",
                   )}
                 >
-                  {"⌘"}
+                  {MOD_LABEL}
                   {item.shortcut}
                 </span>
               </div>
@@ -191,7 +192,7 @@ export default function AppShell(): React.JSX.Element {
         <div
           className={cn(
             "flex items-center gap-2.5 px-3.5 pb-6",
-            isFullscreen ? "pt-4" : "pt-[44px]",
+            !IS_MAC || isFullscreen ? "pt-4" : "pt-[44px]",
           )}
         >
           <img

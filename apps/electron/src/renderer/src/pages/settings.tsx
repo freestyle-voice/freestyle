@@ -20,6 +20,7 @@ import {
 import { getApiBase, getClient } from "@renderer/lib/api";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
+import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import { cn } from "@renderer/lib/utils";
 import {
   Check,
@@ -167,9 +168,9 @@ export default function SettingsPage(): React.JSX.Element {
   const accessibilityPollRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
-  const isMac = navigator.userAgent.includes("Mac");
-  const isLinux = window.api?.platform === "linux";
-  const isWindows = window.api?.platform === "win32";
+  const isMac = IS_MAC;
+  const isLinux = IS_LINUX;
+  const isWindows = IS_WINDOWS;
   const supportsBackgroundAudio = isMac || isLinux || isWindows;
   // macOS and Windows can deep-link to the OS mic privacy settings.
   const canOpenMicSettings = isMac || isWindows;

@@ -41,6 +41,7 @@ import {
   type WhisperStatus,
 } from "@renderer/lib/models";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
+import { IS_LINUX, IS_MAC, IS_WINDOWS, PLATFORM } from "@renderer/lib/platform";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   ArrowRight,
@@ -64,15 +65,6 @@ import { getDefaultHotkey } from "../../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../../shared/settings-keys";
 
 type Step = "permissions" | "cloud" | "language" | "tutorial";
-
-const PLATFORM =
-  (typeof window !== "undefined" && window.api?.platform) ||
-  (typeof navigator !== "undefined" && navigator.userAgent.includes("Mac")
-    ? "darwin"
-    : "unknown");
-const IS_MAC = PLATFORM === "darwin";
-const IS_WINDOWS = PLATFORM === "win32";
-const IS_LINUX = PLATFORM === "linux";
 
 const DEFAULT_HOTKEY =
   (typeof window !== "undefined" && window.api?.defaultHotkey) ||

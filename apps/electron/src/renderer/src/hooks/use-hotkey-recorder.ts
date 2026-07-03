@@ -1,11 +1,9 @@
+import { IS_MAC } from "@renderer/lib/platform";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // ---------------------------------------------------------------------------
 // Platform detection
 // ---------------------------------------------------------------------------
-
-const IS_MAC =
-  typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
 
 // ---------------------------------------------------------------------------
 // Key symbol maps

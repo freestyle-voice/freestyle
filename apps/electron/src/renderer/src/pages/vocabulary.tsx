@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { getClient } from "@renderer/lib/api";
+import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -264,7 +265,7 @@ export default function VocabularyPage(): React.JSX.Element {
                   className="placeholder:text-muted-foreground/80 text-foreground min-w-0 flex-1 bg-transparent text-[13px] outline-none"
                 />
                 <span className="mono text-muted-foreground shrink-0 text-[10px]">
-                  {navigator.userAgent.includes("Mac") ? "⌘" : "Ctrl+"} K
+                  {SEARCH_SHORTCUT_LABEL}
                 </span>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2.5">

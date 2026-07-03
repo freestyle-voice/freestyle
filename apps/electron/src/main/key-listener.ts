@@ -25,6 +25,12 @@ interface KeyListenerOptions {
   onKeyUp: KeyEventCallback;
   onError?: (error: string) => void;
   onReady?: () => void;
+  /**
+   * Fired when the listener gives up restarting for good (restart cap
+   * exceeded). The listener ran at some point but is now permanently dead —
+   * callers should install a fallback so the hotkey keeps working.
+   */
+  onPermanentFailure?: () => void;
 }
 
 const BINARY_NAMES: Record<string, string> = {
@@ -506,6 +512,7 @@ export class NativeKeyListener {
       this.options.onError?.(
         "Key listener exceeded max restart attempts. Give up.",
       );
+      this.options.onPermanentFailure?.();
       return;
     }
 
@@ -540,34 +547,6 @@ export class NativeKeyListener {
       }
       this.process = null;
     }
-  }
-
-  /**
-   * Update the hotkey. Restarts the listener with the new hotkey.
-   */
-  updateHotkey(hotkey: string): void {
-    this.options.hotkey = hotkey;
-    // Stop without permanently destroying
-    this.destroyed = false;
-    if (this.restartTimer) {
-      clearTimeout(this.restartTimer);
-      this.restartTimer = null;
-    }
-    this.cancelMacSoloFnDown();
-    if (this.process) {
-      try {
-        this.process.kill("SIGTERM");
-      } catch {
-        // Process may already be dead
-      }
-      this.process = null;
-    }
-    this.macModState.clear();
-    this.macFlagState.clear();
-    this.macHotkeyActive = false;
-    this.macFnDown = false;
-    this.restartAttempts = 0;
-    this.start();
   }
 
   get isRunning(): boolean {

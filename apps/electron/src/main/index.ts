@@ -980,6 +980,7 @@ function hidePill(): void {
   // state so the next press starts fresh — e.g. after ESC while still
   // holding the dictation key.
   hotkeyPressed = false;
+  clearHotkeyStuckWatchdog();
   // Unregister Escape shortcut when pill is hidden
   try {
     globalShortcut.unregister("Escape");
@@ -1995,6 +1996,7 @@ app.whenReady().then(async () => {
   ipcMain.on("hotkey:set-mode", (_event, mode: string) => {
     hotkeyActivationMode = mode === "toggle" ? "toggle" : "hold";
     hotkeyPressed = false;
+    clearHotkeyStuckWatchdog();
     scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
   });
 });
@@ -2115,6 +2117,33 @@ function sendHotkeyUp(): void {
   settingsWindow?.webContents.send("hotkey:up");
 }
 
+// Hold-to-talk relies on a KEY_UP that is not guaranteed to arrive (macOS
+// event monitors can drop key-ups; a dying listener process emits nothing).
+// If a hold-mode press never sees its release, force the release instead of
+// leaving the mic hot and the hotkey dead until app restart.
+const HOTKEY_STUCK_TIMEOUT_MS = 5 * 60 * 1000;
+let hotkeyStuckTimer: NodeJS.Timeout | null = null;
+
+function clearHotkeyStuckWatchdog(): void {
+  if (hotkeyStuckTimer) {
+    clearTimeout(hotkeyStuckTimer);
+    hotkeyStuckTimer = null;
+  }
+}
+
+function armHotkeyStuckWatchdog(): void {
+  clearHotkeyStuckWatchdog();
+  hotkeyStuckTimer = setTimeout(() => {
+    hotkeyStuckTimer = null;
+    if (!hotkeyPressed) return;
+    hotkeyLog.warn(
+      "Hold-mode hotkey saw no key-up for 5 minutes; forcing release.",
+    );
+    hotkeyPressed = false;
+    sendHotkeyUp();
+  }, HOTKEY_STUCK_TIMEOUT_MS);
+}
+
 function handleNativeHotkeyDown(): void {
   if (hotkeyActivationMode === "toggle") {
     if (!hotkeyPressed) {
@@ -2129,6 +2158,7 @@ function handleNativeHotkeyDown(): void {
 
   if (!hotkeyPressed) {
     hotkeyPressed = true;
+    armHotkeyStuckWatchdog();
     sendHotkeyDown();
   }
 }
@@ -2138,6 +2168,7 @@ function handleNativeHotkeyUp(): void {
 
   if (hotkeyPressed) {
     hotkeyPressed = false;
+    clearHotkeyStuckWatchdog();
     sendHotkeyUp();
   }
 }
@@ -2239,6 +2270,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
       keyListener = null;
     }
     hotkeyPressed = false;
+    clearHotkeyStuckWatchdog();
     globalShortcut.unregisterAll();
 
     if (!hotkey) {
@@ -2265,6 +2297,34 @@ async function registerHotkey(hotkey?: string): Promise<void> {
       onReady: () => {
         hotkeyLog.debug(`Native key listener ready for "${accel}"`);
       },
+      onPermanentFailure: () => {
+        // The listener started fine and then died for good (event tap torn
+        // down, repeated crashes past the restart cap). Without this, the
+        // user has no hotkey, no fallback, and no explanation until app
+        // restart — install the globalShortcut fallback the same way a
+        // failed initial start does.
+        if (keyListener !== listener) return;
+        hotkeyLog.error(
+          "Native key listener permanently failed; falling back to Electron globalShortcut (toggle mode).",
+        );
+        listener.stop();
+        keyListener = null;
+        if (hotkeyPressed) {
+          hotkeyPressed = false;
+          clearHotkeyStuckWatchdog();
+          sendHotkeyUp();
+        }
+        const registeredAccel = registerGlobalShortcutToggle(accel);
+        if (registeredAccel) {
+          notifyHotkeyDegraded(accel, nativeError);
+        } else {
+          const errorPayload = {
+            message: `The hotkey listener stopped working and "${accel}" could not be re-registered. Restart Freestyle or pick a different combination in Settings.`,
+          };
+          mainWindow?.webContents.send("hotkey:error", errorPayload);
+          settingsWindow?.webContents.send("hotkey:error", errorPayload);
+        }
+      },
     });
     keyListener = listener;
 
@@ -2279,6 +2339,9 @@ async function registerHotkey(hotkey?: string): Promise<void> {
 
     if (started) {
       accessibilityConfirmed = true;
+      // A healthy native listener means hold-to-talk works again; re-arm the
+      // degradation notice so a later regression in this session notifies.
+      hotkeyDegradedNotified = false;
     } else {
       hotkeyLog.warn(
         "Native key listener unavailable, falling back to Electron globalShortcut (toggle mode).",

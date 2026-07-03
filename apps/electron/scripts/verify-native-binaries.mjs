@@ -91,11 +91,16 @@ function checkDir(label, dir) {
     );
     return false;
   }
-  console.log(`[verify-native] OK: ${label} has all ${expected.length} binaries.`);
+  console.log(
+    `[verify-native] OK: ${label} has all ${expected.length} binaries.`,
+  );
   return true;
 }
 
-let ok = checkDir("source", join(ROOT, "resources", "bin", `${platform}-${arch}`));
+let ok = checkDir(
+  "source",
+  join(ROOT, "resources", "bin", `${platform}-${arch}`),
+);
 
 if (!sourceOnly) {
   const packagedBinDir = findPackagedBinDir();

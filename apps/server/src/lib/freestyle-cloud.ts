@@ -188,18 +188,25 @@ export async function transcribeWithFreestyleCloud(opts: {
   language?: string;
   appContext?: string | null;
   mode: "raw" | "combined";
+  intensity?: string;
+  customPrompt?: string | null;
 }): Promise<CloudTranscribeResult> {
-  const headers: Record<string, string> = {};
-  if (opts.language) headers["x-language"] = opts.language;
-  if (opts.appContext)
-    headers["x-app-context"] = encodeURIComponent(opts.appContext);
-  if (opts.mode === "raw") headers["x-skip-post-process"] = "true";
   const audio = opts.audio as Uint8Array<ArrayBuffer>;
 
-  return cloudJson<CloudTranscribeResult>("/v1/transcribe", opts.token, {
+  // v2 carries the audio plus every cleanup preference in a single
+  // multipart payload — the cloud no longer reads saved preferences.
+  const form = new FormData();
+  form.append("audio", new Blob([audio], { type: "audio/wav" }), "audio.wav");
+  if (opts.language) form.append("language", opts.language);
+  if (opts.appContext) form.append("appContext", opts.appContext);
+  if (opts.mode === "raw") form.append("skipPostProcess", "true");
+  if (opts.intensity) form.append("intensity", opts.intensity);
+  if (opts.customPrompt) form.append("customPrompt", opts.customPrompt);
+
+  return cloudJson<CloudTranscribeResult>("/v2/transcribe", opts.token, {
     method: "POST",
-    headers,
-    body: new Blob([audio], { type: "audio/wav" }),
+    // Do not set content-type: fetch adds the multipart boundary itself.
+    body: form,
   });
 }
 
@@ -208,17 +215,21 @@ export async function postProcessWithFreestyleCloud(opts: {
   text: string;
   appContext?: string | null;
   language?: string;
+  intensity?: string;
+  customPrompt?: string | null;
 }): Promise<{
   cleaned: string;
   usage?: { inputTokens?: number; outputTokens?: number };
 }> {
-  return cloudJson("/v1/post-process", opts.token, {
+  return cloudJson("/v2/post-process", opts.token, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       text: opts.text,
       appContext: opts.appContext ?? null,
       language: opts.language,
+      intensity: opts.intensity,
+      customPrompt: opts.customPrompt ?? null,
     }),
   });
 }

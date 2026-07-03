@@ -16,7 +16,11 @@ import {
   parseAppContext,
   plugins,
 } from "../lib/plugins/index.js";
-import { postProcess } from "../lib/post-process.js";
+import {
+  getCleanupCustomPrompt,
+  getCleanupIntensity,
+  postProcess,
+} from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { invalidateSession } from "../lib/sessions.js";
@@ -143,6 +147,8 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         language,
         appContext,
         mode: "combined",
+        intensity: getCleanupIntensity(),
+        customPrompt: getCleanupCustomPrompt(),
       });
       rawText = sanitizeTranscriptText(result.raw ?? "");
       const cleaned = applyDictionaryReplacements(

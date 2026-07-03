@@ -3,7 +3,11 @@ import { collapseAsrLineBreaks } from "../../editor/model-hints.js";
 import { isServerBinaryAvailable } from "../../whisper/binary.js";
 import { WHISPER_PROVIDER_ID } from "../../whisper/constants.js";
 import { ensureBinariesDownloaded } from "../../whisper/models.js";
-import { ensureServerRunning, getServerPort } from "../../whisper/server.js";
+import {
+  ensureServerRunning,
+  getServerPort,
+  withServerUse,
+} from "../../whisper/server.js";
 import type {
   TranscribeOptions,
   TranscribeResult,
@@ -31,22 +35,24 @@ export class WhisperLocalTranscriptionProvider
       }
     }
 
-    // Restarts the server if it is not running or loaded a different model.
-    await ensureServerRunning(modelId);
-
-    const t0 = Date.now();
-    try {
-      return await transcribeViaServer(opts);
-    } catch (err) {
-      // The server may have crashed mid-request; restart it and retry once.
-      log.warn(
-        `inference failed, restarting server: ${err instanceof Error ? err.message : String(err)}`,
-      );
+    return withServerUse(async () => {
+      // Restarts the server if it is not running or loaded a different model.
       await ensureServerRunning(modelId);
-      return await transcribeViaServer(opts);
-    } finally {
-      log.debug(`server inference took ${Date.now() - t0}ms`);
-    }
+
+      const t0 = Date.now();
+      try {
+        return await transcribeViaServer(opts);
+      } catch (err) {
+        // The server may have crashed mid-request; restart it and retry once.
+        log.warn(
+          `inference failed, restarting server: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        await ensureServerRunning(modelId);
+        return await transcribeViaServer(opts);
+      } finally {
+        log.debug(`server inference took ${Date.now() - t0}ms`);
+      }
+    });
   }
 
   supportsStreaming(_modelId: string): boolean {

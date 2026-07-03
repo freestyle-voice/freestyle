@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { applyMlxAsrRetentionPolicy } from "../lib/mlx-asr/server.js";
 import { capture } from "../lib/posthog.js";
+import { applyWhisperRetentionPolicy } from "../lib/whisper/server.js";
 
 const settings = new Hono()
   .get("/", (c) => {
@@ -85,6 +86,9 @@ const settings = new Hono()
 
     if (key === "mlx_asr_keep_alive_minutes") {
       applyMlxAsrRetentionPolicy();
+    }
+    if (key === "whisper_keep_alive_minutes") {
+      applyWhisperRetentionPolicy();
     }
 
     // Don't capture internal/system keys

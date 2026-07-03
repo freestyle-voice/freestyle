@@ -1,5 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { createServer } from "node:net";
 import { createAppLogger } from "@freestyle-voice/utils";
+import { getDb } from "../db.js";
 import {
   findWhisperServer,
   WIN_DLL_NOT_FOUND_EXIT,
@@ -14,6 +16,8 @@ const serverLog = createAppLogger("whisper-server");
 const MAX_RESTARTS = 3;
 const RESTART_COOLDOWN_MS = 3_000;
 const STABILITY_THRESHOLD_MS = 30_000;
+const DEFAULT_KEEP_ALIVE_MINUTES = 10;
+const MAX_KEEP_ALIVE_MINUTES = 10;
 
 let serverProcess: ChildProcess | null = null;
 let currentModelId: string | null = null;
@@ -23,6 +27,9 @@ let autoRestart = false;
 let restartCount = 0;
 let stabilityTimer: ReturnType<typeof setTimeout> | null = null;
 let serverFailed = false;
+let activePort = WHISPER_SERVER_PORT;
+let activeUses = 0;
+let unloadTimer: ReturnType<typeof setTimeout> | null = null;
 
 function stopServerOnExit(): void {
   const proc = serverProcess;
@@ -45,10 +52,73 @@ export function isServerFailed(): boolean {
 }
 
 export function getServerPort(): number {
-  return WHISPER_SERVER_PORT;
+  return activePort;
+}
+
+export function getWhisperKeepAliveMinutes(): number {
+  try {
+    const db = getDb();
+    const row = db
+      .prepare(
+        "SELECT value FROM settings WHERE key = 'whisper_keep_alive_minutes'",
+      )
+      .get() as { value: string } | undefined;
+    if (!row) return DEFAULT_KEEP_ALIVE_MINUTES;
+    const minutes = Number(row.value);
+    if (!Number.isFinite(minutes)) return DEFAULT_KEEP_ALIVE_MINUTES;
+    return Math.min(Math.max(Math.round(minutes), 0), MAX_KEEP_ALIVE_MINUTES);
+  } catch {
+    return DEFAULT_KEEP_ALIVE_MINUTES;
+  }
+}
+
+function clearUnloadTimer(): void {
+  if (!unloadTimer) return;
+  clearTimeout(unloadTimer);
+  unloadTimer = null;
+}
+
+function scheduleUnload(): void {
+  clearUnloadTimer();
+  if (!serverProcess) return;
+  if (activeUses > 0 || startPromise) return;
+  const delayMs = getWhisperKeepAliveMinutes() * 60_000;
+
+  if (delayMs <= 0) {
+    stopServer().catch((err: Error) => {
+      log.error(`Failed to unload server: ${err.message}`);
+    });
+    return;
+  }
+
+  unloadTimer = setTimeout(() => {
+    if (activeUses > 0) return;
+    log.info("Unloading idle whisper-server");
+    stopServer().catch((err: Error) => {
+      log.error(`Failed to unload idle server: ${err.message}`);
+    });
+  }, delayMs);
+  unloadTimer.unref?.();
+}
+
+export function applyWhisperRetentionPolicy(): void {
+  if (!serverProcess) return;
+  scheduleUnload();
+}
+
+export async function withServerUse<T>(fn: () => Promise<T>): Promise<T> {
+  activeUses++;
+  clearUnloadTimer();
+  try {
+    return await fn();
+  } finally {
+    activeUses--;
+    scheduleUnload();
+  }
 }
 
 export function startInBackground(modelId: string): void {
+  if (getWhisperKeepAliveMinutes() === 0) return;
   if (serverProcess && currentModelId === modelId && serverReady) return;
   if (startPromise && currentModelId === modelId) return;
 
@@ -58,11 +128,38 @@ export function startInBackground(modelId: string): void {
 
   ensureServerRunning(modelId)
     .then(() => {
-      log.info(`Server ready on port ${WHISPER_SERVER_PORT}`);
+      log.info(`Server ready on port ${activePort}`);
     })
     .catch((err) => {
       log.error(`Background server start failed: ${err.message}`);
     });
+}
+
+function isPortFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const probe = createServer();
+    probe.unref();
+    probe.once("error", () => resolve(false));
+    probe.listen({ port, host: "127.0.0.1" }, () => {
+      probe.close(() => resolve(true));
+    });
+  });
+}
+
+function findFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.unref();
+    probe.once("error", reject);
+    probe.listen({ port: 0, host: "127.0.0.1" }, () => {
+      const address = probe.address();
+      const port =
+        typeof address === "object" && address
+          ? address.port
+          : WHISPER_SERVER_PORT;
+      probe.close(() => resolve(port));
+    });
+  });
 }
 
 export async function ensureServerRunning(modelId: string): Promise<void> {
@@ -103,11 +200,20 @@ async function doStart(modelId: string): Promise<void> {
   currentModelId = modelId;
   serverReady = false;
 
+  if (await isPortFree(WHISPER_SERVER_PORT)) {
+    activePort = WHISPER_SERVER_PORT;
+  } else {
+    activePort = await findFreePort();
+    log.warn(
+      `Port ${WHISPER_SERVER_PORT} is in use by another process, using ${activePort}`,
+    );
+  }
+
   const args = [
     "--model",
     modelPath,
     "--port",
-    String(WHISPER_SERVER_PORT),
+    String(activePort),
     "--host",
     "127.0.0.1",
   ];
@@ -165,7 +271,7 @@ async function doStart(modelId: string): Promise<void> {
         return;
       }
       try {
-        const res = await fetch(`http://127.0.0.1:${WHISPER_SERVER_PORT}/`, {
+        const res = await fetch(`http://127.0.0.1:${activePort}/`, {
           signal: AbortSignal.timeout(1000),
         });
         if (res.ok || res.status === 404 || res.status === 405) {
@@ -214,6 +320,7 @@ async function doStart(modelId: string): Promise<void> {
   });
 
   startStabilityTimer();
+  scheduleUnload();
 }
 
 function scheduleRestart(modelId: string): void {
@@ -258,6 +365,7 @@ export async function stopServer(): Promise<void> {
   autoRestart = false;
   startPromise = null;
   clearStabilityTimer();
+  clearUnloadTimer();
   if (!serverProcess) return;
 
   const proc = serverProcess;
@@ -270,7 +378,7 @@ export async function stopServer(): Promise<void> {
     const killTimeout = setTimeout(() => {
       if (done) return;
       try {
-        proc.kill();
+        proc.kill(process.platform === "win32" ? undefined : "SIGKILL");
       } catch {}
       done = true;
       resolve();

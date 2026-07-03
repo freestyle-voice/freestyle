@@ -58,4 +58,62 @@ describe("applyDictionaryReplacements", () => {
 
     expect(result).toBe("concatenate the dog");
   });
+
+  it("inserts replacement values containing $ patterns literally", () => {
+    const db = testDb();
+    const insert = db.prepare(
+      "INSERT INTO dictionary (key, value) VALUES (?, ?)",
+    );
+    insert.run("price", "$&/month");
+    insert.run("cash", "A$$B");
+    insert.run("prefix", "$` and $' and $1");
+
+    expect(applyDictionaryReplacements("the price is low", db)).toBe(
+      "the $&/month is low",
+    );
+    expect(applyDictionaryReplacements("bring cash today", db)).toBe(
+      "bring A$$B today",
+    );
+    expect(applyDictionaryReplacements("add a prefix here", db)).toBe(
+      "add a $` and $' and $1 here",
+    );
+  });
+
+  it("increments usage_count for all matched entries in one pass", () => {
+    const db = testDb();
+    const insert = db.prepare(
+      "INSERT INTO dictionary (key, value) VALUES (?, ?)",
+    );
+    insert.run("foo", "FOO");
+    insert.run("bar", "BAR");
+    insert.run("unused", "UNUSED");
+
+    const result = applyDictionaryReplacements("foo and bar", db);
+
+    expect(result).toBe("FOO and BAR");
+    const rows = db
+      .prepare("SELECT key, usage_count FROM dictionary ORDER BY key")
+      .all() as { key: string; usage_count: number }[];
+    expect(rows).toEqual([
+      { key: "bar", usage_count: 1 },
+      { key: "foo", usage_count: 1 },
+      { key: "unused", usage_count: 0 },
+    ]);
+  });
+
+  it("reuses cached regexes across calls without stale results", () => {
+    const db = testDb();
+    db.prepare("INSERT INTO dictionary (key, value) VALUES (?, ?)").run(
+      "brb",
+      "be right back",
+    );
+
+    expect(applyDictionaryReplacements("brb in five", db)).toBe(
+      "be right back in five",
+    );
+    // Second call exercises the cached regex; global-flag state must not leak.
+    expect(applyDictionaryReplacements("brb brb", db)).toBe(
+      "be right back be right back",
+    );
+  });
 });

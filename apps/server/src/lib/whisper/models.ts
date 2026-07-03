@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { execFile as execFileCallback } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
@@ -13,7 +14,7 @@ import {
   unlinkSync,
 } from "node:fs";
 import { join } from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { createAppLogger } from "@freestyle-voice/utils";
@@ -219,14 +220,34 @@ export async function downloadModel(modelId: string): Promise<void> {
 
     // Stream straight to the models dir — going through the HF cache would
     // store every model twice on disk.
+    const expectedSha = await fetchExpectedSha256(
+      model.fileName,
+      controller.signal,
+    );
     const url = `https://huggingface.co/${WHISPER_REPO}/resolve/${WHISPER_REPO_REVISION}/${model.fileName}`;
     const res = await progressFetch(active, controller.signal)(url);
     if (!res.ok || !res.body) {
-      throw new Error(`Model download failed: HTTP ${res.status}`);
+      throw modelDownloadHttpError(res.status);
     }
     const total = Number(res.headers.get("content-length"));
     if (total > 0) active.bytesTotal = total;
-    await pipeline(webBodyToReadable(res.body), createWriteStream(tempPath));
+    const hash = createHash("sha256");
+    const hashThrough = new Transform({
+      transform(chunk, _enc, cb) {
+        hash.update(chunk);
+        cb(null, chunk);
+      },
+    });
+    await pipeline(
+      webBodyToReadable(res.body),
+      hashThrough,
+      createWriteStream(tempPath),
+    );
+    if (expectedSha && hash.digest("hex") !== expectedSha) {
+      throw new Error(
+        "Model download failed a checksum verification (corrupted transfer). Please try again.",
+      );
+    }
     renameSync(tempPath, destPath);
     activeDownloads.delete(modelId);
   } catch (err) {
@@ -288,6 +309,40 @@ export function getDownloadedModelPath(modelId: string): string | null {
   return getModelPath(model);
 }
 
+async function fetchExpectedSha256(
+  fileName: string,
+  signal: AbortSignal,
+): Promise<string | null> {
+  try {
+    const url = `https://huggingface.co/api/models/${WHISPER_REPO}/tree/${WHISPER_REPO_REVISION}`;
+    const res = await fetch(url, {
+      signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
+    });
+    if (!res.ok) return null;
+    const entries = (await res.json()) as {
+      path?: string;
+      lfs?: { oid?: string };
+    }[];
+    return entries.find((e) => e.path === fileName)?.lfs?.oid ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function modelDownloadHttpError(status: number): Error {
+  if (status === 404) {
+    return new Error(
+      "Model download failed because the file is no longer published on Hugging Face (HTTP 404). Try updating Freestyle to a newer version.",
+    );
+  }
+  if (status === 401 || status === 403) {
+    return new Error(
+      `Model download was rejected by Hugging Face (HTTP ${status}). Please try again in a few minutes.`,
+    );
+  }
+  return new Error(`Model download failed: HTTP ${status}`);
+}
+
 // ---------------------------------------------------------------------------
 // Binary acquisition
 // ---------------------------------------------------------------------------
@@ -333,6 +388,11 @@ async function buildFromSource(): Promise<void> {
     signal: AbortSignal.timeout(60_000),
   });
   if (!res.ok || !res.body) {
+    if (res.status === 404) {
+      throw new Error(
+        `whisper.cpp v${WHISPER_CPP_VERSION} source is no longer published on GitHub (HTTP 404). Try updating Freestyle to a newer version.`,
+      );
+    }
     throw new Error(
       `Failed to download whisper.cpp source: HTTP ${res.status}`,
     );
@@ -353,7 +413,7 @@ async function buildFromSource(): Promise<void> {
       "tar",
       ["xzf", tarPath, "-C", srcDir, "--strip-components=1"],
       {
-        timeout: 30_000,
+        timeout: 120_000,
       },
     );
   } catch {
@@ -373,11 +433,11 @@ async function buildFromSource(): Promise<void> {
     await execFile(
       "cmake",
       ["..", "-DCMAKE_BUILD_TYPE=Release", "-DBUILD_SHARED_LIBS=OFF"],
-      { cwd: buildDir, timeout: 60_000 },
+      { cwd: buildDir, timeout: 180_000 },
     );
     await execFile("cmake", ["--build", ".", "--config", "Release", "-j"], {
       cwd: buildDir,
-      timeout: 300_000,
+      timeout: 900_000,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -450,20 +510,26 @@ async function downloadWindowsBinaries(): Promise<void> {
     signal: AbortSignal.timeout(120_000),
   });
   if (!res.ok || !res.body) {
+    if (res.status === 404) {
+      throw new Error(
+        `The whisper.cpp v${WHISPER_CPP_VERSION} Windows binaries are no longer published on GitHub (HTTP 404). Try updating Freestyle to a newer version.`,
+      );
+    }
     throw new Error(`Failed to download whisper binaries: HTTP ${res.status}`);
   }
 
   const fileStream = createWriteStream(tmpZip);
   await pipeline(webBodyToReadable(res.body), fileStream);
 
+  const psQuote = (p: string): string => `'${p.replace(/'/g, "''")}'`;
   try {
     await execFile(
       "powershell",
       [
         "-Command",
-        `Expand-Archive -Force -Path '${tmpZip}' -DestinationPath '${binDir}'`,
+        `Expand-Archive -Force -Path ${psQuote(tmpZip)} -DestinationPath ${psQuote(binDir)}`,
       ],
-      { timeout: 30_000 },
+      { timeout: 120_000 },
     );
   } catch {
     try {

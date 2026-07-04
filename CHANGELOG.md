@@ -1,4 +1,30 @@
 # Changelog
+## 0.4.0
+
+### New Features ✨
+
+- (server) Migrate cloud transcription to v2 (batch + streaming) by @MathurAditya724 in [#387](https://github.com/freestyle-voice/freestyle/pull/387)
+- Enterprise proxy and custom CA support for model downloads by @MathurAditya724 in [#388](https://github.com/freestyle-voice/freestyle/pull/388)
+
+### Bug Fixes 🐛
+
+- (ci) Keep package releases out of GitHub "Latest" so app auto-update works by @MathurAditya724 in [#381](https://github.com/freestyle-voice/freestyle/pull/381)
+- Consolidate two LLM settings queries into one (#255) by @Olaiwonismail in [#389](https://github.com/freestyle-voice/freestyle/pull/389)
+
+### Documentation 📚
+
+- Document voice-commands plugin and new SDK capabilities by @MathurAditya724 in [c4bb3e32](https://github.com/freestyle-voice/freestyle/commit/c4bb3e32738412d04204f41f1d837e515e13c451)
+
+### Internal Changes 🔧
+
+- (server) Tighten local LLM settings types and reuse timeout constant by @MathurAditya724 in [#390](https://github.com/freestyle-voice/freestyle/pull/390)
+
+### Other
+
+- Phase 2 of some stability cleanups by @matteo8p in [#386](https://github.com/freestyle-voice/freestyle/pull/386)
+- Phase 1 prs for stability improvements by @matteo8p in [#384](https://github.com/freestyle-voice/freestyle/pull/384)
+- Include app stability specs by @matteo8p in [#383](https://github.com/freestyle-voice/freestyle/pull/383)
+
 ## 0.3.4
 
 ### New Features ✨

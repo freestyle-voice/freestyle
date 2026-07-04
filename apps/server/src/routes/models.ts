@@ -45,20 +45,23 @@ const UNSUITABLE_CLEANUP_MODEL_PATTERN =
 
 async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
   const db = getDb();
-  const urlRow = db
-    .prepare("SELECT value FROM settings WHERE key = 'local_llm_url'")
-    .get() as { value: string } | undefined;
-  if (!urlRow?.value) return [];
+  const rows = db
+    .prepare(
+      "SELECT key, value FROM settings WHERE key IN ('local_llm_url', 'local_llm_api_key')",
+    )
+    .all() as { key: string; value: string }[];
+  const settings = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  if (!settings.local_llm_url) return [];
 
-  const keyRow = db
-    .prepare("SELECT value FROM settings WHERE key = 'local_llm_api_key'")
-    .get() as { value: string } | undefined;
-
-  const baseUrl = urlRow.value.replace(/\/+$/, "").replace(/\/v1$/, "");
+  const baseUrl = settings.local_llm_url
+    .replace(/\/+$/, "")
+    .replace(/\/v1$/, "");
 
   const res = await fetch(`${baseUrl}/v1/models`, {
     headers: {
-      ...(keyRow?.value ? { Authorization: `Bearer ${keyRow.value}` } : {}),
+      ...(settings.local_llm_api_key
+        ? { Authorization: `Bearer ${settings.local_llm_api_key}` }
+        : {}),
     },
     signal: AbortSignal.timeout(3000),
   });

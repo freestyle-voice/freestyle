@@ -1408,8 +1408,7 @@ async function checkForUpdatesFromMenu(): Promise<void> {
   }
   try {
     const result = await autoUpdater.checkForUpdates();
-    // With autoDownload enabled the check may start a download; swallow its
-    // rejection so a transient CDN failure isn't an unhandled rejection.
+    // Swallow the auto-download rejection (see runUpdateCheck).
     void result?.downloadPromise?.catch(() => {});
     const latest = result?.updateInfo?.version;
     if (latest && latest !== app.getVersion()) {
@@ -1956,20 +1955,12 @@ app.whenReady().then(async () => {
   const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 
-  // Run an update check and swallow the auto-download's rejection.
-  //
-  // With autoDownload enabled, checkForUpdates() also kicks off the asset
-  // download and exposes it as `result.downloadPromise`. A transient failure
-  // there — e.g. a 403 from the GitHub release CDN once a signed asset URL's
-  // token has expired — rejects that promise. The failure is already surfaced
-  // to the UI by the "error" handler below (via dispatchError) and the check
-  // retries on the interval, so swallow the rejection to avoid it bubbling up
-  // as an unhandled rejection and being reported as a false crash.
-  //
-  // We deliberately avoid autoUpdater.checkForUpdatesAndNotify(): it consumes
-  // downloadPromise internally with a `void ...then()` that has no catch
-  // (electron-updater's AppUpdater.js), so a download failure there leaks an
-  // unhandled rejection that callers cannot intercept. Our own
+  // With autoDownload on, checkForUpdates() also starts the asset download and
+  // exposes it as result.downloadPromise. Swallow that rejection so a transient
+  // download failure (e.g. an expired 403 from the release CDN) is handled by
+  // the "error" event rather than leaking as an unhandled rejection / false
+  // crash report. We avoid checkForUpdatesAndNotify(): it drops the same
+  // rejection internally in a way callers can't intercept, and our own
   // "update-downloaded" handler already shows the completion notification.
   function runUpdateCheck(): void {
     autoUpdater
@@ -2105,8 +2096,7 @@ app.whenReady().then(async () => {
     if (is.dev) return null;
     try {
       const result = await autoUpdater.checkForUpdates();
-      // With autoDownload enabled the check may start a download; swallow its
-      // rejection so a transient CDN failure isn't an unhandled rejection.
+      // Swallow the auto-download rejection (see runUpdateCheck).
       void result?.downloadPromise?.catch(() => {});
       const latest = result?.updateInfo?.version;
       if (!latest) return null;

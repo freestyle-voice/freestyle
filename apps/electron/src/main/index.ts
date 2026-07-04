@@ -2057,7 +2057,20 @@ app.whenReady().then(async () => {
         note.show();
       }
     } else {
-      autoUpdater.checkForUpdatesAndNotify();
+      // checkForUpdatesAndNotify() awaits the auto-download it kicks off, so a
+      // transient failure there (e.g. a 403 from the GitHub release CDN when a
+      // signed asset URL's token has expired) rejects this promise. The failure
+      // is already surfaced to the UI by the "error" handler above and logged by
+      // the updater logger, so swallow the rejection here — otherwise it bubbles
+      // up as an unhandled rejection and gets reported as an app defect. The
+      // 5-minute interval below retries and self-heals once a fresh URL is minted.
+      autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+        log.warn(
+          `Initial update check failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
       startUpdateCheckInterval();
     }
   }

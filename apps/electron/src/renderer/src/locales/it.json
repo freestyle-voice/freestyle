@@ -280,6 +280,198 @@
     "noTerms": "nessun termine — aggiungine uno per iniziare.",
     "failedToSave": "Salvataggio non riuscito."
   },
+  "tone": {
+    "title": "Tono",
+    "subtitle": "Quanto Freestyle ripulisce e come suona in ogni app.",
+    "loading": "Caricamento tono…",
+    "disabledBanner": {
+      "title": "La pulizia è disattivata.",
+      "desc": "Queste impostazioni di intensità e tono si applicano quando attivi la pulizia con IA in Modelli. Le tue scelte restano salvate fino ad allora.",
+      "goToModels": "Vai a Modelli",
+      "useCloud": "Usa Freestyle Cloud",
+      "useCloudBusy": "Configurazione…"
+    },
+    "routesFrom": "Instradato da",
+    "previewLabel": "Anteprima",
+    "tabs": {
+      "cleanup": "Pulizia",
+      "personal": "Personale",
+      "work": "Lavoro",
+      "email": "E-mail",
+      "everythingElse": "Tutto il resto"
+    },
+    "cleanup": {
+      "eyebrow": "Pulizia",
+      "title": "Sistema mentre parlo.",
+      "desc": "Quanto correggere prima che le tue parole arrivino.",
+      "currentMode": "Modalità attuale",
+      "toggleLabel": "Pulizia",
+      "strengthLabel": "Intensità",
+      "noModelTitle": "Nessun modello di pulizia selezionato.",
+      "noModelDesc": "Scegline uno in Modelli. Queste impostazioni si applicano non appena un modello è configurato.",
+      "noModelCta": "Apri Modelli",
+      "preview": {
+        "rawLabel": "Trascrizione grezza",
+        "rawSample": "ehi ehm puoi mandare l'ultima versione credo che il link nel piè di pagina sia ancora sbagliato",
+        "resultLabel": "Cosa arriva",
+        "customLabel": "Le tue regole"
+      },
+      "cards": {
+        "low": {
+          "title": "Bassa",
+          "desc": "Punteggiatura e maiuscole.",
+          "sample": "Ehi, ehm, puoi mandare l'ultima versione? Credo che il link nel piè di pagina sia ancora sbagliato."
+        },
+        "medium": {
+          "title": "Media",
+          "desc": "Grammatica e formulazione.",
+          "sample": "Ehi, puoi mandare l'ultima versione? Credo che il link nel piè di pagina sia ancora sbagliato."
+        },
+        "high": {
+          "title": "Alta",
+          "desc": "Riscritto per scorrere.",
+          "sample": "Puoi mandare l'ultima versione? Credo che il link nel piè di pagina sia ancora sbagliato."
+        },
+        "custom": {
+          "title": "Personalizzata",
+          "desc": "Istruzioni tue.",
+          "sample": "Il tuo prompt decide quanto riscrivere, sintetizzare o mantenere."
+        }
+      }
+    },
+    "apps": {
+      "addedLabel": "Instradato anche qui",
+      "add": "Aggiungi instradamento",
+      "placeholder": "Nome app o sito web",
+      "useCurrent": "Usa app attuale",
+      "detecting": "Rilevamento…",
+      "confirm": "Aggiungi",
+      "cancel": "Annulla",
+      "remove": "Rimuovi",
+      "hint": "Aggiungi qualsiasi app o sito web che debba usare questo tono.",
+      "anyUnlisted": "Qualsiasi app che non riconosciamo",
+      "dialogTitle": "Aggiungi instradamenti",
+      "currentRoutes": "Aggiunte qui",
+      "currentRoute": "Già aggiunta qui",
+      "includedByDefault": "Inclusa qui per impostazione predefinita",
+      "openApps": "App aperte",
+      "openAppsEmpty": "Nessuna app aperta trovata al momento. Apri l'app desiderata, poi aggiorna.",
+      "loadingOpenApps": "Ricerca delle app aperte…",
+      "refresh": "Aggiorna",
+      "pickApp": "Aggiungi questa app",
+      "moveFrom": "Si sposta da {{destination}}",
+      "websiteLabel": "Sito web",
+      "websitePlaceholder": "reddit.com o x.com",
+      "addWebsite": "Aggiungi sito web",
+      "matchByDomain": "Corrisponde per dominio",
+      "kindApp": "App",
+      "kindSite": "Sito web"
+    },
+    "personal": {
+      "eyebrow": "Messaggi personali",
+      "title": "La tua voce nei messaggi.",
+      "desc": "Usato in Messaggi, WhatsApp, Telegram e Discord.",
+      "preview": {
+        "rawSample": "ehi ehm sono in ritardo di tipo 10 minuti arrivo a breve"
+      },
+      "cards": {
+        "polished": {
+          "title": "Curata",
+          "desc": "Maiuscole e punteggiatura completa.",
+          "sample": "Ehi, sono in ritardo di circa 10 minuti. Arrivo a breve."
+        },
+        "casual": {
+          "title": "Informale",
+          "desc": "Punteggiatura leggera.",
+          "sample": "Ehi sono in ritardo di circa 10 min, arrivo a breve"
+        },
+        "very_casual": {
+          "title": "Molto informale",
+          "desc": "Minuscolo e abbreviato.",
+          "sample": "in ritardo tipo 10 min arrivo a breve"
+        }
+      }
+    },
+    "work": {
+      "eyebrow": "Corrispondenza di lavoro",
+      "title": "La tua voce professionale.",
+      "desc": "Usato in Slack, LinkedIn e nelle chat di lavoro riconosciute.",
+      "preview": {
+        "sender": "Alex",
+        "time": "14:14",
+        "rawSample": "ho riletto il documento ehm servono ancora un paio di modifiche ehm stringere l'introduzione e aggiornare i link nel piè di pagina"
+      },
+      "cards": {
+        "direct": {
+          "title": "Diretto",
+          "desc": "Breve e mirato.",
+          "sample": "Ho riletto il documento. Servono ancora un paio di modifiche: stringere l'introduzione e aggiornare i link nel piè di pagina."
+        },
+        "friendly": {
+          "title": "Entusiasta",
+          "desc": "Positivo e cordiale.",
+          "sample": "Ho riletto il documento e ci siamo quasi! Servono ancora un paio di modifiche, soprattutto l'introduzione e i link nel piè di pagina."
+        },
+        "formal": {
+          "title": "Formale",
+          "desc": "Formale e completo.",
+          "sample": "Ho esaminato il documento. Sono ancora necessarie alcune revisioni, in particolare nell'introduzione e nei link nel piè di pagina."
+        }
+      }
+    },
+    "email": {
+      "eyebrow": "E-mail",
+      "title": "La tua voce nelle e-mail.",
+      "desc": "Usato in Gmail, Outlook, Apple Mail e Proton.",
+      "preview": {
+        "to": "Sam",
+        "subject": "Riunione di giovedì + prossimi passi",
+        "rawSample": "ciao sam ehm confermo solo che siamo ancora d'accordo per giovedì alle 2 ehm ti mando il piano rivisto domani mattina fammi sapere se vuoi aggiungere altro grazie"
+      },
+      "cards": {
+        "casual": {
+          "title": "Informale",
+          "desc": "Breve e colloquiale.",
+          "sample": "Ciao Sam,\n\nconfermo che siamo ancora d'accordo per giovedì alle 2. Ti mando il piano rivisto domani mattina. Fammi sapere se vuoi aggiungere altro.\n\nGrazie,"
+        },
+        "warm": {
+          "title": "Cordiale",
+          "desc": "Scorrevole e garbato.",
+          "sample": "Ciao Sam,\n\nvolevo solo confermare che siamo ancora d'accordo per giovedì alle 2. Ti invierò il piano rivisto domani mattina e aggiungo volentieri qualsiasi altra cosa tu voglia trattare.\n\nGrazie,"
+        },
+        "formal": {
+          "title": "Formale",
+          "desc": "Formale e strutturato.",
+          "sample": "Gentile Sam,\n\nle scrivo per confermare la nostra riunione di giovedì alle 14:00. Le invierò il piano rivisto domani mattina. La prego di farmi sapere se desidera includere altro.\n\nCordiali saluti,"
+        }
+      }
+    },
+    "everythingElse": {
+      "eyebrow": "Tutto il resto",
+      "title": "Tutto il resto.",
+      "desc": "Ovunque non sia una chat o un'e-mail.",
+      "preview": {
+        "rawSample": "ho appena messo il fix ehm dovrebbe essere testabile ora"
+      },
+      "cards": {
+        "casual": {
+          "title": "Informale",
+          "desc": "Rilassato e leggero.",
+          "sample": "ho appena messo il fix, dovrebbe essere testabile ora"
+        },
+        "neutral": {
+          "title": "Neutro",
+          "desc": "Pulito ed equilibrato.",
+          "sample": "Ho appena messo il fix. Dovrebbe essere testabile ora."
+        },
+        "professional": {
+          "title": "Professionale",
+          "desc": "Curato e misurato.",
+          "sample": "Ho applicato il fix; dovrebbe essere pronto per il test ora."
+        }
+      }
+    }
+  },
   "formats": {
     "title": "Formati",
     "loading": "Caricamento formati...",

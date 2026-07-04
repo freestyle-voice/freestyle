@@ -218,6 +218,7 @@ export default function TonePage(): React.JSX.Element {
   );
   const [assignments, setAssignments] = useState<CleanupAppAssignment[]>([]);
   const [hasCleanupModel, setHasCleanupModel] = useState(false);
+  const [usingCloud, setUsingCloud] = useState(false);
   const [activeTab, setActiveTab] = usePersistentState<ToneTab>(
     "tone.activeTab",
     "cleanup",
@@ -302,39 +303,53 @@ export default function TonePage(): React.JSX.Element {
   // Turn cleanup on by wiring Freestyle Cloud as the cleanup model. Requires a
   // signed-in cloud session; mirrors the Models page "Use Freestyle Cloud" flow.
   const onUseCloud = useCallback(async () => {
-    const authed = cloudAuth.user
-      ? !!(await cloudAuth.refresh())
-      : !!(await cloudAuth.signIn());
-    if (!authed) return;
-
-    const client = getClient();
-    const availRes = await client.api.models.available.$get();
-    if (!availRes.ok) return;
-    const models = (await availRes.json()) as AvailableModel[];
-    const cloudLlm = models.find(
-      (model) =>
-        model.type === "llm" && model.provider_id === FREESTYLE_CLOUD_PROVIDER,
-    );
-    if (!cloudLlm) return;
-
-    await client.api.models.configured.$post({
-      json: {
-        provider: cloudLlm.provider_id,
-        model_id: cloudLlm.model_id,
-        model_name: cloudLlm.model_name,
-        type: "llm",
-        is_default: true,
-      },
-    });
+    if (usingCloud) return;
+    setUsingCloud(true);
     try {
+      const authed = cloudAuth.user
+        ? !!(await cloudAuth.refresh())
+        : !!(await cloudAuth.signIn());
+      if (!authed) return;
+
+      const client = getClient();
+      const availRes = await client.api.models.available.$get();
+      if (!availRes.ok) return;
+      const models = (await availRes.json()) as AvailableModel[];
+      const cloudLlm = models.find(
+        (model) =>
+          model.type === "llm" &&
+          model.provider_id === FREESTYLE_CLOUD_PROVIDER,
+      );
+      if (!cloudLlm) return;
+
+      // Configure the cloud cleanup model first; only flip llm_cleanup on once
+      // the model is actually persisted, otherwise cleanup would be "enabled"
+      // with no model behind it (server silently returns raw text).
+      const configRes = await client.api.models.configured.$post({
+        json: {
+          provider: cloudLlm.provider_id,
+          model_id: cloudLlm.model_id,
+          model_name: cloudLlm.model_name,
+          type: "llm",
+          is_default: true,
+        },
+      });
+      if (!configRes.ok) {
+        console.error(
+          `Failed to configure Freestyle Cloud cleanup model (${configRes.status})`,
+        );
+        return;
+      }
+
       await saveSetting(SETTINGS_KEYS.llmCleanup, "true");
       setLlmCleanup(true);
+      await loadData();
     } catch (err) {
       console.error("Failed to enable cleanup:", err);
-      return;
+    } finally {
+      setUsingCloud(false);
     }
-    await loadData();
-  }, [cloudAuth, loadData, saveSetting]);
+  }, [cloudAuth, loadData, saveSetting, usingCloud]);
 
   const selectCleanupMode = useCallback(
     (next: CleanupCardValue) => {
@@ -463,8 +478,11 @@ export default function TonePage(): React.JSX.Element {
         {!llmCleanup ? (
           <CleanupDisabledBanner
             signedIn={!!cloudAuth.user}
+            busy={usingCloud}
             onUseCloud={() => void onUseCloud()}
           />
+        ) : !hasCleanupModel ? (
+          <CleanupNoModelBanner />
         ) : null}
 
         <Tabs
@@ -502,7 +520,6 @@ export default function TonePage(): React.JSX.Element {
               onSaveCustomPrompt={() => void saveCleanupCustomPrompt()}
               onResetToPreset={resetToPresetMode}
               savingCustomPrompt={savingCustomPrompt}
-              hasCleanupModel={hasCleanupModel}
               disabled={!llmCleanup}
             />
           </TabsContent>
@@ -590,9 +607,11 @@ export default function TonePage(): React.JSX.Element {
 // one-click Freestyle Cloud path when signed in).
 function CleanupDisabledBanner({
   signedIn,
+  busy,
   onUseCloud,
 }: {
   signedIn: boolean;
+  busy: boolean;
   onUseCloud: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
@@ -608,8 +627,10 @@ function CleanupDisabledBanner({
       </div>
       <div className="flex items-center gap-2">
         {signedIn ? (
-          <Button variant="ink" size="sm" onClick={onUseCloud}>
-            {t("tone.disabledBanner.useCloud")}
+          <Button variant="ink" size="sm" onClick={onUseCloud} disabled={busy}>
+            {busy
+              ? t("tone.disabledBanner.useCloudBusy")
+              : t("tone.disabledBanner.useCloud")}
           </Button>
         ) : null}
         <Button asChild variant="outline" size="sm">
@@ -618,6 +639,28 @@ function CleanupDisabledBanner({
           </Link>
         </Button>
       </div>
+    </div>
+  );
+}
+
+// Cleanup is enabled but no LLM model is configured, so nothing actually runs.
+// Shown across every Tone tab (not just the Cleanup tab) since the tone
+// selectors have no effect until a model is picked.
+function CleanupNoModelBanner(): React.JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div className="border-border/70 bg-card mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed px-4 py-3.5">
+      <div className="min-w-0">
+        <p className="text-foreground text-[13px] font-medium">
+          {t("tone.cleanup.noModelTitle")}
+        </p>
+        <p className="text-muted-foreground mt-0.5 text-[12px] leading-[1.5]">
+          {t("tone.cleanup.noModelDesc")}
+        </p>
+      </div>
+      <Button asChild variant="outline" size="sm">
+        <Link to="/settings/models">{t("tone.cleanup.noModelCta")}</Link>
+      </Button>
     </div>
   );
 }
@@ -631,7 +674,6 @@ function CleanupTonePanel({
   onSaveCustomPrompt,
   onResetToPreset,
   savingCustomPrompt,
-  hasCleanupModel,
   disabled,
 }: {
   value: CleanupCardValue;
@@ -642,7 +684,6 @@ function CleanupTonePanel({
   onSaveCustomPrompt: () => void;
   onResetToPreset: () => void;
   savingCustomPrompt: boolean;
-  hasCleanupModel: boolean;
   disabled?: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
@@ -697,22 +738,6 @@ function CleanupTonePanel({
           {t("tone.cleanup.desc")}
         </p>
       </section>
-
-      {!disabled && !hasCleanupModel ? (
-        <div className="border-border/70 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-foreground text-[13px] font-medium">
-              {t("tone.cleanup.noModelTitle")}
-            </p>
-            <p className="text-muted-foreground mt-0.5 text-[12px] leading-[1.5]">
-              {t("tone.cleanup.noModelDesc")}
-            </p>
-          </div>
-          <Button asChild variant="outline" size="sm">
-            <Link to="/settings/models">{t("tone.cleanup.noModelCta")}</Link>
-          </Button>
-        </div>
-      ) : null}
 
       <div className="space-y-5">
         <div

@@ -281,6 +281,198 @@
     "failedToSave": "Échec de l'enregistrement de l'entrée.",
     "importFailed": "Importation échouée — le fichier doit être du JSON valide."
   },
+  "tone": {
+    "title": "Ton",
+    "subtitle": "À quel point Freestyle nettoie, et comment ça sonne dans chaque app.",
+    "loading": "Chargement du ton…",
+    "disabledBanner": {
+      "title": "Le nettoyage est désactivé.",
+      "desc": "Ces réglages d'intensité et de ton s'appliquent dès que vous activez le nettoyage par IA dans Modèles. Vos choix sont enregistrés en attendant.",
+      "goToModels": "Aller à Modèles",
+      "useCloud": "Utiliser Freestyle Cloud",
+      "useCloudBusy": "Configuration…"
+    },
+    "routesFrom": "Routé depuis",
+    "previewLabel": "Aperçu",
+    "tabs": {
+      "cleanup": "Nettoyage",
+      "personal": "Personnel",
+      "work": "Travail",
+      "email": "E-mail",
+      "everythingElse": "Tout le reste"
+    },
+    "cleanup": {
+      "eyebrow": "Nettoyage",
+      "title": "Mets de l'ordre pendant que je parle.",
+      "desc": "Combien corriger avant que vos mots n'arrivent.",
+      "currentMode": "Mode actuel",
+      "toggleLabel": "Nettoyage",
+      "strengthLabel": "Intensité",
+      "noModelTitle": "Aucun modèle de nettoyage sélectionné.",
+      "noModelDesc": "Choisissez-en un dans Modèles. Ces réglages s'appliquent dès qu'un modèle est configuré.",
+      "noModelCta": "Ouvrir Modèles",
+      "preview": {
+        "rawLabel": "Transcription brute",
+        "rawSample": "hé euh tu peux envoyer la dernière version je crois que le lien du pied de page est toujours faux",
+        "resultLabel": "Ce qui sort",
+        "customLabel": "Vos règles"
+      },
+      "cards": {
+        "low": {
+          "title": "Faible",
+          "desc": "Ponctuation et majuscules.",
+          "sample": "Hé, euh, tu peux envoyer la dernière version ? Je crois que le lien du pied de page est toujours faux."
+        },
+        "medium": {
+          "title": "Moyen",
+          "desc": "Grammaire et formulation.",
+          "sample": "Hé, tu peux envoyer la dernière version ? Je crois que le lien du pied de page est toujours faux."
+        },
+        "high": {
+          "title": "Élevé",
+          "desc": "Réécrit pour la fluidité.",
+          "sample": "Tu peux envoyer la dernière version ? Je crois que le lien du pied de page est toujours faux."
+        },
+        "custom": {
+          "title": "Personnalisé",
+          "desc": "Vos propres instructions.",
+          "sample": "Votre prompt décide de ce qu'il faut réécrire, condenser ou conserver."
+        }
+      }
+    },
+    "apps": {
+      "addedLabel": "Aussi routé ici",
+      "add": "Ajouter une route",
+      "placeholder": "Nom d'app ou site web",
+      "useCurrent": "Utiliser l'app actuelle",
+      "detecting": "Détection…",
+      "confirm": "Ajouter",
+      "cancel": "Annuler",
+      "remove": "Retirer",
+      "hint": "Ajoutez toute app ou tout site web qui doit utiliser ce ton.",
+      "anyUnlisted": "Toute app que nous ne reconnaissons pas",
+      "dialogTitle": "Ajouter des routes",
+      "currentRoutes": "Ajoutées ici",
+      "currentRoute": "Déjà ajoutée ici",
+      "includedByDefault": "Incluse ici par défaut",
+      "openApps": "Apps ouvertes",
+      "openAppsEmpty": "Aucune app ouverte trouvée pour l'instant. Ouvrez l'app voulue, puis actualisez.",
+      "loadingOpenApps": "Recherche des apps ouvertes…",
+      "refresh": "Actualiser",
+      "pickApp": "Ajouter cette app",
+      "moveFrom": "Déplacée depuis {{destination}}",
+      "websiteLabel": "Site web",
+      "websitePlaceholder": "reddit.com ou x.com",
+      "addWebsite": "Ajouter un site web",
+      "matchByDomain": "Correspond par domaine",
+      "kindApp": "App",
+      "kindSite": "Site web"
+    },
+    "personal": {
+      "eyebrow": "Messages personnels",
+      "title": "Ta voix en message.",
+      "desc": "Utilisé dans Messages, WhatsApp, Telegram et Discord.",
+      "preview": {
+        "rawSample": "hé euh j'ai genre 10 minutes de retard j'arrive bientôt"
+      },
+      "cards": {
+        "polished": {
+          "title": "Soigné",
+          "desc": "Majuscules et ponctuation complète.",
+          "sample": "Hé, j'ai environ 10 minutes de retard. J'arrive bientôt."
+        },
+        "casual": {
+          "title": "Décontracté",
+          "desc": "Ponctuation légère.",
+          "sample": "Hé j'ai environ 10 min de retard, j'arrive bientôt"
+        },
+        "very_casual": {
+          "title": "Très décontracté",
+          "desc": "Minuscules et abrégé.",
+          "sample": "genre 10 min de retard j'arrive bientôt"
+        }
+      }
+    },
+    "work": {
+      "eyebrow": "Correspondance professionnelle",
+      "title": "Ta voix pro.",
+      "desc": "Utilisé dans Slack, LinkedIn et les messageries pro reconnues.",
+      "preview": {
+        "sender": "Alex",
+        "time": "14:14",
+        "rawSample": "j'ai relu le document euh il faut encore quelques changements euh resserrer l'intro et mettre à jour les liens du pied de page"
+      },
+      "cards": {
+        "direct": {
+          "title": "Direct",
+          "desc": "Court et précis.",
+          "sample": "J'ai relu le document. Il faut encore quelques changements : resserrer l'intro et mettre à jour les liens du pied de page."
+        },
+        "friendly": {
+          "title": "Enthousiaste",
+          "desc": "Positif et chaleureux.",
+          "sample": "J'ai relu le document et c'est vraiment presque parfait ! Il faut encore quelques changements, surtout l'intro et les liens du pied de page."
+        },
+        "formal": {
+          "title": "Formel",
+          "desc": "Formel et complet.",
+          "sample": "J'ai relu le document. Quelques révisions restent nécessaires, en particulier dans l'introduction et les liens du pied de page."
+        }
+      }
+    },
+    "email": {
+      "eyebrow": "E-mails",
+      "title": "Ta voix par e-mail.",
+      "desc": "Utilisé dans Gmail, Outlook, Apple Mail et Proton.",
+      "preview": {
+        "to": "Sam",
+        "subject": "Réunion de jeudi + prochaines étapes",
+        "rawSample": "bonjour sam euh je confirme juste qu'on est toujours d'accord pour jeudi à 14 h euh je t'envoie le plan révisé demain matin dis-moi si tu veux ajouter autre chose merci"
+      },
+      "cards": {
+        "casual": {
+          "title": "Décontracté",
+          "desc": "Court et naturel.",
+          "sample": "Bonjour Sam,\n\nJe confirme qu'on est toujours d'accord pour jeudi à 14 h. Je t'envoie le plan révisé demain matin. Dis-moi si tu veux ajouter autre chose.\n\nMerci,"
+        },
+        "warm": {
+          "title": "Chaleureux",
+          "desc": "Fluide et délicat.",
+          "sample": "Bonjour Sam,\n\nJe voulais simplement confirmer que nous sommes toujours d'accord pour jeudi à 14 h. Je t'enverrai le plan révisé demain matin, et j'ajouterai volontiers tout ce que tu souhaites aborder.\n\nMerci,"
+        },
+        "formal": {
+          "title": "Formel",
+          "desc": "Formel et structuré.",
+          "sample": "Bonjour Sam,\n\nJe vous écris pour confirmer notre réunion de jeudi à 14 h 00. Je vous enverrai le plan révisé demain matin. N'hésitez pas à me dire si vous souhaitez inclure autre chose.\n\nCordialement,"
+        }
+      }
+    },
+    "everythingElse": {
+      "eyebrow": "Tout le reste",
+      "title": "Tout le reste.",
+      "desc": "Partout où ce n'est ni un chat ni un e-mail.",
+      "preview": {
+        "rawSample": "je viens de pousser le correctif euh ça devrait être testable maintenant"
+      },
+      "cards": {
+        "casual": {
+          "title": "Décontracté",
+          "desc": "Détendu et léger.",
+          "sample": "je viens de pousser le correctif, ça devrait être testable maintenant"
+        },
+        "neutral": {
+          "title": "Neutre",
+          "desc": "Net et équilibré.",
+          "sample": "Je viens de pousser le correctif. Ça devrait être testable maintenant."
+        },
+        "professional": {
+          "title": "Professionnel",
+          "desc": "Soigné et posé.",
+          "sample": "J'ai poussé le correctif ; il devrait être prêt à tester maintenant."
+        }
+      }
+    }
+  },
   "formats": {
     "title": "Formats",
     "loading": "Chargement des formats…",

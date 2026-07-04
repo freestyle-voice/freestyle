@@ -281,6 +281,198 @@
     "failedToSave": "Eintrag konnte nicht gespeichert werden.",
     "importFailed": "Import fehlgeschlagen — die Datei muss gültiges JSON sein."
   },
+  "tone": {
+    "title": "Ton",
+    "subtitle": "Wie stark Freestyle aufräumt – und wie es in jeder App klingt.",
+    "loading": "Ton wird geladen…",
+    "disabledBanner": {
+      "title": "Bereinigung ist aus.",
+      "desc": "Diese Stärke- und Ton-Einstellungen greifen, sobald du die KI-Bereinigung in Modelle aktivierst. Deine Auswahl bleibt bis dahin gespeichert.",
+      "goToModels": "Zu Modelle",
+      "useCloud": "Freestyle Cloud verwenden",
+      "useCloudBusy": "Wird eingerichtet…"
+    },
+    "routesFrom": "Weitergeleitet von",
+    "previewLabel": "Vorschau",
+    "tabs": {
+      "cleanup": "Bereinigung",
+      "personal": "Privat",
+      "work": "Beruflich",
+      "email": "E-Mail",
+      "everythingElse": "Alles andere"
+    },
+    "cleanup": {
+      "eyebrow": "Bereinigung",
+      "title": "Aufräumen, während ich spreche.",
+      "desc": "Wie viel korrigiert wird, bevor deine Worte ankommen.",
+      "currentMode": "Aktueller Modus",
+      "toggleLabel": "Bereinigung",
+      "strengthLabel": "Stärke",
+      "noModelTitle": "Kein Bereinigungsmodell ausgewählt.",
+      "noModelDesc": "Wähle eines unter Modelle. Diese Einstellungen greifen, sobald ein Modell konfiguriert ist.",
+      "noModelCta": "Modelle öffnen",
+      "preview": {
+        "rawLabel": "Rohtranskript",
+        "rawSample": "hey äh kannst du die neueste version schicken ich glaub der footer-link ist immer noch falsch",
+        "resultLabel": "Was ankommt",
+        "customLabel": "Deine Regeln"
+      },
+      "cards": {
+        "low": {
+          "title": "Niedrig",
+          "desc": "Zeichensetzung und Großschreibung.",
+          "sample": "Hey, äh, kannst du die neueste Version schicken? Ich glaube, der Footer-Link ist immer noch falsch."
+        },
+        "medium": {
+          "title": "Mittel",
+          "desc": "Grammatik und Formulierung.",
+          "sample": "Hey, kannst du die neueste Version schicken? Ich glaube, der Footer-Link ist immer noch falsch."
+        },
+        "high": {
+          "title": "Hoch",
+          "desc": "Für den Lesefluss umgeschrieben.",
+          "sample": "Kannst du die neueste Version schicken? Ich glaube, der Footer-Link ist immer noch falsch."
+        },
+        "custom": {
+          "title": "Benutzerdefiniert",
+          "desc": "Deine eigenen Anweisungen.",
+          "sample": "Dein Prompt entscheidet, wie viel umgeschrieben, gestrafft oder beibehalten wird."
+        }
+      }
+    },
+    "apps": {
+      "addedLabel": "Auch hierher geleitet",
+      "add": "Route hinzufügen",
+      "placeholder": "App-Name oder Website",
+      "useCurrent": "Aktuelle App verwenden",
+      "detecting": "Wird erkannt…",
+      "confirm": "Hinzufügen",
+      "cancel": "Abbrechen",
+      "remove": "Entfernen",
+      "hint": "Füge jede App oder Website hinzu, die diesen Ton verwenden soll.",
+      "anyUnlisted": "Jede App, die wir nicht erkennen",
+      "dialogTitle": "Routen hinzufügen",
+      "currentRoutes": "Hier hinzugefügt",
+      "currentRoute": "Bereits hier hinzugefügt",
+      "includedByDefault": "Standardmäßig hier enthalten",
+      "openApps": "Geöffnete Apps",
+      "openAppsEmpty": "Gerade keine geöffneten Apps gefunden. Öffne die gewünschte App und aktualisiere dann.",
+      "loadingOpenApps": "Suche nach geöffneten Apps…",
+      "refresh": "Aktualisieren",
+      "pickApp": "Diese App hinzufügen",
+      "moveFrom": "Wechselt von {{destination}}",
+      "websiteLabel": "Website",
+      "websitePlaceholder": "reddit.com oder x.com",
+      "addWebsite": "Website hinzufügen",
+      "matchByDomain": "Übereinstimmung nach Domain",
+      "kindApp": "App",
+      "kindSite": "Website"
+    },
+    "personal": {
+      "eyebrow": "Private Nachrichten",
+      "title": "Deine Chat-Stimme.",
+      "desc": "Verwendet in Nachrichten, WhatsApp, Telegram und Discord.",
+      "preview": {
+        "rawSample": "hey äh ich bin so 10 minuten zu spät bin gleich da"
+      },
+      "cards": {
+        "polished": {
+          "title": "Geschliffen",
+          "desc": "Groß-/Kleinschreibung und vollständige Zeichensetzung.",
+          "sample": "Hey, ich bin etwa 10 Minuten zu spät. Ich bin gleich da."
+        },
+        "casual": {
+          "title": "Locker",
+          "desc": "Leichte Zeichensetzung.",
+          "sample": "Hey, ich bin ca. 10 Min zu spät, bin gleich da"
+        },
+        "very_casual": {
+          "title": "Sehr locker",
+          "desc": "Kleinschreibung und Kurzform.",
+          "sample": "bin so 10 min zu spät bin gleich da"
+        }
+      }
+    },
+    "work": {
+      "eyebrow": "Berufliche Korrespondenz",
+      "title": "Deine Berufsstimme.",
+      "desc": "Verwendet in Slack, LinkedIn und erkannten beruflichen Chat-Umgebungen.",
+      "preview": {
+        "sender": "Alex",
+        "time": "14:14",
+        "rawSample": "hab das dokument durchgesehen äh ein paar änderungen sind noch nötig ähm die einleitung straffen und die footer-links aktualisieren"
+      },
+      "cards": {
+        "direct": {
+          "title": "Direkt",
+          "desc": "Kurz und auf den Punkt.",
+          "sample": "Dokument durchgesehen. Ein paar Änderungen sind noch nötig: Einleitung straffen und Footer-Links aktualisieren."
+        },
+        "friendly": {
+          "title": "Enthusiastisch",
+          "desc": "Aufgeschlossen und herzlich.",
+          "sample": "Ich habe das Dokument durchgesehen und es sieht richtig gut aus! Ein paar Änderungen sind noch nötig, vor allem die Einleitung und die Footer-Links."
+        },
+        "formal": {
+          "title": "Formell",
+          "desc": "Formell und ausführlich.",
+          "sample": "Ich habe das Dokument geprüft. Einige Überarbeitungen sind noch erforderlich, insbesondere in der Einleitung und bei den Footer-Links."
+        }
+      }
+    },
+    "email": {
+      "eyebrow": "E-Mails",
+      "title": "Deine E-Mail-Stimme.",
+      "desc": "Verwendet in Gmail, Outlook, Apple Mail und Proton.",
+      "preview": {
+        "to": "Sam",
+        "subject": "Meeting am Donnerstag + nächste Schritte",
+        "rawSample": "hi sam ähm ich bestätige nur dass wir für donnerstag um 2 noch dabei sind äh ich schicke den überarbeiteten plan morgen früh sag bescheid wenn du noch etwas ergänzt haben möchtest danke"
+      },
+      "cards": {
+        "casual": {
+          "title": "Locker",
+          "desc": "Kurz und gesprächig.",
+          "sample": "Hi Sam,\n\nich bestätige nur, dass wir für Donnerstag um 2 noch dabei sind. Den überarbeiteten Plan schicke ich dir morgen früh. Sag Bescheid, wenn du noch etwas ergänzt haben möchtest.\n\nDanke,"
+        },
+        "warm": {
+          "title": "Herzlich",
+          "desc": "Geschmeidig und taktvoll.",
+          "sample": "Hi Sam,\n\nich wollte nur bestätigen, dass wir für Donnerstag um 2 noch verabredet sind. Den überarbeiteten Plan sende ich dir morgen früh und ergänze gern noch alles, was du behandelt haben möchtest.\n\nDanke,"
+        },
+        "formal": {
+          "title": "Formell",
+          "desc": "Formell und strukturiert.",
+          "sample": "Hallo Sam,\n\nich möchte unser Meeting am Donnerstag um 14:00 Uhr bestätigen. Den überarbeiteten Plan sende ich Ihnen morgen früh. Bitte teilen Sie mir mit, ob noch etwas berücksichtigt werden soll.\n\nMit freundlichen Grüßen,"
+        }
+      }
+    },
+    "everythingElse": {
+      "eyebrow": "Alles andere",
+      "title": "Alles andere.",
+      "desc": "Überall, wo es kein Chat oder keine E-Mail ist.",
+      "preview": {
+        "rawSample": "hab gerade den fix gepusht äh sollte jetzt testbar sein"
+      },
+      "cards": {
+        "casual": {
+          "title": "Locker",
+          "desc": "Entspannt und leicht.",
+          "sample": "hab gerade den fix gepusht, sollte jetzt testbar sein"
+        },
+        "neutral": {
+          "title": "Neutral",
+          "desc": "Sauber und ausgewogen.",
+          "sample": "Habe gerade den Fix gepusht. Sollte jetzt testbar sein."
+        },
+        "professional": {
+          "title": "Professionell",
+          "desc": "Geschliffen und souverän.",
+          "sample": "Ich habe den Fix gepusht; er sollte jetzt testbereit sein."
+        }
+      }
+    }
+  },
   "formats": {
     "title": "Formate",
     "loading": "Formate werden geladen…",

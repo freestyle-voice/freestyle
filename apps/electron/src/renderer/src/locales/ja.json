@@ -281,6 +281,198 @@
     "failedToSave": "エントリーの保存に失敗しました。",
     "importFailed": "インポートに失敗しました — ファイルは有効な JSON である必要があります。"
   },
+  "tone": {
+    "title": "トーン",
+    "subtitle": "Freestyle がどれだけ整えるか、そして各アプリでどう聞こえるか。",
+    "loading": "トーンを読み込み中…",
+    "disabledBanner": {
+      "title": "クリーンアップはオフです。",
+      "desc": "これらの強さとトーンの設定は、モデルで AI クリーンアップをオンにすると適用されます。それまで選択内容は保存されます。",
+      "goToModels": "モデルへ",
+      "useCloud": "Freestyle Cloud を使う",
+      "useCloudBusy": "設定中…"
+    },
+    "routesFrom": "ルート元",
+    "previewLabel": "プレビュー",
+    "tabs": {
+      "cleanup": "クリーンアップ",
+      "personal": "プライベート",
+      "work": "仕事",
+      "email": "メール",
+      "everythingElse": "その他すべて"
+    },
+    "cleanup": {
+      "eyebrow": "クリーンアップ",
+      "title": "話しながら整える。",
+      "desc": "言葉が届く前にどれだけ直すか。",
+      "currentMode": "現在のモード",
+      "toggleLabel": "クリーンアップ",
+      "strengthLabel": "強さ",
+      "noModelTitle": "クリーンアップモデルが選択されていません。",
+      "noModelDesc": "モデルで選択してください。モデルを設定するとすぐにこれらの設定が適用されます。",
+      "noModelCta": "モデルを開く",
+      "preview": {
+        "rawLabel": "生の文字起こし",
+        "rawSample": "ねえ えっと 最新版送ってもらえる フッターのリンクまだ間違ってると思う",
+        "resultLabel": "実際に届く内容",
+        "customLabel": "あなたのルール"
+      },
+      "cards": {
+        "low": {
+          "title": "弱",
+          "desc": "句読点を整える。",
+          "sample": "ねえ、最新版を送ってもらえる？フッターのリンクがまだ間違っていると思う。"
+        },
+        "medium": {
+          "title": "中",
+          "desc": "文法と言い回し。",
+          "sample": "最新版を送ってもらえますか？フッターのリンクがまだ間違っていると思います。"
+        },
+        "high": {
+          "title": "強",
+          "desc": "流れを整えて書き直し。",
+          "sample": "最新版を送っていただけますか？フッターのリンクがまだ間違っているようです。"
+        },
+        "custom": {
+          "title": "カスタム",
+          "desc": "独自の指示。",
+          "sample": "どれだけ書き直し、簡潔にし、残すかはあなたのプロンプト次第です。"
+        }
+      }
+    },
+    "apps": {
+      "addedLabel": "ここにもルーティング",
+      "add": "ルートを追加",
+      "placeholder": "アプリ名またはウェブサイト",
+      "useCurrent": "現在のアプリを使う",
+      "detecting": "検出中…",
+      "confirm": "追加",
+      "cancel": "キャンセル",
+      "remove": "削除",
+      "hint": "このトーンを使うアプリやウェブサイトを追加します。",
+      "anyUnlisted": "認識できないすべてのアプリ",
+      "dialogTitle": "ルートを追加",
+      "currentRoutes": "ここに追加済み",
+      "currentRoute": "すでにここに追加済み",
+      "includedByDefault": "デフォルトでここに含まれます",
+      "openApps": "起動中のアプリ",
+      "openAppsEmpty": "現在起動中のアプリが見つかりません。使いたいアプリを開いてから更新してください。",
+      "loadingOpenApps": "起動中のアプリを検索中…",
+      "refresh": "更新",
+      "pickApp": "このアプリを追加",
+      "moveFrom": "{{destination}} から移動",
+      "websiteLabel": "ウェブサイト",
+      "websitePlaceholder": "reddit.com または x.com",
+      "addWebsite": "ウェブサイトを追加",
+      "matchByDomain": "ドメインで一致",
+      "kindApp": "アプリ",
+      "kindSite": "ウェブサイト"
+    },
+    "personal": {
+      "eyebrow": "個人的なメッセージ",
+      "title": "チャットの声。",
+      "desc": "メッセージ、WhatsApp、Telegram、Discord で使用。",
+      "preview": {
+        "rawSample": "ねえ えっと 10分くらい遅れてる すぐ行くね"
+      },
+      "cards": {
+        "polished": {
+          "title": "丁寧",
+          "desc": "整った表記と句読点。",
+          "sample": "ねえ、10分ほど遅れてる。すぐ行くね。"
+        },
+        "casual": {
+          "title": "カジュアル",
+          "desc": "軽い句読点。",
+          "sample": "ねえ10分くらい遅れてる、すぐ行くね"
+        },
+        "very_casual": {
+          "title": "とてもカジュアル",
+          "desc": "くだけた略記。",
+          "sample": "10分くらい遅れる すぐ行く"
+        }
+      }
+    },
+    "work": {
+      "eyebrow": "仕事のやり取り",
+      "title": "仕事の声。",
+      "desc": "Slack、LinkedIn、認識された仕事用チャットで使用。",
+      "preview": {
+        "sender": "Alex",
+        "time": "14:14",
+        "rawSample": "ドキュメント確認した えっと まだいくつか修正が必要 えっと イントロを引き締めてフッターのリンクを更新して"
+      },
+      "cards": {
+        "direct": {
+          "title": "直接的",
+          "desc": "短く要点だけ。",
+          "sample": "ドキュメントを確認しました。まだいくつか修正が必要です。イントロを引き締め、フッターのリンクを更新してください。"
+        },
+        "friendly": {
+          "title": "熱意のある",
+          "desc": "明るく温かい。",
+          "sample": "ドキュメントを確認しました、かなりいい感じです！まだいくつか修正が必要で、主にイントロとフッターのリンクです。"
+        },
+        "formal": {
+          "title": "フォーマル",
+          "desc": "格式ばって丁寧。",
+          "sample": "ドキュメントを拝見しました。特に序文とフッターのリンクについて、いくつか修正が必要です。"
+        }
+      }
+    },
+    "email": {
+      "eyebrow": "メール",
+      "title": "メールの声。",
+      "desc": "Gmail、Outlook、Apple Mail、Proton で使用。",
+      "preview": {
+        "to": "Sam",
+        "subject": "木曜の打ち合わせ + 次のステップ",
+        "rawSample": "こんにちは サム えっと 木曜の2時で問題ないか確認 えっと 修正した計画は明日の朝送ります 他に追加したいことがあれば教えてください よろしく"
+      },
+      "cards": {
+        "casual": {
+          "title": "カジュアル",
+          "desc": "短く会話的。",
+          "sample": "サムさん\n\n木曜の2時で問題ないか確認です。修正した計画は明日の朝送ります。他に追加したいことがあれば教えてください。\n\nよろしく"
+        },
+        "warm": {
+          "title": "温かい",
+          "desc": "なめらかで配慮のある。",
+          "sample": "サムさん\n\n木曜の2時の件、変更ないか確認させてください。修正した計画は明日の朝お送りします。ほかに取り上げたいことがあれば喜んで追加します。\n\nよろしくお願いします"
+        },
+        "formal": {
+          "title": "フォーマル",
+          "desc": "格式ばって構成された。",
+          "sample": "サム様\n\n木曜日14時のお打ち合わせについてご確認させていただきます。修正した計画は明日の朝お送りいたします。ほかに含めるべき事項がございましたらお知らせください。\n\nよろしくお願いいたします"
+        }
+      }
+    },
+    "everythingElse": {
+      "eyebrow": "その他すべて",
+      "title": "その他すべて。",
+      "desc": "チャットでもメールでもない場所すべて。",
+      "preview": {
+        "rawSample": "さっき修正をプッシュした えっと もうテストできるはず"
+      },
+      "cards": {
+        "casual": {
+          "title": "カジュアル",
+          "desc": "リラックスして軽い。",
+          "sample": "さっき修正をプッシュした、もうテストできるはず"
+        },
+        "neutral": {
+          "title": "ニュートラル",
+          "desc": "すっきりしてバランスの取れた。",
+          "sample": "さっき修正をプッシュしました。もうテストできるはずです。"
+        },
+        "professional": {
+          "title": "プロフェッショナル",
+          "desc": "洗練され落ち着いた。",
+          "sample": "修正をプッシュしました。これでテスト可能なはずです。"
+        }
+      }
+    }
+  },
   "formats": {
     "title": "フォーマット",
     "loading": "フォーマットを読み込み中...",

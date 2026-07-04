@@ -49,6 +49,9 @@ export default function ModelsPage(): React.JSX.Element {
   >(null);
   const [warmingOpen, setWarmingOpen] = useState(false);
   const [cloudPanelExpanded, setCloudPanelExpanded] = useState(true);
+  // Guards the Freestyle Cloud mode buttons while a sign-in / configure round
+  // trip is in flight so a double-click can't fire two overlapping flows.
+  const [cloudBusy, setCloudBusy] = useState(false);
 
   const cloudUserId = cloudAuth.user?.id ?? null;
   const reloadModels = m.reload;
@@ -89,28 +92,40 @@ export default function ModelsPage(): React.JSX.Element {
     return !!(await cloudAuth.signIn());
   };
 
+  const runCloudAction = (action: () => Promise<void>): void => {
+    if (cloudBusy) return;
+    setCloudBusy(true);
+    void (async () => {
+      try {
+        await action();
+      } finally {
+        setCloudBusy(false);
+      }
+    })();
+  };
+
   const useFreestyleCloudForBoth = (): void => {
     if (!freestyleVoice || !freestyleCleanup) return;
-    void (async () => {
+    runCloudAction(async () => {
       if (!(await ensureCloudAuth())) return;
       await m.configureModel(freestyleVoice, "voice");
       await m.configureModel(freestyleCleanup, "llm");
       m.setCleanup(true);
-    })();
+    });
   };
 
   const useFreestyleCloudForTranscription = (): void => {
     if (!freestyleVoice) return;
-    void (async () => {
+    runCloudAction(async () => {
       if (!(await ensureCloudAuth())) return;
       await m.configureModel(freestyleVoice, "voice");
       if (cloudCleanupSelected) m.setCleanup(false);
-    })();
+    });
   };
 
   const useFreestyleCloudForCleanup = (): void => {
     if (!freestyleCleanup) return;
-    void (async () => {
+    runCloudAction(async () => {
       if (!(await ensureCloudAuth())) return;
       if (cloudVoiceActive && fallbackLocalVoice?.defId) {
         await m.selectLocalVoice(
@@ -121,7 +136,7 @@ export default function ModelsPage(): React.JSX.Element {
       }
       await m.configureModel(freestyleCleanup, "llm");
       m.setCleanup(true);
-    })();
+    });
   };
 
   const openVoice = (): void => setModal({ kind: "list", type: "voice" });
@@ -267,6 +282,7 @@ export default function ModelsPage(): React.JSX.Element {
           onUseCleanup={useFreestyleCloudForCleanup}
           canUse={!!freestyleVoice && !!freestyleCleanup}
           cleanupDisabled={cloudVoiceActive && !fallbackLocalVoice}
+          busy={cloudBusy}
         />
         <PairCard
           voice={m.defaultVoice}
@@ -478,6 +494,7 @@ function FreestyleCloudModeCard({
   onUseCleanup,
   canUse,
   cleanupDisabled,
+  busy,
 }: {
   signedIn: boolean;
   voiceSelected: boolean;
@@ -490,6 +507,7 @@ function FreestyleCloudModeCard({
   onUseCleanup: () => void;
   canUse: boolean;
   cleanupDisabled: boolean;
+  busy: boolean;
 }): React.JSX.Element {
   return (
     <section className="border-border bg-card overflow-hidden rounded-[14px] border">
@@ -534,7 +552,7 @@ function FreestyleCloudModeCard({
             title="Transcription"
             description="Use Freestyle Transcribe for speech-to-text, then clean up with your selected model."
             active={voiceSelected && !cleanupSelected}
-            disabled={!canUse}
+            disabled={!canUse || busy}
             onClick={onUseTranscription}
           />
           <CloudRouteOption
@@ -542,7 +560,7 @@ function FreestyleCloudModeCard({
             title="Cleanup"
             description="Keep your current transcription model and let Freestyle Transcribe polish the text."
             active={!voiceSelected && cleanupSelected}
-            disabled={!canUse || cleanupDisabled}
+            disabled={!canUse || cleanupDisabled || busy}
             onClick={onUseCleanup}
           />
           <CloudRouteOption
@@ -550,7 +568,7 @@ function FreestyleCloudModeCard({
             title="All-in-one"
             description="Send audio once for Freestyle Transcribe to transcribe and polish in a single pass."
             active={voiceSelected && cleanupSelected}
-            disabled={!canUse}
+            disabled={!canUse || busy}
             onClick={onUseBoth}
             accent
           />

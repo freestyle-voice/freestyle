@@ -280,6 +280,198 @@
     "noTerms": "sem termos — adicione um para começar.",
     "failedToSave": "Falha ao salvar."
   },
+  "tone": {
+    "title": "Tom",
+    "subtitle": "O quanto o Freestyle limpa — e como soa em cada app.",
+    "loading": "Carregando tom…",
+    "disabledBanner": {
+      "title": "A limpeza está desativada.",
+      "desc": "Estas configurações de intensidade e tom se aplicam quando você ativa a limpeza por IA em Modelos. Suas escolhas ficam salvas até lá.",
+      "goToModels": "Ir para Modelos",
+      "useCloud": "Usar Freestyle Cloud",
+      "useCloudBusy": "Configurando…"
+    },
+    "routesFrom": "Roteado de",
+    "previewLabel": "Prévia",
+    "tabs": {
+      "cleanup": "Limpeza",
+      "personal": "Pessoal",
+      "work": "Trabalho",
+      "email": "E-mail",
+      "everythingElse": "Todo o resto"
+    },
+    "cleanup": {
+      "eyebrow": "Limpeza",
+      "title": "Organiza enquanto eu falo.",
+      "desc": "O quanto corrigir antes de suas palavras chegarem.",
+      "currentMode": "Modo atual",
+      "toggleLabel": "Limpeza",
+      "strengthLabel": "Intensidade",
+      "noModelTitle": "Nenhum modelo de limpeza selecionado.",
+      "noModelDesc": "Escolha um em Modelos. Estas configurações se aplicam assim que um modelo estiver configurado.",
+      "noModelCta": "Abrir Modelos",
+      "preview": {
+        "rawLabel": "Transcrição bruta",
+        "rawSample": "ei é você pode enviar a última versão acho que o link do rodapé ainda está errado",
+        "resultLabel": "O que chega",
+        "customLabel": "Suas regras"
+      },
+      "cards": {
+        "low": {
+          "title": "Baixa",
+          "desc": "Pontuação e maiúsculas.",
+          "sample": "Ei, é, você pode enviar a última versão? Acho que o link do rodapé ainda está errado."
+        },
+        "medium": {
+          "title": "Média",
+          "desc": "Gramática e formulação.",
+          "sample": "Ei, você pode enviar a última versão? Acho que o link do rodapé ainda está errado."
+        },
+        "high": {
+          "title": "Alta",
+          "desc": "Reescrito para fluir.",
+          "sample": "Você pode enviar a última versão? Acho que o link do rodapé ainda está errado."
+        },
+        "custom": {
+          "title": "Personalizada",
+          "desc": "Suas próprias instruções.",
+          "sample": "Seu prompt decide quanto reescrever, condensar ou preservar."
+        }
+      }
+    },
+    "apps": {
+      "addedLabel": "Também roteado aqui",
+      "add": "Adicionar rota",
+      "placeholder": "Nome do app ou site",
+      "useCurrent": "Usar app atual",
+      "detecting": "Detectando…",
+      "confirm": "Adicionar",
+      "cancel": "Cancelar",
+      "remove": "Remover",
+      "hint": "Adicione qualquer app ou site que deva usar este tom.",
+      "anyUnlisted": "Qualquer app que não reconhecemos",
+      "dialogTitle": "Adicionar rotas",
+      "currentRoutes": "Adicionados aqui",
+      "currentRoute": "Já adicionado aqui",
+      "includedByDefault": "Incluído aqui por padrão",
+      "openApps": "Apps abertos",
+      "openAppsEmpty": "Nenhum app aberto encontrado agora. Abra o app desejado e atualize.",
+      "loadingOpenApps": "Procurando apps abertos…",
+      "refresh": "Atualizar",
+      "pickApp": "Adicionar este app",
+      "moveFrom": "Move de {{destination}}",
+      "websiteLabel": "Site",
+      "websitePlaceholder": "reddit.com ou x.com",
+      "addWebsite": "Adicionar site",
+      "matchByDomain": "Corresponde por domínio",
+      "kindApp": "App",
+      "kindSite": "Site"
+    },
+    "personal": {
+      "eyebrow": "Mensagens pessoais",
+      "title": "Sua voz nas mensagens.",
+      "desc": "Usado em Mensagens, WhatsApp, Telegram e Discord.",
+      "preview": {
+        "rawSample": "ei é tô uns 10 minutos atrasado chego logo"
+      },
+      "cards": {
+        "polished": {
+          "title": "Polida",
+          "desc": "Maiúsculas e pontuação completa.",
+          "sample": "Ei, estou uns 10 minutos atrasado. Chego logo."
+        },
+        "casual": {
+          "title": "Casual",
+          "desc": "Pontuação leve.",
+          "sample": "Ei tô uns 10 min atrasado, chego logo"
+        },
+        "very_casual": {
+          "title": "Muito casual",
+          "desc": "Minúsculas e abreviado.",
+          "sample": "uns 10 min atrasado chego logo"
+        }
+      }
+    },
+    "work": {
+      "eyebrow": "Correspondência de trabalho",
+      "title": "Sua voz profissional.",
+      "desc": "Usado no Slack, LinkedIn e chats de trabalho reconhecidos.",
+      "preview": {
+        "sender": "Alex",
+        "time": "14:14",
+        "rawSample": "revisei o documento é ainda precisa de algumas mudanças é enxugar a introdução e atualizar os links do rodapé"
+      },
+      "cards": {
+        "direct": {
+          "title": "Direto",
+          "desc": "Curto e objetivo.",
+          "sample": "Revisei o documento. Ainda precisa de algumas mudanças: enxugar a introdução e atualizar os links do rodapé."
+        },
+        "friendly": {
+          "title": "Entusiasmado",
+          "desc": "Animado e caloroso.",
+          "sample": "Revisei o documento e está quase lá! Ainda precisa de algumas mudanças, principalmente a introdução e os links do rodapé."
+        },
+        "formal": {
+          "title": "Formal",
+          "desc": "Formal e completo.",
+          "sample": "Revisei o documento. Ainda são necessárias algumas revisões, especialmente na introdução e nos links do rodapé."
+        }
+      }
+    },
+    "email": {
+      "eyebrow": "E-mails",
+      "title": "Sua voz nos e-mails.",
+      "desc": "Usado no Gmail, Outlook, Apple Mail e Proton.",
+      "preview": {
+        "to": "Sam",
+        "subject": "Reunião de quinta + próximos passos",
+        "rawSample": "oi sam é só confirmando que continuamos de pé pra quinta às 2 é envio o plano revisado amanhã de manhã me avisa se quiser adicionar mais alguma coisa obrigado"
+      },
+      "cards": {
+        "casual": {
+          "title": "Casual",
+          "desc": "Curto e conversacional.",
+          "sample": "Oi Sam,\n\nSó confirmando que continuamos de pé para quinta às 2. Envio o plano revisado amanhã de manhã. Me avisa se quiser adicionar mais alguma coisa.\n\nObrigado,"
+        },
+        "warm": {
+          "title": "Caloroso",
+          "desc": "Suave e com tato.",
+          "sample": "Oi Sam,\n\nSó queria confirmar que continuamos combinados para quinta às 2. Vou te enviar o plano revisado amanhã de manhã e fico feliz em acrescentar qualquer outra coisa que você queira abordar.\n\nObrigado,"
+        },
+        "formal": {
+          "title": "Formal",
+          "desc": "Formal e estruturado.",
+          "sample": "Prezado Sam,\n\nEscrevo para confirmar nossa reunião de quinta-feira às 14h. Enviarei o plano revisado amanhã de manhã. Por favor, avise se deseja incluir mais algo.\n\nAtenciosamente,"
+        }
+      }
+    },
+    "everythingElse": {
+      "eyebrow": "Todo o resto",
+      "title": "Todo o resto.",
+      "desc": "Em qualquer lugar que não seja um chat ou e-mail.",
+      "preview": {
+        "rawSample": "acabei de subir a correção é já deve dar pra testar agora"
+      },
+      "cards": {
+        "casual": {
+          "title": "Casual",
+          "desc": "Relaxado e leve.",
+          "sample": "acabei de subir a correção, já deve dar pra testar agora"
+        },
+        "neutral": {
+          "title": "Neutro",
+          "desc": "Limpo e equilibrado.",
+          "sample": "Acabei de subir a correção. Já deve dar para testar agora."
+        },
+        "professional": {
+          "title": "Profissional",
+          "desc": "Polido e sereno.",
+          "sample": "Subi a correção; já deve estar pronta para testar agora."
+        }
+      }
+    }
+  },
   "formats": {
     "title": "Formatos",
     "loading": "Carregando formatos...",

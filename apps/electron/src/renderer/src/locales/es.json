@@ -281,6 +281,198 @@
     "failedToSave": "Error al guardar la entrada.",
     "importFailed": "Importación fallida — el archivo debe ser JSON válido."
   },
+  "tone": {
+    "title": "Tono",
+    "subtitle": "Cuánto limpia Freestyle y cómo suena en cada app.",
+    "loading": "Cargando tono…",
+    "disabledBanner": {
+      "title": "La limpieza está desactivada.",
+      "desc": "Estos ajustes de intensidad y tono se aplican cuando activas la limpieza con IA en Modelos. Tus elecciones se guardan hasta entonces.",
+      "goToModels": "Ir a Modelos",
+      "useCloud": "Usar Freestyle Cloud",
+      "useCloudBusy": "Configurando…"
+    },
+    "routesFrom": "Se enruta desde",
+    "previewLabel": "Vista previa",
+    "tabs": {
+      "cleanup": "Limpieza",
+      "personal": "Personal",
+      "work": "Trabajo",
+      "email": "Correo",
+      "everythingElse": "Todo lo demás"
+    },
+    "cleanup": {
+      "eyebrow": "Limpieza",
+      "title": "Ordena mientras hablo.",
+      "desc": "Cuánto corregir antes de que lleguen tus palabras.",
+      "currentMode": "Modo actual",
+      "toggleLabel": "Limpieza",
+      "strengthLabel": "Intensidad",
+      "noModelTitle": "No hay modelo de limpieza seleccionado.",
+      "noModelDesc": "Elige uno en Modelos. Estos ajustes se aplican en cuanto haya un modelo configurado.",
+      "noModelCta": "Abrir Modelos",
+      "preview": {
+        "rawLabel": "Transcripción sin editar",
+        "rawSample": "oye eh puedes enviar la última versión creo que el enlace del pie de página sigue mal",
+        "resultLabel": "Lo que llega",
+        "customLabel": "Tus reglas"
+      },
+      "cards": {
+        "low": {
+          "title": "Baja",
+          "desc": "Puntuación y mayúsculas.",
+          "sample": "Oye, eh, ¿puedes enviar la última versión? Creo que el enlace del pie de página sigue mal."
+        },
+        "medium": {
+          "title": "Media",
+          "desc": "Gramática y redacción.",
+          "sample": "Oye, ¿puedes enviar la última versión? Creo que el enlace del pie de página sigue mal."
+        },
+        "high": {
+          "title": "Alta",
+          "desc": "Reescrito para que fluya.",
+          "sample": "¿Puedes enviar la última versión? Creo que el enlace del pie de página sigue mal."
+        },
+        "custom": {
+          "title": "Personalizada",
+          "desc": "Tus propias instrucciones.",
+          "sample": "Tu prompt decide cuánto reescribir, condensar o conservar."
+        }
+      }
+    },
+    "apps": {
+      "addedLabel": "También se enruta aquí",
+      "add": "Añadir ruta",
+      "placeholder": "Nombre de app o sitio web",
+      "useCurrent": "Usar app actual",
+      "detecting": "Detectando…",
+      "confirm": "Añadir",
+      "cancel": "Cancelar",
+      "remove": "Quitar",
+      "hint": "Añade cualquier app o sitio web que deba usar este tono.",
+      "anyUnlisted": "Cualquier app que no reconozcamos",
+      "dialogTitle": "Añadir rutas",
+      "currentRoutes": "Añadidas aquí",
+      "currentRoute": "Ya añadida aquí",
+      "includedByDefault": "Incluida aquí de forma predeterminada",
+      "openApps": "Apps abiertas",
+      "openAppsEmpty": "No se encontraron apps abiertas ahora mismo. Abre la app que quieras y actualiza.",
+      "loadingOpenApps": "Buscando apps abiertas…",
+      "refresh": "Actualizar",
+      "pickApp": "Añadir esta app",
+      "moveFrom": "Se mueve desde {{destination}}",
+      "websiteLabel": "Sitio web",
+      "websitePlaceholder": "reddit.com o x.com",
+      "addWebsite": "Añadir sitio web",
+      "matchByDomain": "Coincide por dominio",
+      "kindApp": "App",
+      "kindSite": "Sitio web"
+    },
+    "personal": {
+      "eyebrow": "Mensajes personales",
+      "title": "Tu voz al escribir.",
+      "desc": "Se usa en Mensajes, WhatsApp, Telegram y Discord.",
+      "preview": {
+        "rawSample": "oye eh voy como 10 minutos tarde llego enseguida"
+      },
+      "cards": {
+        "polished": {
+          "title": "Pulida",
+          "desc": "Mayúsculas y puntuación completa.",
+          "sample": "Oye, voy unos 10 minutos tarde. Llego enseguida."
+        },
+        "casual": {
+          "title": "Informal",
+          "desc": "Puntuación ligera.",
+          "sample": "Oye voy unos 10 min tarde, llego enseguida"
+        },
+        "very_casual": {
+          "title": "Muy informal",
+          "desc": "Minúsculas y abreviado.",
+          "sample": "voy como 10 min tarde llego enseguida"
+        }
+      }
+    },
+    "work": {
+      "eyebrow": "Correspondencia laboral",
+      "title": "Tu voz profesional.",
+      "desc": "Se usa en Slack, LinkedIn y chats de trabajo reconocidos.",
+      "preview": {
+        "sender": "Alex",
+        "time": "14:14",
+        "rawSample": "revisé el documento eh todavía hacen falta un par de cambios eh ajustar la introducción y actualizar los enlaces del pie de página"
+      },
+      "cards": {
+        "direct": {
+          "title": "Directo",
+          "desc": "Breve y al grano.",
+          "sample": "Revisé el documento. Todavía hacen falta un par de cambios: ajustar la introducción y actualizar los enlaces del pie de página."
+        },
+        "friendly": {
+          "title": "Entusiasta",
+          "desc": "Animado y cercano.",
+          "sample": "¡Revisé el documento y va muy bien! Todavía hacen falta un par de cambios, sobre todo la introducción y los enlaces del pie de página."
+        },
+        "formal": {
+          "title": "Formal",
+          "desc": "Formal y completo.",
+          "sample": "He revisado el documento. Aún se requieren algunas modificaciones, en particular en la introducción y en los enlaces del pie de página."
+        }
+      }
+    },
+    "email": {
+      "eyebrow": "Correos",
+      "title": "Tu voz por correo.",
+      "desc": "Se usa en Gmail, Outlook, Apple Mail y Proton.",
+      "preview": {
+        "to": "Sam",
+        "subject": "Reunión del jueves + próximos pasos",
+        "rawSample": "hola sam eh solo confirmo que seguimos para el jueves a las 2 eh te envío el plan revisado mañana por la mañana avísame si quieres añadir algo más gracias"
+      },
+      "cards": {
+        "casual": {
+          "title": "Informal",
+          "desc": "Breve y cercano.",
+          "sample": "Hola Sam:\n\nSolo confirmo que seguimos para el jueves a las 2. Te envío el plan revisado mañana por la mañana. Avísame si quieres añadir algo más.\n\nGracias,"
+        },
+        "warm": {
+          "title": "Cálido",
+          "desc": "Fluido y con tacto.",
+          "sample": "Hola Sam:\n\nSolo quería confirmar que seguimos en pie para el jueves a las 2. Te enviaré el plan revisado mañana por la mañana y con gusto añado cualquier otra cosa que quieras tratar.\n\nGracias,"
+        },
+        "formal": {
+          "title": "Formal",
+          "desc": "Formal y estructurado.",
+          "sample": "Hola Sam:\n\nLe escribo para confirmar nuestra reunión del jueves a las 14:00. Le enviaré el plan revisado mañana por la mañana. Por favor, indíqueme si desea incluir algo más.\n\nGracias,"
+        }
+      }
+    },
+    "everythingElse": {
+      "eyebrow": "Todo lo demás",
+      "title": "Todo lo demás.",
+      "desc": "En cualquier sitio que no sea un chat o un correo.",
+      "preview": {
+        "rawSample": "acabo de subir el arreglo eh ya debería poder probarse"
+      },
+      "cards": {
+        "casual": {
+          "title": "Informal",
+          "desc": "Relajado y ligero.",
+          "sample": "acabo de subir el arreglo, ya debería poder probarse"
+        },
+        "neutral": {
+          "title": "Neutro",
+          "desc": "Limpio y equilibrado.",
+          "sample": "Acabo de subir el arreglo. Ya debería poder probarse."
+        },
+        "professional": {
+          "title": "Profesional",
+          "desc": "Pulido y sereno.",
+          "sample": "He subido el arreglo; ya debería estar listo para probar."
+        }
+      }
+    }
+  },
   "formats": {
     "title": "Formatos",
     "loading": "Cargando formatos…",

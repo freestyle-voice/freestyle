@@ -318,7 +318,8 @@
       "title": "Cleanup is off.",
       "desc": "These strength and tone settings apply once you turn on AI cleanup in Models. Your choices are saved until then.",
       "goToModels": "Go to Models",
-      "useCloud": "Use Freestyle Cloud"
+      "useCloud": "Use Freestyle Cloud",
+      "useCloudBusy": "Setting up…"
     },
     "routesFrom": "Routes from",
     "previewLabel": "Preview",

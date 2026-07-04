@@ -27,6 +27,7 @@ import { getRewritePromptContext } from "./editor/rewrite-context.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,
+  isTransientCloudError,
   postProcessWithFreestyleCloud,
 } from "./freestyle-cloud.js";
 import {
@@ -263,7 +264,8 @@ export async function postProcess(
         cleanedText = sanitizeTranscriptText(result.cleaned);
       } catch (err) {
         if (err instanceof FreestyleCloudAuthError) throw err;
-        captureException(err);
+        // Transient network faults / upstream 5xx aren't app defects.
+        if (!isTransientCloudError(err)) captureException(err);
         capture("post process failed", {
           provider: llm.provider,
           model: llm.model_id,
@@ -336,7 +338,7 @@ export async function postProcess(
         llmModel = llm.model_id;
         cleanedText = sanitizeTranscriptText(result.text);
       } catch (err) {
-        captureException(err);
+        if (!isTransientCloudError(err)) captureException(err);
         void plugins().emit({
           type: FreestyleEventType.PipelineError,
           stage: PipelineStage.Cleanup,

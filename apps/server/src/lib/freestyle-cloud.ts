@@ -48,6 +48,111 @@ export class FreestyleCloudUsageError extends Error {
   }
 }
 
+/**
+ * Thrown when Freestyle Cloud returns a non-OK response that isn't an auth
+ * (401) or usage (429) failure. Carries the HTTP status so callers can tell an
+ * upstream server fault (5xx) apart from a genuine app defect and avoid
+ * reporting transient outages to error tracking.
+ */
+export class FreestyleCloudRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly detail = "",
+  ) {
+    super(
+      `Freestyle Cloud request failed (${status})${detail ? `: ${detail}` : ""}`,
+    );
+    this.name = "FreestyleCloudRequestError";
+  }
+}
+
+const TRANSIENT_NETWORK_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EPIPE",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_SOCKET",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+]);
+
+/**
+ * True when a request failed for reasons outside the desktop app's control:
+ * transient network faults (connection resets, DNS hiccups, timeouts) or an
+ * upstream 5xx response. `fetch` (undici) surfaces socket errors as a
+ * `TypeError: fetch failed` with the real cause on `.cause`, and timeouts as an
+ * abort — so we walk the cause chain looking for a known network code or abort.
+ * These should be surfaced to the user but never captured as app defects.
+ */
+export function isTransientCloudError(err: unknown): boolean {
+  if (err instanceof FreestyleCloudRequestError) return err.status >= 500;
+
+  const seen = new Set<unknown>();
+  let current: unknown = err;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const e = current as {
+      name?: unknown;
+      code?: unknown;
+      cause?: unknown;
+    };
+    if (typeof e.code === "string" && TRANSIENT_NETWORK_CODES.has(e.code)) {
+      return true;
+    }
+    if (e.name === "TimeoutError" || e.name === "AbortError") return true;
+    current = e.cause;
+  }
+  return false;
+}
+
+/**
+ * Connection-level faults where the request never reached the server, so
+ * retrying a non-idempotent POST is safe. This is deliberately narrower than
+ * {@link TRANSIENT_NETWORK_CODES}: it excludes response-phase timeouts
+ * (`UND_ERR_HEADERS_TIMEOUT`/`UND_ERR_BODY_TIMEOUT`) and generic aborts, where
+ * the request may already be processing server-side and a retry could double
+ * up (e.g. double-charge a transcribe).
+ */
+const RETRIABLE_CONNECTION_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EPIPE",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+
+/**
+ * True when a request threw before reaching the server on a reused connection.
+ * The dominant case is a stale keep-alive socket: undici pools a connection
+ * that an idle timeout or NAT/middlebox silently dropped, then the first write
+ * on resume gets an RST — surfaced as `TypeError: fetch failed` with
+ * `code === "ECONNRESET"` on the cause chain. Since the request never landed,
+ * a single retry on a fresh socket recovers it safely.
+ */
+function isRetriableConnectionError(err: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = err;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === "string" && RETRIABLE_CONNECTION_CODES.has(code)) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/** One extra attempt after the initial request (2 total). */
+const CLOUD_FETCH_ATTEMPTS = 2;
+/** Brief pause before retrying so we don't tight-loop on a refused connection. */
+const CLOUD_RETRY_DELAY_MS = 150;
+
 export interface DeviceCodeResult {
   device_code: string;
   user_code: string;
@@ -194,14 +299,35 @@ async function cloudJson<T>(
   token: string,
   init: RequestInit,
 ): Promise<T> {
-  const res = await fetch(`${freestyleCloudUrl()}${path}`, {
-    ...init,
-    headers: {
-      ...(init.headers ?? {}),
-      authorization: `Bearer ${token}`,
-    },
-    signal: init.signal ?? AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
-  });
+  const url = `${freestyleCloudUrl()}${path}`;
+  let res: Response | undefined;
+  for (let attempt = 0; attempt < CLOUD_FETCH_ATTEMPTS; attempt++) {
+    try {
+      res = await fetch(url, {
+        ...init,
+        headers: {
+          ...(init.headers ?? {}),
+          authorization: `Bearer ${token}`,
+        },
+        // A fresh per-attempt timeout when the caller didn't supply a signal,
+        // so a retry isn't handicapped by the first attempt's elapsed clock.
+        signal: init.signal ?? AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
+      });
+      break;
+    } catch (err) {
+      // Retry once on a stale-socket reset (request never reached the server).
+      // Anything else — including response-phase timeouts — propagates as-is.
+      if (
+        attempt === CLOUD_FETCH_ATTEMPTS - 1 ||
+        !isRetriableConnectionError(err)
+      ) {
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, CLOUD_RETRY_DELAY_MS));
+    }
+  }
+  // Unreachable: the loop either assigns `res` or throws on the final attempt.
+  if (!res) throw new Error("Freestyle Cloud request produced no response");
   if (res.status === 401) throw new FreestyleCloudAuthError();
   if (res.status === 429) {
     const resetsAt = await res
@@ -216,9 +342,7 @@ async function cloudJson<T>(
   }
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(
-      `Freestyle Cloud request failed (${res.status})${detail ? `: ${detail}` : ""}`,
-    );
+    throw new FreestyleCloudRequestError(res.status, detail);
   }
   return (await res.json()) as T;
 }

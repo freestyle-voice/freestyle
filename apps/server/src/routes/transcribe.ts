@@ -6,6 +6,7 @@ import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,
   FreestyleCloudUsageError,
+  isTransientCloudError,
   transcribeWithFreestyleCloud,
 } from "../lib/freestyle-cloud.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
@@ -219,7 +220,11 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       if (err instanceof FreestyleCloudUsageError) {
         return c.json({ error: "usage_exceeded", resetsAt: err.resetsAt }, 429);
       }
-      captureException(err, { provider: voiceProvider, model: voiceModel });
+      // Transient network faults / upstream 5xx aren't app defects — surface
+      // them to the user but don't report them to error tracking.
+      if (!isTransientCloudError(err)) {
+        captureException(err, { provider: voiceProvider, model: voiceModel });
+      }
       return c.json(
         {
           error: "Transcription failed",
@@ -269,10 +274,12 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       invalidateSession();
       return c.json({ error: "cloud_auth_required" }, 401);
     }
-    captureException(err, {
-      provider: defaults.voice.provider,
-      model: defaults.voice.model_id,
-    });
+    if (!isTransientCloudError(err)) {
+      captureException(err, {
+        provider: defaults.voice.provider,
+        model: defaults.voice.model_id,
+      });
+    }
     void plugins().emit({
       type: FreestyleEventType.PipelineError,
       stage: PipelineStage.Transcribe,

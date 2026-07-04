@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { WebSocketServer } from "ws";
+import { isTransientCloudError } from "./lib/freestyle-cloud.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
   activateManagedMlxRuntimeForAppVersion,
@@ -62,7 +63,12 @@ function createApp(pluginMiddleware: MiddlewareHandler[] = []) {
         if (origin) res.headers.set("Access-Control-Allow-Origin", origin);
         return res;
       }
-      captureException(err);
+      // Transient network faults (e.g. `fetch failed` / ECONNRESET when calling
+      // Freestyle Cloud) and upstream 5xx responses aren't app defects. Every
+      // route already guards its own reporting; guard here too so anything that
+      // escapes to this catch-all still gets a graceful 500 without polluting
+      // error tracking with outages outside our control.
+      if (!isTransientCloudError(err)) captureException(err);
       return c.json({ error: "Internal server error" }, 500);
     })
     .get("/", (c) => c.text("Freestyle API"))

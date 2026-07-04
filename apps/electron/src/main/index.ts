@@ -1408,6 +1408,9 @@ async function checkForUpdatesFromMenu(): Promise<void> {
   }
   try {
     const result = await autoUpdater.checkForUpdates();
+    // With autoDownload enabled the check may start a download; swallow its
+    // rejection so a transient CDN failure isn't an unhandled rejection.
+    void result?.downloadPromise?.catch(() => {});
     const latest = result?.updateInfo?.version;
     if (latest && latest !== app.getVersion()) {
       const { response } = await dialog.showMessageBox({
@@ -1953,11 +1956,39 @@ app.whenReady().then(async () => {
   const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 
+  // Run an update check and swallow the auto-download's rejection.
+  //
+  // With autoDownload enabled, checkForUpdates() also kicks off the asset
+  // download and exposes it as `result.downloadPromise`. A transient failure
+  // there — e.g. a 403 from the GitHub release CDN once a signed asset URL's
+  // token has expired — rejects that promise. The failure is already surfaced
+  // to the UI by the "error" handler below (via dispatchError) and the check
+  // retries on the interval, so swallow the rejection to avoid it bubbling up
+  // as an unhandled rejection and being reported as a false crash.
+  //
+  // We deliberately avoid autoUpdater.checkForUpdatesAndNotify(): it consumes
+  // downloadPromise internally with a `void ...then()` that has no catch
+  // (electron-updater's AppUpdater.js), so a download failure there leaks an
+  // unhandled rejection that callers cannot intercept. Our own
+  // "update-downloaded" handler already shows the completion notification.
+  function runUpdateCheck(): void {
+    autoUpdater
+      .checkForUpdates()
+      .then((result) => {
+        void result?.downloadPromise?.catch(() => {});
+      })
+      .catch((err) => {
+        log.warn(
+          `Update check failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+  }
+
   function startUpdateCheckInterval(): void {
     if (updateCheckTimer) return;
-    updateCheckTimer = setInterval(() => {
-      autoUpdater.checkForUpdates().catch(() => {});
-    }, UPDATE_CHECK_INTERVAL_MS);
+    updateCheckTimer = setInterval(runUpdateCheck, UPDATE_CHECK_INTERVAL_MS);
   }
 
   // -- Auto-updater with IPC notifications --
@@ -2057,20 +2088,7 @@ app.whenReady().then(async () => {
         note.show();
       }
     } else {
-      // checkForUpdatesAndNotify() awaits the auto-download it kicks off, so a
-      // transient failure there (e.g. a 403 from the GitHub release CDN when a
-      // signed asset URL's token has expired) rejects this promise. The failure
-      // is already surfaced to the UI by the "error" handler above and logged by
-      // the updater logger, so swallow the rejection here — otherwise it bubbles
-      // up as an unhandled rejection and gets reported as an app defect. The
-      // 5-minute interval below retries and self-heals once a fresh URL is minted.
-      autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-        log.warn(
-          `Initial update check failed: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      });
+      runUpdateCheck();
       startUpdateCheckInterval();
     }
   }
@@ -2087,6 +2105,9 @@ app.whenReady().then(async () => {
     if (is.dev) return null;
     try {
       const result = await autoUpdater.checkForUpdates();
+      // With autoDownload enabled the check may start a download; swallow its
+      // rejection so a transient CDN failure isn't an unhandled rejection.
+      void result?.downloadPromise?.catch(() => {});
       const latest = result?.updateInfo?.version;
       if (!latest) return null;
       // Only report an update when the remote version is actually newer

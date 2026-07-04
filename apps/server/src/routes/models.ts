@@ -50,7 +50,9 @@ async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
       "SELECT key, value FROM settings WHERE key IN ('local_llm_url', 'local_llm_api_key')",
     )
     .all() as { key: string; value: string }[];
-  const settings = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  const settings = Object.fromEntries(
+    rows.map((r) => [r.key, r.value]),
+  ) as Record<string, string | undefined>;
   if (!settings.local_llm_url) return [];
 
   const baseUrl = settings.local_llm_url
@@ -63,7 +65,7 @@ async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
         ? { Authorization: `Bearer ${settings.local_llm_api_key}` }
         : {}),
     },
-    signal: AbortSignal.timeout(3000),
+    signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) return [];
 

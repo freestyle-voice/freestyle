@@ -94,6 +94,26 @@ const stream = new Hono().get(
         voice.model_id,
         true,
       );
+      // Freestyle Cloud post-processes server-side, so its cleanup preferences
+      // are part of the session transport config: if they change mid-session we
+      // must reconnect (a kept-warm upstream captured the old prefs at connect
+      // time and only re-sends them via `reset()`). Folding them into the
+      // compare key makes `sameConfig` false on any change, forcing a fresh
+      // connection. Non-cloud providers don't send cleanup upstream, so this
+      // stays null for them.
+      const cleanupFingerprint =
+        voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
+          ? JSON.stringify([
+              isLlmCleanupEnabled(),
+              getCleanupIntensity(),
+              getCleanupCustomPrompt(),
+              getCleanupPersonalTone(),
+              getCleanupWorkTone(),
+              getCleanupEmailTone(),
+              getCleanupOverallTone(),
+              getCleanupAppAssignments(),
+            ])
+          : null;
       return {
         voice,
         language,
@@ -103,6 +123,7 @@ const stream = new Hono().get(
           voice.model_id,
           language ?? null,
           bias,
+          cleanupFingerprint,
         ]),
       };
     }

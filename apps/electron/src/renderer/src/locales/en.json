@@ -314,6 +314,12 @@
     "title": "Tone",
     "subtitle": "How much Freestyle cleans up — and how it sounds in each app.",
     "loading": "Loading tone…",
+    "disabledBanner": {
+      "title": "Cleanup is off.",
+      "desc": "These strength and tone settings apply once you turn on AI cleanup in Models. Your choices are saved until then.",
+      "goToModels": "Go to Models",
+      "useCloud": "Use Freestyle Cloud"
+    },
     "routesFrom": "Routes from",
     "previewLabel": "Preview",
     "tabs": {
@@ -329,8 +335,6 @@
       "desc": "How much to fix before your words land.",
       "currentMode": "Current mode",
       "toggleLabel": "Cleanup",
-      "off": "Off",
-      "offDesc": "Cleanup is off. Dictation lands exactly as transcribed — your strength and tones are saved for when you turn it back on.",
       "strengthLabel": "Strength",
       "noModelTitle": "No cleanup model selected.",
       "noModelDesc": "Choose one in Models. These settings apply as soon as a model is configured.",
@@ -342,11 +346,6 @@
         "customLabel": "Your rules"
       },
       "cards": {
-        "off": {
-          "title": "Off",
-          "desc": "Exactly as transcribed.",
-          "sample": "hey uh can you send the latest version i think the footer link is still wrong"
-        },
         "low": {
           "title": "Low",
           "desc": "Punctuation and caps.",

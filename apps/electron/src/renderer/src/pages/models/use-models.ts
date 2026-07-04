@@ -1,8 +1,3 @@
-import type { CleanupIntensity } from "@freestyle-voice/validations";
-import {
-  DEFAULT_CLEANUP_INTENSITY,
-  parseCleanupIntensity,
-} from "@freestyle-voice/validations";
 import { getClient } from "@renderer/lib/api";
 import type {
   AvailableModel,
@@ -42,12 +37,6 @@ export interface UseModels {
   whisperStatus: WhisperStatus | null;
   mlxStatus: MlxAsrStatus | null;
   llmCleanup: boolean;
-  cleanupIntensity: CleanupIntensity;
-  cleanupCustomPrompt: string;
-  /** True when the custom prompt has unsaved edits. */
-  customPromptDirty: boolean;
-  /** True while the custom prompt is being persisted. */
-  savingCustomPrompt: boolean;
   mlxKeepAliveMinutes: number;
 
   // Derived
@@ -79,9 +68,6 @@ export interface UseModels {
   deleteLocal: (defId: string, engine?: "whisper" | "mlx") => Promise<void>;
   selectLocalLlmModel: (modelName: string) => Promise<void>;
   setCleanup: (next: boolean) => void;
-  setCleanupIntensity: (next: CleanupIntensity) => void;
-  setCleanupCustomPrompt: (next: string) => void;
-  saveCleanupCustomPrompt: () => Promise<void>;
   saveMlxKeepAliveMinutes: (minutes: number) => void;
   deleteProvider: (provider: string) => Promise<void>;
   reload: () => Promise<void>;
@@ -93,12 +79,6 @@ export function useModels(): UseModels {
   const [apiKeys, setApiKeys] = useState<ApiKeyEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [llmCleanup, setLlmCleanup] = useState(false);
-  const [cleanupIntensity, setCleanupIntensityState] =
-    useState<CleanupIntensity>(DEFAULT_CLEANUP_INTENSITY);
-  const [cleanupCustomPrompt, setCleanupCustomPromptState] = useState("");
-  // The last value persisted to the server — used to detect unsaved edits.
-  const [savedCleanupCustomPrompt, setSavedCleanupCustomPrompt] = useState("");
-  const [savingCustomPrompt, setSavingCustomPrompt] = useState(false);
 
   const [whisperStatus, setWhisperStatus] = useState<WhisperStatus | null>(
     null,
@@ -128,8 +108,6 @@ export function useModels(): UseModels {
         configRes,
         keysRes,
         cleanupRes,
-        cleanupIntensityRes,
-        cleanupCustomPromptRes,
         localUrlRes,
         localKeyRes,
         mlxKeepAliveRes,
@@ -139,12 +117,6 @@ export function useModels(): UseModels {
         client.api.keys.$get(),
         client.api.settings[":key"].$get({
           param: { key: SETTINGS_KEYS.llmCleanup },
-        }),
-        client.api.settings[":key"].$get({
-          param: { key: SETTINGS_KEYS.cleanupIntensity },
-        }),
-        client.api.settings[":key"].$get({
-          param: { key: SETTINGS_KEYS.cleanupCustomPrompt },
         }),
         client.api.settings[":key"].$get({
           param: { key: SETTINGS_KEYS.localLlmUrl },
@@ -162,19 +134,6 @@ export function useModels(): UseModels {
       if (cleanupRes.ok) {
         const data = await cleanupRes.json();
         if ("value" in data && data.value) setLlmCleanup(data.value === "true");
-      }
-      if (cleanupIntensityRes.ok) {
-        const data = await cleanupIntensityRes.json();
-        if ("value" in data && data.value) {
-          setCleanupIntensityState(parseCleanupIntensity(data.value));
-        }
-      }
-      if (cleanupCustomPromptRes.ok) {
-        const data = await cleanupCustomPromptRes.json();
-        if ("value" in data && typeof data.value === "string") {
-          setCleanupCustomPromptState(data.value);
-          setSavedCleanupCustomPrompt(data.value);
-        }
       }
       if (localUrlRes.ok) {
         const data = await localUrlRes.json();
@@ -291,7 +250,6 @@ export function useModels(): UseModels {
   // -------------------------------------------------------------------------
 
   const keyProviders = new Set(apiKeys.map((k) => k.provider));
-  const customPromptDirty = cleanupCustomPrompt !== savedCleanupCustomPrompt;
   const defaultVoice = configured.find(
     (m) => m.type === "voice" && m.is_default === 1,
   );
@@ -481,38 +439,6 @@ export function useModels(): UseModels {
       .catch((err) => console.error("Failed to save LLM cleanup:", err));
   }, []);
 
-  const setCleanupIntensity = useCallback((next: CleanupIntensity) => {
-    setCleanupIntensityState(next);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.cleanupIntensity },
-        json: { value: next },
-      })
-      .catch((err) => console.error("Failed to save cleanup intensity:", err));
-  }, []);
-
-  // Edit the custom prompt locally; persistence happens explicitly via
-  // saveCleanupCustomPrompt (the Save button).
-  const setCleanupCustomPrompt = useCallback((next: string) => {
-    setCleanupCustomPromptState(next);
-  }, []);
-
-  const saveCleanupCustomPrompt = useCallback(async () => {
-    const value = cleanupCustomPrompt;
-    setSavingCustomPrompt(true);
-    try {
-      await getClient().api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.cleanupCustomPrompt },
-        json: { value },
-      });
-      setSavedCleanupCustomPrompt(value);
-    } catch (err) {
-      console.error("Failed to save cleanup custom prompt:", err);
-    } finally {
-      setSavingCustomPrompt(false);
-    }
-  }, [cleanupCustomPrompt]);
-
   // Persist the MLX keep-alive window. At 0 ("cold start") also stop the
   // running server so the model unloads immediately.
   const saveMlxKeepAliveMinutes = useCallback((minutes: number) => {
@@ -617,10 +543,6 @@ export function useModels(): UseModels {
     whisperStatus,
     mlxStatus,
     llmCleanup,
-    cleanupIntensity,
-    cleanupCustomPrompt,
-    customPromptDirty,
-    savingCustomPrompt,
     mlxKeepAliveMinutes,
     keyProviders,
     defaultVoice,
@@ -648,9 +570,6 @@ export function useModels(): UseModels {
     deleteLocal,
     selectLocalLlmModel,
     setCleanup,
-    setCleanupIntensity,
-    setCleanupCustomPrompt,
-    saveCleanupCustomPrompt,
     saveMlxKeepAliveMinutes,
     deleteProvider,
     reload: loadData,

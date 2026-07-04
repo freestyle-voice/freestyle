@@ -77,7 +77,10 @@ export function parseCleanupOverallTone(
 // ---------------------------------------------------------------------------
 
 export const cleanupAppAssignmentSchema = z.object({
-  match: z.string().trim().min(1).max(120),
+  // Lowercased here so the desktop client and the server enforce the same
+  // invariant the runtime matcher relies on: rewrite-context lowercases both the
+  // captured app name and the window/URL text before comparing against `match`.
+  match: z.string().trim().toLowerCase().min(1).max(120),
   label: z.string().trim().min(1).max(120),
   kind: z.enum(["app", "site"]),
   destination: cleanupToneDestinationSchema,

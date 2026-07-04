@@ -78,7 +78,7 @@ export default function ModelsPage(): React.JSX.Element {
   const cloudVoiceActive =
     m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER;
   const cloudCleanupSelected =
-    m.defaultLlm?.provider === FREESTYLE_CLOUD_PROVIDER;
+    m.llmCleanup && m.defaultLlm?.provider === FREESTYLE_CLOUD_PROVIDER;
 
   const fallbackLocalVoice = m.voiceItems.find(
     (item) => item.kind === "local" && item.status === "ready" && item.defId,
@@ -95,6 +95,7 @@ export default function ModelsPage(): React.JSX.Element {
       if (!(await ensureCloudAuth())) return;
       await m.configureModel(freestyleVoice, "voice");
       await m.configureModel(freestyleCleanup, "llm");
+      m.setCleanup(true);
     })();
   };
 
@@ -103,6 +104,7 @@ export default function ModelsPage(): React.JSX.Element {
     void (async () => {
       if (!(await ensureCloudAuth())) return;
       await m.configureModel(freestyleVoice, "voice");
+      if (cloudCleanupSelected) m.setCleanup(false);
     })();
   };
 
@@ -118,11 +120,16 @@ export default function ModelsPage(): React.JSX.Element {
         );
       }
       await m.configureModel(freestyleCleanup, "llm");
+      m.setCleanup(true);
     })();
   };
 
   const openVoice = (): void => setModal({ kind: "list", type: "voice" });
-  const openLlm = (): void => setModal({ kind: "list", type: "llm" });
+  const openLlm = (): void => {
+    // Opening the cleanup picker implies the user wants cleanup on.
+    m.setCleanup(true);
+    setModal({ kind: "list", type: "llm" });
+  };
 
   const onPickCloud = (model: AvailableModel): void => {
     if (modal?.kind !== "list") return;
@@ -264,7 +271,8 @@ export default function ModelsPage(): React.JSX.Element {
         <PairCard
           voice={m.defaultVoice}
           llm={m.defaultLlm}
-          cleanupEnabled={m.llmCleanup}
+          llmCleanup={m.llmCleanup}
+          onToggleCleanup={m.setCleanup}
           onChangeVoice={openVoice}
           onChangeLlm={openLlm}
           onConfigureWarming={

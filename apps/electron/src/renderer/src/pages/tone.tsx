@@ -39,6 +39,8 @@ import {
 import { Textarea } from "@renderer/components/ui/textarea";
 import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
+import { useCloudAuth } from "@renderer/lib/auth-context";
+import type { AvailableModel } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
 import { Check, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -70,7 +72,9 @@ const TONE_TABS: readonly ToneTab[] = [
 const isToneTab = (value: string): value is ToneTab =>
   (TONE_TABS as readonly string[]).includes(value);
 
-type CleanupCardValue = CleanupIntensity | "off";
+const FREESTYLE_CLOUD_PROVIDER = "freestyle-cloud";
+
+type CleanupCardValue = CleanupIntensity;
 
 type ToneCardOption<T extends string> = {
   value: T;
@@ -80,12 +84,6 @@ type ToneCardOption<T extends string> = {
 };
 
 const CLEANUP_OPTIONS: ToneCardOption<CleanupCardValue>[] = [
-  {
-    value: "off",
-    titleKey: "tone.cleanup.cards.off.title",
-    descKey: "tone.cleanup.cards.off.desc",
-    sampleKey: "tone.cleanup.cards.off.sample",
-  },
   {
     value: "low",
     titleKey: "tone.cleanup.cards.low.title",
@@ -198,6 +196,7 @@ const OVERALL_OPTIONS: ToneCardOption<CleanupOverallTone>[] = [
 
 export default function TonePage(): React.JSX.Element {
   const { t } = useTranslation();
+  const cloudAuth = useCloudAuth();
   const [loading, setLoading] = useState(true);
   const [llmCleanup, setLlmCleanup] = useState(false);
   const [cleanupIntensity, setCleanupIntensity] =
@@ -289,22 +288,57 @@ export default function TonePage(): React.JSX.Element {
   }, [loadData]);
 
   const saveSetting = useCallback(async (key: string, value: string) => {
-    await getClient().api.settings[":key"].$put({
+    // The Hono client does not throw on non-2xx — surface server rejections so
+    // callers' .catch handlers fire (and "Saved" state isn't shown on failure).
+    const res = await getClient().api.settings[":key"].$put({
       param: { key },
       json: { value },
     });
+    if (!res.ok) {
+      throw new Error(`Failed to save setting "${key}" (${res.status})`);
+    }
   }, []);
+
+  // Turn cleanup on by wiring Freestyle Cloud as the cleanup model. Requires a
+  // signed-in cloud session; mirrors the Models page "Use Freestyle Cloud" flow.
+  const onUseCloud = useCallback(async () => {
+    const authed = cloudAuth.user
+      ? !!(await cloudAuth.refresh())
+      : !!(await cloudAuth.signIn());
+    if (!authed) return;
+
+    const client = getClient();
+    const availRes = await client.api.models.available.$get();
+    if (!availRes.ok) return;
+    const models = (await availRes.json()) as AvailableModel[];
+    const cloudLlm = models.find(
+      (model) =>
+        model.type === "llm" && model.provider_id === FREESTYLE_CLOUD_PROVIDER,
+    );
+    if (!cloudLlm) return;
+
+    await client.api.models.configured.$post({
+      json: {
+        provider: cloudLlm.provider_id,
+        model_id: cloudLlm.model_id,
+        model_name: cloudLlm.model_name,
+        type: "llm",
+        is_default: true,
+      },
+    });
+    try {
+      await saveSetting(SETTINGS_KEYS.llmCleanup, "true");
+      setLlmCleanup(true);
+    } catch (err) {
+      console.error("Failed to enable cleanup:", err);
+      return;
+    }
+    await loadData();
+  }, [cloudAuth, loadData, saveSetting]);
 
   const selectCleanupMode = useCallback(
     (next: CleanupCardValue) => {
-      if (next === "off") {
-        setLlmCleanup(false);
-        saveSetting(SETTINGS_KEYS.llmCleanup, "false").catch((err) =>
-          console.error("Failed to toggle cleanup:", err),
-        );
-        return;
-      }
-
+      // Enablement lives on the Models page now — this only picks the strength.
       if (next === "custom" && cleanupIntensity !== "custom") {
         const seed =
           cleanupCustomPrompt.trim() ||
@@ -312,11 +346,7 @@ export default function TonePage(): React.JSX.Element {
         setCleanupCustomPrompt(seed);
       }
 
-      setLlmCleanup(true);
       setCleanupIntensity(next);
-      saveSetting(SETTINGS_KEYS.llmCleanup, "true").catch((err) =>
-        console.error("Failed to toggle cleanup:", err),
-      );
       saveSetting(SETTINGS_KEYS.cleanupIntensity, next).catch((err) =>
         console.error("Failed to save cleanup strength:", err),
       );
@@ -411,7 +441,7 @@ export default function TonePage(): React.JSX.Element {
     [assignments, persistAssignments],
   );
 
-  const cleanupMode: CleanupCardValue = llmCleanup ? cleanupIntensity : "off";
+  const cleanupMode: CleanupCardValue = cleanupIntensity;
 
   if (loading) {
     return (
@@ -429,6 +459,13 @@ export default function TonePage(): React.JSX.Element {
     <PageShell>
       <div className="mx-auto w-full max-w-[1060px]">
         <PageHeader title={t("tone.title")} subtitle={t("tone.subtitle")} />
+
+        {!llmCleanup ? (
+          <CleanupDisabledBanner
+            signedIn={!!cloudAuth.user}
+            onUseCloud={() => void onUseCloud()}
+          />
+        ) : null}
 
         <Tabs
           value={activeTab}
@@ -466,6 +503,7 @@ export default function TonePage(): React.JSX.Element {
               onResetToPreset={resetToPresetMode}
               savingCustomPrompt={savingCustomPrompt}
               hasCleanupModel={hasCleanupModel}
+              disabled={!llmCleanup}
             />
           </TabsContent>
 
@@ -484,6 +522,7 @@ export default function TonePage(): React.JSX.Element {
               allAssignments={assignments}
               onAddAssignment={addAssignment}
               onRemoveAssignment={removeAssignment}
+              disabled={!llmCleanup}
             />
           </TabsContent>
 
@@ -500,6 +539,7 @@ export default function TonePage(): React.JSX.Element {
               allAssignments={assignments}
               onAddAssignment={addAssignment}
               onRemoveAssignment={removeAssignment}
+              disabled={!llmCleanup}
             />
           </TabsContent>
 
@@ -516,6 +556,7 @@ export default function TonePage(): React.JSX.Element {
               allAssignments={assignments}
               onAddAssignment={addAssignment}
               onRemoveAssignment={removeAssignment}
+              disabled={!llmCleanup}
             />
           </TabsContent>
 
@@ -535,11 +576,49 @@ export default function TonePage(): React.JSX.Element {
               allAssignments={assignments}
               onAddAssignment={addAssignment}
               onRemoveAssignment={removeAssignment}
+              disabled={!llmCleanup}
             />
           </TabsContent>
         </Tabs>
       </div>
     </PageShell>
+  );
+}
+
+// Shown across every Tone tab while post-processing is off. Cleanup enablement
+// now lives on the Models page, so this points users there (and offers a
+// one-click Freestyle Cloud path when signed in).
+function CleanupDisabledBanner({
+  signedIn,
+  onUseCloud,
+}: {
+  signedIn: boolean;
+  onUseCloud: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div className="border-border/70 bg-card mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed px-4 py-3.5">
+      <div className="min-w-0">
+        <p className="text-foreground text-[13px] font-medium">
+          {t("tone.disabledBanner.title")}
+        </p>
+        <p className="text-muted-foreground mt-0.5 text-[12px] leading-[1.5]">
+          {t("tone.disabledBanner.desc")}
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        {signedIn ? (
+          <Button variant="ink" size="sm" onClick={onUseCloud}>
+            {t("tone.disabledBanner.useCloud")}
+          </Button>
+        ) : null}
+        <Button asChild variant="outline" size="sm">
+          <Link to="/settings/models">
+            {t("tone.disabledBanner.goToModels")}
+          </Link>
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -553,6 +632,7 @@ function CleanupTonePanel({
   onResetToPreset,
   savingCustomPrompt,
   hasCleanupModel,
+  disabled,
 }: {
   value: CleanupCardValue;
   onChange: (value: CleanupCardValue) => void;
@@ -563,6 +643,7 @@ function CleanupTonePanel({
   onResetToPreset: () => void;
   savingCustomPrompt: boolean;
   hasCleanupModel: boolean;
+  disabled?: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
 
@@ -617,7 +698,7 @@ function CleanupTonePanel({
         </p>
       </section>
 
-      {!hasCleanupModel ? (
+      {!disabled && !hasCleanupModel ? (
         <div className="border-border/70 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed px-4 py-3">
           <div className="min-w-0">
             <p className="text-foreground text-[13px] font-medium">
@@ -637,7 +718,11 @@ function CleanupTonePanel({
         <div
           role="radiogroup"
           aria-label={t("tone.cleanup.title")}
-          className="grid grid-cols-2 gap-2.5 min-[560px]:grid-cols-3 min-[1000px]:grid-cols-5"
+          aria-disabled={disabled}
+          className={cn(
+            "grid grid-cols-2 gap-2.5 min-[560px]:grid-cols-3 min-[1000px]:grid-cols-5",
+            disabled && "pointer-events-none opacity-50",
+          )}
         >
           {CLEANUP_OPTIONS.map((option, index) => {
             const selected = option.value === value;
@@ -647,7 +732,8 @@ function CleanupTonePanel({
                 type="button"
                 role="radio"
                 aria-checked={selected}
-                tabIndex={selected ? 0 : -1}
+                disabled={disabled}
+                tabIndex={disabled ? -1 : selected ? 0 : -1}
                 onClick={() => onChange(option.value)}
                 onKeyDown={(event) => handleOptionKeyDown(event, index)}
                 className={cn(
@@ -693,7 +779,12 @@ function CleanupTonePanel({
         </div>
 
         {value === "custom" ? (
-          <div className="border-border bg-card rounded-[18px] border p-5">
+          <div
+            className={cn(
+              "border-border bg-card rounded-[18px] border p-5",
+              disabled && "pointer-events-none opacity-50",
+            )}
+          >
             <div className="mb-2.5 flex items-center justify-between gap-3">
               <Eyebrow text={t("models.cleanup.promptLabel")} />
               <Button
@@ -701,6 +792,7 @@ function CleanupTonePanel({
                 size="sm"
                 className="h-auto p-0"
                 onClick={onResetToPreset}
+                disabled={disabled}
               >
                 {t("models.cleanup.resetToPresets")}
               </Button>
@@ -713,6 +805,7 @@ function CleanupTonePanel({
               maxLength={CLEANUP_CUSTOM_PROMPT_MAX}
               onChange={(event) => onCustomPromptChange(event.target.value)}
               spellCheck={false}
+              disabled={disabled}
               className="mono min-h-[180px] resize-y text-[12px] leading-[1.65]"
               aria-label={t("models.cleanup.promptLabel")}
             />
@@ -722,7 +815,7 @@ function CleanupTonePanel({
                 variant="ink"
                 size="sm"
                 onClick={onSaveCustomPrompt}
-                disabled={savingCustomPrompt || !customPromptDirty}
+                disabled={disabled || savingCustomPrompt || !customPromptDirty}
               >
                 {savingCustomPrompt ? (
                   <>
@@ -783,6 +876,7 @@ function SubsetTonePanel<T extends string>({
   allAssignments,
   onAddAssignment,
   onRemoveAssignment,
+  disabled,
 }: {
   destination: CleanupToneDestination;
   previewKind: "personal" | "work" | "email" | "overall";
@@ -796,6 +890,7 @@ function SubsetTonePanel<T extends string>({
   allAssignments: CleanupAppAssignment[];
   onAddAssignment: (assignment: CleanupAppAssignment) => void;
   onRemoveAssignment: (match: string) => void;
+  disabled?: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const canManageRoutes = destination !== "overall";
@@ -928,7 +1023,11 @@ function SubsetTonePanel<T extends string>({
         <div
           role="radiogroup"
           aria-label={title}
-          className="flex flex-col gap-2.5"
+          aria-disabled={disabled}
+          className={cn(
+            "flex flex-col gap-2.5",
+            disabled && "pointer-events-none opacity-50",
+          )}
         >
           {options.map((option, index) => {
             const selected = option.value === value;
@@ -938,7 +1037,8 @@ function SubsetTonePanel<T extends string>({
                 type="button"
                 role="radio"
                 aria-checked={selected}
-                tabIndex={selected ? 0 : -1}
+                disabled={disabled}
+                tabIndex={disabled ? -1 : selected ? 0 : -1}
                 onClick={() => onChange(option.value)}
                 onKeyDown={(event) => handleOptionKeyDown(event, index)}
                 className={cn(

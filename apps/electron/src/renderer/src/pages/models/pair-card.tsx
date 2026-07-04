@@ -1,4 +1,6 @@
 import { Button } from "@renderer/components/ui/button";
+import { Toggle } from "@renderer/components/voice-row";
+import { cn } from "@renderer/lib/utils";
 
 import { Eyebrow } from "./page-chrome";
 import type { ConfiguredModel } from "./types";
@@ -6,20 +8,23 @@ import { displayName } from "./utils";
 
 // ---------------------------------------------------------------------------
 // PairCard — the current model pair: Voice (required) + cleanup model.
-// Side-by-side layout; each "Change" opens the shared model modal.
+// Side-by-side layout; each "Change" opens the shared model modal. The cleanup
+// side owns the on/off switch for post-processing (llm_cleanup).
 // ---------------------------------------------------------------------------
 
 export function PairCard({
   voice,
   llm,
-  cleanupEnabled,
+  llmCleanup,
+  onToggleCleanup,
   onChangeVoice,
   onChangeLlm,
   onConfigureWarming,
 }: {
   voice: ConfiguredModel | undefined;
   llm: ConfiguredModel | undefined;
-  cleanupEnabled: boolean;
+  llmCleanup: boolean;
+  onToggleCleanup: (next: boolean) => void;
   onChangeVoice: () => void;
   onChangeLlm: () => void;
   /** When set, shows a "Configure model warming" link by the voice button. */
@@ -49,16 +54,16 @@ export function PairCard({
       />
       <div className="border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0">
         <PairSide
-          kicker="AI cleanup · model"
-          modelName={llm?.model_name}
-          providerName={llm ? displayName(llm.provider) : undefined}
-          cta={llm ? "Change" : "Pick a model"}
-          onChange={onChangeLlm}
-          note={
-            cleanupEnabled
-              ? "Used whenever cleanup is enabled in Tone."
-              : "Pick the model Tone should use when cleanup is turned on."
+          kicker="AI cleanup · optional"
+          modelName={llmCleanup ? llm?.model_name : undefined}
+          providerName={
+            llmCleanup && llm ? displayName(llm.provider) : undefined
           }
+          cta={llm ? "Change" : "Pick a model"}
+          toggle={llmCleanup}
+          onToggle={onToggleCleanup}
+          onChange={onChangeLlm}
+          dimmed={!llmCleanup}
         />
       </div>
     </section>
@@ -71,7 +76,11 @@ function PairSide({
   providerName,
   cta,
   primary,
+  toggle,
+  onToggle,
   onChange,
+  dimmed,
+  disabled,
   note,
   accessory,
 }: {
@@ -80,15 +89,32 @@ function PairSide({
   providerName: string | undefined;
   cta: string;
   primary?: boolean;
+  toggle?: boolean;
+  onToggle?: (next: boolean) => void;
   onChange: () => void;
+  dimmed?: boolean;
+  /** Disables the toggle and the change action (provider handles this itself). */
+  disabled?: boolean;
   /** Small caption shown under the model name. */
   note?: React.ReactNode;
   accessory?: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <div className="flex h-full flex-col gap-3 transition-opacity">
+    <div
+      className={cn(
+        "flex h-full flex-col gap-3 transition-opacity",
+        dimmed && "opacity-60",
+      )}
+    >
       <div className="flex items-center justify-between">
         <Eyebrow text={kicker} accent={primary} mono={false} />
+        {onToggle !== undefined && (
+          <Toggle
+            on={!!toggle}
+            onChange={(v) => onToggle(v)}
+            disabled={disabled}
+          />
+        )}
       </div>
       <div>
         {modelName ? (
@@ -128,6 +154,7 @@ function PairSide({
           variant={primary ? "ink" : "outline"}
           size="sm"
           onClick={onChange}
+          disabled={disabled}
         >
           {cta}
         </Button>

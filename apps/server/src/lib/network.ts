@@ -125,6 +125,12 @@ export function configureNetwork(): NetworkConfig {
     } else if (connect) {
       setGlobalDispatcher(new Agent({ connect }));
       log.info(`Trusting ${ca.length} custom CA certificate(s) for downloads`);
+    } else {
+      // No proxy and no custom CA. Install a clean default dispatcher so that
+      // *clearing* a previously-configured proxy/CA from the UI takes effect
+      // immediately — otherwise the stale ProxyAgent/Agent would linger until
+      // the next app restart.
+      setGlobalDispatcher(new Agent());
     }
   } catch (err) {
     log.error(

@@ -1,3 +1,8 @@
+import {
+  type NetworkSettingsForm,
+  networkSettingsFormSchema,
+} from "@freestyle-voice/validations";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { LanguageSelector } from "@renderer/components/language-selector";
 import { Button } from "@renderer/components/ui/button";
@@ -28,6 +33,7 @@ import {
   Download,
   ExternalLink,
   FolderOpen,
+  Info,
   Keyboard,
   Languages,
   Mic,
@@ -41,6 +47,11 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Controller,
+  type ControllerRenderProps,
+  useForm,
+} from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import {
   type AudioPlaybackMode,
@@ -121,8 +132,6 @@ export default function SettingsPage(): React.JSX.Element {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
-  const [proxyUrl, setProxyUrl] = useState("");
-  const [caCertPath, setCaCertPath] = useState("");
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
     parseSettingsSection(window.location.hash),
   );
@@ -403,25 +412,6 @@ export default function SettingsPage(): React.JSX.Element {
         if (data?.value) setTranscriptionPrompt(data.value);
       })
       .catch(() => {});
-    getClient()
-      .api.settings[":key"].$get({
-        param: { key: SETTINGS_KEYS.networkProxyUrl },
-      })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value) setProxyUrl(data.value);
-      })
-      .catch(() => {});
-    getClient()
-      .api.settings[":key"].$get({
-        param: { key: SETTINGS_KEYS.networkCaCertPath },
-      })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value) setCaCertPath(data.value);
-      })
-      .catch(() => {});
-
     // Auto-update setting
     window.api
       ?.getAutoUpdate()
@@ -689,7 +679,7 @@ export default function SettingsPage(): React.JSX.Element {
 
         <SettingsSidebar active={activeSection} onSelect={selectSection} />
 
-        <div className="min-h-0 overflow-y-auto">
+        <div className="min-h-0 overflow-y-auto px-1 -mx-1">
           <h2 className="text-foreground mb-6 text-[22px] font-medium tracking-[-0.02em]">
             {activeSectionLabel}
           </h2>
@@ -1087,14 +1077,7 @@ export default function SettingsPage(): React.JSX.Element {
             </SettingsPanel>
           )}
 
-          {activeSection === "network" && (
-            <NetworkPanel
-              proxyUrl={proxyUrl}
-              caCertPath={caCertPath}
-              onProxyUrlChange={setProxyUrl}
-              onCaCertPathChange={setCaCertPath}
-            />
-          )}
+          {activeSection === "network" && <NetworkPanel />}
 
           {activeSection === "developer" && (
             <SettingsPanel>
@@ -1430,44 +1413,99 @@ function McpConnect(): React.JSX.Element {
 // Network — enterprise proxy / custom CA configuration
 // ---------------------------------------------------------------------------
 
-function NetworkPanel({
-  proxyUrl,
-  caCertPath,
-  onProxyUrlChange,
-  onCaCertPathChange,
-}: {
-  proxyUrl: string;
-  caCertPath: string;
-  onProxyUrlChange: (value: string) => void;
-  onCaCertPathChange: (value: string) => void;
-}): React.JSX.Element {
-  const { t } = useTranslation();
-  const [proxyError, setProxyError] = useState<string | null>(null);
+/** Load a single string setting from the server ("" when unset/unreachable). */
+async function loadStringSetting(key: string): Promise<string> {
+  try {
+    const res = await getClient().api.settings[":key"].$get({ param: { key } });
+    if (!res.ok) return "";
+    const data = (await res.json()) as { value?: string } | null;
+    return data?.value ?? "";
+  } catch {
+    return "";
+  }
+}
 
-  const saveSetting = useCallback(
-    async (key: string, value: string): Promise<boolean> => {
-      const res = await getClient().api.settings[":key"].$put({
-        param: { key },
-        json: { value },
-      });
-      return res.ok;
+function NetworkPanel(): React.JSX.Element {
+  const { t } = useTranslation();
+  // Single source of truth: the same zod schema the server enforces per-key,
+  // so inline validation here matches exactly what the API will accept.
+  const {
+    control,
+    reset,
+    trigger,
+    getValues,
+    formState: { errors },
+  } = useForm<NetworkSettingsForm>({
+    resolver: zodResolver(networkSettingsFormSchema),
+    defaultValues: { proxyUrl: "", caCertPath: "" },
+    mode: "onBlur",
+  });
+  const [savedField, setSavedField] = useState<
+    keyof NetworkSettingsForm | null
+  >(null);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track the last value that was actually persisted so we skip redundant saves
+  // (and the "Saved" flash) when the user blurs without changing anything.
+  const lastCommitted = useRef<NetworkSettingsForm>({
+    proxyUrl: "",
+    caCertPath: "",
+  });
+
+  // Hydrate from the server once, then let react-hook-form own the state.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [proxyUrl, caCertPath] = await Promise.all([
+        loadStringSetting(SETTINGS_KEYS.networkProxyUrl),
+        loadStringSetting(SETTINGS_KEYS.networkCaCertPath),
+      ]);
+      if (!cancelled) {
+        reset({ proxyUrl, caCertPath });
+        lastCommitted.current = { proxyUrl, caCertPath };
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reset]);
+
+  useEffect(
+    () => () => {
+      if (savedTimer.current) clearTimeout(savedTimer.current);
     },
     [],
   );
 
-  const handleProxyBlur = useCallback(async () => {
-    const ok = await saveSetting(
-      SETTINGS_KEYS.networkProxyUrl,
-      proxyUrl.trim(),
-    ).catch(() => false);
-    setProxyError(ok ? null : t("settings.network.invalidProxy"));
-  }, [proxyUrl, saveSetting, t]);
+  const flashSaved = useCallback((field: keyof NetworkSettingsForm) => {
+    setSavedField(field);
+    if (savedTimer.current) clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setSavedField(null), 1500);
+  }, []);
 
-  const handleCaCertBlur = useCallback(() => {
-    void saveSetting(SETTINGS_KEYS.networkCaCertPath, caCertPath.trim()).catch(
-      () => {},
-    );
-  }, [caCertPath, saveSetting]);
+  // Persist on blur — only when the value actually changed and passes the
+  // shared schema, so we never send redundant or invalid requests.
+  const persistField = useCallback(
+    async (field: keyof NetworkSettingsForm, key: string) => {
+      const value = getValues(field).trim();
+      if (value === lastCommitted.current[field]) return;
+
+      const valid = await trigger(field);
+      if (!valid) return;
+      try {
+        const res = await getClient().api.settings[":key"].$put({
+          param: { key },
+          json: { value },
+        });
+        if (res.ok) {
+          lastCommitted.current[field] = value;
+          flashSaved(field);
+        }
+      } catch {
+        // Network/API errors surface via the field's onChange retry; swallow.
+      }
+    },
+    [trigger, getValues, flashSaved],
+  );
 
   return (
     <SettingsPanel>
@@ -1479,24 +1517,25 @@ function NetworkPanel({
         desc={t("settings.network.proxyDesc")}
         stacked
       >
-        <div className="flex max-w-md flex-col gap-1.5">
-          <Input
-            id="settings-network-proxy"
-            type="text"
-            spellCheck={false}
-            autoComplete="off"
-            value={proxyUrl}
-            onChange={(e) => {
-              onProxyUrlChange(e.target.value);
-              setProxyError(null);
-            }}
-            onBlur={handleProxyBlur}
-            placeholder={t("settings.network.proxyPlaceholder")}
-          />
-          {proxyError && (
-            <span className="text-destructive text-xs">{proxyError}</span>
+        <Controller
+          control={control}
+          name="proxyUrl"
+          render={({ field }) => (
+            <NetworkField
+              id="settings-network-proxy"
+              field={field}
+              placeholder={t("settings.network.proxyPlaceholder")}
+              error={
+                errors.proxyUrl ? t("settings.network.invalidProxy") : undefined
+              }
+              saved={savedField === "proxyUrl"}
+              savedLabel={t("settings.network.saved")}
+              onCommit={() =>
+                persistField("proxyUrl", SETTINGS_KEYS.networkProxyUrl)
+              }
+            />
           )}
-        </div>
+        />
       </Row>
       <Row
         label={t("settings.network.caCert")}
@@ -1504,22 +1543,86 @@ function NetworkPanel({
         stacked
         last
       >
-        <Input
-          id="settings-network-ca-cert"
-          type="text"
-          spellCheck={false}
-          autoComplete="off"
-          value={caCertPath}
-          onChange={(e) => onCaCertPathChange(e.target.value)}
-          onBlur={handleCaCertBlur}
-          placeholder={t("settings.network.caCertPlaceholder")}
-          className="max-w-md"
+        <Controller
+          control={control}
+          name="caCertPath"
+          render={({ field }) => (
+            <NetworkField
+              id="settings-network-ca-cert"
+              field={field}
+              placeholder={t("settings.network.caCertPlaceholder")}
+              error={
+                errors.caCertPath
+                  ? t("settings.network.invalidCaCert")
+                  : undefined
+              }
+              saved={savedField === "caCertPath"}
+              savedLabel={t("settings.network.saved")}
+              onCommit={() =>
+                persistField("caCertPath", SETTINGS_KEYS.networkCaCertPath)
+              }
+            />
+          )}
         />
       </Row>
-      <p className="text-muted-foreground pt-1 text-[12px] leading-[1.5]">
-        {t("settings.network.envNote")}
-      </p>
+      <div className="border-border bg-secondary/40 text-muted-foreground mt-1 flex items-start gap-2.5 rounded-[10px] border px-3.5 py-3 text-[12px] leading-[1.55]">
+        <Info className="mt-px h-3.5 w-3.5 shrink-0 opacity-70" />
+        <span>{t("settings.network.envNote")}</span>
+      </div>
     </SettingsPanel>
+  );
+}
+
+/**
+ * A single Network text setting: input + inline validation + a transient
+ * "Saved" confirmation. Kept local so both rows share the exact same behavior.
+ */
+function NetworkField({
+  id,
+  field,
+  placeholder,
+  error,
+  saved,
+  savedLabel,
+  onCommit,
+}: {
+  id: string;
+  field: ControllerRenderProps<NetworkSettingsForm, keyof NetworkSettingsForm>;
+  placeholder: string;
+  error?: string;
+  saved: boolean;
+  savedLabel: string;
+  onCommit: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="flex max-w-md flex-col gap-1.5">
+      <Input
+        id={id}
+        type="text"
+        spellCheck={false}
+        autoComplete="off"
+        name={field.name}
+        ref={field.ref}
+        value={field.value}
+        onChange={field.onChange}
+        onBlur={() => {
+          field.onBlur();
+          onCommit();
+        }}
+        placeholder={placeholder}
+        aria-invalid={error ? true : undefined}
+      />
+      <div className="flex min-h-[16px] items-center">
+        {error ? (
+          <span className="text-destructive text-xs">{error}</span>
+        ) : saved ? (
+          <span className="text-primary inline-flex items-center gap-1 text-xs">
+            <Check className="h-3 w-3" />
+            {savedLabel}
+          </span>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

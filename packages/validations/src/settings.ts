@@ -68,3 +68,15 @@ export const proxyUrlSettingSchema = z
 
 /** Filesystem path to a custom CA certificate bundle. Empty string clears it. */
 export const caCertPathSettingSchema = z.string().max(4096);
+
+/**
+ * Combined shape for the Network settings form. The renderer drives a
+ * react-hook-form with this schema so its inline validation matches exactly
+ * what the server enforces per-key on `PUT /settings/:key`.
+ */
+export const networkSettingsFormSchema = z.object({
+  proxyUrl: proxyUrlSettingSchema,
+  caCertPath: caCertPathSettingSchema,
+});
+
+export type NetworkSettingsForm = z.infer<typeof networkSettingsFormSchema>;

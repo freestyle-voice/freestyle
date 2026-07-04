@@ -24,6 +24,7 @@ import {
   ArrowLeft,
   Check,
   Download,
+  ExternalLink,
   Key,
   Laptop,
   Loader2,
@@ -38,6 +39,24 @@ import {
 import { useEffect, useState } from "react";
 import type { UseModels } from "./use-models";
 import { displayName } from "./utils";
+
+// A model download blocked by a corporate proxy/coaching page carries the
+// upstream URL the user must open (and acknowledge) before retrying. Surface it
+// as a clickable action so they don't have to guess the per-model URL.
+function OpenModelSourceButton({ url }: { url: string }) {
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => {
+        void window.api?.openExternal(url);
+      }}
+    >
+      <ExternalLink data-icon="inline-start" />
+      Open model source
+    </Button>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Normalized row — one shape for cloud + local, voice + LLM.
@@ -477,9 +496,14 @@ function VoiceTiers({
         >
           {downloading && <DownloadProgress state={privateItem?.state} />}
           {status === "error" && privateItem?.state?.error && (
-            <p className="text-destructive mt-1.5 text-[11px] leading-snug">
-              {privateItem.state.error}
-            </p>
+            <div className="mt-1.5 space-y-1.5">
+              <p className="text-destructive text-[11px] leading-snug">
+                {privateItem.state.error}
+              </p>
+              {privateItem.state.errorSourceUrl && (
+                <OpenModelSourceButton url={privateItem.state.errorSourceUrl} />
+              )}
+            </div>
           )}
         </TierCard>
       </div>
@@ -749,10 +773,15 @@ function ModelRow({
               </Button>
             )}
             {status === "error" && (
-              <Button variant="outline" size="sm" onClick={row.onRetry}>
-                <RefreshCw data-icon="inline-start" />
-                Retry
-              </Button>
+              <>
+                {row.state?.errorSourceUrl && (
+                  <OpenModelSourceButton url={row.state.errorSourceUrl} />
+                )}
+                <Button variant="outline" size="sm" onClick={row.onRetry}>
+                  <RefreshCw data-icon="inline-start" />
+                  Retry
+                </Button>
+              </>
             )}
           </>
         ) : isFreestyleCloud ? (

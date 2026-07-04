@@ -33,6 +33,8 @@ export interface WhisperModelDownloadState {
     speedBps: number;
   };
   error?: string;
+  /** URL to open in a browser to clear a proxy/coaching interception. */
+  errorSourceUrl?: string;
 }
 
 export interface WhisperStatus {

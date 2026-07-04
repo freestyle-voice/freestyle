@@ -8,6 +8,7 @@ import {
   DOWNLOAD_FREE_BUFFER_BYTES,
   describeDownloadError,
 } from "../disk.js";
+import { downloadErrorSourceUrl } from "../download-guard.js";
 import { progressFetch } from "../hf/progress.js";
 import {
   getMlxAsrModel,
@@ -48,6 +49,8 @@ export interface MlxModelDownloadState {
     speedBps: number;
   };
   error?: string;
+  /** URL to open in a browser to clear a proxy/coaching interception. */
+  errorSourceUrl?: string;
 }
 
 interface ActiveMlxDownload {
@@ -59,6 +62,7 @@ interface ActiveMlxDownload {
   lastUpdate: number;
   lastBytes: number;
   error?: string;
+  errorSourceUrl?: string;
 }
 
 const activeDownloads = new Map<string, ActiveMlxDownload>();
@@ -121,6 +125,7 @@ export function getMlxModelStatus(
       ...baseModelState(modelId, model),
       status: "error",
       error: active.error,
+      errorSourceUrl: active.errorSourceUrl,
     };
   }
 
@@ -283,6 +288,10 @@ export async function downloadMlxModel(modelId: string): Promise<void> {
       return;
     }
     active.error = describeDownloadError(err);
+    active.errorSourceUrl = downloadErrorSourceUrl(
+      err,
+      `https://huggingface.co/${model.hfId}`,
+    );
     throw err;
   }
 }

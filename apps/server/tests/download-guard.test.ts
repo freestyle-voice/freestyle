@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertNotProxyPage,
+  downloadErrorSourceUrl,
   isLikelyProxyOrTlsFailure,
   ProxyInterceptionError,
 } from "../src/lib/download-guard.js";
@@ -82,5 +83,35 @@ describe("isLikelyProxyOrTlsFailure", () => {
 
   it("ignores unrelated errors", () => {
     expect(isLikelyProxyOrTlsFailure(new Error("HTTP 404"))).toBe(false);
+  });
+});
+
+describe("downloadErrorSourceUrl", () => {
+  const FALLBACK = "https://huggingface.co/org/model";
+
+  it("prefers the exact URL carried by a detected coaching page", () => {
+    const err = new ProxyInterceptionError("intercepted", SRC);
+    expect(downloadErrorSourceUrl(err, FALLBACK)).toBe(SRC);
+  });
+
+  it("falls back to the model URL for a bare TLS/connection failure", () => {
+    const err = new TypeError("fetch failed");
+    expect(downloadErrorSourceUrl(err, FALLBACK)).toBe(FALLBACK);
+  });
+
+  it("returns undefined for a proxy/TLS failure with no fallback URL", () => {
+    const err = new TypeError("fetch failed");
+    expect(downloadErrorSourceUrl(err)).toBeUndefined();
+  });
+
+  it("returns undefined for an unrelated error even with a fallback", () => {
+    expect(
+      downloadErrorSourceUrl(new Error("HTTP 404"), FALLBACK),
+    ).toBeUndefined();
+  });
+
+  it("returns undefined when a coaching page carries no URL and no fallback", () => {
+    const err = new ProxyInterceptionError("intercepted");
+    expect(downloadErrorSourceUrl(err)).toBeUndefined();
   });
 });

@@ -1,7 +1,13 @@
 import type { VoiceItem } from "@renderer/lib/models";
 import { formatBytes, formatSpeed } from "@renderer/lib/models";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
-import { Download, HardDrive, Loader2, RefreshCw } from "lucide-react";
+import {
+  Download,
+  ExternalLink,
+  HardDrive,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
@@ -26,6 +32,7 @@ export function ModelSetupPanel({
 
   const sizeLabel =
     model.sizeBytes != null ? formatBytes(model.sizeBytes) : null;
+  const errorSourceUrl = model.state?.errorSourceUrl;
   const progress = model.state?.downloadProgress;
   const hasProgress = !!progress;
   const isActive =
@@ -132,15 +139,24 @@ export function ModelSetupPanel({
           )}
 
           {isError && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-3"
-              onClick={onRetry}
-            >
-              <RefreshCw data-icon="inline-start" />
-              {t("onboarding.modelSetup.retry")}
-            </Button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={onRetry}>
+                <RefreshCw data-icon="inline-start" />
+                {t("onboarding.modelSetup.retry")}
+              </Button>
+              {errorSourceUrl && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    void window.api?.openExternal(errorSourceUrl);
+                  }}
+                >
+                  <ExternalLink data-icon="inline-start" />
+                  {t("onboarding.modelSetup.openModelSource")}
+                </Button>
+              )}
+            </div>
           )}
         </div>
       </div>

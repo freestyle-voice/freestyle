@@ -23,7 +23,10 @@ import {
   DOWNLOAD_FREE_BUFFER_BYTES,
   describeDownloadError,
 } from "../disk.js";
-import { assertNotProxyPage } from "../download-guard.js";
+import {
+  assertNotProxyPage,
+  downloadErrorSourceUrl,
+} from "../download-guard.js";
 import { progressFetch } from "../hf/progress.js";
 import {
   getBinDir,
@@ -66,6 +69,8 @@ export interface ModelDownloadState {
     speedBps: number;
   };
   error?: string;
+  /** URL to open in a browser to clear a proxy/coaching interception. */
+  errorSourceUrl?: string;
 }
 
 interface ActiveDownload {
@@ -78,6 +83,7 @@ interface ActiveDownload {
   lastUpdate: number;
   lastBytes: number;
   error?: string;
+  errorSourceUrl?: string;
 }
 
 const activeDownloads = new Map<string, ActiveDownload>();
@@ -122,6 +128,7 @@ export function getModelStatus(modelId: string): ModelDownloadState | null {
       ...baseModelState(modelId, model),
       status: "error",
       error: active.error,
+      errorSourceUrl: active.errorSourceUrl,
     };
   }
 
@@ -212,6 +219,9 @@ export async function downloadModel(modelId: string): Promise<void> {
 
   const destPath = getModelPath(model);
   const tempPath = `${destPath}.downloading`;
+  // Hoisted so the catch can point the user at the model source when a proxy
+  // or captive portal blocks the download.
+  const url = `https://huggingface.co/${WHISPER_REPO}/resolve/${WHISPER_REPO_REVISION}/${model.fileName}`;
 
   try {
     // Fail fast if the volume can't hold the model file (plus a little
@@ -227,7 +237,6 @@ export async function downloadModel(modelId: string): Promise<void> {
       model.fileName,
       controller.signal,
     );
-    const url = `https://huggingface.co/${WHISPER_REPO}/resolve/${WHISPER_REPO_REVISION}/${model.fileName}`;
     const res = await progressFetch(active, controller.signal)(url);
     if (!res.ok || !res.body) {
       throw modelDownloadHttpError(res.status);
@@ -267,6 +276,7 @@ export async function downloadModel(modelId: string): Promise<void> {
     }
 
     active.error = describeDownloadError(err);
+    active.errorSourceUrl = downloadErrorSourceUrl(err, url);
     throw err;
   }
 }

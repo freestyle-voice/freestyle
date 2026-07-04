@@ -65,6 +65,7 @@
       "downloadButton": "Download ({{size}})",
       "downloadButtonShort": "Download model",
       "retry": "Try again",
+      "openModelSource": "Open model source",
       "errorTitle": "Couldn't finish setup",
       "errorFallback": "Something went wrong while downloading the model.",
       "waitingToFinish": "Download your voice model to continue",
@@ -209,6 +210,7 @@
       "save": "Save",
       "saved": "Saved",
       "invalidProxy": "Enter a valid http://, https:// or socks:// URL, or leave it blank.",
+      "invalidCaCert": "Enter a valid certificate file path, or leave it blank.",
       "envNote": "The app also honors HTTP_PROXY, HTTPS_PROXY, NO_PROXY, NODE_EXTRA_CA_CERTS and SSL_CERT_FILE from the environment."
     },
     "developer": {

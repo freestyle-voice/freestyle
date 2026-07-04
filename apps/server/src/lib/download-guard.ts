@@ -95,6 +95,29 @@ export function isLikelyProxyOrTlsFailure(err: unknown): boolean {
   );
 }
 
+/**
+ * Resolve the upstream URL a user should open in their browser to clear a
+ * proxy/coaching interception, when the failure looks proxy/TLS related.
+ *
+ *   - A detected coaching page ({@link ProxyInterceptionError}) already carries
+ *     the exact URL that was intercepted — prefer it.
+ *   - A bare connection/TLS failure has no URL on the error, so fall back to the
+ *     caller-supplied model URL (e.g. the Hugging Face page/file).
+ *   - Anything unrelated returns `undefined` so the UI shows no link.
+ */
+export function downloadErrorSourceUrl(
+  err: unknown,
+  fallbackUrl?: string,
+): string | undefined {
+  if (err instanceof ProxyInterceptionError && err.sourceUrl) {
+    return err.sourceUrl;
+  }
+  if (isLikelyProxyOrTlsFailure(err)) {
+    return fallbackUrl || undefined;
+  }
+  return undefined;
+}
+
 /** Guidance for a connection failure that is probably proxy/certificate related. */
 export function proxyOrTlsFailureMessage(): string {
   return (

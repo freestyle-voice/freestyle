@@ -164,6 +164,11 @@ const settings = new Hono()
     const db = getDb();
     const key = c.req.param("key");
     db.prepare("DELETE FROM settings WHERE key = ?").run(key);
+    // Deleting the proxy/CA key must also reset the global dispatcher, mirroring
+    // the PUT path — otherwise a stale proxy/CA lingers until the next restart.
+    if (key === PROXY_URL_SETTING || key === CA_CERT_PATH_SETTING) {
+      configureNetwork();
+    }
     return c.json({ ok: true });
   })
   .post(

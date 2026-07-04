@@ -1408,6 +1408,8 @@ async function checkForUpdatesFromMenu(): Promise<void> {
   }
   try {
     const result = await autoUpdater.checkForUpdates();
+    // Swallow the auto-download rejection (see runUpdateCheck).
+    void result?.downloadPromise?.catch(() => {});
     const latest = result?.updateInfo?.version;
     if (latest && latest !== app.getVersion()) {
       const { response } = await dialog.showMessageBox({
@@ -1953,11 +1955,31 @@ app.whenReady().then(async () => {
   const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
   let updateCheckTimer: ReturnType<typeof setInterval> | null = null;
 
+  // With autoDownload on, checkForUpdates() also starts the asset download and
+  // exposes it as result.downloadPromise. Swallow that rejection so a transient
+  // download failure (e.g. an expired 403 from the release CDN) is handled by
+  // the "error" event rather than leaking as an unhandled rejection / false
+  // crash report. We avoid checkForUpdatesAndNotify(): it drops the same
+  // rejection internally in a way callers can't intercept, and our own
+  // "update-downloaded" handler already shows the completion notification.
+  function runUpdateCheck(): void {
+    autoUpdater
+      .checkForUpdates()
+      .then((result) => {
+        void result?.downloadPromise?.catch(() => {});
+      })
+      .catch((err) => {
+        log.warn(
+          `Update check failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+  }
+
   function startUpdateCheckInterval(): void {
     if (updateCheckTimer) return;
-    updateCheckTimer = setInterval(() => {
-      autoUpdater.checkForUpdates().catch(() => {});
-    }, UPDATE_CHECK_INTERVAL_MS);
+    updateCheckTimer = setInterval(runUpdateCheck, UPDATE_CHECK_INTERVAL_MS);
   }
 
   // -- Auto-updater with IPC notifications --
@@ -2057,7 +2079,7 @@ app.whenReady().then(async () => {
         note.show();
       }
     } else {
-      autoUpdater.checkForUpdatesAndNotify();
+      runUpdateCheck();
       startUpdateCheckInterval();
     }
   }
@@ -2074,6 +2096,8 @@ app.whenReady().then(async () => {
     if (is.dev) return null;
     try {
       const result = await autoUpdater.checkForUpdates();
+      // Swallow the auto-download rejection (see runUpdateCheck).
+      void result?.downloadPromise?.catch(() => {});
       const latest = result?.updateInfo?.version;
       if (!latest) return null;
       // Only report an update when the remote version is actually newer

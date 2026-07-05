@@ -1,4 +1,19 @@
 # Changelog
+## 0.4.2
+
+### Bug Fixes 🐛
+
+- (stt) Send vocabulary bias to Freestyle Cloud streaming by @tigerisaac in [#398](https://github.com/freestyle-voice/freestyle/pull/398)
+- Compound hotkey suppression blocks dictation activation by @MathurAditya724 in [#396](https://github.com/freestyle-voice/freestyle/pull/396)
+
+### Internal Changes 🔧
+
+- (onboarding) Use provider-neutral sign-in icon and primary button by @MathurAditya724 in [#395](https://github.com/freestyle-voice/freestyle/pull/395)
+
+### Other
+
+- Fix High/Med cleanup prompts to be more consistent by @tigerisaac in [#397](https://github.com/freestyle-voice/freestyle/pull/397)
+
 ## 0.4.1
 
 ### Bug Fixes 🐛

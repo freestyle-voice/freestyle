@@ -406,12 +406,18 @@ let keyEventTap = CGEvent.tapCreate(
             return Unmanaged.passUnretained(event)
         }
 
-        // KEY_DOWN is emitted by the NSEvent global monitor above (avoids duplicate events).
         if type == .keyUp {
             emit("KEY_UP:\(name)")
         }
 
         if let suppressHotkey, eventMatchesSuppressibleHotkey(event, config: suppressHotkey) {
+            // Returning nil swallows this event before the NSEvent global monitor
+            // can observe it, so we must emit KEY_DOWN ourselves. For non-suppressed
+            // events the NSEvent monitor emits KEY_DOWN (no duplicate risk here
+            // because we only emit when suppressing).
+            if type == .keyDown {
+                emit("KEY_DOWN:\(name)")
+            }
             return nil
         }
 

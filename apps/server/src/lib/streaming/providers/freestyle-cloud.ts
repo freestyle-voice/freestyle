@@ -5,6 +5,7 @@ import {
   freestyleCloudStreamWsUrl,
   transcribeWithFreestyleCloud,
 } from "../../freestyle-cloud.js";
+import { sonioxContextFromBias } from "../transcribe-bias.js";
 import type {
   StreamingSessionOptions,
   StreamSession,
@@ -67,7 +68,7 @@ export class FreestyleCloudTranscriptionProvider
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
-    const { apiKey, model, language, cleanup, callbacks } = opts;
+    const { apiKey, model, language, cleanup, callbacks, bias } = opts;
 
     if (!apiKey) {
       throw new FreestyleCloudAuthError();
@@ -80,6 +81,11 @@ export class FreestyleCloudTranscriptionProvider
       },
     });
 
+    // Vocabulary bias for the Soniox upstream. The cloud DO transcribes via
+    // Soniox, so we forward the same `context` object (custom terms + optional
+    // background text) that the local BYOK Soniox provider sends directly.
+    const vocabulary = sonioxContextFromBias(bias);
+
     // The DO applies cleanup preferences on `start`. Mirror the batch
     // `/v2/transcribe` payload: send `skipPostProcess` plus intensity, custom
     // prompt, and destination-aware tones so the cloud cleans (or skips) and
@@ -89,6 +95,7 @@ export class FreestyleCloudTranscriptionProvider
       type: "start" as const,
       language: language || undefined,
       skipPostProcess: cleanup?.skipPostProcess ?? false,
+      ...(vocabulary ? { vocabulary } : {}),
       ...(cleanup && !cleanup.skipPostProcess
         ? {
             intensity: cleanup.intensity,

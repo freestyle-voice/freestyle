@@ -321,6 +321,38 @@ describe("buildAsrVocabularyBias", () => {
       ).toBeNull();
     });
   });
+
+  describe("freestyle-cloud", () => {
+    // The cloud provider transcribes via a Soniox upstream, so it must produce
+    // the same soniox-context bias as direct Soniox — otherwise vocabulary
+    // never reaches the cloud DO.
+    it("maps vocabulary terms and prompt to soniox-context", () => {
+      const bias = buildAsrVocabularyBias(
+        "freestyle-cloud",
+        "freestyle-cloud/stt",
+        ["Freestyle", "Kubernetes"],
+        "Medical dictation about diabetes care.",
+        true,
+      );
+      expect(bias).toEqual({
+        kind: "soniox-context",
+        terms: ["Freestyle", "Kubernetes"],
+        text: "Medical dictation about diabetes care.",
+      });
+    });
+
+    it("returns null when there is nothing to send", () => {
+      expect(
+        buildAsrVocabularyBias(
+          "freestyle-cloud",
+          "freestyle-cloud/stt",
+          [],
+          undefined,
+          true,
+        ),
+      ).toBeNull();
+    });
+  });
 });
 
 describe("sonioxContextFromBias", () => {

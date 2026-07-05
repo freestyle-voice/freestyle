@@ -1,3 +1,4 @@
+import { FREESTYLE_CLOUD_PROVIDER_ID } from "./freestyle-cloud.js";
 import { stripProviderPrefix } from "./streaming/types.js";
 import {
   getTranscriptionContextPrompt,
@@ -179,7 +180,10 @@ export function buildAsrVocabularyBias(
       const text = parts.join(" ").trim().slice(0, PROMPT_CHAR_BUDGET);
       return text ? { kind: "prompt", text } : null;
     }
-    case "soniox": {
+    // Freestyle Cloud transcribes via a Soniox upstream inside the DO, so it
+    // uses the same context-based vocabulary bias as direct (BYOK) Soniox.
+    case "soniox":
+    case FREESTYLE_CLOUD_PROVIDER_ID: {
       const terms = capTerms(capped, SONIOX_TERM_MAX);
       const text = contextPrompt?.trim().slice(0, SONIOX_CONTEXT_TEXT_MAX);
       if (terms.length === 0 && !text) return null;

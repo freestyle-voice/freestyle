@@ -246,9 +246,6 @@ importers:
       winston:
         specifier: ^3.17.0
         version: 3.19.0
-      ws:
-        specifier: ^8.21.0
-        version: 8.21.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -268,9 +265,6 @@ importers:
       '@types/semver':
         specifier: ^7.7.1
         version: 7.7.1
-      '@types/ws':
-        specifier: ^8.18.1
-        version: 8.18.1
       freestyle-voice:
         specifier: workspace:*
         version: link:../../packages/sdk

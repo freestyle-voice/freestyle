@@ -474,37 +474,42 @@ export default function AppPage(): React.JSX.Element {
         const sampleRate = analyser.context.sampleRate;
         const binWidth = sampleRate / analyser.fftSize;
 
+        const startBin = Math.max(0, Math.floor(VOICE_MIN / binWidth));
+        const endBin = Math.min(
+          analyser.frequencyBinCount,
+          Math.ceil(VOICE_MAX / binWidth),
+        );
+
+        // Compute one overall voice level
+        let sum = 0;
+        for (let i = startBin; i < endBin; i++) {
+          sum += dataArray[i];
+        }
+
+        const voiceLevel = sum / (Math.max(1, endBin - startBin) * 255);
+
         const raw: number[] = [];
-        let totalSum = 0;
+        const center = (BARS - 1) / 2;
+        const sigma = BARS / 4;
+
+        const binCount = Math.max(1, endBin - startBin);
 
         for (let i = 0; i < BARS; i++) {
-          const startFreq = VOICE_MIN * (VOICE_MAX / VOICE_MIN) ** (i / BARS);
+          const distance = i - center;
 
-          const endFreq =
-            VOICE_MIN * (VOICE_MAX / VOICE_MIN) ** ((i + 1) / BARS);
+          // Bell-shaped weighting
+          const weight = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+          const sampleIndex =
+            startBin + Math.floor((i / (BARS - 1)) * (binCount - 1));
 
-          const startBin = Math.max(0, Math.floor(startFreq / binWidth));
+          const localVariation = 0.85 + (dataArray[sampleIndex] / 255) * 0.3;
 
-          const endBin = Math.min(
-            analyser.frequencyBinCount,
-            Math.ceil(endFreq / binWidth),
-          );
-
-          let sum = 0;
-
-          for (let j = startBin; j < endBin; j++) {
-            sum += dataArray[j];
-          }
-
-          const count = Math.max(1, endBin - startBin);
-
-          const val = sum / count / 255;
-
-          raw.push(val);
-          totalSum += val;
+          raw.push(Math.min(1, voiceLevel * weight * localVariation * 2.5));
         }
+
         barsRef.current = smoothBars(barsRef.current, raw);
-        const volume = Math.min(1, (totalSum / BARS) * 2.5);
+
+        const volume = Math.min(1, voiceLevel * 2.5);
         volumeRef.current = volume;
         const now = performance.now();
         if (now - lastIpcTimeRef.current >= 100) {

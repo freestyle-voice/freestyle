@@ -4,7 +4,11 @@
     "electron.vite.config.*",
     "src/main/**/*",
     "src/preload/**/*",
-    "src/shared/**/*"
+    "src/shared/**/*",
+    "../server/src/**/*",
+    "../../packages/sdk/src/**/*",
+    "../../packages/utils/src/**/*",
+    "../../packages/validations/src/**/*"
   ],
   "compilerOptions": {
     "composite": true,

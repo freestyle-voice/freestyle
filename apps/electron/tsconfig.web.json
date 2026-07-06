@@ -6,6 +6,9 @@
     "src/renderer/src/**/*.tsx",
     "src/preload/*.d.ts",
     "src/shared/**/*",
+    "../server/src/**/*",
+    "../../packages/sdk/src/**/*",
+    "../../packages/utils/src/**/*",
     "../../packages/validations/src/**/*"
   ],
   "compilerOptions": {

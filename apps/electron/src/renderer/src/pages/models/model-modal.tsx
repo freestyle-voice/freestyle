@@ -231,10 +231,7 @@ function KeyStep({
           </div>
         )}
         <div className="flex items-center justify-between">
-          <p
-            className="mono text-muted-foreground text-[10px] uppercase"
-            style={{ letterSpacing: "0.14em" }}
-          >
+          <p className="text-muted-foreground text-[11px] font-medium">
             Stored in keychain · never logged
           </p>
           {PROVIDER_KEY_URLS[provider] && (

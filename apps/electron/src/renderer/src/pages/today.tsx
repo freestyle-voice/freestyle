@@ -265,7 +265,7 @@ export default function TodayPage(): React.JSX.Element {
               <span className="serif-italic text-foreground text-[26px] leading-none min-w-[70px]">
                 {cloudUsage.remaining.toLocaleString()}
               </span>
-              <span className="mono text-muted-foreground text-[10px] leading-snug tracking-[0.12em] uppercase">
+              <span className="text-muted-foreground text-[11px] font-medium leading-snug">
                 credits left
               </span>
             </div>
@@ -330,7 +330,7 @@ function TimelineNode({ entry }: { entry: HistoryEntry }): React.JSX.Element {
 
       <div className="border-border bg-card rounded-[11px] border px-[18px] py-[14px]">
         <div className="mb-2 flex items-center gap-2.5">
-          <span className="mono text-primary text-[10.5px] font-semibold tracking-[0.14em] uppercase">
+          <span className="text-primary text-[11.5px] font-semibold">
             {formatModelLabel(entry)}
           </span>
           <span className="flex-1" />
@@ -368,7 +368,7 @@ function RailLabel({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <div className="mono text-muted-foreground mb-3 text-[10px] tracking-[0.18em] uppercase">
+    <div className="text-muted-foreground mb-3 text-[11px] font-semibold">
       {children}
     </div>
   );
@@ -397,7 +397,7 @@ function RailStat({
       >
         {n}
       </span>
-      <span className="mono text-muted-foreground text-[10px] leading-snug tracking-[0.12em] uppercase">
+      <span className="text-muted-foreground text-[11px] font-medium leading-snug">
         {l}
       </span>
     </div>
@@ -408,7 +408,7 @@ function UsageBar({ label, pct }: UsageBucket): React.JSX.Element {
   return (
     <div className="mb-3">
       <div className="flex items-center justify-between mb-1">
-        <span className="mono text-foreground text-[10.5px] tracking-[0.1em] uppercase">
+        <span className="text-foreground text-[11.5px] font-medium">
           {label}
         </span>
         <span className="mono text-muted-foreground text-[10.5px]">{pct}%</span>

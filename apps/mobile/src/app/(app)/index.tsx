@@ -3,8 +3,10 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Pressable, Share, StyleSheet, View } from "react-native";
+import { useSharedValue } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { SettingsGlyph } from "@/components/icons";
 import { MicButton, type MicState } from "@/components/mic-button";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -34,8 +36,10 @@ export default function VoiceScreen() {
   const [micState, setMicState] = useState<MicState>("idle");
   const [text, setText] = useState("");
   const [partial, setPartial] = useState("");
-  const [level, setLevel] = useState(0);
   const [copied, setCopied] = useState(false);
+  // Mic level as a shared value so the mic button + waveform animate on the UI
+  // thread (smooth) rather than re-rendering React on every audio buffer.
+  const level = useSharedValue(0);
 
   const sessionRef = useRef<CloudStreamSession | null>(null);
   const startedAt = useRef(0);
@@ -49,7 +53,9 @@ export default function VoiceScreen() {
 
   const recorder = useRecorder({
     onFrame: (frame) => sessionRef.current?.sendAudio(frame),
-    onLevel: setLevel,
+    onLevel: (v) => {
+      level.value = v;
+    },
   });
 
   const teardownSession = useCallback(() => {
@@ -140,7 +146,7 @@ export default function VoiceScreen() {
   const finishRecording = useCallback(() => {
     if (!recordingRef.current) return;
     recordingRef.current = false;
-    setLevel(0);
+    level.value = 0;
     recorder.stop();
 
     const elapsed = Date.now() - startedAt.current;
@@ -153,7 +159,7 @@ export default function VoiceScreen() {
     setMicState("finalizing");
     sessionRef.current?.setAudioDurationMs(elapsed);
     sessionRef.current?.commit();
-  }, [recorder, teardownSession]);
+  }, [recorder, teardownSession, level]);
 
   // Hold threshold: pressing longer than this and releasing = hold-to-talk
   // (stop on release). A quick tap = toggle (stop on the next tap).
@@ -198,11 +204,11 @@ export default function VoiceScreen() {
 
   const status =
     micState === "recording"
-      ? "Listening — release or tap to finish"
+      ? "Listening"
       : micState === "finalizing"
-        ? "Polishing your words…"
+        ? "Polishing"
         : text
-          ? "Hold or tap to keep dictating"
+          ? "Tap to keep dictating"
           : "Hold or tap to speak";
 
   return (
@@ -213,12 +219,13 @@ export default function VoiceScreen() {
             Freestyle
           </ThemedText>
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
             onPress={() => router.push("/(app)/settings")}
             hitSlop={12}
+            style={[styles.settingsButton, { borderColor: theme.border }]}
           >
-            <ThemedText type="eyebrow" themeColor="primary">
-              Settings
-            </ThemedText>
+            <SettingsGlyph color={theme.mutedForeground} size={18} />
           </Pressable>
         </View>
 
@@ -279,7 +286,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: Spacing.two,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.two,
+  },
+  settingsButton: {
+    width: 38,
+    height: 38,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   actions: {
     flexDirection: "row",
@@ -287,21 +303,26 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   action: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.two + 2,
+    borderRadius: Radius.full,
   },
   actionOutline: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.two + 2,
+    borderRadius: Radius.full,
     borderWidth: 1,
   },
   actionText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
   footer: {
     alignItems: "center",
-    gap: Spacing.two,
-    paddingBottom: Spacing.four,
+    gap: Spacing.three,
+    paddingBottom: Spacing.five,
   },
-  status: { fontSize: 13 },
+  status: {
+    fontFamily: Fonts.mono,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+  },
 });

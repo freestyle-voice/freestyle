@@ -176,6 +176,33 @@ Config additions (`app.json`):
 - Respect light/dark via `traitCollection`; match the warm-paper / olive theme
   where the host allows (keyboards get limited color control).
 
+### Visual direction (Soniox-inspired — soniox.com/soniox-app/voice-typing)
+
+The Soniox keyboard reads as calm and single-purpose: a large centered mic
+control with a live waveform that reacts to speech, minimal chrome, and text
+appearing instantly. We adopt the same restraint within Freestyle's language:
+
+- **Centerpiece mic** — one prominent circular mic button, centered, with a
+  soft colored halo/pulse that swells with the live input level (mirrors the
+  standalone app's redesigned `MicButton`). Olive when idle, warm red while
+  recording.
+- **Live waveform strip** — a thin row of level-driven bars above/around the
+  mic (mirrors the app's `Waveform`), giving immediate "it's listening"
+  feedback. This doubles as the v1 partials location: show interim text in a
+  single-line strip beneath the waveform, commit `final` into the host field.
+- **Minimal keys** — mic + globe + space + delete + return only; generous
+  spacing, no busy QWERTY grid. Rounded, pill-like keys consistent with the
+  app's `Radius.full` buttons.
+- **Typography** — JetBrains Mono uppercase micro-labels for status
+  ("LISTENING", "POLISHING"), matching the app. Keep color usage sparse:
+  paper/ink neutrals with the olive/red accent only on the mic + active bars.
+- **Motion** — reuse the app's motion vocabulary (breathing halo, flowing
+  bars) so the keyboard feels like the same product, not a bolt-on.
+
+Reuse the standalone app's redesigned `MicButton`/`Waveform`/`icons` as the
+visual reference when porting to Swift (`AVAudioEngine` level → the same
+halo/bar behavior).
+
 ## 8. Build & test
 
 - Native-only: requires `expo prebuild` + a **dev client / EAS build**. Does

@@ -1,4 +1,3 @@
-import { FREESTYLE_CLOUD_PROVIDER_ID } from "./freestyle-cloud.js";
 import { stripProviderPrefix } from "./streaming/types.js";
 import {
   getTranscriptionContextPrompt,
@@ -10,8 +9,7 @@ export type AsrVocabularyBias =
   | { kind: "prompt"; text: string }
   | { kind: "deepgram-keyterms"; terms: string[] }
   | { kind: "deepgram-keywords"; terms: string[] }
-  | { kind: "elevenlabs-keyterms"; terms: string[] }
-  | { kind: "soniox-context"; terms: string[]; text?: string };
+  | { kind: "elevenlabs-keyterms"; terms: string[] };
 
 const PROMPT_CHAR_BUDGET = 900;
 const DEEPGRAM_KEYTERM_MAX = 100;
@@ -21,9 +19,6 @@ const ELEVENLABS_BATCH_KEYTERM_MAX = 100;
 const ELEVENLABS_REALTIME_KEYTERM_MAX = 50;
 const ELEVENLABS_TERM_MAX_CHARS = 20;
 const ELEVENLABS_BATCH_TERM_MAX_CHARS = 50;
-/** Soniox context budget is ~8k tokens total; cap terms and background text. */
-const SONIOX_TERM_MAX = 100;
-const SONIOX_CONTEXT_TEXT_MAX = 2_000;
 
 function capTerms(terms: string[], max: number): string[] {
   const seen = new Set<string>();
@@ -179,19 +174,6 @@ export function buildAsrVocabularyBias(
       }
       const text = parts.join(" ").trim().slice(0, PROMPT_CHAR_BUDGET);
       return text ? { kind: "prompt", text } : null;
-    }
-    // Freestyle Cloud transcribes via a Soniox upstream inside the DO, so it
-    // uses the same context-based vocabulary bias as direct (BYOK) Soniox.
-    case "soniox":
-    case FREESTYLE_CLOUD_PROVIDER_ID: {
-      const terms = capTerms(capped, SONIOX_TERM_MAX);
-      const text = contextPrompt?.trim().slice(0, SONIOX_CONTEXT_TEXT_MAX);
-      if (terms.length === 0 && !text) return null;
-      return {
-        kind: "soniox-context",
-        terms,
-        ...(text ? { text } : {}),
-      };
     }
     default:
       return null;

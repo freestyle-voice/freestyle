@@ -54,10 +54,6 @@ export class WhisperLocalTranscriptionProvider
       }
     });
   }
-
-  supportsStreaming(_modelId: string): boolean {
-    return false;
-  }
 }
 
 async function transcribeViaServer(

@@ -42,7 +42,6 @@
     "tar": "^7.5.15",
     "undici": "^7.16.0",
     "winston": "^3.17.0",
-    "ws": "^8.21.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -51,7 +50,6 @@
     "@types/json-schema": "^7.0.15",
     "@types/semver": "^7.7.1",
     "@types/node": "latest",
-    "@types/ws": "^8.18.1",
     "freestyle-voice": "workspace:*",
     "pkgroll": "^2.27.0",
     "typescript": "^5.9.3",

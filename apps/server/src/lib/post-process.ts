@@ -63,11 +63,7 @@ export interface PostProcessResult {
   timings?: PostProcessTimings;
 }
 
-export type PostProcessSource =
-  | "batch"
-  | "multi_segment"
-  | "streaming"
-  | "streaming_handoff";
+export type PostProcessSource = "batch" | "multi_segment";
 
 export interface PostProcessOptions {
   source?: PostProcessSource;

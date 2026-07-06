@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 13;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -368,6 +368,19 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
       db.exec("DROP TABLE IF EXISTS format_rules");
     } catch {
       // Older or partially migrated databases may not have the table anymore.
+    }
+  }
+
+  if (currentVersion < 13) {
+    // Soniox was removed as a transcription provider. Drop its stored API key
+    // and any model configs. If it was the default voice model, clearing the
+    // rows leaves no default and the models UI prompts the user to pick a
+    // supported one (transcribe returns a clear "No voice model configured").
+    try {
+      db.exec("DELETE FROM api_keys WHERE provider = 'soniox'");
+      db.exec("DELETE FROM model_configs WHERE provider = 'soniox'");
+    } catch {
+      // Older or partially migrated databases may not have these tables yet.
     }
   }
 

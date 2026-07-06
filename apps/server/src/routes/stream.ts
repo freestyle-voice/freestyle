@@ -21,6 +21,7 @@ import {
   isLlmCleanupEnabled,
   postProcess,
   prewarmPostProcess,
+  resolveAppContextForCleanup,
 } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
@@ -54,6 +55,8 @@ const stream = new Hono().get(
     /** Fingerprint of the settings the current upstream session was built with. */
     let upstreamConfigKey: string | null = null;
     let appContext: string | null = null;
+    const effectiveAppContext = (): string | null =>
+      resolveAppContextForCleanup(appContext);
     let audioDurationMs = 0;
     /** Audio received while the upstream socket is still connecting. */
     let pendingAudioChunks: ArrayBuffer[] = [];
@@ -323,7 +326,7 @@ const stream = new Hono().get(
                     {
                       providerId: voiceDefaults!.provider,
                       modelId: voiceDefaults!.model_id,
-                      appContext: parseAppContext(appContext),
+                      appContext: parseAppContext(effectiveAppContext()),
                     },
                     { text },
                   )
@@ -343,7 +346,7 @@ const stream = new Hono().get(
 
               const finalText = await applyFinalRewrites(
                 text,
-                appContext,
+                effectiveAppContext(),
                 cloudText,
               );
 
@@ -407,7 +410,7 @@ const stream = new Hono().get(
                 {
                   providerId: voiceDefaults!.provider,
                   modelId: voiceDefaults!.model_id,
-                  appContext: parseAppContext(appContext),
+                  appContext: parseAppContext(effectiveAppContext()),
                 },
                 { text: rawText },
               )
@@ -428,7 +431,7 @@ const stream = new Hono().get(
             const sttAfterCommitMs =
               commitTime > 0 ? Date.now() - commitTime : durationMs;
 
-            const cleanup = postProcess(rawText, appContext, {
+            const cleanup = postProcess(rawText, effectiveAppContext(), {
               language: config.language,
               source: useFastHandoff
                 ? "streaming_handoff"
@@ -657,7 +660,7 @@ const stream = new Hono().get(
         switch (msg.type) {
           case "context":
             appContext = msg.context ?? null;
-            upstream?.setContext?.(appContext);
+            upstream?.setContext?.(effectiveAppContext());
             break;
           case "start": {
             sessionStartTime = Date.now();
@@ -717,7 +720,7 @@ const stream = new Hono().get(
             }
             if (msg.context !== undefined) {
               appContext = msg.context;
-              upstream?.setContext?.(appContext);
+              upstream?.setContext?.(effectiveAppContext());
             }
             if (
               upstream &&

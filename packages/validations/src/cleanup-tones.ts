@@ -83,6 +83,21 @@ export function parseCleanupOverallTone(
   return result.success ? result.data : DEFAULT_CLEANUP_OVERALL_TONE;
 }
 
+/** True when every sector tone is off — no destination routing is needed. */
+export function areAllCleanupTonesOff(tones: {
+  personalTone: CleanupPersonalTone;
+  workTone: CleanupWorkTone;
+  emailTone: CleanupEmailTone;
+  overallTone: CleanupOverallTone;
+}): boolean {
+  return (
+    tones.personalTone === "off" &&
+    tones.workTone === "off" &&
+    tones.emailTone === "off" &&
+    tones.overallTone === "off"
+  );
+}
+
 // ---------------------------------------------------------------------------
 // App assignments — user overrides that route a specific app or website into a
 // tone group. Consulted before the built-in match lists, so a user can pull

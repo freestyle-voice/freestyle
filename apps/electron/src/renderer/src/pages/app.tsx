@@ -1,6 +1,7 @@
 import { Orb } from "@renderer/components/ui/orb";
 import { capture } from "@renderer/lib/analytics";
 import { getApiBase, getClient, refreshApiBase } from "@renderer/lib/api";
+import { refreshNeedsAppContextForCleanup } from "@renderer/lib/cleanup-app-context";
 import { Recorder } from "@renderer/lib/recorder";
 import { Streamer } from "@renderer/lib/streamer";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -673,20 +674,25 @@ export default function AppPage(): React.JSX.Element {
         streamer.setContext(null);
       } catch {}
 
-      void window.api
-        ?.getFrontmostApp()
-        .then((app) => {
-          appContextRef.current = app;
-          try {
-            streamer.setContext(app);
-          } catch {}
-        })
-        .catch(() => {
-          appContextRef.current = null;
-          try {
-            streamer.setContext(null);
-          } catch {}
-        });
+      void refreshNeedsAppContextForCleanup().then((needsAppContext) => {
+        if (!needsAppContext || !wantsMicRef.current) return;
+        void window.api
+          ?.getFrontmostApp()
+          .then((app) => {
+            if (!wantsMicRef.current) return;
+            appContextRef.current = app;
+            try {
+              getStreamer().setContext(app);
+            } catch {}
+          })
+          .catch(() => {
+            if (!wantsMicRef.current) return;
+            appContextRef.current = null;
+            try {
+              getStreamer().setContext(null);
+            } catch {}
+          });
+      });
 
       setPillState("initializing");
       startBarAnimation("connecting");
@@ -1038,6 +1044,7 @@ export default function AppPage(): React.JSX.Element {
       ?.getPillPosition()
       .then(applyPillPosition)
       .catch(() => {});
+    void refreshNeedsAppContextForCleanup().catch(() => {});
 
     // Listen for live changes from the settings UI
     const removePillPos = window.api?.onPillPositionChanged(applyPillPosition);

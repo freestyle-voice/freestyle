@@ -22,6 +22,7 @@ import {
   getCleanupAppAssignments,
   getEffectiveCleanupTones,
   postProcess,
+  resolveAppContextForCleanup,
 } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
@@ -83,7 +84,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     )} contentType=${contentType.slice(0, 40)}`,
   );
 
-  const appContext = decodeAppContext(c.req.header("x-app-context"));
+  const appContext = resolveAppContextForCleanup(
+    decodeAppContext(c.req.header("x-app-context")),
+  );
 
   let audioDurationMs = 0;
   if (audioData.length > 44) {

@@ -88,21 +88,33 @@ function withKeyboardXcodeProject(config) {
       keyboardBundleId,
     );
 
-    const group = proj.addPbxGroup(
-      [...SOURCE_FILES, "Info.plist"],
-      EXT_NAME,
-      EXT_NAME,
-    );
+    // node-xcode's addTarget adds the .appex product ref to a group it finds by
+    // the comment "Products" — but Expo's prebuilt project's products group has
+    // no such comment, so it silently creates an orphaned "Products" group with
+    // no parent, which makes CocoaPods fail with:
+    //   "[Xcodeproj] Consistency issue: no parent for object <EXT>.appex".
+    // Fix it by adding the product ref to the *real* products group (the one the
+    // PBXProject points at via productRefGroup).
+    ensureProductInProductsGroup(proj, target, `${EXT_NAME}.appex`);
+
+    // Group the extension's files under a PBXGroup in the project navigator.
+    // Only Info.plist here — the Swift sources are registered by the Sources
+    // build phase below (adding them here too would create duplicate file refs).
+    const group = proj.addPbxGroup(["Info.plist"], EXT_NAME, EXT_NAME);
     const mainGroup = proj.getFirstProject().firstProject.mainGroup;
     proj.addToPbxGroup(group.uuid, mainGroup);
 
-    for (const file of SOURCE_FILES) {
-      proj.addSourceFile(
-        `${EXT_NAME}/${file}`,
-        { target: target.uuid },
-        group.uuid,
-      );
-    }
+    // Create a Sources build phase *scoped to the keyboard target* and register
+    // the Swift files in it. addSourceFile with a target hint falls back to the
+    // main app's Sources phase when the target has none, which would compile the
+    // keyboard's code into the app and leave the extension with no sources — so
+    // we create the phase explicitly, attached to the keyboard target.
+    proj.addBuildPhase(
+      SOURCE_FILES.map((f) => `${EXT_NAME}/${f}`),
+      "PBXSourcesBuildPhase",
+      "Sources",
+      target.uuid,
+    );
 
     const configs = proj.pbxXCBuildConfigurationSection();
     for (const key of Object.keys(configs)) {
@@ -126,20 +138,51 @@ function withKeyboardXcodeProject(config) {
       }
     }
 
-    // Embed the .appex in the host app.
-    const mainTarget = proj.getFirstTarget();
-    if (mainTarget) {
-      proj.addBuildPhase(
-        [`${EXT_NAME}.appex`],
-        "PBXCopyFilesBuildPhase",
-        "Embed App Extensions",
-        mainTarget.firstTarget.uuid,
-        "app_extension",
-      );
-    }
+    // Note: addTarget("app_extension") already creates the "Copy Files" embed
+    // phase on the host (first) target and adds the .appex to it, so we do NOT
+    // add another PBXCopyFilesBuildPhase here — doing so produced a duplicate
+    // phase and the orphaned product ref that broke `pod install`.
 
     return mod;
   });
+}
+
+/**
+ * Ensure the extension's product (.appex) reference lives in the project's real
+ * Products group so it has a parent. Works around node-xcode's
+ * `addToProductsPbxGroup`, which matches the products group by the comment
+ * "Products" and — when Expo's project doesn't use that comment — creates an
+ * orphaned group instead, breaking CocoaPods serialization.
+ */
+function ensureProductInProductsGroup(proj, target, appexName) {
+  const productRef = target.pbxNativeTarget?.productReference;
+  if (!productRef) return;
+
+  const objects = proj.hash.project.objects;
+  const pbxProject = objects.PBXProject[proj.getFirstProject().uuid];
+  const productsGroupKey =
+    pbxProject.productRefGroup || proj.findPBXGroupKey({ name: "Products" });
+
+  let productsGroup =
+    (productsGroupKey && proj.getPBXGroupByKey(productsGroupKey)) ||
+    proj.pbxGroupByName("Products");
+
+  if (!productsGroup) {
+    // No products group at all — create one and link it under the main group.
+    const created = proj.addPbxGroup([], "Products");
+    proj.addToPbxGroup(created.uuid, pbxProject.mainGroup);
+    pbxProject.productRefGroup = created.uuid;
+    pbxProject.productRefGroup_comment = "Products";
+    productsGroup = created.pbxGroup;
+  }
+
+  productsGroup.children = productsGroup.children || [];
+  const present = productsGroup.children.some(
+    (c) => c && c.value === productRef,
+  );
+  if (!present) {
+    productsGroup.children.push({ value: productRef, comment: appexName });
+  }
 }
 
 function keyboardInfoPlist() {

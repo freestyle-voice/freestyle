@@ -20,9 +20,10 @@ import {
   requestMicPermission,
   useRecorder,
 } from "@/lib/audio/recorder";
+import { DEFAULT_INTENSITY } from "@/lib/cleanup-tones";
 import { authHeaders } from "@/lib/cloud/session";
 import { CloudStreamSession } from "@/lib/cloud/stream";
-import { languageHint, useSettings } from "@/lib/settings";
+import { languageHint, tonesForCloud, useSettings } from "@/lib/settings";
 
 /** Debounce so an accidental tap/hold doesn't open a pointless session. */
 const MIN_RECORDING_MS = 350;
@@ -95,7 +96,11 @@ export default function VoiceScreen() {
     sessionRef.current = new CloudStreamSession({
       cookie: headers.Cookie,
       language: languageHint(settings.language),
-      cleanup: { skipPostProcess: !settings.cleanup, intensity: "low" },
+      cleanup: {
+        skipPostProcess: !settings.cleanup,
+        intensity: DEFAULT_INTENSITY,
+        ...tonesForCloud(settings),
+      },
       callbacks: {
         onReady: () => {},
         onPartial: (t) => setPartial(t),

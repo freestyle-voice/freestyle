@@ -8,6 +8,7 @@ import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
+import { OVERALL_TONE_OPTIONS } from "@/lib/cleanup-tones";
 import { type CloudUsageBalance, fetchCloudUsage } from "@/lib/cloud/usage";
 import { LANGUAGES, type LanguageCode, useSettings } from "@/lib/settings";
 
@@ -15,7 +16,7 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { user, signedIn, signOut } = useAuth();
-  const { settings, setLanguage, setCleanup } = useSettings();
+  const { settings, setLanguage, setCleanup, setOverallTone } = useSettings();
   const [usage, setUsage] = useState<CloudUsageBalance | null>(null);
 
   useEffect(() => {
@@ -107,6 +108,49 @@ export default function SettingsScreen() {
                 trackColor={{ true: theme.primary, false: theme.border }}
               />
             </View>
+
+            {settings.cleanup ? (
+              <View style={styles.toneBlock}>
+                <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
+                  Tone
+                </ThemedText>
+                <View style={styles.chips}>
+                  {OVERALL_TONE_OPTIONS.map((tone) => {
+                    const selected = settings.overallTone === tone.value;
+                    return (
+                      <Pressable
+                        key={tone.value}
+                        onPress={() => setOverallTone(tone.value)}
+                        style={[
+                          styles.chip,
+                          {
+                            borderColor: selected
+                              ? theme.primary
+                              : theme.border,
+                            backgroundColor: selected
+                              ? theme.accent
+                              : "transparent",
+                          },
+                        ]}
+                      >
+                        <ThemedText
+                          style={[
+                            styles.chipText,
+                            {
+                              color: selected
+                                ? theme.accentForeground
+                                : theme.foreground,
+                            },
+                          ]}
+                        >
+                          {tone.label}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
           </Section>
 
           <Pressable
@@ -184,6 +228,7 @@ const styles = StyleSheet.create({
   chipText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
   switchRow: { flexDirection: "row", alignItems: "center", gap: Spacing.three },
   switchLabel: { flex: 1 },
+  toneBlock: { gap: Spacing.two },
   signOut: {
     marginTop: Spacing.two,
     height: 50,

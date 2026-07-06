@@ -26,6 +26,13 @@ type RNWebSocketCtor = new (
   options: { headers: Record<string, string> },
 ) => WebSocket;
 
+import type {
+  CleanupEmailTone,
+  CleanupOverallTone,
+  CleanupPersonalTone,
+  CleanupWorkTone,
+} from "../cleanup-tones";
+
 export interface StreamCleanupPreferences {
   /** When true the cloud returns the raw transcript with no LLM cleanup. */
   skipPostProcess: boolean;
@@ -33,6 +40,11 @@ export interface StreamCleanupPreferences {
   intensity?: string;
   /** Custom cleanup prompt (only meaningful when intensity is "custom"). */
   customPrompt?: string;
+  /** Destination-aware tones the cloud applies during post-processing. */
+  personalTone?: CleanupPersonalTone;
+  workTone?: CleanupWorkTone;
+  emailTone?: CleanupEmailTone;
+  overallTone?: CleanupOverallTone;
 }
 
 export interface StreamCallbacks {
@@ -104,9 +116,19 @@ export class CloudStreamSession {
       type: "start" as const,
       language: language || undefined,
       skipPostProcess: cleanup.skipPostProcess,
+      // Send the full cleanup/tone payload so streaming post-processing behaves
+      // like the desktop and batch paths. Omitted entirely when the user has
+      // cleanup turned off (skipPostProcess), where the cloud returns raw text.
       ...(cleanup.skipPostProcess
         ? {}
-        : { intensity: cleanup.intensity, customPrompt: cleanup.customPrompt }),
+        : {
+            intensity: cleanup.intensity,
+            customPrompt: cleanup.customPrompt,
+            personalTone: cleanup.personalTone,
+            workTone: cleanup.workTone,
+            emailTone: cleanup.emailTone,
+            overallTone: cleanup.overallTone,
+          }),
     };
   }
 

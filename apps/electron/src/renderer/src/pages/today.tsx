@@ -82,7 +82,6 @@ const MODEL_LABEL_OVERRIDES: Record<string, string> = {
   openai: "OpenAI",
   stt: "STT",
   "post-process": "Post-process",
-  soniox: "Soniox",
 };
 
 function titleizeModelPart(part: string): string {

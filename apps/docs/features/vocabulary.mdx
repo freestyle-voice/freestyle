@@ -42,10 +42,9 @@ Vocabulary is only as good as the speech model's support for it, and that differ
 | Provider / model | How terms are used | Multi-word phrases? |
 | --- | --- | --- |
 | **OpenAI, Groq, whisper.cpp** | Injected as an initial prompt (~900-char budget) | Yes |
-| **Deepgram Nova-3** | Sent as keyterms (up to 100; fewer while streaming) | Yes |
+| **Deepgram Nova-3** | Sent as keyterms (up to 100) | Yes |
 | **Deepgram Nova-2** | Sent as keywords, split into single words | Single words only |
 | **ElevenLabs (Scribe v2)** | Sent as keyterms (length-capped) | Short terms only |
-| **Soniox** | Sent as context terms (up to 100) | Yes |
 | **Local MLX models** | Injected as a "Technical terms" prompt | Yes |
 | **Other models** | Not supported — terms are ignored | — |
 
@@ -55,4 +54,4 @@ Vocabulary is only as good as the speech model's support for it, and that differ
 
 ## When it runs
 
-Vocabulary is the **first** step in the pipeline — it shapes the transcription itself, before any [cleanup](/features/cleanup) or [dictionary](/features/dictionary) replacement happens. It applies to both batch and streaming transcription.
+Vocabulary is the **first** step in the pipeline — it shapes the transcription itself, before any [cleanup](/features/cleanup) or [dictionary](/features/dictionary) replacement happens.

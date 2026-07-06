@@ -43,7 +43,6 @@ The Freestyle server is a [Hono](https://hono.dev) app that runs on `http://127.
 | Method | Path | Description |
 | --- | --- | --- |
 | `POST` | `/api/transcribe` | Main transcription endpoint. Accepts audio as multipart form data or raw binary. Transcribes via configured voice provider and optionally runs LLM cleanup. Headers: `x-app-context` (JSON), `x-audio-duration-ms`, `x-skip-post-process`. |
-| `GET` | `/stream` | WebSocket endpoint for real-time streaming transcription. Handles binary audio frames and JSON control messages (`context`, `start`, `commit`, `cancel`). |
 | `POST` | `/api/post-process` | Run LLM cleanup on text independently. Body: `{ text, appContext?, language? }`. |
 
 ## API keys

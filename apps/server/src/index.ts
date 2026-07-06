@@ -3,7 +3,6 @@ import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
-import { WebSocketServer } from "ws";
 import { isTransientCloudError } from "./lib/freestyle-cloud.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
@@ -38,13 +37,8 @@ process.on("SIGTERM", () => shutdownServer().finally(() => process.exit(0)));
 function createApp(pluginMiddleware: MiddlewareHandler[] = []) {
   const base = new Hono()
     .use(trustedOriginMiddleware)
-    // CORS for renderer requests (skip WebSocket upgrades)
-    .use((c, next) => {
-      if (c.req.header("upgrade")?.toLowerCase() === "websocket") {
-        return next();
-      }
-      return cors()(c, next);
-    });
+    // CORS for renderer requests
+    .use(cors());
 
   // Mount plugin middleware in resolved order (enforce: pre → none → post).
   for (const mw of pluginMiddleware) {
@@ -95,7 +89,7 @@ export interface RunningServer {
 }
 
 /**
- * Start the Freestyle HTTP server with WebSocket support.
+ * Start the Freestyle HTTP server.
  *
  * Shared by the Electron main process (loopback, in-process) and the
  * standalone container entrypoint (see startup.ts).
@@ -118,7 +112,6 @@ export async function startServer(
 
   const pluginMiddleware = plugins().collectMiddleware();
   const app = createApp(pluginMiddleware);
-  const wss = new WebSocketServer({ noServer: true });
 
   return new Promise((resolve, reject) => {
     const server = serve(
@@ -126,7 +119,6 @@ export async function startServer(
         fetch: app.fetch,
         port,
         hostname: host,
-        websocket: { server: wss },
       },
       (info) => {
         resolve({ server, port: info.port });

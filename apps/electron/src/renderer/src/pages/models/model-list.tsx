@@ -307,10 +307,7 @@ export function ModelList({
         ) : (
           <Sparkles className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
         )}
-        <span
-          className="mono text-foreground shrink-0 text-[11px] uppercase"
-          style={{ letterSpacing: "0.14em" }}
-        >
+        <span className="text-foreground shrink-0 text-[12px] font-semibold">
           {type === "voice" ? "All voice models" : "Cleanup model"}
         </span>
         <InputGroup className="ml-3 h-9 flex-1 rounded-md">
@@ -445,10 +442,7 @@ function VoiceTiers({
     <>
       <header className="border-border flex shrink-0 items-center gap-3 border-b px-5 py-3.5">
         <Mic className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-        <span
-          className="mono text-foreground flex-1 text-[11px] uppercase"
-          style={{ letterSpacing: "0.14em" }}
-        >
+        <span className="text-foreground flex-1 text-[12px] font-semibold">
           How should Freestyle transcribe?
         </span>
         <Button
@@ -566,8 +560,7 @@ function TierCard({
         {badge && !selected && (
           <Badge
             variant="secondary"
-            className="mono ml-auto text-[9px] uppercase"
-            style={{ letterSpacing: "0.1em" }}
+            className="ml-auto text-[10px] font-semibold"
           >
             {badge}
           </Badge>
@@ -713,8 +706,7 @@ function ModelRow({
           {row.recommended && !row.selected && (
             <Badge
               variant="secondary"
-              className="mono shrink-0 text-[9px] uppercase"
-              style={{ letterSpacing: "0.1em" }}
+              className="shrink-0 text-[10px] font-semibold"
             >
               Recommended
             </Badge>
@@ -733,11 +725,8 @@ function ModelRow({
 
       <div className="flex shrink-0 items-center gap-1.5 justify-self-end">
         {row.selected ? (
-          <span
-            className="mono text-primary"
-            style={{ fontSize: 10, letterSpacing: "0.14em" }}
-          >
-            SELECTED
+          <span className="text-primary text-[11px] font-semibold">
+            Selected
           </span>
         ) : local ? (
           <>
@@ -857,10 +846,7 @@ function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
     <div className="border-border border-b">
       <div className="flex items-center gap-2 px-5 pb-2 pt-3">
         <Laptop className="text-primary h-3 w-3" />
-        <span
-          className="mono text-foreground text-[10px] uppercase"
-          style={{ letterSpacing: "0.14em" }}
-        >
+        <span className="text-foreground text-[11px] font-semibold">
           On-device
         </span>
         <span className="text-muted-foreground text-[11.5px]">

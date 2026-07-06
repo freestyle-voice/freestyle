@@ -1203,7 +1203,7 @@ function CopyButton({
       type="button"
       onClick={() => copy(value)}
       className={cn(
-        "mono text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-[10.5px] font-medium tracking-[0.08em] uppercase transition-colors",
+        "text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-[11px] font-medium transition-colors",
         className,
       )}
     >
@@ -1249,7 +1249,7 @@ function CopyField({
 }): React.JSX.Element {
   return (
     <div className="border-border bg-secondary/45 flex min-w-0 items-center gap-3 rounded-[10px] border px-3 py-2.5">
-      <div className="mono text-muted-foreground hidden shrink-0 text-[10.5px] tracking-[0.14em] uppercase min-[760px]:block">
+      <div className="text-muted-foreground hidden shrink-0 text-[11px] font-medium min-[760px]:block">
         {label}
       </div>
       <div className="bg-background/45 border-border flex min-w-0 flex-1 items-center rounded-md border px-3 py-2">
@@ -1275,7 +1275,7 @@ function CodeBlock({
     <div className="border-border bg-secondary/45 overflow-hidden rounded-[12px] border">
       <div className="flex items-start justify-between gap-3 border-b border-border/70 px-3 py-2.5">
         <div className="min-w-0">
-          <div className="mono text-muted-foreground text-[10.5px] tracking-[0.14em] uppercase">
+          <div className="text-muted-foreground text-[11px] font-medium">
             {label}
           </div>
           {note && (
@@ -1342,7 +1342,7 @@ function McpConnect(): React.JSX.Element {
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 min-[760px]:flex-row min-[760px]:items-start min-[760px]:justify-between">
           <div className="min-w-0">
-            <div className="mono text-primary text-[10px] uppercase tracking-[0.16em]">
+            <div className="text-primary text-[11px] font-semibold">
               Connect an MCP client
             </div>
             <p className="text-muted-foreground mt-1.5 max-w-[620px] text-[12.5px] leading-relaxed">

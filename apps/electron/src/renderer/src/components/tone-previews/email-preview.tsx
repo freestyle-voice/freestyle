@@ -49,13 +49,13 @@ export function EmailPreview({
       <div className="bg-background/75 border-border/80 border-b px-3 py-2.5">
         <div className="grid gap-1">
           <div className="flex items-center gap-2">
-            <span className="mono text-muted-foreground text-[9px] uppercase tracking-[0.16em]">
+            <span className="text-muted-foreground text-[10.5px] font-medium">
               To
             </span>
             <span className="text-foreground text-[12px]">{to}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="mono text-muted-foreground text-[9px] uppercase tracking-[0.16em]">
+            <span className="text-muted-foreground text-[10.5px] font-medium">
               Subject
             </span>
             <span className="text-foreground text-[12px]">{subject}</span>

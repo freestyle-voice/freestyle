@@ -67,12 +67,54 @@ function formatMinutes(totalSec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+const MODEL_LABEL_OVERRIDES: Record<string, string> = {
+  api: "API",
+  asr: "ASR",
+  deepgram: "Deepgram",
+  elevenlabs: "ElevenLabs",
+  "freestyle-cloud": "Freestyle Cloud",
+  "freestyle-cloud/stt": "Freestyle Cloud / STT",
+  "freestyle-cloud/post-process": "Freestyle Cloud / Post-process",
+  gpt: "GPT",
+  groq: "Groq",
+  llm: "LLM",
+  mlx: "MLX",
+  openai: "OpenAI",
+  stt: "STT",
+  "post-process": "Post-process",
+  soniox: "Soniox",
+};
+
+function titleizeModelPart(part: string): string {
+  const normalized = part.trim();
+  const override = MODEL_LABEL_OVERRIDES[normalized.toLowerCase()];
+  if (override) return override;
+  if (!normalized) return normalized;
+  return normalized
+    .split("-")
+    .map((token) => {
+      const tokenOverride = MODEL_LABEL_OVERRIDES[token.toLowerCase()];
+      if (tokenOverride) return tokenOverride;
+      if (/^[A-Z0-9]+$/.test(token)) return token;
+      return `${token.charAt(0).toUpperCase()}${token.slice(1)}`;
+    })
+    .join(" ");
+}
+
+function formatModelIdForDisplay(modelId: string): string {
+  const normalized = modelId.trim();
+  const override = MODEL_LABEL_OVERRIDES[normalized.toLowerCase()];
+  if (override) return override;
+  return normalized.split("/").map(titleizeModelPart).join(" / ");
+}
+
 function formatModelLabel(entry: HistoryEntry): string {
   const voice = entry.voice_model || entry.voice_provider;
+  const voiceLabel = formatModelIdForDisplay(voice);
   if (entry.llm_model) {
-    return `${voice} · ${entry.llm_model}`;
+    return `${voiceLabel} · ${formatModelIdForDisplay(entry.llm_model)}`;
   }
-  return voice;
+  return voiceLabel;
 }
 
 // Build a 24-bin (per-hour) histogram of word activity for today.
@@ -265,7 +307,7 @@ export default function TodayPage(): React.JSX.Element {
               <span className="serif-italic text-foreground text-[26px] leading-none min-w-[70px]">
                 {cloudUsage.remaining.toLocaleString()}
               </span>
-              <span className="mono text-muted-foreground text-[10px] leading-snug tracking-[0.12em] uppercase">
+              <span className="text-muted-foreground text-[11px] font-medium leading-snug">
                 credits left
               </span>
             </div>
@@ -330,7 +372,7 @@ function TimelineNode({ entry }: { entry: HistoryEntry }): React.JSX.Element {
 
       <div className="border-border bg-card rounded-[11px] border px-[18px] py-[14px]">
         <div className="mb-2 flex items-center gap-2.5">
-          <span className="mono text-primary text-[10.5px] font-semibold tracking-[0.14em] uppercase">
+          <span className="text-primary text-[11.5px] font-semibold">
             {formatModelLabel(entry)}
           </span>
           <span className="flex-1" />
@@ -368,7 +410,7 @@ function RailLabel({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <div className="mono text-muted-foreground mb-3 text-[10px] tracking-[0.18em] uppercase">
+    <div className="text-muted-foreground mb-3 text-[11px] font-semibold">
       {children}
     </div>
   );
@@ -397,7 +439,7 @@ function RailStat({
       >
         {n}
       </span>
-      <span className="mono text-muted-foreground text-[10px] leading-snug tracking-[0.12em] uppercase">
+      <span className="text-muted-foreground text-[11px] font-medium leading-snug">
         {l}
       </span>
     </div>
@@ -408,7 +450,7 @@ function UsageBar({ label, pct }: UsageBucket): React.JSX.Element {
   return (
     <div className="mb-3">
       <div className="flex items-center justify-between mb-1">
-        <span className="mono text-foreground text-[10.5px] tracking-[0.1em] uppercase">
+        <span className="text-foreground text-[11.5px] font-medium">
           {label}
         </span>
         <span className="mono text-muted-foreground text-[10.5px]">{pct}%</span>

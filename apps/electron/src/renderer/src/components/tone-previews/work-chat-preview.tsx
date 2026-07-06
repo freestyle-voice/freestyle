@@ -34,7 +34,7 @@ export function WorkChatPreview({
             <span className="text-foreground text-[13px] font-semibold">
               {sender}
             </span>
-            <span className="mono text-muted-foreground text-[9px] uppercase tracking-[0.16em]">
+            <span className="text-muted-foreground text-[10.5px] font-medium">
               {time}
             </span>
           </div>

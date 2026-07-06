@@ -64,13 +64,13 @@ export function PageHeader({
 }
 
 // ---------------------------------------------------------------------------
-// Eyebrow — small uppercase label shared across sections
+// Eyebrow — small section label shared across settings pages
 // ---------------------------------------------------------------------------
 
 export function Eyebrow({
   text,
   accent,
-  mono = true,
+  mono = false,
 }: {
   text: string;
   accent?: boolean;
@@ -79,11 +79,10 @@ export function Eyebrow({
   return (
     <span
       className={cn(
-        "text-[10px] uppercase",
-        mono ? "mono" : "font-semibold",
+        "text-[11px] font-semibold",
+        mono && "mono",
         accent ? "text-primary" : "text-muted-foreground",
       )}
-      style={{ letterSpacing: "0.14em" }}
     >
       {text}
     </span>

@@ -350,7 +350,7 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- REST fallback (full recorded WAV kept by the streamer) ----
   const restFallbackTranscribe = useCallback(
-    (errorMsg: string): Promise<TranscribeResult> | null => {
+    async (errorMsg: string): Promise<TranscribeResult | null> => {
       const wavBlob = streamerRef.current?.getWavBlob() ?? null;
       if (!wavBlob) return null;
       const headers: Record<string, string> = {
@@ -673,7 +673,7 @@ export default function AppPage(): React.JSX.Element {
         streamer.setContext(null);
       } catch {}
 
-      window.api
+      void window.api
         ?.getFrontmostApp()
         .then((app) => {
           appContextRef.current = app;

@@ -1253,6 +1253,47 @@ function resetOnboarding(): void {
   showSettingsWindow("/onboarding");
 }
 
+// Dev-only: simulate a new user's locked Tone page (setup hero).
+// Sets cleanup_tone_enabled to false explicitly so grandfather auto-opt-in
+// (undefined + llm_cleanup on) does not immediately unlock the page.
+async function resetToneSetup(): Promise<void> {
+  try {
+    const res = await net.fetch(
+      `${getServerBaseUrl()}/api/settings/${SETTINGS_KEYS.cleanupToneEnabled}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: "false" }),
+      },
+    );
+    if (!res.ok) {
+      log.warn(`Reset tone setup failed: ${res.status}`);
+    }
+  } catch (err) {
+    log.warn("Reset tone setup failed:", err);
+  }
+
+  const tonePath = "/settings/tone";
+  if (!settingsWindow) {
+    createSettingsWindow(tonePath);
+    return;
+  }
+
+  const url = getDashboardURL(tonePath);
+  const current = settingsWindow.webContents.getURL();
+  if (current.includes(tonePath)) {
+    settingsWindow.webContents.reload();
+  } else {
+    void settingsWindow.loadURL(url);
+  }
+  if (process.platform === "darwin") {
+    app.dock?.show();
+    app.focus({ steal: true });
+  }
+  settingsWindow.show();
+  settingsWindow.focus();
+}
+
 async function factoryReset(): Promise<void> {
   const { response } = await dialog.showMessageBox({
     type: "warning",
@@ -1467,6 +1508,12 @@ function buildTrayContextMenu(): Menu {
             click: resetOnboarding,
           },
           {
+            label: "Reset Tone Setup",
+            click: () => {
+              void resetToneSetup();
+            },
+          },
+          {
             label: "Hard Reset",
             click: () => {
               void factoryReset();
@@ -1532,6 +1579,12 @@ function rebuildMenus(): void {
                     {
                       label: "Reset Onboarding",
                       click: resetOnboarding,
+                    },
+                    {
+                      label: "Reset Tone Setup",
+                      click: () => {
+                        void resetToneSetup();
+                      },
                     },
                     {
                       label: "Hard Reset",

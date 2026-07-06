@@ -16,7 +16,26 @@ export const cleanupIntensitySchema = z.enum([
 
 export type CleanupIntensity = z.infer<typeof cleanupIntensitySchema>;
 
-export const DEFAULT_CLEANUP_INTENSITY: CleanupIntensity = "low";
+// "medium" is the default strength everyone gets before opting into tone
+// customization. Until a user completes the Style setup, cleanup runs this
+// preset "across the board" (see `cleanup_tone_enabled`).
+export const DEFAULT_CLEANUP_INTENSITY: CleanupIntensity = "medium";
+
+/**
+ * Whether the user has opted into tone customization (completed the Style setup
+ * flow). Persisted as the string "true"/"false" like other boolean settings.
+ * When `false`, the Style page is locked, cleanup is forced to the medium
+ * preset, and every sector tone is treated as "off" (no destination styling).
+ */
+export const cleanupToneEnabledSchema = z.enum(["true", "false"]);
+
+export const DEFAULT_CLEANUP_TONE_ENABLED = false;
+
+export function parseCleanupToneEnabled(
+  value: string | null | undefined,
+): boolean {
+  return value === "true";
+}
 
 /**
  * Upper bound on a user-authored custom cleanup prompt. Comfortably above the

@@ -19,10 +19,12 @@ export function NotePreview({
     >
       <p className="text-foreground text-[14px] leading-[1.5]">
         {sample}
-        <span
-          aria-hidden="true"
-          className="bg-foreground/70 ml-0.5 inline-block h-[1.05em] w-px translate-y-[0.15em]"
-        />
+        {selected ? (
+          <span
+            aria-hidden="true"
+            className="bg-foreground/70 ml-0.5 inline-block h-[1.05em] w-px translate-y-[0.15em]"
+          />
+        ) : null}
       </p>
     </div>
   );

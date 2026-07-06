@@ -329,6 +329,7 @@
   },
   "tone": {
     "title": "Tone",
+    "beta": "Beta",
     "subtitle": "How much Freestyle cleans up — and how it sounds in each app.",
     "loading": "Loading tone…",
     "disabledBanner": {
@@ -346,6 +347,14 @@
       "work": "Work",
       "email": "Email",
       "everythingElse": "Everything else"
+    },
+    "setup": {
+      "hero": {
+        "eyebrow": "Tone setup",
+        "title": "A tone for every app",
+        "desc": "Grammar cleanup runs everywhere — but how polished your words get can change between texts, work chat, and email.",
+        "cta": "Enable tones"
+      }
     },
     "cleanup": {
       "eyebrow": "Cleanup",
@@ -436,6 +445,11 @@
           "title": "Very casual",
           "desc": "Lowercase and shorthand.",
           "sample": "running like 10 min late be there soon"
+        },
+        "off": {
+          "title": "Off",
+          "desc": "No styling — just clean text.",
+          "sample": "Hey, I'm running about 10 minutes late. I'll be there soon."
         }
       }
     },
@@ -463,6 +477,11 @@
           "title": "Formal",
           "desc": "Formal and full.",
           "sample": "I reviewed the document. A few revisions are still required, particularly in the introduction and footer links."
+        },
+        "off": {
+          "title": "Off",
+          "desc": "No styling — just clean text.",
+          "sample": "I reviewed the doc. A couple changes are still needed: tighten the intro and update the footer links."
         }
       }
     },
@@ -490,6 +509,11 @@
           "title": "Formal",
           "desc": "Formal and structured.",
           "sample": "Hi Sam,\n\nI'm writing to confirm our meeting on Thursday at 2:00 PM. I will send the revised plan tomorrow morning. Please let me know if there is anything else you would like included.\n\nThank you,"
+        },
+        "off": {
+          "title": "Off",
+          "desc": "No email formatting — just clean text.",
+          "sample": "Hi Sam, just confirming we're still on for Thursday at 2. I'll send the revised plan tomorrow morning. Let me know if you want anything else added. Thanks."
         }
       }
     },
@@ -515,6 +539,11 @@
           "title": "Professional",
           "desc": "Polished and composed.",
           "sample": "I've pushed the fix; it should be ready to test now."
+        },
+        "off": {
+          "title": "Off",
+          "desc": "No styling — just clean text.",
+          "sample": "Just pushed the fix. Should be good to test now."
         }
       }
     }

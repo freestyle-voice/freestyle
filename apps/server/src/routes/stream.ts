@@ -17,12 +17,7 @@ import {
 import {
   applyFinalRewrites,
   getCleanupAppAssignments,
-  getCleanupCustomPrompt,
-  getCleanupEmailTone,
-  getCleanupIntensity,
-  getCleanupOverallTone,
-  getCleanupPersonalTone,
-  getCleanupWorkTone,
+  getEffectiveCleanupTones,
   isLlmCleanupEnabled,
   postProcess,
   prewarmPostProcess,
@@ -105,12 +100,7 @@ const stream = new Hono().get(
         voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
           ? JSON.stringify([
               isLlmCleanupEnabled(),
-              getCleanupIntensity(),
-              getCleanupCustomPrompt(),
-              getCleanupPersonalTone(),
-              getCleanupWorkTone(),
-              getCleanupEmailTone(),
-              getCleanupOverallTone(),
+              getEffectiveCleanupTones(),
               getCleanupAppAssignments(),
             ])
           : null;
@@ -276,12 +266,7 @@ const stream = new Hono().get(
         voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
           ? {
               skipPostProcess: !isLlmCleanupEnabled(),
-              intensity: getCleanupIntensity(),
-              customPrompt: getCleanupCustomPrompt(),
-              personalTone: getCleanupPersonalTone(),
-              workTone: getCleanupWorkTone(),
-              emailTone: getCleanupEmailTone(),
-              overallTone: getCleanupOverallTone(),
+              ...getEffectiveCleanupTones(),
               appAssignments: getCleanupAppAssignments(),
             }
           : undefined;

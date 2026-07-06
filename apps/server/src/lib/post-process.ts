@@ -14,6 +14,7 @@ import {
   parseCleanupIntensity,
   parseCleanupOverallTone,
   parseCleanupPersonalTone,
+  parseCleanupToneEnabled,
   parseCleanupWorkTone,
 } from "@freestyle-voice/validations";
 import { generateText } from "ai";
@@ -83,6 +84,16 @@ export function getCleanupIntensity(): CleanupIntensity {
   return parseCleanupIntensity(readSetting("cleanup_intensity"));
 }
 
+/**
+ * Whether the user has opted into tone customization (completed the Style
+ * setup). When off, cleanup is forced to the medium preset with every sector
+ * tone treated as "off" — see the effective-value computation in
+ * {@link postProcess}.
+ */
+export function getCleanupToneEnabled(): boolean {
+  return parseCleanupToneEnabled(readSetting("cleanup_tone_enabled"));
+}
+
 export function getCleanupCustomPrompt(): string | undefined {
   return readSetting("cleanup_custom_prompt");
 }
@@ -105,6 +116,35 @@ export function getCleanupOverallTone(): CleanupOverallTone {
 
 export function getCleanupAppAssignments(): CleanupAppAssignment[] {
   return parseCleanupAppAssignments(readSetting("cleanup_app_assignments"));
+}
+
+export interface EffectiveCleanupTones {
+  intensity: CleanupIntensity;
+  customPrompt: string | undefined;
+  personalTone: CleanupPersonalTone;
+  workTone: CleanupWorkTone;
+  emailTone: CleanupEmailTone;
+  overallTone: CleanupOverallTone;
+}
+
+/**
+ * Resolve the cleanup strength + per-sector tones actually applied to a
+ * dictation. Until the user opts into tone customization, cleanup runs the
+ * medium preset across the board with no per-sector styling — every sector tone
+ * collapses to "off". Shared by every cleanup path (batch/local, Freestyle
+ * Cloud post-process, and Freestyle Cloud streaming) so behavior is identical
+ * regardless of which cleanup model is active.
+ */
+export function getEffectiveCleanupTones(): EffectiveCleanupTones {
+  const toneEnabled = getCleanupToneEnabled();
+  return {
+    intensity: toneEnabled ? getCleanupIntensity() : "medium",
+    customPrompt: toneEnabled ? getCleanupCustomPrompt() : undefined,
+    personalTone: toneEnabled ? getCleanupPersonalTone() : "off",
+    workTone: toneEnabled ? getCleanupWorkTone() : "off",
+    emailTone: toneEnabled ? getCleanupEmailTone() : "off",
+    overallTone: toneEnabled ? getCleanupOverallTone() : "off",
+  };
 }
 
 function resolveChatModel(provider: string, modelId: string) {
@@ -237,6 +277,18 @@ export async function postProcess(
   let handoffMs = 0;
 
   if (llm && isLlmCleanupEnabled()) {
+    // Resolved cleanup config (medium + all-"off" until the user opts into tone
+    // customization). Both the Freestyle Cloud and local-model paths below
+    // consume these values, so behavior is identical across cleanup models.
+    const {
+      intensity,
+      customPrompt,
+      personalTone,
+      workTone,
+      emailTone,
+      overallTone,
+    } = getEffectiveCleanupTones();
+
     if (llm.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
       // Freestyle Cloud assembles its cleanup prompts server-side: it resolves
       // the destination from appContext + appAssignments and applies the tone
@@ -249,12 +301,12 @@ export async function postProcess(
           text: normalizedRawText,
           appContext,
           language: options.language,
-          intensity: getCleanupIntensity(),
-          customPrompt: getCleanupCustomPrompt(),
-          personalTone: getCleanupPersonalTone(),
-          workTone: getCleanupWorkTone(),
-          emailTone: getCleanupEmailTone(),
-          overallTone: getCleanupOverallTone(),
+          intensity,
+          customPrompt,
+          personalTone,
+          workTone,
+          emailTone,
+          overallTone,
           appAssignments: getCleanupAppAssignments(),
         });
         inputTokens = result.usage?.inputTokens ?? 0;
@@ -299,17 +351,17 @@ export async function postProcess(
 
       const { system, prompt } = buildRewritePrompt(normalizedRawText, {
         language: options.language,
-        intensity: getCleanupIntensity(),
-        customPrompt: getCleanupCustomPrompt(),
+        intensity,
+        customPrompt,
         destination: promptHook.destination ?? destination,
-        personalTone: getCleanupPersonalTone(),
+        personalTone,
         personalSurface:
           (promptHook.destination ?? destination) === "personal"
             ? personalSurface
             : null,
-        workTone: getCleanupWorkTone(),
-        emailTone: getCleanupEmailTone(),
-        overallTone: getCleanupOverallTone(),
+        workTone,
+        emailTone,
+        overallTone,
       });
       const pluginSystem =
         promptHook.system.length > 0

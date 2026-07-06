@@ -129,6 +129,12 @@ const PERSONAL_OPTIONS: ToneCardOption<CleanupPersonalTone>[] = [
     descKey: "tone.personal.cards.very_casual.desc",
     sampleKey: "tone.personal.cards.very_casual.sample",
   },
+  {
+    value: "off",
+    titleKey: "tone.personal.cards.off.title",
+    descKey: "tone.personal.cards.off.desc",
+    sampleKey: "tone.personal.cards.off.sample",
+  },
 ];
 
 const WORK_OPTIONS: ToneCardOption<CleanupWorkTone>[] = [
@@ -149,6 +155,12 @@ const WORK_OPTIONS: ToneCardOption<CleanupWorkTone>[] = [
     titleKey: "tone.work.cards.formal.title",
     descKey: "tone.work.cards.formal.desc",
     sampleKey: "tone.work.cards.formal.sample",
+  },
+  {
+    value: "off",
+    titleKey: "tone.work.cards.off.title",
+    descKey: "tone.work.cards.off.desc",
+    sampleKey: "tone.work.cards.off.sample",
   },
 ];
 
@@ -171,6 +183,12 @@ const EMAIL_OPTIONS: ToneCardOption<CleanupEmailTone>[] = [
     descKey: "tone.email.cards.formal.desc",
     sampleKey: "tone.email.cards.formal.sample",
   },
+  {
+    value: "off",
+    titleKey: "tone.email.cards.off.title",
+    descKey: "tone.email.cards.off.desc",
+    sampleKey: "tone.email.cards.off.sample",
+  },
 ];
 
 const OVERALL_OPTIONS: ToneCardOption<CleanupOverallTone>[] = [
@@ -192,6 +210,12 @@ const OVERALL_OPTIONS: ToneCardOption<CleanupOverallTone>[] = [
     descKey: "tone.everythingElse.cards.professional.desc",
     sampleKey: "tone.everythingElse.cards.professional.sample",
   },
+  {
+    value: "off",
+    titleKey: "tone.everythingElse.cards.off.title",
+    descKey: "tone.everythingElse.cards.off.desc",
+    sampleKey: "tone.everythingElse.cards.off.sample",
+  },
 ];
 
 export default function TonePage(): React.JSX.Element {
@@ -199,8 +223,12 @@ export default function TonePage(): React.JSX.Element {
   const cloudAuth = useCloudAuth();
   const [loading, setLoading] = useState(true);
   const [llmCleanup, setLlmCleanup] = useState(false);
+  // Whether the user has opted into tone customization (completed setup). Until
+  // then the page is locked behind the setup hero and cleanup runs the medium
+  // preset across the board with no per-sector styling.
+  const [toneEnabled, setToneEnabled] = useState(false);
   const [cleanupIntensity, setCleanupIntensity] =
-    useState<CleanupIntensity>("low");
+    useState<CleanupIntensity>("medium");
   const [cleanupCustomPrompt, setCleanupCustomPrompt] = useState("");
   const [savedCleanupCustomPrompt, setSavedCleanupCustomPrompt] = useState("");
   const [savingCustomPrompt, setSavingCustomPrompt] = useState(false);
@@ -237,7 +265,28 @@ export default function TonePage(): React.JSX.Element {
 
       if (settingsRes.ok) {
         const settings = await settingsRes.json();
-        setLlmCleanup(settings[SETTINGS_KEYS.llmCleanup] === "true");
+        const cleanupOn = settings[SETTINGS_KEYS.llmCleanup] === "true";
+        setLlmCleanup(cleanupOn);
+
+        // Grandfather existing cleanup users: before this feature there was no
+        // tone-enabled flag, so an already-configured cleanup user is treated as
+        // opted-in (their saved tone choices keep applying) and we persist it so
+        // the server's effective-tone logic agrees. New users stay locked.
+        const rawToneEnabled = settings[SETTINGS_KEYS.cleanupToneEnabled];
+        if (rawToneEnabled === undefined && cleanupOn) {
+          setToneEnabled(true);
+          void getClient()
+            .api.settings[":key"].$put({
+              param: { key: SETTINGS_KEYS.cleanupToneEnabled },
+              json: { value: "true" },
+            })
+            .catch((err) =>
+              console.error("Failed to persist tone opt-in migration:", err),
+            );
+        } else {
+          setToneEnabled(rawToneEnabled === "true");
+        }
+
         setCleanupIntensity(
           parseCleanupIntensity(settings[SETTINGS_KEYS.cleanupIntensity]),
         );
@@ -299,6 +348,16 @@ export default function TonePage(): React.JSX.Element {
       throw new Error(`Failed to save setting "${key}" (${res.status})`);
     }
   }, []);
+
+  // Unlocks the tone tabs and tells the server to honor per-sector tones.
+  const enableToneCustomization = useCallback(async () => {
+    setToneEnabled(true);
+    try {
+      await saveSetting(SETTINGS_KEYS.cleanupToneEnabled, "true");
+    } catch (err) {
+      console.error("Failed to enable tone customization:", err);
+    }
+  }, [saveSetting]);
 
   // Turn cleanup on by wiring Freestyle Cloud as the cleanup model. Requires a
   // signed-in cloud session; mirrors the Models page "Use Freestyle Cloud" flow.
@@ -473,15 +532,19 @@ export default function TonePage(): React.JSX.Element {
   return (
     <PageShell>
       <div className="mx-auto w-full max-w-[1060px]">
-        <PageHeader title={t("tone.title")} subtitle={t("tone.subtitle")} />
+        <PageHeader
+          title={t("tone.title")}
+          subtitle={t("tone.subtitle")}
+          badge={t("tone.beta")}
+        />
 
-        {!llmCleanup ? (
+        {toneEnabled && !llmCleanup ? (
           <CleanupDisabledBanner
             signedIn={!!cloudAuth.user}
             busy={usingCloud}
             onUseCloud={() => void onUseCloud()}
           />
-        ) : !hasCleanupModel ? (
+        ) : toneEnabled && !hasCleanupModel ? (
           <CleanupNoModelBanner />
         ) : null}
 
@@ -510,92 +573,97 @@ export default function TonePage(): React.JSX.Element {
             ))}
           </TabsList>
 
-          <TabsContent value="cleanup" className="mt-0">
-            <CleanupTonePanel
-              value={cleanupMode}
-              onChange={selectCleanupMode}
-              cleanupCustomPrompt={cleanupCustomPrompt}
-              onCustomPromptChange={setCleanupCustomPrompt}
-              customPromptDirty={customPromptDirty}
-              onSaveCustomPrompt={() => void saveCleanupCustomPrompt()}
-              onResetToPreset={resetToPresetMode}
-              savingCustomPrompt={savingCustomPrompt}
-              disabled={!llmCleanup}
-            />
-          </TabsContent>
+          {toneEnabled ? (
+            <>
+              <TabsContent value="cleanup" className="mt-0">
+                <CleanupTonePanel
+                  value={cleanupMode}
+                  onChange={selectCleanupMode}
+                  cleanupCustomPrompt={cleanupCustomPrompt}
+                  onCustomPromptChange={setCleanupCustomPrompt}
+                  customPromptDirty={customPromptDirty}
+                  onSaveCustomPrompt={() => void saveCleanupCustomPrompt()}
+                  onResetToPreset={resetToPresetMode}
+                  savingCustomPrompt={savingCustomPrompt}
+                />
+              </TabsContent>
 
-          <TabsContent value="personal" className="mt-0">
-            <SubsetTonePanel
-              destination="personal"
-              previewKind="personal"
-              title={t("tone.personal.title")}
-              apps={getVisibleBuiltinRouteIds("personal", assignments)}
-              value={personalTone}
-              options={PERSONAL_OPTIONS}
-              onChange={savePersonalTone}
-              assignments={assignments.filter(
-                (a) => a.destination === "personal",
-              )}
-              allAssignments={assignments}
-              onAddAssignment={addAssignment}
-              onRemoveAssignment={removeAssignment}
-              disabled={!llmCleanup}
-            />
-          </TabsContent>
+              <TabsContent value="personal" className="mt-0">
+                <SubsetTonePanel
+                  destination="personal"
+                  previewKind="personal"
+                  title={t("tone.personal.title")}
+                  apps={getVisibleBuiltinRouteIds("personal", assignments)}
+                  value={personalTone}
+                  options={PERSONAL_OPTIONS}
+                  onChange={savePersonalTone}
+                  assignments={assignments.filter(
+                    (a) => a.destination === "personal",
+                  )}
+                  allAssignments={assignments}
+                  onAddAssignment={addAssignment}
+                  onRemoveAssignment={removeAssignment}
+                />
+              </TabsContent>
 
-          <TabsContent value="work" className="mt-0">
-            <SubsetTonePanel
-              destination="work"
-              previewKind="work"
-              title={t("tone.work.title")}
-              apps={getVisibleBuiltinRouteIds("work", assignments)}
-              value={workTone}
-              options={WORK_OPTIONS}
-              onChange={saveWorkTone}
-              assignments={assignments.filter((a) => a.destination === "work")}
-              allAssignments={assignments}
-              onAddAssignment={addAssignment}
-              onRemoveAssignment={removeAssignment}
-              disabled={!llmCleanup}
-            />
-          </TabsContent>
+              <TabsContent value="work" className="mt-0">
+                <SubsetTonePanel
+                  destination="work"
+                  previewKind="work"
+                  title={t("tone.work.title")}
+                  apps={getVisibleBuiltinRouteIds("work", assignments)}
+                  value={workTone}
+                  options={WORK_OPTIONS}
+                  onChange={saveWorkTone}
+                  assignments={assignments.filter(
+                    (a) => a.destination === "work",
+                  )}
+                  allAssignments={assignments}
+                  onAddAssignment={addAssignment}
+                  onRemoveAssignment={removeAssignment}
+                />
+              </TabsContent>
 
-          <TabsContent value="email" className="mt-0">
-            <SubsetTonePanel
-              destination="email"
-              previewKind="email"
-              title={t("tone.email.title")}
-              apps={getVisibleBuiltinRouteIds("email", assignments)}
-              value={emailTone}
-              options={EMAIL_OPTIONS}
-              onChange={saveEmailTone}
-              assignments={assignments.filter((a) => a.destination === "email")}
-              allAssignments={assignments}
-              onAddAssignment={addAssignment}
-              onRemoveAssignment={removeAssignment}
-              disabled={!llmCleanup}
-            />
-          </TabsContent>
+              <TabsContent value="email" className="mt-0">
+                <SubsetTonePanel
+                  destination="email"
+                  previewKind="email"
+                  title={t("tone.email.title")}
+                  apps={getVisibleBuiltinRouteIds("email", assignments)}
+                  value={emailTone}
+                  options={EMAIL_OPTIONS}
+                  onChange={saveEmailTone}
+                  assignments={assignments.filter(
+                    (a) => a.destination === "email",
+                  )}
+                  allAssignments={assignments}
+                  onAddAssignment={addAssignment}
+                  onRemoveAssignment={removeAssignment}
+                />
+              </TabsContent>
 
-          <TabsContent value="everythingElse" className="mt-0">
-            <SubsetTonePanel
-              destination="overall"
-              previewKind="overall"
-              title={t("tone.everythingElse.title")}
-              desc={t("tone.everythingElse.desc")}
-              apps={[]}
-              value={overallTone}
-              options={OVERALL_OPTIONS}
-              onChange={saveOverallTone}
-              assignments={assignments.filter(
-                (a) => a.destination === "overall",
-              )}
-              allAssignments={assignments}
-              onAddAssignment={addAssignment}
-              onRemoveAssignment={removeAssignment}
-              disabled={!llmCleanup}
-            />
-          </TabsContent>
+              <TabsContent value="everythingElse" className="mt-0">
+                <SubsetTonePanel
+                  destination="overall"
+                  previewKind="overall"
+                  title={t("tone.everythingElse.title")}
+                  desc={t("tone.everythingElse.desc")}
+                  apps={[]}
+                  value={overallTone}
+                  options={OVERALL_OPTIONS}
+                  onChange={saveOverallTone}
+                  assignments={assignments.filter(
+                    (a) => a.destination === "overall",
+                  )}
+                  allAssignments={assignments}
+                  onAddAssignment={addAssignment}
+                  onRemoveAssignment={removeAssignment}
+                />
+              </TabsContent>
+            </>
+          ) : (
+            <ToneSetupHero onEnable={() => void enableToneCustomization()} />
+          )}
         </Tabs>
       </div>
     </PageShell>
@@ -1124,9 +1192,51 @@ function SubsetTonePanel<T extends string>({
             <Eyebrow text={t("tone.cleanup.preview.resultLabel")} accent />
             <span className="border-border/70 h-px flex-1 border-t" />
           </div>
-          {renderPreview(t(activeOption.sampleKey), false)}
+          {activeOption.value === "off" ? (
+            <NotePreview sample={t(activeOption.sampleKey)} selected={false} />
+          ) : (
+            renderPreview(t(activeOption.sampleKey), false)
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Setup flow — shown until the user opts into tone customization.
+// ---------------------------------------------------------------------------
+
+// Hero shown in place of the tone settings until the user opts in. One tap
+// unlocks the full tabbed config below.
+function ToneSetupHero({
+  onEnable,
+}: {
+  onEnable: () => void | Promise<void>;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div className="border-border/70 bg-card relative overflow-hidden rounded-[18px] border border-dashed">
+      <div className="relative z-10 max-w-[36rem] px-8 py-10">
+        <Eyebrow text={t("tone.setup.hero.eyebrow")} accent />
+        <h2 className="serif text-foreground mt-3 text-[34px] leading-[1.05] tracking-[-0.02em]">
+          {t("tone.setup.hero.title")}
+        </h2>
+        <p className="text-muted-foreground mt-3 max-w-[42ch] text-[14.5px] leading-[1.55]">
+          {t("tone.setup.hero.desc")}
+        </p>
+        <Button
+          variant="ink"
+          onClick={() => void onEnable()}
+          className="mt-6 rounded-full px-5"
+        >
+          {t("tone.setup.hero.cta")}
+        </Button>
+      </div>
+      <div
+        aria-hidden="true"
+        className="from-primary/8 pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-gradient-to-l to-transparent"
+      />
     </div>
   );
 }

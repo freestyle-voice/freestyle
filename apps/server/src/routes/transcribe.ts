@@ -20,12 +20,7 @@ import {
 import {
   applyFinalRewrites,
   getCleanupAppAssignments,
-  getCleanupCustomPrompt,
-  getCleanupEmailTone,
-  getCleanupIntensity,
-  getCleanupOverallTone,
-  getCleanupPersonalTone,
-  getCleanupWorkTone,
+  getEffectiveCleanupTones,
   postProcess,
 } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
@@ -153,12 +148,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         language,
         appContext,
         mode: "combined",
-        intensity: getCleanupIntensity(),
-        customPrompt: getCleanupCustomPrompt(),
-        personalTone: getCleanupPersonalTone(),
-        workTone: getCleanupWorkTone(),
-        emailTone: getCleanupEmailTone(),
-        overallTone: getCleanupOverallTone(),
+        ...getEffectiveCleanupTones(),
         appAssignments: getCleanupAppAssignments(),
       });
       rawText = sanitizeTranscriptText(result.raw ?? "");

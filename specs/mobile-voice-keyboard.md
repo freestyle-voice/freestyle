@@ -1,0 +1,217 @@
+# Freestyle Voice Keyboard (iOS keyboard extension)
+
+Status: proposed (planning only — not yet implemented)
+Owner: mobile
+Related: `mobile-cloud-voice-typing.md`, cloud `apps/server/src/routes/v2/*`
+
+## Decisions (locked)
+
+- **Backend**: real-time **streaming** (`WSS /v2/stream`) with a **batch
+  fallback** (`POST /v2/transcribe`) when the socket can't open. (§4)
+- **Partials UX**: v1 shows live partials in the keyboard's **status strip**;
+  only the committed **final** is inserted into the host field. In-field
+  partials (delete/insert diffing) are a later upgrade. (§7)
+- **Layout**: **minimal** — mic + globe + space + delete + return. No QWERTY in
+  v1; users switch to the system keyboard for manual typing. (§1)
+- **Platform**: **iOS only** for v1. Android (`InputMethodService`) is a
+  separate follow-up. (§10)
+- **Auth**: better-auth **bearer session token** shared via a keychain access
+  group; non-secret prefs via the App Group. (§5)
+
+## 1. Goal
+
+A **system-wide iOS keyboard** with a mic button so users can dictate into
+**any** app's text field (Messages, Mail, Notes, Safari…) — the Soniox "type
+anywhere with your voice" experience. Transcription goes through **Freestyle
+Cloud v2**, reusing the main app's signed-in session. Text is inserted directly
+into the host app's active text field.
+
+Non-goal for v1: a full QWERTY layout. We ship a **minimal** keyboard (mic +
+globe/switch + space + delete + return); users switch to the system keyboard
+for manual typing. This keeps the extension small and focused.
+
+Platform: **iOS first**. Android (`InputMethodService`) is a follow-up.
+
+## 2. Prior art (backup branch)
+
+`feat/expo-backup` scaffolded a working keyboard (commits `8ff7c70` →
+`41eeb47`), then **removed it** (`8d47a55`) in favour of a Share
+Extension/Widget/Siri. We reuse its proven structure but change the backend:
+
+- `plugins/withKeyboardExtension.js` — Expo config plugin that adds a
+  `FreestyleKeyboard` app-extension target to the Xcode project during
+  prebuild, wires App Groups, entitlements, Info.plist, and embeds the
+  `.appex`. **Reusable almost as-is.**
+- `ios-keyboard/KeyboardViewController.swift` — mic/globe/space/delete/return
+  UI, dark-mode aware. **Reusable, retitle + restyle to current design.**
+- `ios-keyboard/AudioRecorder.swift` — `AVAudioRecorder` → m4a. **Reused only
+  for the batch fallback**; the streaming path adds `AVAudioEngine` capture.
+- `ios-keyboard/TranscriptionService.swift` — **replaced**: was BYOK
+  (OpenAI/Groq/…); becomes Freestyle Cloud v2 clients — `CloudStreamSession`
+  (WS `/v2/stream`) plus a `CloudTranscriber` batch fallback (`/v2/transcribe`).
+- `ios-keyboard/SharedConfig.swift` — App Group `UserDefaults` bridge.
+  **Repurposed**: instead of API keys, it reads the cloud session + prefs.
+
+## 3. Hard iOS constraints (design drivers)
+
+1. **Memory ceiling ~60–70 MB.** The extension is killed if it exceeds it.
+   → We stream (per the decision), so we must be strict: native audio only, no
+   whole-recording buffering, a small reusable conversion buffer, and prompt
+   teardown of the engine + socket. Batch is the fallback. Profile with
+   Instruments before shipping. (See §4 memory discipline.)
+2. **"Allow Full Access" required** for mic + network. Without it, the
+   extension is sandboxed with no network/mic. We must detect this
+   (`hasFullAccess`) and show an inline "Enable Full Access in Settings"
+   prompt. This is an explicit, scary-sounding user step — unavoidable for any
+   voice keyboard.
+3. **Separate process, no Expo/JS runtime.** The extension is **native Swift
+   only** — it cannot call our TS cloud client. All cloud logic (WebSocket
+   streaming + batch POST) is reimplemented in Swift.
+4. **No direct access to the app's JS state.** Config crosses the process
+   boundary via an **App Group** (`group.com.freestylevoice.app`).
+
+## 4. Backend: streaming v2 (chosen) with batch fallback
+
+Decision (user): the keyboard uses **real-time streaming** (`WSS /v2/stream`)
+so text appears live as you speak, matching the standalone app and Soniox.
+Batch (`POST /v2/transcribe`) is kept as a **fallback** when the socket fails
+or Full Access/network is flaky.
+
+### Streaming path (native Swift, no `ws`/JS)
+- **Audio capture**: `AVAudioEngine` input tap → convert to **PCM16, 16 kHz,
+  mono** with `AVAudioConverter` (Soniox's required format). Native conversion
+  is far lighter than the RN resampler; feed frames straight to the socket.
+- **WebSocket**: `URLSessionWebSocketTask` to `wss://…/v2/stream` with
+  `Authorization: Bearer <sessionToken>` header. Mirror the app's protocol
+  exactly: send `{type:"start", language, skipPostProcess, intensity}` on open,
+  stream binary PCM frames, `{type:"commit", audioDurationMs}` on stop; receive
+  `session.ready` / `partial` / `final` / `error`.
+- **Live insertion**: render `partial` by diffing against the last inserted
+  text — delete the previous partial's characters via `deleteBackward()` and
+  `insertText()` the new one, so the host field updates live. On `final`,
+  settle the text. (Simpler v1: show partials in the keyboard's own status
+  strip and only `insertText` the committed `final` — avoids fighting host-app
+  autocorrect. Start here, upgrade to in-field partials if it feels good.)
+- Auth is the better-auth **bearer session token** (simplest cross-process —
+  no cookie jar). 401 → "open Freestyle to sign in"; 429 → "out of credits".
+
+### Batch fallback
+`POST /v2/transcribe` multipart (`AVAudioRecorder` m4a) → insert `cleaned`.
+Used when the WS can't open or errors before `session.ready`.
+
+### Memory discipline (critical — see §3)
+- Stream frames immediately; **never buffer** the whole recording.
+- Use a small fixed-size scratch buffer for conversion; reuse it.
+- Tear down `AVAudioEngine` + WS on stop/dismiss; release on `didReceiveMemoryWarning`.
+- No JS runtime, no image assets — keep the extension lean. Profile with
+  Instruments (Allocations + the ~60–70 MB jetsam limit) before shipping.
+
+## 5. Auth sharing (main app → extension)
+
+The extension needs a credential to call the cloud. Two viable channels:
+
+- **Preferred: keychain access group.** `expo-secure-store` supports
+  `accessGroup`. Store a **bearer session token** under a shared access group
+  (`$(AppIdentifierPrefix)com.freestylevoice.app.shared`) that both the app
+  target and the keyboard target can read. The extension reads it directly from
+  the keychain in Swift.
+- **Alternative: App Group UserDefaults.** Simpler to wire but less secure for
+  a credential (UserDefaults isn't encrypted at rest the way keychain is). Use
+  App Group **only** for non-secret prefs (language, cleanup on/off, base URL,
+  onboarding/full-access hints).
+
+Decision: **session token in the shared keychain access group; prefs in the App
+Group UserDefaults.** The app writes both on sign-in / settings change; a small
+native module (or `expo-secure-store` `accessGroup` + a tiny UserDefaults
+bridge) performs the writes.
+
+Token lifetime: better-auth session tokens are long-lived but can expire /
+be revoked. The extension treats 401 as "not signed in" and shows a prompt to
+open the app. The app refreshes the shared token on launch and on
+`useSession()` changes.
+
+## 6. Components / files
+
+```
+apps/mobile/
+  app.json                         add withKeyboardExtension plugin + appGroup
+  plugins/
+    withKeyboardExtension.js       Xcode target, App Group, entitlements, embed
+                                   (ported from backup, bundle ids updated)
+  ios-keyboard/
+    KeyboardViewController.swift   minimal keyboard UI (mic/globe/space/del/return),
+                                   full-access gate, recording/streaming/inserting states
+    AudioEngineCapture.swift       AVAudioEngine tap + AVAudioConverter → PCM16/16k/mono
+                                   frames (+ level for the orb)
+    CloudStreamSession.swift       URLSessionWebSocketTask client for /v2/stream
+                                   (start/commit/cancel, partial/final), bearer token
+    CloudTranscriber.swift         batch fallback: POST /v2/transcribe (AVAudioRecorder m4a)
+    SharedStore.swift              read session token (keychain group) + prefs
+                                   (App Group UserDefaults)
+  src/lib/keyboard-bridge.ts       JS: on sign-in / settings change, write the
+                                   session token (SecureStore accessGroup) and
+                                   prefs (App Group) so the extension stays in sync
+  src/app/(app)/keyboard.tsx       in-app setup screen: how to enable the
+                                   keyboard + Full Access, live status
+```
+
+Config additions (`app.json`):
+- iOS `entitlements`: `com.apple.security.application-groups`
+  = `["group.com.freestylevoice.app"]`; keychain-access-groups for the shared
+  token.
+- The plugin adds the keyboard target with `RequestsOpenAccess = true`,
+  `NSMicrophoneUsageDescription`, App Group + keychain entitlements, deployment
+  target 16.0.
+
+## 7. UX / states (KeyboardViewController)
+
+- **No Full Access** → single message + button deep-linking to Settings; mic
+  disabled.
+- **Idle** → mic button, globe (next keyboard), space, delete, return.
+- **Recording/streaming** → mic pulses with live level; partials show in the
+  keyboard status strip (v1) or live in-field (v2); tap again / Done to stop.
+- **Finalizing** → brief spinner; `insertText(final)`; back to idle.
+- **Errors**: 401 → "Open Freestyle to sign in"; 429 → "Out of credits";
+  network → transient inline message. Never crash the host app.
+- Respect light/dark via `traitCollection`; match the warm-paper / olive theme
+  where the host allows (keyboards get limited color control).
+
+## 8. Build & test
+
+- Native-only: requires `expo prebuild` + a **dev client / EAS build**. Does
+  **not** run in Expo Go.
+- Manual QA on device: enable keyboard in Settings → Keyboards, enable Full
+  Access, dictate into Messages/Notes/Safari.
+- Verify: token sharing (sign in app → keyboard works without re-auth), 401
+  after sign-out, 429 message, dark mode, memory (watch for jetsam) via
+  Instruments.
+- Since we can't run a simulator here, correctness is limited to: config-plugin
+  prebuild succeeds, Swift compiles, and the cloud contract matches
+  `/v2/transcribe`. Real validation needs a device build by the user.
+
+## 9. Risks / open questions
+
+- **Full Access friction**: the biggest UX hurdle; unavoidable. Mitigate with a
+  clear in-app setup screen.
+- **Memory**: even batch must be careful (release the recorder + audio buffer
+  promptly). If we later want live partials, profile headroom first.
+- **Apple review**: voice keyboards with network access get scrutiny; the
+  privacy string + a clear purpose help. Not a code issue but a release one.
+- **Token security**: keychain access group is the right call; confirm the
+  `AppIdentifierPrefix` (team id) is available to the plugin at prebuild.
+- **Android**: entirely separate (`InputMethodService`); out of scope for v1.
+
+## 10. Phasing
+
+1. Port `withKeyboardExtension.js`; get an **empty** keyboard building + showing
+   in a dev client (no mic yet). Prove the plugin/prebuild/embed pipeline.
+2. Add Full-Access gate + `AudioEngineCapture` + insert a hardcoded string on
+   mic tap. Prove mic + text insertion.
+3. Add `SharedStore` + `keyboard-bridge.ts` token/prefs sync. Prove the
+   extension reads the app's session.
+4. Add `CloudStreamSession` (`/v2/stream`) end-to-end with partials in the
+   status strip → committed `final` inserted. Prove live dictation.
+   Add `CloudTranscriber` batch fallback for socket failures.
+5. (Optional) live in-field partials via delete/insert diffing.
+6. Polish states/theme, error handling, in-app setup screen; profile memory.
+7. (Later) Android keyboard (`InputMethodService`).

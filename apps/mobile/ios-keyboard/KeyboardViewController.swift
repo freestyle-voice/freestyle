@@ -321,7 +321,7 @@ final class KeyboardViewController: UIInputViewController {
             try capture.start()
         } catch {
             teardown(cancel: true)
-            setMode(.error("Couldn’t start the microphone"))
+            setMode(.error("Mic error: \(error.localizedDescription)"))
         }
     }
 

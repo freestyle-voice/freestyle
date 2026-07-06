@@ -21,16 +21,29 @@ final class AudioEngineCapture {
     func start() throws {
         guard !running else { return }
 
+        // Configure + activate the session first. `.record` with `.default` mode
+        // is the most broadly compatible recording setup inside a keyboard
+        // extension; the exotic `.measurement`/bluetooth options can make
+        // `setCategory` throw on some devices.
         let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(
-            .playAndRecord,
-            mode: .measurement,
-            options: [.duckOthers, .allowBluetooth]
-        )
+        try audioSession.setCategory(.record, mode: .default, options: [])
         try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
 
+        // Read the hardware input format only *after* the session is active, so
+        // the route (and thus sample rate/channel count) is established. Reading
+        // it too early can yield a 0 Hz format, which makes `engine.start()`
+        // throw or the tap deliver nothing.
         let input = engine.inputNode
-        let inputFormat = input.outputFormat(forBus: 0)
+        // The tap delivers buffers in the node's *output* format; build the
+        // converter from that exact format so conversion never mismatches.
+        let tapFormat = input.outputFormat(forBus: 0)
+        guard tapFormat.sampleRate > 0, tapFormat.channelCount > 0 else {
+            throw NSError(
+                domain: "AudioEngineCapture",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "No audio input available"]
+            )
+        }
 
         guard
             let outFormat = AVAudioFormat(
@@ -40,12 +53,17 @@ final class AudioEngineCapture {
                 interleaved: true
             )
         else {
-            throw NSError(domain: "AudioEngineCapture", code: 1)
+            throw NSError(
+                domain: "AudioEngineCapture",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Unsupported audio format"]
+            )
         }
         outputFormat = outFormat
-        converter = AVAudioConverter(from: inputFormat, to: outFormat)
+        converter = AVAudioConverter(from: tapFormat, to: outFormat)
 
-        input.installTap(onBus: 0, bufferSize: 2_048, format: inputFormat) {
+        // Install the tap with the node's native format (nil = use it).
+        input.installTap(onBus: 0, bufferSize: 2_048, format: nil) {
             [weak self] buffer, _ in
             self?.process(buffer)
         }

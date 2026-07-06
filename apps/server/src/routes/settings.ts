@@ -6,7 +6,6 @@ import {
   cleanupIntensitySchema,
   cleanupOverallToneSchema,
   cleanupPersonalToneSchema,
-  cleanupToneEnabledSchema,
   cleanupWorkToneSchema,
   disabledPluginsSettingSchema,
   localLlmConfigSchema,
@@ -87,11 +86,6 @@ const settings = new Hono()
       const parsed = cleanupOverallToneSchema.safeParse(body.value);
       if (!parsed.success) {
         return c.json({ error: "Invalid overall tone" }, 400);
-      }
-    } else if (key === "cleanup_tone_enabled") {
-      const parsed = cleanupToneEnabledSchema.safeParse(body.value);
-      if (!parsed.success) {
-        return c.json({ error: "Invalid cleanup tone enabled setting" }, 400);
       }
     } else if (key === "cleanup_app_assignments") {
       let parsedJson: unknown;

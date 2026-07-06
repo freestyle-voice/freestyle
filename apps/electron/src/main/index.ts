@@ -1253,24 +1253,30 @@ function resetOnboarding(): void {
   showSettingsWindow("/onboarding");
 }
 
-// Dev-only: simulate a new user's locked Tone page (setup hero).
-// Sets cleanup_tone_enabled to false explicitly so grandfather auto-opt-in
-// (undefined + llm_cleanup on) does not immediately unlock the page.
+// Dev-only: reset every sector tone to off (fresh onboarding state).
 async function resetToneSetup(): Promise<void> {
+  const toneKeys = [
+    SETTINGS_KEYS.cleanupPersonalTone,
+    SETTINGS_KEYS.cleanupWorkTone,
+    SETTINGS_KEYS.cleanupEmailTone,
+    SETTINGS_KEYS.cleanupOverallTone,
+  ] as const;
+
   try {
-    const res = await net.fetch(
-      `${getServerBaseUrl()}/api/settings/${SETTINGS_KEYS.cleanupToneEnabled}`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: "false" }),
-      },
+    const results = await Promise.all(
+      toneKeys.map((key) =>
+        net.fetch(`${getServerBaseUrl()}/api/settings/${key}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: "off" }),
+        }),
+      ),
     );
-    if (!res.ok) {
-      log.warn(`Reset tone setup failed: ${res.status}`);
+    if (results.some((res) => !res.ok)) {
+      log.warn("Reset tone onboarding failed: one or more settings rejected");
     }
   } catch (err) {
-    log.warn("Reset tone setup failed:", err);
+    log.warn("Reset tone onboarding failed:", err);
   }
 
   const tonePath = "/settings/tone";
@@ -1508,7 +1514,7 @@ function buildTrayContextMenu(): Menu {
             click: resetOnboarding,
           },
           {
-            label: "Reset Tone Setup",
+            label: "Reset Tone Onboarding",
             click: () => {
               void resetToneSetup();
             },
@@ -1581,7 +1587,7 @@ function rebuildMenus(): void {
                       click: resetOnboarding,
                     },
                     {
-                      label: "Reset Tone Setup",
+                      label: "Reset Tone Onboarding",
                       click: () => {
                         void resetToneSetup();
                       },

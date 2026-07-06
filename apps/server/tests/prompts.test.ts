@@ -69,9 +69,10 @@ describe("buildRewritePrompt", () => {
     expect(prompt.system).toContain("Language constraint:");
   });
 
-  it("applies the neutral general tone to overall cleanup by default", () => {
+  it("skips destination styling for overall cleanup by default", () => {
     const prompt = buildRewritePrompt("hi", { destination: "overall" });
-    expect(prompt.system).toContain("Destination tone: general, neutral");
+    expect(prompt.system).not.toContain("Destination tone:");
+    expect(prompt.system).not.toContain("Destination rule priority:");
   });
 
   it("respects the selected everything-else tone", () => {

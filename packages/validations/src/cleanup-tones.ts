@@ -3,9 +3,6 @@ import { z } from "zod/v3";
 // "off" is a valid value for every sector tone. It means the user has turned
 // styling off for that destination: cleanup still runs the base preset, but no
 // destination tone or structure block is applied (see destination-style.ts).
-// The desktop also forwards "off" for every sector when the tone feature is not
-// opted into, so "off" is the single concept the Freestyle Cloud prompt layer
-// must honor.
 export const cleanupPersonalToneSchema = z.enum([
   "polished",
   "casual",
@@ -53,10 +50,10 @@ export type CleanupToneDestination = z.infer<
   typeof cleanupToneDestinationSchema
 >;
 
-export const DEFAULT_CLEANUP_PERSONAL_TONE: CleanupPersonalTone = "casual";
-export const DEFAULT_CLEANUP_WORK_TONE: CleanupWorkTone = "friendly";
-export const DEFAULT_CLEANUP_EMAIL_TONE: CleanupEmailTone = "warm";
-export const DEFAULT_CLEANUP_OVERALL_TONE: CleanupOverallTone = "neutral";
+export const DEFAULT_CLEANUP_PERSONAL_TONE: CleanupPersonalTone = "off";
+export const DEFAULT_CLEANUP_WORK_TONE: CleanupWorkTone = "off";
+export const DEFAULT_CLEANUP_EMAIL_TONE: CleanupEmailTone = "off";
+export const DEFAULT_CLEANUP_OVERALL_TONE: CleanupOverallTone = "off";
 
 export function parseCleanupPersonalTone(
   value: string | null | undefined,

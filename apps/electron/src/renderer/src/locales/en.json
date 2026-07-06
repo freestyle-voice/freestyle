@@ -347,14 +347,6 @@
       "email": "Email",
       "everythingElse": "Everything else"
     },
-    "setup": {
-      "hero": {
-        "eyebrow": "Tone setup",
-        "title": "A tone for every app",
-        "desc": "Grammar cleanup runs everywhere — but how polished your words get can change between texts, work chat, and email.",
-        "cta": "Enable tones"
-      }
-    },
     "cleanup": {
       "eyebrow": "Cleanup",
       "title": "Tidy up as I talk.",

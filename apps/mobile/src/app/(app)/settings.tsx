@@ -1,0 +1,196 @@
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+import { ThemedText } from "@/components/themed-text";
+import { ThemedView } from "@/components/themed-view";
+import { Fonts, Radius, Spacing } from "@/constants/theme";
+import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "@/hooks/use-theme";
+import { type CloudUsageBalance, fetchCloudUsage } from "@/lib/cloud/usage";
+import { LANGUAGES, type LanguageCode, useSettings } from "@/lib/settings";
+
+export default function SettingsScreen() {
+  const theme = useTheme();
+  const router = useRouter();
+  const { user, token, signOut } = useAuth();
+  const { settings, setLanguage, setCleanup } = useSettings();
+  const [usage, setUsage] = useState<CloudUsageBalance | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    fetchCloudUsage(token)
+      .then(setUsage)
+      .catch(() => setUsage(null));
+  }, [token]);
+
+  return (
+    <ThemedView style={styles.container}>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} hitSlop={12}>
+            <ThemedText type="eyebrow" themeColor="primary">
+              Back
+            </ThemedText>
+          </Pressable>
+          <ThemedText type="eyebrow" themeColor="mutedForeground">
+            Settings
+          </ThemedText>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          <Section title="Account">
+            <Row
+              label="Signed in as"
+              value={user?.email ?? user?.name ?? "—"}
+            />
+            {usage ? (
+              <Row
+                label="Credits"
+                value={`${usage.remaining} / ${usage.limit}`}
+              />
+            ) : null}
+          </Section>
+
+          <Section title="Language">
+            <View style={styles.chips}>
+              {LANGUAGES.map((lang) => {
+                const selected = settings.language === lang.code;
+                return (
+                  <Pressable
+                    key={lang.code}
+                    onPress={() => setLanguage(lang.code as LanguageCode)}
+                    style={[
+                      styles.chip,
+                      {
+                        borderColor: selected ? theme.primary : theme.border,
+                        backgroundColor: selected
+                          ? theme.accent
+                          : "transparent",
+                      },
+                    ]}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.chipText,
+                        {
+                          color: selected
+                            ? theme.accentForeground
+                            : theme.foreground,
+                        },
+                      ]}
+                    >
+                      {lang.name}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Section>
+
+          <Section title="Cleanup">
+            <View style={styles.switchRow}>
+              <View style={styles.switchLabel}>
+                <ThemedText style={styles.rowLabel}>Polish my words</ThemedText>
+                <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
+                  Removes filler and fixes punctuation with AI. Turn off for a
+                  raw transcript.
+                </ThemedText>
+              </View>
+              <Switch
+                value={settings.cleanup}
+                onValueChange={setCleanup}
+                trackColor={{ true: theme.primary, false: theme.border }}
+              />
+            </View>
+          </Section>
+
+          <Pressable
+            onPress={() => {
+              void signOut().then(() => router.replace("/sign-in"));
+            }}
+            style={[styles.signOut, { borderColor: theme.border }]}
+          >
+            <ThemedText
+              style={[styles.signOutText, { color: theme.destructive }]}
+            >
+              Sign out
+            </ThemedText>
+          </Pressable>
+        </ScrollView>
+      </SafeAreaView>
+    </ThemedView>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.section}>
+      <ThemedText type="eyebrow" themeColor="mutedForeground">
+        {title}
+      </ThemedText>
+      {children}
+    </View>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.row}>
+      <ThemedText themeColor="mutedForeground" style={styles.rowLabel}>
+        {label}
+      </ThemedText>
+      <ThemedText style={styles.rowValue}>{value}</ThemedText>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  safeArea: { flex: 1, paddingHorizontal: Spacing.four },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: Spacing.two,
+  },
+  content: { paddingVertical: Spacing.four, gap: Spacing.five },
+  section: { gap: Spacing.three },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  rowLabel: { fontFamily: Fonts.sans, fontSize: 15 },
+  rowValue: { fontFamily: Fonts.sansMedium, fontSize: 15 },
+  rowHint: { fontSize: 13, lineHeight: 19, marginTop: 2 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.two },
+  chip: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one + 2,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+  },
+  chipText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
+  switchRow: { flexDirection: "row", alignItems: "center", gap: Spacing.three },
+  switchLabel: { flex: 1 },
+  signOut: {
+    marginTop: Spacing.two,
+    height: 50,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  signOutText: { fontFamily: Fonts.sansSemiBold, fontSize: 15 },
+});

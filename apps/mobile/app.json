@@ -8,9 +8,16 @@
     "scheme": "freestyle",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.freestylevoice.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Freestyle needs microphone access to transcribe your voice.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.freestylevoice.app",
+      "permissions": ["RECORD_AUDIO"],
       "adaptiveIcon": {
         "backgroundColor": "#F4F0E4",
         "foregroundImage": "./assets/images/freestyle-mark.png"
@@ -26,7 +33,16 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 120
         }
-      ]
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Freestyle needs microphone access to transcribe your voice."
+        }
+      ],
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,

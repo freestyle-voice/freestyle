@@ -1,92 +1,56 @@
 /**
- * Auth context: holds the Freestyle Cloud session token + user profile,
- * restores a stored token on launch, and exposes sign-in/sign-out.
+ * Thin auth facade over the `@better-auth/expo` client. Exposes the current
+ * user, a loading flag while the cached session resolves, and sign-in
+ * (social) / sign-out actions.
  */
 
-import {
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback } from "react";
 
-import {
-  CloudAuthError,
-  type CloudUser,
-  fetchCloudUser,
-  signOutCloud,
-} from "@/lib/cloud/session";
-import {
-  clearStoredToken,
-  getStoredToken,
-  setStoredToken,
-} from "@/lib/storage";
+import { authClient } from "@/lib/cloud/auth-client";
+import { type CloudUser, signOutCloud } from "@/lib/cloud/session";
+
+export type SocialProvider = "google" | "github";
 
 interface AuthState {
-  token: string | null;
   user: CloudUser | null;
-  /** True until the initial stored-token restore completes. */
+  /** True until the cached session has resolved on launch. */
   loading: boolean;
-  signIn: (token: string) => Promise<void>;
+  /** True when a signed-in session exists. */
+  signedIn: boolean;
+  signInWith: (provider: SocialProvider) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthState | null>(null);
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<CloudUser | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      const stored = await getStoredToken();
-      if (!stored) {
-        setLoading(false);
-        return;
-      }
-      try {
-        const profile = await fetchCloudUser(stored);
-        setToken(stored);
-        setUser(profile);
-      } catch (err) {
-        // A rejected token is cleared; anything else leaves the user signed
-        // out for this launch but keeps the token for a later retry.
-        if (err instanceof CloudAuthError) await clearStoredToken();
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  const signIn = useCallback(async (nextToken: string) => {
-    const profile = await fetchCloudUser(nextToken);
-    await setStoredToken(nextToken);
-    setToken(nextToken);
-    setUser(profile);
-  }, []);
-
-  const signOut = useCallback(async () => {
-    const current = token;
-    setToken(null);
-    setUser(null);
-    await clearStoredToken();
-    if (current) await signOutCloud(current);
-  }, [token]);
-
-  const value = useMemo<AuthState>(
-    () => ({ token, user, loading, signIn, signOut }),
-    [token, user, loading, signIn, signOut],
-  );
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
 export function useAuth(): AuthState {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
-  return ctx;
+  const { data: session, isPending } = authClient.useSession();
+
+  const signInWith = useCallback(async (provider: SocialProvider) => {
+    // On native, the expo client opens an in-app browser and resolves once the
+    // deep-link callback lands; it does not navigate for us. `useSession` then
+    // updates reactively, so callers just await this and let routing follow.
+    const { error } = await authClient.signIn.social({
+      provider,
+      callbackURL: "/",
+    });
+    return error ? { error: error.message ?? "Sign-in failed" } : {};
+  }, []);
+
+  const signOut = useCallback(() => signOutCloud(), []);
+
+  const user = session?.user
+    ? {
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.name,
+        image: session.user.image,
+      }
+    : null;
+
+  return {
+    user,
+    loading: isPending,
+    signedIn: !!session?.user,
+    signInWith,
+    signOut,
+  };
 }

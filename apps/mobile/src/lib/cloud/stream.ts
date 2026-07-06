@@ -16,7 +16,7 @@ import { cloudStreamWsUrl } from "./config";
 
 /**
  * React Native's `WebSocket` accepts a third `options` argument carrying
- * custom headers (used here for the bearer token) on both iOS and Android.
+ * custom headers (used here for the session cookie) on both iOS and Android.
  * The DOM `WebSocket` lib type doesn't model it, so we describe the RN
  * constructor shape locally.
  */
@@ -44,7 +44,8 @@ export interface StreamCallbacks {
 }
 
 export interface StreamSessionOptions {
-  token: string;
+  /** better-auth session cookie header value (from `authClient.getCookie()`). */
+  cookie: string;
   /** Normalized ISO-639-1 hint; omit for auto-detect. */
   language?: string;
   cleanup: StreamCleanupPreferences;
@@ -78,10 +79,11 @@ export class CloudStreamSession {
     this.opts = opts;
 
     // React Native's WebSocket accepts a headers object as the third argument
-    // on both iOS and Android, which is how we pass the bearer token.
+    // on both iOS and Android, which is how we pass the session cookie. The
+    // cloud resolves the user from the upgrade request headers.
     const WS = WebSocket as unknown as RNWebSocketCtor;
     this.ws = new WS(cloudStreamWsUrl(), undefined, {
-      headers: { authorization: `Bearer ${opts.token}` },
+      headers: { Cookie: opts.cookie },
     });
     this.ws.binaryType = "arraybuffer";
 

@@ -1,19 +1,25 @@
 /**
- * Shared better-auth client configured for Freestyle Cloud. Uses the same
- * `deviceAuthorizationClient` plugin the desktop relies on, so the OAuth 2.0
- * device flow behaves identically. The client is pure `fetch`, which runs
- * fine in React Native.
+ * Freestyle Cloud auth client for the Expo app.
+ *
+ * Uses `@better-auth/expo`'s client plugin so social sign-in (Google/GitHub)
+ * runs in an in-app browser and deep-links back via the `freestyle://` scheme,
+ * with the session cookie persisted in the device keychain (SecureStore).
+ * Authenticated requests reuse that cookie via {@link authClient.getCookie}.
  */
 
-import { createAuthClient } from "better-auth/client";
-import { deviceAuthorizationClient } from "better-auth/client/plugins";
+import { expoClient } from "@better-auth/expo/client";
+import { createAuthClient } from "better-auth/react";
+import * as SecureStore from "expo-secure-store";
 
 import { cloudAuthUrl } from "./config";
 
-export function createCloudAuthClient() {
-  return createAuthClient({
-    baseURL: cloudAuthUrl(),
-    disableDefaultFetchPlugins: true,
-    plugins: [deviceAuthorizationClient()],
-  });
-}
+export const authClient = createAuthClient({
+  baseURL: cloudAuthUrl(),
+  plugins: [
+    expoClient({
+      scheme: "freestyle",
+      storagePrefix: "freestyle",
+      storage: SecureStore,
+    }),
+  ],
+});

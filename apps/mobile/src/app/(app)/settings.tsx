@@ -14,16 +14,16 @@ import { LANGUAGES, type LanguageCode, useSettings } from "@/lib/settings";
 export default function SettingsScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { user, token, signOut } = useAuth();
+  const { user, signedIn, signOut } = useAuth();
   const { settings, setLanguage, setCleanup } = useSettings();
   const [usage, setUsage] = useState<CloudUsageBalance | null>(null);
 
   useEffect(() => {
-    if (!token) return;
-    fetchCloudUsage(token)
+    if (!signedIn) return;
+    fetchCloudUsage()
       .then(setUsage)
       .catch(() => setUsage(null));
-  }, [token]);
+  }, [signedIn]);
 
   return (
     <ThemedView style={styles.container}>

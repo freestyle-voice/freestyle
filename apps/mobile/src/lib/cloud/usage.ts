@@ -1,10 +1,10 @@
 /**
  * Freestyle Cloud usage balance (credits). Same `/v1/usage` endpoint the
- * desktop reads.
+ * desktop reads, authenticated with the stored session cookie.
  */
 
 import { cloudUrl } from "./config";
-import { CloudAuthError } from "./session";
+import { authHeaders, CloudAuthError } from "./session";
 
 export interface CloudUsageBalance {
   remaining: number;
@@ -14,12 +14,14 @@ export interface CloudUsageBalance {
   resetsAt: string;
 }
 
-export async function fetchCloudUsage(
-  token: string,
-): Promise<CloudUsageBalance> {
+export async function fetchCloudUsage(): Promise<CloudUsageBalance> {
+  const headers = authHeaders();
+  if (!headers) throw new CloudAuthError();
+
   const res = await fetch(`${cloudUrl()}/v1/usage`, {
     method: "GET",
-    headers: { authorization: `Bearer ${token}` },
+    headers,
+    credentials: "omit",
     signal: AbortSignal.timeout(10_000),
   });
   if (res.status === 401) throw new CloudAuthError();

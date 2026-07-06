@@ -1,10 +1,12 @@
 /**
- * Freestyle Cloud session helpers: verify a stored token and resolve the
- * user's profile, and revoke the session on sign-out.
+ * Freestyle Cloud session helpers built on the `@better-auth/expo` client.
+ *
+ * The expo client owns the session (stored in SecureStore) and exposes it via
+ * `authClient.useSession()`. For manual/authenticated `fetch` calls we attach
+ * the stored cookie through {@link authHeaders}.
  */
 
-import { createCloudAuthClient } from "./auth-client";
-import { cloudUrl } from "./config";
+import { authClient } from "./auth-client";
 
 export interface CloudUser {
   id: string;
@@ -20,37 +22,21 @@ export class CloudAuthError extends Error {
   }
 }
 
-function authStatus(error: unknown): number | undefined {
-  if (!error || typeof error !== "object") return undefined;
-  const status = (error as { status?: unknown }).status;
-  return typeof status === "number" ? status : undefined;
+/**
+ * Headers that carry the better-auth session cookie for authenticated
+ * requests. Returns null when there is no stored session.
+ */
+export function authHeaders(): Record<string, string> | null {
+  const cookie = authClient.getCookie();
+  return cookie ? { Cookie: cookie } : null;
 }
 
-/** Resolve the signed-in user for a bearer token. Throws {@link CloudAuthError} on 401. */
-export async function fetchCloudUser(token: string): Promise<CloudUser> {
-  const { data, error } = await createCloudAuthClient().getSession({
-    fetchOptions: {
-      headers: { authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(10_000),
-    },
-  });
-  if (authStatus(error) === 401) throw new CloudAuthError();
-  if (error || !data?.user) {
-    throw new Error("Failed to load Freestyle profile");
-  }
-  const { id, email, name, image } = data.user;
-  return { id, email, name, image };
-}
-
-/** Best-effort session revocation. Ignores network failures on sign-out. */
-export async function signOutCloud(token: string): Promise<void> {
+/** Revoke the current session (server + local keychain). */
+export async function signOutCloud(): Promise<void> {
   try {
-    await fetch(`${cloudUrl()}/auth/sign-out`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(10_000),
-    });
+    await authClient.signOut();
   } catch {
-    // Sign-out is local-first: clearing the stored token is what matters.
+    // Sign-out is local-first: the expo client clears the stored session even
+    // if the network call fails.
   }
 }

@@ -7,7 +7,7 @@ import { useTheme } from "@/hooks/use-theme";
 
 export default function Index() {
   const theme = useTheme();
-  const { token, loading } = useAuth();
+  const { signedIn, loading } = useAuth();
 
   if (loading) {
     return (
@@ -19,5 +19,5 @@ export default function Index() {
     );
   }
 
-  return <Redirect href={token ? "/(app)" : "/sign-in"} />;
+  return <Redirect href={signedIn ? "/(app)" : "/sign-in"} />;
 }

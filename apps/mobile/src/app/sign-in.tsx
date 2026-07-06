@@ -1,91 +1,36 @@
 import { useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
-import { useAuth } from "@/hooks/use-auth";
+import { type SocialProvider, useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
-import {
-  type DeviceCodeResult,
-  DeviceFlowError,
-  DevicePendingError,
-  pollDeviceToken,
-  requestDeviceCode,
-} from "@/lib/cloud/device-auth";
-
-type Phase = "idle" | "starting" | "waiting" | "verifying" | "error";
 
 export default function SignInScreen() {
-  const theme = useTheme();
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { signInWith } = useAuth();
 
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [code, setCode] = useState<DeviceCodeResult | null>(null);
+  const [pending, setPending] = useState<SocialProvider | null>(null);
   const [error, setError] = useState("");
-  const cancelled = useRef(false);
 
-  useEffect(() => {
-    return () => {
-      cancelled.current = true;
-    };
-  }, []);
-
-  const poll = useCallback(
-    async (device: DeviceCodeResult) => {
-      let intervalMs = device.interval * 1000;
-      const deadline = Date.now() + device.expires_in * 1000;
-
-      while (!cancelled.current && Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, intervalMs));
-        if (cancelled.current) return;
-        try {
-          const token = await pollDeviceToken(device.device_code);
-          setPhase("verifying");
-          await signIn(token.access_token);
-          if (!cancelled.current) router.replace("/(app)");
-          return;
-        } catch (err) {
-          if (err instanceof DevicePendingError) {
-            if (err.slowDown) intervalMs += 2000;
-            continue;
-          }
-          if (err instanceof DeviceFlowError) {
-            setError(err.message);
-          } else {
-            setError("Sign-in failed. Please try again.");
-          }
-          setPhase("error");
-          return;
-        }
+  const handleSignIn = useCallback(
+    async (provider: SocialProvider) => {
+      setPending(provider);
+      setError("");
+      const { error: err } = await signInWith(provider);
+      setPending(null);
+      if (err) {
+        setError(err);
+        return;
       }
-      if (!cancelled.current) {
-        setError("Sign-in timed out. Please try again.");
-        setPhase("error");
-      }
+      // On native the session resolves reactively; route once it's set.
+      router.replace("/(app)");
     },
-    [router, signIn],
+    [signInWith, router],
   );
-
-  const start = useCallback(async () => {
-    setPhase("starting");
-    setError("");
-    try {
-      const device = await requestDeviceCode();
-      setCode(device);
-      setPhase("waiting");
-      const url = device.verification_uri_complete ?? device.verification_uri;
-      await WebBrowser.openBrowserAsync(url);
-      void poll(device);
-    } catch {
-      setError("Could not start sign-in. Check your connection.");
-      setPhase("error");
-    }
-  }, [poll]);
 
   return (
     <ThemedView style={styles.container}>
@@ -107,69 +52,79 @@ export default function SignInScreen() {
         </View>
 
         <View style={styles.footer}>
-          {code && phase === "waiting" ? (
-            <View
-              style={[
-                styles.codeCard,
-                { borderColor: theme.border, backgroundColor: theme.card },
-              ]}
-            >
-              <ThemedText type="eyebrow" themeColor="mutedForeground">
-                Your code
-              </ThemedText>
-              <ThemedText style={[styles.code, { color: theme.foreground }]}>
-                {code.user_code}
-              </ThemedText>
-              <View style={styles.waitingRow}>
-                <ActivityIndicator color={theme.primary} size="small" />
-                <ThemedText
-                  themeColor="mutedForeground"
-                  style={styles.waitingText}
-                >
-                  Waiting for approval in your browser…
-                </ThemedText>
-              </View>
-            </View>
-          ) : null}
-
-          {phase === "error" ? (
+          {error ? (
             <ThemedText themeColor="destructive" style={styles.errorText}>
               {error}
             </ThemedText>
           ) : null}
 
-          <Pressable
-            onPress={start}
-            disabled={
-              phase === "starting" ||
-              phase === "waiting" ||
-              phase === "verifying"
-            }
-            style={[
-              styles.button,
-              {
-                backgroundColor: theme.primary,
-                opacity: phase === "waiting" ? 0.6 : 1,
-              },
-            ]}
-          >
-            {phase === "starting" || phase === "verifying" ? (
-              <ActivityIndicator color={theme.primaryForeground} />
-            ) : (
-              <ThemedText
-                style={[styles.buttonText, { color: theme.primaryForeground }]}
-              >
-                {phase === "error"
-                  ? "Try again"
-                  : phase === "waiting"
-                    ? "Open browser again"
-                    : "Sign in"}
-              </ThemedText>
-            )}
-          </Pressable>
+          <ProviderButton
+            label="Continue with Google"
+            onPress={() => handleSignIn("google")}
+            loading={pending === "google"}
+            disabled={pending !== null}
+            variant="primary"
+          />
+          <ProviderButton
+            label="Continue with GitHub"
+            onPress={() => handleSignIn("github")}
+            loading={pending === "github"}
+            disabled={pending !== null}
+            variant="outline"
+          />
+
+          <ThemedText themeColor="mutedForeground" style={styles.legal}>
+            We only use your account to sync credits and preferences.
+          </ThemedText>
         </View>
       </SafeAreaView>
     </ThemedView>
+  );
+}
+
+function ProviderButton({
+  label,
+  onPress,
+  loading,
+  disabled,
+  variant,
+}: {
+  label: string;
+  onPress: () => void;
+  loading: boolean;
+  disabled: boolean;
+  variant: "primary" | "outline";
+}) {
+  const theme = useTheme();
+  const primary = variant === "primary";
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={[
+        styles.button,
+        primary
+          ? { backgroundColor: theme.primary }
+          : { borderWidth: 1, borderColor: theme.border },
+        disabled && !loading ? styles.buttonDisabled : null,
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator
+          color={primary ? theme.primaryForeground : theme.foreground}
+        />
+      ) : (
+        <ThemedText
+          style={[
+            styles.buttonText,
+            { color: primary ? theme.primaryForeground : theme.foreground },
+          ]}
+        >
+          {label}
+        </ThemedText>
+      )}
+    </Pressable>
   );
 }
 
@@ -188,27 +143,24 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
     maxWidth: 320,
   },
-  footer: { paddingBottom: Spacing.five, gap: Spacing.three },
-  codeCard: {
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    padding: Spacing.four,
-    gap: Spacing.two,
+  footer: { paddingBottom: Spacing.five, gap: Spacing.two },
+  errorText: {
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: Spacing.one,
   },
-  code: { fontFamily: Fonts.mono, fontSize: 34, letterSpacing: 6 },
-  waitingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.two,
-    marginTop: Spacing.one,
-  },
-  waitingText: { fontSize: 13 },
-  errorText: { fontSize: 14, textAlign: "center" },
   button: {
     height: 54,
     borderRadius: Radius.full,
     alignItems: "center",
     justifyContent: "center",
   },
+  buttonDisabled: { opacity: 0.5 },
   buttonText: { fontFamily: Fonts.sansSemiBold, fontSize: 16 },
+  legal: {
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: "center",
+    marginTop: Spacing.two,
+  },
 });

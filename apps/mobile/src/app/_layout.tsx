@@ -20,7 +20,6 @@ import { useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { Colors } from "@/constants/theme";
-import { AuthProvider } from "@/hooks/use-auth";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -48,15 +47,13 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: theme.background },
-          }}
-        />
-      </AuthProvider>
+      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: theme.background },
+        }}
+      />
     </GestureHandlerRootView>
   );
 }

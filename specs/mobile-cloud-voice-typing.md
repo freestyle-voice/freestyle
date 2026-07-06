@@ -4,6 +4,29 @@ Status: proposed
 Owner: mobile
 Related: `freestyle-cloud-auth.md`, cloud repo `apps/server/src/routes/v2/*`
 
+## 0. Update — native social sign-in (supersedes §5 device auth)
+
+The initial build reused the desktop's **device-authorization** flow (show a
+`user_code`, approve in a browser). On a phone that's clunky. We switched to
+**native social sign-in** via `@better-auth/expo`:
+
+- Client uses `@better-auth/expo/client`'s `expoClient({ scheme: "freestyle",
+  storage: SecureStore })`. Sign-in is `authClient.signIn.social({ provider:
+  "google" | "github" })`, which opens an in-app browser and deep-links back to
+  `freestyle://`. The session cookie lives in the device keychain.
+- Authenticated calls (`/v1/usage`, `WSS /v2/stream`) send the session cookie
+  from `authClient.getCookie()` (the cloud resolves the user from request
+  headers — cookie **or** bearer both work). The WS handshake carries the
+  `Cookie` header.
+- **Cloud change** (freestyle-voice/cloud PR #31): add the `expo()` server
+  plugin and trust `freestyle://` (+ `exp://` in dev) in `trustedOrigins`.
+  Google/GitHub OAuth apps need no changes — providers still hit the existing
+  server callback; the expo plugin deep-links from the server into the app.
+- Device authorization stays for the **desktop** app.
+
+The sections below are retained for historical context; §5's device-auth
+client was removed from the app.
+
 ## 1. Goal
 
 Turn `apps/mobile` (the minimal Expo SDK 57 "hello" app) into a real-time

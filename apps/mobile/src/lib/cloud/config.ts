@@ -8,12 +8,6 @@ import Constants from "expo-constants";
 
 const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 
-/** OAuth device-flow client id for the mobile app (distinct from desktop). */
-export const CLOUD_CLIENT_ID = "freestyle-mobile";
-
-/** better-auth device authorization grant type. */
-export const DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
-
 /**
  * Base URL for Freestyle Cloud. Overridable at build time via the
  * `extra.freestyleCloudUrl` app config value (useful for staging), falling

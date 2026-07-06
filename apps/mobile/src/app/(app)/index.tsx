@@ -18,6 +18,7 @@ import {
   requestMicPermission,
   useRecorder,
 } from "@/lib/audio/recorder";
+import { authHeaders } from "@/lib/cloud/session";
 import { CloudStreamSession } from "@/lib/cloud/stream";
 import { languageHint, useSettings } from "@/lib/settings";
 
@@ -27,7 +28,7 @@ const MIN_RECORDING_MS = 350;
 export default function VoiceScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { token } = useAuth();
+  const { signedIn } = useAuth();
   const { settings } = useSettings();
 
   const [micState, setMicState] = useState<MicState>("idle");
@@ -59,7 +60,9 @@ export default function VoiceScreen() {
   useEffect(() => teardownSession, [teardownSession]);
 
   const beginRecording = useCallback(async () => {
-    if (recordingRef.current || startingRef.current || !token) return;
+    if (recordingRef.current || startingRef.current || !signedIn) return;
+    const headers = authHeaders();
+    if (!headers) return;
     startingRef.current = true;
 
     const perm =
@@ -84,7 +87,7 @@ export default function VoiceScreen() {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     sessionRef.current = new CloudStreamSession({
-      token,
+      cookie: headers.Cookie,
       language: languageHint(settings.language),
       cleanup: { skipPostProcess: !settings.cleanup, intensity: "low" },
       callbacks: {
@@ -132,7 +135,7 @@ export default function VoiceScreen() {
       teardownSession();
       Alert.alert("Recording failed", "Could not start the microphone.");
     }
-  }, [recorder, settings, teardownSession, token]);
+  }, [recorder, settings, teardownSession, signedIn]);
 
   const finishRecording = useCallback(() => {
     if (!recordingRef.current) return;

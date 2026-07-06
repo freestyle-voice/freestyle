@@ -1,8 +1,18 @@
 # Freestyle Voice Keyboard (iOS keyboard extension)
 
-Status: proposed (planning only — not yet implemented)
+Status: in progress — **Phase 1 implemented** (config plugin + empty panel)
 Owner: mobile
 Related: `mobile-cloud-voice-typing.md`, cloud `apps/server/src/routes/v2/*`
+
+Progress:
+- [x] **Phase 1** — `plugins/withKeyboardExtension.js` adds the
+  `FreestyleKeyboard` app-extension target (App Group + shared keychain group,
+  Full-Access request, mic usage string, embed). `ios-keyboard/
+  KeyboardViewController.swift` renders the Soniox-style voice panel shell
+  (cancel/commit, centered text, status, mode label, globe). No mic/cloud yet.
+- [ ] Phase 2 — Full-Access gate + `AVAudioEngine` capture + text insertion.
+- [ ] Phase 3 — shared session token (keychain group) + `keyboard-bridge.ts`.
+- [ ] Phase 4 — `/v2/stream` live dictation (+ batch fallback).
 
 ## Decisions (locked)
 
@@ -165,16 +175,65 @@ Config additions (`app.json`):
 
 ## 7. UX / states (KeyboardViewController)
 
-- **No Full Access** → single message + button deep-linking to Settings; mic
-  disabled.
-- **Idle** → mic button, globe (next keyboard), space, delete, return.
-- **Recording/streaming** → mic pulses with live level; partials show in the
-  keyboard status strip (v1) or live in-field (v2); tap again / Done to stop.
-- **Finalizing** → brief spinner; `insertText(final)`; back to idle.
+### Layout — Soniox voice panel (reference: soniox.com/soniox-app/voice-typing)
+
+The keyboard is a **single voice panel**, not a QWERTY grid. It fills the
+standard keyboard area and reads text-first:
+
+```
+┌───────────────────────────────────────────────┐
+│  (✕)                                     (✓)    │  ← cancel / commit
+│                                                 │
+│        Pouvez-vous me donner une recette         │  ← live transcription
+│              de déjeuner rapide ?                │     (centered, large)
+│              · · · · · · · · ·                  │  ← thin waveform (level-driven)
+│                  listening…                     │  ← status (muted)
+│                                                 │
+│            unstyled transcription               │  ← raw/cleaned mode label
+│  (⊕)                                            │  ← globe: switch keyboards
+└───────────────────────────────────────────────┘
+```
+
+- **Cancel (✕, top-left)** — discard the utterance, insert nothing, back to
+  idle. Light circular button.
+- **Commit (✓, top-right)** — stop + finalize; insert the committed text into
+  the host field. Dark filled circular button (primary action).
+- **Live transcription (center)** — the interim/`partial` text, large and
+  centered, updating as you speak. This is the hero of the panel (Soniox shows
+  the sentence forming here, not in the host field, until commit).
+- **Waveform** — a thin row of level-driven bars just under the text (reuse the
+  app's `Waveform` behavior), giving "it's listening" feedback.
+- **Status** — muted `listening…` while streaming; `polishing…` while the
+  cloud cleans on commit.
+- **Mode label** — small centered micro-label at the bottom: `unstyled
+  transcription` when cleanup is off, otherwise e.g. `neutral tone` (reflects
+  the shared cleanup/tone prefs). Tapping it is a future shortcut to toggle.
+- **Globe (⊕, bottom-left)** — `advanceToNextInputMode()` to switch keyboards.
+- **Auto-start**: because the whole panel is the voice surface, streaming can
+  begin as soon as the keyboard appears (and Full Access is granted), matching
+  Soniox's "hold fn"/instant model. v1: start on first appearance or on a
+  center tap; ✓ commits, ✕ cancels. (Decide during Phase 2.)
+
+### States
+
+- **No Full Access** → replace the panel body with a short message + a button
+  deep-linking to Settings; no mic/network attempted.
+- **Idle** (pre-start) → dim placeholder ("Tap to speak") + globe.
+- **Streaming** → live text + animated waveform + `listening…`; ✓/✕ active.
+- **Finalizing** → `polishing…`; on `final`, `insertText(final)` into the host
+  field, then reset.
 - **Errors**: 401 → "Open Freestyle to sign in"; 429 → "Out of credits";
   network → transient inline message. Never crash the host app.
-- Respect light/dark via `traitCollection`; match the warm-paper / olive theme
-  where the host allows (keyboards get limited color control).
+- Respect light/dark via `traitCollection`. The reference uses a neutral
+  light-grey panel with a dark primary (✓) accent; we map that to Freestyle's
+  paper/ink with the olive/red accent on the active waveform + commit button.
+
+### Insertion model (v1)
+
+Show partials **inside the panel** (not the host field) and only
+`textDocumentProxy.insertText(final)` on commit. This avoids fighting host-app
+autocorrect and matches Soniox's panel-first flow. In-field live partials
+(delete/insert diffing) remain a later upgrade (§5 of phasing).
 
 ### Visual direction (Soniox-inspired — soniox.com/soniox-app/voice-typing)
 

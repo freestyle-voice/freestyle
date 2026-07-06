@@ -42,7 +42,8 @@
       ],
       "expo-secure-store",
       "expo-web-browser",
-      "expo-asset"
+      "expo-asset",
+      "./plugins/withKeyboardExtension"
     ],
     "experiments": {
       "typedRoutes": true,

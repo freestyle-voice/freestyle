@@ -67,12 +67,54 @@ function formatMinutes(totalSec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+const MODEL_LABEL_OVERRIDES: Record<string, string> = {
+  api: "API",
+  asr: "ASR",
+  deepgram: "Deepgram",
+  elevenlabs: "ElevenLabs",
+  "freestyle-cloud": "Freestyle Cloud",
+  "freestyle-cloud/stt": "Freestyle Cloud / STT",
+  "freestyle-cloud/post-process": "Freestyle Cloud / Post-process",
+  gpt: "GPT",
+  groq: "Groq",
+  llm: "LLM",
+  mlx: "MLX",
+  openai: "OpenAI",
+  stt: "STT",
+  "post-process": "Post-process",
+  soniox: "Soniox",
+};
+
+function titleizeModelPart(part: string): string {
+  const normalized = part.trim();
+  const override = MODEL_LABEL_OVERRIDES[normalized.toLowerCase()];
+  if (override) return override;
+  if (!normalized) return normalized;
+  return normalized
+    .split("-")
+    .map((token) => {
+      const tokenOverride = MODEL_LABEL_OVERRIDES[token.toLowerCase()];
+      if (tokenOverride) return tokenOverride;
+      if (/^[A-Z0-9]+$/.test(token)) return token;
+      return `${token.charAt(0).toUpperCase()}${token.slice(1)}`;
+    })
+    .join(" ");
+}
+
+function formatModelIdForDisplay(modelId: string): string {
+  const normalized = modelId.trim();
+  const override = MODEL_LABEL_OVERRIDES[normalized.toLowerCase()];
+  if (override) return override;
+  return normalized.split("/").map(titleizeModelPart).join(" / ");
+}
+
 function formatModelLabel(entry: HistoryEntry): string {
   const voice = entry.voice_model || entry.voice_provider;
+  const voiceLabel = formatModelIdForDisplay(voice);
   if (entry.llm_model) {
-    return `${voice} · ${entry.llm_model}`;
+    return `${voiceLabel} · ${formatModelIdForDisplay(entry.llm_model)}`;
   }
-  return voice;
+  return voiceLabel;
 }
 
 // Build a 24-bin (per-hour) histogram of word activity for today.

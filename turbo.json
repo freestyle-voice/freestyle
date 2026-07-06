@@ -21,6 +21,16 @@
       "persistent": true,
       "cache": false
     },
+    "ios": {
+      "dependsOn": ["^build"],
+      "persistent": true,
+      "cache": false
+    },
+    "android": {
+      "dependsOn": ["^build"],
+      "persistent": true,
+      "cache": false
+    },
     "test": {
       "dependsOn": ["^build"],
       "cache": false

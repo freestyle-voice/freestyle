@@ -1,18 +1,38 @@
 # Freestyle Voice Keyboard (iOS keyboard extension)
 
-Status: in progress — **Phase 1 implemented** (config plugin + empty panel)
+Status: in progress — **Phases 1–4 implemented** (live dictation end-to-end;
+awaits on-device validation)
 Owner: mobile
 Related: `mobile-cloud-voice-typing.md`, cloud `apps/server/src/routes/v2/*`
 
 Progress:
 - [x] **Phase 1** — `plugins/withKeyboardExtension.js` adds the
-  `FreestyleKeyboard` app-extension target (App Group + shared keychain group,
-  Full-Access request, mic usage string, embed). `ios-keyboard/
-  KeyboardViewController.swift` renders the Soniox-style voice panel shell
-  (cancel/commit, centered text, status, mode label, globe). No mic/cloud yet.
-- [ ] Phase 2 — Full-Access gate + `AVAudioEngine` capture + text insertion.
-- [ ] Phase 3 — shared session token (keychain group) + `keyboard-bridge.ts`.
-- [ ] Phase 4 — `/v2/stream` live dictation (+ batch fallback).
+  `FreestyleKeyboard` app-extension target (App Group, Full-Access request, mic
+  usage string, embed). Voice panel shell.
+- [x] **Phase 2** — Full-Access gate (`hasFullAccess`) + `AudioEngineCapture`
+  (`AVAudioEngine` tap → `AVAudioConverter` → PCM16/16k/mono frames + level) +
+  `textDocumentProxy` insertion on commit.
+- [x] **Phase 3** — session sharing via the **App Group** (not keychain): a
+  local Expo module `freestyle-shared-store` writes the bearer session token +
+  cloud URL + prefs from JS (`src/lib/keyboard-bridge.ts`), read in Swift by
+  `SharedStore.swift`. Synced on session/settings change.
+- [x] **Phase 4** — `CloudStreamSession.swift` (`URLSessionWebSocketTask`
+  `/v2/stream`, bearer auth, start/commit/cancel, partial/final) with live
+  partials in-panel → committed `final` inserted. `CloudTranscriber.swift`
+  (batch `POST /v2/transcribe`) ships as a ready client; auto-wiring the
+  fallback (buffer audio to file) is a deliberate follow-up.
+- [x] In-app setup screen `src/app/(app)/keyboard-setup.tsx` +
+  `freestyle://keyboard-setup` deep link (from the extension's Full-Access
+  prompt) and a Settings entry point.
+
+### Decision update (supersedes §5)
+
+Session sharing uses the **App Group `UserDefaults`** container, not a keychain
+access group. Rationale: `expo-secure-store`'s `accessGroup` needs the Apple
+**Team ID** (`AppIdentifierPrefix`) as a literal at runtime, which isn't
+configured and complicates provisioning. The App Group is sandboxed to
+Freestyle's own two targets, needs no Team ID, and works on any provisioning.
+The token is still a short-lived bearer session token treated as 401-on-expiry.
 
 ## Decisions (locked)
 

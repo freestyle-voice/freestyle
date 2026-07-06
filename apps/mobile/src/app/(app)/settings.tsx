@@ -153,6 +153,25 @@ export default function SettingsScreen() {
             ) : null}
           </Section>
 
+          <Section title="Voice keyboard">
+            <Pressable
+              onPress={() => router.push("/(app)/keyboard-setup")}
+              style={styles.linkRow}
+            >
+              <View style={styles.switchLabel}>
+                <ThemedText style={styles.rowLabel}>
+                  Set up the voice keyboard
+                </ThemedText>
+                <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
+                  Dictate into any app. Add the keyboard and enable Full Access.
+                </ThemedText>
+              </View>
+              <ThemedText type="eyebrow" themeColor="primary">
+                Open
+              </ThemedText>
+            </Pressable>
+          </Section>
+
           <Pressable
             onPress={() => {
               void signOut().then(() => router.replace("/sign-in"));
@@ -227,6 +246,7 @@ const styles = StyleSheet.create({
   },
   chipText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
   switchRow: { flexDirection: "row", alignItems: "center", gap: Spacing.three },
+  linkRow: { flexDirection: "row", alignItems: "center", gap: Spacing.three },
   switchLabel: { flex: 1 },
   toneBlock: { gap: Spacing.two },
   signOut: {

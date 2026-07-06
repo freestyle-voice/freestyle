@@ -2,14 +2,14 @@
  * Expo config plugin: adds the Freestyle voice keyboard as an iOS Custom
  * Keyboard Extension target during `expo prebuild`.
  *
- * Phase 1 scope: create the target, copy the Swift source, configure the
+ * Creates the target, copies the Swift sources (voice panel UI, AVAudioEngine
+ * capture, /v2/stream client + batch fallback, App Group reader), configures the
  * Info.plist (keyboard service + Full Access request + mic usage string) and
- * entitlements (App Group + shared keychain access group for the session
- * token), and embed the .appex in the host app. No mic/cloud code yet.
+ * entitlements (App Group), and embeds the .appex in the host app.
  *
- * The App Group + keychain access group let the main app share the signed-in
- * session with the keyboard (used in a later phase); we wire the entitlements
- * now so the target is provisioned correctly from the start.
+ * The App Group lets the main app share the signed-in session token + prefs with
+ * the keyboard (written from JS via `keyboard-bridge.ts` → the local
+ * `freestyle-shared-store` module, read in Swift by `SharedStore.swift`).
  */
 const {
   withXcodeProject,
@@ -21,8 +21,14 @@ const path = require("node:path");
 
 const EXT_NAME = "FreestyleKeyboard";
 const APP_GROUP = "group.com.freestylevoice.app";
-const KEYCHAIN_GROUP = "com.freestylevoice.app.shared";
-const SOURCE_FILES = ["KeyboardViewController.swift"];
+const SOURCE_FILES = [
+  "KeyboardViewController.swift",
+  "WaveformView.swift",
+  "AudioEngineCapture.swift",
+  "SharedStore.swift",
+  "CloudStreamSession.swift",
+  "CloudTranscriber.swift",
+];
 const DEPLOYMENT_TARGET = "16.0";
 
 function withKeyboardExtension(config) {
@@ -32,14 +38,11 @@ function withKeyboardExtension(config) {
   return config;
 }
 
-/** App Group + keychain access group on the host app, so it can share the
- * session with the keyboard. */
+/** App Group on the host app, so it can share the session token + prefs with
+ * the keyboard via the shared container. */
 function withMainAppEntitlements(config) {
   return withEntitlementsPlist(config, (mod) => {
     mod.modResults["com.apple.security.application-groups"] = [APP_GROUP];
-    mod.modResults["keychain-access-groups"] = [
-      `$(AppIdentifierPrefix)${KEYCHAIN_GROUP}`,
-    ];
     return mod;
   });
 }
@@ -240,10 +243,6 @@ function keyboardEntitlements() {
   <key>com.apple.security.application-groups</key>
   <array>
     <string>${APP_GROUP}</string>
-  </array>
-  <key>keychain-access-groups</key>
-  <array>
-    <string>$(AppIdentifierPrefix)${KEYCHAIN_GROUP}</string>
   </array>
 </dict>
 </plist>`;

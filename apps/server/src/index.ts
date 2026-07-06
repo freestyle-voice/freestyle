@@ -137,7 +137,7 @@ export async function startServer(
   });
 }
 
-export { closeDb } from "./lib/db.js";
+export { closeDb, writeSetting } from "./lib/db.js";
 export { stopMlxServer } from "./lib/mlx-asr/server.js";
 export { configureNetwork } from "./lib/network.js";
 export {

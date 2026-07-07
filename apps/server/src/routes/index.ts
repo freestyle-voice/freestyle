@@ -5,7 +5,6 @@ import apiKeys from "./api-keys.js";
 import auth from "./auth.js";
 import dictionary from "./dictionary.js";
 import history from "./history.js";
-import mcp from "./mcp.js";
 import mlxAsr from "./mlx-asr.js";
 import models from "./models.js";
 import pluginsRoute from "./plugins.js";
@@ -84,6 +83,6 @@ const apiRouter = new Hono()
   .route("/whisper", whisper)
   .route("/mlx-asr", mlxAsr);
 
-const router = new Hono().route("/api", apiRouter).route("/mcp", mcp);
+const router = new Hono().route("/api", apiRouter);
 
 export default router;

@@ -108,8 +108,7 @@
       "display": "Display",
       "permissions": "Permissions",
       "data": "Data",
-      "network": "Network",
-      "developer": "Developer"
+      "network": "Network"
     },
     "application": {
       "autoUpdate": "Automatic updates",
@@ -213,16 +212,6 @@
       "invalidProxy": "Enter a valid http://, https:// or socks:// URL, or leave it blank.",
       "invalidCaCert": "Enter a valid certificate file path, or leave it blank.",
       "envNote": "The app also honors HTTP_PROXY, HTTPS_PROXY, NO_PROXY, NODE_EXTRA_CA_CERTS and SSL_CERT_FILE from the environment."
-    },
-    "developer": {
-      "mcp": "MCP server",
-      "mcpDesc": "Freestyle runs a local Model Context Protocol server so an AI agent (Claude Desktop, Cursor, etc.) can manage your dictionary, vocabulary, and format rules. Add the connection below to your MCP client.",
-      "mcpUrl": "Server URL",
-      "mcpConfig": "Client config (HTTP)",
-      "mcpRemoteConfig": "Client config (stdio via mcp-remote)",
-      "mcpRemoteNote": "Use this form for clients that don't support HTTP MCP servers directly, such as Claude Desktop.",
-      "copy": "Copy",
-      "copied": "Copied"
     }
   },
   "today": {

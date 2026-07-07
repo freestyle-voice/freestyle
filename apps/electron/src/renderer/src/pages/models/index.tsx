@@ -28,7 +28,10 @@ import type { ApiKeyEntry, ConfiguredModel } from "./types";
 import { useModels } from "./use-models";
 import { displayName } from "./utils";
 
-/** Managed STT provider that needs no key and always runs its own cleanup. */
+/**
+ * Managed provider that needs no key. It can handle transcription, cleanup, or
+ * both, depending on which sides the user routes to it.
+ */
 const FREESTYLE_CLOUD_PROVIDER = "freestyle-cloud";
 
 export default function ModelsPage(): React.JSX.Element {

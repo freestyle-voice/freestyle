@@ -9,6 +9,7 @@ import { createAuthClient } from "better-auth/client";
 import { deviceAuthorizationClient } from "better-auth/client/plugins";
 import type { CloudUser } from "./sessions.js";
 import { CLOUD_TRANSCRIBE_TIMEOUT_MS } from "./streaming/types.js";
+import type { CloudVocabularyBias } from "./vocabulary.js";
 
 export const FREESTYLE_CLOUD_PROVIDER_ID = "freestyle-cloud";
 export const FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID = "freestyle-cloud/stt";
@@ -384,6 +385,8 @@ export async function transcribeWithFreestyleCloud(
     mode: "raw" | "combined";
     intensity?: string;
     customPrompt?: string | null;
+    /** Custom-vocabulary bias to steer recognition (independent of cleanup). */
+    vocabulary?: CloudVocabularyBias;
   } & CloudCleanupTones,
 ): Promise<CloudTranscribeResult> {
   const audio = opts.audio as Uint8Array<ArrayBuffer>;
@@ -395,6 +398,13 @@ export async function transcribeWithFreestyleCloud(
   form.append("audio", new Blob([audio], { type: "audio/wav" }), "audio.wav");
   if (opts.language) form.append("language", opts.language);
   if (opts.appContext) form.append("appContext", opts.appContext);
+  // Vocabulary bias applies to the recognizer regardless of cleanup mode.
+  if (
+    opts.vocabulary &&
+    (opts.vocabulary.terms?.length || opts.vocabulary.text)
+  ) {
+    form.append("vocabulary", JSON.stringify(opts.vocabulary));
+  }
   if (opts.mode === "raw") {
     form.append("skipPostProcess", "true");
   } else {

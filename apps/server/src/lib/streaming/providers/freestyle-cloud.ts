@@ -3,6 +3,7 @@ import {
   FreestyleCloudAuthError,
   transcribeWithFreestyleCloud,
 } from "../../freestyle-cloud.js";
+import { getCloudVocabularyBias } from "../../vocabulary.js";
 import type {
   TranscribeOptions,
   TranscribeResult,
@@ -35,6 +36,7 @@ export class FreestyleCloudTranscriptionProvider
       audio: opts.audio,
       language: opts.language,
       mode: "raw",
+      vocabulary: getCloudVocabularyBias(),
     });
     return {
       text: data.raw || "",

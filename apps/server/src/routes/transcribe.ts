@@ -30,6 +30,7 @@ import { invalidateSession } from "../lib/sessions.js";
 import { CloudAuthError } from "../lib/streaming/providers/freestyle-cloud.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import { getApiKeyForProvider } from "../lib/streaming-stt.js";
+import { getCloudVocabularyBias } from "../lib/vocabulary.js";
 import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
 
 const log = createAppLogger("transcribe");
@@ -151,6 +152,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         language,
         appContext,
         mode: "combined",
+        vocabulary: getCloudVocabularyBias(),
         ...getEffectiveCleanupTones(),
         appAssignments: getCleanupAppAssignments(),
       });

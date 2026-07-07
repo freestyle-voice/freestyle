@@ -39,3 +39,29 @@ export function getTranscriptionContextPrompt(): string | undefined {
     return undefined;
   }
 }
+
+/**
+ * Raw custom-vocabulary bias forwarded to Freestyle Cloud's `/v2/transcribe`.
+ * The cloud assembles the recognizer prompt from these terms plus the optional
+ * context text, so the desktop sends the raw values rather than a formatted
+ * prompt. Shape mirrors the cloud's `{ terms?, text? }` contract.
+ */
+export interface CloudVocabularyBias {
+  terms?: string[];
+  text?: string;
+}
+
+/**
+ * Collect the user's vocabulary terms and transcription context prompt for the
+ * cloud batch transcription path. Returns `undefined` when there is nothing to
+ * send so callers can omit the field entirely.
+ */
+export function getCloudVocabularyBias(): CloudVocabularyBias | undefined {
+  const terms = loadVocabularyTerms();
+  const text = getTranscriptionContextPrompt();
+  if (terms.length === 0 && !text) return undefined;
+  return {
+    ...(terms.length > 0 ? { terms } : {}),
+    ...(text ? { text } : {}),
+  };
+}

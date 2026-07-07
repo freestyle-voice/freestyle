@@ -354,7 +354,7 @@ export async function transcribeWithFreestyleCloud(opts: {
     form.append("vocabulary", JSON.stringify(opts.vocabulary));
   }
 
-  return cloudJson<CloudTranscribeResult>("/v3/transcribe", opts.token, {
+  return cloudJson<CloudTranscribeResult>("/v2/transcribe", opts.token, {
     method: "POST",
     // Do not set content-type: fetch adds the multipart boundary itself.
     body: form,

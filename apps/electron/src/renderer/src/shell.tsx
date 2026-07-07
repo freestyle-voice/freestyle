@@ -12,6 +12,7 @@ import {
   CircleHelp,
   Clock,
   Cpu,
+  FileText,
   Languages,
   Puzzle,
   Settings,
@@ -56,12 +57,12 @@ const STATIC_NAV: {
     shortcut: "4",
     labelKey: "shell.nav.vocabulary",
   },
-  // {
-  //   to: "/settings/tone",
-  //   icon: FileText,
-  //   shortcut: "5",
-  //   labelKey: "shell.nav.tone",
-  // },
+  {
+    to: "/settings/tone",
+    icon: FileText,
+    shortcut: "5",
+    labelKey: "shell.nav.tone",
+  },
   {
     to: "/settings/models",
     icon: Cpu,

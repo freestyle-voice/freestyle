@@ -6,6 +6,7 @@ import {
   CheckCircle,
   Key,
   Laptop,
+  Loader2,
   Pencil,
   Trash2,
   XCircle,
@@ -189,6 +190,7 @@ export default function ModelsPage(): React.JSX.Element {
         <KeysSection
           apiKeys={m.apiKeys}
           configured={m.configured}
+          deletingProviders={m.deletingProviders}
           showLocal={hasLocalVoice}
           onEdit={(provider) =>
             setModal({
@@ -358,12 +360,14 @@ function ModelsLoadingSkeleton(): React.JSX.Element {
 function KeysSection({
   apiKeys,
   configured,
+  deletingProviders,
   showLocal,
   onEdit,
   onDelete,
 }: {
   apiKeys: ApiKeyEntry[];
   configured: ConfiguredModel[];
+  deletingProviders: Set<string>;
   showLocal: boolean;
   onEdit: (provider: string) => void;
   onDelete: (provider: string) => void;
@@ -391,6 +395,7 @@ function KeysSection({
               configured.filter((c) => c.provider === entry.provider).length
             }
             first={i === 0}
+            deleting={deletingProviders.has(entry.provider)}
             onEdit={() => onEdit(entry.provider)}
             onDelete={() => onDelete(entry.provider)}
           />
@@ -422,12 +427,14 @@ function KeyRow({
   entry,
   count,
   first,
+  deleting,
   onEdit,
   onDelete,
 }: {
   entry: ApiKeyEntry;
   count: number;
   first: boolean;
+  deleting: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }): React.JSX.Element {
@@ -470,13 +477,16 @@ function KeyRow({
       <div
         className={cn(
           "flex shrink-0 items-center gap-0.5 transition-opacity",
-          invalid ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+          invalid || deleting
+            ? "opacity-100"
+            : "opacity-0 group-hover:opacity-100",
         )}
       >
         <Button
           variant="ghost"
           size="icon-sm"
           onClick={onEdit}
+          disabled={deleting}
           className="text-muted-foreground hover:text-foreground"
           aria-label="Update API key"
           title="Update API key"
@@ -487,11 +497,12 @@ function KeyRow({
           variant="ghost"
           size="icon-sm"
           onClick={onDelete}
+          disabled={deleting}
           className="text-muted-foreground hover:text-destructive"
           aria-label="Delete provider"
           title="Delete provider"
         >
-          <Trash2 />
+          {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
         </Button>
       </div>
     </div>

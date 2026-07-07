@@ -92,7 +92,7 @@
   --glass-window-solid: #F4F0E4;
   --glass-window: #F4F0E4;
   --glass-sidebar-solid: #ECE7D6;
-  --glass-sidebar: rgba(236, 231, 214, 0.9);
+  --glass-sidebar: #ECE7D6;
   --glass-topbar-solid: #F4F0E4;
   --glass-topbar: rgba(244, 240, 228, 0.96);
   --glass-border: rgba(214, 205, 184, 0.72);
@@ -373,5 +373,14 @@
     .responsive-standalone-pad {
       padding-inline: 1rem;
     }
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }

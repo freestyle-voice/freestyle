@@ -31,6 +31,8 @@ Lead: @matteo8p
 
 3️⃣ Improve the UI. Simplify the tones page. Add the ability to manage billing
 
+The above lists the new features that we want to build. We want to continue maintaining the cleanliness of our codebase and the robustness of the project. General UI/UX improvements and functional enhancements, along with bug fixes, are a continuous effort. 
+
 # Cloud
 Lead: @MathurAditya724
 
@@ -40,7 +42,7 @@ Lead: @MathurAditya724
 
 2️⃣ Add billing and managing to Freestyle Transcribe Pro. 
 
-3️⃣ Have free tier be 500 dictations / week. Set up billing on Stripe. Billing details are TBD, but we're shooting for $9 / month for Pro, unlimited usage and zero-data retention by default. 
+3️⃣ Have free tier be 1000 words / week. Set up billing on Stripe. Billing details are TBD, but we're shooting for $9 / month for Pro, unlimited usage and zero-data retention by default. 
 
 # Future work (TBD)
 

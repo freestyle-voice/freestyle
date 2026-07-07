@@ -16,7 +16,6 @@ export function PairCard({
   voice,
   llm,
   llmCleanup,
-  cleanupIncluded,
   onToggleCleanup,
   onChangeVoice,
   onChangeLlm,
@@ -25,11 +24,6 @@ export function PairCard({
   voice: ConfiguredModel | undefined;
   llm: ConfiguredModel | undefined;
   llmCleanup: boolean;
-  /**
-   * Freestyle Transcribe handles both transcription and cleanup: collapse the
-   * pair into one panel since cleanup is bundled and cannot be toggled here.
-   */
-  cleanupIncluded?: boolean;
   onToggleCleanup: (next: boolean) => void;
   onChangeVoice: () => void;
   onChangeLlm: () => void;
@@ -46,26 +40,6 @@ export function PairCard({
       Configure model warming
     </Button>
   ) : undefined;
-
-  // Freestyle Transcribe handles both transcription and AI cleanup as one
-  // service, so collapse the pair into a single panel instead of showing an
-  // inert, duplicated "cleanup" side next to it.
-  if (cleanupIncluded) {
-    return (
-      <section className="border-border bg-card rounded-[14px] border p-6">
-        <PairSide
-          kicker="Transcription + AI cleanup"
-          modelName={voice?.model_name ?? "Freestyle Transcribe"}
-          providerName={undefined}
-          cta="Change"
-          primary
-          note="Transcription and AI cleanup handled by Freestyle Transcribe."
-          onChange={onChangeVoice}
-          accessory={warmingAccessory}
-        />
-      </section>
-    );
-  }
 
   return (
     <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
@@ -106,7 +80,6 @@ function PairSide({
   onToggle,
   onChange,
   dimmed,
-  note,
   accessory,
 }: {
   kicker: string;
@@ -118,8 +91,6 @@ function PairSide({
   onToggle?: (next: boolean) => void;
   onChange: () => void;
   dimmed?: boolean;
-  /** Small caption shown under the model name. */
-  note?: React.ReactNode;
   accessory?: React.ReactNode;
 }): React.JSX.Element {
   return (
@@ -163,9 +134,6 @@ function PairSide({
               {providerName}
             </span>
           </div>
-        )}
-        {note && (
-          <div className="text-muted-foreground mt-1.5 text-[13px]">{note}</div>
         )}
       </div>
       <div className="mt-auto flex items-center gap-2.5 pt-1">

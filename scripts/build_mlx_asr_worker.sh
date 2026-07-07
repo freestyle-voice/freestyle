@@ -15,6 +15,8 @@ HUGGINGFACE_HUB_VERSION="${HUGGINGFACE_HUB_VERSION:-1.17.0}"
 # "AttributeError: 'str' object has no attribute '__module__'" and the worker exits code 1.
 # Pin below 5.13 until mlx-lm's fix ships. Working band: transformers>=5.7,<5.13.
 # Refs: freestyle-voice/freestyle#403, ml-explore/mlx-lm#1458.
+# Any dependency change here must also update MLX_WORKER_BUILD_SPEC in
+# apps/server/src/lib/mlx-asr/runtime.ts, or installed workers never re-download.
 TRANSFORMERS_SPEC="${TRANSFORMERS_SPEC:->=5.7,<5.13}"
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then

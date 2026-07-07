@@ -104,7 +104,7 @@ createRoot(document.getElementById("root")!).render(
                         />
                         <Route
                           path="/settings/formats"
-                          element={<Navigate to="/settings" replace />}
+                          element={<Navigate to="/settings/tone" replace />}
                         />
                         <Route path="/settings/tone" element={<TonePage />} />
                         <Route

@@ -32,18 +32,6 @@ function buildDictionaryRegex(key: string): RegExp {
   return regex;
 }
 
-export function loadDictionaryEntries(
-  db: DatabaseSync,
-): { key: string; value: string }[] {
-  try {
-    return db
-      .prepare("SELECT key, value FROM dictionary ORDER BY length(key) DESC")
-      .all() as { key: string; value: string }[];
-  } catch {
-    return [];
-  }
-}
-
 export function applyDictionaryReplacements(
   text: string,
   db: DatabaseSync,

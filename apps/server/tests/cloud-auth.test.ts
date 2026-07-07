@@ -138,18 +138,19 @@ describe("Freestyle Transcribe default on sign-in", () => {
     db.prepare("DELETE FROM settings WHERE key = 'llm_cleanup'").run();
   });
 
-  it("makes Freestyle the default voice without configuring a cleanup model", async () => {
+  it("makes Freestyle the default for voice and cleanup, and enables cleanup", async () => {
     const res = await signIn();
     expect(res.status).toBe(200);
 
     const defaults = getDefaultModels();
     expect(defaults.voice?.provider).toBe("freestyle-cloud");
     expect(defaults.voice?.model_id).toBe("freestyle-cloud/stt");
-    expect(defaults.llm?.provider).not.toBe("freestyle-cloud");
-    expect(readSetting("llm_cleanup")).toBeUndefined();
+    expect(defaults.llm?.provider).toBe("freestyle-cloud");
+    expect(defaults.llm?.model_id).toBe("freestyle-cloud/post-process");
+    expect(readSetting("llm_cleanup")).toBe("true");
   });
 
-  it("overrides an existing local voice default and leaves local cleanup alone", async () => {
+  it("overrides an existing local voice default and turns cleanup on", async () => {
     insertLocalVoiceDefault();
     getDb()
       .prepare(
@@ -161,8 +162,8 @@ describe("Freestyle Transcribe default on sign-in", () => {
 
     const defaults = getDefaultModels();
     expect(defaults.voice?.provider).toBe("freestyle-cloud");
-    expect(defaults.llm?.provider).not.toBe("freestyle-cloud");
-    expect(readSetting("llm_cleanup")).toBe("false");
+    expect(defaults.llm?.provider).toBe("freestyle-cloud");
+    expect(readSetting("llm_cleanup")).toBe("true");
   });
 
   it("persists a local model chosen after sign-in (no re-switch)", async () => {
@@ -184,7 +185,7 @@ describe("Freestyle Transcribe default on sign-in", () => {
     expect(getDefaultModels().voice?.provider).toBe("local-whisper");
   });
 
-  it("reverts to a local model on sign-out without touching local cleanup", async () => {
+  it("reverts to a local model and disables cleanup on sign-out", async () => {
     insertLocalVoiceDefault();
     await signIn();
     expect(getDefaultModels().voice?.provider).toBe("freestyle-cloud");
@@ -193,10 +194,10 @@ describe("Freestyle Transcribe default on sign-in", () => {
     expect(res.status).toBe(200);
 
     expect(getDefaultModels().voice?.provider).toBe("local-whisper");
-    expect(readSetting("llm_cleanup")).toBeUndefined();
+    expect(readSetting("llm_cleanup")).toBe("false");
   });
 
-  it("re-applies the Freestyle voice default when signing in again", async () => {
+  it("re-applies the Freestyle bundle when signing in again", async () => {
     insertLocalVoiceDefault();
     await signIn();
     await app.request("/api/auth/sign-out", { method: "POST" });
@@ -206,6 +207,7 @@ describe("Freestyle Transcribe default on sign-in", () => {
 
     const defaults = getDefaultModels();
     expect(defaults.voice?.provider).toBe("freestyle-cloud");
-    expect(defaults.llm?.provider).not.toBe("freestyle-cloud");
+    expect(defaults.llm?.provider).toBe("freestyle-cloud");
+    expect(readSetting("llm_cleanup")).toBe("true");
   });
 });

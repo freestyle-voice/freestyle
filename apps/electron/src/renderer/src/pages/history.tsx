@@ -332,7 +332,7 @@ export default function HistoryPage(): React.JSX.Element {
                 variant="outline"
                 onClick={() => setFilterOpen(true)}
                 className={cn(
-                  "text-muted-foreground",
+                  "text-muted-foreground h-auto self-stretch",
                   filterCount > 0 && "border-primary text-primary bg-primary/5",
                 )}
               >

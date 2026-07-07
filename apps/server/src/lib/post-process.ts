@@ -25,7 +25,12 @@ import { maxOutputTokensForCleanup } from "./editor/max-output-tokens.js";
 import { sanitizeTranscriptText } from "./editor/model-hints.js";
 import { buildRewritePrompt } from "./editor/prompts.js";
 import { getRewritePromptContext } from "./editor/rewrite-context.js";
-import { isTransientCloudError } from "./freestyle-cloud.js";
+import {
+  FREESTYLE_CLOUD_PROVIDER_ID,
+  FreestyleCloudAuthError,
+  isTransientCloudError,
+  postProcessWithFreestyleCloud,
+} from "./freestyle-cloud.js";
 import {
   getGroqChatModel,
   normalizeGroqModelId,
@@ -39,6 +44,7 @@ import {
 } from "./plugins/index.js";
 import { capture, captureException } from "./posthog.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
+import { getSessionToken } from "./sessions.js";
 
 const log = createAppLogger("post-process");
 
@@ -267,6 +273,7 @@ export async function postProcess(
   let handoffMs = 0;
 
   if (llm && isLlmCleanupEnabled()) {
+    // Resolved cleanup config for both Freestyle Cloud and local-model paths.
     const {
       intensity,
       customPrompt,
@@ -276,7 +283,44 @@ export async function postProcess(
       overallTone,
     } = getEffectiveCleanupTones();
 
-    if (!(await isCleanupModelSupported(llm.provider, llm.model_id))) {
+    if (llm.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
+      // Freestyle Cloud assembles its cleanup prompts server-side: it resolves
+      // the destination from appContext + appAssignments and applies the tone
+      // preferences we forward here, mirroring the local/direct-model path.
+      const token = getSessionToken();
+      if (!token) throw new FreestyleCloudAuthError();
+      try {
+        const result = await postProcessWithFreestyleCloud({
+          token,
+          text: normalizedRawText,
+          appContext: effectiveAppContext,
+          language: options.language,
+          intensity,
+          customPrompt,
+          personalTone,
+          workTone,
+          emailTone,
+          overallTone,
+          appAssignments: getCleanupAppAssignments(),
+        });
+        inputTokens = result.usage?.inputTokens ?? 0;
+        outputTokens = result.usage?.outputTokens ?? 0;
+        llmProvider = llm.provider;
+        llmModel = llm.model_id;
+        cleanedText = sanitizeTranscriptText(result.cleaned);
+      } catch (err) {
+        if (err instanceof FreestyleCloudAuthError) throw err;
+        // Transient network faults / upstream 5xx aren't app defects.
+        if (!isTransientCloudError(err)) captureException(err);
+        capture("post process failed", {
+          provider: llm.provider,
+          model: llm.model_id,
+          source,
+        });
+        log.error(`Freestyle Cloud cleanup failed: ${err}`);
+        cleanedText = normalizedRawText;
+      }
+    } else if (!(await isCleanupModelSupported(llm.provider, llm.model_id))) {
       log.warn(
         `Skipping LLM cleanup: unsupported cleanup model ${llm.provider}/${llm.model_id}`,
       );

@@ -25,7 +25,10 @@ export function PairCard({
   voice: ConfiguredModel | undefined;
   llm: ConfiguredModel | undefined;
   llmCleanup: boolean;
-  /** Freestyle Transcribe is active: cleanup always runs and cannot be toggled. */
+  /**
+   * Freestyle Transcribe handles both transcription and cleanup: collapse the
+   * pair into one panel since cleanup is bundled and cannot be toggled here.
+   */
   cleanupIncluded?: boolean;
   onToggleCleanup: (next: boolean) => void;
   onChangeVoice: () => void;

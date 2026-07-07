@@ -1,10 +1,8 @@
 import { createAppLogger } from "@freestyle-voice/utils";
 import { Hono } from "hono";
-import { getDb } from "../lib/db.js";
-import { loadDictionaryEntries } from "../lib/dictionary-replacements.js";
+import { readSetting } from "../lib/db.js";
 import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
 import {
-  FREESTYLE_CLOUD_CLEANUP_MODEL_ID,
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,
   FreestyleCloudUsageError,
@@ -21,6 +19,8 @@ import {
 } from "../lib/plugins/index.js";
 import {
   applyFinalRewrites,
+  getCleanupAppAssignments,
+  getEffectiveCleanupTones,
   postProcess,
   resolveAppContextForCleanup,
 } from "../lib/post-process.js";
@@ -30,7 +30,6 @@ import { invalidateSession } from "../lib/sessions.js";
 import { CloudAuthError } from "../lib/streaming/providers/freestyle-cloud.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import { getApiKeyForProvider } from "../lib/streaming-stt.js";
-import { loadVocabularyTerms } from "../lib/vocabulary.js";
 import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
 
 const log = createAppLogger("transcribe");
@@ -139,19 +138,25 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   const voiceProvider = defaults.voice.provider;
   const voiceModel = defaults.voice.model_id;
   const skipPostProcess = c.req.header("x-skip-post-process") === "true";
+  const freestyleCleanupActive =
+    !skipPostProcess &&
+    defaults.llm?.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
+    readSetting("llm_cleanup") === "true";
 
-  if (voiceProvider === FREESTYLE_CLOUD_PROVIDER_ID && !skipPostProcess) {
+  if (voiceProvider === FREESTYLE_CLOUD_PROVIDER_ID && freestyleCleanupActive) {
     try {
       const result = await transcribeWithFreestyleCloud({
         token: apiKey,
         audio: audioData,
         language,
-        dictionary: loadDictionaryEntries(getDb()),
-        vocabulary: loadVocabularyTerms(),
+        appContext,
+        mode: "combined",
+        ...getEffectiveCleanupTones(),
+        appAssignments: getCleanupAppAssignments(),
       });
       rawText = sanitizeTranscriptText(result.raw ?? "");
-      // The cloud already ran STT, cleanup, and dictionary replacements;
-      // still run the `afterCleanup` plugin hook on the way out.
+      // The cloud already ran STT + LLM cleanup; still apply the local-only
+      // dictionary replacements and `afterCleanup` plugin hook on the way out.
       const cleaned = await applyFinalRewrites(
         sanitizeTranscriptText(result.cleaned ?? rawText),
         appContext,
@@ -168,7 +173,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
           voiceProvider,
           voiceModel,
           llmProvider: FREESTYLE_CLOUD_PROVIDER_ID,
-          llmModel: FREESTYLE_CLOUD_CLEANUP_MODEL_ID,
+          llmModel: defaults.llm?.model_id ?? "freestyle-cloud/post-process",
           durationMs,
           audioDurationMs,
           inputTokens,
@@ -187,7 +192,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         audio_duration_ms: audioDurationMs,
         post_processed: true,
         llm_provider: FREESTYLE_CLOUD_PROVIDER_ID,
-        llm_model: FREESTYLE_CLOUD_CLEANUP_MODEL_ID,
+        llm_model: defaults.llm?.model_id,
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         cost_usd: 0,
@@ -340,10 +345,22 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   }
 
   const ppStart = Date.now();
-  const pp = await postProcess(rawText, appContext, {
-    language,
-    source: "batch",
-  });
+  let pp: Awaited<ReturnType<typeof postProcess>>;
+  try {
+    pp = await postProcess(rawText, appContext, {
+      language,
+      source: "batch",
+    });
+  } catch (err) {
+    if (err instanceof FreestyleCloudAuthError) {
+      invalidateSession();
+      return c.json({ error: "cloud_auth_required" }, 401);
+    }
+    if (err instanceof FreestyleCloudUsageError) {
+      return c.json({ error: "usage_exceeded", resetsAt: err.resetsAt }, 429);
+    }
+    throw err;
+  }
   log.debug(
     `post-process took ${Date.now() - ppStart}ms | cleaned=${JSON.stringify(pp.cleaned).slice(0, 120)}`,
   );

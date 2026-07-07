@@ -63,6 +63,11 @@ export default function ModelsPage(): React.JSX.Element {
 
   const cloudVoiceActive =
     m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER;
+  const cloudCleanupActive =
+    m.llmCleanup && m.defaultLlm?.provider === FREESTYLE_CLOUD_PROVIDER;
+  // Collapse the pair into one panel only when Freestyle Transcribe is handling
+  // both sides; otherwise each side is independently selectable.
+  const cloudHandlesBoth = cloudVoiceActive && cloudCleanupActive;
 
   const ensureCloudAuth = async (): Promise<boolean> => {
     if (cloudAuth.user && (await cloudAuth.refresh())) return true;
@@ -178,7 +183,7 @@ export default function ModelsPage(): React.JSX.Element {
           voice={m.defaultVoice}
           llm={m.defaultLlm}
           llmCleanup={m.llmCleanup}
-          cleanupIncluded={cloudVoiceActive}
+          cleanupIncluded={cloudHandlesBoth}
           onToggleCleanup={m.setCleanup}
           onChangeVoice={openVoice}
           onChangeLlm={openLlm}

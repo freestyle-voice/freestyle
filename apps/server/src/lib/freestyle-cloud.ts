@@ -1,3 +1,10 @@
+import type {
+  CleanupAppAssignment,
+  CleanupEmailTone,
+  CleanupOverallTone,
+  CleanupPersonalTone,
+  CleanupWorkTone,
+} from "@freestyle-voice/validations";
 import { createAuthClient } from "better-auth/client";
 import { deviceAuthorizationClient } from "better-auth/client/plugins";
 import type { CloudUser } from "./sessions.js";
@@ -330,34 +337,107 @@ async function cloudJson<T>(
   return (await res.json()) as T;
 }
 
-export interface CloudDictionaryEntry {
-  key: string;
-  value: string;
+/**
+ * Destination-aware tone preferences forwarded to Freestyle Cloud in the v2
+ * payload. The cloud resolves the destination (from `appContext` +
+ * `appAssignments`) and applies the matching tone when assembling the cleanup
+ * prompt server-side — the desktop no longer needs to pre-compute a
+ * destination for the cloud path.
+ */
+export interface CloudCleanupTones {
+  personalTone?: CleanupPersonalTone;
+  workTone?: CleanupWorkTone;
+  emailTone?: CleanupEmailTone;
+  overallTone?: CleanupOverallTone;
+  appAssignments?: CleanupAppAssignment[];
 }
 
-export async function transcribeWithFreestyleCloud(opts: {
-  token: string;
-  audio: Uint8Array;
-  language?: string;
-  dictionary?: CloudDictionaryEntry[];
-  vocabulary?: string[];
-}): Promise<CloudTranscribeResult> {
+/**
+ * Append cleanup preference fields (intensity, custom prompt, tones, and
+ * per-app assignments) to a multipart form. Form values are strings, so
+ * `appAssignments` is JSON-encoded to match the `/v2/transcribe` contract.
+ */
+function appendCleanupFormFields(
+  form: FormData,
+  prefs: {
+    intensity?: string;
+    customPrompt?: string | null;
+  } & CloudCleanupTones,
+): void {
+  if (prefs.intensity) form.append("intensity", prefs.intensity);
+  if (prefs.customPrompt) form.append("customPrompt", prefs.customPrompt);
+  if (prefs.personalTone) form.append("personalTone", prefs.personalTone);
+  if (prefs.workTone) form.append("workTone", prefs.workTone);
+  if (prefs.emailTone) form.append("emailTone", prefs.emailTone);
+  if (prefs.overallTone) form.append("overallTone", prefs.overallTone);
+  if (prefs.appAssignments && prefs.appAssignments.length > 0) {
+    form.append("appAssignments", JSON.stringify(prefs.appAssignments));
+  }
+}
+
+export async function transcribeWithFreestyleCloud(
+  opts: {
+    token: string;
+    audio: Uint8Array;
+    language?: string;
+    appContext?: string | null;
+    mode: "raw" | "combined";
+    intensity?: string;
+    customPrompt?: string | null;
+  } & CloudCleanupTones,
+): Promise<CloudTranscribeResult> {
   const audio = opts.audio as Uint8Array<ArrayBuffer>;
 
+  // v2 carries the audio plus every cleanup preference in a single multipart
+  // payload — the cloud no longer reads saved preferences. Cleanup fields are
+  // sent only in "combined" mode; "raw" asks the cloud to skip post-processing.
   const form = new FormData();
   form.append("audio", new Blob([audio], { type: "audio/wav" }), "audio.wav");
   if (opts.language) form.append("language", opts.language);
-  if (opts.dictionary && opts.dictionary.length > 0) {
-    form.append("dictionary", JSON.stringify(opts.dictionary));
-  }
-  if (opts.vocabulary && opts.vocabulary.length > 0) {
-    form.append("vocabulary", JSON.stringify(opts.vocabulary));
+  if (opts.appContext) form.append("appContext", opts.appContext);
+  if (opts.mode === "raw") {
+    form.append("skipPostProcess", "true");
+  } else {
+    appendCleanupFormFields(form, opts);
   }
 
   return cloudJson<CloudTranscribeResult>("/v2/transcribe", opts.token, {
     method: "POST",
     // Do not set content-type: fetch adds the multipart boundary itself.
     body: form,
+  });
+}
+
+export async function postProcessWithFreestyleCloud(
+  opts: {
+    token: string;
+    text: string;
+    appContext?: string | null;
+    language?: string;
+    intensity?: string;
+    customPrompt?: string | null;
+  } & CloudCleanupTones,
+): Promise<{
+  cleaned: string;
+  usage?: { inputTokens?: number; outputTokens?: number };
+}> {
+  // The JSON body carries `appAssignments` as a real array (unlike the
+  // multipart transcribe path, which JSON-encodes it).
+  return cloudJson("/v2/post-process", opts.token, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      text: opts.text,
+      appContext: opts.appContext ?? null,
+      language: opts.language,
+      intensity: opts.intensity,
+      customPrompt: opts.customPrompt ?? null,
+      personalTone: opts.personalTone,
+      workTone: opts.workTone,
+      emailTone: opts.emailTone,
+      overallTone: opts.overallTone,
+      appAssignments: opts.appAssignments,
+    }),
   });
 }
 

@@ -19,7 +19,7 @@ import PluginPage from "@renderer/pages/plugins/plugin-page";
 import PluginsPage from "@renderer/pages/plugins/plugins";
 import SettingsPage from "@renderer/pages/settings";
 import TodayPage from "@renderer/pages/today";
-// import TonePage from "@renderer/pages/tone";
+import TonePage from "@renderer/pages/tone";
 import VocabularyPage from "@renderer/pages/vocabulary";
 import AppShell from "@renderer/shell";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -106,7 +106,7 @@ createRoot(document.getElementById("root")!).render(
                           path="/settings/formats"
                           element={<Navigate to="/settings" replace />}
                         />
-                        {/* <Route path="/settings/tone" element={<TonePage />} /> */}
+                        <Route path="/settings/tone" element={<TonePage />} />
                         <Route
                           path="/settings/history"
                           element={<HistoryPage />}

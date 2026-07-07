@@ -318,7 +318,6 @@
   },
   "tone": {
     "title": "Tone",
-    "beta": "Beta",
     "subtitle": "How much Freestyle cleans up — and how it sounds in each app.",
     "loading": "Loading tone…",
     "disabledBanner": {

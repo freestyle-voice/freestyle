@@ -499,11 +499,7 @@ export default function TonePage(): React.JSX.Element {
   return (
     <PageShell>
       <div className="mx-auto w-full max-w-[1060px]">
-        <PageHeader
-          title={t("tone.title")}
-          subtitle={t("tone.subtitle")}
-          badge={t("tone.beta")}
-        />
+        <PageHeader title={t("tone.title")} subtitle={t("tone.subtitle")} />
 
         {!llmCleanup ? (
           <CleanupDisabledBanner

@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -379,6 +379,31 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     try {
       db.exec("DELETE FROM api_keys WHERE provider = 'soniox'");
       db.exec("DELETE FROM model_configs WHERE provider = 'soniox'");
+    } catch {
+      // Older or partially migrated databases may not have these tables yet.
+    }
+  }
+
+  if (currentVersion < 14) {
+    // Freestyle Cloud cleanup is no longer a standalone LLM option — the v3
+    // cloud path always cleans, keyed on the voice provider alone. Drop the
+    // legacy llm model configs; if one was the default, also turn off the
+    // local cleanup toggle since no usable cleanup model remains selected.
+    try {
+      const legacyDefault = db
+        .prepare(
+          "SELECT id FROM model_configs WHERE type = 'llm' AND is_default = 1 AND provider = 'freestyle-cloud' LIMIT 1",
+        )
+        .get();
+      if (legacyDefault) {
+        db.prepare(
+          `INSERT INTO settings (key, value, updated_at) VALUES ('llm_cleanup', 'false', datetime('now'))
+           ON CONFLICT(key) DO UPDATE SET value = 'false', updated_at = datetime('now')`,
+        ).run();
+      }
+      db.exec(
+        "DELETE FROM model_configs WHERE provider = 'freestyle-cloud' AND type = 'llm'",
+      );
     } catch {
       // Older or partially migrated databases may not have these tables yet.
     }

@@ -6,7 +6,6 @@ export const SETTINGS_KEYS = {
   cleanupOverallTone: "cleanup_overall_tone",
   cleanupPersonalTone: "cleanup_personal_tone",
   cleanupWorkTone: "cleanup_work_tone",
-  freestyleCloudPanelExpanded: "freestyle_cloud_panel_expanded",
   hotkey: "hotkey",
   hotkeyMode: "hotkey_mode",
   historyPaused: "history_paused",

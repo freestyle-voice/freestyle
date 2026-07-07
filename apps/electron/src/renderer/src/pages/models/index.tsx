@@ -1,12 +1,9 @@
 import { Button } from "@renderer/components/ui/button";
-import { getClient } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import type { AvailableModel } from "@renderer/lib/models";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   CheckCircle,
-  ChevronDown,
-  Cloud,
   Key,
   Laptop,
   Pencil,
@@ -15,7 +12,6 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
@@ -27,14 +23,6 @@ import { displayName } from "./utils";
 
 /** Managed STT provider that needs no key and always runs its own cleanup. */
 const FREESTYLE_CLOUD_PROVIDER = "freestyle-cloud";
-
-const FREESTYLE_CLOUD_CLEANUP: AvailableModel = {
-  provider_id: FREESTYLE_CLOUD_PROVIDER,
-  provider_name: "Freestyle Transcribe",
-  model_id: "freestyle-cloud/post-process",
-  model_name: "Freestyle Transcribe Cleanup",
-  type: "llm",
-};
 
 export default function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation();
@@ -54,10 +42,6 @@ export default function ModelsPage(): React.JSX.Element {
     string | null
   >(null);
   const [warmingOpen, setWarmingOpen] = useState(false);
-  const [cloudPanelExpanded, setCloudPanelExpanded] = useState(true);
-  // Guards the Freestyle Cloud mode buttons while a sign-in / configure round
-  // trip is in flight so a double-click can't fire two overlapping flows.
-  const [cloudBusy, setCloudBusy] = useState(false);
 
   const cloudUserId = cloudAuth.user?.id ?? null;
   const reloadModels = m.reload;
@@ -76,38 +60,12 @@ export default function ModelsPage(): React.JSX.Element {
     setSaving(false);
   };
 
-  const freestyleVoice = m.available.find(
-    (model) =>
-      model.type === "voice" && model.provider_id === FREESTYLE_CLOUD_PROVIDER,
-  );
   const cloudVoiceActive =
     m.defaultVoice?.provider === FREESTYLE_CLOUD_PROVIDER;
 
   const ensureCloudAuth = async (): Promise<boolean> => {
     if (cloudAuth.user && (await cloudAuth.refresh())) return true;
     return !!(await cloudAuth.signIn());
-  };
-
-  const runCloudAction = (action: () => Promise<void>): void => {
-    if (cloudBusy) return;
-    setCloudBusy(true);
-    void (async () => {
-      try {
-        await action();
-      } finally {
-        setCloudBusy(false);
-      }
-    })();
-  };
-
-  const useFreestyleTranscribe = (): void => {
-    if (!freestyleVoice) return;
-    runCloudAction(async () => {
-      if (!(await ensureCloudAuth())) return;
-      await m.configureModel(freestyleVoice, "voice");
-      await m.configureModel(FREESTYLE_CLOUD_CLEANUP, "llm");
-      m.setCleanup(true);
-    });
   };
 
   const openVoice = (): void => setModal({ kind: "list", type: "voice" });
@@ -198,32 +156,6 @@ export default function ModelsPage(): React.JSX.Element {
   // Model warming only applies to the active local MLX worker.
   const showMlxWarming = m.defaultVoice?.provider === "local-mlx";
 
-  useEffect(() => {
-    getClient()
-      .api.settings[":key"].$get({
-        param: { key: SETTINGS_KEYS.freestyleCloudPanelExpanded },
-      })
-      .then(async (res) => {
-        if (!res.ok) return;
-        const data = await res.json();
-        if ("value" in data) setCloudPanelExpanded(data.value !== "false");
-      })
-      .catch(() => {});
-  }, []);
-
-  const toggleCloudPanel = (): void => {
-    setCloudPanelExpanded((current) => {
-      const next = !current;
-      getClient()
-        .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.freestyleCloudPanelExpanded },
-          json: { value: String(next) },
-        })
-        .catch(() => {});
-      return next;
-    });
-  };
-
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
@@ -241,16 +173,6 @@ export default function ModelsPage(): React.JSX.Element {
     <PageShell>
       <PageHeader title={t("models.title")} />
       <div className="space-y-6">
-        <FreestyleCloudModeCard
-          signedIn={!!cloudAuth.user}
-          active={cloudVoiceActive}
-          expanded={cloudPanelExpanded}
-          onSignIn={() => void cloudAuth.signIn()}
-          onToggleExpanded={toggleCloudPanel}
-          onUse={useFreestyleTranscribe}
-          canUse={!!freestyleVoice}
-          busy={cloudBusy}
-        />
         <PairCard
           voice={m.defaultVoice}
           llm={m.defaultLlm}
@@ -383,27 +305,6 @@ function ModelsLoadingSkeleton(): React.JSX.Element {
         }
       `}</style>
 
-      <section className="border-border bg-card rounded-[14px] border p-5">
-        <div className="flex flex-col gap-4 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
-          <div className="min-w-0 flex-1">
-            <SkeletonLine className="h-3 w-28" />
-            <SkeletonLine className="mt-3 h-5 w-64 max-w-full" />
-            <SkeletonLine className="mt-3 h-3 w-full max-w-[560px]" />
-            <SkeletonLine className="mt-2 h-3 w-4/5 max-w-[460px]" />
-            <div className="mt-4 flex flex-wrap gap-2">
-              <SkeletonLine className="h-7 w-28" />
-              <SkeletonLine className="h-7 w-24" />
-              <SkeletonLine className="h-7 w-36" />
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-wrap gap-2">
-            <SkeletonLine className="h-9 w-20 rounded-md" />
-            <SkeletonLine className="h-9 w-32 rounded-md" />
-            <SkeletonLine className="h-9 w-28 rounded-md" />
-          </div>
-        </div>
-      </section>
-
       <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
         {["voice", "cleanup"].map((key) => (
           <div
@@ -447,97 +348,6 @@ function ModelsLoadingSkeleton(): React.JSX.Element {
         </div>
       </section>
     </div>
-  );
-}
-
-function FreestyleCloudModeCard({
-  signedIn,
-  active,
-  expanded,
-  onSignIn,
-  onToggleExpanded,
-  onUse,
-  canUse,
-  busy,
-}: {
-  signedIn: boolean;
-  active: boolean;
-  expanded: boolean;
-  onSignIn: () => void;
-  onToggleExpanded: () => void;
-  onUse: () => void;
-  canUse: boolean;
-  busy: boolean;
-}): React.JSX.Element {
-  return (
-    <section className="border-border bg-card overflow-hidden rounded-[14px] border">
-      <div className="flex flex-col gap-4 border-b border-border/70 px-5 py-4 min-[760px]:flex-row min-[760px]:items-center min-[760px]:justify-between">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <Cloud className="text-primary size-4" />
-            <Eyebrow text="Freestyle Transcribe" />
-          </div>
-          <p className="text-muted-foreground mt-1.5 max-w-[620px] text-[13px] leading-relaxed">
-            Managed transcription with AI cleanup included, using your
-            dictionary and vocabulary.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {!signedIn && (
-            <Button variant="outline" size="sm" onClick={onSignIn}>
-              Sign in
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="icon-sm"
-            onClick={onToggleExpanded}
-            aria-label={
-              expanded
-                ? "Hide Freestyle Transcribe options"
-                : "Show Freestyle Transcribe options"
-            }
-          >
-            <ChevronDown
-              className={cn("transition-transform", expanded && "rotate-180")}
-            />
-          </Button>
-        </div>
-      </div>
-
-      {expanded && (
-        <button
-          type="button"
-          disabled={!canUse || busy}
-          onClick={onUse}
-          className={cn(
-            "bg-card hover:bg-secondary/40 group flex w-full items-center gap-4 p-4 text-left transition-colors disabled:cursor-default disabled:opacity-60",
-            active && "bg-primary/[0.08] hover:bg-primary/[0.1]",
-          )}
-        >
-          <span
-            className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-[9px] border",
-              active
-                ? "border-primary/30 bg-accent text-accent-foreground"
-                : "border-border bg-secondary text-primary",
-            )}
-          >
-            <Cloud className="size-4" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="text-foreground block text-[14px] font-semibold">
-              Use Freestyle Transcribe
-            </span>
-            <span className="text-muted-foreground mt-0.5 block text-[12px] leading-relaxed">
-              Send audio once — transcription and cleanup happen in a single
-              pass.
-            </span>
-          </span>
-          {active && <CheckCircle className="text-primary size-4 shrink-0" />}
-        </button>
-      )}
-    </section>
   );
 }
 

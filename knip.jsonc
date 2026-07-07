@@ -20,6 +20,13 @@
   ],
   "ignoreFiles": [
     "apps/electron/src/preload/*.d.ts",
+    // The Tone feature is temporarily disabled (nav entry and route commented
+    // out in shell.tsx / dashboard.tsx). Keep its files for easy restoration.
+    "apps/electron/src/renderer/src/pages/tone.tsx",
+    "apps/electron/src/renderer/src/components/tone-previews/**",
+    "apps/electron/src/renderer/src/components/ui/tabs.tsx",
+    "apps/electron/src/shared/cleanup-tone-settings.ts",
+    "apps/electron/src/shared/route-icons.ts",
     // Existing unused shadcn-style components kept as design-system inventory.
     "apps/electron/src/renderer/src/components/ui/bar-visualizer.tsx",
     "apps/electron/src/renderer/src/components/ui/card.tsx",

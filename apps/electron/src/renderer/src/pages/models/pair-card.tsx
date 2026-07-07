@@ -33,6 +33,37 @@ export function PairCard({
   /** When set, shows a "Configure model warming" link by the voice button. */
   onConfigureWarming?: () => void;
 }): React.JSX.Element {
+  const warmingAccessory = onConfigureWarming ? (
+    <Button
+      variant="link"
+      size="sm"
+      onClick={onConfigureWarming}
+      className="ml-auto"
+    >
+      Configure model warming
+    </Button>
+  ) : undefined;
+
+  // Freestyle Transcribe handles both transcription and AI cleanup as one
+  // service, so collapse the pair into a single panel instead of showing an
+  // inert, duplicated "cleanup" side next to it.
+  if (cleanupIncluded) {
+    return (
+      <section className="border-border bg-card rounded-[14px] border p-6">
+        <PairSide
+          kicker="Transcription + AI cleanup"
+          modelName={voice?.model_name ?? "Freestyle Transcribe"}
+          providerName={undefined}
+          cta="Change"
+          primary
+          note="Transcription and AI cleanup handled by Freestyle Transcribe."
+          onChange={onChangeVoice}
+          accessory={warmingAccessory}
+        />
+      </section>
+    );
+  }
+
   return (
     <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
       <PairSide
@@ -42,44 +73,21 @@ export function PairCard({
         cta="Change"
         primary
         onChange={onChangeVoice}
-        accessory={
-          onConfigureWarming ? (
-            <Button
-              variant="link"
-              size="sm"
-              onClick={onConfigureWarming}
-              className="ml-auto"
-            >
-              Configure model warming
-            </Button>
-          ) : undefined
-        }
+        accessory={warmingAccessory}
       />
       <div className="border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0">
-        {cleanupIncluded ? (
-          <PairSide
-            kicker="AI cleanup · included"
-            modelName="Freestyle Transcribe"
-            providerName={undefined}
-            cta="Change"
-            disabled
-            note="Included with Freestyle Transcribe"
-            onChange={onChangeLlm}
-          />
-        ) : (
-          <PairSide
-            kicker="AI cleanup · optional"
-            modelName={llmCleanup ? llm?.model_name : undefined}
-            providerName={
-              llmCleanup && llm ? displayName(llm.provider) : undefined
-            }
-            cta={llm ? "Change" : "Pick a model"}
-            toggle={llmCleanup}
-            onToggle={onToggleCleanup}
-            onChange={onChangeLlm}
-            dimmed={!llmCleanup}
-          />
-        )}
+        <PairSide
+          kicker="AI cleanup · optional"
+          modelName={llmCleanup ? llm?.model_name : undefined}
+          providerName={
+            llmCleanup && llm ? displayName(llm.provider) : undefined
+          }
+          cta={llm ? "Change" : "Pick a model"}
+          toggle={llmCleanup}
+          onToggle={onToggleCleanup}
+          onChange={onChangeLlm}
+          dimmed={!llmCleanup}
+        />
       </div>
     </section>
   );
@@ -95,7 +103,6 @@ function PairSide({
   onToggle,
   onChange,
   dimmed,
-  disabled,
   note,
   accessory,
 }: {
@@ -108,8 +115,6 @@ function PairSide({
   onToggle?: (next: boolean) => void;
   onChange: () => void;
   dimmed?: boolean;
-  /** Disables the toggle and the change action (provider handles this itself). */
-  disabled?: boolean;
   /** Small caption shown under the model name. */
   note?: React.ReactNode;
   accessory?: React.ReactNode;
@@ -124,11 +129,7 @@ function PairSide({
       <div className="flex items-center justify-between">
         <Eyebrow text={kicker} accent={primary} mono={false} />
         {onToggle !== undefined && (
-          <Toggle
-            on={!!toggle}
-            onChange={(v) => onToggle(v)}
-            disabled={disabled}
-          />
+          <Toggle on={!!toggle} onChange={(v) => onToggle(v)} />
         )}
       </div>
       <div>
@@ -169,7 +170,6 @@ function PairSide({
           variant={primary ? "ink" : "outline"}
           size="sm"
           onClick={onChange}
-          disabled={disabled}
         >
           {cta}
         </Button>

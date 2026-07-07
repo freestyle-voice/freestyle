@@ -39,6 +39,11 @@ export interface UseModels {
   llmCleanup: boolean;
   mlxKeepAliveMinutes: number;
 
+  /** Local models with an in-flight delete, keyed `${engine ?? "whisper"}:${defId}`. */
+  deletingKeys: Set<string>;
+  /** Providers with an in-flight key/model delete. */
+  deletingProviders: Set<string>;
+
   // Derived
   keyProviders: Set<string>;
   defaultVoice: ConfiguredModel | undefined;
@@ -86,6 +91,13 @@ export function useModels(): UseModels {
   const [mlxStatus, setMlxStatus] = useState<MlxAsrStatus | null>(null);
   const [mlxKeepAliveMinutes, setMlxKeepAliveMinutes] = useState(
     DEFAULT_MLX_KEEP_ALIVE_MINUTES,
+  );
+
+  // In-flight deletes — drive spinners on the delete buttons since deletion has
+  // no server-reported status the way downloads do.
+  const [deletingKeys, setDeletingKeys] = useState<Set<string>>(new Set());
+  const [deletingProviders, setDeletingProviders] = useState<Set<string>>(
+    new Set(),
   );
 
   // Local LLM (Ollama / LM Studio) connection — simplified inline form state.
@@ -381,18 +393,28 @@ export function useModels(): UseModels {
 
   const deleteLocal = useCallback(
     async (defId: string, engine?: "whisper" | "mlx") => {
-      if (engine === "mlx") {
-        await getClient().api["mlx-asr"].models[":model"].$delete({
-          param: { model: defId },
+      const deletingKey = `${engine ?? "whisper"}:${defId}`;
+      setDeletingKeys((prev) => new Set(prev).add(deletingKey));
+      try {
+        if (engine === "mlx") {
+          await getClient().api["mlx-asr"].models[":model"].$delete({
+            param: { model: defId },
+          });
+          await loadMlxStatus();
+        } else {
+          await getClient().api.whisper.models[":model"].$delete({
+            param: { model: defId },
+          });
+          await loadWhisperStatus();
+        }
+        await loadData();
+      } finally {
+        setDeletingKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(deletingKey);
+          return next;
         });
-        await loadMlxStatus();
-      } else {
-        await getClient().api.whisper.models[":model"].$delete({
-          param: { model: defId },
-        });
-        await loadWhisperStatus();
       }
-      await loadData();
     },
     [loadMlxStatus, loadWhisperStatus, loadData],
   );
@@ -458,17 +480,28 @@ export function useModels(): UseModels {
 
   const deleteProvider = useCallback(
     async (provider: string) => {
-      const client = getClient();
-      await client.api.keys[":provider"].$delete({ param: { provider } });
-      const providerModels = configured.filter((m) => m.provider === provider);
-      await Promise.all(
-        providerModels.map((m) =>
-          client.api.models.configured[":id"].$delete({
-            param: { id: String(m.id) },
-          }),
-        ),
-      );
-      await loadData();
+      setDeletingProviders((prev) => new Set(prev).add(provider));
+      try {
+        const client = getClient();
+        await client.api.keys[":provider"].$delete({ param: { provider } });
+        const providerModels = configured.filter(
+          (m) => m.provider === provider,
+        );
+        await Promise.all(
+          providerModels.map((m) =>
+            client.api.models.configured[":id"].$delete({
+              param: { id: String(m.id) },
+            }),
+          ),
+        );
+        await loadData();
+      } finally {
+        setDeletingProviders((prev) => {
+          const next = new Set(prev);
+          next.delete(provider);
+          return next;
+        });
+      }
     },
     [configured, loadData],
   );
@@ -544,6 +577,8 @@ export function useModels(): UseModels {
     mlxStatus,
     llmCleanup,
     mlxKeepAliveMinutes,
+    deletingKeys,
+    deletingProviders,
     keyProviders,
     defaultVoice,
     defaultLlm,

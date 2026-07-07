@@ -75,6 +75,8 @@ interface Row {
   hasKey?: boolean;
   status?: WhisperModelDownloadState["status"];
   state?: WhisperModelDownloadState;
+  /** A delete request for this local model is in flight. */
+  deleting?: boolean;
   onSelect?: () => void;
   onDownload?: () => void;
   onCancel?: () => void;
@@ -122,6 +124,9 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
         selected: it.selected && status === "ready",
         status,
         state: it.state,
+        deleting: defId
+          ? m.deletingKeys.has(`${it.localEngine ?? "whisper"}:${defId}`)
+          : false,
         onSelect: defId
           ? () => h.onPickLocalVoice(defId, it.name, it.localEngine)
           : undefined,
@@ -740,11 +745,16 @@ function ModelRow({
                     variant="ghost"
                     size="icon-sm"
                     onClick={row.onDelete}
+                    disabled={row.deleting}
                     className="text-muted-foreground hover:text-destructive"
                     aria-label="Remove downloaded model from disk"
                     title="Remove downloaded model from disk"
                   >
-                    <Trash2 />
+                    {row.deleting ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      <Trash2 />
+                    )}
                   </Button>
                 )}
               </>

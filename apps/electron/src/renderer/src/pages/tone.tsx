@@ -242,6 +242,9 @@ export default function TonePage(): React.JSX.Element {
   );
   const [assignments, setAssignments] = useState<CleanupAppAssignment[]>([]);
   const [hasCleanupModel, setHasCleanupModel] = useState(false);
+  // Freestyle Transcribe (cloud voice) always post-processes server-side, so
+  // cleanup is effectively on regardless of the llm_cleanup setting.
+  const [cloudVoiceActive, setCloudVoiceActive] = useState(false);
   const [usingCloud, setUsingCloud] = useState(false);
   const [activeTab, setActiveTab] = usePersistentState<ToneTab>(
     "tone.activeTab",
@@ -300,6 +303,14 @@ export default function TonePage(): React.JSX.Element {
         setHasCleanupModel(
           configured.some(
             (model) => model.type === "llm" && model.is_default === 1,
+          ),
+        );
+        setCloudVoiceActive(
+          configured.some(
+            (model) =>
+              model.type === "voice" &&
+              model.is_default === 1 &&
+              model.provider === FREESTYLE_CLOUD_PROVIDER,
           ),
         );
       }
@@ -501,7 +512,7 @@ export default function TonePage(): React.JSX.Element {
       <div className="mx-auto w-full max-w-[1060px]">
         <PageHeader title={t("tone.title")} subtitle={t("tone.subtitle")} />
 
-        {!llmCleanup ? (
+        {cloudVoiceActive ? null : !llmCleanup ? (
           <CleanupDisabledBanner
             signedIn={!!cloudAuth.user}
             busy={usingCloud}

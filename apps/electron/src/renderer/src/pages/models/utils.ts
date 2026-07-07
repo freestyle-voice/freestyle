@@ -57,6 +57,27 @@ export function groupByProvider(
 }
 
 // Thin wrapper around the shared helper, passing settings-page context.
+/** Resolve speed/accuracy for the model currently shown in the pair card. */
+export function voiceTraitsForConfigured(
+  voice: ConfiguredModel | undefined,
+  voiceItems: VoiceItem[],
+): { speed?: number; quality?: number } {
+  if (!voice) return {};
+
+  const item = voiceItems.find((it) => {
+    if (it.modelId === voice.model_id) return true;
+    if (voice.provider === "local-whisper" && it.localEngine === "whisper") {
+      return voice.model_id === `local-whisper/${it.defId}`;
+    }
+    if (voice.provider === "local-mlx" && it.localEngine === "mlx") {
+      return voice.model_id === `local-mlx/${it.defId}`;
+    }
+    return false;
+  });
+
+  return { speed: item?.speed, quality: item?.quality };
+}
+
 export function buildSettingsVoiceItems(
   available: AvailableModel[],
   whisperStatus: WhisperStatus | null,

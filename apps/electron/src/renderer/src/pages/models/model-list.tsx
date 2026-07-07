@@ -1,7 +1,4 @@
-import {
-  PROVIDER_FILTER_MARKS,
-  ProviderAvatar,
-} from "@renderer/components/model-row";
+import { ModelTraits } from "@renderer/components/model-traits";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
@@ -15,7 +12,6 @@ import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import type {
   AvailableModel,
-  VoiceItem,
   WhisperModelDownloadState,
 } from "@renderer/lib/models";
 import { formatBytes, formatSpeed } from "@renderer/lib/models";
@@ -24,7 +20,6 @@ import {
   ArrowLeft,
   Check,
   Download,
-  ExternalLink,
   Key,
   Laptop,
   Loader2,
@@ -36,27 +31,16 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { CleanupPicker, FREESTYLE_CLOUD_CLEANUP } from "./cleanup-picker";
+import {
+  FREESTYLE_CLOUD_TIER,
+  OpenModelSourceButton,
+  recommendedVoiceKey,
+  TranscriptionPicker,
+} from "./transcription-picker";
 import type { UseModels } from "./use-models";
 import { displayName } from "./utils";
-
-// A model download blocked by a corporate proxy/coaching page carries the
-// upstream URL the user must open (and acknowledge) before retrying. Surface it
-// as a clickable action so they don't have to guess the per-model URL.
-function OpenModelSourceButton({ url }: { url: string }) {
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={() => {
-        void window.api?.openExternal(url);
-      }}
-    >
-      <ExternalLink data-icon="inline-start" />
-      Open model source
-    </Button>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Normalized row — one shape for cloud + local, voice + LLM.
@@ -69,6 +53,8 @@ interface Row {
   provider: string; // provider_id, for the provider filter
   meta: string;
   selected: boolean;
+  speed?: number;
+  quality?: number;
   /** Shown by default; non-curated rows live behind "Show all models". */
   curated?: boolean;
   recommended?: boolean;
@@ -88,12 +74,6 @@ interface Row {
  * The single recommended on-device model: MLX Qwen3 on Apple Silicon,
  * Whisper Balanced everywhere else. One badge per list, ever.
  */
-function recommendedVoiceKey(items: VoiceItem[]): string {
-  return items.some((it) => it.localEngine === "mlx")
-    ? "local-mlx/qwen3-0.6b-8bit"
-    : "local-whisper/small-q5_1";
-}
-
 interface VoiceHandlers {
   onPickCloud: (model: AvailableModel) => void;
   onPickLocalVoice: (
@@ -121,6 +101,8 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
         provider: "local",
         meta: `${it.note ?? "On-device"}${sizeNote}`,
         recommended: it.key === recommendedKey,
+        speed: it.speed,
+        quality: it.quality,
         selected: it.selected && status === "ready",
         status,
         state: it.state,
@@ -158,6 +140,8 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
       provider: providerId,
       meta: `${displayName(providerId, it.provider)}${note}${cost}`,
       selected: it.selected,
+      speed: it.speed,
+      quality: it.quality,
       hasKey: it.hasKey,
       onSelect: it.available
         ? () => h.onPickCloud(it.available as AvailableModel)
@@ -173,6 +157,7 @@ function buildLlmRows(
   const rows: Row[] = [];
 
   for (const [providerId, { providerName, models }] of m.llmModelsByProvider) {
+    if (providerId === FREESTYLE_CLOUD_CLEANUP.provider_id) continue;
     for (const model of models) {
       rows.push({
         key: model.model_id,
@@ -185,7 +170,7 @@ function buildLlmRows(
           m.defaultLlm?.model_id === model.model_id &&
           m.defaultLlm?.provider === model.provider_id,
         hasKey:
-          providerId === FREESTYLE_CLOUD_TIER.provider_id ||
+          providerId === FREESTYLE_CLOUD_CLEANUP.provider_id ||
           m.keyProviders.has(providerId),
         onSelect: () => h.onPickCloud(model),
       });
@@ -222,14 +207,20 @@ function buildLlmRows(
 
 export function ModelList({
   type,
+  voiceView,
+  llmView,
   m,
+  cloudBusy,
   onClose,
   onPickCloud,
   onPickLocalVoice,
   onRequestDeleteLocal,
 }: {
   type: "voice" | "llm";
+  voiceView?: "tiers" | "all" | "local" | "cloud";
+  llmView?: "tiers" | "all" | "local" | "cloud";
   m: UseModels;
+  cloudBusy?: boolean;
   onClose: () => void;
   onPickCloud: (model: AvailableModel) => void;
   onPickLocalVoice: (
@@ -240,24 +231,60 @@ export function ModelList({
   onRequestDeleteLocal: (defId: string, engine?: "whisper" | "mlx") => void;
 }): React.JSX.Element {
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all");
-  // Voice opens on the simple three-tier view; LLM opens on the curated list.
-  const [view, setView] = useState<"tiers" | "all">(
-    type === "voice" ? "tiers" : "all",
+  const openedScopedDirect =
+    type === "voice"
+      ? voiceView === "cloud" || voiceView === "local"
+      : llmView === "cloud" || llmView === "local";
+  const [filter, setFilter] = useState(
+    voiceView === "cloud" || llmView === "cloud"
+      ? "cloud"
+      : voiceView === "local" || llmView === "local"
+        ? "local"
+        : "all",
   );
+  const [view, setView] = useState<"tiers" | "all" | "local" | "cloud">(() => {
+    if (type === "voice") {
+      if (voiceView === "cloud") return "cloud";
+      if (voiceView === "local") return "local";
+      if (voiceView === "all") return "all";
+      return voiceView ?? "tiers";
+    }
+    if (llmView === "cloud") return "cloud";
+    if (llmView === "local") return "local";
+    if (llmView === "all") return "all";
+    return llmView ?? "tiers";
+  });
   const [showAllLlm, setShowAllLlm] = useState(false);
 
   if (type === "voice" && view === "tiers") {
     return (
-      <VoiceTiers
+      <TranscriptionPicker
+        layout="modal"
         m={m}
+        busy={cloudBusy}
         onClose={onClose}
         onPickCloud={onPickCloud}
-        onPickLocalVoice={onPickLocalVoice}
-        onShowAll={() => setView("all")}
+        onBrowseLocal={() => setView("local")}
+        onBrowseCloud={() => setView("cloud")}
       />
     );
   }
+
+  if (type === "llm" && view === "tiers") {
+    return (
+      <CleanupPicker
+        layout="modal"
+        m={m}
+        onClose={onClose}
+        onBrowseLocal={() => setView("local")}
+        onBrowseCloud={() => setView("cloud")}
+      />
+    );
+  }
+
+  const cloudOnly = view === "cloud";
+  const localOnly = view === "local";
+  const scopedOnly = cloudOnly || localOnly;
 
   const rows =
     type === "voice"
@@ -272,6 +299,16 @@ export function ModelList({
   // Curated-only for LLM until expanded; searching always searches everything.
   const curatedOnly = type === "llm" && !showAllLlm && !q;
   const filteredRows = rows.filter((r) => {
+    if (localOnly && r.source !== "local") return false;
+    if (cloudOnly) {
+      if (r.source !== "cloud") return false;
+      if (
+        r.provider === FREESTYLE_CLOUD_TIER.provider_id ||
+        r.provider === FREESTYLE_CLOUD_CLEANUP.provider_id
+      ) {
+        return false;
+      }
+    }
     if (filter === "cloud" && r.source !== "cloud") return false;
     if (filter === "local" && r.source !== "local") return false;
     if (
@@ -292,30 +329,70 @@ export function ModelList({
     ? filteredRows.length - filteredRows.filter((r) => r.curated).length
     : 0;
 
-  const showLocalLlmForm =
-    type === "llm" && (filter === "all" || filter === "local");
+  const showLocalLlmForm = type === "llm" && localOnly;
+
+  const scopedTitle =
+    type === "voice"
+      ? localOnly
+        ? "On-device models"
+        : cloudOnly
+          ? "Cloud models"
+          : "All voice models"
+      : localOnly
+        ? "On-device cleanup"
+        : cloudOnly
+          ? "Cloud cleanup models"
+          : "All cleanup models";
 
   return (
     <>
-      <header className="border-border flex shrink-0 items-center gap-3 border-b px-5 py-3.5">
-        {type === "voice" ? (
+      <header className="border-border shrink-0 border-b px-5 py-3.5">
+        <div className="flex items-center gap-3">
+          {type === "voice" && !openedScopedDirect ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setView("tiers")}
+              className="shrink-0 gap-1.5"
+              aria-label="Back to simple view"
+            >
+              <ArrowLeft data-icon="inline-start" />
+              <Mic />
+            </Button>
+          ) : type === "llm" && !openedScopedDirect ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setView("tiers")}
+              className="shrink-0 gap-1.5"
+              aria-label="Back to simple view"
+            >
+              <ArrowLeft data-icon="inline-start" />
+              <Sparkles />
+            </Button>
+          ) : type === "voice" && localOnly ? (
+            <Laptop className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+          ) : type === "voice" ? (
+            <Key className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+          ) : type === "llm" && localOnly ? (
+            <Laptop className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <Key className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+          )}
+          <span className="text-foreground min-w-0 flex-1 text-[13px] font-semibold">
+            {scopedTitle}
+          </span>
           <Button
             variant="ghost"
-            size="sm"
-            onClick={() => setView("tiers")}
-            className="shrink-0 gap-1.5"
-            aria-label="Back to simple view"
+            size="icon-sm"
+            onClick={onClose}
+            className="shrink-0"
+            aria-label="Close"
           >
-            <ArrowLeft data-icon="inline-start" />
-            <Mic />
+            <X />
           </Button>
-        ) : (
-          <Sparkles className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-        )}
-        <span className="text-foreground shrink-0 text-[12px] font-semibold">
-          {type === "voice" ? "All voice models" : "Cleanup model"}
-        </span>
-        <InputGroup className="ml-3 h-9 flex-1 rounded-md">
+        </div>
+        <InputGroup className="mt-3 h-9 rounded-md">
           <InputGroupAddon>
             <Search />
           </InputGroupAddon>
@@ -323,24 +400,15 @@ export function ModelList({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search…"
+            placeholder="Search models…"
             className="placeholder:text-muted-foreground/70 text-[12.5px]"
           />
         </InputGroup>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onClose}
-          className="shrink-0"
-          aria-label="Close"
-        >
-          <X />
-        </Button>
       </header>
 
-      <FilterBar rows={rows} active={filter} onChange={setFilter} />
+      {!scopedOnly && <FilterBar active={filter} onChange={setFilter} />}
 
-      {type === "voice" && m.whisperStatus?.binaryDownloading && (
+      {type === "voice" && localOnly && m.whisperStatus?.binaryDownloading && (
         <div className="border-border flex items-center gap-2.5 border-b px-5 py-3">
           <Loader2 className="text-primary h-3.5 w-3.5 shrink-0 animate-spin" />
           <span className="text-muted-foreground text-[12px]">
@@ -352,9 +420,12 @@ export function ModelList({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {showLocalLlmForm && <LocalLlmConnect m={m} />}
         {visible.length === 0 ? (
-          <div className="text-muted-foreground px-5 py-10 text-center text-[13px]">
-            No models match.
-          </div>
+          <ListEmptyState
+            type={type}
+            localOnly={localOnly}
+            showLlmConnect={showLocalLlmForm}
+            connected={m.localLlm.connected}
+          />
         ) : (
           visible.map((row, i) => (
             <ModelRow key={row.key} row={row} first={i === 0} />
@@ -375,240 +446,16 @@ export function ModelList({
 }
 
 // ---------------------------------------------------------------------------
-// VoiceTiers — the simple picker: two meaningful choices, no model IDs.
-// ---------------------------------------------------------------------------
-
-const FREESTYLE_CLOUD_TIER: AvailableModel = {
-  provider_id: "freestyle-cloud",
-  provider_name: "Freestyle Transcribe",
-  model_id: "freestyle-cloud/stt",
-  model_name: "Freestyle Transcribe (Managed)",
-  type: "voice",
-};
-
-function VoiceTiers({
-  m,
-  onClose,
-  onPickCloud,
-  onPickLocalVoice,
-  onShowAll,
-}: {
-  m: UseModels;
-  onClose: () => void;
-  onPickCloud: (model: AvailableModel) => void;
-  onPickLocalVoice: (
-    defId: string,
-    name: string,
-    engine?: "whisper" | "mlx",
-  ) => void;
-  onShowAll: () => void;
-}): React.JSX.Element {
-  const cloud = useCloudAuth();
-  const privateItem = m.voiceItems.find(
-    (it) => it.key === recommendedVoiceKey(m.voiceItems),
-  );
-  const status = privateItem?.status ?? "not_downloaded";
-  const downloading = status === "downloading" || status === "verifying";
-  // Selecting "Private" downloads if needed, then commits once ready.
-  const [autoSelect, setAutoSelect] = useState(false);
-
-  useEffect(() => {
-    if (autoSelect && privateItem?.defId && status === "ready") {
-      setAutoSelect(false);
-      onPickLocalVoice(
-        privateItem.defId,
-        privateItem.name,
-        privateItem.localEngine,
-      );
-    }
-  }, [autoSelect, status, privateItem, onPickLocalVoice]);
-
-  function pickPrivate(): void {
-    if (!privateItem?.defId) return;
-    if (status === "ready") {
-      onPickLocalVoice(
-        privateItem.defId,
-        privateItem.name,
-        privateItem.localEngine,
-      );
-      return;
-    }
-    if (status === "not_downloaded" || status === "error") {
-      setAutoSelect(true);
-      m.downloadLocal(privateItem.defId, privateItem.localEngine);
-    }
-  }
-
-  const isSelected = (modelId: string, provider: string): boolean =>
-    m.defaultVoice?.provider === provider &&
-    m.defaultVoice?.model_id === modelId;
-
-  return (
-    <>
-      <header className="border-border flex shrink-0 items-center gap-3 border-b px-5 py-3.5">
-        <Mic className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-        <span className="text-foreground flex-1 text-[12px] font-semibold">
-          How should Freestyle transcribe?
-        </span>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onClose}
-          className="shrink-0"
-          aria-label="Close"
-        >
-          <X />
-        </Button>
-      </header>
-
-      <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
-        <TierCard
-          title="Freestyle Transcribe"
-          badge="Recommended"
-          description="Managed by Freestyle. Fast and accurate, no API key — just sign in."
-          detail={
-            cloud.user ? `Signed in as ${cloud.user.email}` : "Sign-in required"
-          }
-          selected={isSelected(
-            FREESTYLE_CLOUD_TIER.model_id,
-            FREESTYLE_CLOUD_TIER.provider_id,
-          )}
-          onClick={() => onPickCloud(FREESTYLE_CLOUD_TIER)}
-        />
-        <TierCard
-          title="Private"
-          description="Runs on your device. Nothing leaves it. Free."
-          detail={
-            downloading
-              ? undefined
-              : (privateItem &&
-                  `${privateItem.name}${
-                    status !== "ready" && privateItem.sizeBytes
-                      ? ` · ${formatBytes(privateItem.sizeBytes)} download`
-                      : ""
-                  }`) ||
-                undefined
-          }
-          selected={privateItem?.selected ?? false}
-          disabled={!privateItem || downloading}
-          onClick={pickPrivate}
-        >
-          {downloading && <DownloadProgress state={privateItem?.state} />}
-          {status === "error" && privateItem?.state?.error && (
-            <div className="mt-1.5 space-y-1.5">
-              <p className="text-destructive text-[11px] leading-snug">
-                {privateItem.state.error}
-              </p>
-              {privateItem.state.errorSourceUrl && (
-                <OpenModelSourceButton url={privateItem.state.errorSourceUrl} />
-              )}
-            </div>
-          )}
-        </TierCard>
-      </div>
-
-      <footer className="border-border flex items-center justify-between border-t px-5 py-3">
-        <Button
-          variant="link"
-          size="sm"
-          onClick={onShowAll}
-          className="text-muted-foreground hover:text-foreground px-0 text-[12.5px]"
-        >
-          All models →
-        </Button>
-        <Button variant="outline" size="sm" onClick={onClose}>
-          Cancel
-        </Button>
-      </footer>
-    </>
-  );
-}
-
-function TierCard({
-  title,
-  badge,
-  description,
-  detail,
-  selected,
-  disabled,
-  onClick,
-  children,
-}: {
-  title: string;
-  badge?: string;
-  description: string;
-  detail?: string;
-  selected: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  children?: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    // TODO(shadcn-migration): kept as a native button — this is a card-shaped
-    // multi-line control (flex-col, items-start, wrapping description) that does
-    // not map cleanly onto <Button> without fighting its inline/whitespace-nowrap
-    // base styles. Revisit if a card-button variant is added.
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "border-border hover:border-primary/50 hover:bg-secondary/40 flex flex-col items-start rounded-[12px] border p-4 text-left transition-colors disabled:cursor-default",
-        selected && "border-primary bg-primary/[0.06]",
-      )}
-    >
-      <div className="flex w-full items-center gap-2">
-        <span className="text-foreground text-[14.5px] font-semibold">
-          {title}
-        </span>
-        {selected && <Check size={14} className="text-primary shrink-0" />}
-        {badge && !selected && (
-          <Badge
-            variant="secondary"
-            className="ml-auto text-[10px] font-semibold"
-          >
-            {badge}
-          </Badge>
-        )}
-      </div>
-      <p className="text-muted-foreground mt-1.5 text-[12px] leading-relaxed">
-        {description}
-      </p>
-      {detail && (
-        <p className="text-muted-foreground/80 mono mt-2 text-[10.5px]">
-          {detail}
-        </p>
-      )}
-      {children && <div className="mt-2 w-full">{children}</div>}
-    </button>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Filter bar — single-select source + provider chips
+// Filter bar — source filters only (provider chips add noise in advanced view)
 // ---------------------------------------------------------------------------
 
 function FilterBar({
-  rows,
   active,
   onChange,
 }: {
-  rows: Row[];
   active: string;
   onChange: (id: string) => void;
 }): React.JSX.Element {
-  const providers: { id: string; label: string; mark?: string }[] = [];
-  const seen = new Set<string>();
-  for (const r of rows) {
-    if (r.source !== "cloud" || seen.has(r.provider)) continue;
-    seen.add(r.provider);
-    providers.push({
-      id: r.provider,
-      label: displayName(r.provider),
-      mark: PROVIDER_FILTER_MARKS[r.provider],
-    });
-  }
-
   const sources = [
     { id: "all", label: "All" },
     { id: "cloud", label: "Cloud" },
@@ -625,33 +472,16 @@ function FilterBar({
           onClick={() => onChange(f.id)}
         />
       ))}
-      {providers.length > 0 && (
-        <span className="bg-border mx-1 h-4 w-px shrink-0" aria-hidden="true" />
-      )}
-      {providers.map((p) => (
-        <Chip
-          key={p.id}
-          providerId={p.id}
-          label={p.label}
-          mark={p.mark}
-          on={active === p.id}
-          onClick={() => onChange(p.id)}
-        />
-      ))}
     </div>
   );
 }
 
 function Chip({
-  providerId,
   label,
-  mark,
   on,
   onClick,
 }: {
-  providerId?: string;
   label: string;
-  mark?: string;
   on: boolean;
   onClick: () => void;
 }): React.JSX.Element {
@@ -660,15 +490,8 @@ function Chip({
       variant={on ? "default" : "outline"}
       size="xs"
       onClick={onClick}
-      className={cn("gap-1.5 rounded-full", mark && "pl-1")}
+      className="rounded-full"
     >
-      {mark && (
-        <ProviderAvatar
-          providerId={providerId ?? ""}
-          providerName={label}
-          className="size-4"
-        />
-      )}
       {label}
     </Button>
   );
@@ -687,7 +510,9 @@ function ModelRow({
 }): React.JSX.Element {
   const cloud = useCloudAuth();
   const local = row.source === "local";
-  const isFreestyleCloud = row.provider === FREESTYLE_CLOUD_TIER.provider_id;
+  const isFreestyleCloud =
+    row.provider === FREESTYLE_CLOUD_TIER.provider_id ||
+    row.provider === FREESTYLE_CLOUD_CLEANUP.provider_id;
   const status = row.status ?? "not_downloaded";
   const downloading =
     local && (status === "downloading" || status === "verifying");
@@ -720,6 +545,12 @@ function ModelRow({
         <div className="text-muted-foreground mt-0.5 text-[12px]">
           {row.meta}
         </div>
+        <ModelTraits
+          speed={row.speed}
+          quality={row.quality}
+          compact
+          className="mt-2"
+        />
         {local && status === "error" && row.state?.error && (
           <div className="text-destructive mt-1 text-[11.5px] leading-snug">
             {row.state.error}
@@ -848,27 +679,57 @@ function DownloadProgress({
 // Local LLM connect form (shown under the On-device filter for LLM)
 // ---------------------------------------------------------------------------
 
+function ListEmptyState({
+  type,
+  localOnly,
+  showLlmConnect,
+  connected,
+}: {
+  type: "voice" | "llm";
+  localOnly: boolean;
+  showLlmConnect: boolean;
+  connected: boolean | null;
+}): React.JSX.Element | null {
+  if (showLlmConnect) {
+    if (connected !== true) return null;
+    return (
+      <p className="text-muted-foreground px-5 py-8 text-center text-[13px]">
+        No models found on this server.
+      </p>
+    );
+  }
+
+  if (type === "voice" && localOnly) {
+    return (
+      <p className="text-muted-foreground px-5 py-8 text-center text-[13px]">
+        No on-device transcription models on this device.
+      </p>
+    );
+  }
+
+  return (
+    <p className="text-muted-foreground px-5 py-10 text-center text-[13px]">
+      No models match.
+    </p>
+  );
+}
+
 function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
   const [showKey, setShowKey] = useState(false);
   const { localLlm } = m;
 
   return (
-    <div className="border-border border-b">
-      <div className="flex items-center gap-2 px-5 pb-2 pt-3">
-        <Laptop className="text-primary h-3 w-3" />
-        <span className="text-foreground text-[11px] font-semibold">
-          On-device
-        </span>
-        <span className="text-muted-foreground text-[11.5px]">
-          Ollama, LM Studio & other OpenAI-compatible servers
-        </span>
-      </div>
+    <div className="border-border border-b px-5 py-4">
+      <p className="text-muted-foreground mb-4 text-[13px] leading-relaxed">
+        Connect to Ollama, LM Studio, or another OpenAI-compatible server
+        running locally.
+      </p>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           void localLlm.test();
         }}
-        className="space-y-2.5 px-5 pb-3.5"
+        className="space-y-3"
       >
         <div className="flex items-center gap-2">
           <Input
@@ -913,12 +774,14 @@ function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
         </InputGroup>
         {localLlm.connected === true && (
           <p className="text-primary text-[12px]">
-            Connected ({localLlm.models.length}{" "}
-            {localLlm.models.length === 1 ? "model" : "models"})
+            Connected · {localLlm.models.length}{" "}
+            {localLlm.models.length === 1 ? "model" : "models"} found
           </p>
         )}
-        {localLlm.connected === false && (
-          <p className="text-destructive text-[12px]">{localLlm.error}</p>
+        {localLlm.connected === false && localLlm.error && (
+          <p className="text-destructive text-[12px] leading-snug">
+            {localLlm.error}
+          </p>
         )}
       </form>
     </div>

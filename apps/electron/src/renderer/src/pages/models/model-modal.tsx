@@ -33,7 +33,12 @@ import { displayName } from "./utils";
 // ---------------------------------------------------------------------------
 
 export type ModalState =
-  | { kind: "list"; type: "voice" | "llm" }
+  | {
+      kind: "list";
+      type: "voice" | "llm";
+      voiceView?: "tiers" | "all" | "local" | "cloud";
+      llmView?: "tiers" | "all" | "local" | "cloud";
+    }
   | {
       kind: "key";
       /** Slot to return to on Back; null = standalone key edit. */
@@ -80,6 +85,7 @@ export function ModelModal({
   m,
   saving,
   keyError,
+  cloudBusy,
   onClose,
   onPickCloud,
   onPickLocalVoice,
@@ -91,6 +97,7 @@ export function ModelModal({
   m: UseModels;
   saving: boolean;
   keyError: string | null;
+  cloudBusy?: boolean;
   onClose: () => void;
   onPickCloud: (model: AvailableModel) => void;
   onPickLocalVoice: (
@@ -128,7 +135,10 @@ export function ModelModal({
     >
       <ModelList
         type={modal.type}
+        voiceView={modal.type === "voice" ? modal.voiceView : undefined}
+        llmView={modal.type === "llm" ? modal.llmView : undefined}
         m={m}
+        cloudBusy={cloudBusy}
         onClose={onClose}
         onPickCloud={onPickCloud}
         onPickLocalVoice={onPickLocalVoice}

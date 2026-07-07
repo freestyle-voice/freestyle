@@ -222,9 +222,6 @@ importers:
       hono:
         specifier: ^4.12.22
         version: 4.12.22
-      hono-rate-limiter:
-        specifier: ^0.5.3
-        version: 0.5.3(hono@4.12.22)
       posthog-node:
         specifier: ^5.35.8
         version: 5.35.8(rxjs@7.8.2)
@@ -5395,15 +5392,6 @@ packages:
 
   hls.js@1.6.16:
     resolution: {integrity: sha512-VSIRpLfRwlAAdGL4wiTucx2ScRipo0ed1FBatWkyt832jC4CReKstga6yIhYVwGu9LOBjuX9wzmRMeQdBJtzEA==}
-
-  hono-rate-limiter@0.5.3:
-    resolution: {integrity: sha512-M0DxbVMpPELEzLi0AJg1XyBHLGJXz7GySjsPoK+gc5YeeBsdGDGe+2RvVuCAv8ydINiwlbxqYMNxUEyYfRji/A==}
-    peerDependencies:
-      hono: ^4.10.8
-      unstorage: ^1.17.3
-    peerDependenciesMeta:
-      unstorage:
-        optional: true
 
   hono@4.12.22:
     resolution: {integrity: sha512-7fvVPbB92zNRsQke+uiRGwtTuef0tB2Dg4hWxYfFNvkQhIltWoyi0ONReM5LWA+jJWS3nfT5lTq+qbsIpX0IQw==}
@@ -14196,10 +14184,6 @@ snapshots:
   hex-rgb@5.0.0: {}
 
   hls.js@1.6.16: {}
-
-  hono-rate-limiter@0.5.3(hono@4.12.22):
-    dependencies:
-      hono: 4.12.22
 
   hono@4.12.22: {}
 

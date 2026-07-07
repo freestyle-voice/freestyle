@@ -34,7 +34,6 @@
     "ai": "^6.0.191",
     "better-auth": "^1.6.20",
     "hono": "^4.12.22",
-    "hono-rate-limiter": "^0.5.3",
     "posthog-node": "^5.35.8",
     "semver": "^7.8.5",
     "tar": "^7.5.15",

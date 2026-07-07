@@ -619,7 +619,7 @@ export default function SettingsPage(): React.JSX.Element {
     >
       <div className="h-7 shrink-0" />
       <div
-        className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 min-[900px]:grid-cols-[180px_minmax(0,1fr)]"
+        className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 !pb-0 min-[900px]:grid-cols-[180px_minmax(0,1fr)]"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         <div className="min-[900px]:col-span-2">
@@ -1312,7 +1312,7 @@ function NetworkPanel(): React.JSX.Element {
           )}
         />
       </Row>
-      <div className="border-border bg-secondary/40 text-muted-foreground mt-1 flex items-start gap-2.5 rounded-[10px] border px-3.5 py-3 text-[12px] leading-[1.55]">
+      <div className="border-border bg-secondary/40 text-muted-foreground mt-1 mb-4 flex items-start gap-2.5 rounded-[10px] border px-3.5 py-3 text-[12px] leading-[1.55]">
         <Info className="mt-px h-3.5 w-3.5 shrink-0 opacity-70" />
         <span>{t("settings.network.envNote")}</span>
       </div>

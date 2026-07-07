@@ -566,8 +566,9 @@ export default function HistoryPage(): React.JSX.Element {
                       </PopoverTrigger>
                       <PopoverContent
                         align="end"
-                        className="w-auto p-3"
-                        sideOffset={8}
+                        className="w-[320px] translate-x-2 overflow-visible p-2"
+                        collisionPadding={8}
+                        sideOffset={6}
                       >
                         <DayPicker
                           mode="range"
@@ -579,27 +580,27 @@ export default function HistoryPage(): React.JSX.Element {
                           }
                           classNames={{
                             root: "p-0",
-                            months: "flex gap-4",
-                            month: "flex flex-col gap-3",
+                            months: "flex gap-2",
+                            month: "flex flex-col gap-2",
                             month_caption:
-                              "flex h-7 items-center justify-center",
+                              "flex h-6 items-center justify-center",
                             caption_label:
-                              "text-[13px] font-medium text-foreground",
-                            nav: "absolute inset-x-3 top-3 flex items-center justify-between",
+                              "text-[12px] font-medium text-foreground",
+                            nav: "absolute inset-x-2 top-2 flex items-center justify-between",
                             button_previous:
-                              "inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
+                              "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
                             button_next:
-                              "inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
-                            chevron: "size-4",
+                              "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
+                            chevron: "size-3.5",
                             month_grid:
                               "w-full border-collapse border-spacing-0",
                             weekdays: "flex",
                             weekday:
-                              "text-muted-foreground flex size-8 items-center justify-center text-[11px] font-normal",
-                            week: "mt-1 flex w-full",
-                            day: "relative flex size-8 items-center justify-center p-0 text-center text-[12px]",
+                              "text-muted-foreground flex size-5 items-center justify-center text-[9px] font-normal",
+                            week: "mt-0.5 flex w-full",
+                            day: "relative flex size-5 items-center justify-center p-0 text-center text-[10px]",
                             day_button:
-                              "relative z-10 inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                              "relative z-10 inline-flex size-5 items-center justify-center rounded transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                             outside: "text-muted-foreground/45",
                             today:
                               "after:bg-primary after:absolute after:bottom-1 after:left-1/2 after:z-20 after:size-1 after:-translate-x-1/2 after:rounded-full",

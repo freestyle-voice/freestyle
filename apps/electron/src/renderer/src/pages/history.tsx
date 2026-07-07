@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Clock,
   Copy,
+  FileDiff,
   Filter,
   Redo2,
   Search,
@@ -110,6 +111,95 @@ function getDateGroup(iso: string): string {
 }
 
 const PAGE_SIZE = 20;
+
+// ---------------------------------------------------------------------------
+// Word-level diff between the raw transcription and the AI-cleaned text
+// ---------------------------------------------------------------------------
+
+interface DiffSegment {
+  type: "same" | "del" | "add";
+  text: string;
+}
+
+/** Cap on the LCS table size (~2000×2000 words) to keep the diff instant. */
+const DIFF_MAX_TABLE_CELLS = 4_000_000;
+
+/** Split into word tokens, each keeping its trailing whitespace. */
+function tokenizeWords(text: string): string[] {
+  return text.match(/\S+\s*/g) ?? [];
+}
+
+/** Compare tokens ignoring the trailing whitespace they carry. */
+function tokenEquals(a: string, b: string): boolean {
+  return a.trimEnd() === b.trimEnd();
+}
+
+/**
+ * Word-level LCS diff. Returns segments in reading order with consecutive
+ * same-type tokens merged. For pathologically long texts (beyond
+ * {@link DIFF_MAX_TABLE_CELLS}) it degrades to "all removed, all added",
+ * which still shows both outputs side by side.
+ */
+function diffWords(rawText: string, cleanedText: string): DiffSegment[] {
+  const a = tokenizeWords(rawText);
+  const b = tokenizeWords(cleanedText);
+  const n = a.length;
+  const m = b.length;
+
+  if (n * m > DIFF_MAX_TABLE_CELLS) {
+    return [
+      { type: "del", text: rawText },
+      { type: "add", text: ` ${cleanedText}` },
+    ];
+  }
+
+  // dp[i][j] = LCS length of a[i..] and b[j..], flattened row-major.
+  const width = m + 1;
+  const dp = new Uint32Array((n + 1) * width);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i * width + j] = tokenEquals(a[i], b[j])
+        ? dp[(i + 1) * width + j + 1] + 1
+        : Math.max(dp[(i + 1) * width + j], dp[i * width + j + 1]);
+    }
+  }
+
+  const segments: DiffSegment[] = [];
+  const push = (type: DiffSegment["type"], text: string): void => {
+    const last = segments[segments.length - 1];
+    if (last && last.type === type) {
+      last.text += text;
+    } else {
+      segments.push({ type, text });
+    }
+  };
+
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (tokenEquals(a[i], b[j])) {
+      push("same", b[j]);
+      i++;
+      j++;
+    } else if (dp[(i + 1) * width + j] >= dp[i * width + j + 1]) {
+      push("del", a[i]);
+      i++;
+    } else {
+      push("add", b[j]);
+      j++;
+    }
+  }
+  while (i < n) {
+    push("del", a[i]);
+    i++;
+  }
+  while (j < m) {
+    push("add", b[j]);
+    j++;
+  }
+
+  return segments;
+}
 
 export default function HistoryPage(): React.JSX.Element {
   const { t } = useTranslation();
@@ -638,8 +728,16 @@ function FeedItem({
   const hasAiEdit =
     !!entry.cleaned_text && entry.cleaned_text.trim() !== entry.raw_text.trim();
   const [showAiEdit, setShowAiEdit] = useState(hasAiEdit);
+  const [showDiff, setShowDiff] = useState(false);
   const text =
     showAiEdit && entry.cleaned_text ? entry.cleaned_text : entry.raw_text;
+  const diff = useMemo(
+    () =>
+      showDiff && hasAiEdit && entry.cleaned_text
+        ? diffWords(entry.raw_text, entry.cleaned_text)
+        : null,
+    [showDiff, hasAiEdit, entry.raw_text, entry.cleaned_text],
+  );
   const voice = shortModel(entry.voice_model) || entry.voice_provider;
   const llm = shortModel(entry.llm_model);
   const modelLabel = llm ? `${voice} · ${llm}` : voice;
@@ -671,15 +769,31 @@ function FeedItem({
         )}
         <div className="ml-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           {hasAiEdit && (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => setShowAiEdit((value) => !value)}
-              title={showAiEdit ? "Undo AI edit" : "Redo AI edit"}
-              aria-label={showAiEdit ? "Undo AI edit" : "Redo AI edit"}
-            >
-              {showAiEdit ? <Undo2 /> : <Redo2 />}
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => setShowDiff((value) => !value)}
+                className={cn(showDiff && "text-primary")}
+                title={showDiff ? "Hide AI edit diff" : "Show AI edit diff"}
+                aria-label={
+                  showDiff ? "Hide AI edit diff" : "Show AI edit diff"
+                }
+                aria-pressed={showDiff}
+              >
+                <FileDiff />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => setShowAiEdit((value) => !value)}
+                disabled={showDiff}
+                title={showAiEdit ? "Undo AI edit" : "Redo AI edit"}
+                aria-label={showAiEdit ? "Undo AI edit" : "Redo AI edit"}
+              >
+                {showAiEdit ? <Undo2 /> : <Redo2 />}
+              </Button>
+            </>
           )}
           <Button
             variant="ghost"
@@ -707,9 +821,47 @@ function FeedItem({
         style={{ textWrap: "pretty" as never }}
         dir="auto"
       >
-        “{text}”
+        “{diff ? <DiffText segments={diff} /> : text}”
       </p>
     </div>
+  );
+}
+
+/**
+ * Inline rendering of a raw→cleaned diff: words the post-processing removed
+ * are struck through, words it added are highlighted. Unchanged words render
+ * plainly, so both outputs are visible in a single reading pass.
+ */
+function DiffText({
+  segments,
+}: {
+  segments: DiffSegment[];
+}): React.JSX.Element {
+  return (
+    <>
+      {segments.map((seg, idx) => {
+        if (seg.type === "same") return seg.text;
+        // Keep the segment's trailing whitespace outside the styled span so
+        // the strikethrough/background doesn't bleed into the gap after it.
+        const content = seg.text.trimEnd();
+        const trailing = seg.text.slice(content.length);
+        return seg.type === "del" ? (
+          <span key={idx}>
+            <del className="text-destructive bg-destructive/10 decoration-destructive/60 rounded-[3px]">
+              {content}
+            </del>
+            {trailing}
+          </span>
+        ) : (
+          <span key={idx}>
+            <ins className="text-primary bg-primary/10 rounded-[3px] no-underline">
+              {content}
+            </ins>
+            {trailing}
+          </span>
+        );
+      })}
+    </>
   );
 }
 

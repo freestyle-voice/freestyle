@@ -281,7 +281,6 @@ function checkStructural(
   mode: string,
   tone: string,
   output: string,
-  expected: string,
 ): { ok: boolean; errors: string[] } {
   const errors: string[] = [];
   const trimmed = output.trim();
@@ -373,7 +372,7 @@ async function runCase(
     providerOptions: groqCleanupProviderOptions(MODEL_ID),
   });
   const output = sanitizeTranscriptText(result.text);
-  const { ok, errors } = checkStructural(mode, tone, output, testCase.expected);
+  const { ok, errors } = checkStructural(mode, tone, output);
   return {
     id: testCase.id,
     label: testCase.label,

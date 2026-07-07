@@ -147,23 +147,21 @@ export function VoiceRow({
               <TooltipContent>Quality</TooltipContent>
             </Tooltip>
           )}
-          {local ? (
-            item.sizeBytes != null && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span>
-                    <StatPair
-                      icon={Download}
-                      label={formatBytes(item.sizeBytes)}
-                    />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>Download size</TooltipContent>
-              </Tooltip>
-            )
-          ) : (
-            <>
-              {item.cost != null && (
+          {local
+            ? item.sizeBytes != null && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <StatPair
+                        icon={Download}
+                        label={formatBytes(item.sizeBytes)}
+                      />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Download size</TooltipContent>
+                </Tooltip>
+              )
+            : item.cost != null && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span>
@@ -176,8 +174,6 @@ export function VoiceRow({
                   <TooltipContent>Estimated cost</TooltipContent>
                 </Tooltip>
               )}
-            </>
-          )}
         </div>
 
         {local && status === "error" && item.state?.error && (

@@ -260,7 +260,7 @@ async function main(targetDir: string | undefined, options: Options) {
 
   // 9. Done!
   console.log();
-  console.log(pc.green(pc.bold("Done!") + " Your Freestyle plugin is ready."));
+  console.log(pc.green(`${pc.bold("Done!")} Your Freestyle plugin is ready.`));
   console.log();
 
   const resolvedTarget = path.resolve(target);

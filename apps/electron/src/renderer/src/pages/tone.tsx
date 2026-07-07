@@ -777,6 +777,7 @@ function CleanupTonePanel({
           {CLEANUP_OPTIONS.map((option, index) => {
             const selected = option.value === value;
             return (
+              // biome-ignore lint/a11y/useSemanticElements: roving-tabindex radiogroup on styled buttons; <input type="radio"> would need a full restyle of the card layout.
               <button
                 key={option.value}
                 type="button"
@@ -1082,6 +1083,7 @@ function SubsetTonePanel<T extends string>({
           {options.map((option, index) => {
             const selected = option.value === value;
             return (
+              // biome-ignore lint/a11y/useSemanticElements: roving-tabindex radiogroup on styled buttons; <input type="radio"> would need a full restyle of the card layout.
               <button
                 key={option.value}
                 type="button"

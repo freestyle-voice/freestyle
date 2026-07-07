@@ -16,6 +16,7 @@ export function PairCard({
   voice,
   llm,
   llmCleanup,
+  cleanupIncluded,
   onToggleCleanup,
   onChangeVoice,
   onChangeLlm,
@@ -24,6 +25,8 @@ export function PairCard({
   voice: ConfiguredModel | undefined;
   llm: ConfiguredModel | undefined;
   llmCleanup: boolean;
+  /** Freestyle Transcribe is active: cleanup always runs and cannot be toggled. */
+  cleanupIncluded?: boolean;
   onToggleCleanup: (next: boolean) => void;
   onChangeVoice: () => void;
   onChangeLlm: () => void;
@@ -53,18 +56,30 @@ export function PairCard({
         }
       />
       <div className="border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0">
-        <PairSide
-          kicker="AI cleanup · optional"
-          modelName={llmCleanup ? llm?.model_name : undefined}
-          providerName={
-            llmCleanup && llm ? displayName(llm.provider) : undefined
-          }
-          cta={llm ? "Change" : "Pick a model"}
-          toggle={llmCleanup}
-          onToggle={onToggleCleanup}
-          onChange={onChangeLlm}
-          dimmed={!llmCleanup}
-        />
+        {cleanupIncluded ? (
+          <PairSide
+            kicker="AI cleanup · included"
+            modelName="Freestyle Transcribe"
+            providerName={undefined}
+            cta="Change"
+            disabled
+            note="Included with Freestyle Transcribe"
+            onChange={onChangeLlm}
+          />
+        ) : (
+          <PairSide
+            kicker="AI cleanup · optional"
+            modelName={llmCleanup ? llm?.model_name : undefined}
+            providerName={
+              llmCleanup && llm ? displayName(llm.provider) : undefined
+            }
+            cta={llm ? "Change" : "Pick a model"}
+            toggle={llmCleanup}
+            onToggle={onToggleCleanup}
+            onChange={onChangeLlm}
+            dimmed={!llmCleanup}
+          />
+        )}
       </div>
     </section>
   );

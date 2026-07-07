@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import {
-  FREESTYLE_CLOUD_CLEANUP_MODEL_ID,
   FREESTYLE_CLOUD_PROVIDER_ID,
   FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID,
 } from "../lib/freestyle-cloud.js";
@@ -195,15 +194,6 @@ const CURATED_LLM_IDS = new Set([
 
 const BUILTIN_LLM_MODELS: AvailableModel[] = [
   {
-    provider_id: FREESTYLE_CLOUD_PROVIDER_ID,
-    provider_name: "Freestyle Transcribe",
-    model_id: FREESTYLE_CLOUD_CLEANUP_MODEL_ID,
-    model_name: "Freestyle Transcribe Cleanup",
-    family: "freestyle",
-    type: "llm",
-    curated: true,
-  },
-  {
     provider_id: "groq",
     provider_name: "Groq",
     model_id: "mistral-saba-24b",
@@ -270,7 +260,6 @@ export async function isCleanupModelSupported(
   modelId: string,
 ): Promise<boolean> {
   if (providerId === "local-llm") return true;
-  if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return true;
 
   try {
     const registry = await fetchModelsFromRegistry();

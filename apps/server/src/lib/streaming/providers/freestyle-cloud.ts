@@ -1,8 +1,11 @@
+import { getDb } from "../../db.js";
+import { loadDictionaryEntries } from "../../dictionary-replacements.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,
   transcribeWithFreestyleCloud,
 } from "../../freestyle-cloud.js";
+import { loadVocabularyTerms } from "../../vocabulary.js";
 import type {
   TranscribeOptions,
   TranscribeResult,
@@ -15,9 +18,10 @@ export {
 };
 
 /**
- * Managed STT via Freestyle Cloud (batch POST /v1/transcribe).
+ * Managed STT via Freestyle Cloud (batch POST /v3/transcribe).
  *
  * `opts.apiKey` carries the cloud session token (from device auth flow).
+ * v3 always post-processes, so the cleaned text is returned.
  */
 export class FreestyleCloudTranscriptionProvider
   implements TranscriptionProvider
@@ -31,10 +35,11 @@ export class FreestyleCloudTranscriptionProvider
       token: opts.apiKey,
       audio: opts.audio,
       language: opts.language,
-      mode: "raw",
+      dictionary: loadDictionaryEntries(getDb()),
+      vocabulary: loadVocabularyTerms(),
     });
     return {
-      text: data.raw ?? data.cleaned ?? "",
+      text: data.cleaned || data.raw || "",
       ...(data.audioDurationSeconds != null
         ? { durationInSeconds: data.audioDurationSeconds }
         : {}),

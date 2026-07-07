@@ -25,6 +25,7 @@
     "build:linux": "npm run compile:native && electron-vite build && electron-builder --linux --publish never",
     "download:whisper-cpp": "node scripts/download-whisper-cpp.mjs",
     "download:whisper-cpp:all": "node scripts/download-whisper-cpp.mjs --all",
+    "test": "vitest run",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -40,6 +41,7 @@
     "@tanstack/react-query": "^5.101.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "diff": "^8.0.4",
     "electron-updater": "^6.3.9",
     "freestyle-voice": "workspace:*",
     "hono": "^4.12.22",
@@ -78,6 +80,7 @@
     "react-dom": "^19.2.1",
     "tailwindcss": "^4.3.0",
     "typescript": "^5.9.3",
-    "vite": "^7.2.6"
+    "vite": "^7.2.6",
+    "vitest": "^4.1.7"
   }
 }

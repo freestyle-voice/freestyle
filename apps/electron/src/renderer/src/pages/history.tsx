@@ -9,6 +9,7 @@ import {
   SheetTitle,
 } from "@renderer/components/ui/sheet";
 import { getClient } from "@renderer/lib/api";
+import { type DiffSegment, diffWords } from "@renderer/lib/history-diff";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,6 +19,7 @@ import {
   ChevronRight,
   Clock,
   Copy,
+  FileDiff,
   Filter,
   Redo2,
   Search,
@@ -638,8 +640,16 @@ function FeedItem({
   const hasAiEdit =
     !!entry.cleaned_text && entry.cleaned_text.trim() !== entry.raw_text.trim();
   const [showAiEdit, setShowAiEdit] = useState(hasAiEdit);
+  const [showDiff, setShowDiff] = useState(false);
   const text =
     showAiEdit && entry.cleaned_text ? entry.cleaned_text : entry.raw_text;
+  const diff = useMemo(
+    () =>
+      showDiff && hasAiEdit && entry.cleaned_text
+        ? diffWords(entry.raw_text, entry.cleaned_text)
+        : null,
+    [showDiff, hasAiEdit, entry.raw_text, entry.cleaned_text],
+  );
   const voice = shortModel(entry.voice_model) || entry.voice_provider;
   const llm = shortModel(entry.llm_model);
   const modelLabel = llm ? `${voice} · ${llm}` : voice;
@@ -671,15 +681,31 @@ function FeedItem({
         )}
         <div className="ml-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           {hasAiEdit && (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => setShowAiEdit((value) => !value)}
-              title={showAiEdit ? "Undo AI edit" : "Redo AI edit"}
-              aria-label={showAiEdit ? "Undo AI edit" : "Redo AI edit"}
-            >
-              {showAiEdit ? <Undo2 /> : <Redo2 />}
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => setShowDiff((value) => !value)}
+                className={cn(showDiff && "text-primary")}
+                title={showDiff ? "Hide AI edit diff" : "Show AI edit diff"}
+                aria-label={
+                  showDiff ? "Hide AI edit diff" : "Show AI edit diff"
+                }
+                aria-pressed={showDiff}
+              >
+                <FileDiff />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => setShowAiEdit((value) => !value)}
+                disabled={showDiff}
+                title={showAiEdit ? "Undo AI edit" : "Redo AI edit"}
+                aria-label={showAiEdit ? "Undo AI edit" : "Redo AI edit"}
+              >
+                {showAiEdit ? <Undo2 /> : <Redo2 />}
+              </Button>
+            </>
           )}
           <Button
             variant="ghost"
@@ -707,9 +733,47 @@ function FeedItem({
         style={{ textWrap: "pretty" as never }}
         dir="auto"
       >
-        “{text}”
+        “{diff ? <DiffText segments={diff} /> : text}”
       </p>
     </div>
+  );
+}
+
+/**
+ * Inline rendering of a raw→cleaned diff: words the post-processing removed
+ * are struck through, words it added are highlighted. Unchanged words render
+ * plainly, so both outputs are visible in a single reading pass.
+ */
+function DiffText({
+  segments,
+}: {
+  segments: DiffSegment[];
+}): React.JSX.Element {
+  return (
+    <>
+      {segments.map((seg, idx) => {
+        if (seg.type === "same") return seg.text;
+        // Keep the segment's trailing whitespace outside the styled span so
+        // the strikethrough/background doesn't bleed into the gap after it.
+        const content = seg.text.trimEnd();
+        const trailing = seg.text.slice(content.length);
+        return seg.type === "del" ? (
+          <span key={idx}>
+            <del className="text-destructive bg-destructive/10 decoration-destructive/60 rounded-[3px]">
+              {content}
+            </del>
+            {trailing}
+          </span>
+        ) : (
+          <span key={idx}>
+            <ins className="text-primary bg-primary/10 rounded-[3px] no-underline">
+              {content}
+            </ins>
+            {trailing}
+          </span>
+        );
+      })}
+    </>
   );
 }
 

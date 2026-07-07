@@ -422,7 +422,9 @@ export async function postProcessWithFreestyleCloud(
   usage?: { inputTokens?: number; outputTokens?: number };
 }> {
   // The JSON body carries `appAssignments` as a real array (unlike the
-  // multipart transcribe path, which JSON-encodes it).
+  // multipart transcribe path, which JSON-encodes it). `customPrompt` is
+  // omitted (not sent as null) when absent: the cloud schema validates it as
+  // `z.string().optional()`, which rejects an explicit null with a 400.
   return cloudJson("/v2/post-process", opts.token, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -431,7 +433,7 @@ export async function postProcessWithFreestyleCloud(
       appContext: opts.appContext ?? null,
       language: opts.language,
       intensity: opts.intensity,
-      customPrompt: opts.customPrompt ?? null,
+      customPrompt: opts.customPrompt || undefined,
       personalTone: opts.personalTone,
       workTone: opts.workTone,
       emailTone: opts.emailTone,

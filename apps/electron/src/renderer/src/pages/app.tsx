@@ -374,19 +374,48 @@ export default function AppPage(): React.JSX.Element {
       const dataArray = freqDataRef.current;
       if (analyser && dataArray) {
         analyser.getByteFrequencyData(dataArray);
-        const sliceSize = Math.floor(analyser.frequencyBinCount / BARS);
-        const raw: number[] = [];
-        let totalSum = 0;
-        for (let i = 0; i < BARS; i++) {
-          let sum = 0;
-          for (let j = 0; j < sliceSize; j++)
-            sum += dataArray[i * sliceSize + j];
-          const val = sum / sliceSize / 255;
-          raw.push(val);
-          totalSum += val;
+        const VOICE_MIN = 80;
+        const VOICE_MAX = 4000;
+
+        const sampleRate = analyser.context.sampleRate;
+        const binWidth = sampleRate / analyser.fftSize;
+
+        const startBin = Math.max(0, Math.floor(VOICE_MIN / binWidth));
+        const endBin = Math.min(
+          analyser.frequencyBinCount,
+          Math.ceil(VOICE_MAX / binWidth),
+        );
+
+        // Compute one overall voice level
+        let sum = 0;
+        for (let i = startBin; i < endBin; i++) {
+          sum += dataArray[i];
         }
+
+        const voiceLevel = sum / (Math.max(1, endBin - startBin) * 255);
+
+        const raw: number[] = [];
+        const center = (BARS - 1) / 2;
+        const sigma = BARS / 4;
+
+        const binCount = Math.max(1, endBin - startBin);
+
+        for (let i = 0; i < BARS; i++) {
+          const distance = i - center;
+
+          // Bell-shaped weighting
+          const weight = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+          const sampleIndex =
+            startBin + Math.floor((i / (BARS - 1)) * (binCount - 1));
+
+          const localVariation = 0.85 + (dataArray[sampleIndex] / 255) * 0.3;
+
+          raw.push(Math.min(1, voiceLevel * weight * localVariation * 2.5));
+        }
+
         barsRef.current = smoothBars(barsRef.current, raw);
-        const volume = Math.min(1, (totalSum / BARS) * 2.5);
+
+        const volume = Math.min(1, voiceLevel * 2.5);
         volumeRef.current = volume;
         const now = performance.now();
         if (now - lastIpcTimeRef.current >= 100) {
@@ -444,7 +473,7 @@ export default function AppPage(): React.JSX.Element {
 
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
+      analyser.fftSize = 1024;
       analyser.smoothingTimeConstant = 0.4;
       source.connect(analyser);
       audioSourceRef.current = source;

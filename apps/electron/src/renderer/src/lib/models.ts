@@ -176,11 +176,6 @@ export const VOICE_META: Record<
     note?: string;
   }
 > = {
-  [FREESTYLE_CLOUD_MODEL_ID]: {
-    speed: 4,
-    quality: 4,
-    note: "Managed by Freestyle — fast and accurate, no API key",
-  },
   "groq/whisper-large-v3-turbo": {
     speed: 5,
     quality: 3,

@@ -13,12 +13,14 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-
-import { FREESTYLE_CLOUD_CLEANUP } from "./cleanup-picker";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { Eyebrow, PageHeader, PageShell } from "./page-chrome";
 import { PairCard } from "./pair-card";
+import {
+  FREESTYLE_CLOUD_CLEANUP,
+  FREESTYLE_CLOUD_TIER,
+} from "./transcription-picker";
 import type { ApiKeyEntry, ConfiguredModel } from "./types";
 import { useModels } from "./use-models";
 import { displayName } from "./utils";
@@ -114,16 +116,7 @@ export default function ModelsPage(): React.JSX.Element {
     setCloudBusy(true);
     try {
       if (!(await ensureCloudAuth())) return;
-      await m.configureModel(
-        {
-          provider_id: FREESTYLE_CLOUD_PROVIDER,
-          provider_name: "Freestyle Transcribe",
-          model_id: "freestyle-cloud/stt",
-          model_name: "Freestyle Transcribe (Managed)",
-          type: "voice",
-        },
-        "voice",
-      );
+      await m.configureModel(FREESTYLE_CLOUD_TIER, "voice");
       await m.configureModel(FREESTYLE_CLOUD_CLEANUP, "llm");
       m.setCleanup(true);
     } finally {

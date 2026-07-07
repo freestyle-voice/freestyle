@@ -1,4 +1,3 @@
-import { ModelTraits } from "@renderer/components/model-traits";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
@@ -15,7 +14,7 @@ import type {
   WhisperModelDownloadState,
 } from "@renderer/lib/models";
 import { formatBytes, formatSpeed } from "@renderer/lib/models";
-import { cn } from "@renderer/lib/utils";
+import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   ArrowLeft,
   Check,
@@ -32,13 +31,20 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { CleanupPicker, FREESTYLE_CLOUD_CLEANUP } from "./cleanup-picker";
+import { useTranslation } from "react-i18next";
 import {
+  PICKER_MODAL_BODY,
+  PickerModalHeader,
+  PickerOption,
+} from "./picker-option";
+import {
+  FREESTYLE_CLOUD_CLEANUP,
   FREESTYLE_CLOUD_TIER,
   OpenModelSourceButton,
   recommendedVoiceKey,
   TranscriptionPicker,
 } from "./transcription-picker";
+import type { ConfiguredModel } from "./types";
 import type { UseModels } from "./use-models";
 import { displayName } from "./utils";
 
@@ -53,8 +59,6 @@ interface Row {
   provider: string; // provider_id, for the provider filter
   meta: string;
   selected: boolean;
-  speed?: number;
-  quality?: number;
   /** Shown by default; non-curated rows live behind "Show all models". */
   curated?: boolean;
   recommended?: boolean;
@@ -101,8 +105,6 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
         provider: "local",
         meta: `${it.note ?? "On-device"}${sizeNote}`,
         recommended: it.key === recommendedKey,
-        speed: it.speed,
-        quality: it.quality,
         selected: it.selected && status === "ready",
         status,
         state: it.state,
@@ -140,8 +142,6 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
       provider: providerId,
       meta: `${displayName(providerId, it.provider)}${note}${cost}`,
       selected: it.selected,
-      speed: it.speed,
-      quality: it.quality,
       hasKey: it.hasKey,
       onSelect: it.available
         ? () => h.onPickCloud(it.available as AvailableModel)
@@ -259,7 +259,6 @@ export function ModelList({
   if (type === "voice" && view === "tiers") {
     return (
       <TranscriptionPicker
-        layout="modal"
         m={m}
         busy={cloudBusy}
         onClose={onClose}
@@ -272,8 +271,7 @@ export function ModelList({
 
   if (type === "llm" && view === "tiers") {
     return (
-      <CleanupPicker
-        layout="modal"
+      <CleanupTierPicker
         m={m}
         onClose={onClose}
         onBrowseLocal={() => setView("local")}
@@ -545,12 +543,6 @@ function ModelRow({
         <div className="text-muted-foreground mt-0.5 text-[12px]">
           {row.meta}
         </div>
-        <ModelTraits
-          speed={row.speed}
-          quality={row.quality}
-          compact
-          className="mt-2"
-        />
         {local && status === "error" && row.state?.error && (
           <div className="text-destructive mt-1 text-[11.5px] leading-snug">
             {row.state.error}
@@ -785,5 +777,87 @@ function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
         )}
       </form>
     </div>
+  );
+}
+
+const MANAGED_LLM_PROVIDERS = new Set([
+  FREESTYLE_CLOUD_CLEANUP.provider_id,
+  "local-llm",
+]);
+
+function isLocalLlm(llm: ConfiguredModel | undefined): boolean {
+  return llm?.provider === "local-llm";
+}
+
+function isByokLlm(llm: ConfiguredModel | undefined): boolean {
+  if (!llm) return false;
+  return !MANAGED_LLM_PROVIDERS.has(llm.provider);
+}
+
+/** On-device and BYOK only — Freestyle cleanup ships with Freestyle Transcribe. */
+function CleanupTierPicker({
+  m,
+  onClose,
+  onBrowseLocal,
+  onBrowseCloud,
+}: {
+  m: UseModels;
+  onClose: () => void;
+  onBrowseLocal: () => void;
+  onBrowseCloud: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+
+  const byokCount = [...m.llmModelsByProvider.entries()].reduce(
+    (sum, [providerId, { models }]) =>
+      providerId === FREESTYLE_CLOUD_CLEANUP.provider_id
+        ? sum
+        : sum + models.length,
+    0,
+  );
+
+  const localActive = isLocalLlm(m.defaultLlm);
+  const byokActive = isByokLlm(m.defaultLlm);
+
+  const localHint = localActive
+    ? (m.defaultLlm?.model_name ?? t("models.onDevice"))
+    : m.localLlm.connected === true
+      ? t("models.picker.modelCount", { count: m.localLlm.models.length })
+      : t("models.picker.ollamaHint");
+
+  const byokLabel = byokActive
+    ? (m.defaultLlm?.model_name ?? displayName(m.defaultLlm!.provider))
+    : byokCount > 0
+      ? t("models.picker.cloudModelCount", { count: byokCount })
+      : t("models.picker.byokProviders");
+
+  return (
+    <>
+      <PickerModalHeader
+        icon={Sparkles}
+        title={t("models.picker.cleanup")}
+        onClose={onClose}
+      />
+      <div className={PICKER_MODAL_BODY}>
+        <div className="border-border divide-border overflow-hidden rounded-[12px] border divide-y">
+          <PickerOption
+            icon={Laptop}
+            title={t("models.picker.onDevice", { phrase: ON_DEVICE_PHRASE })}
+            hint={localHint}
+            active={localActive}
+            onClick={onBrowseLocal}
+            browseLabel={t("models.picker.browseLocalCleanup")}
+          />
+          <PickerOption
+            icon={Key}
+            title={t("models.picker.yourApiKey")}
+            hint={byokLabel}
+            active={byokActive}
+            onClick={onBrowseCloud}
+            browseLabel={t("models.picker.browseByokCleanup")}
+          />
+        </div>
+      </div>
+    </>
   );
 }

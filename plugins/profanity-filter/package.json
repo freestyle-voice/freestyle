@@ -1,6 +1,6 @@
 {
   "name": "@freestyle-voice/profanity-filter",
-  "version": "0.0.1",
+  "version": "0.1.1",
   "type": "module",
   "description": "Swap curse words for wholesome, funnier stand-ins as you dictate.",
   "license": "MIT",

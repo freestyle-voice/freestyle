@@ -41,7 +41,7 @@ import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import type { AvailableModel } from "@renderer/lib/models";
-import { settingsQueryOptions } from "@renderer/lib/query";
+import { SETTINGS_QUERY_KEY, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
@@ -314,7 +314,7 @@ export default function TonePage(): React.JSX.Element {
   const reload = useCallback(
     () =>
       Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["settings-all"] }),
+        queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: ["models", "configured"] }),
       ]),
     [queryClient],

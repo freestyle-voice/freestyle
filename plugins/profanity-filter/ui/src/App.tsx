@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FreestyleBridge } from "freestyle-voice";
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 
 const ROUTE = "/api/plugins/freestyle-voice-profanity-filter/replacements";
@@ -143,14 +143,14 @@ function AddWordForm() {
   );
 }
 
-function WordRow({
+const WordRow = memo(function WordRow({
   entry,
   onDelete,
   onUpdate,
 }: {
   entry: Entry;
-  onDelete: () => void;
-  onUpdate: (alts: string[]) => void;
+  onDelete: (word: string) => void;
+  onUpdate: (word: string, alts: string[]) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
@@ -170,7 +170,7 @@ function WordRow({
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    if (alts.length > 0) onUpdate(alts);
+    if (alts.length > 0) onUpdate(entry.word, alts);
     setEditing(false);
   };
 
@@ -226,7 +226,7 @@ function WordRow({
             <button
               type="button"
               className="row-btn delete-btn"
-              onClick={onDelete}
+              onClick={() => onDelete(entry.word)}
               aria-label="Delete"
             >
               Delete
@@ -236,19 +236,25 @@ function WordRow({
       )}
     </li>
   );
-}
+});
 
 function WordList({ entries }: { entries: Entry[] }) {
   const [query, setQuery] = useState("");
   const queryClient = useQueryClient();
   const q = query.trim().toLowerCase();
-  const filtered = q
-    ? entries.filter(
-        (e) =>
-          e.word.includes(q) ||
-          e.alternatives.some((a) => a.toLowerCase().includes(q)),
-      )
-    : entries;
+  // Recompute the filtered view only when the entries or query change, not on
+  // every parent re-render (e.g. while a mutation is in flight).
+  const filtered = useMemo(
+    () =>
+      q
+        ? entries.filter(
+            (e) =>
+              e.word.toLowerCase().includes(q) ||
+              e.alternatives.some((a) => a.toLowerCase().includes(q)),
+          )
+        : entries,
+    [entries, q],
+  );
 
   const deleteMutation = useMutation({
     mutationFn: (word: string) => mutateReplacements("DELETE", { word }),
@@ -267,6 +273,18 @@ function WordList({ entries }: { entries: Entry[] }) {
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["replacements"] }),
   });
+
+  // Stable handlers so the memoized WordRow only re-renders when its own entry
+  // changes. react-query's `mutate` identity is stable across renders.
+  const handleDelete = useCallback(
+    (word: string) => deleteMutation.mutate(word),
+    [deleteMutation.mutate],
+  );
+  const handleUpdate = useCallback(
+    (word: string, alternatives: string[]) =>
+      updateMutation.mutate({ word, alternatives }),
+    [updateMutation.mutate],
+  );
 
   const rowError = deleteMutation.error ?? updateMutation.error;
 
@@ -298,10 +316,8 @@ function WordList({ entries }: { entries: Entry[] }) {
             <WordRow
               key={e.word}
               entry={e}
-              onDelete={() => deleteMutation.mutate(e.word)}
-              onUpdate={(alts) =>
-                updateMutation.mutate({ word: e.word, alternatives: alts })
-              }
+              onDelete={handleDelete}
+              onUpdate={handleUpdate}
             />
           ))}
         </ul>

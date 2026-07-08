@@ -1,3 +1,5 @@
+import { postProcessSchema } from "@freestyle-voice/validations";
+import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import {
   FreestyleCloudAuthError,
@@ -7,40 +9,39 @@ import { getLanguageSetting } from "../lib/language.js";
 import { postProcess } from "../lib/post-process.js";
 import { invalidateSession } from "../lib/sessions.js";
 
-const postProcessRoute = new Hono().post("/", async (c) => {
-  const body = await c.req.json().catch(() => null);
+const postProcessRoute = new Hono().post(
+  "/",
+  zValidator("json", postProcessSchema),
+  async (c) => {
+    const body = c.req.valid("json");
 
-  if (!body || typeof body.text !== "string" || !body.text.trim()) {
-    return c.json({ error: "text field is required" }, 400);
-  }
+    const appContext: string | null = body.appContext ?? null;
+    const language = body.language ?? getLanguageSetting();
 
-  const appContext: string | null = body.appContext ?? null;
-  const language =
-    typeof body.language === "string" ? body.language : getLanguageSetting();
+    let pp: Awaited<ReturnType<typeof postProcess>>;
+    try {
+      pp = await postProcess(body.text, appContext, {
+        language,
+        source: "multi_segment",
+      });
+    } catch (err) {
+      if (err instanceof FreestyleCloudAuthError) {
+        invalidateSession();
+        return c.json({ error: "cloud_auth_required" }, 401);
+      }
+      if (err instanceof FreestyleCloudUsageError) {
+        return c.json({ error: "usage_exceeded", resetsAt: err.resetsAt }, 429);
+      }
+      throw err;
+    }
 
-  let pp: Awaited<ReturnType<typeof postProcess>>;
-  try {
-    pp = await postProcess(body.text, appContext, {
-      language,
-      source: "multi_segment",
+    return c.json({
+      cleaned: pp.cleaned,
+      inputTokens: pp.inputTokens,
+      outputTokens: pp.outputTokens,
+      costUsd: pp.costUsd,
     });
-  } catch (err) {
-    if (err instanceof FreestyleCloudAuthError) {
-      invalidateSession();
-      return c.json({ error: "cloud_auth_required" }, 401);
-    }
-    if (err instanceof FreestyleCloudUsageError) {
-      return c.json({ error: "usage_exceeded", resetsAt: err.resetsAt }, 429);
-    }
-    throw err;
-  }
-
-  return c.json({
-    cleaned: pp.cleaned,
-    inputTokens: pp.inputTokens,
-    outputTokens: pp.outputTokens,
-    costUsd: pp.costUsd,
-  });
-});
+  },
+);
 
 export default postProcessRoute;

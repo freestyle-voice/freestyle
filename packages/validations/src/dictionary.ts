@@ -16,5 +16,15 @@ export const dictionarySchema = z.object({
 
 export const updateDictionarySchema = dictionarySchema.partial();
 
+export const DICTIONARY_IMPORT_MAX = 5_000;
+
+// Lenient element shape: the import route counts blank/whitespace entries as
+// "skipped" rather than rejecting the whole payload, so we only assert the
+// JSON shape (array of {key, value} strings) here and let the route filter.
+export const importDictionarySchema = z
+  .array(z.object({ key: z.string(), value: z.string() }))
+  .max(DICTIONARY_IMPORT_MAX, "Too many dictionary entries");
+
 export type DictionaryInput = z.infer<typeof dictionarySchema>;
 export type UpdateDictionaryInput = z.infer<typeof updateDictionarySchema>;
+export type ImportDictionaryInput = z.infer<typeof importDictionarySchema>;

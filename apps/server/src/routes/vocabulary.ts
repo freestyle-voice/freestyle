@@ -2,6 +2,7 @@ import {
   createVocabularySchema,
   exportSchema,
   importVocabularySchema,
+  querySchema,
   updateVocabularySchema,
 } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
@@ -10,19 +11,24 @@ import { getDb } from "../lib/db.js";
 import { capture } from "../lib/posthog.js";
 import type { VocabularyRow } from "../lib/vocabulary.js";
 
-const vocabulary = new Hono()
-  .get("/", (c) => {
-    const db = getDb();
-    const limit = Math.min(Number(c.req.query("limit") || 50), 200);
-    const offset = Number(c.req.query("offset") || 0);
-    const search = c.req.query("search")?.trim() || "";
-    const orderByParam = c.req.query("orderBy") || "-created_at";
+const ALLOWED_ORDER_COLUMNS = new Set(["created_at", "updated_at", "term"]);
 
-    const desc = orderByParam.startsWith("-");
-    const column = desc ? orderByParam.slice(1) : orderByParam;
-    const allowedColumns = new Set(["created_at", "updated_at", "term"]);
-    const orderColumn = allowedColumns.has(column) ? column : "created_at";
-    const orderDir = desc ? "DESC" : "ASC";
+const vocabulary = new Hono()
+  .get("/", zValidator("query", querySchema), (c) => {
+    const db = getDb();
+    const { limit, offset, search: rawSearch, orderBy } = c.req.valid("query");
+    const search = rawSearch?.trim() || "";
+
+    const orderColumn =
+      orderBy && ALLOWED_ORDER_COLUMNS.has(orderBy.column)
+        ? orderBy.column
+        : "created_at";
+    // Default ordering (no orderBy param) is newest-first.
+    const orderDir = orderBy
+      ? orderBy.order === "desc"
+        ? "DESC"
+        : "ASC"
+      : "DESC";
 
     let rows: VocabularyRow[];
     let countRow: { count: number };

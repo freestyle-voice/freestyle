@@ -1,4 +1,6 @@
 import { createAppLogger } from "@freestyle-voice/utils";
+import { serverStartSchema } from "@freestyle-voice/validations";
+import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { capture } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
@@ -97,11 +99,8 @@ const whisper = new Hono()
 
     return c.json({ ok: deleted });
   })
-  .post("/server/start", async (c) => {
-    const body = await c.req
-      .json<{ modelId?: string }>()
-      .catch(() => ({ modelId: undefined }));
-    let modelId = body.modelId;
+  .post("/server/start", zValidator("json", serverStartSchema), async (c) => {
+    let modelId = c.req.valid("json").modelId;
 
     if (!modelId) {
       const defaults = getDefaultModels();

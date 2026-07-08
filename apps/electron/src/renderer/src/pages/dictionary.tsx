@@ -22,7 +22,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -459,7 +459,7 @@ function FormField({
   );
 }
 
-function EntryRow({
+const EntryRow = memo(function EntryRow({
   entry,
   isLast,
   onEdit,
@@ -512,7 +512,7 @@ function EntryRow({
       </div>
     </div>
   );
-}
+});
 
 function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
   const { t } = useTranslation();

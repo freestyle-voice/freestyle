@@ -1,3 +1,5 @@
+import { historyQuerySchema } from "@freestyle-voice/validations";
+import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { capture } from "../lib/posthog.js";
@@ -24,31 +26,29 @@ const ALLOWED_ORDER_COLUMNS = new Set([
   "cost_usd",
 ]);
 
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
 const history = new Hono()
-  .get("/", (c) => {
+  .get("/", zValidator("query", historyQuerySchema), (c) => {
     const db = getDb();
-    const limit = Math.min(Number(c.req.query("limit") || 50), 200);
-    const offset = Number(c.req.query("offset") || 0);
-    const search = c.req.query("search")?.trim() || "";
-    const start_date_param = c.req.query("start_date");
-    const end_date_param = c.req.query("end_date");
-    const start_date =
-      start_date_param && DATE_REGEX.test(start_date_param)
-        ? start_date_param
-        : null;
-    const end_date =
-      end_date_param && DATE_REGEX.test(end_date_param) ? end_date_param : null;
-    const orderByParam = c.req.query("orderBy") || "-created_at";
+    const {
+      limit,
+      offset,
+      search: rawSearch,
+      orderBy,
+      start_date = null,
+      end_date = null,
+    } = c.req.valid("query");
+    const search = rawSearch?.trim() || "";
 
-    // Parse orderBy: "-created_at" means DESC, "created_at" means ASC
-    const desc = orderByParam.startsWith("-");
-    const column = desc ? orderByParam.slice(1) : orderByParam;
-    const orderColumn = ALLOWED_ORDER_COLUMNS.has(column)
-      ? column
-      : "created_at";
-    const orderDir = desc ? "DESC" : "ASC";
+    const orderColumn =
+      orderBy && ALLOWED_ORDER_COLUMNS.has(orderBy.column)
+        ? orderBy.column
+        : "created_at";
+    // Default ordering (no orderBy param) is newest-first.
+    const orderDir = orderBy
+      ? orderBy.order === "desc"
+        ? "DESC"
+        : "ASC"
+      : "DESC";
 
     // Dynamically build WHERE conditions
     const conditions: string[] = [];
@@ -92,15 +92,11 @@ const history = new Hono()
       offset,
     });
   })
-  .get("/stats", (c) => {
+  .get("/stats", zValidator("query", historyQuerySchema), (c) => {
     const db = getDb();
 
-    const startDateParam = c.req.query("start_date");
-    const endDateParam = c.req.query("end_date");
-    const startDate =
-      startDateParam && DATE_REGEX.test(startDateParam) ? startDateParam : null;
-    const endDate =
-      endDateParam && DATE_REGEX.test(endDateParam) ? endDateParam : null;
+    const { start_date: startDate = null, end_date: endDate = null } =
+      c.req.valid("query");
 
     const conditions: string[] = [];
     const params: string[] = [];

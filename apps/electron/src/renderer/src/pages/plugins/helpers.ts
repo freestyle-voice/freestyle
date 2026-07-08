@@ -1,12 +1,61 @@
+import { ONE_HOUR } from "@renderer/lib/query";
 import type { PluginInfo, PluginUpdateResult } from "@shared/plugins";
 import { useQuery } from "@tanstack/react-query";
-import { type LucideIcon, icons as lucideIcons, Puzzle } from "lucide-react";
+import {
+  Bot,
+  Braces,
+  Code,
+  FileMusic,
+  FileText,
+  Filter,
+  Globe,
+  Languages,
+  type LucideIcon,
+  MessageSquare,
+  Mic,
+  Music,
+  Puzzle,
+  Settings,
+  Shield,
+  Sparkles,
+  Star,
+  Terminal,
+  Type,
+  Volume2,
+  Wand2,
+  Zap,
+} from "lucide-react";
 import { useMemo } from "react";
 
-export const ONE_HOUR = 60 * 60 * 1000;
+// Curated icon set for plugin manifests. Importing the whole lucide `icons`
+// barrel pulled ~1500 icons into the bundle just to resolve one by name;
+// plugins pick from this list and anything else falls back to the puzzle piece.
+const PLUGIN_ICONS: Record<string, LucideIcon> = {
+  Bot,
+  Braces,
+  Code,
+  FileMusic,
+  FileText,
+  Filter,
+  Globe,
+  Languages,
+  MessageSquare,
+  Mic,
+  Music,
+  Puzzle,
+  Settings,
+  Shield,
+  Sparkles,
+  Star,
+  Terminal,
+  Type,
+  Volume2,
+  Wand2,
+  Zap,
+};
 
 /**
- * Resolve a lucide icon by name, accepting PascalCase (`FileMusic`) or
+ * Resolve a curated lucide icon by name, accepting PascalCase (`FileMusic`) or
  * kebab-case (`file-music`). Falls back to a puzzle piece.
  */
 export function resolvePluginIcon(name: string | undefined): LucideIcon {
@@ -16,7 +65,7 @@ export function resolvePluginIcon(name: string | undefined): LucideIcon {
     .filter(Boolean)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join("");
-  return (lucideIcons as Record<string, LucideIcon>)[pascal] ?? Puzzle;
+  return PLUGIN_ICONS[pascal] ?? Puzzle;
 }
 
 /**

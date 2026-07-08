@@ -42,8 +42,9 @@ import { getClient } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import type { AvailableModel } from "@renderer/lib/models";
 import { cn } from "@renderer/lib/utils";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import {
@@ -221,7 +222,7 @@ const OVERALL_OPTIONS: ToneCardOption<CleanupOverallTone>[] = [
 export default function TonePage(): React.JSX.Element {
   const { t } = useTranslation();
   const cloudAuth = useCloudAuth();
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [llmCleanup, setLlmCleanup] = useState(false);
   const [cleanupIntensity, setCleanupIntensity] =
     useState<CleanupIntensity>("medium");
@@ -241,7 +242,6 @@ export default function TonePage(): React.JSX.Element {
     DEFAULT_CLEANUP_OVERALL_TONE,
   );
   const [assignments, setAssignments] = useState<CleanupAppAssignment[]>([]);
-  const [hasCleanupModel, setHasCleanupModel] = useState(false);
   const [usingCloud, setUsingCloud] = useState(false);
   const [activeTab, setActiveTab] = usePersistentState<ToneTab>(
     "tone.activeTab",
@@ -251,68 +251,80 @@ export default function TonePage(): React.JSX.Element {
 
   const customPromptDirty = cleanupCustomPrompt !== savedCleanupCustomPrompt;
 
-  const loadData = useCallback(async () => {
-    try {
-      const client = getClient();
-      const [settingsRes, modelsRes] = await Promise.all([
-        client.api.settings.$get(),
-        client.api.models.configured.$get(),
-      ]);
+  const settingsQuery = useQuery({
+    queryKey: ["settings-all"],
+    queryFn: async () => {
+      const res = await getClient().api.settings.$get();
+      if (!res.ok) throw new Error("Failed to load settings");
+      return (await res.json()) as Record<string, string>;
+    },
+  });
 
-      if (settingsRes.ok) {
-        const settings = await settingsRes.json();
-        const cleanupOn = settings[SETTINGS_KEYS.llmCleanup] === "true";
-        setLlmCleanup(cleanupOn);
+  const configuredQuery = useQuery({
+    queryKey: ["models", "configured"],
+    queryFn: async () => {
+      const res = await getClient().api.models.configured.$get();
+      if (!res.ok) throw new Error("Failed to load configured models");
+      return (await res.json()) as ConfiguredModel[];
+    },
+  });
 
-        setCleanupIntensity(
-          parseCleanupIntensity(settings[SETTINGS_KEYS.cleanupIntensity]),
-        );
+  const loading = settingsQuery.isLoading || configuredQuery.isLoading;
 
-        const prompt = settings[SETTINGS_KEYS.cleanupCustomPrompt];
-        if (typeof prompt === "string") {
-          setCleanupCustomPrompt(prompt);
-          setSavedCleanupCustomPrompt(prompt);
-        }
+  // Whether a default cleanup (LLM) model is configured — drives the banners.
+  const hasCleanupModel = useMemo(
+    () =>
+      (configuredQuery.data ?? []).some(
+        (model) => model.type === "llm" && model.is_default === 1,
+      ),
+    [configuredQuery.data],
+  );
 
-        setPersonalTone(
-          parseCleanupPersonalTone(settings[SETTINGS_KEYS.cleanupPersonalTone]),
-        );
-        setWorkTone(
-          parseCleanupWorkTone(settings[SETTINGS_KEYS.cleanupWorkTone]),
-        );
-        setEmailTone(
-          parseCleanupEmailTone(settings[SETTINGS_KEYS.cleanupEmailTone]),
-        );
-        setOverallTone(
-          parseCleanupOverallTone(settings[SETTINGS_KEYS.cleanupOverallTone]),
-        );
-        setAssignments(
-          normalizeManagedAssignments(
-            parseCleanupAppAssignments(
-              settings[SETTINGS_KEYS.cleanupAppAssignments],
-            ),
-          ),
-        );
-      }
-
-      if (modelsRes.ok) {
-        const configured = (await modelsRes.json()) as ConfiguredModel[];
-        setHasCleanupModel(
-          configured.some(
-            (model) => model.type === "llm" && model.is_default === 1,
-          ),
-        );
-      }
-    } catch (err) {
-      console.error("Failed to load tone settings:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Seed editable tone/cleanup state from persisted settings once. Save
+  // handlers update local state directly, so we don't re-seed on later
+  // invalidations (which would clobber in-progress edits).
+  const seededRef = useRef(false);
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    const settings = settingsQuery.data;
+    if (!settings || seededRef.current) return;
+    seededRef.current = true;
+
+    setLlmCleanup(settings[SETTINGS_KEYS.llmCleanup] === "true");
+    setCleanupIntensity(
+      parseCleanupIntensity(settings[SETTINGS_KEYS.cleanupIntensity]),
+    );
+    const prompt = settings[SETTINGS_KEYS.cleanupCustomPrompt];
+    if (typeof prompt === "string") {
+      setCleanupCustomPrompt(prompt);
+      setSavedCleanupCustomPrompt(prompt);
+    }
+    setPersonalTone(
+      parseCleanupPersonalTone(settings[SETTINGS_KEYS.cleanupPersonalTone]),
+    );
+    setWorkTone(parseCleanupWorkTone(settings[SETTINGS_KEYS.cleanupWorkTone]));
+    setEmailTone(
+      parseCleanupEmailTone(settings[SETTINGS_KEYS.cleanupEmailTone]),
+    );
+    setOverallTone(
+      parseCleanupOverallTone(settings[SETTINGS_KEYS.cleanupOverallTone]),
+    );
+    setAssignments(
+      normalizeManagedAssignments(
+        parseCleanupAppAssignments(
+          settings[SETTINGS_KEYS.cleanupAppAssignments],
+        ),
+      ),
+    );
+  }, [settingsQuery.data]);
+
+  const reload = useCallback(
+    () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["settings-all"] }),
+        queryClient.invalidateQueries({ queryKey: ["models", "configured"] }),
+      ]),
+    [queryClient],
+  );
 
   const saveSetting = useCallback(async (key: string, value: string) => {
     // The Hono client does not throw on non-2xx — surface server rejections so
@@ -369,13 +381,13 @@ export default function TonePage(): React.JSX.Element {
 
       await saveSetting(SETTINGS_KEYS.llmCleanup, "true");
       setLlmCleanup(true);
-      await loadData();
+      await reload();
     } catch (err) {
       console.error("Failed to enable cleanup:", err);
     } finally {
       setUsingCloud(false);
     }
-  }, [cloudAuth, loadData, saveSetting, usingCloud]);
+  }, [cloudAuth, reload, saveSetting, usingCloud]);
 
   const selectCleanupMode = useCallback(
     (next: CleanupCardValue) => {

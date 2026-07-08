@@ -1,3 +1,5 @@
+import { configureModelSchema } from "@freestyle-voice/validations";
+import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import {
@@ -429,22 +431,9 @@ const models = new Hono()
     }[];
     return c.json(rows);
   })
-  .post("/configured", async (c) => {
+  .post("/configured", zValidator("json", configureModelSchema), (c) => {
     const db = getDb();
-    const body = await c.req.json<{
-      provider: string;
-      model_id: string;
-      model_name: string;
-      type: "voice" | "llm";
-      is_default?: boolean;
-    }>();
-
-    if (!body.provider || !body.model_id || !body.model_name || !body.type) {
-      return c.json(
-        { error: "provider, model_id, model_name, and type are required" },
-        400,
-      );
-    }
+    const body = c.req.valid("json");
 
     // If setting as default, unset any existing default for this type
     if (body.is_default) {

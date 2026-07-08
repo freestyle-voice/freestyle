@@ -141,9 +141,6 @@
       "outputModeDesc": "アクティブなアプリに直接貼り付けるか、クリップボードにコピーします。",
       "outputModePaste": "アプリに貼り付け",
       "outputModeClipboard": "クリップボードにコピー",
-      "transcriptionPrompt": "文字起こしプロンプト",
-      "transcriptionPromptDesc": "専門用語、人名、業界用語などを指定することで、音声モデルの認識精度を向上させます。",
-      "transcriptionPromptPlaceholder": "例: TypeScript, React, Kubernetes, JIRA…",
       "sound": "サウンドフィードバック",
       "soundDesc": "録音の開始時と終了時に短いチャイム音を鳴らします。",
       "needsModifier": "ホットキーには修飾キーまたはマウスのサイドボタンが必要です"

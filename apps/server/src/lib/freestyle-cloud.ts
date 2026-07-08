@@ -399,10 +399,7 @@ export async function transcribeWithFreestyleCloud(
   if (opts.language) form.append("language", opts.language);
   if (opts.appContext) form.append("appContext", opts.appContext);
   // Vocabulary bias applies to the recognizer regardless of cleanup mode.
-  if (
-    opts.vocabulary &&
-    (opts.vocabulary.terms?.length || opts.vocabulary.text)
-  ) {
+  if (opts.vocabulary?.terms.length) {
     form.append("vocabulary", JSON.stringify(opts.vocabulary));
   }
   if (opts.mode === "raw") {

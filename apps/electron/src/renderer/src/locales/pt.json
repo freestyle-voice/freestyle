@@ -141,9 +141,6 @@
       "outputModeDesc": "Colar no aplicativo ativo ou copiar para a área de transferência.",
       "outputModePaste": "Colar no aplicativo",
       "outputModeClipboard": "Copiar para a área de transferência",
-      "transcriptionPrompt": "Prompt de transcrição",
-      "transcriptionPromptDesc": "Liste termos de domínio, nomes ou jargões para guiar o modelo de transcrição.",
-      "transcriptionPromptPlaceholder": "ex: TypeScript, React, Kubernetes, JIRA...",
       "sound": "Feedback sonoro",
       "soundDesc": "Sons suaves no início e fim da gravação.",
       "needsModifier": "Atalhos precisam de uma tecla modificadora"

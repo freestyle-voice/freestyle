@@ -21,7 +21,6 @@ export const SETTINGS_KEYS = {
   outputMode: "output_mode",
   soundEnabled: "sound_enabled",
   theme: "theme",
-  transcriptionPrompt: "transcription_prompt",
 } as const;
 
 export type SettingsKey = (typeof SETTINGS_KEYS)[keyof typeof SETTINGS_KEYS];

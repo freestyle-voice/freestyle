@@ -122,7 +122,6 @@ export default function SettingsPage(): React.JSX.Element {
   const [historyPaused, setHistoryPaused] = useState(false);
   const [audioPlaybackMode, setAudioPlaybackMode] =
     useState<AudioPlaybackMode>("off");
-  const [transcriptionPrompt, setTranscriptionPrompt] = useState("");
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -401,15 +400,6 @@ export default function SettingsPage(): React.JSX.Element {
         setAudioPlaybackMode(legacyDuckData?.value === "true" ? "duck" : "off");
       } catch {}
     })();
-    getClient()
-      .api.settings[":key"].$get({
-        param: { key: SETTINGS_KEYS.transcriptionPrompt },
-      })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value) setTranscriptionPrompt(data.value);
-      })
-      .catch(() => {});
     // Auto-update setting
     window.api
       ?.getAutoUpdate()
@@ -880,30 +870,6 @@ export default function SettingsPage(): React.JSX.Element {
                   ]}
                   active={outputMode}
                   onSelect={handleOutputModeChange}
-                />
-              </Row>
-
-              <Row
-                label={t("settings.recording.transcriptionPrompt")}
-                desc={t("settings.recording.transcriptionPromptDesc")}
-              >
-                <Input
-                  id="settings-transcription-prompt"
-                  type="text"
-                  value={transcriptionPrompt}
-                  onChange={(e) => setTranscriptionPrompt(e.target.value)}
-                  onBlur={() => {
-                    getClient()
-                      .api.settings[":key"].$put({
-                        param: { key: SETTINGS_KEYS.transcriptionPrompt },
-                        json: { value: transcriptionPrompt },
-                      })
-                      .catch(() => {});
-                  }}
-                  placeholder={t(
-                    "settings.recording.transcriptionPromptPlaceholder",
-                  )}
-                  className="max-w-md"
                 />
               </Row>
 

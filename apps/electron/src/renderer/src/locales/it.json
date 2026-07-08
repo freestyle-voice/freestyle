@@ -141,9 +141,6 @@
       "outputModeDesc": "Incolla nell'app attiva o copia negli appunti.",
       "outputModePaste": "Incolla nell'app",
       "outputModeClipboard": "Copia negli appunti",
-      "transcriptionPrompt": "Prompt di trascrizione",
-      "transcriptionPromptDesc": "Elenca termini specifici del dominio per aiutare la precisione del modello.",
-      "transcriptionPromptPlaceholder": "es. TypeScript, React, Kubernetes, JIRA...",
       "sound": "Feedback sonoro",
       "soundDesc": "Suoni leggeri all'inizio e alla fine della registrazione.",
       "needsModifier": "Le scorciatoie necessitano di un tasto modificatore"

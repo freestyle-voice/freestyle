@@ -48,11 +48,11 @@ import {
   Check,
   ChevronLeft,
   ClipboardPaste,
+  ExternalLink,
   HardDrive,
   Key,
   Keyboard,
   Loader2,
-  LogIn,
   Mic,
   Shield,
   X,
@@ -811,7 +811,6 @@ export default function OnboardingPage(): React.JSX.Element {
             draftKeys={draftKeys}
             captureHint={captureHint}
             modelReady={chosenReady}
-            modelName={chosen?.name}
             localModel={showLocalSetupPanel ? localSetupModel : undefined}
             onDownloadLocal={startLocalDownload}
             onRetryLocal={retryLocalDownload}
@@ -823,10 +822,6 @@ export default function OnboardingPage(): React.JSX.Element {
                   : "notReady"
                 : null
             }
-            onOpenSelector={() => {
-              capture("onboarding_model_selector_opened");
-              setShowSelector(true);
-            }}
             onStartRecording={() => {
               capture("onboarding_hotkey_change_started");
               startHotkeyRecording();
@@ -1146,24 +1141,30 @@ function CloudStep({
           <Check className="text-accent-foreground size-4 shrink-0" />
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={onSignIn}
-          disabled={signingIn}
-          className="mt-6 flex w-full items-center justify-center gap-2.5 rounded-[11px] bg-primary px-5 py-3 text-[14px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-60"
-        >
-          {signingIn ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              Signing in…
-            </>
-          ) : (
-            <>
-              <LogIn className="size-[18px]" />
-              Sign in / Create account
-            </>
-          )}
-        </button>
+        <>
+          <p className="text-muted-foreground mt-3 max-w-[340px] text-[14px] leading-relaxed">
+            Do work 4X faster with voice. Sign in to get started.
+          </p>
+
+          <button
+            type="button"
+            onClick={onSignIn}
+            disabled={signingIn}
+            className="mt-7 flex w-full items-center justify-center gap-2.5 rounded-[11px] bg-primary px-5 py-3 text-[14px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-60"
+          >
+            {signingIn ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Opening browser…
+              </>
+            ) : (
+              <>
+                Sign in via browser
+                <ExternalLink className="size-4 opacity-70" />
+              </>
+            )}
+          </button>
+        </>
       )}
 
       {error && (
@@ -1178,15 +1179,19 @@ function CloudStep({
           <ArrowRight data-icon="inline-end" />
         </Button>
       ) : (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onSkip}
-          disabled={signingIn}
-          className="text-muted-foreground mt-2 h-auto px-2 py-1 text-[12px]"
-        >
-          Skip for now
-        </Button>
+        // Skipping sign-in is a local-development affordance only — in
+        // production the browser sign-in is the sole way past this step.
+        import.meta.env.DEV && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onSkip}
+            disabled={signingIn}
+            className="text-muted-foreground mt-2 h-auto px-2 py-1 text-[12px]"
+          >
+            Skip for now (dev)
+          </Button>
+        )
       )}
     </div>
   );
@@ -1606,13 +1611,11 @@ function TutorialStep({
   draftKeys,
   captureHint,
   modelReady,
-  modelName,
   localModel,
   onDownloadLocal,
   onRetryLocal,
   canFinish,
   finishBlockedReason,
-  onOpenSelector,
   onStartRecording,
   onCancelRecording,
   onDictation,
@@ -1624,13 +1627,11 @@ function TutorialStep({
   draftKeys: string[];
   captureHint: string;
   modelReady: boolean;
-  modelName?: string;
   localModel: VoiceItem | undefined;
   onDownloadLocal: () => void;
   onRetryLocal: () => void;
   canFinish: boolean;
   finishBlockedReason: "downloading" | "notReady" | null;
-  onOpenSelector: () => void;
   onStartRecording: () => void;
   onCancelRecording: () => void;
   onDictation: () => void;
@@ -1651,19 +1652,6 @@ function TutorialStep({
         onDownload={onDownloadLocal}
         onRetry={onRetryLocal}
       />
-
-      {/* The model is visible and changeable here — where it can be tested. */}
-      <div className="mt-3 flex justify-center">
-        <Button
-          variant="link"
-          onClick={onOpenSelector}
-          className="mono text-muted-foreground hover:text-foreground h-auto p-0 text-[11px] underline underline-offset-[3px]"
-        >
-          {modelReady && modelName
-            ? t("onboarding.tutorial.usingModel", { name: modelName })
-            : t("onboarding.tutorial.chooseModel")}
-        </Button>
-      </div>
 
       {/* Hotkey rebind — a single minimal control */}
       <div className="mt-5 flex justify-center">

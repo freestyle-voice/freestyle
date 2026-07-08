@@ -141,9 +141,6 @@
       "outputModeDesc": "Coller dans l'app active ou copier dans le presse-papiers.",
       "outputModePaste": "Coller dans l'app",
       "outputModeClipboard": "Copier dans le presse-papiers",
-      "transcriptionPrompt": "Invite de transcription",
-      "transcriptionPromptDesc": "Listez des termes du domaine, noms ou jargon pour améliorer la précision du modèle vocal.",
-      "transcriptionPromptPlaceholder": "ex. TypeScript, React, Kubernetes, JIRA…",
       "sound": "Retour sonore",
       "soundDesc": "Carillons doux au début et à la fin de l'enregistrement.",
       "needsModifier": "Les raccourcis nécessitent une touche modificatrice ou un bouton latéral de souris"

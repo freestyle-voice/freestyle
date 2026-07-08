@@ -158,9 +158,6 @@
       "outputModeDesc": "Paste into the active app, or copy to clipboard.",
       "outputModePaste": "Paste into app",
       "outputModeClipboard": "Copy to clipboard",
-      "transcriptionPrompt": "Transcription prompt",
-      "transcriptionPromptDesc": "List domain terms, names, or jargon to nudge the speech model toward better accuracy.",
-      "transcriptionPromptPlaceholder": "e.g. TypeScript, React, Kubernetes, JIRA…",
       "sound": "Sound feedback",
       "soundDesc": "Soft chimes at the start and end of recording.",
       "needsModifier": "Hotkeys need a modifier or side mouse button"

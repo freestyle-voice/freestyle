@@ -141,9 +141,6 @@
       "outputModeDesc": "Pegar en la app activa o copiar al portapapeles.",
       "outputModePaste": "Pegar en la app",
       "outputModeClipboard": "Copiar al portapapeles",
-      "transcriptionPrompt": "Indicación de transcripción",
-      "transcriptionPromptDesc": "Lista términos de dominio, nombres o jerga para mejorar la precisión del modelo de voz.",
-      "transcriptionPromptPlaceholder": "ej. TypeScript, React, Kubernetes, JIRA…",
       "sound": "Retroalimentación de sonido",
       "soundDesc": "Campanillas suaves al inicio y al final de la grabación.",
       "needsModifier": "Los atajos necesitan una tecla modificadora o botón lateral del ratón"

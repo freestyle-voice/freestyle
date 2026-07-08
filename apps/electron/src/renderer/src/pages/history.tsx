@@ -224,6 +224,17 @@ export default function HistoryPage(): React.JSX.Element {
 
   const filterCount = activePreset !== "all-time" ? 1 : 0;
 
+  // Whether the current filter + view state already matches the page defaults,
+  // so the reset button can be disabled when there's nothing to clear.
+  // `filterOpen` is excluded — it's the panel's own visibility, not a filter.
+  const isDefaultFilters =
+    activePreset === DEFAULT_HISTORY_FILTERS.preset &&
+    customStartDate === DEFAULT_HISTORY_FILTERS.customStartDate &&
+    customEndDate === DEFAULT_HISTORY_FILTERS.customEndDate &&
+    diffMode === DEFAULT_HISTORY_FILTERS.diffMode &&
+    showAiEdits === DEFAULT_HISTORY_FILTERS.showAiEdits &&
+    nerdMode === DEFAULT_HISTORY_FILTERS.nerdMode;
+
   const applyPreset = useCallback(
     (preset: HistoryPreset): void => {
       patchFilters({ preset });
@@ -628,6 +639,7 @@ export default function HistoryPage(): React.JSX.Element {
                 onPreset={applyPreset}
                 onSelectRange={selectDateRange}
                 onReset={resetFilters}
+                resetDisabled={isDefaultFilters}
                 onClose={closeFilter}
                 onDiffModeChange={setDiffMode}
                 onShowAiEditsChange={setShowAiEdits}
@@ -667,6 +679,7 @@ const FilterPanel = memo(function FilterPanel({
   onPreset,
   onSelectRange,
   onReset,
+  resetDisabled,
   onClose,
   onDiffModeChange,
   onShowAiEditsChange,
@@ -681,6 +694,7 @@ const FilterPanel = memo(function FilterPanel({
   onPreset: (preset: HistoryPreset) => void;
   onSelectRange: (range: DateRange | undefined) => void;
   onReset: () => void;
+  resetDisabled: boolean;
   onClose: () => void;
   onDiffModeChange: (value: boolean) => void;
   onShowAiEditsChange: (value: boolean) => void;
@@ -696,7 +710,7 @@ const FilterPanel = memo(function FilterPanel({
     // Wrapper stretches to the full height of the feed column so the divider
     // line runs edge-to-edge; the panel itself stays sticky within it.
     <div className="border-border/70 border-l">
-      <aside className="bg-background/25 sticky top-0 flex h-[calc(100vh-88px)] min-h-[520px] flex-col overflow-hidden px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)] animate-in fade-in-0 slide-in-from-right-3 duration-200">
+      <aside className="sticky top-0 flex h-[calc(100vh-88px)] min-h-[520px] flex-col overflow-hidden px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)] animate-in fade-in-0 slide-in-from-right-3 duration-200">
         <div className="border-border/70 flex h-10 items-center gap-1.5 border-b pb-3">
           <div className="min-w-0 flex-1">
             <h2 className="text-foreground text-[14px] font-semibold">
@@ -707,6 +721,7 @@ const FilterPanel = memo(function FilterPanel({
             variant="ghost"
             size="icon-sm"
             onClick={onReset}
+            disabled={resetDisabled}
             className="text-destructive hover:text-destructive hover:bg-destructive/10"
             aria-label={t("history.reset")}
             title={t("history.reset")}

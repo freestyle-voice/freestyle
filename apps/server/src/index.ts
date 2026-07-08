@@ -8,6 +8,7 @@ import { logger } from "hono/logger";
 import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
 import { isTransientCloudError } from "./lib/freestyle-cloud.js";
+import { startHistoryRetentionSweep } from "./lib/history-store.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
   activateManagedMlxRuntimeForAppVersion,
@@ -146,6 +147,8 @@ export async function startServer(
 
   const pluginMiddleware = plugins().collectMiddleware();
   const app = createApp(pluginMiddleware);
+
+  startHistoryRetentionSweep();
 
   return new Promise((resolve, reject) => {
     const server = serve(

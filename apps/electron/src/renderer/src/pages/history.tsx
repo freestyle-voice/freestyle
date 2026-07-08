@@ -514,7 +514,7 @@ export default function HistoryPage(): React.JSX.Element {
             </div>
 
             {filterOpen && (
-              <aside className="border-border/70 bg-background/25 sticky top-0 flex h-[calc(100vh-88px)] min-h-[520px] flex-col overflow-hidden border-l px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)] animate-in fade-in-0 slide-in-from-right-3 duration-200">
+              <aside className="border-border/70 bg-sidebar sticky top-0 flex h-[calc(100vh-88px)] min-h-[520px] flex-col overflow-hidden border-l px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)] animate-in fade-in-0 slide-in-from-right-3 duration-200">
                 <div className="border-border/70 flex h-10 items-center gap-1.5 border-b pb-3">
                   <div className="min-w-0 flex-1">
                     <h2 className="text-foreground text-[14px] font-semibold">

@@ -23,7 +23,7 @@ import {
   Puzzle,
   Search,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import {
@@ -52,9 +52,12 @@ export default function PluginsPage(): React.JSX.Element {
     queryFn: () => window.api.refreshPlugins(),
   });
 
-  const setPlugins = (updated: PluginInfo[]) => {
-    queryClient.setQueryData(["plugins"], updated);
-  };
+  const setPlugins = useCallback(
+    (updated: PluginInfo[]) => {
+      queryClient.setQueryData(["plugins"], updated);
+    },
+    [queryClient],
+  );
 
   const { data: updatesMap } = usePluginUpdates(plugins);
 

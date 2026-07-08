@@ -57,14 +57,27 @@ export default function ModelsPage(): React.JSX.Element {
 
   const cloudUserId = cloudAuth.user?.id ?? null;
   const reloadModels = m.reload;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: refetch when the signed-in user changes so the sign-in switch to Freestyle Transcribe (and the sign-out revert) is reflected.
+  // Refetch only when the signed-in user actually changes, so the sign-in
+  // switch to Freestyle Transcribe (and the sign-out revert) is reflected. The
+  // initial mount is skipped — the queries already load themselves, so reloading
+  // here would just refetch the same data a second time.
+  const prevCloudUserId = useRef<string | null>(cloudUserId);
   useEffect(() => {
+    if (prevCloudUserId.current === cloudUserId) return;
+    prevCloudUserId.current = cloudUserId;
     void reloadModels();
   }, [cloudUserId, reloadModels]);
 
-  // Keep Freestyle Cleanup paired with Freestyle Transcribe.
+  // Keep Freestyle Cleanup paired with Freestyle Transcribe. Wait for the
+  // persisted settings to seed into `m.llmCleanup` first — reading it before
+  // then sees the initial `false` and re-configures cleanup on every mount.
   useEffect(() => {
-    if (m.loading || !freestyleVoiceActive || syncingFreestyleCleanup.current) {
+    if (
+      m.loading ||
+      !m.settingsSeeded ||
+      !freestyleVoiceActive ||
+      syncingFreestyleCleanup.current
+    ) {
       return;
     }
     const needsSync =
@@ -88,6 +101,7 @@ export default function ModelsPage(): React.JSX.Element {
     })();
   }, [
     m.loading,
+    m.settingsSeeded,
     freestyleVoiceActive,
     m.llmCleanup,
     m.defaultLlm?.provider,

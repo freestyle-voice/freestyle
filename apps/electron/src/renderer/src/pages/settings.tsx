@@ -26,7 +26,9 @@ import { getClient } from "@renderer/lib/api";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
+import { SETTINGS_QUERY_KEY, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   Download,
@@ -288,6 +290,37 @@ export default function SettingsPage(): React.JSX.Element {
     cancelRecording: cancelHotkeyRecording,
   } = useHotkeyRecorder(handleHotkeyRecorded);
 
+  // All persisted settings in one request (replaces ~10 individual GETs).
+  const settingsQuery = useQuery(settingsQueryOptions());
+
+  // Seed local form state from the batch once it first resolves. Handlers
+  // persist changes directly, so we only seed once (guarded) to avoid
+  // clobbering edits if the query is later invalidated.
+  const settingsSeeded = useRef(false);
+  useEffect(() => {
+    const s = settingsQuery.data;
+    if (!s || settingsSeeded.current) return;
+    settingsSeeded.current = true;
+
+    if (s[SETTINGS_KEYS.micDeviceId])
+      setSelectedDevice(s[SETTINGS_KEYS.micDeviceId]);
+    if (s[SETTINGS_KEYS.hotkey]) setHotkey(s[SETTINGS_KEYS.hotkey]);
+    if (s[SETTINGS_KEYS.hotkeyMode] === "toggle") setHotkeyMode("toggle");
+    if (s[SETTINGS_KEYS.language]) setLanguage(s[SETTINGS_KEYS.language]);
+    if (s[SETTINGS_KEYS.outputMode]) setOutputMode(s[SETTINGS_KEYS.outputMode]);
+    if (s[SETTINGS_KEYS.soundEnabled] === "false") setSoundEnabled(false);
+    if (s[SETTINGS_KEYS.historyPaused] === "true") setHistoryPaused(true);
+
+    // Audio playback mode with legacy fallback chain (new key → paused → duck).
+    if (s.audio_playback_mode) {
+      setAudioPlaybackMode(normalizeAudioPlaybackMode(s.audio_playback_mode));
+    } else if (s.pause_playback_while_recording === "true") {
+      setAudioPlaybackMode("pause");
+    } else if (s.audio_ducking_enabled === "true") {
+      setAudioPlaybackMode("duck");
+    }
+  }, [settingsQuery.data]);
+
   // Load available audio input devices
   useEffect(() => {
     (async () => {
@@ -310,96 +343,13 @@ export default function SettingsPage(): React.JSX.Element {
     })();
   }, []);
 
-  // Load saved settings from server
+  // Load window/IPC-backed settings and subscribe to auto-updater events.
+  // (Server-persisted settings are seeded from the batch query above.)
   useEffect(() => {
-    getClient()
-      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.micDeviceId } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value) setSelectedDevice(data.value);
-      })
-      .catch(() => {});
-    getClient()
-      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.hotkey } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value) setHotkey(data.value);
-      })
-      .catch(() => {});
-    getClient()
-      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.hotkeyMode } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value === "toggle") setHotkeyMode("toggle");
-      })
-      .catch(() => {});
-    getClient()
-      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.language } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value) setLanguage(data.value);
-      })
-      .catch(() => {});
-    getClient()
-      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.outputMode } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value) setOutputMode(data.value);
-      })
-      .catch(() => {});
     window.api
       ?.getPillPosition()
       .then((pos) => setPillPosition(normalizePillPos(pos)))
       .catch(() => {});
-    getClient()
-      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.soundEnabled } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value === "false") setSoundEnabled(false);
-      })
-      .catch(() => {});
-    getClient()
-      .api.settings[":key"].$get({
-        param: { key: SETTINGS_KEYS.historyPaused },
-      })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value === "true") setHistoryPaused(true);
-      })
-      .catch(() => {});
-    void (async () => {
-      try {
-        const modeResponse = await getClient().api.settings[":key"].$get({
-          param: { key: "audio_playback_mode" },
-        });
-        const modeData = modeResponse.ok ? await modeResponse.json() : null;
-        if (modeData?.value) {
-          setAudioPlaybackMode(normalizeAudioPlaybackMode(modeData.value));
-          return;
-        }
-
-        const legacyPauseResponse = await getClient().api.settings[":key"].$get(
-          {
-            param: { key: "pause_playback_while_recording" },
-          },
-        );
-        const legacyPauseData = legacyPauseResponse.ok
-          ? await legacyPauseResponse.json()
-          : null;
-        if (legacyPauseData?.value === "true") {
-          setAudioPlaybackMode("pause");
-          return;
-        }
-
-        const legacyDuckResponse = await getClient().api.settings[":key"].$get({
-          param: { key: "audio_ducking_enabled" },
-        });
-        const legacyDuckData = legacyDuckResponse.ok
-          ? await legacyDuckResponse.json()
-          : null;
-        setAudioPlaybackMode(legacyDuckData?.value === "true" ? "duck" : "off");
-      } catch {}
-    })();
     // Auto-update setting
     window.api
       ?.getAutoUpdate()
@@ -1127,21 +1077,11 @@ function Row({
 // ---------------------------------------------------------------------------
 
 /** Load a single string setting from the server ("" when unset/unreachable). */
-async function loadStringSetting(key: string): Promise<string> {
-  try {
-    const res = await getClient().api.settings[":key"].$get({ param: { key } });
-    if (!res.ok) return "";
-    const data = (await res.json()) as { value?: string } | null;
-    return data?.value ?? "";
-  } catch {
-    return "";
-  }
-}
-
 function NetworkPanel(): React.JSX.Element {
   const { t } = useTranslation();
   // Single source of truth: the same zod schema the server enforces per-key,
   // so inline validation here matches exactly what the API will accept.
+  const queryClient = useQueryClient();
   const {
     control,
     reset,
@@ -1164,23 +1104,22 @@ function NetworkPanel(): React.JSX.Element {
     caCertPath: "",
   });
 
-  // Hydrate from the server once, then let react-hook-form own the state.
+  // Hydrate from the shared settings cache (deduped with every other
+  // ["settings-all"] consumer) instead of two dedicated single-key GETs.
+  const { data: settings } = useQuery(settingsQueryOptions());
+
+  // Seed the form once, when the settings first resolve. react-hook-form then
+  // owns the state; later cache changes don't re-seed (mutations patch the
+  // cache in place below, keeping it consistent without clobbering edits).
+  const seededRef = useRef(false);
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const [proxyUrl, caCertPath] = await Promise.all([
-        loadStringSetting(SETTINGS_KEYS.networkProxyUrl),
-        loadStringSetting(SETTINGS_KEYS.networkCaCertPath),
-      ]);
-      if (!cancelled) {
-        reset({ proxyUrl, caCertPath });
-        lastCommitted.current = { proxyUrl, caCertPath };
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [reset]);
+    if (!settings || seededRef.current) return;
+    seededRef.current = true;
+    const proxyUrl = settings[SETTINGS_KEYS.networkProxyUrl] ?? "";
+    const caCertPath = settings[SETTINGS_KEYS.networkCaCertPath] ?? "";
+    reset({ proxyUrl, caCertPath });
+    lastCommitted.current = { proxyUrl, caCertPath };
+  }, [settings, reset]);
 
   useEffect(
     () => () => {
@@ -1211,13 +1150,18 @@ function NetworkPanel(): React.JSX.Element {
         });
         if (res.ok) {
           lastCommitted.current[field] = value;
+          // Keep the shared settings cache truthful without a refetch.
+          queryClient.setQueryData<Record<string, string>>(
+            SETTINGS_QUERY_KEY,
+            (prev) => ({ ...(prev ?? {}), [key]: value }),
+          );
           flashSaved(field);
         }
       } catch {
         // Network/API errors surface via the field's onChange retry; swallow.
       }
     },
-    [trigger, getValues, flashSaved],
+    [trigger, getValues, flashSaved, queryClient],
   );
 
   return (

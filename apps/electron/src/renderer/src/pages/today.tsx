@@ -166,9 +166,11 @@ export default function TodayPage(): React.JSX.Element {
   const { data: entries = null } = useQuery({
     queryKey: ["today-history"],
     queryFn: async () => {
-      const res = await getClient().api.history.$get({
-        query: { limit: "200", orderBy: "-created_at" },
-      });
+      const q: Record<string, string> = {
+        limit: "200",
+        orderBy: "-created_at",
+      };
+      const res = await getClient().api.history.$get({ query: q });
       if (!res.ok) return [];
       const data = await res.json();
       const now = new Date();

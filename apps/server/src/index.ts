@@ -1,8 +1,12 @@
+import { createAppLogger } from "@freestyle-voice/utils";
 import { type ServerType, serve } from "@hono/node-server";
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
+import { logger } from "hono/logger";
+import { requestId } from "hono/request-id";
+import { timeout } from "hono/timeout";
 import { isTransientCloudError } from "./lib/freestyle-cloud.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
@@ -21,6 +25,23 @@ import routes from "./routes";
 import { autoStartMlxAsrServer } from "./routes/mlx-asr.js";
 import { autoStartWhisperServer } from "./routes/whisper.js";
 
+const httpLog = createAppLogger("http");
+
+// Lightweight CRUD routers get a request timeout. Transcription, post-process,
+// model downloads (whisper/mlx-asr), and the auth device-flow poll are
+// intentionally excluded — they can legitimately run longer than this window.
+const REQUEST_TIMEOUT_MS = 30_000;
+const TIMEOUT_PREFIXES = [
+  "/api/settings",
+  "/api/keys",
+  "/api/dictionary",
+  "/api/vocabulary",
+  "/api/history",
+  "/api/models",
+  "/api/plugins",
+  "/api/usage",
+];
+
 async function shutdownServer(): Promise<void> {
   await disposeServerPlugins().catch(() => {});
   await shutdownPosthog();
@@ -38,7 +59,20 @@ function createApp(pluginMiddleware: MiddlewareHandler[] = []) {
   const base = new Hono()
     .use(trustedOriginMiddleware)
     // CORS for renderer requests
-    .use(cors());
+    .use(cors())
+    // Correlation id per request (also surfaced via the X-Request-Id header).
+    .use(requestId())
+    // Access log — routed through the app logger at debug level, so it shows in
+    // dev but stays quiet in production. Only method/path/status are logged.
+    .use(
+      logger((message, ...rest) => httpLog.debug([message, ...rest].join(" "))),
+    );
+
+  // Request timeout on lightweight CRUD routers only (see TIMEOUT_PREFIXES).
+  for (const prefix of TIMEOUT_PREFIXES) {
+    base.use(prefix, timeout(REQUEST_TIMEOUT_MS));
+    base.use(`${prefix}/*`, timeout(REQUEST_TIMEOUT_MS));
+  }
 
   // Mount plugin middleware in resolved order (enforce: pre → none → post).
   for (const mw of pluginMiddleware) {

@@ -9,3 +9,11 @@ export const configureModelSchema = z.object({
 });
 
 export type ConfigureModelInput = z.infer<typeof configureModelSchema>;
+
+// Body for POST /whisper/server/start and /mlx-asr/server/start. modelId is
+// optional — when omitted the route falls back to the configured default voice.
+export const serverStartSchema = z.object({
+  modelId: z.string().min(1).optional(),
+});
+
+export type ServerStartInput = z.infer<typeof serverStartSchema>;

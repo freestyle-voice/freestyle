@@ -7,37 +7,42 @@ import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import i18n from "@renderer/i18n";
 import { initApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider } from "@renderer/lib/auth-context";
+import { createQueryClient } from "@renderer/lib/query";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
-import OnboardingPage from "@renderer/onboarding";
-import DictionaryPage from "@renderer/pages/dictionary";
-import HelpPage from "@renderer/pages/help";
-import HistoryPage from "@renderer/pages/history";
-import ModelsPage from "@renderer/pages/models";
 import NotFoundPage from "@renderer/pages/not-found";
-import PluginDetailPage from "@renderer/pages/plugins/plugin-detail";
-import PluginPage from "@renderer/pages/plugins/plugin-page";
-import PluginsPage from "@renderer/pages/plugins/plugins";
-import SettingsPage from "@renderer/pages/settings";
 import TodayPage from "@renderer/pages/today";
-import TonePage from "@renderer/pages/tone";
-import VocabularyPage from "@renderer/pages/vocabulary";
 import AppShell from "@renderer/shell";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
-import { StrictMode } from "react";
+import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router";
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      // Avoid refetching on window focus in a desktop app — the user may
-      // switch back and forth between the dashboard and other apps frequently.
-      refetchOnWindowFocus: false,
-    },
-  },
-});
+// Route-level code splitting: the landing route (Today), the app shell, and the
+// tiny not-found page load eagerly; every other page is lazy so the initial
+// bundle stays small and each page's chunk loads on navigation.
+const OnboardingPage = lazy(() => import("@renderer/onboarding"));
+const DictionaryPage = lazy(() => import("@renderer/pages/dictionary"));
+const HelpPage = lazy(() => import("@renderer/pages/help"));
+const HistoryPage = lazy(() => import("@renderer/pages/history"));
+const ModelsPage = lazy(() => import("@renderer/pages/models"));
+const PluginDetailPage = lazy(
+  () => import("@renderer/pages/plugins/plugin-detail"),
+);
+const PluginPage = lazy(() => import("@renderer/pages/plugins/plugin-page"));
+const PluginsPage = lazy(() => import("@renderer/pages/plugins/plugins"));
+const SettingsPage = lazy(() => import("@renderer/pages/settings"));
+const TonePage = lazy(() => import("@renderer/pages/tone"));
+const VocabularyPage = lazy(() => import("@renderer/pages/vocabulary"));
+
+const queryClient = createQueryClient();
+
+// Neutral fallback while a route chunk loads — pages render their own loading
+// states, so this only shows for the brief chunk fetch.
+function RouteFallback(): React.JSX.Element {
+  return <div className="min-h-0 flex-1" />;
+}
 
 function PagePad(): React.JSX.Element {
   return (
@@ -75,61 +80,63 @@ createRoot(document.getElementById("root")!).render(
               <TooltipProvider>
                 <CloudAuthProvider>
                   <CloudSignInModal />
-                  <Routes>
-                    <Route
-                      path="/"
-                      element={<Navigate to="/today" replace />}
-                    />
-                    <Route path="/onboarding" element={<OnboardingPage />} />
+                  <Suspense fallback={<RouteFallback />}>
+                    <Routes>
+                      <Route
+                        path="/"
+                        element={<Navigate to="/today" replace />}
+                      />
+                      <Route path="/onboarding" element={<OnboardingPage />} />
 
-                    <Route element={<AppShell />}>
-                      <Route path="/today" element={<TodayPage />} />
-                      <Route element={<PagePad />}>
-                        <Route path="/settings" element={<SettingsPage />} />
-                        <Route
-                          path="/settings/general"
-                          element={<Navigate to="/settings" replace />}
-                        />
-                        <Route
-                          path="/settings/models"
-                          element={<ModelsPage />}
-                        />
-                        <Route
-                          path="/settings/dictionary"
-                          element={<DictionaryPage />}
-                        />
-                        <Route
-                          path="/settings/vocabulary"
-                          element={<VocabularyPage />}
-                        />
-                        <Route
-                          path="/settings/formats"
-                          element={<Navigate to="/settings/tone" replace />}
-                        />
-                        <Route path="/settings/tone" element={<TonePage />} />
-                        <Route
-                          path="/settings/history"
-                          element={<HistoryPage />}
-                        />
-                        <Route path="/help" element={<HelpPage />} />
-                        <Route path="/plugins" element={<PluginsPage />} />
-                        <Route
-                          path="/plugins/:slug"
-                          element={<PluginDetailPage />}
-                        />
-                        <Route
-                          path="/plugins/:slug/:pageId"
-                          element={<PluginPage />}
-                        />
-                        <Route
-                          path="/settings/permissions"
-                          element={<Navigate to="/settings" replace />}
-                        />
+                      <Route element={<AppShell />}>
+                        <Route path="/today" element={<TodayPage />} />
+                        <Route element={<PagePad />}>
+                          <Route path="/settings" element={<SettingsPage />} />
+                          <Route
+                            path="/settings/general"
+                            element={<Navigate to="/settings" replace />}
+                          />
+                          <Route
+                            path="/settings/models"
+                            element={<ModelsPage />}
+                          />
+                          <Route
+                            path="/settings/dictionary"
+                            element={<DictionaryPage />}
+                          />
+                          <Route
+                            path="/settings/vocabulary"
+                            element={<VocabularyPage />}
+                          />
+                          <Route
+                            path="/settings/formats"
+                            element={<Navigate to="/settings/tone" replace />}
+                          />
+                          <Route path="/settings/tone" element={<TonePage />} />
+                          <Route
+                            path="/settings/history"
+                            element={<HistoryPage />}
+                          />
+                          <Route path="/help" element={<HelpPage />} />
+                          <Route path="/plugins" element={<PluginsPage />} />
+                          <Route
+                            path="/plugins/:slug"
+                            element={<PluginDetailPage />}
+                          />
+                          <Route
+                            path="/plugins/:slug/:pageId"
+                            element={<PluginPage />}
+                          />
+                          <Route
+                            path="/settings/permissions"
+                            element={<Navigate to="/settings" replace />}
+                          />
+                        </Route>
                       </Route>
-                    </Route>
 
-                    <Route path="*" element={<NotFoundPage />} />
-                  </Routes>
+                      <Route path="*" element={<NotFoundPage />} />
+                    </Routes>
+                  </Suspense>
                 </CloudAuthProvider>
               </TooltipProvider>
             </QueryClientProvider>

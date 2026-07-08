@@ -1,7 +1,10 @@
 import { Orb } from "@renderer/components/ui/orb";
 import { capture } from "@renderer/lib/analytics";
 import { getApiBase, getClient, refreshApiBase } from "@renderer/lib/api";
-import { refreshNeedsAppContextForCleanup } from "@renderer/lib/cleanup-app-context";
+import {
+  applyNeedsAppContextForCleanup,
+  refreshNeedsAppContextForCleanup,
+} from "@renderer/lib/cleanup-app-context";
 import { Recorder } from "@renderer/lib/recorder";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -821,58 +824,41 @@ export default function AppPage(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
+    // Read every persisted preference in a single request instead of one GET
+    // per key. Missing keys are simply absent from the map (no 404s), and the
+    // legacy audio-playback fallbacks read from the same snapshot.
     getClient()
-      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.soundEnabled } })
+      .api.settings.$get()
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value === "false") _soundEnabled = false;
-      })
-      .catch(() => {});
-    void (async () => {
-      try {
-        const modeResponse = await getClient().api.settings[":key"].$get({
-          param: { key: "audio_playback_mode" },
-        });
-        const modeData = modeResponse.ok ? await modeResponse.json() : null;
-        if (modeData?.value) {
-          _audioPlaybackMode = normalizeAudioPlaybackMode(modeData.value);
-          return;
+      .then((settings) => {
+        if (!settings) return;
+
+        if (settings[SETTINGS_KEYS.soundEnabled] === "false") {
+          _soundEnabled = false;
         }
 
-        const legacyPauseResponse = await getClient().api.settings[":key"].$get(
-          {
-            param: { key: "pause_playback_while_recording" },
-          },
-        );
-        const legacyPauseData = legacyPauseResponse.ok
-          ? await legacyPauseResponse.json()
-          : null;
-        if (legacyPauseData?.value === "true") {
+        const mode = settings.audio_playback_mode;
+        if (mode) {
+          _audioPlaybackMode = normalizeAudioPlaybackMode(mode);
+        } else if (settings.pause_playback_while_recording === "true") {
           _audioPlaybackMode = "pause";
-          return;
+        } else {
+          _audioPlaybackMode =
+            settings.audio_ducking_enabled === "true" ? "duck" : "off";
         }
 
-        const legacyDuckResponse = await getClient().api.settings[":key"].$get({
-          param: { key: "audio_ducking_enabled" },
-        });
-        const legacyDuckData = legacyDuckResponse.ok
-          ? await legacyDuckResponse.json()
-          : null;
-        _audioPlaybackMode = legacyDuckData?.value === "true" ? "duck" : "off";
-      } catch {}
-    })();
-    getClient()
-      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.outputMode } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value) _outputMode = data.value;
+        const outputMode = settings[SETTINGS_KEYS.outputMode];
+        if (outputMode) _outputMode = outputMode;
+
+        // Warm the cleanup-context cache from the same snapshot instead of
+        // firing a second GET /api/settings.
+        applyNeedsAppContextForCleanup(settings);
       })
       .catch(() => {});
     window.api
       ?.getPillPosition()
       .then(applyPillPosition)
       .catch(() => {});
-    void refreshNeedsAppContextForCleanup().catch(() => {});
 
     // Listen for live changes from the settings UI
     const removePillPos = window.api?.onPillPositionChanged(applyPillPosition);

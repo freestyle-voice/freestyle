@@ -1,6 +1,7 @@
 import { formatAcceleratorKeys } from "@renderer/hooks/use-hotkey-recorder";
-import { getClient } from "@renderer/lib/api";
+import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
@@ -90,27 +91,21 @@ export function TutorialDemo({
     return clearLoop;
   }, [tick, clearLoop, interactive]);
 
-  // Resolve the hotkey: prefer the caller-provided accelerator, otherwise
-  // load the configured one once.
+  // Read the configured hotkey from the shared settings cache (deduped with
+  // every other settings consumer); skipped when the caller drives it.
+  const { data: settingsData } = useQuery({
+    ...settingsQueryOptions(),
+    enabled: hotkey === undefined,
+  });
+
+  // Resolve the hotkey: prefer the caller-provided accelerator, otherwise fall
+  // back to the configured one (default while it loads).
   useEffect(() => {
-    if (hotkey !== undefined) {
-      const tokens = formatAcceleratorKeys(hotkey);
-      if (tokens.length > 0) setHotkeyTokens(tokens);
-      return;
-    }
-    getClient()
-      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.hotkey } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { value?: string } | null) => {
-        const val = data?.value || DEFAULT_HOTKEY;
-        const tokens = formatAcceleratorKeys(val);
-        if (tokens.length > 0) setHotkeyTokens(tokens);
-      })
-      .catch(() => {
-        const tokens = formatAcceleratorKeys(DEFAULT_HOTKEY);
-        if (tokens.length > 0) setHotkeyTokens(tokens);
-      });
-  }, [hotkey]);
+    const val =
+      hotkey ?? settingsData?.[SETTINGS_KEYS.hotkey] ?? DEFAULT_HOTKEY;
+    const tokens = formatAcceleratorKeys(val);
+    if (tokens.length > 0) setHotkeyTokens(tokens);
+  }, [hotkey, settingsData]);
 
   // Real hotkey events override the loop while held.
   useEffect(() => {

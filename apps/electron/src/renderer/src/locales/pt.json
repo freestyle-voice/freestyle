@@ -497,7 +497,6 @@
     "apiKeys": "Chaves de API",
     "noApiKeys": "Nenhuma chave de API inserida.",
     "onDevice": "No dispositivo",
-    "onDeviceNoKey": "Sem chave necessária · roda localmente",
     "keyInvalid": "Chave inválida",
     "keyStored": "Chave salva no chaveiro",
     "keyStoredWithHint": "Chave {{hint}} salva",

@@ -5,7 +5,6 @@ import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   CheckCircle,
   Key,
-  Laptop,
   Loader2,
   Pencil,
   Trash2,
@@ -297,9 +296,6 @@ export default function ModelsPage(): React.JSX.Element {
     })();
   };
 
-  const hasLocalVoice = m.configured.some(
-    (c) => c.provider === "local-whisper" || c.provider === "local-mlx",
-  );
   const showMlxWarming = m.defaultVoice?.provider === "local-mlx";
 
   // -------------------------------------------------------------------------
@@ -336,7 +332,6 @@ export default function ModelsPage(): React.JSX.Element {
           apiKeys={m.apiKeys}
           configured={m.configured}
           deletingProviders={m.deletingProviders}
-          showLocal={hasLocalVoice}
           onEdit={(provider) =>
             setModal({
               kind: "key",
@@ -502,19 +497,17 @@ function KeysSection({
   apiKeys,
   configured,
   deletingProviders,
-  showLocal,
   onEdit,
   onDelete,
 }: {
   apiKeys: ApiKeyEntry[];
   configured: ConfiguredModel[];
   deletingProviders: Set<string>;
-  showLocal: boolean;
   onEdit: (provider: string) => void;
   onDelete: (provider: string) => void;
 }): React.JSX.Element | null {
   const { t } = useTranslation();
-  if (apiKeys.length === 0 && !showLocal) {
+  if (apiKeys.length === 0) {
     return (
       <p className="text-muted-foreground text-[13px]">
         {t("models.noApiKeys")}
@@ -541,24 +534,6 @@ function KeysSection({
             onDelete={() => onDelete(entry.provider)}
           />
         ))}
-        {showLocal && (
-          <div
-            className={cn(
-              "flex items-center gap-3 px-[18px] py-[13px]",
-              apiKeys.length > 0 && "border-border border-t",
-            )}
-          >
-            <Laptop className="text-primary h-[15px] w-[15px] shrink-0" />
-            <div className="min-w-0 flex-1">
-              <div className="text-foreground text-[13.5px] font-semibold">
-                {t("models.onDevice")}
-              </div>
-              <div className="mono text-muted-foreground mt-0.5 text-[11px]">
-                {t("models.onDeviceNoKey")}
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </section>
   );

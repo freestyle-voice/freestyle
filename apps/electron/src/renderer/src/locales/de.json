@@ -498,7 +498,6 @@
     "apiKeys": "API-Schlüssel",
     "noApiKeys": "Noch keine API-Schlüssel — wählen Sie oben ein Cloud-Modell und Sie werden nach einem Schlüssel gefragt.",
     "onDevice": "Auf dem Gerät",
-    "onDeviceNoKey": "Kein Schlüssel erforderlich · läuft lokal",
     "keyInvalid": "Schlüssel ungültig — aktualisieren oder löschen",
     "keyStored": "Schlüssel im Schlüsselbund gespeichert",
     "keyStoredWithHint": "Schlüssel {{hint}} im Schlüsselbund gespeichert",

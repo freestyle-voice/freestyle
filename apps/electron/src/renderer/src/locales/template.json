@@ -546,7 +546,6 @@
     "apiKeys": "API keys",
     "noApiKeys": "No API keys yet — choose a cloud model above and you'll be prompted for a key.",
     "onDevice": "On-device",
-    "onDeviceNoKey": "No key needed · runs locally",
     "keyInvalid": "Key invalid — update or delete",
     "keyStored": "Key stored in keychain",
     "keyStoredWithHint": "Key {{hint}} stored in keychain",

@@ -1,4 +1,31 @@
 # Changelog
+## 0.4.4
+
+### New Features ✨
+
+- (history) Persist filters and add global view toggles by @MathurAditya724 in [#435](https://github.com/freestyle-voice/freestyle/pull/435)
+- Diff mode for AI-edited history entries by @dchaudhari7177 in [#425](https://github.com/freestyle-voice/freestyle/pull/425)
+- Send custom vocabulary to cloud v2 transcribe by @MathurAditya724 in [#428](https://github.com/freestyle-voice/freestyle/pull/428)
+- Add "Always on" option to MLX model warming (never unload) by @Maheidem in [#407](https://github.com/freestyle-voice/freestyle/pull/407)
+
+### Bug Fixes 🐛
+
+- (ui) Match filter button height with searchbar in history page by @dchaudhari7177 in [#423](https://github.com/freestyle-voice/freestyle/pull/423)
+
+### Other
+
+- Harden API validation and tighten renderer performance by @MathurAditya724 in [#436](https://github.com/freestyle-voice/freestyle/pull/436)
+- Replace history filter drawer with the inline filter panel by @tulsianigatik07-tech in [#426](https://github.com/freestyle-voice/freestyle/pull/426)
+- Add softer tone sound by @matteo8p in [#433](https://github.com/freestyle-voice/freestyle/pull/433)
+- Fix/model page rework by @tigerisaac in [#431](https://github.com/freestyle-voice/freestyle/pull/431)
+- Remove asr biasing from the settings page. Modify the onboarding page by @matteo8p in [#432](https://github.com/freestyle-voice/freestyle/pull/432)
+- Change sidebar color and the scrolling of the right card by @matteo8p in [#430](https://github.com/freestyle-voice/freestyle/pull/430)
+- Shortened roadmap by @matteo8p in [#429](https://github.com/freestyle-voice/freestyle/pull/429)
+- Remove extra bottom spacing on the settings page by @tulsianigatik07-tech in [#422](https://github.com/freestyle-voice/freestyle/pull/422)
+- Restore independent Freestyle Cloud transcription and cleanup by @MathurAditya724 in [#427](https://github.com/freestyle-voice/freestyle/pull/427)
+- Enable Tone panel and switch cloud transcribe to v2 by @MathurAditya724 in [#416](https://github.com/freestyle-voice/freestyle/pull/416)
+- Users of an old Qwen3-ASR version must update to the newest one upon use. by @matteo8p in [#414](https://github.com/freestyle-voice/freestyle/pull/414)
+
 ## 0.4.3
 
 ### Bug Fixes 🐛

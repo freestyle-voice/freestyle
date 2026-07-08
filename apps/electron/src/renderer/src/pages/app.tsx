@@ -36,11 +36,11 @@ function getToneCtx(): AudioContext {
 
 type TonePreset = "start" | "stop";
 const TONE_PRESETS: Record<TonePreset, { freq: number; ms: number }> = {
-  start: { freq: 880, ms: 100 },
-  stop: { freq: 660, ms: 100 },
+  start: { freq: 347, ms: 125 }, // F4
+  stop: { freq: 255, ms: 125 }, // C4
 };
 
-async function playTone(preset: TonePreset, volume = 0.3): Promise<void> {
+async function playTone(preset: TonePreset, volume = 0.16): Promise<void> {
   if (!_soundEnabled) return;
   const { freq, ms } = TONE_PRESETS[preset];
   try {
@@ -50,12 +50,18 @@ async function playTone(preset: TonePreset, volume = 0.3): Promise<void> {
     const gain = ctx.createGain();
     osc.type = "sine";
     osc.frequency.value = freq;
-    gain.gain.setValueAtTime(volume, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + ms / 1000);
+    const now = ctx.currentTime;
+    const dur = ms / 1000;
+    const attack = Math.min(0.02, dur * 0.25);
+    const g = gain.gain;
+    g.setValueAtTime(0.0001, now);
+    g.linearRampToValueAtTime(volume, now + attack);
+    g.exponentialRampToValueAtTime(0.001, now + dur);
+    g.linearRampToValueAtTime(0, now + dur + 0.012);
     osc.connect(gain);
     gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + ms / 1000);
+    osc.start(now);
+    osc.stop(now + dur + 0.02);
   } catch {}
 }
 

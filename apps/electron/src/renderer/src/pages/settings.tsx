@@ -26,6 +26,7 @@ import { getClient } from "@renderer/lib/api";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
+import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -290,14 +291,7 @@ export default function SettingsPage(): React.JSX.Element {
   } = useHotkeyRecorder(handleHotkeyRecorded);
 
   // All persisted settings in one request (replaces ~10 individual GETs).
-  const settingsQuery = useQuery({
-    queryKey: ["settings-all"],
-    queryFn: async () => {
-      const res = await getClient().api.settings.$get();
-      if (!res.ok) throw new Error("Failed to load settings");
-      return (await res.json()) as Record<string, string>;
-    },
-  });
+  const settingsQuery = useQuery(settingsQueryOptions());
 
   // Seed local form state from the batch once it first resolves. Handlers
   // persist changes directly, so we only seed once (guarded) to avoid

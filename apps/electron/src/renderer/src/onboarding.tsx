@@ -42,6 +42,7 @@ import {
 } from "@renderer/lib/models";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS, PLATFORM } from "@renderer/lib/platform";
+import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -200,15 +201,8 @@ export default function OnboardingPage(): React.JSX.Element {
   }, []);
 
   // Saved hotkey, read from the shared settings cache (deduped with every other
-  // ["settings-all"] consumer instead of a dedicated GET /api/settings/:key).
-  const { data: settingsData } = useQuery({
-    queryKey: ["settings-all"],
-    queryFn: async () => {
-      const res = await getClient().api.settings.$get();
-      if (!res.ok) throw new Error("Failed to load settings");
-      return (await res.json()) as Record<string, string>;
-    },
-  });
+  // settings consumer instead of a dedicated GET /api/settings/:key).
+  const { data: settingsData } = useQuery(settingsQueryOptions());
   useEffect(() => {
     const value = settingsData?.[SETTINGS_KEYS.hotkey];
     if (value) setHotkey(value);

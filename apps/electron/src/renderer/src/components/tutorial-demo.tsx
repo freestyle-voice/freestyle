@@ -1,5 +1,5 @@
 import { formatAcceleratorKeys } from "@renderer/hooks/use-hotkey-recorder";
-import { getClient } from "@renderer/lib/api";
+import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -92,14 +92,9 @@ export function TutorialDemo({
   }, [tick, clearLoop, interactive]);
 
   // Read the configured hotkey from the shared settings cache (deduped with
-  // every other ["settings-all"] consumer); skipped when the caller drives it.
+  // every other settings consumer); skipped when the caller drives it.
   const { data: settingsData } = useQuery({
-    queryKey: ["settings-all"],
-    queryFn: async () => {
-      const res = await getClient().api.settings.$get();
-      if (!res.ok) throw new Error("Failed to load settings");
-      return (await res.json()) as Record<string, string>;
-    },
+    ...settingsQueryOptions(),
     enabled: hotkey === undefined,
   });
 

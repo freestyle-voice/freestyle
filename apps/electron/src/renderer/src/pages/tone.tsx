@@ -41,6 +41,7 @@ import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import type { AvailableModel } from "@renderer/lib/models";
+import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
@@ -251,14 +252,7 @@ export default function TonePage(): React.JSX.Element {
 
   const customPromptDirty = cleanupCustomPrompt !== savedCleanupCustomPrompt;
 
-  const settingsQuery = useQuery({
-    queryKey: ["settings-all"],
-    queryFn: async () => {
-      const res = await getClient().api.settings.$get();
-      if (!res.ok) throw new Error("Failed to load settings");
-      return (await res.json()) as Record<string, string>;
-    },
-  });
+  const settingsQuery = useQuery(settingsQueryOptions());
 
   const configuredQuery = useQuery({
     queryKey: ["models", "configured"],

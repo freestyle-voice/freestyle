@@ -6,6 +6,7 @@ import type {
   WhisperStatus,
 } from "@renderer/lib/models";
 import { IS_MAC } from "@renderer/lib/platform";
+import { SETTINGS_QUERY_KEY, settingsQueryOptions } from "@renderer/lib/query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
@@ -23,7 +24,7 @@ const MODELS_KEYS = {
   available: ["models", "available"] as const,
   configured: ["models", "configured"] as const,
   keys: ["api-keys"] as const,
-  settings: ["settings-all"] as const,
+  settings: SETTINGS_QUERY_KEY,
   whisper: ["whisper-status"] as const,
   mlx: ["mlx-status"] as const,
 };
@@ -139,14 +140,7 @@ export function useModels(): UseModels {
     },
   });
 
-  const settingsQuery = useQuery({
-    queryKey: MODELS_KEYS.settings,
-    queryFn: async () => {
-      const res = await getClient().api.settings.$get();
-      if (!res.ok) throw new Error("Failed to load settings");
-      return (await res.json()) as Record<string, string>;
-    },
-  });
+  const settingsQuery = useQuery(settingsQueryOptions());
 
   const whisperQuery = useQuery({
     queryKey: MODELS_KEYS.whisper,

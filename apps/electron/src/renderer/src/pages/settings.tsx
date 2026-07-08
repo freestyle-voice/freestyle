@@ -26,9 +26,9 @@ import { getClient } from "@renderer/lib/api";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
-import { settingsQueryOptions } from "@renderer/lib/query";
+import { SETTINGS_QUERY_KEY, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   Download,
@@ -1077,21 +1077,11 @@ function Row({
 // ---------------------------------------------------------------------------
 
 /** Load a single string setting from the server ("" when unset/unreachable). */
-async function loadStringSetting(key: string): Promise<string> {
-  try {
-    const res = await getClient().api.settings[":key"].$get({ param: { key } });
-    if (!res.ok) return "";
-    const data = (await res.json()) as { value?: string } | null;
-    return data?.value ?? "";
-  } catch {
-    return "";
-  }
-}
-
 function NetworkPanel(): React.JSX.Element {
   const { t } = useTranslation();
   // Single source of truth: the same zod schema the server enforces per-key,
   // so inline validation here matches exactly what the API will accept.
+  const queryClient = useQueryClient();
   const {
     control,
     reset,
@@ -1114,23 +1104,22 @@ function NetworkPanel(): React.JSX.Element {
     caCertPath: "",
   });
 
-  // Hydrate from the server once, then let react-hook-form own the state.
+  // Hydrate from the shared settings cache (deduped with every other
+  // ["settings-all"] consumer) instead of two dedicated single-key GETs.
+  const { data: settings } = useQuery(settingsQueryOptions());
+
+  // Seed the form once, when the settings first resolve. react-hook-form then
+  // owns the state; later cache changes don't re-seed (mutations patch the
+  // cache in place below, keeping it consistent without clobbering edits).
+  const seededRef = useRef(false);
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const [proxyUrl, caCertPath] = await Promise.all([
-        loadStringSetting(SETTINGS_KEYS.networkProxyUrl),
-        loadStringSetting(SETTINGS_KEYS.networkCaCertPath),
-      ]);
-      if (!cancelled) {
-        reset({ proxyUrl, caCertPath });
-        lastCommitted.current = { proxyUrl, caCertPath };
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [reset]);
+    if (!settings || seededRef.current) return;
+    seededRef.current = true;
+    const proxyUrl = settings[SETTINGS_KEYS.networkProxyUrl] ?? "";
+    const caCertPath = settings[SETTINGS_KEYS.networkCaCertPath] ?? "";
+    reset({ proxyUrl, caCertPath });
+    lastCommitted.current = { proxyUrl, caCertPath };
+  }, [settings, reset]);
 
   useEffect(
     () => () => {
@@ -1161,13 +1150,18 @@ function NetworkPanel(): React.JSX.Element {
         });
         if (res.ok) {
           lastCommitted.current[field] = value;
+          // Keep the shared settings cache truthful without a refetch.
+          queryClient.setQueryData<Record<string, string>>(
+            SETTINGS_QUERY_KEY,
+            (prev) => ({ ...(prev ?? {}), [key]: value }),
+          );
           flashSaved(field);
         }
       } catch {
         // Network/API errors surface via the field's onChange retry; swallow.
       }
     },
-    [trigger, getValues, flashSaved],
+    [trigger, getValues, flashSaved, queryClient],
   );
 
   return (

@@ -65,6 +65,8 @@ export interface UseModels {
   whisperStatus: WhisperStatus | null;
   mlxStatus: MlxAsrStatus | null;
   llmCleanup: boolean;
+  /** True once the editable form state has been seeded from persisted settings. */
+  settingsSeeded: boolean;
   mlxKeepAliveMinutes: number;
 
   /** Local models with an in-flight delete, keyed `${engine ?? "whisper"}:${defId}`. */
@@ -214,11 +216,15 @@ export function useModels(): UseModels {
   // first resolves. Mutations update this local state directly, so we don't
   // re-seed on later invalidations (which would clobber in-progress edits).
   // keepAlive falls back to the MLX status report when the setting is unset.
-  const seededRef = useRef({ settings: false, keepAlive: false });
+  // `settingsSeeded` is state (not a ref) so consumers can wait for the seed
+  // before acting on `llmCleanup` — reading it too early sees the initial
+  // `false` and can trigger spurious re-configuration.
+  const [settingsSeeded, setSettingsSeeded] = useState(false);
+  const seededRef = useRef({ keepAlive: false });
   useEffect(() => {
     const s = settingsQuery.data;
-    if (!s || seededRef.current.settings) return;
-    seededRef.current.settings = true;
+    if (!s || settingsSeeded) return;
+    setSettingsSeeded(true);
     const cleanup = s[SETTINGS_KEYS.llmCleanup];
     if (cleanup) setLlmCleanup(cleanup === "true");
     const url = s[SETTINGS_KEYS.localLlmUrl];
@@ -233,7 +239,7 @@ export function useModels(): UseModels {
         setMlxKeepAliveMinutes(clampMlxKeepAliveMinutes(minutes));
       }
     }
-  }, [settingsQuery.data]);
+  }, [settingsQuery.data, settingsSeeded]);
 
   useEffect(() => {
     const d = mlxQuery.data;
@@ -634,6 +640,7 @@ export function useModels(): UseModels {
     whisperStatus,
     mlxStatus,
     llmCleanup,
+    settingsSeeded,
     mlxKeepAliveMinutes,
     deletingKeys,
     deletingProviders,

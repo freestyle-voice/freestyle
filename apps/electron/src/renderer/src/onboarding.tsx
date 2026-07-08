@@ -182,7 +182,7 @@ export default function OnboardingPage(): React.JSX.Element {
       ? "Release to save · Esc to cancel"
       : "Press a modifier or side mouse button… · Esc to cancel";
 
-  // Load permissions + saved hotkey
+  // Load permissions
   useEffect(() => {
     resolveMicStatus()
       .then(setMicStatus)
@@ -197,14 +197,22 @@ export default function OnboardingPage(): React.JSX.Element {
         .then((setup) => setup && setLinuxSetup(setup))
         .catch(() => {});
     }
-    getClient()
-      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.hotkey } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value) setHotkey(data.value as string);
-      })
-      .catch(() => {});
   }, []);
+
+  // Saved hotkey, read from the shared settings cache (deduped with every other
+  // ["settings-all"] consumer instead of a dedicated GET /api/settings/:key).
+  const { data: settingsData } = useQuery({
+    queryKey: ["settings-all"],
+    queryFn: async () => {
+      const res = await getClient().api.settings.$get();
+      if (!res.ok) throw new Error("Failed to load settings");
+      return (await res.json()) as Record<string, string>;
+    },
+  });
+  useEffect(() => {
+    const value = settingsData?.[SETTINGS_KEYS.hotkey];
+    if (value) setHotkey(value);
+  }, [settingsData]);
 
   useEffect(() => {
     return window.api?.onFullscreenChanged(setIsFullscreen);

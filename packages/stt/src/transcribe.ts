@@ -14,18 +14,13 @@ export interface TranscribeParams {
    */
   model: TranscriptionModel;
   audio: TranscribeAudio;
-  /** ISO-639-1 hint (e.g. "en"). Omit or "auto" to auto-detect. */
-  language?: string;
-  /**
-   * Optional initial prompt to bias recognition toward custom vocabulary
-   * (see {@link buildAsrBiasPrompt}).
-   */
-  prompt?: string;
   /**
    * Additional provider-specific options, passed straight through to the AI
-   * SDK. Use this for provider-specific knobs (e.g. Groq's
-   * `{ groq: { language, prompt } }` shape) that this package does not
-   * standardize on your behalf.
+   * SDK. The AI SDK's transcribe call has no standardized top-level
+   * `language`/`prompt`/etc. inputs, so language hints and ASR bias prompts
+   * (see {@link buildAsrBiasPrompt}) must be supplied here under the
+   * provider's own key (e.g. Groq's `{ groq: { language, prompt } }` shape).
+   * This package does not standardize those on your behalf.
    */
   providerOptions?: ProviderOptions;
   /** Abort signal (e.g. a request timeout). */

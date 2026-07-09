@@ -1,19 +1,10 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 
 const OPENAI_STT_BASE_URL_MAX = 2048;
 
-interface ParsedUrl {
-  protocol: string;
-  search: string;
-  hash: string;
-  origin: string;
-  pathname: string;
-}
-declare const URL: { new (input: string): ParsedUrl };
-
-function parseHttpUrl(value: string): ParsedUrl | null {
+function parseHttpUrl(value: string): URL | null {
   try {
-    const url = new URL(value);
+    const url = new URL(value.trim());
     return url.protocol === "http:" || url.protocol === "https:" ? url : null;
   } catch {
     return null;

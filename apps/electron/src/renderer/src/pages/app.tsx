@@ -35,18 +35,19 @@ function getToneCtx(): AudioContext {
 }
 
 type TonePreset = "start" | "stop";
-// Warmer, lower tones than the original 880/660 Hz, with a longer envelope, so
-// the start/stop indicator is a gentle blip rather than a harsh pop (#365).
+// Low, quiet tones (an octave below the first pass at D5/A4, two below the
+// original 880/660 Hz) so the start/stop indicator is a soft low blip in the
+// Wispr Flow vein rather than a harsh pop (#365).
 const TONE_PRESETS: Record<TonePreset, { freq: number; ms: number }> = {
-  start: { freq: 587.33, ms: 140 }, // D5
-  stop: { freq: 440, ms: 140 }, // A4
+  start: { freq: 293.66, ms: 170 }, // D4
+  stop: { freq: 220, ms: 170 }, // A3
 };
 
 // Fade the tone in over a few ms instead of jumping to full volume instantly.
 // The instant onset was the main source of the harsh "click" in the pop.
-const TONE_ATTACK_S = 0.02;
+const TONE_ATTACK_S = 0.03;
 
-async function playTone(preset: TonePreset, volume = 0.2): Promise<void> {
+async function playTone(preset: TonePreset, volume = 0.12): Promise<void> {
   if (!_soundEnabled) return;
   const { freq, ms } = TONE_PRESETS[preset];
   try {

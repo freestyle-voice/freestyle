@@ -213,6 +213,9 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.65
         version: 3.0.65(zod@4.4.3)
+      '@freestyle-voice/stt':
+        specifier: workspace:*
+        version: link:../../packages/stt
       '@hono/node-server':
         specifier: ^2.0.4
         version: 2.0.4(hono@4.12.22)
@@ -317,6 +320,27 @@ importers:
       hono:
         specifier: ^4.12.22
         version: 4.12.22
+      pkgroll:
+        specifier: ^2.27.0
+        version: 2.27.0(typescript@5.9.3)(vite@7.3.3(@types/node@22.19.19)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(msw@2.14.6(@types/node@22.19.19)(typescript@5.9.3))(vite@7.3.3(@types/node@22.19.19)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/stt:
+    devDependencies:
+      '@ai-sdk/provider-utils':
+        specifier: ^4.0.27
+        version: 4.0.27(zod@4.4.3)
+      '@types/node':
+        specifier: ^22.19.1
+        version: 22.19.19
+      ai:
+        specifier: ^6.0.191
+        version: 6.0.191(zod@4.4.3)
       pkgroll:
         specifier: ^2.27.0
         version: 2.27.0(typescript@5.9.3)(vite@7.3.3(@types/node@22.19.19)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))

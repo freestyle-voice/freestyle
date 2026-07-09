@@ -3,7 +3,7 @@ import {
   collapseAsrLineBreaks,
   sanitizeTranscriptText,
   stripTrailingDuplicate,
-} from "../src/lib/editor/model-hints.js";
+} from "./text.js";
 
 describe("sanitizeTranscriptText", () => {
   it("strips trailing <fin> tags from raw transcripts", () => {

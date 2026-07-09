@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { maxOutputTokensForCleanup } from "../src/lib/editor/max-output-tokens.js";
+import { maxOutputTokensForCleanup } from "./tokens.js";
 
 describe("maxOutputTokensForCleanup", () => {
   it("uses floor for short input", () => {

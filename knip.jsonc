@@ -87,7 +87,8 @@
         "@freestyle-voice/utils": ["../../packages/utils/src/index.ts"],
         "@freestyle-voice/validations": [
           "../../packages/validations/src/index.ts"
-        ]
+        ],
+        "@freestyle-voice/stt": ["../../packages/stt/src/index.ts"]
       },
       "vitest": {
         "entry": ["tests/**/*.test.ts", "tests/setup.ts"]

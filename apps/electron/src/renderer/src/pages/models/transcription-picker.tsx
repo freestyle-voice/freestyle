@@ -17,7 +17,7 @@ export const FREESTYLE_CLOUD_TIER: AvailableModel = {
   provider_id: "freestyle-cloud",
   provider_name: "Freestyle Transcribe",
   model_id: "freestyle-cloud/stt",
-  model_name: "Freestyle Transcribe (Managed)",
+  model_name: "Freestyle Transcribe",
   type: "voice",
 };
 

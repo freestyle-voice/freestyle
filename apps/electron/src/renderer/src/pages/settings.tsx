@@ -1,6 +1,8 @@
 import {
+  HISTORY_RETENTION_DAYS_MAX,
   type NetworkSettingsForm,
   networkSettingsFormSchema,
+  parseRetentionDays,
 } from "@freestyle-voice/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
@@ -122,6 +124,10 @@ export default function SettingsPage(): React.JSX.Element {
   const [pillPosition, setPillPosition] = useState("bottom-center");
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [historyPaused, setHistoryPaused] = useState(false);
+  const [historyRetention, setHistoryRetention] = useState<
+    "never" | "7" | "30" | "custom"
+  >("never");
+  const [customRetentionDays, setCustomRetentionDays] = useState("90");
   const [audioPlaybackMode, setAudioPlaybackMode] =
     useState<AudioPlaybackMode>("off");
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
@@ -160,6 +166,16 @@ export default function SettingsPage(): React.JSX.Element {
         label:
           t(`settings.recording.transcriptionLanguages.${l.id}`) || l.label,
       })),
+    ],
+    [t],
+  );
+
+  const retentionOptions = useMemo(
+    () => [
+      { value: "never", label: t("settings.data.autoDeleteNever") },
+      { value: "7", label: t("settings.data.autoDelete7") },
+      { value: "30", label: t("settings.data.autoDelete30") },
+      { value: "custom", label: t("settings.data.autoDeleteCustom") },
     ],
     [t],
   );
@@ -310,6 +326,18 @@ export default function SettingsPage(): React.JSX.Element {
     if (s[SETTINGS_KEYS.outputMode]) setOutputMode(s[SETTINGS_KEYS.outputMode]);
     if (s[SETTINGS_KEYS.soundEnabled] === "false") setSoundEnabled(false);
     if (s[SETTINGS_KEYS.historyPaused] === "true") setHistoryPaused(true);
+
+    const retentionDays = parseRetentionDays(
+      s[SETTINGS_KEYS.historyRetentionDays],
+    );
+    if (retentionDays !== null) {
+      if (retentionDays === 7 || retentionDays === 30) {
+        setHistoryRetention(String(retentionDays) as "7" | "30");
+      } else {
+        setHistoryRetention("custom");
+        setCustomRetentionDays(String(retentionDays));
+      }
+    }
 
     // Audio playback mode with legacy fallback chain (new key → paused → duck).
     if (s.audio_playback_mode) {
@@ -507,6 +535,47 @@ export default function SettingsPage(): React.JSX.Element {
       })
       .catch(() => {});
   }, []);
+
+  const saveHistoryRetention = useCallback((days: string) => {
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.historyRetentionDays },
+        json: { value: days },
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleHistoryRetentionChange = useCallback(
+    (value: string) => {
+      const preset = value as "never" | "7" | "30" | "custom";
+      setHistoryRetention(preset);
+      if (preset === "never") {
+        saveHistoryRetention("");
+      } else if (preset === "custom") {
+        if (parseRetentionDays(customRetentionDays) !== null) {
+          saveHistoryRetention(customRetentionDays);
+        }
+      } else {
+        saveHistoryRetention(preset);
+      }
+    },
+    [customRetentionDays, saveHistoryRetention],
+  );
+
+  const handleCustomRetentionDaysChange = useCallback(
+    (raw: string) => {
+      const digits = raw.replace(/\D/g, "").slice(0, 4);
+      const clamped =
+        digits === ""
+          ? ""
+          : String(Math.min(Number(digits), HISTORY_RETENTION_DAYS_MAX));
+      setCustomRetentionDays(clamped);
+      if (parseRetentionDays(clamped) !== null) {
+        saveHistoryRetention(clamped);
+      }
+    },
+    [saveHistoryRetention],
+  );
 
   const handleAudioPlaybackModeChange = useCallback((value: string) => {
     const mode = normalizeAudioPlaybackMode(value);
@@ -962,6 +1031,47 @@ export default function SettingsPage(): React.JSX.Element {
                   checked={historyPaused}
                   onCheckedChange={handleHistoryPausedToggle}
                 />
+              </Row>
+              <Row
+                label={t("settings.data.autoDelete")}
+                desc={t("settings.data.autoDeleteDesc")}
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <Select
+                    value={historyRetention}
+                    onValueChange={handleHistoryRetentionChange}
+                  >
+                    <SelectTrigger
+                      id="settings-history-retention"
+                      className="w-36"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {retentionOptions.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {historyRetention === "custom" && (
+                    <>
+                      <Input
+                        inputMode="numeric"
+                        value={customRetentionDays}
+                        onChange={(e) =>
+                          handleCustomRetentionDaysChange(e.target.value)
+                        }
+                        className="w-16 text-center"
+                        aria-label={t("settings.data.autoDeleteDays")}
+                      />
+                      <span className="text-muted-foreground text-xs">
+                        {t("settings.data.autoDeleteDays")}
+                      </span>
+                    </>
+                  )}
+                </div>
               </Row>
               <Row
                 label={t("settings.data.history")}

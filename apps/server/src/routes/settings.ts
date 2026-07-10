@@ -8,6 +8,7 @@ import {
   cleanupPersonalToneSchema,
   cleanupWorkToneSchema,
   disabledPluginsSettingSchema,
+  historyRetentionDaysSettingSchema,
   localLlmConfigSchema,
   pluginsSettingSchema,
   proxyUrlSettingSchema,
@@ -16,6 +17,10 @@ import {
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import {
+  HISTORY_RETENTION_SETTING_KEY,
+  purgeExpiredHistory,
+} from "../lib/history-store.js";
 import { applyMlxAsrRetentionPolicy } from "../lib/mlx-asr/server.js";
 import {
   CA_CERT_PATH_SETTING,
@@ -133,6 +138,17 @@ const settings = new Hono()
       if (!parsed.success) {
         return c.json({ error: "Invalid CA certificate path" }, 400);
       }
+    } else if (key === HISTORY_RETENTION_SETTING_KEY) {
+      const parsed = historyRetentionDaysSettingSchema.safeParse(body.value);
+      if (!parsed.success) {
+        return c.json(
+          {
+            error:
+              parsed.error.issues[0]?.message ?? "Invalid history retention",
+          },
+          400,
+        );
+      }
     }
 
     db.prepare(
@@ -145,6 +161,9 @@ const settings = new Hono()
     }
     if (key === "whisper_keep_alive_minutes") {
       applyWhisperRetentionPolicy();
+    }
+    if (key === HISTORY_RETENTION_SETTING_KEY) {
+      purgeExpiredHistory();
     }
     // Re-install the global dispatcher so proxy/CA changes take effect for the
     // next download without an app restart.

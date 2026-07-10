@@ -1,10 +1,15 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import createApp from "../src/index.js";
 import { getDb } from "../src/lib/db.js";
 import {
+  getHistoryRetentionDays,
   HISTORY_PAUSED_SETTING_KEY,
+  HISTORY_RETENTION_SETTING_KEY,
   isHistoryPaused,
+  purgeExpiredHistory,
   saveRawHistory,
+  startHistoryRetentionSweep,
+  stopHistoryRetentionSweep,
 } from "../src/lib/history-store.js";
 
 const app = createApp();
@@ -671,5 +676,115 @@ describe("History", () => {
     );
     const statsInvalid = await statsInvalidRes.json();
     expect(statsInvalid.total_sessions).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// History retention (auto-delete)
+// ---------------------------------------------------------------------------
+
+describe("History retention", () => {
+  function insertEntry(rawText: string, ageModifier: string): void {
+    getDb()
+      .prepare(
+        `INSERT INTO transcription_history
+           (raw_text, voice_provider, voice_model, duration_ms, audio_duration_ms, created_at)
+           VALUES (?, 'voice', 'model', 1000, 1000, datetime('now', ?))`,
+      )
+      .run(rawText, ageModifier);
+  }
+
+  function historyTexts(): string[] {
+    return (
+      getDb().prepare("SELECT raw_text FROM transcription_history").all() as {
+        raw_text: string;
+      }[]
+    ).map((r) => r.raw_text);
+  }
+
+  beforeEach(() => {
+    const db = getDb();
+    db.exec("DELETE FROM transcription_history");
+    db.prepare("DELETE FROM settings WHERE key = ?").run(
+      HISTORY_RETENTION_SETTING_KEY,
+    );
+  });
+
+  afterEach(() => {
+    stopHistoryRetentionSweep();
+  });
+
+  it("purgeExpiredHistory is a no-op when retention is not configured", () => {
+    insertEntry("Ancient text", "-400 days");
+    expect(getHistoryRetentionDays()).toBe(null);
+    expect(purgeExpiredHistory()).toBe(0);
+    expect(historyTexts()).toEqual(["Ancient text"]);
+  });
+
+  it("purgeExpiredHistory deletes only entries older than the window", async () => {
+    await json(
+      `/api/settings/${HISTORY_RETENTION_SETTING_KEY}`,
+      { value: "30" },
+      "PUT",
+    );
+    expect(getHistoryRetentionDays()).toBe(30);
+
+    insertEntry("Old text", "-40 days");
+    insertEntry("Recent text", "-5 days");
+    insertEntry("Fresh text", "-1 hours");
+
+    expect(purgeExpiredHistory()).toBe(1);
+    expect(historyTexts().sort()).toEqual(["Fresh text", "Recent text"]);
+
+    expect(purgeExpiredHistory()).toBe(0);
+  });
+
+  it("startHistoryRetentionSweep runs an immediate purge and is idempotent", async () => {
+    await json(
+      `/api/settings/${HISTORY_RETENTION_SETTING_KEY}`,
+      { value: "30" },
+      "PUT",
+    );
+    insertEntry("Old text", "-40 days");
+    insertEntry("Fresh text", "-1 hours");
+
+    startHistoryRetentionSweep();
+    startHistoryRetentionSweep();
+
+    expect(historyTexts()).toEqual(["Fresh text"]);
+  });
+
+  it("writing the retention setting purges expired entries immediately", async () => {
+    insertEntry("Old text", "-40 days");
+    insertEntry("Fresh text", "-1 hours");
+
+    const res = await json(
+      `/api/settings/${HISTORY_RETENTION_SETTING_KEY}`,
+      { value: "7" },
+      "PUT",
+    );
+    expect(res.status).toBe(200);
+    expect(historyTexts()).toEqual(["Fresh text"]);
+  });
+
+  it("empty value disables auto-deletion", async () => {
+    const res = await json(
+      `/api/settings/${HISTORY_RETENTION_SETTING_KEY}`,
+      { value: "" },
+      "PUT",
+    );
+    expect(res.status).toBe(200);
+    expect(getHistoryRetentionDays()).toBe(null);
+  });
+
+  it("rejects malformed retention values", async () => {
+    for (const value of ["abc", "0", "-5", "1.5", "7 days", "99999"]) {
+      const res = await json(
+        `/api/settings/${HISTORY_RETENTION_SETTING_KEY}`,
+        { value },
+        "PUT",
+      );
+      expect(res.status, `value: ${value}`).toBe(400);
+    }
   });
 });

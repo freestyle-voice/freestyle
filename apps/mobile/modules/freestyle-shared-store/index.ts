@@ -1,20 +1,19 @@
 /**
  * Bridge to the App Group container shared with the iOS keyboard extension.
- * The keyboard (native Swift) reads these values via `SharedStore.swift`.
+ * The app writes the dictation result here; the keyboard (native Swift) reads
+ * it via `SharedStore.swift` and inserts it into the host text field.
  *
  * On non-iOS platforms the native module is absent; callers should guard on
  * `Platform.OS === "ios"` (see `src/lib/keyboard-bridge.ts`).
  */
 import FreestyleSharedStoreModule from "./src/FreestyleSharedStoreModule";
 
-export function setSharedValues(values: Record<string, string | null>): void {
-  FreestyleSharedStoreModule.setValues(values);
+/** Hand a freshly-dictated transcript to the keyboard for insertion. */
+export function setPendingTranscript(text: string): void {
+  FreestyleSharedStoreModule.setPendingTranscript(text);
 }
 
-export function setSharedBool(key: string, value: boolean): void {
-  FreestyleSharedStoreModule.setBool(key, value);
-}
-
+/** Remove all shared state (used on sign-out). */
 export function clearSharedStore(): void {
   FreestyleSharedStoreModule.clear();
 }

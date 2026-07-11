@@ -1,12 +1,13 @@
 import ExpoModulesCore
 
-/// Writes the shared state the keyboard extension reads from the App Group
-/// container (`group.com.freestylevoice.app`): the better-auth session token,
-/// the cloud base URL, and non-secret cleanup/language preferences.
+/// Writes the dictation result the keyboard extension reads from the App Group
+/// container (`group.com.freestylevoice.app`). The keyboard can't use the
+/// microphone, so the app captures + transcribes and hands the final text off
+/// here; the keyboard inserts it when it reappears.
 ///
 /// The App Group `UserDefaults` is the cross-process channel between the app and
-/// the keyboard — it needs no Apple Team ID at runtime (unlike a keychain access
-/// group) and is sandboxed to Freestyle's own targets.
+/// the keyboard — it needs no Apple Team ID at runtime and is sandboxed to
+/// Freestyle's own targets.
 public class FreestyleSharedStoreModule: Module {
   private let appGroup = "group.com.freestylevoice.app"
 
@@ -17,29 +18,17 @@ public class FreestyleSharedStoreModule: Module {
   public func definition() -> ModuleDefinition {
     Name("FreestyleSharedStore")
 
-    // Merge a dictionary of string values into the shared store. A nil/absent
-    // value removes the key (used to clear the token on sign-out).
-    Function("setValues") { (values: [String: String?]) -> Void in
+    // Store the transcript with a timestamp so the keyboard only inserts a
+    // *new* result (not a stale one) when it next becomes active.
+    Function("setPendingTranscript") { (text: String) -> Void in
       guard let store = self.defaults else { return }
-      for (key, value) in values {
-        if let value = value {
-          store.set(value, forKey: key)
-        } else {
-          store.removeObject(forKey: key)
-        }
-      }
-    }
-
-    Function("setBool") { (key: String, value: Bool) -> Void in
-      self.defaults?.set(value, forKey: key)
+      store.set(text, forKey: "pendingTranscript")
+      store.set(Date().timeIntervalSince1970, forKey: "pendingTranscriptAt")
     }
 
     Function("clear") { () -> Void in
       guard let store = self.defaults else { return }
-      for key in [
-        "sessionToken", "cloudBaseURL", "language", "skipPostProcess",
-        "intensity", "personalTone", "workTone", "emailTone", "overallTone",
-      ] {
+      for key in ["pendingTranscript", "pendingTranscriptAt"] {
         store.removeObject(forKey: key)
       }
     }

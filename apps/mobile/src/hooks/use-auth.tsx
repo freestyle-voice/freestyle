@@ -4,14 +4,11 @@
  * (social) / sign-out actions.
  */
 
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 
 import { authClient } from "@/lib/cloud/auth-client";
 import { type CloudUser, signOutCloud } from "@/lib/cloud/session";
-import {
-  clearKeyboardSession,
-  syncKeyboardSession,
-} from "@/lib/keyboard-bridge";
+import { clearKeyboardSession } from "@/lib/keyboard-bridge";
 
 export type SocialProvider = "google" | "github";
 
@@ -27,15 +24,6 @@ interface AuthState {
 
 export function useAuth(): AuthState {
   const { data: session, isPending } = authClient.useSession();
-
-  // Keep the keyboard extension's shared session token in lockstep with the
-  // app's session so it can dictate without a separate sign-in. Re-runs whenever
-  // the session token changes (sign-in, refresh, sign-out).
-  const sessionToken = session?.session?.token;
-  useEffect(() => {
-    void sessionToken;
-    syncKeyboardSession();
-  }, [sessionToken]);
 
   const signInWith = useCallback(async (provider: SocialProvider) => {
     // On native, the expo client opens an in-app browser and resolves once the

@@ -1,38 +1,56 @@
 # Freestyle Voice Keyboard (iOS keyboard extension)
 
-Status: in progress — **Phases 1–4 implemented** (live dictation end-to-end;
-awaits on-device validation)
+Status: in progress — **rearchitected: app-side capture** (keyboard delegates
+dictation to the app; awaits on-device validation)
 Owner: mobile
 Related: `mobile-cloud-voice-typing.md`, cloud `apps/server/src/routes/v2/*`
 
+## ⚠️ Architecture change (supersedes §3–§7 in-keyboard capture)
+
+**iOS keyboard extensions cannot access the microphone**, even with "Allow Full
+Access" (Full Access only grants network + the shared App Group container).
+Confirmed on-device: `AVAudioEngine.start()` fails with
+`kAudioUnitErr_CannotDoInCurrentContext` (`'what'`, 2003329396); the audio HAL
+refuses to start the input unit in the keyboard's process. The backup branch hit
+the same wall — it added an `AVAudioRecorder` keyboard, then stripped
+mic/recording out (`dab109c`) and replaced the keyboard with a Share Extension
+(`8d47a55`). This is an Apple sandbox rule, not a config bug.
+
+**New design — delegate capture to the containing app:**
+1. Keyboard mic tap → `openURL("freestyle://dictate")` launches the app (Full
+   Access required for `openURL` + App Group).
+2. The app's `dictate` screen auto-records, streams to `/v2/stream` (this works
+   fine in the app), and on the final transcript writes it to the App Group via
+   the `freestyle-shared-store` module (`setPendingTranscript`, timestamped).
+3. The user returns to the host app; the keyboard's `viewWillAppear` reads the
+   fresh transcript (`SharedStore.swift`) and `insertText`s it into the field.
+
+Trade-off: an app-switch round trip (unavoidable given the sandbox). This is the
+standard, App-Store-approved pattern for voice keyboards.
+
 Progress:
 - [x] **Phase 1** — `plugins/withKeyboardExtension.js` adds the
-  `FreestyleKeyboard` app-extension target (App Group, Full-Access request, mic
-  usage string, embed). Voice panel shell.
-- [x] **Phase 2** — Full-Access gate (`hasFullAccess`) + `AudioEngineCapture`
-  (`AVAudioEngine` tap → `AVAudioConverter` → PCM16/16k/mono frames + level) +
-  `textDocumentProxy` insertion on commit.
-- [x] **Phase 3** — session sharing via the **App Group** (not keychain): a
-  local Expo module `freestyle-shared-store` writes the bearer session token +
-  cloud URL + prefs from JS (`src/lib/keyboard-bridge.ts`), read in Swift by
-  `SharedStore.swift`. Synced on session/settings change.
-- [x] **Phase 4** — `CloudStreamSession.swift` (`URLSessionWebSocketTask`
-  `/v2/stream`, bearer auth, start/commit/cancel, partial/final) with live
-  partials in-panel → committed `final` inserted. `CloudTranscriber.swift`
-  (batch `POST /v2/transcribe`) ships as a ready client; auto-wiring the
-  fallback (buffer audio to file) is a deliberate follow-up.
+  `FreestyleKeyboard` app-extension target (App Group, Full-Access request,
+  embed).
+- [x] **Capture rearchitected to app-side** (see the box above). Keyboard
+  (`KeyboardViewController.swift`): neutral minimal panel (mic + globe + delete +
+  space + return); mic opens `freestyle://dictate`; `viewWillAppear` inserts the
+  App Group transcript via `SharedStore.swift`.
+- [x] **App dictation screen** `src/app/(app)/dictate.tsx` — auto-records +
+  streams to `/v2/stream`, writes the final to the App Group
+  (`setPendingTranscript`), prompts the user to return.
+- [x] **App Group bridge** — local Expo module `freestyle-shared-store`
+  (`setPendingTranscript` / `clear`) + `src/lib/keyboard-bridge.ts`.
 - [x] In-app setup screen `src/app/(app)/keyboard-setup.tsx` +
-  `freestyle://keyboard-setup` deep link (from the extension's Full-Access
-  prompt) and a Settings entry point.
+  `freestyle://keyboard-setup` deep link and a Settings entry point.
 
-### Decision update (supersedes §5)
+### Superseded work (removed)
 
-Session sharing uses the **App Group `UserDefaults`** container, not a keychain
-access group. Rationale: `expo-secure-store`'s `accessGroup` needs the Apple
-**Team ID** (`AppIdentifierPrefix`) as a literal at runtime, which isn't
-configured and complicates provisioning. The App Group is sandboxed to
-Freestyle's own two targets, needs no Team ID, and works on any provisioning.
-The token is still a short-lived bearer session token treated as 401-on-expiry.
+The in-keyboard streaming stack from the earlier plan was removed once the
+sandbox limit was confirmed: `AudioEngineCapture.swift`, `WaveformView.swift`,
+`CloudStreamSession.swift`, `CloudTranscriber.swift` (keyboard copies), and the
+keyboard's session-token/prefs sync. The app already owns the streaming client
+(`src/lib/cloud/stream.ts`), so the keyboard needs none of it.
 
 ## Decisions (locked)
 

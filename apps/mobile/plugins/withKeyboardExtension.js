@@ -2,14 +2,15 @@
  * Expo config plugin: adds the Freestyle voice keyboard as an iOS Custom
  * Keyboard Extension target during `expo prebuild`.
  *
- * Creates the target, copies the Swift sources (voice panel UI, AVAudioEngine
- * capture, /v2/stream client + batch fallback, App Group reader), configures the
- * Info.plist (keyboard service + Full Access request + mic usage string) and
- * entitlements (App Group), and embeds the .appex in the host app.
+ * Creates the target, copies the Swift sources (voice panel UI + App Group
+ * reader), configures the Info.plist (keyboard service + Full Access request)
+ * and entitlements (App Group), and embeds the .appex in the host app.
  *
- * The App Group lets the main app share the signed-in session token + prefs with
- * the keyboard (written from JS via `keyboard-bridge.ts` → the local
- * `freestyle-shared-store` module, read in Swift by `SharedStore.swift`).
+ * Keyboard extensions can't use the microphone, so dictation is delegated to the
+ * containing app: the mic button opens Freestyle via `freestyle://dictate`
+ * (needs Full Access), the app captures + streams, and writes the transcript
+ * into the App Group; the keyboard reads it via `SharedStore.swift` and inserts
+ * it. Full Access also gates App Group access from the extension.
  */
 const {
   withXcodeProject,
@@ -21,14 +22,7 @@ const path = require("node:path");
 
 const EXT_NAME = "FreestyleKeyboard";
 const APP_GROUP = "group.com.freestylevoice.app";
-const SOURCE_FILES = [
-  "KeyboardViewController.swift",
-  "WaveformView.swift",
-  "AudioEngineCapture.swift",
-  "SharedStore.swift",
-  "CloudStreamSession.swift",
-  "CloudTranscriber.swift",
-];
+const SOURCE_FILES = ["KeyboardViewController.swift", "SharedStore.swift"];
 const DEPLOYMENT_TARGET = "16.0";
 
 function withKeyboardExtension(config) {
@@ -229,8 +223,6 @@ function keyboardInfoPlist() {
     <key>NSExtensionPrincipalClass</key>
     <string>$(PRODUCT_MODULE_NAME).KeyboardViewController</string>
   </dict>
-  <key>NSMicrophoneUsageDescription</key>
-  <string>Freestyle needs microphone access to transcribe your voice.</string>
 </dict>
 </plist>`;
 }

@@ -11,7 +11,6 @@ import {
   DEFAULT_OVERALL_TONE,
   DEFAULT_TONES,
 } from "./cleanup-tones";
-import { syncKeyboardSettings } from "./keyboard-bridge";
 import { getPref, setPref } from "./storage";
 
 export const LANGUAGES = [
@@ -62,43 +61,28 @@ export function useSettings() {
         getPref(CLEANUP_KEY),
         getPref(OVERALL_TONE_KEY),
       ]);
-      const loaded: DictationSettings = {
+      setSettings({
         language: (lang as LanguageCode) ?? DEFAULTS.language,
         cleanup: cleanup == null ? DEFAULTS.cleanup : cleanup === "true",
         overallTone:
           (overallTone as CleanupOverallTone) ?? DEFAULTS.overallTone,
-      };
-      setSettings(loaded);
-      // Mirror prefs to the keyboard extension on launch.
-      syncKeyboardSettings(loaded);
+      });
       setReady(true);
     })();
   }, []);
 
   const setLanguage = useCallback((language: LanguageCode) => {
-    setSettings((s) => {
-      const next = { ...s, language };
-      syncKeyboardSettings(next);
-      return next;
-    });
+    setSettings((s) => ({ ...s, language }));
     void setPref(LANGUAGE_KEY, language);
   }, []);
 
   const setCleanup = useCallback((cleanup: boolean) => {
-    setSettings((s) => {
-      const next = { ...s, cleanup };
-      syncKeyboardSettings(next);
-      return next;
-    });
+    setSettings((s) => ({ ...s, cleanup }));
     void setPref(CLEANUP_KEY, String(cleanup));
   }, []);
 
   const setOverallTone = useCallback((overallTone: CleanupOverallTone) => {
-    setSettings((s) => {
-      const next = { ...s, overallTone };
-      syncKeyboardSettings(next);
-      return next;
-    });
+    setSettings((s) => ({ ...s, overallTone }));
     void setPref(OVERALL_TONE_KEY, overallTone);
   }, []);
 

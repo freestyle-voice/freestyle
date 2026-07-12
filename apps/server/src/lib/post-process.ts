@@ -1,4 +1,8 @@
 import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
+import {
+  postProcess as cleanupWithModel,
+  sanitizeTranscriptText,
+} from "@freestyle-voice/stt";
 import { createAppLogger } from "@freestyle-voice/utils";
 import type {
   CleanupAppAssignment,
@@ -17,12 +21,9 @@ import {
   parseCleanupPersonalTone,
   parseCleanupWorkTone,
 } from "@freestyle-voice/validations";
-import { generateText } from "ai";
 import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
 import { getDb, readSetting } from "./db.js";
 import { applyDictionaryReplacements } from "./dictionary-replacements.js";
-import { maxOutputTokensForCleanup } from "./editor/max-output-tokens.js";
-import { sanitizeTranscriptText } from "./editor/model-hints.js";
 import { buildRewritePrompt } from "./editor/prompts.js";
 import { getRewritePromptContext } from "./editor/rewrite-context.js";
 import {
@@ -364,26 +365,40 @@ export async function postProcess(
 
       handoffMs = Date.now() - handoffStart;
 
-      try {
-        const chatModel = resolveChatModel(llm.provider, llm.model_id);
-        const result = await generateText({
-          model: chatModel,
-          system: pluginSystem,
-          prompt,
-          temperature: 0,
-          maxOutputTokens: maxOutputTokensForCleanup(normalizedRawText),
-          ...(llm.provider === "groq"
-            ? {
-                providerOptions: groqCleanupProviderOptions(llm.model_id),
-              }
-            : {}),
-        });
-        inputTokens = result.usage?.inputTokens ?? 0;
-        outputTokens = result.usage?.outputTokens ?? 0;
+      const chatModel = resolveChatModel(llm.provider, llm.model_id);
+      let cleanupError: unknown;
+      const result = await cleanupWithModel({
+        model: chatModel,
+        text: normalizedRawText,
+        system: pluginSystem,
+        prompt,
+        // The empty/filler-only case is already handled above for the whole
+        // function (both the cloud and local-model branches), so this call
+        // is guaranteed non-empty text — disable the package's own internal
+        // check rather than relying on two independently-maintained filler
+        // regexes staying in sync.
+        skipEmptyText: false,
+        providerOptions:
+          llm.provider === "groq"
+            ? groqCleanupProviderOptions(llm.model_id)
+            : undefined,
+        onError: (err) => {
+          cleanupError = err;
+        },
+      });
+
+      if (result.model) {
+        inputTokens = result.inputTokens;
+        outputTokens = result.outputTokens;
         llmProvider = llm.provider;
+        // Record the configured model id (e.g. `groq/qwen/qwen3-32b`), not the
+        // AI SDK's prefix-stripped `result.model` (`qwen/qwen3-32b`), so the
+        // persisted history label stays consistent with pre-migration rows and
+        // the Freestyle Cloud branch above.
         llmModel = llm.model_id;
-        cleanedText = sanitizeTranscriptText(result.text);
-      } catch (err) {
+        cleanedText = result.cleaned;
+      } else {
+        const err = cleanupError;
         if (!isTransientCloudError(err)) captureException(err);
         void plugins().emit({
           type: FreestyleEventType.PipelineError,
@@ -396,7 +411,7 @@ export async function postProcess(
           source,
         });
         log.error(`LLM cleanup failed: ${err}`);
-        cleanedText = normalizedRawText;
+        cleanedText = result.cleaned;
       }
     }
   }

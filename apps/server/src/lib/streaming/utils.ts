@@ -1,11 +1,12 @@
-import { experimental_transcribe as transcribe } from "ai";
+import { transcribe } from "@freestyle-voice/stt";
+import type { TranscriptionModel } from "ai";
 import type { AsrVocabularyBias } from "../vocabulary-bias.js";
 import { providerOptionsFromBias } from "./transcribe-bias.js";
 import type { TranscribeOptions, TranscribeResult } from "./types.js";
 import { CLOUD_TRANSCRIBE_TIMEOUT_MS, stripProviderPrefix } from "./types.js";
 
 type AiSdkProviderFactory = (config: { apiKey: string }) => {
-  transcription: (id: string) => Parameters<typeof transcribe>[0]["model"];
+  transcription: (id: string) => TranscriptionModel;
 };
 
 const LANGUAGE_OPTION_KEYS: Record<string, string> = {
@@ -42,12 +43,11 @@ export async function transcribeWithAiSdk(
   const result = await transcribe({
     model,
     audio: opts.audio,
-    abortSignal: AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
+    signal: AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
     ...(providerOptions ? { providerOptions } : {}),
   });
   return {
     text: result.text,
-    segments: result.segments,
     durationInSeconds: result.durationInSeconds,
   };
 }

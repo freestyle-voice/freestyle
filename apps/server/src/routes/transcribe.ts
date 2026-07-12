@@ -1,7 +1,7 @@
+import { sanitizeTranscriptText } from "@freestyle-voice/stt";
 import { createAppLogger } from "@freestyle-voice/utils";
 import { Hono } from "hono";
 import { readSetting } from "../lib/db.js";
-import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,

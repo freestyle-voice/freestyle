@@ -71,7 +71,7 @@ jobs:
             esac
 
             case "$file" in
-              apps/server/*|packages/sdk/*|packages/utils/*|packages/validations/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
+              apps/server/*|packages/sdk/*|packages/stt/*|packages/utils/*|packages/validations/*|.npmrc|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|turbo.json|.github/workflows/build.yml)
                 run_server_image=true
                 ;;
             esac

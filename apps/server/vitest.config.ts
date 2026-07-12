@@ -13,6 +13,10 @@ export default defineConfig({
         __dirname,
         "../../packages/utils/src/index.ts",
       ),
+      "@freestyle-voice/stt": resolve(
+        __dirname,
+        "../../packages/stt/src/index.ts",
+      ),
     },
   },
   test: {

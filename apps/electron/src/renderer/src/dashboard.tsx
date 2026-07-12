@@ -8,7 +8,10 @@ import i18n, { initI18n } from "@renderer/i18n";
 import { initApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider } from "@renderer/lib/auth-context";
 import { createQueryClient } from "@renderer/lib/query";
-import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
+import {
+  installGlobalErrorHandlers,
+  reportError,
+} from "@renderer/lib/report-error";
 import NotFoundPage from "@renderer/pages/not-found";
 import TodayPage from "@renderer/pages/today";
 import AppShell from "@renderer/shell";
@@ -65,10 +68,7 @@ if (window.api?.platform === "darwin") {
   document.documentElement.classList.add("glass");
 }
 
-// Load the active language (and the `en` fallback) before the first paint so
-// the UI renders translated immediately, then mount React. Locale files are no
-// longer bundled into the initial chunk — they load on demand per language.
-void initI18n().then(() => {
+function mount(): void {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <ErrorBoundary>
@@ -159,4 +159,15 @@ void initI18n().then(() => {
       </ErrorBoundary>
     </StrictMode>,
   );
-});
+}
+
+// Load the active language (and the `en` fallback) before the first paint so
+// the UI renders translated immediately. Locale files are no longer bundled
+// into the initial chunk — they load on demand per language. If loading fails
+// we still mount (i18next falls back to raw keys) rather than leave a blank
+// window.
+void initI18n()
+  .catch((err) => {
+    reportError(err, { scope: "initI18n" });
+  })
+  .finally(mount);

@@ -95,6 +95,29 @@ fix: resolve a bug
 chore: maintenance task
 ```
 
+## Pull request titles
+
+PR titles must follow the [Conventional Commits](https://www.conventionalcommits.org/) format. We squash-merge PRs and use the PR title for the squash commit and the release changelog, so a clean title matters.
+
+```
+type(scope): short imperative summary
+```
+
+The scope is optional. Allowed types:
+
+`feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `build`, `perf`, `style`, `revert`
+
+Examples:
+
+```
+fix: prevent duplicate settings requests
+feat(plugins): add update checks
+docs: clarify local development setup
+refactor(server): simplify plugin loading
+```
+
+A CI check validates PR titles automatically. If it fails, edit your PR title to match the format above — no need to open a new PR.
+
 ## Freestyle Cloud backend (managed STT)
 
 Only needed if you're working on the **Freestyle Cloud** transcription provider. It's a separate Cloudflare Worker (the `cloud` repository) that exposes the `/v1/transcribe` endpoint, and the desktop app calls it when "Freestyle Cloud" is the selected voice model.

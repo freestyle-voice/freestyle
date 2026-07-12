@@ -391,7 +391,11 @@ export async function postProcess(
         inputTokens = result.inputTokens;
         outputTokens = result.outputTokens;
         llmProvider = llm.provider;
-        llmModel = result.model;
+        // Record the configured model id (e.g. `groq/qwen/qwen3-32b`), not the
+        // AI SDK's prefix-stripped `result.model` (`qwen/qwen3-32b`), so the
+        // persisted history label stays consistent with pre-migration rows and
+        // the Freestyle Cloud branch above.
+        llmModel = llm.model_id;
         cleanedText = result.cleaned;
       } else {
         const err = cleanupError;

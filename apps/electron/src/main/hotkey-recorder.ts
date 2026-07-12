@@ -38,15 +38,6 @@ const MAC_RIGHT_MOD_KEYS: Record<string, string> = {
   rightshift: "RightShift",
 };
 
-const RIGHT_MODIFIER_KEYS: Record<string, string> = {
-  RightOption: "Alt",
-  RightAlt: "Alt",
-  RightCommand: "Command",
-  RightControl: "Control",
-  RightShift: "Shift",
-  RightSuper: "Super",
-};
-
 const MAC_FLAG_MODIFIERS: Record<string, string> = {
   control: "Control",
   option: "Alt",
@@ -245,8 +236,7 @@ export class HotkeyRecorder {
     if (line.startsWith("RIGHT_MOD_DOWN:")) {
       const modName = line.slice("RIGHT_MOD_DOWN:".length);
       const key = MAC_RIGHT_MOD_KEYS[modName.toLowerCase()] ?? modName;
-      const modifier = RIGHT_MODIFIER_KEYS[key] ?? key;
-      this.sendModifiers([...this.pendingModifiers, modifier]);
+      this.sendModifiers([...this.pendingModifiers, key]);
       return;
     }
 

@@ -40,6 +40,31 @@ const KEY_SYMBOLS: Record<string, string> = {
   Fn: "\uD83C\uDF10",
   MouseButton4: "Mouse 4",
   MouseButton5: "Mouse 5",
+  RightAlt: "Right Alt",
+  RightOption: "Right Alt",
+  RightControl: "Right Ctrl",
+  RightShift: "Right Shift",
+  RightSuper: "Right Super",
+  RightCommand: "Right Super",
+};
+
+/** Side-specific right-modifier symbols shown on macOS (falls back to KEY_SYMBOLS elsewhere). */
+const MAC_RIGHT_MOD_SYMBOLS: Record<string, string> = {
+  RightControl: "Right \u2303",
+  RightCommand: "Right \u2318",
+  RightAlt: "Right \u2325",
+  RightOption: "Right \u2325",
+  RightShift: "Right \u21E7",
+};
+
+/** Maps a side-specific modifier token to the generic token it collapses to for display/merging. */
+const RIGHT_MODIFIER_TO_GENERIC: Record<string, string> = {
+  RightAlt: "Alt",
+  RightOption: "Alt",
+  RightCommand: "Command",
+  RightControl: "Control",
+  RightShift: "Shift",
+  RightSuper: "Super",
 };
 
 // ---------------------------------------------------------------------------
@@ -198,9 +223,87 @@ export function acceleratorToCombo(accel: string): HotkeyCombo {
 
 export function keyDisplayLabel(key: string): string {
   if (IS_MAC && MAC_MOD_SYMBOLS[key]) return MAC_MOD_SYMBOLS[key];
+  if (IS_MAC && MAC_RIGHT_MOD_SYMBOLS[key]) return MAC_RIGHT_MOD_SYMBOLS[key];
   if (!IS_MAC && OTHER_MOD_LABELS[key]) return OTHER_MOD_LABELS[key];
   if (KEY_SYMBOLS[key]) return KEY_SYMBOLS[key];
   return key;
+}
+
+// ---------------------------------------------------------------------------
+// Right-modifier latch — tracks whether the in-progress draft combo is a
+// solo right-side modifier press, so it can be saved as the side-specific
+// accelerator (e.g. "RightCommand") instead of the generic one ("Command").
+// ---------------------------------------------------------------------------
+
+/** Normalized description of a single modifiers-update event, from either the
+ *  native listener or the DOM keydown handler. */
+export interface RightModifierUpdateEvent {
+  /** The side-specific token this update represents a lone press of, or null. */
+  rightToken: string | null;
+  /** Total modifier count carried by this update. */
+  modifierCount: number;
+  /** This update's modifiers after mapping side-specific tokens to generic. */
+  genericModifiers: string[];
+  /** True only when the update definitively identifies a left-side key (e.g. DOM `MetaLeft`). */
+  explicitLeft?: boolean;
+}
+
+/** Maps DOM `KeyboardEvent.code` to the side-specific token it represents (macOS only). */
+function domRightModifierToken(e: KeyboardEvent): string | null {
+  if (!IS_MAC) return null;
+  switch (e.code) {
+    case "MetaRight":
+      return "RightCommand";
+    case "AltRight":
+      return "RightOption";
+    case "ControlRight":
+      return "RightControl";
+    case "ShiftRight":
+      return "RightShift";
+    default:
+      return null;
+  }
+}
+
+/**
+ * Decides the next right-modifier latch value given the previous latch, the
+ * draft combo before this update was applied, and a normalized description
+ * of the update. Idempotent for duplicate delivery of the same right
+ * modifier (native + DOM both fire when the settings window is focused).
+ */
+export function nextRightModifierLatch(
+  previousLatch: string | null,
+  draftBeforeUpdate: HotkeyCombo,
+  event: RightModifierUpdateEvent,
+): string | null {
+  const draftEmpty =
+    draftBeforeUpdate.modifiers.length === 0 && draftBeforeUpdate.key === null;
+
+  if (event.rightToken && event.modifierCount === 1) {
+    if (draftEmpty || event.rightToken === previousLatch) {
+      return event.rightToken;
+    }
+  }
+
+  if (event.rightToken && event.rightToken === previousLatch) {
+    return previousLatch;
+  }
+
+  // A same-callback trailing generic update (e.g. the Swift binary's
+  // RIGHT_MOD_DOWN:RightCommand is unconditionally followed by FLAGS:command
+  // from the same flagsChanged invocation) or a duplicate generic delivery
+  // consistent with the latched key keeps the latch. Only a definitively
+  // left-side DOM event, a chord, or an inconsistent modifier clears it.
+  if (
+    previousLatch &&
+    !event.explicitLeft &&
+    event.modifierCount === 1 &&
+    event.genericModifiers[0] === RIGHT_MODIFIER_TO_GENERIC[previousLatch]
+  ) {
+    return previousLatch;
+  }
+
+  return null;
 }
 
 export function comboDisplayKeys(combo: HotkeyCombo): string[] {
@@ -246,6 +349,9 @@ export function useHotkeyRecorder(
   const recordingActiveRef = useRef(false);
   const draftComboRef = useRef<HotkeyCombo>(EMPTY_COMBO);
   const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Solo right-modifier latch: set when the draft is exactly one modifier
+  // produced solely by a right-side key press. See nextRightModifierLatch.
+  const rightModifierLatchRef = useRef<string | null>(null);
 
   const updateDraftCombo = useCallback(
     (updater: (combo: HotkeyCombo) => HotkeyCombo) => {
@@ -277,6 +383,7 @@ export function useHotkeyRecorder(
     setState("recording");
     draftComboRef.current = EMPTY_COMBO;
     setDraftCombo(EMPTY_COMBO);
+    rightModifierLatchRef.current = null;
     setInvalidReleaseNotice(false);
     window.api?.startHotkeyRecording();
   }, []);
@@ -287,23 +394,33 @@ export function useHotkeyRecorder(
     setState("idle");
     draftComboRef.current = EMPTY_COMBO;
     setDraftCombo(EMPTY_COMBO);
+    rightModifierLatchRef.current = null;
     setInvalidReleaseNotice(false);
     window.api?.stopHotkeyRecording();
   }, [clearWarningTimer]);
 
   const completeRecording = useCallback(() => {
-    const accel = comboToAccelerator(draftComboRef.current);
+    const draft = draftComboRef.current;
+    let accel = comboToAccelerator(draft);
+    const latch = rightModifierLatchRef.current;
+    if (
+      accel &&
+      latch &&
+      draft.key === null &&
+      draft.modifiers.length === 1 &&
+      RIGHT_MODIFIER_TO_GENERIC[latch] === draft.modifiers[0]
+    ) {
+      accel = latch;
+    }
     if (!accel) {
-      if (
-        draftComboRef.current.key ||
-        draftComboRef.current.modifiers.length > 0
-      ) {
+      if (draft.key || draft.modifiers.length > 0) {
         showInvalidReleaseNotice();
         window.api?.stopHotkeyRecording();
         recordingActiveRef.current = false;
         setState("idle");
         draftComboRef.current = EMPTY_COMBO;
         setDraftCombo(EMPTY_COMBO);
+        rightModifierLatchRef.current = null;
       }
       return;
     }
@@ -318,6 +435,7 @@ export function useHotkeyRecorder(
     setState("idle");
     draftComboRef.current = EMPTY_COMBO;
     setDraftCombo(EMPTY_COMBO);
+    rightModifierLatchRef.current = null;
     setInvalidReleaseNotice(false);
   }, [clearWarningTimer, showInvalidReleaseNotice]);
 
@@ -333,13 +451,31 @@ export function useHotkeyRecorder(
     if (state !== "recording" || !window.api) return;
 
     const removeModifiers = window.api.onHotkeyRecordModifiers((modifiers) => {
+      const rightToken =
+        modifiers.length === 1 && RIGHT_MODIFIER_TO_GENERIC[modifiers[0]]
+          ? modifiers[0]
+          : null;
+      const genericModifiers = modifiers.map(
+        (m) => RIGHT_MODIFIER_TO_GENERIC[m] ?? m,
+      );
+      rightModifierLatchRef.current = nextRightModifierLatch(
+        rightModifierLatchRef.current,
+        draftComboRef.current,
+        {
+          rightToken,
+          modifierCount: modifiers.length,
+          genericModifiers,
+          explicitLeft: false,
+        },
+      );
       updateDraftCombo((combo) => ({
         ...combo,
-        modifiers: mergeModifiers(combo.modifiers, modifiers),
+        modifiers: mergeModifiers(combo.modifiers, genericModifiers),
       }));
     });
 
     const removeCaptured = window.api.onHotkeyRecordCaptured((combo) => {
+      rightModifierLatchRef.current = null;
       updateDraftCombo((current) => normalizeCapturedCombo(current, combo));
     });
 
@@ -353,6 +489,7 @@ export function useHotkeyRecorder(
       setState("idle");
       draftComboRef.current = EMPTY_COMBO;
       setDraftCombo(EMPTY_COMBO);
+      rightModifierLatchRef.current = null;
       setInvalidReleaseNotice(false);
     });
 
@@ -379,6 +516,22 @@ export function useHotkeyRecorder(
       const modifiers = modifiersFromEvent(e);
 
       if (isDomModifierKey(e)) {
+        const rightToken = domRightModifierToken(e);
+        // isDomModifierKey(e) is true here, so this is equivalent to the full
+        // `isDomModifierKey(e) && domRightModifierToken(e) === null` check:
+        // a DOM modifier keydown whose e.code definitively identifies the
+        // left key (e.g. MetaLeft) is the only source that can assert "left".
+        const explicitLeft = rightToken === null;
+        rightModifierLatchRef.current = nextRightModifierLatch(
+          rightModifierLatchRef.current,
+          draftComboRef.current,
+          {
+            rightToken,
+            modifierCount: modifiers.length,
+            genericModifiers: modifiers,
+            explicitLeft,
+          },
+        );
         updateDraftCombo((combo) => ({
           ...combo,
           modifiers: mergeModifiers(combo.modifiers, modifiers),
@@ -389,6 +542,7 @@ export function useHotkeyRecorder(
       const key = domKeyFromEvent(e);
       if (!key) return;
 
+      rightModifierLatchRef.current = null;
       updateDraftCombo((combo) => ({
         modifiers: mergeModifiers(combo.modifiers, modifiers),
         key,

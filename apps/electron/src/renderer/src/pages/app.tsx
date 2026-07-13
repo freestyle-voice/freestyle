@@ -298,10 +298,42 @@ export default function AppPage(): React.JSX.Element {
       }
 
       try {
-        if (_outputMode === "clipboard") {
-          await window.api.copyText(finalText, appContextRef.current);
-        } else {
-          await window.api.pasteText(finalText, appContextRef.current);
+        const requestedMode =
+          _outputMode === "clipboard" ? "clipboard" : "paste";
+        let deliverText = finalText;
+        let deliverMode: "paste" | "clipboard" = requestedMode;
+        let shouldDeliver = true;
+
+        // Run the `beforeOutput` plugin hook server-side, on the final
+        // (post multi-segment-merge) text — this is the one point where the
+        // fully-assembled dictation is known, whether it came from a single
+        // chunk or several combined via `/api/post-process`. Falls back to
+        // delivering the client-decided text/mode unchanged on any failure.
+        try {
+          const res = await getClient().api.output.deliver.$post({
+            json: {
+              text: finalText,
+              mode: requestedMode,
+              appContext: appContextRef.current,
+            },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            deliverText = data.output.text;
+            deliverMode =
+              data.output.mode === "clipboard" ? "clipboard" : "paste";
+            shouldDeliver = data.disposition === "deliver";
+          }
+        } catch {
+          // Best-effort — deliver the client-decided text/mode unchanged.
+        }
+
+        if (shouldDeliver && deliverText.trim()) {
+          if (deliverMode === "clipboard") {
+            await window.api.copyText(deliverText, appContextRef.current);
+          } else {
+            await window.api.pasteText(deliverText, appContextRef.current);
+          }
         }
       } catch (err) {
         console.error("[pill] paste/copy failed:", err);

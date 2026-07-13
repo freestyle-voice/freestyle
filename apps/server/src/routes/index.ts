@@ -9,9 +9,11 @@ import { capture, captureException, getDeviceId } from "../lib/posthog.js";
 import apiKeys from "./api-keys.js";
 import auth from "./auth.js";
 import dictionary from "./dictionary.js";
+import eventsRoute from "./events.js";
 import history from "./history.js";
 import mlxAsr from "./mlx-asr.js";
 import models from "./models.js";
+import outputRoute from "./output.js";
 import pluginsRoute from "./plugins.js";
 import postProcessRoute from "./post-process-route.js";
 import settings from "./settings.js";
@@ -63,6 +65,8 @@ const apiRouter = new Hono()
   .route("/dictionary", dictionary)
   .route("/vocabulary", vocabulary)
   .route("/post-process", postProcessRoute)
+  .route("/output", outputRoute)
+  .route("/events", eventsRoute)
   .route("/usage", usage)
   .route("/plugins", pluginsRoute)
   .route("/whisper", whisper)

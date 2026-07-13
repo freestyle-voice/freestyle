@@ -1,6 +1,7 @@
 import type { MiddlewareHandler } from "hono";
 import type { PluginConfig } from "./config.js";
 import type { FreestyleEvent } from "./events.js";
+import type { HookApi } from "./hook-api.js";
 import type { Hooks } from "./hooks.js";
 import type { Plugin } from "./plugin.js";
 
@@ -20,13 +21,25 @@ export interface PluginRegistryOptions {
   onError?: (failure: HookFailure) => void;
 }
 
+// The `...rest: never[]` tail makes these tolerant of the handler's arity —
+// `Handler<I, O>` takes a third `api` argument, but a plain `extends (input,
+// output) => unknown` pattern would only match a strictly 2-parameter
+// function and collapse inference to `never` for every real hook.
 type HookInput<K extends keyof Hooks> =
-  NonNullable<Hooks[K]> extends (input: infer I, output: infer _O) => unknown
+  NonNullable<Hooks[K]> extends (
+    input: infer I,
+    output: infer _O,
+    ...rest: never[]
+  ) => unknown
     ? I
     : never;
 
 type HookOutput<K extends keyof Hooks> =
-  NonNullable<Hooks[K]> extends (input: infer _I, output: infer O) => unknown
+  NonNullable<Hooks[K]> extends (
+    input: infer _I,
+    output: infer O,
+    ...rest: never[]
+  ) => unknown
     ? O
     : never;
 
@@ -53,6 +66,18 @@ export class PluginRegistry {
   }
 
   /**
+   * Whether any loaded plugin implements the given hook. Used by hosts to
+   * decide whether it's worth taking a slower code path just to guarantee a
+   * hook fires (e.g. Freestyle Cloud's combined STT+cleanup mode is skipped in
+   * favor of the slower two-step path when a plugin implements
+   * `beforeTranscribe`/`afterTranscribe`/`beforeCleanup`, none of which would
+   * otherwise fire).
+   */
+  has<K extends keyof Hooks>(name: K): boolean {
+    return this.plugins.some((plugin) => typeof plugin[name] === "function");
+  }
+
+  /**
    * Collect all middleware contributed by plugins, in resolved order. Each
    * plugin's `middleware` array is flattened into a single ordered list.
    */
@@ -72,19 +97,35 @@ export class PluginRegistry {
    * Run a mutating hook across all plugins in resolved order. Each plugin
    * mutates the shared `output` in place; the (mutated) `output` is returned for
    * convenience.
+   *
+   * `api` is required — build one with {@link createHookApi} (or reuse the same
+   * one across every stage of a single dictation so `api.control` is shared).
+   * Iteration stops early when `api.control.propagationStopped` is set, either
+   * by `stopPropagation()` (this hook only) or `consume()`/`abort()` (the whole
+   * pipeline — callers check `api.control.state` after `run()` returns to skip
+   * subsequent stages). The propagation flag is reset for this hook before
+   * iterating, so a `stopPropagation()` in an earlier hook doesn't bleed into
+   * later ones.
    */
   async run<K extends Exclude<keyof Hooks, "config" | "event">>(
     name: K,
     input: HookInput<K>,
     output: HookOutput<K>,
+    api: HookApi,
   ): Promise<HookOutput<K>> {
+    api.control.resetPropagationForNextHook();
     for (const plugin of this.plugins) {
+      if (api.control.propagationStopped) break;
       const handler = plugin[name] as
-        | ((input: HookInput<K>, output: HookOutput<K>) => unknown)
+        | ((
+            input: HookInput<K>,
+            output: HookOutput<K>,
+            api: HookApi,
+          ) => unknown)
         | undefined;
       if (!handler) continue;
       try {
-        await handler(input, output);
+        await handler(input, output, api);
       } catch (err) {
         this.report(plugin.name, name, err);
       }

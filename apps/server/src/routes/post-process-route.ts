@@ -6,6 +6,7 @@ import {
   FreestyleCloudUsageError,
 } from "../lib/freestyle-cloud.js";
 import { getLanguageSetting } from "../lib/language.js";
+import { createHookApi } from "../lib/plugins/pipeline.js";
 import { postProcess } from "../lib/post-process.js";
 import { invalidateSession } from "../lib/sessions.js";
 
@@ -17,12 +18,14 @@ const postProcessRoute = new Hono().post(
 
     const appContext: string | null = body.appContext ?? null;
     const language = body.language ?? getLanguageSetting();
+    const api = await createHookApi();
 
     let pp: Awaited<ReturnType<typeof postProcess>>;
     try {
       pp = await postProcess(body.text, appContext, {
         language,
         source: "multi_segment",
+        api,
       });
     } catch (err) {
       if (err instanceof FreestyleCloudAuthError) {

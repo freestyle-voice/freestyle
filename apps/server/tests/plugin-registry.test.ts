@@ -1,5 +1,6 @@
 import type { Plugin } from "freestyle-voice";
 import {
+  createHookApi,
   FreestyleEventType,
   PluginRegistry,
   sortPlugins,
@@ -22,7 +23,12 @@ describe("PluginRegistry", () => {
     };
     const registry = new PluginRegistry([a, b]);
 
-    const result = await registry.run("afterCleanup", {}, { text: "start" });
+    const result = await registry.run(
+      "afterCleanup",
+      {},
+      { text: "start" },
+      createHookApi(),
+    );
 
     expect(result.text).toBe("start-a-b");
   });
@@ -42,7 +48,12 @@ describe("PluginRegistry", () => {
     };
     const registry = new PluginRegistry([bad, good]);
 
-    const result = await registry.run("afterCleanup", {}, { text: "ok" });
+    const result = await registry.run(
+      "afterCleanup",
+      {},
+      { text: "ok" },
+      createHookApi(),
+    );
 
     expect(result.text).toBe("OK");
   });
@@ -63,7 +74,12 @@ describe("PluginRegistry", () => {
     ]);
     const registry = new PluginRegistry(ordered);
 
-    const result = await registry.run("afterCleanup", {}, { text: "x" });
+    const result = await registry.run(
+      "afterCleanup",
+      {},
+      { text: "x" },
+      createHookApi(),
+    );
 
     expect(result.text).toBe("x-early-mid-late");
   });
@@ -137,7 +153,7 @@ describe("PluginRegistry", () => {
       { onError },
     );
 
-    await registry.run("afterCleanup", {}, { text: "x" });
+    await registry.run("afterCleanup", {}, { text: "x" }, createHookApi());
 
     expect(onError).toHaveBeenCalledOnce();
     expect(onError.mock.calls[0]?.[0]).toMatchObject({

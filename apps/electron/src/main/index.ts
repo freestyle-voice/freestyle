@@ -99,17 +99,14 @@ import {
   stopLinuxPasteHelper,
 } from "./paste";
 import {
-  plugins as appPlugins,
   checkForUpdates,
   FreestyleEventType,
   fetchCatalog,
   fetchPluginSettings,
-  initAppPlugins,
   installPlugin,
   OutputMode,
   PipelineStage,
-  parseAppContext,
-  reloadAppPlugins,
+  relayEvent,
   setPluginEnabled,
   uninstallPlugin,
 } from "./plugins/index";
@@ -237,14 +234,11 @@ function getServerBaseUrl(): string {
 }
 
 /**
- * Load the app-host plugin registry, reading the `plugins` list and plugin
- * settings from the server over HTTP. Called once the server is reachable; the
- * underlying init is idempotent, so repeated calls are harmless.
+ * Refresh UI plugin discovery (the Plugins hub's manifest scan) now that the
+ * server — and therefore the `plugins` setting — is reachable. No-op if the
+ * settings window hasn't been created yet.
  */
 function initPluginsForServer(): void {
-  void initAppPlugins(getServerTarget());
-  // Refresh UI plugin discovery now that the server (and `plugins` setting) is
-  // reachable. No-op if the settings window hasn't been created yet.
   void getPluginDiscoverySources().then(
     ({ pluginsSetting, userDataDir, disabledPlugins }) =>
       refreshPluginUi(pluginsSetting, userDataDir, disabledPlugins),
@@ -657,19 +651,17 @@ function createSettingsWindow(initialPath?: string): void {
     getBridgeConfig: getPluginBridgeConfig,
     getDiscoverySources: getPluginDiscoverySources,
     setPluginEnabled: async (specifier, enabled) => {
-      // Persist + reload the server's registry, then rebuild the app-host
-      // registry so app-side hooks for this plugin start/stop immediately.
+      // Persists the setting and reloads the server's own plugin registry
+      // (all hooks, including `beforeOutput`, run server-side now — there is
+      // no app-host registry left to rebuild).
       await setPluginEnabled(getServerTarget(), specifier, enabled);
-      await reloadAppPlugins(getServerTarget());
     },
     getCatalog: () => fetchCatalog(getServerTarget()),
     installPlugin: async (npmName, version) => {
       await installPlugin(getServerTarget(), npmName, version);
-      await reloadAppPlugins(getServerTarget());
     },
     uninstallPlugin: async (specifier) => {
       await uninstallPlugin(getServerTarget(), specifier);
-      await reloadAppPlugins(getServerTarget());
     },
     checkForUpdates: (plugins) => checkForUpdates(getServerTarget(), plugins),
     onAction: handlePluginAction,
@@ -1196,48 +1188,40 @@ function wait(ms: number): Promise<void> {
 }
 
 /**
- * Deliver final dictation text to the user's focused app. Runs the
- * `beforeOutput` plugin hook first, which may rewrite the text or switch the
- * delivery `mode` between paste, copy, and `none` (suppress). Emits the
- * `outputDelivered` event with whatever mode was ultimately used.
+ * Mechanically deliver final dictation text to the user's focused app — paste
+ * or copy, exactly as resolved. The `beforeOutput` plugin hook already ran
+ * server-side (`POST /api/output/deliver`, called by the renderer before this
+ * is invoked), so `text`/`mode` here are the host's final word: no hook runs
+ * in this process anymore. Emits the `outputDelivered` event (relayed to the
+ * server's `event` hook sink) with whatever mode was ultimately used.
  */
 async function deliverOutput(
   text: string,
   mode: typeof OutputMode.Paste | typeof OutputMode.Clipboard,
-  appContext: string | null,
 ): Promise<void> {
-  const parsedContext = parseAppContext(appContext);
-  const out = await appPlugins().run(
-    "beforeOutput",
-    { ...(parsedContext ? { appContext: parsedContext } : {}) },
-    { text, mode },
-  );
-
-  // Nothing to deliver (empty text, or a plugin suppressed via None): report
-  // it as delivered with mode None so observers see a single, accurate event.
-  if (out.mode === OutputMode.None || !out.text?.trim()) {
-    void appPlugins().emit({
+  if (!text.trim()) {
+    relayEvent(getServerBaseUrl(), {
       type: FreestyleEventType.OutputDelivered,
-      text: out.text,
+      text,
       mode: OutputMode.None,
     });
     return;
   }
 
   try {
-    if (out.mode === OutputMode.Paste) {
-      await pasteIntoFocusedApp(out.text, async () => {
+    if (mode === OutputMode.Paste) {
+      await pasteIntoFocusedApp(text, async () => {
         hidePill();
         await wait(0);
       });
     } else {
-      clipboard.writeText(out.text);
+      clipboard.writeText(text);
     }
   } catch (err) {
     // pasteIntoFocusedApp left the transcript on the clipboard — tell the user
     // instead of letting the dictation silently vanish.
     notifyPasteFailed();
-    void appPlugins().emit({
+    relayEvent(getServerBaseUrl(), {
       type: FreestyleEventType.PipelineError,
       stage: PipelineStage.Output,
       message: err instanceof Error ? err.message : String(err),
@@ -1245,10 +1229,10 @@ async function deliverOutput(
     throw err;
   }
 
-  void appPlugins().emit({
+  relayEvent(getServerBaseUrl(), {
     type: FreestyleEventType.OutputDelivered,
-    text: out.text,
-    mode: out.mode,
+    text,
+    mode,
   });
 }
 
@@ -1699,19 +1683,22 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window);
   });
 
-  // IPC: paste text at cursor
+  // IPC: paste text at cursor. `appContext` is accepted for backward
+  // compatibility with the preload signature but is unused here — the
+  // `beforeOutput` hook already ran server-side (`POST /api/output/deliver`)
+  // with it before the renderer called this.
   ipcMain.handle(
     "paste:text",
-    async (_event, text: string, appContext?: string | null) => {
-      await deliverOutput(text, OutputMode.Paste, appContext ?? null);
+    async (_event, text: string, _appContext?: string | null) => {
+      await deliverOutput(text, OutputMode.Paste);
     },
   );
 
-  // IPC: copy text to clipboard
+  // IPC: copy text to clipboard. See `paste:text` above re: `appContext`.
   ipcMain.handle(
     "copy:text",
-    async (_event, text: string, appContext?: string | null) => {
-      await deliverOutput(text, OutputMode.Clipboard, appContext ?? null);
+    async (_event, text: string, _appContext?: string | null) => {
+      await deliverOutput(text, OutputMode.Clipboard);
     },
   );
 
@@ -1760,11 +1747,15 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.on("recording:committed", () => {
-    void appPlugins().emit({ type: FreestyleEventType.RecordingCommitted });
+    relayEvent(getServerBaseUrl(), {
+      type: FreestyleEventType.RecordingCommitted,
+    });
   });
 
   ipcMain.on("recording:cancelled", () => {
-    void appPlugins().emit({ type: FreestyleEventType.RecordingCancelled });
+    relayEvent(getServerBaseUrl(), {
+      type: FreestyleEventType.RecordingCancelled,
+    });
   });
 
   // IPC: expose the server port to the renderer
@@ -2420,7 +2411,7 @@ function loadHotkeyModeFromDB(): "hold" | "toggle" {
 
 function sendHotkeyDown(): void {
   showPill();
-  void appPlugins().emit({ type: FreestyleEventType.RecordingStarted });
+  relayEvent(getServerBaseUrl(), { type: FreestyleEventType.RecordingStarted });
   if (pillReadyPromise) {
     // The pill window is still loading — defer IPC until it can receive it.
     void pillReadyPromise.then(() => {
@@ -2742,7 +2733,8 @@ let isQuitting = false;
 let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 
 function cleanupBeforeQuit(): void {
-  void appPlugins().dispose();
+  // No app-host plugin registry to dispose anymore — every hook (including
+  // `dispose`) runs server-side, and the server has its own shutdown path.
   void disposeServerPlugins().catch(() => {});
   audioPlaybackController.restoreSync();
   stopLinuxPasteHelper();

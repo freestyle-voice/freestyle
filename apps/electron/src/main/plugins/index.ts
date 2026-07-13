@@ -1,12 +1,10 @@
-import { PluginRegistry } from "freestyle-voice";
-import { loadAppPlugins, type ServerTarget } from "./loader.js";
-
 export {
   FreestyleEventType,
   OutputMode,
   PipelineStage,
   parseAppContext,
 } from "freestyle-voice";
+export { relayEvent } from "./events.js";
 export type { ServerTarget } from "./loader.js";
 export {
   checkForUpdates,
@@ -17,41 +15,11 @@ export {
   uninstallPlugin,
 } from "./loader.js";
 
-let registry: PluginRegistry = new PluginRegistry();
-let initialized = false;
-
-/**
- * Load and install the app (Electron main) plugin registry. Settings are read
- * from the server at `target` over HTTP (the server owns the database, which
- * may be remote). Safe to call once at startup; later calls are ignored.
- * Failures degrade to an empty registry so output delivery always works.
- */
-export async function initAppPlugins(target: ServerTarget): Promise<void> {
-  if (initialized) return;
-  initialized = true;
-  try {
-    registry = await loadAppPlugins(target);
-  } catch {
-    registry = new PluginRegistry();
-  }
-}
-
-/**
- * Rebuild the app-host plugin registry from the current settings. Called when a
- * plugin is enabled/disabled so its app-side hooks (e.g. `beforeOutput`) start
- * or stop firing immediately, without an app restart.
- */
-export async function reloadAppPlugins(target: ServerTarget): Promise<void> {
-  const previous = registry;
-  try {
-    registry = await loadAppPlugins(target);
-  } catch {
-    registry = new PluginRegistry();
-  }
-  await previous.dispose().catch(() => {});
-}
-
-/** The active registry. Returns an empty one before init runs. */
-export function plugins(): PluginRegistry {
-  return registry;
-}
+// This process no longer hosts a plugin hook registry — every pipeline hook
+// (`afterTranscribe`, `beforeCleanup`, `afterCleanup`, `beforeOutput`) runs
+// server-side now, including `beforeOutput` (via `POST /api/output/deliver`),
+// so a plugin's behavior no longer depends on which process it happens to
+// load in. This module keeps only the plugin-management helpers the Plugins
+// hub UI needs (install/uninstall/enable/catalog/updates) and the event relay
+// that forwards app-originated events (`recordingStarted`, `outputDelivered`,
+// …) into the server's single `event` hook sink.

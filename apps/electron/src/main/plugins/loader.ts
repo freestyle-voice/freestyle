@@ -1,19 +1,11 @@
-import path from "node:path";
 import type { AppType } from "@freestyle-voice/server";
 import { createAppLogger } from "@freestyle-voice/utils";
-import {
-  parseDisabledPlugins,
-  parsePluginsSetting,
-  pluginEntryParts,
-} from "@freestyle-voice/validations";
-import type { HookFailure, PluginEntry } from "freestyle-voice";
-import { loadPlugins, type PluginRegistry } from "freestyle-voice";
+import { parseDisabledPlugins } from "@freestyle-voice/validations";
 import { hc } from "hono/client";
 import type {
   PluginUpdateCheck,
   PluginUpdateResult,
 } from "../../shared/plugins";
-import { buildPluginContext, type SettingsSnapshot } from "./context.js";
 
 const log = createAppLogger("plugins");
 
@@ -23,38 +15,12 @@ const FETCH_TIMEOUT_MS = 5000;
 export interface ServerTarget {
   /** Base URL, e.g. `http://127.0.0.1:4649`. */
   baseUrl: string;
-  /** Electron's local user-data directory; app-host plugins live under it. */
+  /** Electron's local user-data directory; still used for local plugin discovery. */
   directory: string;
 }
 
-/**
- * Load all plugins for the Electron main process. Settings come from the server
- * over HTTP (it owns the database, which may be remote), so we fetch a snapshot
- * of the `settings` table once and resolve the `plugins` list and every plugin
- * `setup` context from it. Same sources and ordering as the server host; each
- * plugin's app-side hooks (e.g. `beforeOutput`) run here while its server hooks
- * run in the server.
- */
-export async function loadAppPlugins(
-  target: ServerTarget,
-): Promise<PluginRegistry> {
-  const snapshot = await fetchSettings(target);
-
-  const disabled = new Set(parseDisabledPlugins(snapshot.disabled_plugins));
-  const entries: PluginEntry[] = parsePluginsSetting(snapshot.plugins)
-    .map((entry) => pluginEntryParts(entry))
-    .filter((entry) => !disabled.has(entry.specifier));
-  const localDir = path.join(target.directory, "plugins");
-
-  return loadPlugins({
-    entries,
-    localDir,
-    buildContext: (name) =>
-      buildPluginContext(name, snapshot, target.directory),
-    logger: log,
-    onError: reportHookFailure,
-  });
-}
+/** A read-only snapshot of the server's `settings` table, keyed by setting name. */
+type SettingsSnapshot = Readonly<Record<string, string>>;
 
 /**
  * Fetch the `plugins` list and the set of disabled specifiers over HTTP. Used
@@ -93,9 +59,8 @@ export async function setPluginEnabled(
     { init: { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) } },
   );
 
-  // Ask the server to reload its own plugin registry so the change takes effect
-  // on the server side too (it's a separate process, possibly remote). The
-  // caller reloads the app-host registry separately.
+  // Ask the server to reload its own plugin registry so the change takes
+  // effect immediately — it owns every hook now, including `beforeOutput`.
   try {
     await client.api.plugins.reload.$post(
       {},
@@ -199,12 +164,4 @@ async function fetchSettings(target: ServerTarget): Promise<SettingsSnapshot> {
     );
     return {};
   }
-}
-
-function reportHookFailure({ plugin, hook, error }: HookFailure): void {
-  log.error(
-    `plugin "${plugin}" failed in hook "${hook}": ${
-      error instanceof Error ? error.message : String(error)
-    }`,
-  );
 }

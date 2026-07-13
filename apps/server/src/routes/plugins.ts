@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import * as semver from "semver";
 import { z } from "zod";
+import { deleteSetting, readSetting, writeSetting } from "../lib/db.js";
 import { PLUGIN_CATALOG } from "../lib/plugins/catalog.js";
 import { reloadServerPlugins } from "../lib/plugins/index.js";
 import {
@@ -9,6 +10,12 @@ import {
   uninstallServerPlugin,
 } from "../lib/plugins/install-service.js";
 import { resolvePackage } from "../lib/plugins/installer.js";
+
+const STORAGE_PREFIX = "plugin:";
+
+function storageKey(name: string, key: string): string {
+  return `${STORAGE_PREFIX}${name}:${key}`;
+}
 
 /**
  * Plugin lifecycle endpoints. The `plugins` / `disabled_plugins` settings are
@@ -94,6 +101,35 @@ const plugins = new Hono()
             },
       ),
     });
+  })
+  // Storage reachable from a plugin's own UI page (via the existing bridge
+  // proxy), complementing the read/write `PluginStorage` already available to
+  // hook code in `setup()`. Same `plugin:<name>:<key>` namespace, so a page and
+  // its hooks share state.
+  .get("/:name/storage/:key", (c) => {
+    const { name, key } = c.req.param();
+    const raw = readSetting(storageKey(name, key));
+    if (raw === undefined) return c.json({ value: null });
+    try {
+      return c.json({ value: JSON.parse(raw) });
+    } catch {
+      return c.json({ value: null });
+    }
+  })
+  .put(
+    "/:name/storage/:key",
+    zValidator("json", z.object({ value: z.unknown() })),
+    (c) => {
+      const { name, key } = c.req.param();
+      const { value } = c.req.valid("json");
+      writeSetting(storageKey(name, key), JSON.stringify(value));
+      return c.json({ ok: true });
+    },
+  )
+  .delete("/:name/storage/:key", (c) => {
+    const { name, key } = c.req.param();
+    deleteSetting(storageKey(name, key));
+    return c.json({ ok: true });
   });
 
 export default plugins;

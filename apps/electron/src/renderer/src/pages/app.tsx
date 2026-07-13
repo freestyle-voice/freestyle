@@ -280,7 +280,13 @@ export default function AppPage(): React.JSX.Element {
           }
           if (res.ok) {
             const data = await res.json();
-            finalText = data.cleaned || combined;
+            // A plugin that consumed/aborted during the multi-segment merge
+            // suppresses delivery: keep the text empty so it's dropped below,
+            // rather than falling back to the combined raw.
+            finalText =
+              data.disposition && data.disposition !== "deliver"
+                ? ""
+                : data.cleaned || combined;
           } else if (res.status === 401) {
             const body = (await res.json().catch(() => null)) as {
               error?: string;

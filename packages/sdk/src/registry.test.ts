@@ -146,6 +146,27 @@ describe("PluginRegistry.run", () => {
     expect(aborted).toBe(true);
   });
 
+  it("skips a later hook entirely once the pipeline is consumed", async () => {
+    const order: string[] = [];
+    const registry = new PluginRegistry([
+      plugin("a", {
+        afterCleanup: () => {
+          order.push("a");
+        },
+      }),
+    ]);
+
+    const api = createHookApi();
+    api.control.consume("done");
+
+    // A consumed pipeline runs no further mutating hooks, and the output is
+    // returned untouched.
+    const result = await registry.run("afterCleanup", {}, { text: "raw" }, api);
+
+    expect(order).toEqual([]);
+    expect(result.text).toBe("raw");
+  });
+
   it("swallows a throwing handler and continues with later plugins", async () => {
     const order: string[] = [];
     const failures: string[] = [];

@@ -51,9 +51,11 @@ const MIME_BY_EXT: Record<string, string> = {
   ".gif": "image/gif",
   ".webp": "image/webp",
   ".ico": "image/x-icon",
+  ".avif": "image/avif",
   ".woff": "font/woff",
   ".woff2": "font/woff2",
   ".ttf": "font/ttf",
+  ".wasm": "application/wasm",
   ".map": "application/json; charset=utf-8",
 };
 

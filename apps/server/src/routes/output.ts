@@ -1,9 +1,12 @@
 import { zValidator } from "@hono/zod-validator";
-import { OutputMode } from "freestyle-voice";
+import { FreestyleEventType, OutputMode, PipelineStage } from "freestyle-voice";
 import { Hono } from "hono";
 import { z } from "zod";
 import { parseAppContext, plugins } from "../lib/plugins/index.js";
-import { createHookApi } from "../lib/plugins/pipeline.js";
+import {
+  createOutputHookApi,
+  dispositionFromControl,
+} from "../lib/plugins/pipeline.js";
 
 /**
  * Runs the `beforeOutput` plugin hook server-side, on the *final* text the
@@ -28,7 +31,9 @@ const outputRoute = new Hono().post(
   zValidator("json", deliverSchema),
   async (c) => {
     const { text, mode, appContext } = c.req.valid("json");
-    const api = await createHookApi();
+    // `beforeOutput` never receives the LLM capability (SDK contract), so skip
+    // resolving a chat model for this stage.
+    const api = createOutputHookApi();
     const parsedContext = parseAppContext(appContext ?? undefined);
 
     const out = await plugins().run(
@@ -38,19 +43,36 @@ const outputRoute = new Hono().post(
       api,
     );
 
-    // A plugin may suppress delivery either implicitly (mode "none" or empty
-    // text) or explicitly via `api.control.consume()`/`abort()`. Both must
-    // stop the paste — the control state is authoritative even when the
-    // plugin left `text`/`mode` untouched.
-    const suppressed =
-      out.mode === OutputMode.None ||
-      !out.text?.trim() ||
-      api.control.state !== "running";
-    const disposition = !suppressed
-      ? "deliver"
-      : api.control.state === "aborted"
-        ? "aborted"
-        : "suppressed";
+    // A plugin may suppress delivery either explicitly via
+    // `api.control.consume()`/`abort()` (the control state is authoritative,
+    // even when it left `text`/`mode` untouched) or implicitly by setting mode
+    // "none"/emptying the text. Explicit terminal state wins so an `abort()` is
+    // reported as aborted rather than a plain suppression.
+    const disposition =
+      api.control.state !== "running"
+        ? dispositionFromControl(api.control.state)
+        : out.mode === OutputMode.None || !out.text?.trim()
+          ? "suppressed"
+          : "deliver";
+    const suppressed = disposition !== "deliver";
+
+    // Emit the terminal event server-side for the paths Electron never reaches:
+    // when we suppress, the renderer skips paste/copy, so `deliverOutput` won't
+    // emit `outputDelivered`. (On the deliver path Electron emits it after the
+    // paste actually lands, so we don't emit here to avoid a duplicate.)
+    if (disposition === "aborted") {
+      void plugins().emit({
+        type: FreestyleEventType.PipelineError,
+        stage: PipelineStage.Output,
+        message: api.control.reason ?? "aborted",
+      });
+    } else if (disposition === "suppressed") {
+      void plugins().emit({
+        type: FreestyleEventType.OutputDelivered,
+        text: out.text,
+        mode: OutputMode.None,
+      });
+    }
 
     return c.json({
       output: { text: out.text, mode: suppressed ? OutputMode.None : out.mode },

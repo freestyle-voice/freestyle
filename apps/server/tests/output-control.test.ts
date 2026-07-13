@@ -84,4 +84,56 @@ describe("POST /api/output/deliver — pipeline control", () => {
     expect(data.disposition).toBe("deliver");
     expect(data.output).toEqual({ text: "HELLO", mode: "paste" });
   });
+
+  it("emits outputDelivered{none} on suppression (the path Electron never reaches)", async () => {
+    registry.current = new PluginRegistry([
+      {
+        name: "consumer",
+        beforeOutput: (_i, _o, api) => api.control.consume(),
+      },
+    ]);
+    const emit = vi.spyOn(registry.current, "emit");
+
+    await deliver("hello");
+
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "outputDelivered", mode: "none" }),
+    );
+  });
+
+  it("emits a pipelineError on abort", async () => {
+    registry.current = new PluginRegistry([
+      {
+        name: "aborter",
+        beforeOutput: (_i, _o, api) => api.control.abort("x"),
+      },
+    ]);
+    const emit = vi.spyOn(registry.current, "emit");
+
+    await deliver("hello");
+
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "pipelineError",
+        stage: "output",
+        message: "x",
+      }),
+    );
+  });
+
+  it("does NOT emit on the deliver path (Electron owns that event)", async () => {
+    registry.current = new PluginRegistry([
+      {
+        name: "editor",
+        beforeOutput: (_i, output) => {
+          output.text = output.text.toUpperCase();
+        },
+      },
+    ]);
+    const emit = vi.spyOn(registry.current, "emit");
+
+    await deliver("hello");
+
+    expect(emit).not.toHaveBeenCalled();
+  });
 });

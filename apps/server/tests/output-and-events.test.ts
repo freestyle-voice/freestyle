@@ -56,6 +56,27 @@ describe("POST /api/events", () => {
     const res = await json("/api/events", { type: "bogus" });
     expect(res.status).toBe(400);
   });
+
+  it("accepts a relayed pipelineError from the output stage", async () => {
+    const res = await json("/api/events", {
+      type: "pipelineError",
+      stage: "output",
+      message: "paste failed",
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("accepts outputDelivered with text + mode, rejects it without", async () => {
+    const ok = await json("/api/events", {
+      type: "outputDelivered",
+      text: "hi",
+      mode: "none",
+    });
+    expect(ok.status).toBe(200);
+
+    const bad = await json("/api/events", { type: "outputDelivered" });
+    expect(bad.status).toBe(400);
+  });
 });
 
 describe("plugin storage routes", () => {

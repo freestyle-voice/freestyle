@@ -100,10 +100,13 @@ export class PluginRegistry {
    *
    * `api` is required — build one with {@link createHookApi} (or reuse the same
    * one across every stage of a single dictation so `api.control` is shared).
-   * Iteration stops early when `api.control.propagationStopped` is set, either
-   * by `stopPropagation()` (this hook only) or `consume()`/`abort()` (the whole
-   * pipeline — callers check `api.control.state` after `run()` returns to skip
-   * subsequent stages). The propagation flag is reset for this hook before
+   * If a prior stage already called `consume()`/`abort()` (i.e.
+   * `api.control.state !== "running"`), this hook is skipped entirely — a
+   * consumed/aborted dictation runs no further mutating stages, matching the
+   * documented `consume()`/`abort()` semantics. Within a running hook,
+   * iteration stops early when `api.control.propagationStopped` is set, by
+   * `stopPropagation()` (this hook only) or `consume()`/`abort()` (the rest of
+   * the pipeline). The propagation flag is reset for this hook before
    * iterating, so a `stopPropagation()` in an earlier hook doesn't bleed into
    * later ones.
    */
@@ -113,6 +116,10 @@ export class PluginRegistry {
     output: HookOutput<K>,
     api: HookApi,
   ): Promise<HookOutput<K>> {
+    // A dictation that a prior stage already consumed/aborted skips every
+    // remaining mutating hook, so downstream stages never rewrite text the
+    // pipeline has decided not to deliver.
+    if (api.control.state !== "running") return output;
     api.control.resetPropagationForNextHook();
     for (const plugin of this.plugins) {
       if (api.control.propagationStopped) break;

@@ -6,7 +6,12 @@ import {
   FreestyleCloudUsageError,
 } from "../lib/freestyle-cloud.js";
 import { getLanguageSetting } from "../lib/language.js";
-import { createHookApi } from "../lib/plugins/pipeline.js";
+import { PipelineStage } from "../lib/plugins/index.js";
+import {
+  createHookApi,
+  dispositionFromControl,
+  emitAbortEvent,
+} from "../lib/plugins/pipeline.js";
 import { postProcess } from "../lib/post-process.js";
 import { invalidateSession } from "../lib/sessions.js";
 
@@ -38,11 +43,19 @@ const postProcessRoute = new Hono().post(
       throw err;
     }
 
+    // `beforeCleanup`/`afterCleanup` can consume/abort during the multi-segment
+    // merge too; surface the disposition (blanking the text when terminal) and
+    // emit the abort event, so the renderer suppresses delivery just like the
+    // single-segment `/transcribe` path.
+    const suppressed = api.control.state !== "running";
+    emitAbortEvent(api, PipelineStage.Cleanup);
     return c.json({
-      cleaned: pp.cleaned,
+      cleaned: suppressed ? "" : pp.cleaned,
       inputTokens: pp.inputTokens,
       outputTokens: pp.outputTokens,
       costUsd: pp.costUsd,
+      disposition: dispositionFromControl(api.control.state),
+      ...(api.control.reason ? { reason: api.control.reason } : {}),
     });
   },
 );

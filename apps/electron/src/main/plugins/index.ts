@@ -1,9 +1,4 @@
-export {
-  FreestyleEventType,
-  OutputMode,
-  PipelineStage,
-  parseAppContext,
-} from "freestyle-voice";
+export { FreestyleEventType, OutputMode, PipelineStage } from "freestyle-voice";
 export { relayEvent } from "./events.js";
 
 // This process no longer hosts a plugin hook registry or any plugin

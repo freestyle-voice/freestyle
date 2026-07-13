@@ -1,6 +1,5 @@
 import { sanitizeTranscriptText } from "@freestyle-voice/stt";
 import { createAppLogger } from "@freestyle-voice/utils";
-import type { PipelineControlState } from "freestyle-voice";
 import { Hono } from "hono";
 import { readSetting } from "../lib/db.js";
 import { formatError } from "../lib/format-error.js";
@@ -23,7 +22,11 @@ import {
   parseAppContext,
   plugins,
 } from "../lib/plugins/index.js";
-import { createHookApi } from "../lib/plugins/pipeline.js";
+import {
+  createHookApi,
+  dispositionFromControl,
+  emitAbortEvent,
+} from "../lib/plugins/pipeline.js";
 import {
   applyFinalRewrites,
   getCleanupAppAssignments,
@@ -57,15 +60,6 @@ function routeVoiceProviderCategory(
     return "local";
   if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return "freestyle_cloud";
   return "byok";
-}
-
-/** Response-facing disposition, derived from a dictation's `PipelineControlState`. */
-type Disposition = "deliver" | "suppressed" | "aborted";
-
-function dispositionFromControl(state: PipelineControlState): Disposition {
-  if (state === "consumed") return "suppressed";
-  if (state === "aborted") return "aborted";
-  return "deliver";
 }
 
 /**
@@ -141,15 +135,14 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   // model, language, or ASR vocabulary bias transcribes this dictation.
   // Runs before any provider/key resolution so overrides actually take
   // effect. `api.control.consume()` here skips STT entirely.
+  const parsedAppContext = parseAppContext(appContext);
   const beforeTranscribeOutput = await plugins().run(
     "beforeTranscribe",
     {
       providerId: defaults.voice.provider,
       modelId: defaults.voice.model_id,
       audioDurationMs,
-      ...(parseAppContext(appContext)
-        ? { appContext: parseAppContext(appContext) }
-        : {}),
+      ...(parsedAppContext ? { appContext: parsedAppContext } : {}),
     },
     {
       audio: audioData,
@@ -163,7 +156,11 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   const voiceModel = beforeTranscribeOutput.modelId;
   const languageOverride = beforeTranscribeOutput.language;
 
-  if (api.control.state !== "running") {
+  // A plugin consumed/aborted the dictation in a server hook: return blank
+  // output so any client suppresses delivery, carry the disposition/reason,
+  // and (on abort) emit the documented `pipelineError` event exactly once.
+  const suppressedResponse = () => {
+    emitAbortEvent(api, PipelineStage.Transcribe);
     return c.json({
       raw: "",
       cleaned: "",
@@ -173,6 +170,10 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       disposition: dispositionFromControl(api.control.state),
       ...(api.control.reason ? { reason: api.control.reason } : {}),
     });
+  };
+
+  if (api.control.state !== "running") {
+    return suppressedResponse();
   }
 
   const provider = getProvider(voiceProvider);
@@ -212,13 +213,19 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   if (voiceProvider === FREESTYLE_CLOUD_PROVIDER_ID && freestyleCleanupActive) {
     const useCombined = !pluginNeedsTranscribeHooks;
     try {
+      // A `beforeTranscribe` plugin can override the ASR vocabulary bias; honor
+      // it on the cloud path too (else fall back to the user's DB vocabulary),
+      // so the override behaves the same regardless of provider.
+      const vocabulary = beforeTranscribeOutput.bias
+        ? { terms: beforeTranscribeOutput.bias }
+        : getCloudVocabularyBias();
       const result = await transcribeWithFreestyleCloud({
         token: apiKey,
         audio: audioData,
         language: languageOverride ?? language,
         appContext,
         mode: useCombined ? "combined" : "raw",
-        vocabulary: getCloudVocabularyBias(),
+        vocabulary,
         ...(useCombined ? getEffectiveCleanupTones() : {}),
         appAssignments: getCleanupAppAssignments(),
       });
@@ -238,15 +245,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         // control state suppresses delivery on every path, so blank the
         // output rather than returning text the pipeline decided to drop.
         if (api.control.state !== "running") {
-          return c.json({
-            raw: "",
-            cleaned: "",
-            model: voiceModel,
-            durationMs: Date.now() - start,
-            audioDurationMs,
-            disposition: dispositionFromControl(api.control.state),
-            ...(api.control.reason ? { reason: api.control.reason } : {}),
-          });
+          return suppressedResponse();
         }
         const durationMs = Date.now() - start;
         const inputTokens = result.usage?.inputTokens ?? 0;
@@ -302,7 +301,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
           {
             providerId: voiceProvider,
             modelId: voiceModel,
-            appContext: parseAppContext(appContext),
+            appContext: parsedAppContext,
           },
           { text: rawText },
           api,
@@ -363,7 +362,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
           {
             providerId: voiceProvider,
             modelId: voiceModel,
-            appContext: parseAppContext(appContext),
+            appContext: parsedAppContext,
           },
           { text: rawText },
           api,
@@ -410,15 +409,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   const durationMs = Date.now() - start;
 
   if (!rawText.trim() || api.control.state !== "running") {
-    return c.json({
-      raw: "",
-      cleaned: "",
-      model: voiceModel,
-      durationMs,
-      audioDurationMs,
-      disposition: dispositionFromControl(api.control.state),
-      ...(api.control.reason ? { reason: api.control.reason } : {}),
-    });
+    return suppressedResponse();
   }
 
   void plugins().emit({
@@ -519,8 +510,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   // `beforeCleanup`/`afterCleanup` run inside postProcess, after the
   // raw-stage guard above — a consume/abort there still needs to suppress
   // delivery. Blank the output so any client drops it even if it ignores
-  // `disposition`.
+  // `disposition`, and emit the abort event on that path too.
   const suppressed = api.control.state !== "running";
+  emitAbortEvent(api, PipelineStage.Transcribe);
   return c.json({
     raw: suppressed ? "" : rawText,
     cleaned: suppressed ? "" : pp.cleaned,

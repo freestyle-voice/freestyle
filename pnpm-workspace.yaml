@@ -7,3 +7,10 @@ allowBuilds:
   esbuild: true
   electron-winstaller: false
   msw: false
+packageExtensions:
+  # @hookform/resolvers@5.x imports `zod/v4/core` but does not declare zod as a
+  # peer/dependency, so pnpm's isolated layout resolves it to a stray transitive
+  # zod@3.x (no `./v4/core` export) and the Vite build fails. Pin it to zod 4.x.
+  "@hookform/resolvers":
+    dependencies:
+      zod: "^4.4.3"

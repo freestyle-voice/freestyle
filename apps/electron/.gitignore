@@ -1,6 +1,7 @@
 node_modules
 dist
 out
+stats
 .DS_Store
 .eslintcache
 *.log*

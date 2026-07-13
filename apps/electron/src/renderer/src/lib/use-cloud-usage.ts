@@ -1,12 +1,23 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getClient } from "./api";
+import { ONE_HOUR } from "./query";
 
 export interface CloudUsageBalance {
   remaining: number;
   limit: number;
   totalConsumed: number;
   resetsAt: string;
+}
+
+export interface UseCloudUsageResult {
+  /** Latest fetched balance, or null when not signed in / fetch failed. */
+  balance: CloudUsageBalance | null;
+  /** Epoch ms of the last successful fetch, or null if never fetched. */
+  updatedAt: number | null;
+  /** True while a (re)fetch is in flight. */
+  isFetching: boolean;
+  /** Force an immediate refetch of the balance. */
+  refresh: () => void;
 }
 
 /** Percentage of credits consumed (0–100), safe against limit=0. */
@@ -18,13 +29,13 @@ export function usagePercent(balance: CloudUsageBalance): number {
 }
 
 /**
- * Fetches cloud usage balance. Refreshes on mount and after each transcription.
- * Returns null when not signed in or if the fetch fails (best-effort).
+ * Fetches cloud usage balance. Cached for an hour (staleTime) — no longer
+ * refetches after every transcription; consumers surface a manual refresh
+ * control instead. Returns null when not signed in or if the fetch fails
+ * (best-effort).
  */
-export function useCloudUsage(signedIn: boolean): CloudUsageBalance | null {
-  const queryClient = useQueryClient();
-
-  const { data } = useQuery({
+export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
+  const query = useQuery({
     queryKey: ["cloud-usage"],
     queryFn: async () => {
       const res = await getClient().api.usage.$get();
@@ -32,18 +43,15 @@ export function useCloudUsage(signedIn: boolean): CloudUsageBalance | null {
       return (await res.json()) as CloudUsageBalance;
     },
     enabled: signedIn,
+    staleTime: ONE_HOUR,
     // Best-effort — don't retry aggressively.
     retry: 1,
   });
 
-  // Refresh after each transcription completes.
-  useEffect(() => {
-    if (!signedIn) return;
-    const remove = window.api?.onTranscriptionDone(() => {
-      void queryClient.invalidateQueries({ queryKey: ["cloud-usage"] });
-    });
-    return () => remove?.();
-  }, [signedIn, queryClient]);
-
-  return signedIn ? (data ?? null) : null;
+  return {
+    balance: signedIn ? (query.data ?? null) : null,
+    updatedAt: query.dataUpdatedAt || null,
+    isFetching: query.isFetching,
+    refresh: () => void query.refetch(),
+  };
 }

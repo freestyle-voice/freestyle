@@ -1955,9 +1955,16 @@ app.whenReady().then(async () => {
     process.env.FREESTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
   }
 
-  // Run non-critical server startup tasks now that the DB path is set
-  reconcileUnsupportedMlxVoiceDefault();
-  autoStartWhisperServer();
+  // Run non-critical server startup tasks now that the DB path is set. These
+  // are deferred off the boot critical path: reconcileUnsupportedMlxVoiceDefault
+  // can synchronously probe Python/MLX (execFileSync) on Apple Silicon without a
+  // managed runtime, which would otherwise block window creation. Both are
+  // idempotent and also run lazily via getDefaultModels() on first use, so
+  // deferring them by a tick is safe.
+  setImmediate(() => {
+    reconcileUnsupportedMlxVoiceDefault();
+    autoStartWhisperServer();
+  });
 
   // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
   const startServer = (port: number): void => {
@@ -1981,7 +1988,12 @@ app.whenReady().then(async () => {
   // Check if a Freestyle server is already running on the default port.
   let existingServer = false;
   try {
-    const res = await net.fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`);
+    // Bound this probe: a normal cold start fast-fails with ECONNREFUSED, but
+    // without a timeout a half-open socket on the port could hang window/tray
+    // creation indefinitely.
+    const res = await net.fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`, {
+      signal: AbortSignal.timeout(1500),
+    });
     if (res.ok) {
       const data = (await res.json()) as { status?: string; name?: string };
       existingServer = data?.status === "ok" && data?.name === "freestyle";

@@ -21,6 +21,7 @@ import {
   parseCleanupPersonalTone,
   parseCleanupWorkTone,
 } from "@freestyle-voice/validations";
+import type { LanguageModel } from "ai";
 import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
 import { getDb, readSetting } from "./db.js";
 import { applyDictionaryReplacements } from "./dictionary-replacements.js";
@@ -142,7 +143,10 @@ export function resolveAppContextForCleanup(
   return needsAppContextForCleanup() ? appContext : null;
 }
 
-function resolveChatModel(provider: string, modelId: string) {
+async function resolveChatModel(
+  provider: string,
+  modelId: string,
+): Promise<LanguageModel> {
   if (provider === "groq") {
     return getGroqChatModel(modelId);
   }
@@ -365,7 +369,7 @@ export async function postProcess(
 
       handoffMs = Date.now() - handoffStart;
 
-      const chatModel = resolveChatModel(llm.provider, llm.model_id);
+      const chatModel = await resolveChatModel(llm.provider, llm.model_id);
       let cleanupError: unknown;
       const result = await cleanupWithModel({
         model: chatModel,

@@ -4,6 +4,8 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+packageExtensionsChecksum: sha256-Tz1ONvJSCvE2lqFS2bNg2oeSO3eyVISKCTf7JNmzqFw=
+
 importers:
 
   .:
@@ -137,6 +139,9 @@ importers:
       ws:
         specifier: ^8.21.0
         version: 8.21.0
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@electron-toolkit/tsconfig':
         specifier: ^2.0.0
@@ -180,6 +185,9 @@ importers:
       react-dom:
         specifier: ^19.2.1
         version: 19.2.6(react@19.2.6)
+      rollup-plugin-visualizer:
+        specifier: ^6.0.4
+        version: 6.0.11(rollup@4.60.4)
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
@@ -7353,6 +7361,19 @@ packages:
       vite:
         optional: true
 
+  rollup-plugin-visualizer@6.0.11:
+    resolution: {integrity: sha512-TBwVHVY7buHjIKVLqr9scTVFwqZqMXINcCphPwIWKPDCOBIa+jCQfafvbjRJDZgXdq/A996Dy6yGJ/+/NtAXDQ==}
+    engines: {node: '>=18'}
+    hasBin: true
+    peerDependencies:
+      rolldown: 1.x || ^1.0.0-beta
+      rollup: 2.x || 3.x || 4.x
+    peerDependenciesMeta:
+      rolldown:
+        optional: true
+      rollup:
+        optional: true
+
   rollup-pluginutils@2.8.2:
     resolution: {integrity: sha512-EEp9NhnUkwY8aif6bxgovPHMoMoNr2FulJziTndpt5H9RdwC47GSGuII9XxpSdzVGM0GWrNPHV6ie1LTNJPaLQ==}
 
@@ -9441,6 +9462,7 @@ snapshots:
     dependencies:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.76.1(react@19.2.6)
+      zod: 4.4.3
 
   '@huggingface/blake3-jit@0.0.2': {}
 
@@ -16765,6 +16787,15 @@ snapshots:
     optionalDependencies:
       rollup: 4.60.4
       vite: 7.3.3(@types/node@26.0.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
+
+  rollup-plugin-visualizer@6.0.11(rollup@4.60.4):
+    dependencies:
+      open: 8.4.2
+      picomatch: 4.0.4
+      source-map: 0.7.6
+      yargs: 17.7.2
+    optionalDependencies:
+      rollup: 4.60.4
 
   rollup-pluginutils@2.8.2:
     dependencies:

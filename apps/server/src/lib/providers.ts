@@ -1,11 +1,5 @@
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createGroq } from "@ai-sdk/groq";
-import { createMistral } from "@ai-sdk/mistral";
-import { createOpenAI } from "@ai-sdk/openai";
 import type { LanguageModel } from "ai";
 import { getDb } from "./db.js";
-import { groqFetch } from "./groq-http.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./mlx-asr/reconcile.js";
 import { getApiKeyForProvider } from "./streaming-stt.js";
 
@@ -18,33 +12,46 @@ const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
   "local-llm",
 ]);
 
+// Provider SDKs are imported lazily so that importing this module (which the
+// route layer and Electron main both pull in at boot) does not eagerly evaluate
+// every @ai-sdk/* package. Each SDK is loaded only when its provider is first
+// used for cleanup.
 const PROVIDER_FACTORIES: Record<
   string,
-  (apiKey: string) => {
+  (apiKey: string) => Promise<{
     chat?: (model: string) => LanguageModel;
-  }
+  }>
 > = {
-  openai: (apiKey) => {
+  openai: async (apiKey) => {
+    const { createOpenAI } = await import("@ai-sdk/openai");
     const p = createOpenAI({ apiKey });
     return { chat: (m) => p.chat(m) };
   },
-  groq: (apiKey) => {
+  groq: async (apiKey) => {
+    const [{ createGroq }, { groqFetch }] = await Promise.all([
+      import("@ai-sdk/groq"),
+      import("./groq-http.js"),
+    ]);
     const p = createGroq({ apiKey, fetch: groqFetch });
     return { chat: (m) => p.languageModel(m) };
   },
-  anthropic: (apiKey) => {
+  anthropic: async (apiKey) => {
+    const { createAnthropic } = await import("@ai-sdk/anthropic");
     const p = createAnthropic({ apiKey });
     return { chat: (m) => p.chat(m) };
   },
-  google: (apiKey) => {
+  google: async (apiKey) => {
+    const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
     const p = createGoogleGenerativeAI({ apiKey });
     return { chat: (m) => p.chat(m) };
   },
-  mistral: (apiKey) => {
+  mistral: async (apiKey) => {
+    const { createMistral } = await import("@ai-sdk/mistral");
     const p = createMistral({ apiKey });
     return { chat: (m) => p.chat(m) };
   },
-  "local-llm": () => {
+  "local-llm": async () => {
+    const { createOpenAI } = await import("@ai-sdk/openai");
     const db = getDb();
     const urlRow = db
       .prepare("SELECT value FROM settings WHERE key = 'local_llm_url'")
@@ -113,10 +120,10 @@ export function getDefaultModels(): DefaultModels {
   };
 }
 
-export function createChatModel(
+export async function createChatModel(
   providerId: string,
   modelId: string,
-): LanguageModel {
+): Promise<LanguageModel> {
   const isLocal = LOCAL_PROVIDERS.has(providerId);
   const apiKey = isLocal ? "local" : getApiKeyForProvider(providerId);
   if (!apiKey)
@@ -125,7 +132,7 @@ export function createChatModel(
   const factory = findFactory(providerId);
   if (!factory) throw new Error(`Unsupported provider: ${providerId}`);
 
-  const provider = factory(apiKey);
+  const provider = await factory(apiKey);
   if (!provider.chat) {
     throw new Error(`Provider ${providerId} does not support chat`);
   }

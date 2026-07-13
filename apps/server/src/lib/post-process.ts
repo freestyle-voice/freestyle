@@ -1,4 +1,3 @@
-import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
 import {
   postProcess as cleanupWithModel,
   sanitizeTranscriptText,
@@ -21,7 +20,6 @@ import {
   parseCleanupPersonalTone,
   parseCleanupWorkTone,
 } from "@freestyle-voice/validations";
-import type { LanguageModel } from "ai";
 import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
 import { getDb, readSetting } from "./db.js";
 import { applyDictionaryReplacements } from "./dictionary-replacements.js";
@@ -33,11 +31,7 @@ import {
   isTransientCloudError,
   postProcessWithFreestyleCloud,
 } from "./freestyle-cloud.js";
-import {
-  getGroqChatModel,
-  normalizeGroqModelId,
-  prewarmGroqConnection,
-} from "./groq-http.js";
+import { getLlmProvider, groqCleanupProviderOptions } from "./llm/registry.js";
 import {
   FreestyleEventType,
   PipelineStage,
@@ -143,41 +137,9 @@ export function resolveAppContextForCleanup(
   return needsAppContextForCleanup() ? appContext : null;
 }
 
-async function resolveChatModel(
-  provider: string,
-  modelId: string,
-): Promise<LanguageModel> {
-  if (provider === "groq") {
-    return getGroqChatModel(modelId);
-  }
-  return createChatModel(provider, modelId);
-}
-
-export function groqCleanupProviderOptions(
-  modelId: string,
-): { groq: GroqLanguageModelOptions } | undefined {
-  const shortId = normalizeGroqModelId(modelId);
-
-  switch (shortId) {
-    case "qwen/qwen3-32b":
-      return {
-        groq: {
-          reasoningFormat: "hidden",
-          reasoningEffort: "none",
-        },
-      };
-    case "openai/gpt-oss-20b":
-    case "openai/gpt-oss-120b":
-      return {
-        groq: {
-          reasoningFormat: "hidden",
-          reasoningEffort: "low",
-        },
-      };
-    default:
-      return undefined;
-  }
-}
+// Re-exported for benchmark scripts and tests; the canonical definition now
+// lives with the Groq provider descriptor in ./llm/registry.ts.
+export { groqCleanupProviderOptions };
 
 /** Warm the default cleanup model while the user is still speaking. */
 export function prewarmPostProcess(): void {
@@ -185,9 +147,7 @@ export function prewarmPostProcess(): void {
   const llm = defaults.llm;
   if (!llm || !isLlmCleanupEnabled()) return;
 
-  if (llm.provider === "groq") {
-    void prewarmGroqConnection(normalizeGroqModelId(llm.model_id));
-  }
+  getLlmProvider(llm.provider)?.prewarm?.(llm.model_id);
 }
 
 /**
@@ -369,7 +329,7 @@ export async function postProcess(
 
       handoffMs = Date.now() - handoffStart;
 
-      const chatModel = await resolveChatModel(llm.provider, llm.model_id);
+      const chatModel = await createChatModel(llm.provider, llm.model_id);
       let cleanupError: unknown;
       const result = await cleanupWithModel({
         model: chatModel,
@@ -382,10 +342,9 @@ export async function postProcess(
         // check rather than relying on two independently-maintained filler
         // regexes staying in sync.
         skipEmptyText: false,
-        providerOptions:
-          llm.provider === "groq"
-            ? groqCleanupProviderOptions(llm.model_id)
-            : undefined,
+        providerOptions: getLlmProvider(llm.provider)?.providerOptions?.(
+          llm.model_id,
+        ),
         onError: (err) => {
           cleanupError = err;
         },

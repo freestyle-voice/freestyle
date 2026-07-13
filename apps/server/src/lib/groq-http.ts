@@ -3,7 +3,7 @@ import type { LanguageModel } from "ai";
 import { getApiKeyForProvider } from "./streaming-stt.js";
 
 /** Reuse TCP connections to Groq — avoids ~100–300ms TLS handshake per dictation. */
-export const groqFetch: typeof fetch = (input, init) =>
+const groqFetch: typeof fetch = (input, init) =>
   fetch(input, { ...init, keepalive: true });
 
 let cachedGroqKey: string | null = null;

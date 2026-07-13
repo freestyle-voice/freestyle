@@ -462,3 +462,34 @@ export async function fetchCloudUsage(
     signal: AbortSignal.timeout(10_000),
   });
 }
+
+/** Upper bound for the best-effort connection prewarm. */
+const CLOUD_PREWARM_TIMEOUT_MS = 5_000;
+
+let cloudPrewarmPromise: Promise<void> | null = null;
+
+/**
+ * Warm the TLS connection to Freestyle Cloud while the user is still speaking,
+ * so the transcribe/cleanup POST on commit reuses a hot socket instead of
+ * paying the DNS+TCP+TLS handshake on the critical path. A cheap authenticated
+ * GET to `/usage` opens the connection, which undici then pools by origin for
+ * the real request. Fire-and-forget: concurrent calls dedupe and failures are
+ * swallowed — the lazy connect on the actual request remains the fallback.
+ */
+export function prewarmFreestyleCloudConnection(token: string): void {
+  if (cloudPrewarmPromise) return;
+  cloudPrewarmPromise = (async () => {
+    try {
+      await fetch(`${freestyleCloudUrl()}/usage`, {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}` },
+        keepalive: true,
+        signal: AbortSignal.timeout(CLOUD_PREWARM_TIMEOUT_MS),
+      });
+    } catch {
+      // Best-effort — nothing to do; the real request will connect lazily.
+    } finally {
+      cloudPrewarmPromise = null;
+    }
+  })();
+}

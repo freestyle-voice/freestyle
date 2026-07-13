@@ -8,6 +8,7 @@ import {
   FreestyleCloudAuthError,
   FreestyleCloudUsageError,
   isTransientCloudError,
+  prewarmFreestyleCloudConnection,
   transcribeWithFreestyleCloud,
 } from "../lib/freestyle-cloud.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
@@ -456,6 +457,18 @@ export const transcribePreWarmRoute = new Hono().post("/pre-warm", (c) => {
 
     const defaults = getDefaultModels();
     const provider = defaults.voice?.provider;
+
+    // Warm the Freestyle Cloud TLS connection when this dictation will reach the
+    // cloud — cloud voice (the transcribe POST) or cloud cleanup (when cleanup
+    // is enabled). undici pools the socket by origin for the real request.
+    const cloudCleanup =
+      defaults.llm?.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
+      readSetting("llm_cleanup") === "true";
+    if (provider === FREESTYLE_CLOUD_PROVIDER_ID || cloudCleanup) {
+      const token = getApiKeyForProvider(FREESTYLE_CLOUD_PROVIDER_ID);
+      if (token) prewarmFreestyleCloudConnection(token);
+    }
+
     if (!defaults.voice || !provider) {
       return c.json({ ok: true, warming: null });
     }

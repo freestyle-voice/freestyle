@@ -1,8 +1,10 @@
-import { DeepgramTranscriptionProvider } from "./providers/deepgram.js";
 import { FreestyleCloudTranscriptionProvider } from "./providers/freestyle-cloud.js";
 import { MlxLocalTranscriptionProvider } from "./providers/mlx-local.js";
 import { WhisperLocalTranscriptionProvider } from "./providers/whisper-local.js";
-import { transcribeElevenLabsWithBias } from "./transcribe-bias.js";
+import {
+  transcribeDeepgramListen,
+  transcribeElevenLabsWithBias,
+} from "./transcribe-bias.js";
 import type { TranscriptionProvider } from "./types.js";
 import { stripProviderPrefix } from "./types.js";
 import { makeAiSdkTranscriptionProvider } from "./utils.js";
@@ -19,7 +21,33 @@ const providers: TranscriptionProvider[] = [
     async () => (await import("@ai-sdk/openai")).createOpenAI,
   ),
   new FreestyleCloudTranscriptionProvider(),
-  new DeepgramTranscriptionProvider(),
+  makeAiSdkTranscriptionProvider(
+    "deepgram",
+    async () => (await import("@ai-sdk/deepgram")).createDeepgram,
+    {
+      // Preserve the batch defaults the raw /listen endpoint used: punctuation
+      // and smart formatting on, diarization off, and Deepgram's multilingual
+      // model when no explicit language is set.
+      extraProviderOptions: (opts) => ({
+        punctuate: true,
+        smartFormat: true,
+        diarize: false,
+        ...(opts.language && opts.language !== "auto"
+          ? {}
+          : { language: "multi" }),
+      }),
+      // Keyterm/keyword bias isn't expressible through the AI SDK — fall back to
+      // the raw Deepgram /listen endpoint for those.
+      biasHandler: (opts) => {
+        const bias =
+          opts.bias?.kind === "deepgram-keyterms" ||
+          opts.bias?.kind === "deepgram-keywords"
+            ? opts.bias
+            : null;
+        return bias ? transcribeDeepgramListen(opts, bias) : null;
+      },
+    },
+  ),
   makeAiSdkTranscriptionProvider(
     "elevenlabs",
     async () => (await import("@ai-sdk/elevenlabs")).createElevenLabs,

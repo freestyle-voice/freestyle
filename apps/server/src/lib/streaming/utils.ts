@@ -1,3 +1,4 @@
+import type { TranscribeParams } from "@freestyle-voice/stt";
 import { transcribe } from "@freestyle-voice/stt";
 import type { TranscriptionModel } from "ai";
 import type { AsrVocabularyBias } from "../vocabulary-bias.js";
@@ -12,6 +13,11 @@ import { CLOUD_TRANSCRIBE_TIMEOUT_MS, stripProviderPrefix } from "./types.js";
 type AiSdkProviderFactory = (config: { apiKey: string }) => {
   transcription: (id: string) => TranscriptionModel;
 };
+
+/** The provider-options map accepted by the AI SDK `transcribe` call. */
+type TranscribeProviderOptions = NonNullable<
+  TranscribeParams["providerOptions"]
+>;
 
 /** Per-provider tweaks for {@link makeAiSdkTranscriptionProvider}. */
 export interface AiSdkTranscriptionOptions {
@@ -29,6 +35,14 @@ export interface AiSdkTranscriptionOptions {
   biasHandler?: (
     opts: TranscribeOptions,
   ) => Promise<TranscribeResult> | TranscribeResult | null | undefined;
+  /**
+   * Extra provider-specific transcription options merged under the provider's
+   * key — for settings the generic language/bias path doesn't cover (e.g.
+   * Deepgram's punctuation, smart formatting, and multilingual default).
+   */
+  extraProviderOptions?: (
+    opts: TranscribeOptions,
+  ) => TranscribeProviderOptions[string] | undefined;
 }
 
 const LANGUAGE_OPTION_KEYS: Record<string, string> = {
@@ -39,8 +53,8 @@ export function aiSdkProviderOptions(
   providerId: string,
   language: string | undefined,
   bias: AsrVocabularyBias | null | undefined,
-): Record<string, Record<string, string>> | undefined {
-  const options: Record<string, Record<string, string>> = {
+): TranscribeProviderOptions | undefined {
+  const options: TranscribeProviderOptions = {
     ...providerOptionsFromBias(providerId, bias),
   };
   if (language && language !== "auto") {
@@ -54,14 +68,18 @@ export async function transcribeWithAiSdk(
   opts: TranscribeOptions,
   createProvider: AiSdkProviderFactory,
   providerId: string,
+  extraProviderOptions?: TranscribeProviderOptions[string],
 ): Promise<TranscribeResult> {
   const provider = createProvider({ apiKey: opts.apiKey });
   const model = provider.transcription(stripProviderPrefix(opts.model));
-  const providerOptions = aiSdkProviderOptions(
-    providerId,
-    opts.language,
-    opts.bias,
-  );
+  const base = aiSdkProviderOptions(providerId, opts.language, opts.bias);
+  const providerOptions =
+    extraProviderOptions && Object.keys(extraProviderOptions).length > 0
+      ? {
+          ...base,
+          [providerId]: { ...base?.[providerId], ...extraProviderOptions },
+        }
+      : base;
   const result = await transcribe({
     model,
     audio: opts.audio,
@@ -99,7 +117,8 @@ export function makeAiSdkTranscriptionProvider(
       const biased = await options.biasHandler?.(withModel);
       if (biased) return biased;
       const createProvider = await loadProvider();
-      return transcribeWithAiSdk(withModel, createProvider, providerId);
+      const extra = options.extraProviderOptions?.(withModel);
+      return transcribeWithAiSdk(withModel, createProvider, providerId, extra);
     },
   };
 }

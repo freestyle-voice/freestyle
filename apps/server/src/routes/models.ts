@@ -17,15 +17,12 @@ import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "../lib/mlx-asr/reconcile.js";
 import { canRunMlxAsr } from "../lib/mlx-asr/server.js";
 import { capture } from "../lib/posthog.js";
-import { stripProviderPrefix } from "../lib/streaming/types.js";
-import { isServerBinaryAvailable } from "../lib/whisper/binary.js";
 import {
   LEGACY_WHISPER_MODELS,
   WHISPER_MODELS,
   WHISPER_PROVIDER_ID,
 } from "../lib/whisper/constants.js";
 import { getModelStatus } from "../lib/whisper/models.js";
-import { startInBackground } from "../lib/whisper/server.js";
 
 interface AvailableModel {
   provider_id: string;
@@ -494,16 +491,6 @@ const models = new Hono()
       provider: row.provider,
       model_id: row.model_id,
     });
-
-    // Pre-warm the local whisper server so the first transcription after a
-    // model switch doesn't pay the model-load latency.
-    if (
-      row.type === "voice" &&
-      row.provider === WHISPER_PROVIDER_ID &&
-      isServerBinaryAvailable()
-    ) {
-      startInBackground(stripProviderPrefix(row.model_id));
-    }
 
     return c.json({ ok: true });
   })

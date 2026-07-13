@@ -12,6 +12,9 @@ import {
 } from "../lib/freestyle-cloud.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import { getLanguageSetting } from "../lib/language.js";
+import { MLX_ASR_PROVIDER_ID } from "../lib/mlx-asr/constants.js";
+import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
+import { canRunMlxAsr, startMlxInBackground } from "../lib/mlx-asr/server.js";
 import {
   FreestyleEventType,
   PipelineStage,
@@ -30,9 +33,13 @@ import { getDefaultModels } from "../lib/providers.js";
 import { invalidateSession } from "../lib/sessions.js";
 import { CloudAuthError } from "../lib/streaming/providers/freestyle-cloud.js";
 import { getProvider } from "../lib/streaming/registry.js";
+import { stripProviderPrefix } from "../lib/streaming/types.js";
 import { getApiKeyForProvider } from "../lib/streaming-stt.js";
 import { getCloudVocabularyBias } from "../lib/vocabulary.js";
 import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
+import { isServerBinaryAvailable } from "../lib/whisper/binary.js";
+import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
+import { startInBackground } from "../lib/whisper/server.js";
 
 const log = createAppLogger("transcribe");
 
@@ -423,3 +430,52 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 });
 
 export default transcribeRoute;
+
+/**
+ * Pre-warm the local ASR server for the currently-selected voice model so it
+ * loads while the user is still speaking, instead of stalling at submission.
+ *
+ * The client fires this fire-and-forget on recording start. We dispatch on the
+ * default voice provider: only local engines (whisper/mlx) need warming, and
+ * each has its own availability gate. Cloud/BYOK providers are a cheap no-op.
+ * The underlying `startInBackground` helpers are themselves fire-and-forget and
+ * no-op when the server is already warm, so repeated calls are safe.
+ *
+ * Kept as a separate router (mounted alongside `transcribeRoute` at
+ * `/transcribe`) so it can be added to the typed RPC surface without reindenting
+ * the large batch-transcribe handler above.
+ */
+export const transcribePreWarmRoute = new Hono().post("/pre-warm", (c) => {
+  try {
+    const defaults = getDefaultModels();
+    const provider = defaults.voice?.provider;
+    if (!defaults.voice || !provider) {
+      return c.json({ ok: true, warming: null });
+    }
+
+    const modelId = stripProviderPrefix(defaults.voice.model_id);
+
+    if (provider === WHISPER_PROVIDER_ID) {
+      if (!isServerBinaryAvailable()) {
+        return c.json({ ok: true, warming: null });
+      }
+      startInBackground(modelId);
+      return c.json({ ok: true, warming: "whisper" });
+    }
+
+    if (provider === MLX_ASR_PROVIDER_ID) {
+      if (!canRunMlxAsr()) return c.json({ ok: true, warming: null });
+      if (getMlxModelStatus(modelId)?.status !== "ready") {
+        return c.json({ ok: true, warming: null });
+      }
+      startMlxInBackground(modelId);
+      return c.json({ ok: true, warming: "mlx" });
+    }
+
+    return c.json({ ok: true, warming: null });
+  } catch {
+    // Best-effort warmup — DB not ready or any other init issue is non-fatal;
+    // the lazy start at submission time remains the fallback.
+    return c.json({ ok: true, warming: null });
+  }
+});

@@ -471,18 +471,16 @@ let cloudPrewarmPromise: Promise<void> | null = null;
 /**
  * Warm the TLS connection to Freestyle Cloud while the user is still speaking,
  * so the transcribe/cleanup POST on commit reuses a hot socket instead of
- * paying the DNS+TCP+TLS handshake on the critical path. A cheap authenticated
- * GET to `/usage` opens the connection, which undici then pools by origin for
+ * paying the DNS+TCP+TLS handshake on the critical path. A cheap unauthenticated
+ * `GET /health` opens the connection, which undici then pools by origin for
  * the real request. Fire-and-forget: concurrent calls dedupe and failures are
  * swallowed — the lazy connect on the actual request remains the fallback.
  */
-export function prewarmFreestyleCloudConnection(token: string): void {
+export function prewarmFreestyleCloudConnection(): void {
   if (cloudPrewarmPromise) return;
   cloudPrewarmPromise = (async () => {
     try {
-      await fetch(`${freestyleCloudUrl()}/usage`, {
-        method: "GET",
-        headers: { authorization: `Bearer ${token}` },
+      await fetch(`${freestyleCloudUrl()}/health`, {
         keepalive: true,
         signal: AbortSignal.timeout(CLOUD_PREWARM_TIMEOUT_MS),
       });

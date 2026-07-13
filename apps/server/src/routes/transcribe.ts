@@ -460,13 +460,13 @@ export const transcribePreWarmRoute = new Hono().post("/pre-warm", (c) => {
 
     // Warm the Freestyle Cloud TLS connection when this dictation will reach the
     // cloud — cloud voice (the transcribe POST) or cloud cleanup (when cleanup
-    // is enabled). undici pools the socket by origin for the real request.
+    // is enabled). Hits the unauthenticated /health endpoint; undici pools the
+    // socket by origin for the real request.
     const cloudCleanup =
       defaults.llm?.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
       readSetting("llm_cleanup") === "true";
     if (provider === FREESTYLE_CLOUD_PROVIDER_ID || cloudCleanup) {
-      const token = getApiKeyForProvider(FREESTYLE_CLOUD_PROVIDER_ID);
-      if (token) prewarmFreestyleCloudConnection(token);
+      prewarmFreestyleCloudConnection();
     }
 
     if (!defaults.voice || !provider) {

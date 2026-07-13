@@ -457,7 +457,7 @@ export async function postProcessWithFreestyleCloud(
 export async function fetchCloudUsage(
   token: string,
 ): Promise<CloudUsageBalance> {
-  return cloudJson<CloudUsageBalance>("/v1/usage", token, {
+  return cloudJson<CloudUsageBalance>("/usage", token, {
     method: "GET",
     signal: AbortSignal.timeout(10_000),
   });

@@ -38,7 +38,14 @@ const outputRoute = new Hono().post(
       api,
     );
 
-    const suppressed = out.mode === OutputMode.None || !out.text?.trim();
+    // A plugin may suppress delivery either implicitly (mode "none" or empty
+    // text) or explicitly via `api.control.consume()`/`abort()`. Both must
+    // stop the paste — the control state is authoritative even when the
+    // plugin left `text`/`mode` untouched.
+    const suppressed =
+      out.mode === OutputMode.None ||
+      !out.text?.trim() ||
+      api.control.state !== "running";
     const disposition = !suppressed
       ? "deliver"
       : api.control.state === "aborted"

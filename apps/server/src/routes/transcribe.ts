@@ -234,6 +234,20 @@ const transcribeRoute = new Hono().post("/", async (c) => {
           rawText,
           api,
         );
+        // An `afterCleanup` plugin can consume/abort here too. Terminal
+        // control state suppresses delivery on every path, so blank the
+        // output rather than returning text the pipeline decided to drop.
+        if (api.control.state !== "running") {
+          return c.json({
+            raw: "",
+            cleaned: "",
+            model: voiceModel,
+            durationMs: Date.now() - start,
+            audioDurationMs,
+            disposition: dispositionFromControl(api.control.state),
+            ...(api.control.reason ? { reason: api.control.reason } : {}),
+          });
+        }
         const durationMs = Date.now() - start;
         const inputTokens = result.usage?.inputTokens ?? 0;
         const outputTokens = result.usage?.outputTokens ?? 0;
@@ -502,9 +516,14 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     cost_usd: pp.costUsd,
   });
 
+  // `beforeCleanup`/`afterCleanup` run inside postProcess, after the
+  // raw-stage guard above — a consume/abort there still needs to suppress
+  // delivery. Blank the output so any client drops it even if it ignores
+  // `disposition`.
+  const suppressed = api.control.state !== "running";
   return c.json({
-    raw: rawText,
-    cleaned: pp.cleaned,
+    raw: suppressed ? "" : rawText,
+    cleaned: suppressed ? "" : pp.cleaned,
     model: voiceModel,
     provider_category: routeVoiceProviderCategory(voiceProvider),
     durationMs,

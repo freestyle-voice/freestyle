@@ -107,6 +107,13 @@ interface TranscribeResult {
   cloudAuthRequired?: boolean;
   usageExceeded?: boolean;
   providerCategory?: string;
+  /**
+   * Terminal pipeline disposition from the server. A plugin that called
+   * `api.control.consume()`/`abort()` in a server hook resolves to
+   * `"suppressed"`/`"aborted"` here, and the dictation is dropped without
+   * delivery. Defaults to `"deliver"` for older server responses.
+   */
+  disposition?: "deliver" | "suppressed" | "aborted";
 }
 
 const USAGE_LIMIT_DIALOG_TITLE = "Usage limit reached";
@@ -207,19 +214,26 @@ export default function AppPage(): React.JSX.Element {
         return;
       }
 
+      // A dictation is deliverable only when it has text AND the server
+      // didn't mark it suppressed/aborted (a plugin calling
+      // `api.control.consume()`/`abort()` in a server hook). Absent
+      // disposition (older responses) is treated as "deliver".
+      const isDeliverable = (r: TranscribeResult): boolean =>
+        !!r.raw.trim() && (r.disposition ?? "deliver") === "deliver";
+
       if (
         recordingActiveRef.current ||
         wantsMicRef.current ||
         queueRef.current.length > 0
       ) {
         const resolved = results
-          .filter((r) => r.raw.trim())
+          .filter(isDeliverable)
           .map((r) => ({ promise: Promise.resolve(r) }));
         queueRef.current = [...resolved, ...queueRef.current];
         return;
       }
 
-      const nonEmpty = results.filter((r) => r.raw.trim());
+      const nonEmpty = results.filter(isDeliverable);
       if (nonEmpty.length === 0) {
         if (results.some((r) => r.cloudAuthRequired)) {
           hidePill();
@@ -816,11 +830,13 @@ export default function AppPage(): React.JSX.Element {
           raw?: string;
           cleaned?: string;
           provider_category?: string;
+          disposition?: "deliver" | "suppressed" | "aborted";
         };
         return {
           raw: (data.raw || "").trim(),
           cleaned: (data.cleaned || data.raw || "").trim(),
           providerCategory: data.provider_category,
+          disposition: data.disposition,
         };
       })
       .catch((err) => {

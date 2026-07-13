@@ -20,7 +20,8 @@ left.
 **Shipped:**
 - SDK: `HookApi`/`PipelineControl` (cancel/suppress), `beforeTranscribe` hook,
   `PluginLlm` capability, extended `beforeCleanup` (`prompt`/`skip`),
-  declarative `PluginContributes.settings`, `registry.has()`.
+  the `PluginContributes.settings` **types + parser** (`parsePluginSettingsFields`),
+  `registry.has()`.
 - Server: per-dictation `HookApi` threaded through `beforeTranscribe` →
   `afterTranscribe` → `beforeCleanup` → `afterCleanup`; adaptive cloud mode
   (raw+local-cleanup instead of combined when a plugin needs the hooks);
@@ -33,7 +34,11 @@ left.
   running a local `event` hook.
 
 **Deferred (not in this PR):** §4.2–4.4, §11's "Delete" list for
-`manifest.ts`/`ui.ts`/`view-manager.ts`/`ui-host.ts`, §12.1–12.3.
+`manifest.ts`/`ui.ts`/`view-manager.ts`/`ui-host.ts`, §12.1–12.3, and the
+host-side of declarative config (§8.2): the renderer detail-page rendering and
+the `packages/validations` Zod schema. The SDK types + `parsePluginSettingsFields`
+ship now (additive, tested), but nothing consumes them until the plugin-detail UI
+lands with the deferred UI-serving slice.
 
 ### Correction to the original design (§4.1)
 
@@ -435,10 +440,11 @@ export type PluginSettingField =
 ```
 
 - Parsed tolerantly (drop invalid entries) alongside `parsePluginPages`
-  (`packages/sdk/src/ui.ts`), with a Zod schema in
-  `packages/validations/src/plugins.ts`.
+  (`packages/sdk/src/ui.ts`) via `parsePluginSettingsFields` — **shipped**.
+- A Zod schema in `packages/validations/src/plugins.ts` — **deferred**.
 - The renderer plugin detail page renders the fields and persists to
-  `plugin:<name>:<key>` via the settings API.
+  `plugin:<name>:<key>` via the settings API — **deferred** (lands with the
+  UI-serving slice, §4.2).
 - Plugins read them with `ctx.settings.getOwn(key)` (already supported).
 
 ---
@@ -502,8 +508,13 @@ The two shipped plugins need **no code changes**: `profanity-filter` uses
   `output` + `disposition`.
 - `apps/server/src/lib/post-process.ts` — pass `HookApi`/control; `beforeCleanup`
   extended powers.
-- `apps/server/src/routes/post-process-route.ts` — run `afterTranscribe` too
-  (symmetry).
+- `apps/server/src/routes/post-process-route.ts` — thread a per-call `HookApi`
+  so `beforeCleanup`/`afterCleanup` see a shared control object. It does **not**
+  re-run `afterTranscribe`: for multi-segment recordings each chunk already ran
+  `afterTranscribe` in its own `/api/transcribe` call, so firing it again on the
+  merged text would double-invoke it. Gap #8 (§2.2) is therefore left as-is by
+  design — the original "run afterTranscribe too" plan was dropped once the
+  per-segment firing was accounted for.
 - `apps/server/src/routes/plugins.ts` + `routes/index.ts` — `GET /api/plugins`,
   `GET /api/plugins/:slug/ui/*`, storage routes.
 - `apps/electron/src/main/index.ts` — `deliverOutput` reads response `disposition`;
@@ -582,6 +593,10 @@ The two shipped plugins need **no code changes**: `profanity-filter` uses
 **Deferred to a follow-up PR** (needs interactive Electron verification, higher
 risk, and is orthogonal to closing the control/capability gaps that motivated
 this work):
+- §8.2 host-side declarative config: the renderer plugin-detail rendering of
+  `contributes.settings` and the `packages/validations` Zod schema. Only the SDK
+  types + `parsePluginSettingsFields` ship here; they're inert until the detail
+  UI lands.
 - §4.2 Serving plugin UI from the server (`GET /api/plugins`,
   `GET /api/plugins/:slug/ui/*`).
 - §4.3 Bridge simplification (same-origin `fetch` instead of the

@@ -7,6 +7,7 @@ import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
 import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
+import { formatError } from "./lib/format-error.js";
 import { isTransientCloudError } from "./lib/freestyle-cloud.js";
 import { startHistoryRetentionSweep } from "./lib/history-store.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
@@ -85,13 +86,25 @@ function createApp(pluginMiddleware: MiddlewareHandler[] = []) {
       // Let Hono's own exceptions (e.g. bearerAuth's 401) keep their response,
       // but still report genuine server errors.
       if (err instanceof HTTPException) {
-        if (err.status >= 500) captureException(err);
+        if (err.status >= 500) {
+          httpLog.error(
+            `${c.req.method} ${c.req.path} -> ${err.status}: ${formatError(err)}`,
+          );
+          captureException(err);
+        }
         const res = err.getResponse();
         // Preserve CORS so the cross-origin renderer can read auth errors.
         const origin = c.req.header("origin");
         if (origin) res.headers.set("Access-Control-Allow-Origin", origin);
         return res;
       }
+      // Always log the failure locally so it's visible in dev and captured in
+      // the diagnostics log file — otherwise a 500 only shows as a status code
+      // in the access log with no detail. `captureException` (below) is gated,
+      // but local logging never is.
+      httpLog.error(
+        `${c.req.method} ${c.req.path} -> 500: ${formatError(err)}`,
+      );
       // Transient network faults (e.g. `fetch failed` / ECONNRESET when calling
       // Freestyle Cloud) and upstream 5xx responses aren't app defects. Every
       // route already guards its own reporting; guard here too so anything that

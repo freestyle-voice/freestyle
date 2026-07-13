@@ -2,6 +2,7 @@ import { sanitizeTranscriptText } from "@freestyle-voice/stt";
 import { createAppLogger } from "@freestyle-voice/utils";
 import { Hono } from "hono";
 import { readSetting } from "../lib/db.js";
+import { formatError } from "../lib/format-error.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,
@@ -215,6 +216,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       if (err instanceof FreestyleCloudUsageError) {
         return c.json({ error: "usage_exceeded", resetsAt: err.resetsAt }, 429);
       }
+      log.error(
+        `cloud transcribe failed (${voiceProvider}/${voiceModel}): ${formatError(err)}`,
+      );
       // Transient network faults / upstream 5xx aren't app defects — surface
       // them to the user but don't report them to error tracking.
       if (!isTransientCloudError(err)) {
@@ -269,6 +273,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       invalidateSession();
       return c.json({ error: "cloud_auth_required" }, 401);
     }
+    log.error(
+      `transcribe failed (${defaults.voice.provider}/${defaults.voice.model_id}): ${formatError(err)}`,
+    );
     if (!isTransientCloudError(err)) {
       captureException(err, {
         provider: defaults.voice.provider,

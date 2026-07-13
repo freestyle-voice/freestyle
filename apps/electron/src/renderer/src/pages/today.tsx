@@ -325,36 +325,42 @@ export default function TodayPage(): React.JSX.Element {
               <span className="text-muted-foreground text-[11px] font-semibold">
                 Cloud Usage
               </span>
-              <button
-                type="button"
-                onClick={refreshCloudUsage}
-                disabled={cloudUsageFetching}
-                aria-label="Refresh cloud usage"
-                className="text-muted-foreground hover:text-foreground -mr-1 rounded p-1 transition-colors disabled:opacity-50"
-              >
-                <RefreshCw
-                  className={cn("size-3", cloudUsageFetching && "animate-spin")}
-                />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground/70 text-[10px]">
+                  {formatUpdatedAt(cloudUsageUpdatedAt)}
+                </span>
+                <button
+                  type="button"
+                  onClick={refreshCloudUsage}
+                  disabled={cloudUsageFetching}
+                  aria-label="Refresh cloud usage"
+                  className="text-muted-foreground hover:text-foreground hover:bg-card -mr-1.5 rounded-md p-1.5 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw
+                    className={cn(
+                      "size-3",
+                      cloudUsageFetching && "animate-spin",
+                    )}
+                  />
+                </button>
+              </div>
             </div>
-            <div className="mb-2 flex items-baseline gap-2.5">
-              <span className="serif-italic text-foreground text-[26px] leading-none min-w-[70px]">
+
+            <div className="mb-3 flex items-baseline gap-1.5">
+              <span className="serif-italic text-foreground text-[34px] leading-none">
                 {cloudUsage.remaining.toLocaleString()}
               </span>
-              <span className="text-muted-foreground text-[11px] font-medium leading-snug">
-                credits left
+              <span className="text-muted-foreground text-[11px] font-medium">
+                left of {cloudUsage.limit.toLocaleString()}
               </span>
             </div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="mono text-muted-foreground text-[10px] tracking-[0.1em]">
+
+            <Progress value={usagePercent(cloudUsage)} className="h-1.5" />
+
+            <div className="text-muted-foreground mt-2.5 flex items-center justify-between text-[10.5px]">
+              <span className="mono tracking-[0.08em]">
                 {usagePercent(cloudUsage)}% used
               </span>
-              <span className="mono text-muted-foreground text-[10px]">
-                / {cloudUsage.limit.toLocaleString()}
-              </span>
-            </div>
-            <Progress value={usagePercent(cloudUsage)} className="h-1" />
-            <div className="text-muted-foreground mt-2 flex items-center justify-between text-[10.5px]">
               <span>
                 Resets{" "}
                 {new Date(cloudUsage.resetsAt).toLocaleDateString(undefined, {
@@ -362,7 +368,6 @@ export default function TodayPage(): React.JSX.Element {
                   day: "numeric",
                 })}
               </span>
-              <span>Updated {formatUpdatedAt(cloudUsageUpdatedAt)}</span>
             </div>
           </section>
         )}

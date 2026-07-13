@@ -79,10 +79,14 @@ export async function transcribeWithAiSdk(
  * factory follows the `createX({ apiKey }).transcription(id)` shape. Collapses
  * the otherwise-identical per-provider adapter classes into a single
  * declarative entry in the registry.
+ *
+ * `loadProvider` is invoked lazily on first transcription so that importing the
+ * registry at boot doesn't eagerly evaluate every `@ai-sdk/*` package — only
+ * the SDK for the provider actually used is loaded.
  */
 export function makeAiSdkTranscriptionProvider(
   providerId: string,
-  createProvider: AiSdkProviderFactory,
+  loadProvider: () => Promise<AiSdkProviderFactory>,
   options: AiSdkTranscriptionOptions = {},
 ): TranscriptionProvider {
   return {
@@ -94,6 +98,7 @@ export function makeAiSdkTranscriptionProvider(
       const withModel = model === opts.model ? opts : { ...opts, model };
       const biased = await options.biasHandler?.(withModel);
       if (biased) return biased;
+      const createProvider = await loadProvider();
       return transcribeWithAiSdk(withModel, createProvider, providerId);
     },
   };

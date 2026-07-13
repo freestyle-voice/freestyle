@@ -1,9 +1,5 @@
 import path from "node:path";
-import { createAppLogger } from "@freestyle-voice/utils";
 import { type BrowserWindow, WebContentsView } from "electron";
-import { getDiscoveredPlugins, PLUGIN_SCHEME, pluginPageUrl } from "./ui.js";
-
-const log = createAppLogger("plugins-ui");
 
 /** Rect (in the window's content coordinates) where the plugin view sits. */
 export interface ViewBounds {
@@ -13,15 +9,15 @@ export interface ViewBounds {
   height: number;
 }
 
-/** Server config injected into the plugin frame's bridge. */
-export interface BridgeConfig {
-  serverUrl: string;
-}
-
 /**
  * Hosts a single plugin UI page in a sandboxed {@link WebContentsView} overlaid
  * on the dashboard window. The renderer reports the bounds of its placeholder;
  * we size the view to match. Only one plugin page is shown at a time.
+ *
+ * Pages are loaded same-origin from the loopback server
+ * (`GET /api/plugins/:slug/ui/<entry>`), and each plugin gets its own Electron
+ * `session` partition so one plugin's page can't read another's
+ * storage/cookies even though they share the loopback origin.
  */
 export class PluginViewManager {
   private view: WebContentsView | null = null;
@@ -29,14 +25,12 @@ export class PluginViewManager {
   private current: { slug: string; pageId: string } | null = null;
   /** Whether the view is currently attached (visible) in the window. */
   private attached = false;
-  /** Config for the current view, fetched by its preload over IPC on load. */
-  private pendingConfig:
-    | (BridgeConfig & { tokens?: Record<string, string> })
-    | null = null;
+  /** Theme tokens for the current view, fetched by its preload over IPC. */
+  private pendingTokens: Record<string, string> | undefined;
 
   constructor(
     private readonly preloadPath: string,
-    private readonly resolveConfig: () => BridgeConfig,
+    private readonly getServerBaseUrl: () => string,
   ) {}
 
   /** Attach to the dashboard window; call once when that window is created. */
@@ -49,8 +43,8 @@ export class PluginViewManager {
   }
 
   /**
-   * Show `slug`/`pageId` at `bounds`. Loads the page's entry over the
-   * `freestyle-plugin://` scheme. Returns false when the page can't be found.
+   * Show `slug`/`pageId` at `bounds`, loading `entry` from the server over the
+   * loopback origin. Returns false when there's no window to attach to.
    *
    * When the same page is re-shown (e.g. navigating back after hide), the
    * existing view is re-attached without recreating it — no white flash or
@@ -60,17 +54,11 @@ export class PluginViewManager {
   show(
     slug: string,
     pageId: string,
+    entry: string,
     bounds: ViewBounds,
     tokens?: Record<string, string>,
   ): boolean {
     if (!this.window) return false;
-
-    const plugin = getDiscoveredPlugins().find((p) => p.slug === slug);
-    const page = plugin?.pages.find((p) => p.id === pageId);
-    if (!plugin || !page) {
-      log.warn(`unknown plugin page ${slug}/${pageId}`);
-      return false;
-    }
 
     const same = this.current?.slug === slug && this.current?.pageId === pageId;
 
@@ -84,7 +72,8 @@ export class PluginViewManager {
       return true;
     }
 
-    // Different page — destroy the old view and create a new one.
+    // Different page — destroy the old view and create a new one, in this
+    // plugin's own session partition.
     this.destroyView();
     this.view = new WebContentsView({
       webPreferences: {
@@ -92,28 +81,30 @@ export class PluginViewManager {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,
+        partition: `persist:plugin-${slug}`,
       },
     });
     // Paint the app background immediately so there's no white flash before the
     // page's own stylesheet loads.
     const bg = tokens?.["--background"];
     if (bg) this.view.setBackgroundColor(toHexColor(bg));
-    this.pendingConfig = { ...this.resolveConfig(), tokens };
+    this.pendingTokens = tokens;
     this.window.contentView.addChildView(this.view);
     this.attached = true;
     this.setBounds(bounds);
     this.current = { slug, pageId };
-    void this.view.webContents
-      .loadURL(pluginPageUrl(plugin.slug, page.entry))
-      .catch(() => {
-        // Navigation can be superseded by a rapid page switch; ignore.
-      });
+    const url = `${this.getServerBaseUrl()}/api/plugins/${encodeURIComponent(
+      slug,
+    )}/ui/${entry.replace(/^\/+/, "")}`;
+    void this.view.webContents.loadURL(url).catch(() => {
+      // Navigation can be superseded by a rapid page switch; ignore.
+    });
     return true;
   }
 
-  /** The config the current plugin view's preload should receive over IPC. */
-  getConfig(): (BridgeConfig & { tokens?: Record<string, string> }) | null {
-    return this.pendingConfig;
+  /** The theme tokens the current plugin view's preload should receive. */
+  getTokens(): { tokens?: Record<string, string> } {
+    return this.pendingTokens ? { tokens: this.pendingTokens } : {};
   }
 
   /** Update the view's position/size (on resize, scroll, or layout change). */
@@ -139,9 +130,8 @@ export class PluginViewManager {
   }
 
   /**
-   * Discard any cached view so the next {@link show} reloads the page from
-   * disk. Call after a plugin is installed, updated, or uninstalled — otherwise
-   * a view kept alive across {@link hide} would re-attach stale plugin code.
+   * Discard any cached view so the next {@link show} reloads the page from the
+   * server. Call after a plugin is installed, updated, or uninstalled.
    */
   invalidate(): void {
     this.destroyView();
@@ -156,7 +146,7 @@ export class PluginViewManager {
     this.view = null;
     this.current = null;
     this.attached = false;
-    this.pendingConfig = null;
+    this.pendingTokens = undefined;
   }
 }
 
@@ -170,6 +160,3 @@ function toHexColor(value: string): string {
 export function pluginBridgePreloadPath(): string {
   return path.join(__dirname, "../preload/plugin-bridge.js");
 }
-
-/** The scheme constant, re-exported for convenience. */
-export { PLUGIN_SCHEME };

@@ -7,6 +7,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@renderer/components/ui/dropdown-menu";
+import {
+  installPlugin,
+  listPlugins,
+  setPluginEnabled,
+  uninstallPlugin,
+} from "@renderer/lib/plugins-api";
 import type { PluginInfo, PluginUpdateResult } from "@shared/plugins";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Loader2, MoreHorizontal } from "lucide-react";
@@ -28,14 +34,14 @@ export default function PluginDetailPage(): React.JSX.Element {
 
   const { data: allPlugins, isLoading: loading } = useQuery({
     queryKey: ["plugins"],
-    queryFn: () => window.api.refreshPlugins(),
+    queryFn: () => listPlugins(),
   });
 
   const plugin = allPlugins?.find((p) => p.slug === slug) ?? null;
 
   const toggle = async (enabled: boolean): Promise<void> => {
     if (!plugin) return;
-    const all = await window.api.setPluginEnabled(plugin.specifier, enabled);
+    const all = await setPluginEnabled(plugin.specifier, enabled);
     queryClient.setQueryData(["plugins"], all);
   };
 
@@ -75,7 +81,7 @@ export default function PluginDetailPage(): React.JSX.Element {
             plugin={plugin}
             onToggle={toggle}
             onUninstall={async () => {
-              await window.api.uninstallPlugin(plugin.specifier);
+              await uninstallPlugin(plugin.specifier);
               navigate("/plugins");
             }}
             update={update}
@@ -107,7 +113,7 @@ function Detail({
   const doUpdate = async (): Promise<void> => {
     setUpdating(true);
     try {
-      const all = await window.api.installPlugin(plugin.specifier);
+      const all = await installPlugin(plugin.specifier);
       queryClient.setQueryData(["plugins"], all);
       void queryClient.invalidateQueries({ queryKey: ["plugin-updates"] });
     } catch {

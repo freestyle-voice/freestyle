@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import * as semver from "semver";
@@ -10,11 +12,53 @@ import {
   uninstallServerPlugin,
 } from "../lib/plugins/install-service.js";
 import { resolvePackage } from "../lib/plugins/installer.js";
+import {
+  discoverPlugins,
+  resolvePluginAsset,
+  serializePlugins,
+} from "../lib/plugins/ui-assets.js";
 
 const STORAGE_PREFIX = "plugin:";
 
 function storageKey(name: string, key: string): string {
   return `${STORAGE_PREFIX}${name}:${key}`;
+}
+
+/**
+ * Content-Security-Policy for served plugin UI pages. Plugins run same-origin
+ * with the loopback server now, so `'self'` covers their own assets and API
+ * calls. This is set server-side because a plugin's own `<meta>` CSP is
+ * untrustworthy. Font CDNs are allowed to match what the shipped UIs use.
+ */
+const PLUGIN_UI_CSP =
+  "default-src 'self'; " +
+  "script-src 'self'; " +
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+  "font-src 'self' https://fonts.gstatic.com; " +
+  "img-src 'self' data: https:; " +
+  "connect-src 'self'";
+
+const MIME_BY_EXT: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".map": "application/json; charset=utf-8",
+};
+
+function mimeForPath(filePath: string): string {
+  return MIME_BY_EXT[path.extname(filePath).toLowerCase()] ?? "text/plain";
 }
 
 /**
@@ -47,8 +91,39 @@ const plugins = new Hono()
     await reloadServerPlugins();
     return c.json({ ok: true });
   })
+  // The discovered plugin list for the hub (name, slug, pages, icon, version,
+  // description, readme, enabled, missing). The renderer fetches this directly
+  // instead of the old `plugins:list` Electron IPC.
+  .get("/", (c) => {
+    return c.json({ plugins: serializePlugins(discoverPlugins()) });
+  })
   .get("/catalog", (c) => {
     return c.json({ plugins: PLUGIN_CATALOG });
+  })
+  // Serve a plugin's UI assets from its package dir, path-traversal guarded.
+  // Replaces the Electron `freestyle-plugin://<slug>/<asset>` custom scheme:
+  // pages now load same-origin from the loopback server, so their bridge can
+  // fetch the API directly without the old IPC proxy.
+  .get("/:slug/ui/*", async (c) => {
+    const slug = c.req.param("slug");
+    const assetPath = c.req.path.split(`/${slug}/ui/`)[1] ?? "";
+    const resolved = resolvePluginAsset(discoverPlugins(), slug, assetPath);
+    if (!resolved) return c.text("Not found", 404);
+
+    let body: Buffer;
+    try {
+      body = await readFile(resolved);
+    } catch {
+      return c.text("Not found", 404);
+    }
+    c.header("Content-Type", mimeForPath(resolved));
+    c.header("Content-Security-Policy", PLUGIN_UI_CSP);
+    return c.body(
+      body.buffer.slice(
+        body.byteOffset,
+        body.byteOffset + body.byteLength,
+      ) as ArrayBuffer,
+    );
   })
   .post("/install", zValidator("json", installSchema), async (c) => {
     const { npmName, version } = c.req.valid("json");

@@ -1,9 +1,5 @@
 export { type AppContextPayload, parseAppContext } from "./app-context.js";
-export type {
-  FreestyleBridge,
-  FreestyleResponse,
-  HostActions,
-} from "./bridge.js";
+export type { FreestyleBridge, HostActions } from "./bridge.js";
 export type { PluginConfig } from "./config.js";
 export {
   type BaseLogger,

@@ -99,23 +99,12 @@ import {
   stopLinuxPasteHelper,
 } from "./paste";
 import {
-  checkForUpdates,
   FreestyleEventType,
-  fetchCatalog,
-  fetchPluginSettings,
-  installPlugin,
   OutputMode,
   PipelineStage,
   relayEvent,
-  setPluginEnabled,
-  uninstallPlugin,
 } from "./plugins/index";
-import {
-  initPluginUiHost,
-  PLUGIN_SCHEME_PRIVILEGE,
-  refreshPluginUi,
-} from "./plugins/ui-host";
-import type { BridgeConfig } from "./plugins/view-manager";
+import { initPluginUiHost } from "./plugins/ui-host";
 
 const log = createAppLogger("electron");
 const hotkeyLog = createAppLogger("hotkey");
@@ -233,18 +222,6 @@ function getServerBaseUrl(): string {
   return `http://127.0.0.1:${serverPort}`;
 }
 
-/**
- * Refresh UI plugin discovery (the Plugins hub's manifest scan) now that the
- * server — and therefore the `plugins` setting — is reachable. No-op if the
- * settings window hasn't been created yet.
- */
-function initPluginsForServer(): void {
-  void getPluginDiscoverySources().then(
-    ({ pluginsSetting, userDataDir, disabledPlugins }) =>
-      refreshPluginUi(pluginsSetting, userDataDir, disabledPlugins),
-  );
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let httpServer: any = null;
 /** True when this process reuses another Freestyle server on the default port. */
@@ -283,7 +260,6 @@ protocol.registerSchemesAsPrivileged([
       corsEnabled: true,
     },
   },
-  PLUGIN_SCHEME_PRIVILEGE,
 ]);
 
 function registerAppProtocol(): void {
@@ -644,72 +620,17 @@ function createSettingsWindow(initialPath?: string): void {
     }
   }
 
-  // Wire the plugin UI host (asset protocol, view manager, IPC) to this window
-  // and do an initial plugin discovery scan.
+  // Wire the plugin UI host (view manager + host-action/view IPC) to this
+  // window. Discovery, install, and asset serving all live server-side now;
+  // the renderer talks to the server directly for those.
   initPluginUiHost({
     window: settingsWindow,
-    getBridgeConfig: getPluginBridgeConfig,
-    getDiscoverySources: getPluginDiscoverySources,
-    setPluginEnabled: async (specifier, enabled) => {
-      // Persists the setting and reloads the server's own plugin registry
-      // (all hooks, including `beforeOutput`, run server-side now — there is
-      // no app-host registry left to rebuild).
-      await setPluginEnabled(getServerTarget(), specifier, enabled);
-    },
-    getCatalog: () => fetchCatalog(getServerTarget()),
-    installPlugin: async (npmName, version) => {
-      await installPlugin(getServerTarget(), npmName, version);
-    },
-    uninstallPlugin: async (specifier) => {
-      await uninstallPlugin(getServerTarget(), specifier);
-    },
-    checkForUpdates: (plugins) => checkForUpdates(getServerTarget(), plugins),
+    getServerBaseUrl,
     onAction: handlePluginAction,
   });
-  void getPluginDiscoverySources().then(
-    ({ pluginsSetting, userDataDir, disabledPlugins }) =>
-      refreshPluginUi(pluginsSetting, userDataDir, disabledPlugins),
-  );
 
   const startPath = !onboardingDone ? "/onboarding" : (initialPath ?? "/today");
   settingsWindow.loadURL(getDashboardURL(startPath));
-}
-
-/** The local server target for plugin settings/discovery. */
-function getServerTarget(): {
-  baseUrl: string;
-  directory: string;
-} {
-  return {
-    baseUrl: getServerBaseUrl(),
-    directory: app.getPath("userData"),
-  };
-}
-
-/** Bridge config (server URL) injected into plugin UI frames. */
-function getPluginBridgeConfig(): BridgeConfig {
-  return {
-    serverUrl: getServerBaseUrl(),
-  };
-}
-
-/**
- * Resolve the `plugins` setting + disabled set (over HTTP, so a remote server
- * works too) plus the user-data dir for UI plugin discovery.
- */
-async function getPluginDiscoverySources(): Promise<{
-  pluginsSetting: string | undefined;
-  userDataDir: string;
-  disabledPlugins: ReadonlySet<string>;
-}> {
-  const { pluginsSetting, disabled } = await fetchPluginSettings(
-    getServerTarget(),
-  );
-  return {
-    pluginsSetting,
-    userDataDir: app.getPath("userData"),
-    disabledPlugins: disabled,
-  };
 }
 
 /** Perform a host action requested by a plugin UI page over the bridge. */
@@ -1965,7 +1886,6 @@ app.whenReady().then(async () => {
         httpServer = server;
         serverPort = boundPort;
         log.info(`Server running on http://localhost:${boundPort}`);
-        initPluginsForServer();
       })
       .catch((err: NodeJS.ErrnoException) => {
         if (err.code === "EADDRINUSE" && port === DEFAULT_PORT) {
@@ -1998,7 +1918,6 @@ app.whenReady().then(async () => {
     log.info(
       `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
     );
-    initPluginsForServer();
   } else {
     startServer(DEFAULT_PORT);
   }

@@ -563,6 +563,14 @@ export default function AppPage(): React.JSX.Element {
       pillActiveRef.current = true;
       pendingCommitRef.current = false;
 
+      // Warm the local ASR server (whisper/mlx) while the user is speaking so
+      // submission doesn't pay the model-load latency. Fire-and-forget: the
+      // server decides whether anything needs warming (no-op for cloud/BYOK),
+      // and lazy start at submission remains the fallback if this doesn't land.
+      void getClient()
+        .api.transcribe["pre-warm"].$post()
+        .catch(() => {});
+
       appContextRef.current = null;
 
       void refreshNeedsAppContextForCleanup().then((needsAppContext) => {

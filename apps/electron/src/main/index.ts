@@ -47,7 +47,6 @@ import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import {
   type AppType,
   activateManagedMlxRuntimeForAppVersion,
-  autoStartWhisperServer,
   captureException,
   closeDb,
   disposeServerPlugins,
@@ -1955,15 +1954,17 @@ app.whenReady().then(async () => {
     process.env.FREESTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
   }
 
-  // Run non-critical server startup tasks now that the DB path is set. These
-  // are deferred off the boot critical path: reconcileUnsupportedMlxVoiceDefault
-  // can synchronously probe Python/MLX (execFileSync) on Apple Silicon without a
-  // managed runtime, which would otherwise block window creation. Both are
-  // idempotent and also run lazily via getDefaultModels() on first use, so
-  // deferring them by a tick is safe.
+  // Run non-critical server startup tasks now that the DB path is set. This is
+  // deferred off the boot critical path: reconcileUnsupportedMlxVoiceDefault can
+  // synchronously probe Python/MLX (execFileSync) on Apple Silicon without a
+  // managed runtime, which would otherwise block window creation. It is
+  // idempotent and also runs lazily via getDefaultModels() on first use, so
+  // deferring it by a tick is safe. Local ASR servers (whisper/mlx) are no
+  // longer pre-warmed at boot — they warm on recording start via the
+  // /api/transcribe/pre-warm endpoint, and start lazily at submission as a
+  // fallback.
   setImmediate(() => {
     reconcileUnsupportedMlxVoiceDefault();
-    autoStartWhisperServer();
   });
 
   // Start the Hono HTTP server with WebSocket support (or reuse an existing one)

@@ -351,7 +351,7 @@ export default function TodayPage(): React.JSX.Element {
                 {cloudUsage.remaining.toLocaleString()}
               </span>
               <span className="text-muted-foreground text-[11px] font-medium">
-                left of {cloudUsage.limit.toLocaleString()}
+                / {cloudUsage.limit.toLocaleString()}
               </span>
             </div>
 

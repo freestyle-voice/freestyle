@@ -23,8 +23,6 @@ import {
 import { captureException, shutdownPosthog } from "./lib/posthog.js";
 import { trustedOriginMiddleware } from "./lib/trusted-origin.js";
 import routes from "./routes";
-import { autoStartMlxAsrServer } from "./routes/mlx-asr.js";
-import { autoStartWhisperServer } from "./routes/whisper.js";
 
 const httpLog = createAppLogger("http");
 
@@ -184,8 +182,6 @@ export { captureException, shutdownPosthog } from "./lib/posthog.js";
 export { stopServer as stopWhisperServer } from "./lib/whisper/server.js";
 export {
   activateManagedMlxRuntimeForAppVersion,
-  autoStartMlxAsrServer,
-  autoStartWhisperServer,
   prefetchManagedMlxRuntimeForAppRelease,
   reconcileUnsupportedMlxVoiceDefault,
 };

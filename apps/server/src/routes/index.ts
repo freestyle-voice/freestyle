@@ -15,7 +15,7 @@ import models from "./models.js";
 import pluginsRoute from "./plugins.js";
 import postProcessRoute from "./post-process-route.js";
 import settings from "./settings.js";
-import transcribe from "./transcribe.js";
+import transcribe, { transcribePreWarmRoute } from "./transcribe.js";
 import usage from "./usage.js";
 import vocabulary from "./vocabulary.js";
 import whisper from "./whisper.js";
@@ -58,6 +58,7 @@ const apiRouter = new Hono()
   .route("/auth", auth)
   .route("/models", models)
   .route("/transcribe", transcribe)
+  .route("/transcribe", transcribePreWarmRoute)
   .route("/history", history)
   .route("/dictionary", dictionary)
   .route("/vocabulary", vocabulary)

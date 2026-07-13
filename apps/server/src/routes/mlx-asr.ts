@@ -1,4 +1,3 @@
-import { createAppLogger } from "@freestyle-voice/utils";
 import { serverStartSchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
@@ -39,8 +38,6 @@ import {
 } from "../lib/mlx-asr/server.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
-
-const log = createAppLogger("mlx-asr");
 
 const mlxAsr = new Hono()
   .get("/status", (c) => {
@@ -168,21 +165,3 @@ const mlxAsr = new Hono()
   });
 
 export default mlxAsr;
-
-export function autoStartMlxAsrServer(): void {
-  try {
-    const defaults = getDefaultModels();
-    if (defaults.voice?.provider !== MLX_ASR_PROVIDER_ID) return;
-    if (!canRunMlxAsr()) {
-      log.debug("Skipping auto-start — Python or mlx-audio not available");
-      return;
-    }
-
-    const modelId = stripProviderPrefix(defaults.voice.model_id);
-    if (getMlxModelStatus(modelId)?.status !== "ready") return;
-    log.debug(`Auto-starting server for model: ${modelId}`);
-    startMlxInBackground(modelId);
-  } catch {
-    // DB not ready — skip
-  }
-}

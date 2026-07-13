@@ -608,13 +608,13 @@ export default function SettingsPage(): React.JSX.Element {
 
   const positionOptions = useMemo<SegmentOption[]>(() => {
     const opts: SegmentOption[] = [
+      { id: "top-center", label: t("settings.display.positionTopCenter") },
+      { id: "top-right", label: t("settings.display.positionTopRight") },
       {
         id: "bottom-center",
         label: t("settings.display.positionBottomCenter"),
       },
       { id: "bottom-right", label: t("settings.display.positionBottomRight") },
-      { id: "top-center", label: t("settings.display.positionTopCenter") },
-      { id: "top-right", label: t("settings.display.positionTopRight") },
     ];
     if (pillPosition === "custom")
       opts.push({ id: "custom", label: t("settings.display.positionCustom") });

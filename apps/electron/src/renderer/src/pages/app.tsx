@@ -563,10 +563,11 @@ export default function AppPage(): React.JSX.Element {
       pillActiveRef.current = true;
       pendingCommitRef.current = false;
 
-      // Warm the local ASR server (whisper/mlx) while the user is speaking so
-      // submission doesn't pay the model-load latency. Fire-and-forget: the
-      // server decides whether anything needs warming (no-op for cloud/BYOK),
-      // and lazy start at submission remains the fallback if this doesn't land.
+      // Warm the pipeline while the user is speaking so submission doesn't pay
+      // startup latency: the local ASR server (whisper/mlx) model load and the
+      // cloud cleanup LLM connection (e.g. Groq TLS handshake). Fire-and-forget:
+      // the server decides what needs warming (no-op where nothing applies), and
+      // lazy start at submission remains the fallback if this doesn't land.
       void getClient()
         .api.transcribe["pre-warm"].$post()
         .catch(() => {});

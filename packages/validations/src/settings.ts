@@ -104,6 +104,93 @@ export const networkSettingsFormSchema = z.object({
 
 export type NetworkSettingsForm = z.infer<typeof networkSettingsFormSchema>;
 
+// ---------------------------------------------------------------------------
+// Per-tab settings form schemas
+//
+// The Settings page splits into one react-hook-form per tab. Each form persists
+// on change (no submit button) — every field write goes straight to
+// `PUT /settings/:key` or a `window.api.*` IPC call. These schemas give each
+// form the same validation the server enforces, and centralize the string
+// unions that used to live inline in the renderer.
+// ---------------------------------------------------------------------------
+
+/** Push-to-talk activation: hold the hotkey vs. toggle on/off. */
+export const hotkeyModeSchema = z.enum(["hold", "toggle"]);
+export type HotkeyMode = z.infer<typeof hotkeyModeSchema>;
+
+/** How a finished transcript is delivered. */
+export const outputModeSchema = z.enum(["paste", "clipboard"]);
+export type OutputMode = z.infer<typeof outputModeSchema>;
+
+/** Color theme (mirrors next-themes values). */
+export const themeSchema = z.enum(["light", "dark", "system"]);
+export type ThemeSetting = z.infer<typeof themeSchema>;
+
+/** Background-audio behavior while recording. */
+export const audioPlaybackModeSchema = z.enum(["off", "duck", "pause"]);
+export type AudioPlaybackModeSetting = z.infer<typeof audioPlaybackModeSchema>;
+
+/** Auto-delete retention preset shown on the Data tab. */
+export const historyRetentionPresetSchema = z.enum([
+  "never",
+  "7",
+  "30",
+  "custom",
+]);
+export type HistoryRetentionPreset = z.infer<
+  typeof historyRetentionPresetSchema
+>;
+
+/** Recording tab form. `micDeviceId` empty string = system default mic. */
+export const recordingSettingsFormSchema = z.object({
+  micDeviceId: z.string(),
+  hotkey: z.string(),
+  hotkeyMode: hotkeyModeSchema,
+  language: z.string(),
+  outputMode: outputModeSchema,
+  soundEnabled: z.boolean(),
+  audioPlaybackMode: audioPlaybackModeSchema,
+});
+export type RecordingSettingsForm = z.infer<typeof recordingSettingsFormSchema>;
+
+/** Application tab form (all IPC-backed toggles). */
+export const applicationSettingsFormSchema = z.object({
+  autoUpdate: z.boolean(),
+  launchAtStartup: z.boolean(),
+  showOnLaunch: z.boolean(),
+});
+export type ApplicationSettingsForm = z.infer<
+  typeof applicationSettingsFormSchema
+>;
+
+/** Display tab form. `pillPosition` is a free string ("custom" + coords). */
+export const displaySettingsFormSchema = z.object({
+  theme: themeSchema,
+  pillPosition: z.string(),
+});
+export type DisplaySettingsForm = z.infer<typeof displaySettingsFormSchema>;
+
+/**
+ * Data tab form. When the preset is "custom", `customRetentionDays` must be a
+ * valid day count; for every other preset the field is ignored.
+ */
+export const dataSettingsFormSchema = z
+  .object({
+    historyPaused: z.boolean(),
+    historyRetention: historyRetentionPresetSchema,
+    customRetentionDays: z.string(),
+  })
+  .refine(
+    (data) =>
+      data.historyRetention !== "custom" ||
+      parseRetentionDays(data.customRetentionDays) !== null,
+    {
+      message: `Retention must be a whole number of days between 1 and ${HISTORY_RETENTION_DAYS_MAX}`,
+      path: ["customRetentionDays"],
+    },
+  );
+export type DataSettingsForm = z.infer<typeof dataSettingsFormSchema>;
+
 /** Date-range preset shown on the History page filter panel. */
 export const historyPresetSchema = z.enum([
   "today",

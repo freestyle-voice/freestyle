@@ -22,7 +22,7 @@ import {
 import { generateText } from "ai";
 import { buildRewritePrompt } from "../src/lib/editor/prompts.ts";
 import { getGroqChatModel } from "../src/lib/groq-http.ts";
-import { groqCleanupProviderOptions } from "../src/lib/post-process.ts";
+import { groqCleanupProviderOptions } from "../src/lib/llm/registry.ts";
 
 const MODEL_ID = "openai/gpt-oss-20b";
 const INTENSITY = "low" as const;

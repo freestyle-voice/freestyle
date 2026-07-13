@@ -5,7 +5,7 @@ import {
 import { generateText } from "ai";
 import { buildRewritePrompt } from "../src/lib/editor/prompts.ts";
 import { getGroqChatModel } from "../src/lib/groq-http.ts";
-import { groqCleanupProviderOptions } from "../src/lib/post-process.ts";
+import { groqCleanupProviderOptions } from "../src/lib/llm/registry.ts";
 import {
   type BenchmarkCase,
   POST_PROCESS_BENCHMARK_CASES,

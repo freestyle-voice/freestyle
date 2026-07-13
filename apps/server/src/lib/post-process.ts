@@ -31,7 +31,7 @@ import {
   isTransientCloudError,
   postProcessWithFreestyleCloud,
 } from "./freestyle-cloud.js";
-import { getLlmProvider, groqCleanupProviderOptions } from "./llm/registry.js";
+import { getLlmProvider } from "./llm/registry.js";
 import {
   FreestyleEventType,
   PipelineStage,
@@ -136,10 +136,6 @@ export function resolveAppContextForCleanup(
 ): string | null {
   return needsAppContextForCleanup() ? appContext : null;
 }
-
-// Re-exported for benchmark scripts and tests; the canonical definition now
-// lives with the Groq provider descriptor in ./llm/registry.ts.
-export { groqCleanupProviderOptions };
 
 /** Warm the default cleanup model while the user is still speaking. */
 export function prewarmPostProcess(): void {

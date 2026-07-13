@@ -9,9 +9,8 @@ let dbPath: string;
  * Initialise a throwaway SQLite database before the test suite runs.
  * Each test file gets its own temporary DB so tests stay isolated.
  *
- * We also use fake timers to prevent the module-level
- * `setTimeout(() => autoStartWhisperServer(), 1000)` in the server
- * entry from firing during tests.
+ * We also use fake timers so deferred/background timers in the server
+ * entry don't fire during tests.
  */
 beforeAll(() => {
   vi.useFakeTimers({ shouldAdvanceTime: false });

@@ -36,6 +36,8 @@ type NavItem = {
   shortcut?: string;
   /** Renders in the bottom group of the sidebar instead of the top. */
   footer?: boolean;
+  /** Whether this is a local dev plugin (shows a "Dev" badge). */
+  isDev?: boolean;
 };
 
 const STATIC_NAV: {
@@ -129,6 +131,14 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
                   }
                 />
                 <span className="flex-1 truncate">{item.label}</span>
+                {item.isDev ? (
+                  <Badge
+                    variant="outline"
+                    className="mono h-4 shrink-0 border-yellow-500/30 bg-yellow-500/15 px-1 text-[9px] text-yellow-700 uppercase tracking-[0.12em] dark:text-yellow-300"
+                  >
+                    dev
+                  </Badge>
+                ) : null}
                 {item.shortcut ? (
                   <span
                     className={cn(
@@ -163,6 +173,7 @@ function usePluginNavItems(plugins: PluginInfo[]): NavItem[] {
           label:
             plugin.pages.length === 1 ? pluginDisplayName(plugin) : page.title,
           icon: resolvePluginIcon(page.icon ?? plugin.icon),
+          isDev: plugin.slug.endsWith("-dev"),
         });
       }
     }

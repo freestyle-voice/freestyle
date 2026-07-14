@@ -100,6 +100,7 @@ function Detail({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const Icon = resolvePluginIcon(plugin.icon ?? plugin.pages[0]?.icon);
+  const isDev = plugin.slug.endsWith("-dev");
   const [updating, setUpdating] = useState(false);
 
   const doUpdate = async (): Promise<void> => {
@@ -138,6 +139,14 @@ function Detail({
               <span className="mono text-muted-foreground text-[11px]">
                 v{plugin.version}
               </span>
+            ) : null}
+            {isDev ? (
+              <Badge
+                variant="outline"
+                className="mono h-4 border-yellow-500/30 bg-yellow-500/15 px-1.5 text-[9px] text-yellow-700 uppercase tracking-[0.12em] dark:text-yellow-300"
+              >
+                Dev
+              </Badge>
             ) : null}
             {update?.updateAvailable ? (
               <Badge

@@ -245,8 +245,14 @@ function PluginCard({
     }
   };
 
+  const isDev = plugin.slug.endsWith("-dev");
+
   return (
-    <div className="border-border bg-card hover:bg-card/70 flex w-full items-center gap-4 rounded-[14px] border p-5 transition-colors">
+    <button
+      type="button"
+      className="border-border bg-card hover:bg-card/70 flex w-full cursor-pointer items-center gap-4 rounded-[14px] border p-5 text-left transition-colors"
+      onClick={() => navigate(`/plugins/${plugin.slug}`)}
+    >
       <div className="border-border bg-secondary flex size-11 shrink-0 items-center justify-center rounded-[10px] border">
         <Icon
           className={
@@ -267,6 +273,14 @@ function PluginCard({
             <span className="mono text-muted-foreground text-[10px]">
               v{plugin.version}
             </span>
+          ) : null}
+          {isDev ? (
+            <Badge
+              variant="outline"
+              className="mono h-4 border-yellow-500/30 bg-yellow-500/15 px-1.5 text-[9px] text-yellow-700 uppercase tracking-[0.12em] dark:text-yellow-300"
+            >
+              Dev
+            </Badge>
           ) : null}
           {update?.updateAvailable ? (
             <Badge
@@ -294,7 +308,10 @@ function PluginCard({
         </p>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div
+        className="flex shrink-0 items-center gap-2"
+        onClickCapture={(e) => e.stopPropagation()}
+      >
         {!plugin.missing && update?.updateAvailable ? (
           <Button
             variant="outline"
@@ -344,7 +361,7 @@ function PluginCard({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-    </div>
+    </button>
   );
 }
 

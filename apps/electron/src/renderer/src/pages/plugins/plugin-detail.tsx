@@ -13,15 +13,11 @@ import { Button } from "@renderer/components/ui/button";
 import { Switch } from "@renderer/components/ui/switch";
 import type { PluginInfo, PluginUpdateResult } from "@shared/plugins";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
-import {
-  pluginDisplayName,
-  resolvePluginIcon,
-  usePluginUpdates,
-} from "./helpers";
+import { pluginDisplayName, usePluginUpdates } from "./helpers";
 import { PluginReadme } from "./plugin-readme";
 
 const SKIP_UNINSTALL_CONFIRM_KEY = "plugins.skipUninstallConfirm";
@@ -58,16 +54,6 @@ export default function PluginDetailPage(): React.JSX.Element {
         className="responsive-page-scroll flex-1 overflow-auto"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground -ml-2 mb-5"
-          onClick={() => navigate("/plugins")}
-        >
-          <ArrowLeft data-icon="inline-start" />
-          {t("plugins.detail.back")}
-        </Button>
-
         {loading ? (
           <p className="text-muted-foreground py-10 text-center text-sm">
             {t("plugins.loading")}
@@ -105,7 +91,6 @@ function Detail({
 }): React.JSX.Element {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const Icon = resolvePluginIcon(plugin.icon ?? plugin.pages[0]?.icon);
   const isDev = plugin.slug.endsWith("-dev");
   const [updating, setUpdating] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
@@ -134,36 +119,42 @@ function Detail({
 
   return (
     <div>
-      <div className="flex items-center gap-4">
-        <div className="border-border bg-secondary flex size-12 shrink-0 items-center justify-center rounded-[12px] border">
-          <Icon
-            className={
-              plugin.enabled
-                ? "text-primary size-6"
-                : "text-muted-foreground size-6"
-            }
-            strokeWidth={1.6}
-          />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <h1 className="serif text-foreground m-0 text-[32px] leading-[1]">
-            {pluginDisplayName(plugin)}
+      <div className="mb-7 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="serif text-foreground m-0 flex items-baseline gap-3 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
+            <span>
+              <span className="serif-italic text-primary">
+                {pluginDisplayName(plugin)}
+              </span>
+              <span>. </span>
+            </span>
+            {isDev ? (
+              <span className="bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 mono relative -top-[6px] rounded-full border border-yellow-500/30 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em]">
+                Dev
+              </span>
+            ) : null}
           </h1>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            {plugin.description ? (
+              <p className="text-muted-foreground max-w-[580px] text-[14px] leading-[1.5]">
+                {plugin.description}
+              </p>
+            ) : null}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             {plugin.version ? (
               <span className="mono text-muted-foreground text-[11px]">
                 v{plugin.version}
               </span>
             ) : null}
-            {isDev ? (
-              <Badge
-                variant="outline"
-                className="mono h-4 border-yellow-500/30 bg-yellow-500/15 px-1.5 text-[9px] text-yellow-700 uppercase tracking-[0.12em] dark:text-yellow-300"
-              >
-                Dev
-              </Badge>
+            {plugin.author ? (
+              <span className="text-muted-foreground text-[12px]">
+                {plugin.author}
+              </span>
             ) : null}
+            <span className="mono text-muted-foreground/60 text-[11px]">
+              {plugin.specifier}
+            </span>
             {update?.updateAvailable ? (
               <Badge
                 variant="outline"
@@ -173,11 +164,6 @@ function Detail({
                   version: update.latestVersion,
                 })}
               </Badge>
-            ) : null}
-            {plugin.author ? (
-              <span className="text-muted-foreground text-[12px]">
-                {plugin.author}
-              </span>
             ) : null}
           </div>
         </div>
@@ -222,17 +208,7 @@ function Detail({
         </div>
       </div>
 
-      {plugin.description ? (
-        <p className="text-foreground mt-5 max-w-[680px] text-[14px] leading-[1.6]">
-          {plugin.description}
-        </p>
-      ) : null}
-
-      <p className="mono text-muted-foreground mt-4 text-[12px]">
-        {plugin.specifier}
-      </p>
-
-      <hr className="border-border mt-6" />
+      <hr className="border-border" />
 
       {plugin.readme ? (
         <div className="mt-6">

@@ -15,7 +15,11 @@ import type {
   PluginInfo,
   PluginUpdateResult,
 } from "@shared/plugins";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { Loader2, MoreHorizontal, Puzzle, Search } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -44,6 +48,7 @@ export default function PluginsPage(): React.JSX.Element {
   const { data: plugins = [], isLoading: loading } = useQuery({
     queryKey: ["plugins"],
     queryFn: () => window.api.refreshPlugins(),
+    placeholderData: keepPreviousData,
   });
 
   const setPlugins = useCallback(
@@ -362,6 +367,7 @@ function BrowseTab({
       const res = await window.api.getPluginCatalog();
       return res.plugins;
     },
+    placeholderData: keepPreviousData,
     retry: 1,
   });
 

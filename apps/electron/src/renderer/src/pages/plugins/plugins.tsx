@@ -16,13 +16,7 @@ import type {
   PluginUpdateResult,
 } from "@shared/plugins";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowRight,
-  Loader2,
-  MoreHorizontal,
-  Puzzle,
-  Search,
-} from "lucide-react";
+import { Loader2, MoreHorizontal, Puzzle, Search } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -217,8 +211,6 @@ function PluginCard({
   const queryClient = useQueryClient();
   const Icon = resolvePluginIcon(plugin.icon ?? plugin.pages[0]?.icon);
 
-  const page = plugin.pages[0];
-
   const [busy, setBusy] = useState(false);
   const [updating, setUpdating] = useState(false);
 
@@ -307,17 +299,6 @@ function PluginCard({
           >
             {updating ? <Loader2 className="animate-spin" /> : null}
             {updating ? t("plugins.updating") : t("plugins.update")}
-          </Button>
-        ) : null}
-        {!plugin.missing && page ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!plugin.enabled}
-            onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
-          >
-            {t("plugins.open")}
-            <ArrowRight data-icon="inline-end" />
           </Button>
         ) : null}
         <DropdownMenu>

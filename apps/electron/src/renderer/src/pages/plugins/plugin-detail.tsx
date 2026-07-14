@@ -9,7 +9,7 @@ import {
 } from "@renderer/components/ui/dropdown-menu";
 import type { PluginInfo, PluginUpdateResult } from "@shared/plugins";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Loader2, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, Loader2, MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
@@ -98,10 +98,8 @@ function Detail({
   update?: PluginUpdateResult;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const Icon = resolvePluginIcon(plugin.icon ?? plugin.pages[0]?.icon);
-  const page = plugin.pages[0];
   const [updating, setUpdating] = useState(false);
 
   const doUpdate = async (): Promise<void> => {
@@ -169,17 +167,6 @@ function Detail({
             >
               {updating ? <Loader2 className="animate-spin" /> : null}
               {updating ? t("plugins.updating") : t("plugins.update")}
-            </Button>
-          ) : null}
-          {page ? (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!plugin.enabled}
-              onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
-            >
-              {t("plugins.open")}
-              <ArrowRight data-icon="inline-end" />
             </Button>
           ) : null}
           <DropdownMenu>

@@ -25,7 +25,7 @@ function getBridge(): FreestyleBridge {
 async function fetchReplacements(): Promise<ReplacementsResponse> {
   const res = await getBridge().api(ROUTE);
   if (!res.ok) throw new Error(`server returned ${res.status}`);
-  return res.json<ReplacementsResponse>();
+  return (await res.json()) as ReplacementsResponse;
 }
 
 /**
@@ -43,9 +43,7 @@ async function mutateReplacements(
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const err = await res
-      .json<{ error?: string }>()
-      .catch(() => ({}) as { error?: string });
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `server returned ${res.status}`);
   }
 }

@@ -109,7 +109,14 @@ const plugins = new Hono()
   .get("/:slug/ui/*", async (c) => {
     const slug = c.req.param("slug");
     const assetPath = c.req.path.split(`/${slug}/ui/`)[1] ?? "";
-    const resolved = resolvePluginAsset(discoverPlugins(), slug, assetPath);
+    let resolved: string | null;
+    try {
+      resolved = resolvePluginAsset(discoverPlugins(), slug, assetPath);
+    } catch {
+      // A malformed percent-escape makes decodeURIComponent throw; treat it as
+      // an unresolvable asset rather than a 500.
+      resolved = null;
+    }
     if (!resolved) return c.text("Not found", 404);
 
     let body: Buffer;

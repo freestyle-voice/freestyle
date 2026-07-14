@@ -1,16 +1,20 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@renderer/components/ui/alert-dialog";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@renderer/components/ui/dropdown-menu";
+import { Switch } from "@renderer/components/ui/switch";
 import type { PluginInfo, PluginUpdateResult } from "@shared/plugins";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, MoreHorizontal } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import {
@@ -19,6 +23,8 @@ import {
   usePluginUpdates,
 } from "./helpers";
 import { PluginReadme } from "./plugin-readme";
+
+const SKIP_UNINSTALL_CONFIRM_KEY = "plugins.skipUninstallConfirm";
 
 export default function PluginDetailPage(): React.JSX.Element {
   const { slug } = useParams<{ slug: string }>();
@@ -102,6 +108,7 @@ function Detail({
   const Icon = resolvePluginIcon(plugin.icon ?? plugin.pages[0]?.icon);
   const isDev = plugin.slug.endsWith("-dev");
   const [updating, setUpdating] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
 
   const doUpdate = async (): Promise<void> => {
     setUpdating(true);
@@ -113,6 +120,15 @@ function Detail({
       // Install errors surface via the server; no UI toast needed here.
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const doUninstall = async (): Promise<void> => {
+    setUninstalling(true);
+    try {
+      await onUninstall();
+    } finally {
+      setUninstalling(false);
     }
   };
 
@@ -178,33 +194,31 @@ function Detail({
               {updating ? t("plugins.updating") : t("plugins.update")}
             </Button>
           ) : null}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("plugins.more")}
-              >
-                <MoreHorizontal className="text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => void onToggle(!plugin.enabled)}>
-                {t(
-                  plugin.enabled
-                    ? "plugins.disablePlugin"
-                    : "plugins.enablePlugin",
-                )}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={() => void onUninstall()}
-              >
-                {t("plugins.uninstall")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+
+          <div className="flex items-center gap-2">
+            <label
+              htmlFor="plugin-enabled-toggle"
+              className="text-muted-foreground text-[13px]"
+            >
+              {t(
+                plugin.enabled
+                  ? "plugins.detail.enabled"
+                  : "plugins.detail.disabled",
+              )}
+            </label>
+            <Switch
+              id="plugin-enabled-toggle"
+              size="sm"
+              checked={plugin.enabled}
+              onCheckedChange={(checked) => void onToggle(checked)}
+            />
+          </div>
+
+          <UninstallButton
+            pluginName={pluginDisplayName(plugin)}
+            uninstalling={uninstalling}
+            onConfirm={() => void doUninstall()}
+          />
         </div>
       </div>
 
@@ -230,5 +244,97 @@ function Detail({
         </p>
       )}
     </div>
+  );
+}
+
+function UninstallButton({
+  pluginName,
+  uninstalling,
+  onConfirm,
+}: {
+  pluginName: string;
+  uninstalling: boolean;
+  onConfirm: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const dontAskRef = useRef(false);
+
+  const shouldSkip = useCallback((): boolean => {
+    try {
+      return localStorage.getItem(SKIP_UNINSTALL_CONFIRM_KEY) === "true";
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const handleClick = (): void => {
+    if (shouldSkip()) {
+      onConfirm();
+    } else {
+      dontAskRef.current = false;
+      setOpen(true);
+    }
+  };
+
+  const handleConfirm = (): void => {
+    if (dontAskRef.current) {
+      try {
+        localStorage.setItem(SKIP_UNINSTALL_CONFIRM_KEY, "true");
+      } catch {
+        // Ignore write failures.
+      }
+    }
+    onConfirm();
+  };
+
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={uninstalling}
+        onClick={handleClick}
+        className="text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
+      >
+        {uninstalling ? (
+          <Loader2 className="animate-spin" />
+        ) : (
+          <Trash2 className="size-3.5" />
+        )}
+        {t("plugins.uninstall")}
+      </Button>
+
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {t("plugins.uninstallConfirm.title", { name: pluginName })}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {t("plugins.uninstallConfirm.description")}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        <label className="flex items-center gap-2 text-[13px] text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="accent-primary size-3.5 rounded"
+            onChange={(e) => {
+              dontAskRef.current = e.target.checked;
+            }}
+          />
+          {t("plugins.uninstallConfirm.dontAskAgain")}
+        </label>
+
+        <AlertDialogFooter>
+          <AlertDialogCancel>
+            {t("plugins.uninstallConfirm.cancel")}
+          </AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={handleConfirm}>
+            {t("plugins.uninstall")}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

@@ -653,7 +653,13 @@
     "update": "Update",
     "updating": "Updating…",
     "updateAvailable": "v{{version}} available",
-    "uninstall": "Uninstall plugin",
+    "uninstall": "Uninstall",
+    "uninstallConfirm": {
+      "title": "Uninstall {{name}}?",
+      "description": "All data and settings associated with this plugin will be deleted. This action cannot be undone.",
+      "dontAskAgain": "Don't ask me again",
+      "cancel": "Cancel"
+    },
     "enablePlugin": "Enable plugin",
     "disablePlugin": "Disable plugin",
     "searchPlaceholder": "Search plugins…",

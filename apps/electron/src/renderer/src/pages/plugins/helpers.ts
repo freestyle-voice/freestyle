@@ -78,7 +78,8 @@ export function pluginDisplayName(plugin: PluginInfo): string {
   const base = plugin.name
     .replace(/^@[^/]+\//, "")
     .replace(/^freestyle-plugin-/, "")
-    .replace(/^plugin-/, "");
+    .replace(/^plugin-/, "")
+    .replace(/-dev$/, "");
   return base
     .split(/[-_]/)
     .filter(Boolean)

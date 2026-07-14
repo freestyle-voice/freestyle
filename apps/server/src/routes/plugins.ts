@@ -1,15 +1,18 @@
+import { createAppLogger } from "@freestyle-voice/utils";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import * as semver from "semver";
 import { z } from "zod";
+import { formatError } from "../lib/format-error.js";
 import { freestyleCloudUrl } from "../lib/freestyle-cloud.js";
-import { PLUGIN_CATALOG } from "../lib/plugins/catalog.js";
 import { reloadServerPlugins } from "../lib/plugins/index.js";
 import {
   installServerPlugin,
   uninstallServerPlugin,
 } from "../lib/plugins/install-service.js";
 import { resolvePackage } from "../lib/plugins/installer.js";
+
+const log = createAppLogger("plugins");
 
 /**
  * Plugin lifecycle endpoints. The `plugins` / `disabled_plugins` settings are
@@ -42,19 +45,20 @@ const plugins = new Hono()
     return c.json({ ok: true });
   })
   .get("/catalog", async (c) => {
-    // Fetch the catalog from the cloud registry. Fall back to the static
-    // in-repo list when the cloud is unreachable (offline, timeout, etc.).
+    // The cloud registry is the sole source of truth for the plugin catalog,
+    // so new plugins can be listed without a desktop release.
     try {
       const res = await fetch(`${freestyleCloudUrl()}/plugins/catalog`, {
         signal: AbortSignal.timeout(5_000),
       });
-      if (res.ok) {
-        return c.json(await res.json());
+      if (!res.ok) {
+        return c.json({ error: "Failed to fetch plugin catalog" }, 502);
       }
-    } catch {
-      // Cloud unreachable — fall through to static fallback.
+      return c.json(await res.json());
+    } catch (err) {
+      log.warn(`failed to fetch plugin catalog: ${formatError(err)}`);
+      return c.json({ error: "Failed to fetch plugin catalog" }, 502);
     }
-    return c.json({ plugins: PLUGIN_CATALOG });
   })
   .post("/install", zValidator("json", installSchema), async (c) => {
     const { npmName, version } = c.req.valid("json");

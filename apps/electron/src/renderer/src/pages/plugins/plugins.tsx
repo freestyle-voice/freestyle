@@ -15,14 +15,12 @@ import type {
   PluginInfo,
   PluginUpdateResult,
 } from "@shared/plugins";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowRight,
-  Loader2,
-  MoreHorizontal,
-  Puzzle,
-  Search,
-} from "lucide-react";
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { Loader2, MoreHorizontal, Puzzle, Search } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -50,6 +48,7 @@ export default function PluginsPage(): React.JSX.Element {
   const { data: plugins = [], isLoading: loading } = useQuery({
     queryKey: ["plugins"],
     queryFn: () => window.api.refreshPlugins(),
+    placeholderData: keepPreviousData,
   });
 
   const setPlugins = useCallback(
@@ -217,8 +216,6 @@ function PluginCard({
   const queryClient = useQueryClient();
   const Icon = resolvePluginIcon(plugin.icon ?? plugin.pages[0]?.icon);
 
-  const page = plugin.pages[0];
-
   const [busy, setBusy] = useState(false);
   const [updating, setUpdating] = useState(false);
 
@@ -248,8 +245,14 @@ function PluginCard({
     }
   };
 
+  const isDev = plugin.slug.endsWith("-dev");
+
   return (
-    <div className="border-border bg-card hover:bg-card/70 flex w-full items-center gap-4 rounded-[14px] border p-5 transition-colors">
+    <button
+      type="button"
+      className="border-border bg-card hover:bg-card/70 flex w-full cursor-pointer items-center gap-4 rounded-[14px] border p-5 text-left transition-colors"
+      onClick={() => navigate(`/plugins/${plugin.slug}`)}
+    >
       <div className="border-border bg-secondary flex size-11 shrink-0 items-center justify-center rounded-[10px] border">
         <Icon
           className={
@@ -270,6 +273,14 @@ function PluginCard({
             <span className="mono text-muted-foreground text-[10px]">
               v{plugin.version}
             </span>
+          ) : null}
+          {isDev ? (
+            <Badge
+              variant="outline"
+              className="mono h-4 border-yellow-500/30 bg-yellow-500/15 px-1.5 text-[9px] text-yellow-700 uppercase tracking-[0.12em] dark:text-yellow-300"
+            >
+              Dev
+            </Badge>
           ) : null}
           {update?.updateAvailable ? (
             <Badge
@@ -297,7 +308,10 @@ function PluginCard({
         </p>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div
+        className="flex shrink-0 items-center gap-2"
+        onClickCapture={(e) => e.stopPropagation()}
+      >
         {!plugin.missing && update?.updateAvailable ? (
           <Button
             variant="outline"
@@ -307,17 +321,6 @@ function PluginCard({
           >
             {updating ? <Loader2 className="animate-spin" /> : null}
             {updating ? t("plugins.updating") : t("plugins.update")}
-          </Button>
-        ) : null}
-        {!plugin.missing && page ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!plugin.enabled}
-            onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
-          >
-            {t("plugins.open")}
-            <ArrowRight data-icon="inline-end" />
           </Button>
         ) : null}
         <DropdownMenu>
@@ -333,11 +336,6 @@ function PluginCard({
           <DropdownMenuContent align="end">
             {!plugin.missing ? (
               <>
-                <DropdownMenuItem
-                  onClick={() => navigate(`/plugins/${plugin.slug}`)}
-                >
-                  {t("plugins.detail.title")}
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void toggle(!plugin.enabled)}>
                   {t(
                     plugin.enabled
@@ -358,7 +356,7 @@ function PluginCard({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -381,6 +379,7 @@ function BrowseTab({
       const res = await window.api.getPluginCatalog();
       return res.plugins;
     },
+    placeholderData: keepPreviousData,
     retry: 1,
   });
 

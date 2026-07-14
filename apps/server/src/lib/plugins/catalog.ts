@@ -1,8 +1,8 @@
 /**
- * The curated catalog of plugins users can install from the Browse tab. Each
- * entry maps to an npm package the installer downloads. This is a static,
- * in-repo list for now; a hosted registry can replace it behind the same
- * `GET /api/plugins/catalog` route later without changing clients.
+ * Static fallback catalog, used when the cloud registry at
+ * `GET /plugins/catalog` is unreachable (offline, timeout, etc.).
+ * The cloud-hosted list is the source of truth — update it there so new
+ * plugins are available without a desktop release.
  */
 export interface CatalogEntry {
   /** npm package name, used by the installer to resolve + download. */

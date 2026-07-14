@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import * as semver from "semver";
 import { z } from "zod";
+import { freestyleCloudUrl } from "../lib/freestyle-cloud.js";
 import { PLUGIN_CATALOG } from "../lib/plugins/catalog.js";
 import { reloadServerPlugins } from "../lib/plugins/index.js";
 import {
@@ -40,7 +41,19 @@ const plugins = new Hono()
     await reloadServerPlugins();
     return c.json({ ok: true });
   })
-  .get("/catalog", (c) => {
+  .get("/catalog", async (c) => {
+    // Fetch the catalog from the cloud registry. Fall back to the static
+    // in-repo list when the cloud is unreachable (offline, timeout, etc.).
+    try {
+      const res = await fetch(`${freestyleCloudUrl()}/plugins/catalog`, {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (res.ok) {
+        return c.json(await res.json());
+      }
+    } catch {
+      // Cloud unreachable — fall through to static fallback.
+    }
     return c.json({ plugins: PLUGIN_CATALOG });
   })
   .post("/install", zValidator("json", installSchema), async (c) => {

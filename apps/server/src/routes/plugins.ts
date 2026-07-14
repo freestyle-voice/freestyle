@@ -48,7 +48,7 @@ const plugins = new Hono()
     // The cloud registry is the sole source of truth for the plugin catalog,
     // so new plugins can be listed without a desktop release.
     try {
-      const res = await fetch(`${freestyleCloudUrl()}/plugins/catalog`, {
+      const res = await fetch(`${freestyleCloudUrl()}/plugins`, {
         signal: AbortSignal.timeout(5_000),
       });
       if (!res.ok) {

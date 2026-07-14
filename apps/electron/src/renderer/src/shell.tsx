@@ -110,7 +110,7 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === "/settings"}
+            end={item.to === "/settings" || item.to === "/plugins"}
             className="block"
           >
             {({ isActive }) => (

@@ -74,18 +74,42 @@ export interface PluginManifest {
 }
 
 /**
+ * A short, deterministic hash of a string (FNV-1a, base36). Pure and
+ * dependency-free so it runs identically in the browser (plugin UI) and Node
+ * (host). Not cryptographic — only used to disambiguate slugs.
+ */
+function shortHash(input: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  // >>> 0 to interpret as unsigned before base36; pad for a stable width.
+  return (h >>> 0).toString(36).padStart(7, "0");
+}
+
+/**
  * Derive a URL- and route-safe slug from a package name, e.g.
- * `@freestyle-voice/plugin-audio-transcription` → `freestyle-voice-plugin-audio-transcription`.
- * Used as the `freestyle-plugin://` host and the `/plugins/:slug/...` route
- * segment, since package names can contain `@` and `/` which are unsafe in both.
+ * `@freestyle-voice/plugin-audio-transcription` →
+ * `freestyle-voice-plugin-audio-transcription-<hash>`.
+ * Used as the `/plugins/:slug/...` route segment, the on-disk package dir, and
+ * the per-plugin session partition, since package names can contain `@` and `/`
+ * which are unsafe in those contexts.
+ *
+ * The sanitization (lower-casing, collapsing non-alphanumerics) is lossy, so
+ * distinct names like `@a/b`, `a-b`, and `A.B` would otherwise collide to the
+ * same slug — and, as a partition/storage identity, let one plugin read
+ * another's data. A short hash of the *original* name is appended to guarantee
+ * distinct packages always get distinct slugs.
  */
 export function pluginSlug(name: string): string {
-  return name
+  const base = name
     .replace(/^@/, "")
     .replace(/[^a-zA-Z0-9]+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
+  return `${base}-${shortHash(name)}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

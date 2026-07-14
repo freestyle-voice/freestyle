@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveLocalPackage } from "./loader.js";
+import { pluginSlug } from "./ui.js";
 
 let dir: string;
 
@@ -23,7 +24,7 @@ function writePackage(slug: string, pkg: Record<string, unknown>): string {
 
 describe("resolveLocalPackage", () => {
   it("resolves a scoped specifier to its slug folder + main entry", () => {
-    const pkgDir = writePackage("freestyle-voice-plugin-x", {
+    const pkgDir = writePackage(pluginSlug("@freestyle-voice/plugin-x"), {
       name: "@freestyle-voice/plugin-x",
       main: "dist/index.js",
     });
@@ -39,7 +40,7 @@ describe("resolveLocalPackage", () => {
   });
 
   it("defaults main to index.js", () => {
-    const pkgDir = writePackage("plugin-y", { name: "plugin-y" });
+    const pkgDir = writePackage(pluginSlug("plugin-y"), { name: "plugin-y" });
     fs.writeFileSync(path.join(pkgDir, "index.js"), "export default 1;");
 
     expect(resolveLocalPackage(dir, "plugin-y")).toBe(
@@ -51,7 +52,10 @@ describe("resolveLocalPackage", () => {
     expect(resolveLocalPackage(dir, "@freestyle-voice/absent")).toBeNull();
 
     // Folder + manifest exist, but the main file doesn't.
-    writePackage("plugin-z", { name: "plugin-z", main: "dist/index.js" });
+    writePackage(pluginSlug("plugin-z"), {
+      name: "plugin-z",
+      main: "dist/index.js",
+    });
     expect(resolveLocalPackage(dir, "plugin-z")).toBeNull();
   });
 });

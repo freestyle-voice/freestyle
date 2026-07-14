@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createAppLogger } from "@freestyle-voice/utils";
 import { zValidator } from "@hono/zod-validator";
+import { pluginSlug } from "freestyle-voice";
 import { Hono } from "hono";
 import * as semver from "semver";
 import { z } from "zod";
@@ -15,6 +16,7 @@ import {
 } from "../lib/plugins/install-service.js";
 import { resolvePackage } from "../lib/plugins/installer.js";
 import {
+  callerPluginSlug,
   discoverPlugins,
   resolvePluginAsset,
   serializePlugins,
@@ -22,8 +24,37 @@ import {
 
 const STORAGE_PREFIX = "plugin:";
 
+/** Max serialized size of a single stored value (256 KiB), to bound DB growth. */
+const MAX_STORAGE_VALUE_BYTES = 256 * 1024;
+
+/** Storage keys are short, filesystem/URL-safe identifiers, not free-form text. */
+const storageKeySchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9._-]+$/);
+
 function storageKey(name: string, key: string): string {
   return `${STORAGE_PREFIX}${name}:${key}`;
+}
+
+/**
+ * Authorize a plugin-storage request: a plugin UI page (identified by its
+ * forge-resistant `Referer` slug) may only touch its *own* `:name` namespace.
+ * The first-party renderer (no plugin `Referer`) is trusted and unrestricted —
+ * it already passed `trustedOriginMiddleware`. Returns an error message when the
+ * access is cross-plugin, or `null` when allowed.
+ */
+function authorizeStorageAccess(
+  referer: string | undefined,
+  name: string,
+): string | null {
+  const caller = callerPluginSlug(referer);
+  if (!caller) return null; // first-party renderer / tooling
+  if (caller !== pluginSlug(name)) {
+    return "cross-plugin storage access is not permitted";
+  }
+  return null;
 }
 
 /**
@@ -209,6 +240,11 @@ const plugins = new Hono()
   // its hooks share state.
   .get("/:name/storage/:key", (c) => {
     const { name, key } = c.req.param();
+    const denied = authorizeStorageAccess(c.req.header("referer"), name);
+    if (denied) return c.json({ error: denied }, 403);
+    if (!storageKeySchema.safeParse(key).success) {
+      return c.json({ error: "invalid storage key" }, 400);
+    }
     const raw = readSetting(storageKey(name, key));
     if (raw === undefined) return c.json({ value: null });
     try {
@@ -222,13 +258,27 @@ const plugins = new Hono()
     zValidator("json", z.object({ value: z.unknown() })),
     (c) => {
       const { name, key } = c.req.param();
+      const denied = authorizeStorageAccess(c.req.header("referer"), name);
+      if (denied) return c.json({ error: denied }, 403);
+      if (!storageKeySchema.safeParse(key).success) {
+        return c.json({ error: "invalid storage key" }, 400);
+      }
       const { value } = c.req.valid("json");
-      writeSetting(storageKey(name, key), JSON.stringify(value));
+      const serialized = JSON.stringify(value);
+      if (Buffer.byteLength(serialized) > MAX_STORAGE_VALUE_BYTES) {
+        return c.json({ error: "stored value too large" }, 413);
+      }
+      writeSetting(storageKey(name, key), serialized);
       return c.json({ ok: true });
     },
   )
   .delete("/:name/storage/:key", (c) => {
     const { name, key } = c.req.param();
+    const denied = authorizeStorageAccess(c.req.header("referer"), name);
+    if (denied) return c.json({ error: denied }, 403);
+    if (!storageKeySchema.safeParse(key).success) {
+      return c.json({ error: "invalid storage key" }, 400);
+    }
     deleteSetting(storageKey(name, key));
     return c.json({ ok: true });
   });

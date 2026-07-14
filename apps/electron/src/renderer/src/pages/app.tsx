@@ -32,6 +32,27 @@ let _outputMode = "paste";
 let _audioPlaybackMode: AudioPlaybackMode = "off";
 let _toneCtx: AudioContext | null = null;
 
+/**
+ * Whether any loaded plugin implements `beforeOutput` (a suppression-capable
+ * output hook). Cached so the delivery hot path doesn't round-trip every time.
+ * Drives the fail-closed policy in `deliverFinal`: when a hook exists and the
+ * `/deliver` call fails, we must NOT paste the raw text (that would bypass a
+ * redaction/PII plugin). Assumed absent until proven present.
+ */
+let _beforeOutputHookPresent = false;
+
+async function refreshBeforeOutputHookPresence(): Promise<void> {
+  try {
+    const res = await getClient().api.output.hook.$get(
+      {},
+      { init: { signal: AbortSignal.timeout(3000) } },
+    );
+    if (res.ok) _beforeOutputHookPresent = (await res.json()).present;
+  } catch {
+    // Leave the last-known value; a stale "present" errs safe (fail closed).
+  }
+}
+
 function getToneCtx(): AudioContext {
   if (!_toneCtx || _toneCtx.state === "closed") _toneCtx = new AudioContext();
   return _toneCtx;
@@ -327,8 +348,12 @@ export default function AppPage(): React.JSX.Element {
         // Run the `beforeOutput` plugin hook server-side, on the final
         // (post multi-segment-merge) text — this is the one point where the
         // fully-assembled dictation is known, whether it came from a single
-        // chunk or several combined via `/api/post-process`. Falls back to
-        // delivering the client-decided text/mode unchanged on any failure.
+        // chunk or several combined via `/api/post-process`.
+        //
+        // Fail-closed: if a `beforeOutput` hook exists (it may suppress/redact)
+        // and this call fails, we must NOT paste the raw text — dropping the
+        // dictation is safer than leaking un-redacted output. When no such hook
+        // is present, a transient failure falls back to delivering unchanged.
         try {
           const res = await getClient().api.output.deliver.$post({
             json: {
@@ -343,9 +368,22 @@ export default function AppPage(): React.JSX.Element {
             deliverMode =
               data.output.mode === "clipboard" ? "clipboard" : "paste";
             shouldDeliver = data.disposition === "deliver";
+            // The call succeeded, so the server's registry is reachable: refresh
+            // our cached hook-presence for the next (possibly failing) delivery.
+            void refreshBeforeOutputHookPresence();
+          } else if (_beforeOutputHookPresent) {
+            shouldDeliver = false;
           }
         } catch {
-          // Best-effort — deliver the client-decided text/mode unchanged.
+          if (_beforeOutputHookPresent) {
+            // Fail closed: a suppression-capable hook exists but we couldn't run
+            // it. Drop delivery rather than risk leaking un-redacted text.
+            shouldDeliver = false;
+            console.warn(
+              "[pill] beforeOutput unreachable; suppressing delivery (fail-closed)",
+            );
+          }
+          // Otherwise best-effort — deliver the client-decided text/mode.
         }
 
         if (shouldDeliver && deliverText.trim()) {
@@ -922,6 +960,9 @@ export default function AppPage(): React.JSX.Element {
       ?.getPillPosition()
       .then(applyPillPosition)
       .catch(() => {});
+    // Prime the `beforeOutput` hook-presence cache so the very first dictation's
+    // delivery already applies the correct fail-closed policy.
+    void refreshBeforeOutputHookPresence();
 
     // Listen for live changes from the settings UI
     const removePillPos = window.api?.onPillPositionChanged(applyPillPosition);

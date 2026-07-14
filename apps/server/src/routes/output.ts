@@ -26,10 +26,14 @@ const deliverSchema = z.object({
   appContext: z.string().nullish(),
 });
 
-const outputRoute = new Hono().post(
-  "/deliver",
-  zValidator("json", deliverSchema),
-  async (c) => {
+const outputRoute = new Hono()
+  // Whether any loaded plugin implements `beforeOutput`. The client uses this to
+  // decide its fail-closed policy: if a suppression-capable hook exists, a
+  // failed `/deliver` call must NOT fall back to pasting the raw text (that
+  // would bypass a redaction/PII plugin). When no hook exists, delivery can
+  // safely proceed on a transient server error.
+  .get("/hook", (c) => c.json({ present: plugins().has("beforeOutput") }))
+  .post("/deliver", zValidator("json", deliverSchema), async (c) => {
     const { text, mode, appContext } = c.req.valid("json");
     // `beforeOutput` never receives the LLM capability (SDK contract), so skip
     // resolving a chat model for this stage.
@@ -79,7 +83,6 @@ const outputRoute = new Hono().post(
       disposition,
       ...(api.control.reason ? { reason: api.control.reason } : {}),
     });
-  },
-);
+  });
 
 export default outputRoute;

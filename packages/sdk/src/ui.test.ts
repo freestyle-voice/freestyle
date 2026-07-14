@@ -6,10 +6,14 @@ import {
 } from "./ui.js";
 
 describe("pluginSlug", () => {
-  it("makes scoped package names URL/route-safe", () => {
-    expect(pluginSlug("@freestyle-voice/plugin-audio-transcription")).toBe(
-      "freestyle-voice-plugin-audio-transcription",
+  it("makes scoped package names URL/route-safe with a stable hash suffix", () => {
+    expect(pluginSlug("@freestyle-voice/plugin-audio-transcription")).toMatch(
+      /^freestyle-voice-plugin-audio-transcription-[a-z0-9]+$/,
     );
+  });
+
+  it("is deterministic for the same name", () => {
+    expect(pluginSlug("@acme/foo")).toBe(pluginSlug("@acme/foo"));
   });
 
   it("round-trips through a URL host (no @ or /)", () => {
@@ -19,8 +23,22 @@ describe("pluginSlug", () => {
     expect(slug).toMatch(/^[a-z0-9-]+$/);
   });
 
-  it("trims and collapses unsafe characters", () => {
-    expect(pluginSlug("@scope/--weird..name--")).toBe("scope-weird-name");
+  it("trims and collapses unsafe characters into the base", () => {
+    expect(pluginSlug("@scope/--weird..name--")).toMatch(
+      /^scope-weird-name-[a-z0-9]+$/,
+    );
+  });
+
+  it("gives lossy-collision-prone names distinct slugs", () => {
+    // These all sanitize to the same base ("a-b") — the hash must keep them
+    // distinct so they can't share a session partition or storage namespace.
+    const slugs = new Set([
+      pluginSlug("@a/b"),
+      pluginSlug("a-b"),
+      pluginSlug("a.b"),
+      pluginSlug("A_B"),
+    ]);
+    expect(slugs.size).toBe(4);
   });
 });
 

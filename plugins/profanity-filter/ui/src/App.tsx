@@ -22,8 +22,27 @@ function getBridge(): FreestyleBridge {
   return b;
 }
 
+/**
+ * Guard against a bridge that doesn't resolve a real `Response` (e.g. a plugin
+ * UI bundle built against an older SDK whose `api()` returned a proxy wrapper).
+ * Without this, `res.status` reads as `undefined` and surfaces the opaque
+ * "server returned undefined" error instead of an actionable message.
+ */
+function assertResponse(res: unknown): asserts res is Response {
+  if (
+    !res ||
+    typeof (res as Response).status !== "number" ||
+    typeof (res as Response).json !== "function"
+  ) {
+    throw new Error(
+      "plugin API unavailable — the host bridge is out of date; try restarting Freestyle",
+    );
+  }
+}
+
 async function fetchReplacements(): Promise<ReplacementsResponse> {
   const res = await getBridge().api(ROUTE);
+  assertResponse(res);
   if (!res.ok) throw new Error(`server returned ${res.status}`);
   return (await res.json()) as ReplacementsResponse;
 }
@@ -42,6 +61,7 @@ async function mutateReplacements(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  assertResponse(res);
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `server returned ${res.status}`);

@@ -262,5 +262,47 @@ export function resolvePluginAsset(
   if (resolved !== root && !resolved.startsWith(root + path.sep)) {
     return null;
   }
+
+  // Lexical containment isn't enough: a package could ship a symlink pointing
+  // outside its own dir, and `readFile` follows it. Re-check the *real* path so
+  // a symlink escape can't turn asset serving into an arbitrary host-file read.
+  // A not-yet-existing path (`ENOENT`) is fine — it simply 404s at read time.
+  try {
+    const real = fs.realpathSync(resolved);
+    const realRoot = fs.realpathSync(root);
+    if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
+      return null;
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") return null;
+  }
+
   return resolved;
+}
+
+/**
+ * Identify which plugin a page-originated request came from, using the browser
+ * `Referer`. Plugin UI is served from `/api/plugins/:slug/ui/...`, and a page's
+ * own JS cannot override `Referer` on a same-origin `fetch` (it's a forbidden
+ * header), so this is a forge-resistant signal of the calling plugin's slug.
+ *
+ * Returns `null` for requests with no plugin-UI `Referer` — i.e. the
+ * first-party renderer or a direct/tool call, which are handled by the caller's
+ * own trust policy.
+ */
+export function callerPluginSlug(referer: string | undefined): string | null {
+  if (!referer) return null;
+  let pathname: string;
+  try {
+    pathname = new URL(referer).pathname;
+  } catch {
+    return null;
+  }
+  const match = pathname.match(/^\/api\/plugins\/([^/]+)\/ui\//);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
 }

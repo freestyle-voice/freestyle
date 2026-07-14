@@ -336,11 +336,6 @@ function PluginCard({
           <DropdownMenuContent align="end">
             {!plugin.missing ? (
               <>
-                <DropdownMenuItem
-                  onClick={() => navigate(`/plugins/${plugin.slug}`)}
-                >
-                  {t("plugins.detail.title")}
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void toggle(!plugin.enabled)}>
                   {t(
                     plugin.enabled

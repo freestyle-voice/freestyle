@@ -1,11 +1,13 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { createAppLogger } from "@freestyle-voice/utils";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import * as semver from "semver";
 import { z } from "zod";
 import { deleteSetting, readSetting, writeSetting } from "../lib/db.js";
-import { PLUGIN_CATALOG } from "../lib/plugins/catalog.js";
+import { formatError } from "../lib/format-error.js";
+import { freestyleCloudUrl } from "../lib/freestyle-cloud.js";
 import { reloadServerPlugins } from "../lib/plugins/index.js";
 import {
   installServerPlugin,
@@ -63,6 +65,8 @@ function mimeForPath(filePath: string): string {
   return MIME_BY_EXT[path.extname(filePath).toLowerCase()] ?? "text/plain";
 }
 
+const log = createAppLogger("plugins");
+
 /**
  * Plugin lifecycle endpoints. The `plugins` / `disabled_plugins` settings are
  * server-owned, but the server's hook registry is loaded once at boot — so when
@@ -99,8 +103,21 @@ const plugins = new Hono()
   .get("/", (c) => {
     return c.json({ plugins: serializePlugins(discoverPlugins()) });
   })
-  .get("/catalog", (c) => {
-    return c.json({ plugins: PLUGIN_CATALOG });
+  .get("/catalog", async (c) => {
+    // The cloud registry is the sole source of truth for the plugin catalog,
+    // so new plugins can be listed without a desktop release.
+    try {
+      const res = await fetch(`${freestyleCloudUrl()}/plugins`, {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!res.ok) {
+        return c.json({ error: "Failed to fetch plugin catalog" }, 502);
+      }
+      return c.json(await res.json());
+    } catch (err) {
+      log.warn(`failed to fetch plugin catalog: ${formatError(err)}`);
+      return c.json({ error: "Failed to fetch plugin catalog" }, 502);
+    }
   })
   // Serve a plugin's UI assets from its package dir, path-traversal guarded.
   // Replaces the Electron `freestyle-plugin://<slug>/<asset>` custom scheme:

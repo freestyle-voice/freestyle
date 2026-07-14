@@ -1,12 +1,16 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@renderer/components/ui/alert-dialog";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@renderer/components/ui/dropdown-menu";
+import { Switch } from "@renderer/components/ui/switch";
 import {
   installPlugin,
   listPlugins,
@@ -15,16 +19,14 @@ import {
 } from "@renderer/lib/plugins-api";
 import type { PluginInfo, PluginUpdateResult } from "@shared/plugins";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Loader2, MoreHorizontal } from "lucide-react";
-import { useState } from "react";
+import { Loader2, Trash2 } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
-import {
-  pluginDisplayName,
-  resolvePluginIcon,
-  usePluginUpdates,
-} from "./helpers";
+import { pluginDisplayName, usePluginUpdates } from "./helpers";
 import { PluginReadme } from "./plugin-readme";
+
+const SKIP_UNINSTALL_CONFIRM_KEY = "plugins.skipUninstallConfirm";
 
 export default function PluginDetailPage(): React.JSX.Element {
   const { slug } = useParams<{ slug: string }>();
@@ -58,16 +60,6 @@ export default function PluginDetailPage(): React.JSX.Element {
         className="responsive-page-scroll flex-1 overflow-auto"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground -ml-2 mb-5"
-          onClick={() => navigate("/plugins")}
-        >
-          <ArrowLeft data-icon="inline-start" />
-          {t("plugins.detail.back")}
-        </Button>
-
         {loading ? (
           <p className="text-muted-foreground py-10 text-center text-sm">
             {t("plugins.loading")}
@@ -104,11 +96,10 @@ function Detail({
   update?: PluginUpdateResult;
 }): React.JSX.Element {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const Icon = resolvePluginIcon(plugin.icon ?? plugin.pages[0]?.icon);
-  const page = plugin.pages[0];
+  const isDev = plugin.slug.endsWith("-dev");
   const [updating, setUpdating] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
 
   const doUpdate = async (): Promise<void> => {
     setUpdating(true);
@@ -123,30 +114,53 @@ function Detail({
     }
   };
 
+  const doUninstall = async (): Promise<void> => {
+    setUninstalling(true);
+    try {
+      await onUninstall();
+    } finally {
+      setUninstalling(false);
+    }
+  };
+
   return (
     <div>
-      <div className="flex items-center gap-4">
-        <div className="border-border bg-secondary flex size-12 shrink-0 items-center justify-center rounded-[12px] border">
-          <Icon
-            className={
-              plugin.enabled
-                ? "text-primary size-6"
-                : "text-muted-foreground size-6"
-            }
-            strokeWidth={1.6}
-          />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <h1 className="serif text-foreground m-0 text-[32px] leading-[1]">
-            {pluginDisplayName(plugin)}
+      <div className="mb-7 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="serif text-foreground m-0 flex items-baseline gap-3 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
+            <span>
+              <span className="serif-italic text-primary">
+                {pluginDisplayName(plugin)}
+              </span>
+              <span>. </span>
+            </span>
+            {isDev ? (
+              <span className="bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 mono relative -top-[6px] rounded-full border border-yellow-500/30 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em]">
+                Dev
+              </span>
+            ) : null}
           </h1>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            {plugin.description ? (
+              <p className="text-muted-foreground max-w-[580px] text-[14px] leading-[1.5]">
+                {plugin.description}
+              </p>
+            ) : null}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             {plugin.version ? (
               <span className="mono text-muted-foreground text-[11px]">
                 v{plugin.version}
               </span>
             ) : null}
+            {plugin.author ? (
+              <span className="text-muted-foreground text-[12px]">
+                {plugin.author}
+              </span>
+            ) : null}
+            <span className="mono text-muted-foreground/60 text-[11px]">
+              {plugin.specifier}
+            </span>
             {update?.updateAvailable ? (
               <Badge
                 variant="outline"
@@ -156,11 +170,6 @@ function Detail({
                   version: update.latestVersion,
                 })}
               </Badge>
-            ) : null}
-            {plugin.author ? (
-              <span className="text-muted-foreground text-[12px]">
-                {plugin.author}
-              </span>
             ) : null}
           </div>
         </div>
@@ -177,58 +186,35 @@ function Detail({
               {updating ? t("plugins.updating") : t("plugins.update")}
             </Button>
           ) : null}
-          {page ? (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!plugin.enabled}
-              onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
+
+          <div className="flex items-center gap-2">
+            <label
+              htmlFor="plugin-enabled-toggle"
+              className="text-muted-foreground text-[13px]"
             >
-              {t("plugins.open")}
-              <ArrowRight data-icon="inline-end" />
-            </Button>
-          ) : null}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("plugins.more")}
-              >
-                <MoreHorizontal className="text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => void onToggle(!plugin.enabled)}>
-                {t(
-                  plugin.enabled
-                    ? "plugins.disablePlugin"
-                    : "plugins.enablePlugin",
-                )}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={() => void onUninstall()}
-              >
-                {t("plugins.uninstall")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              {t(
+                plugin.enabled
+                  ? "plugins.detail.enabled"
+                  : "plugins.detail.disabled",
+              )}
+            </label>
+            <Switch
+              id="plugin-enabled-toggle"
+              size="sm"
+              checked={plugin.enabled}
+              onCheckedChange={(checked) => void onToggle(checked)}
+            />
+          </div>
+
+          <UninstallButton
+            pluginName={pluginDisplayName(plugin)}
+            uninstalling={uninstalling}
+            onConfirm={() => void doUninstall()}
+          />
         </div>
       </div>
 
-      {plugin.description ? (
-        <p className="text-foreground mt-5 max-w-[680px] text-[14px] leading-[1.6]">
-          {plugin.description}
-        </p>
-      ) : null}
-
-      <p className="mono text-muted-foreground mt-4 text-[12px]">
-        {plugin.specifier}
-      </p>
-
-      <hr className="border-border mt-6" />
+      <hr className="border-border" />
 
       {plugin.readme ? (
         <div className="mt-6">
@@ -240,5 +226,97 @@ function Detail({
         </p>
       )}
     </div>
+  );
+}
+
+function UninstallButton({
+  pluginName,
+  uninstalling,
+  onConfirm,
+}: {
+  pluginName: string;
+  uninstalling: boolean;
+  onConfirm: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const dontAskRef = useRef(false);
+
+  const shouldSkip = useCallback((): boolean => {
+    try {
+      return localStorage.getItem(SKIP_UNINSTALL_CONFIRM_KEY) === "true";
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const handleClick = (): void => {
+    if (shouldSkip()) {
+      onConfirm();
+    } else {
+      dontAskRef.current = false;
+      setOpen(true);
+    }
+  };
+
+  const handleConfirm = (): void => {
+    if (dontAskRef.current) {
+      try {
+        localStorage.setItem(SKIP_UNINSTALL_CONFIRM_KEY, "true");
+      } catch {
+        // Ignore write failures.
+      }
+    }
+    onConfirm();
+  };
+
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={uninstalling}
+        onClick={handleClick}
+        className="text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
+      >
+        {uninstalling ? (
+          <Loader2 className="animate-spin" />
+        ) : (
+          <Trash2 className="size-3.5" />
+        )}
+        {t("plugins.uninstall")}
+      </Button>
+
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {t("plugins.uninstallConfirm.title", { name: pluginName })}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {t("plugins.uninstallConfirm.description")}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        <label className="flex items-center gap-2 text-[13px] text-muted-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="accent-primary size-3.5 rounded"
+            onChange={(e) => {
+              dontAskRef.current = e.target.checked;
+            }}
+          />
+          {t("plugins.uninstallConfirm.dontAskAgain")}
+        </label>
+
+        <AlertDialogFooter>
+          <AlertDialogCancel>
+            {t("plugins.uninstallConfirm.cancel")}
+          </AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={handleConfirm}>
+            {t("plugins.uninstall")}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

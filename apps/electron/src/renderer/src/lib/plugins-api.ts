@@ -64,15 +64,19 @@ export async function setPluginEnabled(
   return listPlugins();
 }
 
-/** The installable plugin catalog. */
+/**
+ * The installable plugin catalog. The server proxies this from the cloud
+ * registry (`GET /api/plugins/catalog`), which returns an untyped JSON body, so
+ * the `{ plugins }` shape is asserted here.
+ */
 export async function getPluginCatalog(): Promise<PluginCatalogEntry[]> {
   const res = await getClient().api.plugins.catalog.$get(
     {},
     timeout(FETCH_TIMEOUT_MS),
   );
   if (!res.ok) throw new Error(`catalog fetch failed: HTTP ${res.status}`);
-  const { plugins } = await res.json();
-  return plugins as PluginCatalogEntry[];
+  const body = (await res.json()) as { plugins?: PluginCatalogEntry[] };
+  return body.plugins ?? [];
 }
 
 /** Install a plugin by npm name (the server reloads its registry itself). */

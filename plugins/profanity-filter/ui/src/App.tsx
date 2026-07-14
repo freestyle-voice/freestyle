@@ -52,31 +52,6 @@ async function mutateReplacements(
 // Components
 // ---------------------------------------------------------------------------
 
-function BackButton() {
-  return (
-    <button
-      type="button"
-      className="back-btn"
-      onClick={() => window.freestyle?.invoke("navigate", { to: "/plugins" })}
-    >
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="m15 18-6-6 6-6" />
-      </svg>
-      Plugins
-    </button>
-  );
-}
-
 interface AddFormValues {
   word: string;
   alternatives: string;
@@ -342,9 +317,11 @@ export function App() {
 
   return (
     <main className="page">
-      <BackButton />
       <header className="head-row">
-        <h1 className="page-title">Filtered words</h1>
+        <h1 className="page-title">
+          <span className="title-accent">Filtered words</span>
+          <span>. </span>
+        </h1>
         <button
           type="button"
           className="reset-btn"

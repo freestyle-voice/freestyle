@@ -47,32 +47,19 @@ body {
   }
 }
 
-.back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  width: max-content;
-  padding: 4px 10px 4px 6px;
-  margin: 0 0 8px -6px;
-  background: none;
-  border: none;
-  border-radius: 6px;
-  font: inherit;
-  font-size: 13px;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
-}
-
-.back-btn:hover {
-  color: var(--foreground);
-  background: color-mix(in srgb, currentColor 8%, transparent);
-}
-
 .page-title {
   margin: 0 0 20px;
-  font-size: 18px;
-  font-weight: 600;
+  font-family: "Instrument Serif", serif;
+  font-size: 48px;
+  font-weight: 400;
+  line-height: 0.95;
+  letter-spacing: -0.025em;
+  color: var(--foreground);
+}
+
+.title-accent {
+  font-style: italic;
+  color: var(--primary);
 }
 
 .dropzone {

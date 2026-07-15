@@ -294,17 +294,17 @@ export default function AppShell(): React.JSX.Element {
             href={LINKS.repo}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-foreground hover:bg-card/70 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors"
+            aria-label="GitHub repo"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center rounded-md p-1.5 transition-colors"
           >
             <SiGithub className="h-3.5 w-3.5" />
-            Star the repo
           </a>
           <a
             href={LINKS.discord}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Join our Discord"
-            className="text-foreground hover:bg-card/70 inline-flex items-center justify-center rounded-md p-1.5 transition-colors"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center rounded-md p-1.5 transition-colors"
           >
             <SiDiscord className="h-3.5 w-3.5" />
           </a>

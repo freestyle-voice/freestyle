@@ -1,3 +1,4 @@
+import { DragSpacer } from "@renderer/components/drag-spacer";
 import { cn } from "@renderer/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -10,15 +11,9 @@ export function PageShell({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <div
-      className="flex h-full min-h-0 flex-col"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    >
-      <div className="h-7 shrink-0" />
-      <div
-        className="responsive-page-scroll flex-1 overflow-auto"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      >
+    <div className="flex h-full min-h-0 flex-col">
+      <DragSpacer />
+      <div className="responsive-page-scroll flex-1 overflow-auto">
         {children}
       </div>
     </div>

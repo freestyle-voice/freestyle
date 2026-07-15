@@ -7,6 +7,7 @@ import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
 import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
+import { WebSocketServer } from "ws";
 import { formatError } from "./lib/format-error.js";
 import { isTransientCloudError } from "./lib/freestyle-cloud.js";
 import { startHistoryRetentionSweep } from "./lib/history-store.js";
@@ -162,11 +163,13 @@ export async function startServer(
   startHistoryRetentionSweep();
 
   return new Promise((resolve, reject) => {
+    const wss = new WebSocketServer({ noServer: true });
     const server = serve(
       {
         fetch: app.fetch,
         port,
         hostname: host,
+        websocket: { server: wss },
       },
       (info) => {
         resolve({ server, port: info.port });

@@ -1069,13 +1069,19 @@ export default function AppPage(): React.JSX.Element {
         const outputMode = settings[SETTINGS_KEYS.outputMode];
         if (outputMode) _outputMode = outputMode;
 
-        // Streaming audio (experimental)
-        _streamingAudioEnabled =
-          settings[SETTINGS_KEYS.streamingAudio] === "true";
-
         // Warm the cleanup-context cache from the same snapshot instead of
         // firing a second GET /api/settings.
         applyNeedsAppContextForCleanup(settings);
+      })
+      .catch(() => {});
+
+    // Streaming audio flag (experimental — stored in config.freestyle.json)
+    fetch(`${getApiBase()}/api/settings/flags/all`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((flags) => {
+        if (flags?.streaming_audio === true) {
+          _streamingAudioEnabled = true;
+        }
       })
       .catch(() => {});
     window.api

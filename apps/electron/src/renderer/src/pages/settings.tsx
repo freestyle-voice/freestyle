@@ -24,7 +24,7 @@ import {
   keyDisplayLabel,
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
-import { getClient } from "@renderer/lib/api";
+import { getApiBase, getClient } from "@renderer/lib/api";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
@@ -115,7 +115,6 @@ function normalizePillPos(pos: string): string {
 export default function SettingsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
-  const queryClient = useQueryClient();
   const [devices, setDevices] = useState<AudioDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [hotkey, setHotkey] = useState(
@@ -343,8 +342,6 @@ export default function SettingsPage(): React.JSX.Element {
       }
     }
 
-    if (s[SETTINGS_KEYS.streamingAudio] === "true") setStreamingAudio(true);
-
     // Audio playback mode with legacy fallback chain (new key → paused → duck).
     if (s.audio_playback_mode) {
       setAudioPlaybackMode(normalizeAudioPlaybackMode(s.audio_playback_mode));
@@ -354,6 +351,17 @@ export default function SettingsPage(): React.JSX.Element {
       setAudioPlaybackMode("duck");
     }
   }, [settingsQuery.data]);
+
+  // Seed experimental flags from config.freestyle.json
+  useEffect(() => {
+    fetch(`${getApiBase()}/api/settings/flags/all`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((flags) => {
+        if (!flags) return;
+        if (flags.streaming_audio === true) setStreamingAudio(true);
+      })
+      .catch(() => {});
+  }, []);
 
   // Load available audio input devices
   useEffect(() => {
@@ -583,27 +591,14 @@ export default function SettingsPage(): React.JSX.Element {
     [saveHistoryRetention],
   );
 
-  const handleStreamingAudioToggle = useCallback(
-    (enabled: boolean) => {
-      setStreamingAudio(enabled);
-      getClient()
-        .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.streamingAudio },
-          json: { value: String(enabled) },
-        })
-        .then(() => {
-          queryClient.setQueryData<Record<string, string>>(
-            SETTINGS_QUERY_KEY,
-            (prev) =>
-              prev
-                ? { ...prev, [SETTINGS_KEYS.streamingAudio]: String(enabled) }
-                : prev,
-          );
-        })
-        .catch(() => {});
-    },
-    [queryClient],
-  );
+  const handleStreamingAudioToggle = useCallback((enabled: boolean) => {
+    setStreamingAudio(enabled);
+    fetch(`${getApiBase()}/api/settings/flags/streaming_audio`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: enabled }),
+    }).catch(() => {});
+  }, []);
 
   const handleAudioPlaybackModeChange = useCallback((value: string) => {
     const mode = normalizeAudioPlaybackMode(value);

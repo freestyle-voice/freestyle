@@ -140,6 +140,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
     parseSettingsSection(window.location.hash),
   );
+  const queryClient = useQueryClient();
 
   // Radix SelectItem cannot use an empty-string value, so the "system default"
   // microphone (stored as "") is represented by this sentinel at the Select
@@ -514,7 +515,9 @@ export default function SettingsPage(): React.JSX.Element {
       return;
     }
     await getClient().api.history.$delete();
-  }, [t]);
+    void queryClient.invalidateQueries({ queryKey: ["history"] });
+    void queryClient.invalidateQueries({ queryKey: ["today-history"] });
+  }, [t, queryClient]);
 
   const handleSoundToggle = useCallback((enabled: boolean) => {
     setSoundEnabled(enabled);

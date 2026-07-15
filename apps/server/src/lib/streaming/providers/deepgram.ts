@@ -167,16 +167,15 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
         }, COMMIT_TIMEOUT_MS);
       },
       cancel(): void {
+        // Deepgram is kept warm across recordings, so a cancel must NOT send
+        // CloseStream — that closes the socket server-side and makes the route
+        // reconnect. Just drop the in-flight transcript and leave the socket
+        // open for the next recording. close() is used for real teardown.
         clearCommitTimeout();
         accumulatedText = "";
         partialText = "";
         commitRequested = false;
         finalDelivered = false;
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "CloseStream" }));
-        } else if (ws.readyState <= WebSocket.OPEN) {
-          ws.close();
-        }
       },
       close(): void {
         clearCommitTimeout();

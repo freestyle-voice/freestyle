@@ -42,10 +42,13 @@ function resolveRealtimeModelId(model: string): string {
   return short;
 }
 
+const TOKEN_REQUEST_TIMEOUT_MS = 10_000;
+
 async function getSingleUseToken(apiKey: string): Promise<string> {
   const res = await fetch(ELEVENLABS_TOKEN_URL, {
     method: "POST",
     headers: { "xi-api-key": apiKey },
+    signal: AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");

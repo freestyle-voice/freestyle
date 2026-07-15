@@ -24,7 +24,7 @@ import {
   keyDisplayLabel,
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
-import { getApiBase, getClient } from "@renderer/lib/api";
+import { getClient } from "@renderer/lib/api";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
@@ -354,11 +354,11 @@ export default function SettingsPage(): React.JSX.Element {
 
   // Seed experimental flags from config.freestyle.json
   useEffect(() => {
-    fetch(`${getApiBase()}/api/config`)
+    getClient()
+      .api.config.$get()
       .then((r) => (r.ok ? r.json() : null))
       .then((config) => {
-        if (!config?.flags) return;
-        if (config.flags.streaming_audio === true) setStreamingAudio(true);
+        if (config?.flags?.streaming_audio === true) setStreamingAudio(true);
       })
       .catch(() => {});
   }, []);
@@ -593,11 +593,13 @@ export default function SettingsPage(): React.JSX.Element {
 
   const handleStreamingAudioToggle = useCallback((enabled: boolean) => {
     setStreamingAudio(enabled);
-    fetch(`${getApiBase()}/api/config/flags/streaming_audio`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: enabled }),
-    }).catch(() => {});
+    window.api?.sendStreamingAudioChanged(enabled);
+    getClient()
+      .api.config.flags[":key"].$put({
+        param: { key: "streaming_audio" },
+        json: { value: enabled },
+      })
+      .catch(() => {});
   }, []);
 
   const handleAudioPlaybackModeChange = useCallback((value: string) => {

@@ -94,7 +94,6 @@ export class Streamer {
 
     if (!this.workletNode) {
       this.workletNode = new AudioWorkletNode(this.ctx, "pcm-processor");
-      this.workletNode.connect(this.ctx.destination);
     }
 
     this.workletNode.port.onmessage = (e: MessageEvent) => {
@@ -127,17 +126,12 @@ export class Streamer {
     this.sendJSON({ type: "cancel" });
   }
 
-  // Destructive: clears the internal PCM buffer after encoding. Can only be called once per session.
+  // Encodes the recorded PCM into a WAV blob for the REST fallback. Reads the
+  // buffer non-destructively so a retry (e.g. error and timeout both firing)
+  // still gets the audio; the buffer is reset by the next startCapture.
   getWavBlob(): Blob | null {
     if (this.pcmSampleCount === 0) return null;
-    const blob = encodeWavFromInt16(
-      this.pcmChunks,
-      this.pcmSampleCount,
-      TARGET_RATE,
-    );
-    this.pcmChunks = [];
-    this.pcmSampleCount = 0;
-    return blob;
+    return encodeWavFromInt16(this.pcmChunks, this.pcmSampleCount, TARGET_RATE);
   }
 
   destroy(): void {

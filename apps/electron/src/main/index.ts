@@ -1737,6 +1737,10 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send("settings:audio-ducking-changed", enabled);
   });
 
+  ipcMain.on("settings:streaming-audio-changed", (_event, enabled: boolean) => {
+    mainWindow?.webContents.send("settings:streaming-audio-changed", enabled);
+  });
+
   ipcMain.on("settings:audio-playback-mode-changed", (_event, mode: string) => {
     mainWindow?.webContents.send("settings:audio-playback-mode-changed", mode);
   });

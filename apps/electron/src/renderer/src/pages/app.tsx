@@ -1086,7 +1086,8 @@ export default function AppPage(): React.JSX.Element {
     // When enabled, eagerly create the Streamer so the WebSocket connects and
     // the onConfig callback (which sets supportsSessionTransportRef) fires
     // before the first recording.
-    fetch(`${getApiBase()}/api/config`)
+    getClient()
+      .api.config.$get()
       .then((r) => (r.ok ? r.json() : null))
       .then((config) => {
         if (config?.flags?.streaming_audio === true) {
@@ -1113,11 +1114,28 @@ export default function AppPage(): React.JSX.Element {
         _audioPlaybackMode = normalizeAudioPlaybackMode(mode);
       },
     );
+    // Apply the toggle live — the flag is a module-level var read once above,
+    // so without this it wouldn't take effect until the pill window reloaded.
+    // Disabling tears the streamer down so its reconnect loop and AudioContext
+    // don't linger.
+    const removeStreamingAudio = window.api?.onStreamingAudioChanged(
+      (enabled) => {
+        _streamingAudioEnabled = enabled;
+        if (enabled) {
+          getStreamer();
+        } else {
+          streamerRef.current?.destroy();
+          streamerRef.current = null;
+          supportsSessionTransportRef.current = false;
+        }
+      },
+    );
     return () => {
       removePillPos?.();
       removeOutputMode?.();
       removeAudioDucking?.();
       removeAudioPlaybackMode?.();
+      removeStreamingAudio?.();
     };
   }, [applyPillPosition]);
 
@@ -1136,6 +1154,10 @@ export default function AppPage(): React.JSX.Element {
           hidePill();
           return;
         }
+        // A pending streaming commit owns the single WebSocket + PCM buffer,
+        // so a second streaming session would overwrite its resolver and wipe
+        // its audio. Only batch transcriptions can safely overlap.
+        if (streamResolverRef.current !== null) return;
         // A previous batch transcription is still in flight; start a new
         // recording alongside it. Its result is queued and drained normally.
         void startRecording(true);
@@ -1181,6 +1203,8 @@ export default function AppPage(): React.JSX.Element {
         if (!mountedRef.current) {
           cancelRecording();
           recorderRef.current.destroy();
+          streamerRef.current?.destroy();
+          streamerRef.current = null;
         }
       }, 0);
     };

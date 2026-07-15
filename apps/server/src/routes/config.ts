@@ -1,4 +1,6 @@
+import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import { z } from "zod";
 import {
   freestyleConfigSchema,
   getConfig,
@@ -6,6 +8,8 @@ import {
   setFlag,
   updateConfig,
 } from "../lib/config.js";
+
+const flagValueSchema = z.object({ value: z.boolean() });
 
 const config = new Hono()
   /** Full config — the renderer loads this once on mount. */
@@ -31,13 +35,10 @@ const config = new Hono()
     return c.json({ key, value: getFlag(key) });
   })
   /** Set a single flag. */
-  .put("/flags/:key", async (c) => {
+  .put("/flags/:key", zValidator("json", flagValueSchema), (c) => {
     const key = c.req.param("key");
-    const body = (await c.req.json()) as { value?: boolean };
-    if (typeof body.value !== "boolean") {
-      return c.json({ error: "value must be a boolean" }, 400);
-    }
-    setFlag(key, body.value);
+    const { value } = c.req.valid("json");
+    setFlag(key, value);
     return c.json({ ok: true });
   });
 

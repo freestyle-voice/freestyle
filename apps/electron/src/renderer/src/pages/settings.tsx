@@ -354,11 +354,11 @@ export default function SettingsPage(): React.JSX.Element {
 
   // Seed experimental flags from config.freestyle.json
   useEffect(() => {
-    fetch(`${getApiBase()}/api/settings/flags/all`)
+    fetch(`${getApiBase()}/api/config`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((flags) => {
-        if (!flags) return;
-        if (flags.streaming_audio === true) setStreamingAudio(true);
+      .then((config) => {
+        if (!config?.flags) return;
+        if (config.flags.streaming_audio === true) setStreamingAudio(true);
       })
       .catch(() => {});
   }, []);
@@ -593,7 +593,7 @@ export default function SettingsPage(): React.JSX.Element {
 
   const handleStreamingAudioToggle = useCallback((enabled: boolean) => {
     setStreamingAudio(enabled);
-    fetch(`${getApiBase()}/api/settings/flags/streaming_audio`, {
+    fetch(`${getApiBase()}/api/config/flags/streaming_audio`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: enabled }),

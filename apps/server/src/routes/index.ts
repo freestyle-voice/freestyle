@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { capture, captureException, getDeviceId } from "../lib/posthog.js";
 import apiKeys from "./api-keys.js";
 import auth from "./auth.js";
+import configRoute from "./config.js";
 import dictionary from "./dictionary.js";
 import history from "./history.js";
 import mlxAsr from "./mlx-asr.js";
@@ -55,6 +56,7 @@ const apiRouter = new Hono()
     return c.json({ ok: true });
   })
   .route("/settings", settings)
+  .route("/config", configRoute)
   .route("/keys", apiKeys)
   .route("/auth", auth)
   .route("/models", models)

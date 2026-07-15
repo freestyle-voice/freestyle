@@ -1076,10 +1076,10 @@ export default function AppPage(): React.JSX.Element {
       .catch(() => {});
 
     // Streaming audio flag (experimental — stored in config.freestyle.json)
-    fetch(`${getApiBase()}/api/settings/flags/all`)
+    fetch(`${getApiBase()}/api/config`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((flags) => {
-        if (flags?.streaming_audio === true) {
+      .then((config) => {
+        if (config?.flags?.streaming_audio === true) {
           _streamingAudioEnabled = true;
         }
       })

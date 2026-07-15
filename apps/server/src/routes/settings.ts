@@ -16,7 +16,6 @@ import {
 } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { getFlags, setFlag } from "../lib/config.js";
 import { getDb } from "../lib/db.js";
 import {
   HISTORY_RETENTION_SETTING_KEY,
@@ -231,18 +230,6 @@ const settings = new Hono()
         return c.json({ error: message }, 502);
       }
     },
-  )
-  .get("/flags/all", (c) => {
-    return c.json(getFlags());
-  })
-  .put("/flags/:key", async (c) => {
-    const key = c.req.param("key");
-    const body = (await c.req.json()) as { value?: boolean };
-    if (typeof body.value !== "boolean") {
-      return c.json({ error: "value must be a boolean" }, 400);
-    }
-    setFlag(key, body.value);
-    return c.json({ ok: true });
-  });
+  );
 
 export default settings;

@@ -109,6 +109,9 @@ export function makeAiSdkTranscriptionProvider(
 ): TranscriptionProvider {
   return {
     providerId,
+    supportsStreaming(_modelId: string) {
+      return false;
+    },
     async transcribe(opts) {
       const model = options.modelTransform
         ? options.modelTransform(opts.model)

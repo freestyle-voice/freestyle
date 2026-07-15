@@ -229,3 +229,21 @@ describe("resolveAsrVocabularyBias", () => {
     }
   });
 });
+
+describe("soniox", () => {
+  it("builds soniox-context bias with terms", () => {
+    const bias = buildAsrVocabularyBias("soniox", "stt-rt-v4", [
+      "Freestyle",
+      "Kubernetes",
+    ]);
+    expect(bias).toEqual({
+      kind: "soniox-context",
+      terms: ["Freestyle", "Kubernetes"],
+    });
+  });
+
+  it("returns null for empty terms", () => {
+    const bias = buildAsrVocabularyBias("soniox", "stt-rt-v4", []);
+    expect(bias).toBeNull();
+  });
+});

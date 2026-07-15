@@ -97,6 +97,10 @@ declare global {
       onAudioDuckingChanged: (
         callback: (enabled: boolean) => void,
       ) => () => void;
+      sendStreamingAudioChanged: (enabled: boolean) => void;
+      onStreamingAudioChanged: (
+        callback: (enabled: boolean) => void,
+      ) => () => void;
       sendAudioPlaybackModeChanged: (mode: AudioPlaybackMode) => void;
       onAudioPlaybackModeChanged: (
         callback: (mode: AudioPlaybackMode) => void,

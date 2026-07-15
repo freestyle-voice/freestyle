@@ -22,6 +22,10 @@ export class WhisperLocalTranscriptionProvider
 {
   readonly providerId = WHISPER_PROVIDER_ID;
 
+  supportsStreaming(_modelId: string): boolean {
+    return false;
+  }
+
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
     const modelId = stripProviderPrefix(opts.model);
 

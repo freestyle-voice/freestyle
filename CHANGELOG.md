@@ -1,4 +1,41 @@
 # Changelog
+## 0.5.1
+
+### New Features ✨
+
+#### Plugins
+
+- Fetch catalog from cloud with static fallback by @MathurAditya724 in [#464](https://github.com/freestyle-voice/freestyle/pull/464)
+- Show plugin UI pages as sidebar nav items by @MathurAditya724 in [#463](https://github.com/freestyle-voice/freestyle/pull/463)
+
+#### Other
+
+- (server) Deepgram AI SDK provider + Freestyle Cloud connection prewarm by @MathurAditya724 in [#460](https://github.com/freestyle-voice/freestyle/pull/460)
+- Extract shared @freestyle-voice/stt package and migrate apps/server by @MathurAditya724 in [#446](https://github.com/freestyle-voice/freestyle/pull/446)
+
+### Bug Fixes 🐛
+
+- (settings) Reorder pill position options top-first by @MathurAditya724 in [#454](https://github.com/freestyle-voice/freestyle/pull/454)
+- Update cloud plugins endpoint URL by @MathurAditya724 in [#465](https://github.com/freestyle-voice/freestyle/pull/465)
+- MacOS Fn/paste hotkey desync and local server error logging by @MathurAditya724 in [#457](https://github.com/freestyle-voice/freestyle/pull/457)
+
+### Internal Changes 🔧
+
+#### Electron
+
+- Defer AI SDK loading and non-critical boot work by @MathurAditya724 in [#453](https://github.com/freestyle-voice/freestyle/pull/453)
+- Add bundle analysis and lazy-load i18n locales by @MathurAditya724 in [#451](https://github.com/freestyle-voice/freestyle/pull/451)
+
+#### Server
+
+- Unify cloud model adapters behind provider registries by @MathurAditya724 in [#459](https://github.com/freestyle-voice/freestyle/pull/459)
+- Lazy-load local ASR servers with on-demand pre-warm by @MathurAditya724 in [#456](https://github.com/freestyle-voice/freestyle/pull/456)
+
+#### Other
+
+- (cloud-usage) Manual refresh instead of per-transcription refetch by @MathurAditya724 in [#458](https://github.com/freestyle-voice/freestyle/pull/458)
+- Enforce conventional commit PR titles by @MathurAditya724 in [#450](https://github.com/freestyle-voice/freestyle/pull/450)
+
 ## 0.5.0
 
 ### New Features ✨

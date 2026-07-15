@@ -473,6 +473,11 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     `post-process took ${Date.now() - ppStart}ms | cleaned=${JSON.stringify(pp.cleaned).slice(0, 120)}`,
   );
 
+  // STT and cleanup ran on separate models, so the user-perceived latency is
+  // the full request → cleaned text. `durationMs` above is STT-only; recompute
+  // now so history, analytics, and the response all report the same total.
+  const totalDurationMs = Date.now() - start;
+
   try {
     saveProcessedHistory({
       rawText,
@@ -481,7 +486,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       voiceModel,
       llmProvider: pp.llmProvider,
       llmModel: pp.llmModel,
-      durationMs: Date.now() - start,
+      durationMs: totalDurationMs,
       audioDurationMs,
       inputTokens: pp.inputTokens,
       outputTokens: pp.outputTokens,
@@ -491,13 +496,13 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     log.error(`Failed to save history: ${err}`);
   }
 
-  log.debug(`total ${Date.now() - start}ms`);
+  log.debug(`total ${totalDurationMs}ms`);
 
   capture("transcription completed", {
     provider: voiceProvider,
     provider_category: routeVoiceProviderCategory(voiceProvider),
     model: voiceModel,
-    duration_ms: durationMs,
+    duration_ms: totalDurationMs,
     audio_duration_ms: audioDurationMs,
     post_processed: true,
     llm_provider: pp.llmProvider,
@@ -518,7 +523,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     cleaned: suppressed ? "" : pp.cleaned,
     model: voiceModel,
     provider_category: routeVoiceProviderCategory(voiceProvider),
-    durationMs,
+    durationMs: totalDurationMs,
     audioDurationMs,
     llmModel: pp.llmModel,
     inputTokens: pp.inputTokens,

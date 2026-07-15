@@ -1137,7 +1137,7 @@ export default function SettingsPage(): React.JSX.Element {
               </div>
               <Row
                 label="Streaming audio"
-                desc="Use the experimental streaming endpoint of Freestyle Transcribe for lower-latency dictation."
+                desc="Stream audio in real-time for lower-latency dictation. Supported by Freestyle Transcribe, OpenAI, Deepgram, ElevenLabs, and Soniox."
                 last
               >
                 <Switch

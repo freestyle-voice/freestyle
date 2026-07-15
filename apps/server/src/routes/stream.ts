@@ -94,10 +94,6 @@ const stream = new Hono().get(
     } | null {
       const voice = getDefaultModels().voice;
       if (!voice) return null;
-      // The experimental streaming toggle is scoped to Freestyle Cloud only.
-      // BYOK providers may support streaming in the future, but this gate
-      // ensures the toggle only activates the Freestyle Transcribe endpoint.
-      if (voice.provider !== FREESTYLE_CLOUD_PROVIDER_ID) return null;
       const language = getLanguageSetting();
       const bias = resolveAsrVocabularyBias(
         voice.provider,

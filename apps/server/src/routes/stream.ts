@@ -48,8 +48,10 @@ const stream = new Hono().get(
   (c, next) => {
     // Streaming is gated behind the experimental flag.
     if (!getFlag("streaming_audio")) {
+      log.info("Stream route rejected: streaming_audio flag is not enabled");
       return c.json({ error: "Streaming audio is not enabled" }, 400);
     }
+    log.info("Stream route: flag enabled, proceeding to WebSocket upgrade");
     return next();
   },
   upgradeWebSocket(() => {

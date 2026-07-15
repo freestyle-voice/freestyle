@@ -771,7 +771,10 @@ export default function AppPage(): React.JSX.Element {
         recordingSessionUsesTransportRef.current =
           _streamingAudioEnabled && supportsSessionTransportRef.current;
 
-        const stream = _streamingAudioEnabled
+        // When session transport is active the streamer handles audio capture
+        // directly — we only need the raw mic stream for the analyser. When
+        // it's not (batch path), start the MediaRecorder so we get a WAV.
+        const stream = recordingSessionUsesTransportRef.current
           ? await recorderRef.current.acquireStream()
           : await recorderRef.current.start();
 

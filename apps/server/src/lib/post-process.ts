@@ -57,6 +57,8 @@ export interface PostProcessResult {
   outputTokens: number;
   costUsd: number;
   timings?: PostProcessTimings;
+  /** The resolved tone routing destination for analytics. */
+  destination?: string;
 }
 
 export type PostProcessSource =
@@ -216,6 +218,12 @@ export async function postProcess(
   let llmProvider: string | null = null;
   let llmModel: string | null = null;
   let costUsd = 0;
+  // Resolve tone-routing destination for analytics — computed once here so all
+  // branches (cloud, local-LLM, no-cleanup) can include it in capture calls.
+  const { destination: resolvedDestination } = getRewritePromptContext(
+    effectiveAppContext,
+    getCleanupAppAssignments(),
+  );
 
   const stripped = normalizedRawText
     .replace(/\b(um+|uh+|ah+|er+|hm+|hmm+|mm+|mhm+|you know|i mean)\b/gi, "")
@@ -281,6 +289,9 @@ export async function postProcess(
           provider: llm.provider,
           model: llm.model_id,
           source,
+          app_name: parsedContext?.appName,
+          destination: resolvedDestination,
+          has_app_context: !!effectiveAppContext,
         });
         log.error(`Freestyle Cloud cleanup failed: ${err}`);
         cleanedText = normalizedRawText;
@@ -290,7 +301,7 @@ export async function postProcess(
         `Skipping LLM cleanup: unsupported cleanup model ${llm.provider}/${llm.model_id}`,
       );
     } else {
-      const { destination, personalSurface } = getRewritePromptContext(
+      const { personalSurface } = getRewritePromptContext(
         effectiveAppContext,
         getCleanupAppAssignments(),
       );
@@ -303,19 +314,19 @@ export async function postProcess(
         {
           text: normalizedRawText,
           appContext: parsedContext,
-          destination,
+          destination: resolvedDestination,
         },
-        { system: [] as string[], destination },
+        { system: [] as string[], destination: resolvedDestination },
       );
 
       const { system, prompt } = buildRewritePrompt(normalizedRawText, {
         language: options.language,
         intensity,
         customPrompt,
-        destination: promptHook.destination ?? destination,
+        destination: promptHook.destination ?? resolvedDestination,
         personalTone,
         personalSurface:
-          (promptHook.destination ?? destination) === "personal"
+          (promptHook.destination ?? resolvedDestination) === "personal"
             ? personalSurface
             : null,
         workTone,
@@ -372,6 +383,9 @@ export async function postProcess(
           provider: llm.provider,
           model: llm.model_id,
           source,
+          app_name: parsedContext?.appName,
+          destination: resolvedDestination,
+          has_app_context: !!effectiveAppContext,
         });
         log.error(`LLM cleanup failed: ${err}`);
         cleanedText = result.cleaned;
@@ -405,6 +419,9 @@ export async function postProcess(
     source,
     duration_ms: Date.now() - ppStart,
     ...(llmModel ? { model: llmModel } : {}),
+    app_name: parsedContext?.appName,
+    destination: resolvedDestination,
+    has_app_context: !!effectiveAppContext,
   });
 
   return {
@@ -415,5 +432,6 @@ export async function postProcess(
     outputTokens,
     costUsd,
     ...(options.includeTimings ? { timings: { handoffMs, llmMs } } : {}),
+    destination: resolvedDestination,
   };
 }

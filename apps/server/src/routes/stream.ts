@@ -46,15 +46,21 @@ const LOG_PIPELINE_LATENCY = process.env.FREESTYLE_LOG_PIPELINE_LATENCY !== "0";
 const stream = new Hono().get(
   "/",
   (c, next) => {
-    // Streaming is gated behind the experimental flag.
-    if (!getFlag("streaming_audio")) {
-      log.info("Stream route rejected: streaming_audio flag is not enabled");
-      return c.json({ error: "Streaming audio is not enabled" }, 400);
+    try {
+      // Streaming is gated behind the experimental flag.
+      if (!getFlag("streaming_audio")) {
+        log.info("Stream route rejected: streaming_audio flag is not enabled");
+        return c.json({ error: "Streaming audio is not enabled" }, 400);
+      }
+      log.info("Stream route: flag enabled, proceeding to WebSocket upgrade");
+      return next();
+    } catch (err) {
+      log.error(`Stream route middleware error: ${err}`);
+      return c.json({ error: "Internal error" }, 500);
     }
-    log.info("Stream route: flag enabled, proceeding to WebSocket upgrade");
-    return next();
   },
-  upgradeWebSocket(() => {
+  upgradeWebSocket((c) => {
+    log.info("upgradeWebSocket factory called");
     let upstream: StreamSession | null = null;
     let closed = false;
     let sessionTransportUnavailable = false;

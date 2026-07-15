@@ -1,5 +1,26 @@
 const HEADER_SIZE = 44;
 
+export function encodeWavFromInt16(
+  chunks: Int16Array[],
+  sampleCount: number,
+  sampleRate: number,
+): Blob {
+  const dataSize = sampleCount * 2;
+  const buf = new ArrayBuffer(HEADER_SIZE + dataSize);
+  const view = new DataView(buf);
+
+  writeHeader(view, dataSize, sampleRate);
+
+  let offset = HEADER_SIZE;
+  for (const chunk of chunks) {
+    for (let i = 0; i < chunk.length; i++, offset += 2) {
+      view.setInt16(offset, chunk[i], true);
+    }
+  }
+
+  return new Blob([buf], { type: "audio/wav" });
+}
+
 export function encodeWavFromFloat32(
   samples: Float32Array,
   sampleRate: number,

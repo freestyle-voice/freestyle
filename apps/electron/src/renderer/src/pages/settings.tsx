@@ -35,6 +35,7 @@ import {
   Check,
   Download,
   ExternalLink,
+  FlaskConical,
   FolderOpen,
   Info,
   Keyboard,
@@ -86,6 +87,7 @@ const settingsSectionIds = [
   "permissions",
   "data",
   "network",
+  "experimental",
 ] as const;
 
 type SettingsSectionId = (typeof settingsSectionIds)[number];
@@ -137,6 +139,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
+  const [streamingAudio, setStreamingAudio] = useState(false);
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
     parseSettingsSection(window.location.hash),
   );
@@ -338,6 +341,8 @@ export default function SettingsPage(): React.JSX.Element {
         setCustomRetentionDays(String(retentionDays));
       }
     }
+
+    if (s[SETTINGS_KEYS.streamingAudio] === "true") setStreamingAudio(true);
 
     // Audio playback mode with legacy fallback chain (new key → paused → duck).
     if (s.audio_playback_mode) {
@@ -576,6 +581,16 @@ export default function SettingsPage(): React.JSX.Element {
     },
     [saveHistoryRetention],
   );
+
+  const handleStreamingAudioToggle = useCallback((enabled: boolean) => {
+    setStreamingAudio(enabled);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.streamingAudio },
+        json: { value: String(enabled) },
+      })
+      .catch(() => {});
+  }, []);
 
   const handleAudioPlaybackModeChange = useCallback((value: string) => {
     const mode = normalizeAudioPlaybackMode(value);
@@ -1102,6 +1117,28 @@ export default function SettingsPage(): React.JSX.Element {
           )}
 
           {activeSection === "network" && <NetworkPanel />}
+
+          {activeSection === "experimental" && (
+            <SettingsPanel>
+              <div className="border-border bg-secondary/40 text-muted-foreground mb-4 flex items-start gap-2.5 rounded-[10px] border px-3.5 py-3 text-[12px] leading-[1.55]">
+                <FlaskConical className="mt-px h-3.5 w-3.5 shrink-0 opacity-70" />
+                <span>
+                  These features are experimental and may change or be removed
+                  in future releases. Enable them to try new capabilities early.
+                </span>
+              </div>
+              <Row
+                label="Streaming audio"
+                desc="Stream audio to the transcription provider in real-time as you speak instead of sending the full recording after you stop. Reduces latency for supported providers (Freestyle Cloud, OpenAI, Deepgram, ElevenLabs, Soniox)."
+                last
+              >
+                <Switch
+                  checked={streamingAudio}
+                  onCheckedChange={handleStreamingAudioToggle}
+                />
+              </Row>
+            </SettingsPanel>
+          )}
         </div>
       </div>
     </div>

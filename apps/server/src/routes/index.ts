@@ -15,6 +15,7 @@ import models from "./models.js";
 import pluginsRoute from "./plugins.js";
 import postProcessRoute from "./post-process-route.js";
 import settings from "./settings.js";
+import streamRoute from "./stream.js";
 import transcribe, { transcribePreWarmRoute } from "./transcribe.js";
 import usage from "./usage.js";
 import vocabulary from "./vocabulary.js";
@@ -68,6 +69,8 @@ const apiRouter = new Hono()
   .route("/whisper", whisper)
   .route("/mlx-asr", mlxAsr);
 
-const router = new Hono().route("/api", apiRouter);
+const router = new Hono()
+  .route("/api", apiRouter)
+  .route("/stream", streamRoute);
 
 export default router;

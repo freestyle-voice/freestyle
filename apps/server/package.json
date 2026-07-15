@@ -41,9 +41,11 @@
     "tar": "^7.5.15",
     "undici": "^7.16.0",
     "winston": "^3.17.0",
+    "ws": "^8.18.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
     "@freestyle-voice/utils": "workspace:*",
     "@freestyle-voice/validations": "workspace:*",
     "@types/json-schema": "^7.0.15",

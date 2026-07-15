@@ -108,7 +108,8 @@
       "display": "Display",
       "permissions": "Permissions",
       "data": "Data",
-      "network": "Network"
+      "network": "Network",
+      "experimental": "Experimental"
     },
     "application": {
       "autoUpdate": "Automatic updates",

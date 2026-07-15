@@ -82,6 +82,7 @@ export const CLOUD_VOICE_PROVIDERS = [
   "groq",
   "deepgram",
   "elevenlabs",
+  "soniox",
 ];
 
 export const VOICE_PROVIDERS = [
@@ -107,6 +108,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   groq: "Groq",
   deepgram: "Deepgram",
   elevenlabs: "ElevenLabs",
+  soniox: "Soniox",
   mistral: "Mistral",
   openrouter: "OpenRouter",
   "freestyle-cloud": "Freestyle Transcribe",
@@ -121,6 +123,7 @@ export const PROVIDER_KEY_URLS: Record<string, string> = {
   groq: "https://console.groq.com/keys",
   deepgram: "https://console.deepgram.com",
   elevenlabs: "https://elevenlabs.io/app/settings/api-keys",
+  soniox: "https://console.soniox.com",
   anthropic: "https://console.anthropic.com/settings/keys",
   google: "https://aistudio.google.com/apikey",
   mistral: "https://console.mistral.ai/api-keys",
@@ -163,6 +166,7 @@ export interface VoiceItem {
   state?: WhisperModelDownloadState;
   status?: WhisperModelDownloadState["status"];
   cost?: number;
+  streaming?: boolean;
   hasKey?: boolean;
   available?: AvailableModel;
 }
@@ -173,6 +177,7 @@ export const VOICE_META: Record<
     speed: number;
     quality: number;
     cost?: number;
+    streaming?: boolean;
     note?: string;
   }
 > = {
@@ -198,13 +203,22 @@ export const VOICE_META: Record<
     speed: 4,
     quality: 4,
     cost: 0.26,
-    note: "Fast, accurate multilingual model",
+    streaming: true,
+    note: "Live streaming — see words as you speak",
   },
   "elevenlabs/scribe_v2_realtime": {
     speed: 4,
     quality: 4,
     cost: 0.4,
+    streaming: true,
     note: "Excellent across 99 languages",
+  },
+  "soniox/stt-rt-v4": {
+    speed: 5,
+    quality: 5,
+    cost: 0.12,
+    streaming: true,
+    note: "Fast multilingual streaming — pairs with Groq cleanup",
   },
 };
 
@@ -347,6 +361,7 @@ export function buildVoiceItems(
       speed: meta?.speed,
       quality: meta?.quality,
       cost: meta?.cost,
+      streaming: meta?.streaming,
       note: meta?.note,
       hasKey:
         m.provider_id === FREESTYLE_CLOUD_PROVIDER_ID

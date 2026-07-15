@@ -6,6 +6,7 @@ import {
   refreshNeedsAppContextForCleanup,
 } from "@renderer/lib/cleanup-app-context";
 import { Recorder } from "@renderer/lib/recorder";
+import { Streamer } from "@renderer/lib/streamer";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AudioPlaybackMode,
@@ -30,6 +31,7 @@ type BarMode = "connecting" | "listening" | "speaking";
 let _soundEnabled = true;
 let _outputMode = "paste";
 let _audioPlaybackMode: AudioPlaybackMode = "off";
+let _streamingAudioEnabled = false;
 let _toneCtx: AudioContext | null = null;
 
 function getToneCtx(): AudioContext {
@@ -139,9 +141,14 @@ export default function AppPage(): React.JSX.Element {
   const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
   const [pillSide, setPillSide] = useState<"center" | "right">("center");
 
+  const supportsSessionTransportRef = useRef(false);
+  const recordingSessionUsesTransportRef = useRef(false);
+  const providerCategoryRef = useRef<string | null>(null);
+
   const [pendingCount, setPendingCount] = useState(0);
 
   const recorderRef = useRef(new Recorder());
+  const streamerRef = useRef<Streamer | null>(null);
   const analyserCtxRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserNodeRef = useRef<AnalyserNode | null>(null);
@@ -171,10 +178,16 @@ export default function AppPage(): React.JSX.Element {
 
   const queueRef = useRef<QueueEntry[]>([]);
   const drainingRef = useRef(false);
+  const streamResolverRef = useRef<((r: TranscribeResult) => void) | null>(
+    null,
+  );
   const drainAgainRef = useRef(false);
 
   const isTranscriptionIdle = useCallback(
-    (): boolean => queueRef.current.length === 0 && !drainingRef.current,
+    (): boolean =>
+      queueRef.current.length === 0 &&
+      !drainingRef.current &&
+      streamResolverRef.current === null,
     [],
   );
 
@@ -312,7 +325,9 @@ export default function AppPage(): React.JSX.Element {
       // at the single point where single-chunk and multi-chunk paths converge
       // and text is delivered to the user.
       const providerCategory =
-        nonEmpty.find((r) => r.providerCategory)?.providerCategory ?? undefined;
+        nonEmpty.find((r) => r.providerCategory)?.providerCategory ??
+        providerCategoryRef.current ??
+        undefined;
       capture("dictation completed", {
         segments: nonEmpty.length,
         multi_segment: nonEmpty.length > 1,
@@ -343,6 +358,135 @@ export default function AppPage(): React.JSX.Element {
         hidePill();
       }
     }
+  }, []);
+
+  // ---- REST fallback (full recorded WAV kept by the streamer) ----
+  const restFallbackTranscribe = useCallback(
+    (errorMsg: string): Promise<TranscribeResult> | null => {
+      const wavBlob = streamerRef.current?.getWavBlob() ?? null;
+      if (!wavBlob) return null;
+      const headers: Record<string, string> = {
+        "Content-Type": "audio/wav",
+        "x-audio-duration-ms": String(Date.now() - startTimeRef.current),
+      };
+      if (appContextRef.current)
+        headers["x-app-context"] = encodeAppContext(appContextRef.current);
+      if (queueRef.current.length > 0 || drainingRef.current)
+        headers["x-skip-post-process"] = "true";
+      return fetch(`${getApiBase()}/api/transcribe`, {
+        method: "POST",
+        body: wavBlob,
+        headers,
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const body = (await res.json().catch(() => null)) as {
+              error?: string;
+            } | null;
+            if (res.status === 401 && body?.error === "cloud_auth_required") {
+              return {
+                raw: "",
+                cleaned: "",
+                error: "Sign in to Freestyle Transcribe",
+                cloudAuthRequired: true,
+              };
+            }
+            if (res.status === 429 && body?.error === "usage_exceeded") {
+              return {
+                raw: "",
+                cleaned: "",
+                error: USAGE_LIMIT_DIALOG_MESSAGE,
+                usageExceeded: true,
+              };
+            }
+            return { raw: "", cleaned: "", error: errorMsg };
+          }
+          const data = (await res.json()) as {
+            raw?: string;
+            cleaned?: string;
+            provider_category?: string;
+          };
+          return {
+            raw: (data.raw || "").trim(),
+            cleaned: (data.cleaned || data.raw || "").trim(),
+            providerCategory: data.provider_category,
+          };
+        })
+        .catch(() => ({ raw: "", cleaned: "", error: errorMsg }));
+    },
+    [],
+  );
+
+  // ---- Streamer (lazy singleton, only created when streaming is enabled) ----
+  // biome-ignore lint/correctness/useExhaustiveDependencies: singleton
+  const getStreamer = useCallback((): Streamer => {
+    if (!streamerRef.current) {
+      streamerRef.current = new Streamer(getApiBase(), {
+        onConfig: (config) => {
+          supportsSessionTransportRef.current = config.sessionTransport;
+          if (config.providerCategory) {
+            providerCategoryRef.current = config.providerCategory;
+          }
+          if (wantsMicRef.current) {
+            recordingSessionUsesTransportRef.current = config.sessionTransport;
+          }
+        },
+        onReady: () => {},
+        onPartial: () => {},
+        onFinal: (text) => {
+          const resolver = streamResolverRef.current;
+          if (!resolver) return;
+          streamResolverRef.current = null;
+          resolver({ raw: text, cleaned: text });
+        },
+        onCleaned: () => {},
+        onError: (msg, code) => {
+          const resolver = streamResolverRef.current;
+          // Cloud auth expiry and usage limits are terminal — don't fall back
+          // to REST (it would just re-hit the same cloud error). Surface them
+          // directly, or flag the pending result so the drain loop does.
+          if (code === "cloud_auth_required") {
+            streamResolverRef.current = null;
+            if (resolver) {
+              resolver({ raw: "", cleaned: "", cloudAuthRequired: true });
+            } else if (pillActiveRef.current) {
+              hidePill();
+              void window.api.cloudPromptSignIn();
+            }
+            return;
+          }
+          if (code === "usage_exceeded") {
+            streamResolverRef.current = null;
+            if (resolver) {
+              resolver({ raw: "", cleaned: "", usageExceeded: true });
+            } else if (pillActiveRef.current) {
+              hidePill();
+              window.api.showErrorDialog(
+                USAGE_LIMIT_DIALOG_TITLE,
+                USAGE_LIMIT_DIALOG_MESSAGE,
+              );
+            }
+            return;
+          }
+          if (resolver) {
+            streamResolverRef.current = null;
+            const fallback = restFallbackTranscribe(msg);
+            if (fallback) {
+              void fallback.then(resolver);
+              return;
+            }
+            resolver({ raw: "", cleaned: "", error: msg });
+            return;
+          }
+          if (!supportsSessionTransportRef.current) return;
+          if (!pillActiveRef.current) return;
+          if (wantsMicRef.current) return;
+          hidePill();
+          window.api.showErrorDialog("Transcription Failed", msg);
+        },
+      });
+    }
+    return streamerRef.current;
   }, []);
 
   // ---- Bar animation loop ----
@@ -524,6 +668,7 @@ export default function AppPage(): React.JSX.Element {
     drainingRef.current = false;
     drainAgainRef.current = false;
     recordingActiveRef.current = false;
+    streamResolverRef.current = null;
     stopVisualization();
     window.api.hidePill();
   }, [stopVisualization, setPillState]);
@@ -573,6 +718,13 @@ export default function AppPage(): React.JSX.Element {
         .catch(() => {});
 
       appContextRef.current = null;
+      // Only create the streamer when streaming is enabled.
+      const streamingEnabled = _streamingAudioEnabled && streamerRef.current;
+      if (streamingEnabled) {
+        try {
+          streamerRef.current?.setContext(null);
+        } catch {}
+      }
 
       void refreshNeedsAppContextForCleanup().then((needsAppContext) => {
         if (!needsAppContext || !wantsMicRef.current) return;
@@ -581,10 +733,20 @@ export default function AppPage(): React.JSX.Element {
           .then((app) => {
             if (!wantsMicRef.current) return;
             appContextRef.current = app;
+            if (_streamingAudioEnabled) {
+              try {
+                getStreamer().setContext(app);
+              } catch {}
+            }
           })
           .catch(() => {
             if (!wantsMicRef.current) return;
             appContextRef.current = null;
+            if (_streamingAudioEnabled) {
+              try {
+                getStreamer().setContext(null);
+              } catch {}
+            }
           });
       });
 
@@ -607,12 +769,18 @@ export default function AppPage(): React.JSX.Element {
           : undefined;
 
       try {
-        const stream = await recorderRef.current.start();
+        recordingSessionUsesTransportRef.current =
+          _streamingAudioEnabled && supportsSessionTransportRef.current;
+
+        const stream = _streamingAudioEnabled
+          ? await recorderRef.current.acquireStream()
+          : await recorderRef.current.start();
 
         if (!wantsMicRef.current) {
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
           void restoreSystemAudioSafely();
+          streamerRef.current?.cancel();
           if (forReRecord) {
             resumeTranscribingOrHide();
           }
@@ -624,6 +792,7 @@ export default function AppPage(): React.JSX.Element {
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
           void restoreSystemAudioSafely();
+          streamerRef.current?.cancel();
           if (forReRecord) {
             resumeTranscribingOrHide();
           } else {
@@ -641,6 +810,11 @@ export default function AppPage(): React.JSX.Element {
         }, 100);
 
         startListening(stream);
+        if (_streamingAudioEnabled) {
+          try {
+            await getStreamer().startCapture(stream);
+          } catch {}
+        }
       } catch (err) {
         pendingCommitRef.current = false;
         recorderRef.current.releaseStream();
@@ -656,6 +830,7 @@ export default function AppPage(): React.JSX.Element {
       startBarAnimation,
       startListening,
       hidePill,
+      getStreamer,
       setPillState,
       resumeTranscribingOrHide,
       restoreSystemAudioSafely,
@@ -697,6 +872,7 @@ export default function AppPage(): React.JSX.Element {
     if (recordingDuration < 500) {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
+      streamerRef.current?.cancel();
       window.api?.sendRecordingCancelled();
       resumeTranscribingOrHide();
       return;
@@ -705,6 +881,39 @@ export default function AppPage(): React.JSX.Element {
     window.api?.sendRecordingCommitted();
     setPillState("transcribing");
     startBarAnimation("speaking");
+
+    // Streaming session transport path: the streamer already has the audio —
+    // commit it over the WebSocket and wait for the server's final message.
+    if (recordingSessionUsesTransportRef.current && streamerRef.current) {
+      recorderRef.current.cancel();
+      recorderRef.current.releaseStream();
+
+      setPendingCount((c) => c + 1);
+      const transcribePromise = new Promise<TranscribeResult>((resolve) => {
+        streamResolverRef.current = resolve;
+        // Server-side commit timeouts fire at 12s; if no final arrived by
+        // 15s the stream is dead — salvage via REST with the recorded WAV.
+        setTimeout(() => {
+          if (streamResolverRef.current === resolve) {
+            streamResolverRef.current = null;
+            const fallback = restFallbackTranscribe("Transcription timed out");
+            if (fallback) {
+              void fallback.then(resolve);
+            } else {
+              resolve({
+                raw: "",
+                cleaned: "",
+                error: "Transcription timed out",
+              });
+            }
+          }
+        }, 15_000);
+      });
+      streamerRef.current.commit();
+      queueRef.current.push({ promise: transcribePromise });
+      void drainQueue();
+      return;
+    }
 
     const wavBlob = recorderRef.current.isRecording()
       ? await recorderRef.current.stop()
@@ -813,6 +1022,7 @@ export default function AppPage(): React.JSX.Element {
     resumeTranscribingOrHide,
     isTranscriptionIdle,
     restoreSystemAudioSafely,
+    restFallbackTranscribe,
   ]);
 
   // ---- Cancel ----
@@ -858,6 +1068,10 @@ export default function AppPage(): React.JSX.Element {
 
         const outputMode = settings[SETTINGS_KEYS.outputMode];
         if (outputMode) _outputMode = outputMode;
+
+        // Streaming audio (experimental)
+        _streamingAudioEnabled =
+          settings[SETTINGS_KEYS.streamingAudio] === "true";
 
         // Warm the cleanup-context cache from the same snapshot instead of
         // firing a second GET /api/settings.

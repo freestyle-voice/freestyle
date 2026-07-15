@@ -21,6 +21,7 @@ export const SETTINGS_KEYS = {
   networkProxyUrl: "network_proxy_url",
   outputMode: "output_mode",
   soundEnabled: "sound_enabled",
+  streamingAudio: "streaming_audio",
   theme: "theme",
 } as const;
 

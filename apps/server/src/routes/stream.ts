@@ -306,7 +306,12 @@ const stream = new Hono().get(
           onFinal: async (rawText) => {
             if (upstream !== session) return;
             rawText = sanitizeTranscriptText(rawText);
-            const durationMs = Date.now() - sessionStartTime;
+            // Use commitTime (when the user stopped speaking) to measure only
+            // finalization + cleanup latency, not the entire recording session.
+            const durationMs =
+              commitTime > 0
+                ? Date.now() - commitTime
+                : Date.now() - sessionStartTime;
             if (!shouldKeepStreamingUpstreamAlive(voice.provider)) {
               closeUpstreamSession(session);
             }

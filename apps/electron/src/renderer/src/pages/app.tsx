@@ -912,7 +912,11 @@ export default function AppPage(): React.JSX.Element {
         }, 15_000);
       });
       streamerRef.current.commit();
-      queueRef.current.push({ promise: transcribePromise });
+      queueRef.current.push({
+        promise: transcribePromise.finally(() =>
+          setPendingCount((c) => Math.max(0, c - 1)),
+        ),
+      });
       void drainQueue();
       return;
     }
@@ -1032,6 +1036,7 @@ export default function AppPage(): React.JSX.Element {
     recorderRef.current.cancel();
     recorderRef.current.releaseStream();
     void restoreSystemAudioSafely();
+    streamerRef.current?.cancel();
     window.api?.sendRecordingCancelled();
     hidePill();
   }, [hidePill, restoreSystemAudioSafely]);

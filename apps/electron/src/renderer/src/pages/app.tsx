@@ -719,10 +719,9 @@ export default function AppPage(): React.JSX.Element {
 
       appContextRef.current = null;
       // Only create the streamer when streaming is enabled.
-      const streamingEnabled = _streamingAudioEnabled && streamerRef.current;
-      if (streamingEnabled) {
+      if (_streamingAudioEnabled) {
         try {
-          streamerRef.current?.setContext(null);
+          getStreamer().setContext(null);
         } catch {}
       }
 
@@ -1075,12 +1074,16 @@ export default function AppPage(): React.JSX.Element {
       })
       .catch(() => {});
 
-    // Streaming audio flag (experimental — stored in config.freestyle.json)
+    // Streaming audio flag (experimental — stored in config.freestyle.json).
+    // When enabled, eagerly create the Streamer so the WebSocket connects and
+    // the onConfig callback (which sets supportsSessionTransportRef) fires
+    // before the first recording.
     fetch(`${getApiBase()}/api/config`)
       .then((r) => (r.ok ? r.json() : null))
       .then((config) => {
         if (config?.flags?.streaming_audio === true) {
           _streamingAudioEnabled = true;
+          getStreamer();
         }
       })
       .catch(() => {});

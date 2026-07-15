@@ -15,6 +15,7 @@ import {
   parseAppContext,
   plugins,
 } from "../lib/plugins/index.js";
+import { createHookApi } from "../lib/plugins/pipeline.js";
 import {
   applyFinalRewrites,
   getCleanupAppAssignments,
@@ -306,6 +307,10 @@ const stream = new Hono().get(
           onFinal: async (rawText) => {
             if (upstream !== session) return;
             rawText = sanitizeTranscriptText(rawText);
+            // One HookApi per dictation, threaded through every stage so a
+            // plugin's consume()/abort() in afterTranscribe is visible to
+            // cleanup + final rewrites (matching the batch /transcribe route).
+            const api = await createHookApi();
             // Use commitTime (when the user stopped speaking) to measure only
             // finalization + cleanup latency, not the entire recording session.
             const durationMs =
@@ -342,10 +347,12 @@ const stream = new Hono().get(
                       appContext: parseAppContext(effectiveAppContext()),
                     },
                     { text },
+                    api,
                   )
                 ).text;
-                // A plugin may consume/suppress the transcript (empty result).
-                if (!text.trim()) {
+                // A plugin may suppress the transcript explicitly via
+                // consume()/abort() or implicitly by emptying the text.
+                if (api.control.state !== "running" || !text.trim()) {
                   if (!closed) {
                     ws.send(JSON.stringify({ type: "final", text: "" }));
                   }
@@ -361,6 +368,7 @@ const stream = new Hono().get(
                 text,
                 effectiveAppContext(),
                 cloudText,
+                api,
               );
 
               const llmProvider = cloudHandledPostProcess
@@ -426,10 +434,13 @@ const stream = new Hono().get(
                   appContext: parseAppContext(effectiveAppContext()),
                 },
                 { text: rawText },
+                api,
               )
             ).text;
 
-            if (!rawText?.trim()) {
+            // A plugin may suppress the dictation explicitly (consume/abort) or
+            // implicitly by emptying the transcript — either skips cleanup.
+            if (api.control.state !== "running" || !rawText?.trim()) {
               ws.send(JSON.stringify({ type: "final", text: "" }));
               return;
             }
@@ -452,6 +463,7 @@ const stream = new Hono().get(
                   ? "streaming"
                   : "batch",
               ...(useFastHandoff ? { includeTimings: true } : {}),
+              api,
             });
 
             cleanup
@@ -491,8 +503,13 @@ const stream = new Hono().get(
                   output_tokens: pp.outputTokens,
                   cost_usd: pp.costUsd,
                 });
+                // A beforeCleanup/afterCleanup plugin may have consumed/aborted
+                // inside postProcess; blank the delivered text so a suppressed
+                // dictation isn't pasted (matching the batch route).
+                const suppressed = api.control.state !== "running";
+                const deliverText = suppressed ? "" : pp.cleaned;
                 if (!closed) {
-                  ws.send(JSON.stringify({ type: "final", text: pp.cleaned }));
+                  ws.send(JSON.stringify({ type: "final", text: deliverText }));
                 }
                 try {
                   saveProcessedHistory({

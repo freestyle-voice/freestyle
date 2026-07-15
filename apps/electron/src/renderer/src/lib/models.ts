@@ -218,7 +218,7 @@ export const VOICE_META: Record<
     quality: 5,
     cost: 0.12,
     streaming: true,
-    note: "Fast multilingual streaming — pairs with Groq cleanup",
+    note: "Fast multilingual streaming",
   },
 };
 

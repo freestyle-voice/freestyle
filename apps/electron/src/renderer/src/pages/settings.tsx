@@ -28,7 +28,13 @@ import { getClient } from "@renderer/lib/api";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
-import { SETTINGS_QUERY_KEY, settingsQueryOptions } from "@renderer/lib/query";
+import {
+  CONFIG_QUERY_KEY,
+  configQueryOptions,
+  type FreestyleConfig,
+  SETTINGS_QUERY_KEY,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -309,6 +315,8 @@ export default function SettingsPage(): React.JSX.Element {
     cancelRecording: cancelHotkeyRecording,
   } = useHotkeyRecorder(handleHotkeyRecorded);
 
+  const queryClient = useQueryClient();
+
   // All persisted settings in one request (replaces ~10 individual GETs).
   const settingsQuery = useQuery(settingsQueryOptions());
 
@@ -352,16 +360,14 @@ export default function SettingsPage(): React.JSX.Element {
     }
   }, [settingsQuery.data]);
 
-  // Seed experimental flags from config.freestyle.json
+  // Experimental flags from config.freestyle.json, cached alongside the rest of
+  // the settings page rather than re-fetched on every visit.
+  const configQuery = useQuery(configQueryOptions());
   useEffect(() => {
-    getClient()
-      .api.config.$get()
-      .then((r) => (r.ok ? r.json() : null))
-      .then((config) => {
-        if (config?.flags?.streaming_audio === true) setStreamingAudio(true);
-      })
-      .catch(() => {});
-  }, []);
+    if (configQuery.data) {
+      setStreamingAudio(configQuery.data.flags.streaming_audio === true);
+    }
+  }, [configQuery.data]);
 
   // Load available audio input devices
   useEffect(() => {
@@ -591,16 +597,26 @@ export default function SettingsPage(): React.JSX.Element {
     [saveHistoryRetention],
   );
 
-  const handleStreamingAudioToggle = useCallback((enabled: boolean) => {
-    setStreamingAudio(enabled);
-    window.api?.sendStreamingAudioChanged(enabled);
-    getClient()
-      .api.config.flags[":key"].$put({
-        param: { key: "streaming_audio" },
-        json: { value: enabled },
-      })
-      .catch(() => {});
-  }, []);
+  const handleStreamingAudioToggle = useCallback(
+    (enabled: boolean) => {
+      setStreamingAudio(enabled);
+      window.api?.sendStreamingAudioChanged(enabled);
+      getClient()
+        .api.config.flags[":key"].$put({
+          param: { key: "streaming_audio" },
+          json: { value: enabled },
+        })
+        .then(() => {
+          queryClient.setQueryData<FreestyleConfig>(CONFIG_QUERY_KEY, (prev) =>
+            prev
+              ? { ...prev, flags: { ...prev.flags, streaming_audio: enabled } }
+              : prev,
+          );
+        })
+        .catch(() => {});
+    },
+    [queryClient],
+  );
 
   const handleAudioPlaybackModeChange = useCallback((value: string) => {
     const mode = normalizeAudioPlaybackMode(value);

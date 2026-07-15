@@ -149,8 +149,6 @@ export default function SettingsPage(): React.JSX.Element {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
     parseSettingsSection(window.location.hash),
   );
-  const queryClient = useQueryClient();
-
   // Radix SelectItem cannot use an empty-string value, so the "system default"
   // microphone (stored as "") is represented by this sentinel at the Select
   // boundary only. Use an unlikely string to avoid colliding with a real

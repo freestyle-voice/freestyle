@@ -29,6 +29,7 @@ import {
   resolvePluginIcon,
   usePluginUpdates,
 } from "./helpers";
+import { PluginsLoadingSkeleton } from "./plugin-skeletons";
 
 type Tab = "browse" | "installed";
 
@@ -160,11 +161,7 @@ function InstalledTab({
   );
 
   if (loading) {
-    return (
-      <p className="text-muted-foreground py-10 text-center text-sm">
-        {t("plugins.loading")}
-      </p>
-    );
+    return <PluginsLoadingSkeleton />;
   }
   if (plugins.length === 0) {
     return (
@@ -404,11 +401,7 @@ function BrowseTab({
     );
   }
   if (!catalog) {
-    return (
-      <p className="text-muted-foreground py-10 text-center text-sm">
-        {t("plugins.loading")}
-      </p>
-    );
+    return <PluginsLoadingSkeleton />;
   }
   if (filtered.length === 0) {
     return (

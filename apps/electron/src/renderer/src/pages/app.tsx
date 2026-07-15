@@ -182,6 +182,11 @@ export default function AppPage(): React.JSX.Element {
     null,
   );
   const drainAgainRef = useRef(false);
+  // Set when the user presses the hotkey to start a new dictation while a
+  // streaming commit is still finalizing. The single WebSocket/PCM buffer can't
+  // host two streaming sessions at once, so instead of dropping the press we
+  // replay it once the pending commit resolves.
+  const pendingReRecordRef = useRef(false);
 
   const isTranscriptionIdle = useCallback(
     (): boolean =>
@@ -669,6 +674,7 @@ export default function AppPage(): React.JSX.Element {
     drainAgainRef.current = false;
     recordingActiveRef.current = false;
     streamResolverRef.current = null;
+    pendingReRecordRef.current = false;
     stopVisualization();
     window.api.hidePill();
   }, [stopVisualization, setPillState]);
@@ -913,9 +919,16 @@ export default function AppPage(): React.JSX.Element {
       });
       streamerRef.current.commit();
       queueRef.current.push({
-        promise: transcribePromise.finally(() =>
-          setPendingCount((c) => Math.max(0, c - 1)),
-        ),
+        promise: transcribePromise.finally(() => {
+          setPendingCount((c) => Math.max(0, c - 1));
+          // Replay a re-record press that arrived while this commit was
+          // finalizing (see the hotkey-down handler). Only when nothing else
+          // has already taken the mic.
+          if (pendingReRecordRef.current && !wantsMicRef.current) {
+            pendingReRecordRef.current = false;
+            void startRecording(true);
+          }
+        }),
       });
       void drainQueue();
       return;
@@ -1029,6 +1042,7 @@ export default function AppPage(): React.JSX.Element {
     isTranscriptionIdle,
     restoreSystemAudioSafely,
     restFallbackTranscribe,
+    startRecording,
   ]);
 
   // ---- Cancel ----
@@ -1155,9 +1169,12 @@ export default function AppPage(): React.JSX.Element {
           return;
         }
         // A pending streaming commit owns the single WebSocket + PCM buffer,
-        // so a second streaming session would overwrite its resolver and wipe
-        // its audio. Only batch transcriptions can safely overlap.
-        if (streamResolverRef.current !== null) return;
+        // so a second streaming session can't run alongside it. Defer the
+        // re-record until the commit resolves rather than dropping the press.
+        if (streamResolverRef.current !== null) {
+          pendingReRecordRef.current = true;
+          return;
+        }
         // A previous batch transcription is still in flight; start a new
         // recording alongside it. Its result is queued and drained normally.
         void startRecording(true);

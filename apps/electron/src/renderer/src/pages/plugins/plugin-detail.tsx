@@ -19,6 +19,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { pluginDisplayName, usePluginUpdates } from "./helpers";
 import { PluginReadme } from "./plugin-readme";
+import { PluginDetailSkeleton } from "./plugin-skeletons";
 
 const SKIP_UNINSTALL_CONFIRM_KEY = "plugins.skipUninstallConfirm";
 
@@ -55,9 +56,7 @@ export default function PluginDetailPage(): React.JSX.Element {
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         {loading ? (
-          <p className="text-muted-foreground py-10 text-center text-sm">
-            {t("plugins.loading")}
-          </p>
+          <PluginDetailSkeleton />
         ) : !plugin ? (
           <p className="text-muted-foreground py-10 text-center text-sm">
             {t("plugins.detail.notFound")}

@@ -606,7 +606,6 @@
       "installed": "Installed",
       "browse": "Browse"
     },
-    "loading": "Loading plugins…",
     "emptyTitle": "No plugins yet",
     "empty": "Install a plugin to add features. Browse the available ones or add your own.",
     "missingBadge": "Missing",

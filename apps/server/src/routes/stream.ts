@@ -364,12 +364,18 @@ const stream = new Hono().get(
               // afterTranscribe. The dictionary + afterCleanup hook are
               // local-only, so still apply them here in both cases.
 
-              const finalText = await applyFinalRewrites(
+              const rewritten = await applyFinalRewrites(
                 text,
                 effectiveAppContext(),
                 cloudText,
                 api,
               );
+              // An afterCleanup plugin may consume/abort here (the cloud path
+              // still runs that local hook); blank the delivered text so a
+              // suppressed dictation isn't pasted, and skip telemetry/history
+              // for it — matching the batch route.
+              const suppressed = api.control.state !== "running";
+              const finalText = suppressed ? "" : rewritten;
 
               const llmProvider = cloudHandledPostProcess
                 ? FREESTYLE_CLOUD_PROVIDER_ID
@@ -385,39 +391,43 @@ const stream = new Hono().get(
                   `[pipeline] cloud_stream stt_after_commit=${sttAfterCommitMs}ms session=${durationMs}ms | ${voice.provider}/${voiceDefaults!.model_id}`,
                 );
               }
-              capture("streaming transcription completed", {
-                provider: voiceDefaults!.provider,
-                provider_category: voiceProviderCategory(
-                  voiceDefaults!.provider,
-                ),
-                model: voiceDefaults!.model_id,
-                duration_ms: durationMs,
-                audio_duration_ms: audioDurationMs,
-                llm_provider: llmProvider,
-                llm_model: llmModel,
-                input_tokens: 0,
-                output_tokens: 0,
-                cost_usd: 0,
-              });
+              if (!suppressed) {
+                capture("streaming transcription completed", {
+                  provider: voiceDefaults!.provider,
+                  provider_category: voiceProviderCategory(
+                    voiceDefaults!.provider,
+                  ),
+                  model: voiceDefaults!.model_id,
+                  duration_ms: durationMs,
+                  audio_duration_ms: audioDurationMs,
+                  llm_provider: llmProvider,
+                  llm_model: llmModel,
+                  input_tokens: 0,
+                  output_tokens: 0,
+                  cost_usd: 0,
+                });
+              }
               if (!closed) {
                 ws.send(JSON.stringify({ type: "final", text: finalText }));
               }
-              try {
-                saveProcessedHistory({
-                  rawText: cloudText,
-                  cleanedText: finalText !== cloudText ? finalText : null,
-                  voiceProvider: voiceDefaults!.provider,
-                  voiceModel: voiceDefaults!.model_id,
-                  llmProvider,
-                  llmModel,
-                  durationMs,
-                  audioDurationMs,
-                  inputTokens: 0,
-                  outputTokens: 0,
-                  costUsd: 0,
-                });
-              } catch (err) {
-                log.error(`Failed to save history: ${err}`);
+              if (!suppressed) {
+                try {
+                  saveProcessedHistory({
+                    rawText: cloudText,
+                    cleanedText: finalText !== cloudText ? finalText : null,
+                    voiceProvider: voiceDefaults!.provider,
+                    voiceModel: voiceDefaults!.model_id,
+                    llmProvider,
+                    llmModel,
+                    durationMs,
+                    audioDurationMs,
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    costUsd: 0,
+                  });
+                } catch (err) {
+                  log.error(`Failed to save history: ${err}`);
+                }
               }
               return;
             }
@@ -489,44 +499,49 @@ const stream = new Hono().get(
                     );
                   }
                 }
-                capture("streaming transcription completed", {
-                  provider: voiceDefaults!.provider,
-                  provider_category: voiceProviderCategory(
-                    voiceDefaults!.provider,
-                  ),
-                  model: voiceDefaults!.model_id,
-                  duration_ms: totalDurationMs,
-                  audio_duration_ms: audioDurationMs,
-                  llm_provider: pp.llmProvider,
-                  llm_model: pp.llmModel,
-                  input_tokens: pp.inputTokens,
-                  output_tokens: pp.outputTokens,
-                  cost_usd: pp.costUsd,
-                });
                 // A beforeCleanup/afterCleanup plugin may have consumed/aborted
                 // inside postProcess; blank the delivered text so a suppressed
-                // dictation isn't pasted (matching the batch route).
+                // dictation isn't pasted, and skip telemetry/history for it —
+                // matching the batch route, which returns before both.
                 const suppressed = api.control.state !== "running";
+                if (!suppressed) {
+                  capture("streaming transcription completed", {
+                    provider: voiceDefaults!.provider,
+                    provider_category: voiceProviderCategory(
+                      voiceDefaults!.provider,
+                    ),
+                    model: voiceDefaults!.model_id,
+                    duration_ms: totalDurationMs,
+                    audio_duration_ms: audioDurationMs,
+                    llm_provider: pp.llmProvider,
+                    llm_model: pp.llmModel,
+                    input_tokens: pp.inputTokens,
+                    output_tokens: pp.outputTokens,
+                    cost_usd: pp.costUsd,
+                  });
+                }
                 const deliverText = suppressed ? "" : pp.cleaned;
                 if (!closed) {
                   ws.send(JSON.stringify({ type: "final", text: deliverText }));
                 }
-                try {
-                  saveProcessedHistory({
-                    rawText,
-                    cleanedText: pp.cleaned !== rawText ? pp.cleaned : null,
-                    voiceProvider: voiceDefaults!.provider,
-                    voiceModel: voiceDefaults!.model_id,
-                    llmProvider: pp.llmProvider,
-                    llmModel: pp.llmModel,
-                    durationMs: totalDurationMs,
-                    audioDurationMs,
-                    inputTokens: pp.inputTokens,
-                    outputTokens: pp.outputTokens,
-                    costUsd: pp.costUsd,
-                  });
-                } catch (err) {
-                  log.error(`Failed to save history: ${err}`);
+                if (!suppressed) {
+                  try {
+                    saveProcessedHistory({
+                      rawText,
+                      cleanedText: pp.cleaned !== rawText ? pp.cleaned : null,
+                      voiceProvider: voiceDefaults!.provider,
+                      voiceModel: voiceDefaults!.model_id,
+                      llmProvider: pp.llmProvider,
+                      llmModel: pp.llmModel,
+                      durationMs: totalDurationMs,
+                      audioDurationMs,
+                      inputTokens: pp.inputTokens,
+                      outputTokens: pp.outputTokens,
+                      costUsd: pp.costUsd,
+                    });
+                  } catch (err) {
+                    log.error(`Failed to save history: ${err}`);
+                  }
                 }
               })
               .catch((err) => {

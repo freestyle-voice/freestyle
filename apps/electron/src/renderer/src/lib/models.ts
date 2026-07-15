@@ -203,21 +203,18 @@ export const VOICE_META: Record<
     speed: 4,
     quality: 4,
     cost: 0.26,
-    streaming: true,
-    note: "Live streaming — see words as you speak",
+    note: "Fast, accurate multilingual model",
   },
   "elevenlabs/scribe_v2_realtime": {
     speed: 4,
     quality: 4,
     cost: 0.4,
-    streaming: true,
     note: "Excellent across 99 languages",
   },
   "soniox/stt-rt-v4": {
     speed: 5,
     quality: 5,
     cost: 0.12,
-    streaming: true,
     note: "Fast multilingual streaming",
   },
 };

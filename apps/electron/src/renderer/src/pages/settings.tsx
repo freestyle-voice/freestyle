@@ -115,6 +115,7 @@ function normalizePillPos(pos: string): string {
 export default function SettingsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
+  const queryClient = useQueryClient();
   const [devices, setDevices] = useState<AudioDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [hotkey, setHotkey] = useState(
@@ -582,15 +583,27 @@ export default function SettingsPage(): React.JSX.Element {
     [saveHistoryRetention],
   );
 
-  const handleStreamingAudioToggle = useCallback((enabled: boolean) => {
-    setStreamingAudio(enabled);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.streamingAudio },
-        json: { value: String(enabled) },
-      })
-      .catch(() => {});
-  }, []);
+  const handleStreamingAudioToggle = useCallback(
+    (enabled: boolean) => {
+      setStreamingAudio(enabled);
+      getClient()
+        .api.settings[":key"].$put({
+          param: { key: SETTINGS_KEYS.streamingAudio },
+          json: { value: String(enabled) },
+        })
+        .then(() => {
+          queryClient.setQueryData<Record<string, string>>(
+            SETTINGS_QUERY_KEY,
+            (prev) =>
+              prev
+                ? { ...prev, [SETTINGS_KEYS.streamingAudio]: String(enabled) }
+                : prev,
+          );
+        })
+        .catch(() => {});
+    },
+    [queryClient],
+  );
 
   const handleAudioPlaybackModeChange = useCallback((value: string) => {
     const mode = normalizeAudioPlaybackMode(value);
@@ -1129,7 +1142,7 @@ export default function SettingsPage(): React.JSX.Element {
               </div>
               <Row
                 label="Streaming audio"
-                desc="Stream audio to the transcription provider in real-time as you speak instead of sending the full recording after you stop. Reduces latency for supported providers (Freestyle Cloud, OpenAI, Deepgram, ElevenLabs, Soniox)."
+                desc="Use the experimental streaming endpoint of Freestyle Transcribe for lower-latency dictation."
                 last
               >
                 <Switch

@@ -265,38 +265,66 @@ export async function postProcess(
       // Freestyle Cloud assembles its cleanup prompts server-side: it resolves
       // the destination from appContext + appAssignments and applies the tone
       // preferences we forward here, mirroring the local/direct-model path.
-      const token = getSessionToken();
-      if (!token) throw new FreestyleCloudAuthError();
-      try {
-        const result = await postProcessWithFreestyleCloud({
-          token,
+      //
+      // The `beforeCleanup` hook still runs so its locally-decidable outputs
+      // are honored on the cloud path too: `skip` and `consume()`/`abort()`
+      // short-circuit the cloud call. The `prompt`/`system`/`destination`
+      // overrides can't be applied here (the prompt is assembled remotely) —
+      // forwarding those to the cloud is a follow-up; the raw-STT fallback in
+      // `/api/transcribe` covers plugins that need full local prompt control.
+      const promptHook = await plugins().run(
+        "beforeCleanup",
+        {
           text: normalizedRawText,
-          appContext: effectiveAppContext,
-          language: options.language,
-          intensity,
-          customPrompt,
-          personalTone,
-          workTone,
-          emailTone,
-          overallTone,
-          appAssignments: getCleanupAppAssignments(),
-        });
-        inputTokens = result.usage?.inputTokens ?? 0;
-        outputTokens = result.usage?.outputTokens ?? 0;
-        llmProvider = llm.provider;
-        llmModel = llm.model_id;
-        cleanedText = sanitizeTranscriptText(result.cleaned);
-      } catch (err) {
-        if (err instanceof FreestyleCloudAuthError) throw err;
-        // Transient network faults / upstream 5xx aren't app defects.
-        if (!isTransientCloudError(err)) captureException(err);
-        capture("post process failed", {
-          provider: llm.provider,
-          model: llm.model_id,
-          source,
-        });
-        log.error(`Freestyle Cloud cleanup failed: ${err}`);
+          appContext: parsedContext,
+          destination: getRewritePromptContext(
+            effectiveAppContext,
+            getCleanupAppAssignments(),
+          ).destination,
+        },
+        { system: [] as string[] },
+        api,
+      );
+
+      if (promptHook.skip || api.control.state !== "running") {
+        // `skip`/`consume()`/`abort()` short-circuit the cloud call, just like
+        // the local-model branch. Fall through to the shared tail (dictionary +
+        // `afterCleanup` + `Cleaned` event) with the raw text.
         cleanedText = normalizedRawText;
+      } else {
+        const token = getSessionToken();
+        if (!token) throw new FreestyleCloudAuthError();
+        try {
+          const result = await postProcessWithFreestyleCloud({
+            token,
+            text: normalizedRawText,
+            appContext: effectiveAppContext,
+            language: options.language,
+            intensity,
+            customPrompt,
+            personalTone,
+            workTone,
+            emailTone,
+            overallTone,
+            appAssignments: getCleanupAppAssignments(),
+          });
+          inputTokens = result.usage?.inputTokens ?? 0;
+          outputTokens = result.usage?.outputTokens ?? 0;
+          llmProvider = llm.provider;
+          llmModel = llm.model_id;
+          cleanedText = sanitizeTranscriptText(result.cleaned);
+        } catch (err) {
+          if (err instanceof FreestyleCloudAuthError) throw err;
+          // Transient network faults / upstream 5xx aren't app defects.
+          if (!isTransientCloudError(err)) captureException(err);
+          capture("post process failed", {
+            provider: llm.provider,
+            model: llm.model_id,
+            source,
+          });
+          log.error(`Freestyle Cloud cleanup failed: ${err}`);
+          cleanedText = normalizedRawText;
+        }
       }
     } else if (!(await isCleanupModelSupported(llm.provider, llm.model_id))) {
       log.warn(
@@ -323,7 +351,12 @@ export async function postProcess(
         api,
       );
 
-      if (promptHook.skip) {
+      if (promptHook.skip || api.control.state !== "running") {
+        // `skip` bypasses cleanup deliberately; a `consume()`/`abort()` in the
+        // `beforeCleanup` hook does too — the dictation is already terminal, so
+        // spending an LLM call on text the pipeline has decided not to deliver
+        // would be wasted (mirrors the cloud branch's early-out above and the
+        // documented consume/abort semantics of skipping every later stage).
         cleanedText = normalizedRawText;
       } else {
         const { system, prompt } = buildRewritePrompt(normalizedRawText, {

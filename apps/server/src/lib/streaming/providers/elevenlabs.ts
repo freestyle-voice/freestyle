@@ -295,14 +295,21 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
         }, USER_COMMIT_TIMEOUT_MS);
       },
       cancel(): void {
+        // ElevenLabs is kept warm across recordings, so a cancel must not close
+        // the socket — that would fire onClose and make the route reconnect.
+        // Drop the in-flight transcript and re-arm auto-commit for reuse, like
+        // reset(); close() is used for real teardown.
         clearCommitTimeout();
-        stopAutoCommit();
         pendingChunks.length = 0;
         userCommitPending = false;
         finalDelivered = false;
-        if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
         accumulatedText = "";
         partialText = "";
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          startAutoCommit();
+        } else {
+          stopAutoCommit();
+        }
       },
       close(): void {
         clearCommitTimeout();

@@ -456,6 +456,13 @@ const stream = new Hono().get(
 
             cleanup
               .then((pp) => {
+                // STT and post-processing run on separate models here, so the
+                // user-perceived latency is commit → cleaned text, not just the
+                // raw transcript. Measure after cleanup resolves. (The Freestyle
+                // Cloud streaming path above already includes cleanup because
+                // the DO returns cleaned text in a single response.)
+                const totalDurationMs =
+                  commitTime > 0 ? Date.now() - commitTime : durationMs;
                 if (LOG_PIPELINE_LATENCY) {
                   const handoffTimings = pp.timings;
                   if (handoffTimings) {
@@ -466,7 +473,7 @@ const stream = new Hono().get(
                     );
                   } else {
                     log.info(
-                      `[pipeline] session=${durationMs}ms stt_after_commit=${sttAfterCommitMs}ms | ${voiceDefaults!.provider}/${voiceDefaults!.model_id}`,
+                      `[pipeline] session=${totalDurationMs}ms stt_after_commit=${sttAfterCommitMs}ms | ${voiceDefaults!.provider}/${voiceDefaults!.model_id}`,
                     );
                   }
                 }
@@ -476,7 +483,7 @@ const stream = new Hono().get(
                     voiceDefaults!.provider,
                   ),
                   model: voiceDefaults!.model_id,
-                  duration_ms: durationMs,
+                  duration_ms: totalDurationMs,
                   audio_duration_ms: audioDurationMs,
                   llm_provider: pp.llmProvider,
                   llm_model: pp.llmModel,
@@ -495,7 +502,7 @@ const stream = new Hono().get(
                     voiceModel: voiceDefaults!.model_id,
                     llmProvider: pp.llmProvider,
                     llmModel: pp.llmModel,
-                    durationMs,
+                    durationMs: totalDurationMs,
                     audioDurationMs,
                     inputTokens: pp.inputTokens,
                     outputTokens: pp.outputTokens,
@@ -540,7 +547,8 @@ const stream = new Hono().get(
                     rawText,
                     voiceProvider: voiceDefaults!.provider,
                     voiceModel: voiceDefaults!.model_id,
-                    durationMs,
+                    durationMs:
+                      commitTime > 0 ? Date.now() - commitTime : durationMs,
                     audioDurationMs,
                   });
                 } catch {}

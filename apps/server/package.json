@@ -23,7 +23,6 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.79",
-    "@ai-sdk/deepgram": "^2.0.44",
     "@ai-sdk/elevenlabs": "^2.0.33",
     "@ai-sdk/google": "^3.0.79",
     "@ai-sdk/groq": "^3.0.39",
@@ -45,12 +44,12 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/ws": "^8.18.1",
     "@freestyle-voice/utils": "workspace:*",
     "@freestyle-voice/validations": "workspace:*",
     "@types/json-schema": "^7.0.15",
     "@types/node": "latest",
     "@types/semver": "^7.7.1",
+    "@types/ws": "^8.18.1",
     "freestyle-voice": "workspace:*",
     "pkgroll": "^2.27.0",
     "typescript": "^5.9.3",

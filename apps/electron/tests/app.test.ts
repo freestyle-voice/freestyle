@@ -662,6 +662,21 @@ test("sidebar navigation is rendered", async () => {
   }
 
   await dashboardPage.waitForSelector("nav", { timeout: 10_000 });
-  const navLinks = await dashboardPage.locator("nav a").all();
-  expect(navLinks.length).toBe(7);
+  const expectedLinks = [
+    ["Today", "/today"],
+    ["History", "/settings/history"],
+    ["Dictionary", "/settings/dictionary"],
+    ["Vocabulary", "/settings/vocabulary"],
+    ["Tone", "/settings/tone"],
+    ["Models", "/settings/models"],
+    ["Plugins", "/plugins"],
+    ["Settings", "/settings"],
+    ["Help", "/help"],
+  ] as const;
+  const navLinks = dashboardPage.locator("nav a");
+  await expect(navLinks).toHaveCount(expectedLinks.length);
+  for (const [index, [label, target]] of expectedLinks.entries()) {
+    await expect(navLinks.nth(index)).toContainText(label);
+    await expect(navLinks.nth(index)).toHaveAttribute("href", target);
+  }
 });

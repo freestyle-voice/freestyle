@@ -1,4 +1,15 @@
 # Changelog
+## 0.5.2
+
+### New Features ✨
+
+- Restore streaming audio behind experimental flag by @MathurAditya724 in [#467](https://github.com/freestyle-voice/freestyle/pull/467)
+
+### Bug Fixes 🐛
+
+- (plugins) Replace plain text loading state with skeleton animations by @MathurAditya724 in [#469](https://github.com/freestyle-voice/freestyle/pull/469)
+- (settings) Invalidate history queries after clearing data by @MathurAditya724 in [#468](https://github.com/freestyle-voice/freestyle/pull/468)
+
 ## 0.5.1
 
 ### New Features ✨

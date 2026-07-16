@@ -1,3 +1,4 @@
+import { DragSpacer } from "@renderer/components/drag-spacer";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { pluginDisplayName, usePluginUpdates } from "./helpers";
 import { PluginReadme } from "./plugin-readme";
+import { PluginDetailSkeleton } from "./plugin-skeletons";
 
 const SKIP_UNINSTALL_CONFIRM_KEY = "plugins.skipUninstallConfirm";
 
@@ -45,19 +47,11 @@ export default function PluginDetailPage(): React.JSX.Element {
   const update = plugin ? updatesMap?.get(plugin.specifier) : undefined;
 
   return (
-    <div
-      className="flex h-full min-h-0 flex-col"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    >
-      <div className="h-7 shrink-0" />
-      <div
-        className="responsive-page-scroll flex-1 overflow-auto"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      >
+    <div className="flex h-full min-h-0 flex-col">
+      <DragSpacer />
+      <div className="responsive-page-scroll flex-1 overflow-auto">
         {loading ? (
-          <p className="text-muted-foreground py-10 text-center text-sm">
-            {t("plugins.loading")}
-          </p>
+          <PluginDetailSkeleton />
         ) : !plugin ? (
           <p className="text-muted-foreground py-10 text-center text-sm">
             {t("plugins.detail.notFound")}

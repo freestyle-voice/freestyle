@@ -592,7 +592,7 @@ function createSettingsWindow(initialPath?: string): void {
           visualEffectState: "active" as const,
         }
       : {}),
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
     trafficLightPosition:
       process.platform === "darwin" ? { x: 16, y: 16 } : undefined,
     ...(process.platform === "linux" ? { icon } : {}),
@@ -1749,6 +1749,10 @@ app.whenReady().then(async () => {
 
   ipcMain.on("settings:audio-ducking-changed", (_event, enabled: boolean) => {
     mainWindow?.webContents.send("settings:audio-ducking-changed", enabled);
+  });
+
+  ipcMain.on("settings:streaming-audio-changed", (_event, enabled: boolean) => {
+    mainWindow?.webContents.send("settings:streaming-audio-changed", enabled);
   });
 
   ipcMain.on("settings:audio-playback-mode-changed", (_event, mode: string) => {

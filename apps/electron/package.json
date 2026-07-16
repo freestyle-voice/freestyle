@@ -2,7 +2,7 @@
   "name": "@freestyle-voice/electron",
   "productName": "Freestyle",
   "desktopName": "freestyle.desktop",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Voice-to-text that works everywhere",
   "author": "freestyle-voice",
   "homepage": "https://github.com/freestyle-voice/freestyle",

@@ -167,6 +167,14 @@ const BUILTIN_VOICE_MODELS: AvailableModel[] = [
     family: "elevenlabs",
     type: "voice",
   },
+  {
+    provider_id: "soniox",
+    provider_name: "Soniox",
+    model_id: "soniox/stt-rt-v4",
+    model_name: "Soniox Realtime v4",
+    family: "soniox",
+    type: "voice",
+  },
 ];
 
 // Cleanup-LLM providers the app can actually run (see lib/providers.ts).

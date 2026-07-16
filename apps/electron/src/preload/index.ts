@@ -243,6 +243,16 @@ const api = {
     return () =>
       ipcRenderer.removeListener("settings:audio-ducking-changed", handler);
   },
+  sendStreamingAudioChanged: (enabled: boolean): void =>
+    ipcRenderer.send("settings:streaming-audio-changed", enabled),
+  onStreamingAudioChanged: (
+    callback: (enabled: boolean) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, enabled: boolean): void => callback(enabled);
+    ipcRenderer.on("settings:streaming-audio-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("settings:streaming-audio-changed", handler);
+  },
   sendAudioPlaybackModeChanged: (mode: AudioPlaybackMode): void =>
     ipcRenderer.send("settings:audio-playback-mode-changed", mode),
   onAudioPlaybackModeChanged: (

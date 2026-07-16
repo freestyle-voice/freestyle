@@ -1,3 +1,4 @@
+import { DragSpacer } from "@renderer/components/drag-spacer";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { Progress } from "@renderer/components/ui/progress";
 import { getClient } from "@renderer/lib/api";
@@ -251,19 +252,11 @@ export default function TodayPage(): React.JSX.Element {
   return (
     <div className="flex h-full min-h-0">
       {/* Center column */}
-      <div
-        className="flex min-w-0 flex-1 flex-col"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      >
-        <div className="h-7 shrink-0" />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <DragSpacer />
         <div
           className="responsive-page-scroll flex-1 overflow-auto pt-12 !pb-5"
-          style={
-            {
-              WebkitAppRegion: "no-drag",
-              scrollbarWidth: "none",
-            } as React.CSSProperties
-          }
+          style={{ scrollbarWidth: "none" } as React.CSSProperties}
         >
           <TutorialDemo />
 

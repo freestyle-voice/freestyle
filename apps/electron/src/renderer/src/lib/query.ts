@@ -32,6 +32,34 @@ export function settingsQueryOptions() {
 }
 
 /**
+ * Shared query key for the experimental flags config (`GET /api/config`).
+ * Same rationale as `SETTINGS_QUERY_KEY` — one key so consumers share a cache.
+ */
+export const CONFIG_QUERY_KEY = ["config"] as const;
+
+export type FreestyleConfig = {
+  version: number;
+  flags: Record<string, boolean>;
+};
+
+/**
+ * Query options for `config.freestyle.json` (experimental feature flags). Keeps
+ * the flags load on the same React Query cache as the rest of the settings page
+ * instead of re-fetching on every visit. Invalidate `CONFIG_QUERY_KEY` after a
+ * flag mutation to refresh.
+ */
+export function configQueryOptions() {
+  return {
+    queryKey: CONFIG_QUERY_KEY,
+    queryFn: async (): Promise<FreestyleConfig> => {
+      const res = await getClient().api.config.$get();
+      if (!res.ok) throw new Error("Failed to load config");
+      return (await res.json()) as FreestyleConfig;
+    },
+  };
+}
+
+/**
  * Shared QueryClient factory for the renderer. Defaults suit a desktop SPA:
  * - `refetchOnWindowFocus: false` — the user switches apps constantly; focus
  *   refetches would be noisy. Freshness is driven by explicit invalidation

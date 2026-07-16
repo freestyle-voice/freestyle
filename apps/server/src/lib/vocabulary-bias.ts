@@ -6,7 +6,8 @@ export type AsrVocabularyBias =
   | { kind: "prompt"; text: string }
   | { kind: "deepgram-keyterms"; terms: string[] }
   | { kind: "deepgram-keywords"; terms: string[] }
-  | { kind: "elevenlabs-keyterms"; terms: string[] };
+  | { kind: "elevenlabs-keyterms"; terms: string[] }
+  | { kind: "soniox-context"; terms: string[]; text?: string };
 
 const PROMPT_CHAR_BUDGET = 900;
 const DEEPGRAM_KEYTERM_MAX = 100;
@@ -145,6 +146,9 @@ export function buildAsrVocabularyBias(
       return keyterms.length > 0
         ? { kind: "elevenlabs-keyterms", terms: keyterms }
         : null;
+    }
+    case "soniox": {
+      return { kind: "soniox-context", terms: capped };
     }
     case "local-mlx": {
       const text = `Technical terms: ${capped.join(", ")}`.slice(

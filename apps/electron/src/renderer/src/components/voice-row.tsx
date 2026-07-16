@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Target,
   Trash2,
+  Wifi,
   X,
   Zap,
 } from "lucide-react";
@@ -174,6 +175,16 @@ export function VoiceRow({
                   <TooltipContent>Estimated cost</TooltipContent>
                 </Tooltip>
               )}
+          {item.streaming && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <StatPair icon={Wifi} label="Streaming" accent />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Real-time streaming</TooltipContent>
+            </Tooltip>
+          )}
         </div>
 
         {local && status === "error" && item.state?.error && (

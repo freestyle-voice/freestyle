@@ -217,6 +217,11 @@ export function freestyleCloudUrl(): string {
   );
 }
 
+/** WebSocket URL for the cloud streaming endpoint (`/v2/stream`). */
+export function freestyleCloudStreamWsUrl(): string {
+  return `${freestyleCloudUrl().replace(/^http/, "ws")}/v2/stream`;
+}
+
 function createCloudAuthClient() {
   return createAuthClient({
     baseURL: `${freestyleCloudUrl()}/auth`,

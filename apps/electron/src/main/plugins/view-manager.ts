@@ -1,5 +1,6 @@
 import path from "node:path";
 import { type BrowserWindow, session, WebContentsView } from "electron";
+import { bearerAuthHeaders } from "../../shared/server-auth";
 
 /** Rect (in the window's content coordinates) where the plugin view sits. */
 export interface ViewBounds {
@@ -141,7 +142,7 @@ export class PluginViewManager {
       callback({
         requestHeaders: {
           ...details.requestHeaders,
-          Authorization: `Bearer ${token}`,
+          ...bearerAuthHeaders(token),
         },
       });
     });

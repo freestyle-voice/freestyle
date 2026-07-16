@@ -1,5 +1,6 @@
 import type { AppType } from "@freestyle-voice/server";
 import { hc } from "hono/client";
+import { bearerAuthHeaders } from "../../../shared/server-auth";
 
 const DEFAULT_PORT = 4649;
 const HEALTH_TIMEOUT_MS = 3000;
@@ -30,10 +31,6 @@ export function isRemoteServer(): boolean {
   return !!serverUrl;
 }
 
-function authHeaders(token: string): Record<string, string> {
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 /**
  * fetch() against the configured Freestyle server: resolves the base URL and
  * injects the bearer token (when set), while preserving every caller init
@@ -49,7 +46,7 @@ export function apiFetch(
 ): Promise<Response> {
   const headers = new Headers(init.headers);
   // Additive — never clobber a header the caller set explicitly.
-  for (const [key, value] of Object.entries(authHeaders(serverToken))) {
+  for (const [key, value] of Object.entries(bearerAuthHeaders(serverToken))) {
     if (!headers.has(key)) headers.set(key, value);
   }
   return fetch(`${getApiBase()}${path}`, { ...init, headers });
@@ -93,7 +90,7 @@ export async function checkServerAuth(
 ): Promise<boolean> {
   try {
     const res = await hc<AppType>(base, {
-      headers: authHeaders(token),
+      headers: bearerAuthHeaders(token),
     }).api.settings.$get(
       {},
       { init: { signal: AbortSignal.timeout(timeoutMs) } },
@@ -128,5 +125,5 @@ export async function refreshApiBase(): Promise<boolean> {
 }
 
 export function getClient() {
-  return hc<AppType>(getApiBase(), { headers: authHeaders(serverToken) });
+  return hc<AppType>(getApiBase(), { headers: bearerAuthHeaders(serverToken) });
 }

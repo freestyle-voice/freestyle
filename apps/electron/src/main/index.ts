@@ -83,6 +83,7 @@ import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { OpenAppCandidate } from "../shared/open-apps";
+import { bearerAuthHeaders } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
@@ -104,7 +105,7 @@ import {
   PipelineStage,
   relayEvent,
 } from "./plugins/index";
-import { initPluginUiHost } from "./plugins/ui-host";
+import { initPluginUiHost, invalidatePluginViews } from "./plugins/ui-host";
 
 const log = createAppLogger("electron");
 const hotkeyLog = createAppLogger("hotkey");
@@ -239,8 +240,7 @@ function getServerToken(): string {
  * requests are unaffected.
  */
 function getServerAuthHeaders(): Record<string, string> {
-  const token = getServerToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return bearerAuthHeaders(getServerToken());
 }
 
 /**
@@ -269,11 +269,13 @@ function getServerBaseUrl(): string {
 
 /**
  * Broadcast a server target change (URL/token) to all renderer windows so they
- * re-point their API clients and refetch, without an app restart.
+ * re-point their API clients and refetch, without an app restart. Cached plugin
+ * views are dropped too, since they hold pages loaded from the previous origin.
  */
 function broadcastServerChanged(): void {
   mainWindow?.webContents.send("server:changed");
   settingsWindow?.webContents.send("server:changed");
+  invalidatePluginViews();
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -281,6 +283,10 @@ let httpServer: any = null;
 let serverPort = DEFAULT_PORT;
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
+// In-flight settings-window creation. createSettingsWindow awaits an onboarding
+// probe before it assigns settingsWindow, so this serializes concurrent opens
+// to avoid spawning a second window during that gap.
+let settingsWindowCreating: Promise<void> | null = null;
 let tray: Tray | null = null;
 let keyListener: NativeKeyListener | null = null;
 // Latching flag: set only once the native key listener has started
@@ -594,7 +600,31 @@ function createAppWindow(): void {
   mainWindow.loadURL(getPillURL());
 }
 
-async function createSettingsWindow(initialPath?: string): Promise<void> {
+function createSettingsWindow(initialPath?: string): Promise<void> {
+  // Serialize concurrent opens: the first call owns creation, the rest await it.
+  if (settingsWindowCreating) return settingsWindowCreating;
+  if (settingsWindow) return Promise.resolve();
+  const creation = buildSettingsWindow(initialPath).finally(() => {
+    settingsWindowCreating = null;
+  });
+  settingsWindowCreating = creation;
+  return creation;
+}
+
+async function buildSettingsWindow(initialPath?: string): Promise<void> {
+  // Resolve the initial route BEFORE creating the window. The onboarding probe
+  // is an async server call; doing it first means there's no await gap between
+  // assigning `settingsWindow` and using it, so a close (or a concurrent open)
+  // during the probe can't null-deref or show a half-loaded window.
+  let onboardingDone = readSettings().onboardingComplete === true;
+  // Also consider onboarding done if the server reports any configured models
+  // (existing users who never went through onboarding). Read through the API
+  // rather than opening the SQLite file, so a configured remote server counts.
+  if (!onboardingDone && (await getConfiguredModelCount()) > 0) {
+    onboardingDone = true;
+  }
+  const startPath = !onboardingDone ? "/onboarding" : (initialPath ?? "/today");
+
   settingsWindow = new BrowserWindow({
     width: 1152,
     height: 648,
@@ -650,16 +680,6 @@ async function createSettingsWindow(initialPath?: string): Promise<void> {
     return { action: "deny" };
   });
 
-  // Check if onboarding is complete to decide initial route
-  let onboardingDone = readSettings().onboardingComplete === true;
-
-  // Also consider onboarding done if the server reports any configured models
-  // (existing users who never went through onboarding). Read through the API
-  // rather than opening the SQLite file, so a configured remote server counts.
-  if (!onboardingDone) {
-    if ((await getConfiguredModelCount()) > 0) onboardingDone = true;
-  }
-
   // Wire the plugin UI host (view manager + host-action/view IPC) to this
   // window. Discovery, install, and asset serving all live server-side now;
   // the renderer talks to the server directly for those.
@@ -670,7 +690,6 @@ async function createSettingsWindow(initialPath?: string): Promise<void> {
     onAction: handlePluginAction,
   });
 
-  const startPath = !onboardingDone ? "/onboarding" : (initialPath ?? "/today");
   settingsWindow.loadURL(getDashboardURL(startPath));
 }
 
@@ -1203,7 +1222,11 @@ function resetOnboarding(): void {
   showSettingsWindow("/onboarding");
 }
 
+// Per-request timeout for main-process API calls to the server.
 const SERVER_SETTING_TIMEOUT_MS = 5000;
+// How long boot waits for the server to answer before registering the hotkey
+// with whatever it can read (falling back to the default accelerator).
+const SERVER_READY_TIMEOUT_MS = 5000;
 
 async function putServerSetting(key: string, value: string): Promise<boolean> {
   try {
@@ -1257,21 +1280,37 @@ async function getConfiguredModelCount(): Promise<number> {
 }
 
 /**
+ * Probe `/api/health` at `baseUrl` and confirm it's actually a Freestyle server
+ * (not some other service that happens to hold the port). Returns false on any
+ * network error or non-matching identity.
+ */
+async function probeServerHealth(
+  baseUrl: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  try {
+    const res = await net.fetch(`${baseUrl}/api/health`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { status?: string; name?: string };
+    return data.status === "ok" && data.name === "freestyle";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Resolve once the current server target answers `/api/health`, or after
  * `timeoutMs`. Used at boot before the first settings read, since the local
  * server starts asynchronously (fire-and-forget) and may not be listening yet.
  */
-async function waitForServerReady(timeoutMs = 5000): Promise<boolean> {
+async function waitForServerReady(
+  timeoutMs = SERVER_READY_TIMEOUT_MS,
+): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    try {
-      const res = await net.fetch(`${getServerBaseUrl()}/api/health`, {
-        signal: AbortSignal.timeout(1000),
-      });
-      if (res.ok) return true;
-    } catch {
-      // not up yet — retry until the deadline
-    }
+    if (await probeServerHealth(getServerBaseUrl(), 1000)) return true;
     await wait(150);
   }
   return false;
@@ -2017,20 +2056,14 @@ app.whenReady().then(async () => {
       });
   };
 
-  // Check if a Freestyle server is already running on the default port.
-  let existingServer = false;
-  try {
-    // Bound this probe: a normal cold start fast-fails with ECONNREFUSED, but
-    // without a timeout a half-open socket on the port could hang window/tray
-    // creation indefinitely.
-    const res = await net.fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`, {
-      signal: AbortSignal.timeout(1500),
-    });
-    if (res.ok) {
-      const data = (await res.json()) as { status?: string; name?: string };
-      existingServer = data?.status === "ok" && data?.name === "freestyle";
-    }
-  } catch {}
+  // Check if a Freestyle server is already running on the default port. The
+  // 1.5s bound matters: a normal cold start fast-fails with ECONNREFUSED, but
+  // without a timeout a half-open socket on the port could hang window/tray
+  // creation indefinitely.
+  const existingServer = await probeServerHealth(
+    `http://127.0.0.1:${DEFAULT_PORT}`,
+    1500,
+  );
 
   if (existingServer) {
     serverPort = DEFAULT_PORT;
@@ -2327,13 +2360,19 @@ app.whenReady().then(async () => {
     );
   });
 
-  // Register hold-to-record hotkey via native platform binary. Hotkey config is
-  // read through the server (local or remote), which starts asynchronously, so
-  // wait briefly for it to answer before the first read — then register even if
-  // it never came up (registerHotkey falls back to the default accelerator).
+  // Register the hold-to-record hotkey immediately with the default accelerator
+  // so a press right after launch is never dropped. Hotkey config is read
+  // through the server (local or remote), which starts asynchronously — once it
+  // answers, re-register with the configured accelerator + activation mode (only
+  // if they actually differ, to avoid a needless native-listener rebuild).
+  scheduleHotkeyRegistration();
   void waitForServerReady().then(async () => {
     hotkeyActivationMode = await loadHotkeyModeFromServer();
-    scheduleHotkeyRegistration();
+    const configured = await loadHotkeyFromServer();
+    const accel = configured
+      ? normalizeAccelerator(configured)
+      : DEFAULT_HOTKEY;
+    if (accel !== currentHotkeyAccel) scheduleHotkeyRegistration(configured);
   });
 
   // Start microphone activity monitoring

@@ -9,7 +9,8 @@ Import everything from `freestyle-voice`.
 import {
   transform, OutputMode, FreestyleEventType, PipelineStage,
   type Plugin, type PluginContext, type PluginOptions,
-  type FreestyleEvent, type AppContext, type Register,
+  type FreestyleEvent, type AppContext, type HookApi,
+  type PluginLlm, type CleanupToneDestination,
 } from "freestyle-voice";
 ```
 
@@ -30,20 +31,28 @@ interface Plugin {
 
 ## Hooks
 
-Each hook is optional. Mutating hooks get a read-only `input` and an `output` you change in place. They chain across plugins in order.
+Each hook is optional. Mutating hooks receive three arguments: a read-only `input`, an `output` you change in place, and a [`HookApi`](#hookapi) (`api`) for cancellation/suppression control and — on server hooks — the host's LLM. They chain across plugins in resolved order (`enforce: "pre"` → none → `"post"`, then load order).
 
 | Hook | Runs | Do |
 | --- | --- | --- |
 | `setup(ctx)` | on load | read settings, init state |
 | `dispose()` | on unload | clean up |
-| `afterTranscribe(input, output)` | after speech-to-text [server] | rewrite `output.text`, or set `output.consumed = true` |
-| `beforeCleanup(input, output)` | building the AI prompt [server] | push to `output.system`, set `output.register` |
-| `afterCleanup(input, output)` | after cleanup + dictionary [server] | rewrite `output.text` |
-| `beforeOutput(input, output)` | before delivery [app] | rewrite `output.text`, set `output.mode` |
+| `beforeTranscribe(input, output, api)` | before speech-to-text [server] | preprocess `output.audio`, override `output.providerId`/`modelId`/`language`/`bias`, or `api.control.consume()` to skip STT |
+| `afterTranscribe(input, output, api)` | after speech-to-text [server] | rewrite `output.text`, or `api.control.consume()` to skip cleanup + delivery |
+| `beforeCleanup(input, output, api)` | building the AI prompt [server] | push to `output.system`, set `output.destination`, `output.prompt`, or `output.skip` |
+| `afterCleanup(input, output, api)` | after cleanup + dictionary [server] | rewrite `output.text` |
+| `beforeOutput(input, output, api)` | before delivery [app] | rewrite `output.text`, set `output.mode` (no `api.llm` here) |
 | `event({ event })` | throughout [both] | observe only, no mutation |
 | `config(existing)` | boot [server] | return partial config to deep-merge |
 
-Hook inputs: `afterTranscribe` gets `{ providerId, modelId, appContext? }`, `beforeCleanup` gets `{ text, appContext?, inferredRegister }`, `afterCleanup` and `beforeOutput` get `{ appContext? }`. `Register` is `"formal" | "casual" | "neutral"`.
+Hook inputs:
+
+- `beforeTranscribe` → `{ providerId, modelId, audioDurationMs, appContext? }`
+- `afterTranscribe` → `{ providerId, modelId, appContext? }`
+- `beforeCleanup` → `{ text, appContext?, destination }`
+- `afterCleanup` and `beforeOutput` → `{ appContext? }`
+
+`beforeCleanup`'s `destination` is a `CleanupToneDestination` — `"overall" | "personal" | "work" | "email"` — the tone bucket the host inferred; set `output.destination` to override it.
 
 ```ts
 beforeOutput(input, output) {
@@ -56,16 +65,45 @@ beforeOutput(input, output) {
 
 ### Consuming an utterance
 
-`afterTranscribe` can do more than rewrite text — set `output.consumed = true` to signal that the plugin handled the utterance entirely (for example, it triggered a voice command). The host then **skips LLM cleanup and delivers nothing** to the focused app: the dictation is treated as an action, not text to type.
+A plugin can handle an utterance entirely instead of dictating it — for example, a voice command that ran an action. Call `api.control.consume()` from a server hook (typically `afterTranscribe`): the host **skips every remaining stage and delivers nothing** to the focused app.
 
 ```ts
-afterTranscribe(input, output) {
+afterTranscribe(input, output, api) {
   if (isCommand(output.text)) {
     runCommand(output.text);
-    output.consumed = true; // no cleanup, no output
+    api.control.consume("ran a voice command"); // no cleanup, no output
   }
 }
 ```
+
+<Note>`api.control.consume()` replaces the old `output.consumed` flag. It is unambiguous (a genuinely empty transcript is different from a consumed one) and preserves the raw text for logging.</Note>
+
+## HookApi
+
+The third argument to every mutating hook. Built once per dictation and threaded through every stage, so `control` and `llm` are consistent across the whole run.
+
+```ts
+interface HookApi {
+  control: PipelineControl;  // cancellation + suppression for this dictation
+  signal: AbortSignal;       // alias for control.signal
+  llm?: PluginLlm;           // [server hooks only] the host's LLM, when configured
+}
+
+class PipelineControl {
+  readonly state: "running" | "consumed" | "aborted";
+  readonly reason: string | undefined;
+  readonly signal: AbortSignal;
+  stopPropagation(): void;   // stop later plugins for THIS hook only
+  consume(reason?: string): void; // handled: skip the rest of the pipeline, deliver nothing
+  abort(reason?: string): void;   // hard-stop: deliver nothing, emit a pipelineError event
+}
+```
+
+- **`stopPropagation()`** — stop running the remaining plugins for the *current hook only*; later hooks still run.
+- **`consume(reason?)`** — the utterance is handled (e.g. a voice command). Every remaining stage is skipped and no output is delivered.
+- **`abort(reason?)`** — unrecoverable failure: nothing is delivered and the host emits a `pipelineError` event. Aborting also fires `control.signal`, so pass `api.signal` to cancellable work (e.g. `api.llm.generateText({ signal: api.signal })`).
+
+The host checks `control.state` between stages. `llm` is present only on server hooks (`beforeTranscribe`, `afterTranscribe`, `beforeCleanup`, `afterCleanup`) and only when an LLM is configured — never on `beforeOutput`. Always guard with `if (api.llm)`.
 
 ## PluginContext
 
@@ -79,7 +117,6 @@ interface PluginContext {
   logger: PluginLogger;        // debug / info / warn / error
   settings: SettingsReader;    // read-only settings access
   storage: PluginStorage;      // read/write per-plugin key-value storage
-  llm?: PluginLlm;             // [server] the host's configured LLM, when available
 }
 
 interface SettingsReader {
@@ -88,38 +125,53 @@ interface SettingsReader {
 }
 ```
 
+<Note>The LLM capability moved off `PluginContext`. It is now on the per-hook [`HookApi`](#hookapi) as `api.llm`, so it can reflect the model configured for each dictation.</Note>
+
 <Note>Settings are read-only. Pass runtime config through factory `options` and read it back with `getOwn`. For state your plugin needs to write, use `storage`.</Note>
 
 ## PluginLlm
 
-Access to the host's configured language model, so server-side plugins can run their own LLM calls (classification, tool-calling agents, and so on) **reusing the user's default cleanup model and stored API keys** — no separate provider or key configuration required.
+Access to the host's configured language model, so server-side plugins can run their own LLM calls (classification, tool-calling agents, and so on) **reusing the user's configured cleanup model and stored keys** — no separate provider or key configuration required. Reached through [`api.llm`](#hookapi) on any server hook.
 
 ```ts
 interface PluginLlm {
-  getModel(): unknown;         // an AI SDK LanguageModel — cast at the call site
-  readonly providerId: string; // e.g. "openai", "groq"
+  readonly providerId: string; // e.g. "openai", "groq", "freestyle-cloud"
   readonly modelId: string;
+  getModel(): unknown;         // an AI SDK LanguageModel — cast at the call site
+  generateText(opts: {         // convenience wrapper over the host's generateText
+    prompt: string;
+    system?: string;
+    signal?: AbortSignal;
+  }): Promise<{ text: string; usage?: { inputTokens: number; outputTokens: number } }>;
 }
 ```
 
-`llm` is present **only in the server process** (`mode: "server"`) and **only when the user has a default LLM model configured**, so always guard with `if (ctx.llm)`. Capture it in `setup` and use it from your hooks:
+`api.llm` is present **only on server hooks** and **only when a model is configured**, so always guard with `if (api.llm)`. Read it fresh in each hook — don't capture it in `setup` (it's built per-dictation):
 
 ```ts
 import { generateText, type LanguageModel } from "ai";
 
-let model: LanguageModel | null = null;
+async afterTranscribe(input, output, api) {
+  if (!api.llm) return; // no model configured — leave the transcript as-is
+  const model = api.llm.getModel() as LanguageModel;
+  const { text } = await generateText({ model, prompt: output.text, abortSignal: api.signal });
+  output.text = text;
+}
+```
 
-setup(ctx) {
-  if (ctx.llm) model = ctx.llm.getModel() as LanguageModel;
-},
-async afterTranscribe(input, output) {
-  if (!model) return;
-  const { text } = await generateText({ model, prompt: output.text });
+For a simple one-shot call you can skip the AI SDK entirely and use the wrapper:
+
+```ts
+async afterTranscribe(input, output, api) {
+  if (!api.llm) return;
+  const { text } = await api.llm.generateText({ prompt: output.text, signal: api.signal });
   output.text = text;
 }
 ```
 
 `getModel()` is typed `unknown` in the SDK to avoid a hard dependency on the `ai` package — cast the result to `LanguageModel` (from `ai`) at the call site. Bundle `ai` in your plugin's `devDependencies`; installed plugins don't get a transitive `npm install`.
+
+<Note>**Freestyle Cloud.** Signed-in Freestyle Cloud users get `api.llm` too — it routes to Freestyle Cloud's managed LLM endpoint, so plugins work without the user configuring their own provider or key. Plugins never see credentials either way: the host resolves the provider, model, and key and hands back only the capability.</Note>
 
 ## PluginStorage
 
@@ -205,24 +257,13 @@ function transform(
 
 ## The UI bridge
 
-Plugin pages are sandboxed: no filesystem, no direct network. Freestyle injects `window.freestyle` as the one privileged surface. Use it to call the server and trigger host actions. See [a worked example](/first-plugin#the-api-bridge) in the first-plugin guide.
+Freestyle injects `window.freestyle` into plugin pages as the one privileged surface: a helper to call the local server API and to trigger a small set of host actions. See [a worked example](/first-plugin#the-api-bridge) in the first-plugin guide.
 
 ```ts
 interface FreestyleBridge {
-  readonly serverUrl: string;  // e.g. http://127.0.0.1:4649
-  readonly token?: string;     // bearer token, when configured
-  api(path: string, init?: RequestInit): Promise<FreestyleResponse>;
+  readonly serverUrl: string;  // origin the page is served from (location.origin)
+  api(path: string, init?: RequestInit): Promise<Response>;
   invoke<C extends keyof HostActions>(channel: C, payload: HostActions[C]): Promise<void>;
-}
-
-interface FreestyleResponse {
-  readonly ok: boolean;
-  readonly status: number;
-  readonly statusText: string;
-  readonly headers: Record<string, string>;
-  json<T = unknown>(): Promise<T>;
-  text(): Promise<string>;
-  arrayBuffer(): Promise<ArrayBuffer>;
 }
 
 interface HostActions {
@@ -232,12 +273,14 @@ interface HostActions {
 }
 ```
 
-**`api(path, init?)`** appends `path` to `serverUrl`, attaches the token, and proxies the request through the host, so it resolves a `FreestyleResponse` rather than a native `Response`. Use it instead of `fetch`.
+**`api(path, init?)`** resolves `path` against `serverUrl` and returns a **native `Response`**. Plugin UI is now served same-origin with the server, so this is a thin wrapper over `fetch` (no proxying, no manual token) — call `res.json()` / `res.text()` as usual.
 
 ```ts
 const res = await window.freestyle.api("/api/plugins/my-plugin/data");
 if (res.ok) console.log(await res.json());
 ```
+
+<Note>Plugin pages may only reach their own `/api/plugins/<slug>/…` namespace plus `/api/health` — the host confines them by the request `Referer`. They cannot read settings, keys, or history.</Note>
 
 **`invoke(channel, payload)`** asks the host to do something:
 

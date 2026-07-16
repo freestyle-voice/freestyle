@@ -25,12 +25,15 @@ User presses hotkey
 [APP]    Capture audio  ......... event: recordingStarted
         |
         v
-[SERVER] Speech-to-text -> raw transcript
+[SERVER] Speech-to-text
+        |                  |-- beforeTranscribe  (preprocess audio, pick model, or consume)
+        |                  v
+        |                 raw transcript
         |                  |-- afterTranscribe   (rewrite, or consume as an action)
         |                  +-- event: transcribed
         v
 [SERVER] AI cleanup (optional)
-        |                  |-- beforeCleanup     (shape the prompt + register)
+        |                  |-- beforeCleanup     (shape the prompt + destination tone)
         |                  |-- dictionary + LLM rewrite
         |                  |-- afterCleanup      (rewrite the final text)
         |                  +-- event: cleaned
@@ -41,6 +44,8 @@ User presses hotkey
         v
 Text appears in your focused app
 ```
+
+Every mutating hook also receives an `api` argument: `api.control` cancels or consumes the run (`consume()` skips the rest of the pipeline and delivers nothing — how a voice command "eats" an utterance), and `api.llm` exposes the host's configured LLM to server hooks. See the [SDK reference](/sdk-reference#hookapi).
 
 Building a plugin allows you to modify what happens at each step of Freestyle's dictation pipeline. The SDK offers hooks like `afterTranscribe` and `beforeOutput` that lets you control the inputs and the outputs at each step of the pipeline. In those hooks you can write functions that can do anything as long as it runs properly in a node environment.
 
@@ -64,6 +69,10 @@ Most people manage these in **Settings → Plugins**.
 
 - Each plugin's settings live under `plugin:<name>:<key>`, isolated from other plugins.
 - A throwing hook is caught and reported. It won't break the pipeline.
-- UI pages run in a sandboxed `freestyle-plugin://` origin with no direct filesystem or network access. They reach the server only through `window.freestyle`.
+- UI pages are served by the local server at `/api/plugins/<slug>/ui/*` and confined by the host to their own `/api/plugins/<slug>/…` namespace (plus `/api/health`) — no filesystem access, and no reach into settings, keys, or history. They call the server through `window.freestyle`.
+
+## Plugin pages in the app
+
+A plugin that ships a UI page (via `contributes.pages` in its manifest) appears automatically as an item in the app's sidebar, under the built-in sections. Enabling or disabling the plugin adds or removes its nav entry.
 
 Next: [build your first plugin](/first-plugin).

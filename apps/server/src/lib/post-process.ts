@@ -280,10 +280,9 @@ export async function postProcess(
       //
       // The `beforeCleanup` hook still runs so its locally-decidable outputs
       // are honored on the cloud path too: `skip` and `consume()`/`abort()`
-      // short-circuit the cloud call. The `prompt`/`system`/`destination`
-      // overrides can't be applied here (the prompt is assembled remotely) —
-      // forwarding those to the cloud is a follow-up; the raw-STT fallback in
-      // `/api/transcribe` covers plugins that need full local prompt control.
+      // short-circuit the cloud call. `system` fragments are forwarded to the
+      // cloud so plugin-contributed prompt instructions (e.g. emoji insertion)
+      // are applied during cloud-side prompt assembly.
       const promptHook = await plugins().run(
         "beforeCleanup",
         {
@@ -316,6 +315,9 @@ export async function postProcess(
             emailTone,
             overallTone,
             appAssignments: getCleanupAppAssignments(),
+            ...(promptHook.system.length > 0
+              ? { systemFragments: promptHook.system }
+              : {}),
           });
           inputTokens = result.usage?.inputTokens ?? 0;
           outputTokens = result.usage?.outputTokens ?? 0;

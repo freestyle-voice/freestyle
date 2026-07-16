@@ -75,6 +75,12 @@ export interface StreamCleanupPreferences {
   overallTone?: CleanupOverallTone;
   /** Per-app/site destination overrides that steer server-side tone routing. */
   appAssignments?: CleanupAppAssignment[];
+  /**
+   * Plugin-contributed system-prompt fragments (from `beforeCleanup` hook).
+   * The cloud appends these to the assembled system prompt so plugin
+   * instructions (e.g. emoji insertion) are honored in cloud-side cleanup.
+   */
+  systemFragments?: string[];
 }
 
 export interface StreamingSessionOptions {

@@ -208,16 +208,62 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     defaults.llm?.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
     readSetting("llm_cleanup") === "true";
 
-  // Freestyle Cloud's combined STT+cleanup mode does its work remotely, so
-  // `afterTranscribe`/`beforeCleanup` never fire for it. When a plugin
-  // implements one of those hooks, fall back to cloud's raw STT mode + the
-  // normal local post-process path (one extra round trip) so hook firing
-  // stays provider-independent. Otherwise keep the faster combined mode.
-  const pluginNeedsTranscribeHooks =
-    plugins().has("afterTranscribe") || plugins().has("beforeCleanup");
+  // Freestyle Cloud's combined STT+cleanup mode does its work remotely.
+  // `afterTranscribe` needs the raw transcript, so when a plugin implements
+  // it we fall back to cloud's raw STT mode + the local post-process path
+  // (one extra round trip). `beforeCleanup` does NOT need the transcript
+  // (it contributes system-prompt fragments), so we run it locally and
+  // forward its output to the cloud in the same combined request.
+  const pluginNeedsRawTranscript = plugins().has("afterTranscribe");
 
   if (voiceProvider === FREESTYLE_CLOUD_PROVIDER_ID && freestyleCleanupActive) {
-    const useCombined = !pluginNeedsTranscribeHooks;
+    let useCombined = !pluginNeedsRawTranscript;
+
+    // Run `beforeCleanup` locally to collect plugin system-prompt fragments,
+    // then forward them to the cloud. On the combined path `input.text` is
+    // empty (the transcript hasn't been produced yet); plugins that only
+    // contribute static fragments (e.g. emoji) work fine.
+    //
+    // The hook can also decide things the cloud's combined mode can't honor:
+    // `skip`, `consume()`/`abort()` (terminal control), or a full `prompt`
+    // override. In those cases fall back to cloud raw STT + the local
+    // post-process path, which applies all of them exactly like the
+    // local/BYOK flow — matching the pre-forwarding behavior.
+    let systemFragments: string[] = [];
+    if (useCombined && plugins().has("beforeCleanup")) {
+      const parsedCtxForCleanup = parseAppContext(
+        resolveAppContextForCleanup(appContext),
+      );
+      const { destination: resolvedDest } = getRewritePromptContext(
+        resolveAppContextForCleanup(appContext),
+        getCleanupAppAssignments(),
+      );
+      const promptHook = await plugins().run(
+        "beforeCleanup",
+        {
+          text: "",
+          appContext: parsedCtxForCleanup,
+          destination: resolvedDest,
+        },
+        { system: [] as string[] },
+        api,
+      );
+      if (
+        promptHook.skip ||
+        promptHook.prompt !== undefined ||
+        api.control.state !== "running"
+      ) {
+        // The plugin skipped cleanup, went terminal (consume/abort), or
+        // replaced the prompt outright — none of which the cloud's combined
+        // mode can apply. Drop to raw STT so the local post-process path
+        // honors the hook's decision (it re-runs `beforeCleanup` with the
+        // real transcript). Don't forward fragments on this path.
+        useCombined = false;
+      } else {
+        systemFragments = promptHook.system;
+      }
+    }
+
     try {
       // A `beforeTranscribe` plugin can override the ASR vocabulary bias; honor
       // it on the cloud path too (else fall back to the user's DB vocabulary),
@@ -234,15 +280,26 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         vocabulary,
         ...(useCombined ? getEffectiveCleanupTones() : {}),
         appAssignments: getCleanupAppAssignments(),
+        ...(useCombined && systemFragments.length > 0
+          ? { systemFragments }
+          : {}),
       });
       rawText = sanitizeTranscriptText(result.raw ?? "");
 
       if (useCombined) {
+        // An empty transcript (silence, or a clipped first clip on a cold
+        // provider switch) must be suppressed like every other path —
+        // otherwise we'd persist a blank history row and paste nothing.
+        // `suppressedResponse()` returns blank output without saving history.
+        if (!rawText.trim() || api.control.state !== "running") {
+          return suppressedResponse();
+        }
         // The cloud already ran STT + LLM cleanup; still apply the
         // local-only dictionary replacements and `afterCleanup` plugin hook
-        // on the way out.
+        // on the way out. Fall back to the raw transcript when the cloud
+        // returns an empty cleaned string (`||`, not `??`, so "" is caught).
         const cleaned = await applyFinalRewrites(
-          sanitizeTranscriptText(result.cleaned ?? rawText),
+          sanitizeTranscriptText(result.cleaned || rawText),
           appContext,
           rawText,
           api,

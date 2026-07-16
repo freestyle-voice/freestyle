@@ -368,6 +368,8 @@ function appendCleanupFormFields(
   prefs: {
     intensity?: string;
     customPrompt?: string | null;
+    /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
+    systemFragments?: string[];
   } & CloudCleanupTones,
 ): void {
   if (prefs.intensity) form.append("intensity", prefs.intensity);
@@ -378,6 +380,9 @@ function appendCleanupFormFields(
   if (prefs.overallTone) form.append("overallTone", prefs.overallTone);
   if (prefs.appAssignments && prefs.appAssignments.length > 0) {
     form.append("appAssignments", JSON.stringify(prefs.appAssignments));
+  }
+  if (prefs.systemFragments && prefs.systemFragments.length > 0) {
+    form.append("systemFragments", JSON.stringify(prefs.systemFragments));
   }
 }
 
@@ -392,6 +397,8 @@ export async function transcribeWithFreestyleCloud(
     customPrompt?: string | null;
     /** Custom-vocabulary bias to steer recognition (independent of cleanup). */
     vocabulary?: CloudVocabularyBias;
+    /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
+    systemFragments?: string[];
   } & CloudCleanupTones,
 ): Promise<CloudTranscribeResult> {
   const audio = opts.audio as Uint8Array<ArrayBuffer>;
@@ -428,6 +435,8 @@ export async function postProcessWithFreestyleCloud(
     language?: string;
     intensity?: string;
     customPrompt?: string | null;
+    /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
+    systemFragments?: string[];
   } & CloudCleanupTones,
 ): Promise<{
   cleaned: string;
@@ -451,6 +460,9 @@ export async function postProcessWithFreestyleCloud(
       emailTone: opts.emailTone,
       overallTone: opts.overallTone,
       appAssignments: opts.appAssignments,
+      ...(opts.systemFragments && opts.systemFragments.length > 0
+        ? { systemFragments: opts.systemFragments }
+        : {}),
     }),
   });
 }

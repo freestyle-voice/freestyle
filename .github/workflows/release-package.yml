@@ -27,6 +27,7 @@ on:
           - create-freestyle-plugin
           - plugin-audio-transcription
           - profanity-filter
+          - plugin-emoji
       version:
         description: 'Explicit version to release (e.g. 1.2.0)'
         required: true
@@ -80,6 +81,7 @@ jobs:
             create-freestyle-plugin)    echo "path=packages/create-freestyle-plugin" >> "$GITHUB_OUTPUT" ;;
             plugin-audio-transcription) echo "path=plugins/audio-transcription" >> "$GITHUB_OUTPUT" ;;
             profanity-filter)           echo "path=plugins/profanity-filter" >> "$GITHUB_OUTPUT" ;;
+            plugin-emoji)               echo "path=plugins/emoji" >> "$GITHUB_OUTPUT" ;;
             *) echo "::error::Unknown package: $PKG"; exit 1 ;;
           esac
 

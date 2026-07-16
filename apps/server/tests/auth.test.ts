@@ -46,6 +46,15 @@ describe("Bearer auth", () => {
     expect(res.status).toBe(200);
   });
 
+  it("gates plugin UI asset requests (why the WebContentsView injects the token)", async () => {
+    // A plugin page runs in a WebContentsView that can't set the Authorization
+    // header itself, so the main process injects it per-request. This asserts
+    // the route is actually auth-gated, so that injection is load-bearing.
+    setAuthToken(TOKEN);
+    const res = await app.request("/api/plugins/example/ui/index.html");
+    expect(res.status).toBe(401);
+  });
+
   it("rejects a websocket upgrade with the wrong ?token=", async () => {
     setAuthToken(TOKEN);
     const res = await app.request("/stream?token=wrong", {

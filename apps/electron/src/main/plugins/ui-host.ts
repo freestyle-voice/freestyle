@@ -13,8 +13,10 @@ const log = createAppLogger("plugins-ui");
 export interface PluginUiHostDeps {
   /** The dashboard window the plugin views overlay. */
   window: BrowserWindow;
-  /** Resolve the loopback server base URL that serves plugin UI + API. */
+  /** Resolve the server base URL that serves plugin UI + API (local or remote). */
   getServerBaseUrl: () => string;
+  /** Bearer token for a configured server ("" = local server / no auth). */
+  getServerToken: () => string;
   /** Perform a host action requested by a plugin page. */
   onAction: <C extends keyof HostActions>(
     channel: C,
@@ -41,6 +43,7 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
   viewManager = new PluginViewManager(
     pluginBridgePreloadPath(),
     deps.getServerBaseUrl,
+    deps.getServerToken,
   );
   viewManager.attachWindow(deps.window);
 

@@ -56,7 +56,6 @@ import {
   startServer as startFreestyleServer,
   stopMlxServer,
   stopWhisperServer,
-  writeSetting,
 } from "@freestyle-voice/server";
 import { createAppLogger, enableFileLogging } from "@freestyle-voice/utils";
 import { serverUrlSchema } from "@freestyle-voice/validations";
@@ -279,8 +278,6 @@ function broadcastServerChanged(): void {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let httpServer: any = null;
-/** True when this process reuses another Freestyle server on the default port. */
-let reusingExternalServer = false;
 let serverPort = DEFAULT_PORT;
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
@@ -597,7 +594,7 @@ function createAppWindow(): void {
   mainWindow.loadURL(getPillURL());
 }
 
-function createSettingsWindow(initialPath?: string): void {
+async function createSettingsWindow(initialPath?: string): Promise<void> {
   settingsWindow = new BrowserWindow({
     width: 1152,
     height: 648,
@@ -656,23 +653,11 @@ function createSettingsWindow(initialPath?: string): void {
   // Check if onboarding is complete to decide initial route
   let onboardingDone = readSettings().onboardingComplete === true;
 
-  // Also consider onboarding done if the DB has any configured models
-  // (existing users who never went through onboarding)
+  // Also consider onboarding done if the server reports any configured models
+  // (existing users who never went through onboarding). Read through the API
+  // rather than opening the SQLite file, so a configured remote server counts.
   if (!onboardingDone) {
-    try {
-      const dbPath = process.env.FREESTYLE_DB_PATH;
-      if (dbPath) {
-        const { DatabaseSync } = require("node:sqlite");
-        const db = new DatabaseSync(dbPath);
-        const row = db
-          .prepare("SELECT COUNT(*) as count FROM model_configs")
-          .get() as { count: number } | undefined;
-        db.close();
-        if (row && row.count > 0) onboardingDone = true;
-      }
-    } catch {
-      // DB may not exist yet -- that's fine, show onboarding
-    }
+    if ((await getConfiguredModelCount()) > 0) onboardingDone = true;
   }
 
   // Wire the plugin UI host (view manager + host-action/view IPC) to this
@@ -681,6 +666,7 @@ function createSettingsWindow(initialPath?: string): void {
   initPluginUiHost({
     window: settingsWindow,
     getServerBaseUrl,
+    getServerToken,
     onAction: handlePluginAction,
   });
 
@@ -1232,6 +1218,65 @@ async function putServerSetting(key: string, value: string): Promise<boolean> {
   }
 }
 
+/**
+ * Read a single server-owned setting over HTTP. Returns `undefined` when the
+ * key is unset (404) or the server is unreachable.
+ *
+ * All server-owned state (settings, models, history, plugins) lives behind the
+ * server — local or a configured remote — so the main process reads it through
+ * the API rather than opening the SQLite file directly. This keeps a single
+ * source of truth and makes a configured remote server behave identically.
+ */
+async function getServerSetting(key: string): Promise<string | undefined> {
+  try {
+    const res = await serverClient().api.settings[":key"].$get(
+      { param: { key } },
+      { init: { signal: AbortSignal.timeout(SERVER_SETTING_TIMEOUT_MS) } },
+    );
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as { value?: string };
+    return data.value;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Number of configured models behind the current server (0 when unreachable). */
+async function getConfiguredModelCount(): Promise<number> {
+  try {
+    const res = await serverClient().api.models.configured.$get(
+      {},
+      { init: { signal: AbortSignal.timeout(SERVER_SETTING_TIMEOUT_MS) } },
+    );
+    if (!res.ok) return 0;
+    const data = (await res.json()) as unknown[];
+    return Array.isArray(data) ? data.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Resolve once the current server target answers `/api/health`, or after
+ * `timeoutMs`. Used at boot before the first settings read, since the local
+ * server starts asynchronously (fire-and-forget) and may not be listening yet.
+ */
+async function waitForServerReady(timeoutMs = 5000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await net.fetch(`${getServerBaseUrl()}/api/health`, {
+        signal: AbortSignal.timeout(1000),
+      });
+      if (res.ok) return true;
+    } catch {
+      // not up yet — retry until the deadline
+    }
+    await wait(150);
+  }
+  return false;
+}
+
 // Dev-only: reset every sector tone to off and cleanup intensity to medium.
 async function resetToneConfiguration(): Promise<void> {
   const resets: ReadonlyArray<readonly [string, string]> = [
@@ -1242,28 +1287,18 @@ async function resetToneConfiguration(): Promise<void> {
     [SETTINGS_KEYS.cleanupIntensity, "medium"],
   ];
 
-  if (reusingExternalServer) {
-    const results = await Promise.all(
-      resets.map(([key, value]) => putServerSetting(key, value)),
-    );
-    if (results.some((ok) => !ok)) {
-      log.warn(
-        "Reset tone configuration failed: one or more settings rejected",
-      );
-    }
-  } else {
-    for (const [key, value] of resets) {
-      try {
-        writeSetting(key, value);
-      } catch (err) {
-        log.warn(`Reset tone configuration failed for "${key}":`, err);
-      }
-    }
+  // Always write through the server so the values land in the DB the app reads
+  // from — local or a configured remote.
+  const results = await Promise.all(
+    resets.map(([key, value]) => putServerSetting(key, value)),
+  );
+  if (results.some((ok) => !ok)) {
+    log.warn("Reset tone configuration failed: one or more settings rejected");
   }
 
   const tonePath = "/settings/tone";
   if (!settingsWindow) {
-    createSettingsWindow(tonePath);
+    void createSettingsWindow(tonePath);
     return;
   }
 
@@ -1354,7 +1389,7 @@ async function factoryReset(): Promise<void> {
 
 function showSettingsWindow(path?: string): void {
   if (!settingsWindow) {
-    createSettingsWindow(path);
+    void createSettingsWindow(path);
     return;
   }
   if (path) {
@@ -1998,7 +2033,6 @@ app.whenReady().then(async () => {
   } catch {}
 
   if (existingServer) {
-    reusingExternalServer = true;
     serverPort = DEFAULT_PORT;
     log.info(
       `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
@@ -2293,9 +2327,14 @@ app.whenReady().then(async () => {
     );
   });
 
-  // Register hold-to-record hotkey via native platform binary
-  hotkeyActivationMode = loadHotkeyModeFromDB();
-  scheduleHotkeyRegistration();
+  // Register hold-to-record hotkey via native platform binary. Hotkey config is
+  // read through the server (local or remote), which starts asynchronously, so
+  // wait briefly for it to answer before the first read — then register even if
+  // it never came up (registerHotkey falls back to the default accelerator).
+  void waitForServerReady().then(async () => {
+    hotkeyActivationMode = await loadHotkeyModeFromServer();
+    scheduleHotkeyRegistration();
+  });
 
   // Start microphone activity monitoring
   micListener = new MicListener({
@@ -2313,8 +2352,10 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.on("hotkey:reload", () => {
-    hotkeyActivationMode = loadHotkeyModeFromDB();
-    scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
+    void loadHotkeyModeFromServer().then((mode) => {
+      hotkeyActivationMode = mode;
+      scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
+    });
   });
 
   ipcMain.on("hotkey:set-mode", (_event, mode: string) => {
@@ -2375,42 +2416,15 @@ function isValidAccelerator(accel: string): boolean {
   );
 }
 
-function loadHotkeyFromDB(): string | undefined {
-  try {
-    const dbPath = process.env.FREESTYLE_DB_PATH;
-    if (dbPath) {
-      const { DatabaseSync } = require("node:sqlite");
-      const db = new DatabaseSync(dbPath);
-      const row = db
-        .prepare("SELECT value FROM settings WHERE key = ?")
-        .get(SETTINGS_KEYS.hotkey) as { value: string } | undefined;
-      db.close();
-      if (row?.value && isValidAccelerator(row.value)) {
-        return row.value;
-      }
-    }
-  } catch {
-    // Ignore errors
-  }
-  return undefined;
+async function loadHotkeyFromServer(): Promise<string | undefined> {
+  const value = await getServerSetting(SETTINGS_KEYS.hotkey);
+  return value && isValidAccelerator(value) ? value : undefined;
 }
 
-function loadHotkeyModeFromDB(): "hold" | "toggle" {
-  try {
-    const dbPath = process.env.FREESTYLE_DB_PATH;
-    if (dbPath) {
-      const { DatabaseSync } = require("node:sqlite");
-      const db = new DatabaseSync(dbPath);
-      const row = db
-        .prepare("SELECT value FROM settings WHERE key = ?")
-        .get(SETTINGS_KEYS.hotkeyMode) as { value: string } | undefined;
-      db.close();
-      if (row?.value === "toggle") return "toggle";
-    }
-  } catch {
-    // Ignore errors
-  }
-  return "hold";
+async function loadHotkeyModeFromServer(): Promise<"hold" | "toggle"> {
+  return (await getServerSetting(SETTINGS_KEYS.hotkeyMode)) === "toggle"
+    ? "toggle"
+    : "hold";
 }
 
 function sendHotkeyDown(): void {
@@ -2601,7 +2615,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     globalShortcut.unregisterAll();
 
     if (!hotkey) {
-      hotkey = loadHotkeyFromDB();
+      hotkey = await loadHotkeyFromServer();
     }
 
     const normalized =

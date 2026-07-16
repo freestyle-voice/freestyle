@@ -1,5 +1,5 @@
 import path from "node:path";
-import { type BrowserWindow, WebContentsView } from "electron";
+import { type BrowserWindow, session, WebContentsView } from "electron";
 
 /** Rect (in the window's content coordinates) where the plugin view sits. */
 export interface ViewBounds {
@@ -30,9 +30,13 @@ export class PluginViewManager {
   /** Theme tokens for the current view, fetched by its preload over IPC. */
   private pendingTokens: Record<string, string> | undefined;
 
+  /** Plugin session partitions we've already installed the auth filter on. */
+  private authInstalledPartitions = new Set<string>();
+
   constructor(
     private readonly preloadPath: string,
     private readonly getServerBaseUrl: () => string,
+    private readonly getServerToken: () => string,
   ) {}
 
   /** Attach to the dashboard window; call once when that window is created. */
@@ -80,13 +84,15 @@ export class PluginViewManager {
     }
 
     // First visit — create a new view in this plugin's own session partition.
+    const partition = `persist:plugin-${slug}`;
+    this.installServerAuth(partition);
     const view = new WebContentsView({
       webPreferences: {
         preload: this.preloadPath,
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,
-        partition: `persist:plugin-${slug}`,
+        partition,
       },
     });
     // Paint the app background immediately so there's no white flash before the
@@ -105,6 +111,49 @@ export class PluginViewManager {
       // Navigation can be superseded by a rapid page switch; ignore.
     });
     return true;
+  }
+
+  /**
+   * Install a request filter on the plugin's session partition that attaches
+   * the configured server's bearer token to requests bound for the server
+   * origin. A plugin page runs inside a `WebContentsView` and can't set an
+   * `Authorization` header on its own `fetch()`/asset loads, so without this a
+   * token-protected *remote* server would reject the page and its API calls.
+   *
+   * The token is read per-request (not captured), so it always reflects the
+   * current server target after a `server:changed` switch. No-op for the local
+   * server / no-token case, and scoped to the server origin so a plugin page
+   * that talks to a third-party API never leaks the token.
+   *
+   * Installed once per partition; Electron persists the session across views.
+   */
+  private installServerAuth(partition: string): void {
+    if (this.authInstalledPartitions.has(partition)) return;
+    this.authInstalledPartitions.add(partition);
+
+    const sess = session.fromPartition(partition);
+    sess.webRequest.onBeforeSendHeaders((details, callback) => {
+      const token = this.getServerToken();
+      if (!token || !this.isServerOrigin(details.url)) {
+        callback({ requestHeaders: details.requestHeaders });
+        return;
+      }
+      callback({
+        requestHeaders: {
+          ...details.requestHeaders,
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    });
+  }
+
+  /** True when `url` targets the current server's origin. */
+  private isServerOrigin(url: string): boolean {
+    try {
+      return new URL(url).origin === new URL(this.getServerBaseUrl()).origin;
+    } catch {
+      return false;
+    }
   }
 
   /** The theme tokens the current plugin view's preload should receive. */

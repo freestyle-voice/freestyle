@@ -558,7 +558,7 @@ function createSettingsWindow(initialPath?: string): void {
           visualEffectState: "active" as const,
         }
       : {}),
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
     trafficLightPosition:
       process.platform === "darwin" ? { x: 16, y: 16 } : undefined,
     ...(process.platform === "linux" ? { icon } : {}),

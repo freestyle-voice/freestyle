@@ -5,6 +5,7 @@ import {
   parseRetentionDays,
 } from "@freestyle-voice/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { DragSpacer } from "@renderer/components/drag-spacer";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { LanguageSelector } from "@renderer/components/language-selector";
 import { Button } from "@renderer/components/ui/button";
@@ -664,15 +665,9 @@ export default function SettingsPage(): React.JSX.Element {
   }, [pillPosition, t]);
 
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    >
-      <div className="h-7 shrink-0" />
-      <div
-        className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 !pb-0 min-[900px]:grid-cols-[180px_minmax(0,1fr)]"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      >
+    <div className="flex min-h-0 flex-1 flex-col">
+      <DragSpacer />
+      <div className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 !pb-0 min-[900px]:grid-cols-[180px_minmax(0,1fr)]">
         <div className="min-[900px]:col-span-2">
           <div className="mb-7">
             <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">

@@ -2,6 +2,7 @@ import { sanitizeTranscriptText } from "@freestyle-voice/stt";
 import { createAppLogger } from "@freestyle-voice/utils";
 import { Hono } from "hono";
 import { readSetting } from "../lib/db.js";
+import { getRewritePromptContext } from "../lib/editor/rewrite-context.js";
 import { formatError } from "../lib/format-error.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
@@ -106,6 +107,12 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   const appContext = resolveAppContextForCleanup(
     decodeAppContext(c.req.header("x-app-context")),
   );
+  // Parse app name and resolve tone-routing destination once for analytics.
+  const parsedCtx = parseAppContext(appContext);
+  const { destination: routedDestination } = getRewritePromptContext(
+    appContext,
+    getCleanupAppAssignments(),
+  );
 
   let audioDurationMs = 0;
   if (audioData.length > 44) {
@@ -135,14 +142,13 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   // model, language, or ASR vocabulary bias transcribes this dictation.
   // Runs before any provider/key resolution so overrides actually take
   // effect. `api.control.consume()` here skips STT entirely.
-  const parsedAppContext = parseAppContext(appContext);
   const beforeTranscribeOutput = await plugins().run(
     "beforeTranscribe",
     {
       providerId: defaults.voice.provider,
       modelId: defaults.voice.model_id,
       audioDurationMs,
-      ...(parsedAppContext ? { appContext: parsedAppContext } : {}),
+      ...(parsedCtx ? { appContext: parsedCtx } : {}),
     },
     {
       audio: audioData,
@@ -281,6 +287,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
           input_tokens: inputTokens,
           output_tokens: outputTokens,
           cost_usd: 0,
+          app_name: parsedCtx?.appName,
+          destination: routedDestination,
+          has_app_context: !!appContext,
         });
 
         return c.json({
@@ -301,7 +310,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
           {
             providerId: voiceProvider,
             modelId: voiceModel,
-            appContext: parsedAppContext,
+            appContext: parsedCtx,
           },
           { text: rawText },
           api,
@@ -362,7 +371,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
           {
             providerId: voiceProvider,
             modelId: voiceModel,
-            appContext: parsedAppContext,
+            appContext: parsedCtx,
           },
           { text: rawText },
           api,
@@ -440,6 +449,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       duration_ms: durationMs,
       audio_duration_ms: audioDurationMs,
       post_processed: false,
+      app_name: parsedCtx?.appName,
+      destination: routedDestination,
+      has_app_context: !!appContext,
     });
 
     return c.json({
@@ -510,6 +522,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     input_tokens: pp.inputTokens,
     output_tokens: pp.outputTokens,
     cost_usd: pp.costUsd,
+    app_name: parsedCtx?.appName,
+    destination: pp.destination,
+    has_app_context: !!appContext,
   });
 
   // `beforeCleanup`/`afterCleanup` run inside postProcess, after the

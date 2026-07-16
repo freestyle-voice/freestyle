@@ -1,3 +1,4 @@
+import { DragSpacer } from "@renderer/components/drag-spacer";
 import { listPlugins } from "@renderer/lib/plugins-api";
 import type { PluginViewBounds } from "@shared/plugins";
 import { useQuery } from "@tanstack/react-query";
@@ -99,16 +100,9 @@ export default function PluginPage(): React.JSX.Element {
   }, [navigate]);
 
   return (
-    <div
-      className="flex h-full min-h-0 flex-col"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    >
-      <div className="h-7 shrink-0" />
-      <div
-        ref={placeholderRef}
-        className="flex-1"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      />
+    <div className="flex h-full min-h-0 flex-col">
+      <DragSpacer />
+      <div ref={placeholderRef} className="flex-1" />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { DragSpacer } from "@renderer/components/drag-spacer";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import {
@@ -69,15 +70,9 @@ export default function PluginsPage(): React.JSX.Element {
   const { data: updatesMap } = usePluginUpdates(plugins);
 
   return (
-    <div
-      className="flex h-full min-h-0 flex-col"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    >
-      <div className="h-7 shrink-0" />
-      <div
-        className="responsive-page-scroll flex-1 overflow-auto"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      >
+    <div className="flex h-full min-h-0 flex-col">
+      <DragSpacer />
+      <div className="responsive-page-scroll flex-1 overflow-auto">
         <header className="mb-7">
           <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
             <span className="serif-italic text-primary">

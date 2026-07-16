@@ -3,6 +3,7 @@ import { createAppLogger } from "@freestyle-voice/utils";
 import { upgradeWebSocket } from "@hono/node-server";
 import { Hono } from "hono";
 import { getFlag } from "../lib/config.js";
+import { getRewritePromptContext } from "../lib/editor/rewrite-context.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,
@@ -392,6 +393,12 @@ const stream = new Hono().get(
                 );
               }
               if (!suppressed) {
+                const streamCtx = effectiveAppContext();
+                const streamParsed = parseAppContext(streamCtx);
+                const { destination: streamDest } = getRewritePromptContext(
+                  streamCtx,
+                  getCleanupAppAssignments(),
+                );
                 capture("streaming transcription completed", {
                   provider: voiceDefaults!.provider,
                   provider_category: voiceProviderCategory(
@@ -405,6 +412,9 @@ const stream = new Hono().get(
                   input_tokens: 0,
                   output_tokens: 0,
                   cost_usd: 0,
+                  app_name: streamParsed?.appName,
+                  destination: streamDest,
+                  has_app_context: !!streamCtx,
                 });
               }
               if (!closed) {
@@ -505,6 +515,7 @@ const stream = new Hono().get(
                 // matching the batch route, which returns before both.
                 const suppressed = api.control.state !== "running";
                 if (!suppressed) {
+                  const ppCtx = effectiveAppContext();
                   capture("streaming transcription completed", {
                     provider: voiceDefaults!.provider,
                     provider_category: voiceProviderCategory(
@@ -518,6 +529,9 @@ const stream = new Hono().get(
                     input_tokens: pp.inputTokens,
                     output_tokens: pp.outputTokens,
                     cost_usd: pp.costUsd,
+                    app_name: parseAppContext(ppCtx)?.appName,
+                    destination: pp.destination,
+                    has_app_context: !!ppCtx,
                   });
                 }
                 const deliverText = suppressed ? "" : pp.cleaned;

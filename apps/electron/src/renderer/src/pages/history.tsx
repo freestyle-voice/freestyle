@@ -4,6 +4,7 @@ import {
   type HistoryPreset,
   parseHistoryFilters,
 } from "@freestyle-voice/validations";
+import { DragSpacer } from "@renderer/components/drag-spacer";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { Label } from "@renderer/components/ui/label";
@@ -427,16 +428,12 @@ export default function HistoryPage(): React.JSX.Element {
   const isGenuineEmpty = stats?.unfiltered_total_sessions === 0;
 
   return (
-    <div
-      className="flex h-full min-h-0 flex-col"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    >
-      <div className="h-7 shrink-0" />
+    <div className="flex h-full min-h-0 flex-col">
+      <DragSpacer />
       <div
         className="responsive-page-scroll flex-1 overflow-auto"
         style={
           {
-            WebkitAppRegion: "no-drag",
             scrollbarWidth: "none",
             // When the filter panel is open it should sit flush against the
             // window's right and bottom edges, so drop the page's right and

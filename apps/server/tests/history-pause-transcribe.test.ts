@@ -22,6 +22,7 @@ vi.mock("../src/lib/post-process.js", () => ({
     costUsd: 0.001,
   }),
   resolveAppContextForCleanup: (appContext: string | null) => appContext,
+  getCleanupAppAssignments: () => [],
 }));
 
 const { default: createApp } = await import("../src/index.js");

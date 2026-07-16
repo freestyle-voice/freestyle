@@ -68,6 +68,10 @@ jobs:
               echo "path=plugins/profanity-filter" >> "$GITHUB_OUTPUT"
               echo "name=@freestyle-voice/profanity-filter" >> "$GITHUB_OUTPUT"
               ;;
+            release-plugin-emoji/*)
+              echo "path=plugins/emoji" >> "$GITHUB_OUTPUT"
+              echo "name=@freestyle-voice/plugin-emoji" >> "$GITHUB_OUTPUT"
+              ;;
             *)
               echo "::error::No package mapping for branch $BRANCH"
               exit 1

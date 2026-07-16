@@ -4,6 +4,11 @@ import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
 } from "../shared/audio-playback";
+import type {
+  HotkeyBindingKind,
+  HotkeyRecorderError,
+  SetHotkeyBindingResult,
+} from "../shared/hotkey-bindings";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { OpenAppCandidate } from "../shared/open-apps";
 import type {
@@ -34,6 +39,11 @@ const api = {
   reloadHotkey: (): void => ipcRenderer.send("hotkey:reload"),
   setHotkeyMode: (mode: "hold" | "toggle"): void =>
     ipcRenderer.send("hotkey:set-mode", mode),
+  setHotkeyBinding: (
+    kind: HotkeyBindingKind,
+    accelerator: string | null,
+  ): Promise<SetHotkeyBindingResult> =>
+    ipcRenderer.invoke("hotkey:set-binding", kind, accelerator),
   hidePill: (): void => ipcRenderer.send("pill:hide"),
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),
@@ -81,38 +91,69 @@ const api = {
     ipcRenderer.invoke("onboarding:complete"),
   setOnboardingComplete: (): void =>
     ipcRenderer.send("onboarding:set-complete"),
-  startHotkeyRecording: (): void => ipcRenderer.send("hotkey-record:start"),
+  startHotkeyRecording: (kind: HotkeyBindingKind = "hold"): void =>
+    ipcRenderer.send("hotkey-record:start", kind),
   pauseHotkeyRecording: (): void =>
     ipcRenderer.send("hotkey-record:pause-recorder"),
   stopHotkeyRecording: (hotkey?: string): void =>
     ipcRenderer.send("hotkey-record:stop", hotkey),
   onHotkeyRecordModifiers: (
-    callback: (modifiers: string[]) => void,
+    callback: (payload: {
+      kind: HotkeyBindingKind;
+      modifiers: string[];
+    }) => void,
   ): (() => void) => {
-    const handler = (_: unknown, modifiers: string[]): void =>
-      callback(modifiers);
+    const handler = (
+      _: unknown,
+      payload: { kind: HotkeyBindingKind; modifiers: string[] },
+    ): void => callback(payload);
     ipcRenderer.on("hotkey-record:modifiers", handler);
     return () => ipcRenderer.removeListener("hotkey-record:modifiers", handler);
   },
   onHotkeyRecordCaptured: (
-    callback: (combo: { modifiers: string[]; key: string }) => void,
+    callback: (payload: {
+      kind: HotkeyBindingKind;
+      combo: { modifiers: string[]; key: string };
+    }) => void,
   ): (() => void) => {
     const handler = (
       _: unknown,
-      combo: { modifiers: string[]; key: string },
-    ): void => callback(combo);
+      payload: {
+        kind: HotkeyBindingKind;
+        combo: { modifiers: string[]; key: string };
+      },
+    ): void => callback(payload);
     ipcRenderer.on("hotkey-record:captured", handler);
     return () => ipcRenderer.removeListener("hotkey-record:captured", handler);
   },
-  onHotkeyRecordReleased: (callback: () => void): (() => void) => {
-    const handler = (): void => callback();
+  onHotkeyRecordReleased: (
+    callback: (payload: { kind: HotkeyBindingKind }) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, payload: { kind: HotkeyBindingKind }): void =>
+      callback(payload);
     ipcRenderer.on("hotkey-record:released", handler);
     return () => ipcRenderer.removeListener("hotkey-record:released", handler);
   },
-  onHotkeyRecordCancel: (callback: () => void): (() => void) => {
-    const handler = (): void => callback();
+  onHotkeyRecordCancel: (
+    callback: (payload: { kind: HotkeyBindingKind }) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, payload: { kind: HotkeyBindingKind }): void =>
+      callback(payload);
     ipcRenderer.on("hotkey-record:cancel", handler);
     return () => ipcRenderer.removeListener("hotkey-record:cancel", handler);
+  },
+  onHotkeyRecordError: (
+    callback: (payload: {
+      kind: HotkeyBindingKind;
+      error: HotkeyRecorderError;
+    }) => void,
+  ): (() => void) => {
+    const handler = (
+      _: unknown,
+      payload: { kind: HotkeyBindingKind; error: HotkeyRecorderError },
+    ): void => callback(payload);
+    ipcRenderer.on("hotkey-record:error", handler);
+    return () => ipcRenderer.removeListener("hotkey-record:error", handler);
   },
   // Auto-updater
   checkForUpdate: (): Promise<{

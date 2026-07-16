@@ -81,6 +81,7 @@ import { hc } from "hono/client";
 import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
+import type { HotkeyBindingKind } from "../shared/hotkey-bindings";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import { acceleratorsEqual } from "../shared/hotkey-utils";
 import type { OpenAppCandidate } from "../shared/open-apps";
@@ -88,6 +89,7 @@ import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
 import { runFactoryResetLifecycle } from "./factory-reset-lifecycle";
+import { HotkeyBindingService } from "./hotkey-binding-service";
 import {
   type HotkeyBindings,
   HotkeyManager,
@@ -1915,10 +1917,20 @@ app.whenReady().then(async () => {
   });
 
   // IPC: hotkey recording — global native listener + renderer DOM on macOS
-  ipcMain.on("hotkey-record:start", () => {
+  ipcMain.on("hotkey-record:start", (_event, kind: unknown) => {
+    if (kind !== "hold" && kind !== "toggle") {
+      hotkeyRecorderLog.warn(
+        "Ignoring hotkey recorder start with invalid kind",
+      );
+      return;
+    }
     hotkeyManager.pause();
 
     stopHotkeyRecorderProcess();
+    // E2E drives the renderer's DOM fallback so recorder behavior is testable
+    // without depending on a locally compiled native binary or OS permissions.
+    if (process.env.FREESTYLE_E2E === "1") return;
+
     const target =
       settingsWindow?.webContents ?? mainWindow?.webContents ?? null;
     if (!target) {
@@ -1932,7 +1944,7 @@ app.whenReady().then(async () => {
       stopHotkeyRecorderProcess();
       scheduleHotkeyResume();
     };
-    recorder = new HotkeyRecorder({
+    recorder = new HotkeyRecorder(kind, {
       onModifiers: () => {},
       onCaptured: () => {},
       onCancel: () => {
@@ -1940,6 +1952,12 @@ app.whenReady().then(async () => {
       },
       onError: (message) => {
         hotkeyRecorderLog.warn(message);
+        if (!target.isDestroyed()) {
+          target.send("hotkey-record:error", {
+            kind,
+            error: "recorder_failed",
+          });
+        }
         recoverBindings();
       },
     });
@@ -2344,6 +2362,10 @@ app.whenReady().then(async () => {
       "Ignoring deprecated hotkey:set-mode; hold and toggle bindings now have fixed semantics.",
     );
   });
+
+  ipcMain.handle("hotkey:set-binding", (_event, kind, accelerator) => {
+    return hotkeyBindingService.setBinding(kind, accelerator);
+  });
 });
 
 const DEFAULT_HOTKEY = getDefaultHotkey();
@@ -2437,6 +2459,45 @@ function loadHotkeyBindings(holdOverride?: string): HotkeyBindings {
   }
 
   return { hold, toggle };
+}
+
+function loadPersistedHotkeyBinding(kind: HotkeyBindingKind): string | null {
+  const dbPath = process.env.FREESTYLE_DB_PATH;
+  if (!dbPath) throw new Error("Hotkey settings database is unavailable");
+  const key =
+    kind === "hold" ? SETTINGS_KEYS.hotkey : SETTINGS_KEYS.hotkeyToggle;
+  const { DatabaseSync } = require("node:sqlite");
+  const db = new DatabaseSync(dbPath);
+  try {
+    const row = db
+      .prepare("SELECT value FROM settings WHERE key = ?")
+      .get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  } finally {
+    db.close();
+  }
+}
+
+function persistHotkeyBinding(
+  kind: HotkeyBindingKind,
+  accelerator: string | null,
+): void {
+  const key =
+    kind === "hold" ? SETTINGS_KEYS.hotkey : SETTINGS_KEYS.hotkeyToggle;
+  if (accelerator !== null) {
+    writeSetting(key, accelerator);
+    return;
+  }
+
+  const dbPath = process.env.FREESTYLE_DB_PATH;
+  if (!dbPath) throw new Error("Hotkey settings database is unavailable");
+  const { DatabaseSync } = require("node:sqlite");
+  const db = new DatabaseSync(dbPath);
+  try {
+    db.prepare("DELETE FROM settings WHERE key = ?").run(key);
+  } finally {
+    db.close();
+  }
 }
 
 function sendHotkeyDown(): void {
@@ -2589,6 +2650,25 @@ hotkeyManager = new HotkeyManager({
     );
   },
   log: (message) => hotkeyLog.warn(message),
+});
+
+const hotkeyBindingService = new HotkeyBindingService({
+  readPersistedBinding: loadPersistedHotkeyBinding,
+  persistBinding: persistHotkeyBinding,
+  registerBindings: (bindings) => hotkeyManager.registerBindings(bindings),
+  resumeIfPaused: async () => {
+    const { paused, destroyed } = hotkeyManager.getState();
+    if (paused && !destroyed) await hotkeyManager.resume();
+  },
+  validateAccelerator: isValidAccelerator,
+  normalizeAccelerator,
+  acceleratorsEqual,
+  defaultHold: DEFAULT_HOTKEY,
+  logRecoveryFailure: (message, error) => {
+    hotkeyLog.error(
+      `${message}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  },
 });
 
 if (process.env.FREESTYLE_E2E === "1") {

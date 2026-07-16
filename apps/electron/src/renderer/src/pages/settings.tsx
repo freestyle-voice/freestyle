@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@renderer/components/ui/select";
 import { Switch } from "@renderer/components/ui/switch";
+import type { HotkeyRecorderFailure } from "@renderer/hooks/use-hotkey-recorder";
 import {
   comboDisplayKeys,
   formatAcceleratorKeys,
@@ -60,6 +61,10 @@ import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
 } from "../../../shared/audio-playback";
+import type {
+  HotkeyBindingKind,
+  SetHotkeyBindingResult,
+} from "../../../shared/hotkey-bindings";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
@@ -106,6 +111,25 @@ function normalizePillPos(pos: string): string {
   return pos.startsWith("custom") ? "custom" : pos;
 }
 
+const hotkeySettingQueryKey = (kind: HotkeyBindingKind) => [
+  "setting",
+  kind === "hold" ? SETTINGS_KEYS.hotkey : SETTINGS_KEYS.hotkeyToggle,
+];
+
+async function loadHotkeySetting(
+  kind: HotkeyBindingKind,
+): Promise<string | null> {
+  const key =
+    kind === "hold" ? SETTINGS_KEYS.hotkey : SETTINGS_KEYS.hotkeyToggle;
+  const response = await getClient().api.settings[":key"].$get({
+    param: { key },
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error("Failed to load hotkey setting");
+  const body = (await response.json()) as { value: string };
+  return body.value || null;
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -113,12 +137,16 @@ function normalizePillPos(pos: string): string {
 export default function SettingsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
+  const queryClient = useQueryClient();
   const [devices, setDevices] = useState<AudioDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
-  const [hotkey, setHotkey] = useState(
+  const [holdHotkey, setHoldHotkey] = useState(
     window.api?.defaultHotkey ?? getDefaultHotkey(),
   );
-  const [hotkeyMode, setHotkeyMode] = useState<"hold" | "toggle">("hold");
+  const [toggleHotkey, setToggleHotkey] = useState<string | null>(null);
+  const [clearingToggle, setClearingToggle] = useState(false);
+  const [toggleClearError, setToggleClearError] =
+    useState<HotkeyRecorderFailure | null>(null);
   const [language, setLanguage] = useState("auto");
   const [outputMode, setOutputMode] = useState("paste");
   const [pillPosition, setPillPosition] = useState("bottom-center");
@@ -274,29 +302,48 @@ export default function SettingsPage(): React.JSX.Element {
     }, 30000);
   }, []);
 
-  const handleHotkeyModeChange = useCallback((mode: "hold" | "toggle") => {
-    setHotkeyMode(mode);
-    window.api?.setHotkeyMode(mode);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.hotkeyMode },
-        json: { value: mode },
-      })
-      .catch(() => {});
-  }, []);
+  const cacheHotkeyBinding = useCallback(
+    (kind: HotkeyBindingKind, accelerator: string | null) => {
+      const key =
+        kind === "hold" ? SETTINGS_KEYS.hotkey : SETTINGS_KEYS.hotkeyToggle;
+      queryClient.setQueryData<Record<string, string>>(
+        SETTINGS_QUERY_KEY,
+        (previous) => {
+          const next = { ...(previous ?? {}) };
+          if (accelerator === null) delete next[key];
+          else next[key] = accelerator;
+          return next;
+        },
+      );
+      queryClient.setQueryData(hotkeySettingQueryKey(kind), accelerator);
+    },
+    [queryClient],
+  );
 
-  const handleHotkeyRecorded = useCallback((accelerator: string) => {
-    setHotkey(accelerator);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.hotkey },
-        json: { value: accelerator },
-      })
-      .catch(() => {});
-  }, []);
+  const handleHotkeyRecorded = useCallback(
+    async (
+      accelerator: string,
+      kind: HotkeyBindingKind,
+    ): Promise<SetHotkeyBindingResult> => {
+      const result = await window.api.setHotkeyBinding(kind, accelerator);
+      if (result.ok) {
+        cacheHotkeyBinding(kind, result.accelerator ?? null);
+        if (kind === "hold" && result.accelerator) {
+          setHoldHotkey(result.accelerator);
+        } else if (kind === "toggle") {
+          setToggleHotkey(result.accelerator ?? null);
+        }
+        setToggleClearError(null);
+      }
+      return result;
+    },
+    [cacheHotkeyBinding],
+  );
 
   const {
     state: recorderState,
+    activeKind: activeRecorderKind,
+    errors: recorderErrors,
     liveModifiers,
     capturedCombo,
     canSaveRecording,
@@ -304,10 +351,51 @@ export default function SettingsPage(): React.JSX.Element {
     invalidReleaseNotice,
     startRecording: startHotkeyRecording,
     cancelRecording: cancelHotkeyRecording,
+    clearError: clearHotkeyRecorderError,
   } = useHotkeyRecorder(handleHotkeyRecorded);
+
+  const clearToggleHotkey = useCallback(async () => {
+    setClearingToggle(true);
+    setToggleClearError(null);
+    clearHotkeyRecorderError("toggle");
+    try {
+      const result = await window.api.setHotkeyBinding("toggle", null);
+      if (result.ok) {
+        cacheHotkeyBinding("toggle", null);
+        setToggleHotkey(null);
+      } else {
+        setToggleClearError({
+          error: result.error ?? "save_failed",
+          conflictingKind: result.conflictingKind,
+        });
+      }
+    } catch {
+      setToggleClearError({ error: "save_failed" });
+    } finally {
+      setClearingToggle(false);
+    }
+  }, [cacheHotkeyBinding, clearHotkeyRecorderError]);
 
   // All persisted settings in one request (replaces ~10 individual GETs).
   const settingsQuery = useQuery(settingsQueryOptions());
+  const holdHotkeyQuery = useQuery({
+    queryKey: hotkeySettingQueryKey("hold"),
+    queryFn: () => loadHotkeySetting("hold"),
+  });
+  const toggleHotkeyQuery = useQuery({
+    queryKey: hotkeySettingQueryKey("toggle"),
+    queryFn: () => loadHotkeySetting("toggle"),
+  });
+
+  useEffect(() => {
+    if (holdHotkeyQuery.data) setHoldHotkey(holdHotkeyQuery.data);
+  }, [holdHotkeyQuery.data]);
+
+  useEffect(() => {
+    if (toggleHotkeyQuery.data !== undefined) {
+      setToggleHotkey(toggleHotkeyQuery.data);
+    }
+  }, [toggleHotkeyQuery.data]);
 
   // Seed local form state from the batch once it first resolves. Handlers
   // persist changes directly, so we only seed once (guarded) to avoid
@@ -320,8 +408,6 @@ export default function SettingsPage(): React.JSX.Element {
 
     if (s[SETTINGS_KEYS.micDeviceId])
       setSelectedDevice(s[SETTINGS_KEYS.micDeviceId]);
-    if (s[SETTINGS_KEYS.hotkey]) setHotkey(s[SETTINGS_KEYS.hotkey]);
-    if (s[SETTINGS_KEYS.hotkeyMode] === "toggle") setHotkeyMode("toggle");
     if (s[SETTINGS_KEYS.language]) setLanguage(s[SETTINGS_KEYS.language]);
     if (s[SETTINGS_KEYS.outputMode]) setOutputMode(s[SETTINGS_KEYS.outputMode]);
     if (s[SETTINGS_KEYS.soundEnabled] === "false") setSoundEnabled(false);
@@ -603,6 +689,133 @@ export default function SettingsPage(): React.JSX.Element {
     : canSaveRecording
       ? "Release to save · Esc to cancel"
       : "Press a modifier or side mouse button... · Esc to cancel";
+  const hotkeyControlsDisabled = recorderState !== "idle" || clearingToggle;
+
+  const localizeHotkeyError = useCallback(
+    (failure: HotkeyRecorderFailure): string => {
+      if (failure.conflictingKind === "hold") {
+        return t("settings.recording.conflictHold");
+      }
+      if (failure.conflictingKind === "toggle") {
+        return t("settings.recording.conflictToggle");
+      }
+      return t("settings.recording.saveFailed");
+    },
+    [t],
+  );
+
+  const beginHotkeyCapture = useCallback(
+    (kind: HotkeyBindingKind) => {
+      if (kind === "toggle") setToggleClearError(null);
+      clearHotkeyRecorderError(kind);
+      startHotkeyRecording(kind);
+    },
+    [clearHotkeyRecorderError, startHotkeyRecording],
+  );
+
+  const renderHotkeyEditor = (
+    kind: HotkeyBindingKind,
+    accelerator: string | null,
+  ): React.JSX.Element => {
+    const isActive = activeRecorderKind === kind;
+    const rowError =
+      recorderErrors[kind] ?? (kind === "toggle" ? toggleClearError : null);
+    const errorMessage = rowError ? localizeHotkeyError(rowError) : null;
+    const errorId = `hotkey-${kind}-error`;
+    const bindingLabel =
+      kind === "hold"
+        ? t("settings.recording.holdToRecord")
+        : t("settings.recording.toggleRecording");
+    const actionLabel = accelerator
+      ? t("settings.recording.changeShortcut")
+      : t("settings.recording.setShortcut");
+
+    return (
+      <div className="flex min-w-0 flex-col items-start gap-2">
+        {isActive && recorderState !== "idle" ? (
+          <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
+            <Keyboard className="text-primary h-4 w-4 shrink-0" />
+            {recorderState === "saving" ? (
+              <span className="text-muted-foreground text-sm">
+                {t("common.saving")}
+              </span>
+            ) : draftKeys.length > 0 ? (
+              <>
+                <KeyComboDisplay keys={draftKeys} variant="dim" />
+                <span className="text-muted-foreground text-xs">
+                  {captureHint}
+                </span>
+              </>
+            ) : (
+              <span className="text-muted-foreground animate-pulse text-sm">
+                {captureHint}
+              </span>
+            )}
+            {invalidReleaseNotice && (
+              <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                {t("settings.recording.needsModifier")}
+              </div>
+            )}
+            {recorderState === "recording" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={cancelHotkeyRecording}
+                className="ml-1"
+                aria-label={`${t("common.cancel")} ${bindingLabel}`}
+              >
+                {t("common.cancel")}
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => beginHotkeyCapture(kind)}
+              disabled={hotkeyControlsDisabled}
+              aria-label={`${actionLabel}: ${bindingLabel}`}
+              aria-describedby={errorMessage ? errorId : undefined}
+              className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
+            >
+              <Keyboard className="text-muted-foreground size-4 shrink-0" />
+              {accelerator ? (
+                <KeyComboDisplay keys={formatAcceleratorKeys(accelerator)} />
+              ) : (
+                <span className="text-muted-foreground text-sm">
+                  {t("settings.recording.notSet")}
+                </span>
+              )}
+              <span className="text-muted-foreground ml-1 text-xs">
+                {actionLabel}
+              </span>
+            </Button>
+            {kind === "toggle" && accelerator && (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={hotkeyControlsDisabled}
+                onClick={() => void clearToggleHotkey()}
+                aria-label={`${t("settings.recording.clearShortcut")}: ${bindingLabel}`}
+                aria-describedby={errorMessage ? errorId : undefined}
+              >
+                {t("settings.recording.clearShortcut")}
+              </Button>
+            )}
+          </div>
+        )}
+        {errorMessage && (
+          <p
+            id={errorId}
+            role="alert"
+            className="text-destructive text-xs leading-relaxed"
+          >
+            {errorMessage}
+          </p>
+        )}
+      </div>
+    );
+  };
 
   const activeSectionLabel = t(`settings.sections.${activeSection}`);
 
@@ -733,88 +946,17 @@ export default function SettingsPage(): React.JSX.Element {
           {activeSection === "recording" && (
             <SettingsPanel>
               <Row
-                label={t("settings.recording.hotkey")}
-                desc={
-                  hotkeyMode === "toggle"
-                    ? t("settings.recording.hotkeyDescToggle")
-                    : t("settings.recording.hotkeyDescHold")
-                }
+                label={t("settings.recording.holdToRecord")}
+                desc={t("settings.recording.hotkeyDescHold")}
               >
-                {recorderState === "idle" ? (
-                  <div className="relative inline-flex">
-                    <Button
-                      variant="outline"
-                      onClick={startHotkeyRecording}
-                      className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
-                    >
-                      <Keyboard className="text-muted-foreground size-4 shrink-0" />
-                      <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
-                      <span className="text-muted-foreground ml-1 text-xs">
-                        {t("common.change")}
-                      </span>
-                    </Button>
-                    {invalidReleaseNotice && (
-                      <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                        {t("settings.recording.needsModifier")}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
-                    <Keyboard className="text-primary h-4 w-4 shrink-0" />
-                    {draftKeys.length > 0 ? (
-                      <>
-                        <KeyComboDisplay keys={draftKeys} variant="dim" />
-                        <span className="text-muted-foreground text-xs">
-                          {captureHint}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground animate-pulse text-sm">
-                        {captureHint}
-                      </span>
-                    )}
-                    {invalidReleaseNotice && (
-                      <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                        {t("settings.recording.needsModifier")}
-                      </div>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={cancelHotkeyRecording}
-                      className="ml-1"
-                    >
-                      {t("common.cancel")}
-                    </Button>
-                  </div>
-                )}
+                {renderHotkeyEditor("hold", holdHotkey)}
               </Row>
 
               <Row
-                label={t("settings.recording.activation")}
-                desc={
-                  hotkeyMode === "toggle"
-                    ? t("settings.recording.activationDescToggle")
-                    : t("settings.recording.activationDescHold")
-                }
+                label={t("settings.recording.toggleRecording")}
+                desc={t("settings.recording.hotkeyDescToggle")}
               >
-                <SegmentedControl
-                  value={hotkeyMode}
-                  onValueChange={(v) =>
-                    handleHotkeyModeChange(v as "hold" | "toggle")
-                  }
-                  options={[
-                    {
-                      value: "hold",
-                      label: t("settings.recording.activationHold"),
-                    },
-                    {
-                      value: "toggle",
-                      label: t("settings.recording.activationToggle"),
-                    },
-                  ]}
-                />
+                {renderHotkeyEditor("toggle", toggleHotkey)}
               </Row>
 
               <Row

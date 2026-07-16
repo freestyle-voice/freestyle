@@ -111,6 +111,9 @@ export class FreestyleCloudTranscriptionProvider
             emailTone: cleanup.emailTone,
             overallTone: cleanup.overallTone,
             appAssignments: cleanup.appAssignments,
+            ...(cleanup.systemFragments && cleanup.systemFragments.length > 0
+              ? { systemFragments: cleanup.systemFragments }
+              : {}),
           }
         : {}),
     });

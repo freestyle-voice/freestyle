@@ -1,0 +1,237 @@
+:root {
+  /* Host injects the real Freestyle tokens; these are fallbacks. */
+  --background: #f4f0e4;
+  --foreground: #16140f;
+  --card: #fbf8ee;
+  --primary: #6b8f12;
+  --primary-foreground: #fbf8ee;
+  --muted-foreground: #7b7461;
+  --border: #d6cdb8;
+  --destructive: #dd6e4e;
+  --accent: #6b8f12;
+  --accent-foreground: #16140f;
+  --input: #ebe6d4;
+  --ring: #6b8f12;
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.page {
+  padding: 0 3rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+@media (max-width: 1080px) {
+  .page {
+    padding: 0 2rem 2rem;
+  }
+}
+
+@media (max-width: 820px) {
+  .page {
+    padding: 0 1rem 1.5rem;
+  }
+}
+
+/* ---- Header ---- */
+
+.page-title {
+  margin: 0;
+  font-family: "Instrument Serif", serif;
+  font-size: 48px;
+  font-weight: 400;
+  line-height: 0.95;
+  letter-spacing: -0.025em;
+  color: var(--foreground);
+}
+
+.title-accent {
+  font-style: italic;
+  color: var(--primary);
+}
+
+.page-subtitle {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 480px;
+}
+
+.muted {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+/* ---- Grid layout ---- */
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 820px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Cards ---- */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 14px);
+  padding: 20px 22px;
+}
+
+.card.error {
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+
+h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+p {
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+
+/* ---- Placement options ---- */
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.option-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  position: relative;
+}
+
+.option-card:hover {
+  border-color: var(--muted-foreground);
+}
+
+.option-card-selected {
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+  background: color-mix(in srgb, var(--primary) 4%, var(--background));
+}
+
+.option-card-selected:hover {
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+}
+
+.option-card:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Left marker bar */
+
+.option-marker {
+  width: 3px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--border);
+  flex-shrink: 0;
+  margin-top: 2px;
+  transition: height 0.15s ease, background 0.15s ease;
+}
+
+.option-card:hover .option-marker {
+  height: 24px;
+  background: var(--muted-foreground);
+}
+
+.option-card-selected .option-marker {
+  height: 36px;
+  background: var(--primary);
+}
+
+.option-card-selected:hover .option-marker {
+  background: var(--primary);
+}
+
+.option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.option-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.option-desc {
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+.option-example {
+  margin-top: 6px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--accent-foreground, var(--foreground));
+  opacity: 0.8;
+}
+
+.setting-error {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--destructive);
+}
+
+/* ---- Info card ---- */
+
+.info-card {
+  background: color-mix(in srgb, var(--card) 60%, var(--background));
+  border-style: dashed;
+}
+
+.info-list {
+  margin: 8px 0 0;
+  padding: 0 0 0 18px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  line-height: 1.7;
+}
+
+.info-list li::marker {
+  color: var(--border);
+}

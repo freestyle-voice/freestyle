@@ -236,13 +236,13 @@ const stream = new Hono().get(
       };
     }
 
-    function connectUpstream(
+    async function connectUpstream(
       ws: {
         send: (data: string) => void;
         close: () => void;
       },
       announced?: AnnouncedStreamConfig,
-    ): void {
+    ): Promise<void> {
       const resolved = announced ?? announceConfig(ws);
       if (!resolved) return;
 
@@ -275,12 +275,45 @@ const stream = new Hono().get(
       // cleanup settings in the streaming payload — matching the batch
       // `/v2/transcribe` path. When cleanup is disabled, `skipPostProcess`
       // tells the cloud to return the raw transcript (and bill accordingly).
+      //
+      // Run `beforeCleanup` locally to collect plugin system-prompt fragments,
+      // then include them in the cleanup config so the cloud appends them to
+      // its assembled prompt. `input.text` is empty (the transcript hasn't been
+      // produced yet); plugins that contribute static fragments work fine.
+      let systemFragments: string[] | undefined;
+      if (
+        voice.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
+        isLlmCleanupEnabled() &&
+        plugins().has("beforeCleanup")
+      ) {
+        const hookApi = await createHookApi();
+        const parsedCtx = parseAppContext(effectiveAppContext());
+        const { destination } = getRewritePromptContext(
+          effectiveAppContext(),
+          getCleanupAppAssignments(),
+        );
+        const promptHook = await plugins().run(
+          "beforeCleanup",
+          { text: "", appContext: parsedCtx, destination },
+          { system: [] as string[] },
+          hookApi,
+        );
+        if (
+          !promptHook.skip &&
+          hookApi.control.state === "running" &&
+          promptHook.system.length > 0
+        ) {
+          systemFragments = promptHook.system;
+        }
+      }
+
       const cleanup =
         voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
           ? {
               skipPostProcess: !isLlmCleanupEnabled(),
               ...getEffectiveCleanupTones(),
               appAssignments: getCleanupAppAssignments(),
+              ...(systemFragments ? { systemFragments } : {}),
             }
           : undefined;
 

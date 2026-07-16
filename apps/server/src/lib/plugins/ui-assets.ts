@@ -267,11 +267,40 @@ export function resolvePluginAsset(
   // outside its own dir, and `readFile` follows it. Re-check the *real* path so
   // a symlink escape can't turn asset serving into an arbitrary host-file read.
   // A not-yet-existing path (`ENOENT`) is fine — it simply 404s at read time.
+  //
+  // For dev-linked plugins the `dist/` dir is a symlink back to the source tree,
+  // so the asset's real path falls outside the wrapper dir. To support that
+  // workflow we resolve the *real* plugin root by following the same symlinks the
+  // asset path traverses: walk the decoded segments one by one from `root`,
+  // realpath the deepest existing ancestor, and use that as the comparison root.
   try {
     const real = fs.realpathSync(resolved);
     const realRoot = fs.realpathSync(root);
     if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
-      return null;
+      // The asset's real path escaped the plugin dir's real path. Before
+      // rejecting, check whether both the asset and its root share a common
+      // real prefix when we follow the first path segment (e.g. a `dist/`
+      // symlink). This lets dev-linked symlinks work without opening up
+      // arbitrary traversal.
+      const segments = decoded.split(path.sep);
+      let ancestor = root;
+      let realAncestorRoot: string | null = null;
+      for (const seg of segments) {
+        ancestor = path.join(ancestor, seg);
+        try {
+          realAncestorRoot = fs.realpathSync(ancestor);
+          break;
+        } catch {
+          // Segment doesn't exist yet — keep walking.
+        }
+      }
+      if (
+        !realAncestorRoot ||
+        (real !== realAncestorRoot &&
+          !real.startsWith(realAncestorRoot + path.sep))
+      ) {
+        return null;
+      }
     }
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") return null;

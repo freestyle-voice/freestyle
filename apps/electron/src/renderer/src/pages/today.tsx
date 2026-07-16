@@ -416,8 +416,8 @@ function TimelineNode({ entry }: { entry: HistoryEntry }): React.JSX.Element {
             {audioSec}s · {words} wds
           </span>
         </div>
-        <p className="text-foreground m-0 text-[15px] leading-[1.55]">
-          “{text}”
+        <p className="text-foreground m-0 line-clamp-3 text-[15px] leading-[1.55]">
+          "{text}"
         </p>
       </div>
     </div>

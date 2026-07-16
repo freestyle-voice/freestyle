@@ -172,6 +172,17 @@ body {
   }
 }
 
+.result-tail {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.result-tail .result-status {
+  margin-left: 0;
+}
+
 .result-actions {
   display: inline-flex;
   align-items: center;
@@ -197,6 +208,12 @@ body {
 .result-action:hover {
   color: var(--foreground);
   border-color: var(--muted-foreground);
+}
+
+.result-action-delete:hover,
+.result-action-cancel:hover {
+  color: var(--destructive);
+  border-color: var(--destructive);
 }
 
 .result-action svg {

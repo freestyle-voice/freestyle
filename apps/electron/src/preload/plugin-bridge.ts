@@ -41,10 +41,24 @@ const bridge: FreestyleBridge = {
     return location.origin;
   },
 
-  api(path, init) {
+  async api(path, init) {
     // Same-origin fetch: the page is served from the loopback server, so a
-    // relative path resolves against it directly.
-    return fetch(path, init);
+    // relative path resolves against it directly.  The native Response is NOT
+    // structured-cloneable, so contextBridge would strip it to an empty object.
+    // Consume the body here (in the preload's isolated world) and return a
+    // plain object whose properties and methods survive the boundary.
+    const res = await fetch(path, init);
+    const buf = await res.arrayBuffer();
+    const decode = (): string => new TextDecoder().decode(buf);
+    return {
+      ok: res.ok,
+      status: res.status,
+      statusText: res.statusText,
+      headers: Object.fromEntries(res.headers.entries()),
+      json: <T = unknown>() => JSON.parse(decode()) as T,
+      text: () => decode(),
+      arrayBuffer: () => structuredClone(buf),
+    } as unknown as Response;
   },
 
   invoke<C extends keyof HostActions>(channel: C, payload: HostActions[C]) {

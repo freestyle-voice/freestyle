@@ -67,7 +67,8 @@ export default function PluginDetailPage(): React.JSX.Element {
             plugin={plugin}
             onToggle={toggle}
             onUninstall={async () => {
-              await uninstallPlugin(plugin.specifier);
+              const all = await uninstallPlugin(plugin.specifier);
+              queryClient.setQueryData(["plugins"], all);
               navigate("/plugins");
             }}
             update={update}

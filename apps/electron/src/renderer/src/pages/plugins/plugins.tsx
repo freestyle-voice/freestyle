@@ -103,7 +103,7 @@ export default function PluginsPage(): React.JSX.Element {
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("plugins.searchPlaceholder")}
               aria-label={t("plugins.searchPlaceholder")}
-              className="h-9 pl-9 text-[13px]"
+              className="h-10 pl-9 text-[13px]"
             />
           </div>
         </div>
@@ -217,6 +217,7 @@ function PluginCard({
 
   const [busy, setBusy] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const toggle = async (enabled: boolean): Promise<void> => {
     onChange(await setPluginEnabled(plugin.specifier, enabled));
@@ -322,7 +323,7 @@ function PluginCard({
             {updating ? t("plugins.updating") : t("plugins.update")}
           </Button>
         ) : null}
-        <DropdownMenu>
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
@@ -335,7 +336,12 @@ function PluginCard({
           <DropdownMenuContent align="end">
             {!plugin.missing ? (
               <>
-                <DropdownMenuItem onClick={() => void toggle(!plugin.enabled)}>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void toggle(!plugin.enabled);
+                  }}
+                >
                   {t(
                     plugin.enabled
                       ? "plugins.disablePlugin"
@@ -348,7 +354,10 @@ function PluginCard({
             <DropdownMenuItem
               variant="destructive"
               disabled={busy}
-              onClick={() => void uninstall()}
+              onClick={() => {
+                setMenuOpen(false);
+                void uninstall();
+              }}
             >
               {t("plugins.uninstall")}
             </DropdownMenuItem>

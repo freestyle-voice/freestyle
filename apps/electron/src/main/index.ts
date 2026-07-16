@@ -244,6 +244,16 @@ function getServerAuthHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/**
+ * Typed `hc` client bound to the current server target (local or configured
+ * remote) with auth headers — the main-process counterpart to the renderer's
+ * getClient(). Reads the target per call, so it always tracks the latest
+ * server:changed state without a restart.
+ */
+function serverClient() {
+  return hc<AppType>(getServerBaseUrl(), { headers: getServerAuthHeaders() });
+}
+
 /** Relay a main-process pipeline event to the current server target with auth. */
 function relayServerEvent(event: Parameters<typeof relayEvent>[1]): void {
   relayEvent(getServerBaseUrl(), event, getServerAuthHeaders());
@@ -1211,9 +1221,7 @@ const SERVER_SETTING_TIMEOUT_MS = 5000;
 
 async function putServerSetting(key: string, value: string): Promise<boolean> {
   try {
-    const res = await hc<AppType>(getServerBaseUrl(), {
-      headers: getServerAuthHeaders(),
-    }).api.settings[":key"].$put(
+    const res = await serverClient().api.settings[":key"].$put(
       { param: { key }, json: { value } },
       { init: { signal: AbortSignal.timeout(SERVER_SETTING_TIMEOUT_MS) } },
     );

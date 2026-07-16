@@ -90,12 +90,16 @@ function createApp() {
     // Confine plugin-UI-originated requests to their own plugin namespace, so a
     // same-origin plugin page can't reach keys/auth/settings or other plugins.
     .use(pluginApiGuard)
+    // CORS for renderer requests. Must run BEFORE auth: the desktop renderer
+    // talks to a remote server cross-origin (app:// -> http://remote), so any
+    // request with an Authorization header triggers an OPTIONS preflight that
+    // carries no token. cors() answers the preflight and short-circuits it, so
+    // auth never rejects it; real requests still fall through to auth.
+    .use(cors())
     // Bearer-token auth for standalone/remote deployments. A no-op when no
     // token is configured (the default loopback Electron case), so it never
     // affects the in-process server.
     .use(authMiddleware)
-    // CORS for renderer requests
-    .use(cors())
     // Correlation id per request (also surfaced via the X-Request-Id header).
     .use(requestId())
     // Access log — routed through the app logger at debug level, so it shows in

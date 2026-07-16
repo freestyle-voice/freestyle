@@ -25,16 +25,34 @@ export function getServerToken(): string {
   return serverToken;
 }
 
+/** True when pointed at a configured (non-loopback) server. */
+export function isRemoteServer(): boolean {
+  return !!serverUrl;
+}
+
 function authHeaders(token: string): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 /**
- * Auth headers for the configured server, for use in raw `fetch()` calls.
- * Empty when no token is set (the default local-server case).
+ * fetch() against the configured Freestyle server: resolves the base URL and
+ * injects the bearer token (when set), while preserving every caller init
+ * option (method, body, keepalive, signal, custom headers).
+ *
+ * Use this only for the few requests the typed `hc` client can't express —
+ * binary bodies (the WAV upload) and fire-and-forget beacons. Everything else
+ * should go through {@link getClient}.
  */
-export function getAuthHeaders(): Record<string, string> {
-  return authHeaders(serverToken);
+export function apiFetch(
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+  // Additive — never clobber a header the caller set explicitly.
+  for (const [key, value] of Object.entries(authHeaders(serverToken))) {
+    if (!headers.has(key)) headers.set(key, value);
+  }
+  return fetch(`${getApiBase()}${path}`, { ...init, headers });
 }
 
 export async function initApiBase(): Promise<void> {
@@ -110,5 +128,5 @@ export async function refreshApiBase(): Promise<boolean> {
 }
 
 export function getClient() {
-  return hc<AppType>(getApiBase(), { headers: getAuthHeaders() });
+  return hc<AppType>(getApiBase(), { headers: authHeaders(serverToken) });
 }

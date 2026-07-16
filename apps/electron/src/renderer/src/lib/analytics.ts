@@ -1,4 +1,4 @@
-import { getApiBase } from "@renderer/lib/api";
+import { apiFetch } from "@renderer/lib/api";
 
 /**
  * Capture a PostHog event from the renderer.
@@ -17,7 +17,7 @@ export function capture(
   properties?: Record<string, unknown>,
 ): void {
   try {
-    fetch(`${getApiBase()}/api/telemetry`, {
+    apiFetch("/api/telemetry", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ event, properties }),

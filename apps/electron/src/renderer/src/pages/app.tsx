@@ -1,10 +1,11 @@
 import { Orb } from "@renderer/components/ui/orb";
 import { capture } from "@renderer/lib/analytics";
 import {
+  apiFetch,
   getApiBase,
-  getAuthHeaders,
   getClient,
   getServerToken,
+  isRemoteServer,
   refreshApiBase,
 } from "@renderer/lib/api";
 import {
@@ -469,13 +470,12 @@ export default function AppPage(): React.JSX.Element {
       const headers: Record<string, string> = {
         "Content-Type": "audio/wav",
         "x-audio-duration-ms": String(Date.now() - startTimeRef.current),
-        ...getAuthHeaders(),
       };
       if (appContextRef.current)
         headers["x-app-context"] = encodeAppContext(appContextRef.current);
       if (queueRef.current.length > 0 || drainingRef.current)
         headers["x-skip-post-process"] = "true";
-      return fetch(`${getApiBase()}/api/transcribe`, {
+      return apiFetch("/api/transcribe", {
         method: "POST",
         body: wavBlob,
         headers,
@@ -1057,7 +1057,6 @@ export default function AppPage(): React.JSX.Element {
     const headers: Record<string, string> = {
       "Content-Type": "audio/wav",
       "x-audio-duration-ms": String(recordingDuration),
-      ...getAuthHeaders(),
     };
     if (appContextRef.current)
       headers["x-app-context"] = encodeAppContext(appContextRef.current);
@@ -1068,14 +1067,16 @@ export default function AppPage(): React.JSX.Element {
       hidePill();
       window.api.showErrorDialog(
         "Server Unreachable",
-        `Cannot reach Freestyle server at ${getApiBase()}. Quit and reopen the app.`,
+        isRemoteServer()
+          ? `Cannot reach the server at ${getApiBase()}. Check the server URL in Settings → Network, or reset to the local server.`
+          : `Cannot reach Freestyle server at ${getApiBase()}. Quit and reopen the app.`,
       );
       return;
     }
 
     setPendingCount((c) => c + 1);
-    const transcribePromise: Promise<TranscribeResult> = fetch(
-      `${getApiBase()}/api/transcribe`,
+    const transcribePromise: Promise<TranscribeResult> = apiFetch(
+      "/api/transcribe",
       { method: "POST", body: wavBlob, headers },
     )
       .then(async (res) => {
@@ -1123,7 +1124,9 @@ export default function AppPage(): React.JSX.Element {
         const msg = err instanceof Error ? err.message : "Transcription failed";
         const hint =
           msg.includes("fetch") || msg.includes("Failed")
-            ? ` (${getApiBase()} unreachable — quit and reopen the app)`
+            ? isRemoteServer()
+              ? ` (${getApiBase()} unreachable — check Settings → Network)`
+              : ` (${getApiBase()} unreachable — quit and reopen the app)`
             : "";
         return { raw: "", cleaned: "", error: `${msg}${hint}` };
       })

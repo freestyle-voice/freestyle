@@ -13,7 +13,6 @@ import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import {
   InputGroup,
-  InputGroupAddon,
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
@@ -58,14 +57,13 @@ import {
   FlaskConical,
   FolderOpen,
   Info,
-  Key,
   Keyboard,
   Languages,
+  Loader2,
   Mic,
   Monitor,
   Moon,
   Pause,
-  Server,
   Sun,
   Trash2,
   Volume2,
@@ -1582,156 +1580,120 @@ function ServerConnection(): React.JSX.Element {
 
   const urlChanged = serverUrlInput.trim() !== savedServerUrl.trim();
   const tokenChanged = serverTokenInput.trim() !== savedServerToken.trim();
-  const canReset =
-    !!savedServerUrl ||
-    !!savedServerToken ||
-    !!serverUrlInput.trim() ||
-    !!serverTokenInput.trim();
-  const usingLocal = !savedServerUrl;
+  const dirty = urlChanged || tokenChanged;
+  const canReset = !!savedServerUrl || !!savedServerToken || dirty;
+  const testing = serverTest === "testing";
 
   return (
-    <div className="border-border bg-card w-full max-w-md rounded-[14px] border p-3.5">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={cn(
-              "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] uppercase tracking-[0.14em]",
-              usingLocal
-                ? "bg-accent text-accent-foreground"
-                : "bg-secondary text-secondary-foreground",
-            )}
-          >
-            <span
-              className={cn(
-                "size-1.5 rounded-full",
-                usingLocal ? "bg-primary" : "bg-muted-foreground",
-              )}
-            />
-            {usingLocal
-              ? t("settings.network.localServer")
-              : t("settings.network.remoteServer")}
-          </span>
-          {savedServerUrl && (
-            <span className="text-muted-foreground min-w-0 truncate text-[12px]">
-              {savedServerUrl}
+    <div className="max-w-md space-y-3">
+      {/* URL + inline Test, mirroring the on-device LLM connect form. */}
+      <div className="flex items-center gap-2">
+        <Input
+          id="settings-server-url"
+          type="text"
+          spellCheck={false}
+          autoComplete="off"
+          value={serverUrlInput}
+          aria-invalid={serverUrlError ? true : undefined}
+          onChange={(e) => {
+            setServerUrlInput(e.target.value);
+            setServerTest("idle");
+            setServerUrlError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSaveServer();
+          }}
+          placeholder="http://127.0.0.1:4649"
+          className="min-w-0 flex-1"
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          size="default"
+          className="shrink-0"
+          onClick={() => testServer(serverUrlInput, serverTokenInput)}
+          disabled={testing}
+        >
+          {testing ? (
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {t("settings.network.statusTesting")}
             </span>
+          ) : (
+            t("settings.network.testConnection")
           )}
-        </div>
-        <ServerConnectionStatus state={serverTest} />
+        </Button>
       </div>
 
-      <div className="space-y-2.5">
-        <InputGroup>
-          <InputGroupInput
-            id="settings-server-url"
-            type="text"
-            value={serverUrlInput}
-            aria-invalid={!!serverUrlError}
-            onChange={(e) => {
-              setServerUrlInput(e.target.value);
-              setServerTest("idle");
-              setServerUrlError(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSaveServer();
-            }}
-            placeholder="http://127.0.0.1:4649"
+      <InputGroup className={cn(!serverUrlInput.trim() && "opacity-60")}>
+        <InputGroupInput
+          id="settings-server-token"
+          type={showToken ? "text" : "password"}
+          value={serverTokenInput}
+          onChange={(e) => {
+            setServerTokenInput(e.target.value);
+            setServerTest("idle");
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSaveServer();
+          }}
+          placeholder={t("settings.network.serverTokenPlaceholder")}
+        />
+        {serverTokenInput && (
+          <RevealToggle
+            revealed={showToken}
+            onToggle={() => setShowToken((v) => !v)}
+            label="token"
           />
-          <InputGroupAddon>
-            <Server />
-          </InputGroupAddon>
-        </InputGroup>
-
-        <InputGroup className={cn(!serverUrlInput.trim() && "opacity-60")}>
-          <InputGroupInput
-            id="settings-server-token"
-            type={showToken ? "text" : "password"}
-            value={serverTokenInput}
-            onChange={(e) => {
-              setServerTokenInput(e.target.value);
-              setServerTest("idle");
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSaveServer();
-            }}
-            placeholder={t("settings.network.serverTokenPlaceholder")}
-          />
-          <InputGroupAddon>
-            <Key />
-          </InputGroupAddon>
-          {serverTokenInput && (
-            <RevealToggle
-              revealed={showToken}
-              onToggle={() => setShowToken((v) => !v)}
-              label="token"
-            />
-          )}
-        </InputGroup>
-
-        {serverUrlError && (
-          <p className="text-destructive text-[12px]">{serverUrlError}</p>
         )}
+      </InputGroup>
 
-        <div className="flex flex-wrap items-center gap-2 pt-1">
+      {/* Inline status line, matching the on-device LLM connect messages. */}
+      <div className="flex min-h-[16px] items-center">
+        {serverUrlError ? (
+          <span className="text-destructive text-[12px]">{serverUrlError}</span>
+        ) : serverTest === "ok" ? (
+          <span className="text-primary inline-flex items-center gap-1 text-[12px]">
+            <Check className="h-3 w-3" />
+            {t("settings.network.statusOk")}
+          </span>
+        ) : serverTest === "unreachable" ? (
+          <span className="text-destructive text-[12px]">
+            {t("settings.network.statusUnreachable")}
+          </span>
+        ) : serverTest === "unauthorized" ? (
+          <span className="text-destructive text-[12px]">
+            {t("settings.network.statusUnauthorized")}
+          </span>
+        ) : (
+          <span className="text-muted-foreground text-[12px]">
+            {savedServerUrl || t("settings.network.usingLocal")}
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ink"
+          size="sm"
+          onClick={handleSaveServer}
+          disabled={!dirty}
+        >
+          {t("common.save")}
+        </Button>
+        {canReset && (
           <Button
-            variant="ink"
+            variant="ghost"
             size="sm"
-            onClick={handleSaveServer}
-            disabled={!urlChanged && !tokenChanged}
+            className="text-muted-foreground"
+            onClick={handleResetServer}
           >
-            {t("common.save")}
+            {t("settings.network.resetToLocal")}
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => testServer(serverUrlInput, serverTokenInput)}
-            disabled={serverTest === "testing"}
-          >
-            {t("settings.network.testConnection")}
-          </Button>
-          {canReset && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleResetServer}
-              className="text-muted-foreground"
-            >
-              {t("settings.network.resetToLocal")}
-            </Button>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );
-}
-
-function ServerConnectionStatus({
-  state,
-}: {
-  state: ServerTestState;
-}): React.JSX.Element | null {
-  const { t } = useTranslation();
-  if (state === "idle") return null;
-  const map: Record<
-    Exclude<ServerTestState, "idle">,
-    { label: string; className: string }
-  > = {
-    testing: {
-      label: t("settings.network.statusTesting"),
-      className: "text-muted-foreground",
-    },
-    ok: { label: t("settings.network.statusOk"), className: "text-primary" },
-    unreachable: {
-      label: t("settings.network.statusUnreachable"),
-      className: "text-destructive",
-    },
-    unauthorized: {
-      label: t("settings.network.statusUnauthorized"),
-      className: "text-destructive",
-    },
-  };
-  const { label, className } = map[state];
-  return <span className={cn("text-[11.5px]", className)}>{label}</span>;
 }
 
 // ---------------------------------------------------------------------------

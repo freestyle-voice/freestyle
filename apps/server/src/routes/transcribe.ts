@@ -287,11 +287,19 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       rawText = sanitizeTranscriptText(result.raw ?? "");
 
       if (useCombined) {
+        // An empty transcript (silence, or a clipped first clip on a cold
+        // provider switch) must be suppressed like every other path —
+        // otherwise we'd persist a blank history row and paste nothing.
+        // `suppressedResponse()` returns blank output without saving history.
+        if (!rawText.trim() || api.control.state !== "running") {
+          return suppressedResponse();
+        }
         // The cloud already ran STT + LLM cleanup; still apply the
         // local-only dictionary replacements and `afterCleanup` plugin hook
-        // on the way out.
+        // on the way out. Fall back to the raw transcript when the cloud
+        // returns an empty cleaned string (`||`, not `??`, so "" is caught).
         const cleaned = await applyFinalRewrites(
-          sanitizeTranscriptText(result.cleaned ?? rawText),
+          sanitizeTranscriptText(result.cleaned || rawText),
           appContext,
           rawText,
           api,

@@ -372,6 +372,19 @@ const stream = new Hono().get(
               const cloudText = rawText?.trim() || "";
               let text = cloudText;
 
+              // Combined cloud cleanup returns cleaned text with no separable
+              // raw transcript. An empty response (silence, or a clipped first
+              // clip on a cold provider switch) must be suppressed like every
+              // other path — otherwise we'd persist a blank history row and
+              // paste nothing. The post-process-off branch below has its own
+              // empty guard after afterTranscribe.
+              if (cloudHandledPostProcess && !cloudText) {
+                if (!closed) {
+                  ws.send(JSON.stringify({ type: "final", text: "" }));
+                }
+                return;
+              }
+
               if (!cloudHandledPostProcess) {
                 // Post-processing off: cloudText IS the raw transcript, so this
                 // is the only cloud case where we have a real raw transcript.

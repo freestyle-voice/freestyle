@@ -25,26 +25,28 @@ function isValidPlacement(value: unknown): value is PlacementMode {
 const SYSTEM_AFTER = [
   "PLUGIN OVERRIDE — emoji insertion (this overrides the earlier 'do not add",
   "content words' and 'do not rephrase' rules for emoji only):",
-  "Where the tone feels casual, friendly, or conversational, you MUST add a",
-  "relevant emoji after the word or phrase it relates to. This is an explicit",
-  "user-requested feature, not a style edit — treat it as a required output",
-  "transformation. Do not add emojis to formal, professional, or technical",
-  "text. Use emojis sparingly — at most 2–3 per paragraph. Never add emojis",
-  "to code, URLs, file paths, or technical identifiers. If the text is",
-  "entirely formal or professional, do not add any emojis at all.",
+  "The user turned this feature on, so add a few emojis to give the text some",
+  "personality — but keep it natural, the way someone casually sprinkles a",
+  "couple of emojis into a message. ADD the emoji after the word, phrase, or",
+  "sentence it relates to, wherever it reads naturally — do NOT replace the",
+  "word (keep the original word and place the emoji after it), and do NOT pile",
+  "them all at the very end. Use them sparingly: just a few across the whole",
+  "message where they genuinely add something, not one on every line. Skip",
+  "them for formal, professional, or technical writing. Never add emojis",
+  "inside code, URLs, file paths, or technical identifiers.",
 ].join(" ");
 
 const SYSTEM_REPLACE = [
   "PLUGIN OVERRIDE — emoji replacement (this overrides the earlier 'do not",
   "add content words' and 'do not rephrase' rules for emoji only):",
-  "Where the tone feels casual, friendly, or conversational, you MUST replace",
-  "emotionally expressive words with a single relevant emoji (e.g. 'love' →",
-  "'❤️', 'happy' → '😊'). This is an explicit user-requested feature, not a",
-  "style edit — treat it as a required output transformation. Do not replace",
-  "words in formal, professional, or technical text. Replace sparingly — at",
-  "most 2–3 per paragraph. Never replace words in code, URLs, file paths, or",
-  "technical identifiers. If the text is entirely formal or professional, do",
-  "not replace any words.",
+  "The user turned this feature on, so swap a few emotionally expressive words",
+  "for a single relevant emoji (e.g. 'love' → '❤️', 'happy' → '😊', 'fire' →",
+  "'🔥') to give the text some personality — but keep it natural, the way",
+  "someone casually uses a couple of emojis. Replace only a few expressive",
+  "words across the whole message, not one on every line, and only where it",
+  "reads naturally. Skip replacement for formal, professional, or technical",
+  "writing. Never replace words inside code, URLs, file paths, or technical",
+  "identifiers.",
 ].join(" ");
 
 export default function emojiPlugin(_options?: PluginOptions): Plugin {

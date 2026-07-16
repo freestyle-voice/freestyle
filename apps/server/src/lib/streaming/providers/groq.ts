@@ -12,4 +12,8 @@ export class GroqTranscriptionProvider implements TranscriptionProvider {
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
     return transcribeWithAiSdk(opts, createGroq, this.providerId);
   }
+
+  supportsStreaming(_modelId: string): boolean {
+    return false;
+  }
 }

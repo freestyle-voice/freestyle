@@ -1,8 +1,11 @@
 import {
+  HISTORY_RETENTION_DAYS_MAX,
   type NetworkSettingsForm,
   networkSettingsFormSchema,
+  parseRetentionDays,
 } from "@freestyle-voice/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { DragSpacer } from "@renderer/components/drag-spacer";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { LanguageSelector } from "@renderer/components/language-selector";
 import { Button } from "@renderer/components/ui/button";
@@ -26,13 +29,20 @@ import { getClient } from "@renderer/lib/api";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
-import { SETTINGS_QUERY_KEY, settingsQueryOptions } from "@renderer/lib/query";
+import {
+  CONFIG_QUERY_KEY,
+  configQueryOptions,
+  type FreestyleConfig,
+  SETTINGS_QUERY_KEY,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   Download,
   ExternalLink,
+  FlaskConical,
   FolderOpen,
   Info,
   Keyboard,
@@ -84,6 +94,7 @@ const settingsSectionIds = [
   "permissions",
   "data",
   "network",
+  "experimental",
 ] as const;
 
 type SettingsSectionId = (typeof settingsSectionIds)[number];
@@ -122,6 +133,10 @@ export default function SettingsPage(): React.JSX.Element {
   const [pillPosition, setPillPosition] = useState("bottom-center");
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [historyPaused, setHistoryPaused] = useState(false);
+  const [historyRetention, setHistoryRetention] = useState<
+    "never" | "7" | "30" | "custom"
+  >("never");
+  const [customRetentionDays, setCustomRetentionDays] = useState("90");
   const [audioPlaybackMode, setAudioPlaybackMode] =
     useState<AudioPlaybackMode>("off");
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
@@ -131,10 +146,10 @@ export default function SettingsPage(): React.JSX.Element {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
+  const [streamingAudio, setStreamingAudio] = useState(false);
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
     parseSettingsSection(window.location.hash),
   );
-
   // Radix SelectItem cannot use an empty-string value, so the "system default"
   // microphone (stored as "") is represented by this sentinel at the Select
   // boundary only. Use an unlikely string to avoid colliding with a real
@@ -160,6 +175,16 @@ export default function SettingsPage(): React.JSX.Element {
         label:
           t(`settings.recording.transcriptionLanguages.${l.id}`) || l.label,
       })),
+    ],
+    [t],
+  );
+
+  const retentionOptions = useMemo(
+    () => [
+      { value: "never", label: t("settings.data.autoDeleteNever") },
+      { value: "7", label: t("settings.data.autoDelete7") },
+      { value: "30", label: t("settings.data.autoDelete30") },
+      { value: "custom", label: t("settings.data.autoDeleteCustom") },
     ],
     [t],
   );
@@ -290,6 +315,8 @@ export default function SettingsPage(): React.JSX.Element {
     cancelRecording: cancelHotkeyRecording,
   } = useHotkeyRecorder(handleHotkeyRecorded);
 
+  const queryClient = useQueryClient();
+
   // All persisted settings in one request (replaces ~10 individual GETs).
   const settingsQuery = useQuery(settingsQueryOptions());
 
@@ -311,6 +338,18 @@ export default function SettingsPage(): React.JSX.Element {
     if (s[SETTINGS_KEYS.soundEnabled] === "false") setSoundEnabled(false);
     if (s[SETTINGS_KEYS.historyPaused] === "true") setHistoryPaused(true);
 
+    const retentionDays = parseRetentionDays(
+      s[SETTINGS_KEYS.historyRetentionDays],
+    );
+    if (retentionDays !== null) {
+      if (retentionDays === 7 || retentionDays === 30) {
+        setHistoryRetention(String(retentionDays) as "7" | "30");
+      } else {
+        setHistoryRetention("custom");
+        setCustomRetentionDays(String(retentionDays));
+      }
+    }
+
     // Audio playback mode with legacy fallback chain (new key → paused → duck).
     if (s.audio_playback_mode) {
       setAudioPlaybackMode(normalizeAudioPlaybackMode(s.audio_playback_mode));
@@ -320,6 +359,15 @@ export default function SettingsPage(): React.JSX.Element {
       setAudioPlaybackMode("duck");
     }
   }, [settingsQuery.data]);
+
+  // Experimental flags from config.freestyle.json, cached alongside the rest of
+  // the settings page rather than re-fetched on every visit.
+  const configQuery = useQuery(configQueryOptions());
+  useEffect(() => {
+    if (configQuery.data) {
+      setStreamingAudio(configQuery.data.flags.streaming_audio === true);
+    }
+  }, [configQuery.data]);
 
   // Load available audio input devices
   useEffect(() => {
@@ -486,7 +534,9 @@ export default function SettingsPage(): React.JSX.Element {
       return;
     }
     await getClient().api.history.$delete();
-  }, [t]);
+    void queryClient.invalidateQueries({ queryKey: ["history"] });
+    void queryClient.invalidateQueries({ queryKey: ["today-history"] });
+  }, [t, queryClient]);
 
   const handleSoundToggle = useCallback((enabled: boolean) => {
     setSoundEnabled(enabled);
@@ -507,6 +557,68 @@ export default function SettingsPage(): React.JSX.Element {
       })
       .catch(() => {});
   }, []);
+
+  const saveHistoryRetention = useCallback((days: string) => {
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.historyRetentionDays },
+        json: { value: days },
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleHistoryRetentionChange = useCallback(
+    (value: string) => {
+      const preset = value as "never" | "7" | "30" | "custom";
+      setHistoryRetention(preset);
+      if (preset === "never") {
+        saveHistoryRetention("");
+      } else if (preset === "custom") {
+        if (parseRetentionDays(customRetentionDays) !== null) {
+          saveHistoryRetention(customRetentionDays);
+        }
+      } else {
+        saveHistoryRetention(preset);
+      }
+    },
+    [customRetentionDays, saveHistoryRetention],
+  );
+
+  const handleCustomRetentionDaysChange = useCallback(
+    (raw: string) => {
+      const digits = raw.replace(/\D/g, "").slice(0, 4);
+      const clamped =
+        digits === ""
+          ? ""
+          : String(Math.min(Number(digits), HISTORY_RETENTION_DAYS_MAX));
+      setCustomRetentionDays(clamped);
+      if (parseRetentionDays(clamped) !== null) {
+        saveHistoryRetention(clamped);
+      }
+    },
+    [saveHistoryRetention],
+  );
+
+  const handleStreamingAudioToggle = useCallback(
+    (enabled: boolean) => {
+      setStreamingAudio(enabled);
+      window.api?.sendStreamingAudioChanged(enabled);
+      getClient()
+        .api.config.flags[":key"].$put({
+          param: { key: "streaming_audio" },
+          json: { value: enabled },
+        })
+        .then(() => {
+          queryClient.setQueryData<FreestyleConfig>(CONFIG_QUERY_KEY, (prev) =>
+            prev
+              ? { ...prev, flags: { ...prev.flags, streaming_audio: enabled } }
+              : prev,
+          );
+        })
+        .catch(() => {});
+    },
+    [queryClient],
+  );
 
   const handleAudioPlaybackModeChange = useCallback((value: string) => {
     const mode = normalizeAudioPlaybackMode(value);
@@ -539,13 +651,13 @@ export default function SettingsPage(): React.JSX.Element {
 
   const positionOptions = useMemo<SegmentOption[]>(() => {
     const opts: SegmentOption[] = [
+      { id: "top-center", label: t("settings.display.positionTopCenter") },
+      { id: "top-right", label: t("settings.display.positionTopRight") },
       {
         id: "bottom-center",
         label: t("settings.display.positionBottomCenter"),
       },
       { id: "bottom-right", label: t("settings.display.positionBottomRight") },
-      { id: "top-center", label: t("settings.display.positionTopCenter") },
-      { id: "top-right", label: t("settings.display.positionTopRight") },
     ];
     if (pillPosition === "custom")
       opts.push({ id: "custom", label: t("settings.display.positionCustom") });
@@ -553,15 +665,9 @@ export default function SettingsPage(): React.JSX.Element {
   }, [pillPosition, t]);
 
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    >
-      <div className="h-7 shrink-0" />
-      <div
-        className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 !pb-0 min-[900px]:grid-cols-[180px_minmax(0,1fr)]"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      >
+    <div className="flex min-h-0 flex-1 flex-col">
+      <DragSpacer />
+      <div className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 !pb-0 min-[900px]:grid-cols-[180px_minmax(0,1fr)]">
         <div className="min-[900px]:col-span-2">
           <div className="mb-7">
             <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
@@ -964,6 +1070,47 @@ export default function SettingsPage(): React.JSX.Element {
                 />
               </Row>
               <Row
+                label={t("settings.data.autoDelete")}
+                desc={t("settings.data.autoDeleteDesc")}
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <Select
+                    value={historyRetention}
+                    onValueChange={handleHistoryRetentionChange}
+                  >
+                    <SelectTrigger
+                      id="settings-history-retention"
+                      className="w-36"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {retentionOptions.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {historyRetention === "custom" && (
+                    <>
+                      <Input
+                        inputMode="numeric"
+                        value={customRetentionDays}
+                        onChange={(e) =>
+                          handleCustomRetentionDaysChange(e.target.value)
+                        }
+                        className="w-16 text-center"
+                        aria-label={t("settings.data.autoDeleteDays")}
+                      />
+                      <span className="text-muted-foreground text-xs">
+                        {t("settings.data.autoDeleteDays")}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </Row>
+              <Row
                 label={t("settings.data.history")}
                 desc={t("settings.data.historyDesc")}
               >
@@ -992,6 +1139,28 @@ export default function SettingsPage(): React.JSX.Element {
           )}
 
           {activeSection === "network" && <NetworkPanel />}
+
+          {activeSection === "experimental" && (
+            <SettingsPanel>
+              <div className="border-border bg-secondary/40 text-muted-foreground mb-4 flex items-start gap-2.5 rounded-[10px] border px-3.5 py-3 text-[12px] leading-[1.55]">
+                <FlaskConical className="mt-px h-3.5 w-3.5 shrink-0 opacity-70" />
+                <span>
+                  These features are experimental and may change or be removed
+                  in future releases. Enable them to try new capabilities early.
+                </span>
+              </div>
+              <Row
+                label="Streaming audio"
+                desc="Stream audio in real-time for lower-latency dictation. Supported by Freestyle Transcribe, OpenAI, Deepgram, ElevenLabs, and Soniox."
+                last
+              >
+                <Switch
+                  checked={streamingAudio}
+                  onCheckedChange={handleStreamingAudioToggle}
+                />
+              </Row>
+            </SettingsPanel>
+          )}
         </div>
       </div>
     </div>

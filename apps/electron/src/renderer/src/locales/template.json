@@ -108,7 +108,8 @@
       "display": "Display",
       "permissions": "Permissions",
       "data": "Data",
-      "network": "Network"
+      "network": "Network",
+      "experimental": "Experimental"
     },
     "application": {
       "autoUpdate": "Automatic updates",
@@ -188,6 +189,13 @@
     "data": {
       "pauseHistory": "Pause history",
       "pauseHistoryDesc": "Stop saving new transcription sessions to history until you turn this off.",
+      "autoDelete": "Auto-delete history",
+      "autoDeleteDesc": "Automatically delete saved sessions older than the selected period. Runs once a day.",
+      "autoDeleteNever": "Never",
+      "autoDelete7": "After 7 days",
+      "autoDelete30": "After 30 days",
+      "autoDeleteCustom": "Custom",
+      "autoDeleteDays": "days",
       "history": "Transcription history",
       "historyDesc": "Permanently delete every saved session — this can't be undone.",
       "clearHistory": "Clear history",
@@ -598,12 +606,10 @@
       "installed": "Installed",
       "browse": "Browse"
     },
-    "loading": "Loading plugins…",
     "emptyTitle": "No plugins yet",
     "empty": "Install a plugin to add features. Browse the available ones or add your own.",
     "missingBadge": "Missing",
     "missingHint": "Listed but not installed on disk. Uninstall to remove it.",
-    "open": "Open",
     "more": "More options",
     "install": "Install",
     "installing": "Installing…",

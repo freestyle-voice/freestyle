@@ -1,9 +1,11 @@
+import {
+  maxOutputTokensForCleanup,
+  sanitizeTranscriptText,
+} from "@freestyle-voice/stt";
 import { generateText } from "ai";
-import { maxOutputTokensForCleanup } from "../src/lib/editor/max-output-tokens.ts";
-import { sanitizeTranscriptText } from "../src/lib/editor/model-hints.ts";
 import { buildRewritePrompt } from "../src/lib/editor/prompts.ts";
 import { getGroqChatModel } from "../src/lib/groq-http.ts";
-import { groqCleanupProviderOptions } from "../src/lib/post-process.ts";
+import { groqCleanupProviderOptions } from "../src/lib/llm/registry.ts";
 import {
   type BenchmarkCase,
   POST_PROCESS_BENCHMARK_CASES,

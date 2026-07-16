@@ -4,11 +4,14 @@ import "./fonts.css";
 import { CloudSignInModal } from "@renderer/components/cloud-signin-modal";
 import { ErrorBoundary } from "@renderer/components/error-boundary";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
-import i18n from "@renderer/i18n";
+import i18n, { initI18n } from "@renderer/i18n";
 import { initApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider } from "@renderer/lib/auth-context";
 import { createQueryClient } from "@renderer/lib/query";
-import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
+import {
+  installGlobalErrorHandlers,
+  reportError,
+} from "@renderer/lib/report-error";
 import NotFoundPage from "@renderer/pages/not-found";
 import TodayPage from "@renderer/pages/today";
 import AppShell from "@renderer/shell";
@@ -65,84 +68,106 @@ if (window.api?.platform === "darwin") {
   document.documentElement.classList.add("glass");
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <I18nextProvider i18n={i18n}>
-        <BrowserRouter>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <QueryClientProvider client={queryClient}>
-              <TooltipProvider>
-                <CloudAuthProvider>
-                  <CloudSignInModal />
-                  <Suspense fallback={<RouteFallback />}>
-                    <Routes>
-                      <Route
-                        path="/"
-                        element={<Navigate to="/today" replace />}
-                      />
-                      <Route path="/onboarding" element={<OnboardingPage />} />
+function mount(): void {
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <ErrorBoundary>
+        <I18nextProvider i18n={i18n}>
+          <BrowserRouter>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              <QueryClientProvider client={queryClient}>
+                <TooltipProvider>
+                  <CloudAuthProvider>
+                    <CloudSignInModal />
+                    <Suspense fallback={<RouteFallback />}>
+                      <Routes>
+                        <Route
+                          path="/"
+                          element={<Navigate to="/today" replace />}
+                        />
+                        <Route
+                          path="/onboarding"
+                          element={<OnboardingPage />}
+                        />
 
-                      <Route element={<AppShell />}>
-                        <Route path="/today" element={<TodayPage />} />
-                        <Route element={<PagePad />}>
-                          <Route path="/settings" element={<SettingsPage />} />
-                          <Route
-                            path="/settings/general"
-                            element={<Navigate to="/settings" replace />}
-                          />
-                          <Route
-                            path="/settings/models"
-                            element={<ModelsPage />}
-                          />
-                          <Route
-                            path="/settings/dictionary"
-                            element={<DictionaryPage />}
-                          />
-                          <Route
-                            path="/settings/vocabulary"
-                            element={<VocabularyPage />}
-                          />
-                          <Route
-                            path="/settings/formats"
-                            element={<Navigate to="/settings/tone" replace />}
-                          />
-                          <Route path="/settings/tone" element={<TonePage />} />
-                          <Route
-                            path="/settings/history"
-                            element={<HistoryPage />}
-                          />
-                          <Route path="/help" element={<HelpPage />} />
-                          <Route path="/plugins" element={<PluginsPage />} />
-                          <Route
-                            path="/plugins/:slug"
-                            element={<PluginDetailPage />}
-                          />
-                          <Route
-                            path="/plugins/:slug/:pageId"
-                            element={<PluginPage />}
-                          />
-                          <Route
-                            path="/settings/permissions"
-                            element={<Navigate to="/settings" replace />}
-                          />
+                        <Route element={<AppShell />}>
+                          <Route path="/today" element={<TodayPage />} />
+                          <Route element={<PagePad />}>
+                            <Route
+                              path="/settings"
+                              element={<SettingsPage />}
+                            />
+                            <Route
+                              path="/settings/general"
+                              element={<Navigate to="/settings" replace />}
+                            />
+                            <Route
+                              path="/settings/models"
+                              element={<ModelsPage />}
+                            />
+                            <Route
+                              path="/settings/dictionary"
+                              element={<DictionaryPage />}
+                            />
+                            <Route
+                              path="/settings/vocabulary"
+                              element={<VocabularyPage />}
+                            />
+                            <Route
+                              path="/settings/formats"
+                              element={<Navigate to="/settings/tone" replace />}
+                            />
+                            <Route
+                              path="/settings/tone"
+                              element={<TonePage />}
+                            />
+                            <Route
+                              path="/settings/history"
+                              element={<HistoryPage />}
+                            />
+                            <Route path="/help" element={<HelpPage />} />
+                            <Route path="/plugins" element={<PluginsPage />} />
+                            <Route
+                              path="/plugins/:slug"
+                              element={<PluginDetailPage />}
+                            />
+                            <Route
+                              path="/plugins/:slug/:pageId"
+                              element={<PluginPage />}
+                            />
+                            <Route
+                              path="/settings/permissions"
+                              element={<Navigate to="/settings" replace />}
+                            />
+                          </Route>
                         </Route>
-                      </Route>
 
-                      <Route path="*" element={<NotFoundPage />} />
-                    </Routes>
-                  </Suspense>
-                </CloudAuthProvider>
-              </TooltipProvider>
-            </QueryClientProvider>
-          </ThemeProvider>
-        </BrowserRouter>
-      </I18nextProvider>
-    </ErrorBoundary>
-  </StrictMode>,
-);
+                        <Route path="*" element={<NotFoundPage />} />
+                      </Routes>
+                    </Suspense>
+                  </CloudAuthProvider>
+                </TooltipProvider>
+              </QueryClientProvider>
+            </ThemeProvider>
+          </BrowserRouter>
+        </I18nextProvider>
+      </ErrorBoundary>
+    </StrictMode>,
+  );
+}
+
+// Load the active language (and the `en` fallback) before the first paint so
+// the UI renders translated immediately. Locale files are no longer bundled
+// into the initial chunk — they load on demand per language. If loading fails
+// we still mount (i18next falls back to raw keys) rather than leave a blank
+// window.
+void initI18n()
+  .catch((err) => {
+    reportError(err, { scope: "initI18n" });
+  })
+  .finally(mount);

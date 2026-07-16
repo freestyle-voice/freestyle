@@ -4,7 +4,14 @@ import { CloudProfileButton } from "@renderer/components/cloud-profile";
 import { Badge } from "@renderer/components/ui/badge";
 import { LINKS } from "@renderer/lib/links";
 import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform";
+import { listPlugins } from "@renderer/lib/plugins-api";
 import { cn } from "@renderer/lib/utils";
+import {
+  pluginDisplayName,
+  resolvePluginIcon,
+} from "@renderer/pages/plugins/helpers";
+import type { PluginInfo } from "@shared/plugins";
+import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
   Book,
@@ -26,9 +33,12 @@ type NavItem = {
   to: string;
   label: string;
   icon: LucideIcon;
-  shortcut: string;
+  /** Keyboard shortcut digit (e.g. "1" for Cmd+1). Omit for plugin items. */
+  shortcut?: string;
   /** Renders in the bottom group of the sidebar instead of the top. */
   footer?: boolean;
+  /** Whether this is a local dev plugin (shows a "Dev" badge). */
+  isDev?: boolean;
 };
 
 const STATIC_NAV: {
@@ -103,7 +113,7 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === "/settings"}
+            end={item.to === "/settings" || item.to === "/plugins"}
             className="block"
           >
             {({ isActive }) => (
@@ -121,18 +131,28 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
                     isActive ? "text-primary" : "text-muted-foreground"
                   }
                 />
-                <span className="flex-1">{item.label}</span>
-                <span
-                  className={cn(
-                    "mono shrink-0 text-[9.5px] tabular-nums",
-                    isActive
-                      ? "text-muted-foreground/80"
-                      : "text-muted-foreground/60",
-                  )}
-                >
-                  {MOD_LABEL}
-                  {item.shortcut}
-                </span>
+                <span className="flex-1 truncate">{item.label}</span>
+                {item.isDev ? (
+                  <Badge
+                    variant="outline"
+                    className="mono h-4 shrink-0 border-yellow-500/30 bg-yellow-500/15 px-1 text-[9px] text-yellow-700 uppercase tracking-[0.12em] dark:text-yellow-300"
+                  >
+                    dev
+                  </Badge>
+                ) : null}
+                {item.shortcut ? (
+                  <span
+                    className={cn(
+                      "mono shrink-0 text-[9.5px] tabular-nums",
+                      isActive
+                        ? "text-muted-foreground/80"
+                        : "text-muted-foreground/60",
+                    )}
+                  >
+                    {MOD_LABEL}
+                    {item.shortcut}
+                  </span>
+                ) : null}
               </div>
             )}
           </NavLink>
@@ -140,6 +160,26 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
       })}
     </nav>
   );
+}
+
+/** Derive sidebar nav items from installed plugins that have UI pages. */
+function usePluginNavItems(plugins: PluginInfo[]): NavItem[] {
+  return useMemo(() => {
+    const items: NavItem[] = [];
+    for (const plugin of plugins) {
+      if (!plugin.enabled || plugin.missing) continue;
+      for (const page of plugin.pages) {
+        items.push({
+          to: `/plugins/${plugin.slug}/${page.id}`,
+          label:
+            plugin.pages.length === 1 ? pluginDisplayName(plugin) : page.title,
+          icon: resolvePluginIcon(page.icon ?? plugin.icon),
+          isDev: plugin.slug.endsWith("-dev"),
+        });
+      }
+    }
+    return items;
+  }, [plugins]);
 }
 
 export default function AppShell(): React.JSX.Element {
@@ -152,6 +192,13 @@ export default function AppShell(): React.JSX.Element {
   // so the floating social bar would be occluded. Hide it while a plugin page
   // is open. Matches /plugins/<slug>/<pageId>.
   const onPluginPage = /^\/plugins\/[^/]+\/[^/]+/.test(location.pathname);
+
+  const { data: plugins = [] } = useQuery({
+    queryKey: ["plugins"],
+    queryFn: () => listPlugins(),
+  });
+
+  const pluginNav = usePluginNavItems(plugins);
 
   const navItems: NavItem[] = useMemo(
     () =>
@@ -219,6 +266,12 @@ export default function AppShell(): React.JSX.Element {
         </div>
 
         <NavList items={mainNav} />
+        {pluginNav.length > 0 ? (
+          <>
+            <div className="border-sidebar-border mx-3 my-1.5 border-t" />
+            <NavList items={pluginNav} />
+          </>
+        ) : null}
         <div className="flex-1" />
         <NavList items={footerNav} />
         <div
@@ -242,17 +295,17 @@ export default function AppShell(): React.JSX.Element {
             href={LINKS.repo}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-foreground hover:bg-card/70 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors"
+            aria-label="GitHub repo"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center rounded-md p-1.5 transition-colors"
           >
             <SiGithub className="h-3.5 w-3.5" />
-            Star the repo
           </a>
           <a
             href={LINKS.discord}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Join our Discord"
-            className="text-foreground hover:bg-card/70 inline-flex items-center justify-center rounded-md p-1.5 transition-colors"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center rounded-md p-1.5 transition-colors"
           >
             <SiDiscord className="h-3.5 w-3.5" />
           </a>

@@ -1,0 +1,58 @@
+{
+  "name": "@freestyle-voice/stt",
+  "version": "0.0.1",
+  "description": "Provider-agnostic speech-to-text transcription + AI cleanup engine. Bring your own Vercel AI SDK model and your own prompts.",
+  "license": "MIT",
+  "homepage": "https://github.com/freestyle-voice/freestyle/tree/main/packages/stt#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/freestyle-voice/freestyle.git",
+    "directory": "packages/stt"
+  },
+  "keywords": [
+    "freestyle",
+    "voice",
+    "dictation",
+    "transcription",
+    "speech-to-text",
+    "ai-sdk"
+  ],
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "pkgroll --minify",
+    "test": "vitest run"
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "peerDependencies": {
+    "@ai-sdk/provider-utils": "^4.0.0",
+    "ai": "^6.0.0"
+  },
+  "devDependencies": {
+    "@ai-sdk/provider-utils": "^4.0.27",
+    "@types/node": "^22.19.1",
+    "ai": "^6.0.191",
+    "pkgroll": "^2.27.0",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.7"
+  }
+}

@@ -1,4 +1,7 @@
+import { DragSpacer } from "@renderer/components/drag-spacer";
+import { listPlugins } from "@renderer/lib/plugins-api";
 import type { PluginViewBounds } from "@shared/plugins";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router";
 
@@ -50,9 +53,19 @@ export default function PluginPage(): React.JSX.Element {
   const navigate = useNavigate();
   const placeholderRef = useRef<HTMLDivElement>(null);
 
+  // The server serves the page by its entry path; resolve it from the plugin
+  // list (cached by the hub, refetched here on a direct navigation).
+  const { data: plugins } = useQuery({
+    queryKey: ["plugins"],
+    queryFn: () => listPlugins(),
+  });
+  const entry = plugins
+    ?.find((p) => p.slug === slug)
+    ?.pages.find((p) => p.id === pageId)?.entry;
+
   // Show the native view and keep its bounds in sync with the placeholder.
   useLayoutEffect(() => {
-    if (!slug || !pageId) return;
+    if (!slug || !pageId || !entry) return;
     const el = placeholderRef.current;
     if (!el) return;
 
@@ -61,7 +74,13 @@ export default function PluginPage(): React.JSX.Element {
       return { x: r.x, y: r.y, width: r.width, height: r.height };
     };
 
-    void window.api.showPluginView(slug, pageId, measure(), readTokens());
+    void window.api.showPluginView(
+      slug,
+      pageId,
+      entry,
+      measure(),
+      readTokens(),
+    );
 
     const sync = (): void => window.api.setPluginViewBounds(measure());
     const observer = new ResizeObserver(sync);
@@ -73,7 +92,7 @@ export default function PluginPage(): React.JSX.Element {
       window.removeEventListener("resize", sync);
       window.api.hidePluginView();
     };
-  }, [slug, pageId]);
+  }, [slug, pageId, entry]);
 
   // Plugin pages can ask the host to navigate (e.g. back to the hub).
   useEffect(() => {
@@ -81,16 +100,9 @@ export default function PluginPage(): React.JSX.Element {
   }, [navigate]);
 
   return (
-    <div
-      className="flex h-full min-h-0 flex-col"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    >
-      <div className="h-7 shrink-0" />
-      <div
-        ref={placeholderRef}
-        className="flex-1"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      />
+    <div className="flex h-full min-h-0 flex-col">
+      <DragSpacer />
+      <div ref={placeholderRef} className="flex-1" />
     </div>
   );
 }

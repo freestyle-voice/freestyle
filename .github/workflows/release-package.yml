@@ -23,6 +23,7 @@ on:
         type: choice
         options:
           - sdk
+          - stt
           - create-freestyle-plugin
           - plugin-audio-transcription
           - profanity-filter
@@ -75,6 +76,7 @@ jobs:
         run: |
           case "$PKG" in
             sdk)                        echo "path=packages/sdk" >> "$GITHUB_OUTPUT" ;;
+            stt)                        echo "path=packages/stt" >> "$GITHUB_OUTPUT" ;;
             create-freestyle-plugin)    echo "path=packages/create-freestyle-plugin" >> "$GITHUB_OUTPUT" ;;
             plugin-audio-transcription) echo "path=plugins/audio-transcription" >> "$GITHUB_OUTPUT" ;;
             profanity-filter)           echo "path=plugins/profanity-filter" >> "$GITHUB_OUTPUT" ;;

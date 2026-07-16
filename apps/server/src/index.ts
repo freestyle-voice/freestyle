@@ -7,13 +7,17 @@ import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
 import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
+import { WebSocketServer } from "ws";
+import { formatError } from "./lib/format-error.js";
 import { isTransientCloudError } from "./lib/freestyle-cloud.js";
+import { startHistoryRetentionSweep } from "./lib/history-store.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
   activateManagedMlxRuntimeForAppVersion,
   prefetchManagedMlxRuntimeForAppRelease,
 } from "./lib/mlx-asr/runtime.js";
 import { configureNetwork } from "./lib/network.js";
+import { pluginApiGuard } from "./lib/plugin-api-guard.js";
 import {
   disposeServerPlugins,
   initServerPlugins,
@@ -22,8 +26,6 @@ import {
 import { captureException, shutdownPosthog } from "./lib/posthog.js";
 import { trustedOriginMiddleware } from "./lib/trusted-origin.js";
 import routes from "./routes";
-import { autoStartMlxAsrServer } from "./routes/mlx-asr.js";
-import { autoStartWhisperServer } from "./routes/whisper.js";
 
 const httpLog = createAppLogger("http");
 
@@ -51,13 +53,42 @@ process.on("SIGINT", () => shutdownServer().finally(() => process.exit(0)));
 process.on("SIGTERM", () => shutdownServer().finally(() => process.exit(0)));
 
 /**
- * Build the Hono app with plugin middleware injected in resolved order between
- * the hardcoded security middleware and routes. Called after plugins are loaded
- * so `middleware` contributions are available at construction time.
+ * A stable middleware that dispatches the *current* plugin middleware chain
+ * (read from the live registry on every request) in resolved order. Mounting
+ * this once at construction — instead of spreading the middleware array in —
+ * means a runtime `reloadServerPlugins()` is observed immediately: a
+ * newly-enabled plugin's routes become reachable, and a disabled plugin's stop
+ * responding, all without reconstructing the app or restarting the server.
+ *
+ * Each plugin middleware may short-circuit (return a `Response`) or call its
+ * own `next()` to defer to the following one; when the whole chain defers, the
+ * outer `next()` hands off to the app's routes.
  */
-function createApp(pluginMiddleware: MiddlewareHandler[] = []) {
+const pluginMiddlewareDispatcher: MiddlewareHandler = async (c, next) => {
+  const chain = plugins().collectMiddleware();
+  if (chain.length === 0) return next();
+
+  // Compose the chain so `next` at position i runs handler i+1, and the final
+  // `next` falls through to the app's own routes (the outer `next`).
+  const dispatch = (index: number): Promise<void> => {
+    if (index >= chain.length) return next() as Promise<void>;
+    return chain[index](c, () => dispatch(index + 1)) as Promise<void>;
+  };
+  return dispatch(0);
+};
+
+/**
+ * Build the Hono app. Plugin middleware is dispatched from the *live* registry
+ * per request (see {@link pluginMiddlewareDispatcher}) rather than baked in at
+ * construction, so enabling/installing a plugin at runtime (via
+ * `reloadServerPlugins()`) mounts its contributed routes without a restart.
+ */
+function createApp() {
   const base = new Hono()
     .use(trustedOriginMiddleware)
+    // Confine plugin-UI-originated requests to their own plugin namespace, so a
+    // same-origin plugin page can't reach keys/auth/settings or other plugins.
+    .use(pluginApiGuard)
     // CORS for renderer requests
     .use(cors())
     // Correlation id per request (also surfaced via the X-Request-Id header).
@@ -74,23 +105,34 @@ function createApp(pluginMiddleware: MiddlewareHandler[] = []) {
     base.use(`${prefix}/*`, timeout(REQUEST_TIMEOUT_MS));
   }
 
-  // Mount plugin middleware in resolved order (enforce: pre → none → post).
-  for (const mw of pluginMiddleware) {
-    base.use(mw);
-  }
+  // Dispatch plugin middleware from the live registry, so a runtime reload
+  // (enable/disable/install) takes effect on the next request without a restart.
+  base.use(pluginMiddlewareDispatcher);
 
   const app = base
     .onError((err, c) => {
       // Let Hono's own exceptions (e.g. bearerAuth's 401) keep their response,
       // but still report genuine server errors.
       if (err instanceof HTTPException) {
-        if (err.status >= 500) captureException(err);
+        if (err.status >= 500) {
+          httpLog.error(
+            `${c.req.method} ${c.req.path} -> ${err.status}: ${formatError(err)}`,
+          );
+          captureException(err);
+        }
         const res = err.getResponse();
         // Preserve CORS so the cross-origin renderer can read auth errors.
         const origin = c.req.header("origin");
         if (origin) res.headers.set("Access-Control-Allow-Origin", origin);
         return res;
       }
+      // Always log the failure locally so it's visible in dev and captured in
+      // the diagnostics log file — otherwise a 500 only shows as a status code
+      // in the access log with no detail. `captureException` (below) is gated,
+      // but local logging never is.
+      httpLog.error(
+        `${c.req.method} ${c.req.path} -> 500: ${formatError(err)}`,
+      );
       // Transient network faults (e.g. `fetch failed` / ECONNRESET when calling
       // Freestyle Cloud) and upstream 5xx responses aren't app defects. Every
       // route already guards its own reporting; guard here too so anything that
@@ -140,19 +182,23 @@ export async function startServer(
   // anything issues a fetch, so model downloads and cloud/API calls honor it.
   configureNetwork();
 
-  // Load plugins (built-in + user) before constructing the app so middleware
-  // contributions are mounted at the correct position in the chain.
+  // Load plugins (built-in + user) before serving. The app dispatches plugin
+  // middleware from the live registry per request, so later runtime reloads
+  // (enable/disable/install) take effect without reconstructing the app.
   await initServerPlugins();
 
-  const pluginMiddleware = plugins().collectMiddleware();
-  const app = createApp(pluginMiddleware);
+  const app = createApp();
+
+  startHistoryRetentionSweep();
 
   return new Promise((resolve, reject) => {
+    const wss = new WebSocketServer({ noServer: true });
     const server = serve(
       {
         fetch: app.fetch,
         port,
         hostname: host,
+        websocket: { server: wss },
       },
       (info) => {
         resolve({ server, port: info.port });
@@ -181,8 +227,6 @@ export { captureException, shutdownPosthog } from "./lib/posthog.js";
 export { stopServer as stopWhisperServer } from "./lib/whisper/server.js";
 export {
   activateManagedMlxRuntimeForAppVersion,
-  autoStartMlxAsrServer,
-  autoStartWhisperServer,
   prefetchManagedMlxRuntimeForAppRelease,
   reconcileUnsupportedMlxVoiceDefault,
 };

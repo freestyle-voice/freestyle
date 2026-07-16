@@ -1,3 +1,4 @@
+import { checkPluginUpdates } from "@renderer/lib/plugins-api";
 import { ONE_HOUR } from "@renderer/lib/query";
 import type { PluginInfo, PluginUpdateResult } from "@shared/plugins";
 import { useQuery } from "@tanstack/react-query";
@@ -78,7 +79,8 @@ export function pluginDisplayName(plugin: PluginInfo): string {
   const base = plugin.name
     .replace(/^@[^/]+\//, "")
     .replace(/^freestyle-plugin-/, "")
-    .replace(/^plugin-/, "");
+    .replace(/^plugin-/, "")
+    .replace(/-dev$/, "");
   return base
     .split(/[-_]/)
     .filter(Boolean)
@@ -103,7 +105,7 @@ export function usePluginUpdates(plugins: PluginInfo[]) {
     queryKey: ["plugin-updates", entries],
     queryFn: async () => {
       if (entries.length === 0) return new Map<string, PluginUpdateResult>();
-      const results = await window.api.checkPluginUpdates(entries);
+      const results = await checkPluginUpdates(entries);
       return new Map(results.map((r) => [r.name, r]));
     },
     staleTime: ONE_HOUR,

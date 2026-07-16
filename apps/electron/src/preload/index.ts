@@ -6,13 +6,7 @@ import type {
 } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { OpenAppCandidate } from "../shared/open-apps";
-import type {
-  PluginCatalogEntry,
-  PluginInfo,
-  PluginUpdateCheck,
-  PluginUpdateResult,
-  PluginViewBounds,
-} from "../shared/plugins";
+import type { PluginViewBounds } from "../shared/plugins";
 
 // Custom APIs for renderer
 const api = {
@@ -202,6 +196,16 @@ const api = {
     return () =>
       ipcRenderer.removeListener("settings:audio-ducking-changed", handler);
   },
+  sendStreamingAudioChanged: (enabled: boolean): void =>
+    ipcRenderer.send("settings:streaming-audio-changed", enabled),
+  onStreamingAudioChanged: (
+    callback: (enabled: boolean) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, enabled: boolean): void => callback(enabled);
+    ipcRenderer.on("settings:streaming-audio-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("settings:streaming-audio-changed", handler);
+  },
   sendAudioPlaybackModeChanged: (mode: AudioPlaybackMode): void =>
     ipcRenderer.send("settings:audio-playback-mode-changed", mode),
   onAudioPlaybackModeChanged: (
@@ -266,34 +270,21 @@ const api = {
   },
 
   // --- Plugins ---
-  listPlugins: (): Promise<PluginInfo[]> => ipcRenderer.invoke("plugins:list"),
-  refreshPlugins: (): Promise<PluginInfo[]> =>
-    ipcRenderer.invoke("plugins:refresh"),
-  setPluginEnabled: (
-    specifier: string,
-    enabled: boolean,
-  ): Promise<PluginInfo[]> =>
-    ipcRenderer.invoke("plugins:set-enabled", specifier, enabled),
-  getPluginCatalog: (): Promise<{ plugins: PluginCatalogEntry[] }> =>
-    ipcRenderer.invoke("plugins:catalog"),
-  installPlugin: (npmName: string, version?: string): Promise<PluginInfo[]> =>
-    ipcRenderer.invoke("plugins:install", npmName, version),
-  uninstallPlugin: (specifier: string): Promise<PluginInfo[]> =>
-    ipcRenderer.invoke("plugins:uninstall", specifier),
-  checkPluginUpdates: (
-    plugins: PluginUpdateCheck[],
-  ): Promise<PluginUpdateResult[]> =>
-    ipcRenderer.invoke("plugins:check-updates", plugins),
+  // Discovery, install, catalog, and updates now go directly renderer→server
+  // over the typed `hc` client (see renderer/src/lib/plugins-api.ts). Only the
+  // native view overlay and the cache-invalidation signal stay on IPC.
   showPluginView: (
     slug: string,
     pageId: string,
+    entry: string,
     bounds: PluginViewBounds,
     tokens?: Record<string, string>,
   ): Promise<boolean> =>
-    ipcRenderer.invoke("plugin-view:show", slug, pageId, bounds, tokens),
+    ipcRenderer.invoke("plugin-view:show", slug, pageId, entry, bounds, tokens),
   setPluginViewBounds: (bounds: PluginViewBounds): void =>
     ipcRenderer.send("plugin-view:set-bounds", bounds),
   hidePluginView: (): void => ipcRenderer.send("plugin-view:hide"),
+  invalidatePluginView: (): void => ipcRenderer.send("plugin-view:invalidate"),
   onPluginNavigate: (callback: (to: string) => void): (() => void) => {
     const handler = (_: unknown, to: string): void => callback(to);
     ipcRenderer.on("plugin:navigate", handler);

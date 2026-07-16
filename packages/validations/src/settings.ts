@@ -70,6 +70,28 @@ export const proxyUrlSettingSchema = z
 /** Filesystem path to a custom CA certificate bundle. Empty string clears it. */
 export const caCertPathSettingSchema = z.string().max(4096);
 
+export const HISTORY_RETENTION_DAYS_MAX = 3650;
+
+export function parseRetentionDays(
+  value: string | null | undefined,
+): number | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const days = Number(trimmed);
+  if (days < 1 || days > HISTORY_RETENTION_DAYS_MAX) return null;
+  return days;
+}
+
+export const historyRetentionDaysSettingSchema = z
+  .string()
+  .refine(
+    (value) => value.trim() === "" || parseRetentionDays(value) !== null,
+    {
+      message: `Retention must be a whole number of days between 1 and ${HISTORY_RETENTION_DAYS_MAX} (or empty to disable)`,
+    },
+  );
+
 /**
  * Combined shape for the Network settings form. The renderer drives a
  * react-hook-form with this schema so its inline validation matches exactly

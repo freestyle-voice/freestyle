@@ -10,6 +10,7 @@ export const SETTINGS_KEYS = {
   hotkey: "hotkey",
   hotkeyMode: "hotkey_mode",
   historyPaused: "history_paused",
+  historyRetentionDays: "history_retention_days",
   language: "language",
   llmCleanup: "llm_cleanup",
   localLlmApiKey: "local_llm_api_key",

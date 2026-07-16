@@ -1,6 +1,11 @@
+import { parseRetentionDays } from "@freestyle-voice/validations";
 import { getDb, readSetting } from "./db.js";
+import { capture, captureException } from "./posthog.js";
 
 export const HISTORY_PAUSED_SETTING_KEY = "history_paused";
+export const HISTORY_RETENTION_SETTING_KEY = "history_retention_days";
+
+const RETENTION_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export interface RawHistoryEntry {
   rawText: string;
@@ -21,6 +26,55 @@ export interface ProcessedHistoryEntry extends RawHistoryEntry {
 
 export function isHistoryPaused(): boolean {
   return readSetting(HISTORY_PAUSED_SETTING_KEY) === "true";
+}
+
+export function getHistoryRetentionDays(): number | null {
+  return parseRetentionDays(readSetting(HISTORY_RETENTION_SETTING_KEY));
+}
+
+export function purgeExpiredHistory(): number {
+  const days = getHistoryRetentionDays();
+  if (days === null) return 0;
+
+  const result = getDb()
+    .prepare(
+      "DELETE FROM transcription_history WHERE created_at < datetime('now', ?)",
+    )
+    .run(`-${days} days`);
+
+  const deleted = Number(result.changes);
+  if (deleted > 0) {
+    capture("history expired entries purged", {
+      deleted_count: deleted,
+      retention_days: days,
+    });
+  }
+  return deleted;
+}
+
+let retentionSweepTimer: NodeJS.Timeout | null = null;
+
+export function startHistoryRetentionSweep(): void {
+  if (retentionSweepTimer) return;
+
+  const sweep = (): void => {
+    try {
+      purgeExpiredHistory();
+    } catch (err) {
+      captureException(err);
+    }
+  };
+
+  sweep();
+  retentionSweepTimer = setInterval(sweep, RETENTION_SWEEP_INTERVAL_MS);
+  retentionSweepTimer.unref();
+}
+
+export function stopHistoryRetentionSweep(): void {
+  if (retentionSweepTimer) {
+    clearInterval(retentionSweepTimer);
+    retentionSweepTimer = null;
+  }
 }
 
 export function saveRawHistory(entry: RawHistoryEntry): boolean {

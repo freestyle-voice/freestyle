@@ -1,23 +1,7 @@
 import { createAppLogger } from "@freestyle-voice/utils";
 import { type BrowserWindow, ipcMain } from "electron";
 import type { HostActions } from "freestyle-voice";
-import type {
-  PluginFetchRequest,
-  PluginFetchResponse,
-  SerializedBody,
-} from "../../shared/bridge-protocol";
-import type {
-  PluginUpdateCheck,
-  PluginUpdateResult,
-} from "../../shared/plugins";
-import type { DiscoveredPlugin } from "./manifest.js";
 import {
-  getDiscoveredPlugins,
-  refreshDiscoveredPlugins,
-  registerPluginProtocol,
-} from "./ui.js";
-import {
-  type BridgeConfig,
   PluginViewManager,
   pluginBridgePreloadPath,
   type ViewBounds,
@@ -29,30 +13,8 @@ const log = createAppLogger("plugins-ui");
 export interface PluginUiHostDeps {
   /** The dashboard window the plugin views overlay. */
   window: BrowserWindow;
-  /** Resolve the bridge config (server URL + theme tokens) on demand. */
-  getBridgeConfig: () => BridgeConfig;
-  /**
-   * Resolve the current `plugins` setting value + the user-data dir for
-   * discovery. Async because the setting is read from the (possibly remote)
-   * server over HTTP.
-   */
-  getDiscoverySources: () => Promise<{
-    pluginsSetting: string | undefined;
-    userDataDir: string;
-    disabledPlugins: ReadonlySet<string>;
-  }>;
-  /** Persist a plugin's enabled state (writes the `disabled_plugins` setting). */
-  setPluginEnabled: (specifier: string, enabled: boolean) => Promise<void>;
-  /** Fetch the installable plugin catalog from the server. */
-  getCatalog: () => Promise<unknown>;
-  /** Install a plugin by npm name (server + desktop). */
-  installPlugin: (npmName: string, version?: string) => Promise<void>;
-  /** Uninstall a plugin by specifier (server + desktop). */
-  uninstallPlugin: (specifier: string) => Promise<void>;
-  /** Check for available plugin updates via the npm registry. */
-  checkForUpdates: (
-    plugins: PluginUpdateCheck[],
-  ) => Promise<PluginUpdateResult[]>;
+  /** Resolve the loopback server base URL that serves plugin UI + API. */
+  getServerBaseUrl: () => string;
   /** Perform a host action requested by a plugin page. */
   onAction: <C extends keyof HostActions>(
     channel: C,
@@ -64,79 +26,26 @@ let viewManager: PluginViewManager | null = null;
 let currentDeps: PluginUiHostDeps | null = null;
 let ipcRegistered = false;
 
-export { PLUGIN_SCHEME_PRIVILEGE } from "./ui.js";
-
 /**
- * Wire up the plugin UI host: the asset protocol, the view manager, and all
- * IPC. Safe to call multiple times (e.g. when the settings window is closed
- * and re-opened) — the protocol and IPC handlers are registered only once,
- * while the window and deps reference are updated on every call.
+ * Wire up the plugin UI host: the view manager and the remaining IPC. Plugin
+ * discovery, install/uninstall, catalog, and asset serving all live server-side
+ * now (the renderer talks to the server directly); this process only overlays a
+ * plugin's page in a `WebContentsView` and relays host actions.
+ *
+ * Safe to call multiple times (e.g. when the settings window is re-opened) —
+ * the IPC handlers register only once, while the window/deps update each call.
  */
 export function initPluginUiHost(deps: PluginUiHostDeps): void {
   currentDeps = deps;
 
-  registerPluginProtocol();
-
   viewManager = new PluginViewManager(
     pluginBridgePreloadPath(),
-    deps.getBridgeConfig,
+    deps.getServerBaseUrl,
   );
   viewManager.attachWindow(deps.window);
 
   if (ipcRegistered) return;
   ipcRegistered = true;
-
-  ipcMain.handle("plugins:list", () =>
-    serializePlugins(getDiscoveredPlugins()),
-  );
-
-  ipcMain.handle("plugins:refresh", async () => {
-    const { pluginsSetting, userDataDir, disabledPlugins } =
-      await currentDeps!.getDiscoverySources();
-    refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);
-    return serializePlugins(getDiscoveredPlugins());
-  });
-
-  ipcMain.handle(
-    "plugins:set-enabled",
-    async (_e, specifier: string, enabled: boolean) => {
-      await currentDeps!.setPluginEnabled(specifier, enabled);
-      const { pluginsSetting, userDataDir, disabledPlugins } =
-        await currentDeps!.getDiscoverySources();
-      refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);
-      return serializePlugins(getDiscoveredPlugins());
-    },
-  );
-
-  ipcMain.handle("plugins:catalog", () => currentDeps!.getCatalog());
-
-  ipcMain.handle(
-    "plugins:install",
-    async (_e, npmName: string, version: string | undefined) => {
-      await currentDeps!.installPlugin(npmName, version);
-      // Installing doubles as updating (reinstall). Drop any cached view so the
-      // next open loads the new code instead of the stale, still-alive one.
-      viewManager?.invalidate();
-      const { pluginsSetting, userDataDir, disabledPlugins } =
-        await currentDeps!.getDiscoverySources();
-      refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);
-      return serializePlugins(getDiscoveredPlugins());
-    },
-  );
-
-  ipcMain.handle("plugins:uninstall", async (_e, specifier: string) => {
-    await currentDeps!.uninstallPlugin(specifier);
-    // Tear down any cached view for the removed plugin.
-    viewManager?.invalidate();
-    const { pluginsSetting, userDataDir, disabledPlugins } =
-      await currentDeps!.getDiscoverySources();
-    refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabledPlugins);
-    return serializePlugins(getDiscoveredPlugins());
-  });
-
-  ipcMain.handle("plugins:check-updates", (_e, plugins: PluginUpdateCheck[]) =>
-    currentDeps!.checkForUpdates(plugins),
-  );
 
   ipcMain.handle(
     "plugin-view:show",
@@ -144,9 +53,10 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
       _e,
       slug: string,
       pageId: string,
+      entry: string,
       bounds: ViewBounds,
       tokens?: Record<string, string>,
-    ) => viewManager?.show(slug, pageId, bounds, tokens) ?? false,
+    ) => viewManager?.show(slug, pageId, entry, bounds, tokens) ?? false,
   );
 
   ipcMain.on("plugin-view:set-bounds", (_e, bounds: ViewBounds) => {
@@ -157,12 +67,14 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
     viewManager?.hide();
   });
 
-  // The plugin frame's preload fetches its bridge config (server URL + theme
-  // tokens) over IPC.
-  ipcMain.handle(
-    "plugin-bridge:config",
-    () => viewManager?.getConfig() ?? null,
-  );
+  // A freshly installed/updated/uninstalled plugin must not re-attach a cached
+  // view running stale code — the renderer signals a change here.
+  ipcMain.on("plugin-view:invalidate", () => {
+    viewManager?.invalidate();
+  });
+
+  // The plugin frame's preload fetches its theme tokens over IPC.
+  ipcMain.handle("plugin-bridge:config", () => viewManager?.getTokens() ?? {});
 
   ipcMain.handle(
     "plugin-bridge:action",
@@ -182,90 +94,4 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
       }
     },
   );
-
-  // Proxy a plugin page's server API request. The page can't fetch the loopback
-  // server directly (mixed content from its secure custom-scheme origin), so
-  // main performs the request and returns a serialized response.
-  ipcMain.handle(
-    "plugin-bridge:fetch",
-    async (_e, req: PluginFetchRequest): Promise<PluginFetchResponse> => {
-      const config = currentDeps!.getBridgeConfig();
-      const url = `${config.serverUrl}${req.path}`;
-      const body = deserializeBody(req.body);
-
-      const headers = new Headers(req.headers);
-      // For a FormData body, undici must generate the multipart Content-Type
-      // (with its boundary). A caller-supplied content-type would suppress that
-      // and leave the server unable to parse the parts, so drop it here.
-      if (req.body.kind === "form") headers.delete("content-type");
-
-      const res = await fetch(url, { method: req.method, headers, body });
-
-      const resHeaders: Record<string, string> = {};
-      res.headers.forEach((value, key) => {
-        resHeaders[key] = value;
-      });
-      return {
-        ok: res.ok,
-        status: res.status,
-        statusText: res.statusText,
-        headers: resHeaders,
-        body: await res.arrayBuffer(),
-      };
-    },
-  );
-}
-
-/** Reconstruct a fetch body from its serialized form. */
-function deserializeBody(body: SerializedBody): BodyInit | undefined {
-  switch (body.kind) {
-    case "none":
-      return undefined;
-    case "text":
-      return body.value;
-    case "binary":
-      return body.data;
-    case "form": {
-      const form = new FormData();
-      for (const field of body.fields) {
-        if (field.type === "text") {
-          form.append(field.name, field.value);
-        } else {
-          form.append(
-            field.name,
-            new File([field.data], field.filename, { type: field.mime }),
-          );
-        }
-      }
-      return form;
-    }
-  }
-}
-
-/** Re-scan installed plugins; returns the serialized list for the renderer. */
-export function refreshPluginUi(
-  pluginsSetting: string | undefined,
-  userDataDir: string,
-  disabled: ReadonlySet<string> = new Set(),
-): ReturnType<typeof serializePlugins> {
-  refreshDiscoveredPlugins(pluginsSetting, userDataDir, disabled);
-  return serializePlugins(getDiscoveredPlugins());
-}
-
-/** Strip the absolute `dir` before sending plugin info to the renderer. */
-function serializePlugins(plugins: readonly DiscoveredPlugin[]) {
-  return plugins.map((p) => ({
-    name: p.name,
-    slug: p.slug,
-    specifier: p.specifier,
-    enabled: p.enabled,
-    pages: p.pages,
-    ...(p.missing ? { missing: true } : {}),
-    ...(p.version ? { version: p.version } : {}),
-    ...(p.description ? { description: p.description } : {}),
-    ...(p.author ? { author: p.author } : {}),
-    ...(p.displayName ? { displayName: p.displayName } : {}),
-    ...(p.icon ? { icon: p.icon } : {}),
-    ...(p.readme ? { readme: p.readme } : {}),
-  }));
 }

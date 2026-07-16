@@ -31,6 +31,12 @@ export interface PluginCatalogEntry {
   icon?: string;
   homepage?: string;
   author?: string;
+  /** Whether this plugin should be highlighted in the catalog. */
+  featured?: boolean;
+  /** Grouping category (e.g. "productivity", "transcription", "content"). */
+  category?: string;
+  /** Minimum desktop app version required (semver, e.g. "0.5.0"). */
+  minAppVersion?: string;
 }
 
 /** Input for a plugin update check: the installed name + version. */

@@ -39,9 +39,11 @@ export async function initServerPlugins(): Promise<void> {
  * registry is disposed and a fresh one is built so disabled plugins' hooks stop
  * firing immediately, without a server restart.
  *
- * Note: plugin middleware is mounted at app construction time and is NOT
- * updated by a reload. Only hook handlers are affected. Middleware changes
- * require a full server restart.
+ * Contributed `middleware` also takes effect immediately: the app dispatches
+ * plugin middleware from this live registry per request (see
+ * `pluginMiddlewareDispatcher` in `apps/server/src/index.ts`), so a
+ * newly-enabled plugin's routes become reachable and a disabled plugin's stop
+ * responding on the next request — no restart required.
  */
 export async function reloadServerPlugins(): Promise<void> {
   const previous = registry;

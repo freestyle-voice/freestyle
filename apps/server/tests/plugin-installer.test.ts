@@ -3,6 +3,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pluginSlug } from "freestyle-voice";
 import * as tar from "tar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -67,7 +68,7 @@ describe("installPackage", () => {
 
     const installed = await installPackage(pluginsDir, resolved);
 
-    const dest = path.join(pluginsDir, "freestyle-voice-plugin-x");
+    const dest = path.join(pluginsDir, pluginSlug("@freestyle-voice/plugin-x"));
     expect(installed.dir).toBe(dest);
     expect(fs.existsSync(path.join(dest, "package.json"))).toBe(true);
     expect(fs.existsSync(path.join(dest, "index.js"))).toBe(true);

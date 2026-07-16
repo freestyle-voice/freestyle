@@ -4,6 +4,8 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+packageExtensionsChecksum: sha256-Tz1ONvJSCvE2lqFS2bNg2oeSO3eyVISKCTf7JNmzqFw=
+
 importers:
 
   .:
@@ -137,6 +139,9 @@ importers:
       ws:
         specifier: ^8.21.0
         version: 8.21.0
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@electron-toolkit/tsconfig':
         specifier: ^2.0.0
@@ -180,6 +185,9 @@ importers:
       react-dom:
         specifier: ^19.2.1
         version: 19.2.6(react@19.2.6)
+      rollup-plugin-visualizer:
+        specifier: ^6.0.4
+        version: 6.0.11(rollup@4.60.4)
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0
@@ -213,6 +221,9 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.65
         version: 3.0.65(zod@4.4.3)
+      '@freestyle-voice/stt':
+        specifier: workspace:*
+        version: link:../../packages/stt
       '@hono/node-server':
         specifier: ^2.0.4
         version: 2.0.4(hono@4.12.22)
@@ -246,6 +257,9 @@ importers:
       winston:
         specifier: ^3.17.0
         version: 3.19.0
+      ws:
+        specifier: ^8.18.3
+        version: 8.21.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -265,6 +279,9 @@ importers:
       '@types/semver':
         specifier: ^7.7.1
         version: 7.7.1
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       freestyle-voice:
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -317,6 +334,27 @@ importers:
       hono:
         specifier: ^4.12.22
         version: 4.12.22
+      pkgroll:
+        specifier: ^2.27.0
+        version: 2.27.0(typescript@5.9.3)(vite@7.3.3(@types/node@22.19.19)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(msw@2.14.6(@types/node@22.19.19)(typescript@5.9.3))(vite@7.3.3(@types/node@22.19.19)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/stt:
+    devDependencies:
+      '@ai-sdk/provider-utils':
+        specifier: ^4.0.27
+        version: 4.0.27(zod@4.4.3)
+      '@types/node':
+        specifier: ^22.19.1
+        version: 22.19.19
+      ai:
+        specifier: ^6.0.191
+        version: 6.0.191(zod@4.4.3)
       pkgroll:
         specifier: ^2.27.0
         version: 2.27.0(typescript@5.9.3)(vite@7.3.3(@types/node@22.19.19)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -3571,6 +3609,9 @@ packages:
 
   '@types/node@26.0.0':
     resolution: {integrity: sha512-vf2YFi1iY9lHGwNJMs01biZFbKJkrZR1T6/MlzjhJLPdntOHLhTrDSnSVcdtvjihi4VQNlrFRIxLsDBlQpAipA==}
+
+  '@types/node@26.1.1':
+    resolution: {integrity: sha512-nxAkRSVkN1Y0JC1W8ky/fTfkGsMmcrRsbx+3XoZE+rMOX71kLYTV7fLXpqud1GpbpP5TuffXFqfX7fH2GgZREw==}
 
   '@types/offscreencanvas@2019.7.3':
     resolution: {integrity: sha512-ieXiYmgSRXUDeOntE1InxjWyvEelZGP63M+cGuquuRLuIKKT1osnkXjxev9B7d1nXSug5vpunx+gNlbVxMlC9A==}
@@ -7329,6 +7370,19 @@ packages:
       vite:
         optional: true
 
+  rollup-plugin-visualizer@6.0.11:
+    resolution: {integrity: sha512-TBwVHVY7buHjIKVLqr9scTVFwqZqMXINcCphPwIWKPDCOBIa+jCQfafvbjRJDZgXdq/A996Dy6yGJ/+/NtAXDQ==}
+    engines: {node: '>=18'}
+    hasBin: true
+    peerDependencies:
+      rolldown: 1.x || ^1.0.0-beta
+      rollup: 2.x || 3.x || 4.x
+    peerDependenciesMeta:
+      rolldown:
+        optional: true
+      rollup:
+        optional: true
+
   rollup-pluginutils@2.8.2:
     resolution: {integrity: sha512-EEp9NhnUkwY8aif6bxgovPHMoMoNr2FulJziTndpt5H9RdwC47GSGuII9XxpSdzVGM0GWrNPHV6ie1LTNJPaLQ==}
 
@@ -9417,6 +9471,7 @@ snapshots:
     dependencies:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.76.1(react@19.2.6)
+      zod: 4.4.3
 
   '@huggingface/blake3-jit@0.0.2': {}
 
@@ -11924,6 +11979,10 @@ snapshots:
     dependencies:
       undici-types: 8.3.0
 
+  '@types/node@26.1.1':
+    dependencies:
+      undici-types: 8.3.0
+
   '@types/offscreencanvas@2019.7.3': {}
 
   '@types/plist@3.0.5':
@@ -11954,7 +12013,7 @@ snapshots:
 
   '@types/set-cookie-parser@2.4.10':
     dependencies:
-      '@types/node': 22.19.19
+      '@types/node': 26.1.1
 
   '@types/stats.js@0.17.4': {}
 
@@ -16742,6 +16801,15 @@ snapshots:
       rollup: 4.60.4
       vite: 7.3.3(@types/node@26.0.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
 
+  rollup-plugin-visualizer@6.0.11(rollup@4.60.4):
+    dependencies:
+      open: 8.4.2
+      picomatch: 4.0.4
+      source-map: 0.7.6
+      yargs: 17.7.2
+    optionalDependencies:
+      rollup: 4.60.4
+
   rollup-pluginutils@2.8.2:
     dependencies:
       estree-walker: 0.6.1
@@ -17891,7 +17959,7 @@ snapshots:
       picomatch: 4.0.4
       postcss: 8.5.15
       rollup: 4.60.4
-      tinyglobby: 0.2.16
+      tinyglobby: 0.2.17
     optionalDependencies:
       '@types/node': 25.9.1
       fsevents: 2.3.3

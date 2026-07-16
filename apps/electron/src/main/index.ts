@@ -47,7 +47,6 @@ import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import {
   type AppType,
   activateManagedMlxRuntimeForAppVersion,
-  autoStartWhisperServer,
   captureException,
   closeDb,
   disposeServerPlugins,
@@ -100,26 +99,12 @@ import {
   stopLinuxPasteHelper,
 } from "./paste";
 import {
-  plugins as appPlugins,
-  checkForUpdates,
   FreestyleEventType,
-  fetchCatalog,
-  fetchPluginSettings,
-  initAppPlugins,
-  installPlugin,
   OutputMode,
   PipelineStage,
-  parseAppContext,
-  reloadAppPlugins,
-  setPluginEnabled,
-  uninstallPlugin,
+  relayEvent,
 } from "./plugins/index";
-import {
-  initPluginUiHost,
-  PLUGIN_SCHEME_PRIVILEGE,
-  refreshPluginUi,
-} from "./plugins/ui-host";
-import type { BridgeConfig } from "./plugins/view-manager";
+import { initPluginUiHost } from "./plugins/ui-host";
 
 const log = createAppLogger("electron");
 const hotkeyLog = createAppLogger("hotkey");
@@ -237,21 +222,6 @@ function getServerBaseUrl(): string {
   return `http://127.0.0.1:${serverPort}`;
 }
 
-/**
- * Load the app-host plugin registry, reading the `plugins` list and plugin
- * settings from the server over HTTP. Called once the server is reachable; the
- * underlying init is idempotent, so repeated calls are harmless.
- */
-function initPluginsForServer(): void {
-  void initAppPlugins(getServerTarget());
-  // Refresh UI plugin discovery now that the server (and `plugins` setting) is
-  // reachable. No-op if the settings window hasn't been created yet.
-  void getPluginDiscoverySources().then(
-    ({ pluginsSetting, userDataDir, disabledPlugins }) =>
-      refreshPluginUi(pluginsSetting, userDataDir, disabledPlugins),
-  );
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let httpServer: any = null;
 /** True when this process reuses another Freestyle server on the default port. */
@@ -290,7 +260,6 @@ protocol.registerSchemesAsPrivileged([
       corsEnabled: true,
     },
   },
-  PLUGIN_SCHEME_PRIVILEGE,
 ]);
 
 function registerAppProtocol(): void {
@@ -589,7 +558,7 @@ function createSettingsWindow(initialPath?: string): void {
           visualEffectState: "active" as const,
         }
       : {}),
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
     trafficLightPosition:
       process.platform === "darwin" ? { x: 16, y: 16 } : undefined,
     ...(process.platform === "linux" ? { icon } : {}),
@@ -651,74 +620,17 @@ function createSettingsWindow(initialPath?: string): void {
     }
   }
 
-  // Wire the plugin UI host (asset protocol, view manager, IPC) to this window
-  // and do an initial plugin discovery scan.
+  // Wire the plugin UI host (view manager + host-action/view IPC) to this
+  // window. Discovery, install, and asset serving all live server-side now;
+  // the renderer talks to the server directly for those.
   initPluginUiHost({
     window: settingsWindow,
-    getBridgeConfig: getPluginBridgeConfig,
-    getDiscoverySources: getPluginDiscoverySources,
-    setPluginEnabled: async (specifier, enabled) => {
-      // Persist + reload the server's registry, then rebuild the app-host
-      // registry so app-side hooks for this plugin start/stop immediately.
-      await setPluginEnabled(getServerTarget(), specifier, enabled);
-      await reloadAppPlugins(getServerTarget());
-    },
-    getCatalog: () => fetchCatalog(getServerTarget()),
-    installPlugin: async (npmName, version) => {
-      await installPlugin(getServerTarget(), npmName, version);
-      await reloadAppPlugins(getServerTarget());
-    },
-    uninstallPlugin: async (specifier) => {
-      await uninstallPlugin(getServerTarget(), specifier);
-      await reloadAppPlugins(getServerTarget());
-    },
-    checkForUpdates: (plugins) => checkForUpdates(getServerTarget(), plugins),
+    getServerBaseUrl,
     onAction: handlePluginAction,
   });
-  void getPluginDiscoverySources().then(
-    ({ pluginsSetting, userDataDir, disabledPlugins }) =>
-      refreshPluginUi(pluginsSetting, userDataDir, disabledPlugins),
-  );
 
   const startPath = !onboardingDone ? "/onboarding" : (initialPath ?? "/today");
   settingsWindow.loadURL(getDashboardURL(startPath));
-}
-
-/** The local server target for plugin settings/discovery. */
-function getServerTarget(): {
-  baseUrl: string;
-  directory: string;
-} {
-  return {
-    baseUrl: getServerBaseUrl(),
-    directory: app.getPath("userData"),
-  };
-}
-
-/** Bridge config (server URL) injected into plugin UI frames. */
-function getPluginBridgeConfig(): BridgeConfig {
-  return {
-    serverUrl: getServerBaseUrl(),
-  };
-}
-
-/**
- * Resolve the `plugins` setting + disabled set (over HTTP, so a remote server
- * works too) plus the user-data dir for UI plugin discovery.
- */
-async function getPluginDiscoverySources(): Promise<{
-  pluginsSetting: string | undefined;
-  userDataDir: string;
-  disabledPlugins: ReadonlySet<string>;
-}> {
-  const { pluginsSetting, disabled } = await fetchPluginSettings(
-    getServerTarget(),
-  );
-  return {
-    pluginsSetting,
-    userDataDir: app.getPath("userData"),
-    disabledPlugins: disabled,
-  };
 }
 
 /** Perform a host action requested by a plugin UI page over the bridge. */
@@ -1197,48 +1109,40 @@ function wait(ms: number): Promise<void> {
 }
 
 /**
- * Deliver final dictation text to the user's focused app. Runs the
- * `beforeOutput` plugin hook first, which may rewrite the text or switch the
- * delivery `mode` between paste, copy, and `none` (suppress). Emits the
- * `outputDelivered` event with whatever mode was ultimately used.
+ * Mechanically deliver final dictation text to the user's focused app — paste
+ * or copy, exactly as resolved. The `beforeOutput` plugin hook already ran
+ * server-side (`POST /api/output/deliver`, called by the renderer before this
+ * is invoked), so `text`/`mode` here are the host's final word: no hook runs
+ * in this process anymore. Emits the `outputDelivered` event (relayed to the
+ * server's `event` hook sink) with whatever mode was ultimately used.
  */
 async function deliverOutput(
   text: string,
   mode: typeof OutputMode.Paste | typeof OutputMode.Clipboard,
-  appContext: string | null,
 ): Promise<void> {
-  const parsedContext = parseAppContext(appContext);
-  const out = await appPlugins().run(
-    "beforeOutput",
-    { ...(parsedContext ? { appContext: parsedContext } : {}) },
-    { text, mode },
-  );
-
-  // Nothing to deliver (empty text, or a plugin suppressed via None): report
-  // it as delivered with mode None so observers see a single, accurate event.
-  if (out.mode === OutputMode.None || !out.text?.trim()) {
-    void appPlugins().emit({
+  if (!text.trim()) {
+    relayEvent(getServerBaseUrl(), {
       type: FreestyleEventType.OutputDelivered,
-      text: out.text,
+      text,
       mode: OutputMode.None,
     });
     return;
   }
 
   try {
-    if (out.mode === OutputMode.Paste) {
-      await pasteIntoFocusedApp(out.text, async () => {
+    if (mode === OutputMode.Paste) {
+      await pasteIntoFocusedApp(text, async () => {
         hidePill();
         await wait(0);
       });
     } else {
-      clipboard.writeText(out.text);
+      clipboard.writeText(text);
     }
   } catch (err) {
     // pasteIntoFocusedApp left the transcript on the clipboard — tell the user
     // instead of letting the dictation silently vanish.
     notifyPasteFailed();
-    void appPlugins().emit({
+    relayEvent(getServerBaseUrl(), {
       type: FreestyleEventType.PipelineError,
       stage: PipelineStage.Output,
       message: err instanceof Error ? err.message : String(err),
@@ -1246,10 +1150,10 @@ async function deliverOutput(
     throw err;
   }
 
-  void appPlugins().emit({
+  relayEvent(getServerBaseUrl(), {
     type: FreestyleEventType.OutputDelivered,
-    text: out.text,
-    mode: out.mode,
+    text,
+    mode,
   });
 }
 
@@ -1700,19 +1604,22 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window);
   });
 
-  // IPC: paste text at cursor
+  // IPC: paste text at cursor. `appContext` is accepted for backward
+  // compatibility with the preload signature but is unused here — the
+  // `beforeOutput` hook already ran server-side (`POST /api/output/deliver`)
+  // with it before the renderer called this.
   ipcMain.handle(
     "paste:text",
-    async (_event, text: string, appContext?: string | null) => {
-      await deliverOutput(text, OutputMode.Paste, appContext ?? null);
+    async (_event, text: string, _appContext?: string | null) => {
+      await deliverOutput(text, OutputMode.Paste);
     },
   );
 
-  // IPC: copy text to clipboard
+  // IPC: copy text to clipboard. See `paste:text` above re: `appContext`.
   ipcMain.handle(
     "copy:text",
-    async (_event, text: string, appContext?: string | null) => {
-      await deliverOutput(text, OutputMode.Clipboard, appContext ?? null);
+    async (_event, text: string, _appContext?: string | null) => {
+      await deliverOutput(text, OutputMode.Clipboard);
     },
   );
 
@@ -1738,6 +1645,10 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send("settings:audio-ducking-changed", enabled);
   });
 
+  ipcMain.on("settings:streaming-audio-changed", (_event, enabled: boolean) => {
+    mainWindow?.webContents.send("settings:streaming-audio-changed", enabled);
+  });
+
   ipcMain.on("settings:audio-playback-mode-changed", (_event, mode: string) => {
     mainWindow?.webContents.send("settings:audio-playback-mode-changed", mode);
   });
@@ -1761,11 +1672,15 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.on("recording:committed", () => {
-    void appPlugins().emit({ type: FreestyleEventType.RecordingCommitted });
+    relayEvent(getServerBaseUrl(), {
+      type: FreestyleEventType.RecordingCommitted,
+    });
   });
 
   ipcMain.on("recording:cancelled", () => {
-    void appPlugins().emit({ type: FreestyleEventType.RecordingCancelled });
+    relayEvent(getServerBaseUrl(), {
+      type: FreestyleEventType.RecordingCancelled,
+    });
   });
 
   // IPC: expose the server port to the renderer
@@ -1955,9 +1870,18 @@ app.whenReady().then(async () => {
     process.env.FREESTYLE_MLX_ASR_RELEASE_TAG ||= app.getVersion();
   }
 
-  // Run non-critical server startup tasks now that the DB path is set
-  reconcileUnsupportedMlxVoiceDefault();
-  autoStartWhisperServer();
+  // Run non-critical server startup tasks now that the DB path is set. This is
+  // deferred off the boot critical path: reconcileUnsupportedMlxVoiceDefault can
+  // synchronously probe Python/MLX (execFileSync) on Apple Silicon without a
+  // managed runtime, which would otherwise block window creation. It is
+  // idempotent and also runs lazily via getDefaultModels() on first use, so
+  // deferring it by a tick is safe. Local ASR servers (whisper/mlx) are no
+  // longer pre-warmed at boot — they warm on recording start via the
+  // /api/transcribe/pre-warm endpoint, and start lazily at submission as a
+  // fallback.
+  setImmediate(() => {
+    reconcileUnsupportedMlxVoiceDefault();
+  });
 
   // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
   const startServer = (port: number): void => {
@@ -1966,7 +1890,6 @@ app.whenReady().then(async () => {
         httpServer = server;
         serverPort = boundPort;
         log.info(`Server running on http://localhost:${boundPort}`);
-        initPluginsForServer();
       })
       .catch((err: NodeJS.ErrnoException) => {
         if (err.code === "EADDRINUSE" && port === DEFAULT_PORT) {
@@ -1981,7 +1904,12 @@ app.whenReady().then(async () => {
   // Check if a Freestyle server is already running on the default port.
   let existingServer = false;
   try {
-    const res = await net.fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`);
+    // Bound this probe: a normal cold start fast-fails with ECONNREFUSED, but
+    // without a timeout a half-open socket on the port could hang window/tray
+    // creation indefinitely.
+    const res = await net.fetch(`http://127.0.0.1:${DEFAULT_PORT}/api/health`, {
+      signal: AbortSignal.timeout(1500),
+    });
     if (res.ok) {
       const data = (await res.json()) as { status?: string; name?: string };
       existingServer = data?.status === "ok" && data?.name === "freestyle";
@@ -1994,7 +1922,6 @@ app.whenReady().then(async () => {
     log.info(
       `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
     );
-    initPluginsForServer();
   } else {
     startServer(DEFAULT_PORT);
   }
@@ -2407,7 +2334,7 @@ function loadHotkeyModeFromDB(): "hold" | "toggle" {
 
 function sendHotkeyDown(): void {
   showPill();
-  void appPlugins().emit({ type: FreestyleEventType.RecordingStarted });
+  relayEvent(getServerBaseUrl(), { type: FreestyleEventType.RecordingStarted });
   if (pillReadyPromise) {
     // The pill window is still loading — defer IPC until it can receive it.
     void pillReadyPromise.then(() => {
@@ -2729,7 +2656,8 @@ let isQuitting = false;
 let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 
 function cleanupBeforeQuit(): void {
-  void appPlugins().dispose();
+  // No app-host plugin registry to dispose anymore — every hook (including
+  // `dispose`) runs server-side, and the server has its own shutdown path.
   void disposeServerPlugins().catch(() => {});
   audioPlaybackController.restoreSync();
   stopLinuxPasteHelper();

@@ -23,21 +23,28 @@ function isValidPlacement(value: unknown): value is PlacementMode {
 }
 
 const SYSTEM_AFTER = [
-  "Where the tone feels casual, friendly, or conversational, add a relevant",
-  "emoji after the word or phrase it relates to. Do not add emojis to formal,",
-  "professional, or technical text. Use emojis sparingly — at most 2–3 per",
-  "paragraph. Never add emojis to code, URLs, file paths, or technical",
-  "identifiers. If the text is entirely formal or professional, do not add any",
-  "emojis at all.",
+  "PLUGIN OVERRIDE — emoji insertion (this overrides the earlier 'do not add",
+  "content words' and 'do not rephrase' rules for emoji only):",
+  "Where the tone feels casual, friendly, or conversational, you MUST add a",
+  "relevant emoji after the word or phrase it relates to. This is an explicit",
+  "user-requested feature, not a style edit — treat it as a required output",
+  "transformation. Do not add emojis to formal, professional, or technical",
+  "text. Use emojis sparingly — at most 2–3 per paragraph. Never add emojis",
+  "to code, URLs, file paths, or technical identifiers. If the text is",
+  "entirely formal or professional, do not add any emojis at all.",
 ].join(" ");
 
 const SYSTEM_REPLACE = [
-  "Where the tone feels casual, friendly, or conversational, replace",
+  "PLUGIN OVERRIDE — emoji replacement (this overrides the earlier 'do not",
+  "add content words' and 'do not rephrase' rules for emoji only):",
+  "Where the tone feels casual, friendly, or conversational, you MUST replace",
   "emotionally expressive words with a single relevant emoji (e.g. 'love' →",
-  "'❤️', 'happy' → '😊'). Do not replace words in formal, professional, or",
-  "technical text. Replace sparingly — at most 2–3 per paragraph. Never",
-  "replace words in code, URLs, file paths, or technical identifiers. If the",
-  "text is entirely formal or professional, do not replace any words.",
+  "'❤️', 'happy' → '😊'). This is an explicit user-requested feature, not a",
+  "style edit — treat it as a required output transformation. Do not replace",
+  "words in formal, professional, or technical text. Replace sparingly — at",
+  "most 2–3 per paragraph. Never replace words in code, URLs, file paths, or",
+  "technical identifiers. If the text is entirely formal or professional, do",
+  "not replace any words.",
 ].join(" ");
 
 export default function emojiPlugin(_options?: PluginOptions): Plugin {

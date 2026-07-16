@@ -57,6 +57,19 @@ export interface LocalLlmState {
   clearStatus: () => void;
 }
 
+export interface OpenaiSttState {
+  url: string;
+  setUrl: (v: string) => void;
+  apiKey: string;
+  setApiKey: (v: string) => void;
+  testing: boolean;
+  connected: boolean | null;
+  error: string | null;
+  models: string[];
+  test: () => Promise<void>;
+  clearStatus: () => void;
+}
+
 export interface UseModels {
   loading: boolean;
   available: AvailableModel[];
@@ -85,6 +98,7 @@ export interface UseModels {
   >;
 
   localLlm: LocalLlmState;
+  openaiStt: OpenaiSttState;
 
   // Actions — each refetches as needed
   configureModel: (
@@ -212,6 +226,14 @@ export function useModels(): UseModels {
   const [localError, setLocalError] = useState<string | null>(null);
   const [localModels, setLocalModels] = useState<string[]>([]);
 
+  // Custom OpenAI-compatible STT endpoint — same inline form pattern as local LLM.
+  const [sttUrl, setSttUrl] = useState("");
+  const [sttApiKey, setSttApiKey] = useState("");
+  const [sttTesting, setSttTesting] = useState(false);
+  const [sttConnected, setSttConnected] = useState<boolean | null>(null);
+  const [sttError, setSttError] = useState<string | null>(null);
+  const [sttModels, setSttModels] = useState<string[]>([]);
+
   // Seed editable state from persisted settings once, when the settings query
   // first resolves. Mutations update this local state directly, so we don't
   // re-seed on later invalidations (which would clobber in-progress edits).
@@ -231,6 +253,8 @@ export function useModels(): UseModels {
     if (url) setLocalUrl(url);
     const key = s[SETTINGS_KEYS.localLlmApiKey];
     if (key) setLocalApiKey(key);
+    setSttUrl(s[SETTINGS_KEYS.openaiSttBaseUrl] ?? "");
+    setSttApiKey(s[SETTINGS_KEYS.openaiSttApiKey] ?? "");
     const rawMinutes = s[SETTINGS_KEYS.mlxAsrKeepAliveMinutes];
     if (rawMinutes) {
       const minutes = Number(rawMinutes);
@@ -632,6 +656,78 @@ export function useModels(): UseModels {
     }
   }, [localUrl, localApiKey, loadData]);
 
+  // -------------------------------------------------------------------------
+  // Custom OpenAI-compatible STT endpoint test
+  // -------------------------------------------------------------------------
+
+  const clearSttStatus = useCallback(() => {
+    setSttConnected(null);
+    setSttError(null);
+  }, []);
+
+  const testOpenaiStt = useCallback(async () => {
+    setSttTesting(true);
+    setSttConnected(null);
+    setSttError(null);
+    try {
+      const url = sttUrl.replace(/\/+$/, "");
+      const key = sttApiKey.trim();
+      const client = getClient();
+      await Promise.all([
+        url
+          ? client.api.settings[":key"].$put({
+              param: { key: SETTINGS_KEYS.openaiSttBaseUrl },
+              json: { value: url },
+            })
+          : client.api.settings[":key"].$delete({
+              param: { key: SETTINGS_KEYS.openaiSttBaseUrl },
+            }),
+        key
+          ? client.api.settings[":key"].$put({
+              param: { key: SETTINGS_KEYS.openaiSttApiKey },
+              json: { value: key },
+            })
+          : client.api.settings[":key"].$delete({
+              param: { key: SETTINGS_KEYS.openaiSttApiKey },
+            }),
+      ]);
+
+      if (!url) {
+        setSttConnected(null);
+        await loadData();
+        return;
+      }
+
+      const res = await client.api.settings["openai-stt"].test.$post({
+        json: { url, api_key: key || undefined },
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        if ("ok" in result && result.ok) {
+          setSttConnected(true);
+          setSttModels(result.models ?? []);
+          await loadData();
+          return;
+        }
+        setSttConnected(false);
+        setSttError(
+          "error" in result && typeof result.error === "string"
+            ? result.error
+            : "Connection failed",
+        );
+        return;
+      }
+      setSttConnected(false);
+      setSttError(`HTTP ${res.status}`);
+    } catch (err) {
+      setSttConnected(false);
+      setSttError(err instanceof Error ? err.message : "Connection failed");
+    } finally {
+      setSttTesting(false);
+    }
+  }, [sttUrl, sttApiKey, loadData]);
+
   return {
     loading,
     available,
@@ -660,6 +756,18 @@ export function useModels(): UseModels {
       models: localModels,
       test: testLocalLlm,
       clearStatus: clearLocalStatus,
+    },
+    openaiStt: {
+      url: sttUrl,
+      setUrl: setSttUrl,
+      apiKey: sttApiKey,
+      setApiKey: setSttApiKey,
+      testing: sttTesting,
+      connected: sttConnected,
+      error: sttError,
+      models: sttModels,
+      test: testOpenaiStt,
+      clearStatus: clearSttStatus,
     },
     configureModel,
     saveKey,

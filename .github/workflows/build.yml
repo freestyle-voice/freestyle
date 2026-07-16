@@ -224,7 +224,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build plugin packages
-        run: pnpm turbo build --filter=@freestyle-voice/plugin-audio-transcription --filter=@freestyle-voice/profanity-filter
+        run: pnpm turbo build --filter=@freestyle-voice/plugin-audio-transcription --filter=@freestyle-voice/profanity-filter --filter=@freestyle-voice/plugin-emoji
 
   build-linux:
     name: Build (Linux)

@@ -236,13 +236,13 @@ const stream = new Hono().get(
       };
     }
 
-    function connectUpstream(
+    async function connectUpstream(
       ws: {
         send: (data: string) => void;
         close: () => void;
       },
       announced?: AnnouncedStreamConfig,
-    ): void {
+    ): Promise<void> {
       const resolved = announced ?? announceConfig(ws);
       if (!resolved) return;
 
@@ -275,12 +275,50 @@ const stream = new Hono().get(
       // cleanup settings in the streaming payload — matching the batch
       // `/v2/transcribe` path. When cleanup is disabled, `skipPostProcess`
       // tells the cloud to return the raw transcript (and bill accordingly).
+      //
+      // Run `beforeCleanup` locally to collect plugin system-prompt fragments,
+      // then include them in the cleanup config so the cloud appends them to
+      // its assembled prompt. `input.text` is empty (the transcript hasn't been
+      // produced yet); plugins that contribute static fragments work fine.
+      //
+      // The hook can also decide to skip cleanup outright (`skip` or a
+      // `consume()`/`abort()`). Streaming has no local cleanup path, so the
+      // only way to honor that is to tell the cloud to skip post-processing
+      // (`skipPostProcess`) and return the raw transcript. Fragments are only
+      // meaningful when cleanup actually runs, so a skip drops them too.
+      let systemFragments: string[] | undefined;
+      let pluginSkipsCleanup = false;
+      if (
+        voice.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
+        isLlmCleanupEnabled() &&
+        plugins().has("beforeCleanup")
+      ) {
+        const hookApi = await createHookApi();
+        const parsedCtx = parseAppContext(effectiveAppContext());
+        const { destination } = getRewritePromptContext(
+          effectiveAppContext(),
+          getCleanupAppAssignments(),
+        );
+        const promptHook = await plugins().run(
+          "beforeCleanup",
+          { text: "", appContext: parsedCtx, destination },
+          { system: [] as string[] },
+          hookApi,
+        );
+        pluginSkipsCleanup =
+          promptHook.skip === true || hookApi.control.state !== "running";
+        if (!pluginSkipsCleanup && promptHook.system.length > 0) {
+          systemFragments = promptHook.system;
+        }
+      }
+
       const cleanup =
         voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
           ? {
-              skipPostProcess: !isLlmCleanupEnabled(),
+              skipPostProcess: !isLlmCleanupEnabled() || pluginSkipsCleanup,
               ...getEffectiveCleanupTones(),
               appAssignments: getCleanupAppAssignments(),
+              ...(systemFragments ? { systemFragments } : {}),
             }
           : undefined;
 
@@ -323,12 +361,29 @@ const stream = new Hono().get(
             }
 
             // Freestyle Cloud streaming. The cloud DO returns cleaned text when
-            // post-processing is on, or the raw transcript when it is off
-            // (`skipPostProcess = !isLlmCleanupEnabled()` was sent on connect).
+            // post-processing is on, or the raw transcript when it is off —
+            // either because cleanup is disabled or a `beforeCleanup` plugin
+            // skipped it (both set `skipPostProcess` on connect). When the
+            // cloud returned raw text, treat it like the cleanup-off branch so
+            // `afterTranscribe`/`Transcribed` still fire on the real transcript.
             if (voice.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
-              const cloudHandledPostProcess = isLlmCleanupEnabled();
+              const cloudHandledPostProcess =
+                isLlmCleanupEnabled() && !pluginSkipsCleanup;
               const cloudText = rawText?.trim() || "";
               let text = cloudText;
+
+              // Combined cloud cleanup returns cleaned text with no separable
+              // raw transcript. An empty response (silence, or a clipped first
+              // clip on a cold provider switch) must be suppressed like every
+              // other path — otherwise we'd persist a blank history row and
+              // paste nothing. The post-process-off branch below has its own
+              // empty guard after afterTranscribe.
+              if (cloudHandledPostProcess && !cloudText) {
+                if (!closed) {
+                  ws.send(JSON.stringify({ type: "final", text: "" }));
+                }
+                return;
+              }
 
               if (!cloudHandledPostProcess) {
                 // Post-processing off: cloudText IS the raw transcript, so this

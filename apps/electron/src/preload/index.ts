@@ -32,6 +32,18 @@ const api = {
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),
   getServerPort: (): Promise<number> => ipcRenderer.invoke("server:port"),
+  // Configured external server URL/token ("" = built-in local server / no auth).
+  getServerUrl: (): Promise<string> => ipcRenderer.invoke("server:url"),
+  setServerUrl: (url: string): Promise<string> =>
+    ipcRenderer.invoke("server:set-url", url),
+  getServerToken: (): Promise<string> => ipcRenderer.invoke("server:token"),
+  setServerToken: (token: string): Promise<string> =>
+    ipcRenderer.invoke("server:set-token", token),
+  onServerChanged: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("server:changed", handler);
+    return () => ipcRenderer.removeListener("server:changed", handler);
+  },
   // Reveal the diagnostic logs folder (freestyle.log) in the OS file manager.
   openLogsFolder: (): Promise<boolean> =>
     ipcRenderer.invoke("logs:open-folder"),

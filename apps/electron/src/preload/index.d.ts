@@ -24,6 +24,11 @@ declare global {
       hidePill: () => void;
       showErrorDialog: (title: string, message: string) => Promise<void>;
       getServerPort: () => Promise<number>;
+      getServerUrl: () => Promise<string>;
+      setServerUrl: (url: string) => Promise<string>;
+      getServerToken: () => Promise<string>;
+      setServerToken: (token: string) => Promise<string>;
+      onServerChanged: (callback: () => void) => () => void;
       openLogsFolder: () => Promise<boolean>;
       openExternal: (url: string) => Promise<boolean>;
       cloudPromptSignIn: () => Promise<boolean>;

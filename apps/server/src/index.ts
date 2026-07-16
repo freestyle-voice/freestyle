@@ -8,6 +8,7 @@ import { logger } from "hono/logger";
 import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
 import { WebSocketServer } from "ws";
+import { authMiddleware, setAuthToken } from "./lib/auth.js";
 import { formatError } from "./lib/format-error.js";
 import { isTransientCloudError } from "./lib/freestyle-cloud.js";
 import { startHistoryRetentionSweep } from "./lib/history-store.js";
@@ -89,6 +90,10 @@ function createApp() {
     // Confine plugin-UI-originated requests to their own plugin namespace, so a
     // same-origin plugin page can't reach keys/auth/settings or other plugins.
     .use(pluginApiGuard)
+    // Bearer-token auth for standalone/remote deployments. A no-op when no
+    // token is configured (the default loopback Electron case), so it never
+    // affects the in-process server.
+    .use(authMiddleware)
     // CORS for renderer requests
     .use(cors())
     // Correlation id per request (also surfaced via the X-Request-Id header).
@@ -156,6 +161,12 @@ export interface StartServerOptions {
    * (e.g. when running the server standalone inside a container/VM).
    */
   host?: string;
+  /**
+   * Optional bearer token required on all requests (except `/api/health`).
+   * Empty/undefined disables auth — appropriate for the loopback Electron
+   * server. Set it for standalone/remote deployments exposed on a network.
+   */
+  token?: string;
 }
 
 export interface RunningServer {
@@ -176,7 +187,11 @@ export interface RunningServer {
 export async function startServer(
   options: StartServerOptions = {},
 ): Promise<RunningServer> {
-  const { port = 4649, host = "127.0.0.1" } = options;
+  const { port = 4649, host = "127.0.0.1", token } = options;
+
+  // Configure bearer-token auth before the app is built so authMiddleware picks
+  // it up. Empty/undefined keeps the server open (loopback Electron default).
+  setAuthToken(token);
 
   // Install the global network dispatcher (corporate proxy + custom CA) before
   // anything issues a fetch, so model downloads and cloud/API calls honor it.

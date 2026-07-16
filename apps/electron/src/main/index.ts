@@ -59,6 +59,7 @@ import {
   writeSetting,
 } from "@freestyle-voice/server";
 import { createAppLogger, enableFileLogging } from "@freestyle-voice/utils";
+import { serverUrlSchema } from "@freestyle-voice/validations";
 import {
   app,
   BrowserWindow,
@@ -214,12 +215,56 @@ function writeSettings(patch: Record<string, unknown>): void {
 }
 
 /**
- * Base URL the app uses to reach the locally-run Freestyle server on the
- * resolved port. The DB lives behind the server, so all server-owned data
- * (settings, plugins) is read through it.
+ * The configured Freestyle server URL, if the user has set one. When present,
+ * the app talks to that server (for server-owned data: settings, history,
+ * plugins, transcription) instead of the locally-run one. Returns an empty
+ * string when using the default local server.
+ *
+ * The local server is always started regardless, so switching back to local
+ * (or between remotes) never requires a restart — see the startup block.
+ */
+function getServerUrl(): string {
+  const parsed = serverUrlSchema.safeParse(readSettings().serverUrl);
+  return parsed.success ? parsed.data : "";
+}
+
+/** Optional bearer token sent to a configured server ("" = none). */
+function getServerToken(): string {
+  const raw = readSettings().serverToken;
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
+/**
+ * Authorization headers for main-process API calls to a configured server.
+ * Empty when no token is set (the default local-server case), so loopback
+ * requests are unaffected.
+ */
+function getServerAuthHeaders(): Record<string, string> {
+  const token = getServerToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/** Relay a main-process pipeline event to the current server target with auth. */
+function relayServerEvent(event: Parameters<typeof relayEvent>[1]): void {
+  relayEvent(getServerBaseUrl(), event, getServerAuthHeaders());
+}
+
+/**
+ * Base URL the app uses to reach the Freestyle server: the configured remote
+ * URL, or the locally-run server on the resolved port. The DB lives behind the
+ * server, so all server-owned data (settings, plugins) is read through it.
  */
 function getServerBaseUrl(): string {
-  return `http://127.0.0.1:${serverPort}`;
+  return getServerUrl() || `http://127.0.0.1:${serverPort}`;
+}
+
+/**
+ * Broadcast a server target change (URL/token) to all renderer windows so they
+ * re-point their API clients and refetch, without an app restart.
+ */
+function broadcastServerChanged(): void {
+  mainWindow?.webContents.send("server:changed");
+  settingsWindow?.webContents.send("server:changed");
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1121,7 +1166,7 @@ async function deliverOutput(
   mode: typeof OutputMode.Paste | typeof OutputMode.Clipboard,
 ): Promise<void> {
   if (!text.trim()) {
-    relayEvent(getServerBaseUrl(), {
+    relayServerEvent({
       type: FreestyleEventType.OutputDelivered,
       text,
       mode: OutputMode.None,
@@ -1142,7 +1187,7 @@ async function deliverOutput(
     // pasteIntoFocusedApp left the transcript on the clipboard — tell the user
     // instead of letting the dictation silently vanish.
     notifyPasteFailed();
-    relayEvent(getServerBaseUrl(), {
+    relayServerEvent({
       type: FreestyleEventType.PipelineError,
       stage: PipelineStage.Output,
       message: err instanceof Error ? err.message : String(err),
@@ -1150,7 +1195,7 @@ async function deliverOutput(
     throw err;
   }
 
-  relayEvent(getServerBaseUrl(), {
+  relayServerEvent({
     type: FreestyleEventType.OutputDelivered,
     text,
     mode,
@@ -1166,7 +1211,9 @@ const SERVER_SETTING_TIMEOUT_MS = 5000;
 
 async function putServerSetting(key: string, value: string): Promise<boolean> {
   try {
-    const res = await hc<AppType>(getServerBaseUrl()).api.settings[":key"].$put(
+    const res = await hc<AppType>(getServerBaseUrl(), {
+      headers: getServerAuthHeaders(),
+    }).api.settings[":key"].$put(
       { param: { key }, json: { value } },
       { init: { signal: AbortSignal.timeout(SERVER_SETTING_TIMEOUT_MS) } },
     );
@@ -1672,19 +1719,45 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.on("recording:committed", () => {
-    relayEvent(getServerBaseUrl(), {
+    relayServerEvent({
       type: FreestyleEventType.RecordingCommitted,
     });
   });
 
   ipcMain.on("recording:cancelled", () => {
-    relayEvent(getServerBaseUrl(), {
+    relayServerEvent({
       type: FreestyleEventType.RecordingCancelled,
     });
   });
 
   // IPC: expose the server port to the renderer
   ipcMain.handle("server:port", () => serverPort);
+
+  // IPC: read the configured server URL ("" = use the local server).
+  ipcMain.handle("server:url", () => getServerUrl());
+
+  // IPC: persist the server URL. The local server keeps running regardless, so
+  // switching between local and a configured URL takes effect immediately —
+  // renderers re-point their clients on the "server:changed" broadcast and on
+  // the next transcription's refreshApiBase(). Invalid values are ignored.
+  ipcMain.handle("server:set-url", (_event, url: unknown) => {
+    const parsed = serverUrlSchema.safeParse(url);
+    if (parsed.success) {
+      writeSettings({ serverUrl: parsed.data });
+      broadcastServerChanged();
+    }
+    return getServerUrl();
+  });
+
+  // IPC: read/persist the optional bearer token for a configured server.
+  ipcMain.handle("server:token", () => getServerToken());
+  ipcMain.handle("server:set-token", (_event, token: unknown) => {
+    writeSettings({
+      serverToken: typeof token === "string" ? token.trim() : "",
+    });
+    broadcastServerChanged();
+    return getServerToken();
+  });
 
   // IPC: reveal the diagnostic log folder so users can share freestyle.log.
   ipcMain.handle("logs:open-folder", async () => {
@@ -2334,7 +2407,7 @@ function loadHotkeyModeFromDB(): "hold" | "toggle" {
 
 function sendHotkeyDown(): void {
   showPill();
-  relayEvent(getServerBaseUrl(), { type: FreestyleEventType.RecordingStarted });
+  relayServerEvent({ type: FreestyleEventType.RecordingStarted });
   if (pillReadyPromise) {
     // The pill window is still loading — defer IPC until it can receive it.
     void pillReadyPromise.then(() => {

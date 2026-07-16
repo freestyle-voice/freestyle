@@ -51,8 +51,15 @@ export class Streamer {
   private pcmChunks: Int16Array[] = [];
   private pcmSampleCount = 0;
 
-  constructor(baseUrl: string, callbacks: StreamerCallbacks) {
-    this.wsUrl = `${baseUrl.replace(/^http/, "ws")}/stream`;
+  constructor(baseUrl: string, token: string, callbacks: StreamerCallbacks) {
+    // Browsers can't set an Authorization header on a WebSocket, so a
+    // configured server's bearer token travels as a `?token=` query param
+    // (the server authenticates WS upgrades from it). Empty for the local
+    // server / no-auth case.
+    const wsBase = `${baseUrl.replace(/^http/, "ws")}/stream`;
+    this.wsUrl = token
+      ? `${wsBase}?token=${encodeURIComponent(token)}`
+      : wsBase;
     this.callbacks = callbacks;
     this.openWebSocket();
   }

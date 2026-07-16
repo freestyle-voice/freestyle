@@ -1,6 +1,12 @@
 import { Orb } from "@renderer/components/ui/orb";
 import { capture } from "@renderer/lib/analytics";
-import { getApiBase, getClient, refreshApiBase } from "@renderer/lib/api";
+import {
+  getApiBase,
+  getAuthHeaders,
+  getClient,
+  getServerToken,
+  refreshApiBase,
+} from "@renderer/lib/api";
 import {
   applyNeedsAppContextForCleanup,
   refreshNeedsAppContextForCleanup,
@@ -463,6 +469,7 @@ export default function AppPage(): React.JSX.Element {
       const headers: Record<string, string> = {
         "Content-Type": "audio/wav",
         "x-audio-duration-ms": String(Date.now() - startTimeRef.current),
+        ...getAuthHeaders(),
       };
       if (appContextRef.current)
         headers["x-app-context"] = encodeAppContext(appContextRef.current);
@@ -516,7 +523,7 @@ export default function AppPage(): React.JSX.Element {
   // biome-ignore lint/correctness/useExhaustiveDependencies: singleton
   const getStreamer = useCallback((): Streamer => {
     if (!streamerRef.current) {
-      streamerRef.current = new Streamer(getApiBase(), {
+      streamerRef.current = new Streamer(getApiBase(), getServerToken(), {
         onConfig: (config) => {
           supportsSessionTransportRef.current = config.sessionTransport;
           if (config.providerCategory) {
@@ -1050,6 +1057,7 @@ export default function AppPage(): React.JSX.Element {
     const headers: Record<string, string> = {
       "Content-Type": "audio/wav",
       "x-audio-duration-ms": String(recordingDuration),
+      ...getAuthHeaders(),
     };
     if (appContextRef.current)
       headers["x-app-context"] = encodeAppContext(appContextRef.current);
@@ -1239,12 +1247,25 @@ export default function AppPage(): React.JSX.Element {
         }
       },
     );
+    // The server target (URL/token) changed in Settings. Re-point this window's
+    // API client and tear down the streamer so its next connection uses the new
+    // server — no app restart needed. A fresh streamer is created lazily on the
+    // next recording (or immediately if streaming is enabled).
+    const removeServerChanged = window.api?.onServerChanged(() => {
+      void refreshApiBase().finally(() => {
+        streamerRef.current?.destroy();
+        streamerRef.current = null;
+        supportsSessionTransportRef.current = false;
+        if (_streamingAudioEnabled) getStreamer();
+      });
+    });
     return () => {
       removePillPos?.();
       removeOutputMode?.();
       removeAudioDucking?.();
       removeAudioPlaybackMode?.();
       removeStreamingAudio?.();
+      removeServerChanged?.();
     };
   }, [applyPillPosition]);
 

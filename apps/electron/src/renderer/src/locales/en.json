@@ -215,7 +215,18 @@
       "saved": "Saved",
       "invalidProxy": "Enter a valid http://, https:// or socks:// URL, or leave it blank.",
       "invalidCaCert": "Enter a valid certificate file path, or leave it blank.",
-      "envNote": "The app also honors HTTP_PROXY, HTTPS_PROXY, NO_PROXY, NODE_EXTRA_CA_CERTS and SSL_CERT_FILE from the environment."
+      "envNote": "The app also honors HTTP_PROXY, HTTPS_PROXY, NO_PROXY, NODE_EXTRA_CA_CERTS and SSL_CERT_FILE from the environment.",
+      "server": "Server",
+      "serverDesc": "Use the built-in local server, or connect to a self-hosted Freestyle server. Changes take effect immediately — no restart needed.",
+      "serverTokenPlaceholder": "Optional access token",
+      "localServer": "Local server",
+      "remoteServer": "Remote server",
+      "testConnection": "Test connection",
+      "resetToLocal": "Reset to local",
+      "statusTesting": "Testing…",
+      "statusOk": "Connected",
+      "statusUnreachable": "Unreachable",
+      "statusUnauthorized": "Invalid token"
     }
   },
   "today": {

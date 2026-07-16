@@ -3,6 +3,7 @@ import {
   type NetworkSettingsForm,
   networkSettingsFormSchema,
   parseRetentionDays,
+  serverUrlSchema,
 } from "@freestyle-voice/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { DragSpacer } from "@renderer/components/drag-spacer";
@@ -10,6 +11,12 @@ import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { LanguageSelector } from "@renderer/components/language-selector";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@renderer/components/ui/input-group";
+import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import {
   Select,
@@ -25,7 +32,13 @@ import {
   keyDisplayLabel,
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
-import { getClient } from "@renderer/lib/api";
+import {
+  checkServerAuth,
+  checkServerHealth,
+  getClient,
+  getLocalApiBase,
+  refreshApiBase,
+} from "@renderer/lib/api";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
@@ -45,12 +58,14 @@ import {
   FlaskConical,
   FolderOpen,
   Info,
+  Key,
   Keyboard,
   Languages,
   Mic,
   Monitor,
   Moon,
   Pause,
+  Server,
   Sun,
   Trash2,
   Volume2,
@@ -1395,6 +1410,14 @@ function NetworkPanel(): React.JSX.Element {
         <Info className="mt-px h-3.5 w-3.5 shrink-0 opacity-70" />
         <span>{t("settings.network.envNote")}</span>
       </div>
+      <Row
+        label={t("settings.network.server")}
+        desc={t("settings.network.serverDesc")}
+        stacked
+        last
+      >
+        <ServerConnection />
+      </Row>
     </SettingsPanel>
   );
 }
@@ -1450,6 +1473,265 @@ function NetworkField({
       </div>
     </div>
   );
+}
+
+type ServerTestState =
+  | "idle"
+  | "testing"
+  | "ok"
+  | "unreachable"
+  | "unauthorized";
+
+/**
+ * Connect the desktop app to a self-hosted Freestyle server (or the built-in
+ * local one). The URL/token live in the app's local settings.json (client-side
+ * config — they can't live on the server they point at), read/written via IPC.
+ *
+ * Saving takes effect immediately without an app restart: this window re-points
+ * its API client and refetches, and the main process broadcasts the change to
+ * the pill window (which re-points on its next recording).
+ */
+function ServerConnection(): React.JSX.Element {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [serverUrlInput, setServerUrlInput] = useState("");
+  const [savedServerUrl, setSavedServerUrl] = useState("");
+  const [serverTokenInput, setServerTokenInput] = useState("");
+  const [savedServerToken, setSavedServerToken] = useState("");
+  const [showToken, setShowToken] = useState(false);
+  const [serverUrlError, setServerUrlError] = useState<string | null>(null);
+  const [serverTest, setServerTest] = useState<ServerTestState>("idle");
+
+  useEffect(() => {
+    window.api
+      ?.getServerUrl()
+      .then((url) => {
+        setSavedServerUrl(url);
+        setServerUrlInput(url);
+      })
+      .catch(() => {});
+    window.api
+      ?.getServerToken()
+      .then((token) => {
+        setSavedServerToken(token);
+        setServerTokenInput(token);
+      })
+      .catch(() => {});
+  }, []);
+
+  const testServer = useCallback(async (rawUrl: string, token: string) => {
+    const parsed = serverUrlSchema.safeParse(rawUrl);
+    if (!parsed.success) {
+      setServerUrlError(parsed.error.issues[0].message);
+      setServerTest("idle");
+      return;
+    }
+    const base = parsed.data || getLocalApiBase();
+    setServerTest("testing");
+    if (!(await checkServerHealth(base, 5000))) {
+      setServerTest("unreachable");
+      return;
+    }
+    // Always probe an authenticated endpoint so we catch both a wrong token and
+    // a server that requires a token when none was entered.
+    if (!(await checkServerAuth(base, token.trim(), 5000))) {
+      setServerTest("unauthorized");
+      return;
+    }
+    setServerTest("ok");
+  }, []);
+
+  // Persist the new target, re-point this window's client, and refetch every
+  // query against the new server — all without an app restart. The main process
+  // broadcasts "server:changed" so the pill window re-points too.
+  const applyServerTarget = useCallback(
+    async (url: string, token: string) => {
+      const savedUrl = (await window.api?.setServerUrl(url)) ?? url;
+      const savedToken =
+        (await window.api?.setServerToken(token)) ?? token.trim();
+      setSavedServerUrl(savedUrl);
+      setServerUrlInput(savedUrl);
+      setSavedServerToken(savedToken);
+      setServerTokenInput(savedToken);
+      await refreshApiBase();
+      await queryClient.invalidateQueries();
+      return { savedUrl, savedToken };
+    },
+    [queryClient],
+  );
+
+  const handleSaveServer = useCallback(async () => {
+    const parsed = serverUrlSchema.safeParse(serverUrlInput);
+    if (!parsed.success) {
+      setServerUrlError(parsed.error.issues[0].message);
+      return;
+    }
+    setServerUrlError(null);
+    const { savedUrl, savedToken } = await applyServerTarget(
+      parsed.data,
+      serverTokenInput,
+    );
+    await testServer(savedUrl, savedToken);
+  }, [serverUrlInput, serverTokenInput, applyServerTarget, testServer]);
+
+  const handleResetServer = useCallback(async () => {
+    await applyServerTarget("", "");
+    setServerUrlError(null);
+    setServerTest("idle");
+  }, [applyServerTarget]);
+
+  const urlChanged = serverUrlInput.trim() !== savedServerUrl.trim();
+  const tokenChanged = serverTokenInput.trim() !== savedServerToken.trim();
+  const canReset =
+    !!savedServerUrl ||
+    !!savedServerToken ||
+    !!serverUrlInput.trim() ||
+    !!serverTokenInput.trim();
+  const usingLocal = !savedServerUrl;
+
+  return (
+    <div className="border-border bg-card w-full max-w-md rounded-[14px] border p-3.5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] uppercase tracking-[0.14em]",
+              usingLocal
+                ? "bg-accent text-accent-foreground"
+                : "bg-secondary text-secondary-foreground",
+            )}
+          >
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                usingLocal ? "bg-primary" : "bg-muted-foreground",
+              )}
+            />
+            {usingLocal
+              ? t("settings.network.localServer")
+              : t("settings.network.remoteServer")}
+          </span>
+          {savedServerUrl && (
+            <span className="text-muted-foreground min-w-0 truncate text-[12px]">
+              {savedServerUrl}
+            </span>
+          )}
+        </div>
+        <ServerConnectionStatus state={serverTest} />
+      </div>
+
+      <div className="space-y-2.5">
+        <InputGroup>
+          <InputGroupInput
+            id="settings-server-url"
+            type="text"
+            value={serverUrlInput}
+            aria-invalid={!!serverUrlError}
+            onChange={(e) => {
+              setServerUrlInput(e.target.value);
+              setServerTest("idle");
+              setServerUrlError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSaveServer();
+            }}
+            placeholder="http://127.0.0.1:4649"
+          />
+          <InputGroupAddon>
+            <Server />
+          </InputGroupAddon>
+        </InputGroup>
+
+        <InputGroup className={cn(!serverUrlInput.trim() && "opacity-60")}>
+          <InputGroupInput
+            id="settings-server-token"
+            type={showToken ? "text" : "password"}
+            value={serverTokenInput}
+            onChange={(e) => {
+              setServerTokenInput(e.target.value);
+              setServerTest("idle");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSaveServer();
+            }}
+            placeholder={t("settings.network.serverTokenPlaceholder")}
+          />
+          <InputGroupAddon>
+            <Key />
+          </InputGroupAddon>
+          {serverTokenInput && (
+            <RevealToggle
+              revealed={showToken}
+              onToggle={() => setShowToken((v) => !v)}
+              label="token"
+            />
+          )}
+        </InputGroup>
+
+        {serverUrlError && (
+          <p className="text-destructive text-[12px]">{serverUrlError}</p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <Button
+            variant="ink"
+            size="sm"
+            onClick={handleSaveServer}
+            disabled={!urlChanged && !tokenChanged}
+          >
+            {t("common.save")}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => testServer(serverUrlInput, serverTokenInput)}
+            disabled={serverTest === "testing"}
+          >
+            {t("settings.network.testConnection")}
+          </Button>
+          {canReset && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleResetServer}
+              className="text-muted-foreground"
+            >
+              {t("settings.network.resetToLocal")}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ServerConnectionStatus({
+  state,
+}: {
+  state: ServerTestState;
+}): React.JSX.Element | null {
+  const { t } = useTranslation();
+  if (state === "idle") return null;
+  const map: Record<
+    Exclude<ServerTestState, "idle">,
+    { label: string; className: string }
+  > = {
+    testing: {
+      label: t("settings.network.statusTesting"),
+      className: "text-muted-foreground",
+    },
+    ok: { label: t("settings.network.statusOk"), className: "text-primary" },
+    unreachable: {
+      label: t("settings.network.statusUnreachable"),
+      className: "text-destructive",
+    },
+    unauthorized: {
+      label: t("settings.network.statusUnauthorized"),
+      className: "text-destructive",
+    },
+  };
+  const { label, className } = map[state];
+  return <span className={cn("text-[11.5px]", className)}>{label}</span>;
 }
 
 // ---------------------------------------------------------------------------

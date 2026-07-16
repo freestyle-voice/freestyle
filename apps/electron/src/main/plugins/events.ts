@@ -39,8 +39,12 @@ type RelayableEvent = Extract<
  * Fire-and-forget: a plugin observer missing an event because the server was
  * briefly unreachable is not worth blocking or retrying for.
  */
-export function relayEvent(baseUrl: string, event: RelayableEvent): void {
-  hc<AppType>(baseUrl)
+export function relayEvent(
+  baseUrl: string,
+  event: RelayableEvent,
+  headers: Record<string, string> = {},
+): void {
+  hc<AppType>(baseUrl, { headers })
     .api.events.$post(
       { json: event },
       { init: { signal: AbortSignal.timeout(RELAY_TIMEOUT_MS) } },

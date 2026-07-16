@@ -1,6 +1,5 @@
+import type { HotkeyBindingKind } from "../shared/hotkey-bindings";
 import { acceleratorsEqual } from "../shared/hotkey-utils";
-
-export type HotkeyBindingKind = "hold" | "toggle";
 
 export interface HotkeyBindings {
   hold: string;

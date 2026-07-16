@@ -438,7 +438,7 @@ export function ModelList({
             return (
               <Fragment key={row.key}>
                 <ModelRow row={row} first={i === 0} />
-                {showOpenaiSttConfig && <OpenaiSttBaseUrlConfig m={m} />}
+                {showOpenaiSttConfig && <OpenAISttConnect m={m} />}
               </Fragment>
             );
           })
@@ -721,56 +721,152 @@ function ListEmptyState({
 }
 
 function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
-  const [showKey, setShowKey] = useState(false);
   const { localLlm } = m;
 
   return (
-    <div className="border-border border-b px-5 py-4">
+    <OpenAICompatibleConnect
+      className="border-b"
+      description="Connect to Ollama, LM Studio, or another OpenAI-compatible server running locally."
+      url={localLlm.url}
+      onUrlChange={(value) => {
+        localLlm.setUrl(value);
+        localLlm.clearStatus();
+      }}
+      urlPlaceholder="http://localhost:11434"
+      apiKey={localLlm.apiKey}
+      onApiKeyChange={localLlm.setApiKey}
+      apiKeyPlaceholder="API key (optional)"
+      testing={localLlm.testing}
+      connected={localLlm.connected}
+      error={localLlm.error}
+      onSubmit={localLlm.test}
+      success={
+        <>
+          Connected · {localLlm.models.length}{" "}
+          {localLlm.models.length === 1 ? "model" : "models"} found
+        </>
+      }
+    />
+  );
+}
+
+function OpenAISttConnect({ m }: { m: UseModels }): React.JSX.Element {
+  const { openaiStt } = m;
+  const clearing = !openaiStt.url.trim() && openaiStt.configured;
+
+  return (
+    <OpenAICompatibleConnect
+      className="bg-muted/20 border-t"
+      description="Connect to a custom OpenAI-compatible STT endpoint. Leave the URL empty to use OpenAI."
+      url={openaiStt.url}
+      onUrlChange={(value) => {
+        openaiStt.setUrl(value);
+        openaiStt.clearStatus();
+      }}
+      urlPlaceholder="https://example.com"
+      apiKey={openaiStt.apiKey}
+      onApiKeyChange={(value) => {
+        openaiStt.setApiKey(value);
+        openaiStt.clearStatus();
+      }}
+      apiKeyPlaceholder={
+        openaiStt.apiKeyConfigured
+          ? "API key saved (leave blank to keep)"
+          : "API key (optional)"
+      }
+      testing={openaiStt.testing}
+      connected={openaiStt.connected}
+      error={openaiStt.error}
+      onSubmit={openaiStt.test}
+      actionLabel={clearing ? "Clear" : "Test"}
+      pendingLabel={clearing ? "Clearing…" : "Testing…"}
+      disabled={!openaiStt.url.trim() && !openaiStt.configured}
+      success="Connected to custom endpoint"
+    />
+  );
+}
+
+function OpenAICompatibleConnect({
+  className,
+  description,
+  url,
+  onUrlChange,
+  urlPlaceholder,
+  apiKey,
+  onApiKeyChange,
+  apiKeyPlaceholder,
+  testing,
+  connected,
+  error,
+  onSubmit,
+  success,
+  actionLabel = "Test",
+  pendingLabel = "Testing…",
+  disabled = false,
+}: {
+  className?: string;
+  description: string;
+  url: string;
+  onUrlChange: (value: string) => void;
+  urlPlaceholder: string;
+  apiKey: string;
+  onApiKeyChange: (value: string) => void;
+  apiKeyPlaceholder: string;
+  testing: boolean;
+  connected: boolean | null;
+  error: string | null;
+  onSubmit: () => Promise<void>;
+  success: React.ReactNode;
+  actionLabel?: string;
+  pendingLabel?: string;
+  disabled?: boolean;
+}): React.JSX.Element {
+  const [showKey, setShowKey] = useState(false);
+
+  return (
+    <div className={cn("border-border px-5 py-4", className)}>
       <p className="text-muted-foreground mb-4 text-[13px] leading-relaxed">
-        Connect to Ollama, LM Studio, or another OpenAI-compatible server
-        running locally.
+        {description}
       </p>
       <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void localLlm.test();
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSubmit();
         }}
         className="space-y-3"
       >
         <div className="flex items-center gap-2">
           <Input
             type="text"
-            value={localLlm.url}
-            onChange={(e) => {
-              localLlm.setUrl(e.target.value);
-              localLlm.clearStatus();
-            }}
-            placeholder="http://localhost:11434"
+            value={url}
+            onChange={(event) => onUrlChange(event.target.value)}
+            placeholder={urlPlaceholder}
+            aria-invalid={connected === false}
             className="min-w-0 flex-1"
           />
           <Button
             type="submit"
             variant="secondary"
             size="sm"
-            disabled={localLlm.testing}
+            disabled={testing || disabled}
             className="shrink-0"
           >
-            {localLlm.testing ? (
+            {testing ? (
               <span className="flex items-center gap-1.5">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Testing…
+                {pendingLabel}
               </span>
             ) : (
-              "Test"
+              actionLabel
             )}
           </Button>
         </div>
         <InputGroup>
           <InputGroupInput
             type={showKey ? "text" : "password"}
-            value={localLlm.apiKey}
-            onChange={(e) => localLlm.setApiKey(e.target.value)}
-            placeholder="API key (optional)"
+            value={apiKey}
+            onChange={(event) => onApiKeyChange(event.target.value)}
+            placeholder={apiKeyPlaceholder}
           />
           <RevealToggle
             revealed={showKey}
@@ -778,74 +874,11 @@ function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
             label="API key"
           />
         </InputGroup>
-        {localLlm.connected === true && (
-          <p className="text-primary text-[12px]">
-            Connected · {localLlm.models.length}{" "}
-            {localLlm.models.length === 1 ? "model" : "models"} found
-          </p>
+        {connected === true && (
+          <p className="text-primary text-[12px]">{success}</p>
         )}
-        {localLlm.connected === false && localLlm.error && (
-          <p className="text-destructive text-[12px] leading-snug">
-            {localLlm.error}
-          </p>
-        )}
-      </form>
-    </div>
-  );
-}
-
-function OpenaiSttBaseUrlConfig({ m }: { m: UseModels }): React.JSX.Element {
-  return (
-    <div className="border-border bg-muted/20 border-t px-5 py-4">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void m.saveOpenaiSttBaseUrl();
-        }}
-        className="space-y-2.5"
-      >
-        <div>
-          <label
-            htmlFor="openai-stt-base-url"
-            className="text-foreground text-[12.5px] font-medium"
-          >
-            Custom base URL
-          </label>
-          <p className="text-muted-foreground mt-1 text-[12px] leading-relaxed">
-            Optional OpenAI-compatible STT endpoint. Leave empty to use OpenAI.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Input
-            id="openai-stt-base-url"
-            type="text"
-            value={m.openaiSttBaseUrl}
-            onChange={(e) => m.setOpenaiSttBaseUrl(e.target.value)}
-            placeholder="https://example.com"
-            className="min-w-0 flex-1"
-            aria-invalid={!!m.openaiSttBaseUrlError}
-          />
-          <Button
-            type="submit"
-            variant="secondary"
-            size="sm"
-            disabled={m.openaiSttBaseUrlSaving}
-            className="shrink-0"
-          >
-            {m.openaiSttBaseUrlSaving ? (
-              <span className="flex items-center gap-1.5">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Saving…
-              </span>
-            ) : (
-              "Save"
-            )}
-          </Button>
-        </div>
-        {m.openaiSttBaseUrlError && (
-          <p className="text-destructive text-[12px] leading-snug">
-            {m.openaiSttBaseUrlError}
-          </p>
+        {connected === false && error && (
+          <p className="text-destructive text-[12px] leading-snug">{error}</p>
         )}
       </form>
     </div>

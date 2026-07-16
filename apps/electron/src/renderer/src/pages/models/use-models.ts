@@ -57,6 +57,20 @@ export interface LocalLlmState {
   clearStatus: () => void;
 }
 
+export interface OpenAISttState {
+  url: string;
+  setUrl: (value: string) => void;
+  apiKey: string;
+  setApiKey: (value: string) => void;
+  apiKeyConfigured: boolean;
+  configured: boolean;
+  testing: boolean;
+  connected: boolean | null;
+  error: string | null;
+  test: () => Promise<void>;
+  clearStatus: () => void;
+}
+
 export interface UseModels {
   loading: boolean;
   available: AvailableModel[];
@@ -85,11 +99,7 @@ export interface UseModels {
   >;
 
   localLlm: LocalLlmState;
-  openaiSttBaseUrl: string;
-  setOpenaiSttBaseUrl: (value: string) => void;
-  openaiSttBaseUrlSaving: boolean;
-  openaiSttBaseUrlError: string | null;
-  saveOpenaiSttBaseUrl: () => Promise<void>;
+  openaiStt: OpenAISttState;
 
   // Actions — each refetches as needed
   configureModel: (
@@ -113,7 +123,10 @@ export interface UseModels {
   reload: () => Promise<void>;
 }
 
-async function readSettingsError(res: Response): Promise<string> {
+async function readResponseError(
+  res: Response,
+  fallback: string,
+): Promise<string> {
   try {
     const body = await res.json();
     if (
@@ -125,9 +138,9 @@ async function readSettingsError(res: Response): Promise<string> {
       return body.error;
     }
   } catch {
-    return "Failed to save custom base URL.";
+    return fallback;
   }
-  return "Failed to save custom base URL.";
+  return fallback;
 }
 
 export function useModels(): UseModels {
@@ -234,11 +247,17 @@ export function useModels(): UseModels {
   const [localError, setLocalError] = useState<string | null>(null);
   const [localModels, setLocalModels] = useState<string[]>([]);
 
-  const [openaiSttBaseUrl, setOpenaiSttBaseUrl] = useState("");
-  const [openaiSttBaseUrlSaving, setOpenaiSttBaseUrlSaving] = useState(false);
-  const [openaiSttBaseUrlError, setOpenaiSttBaseUrlError] = useState<
-    string | null
-  >(null);
+  const [openaiSttUrl, setOpenaiSttUrl] = useState("");
+  const [openaiSttApiKey, setOpenaiSttApiKey] = useState("");
+  const [openaiSttApiKeyDirty, setOpenaiSttApiKeyDirty] = useState(false);
+  const [openaiSttApiKeyConfigured, setOpenaiSttApiKeyConfigured] =
+    useState(false);
+  const [openaiSttConfigured, setOpenaiSttConfigured] = useState(false);
+  const [openaiSttTesting, setOpenaiSttTesting] = useState(false);
+  const [openaiSttConnected, setOpenaiSttConnected] = useState<boolean | null>(
+    null,
+  );
+  const [openaiSttError, setOpenaiSttError] = useState<string | null>(null);
 
   // Seed editable state from persisted settings once, when the settings query
   // first resolves. Mutations update this local state directly, so we don't
@@ -259,7 +278,11 @@ export function useModels(): UseModels {
     if (url) setLocalUrl(url);
     const key = s[SETTINGS_KEYS.localLlmApiKey];
     if (key) setLocalApiKey(key);
-    setOpenaiSttBaseUrl(s[SETTINGS_KEYS.openaiSttBaseUrl] ?? "");
+    const openaiSttUrl = s[SETTINGS_KEYS.openaiSttBaseUrl] ?? "";
+    setOpenaiSttUrl(openaiSttUrl);
+    setOpenaiSttConfigured(!!openaiSttUrl);
+    setOpenaiSttConnected(openaiSttUrl ? true : null);
+    setOpenaiSttApiKeyConfigured(SETTINGS_KEYS.openaiSttApiKey in s);
     const rawMinutes = s[SETTINGS_KEYS.mlxAsrKeepAliveMinutes];
     if (rawMinutes) {
       const minutes = Number(rawMinutes);
@@ -661,32 +684,73 @@ export function useModels(): UseModels {
     }
   }, [localUrl, localApiKey, loadData]);
 
-  const saveOpenaiSttBaseUrl = useCallback(async () => {
-    setOpenaiSttBaseUrlSaving(true);
-    setOpenaiSttBaseUrlError(null);
-    const value = openaiSttBaseUrl.trim();
+  const clearOpenaiSttStatus = useCallback(() => {
+    setOpenaiSttConnected(null);
+    setOpenaiSttError(null);
+  }, []);
+
+  const updateOpenaiSttApiKey = useCallback((value: string) => {
+    setOpenaiSttApiKey(value);
+    setOpenaiSttApiKeyDirty(true);
+  }, []);
+
+  const testOpenaiStt = useCallback(async () => {
+    setOpenaiSttTesting(true);
+    setOpenaiSttConnected(null);
+    setOpenaiSttError(null);
+    const url = openaiSttUrl.trim();
     try {
       const client = getClient();
-      const res = value
-        ? await client.api.settings[":key"].$put({
-            param: { key: SETTINGS_KEYS.openaiSttBaseUrl },
-            json: { value },
-          })
-        : await client.api.settings[":key"].$delete({
-            param: { key: SETTINGS_KEYS.openaiSttBaseUrl },
-          });
-
-      if (!res.ok) {
-        setOpenaiSttBaseUrlError(await readSettingsError(res));
+      if (!url) {
+        const res = await client.api.settings["openai-stt"].$delete();
+        if (!res.ok) {
+          setOpenaiSttConnected(false);
+          setOpenaiSttError(
+            await readResponseError(res, "Failed to clear custom endpoint."),
+          );
+          return;
+        }
+        setOpenaiSttApiKey("");
+        setOpenaiSttApiKeyDirty(false);
+        setOpenaiSttApiKeyConfigured(false);
+        setOpenaiSttConfigured(false);
+        setOpenaiSttConnected(null);
         return;
       }
-      setOpenaiSttBaseUrl(value);
-    } catch {
-      setOpenaiSttBaseUrlError("Failed to save custom base URL.");
+
+      const res = await client.api.settings["openai-stt"].test.$post({
+        json: {
+          url,
+          ...(openaiSttApiKeyDirty ? { api_key: openaiSttApiKey } : {}),
+        },
+      });
+
+      if (!res.ok) {
+        setOpenaiSttConnected(false);
+        setOpenaiSttError(
+          await readResponseError(res, "Failed to connect to custom endpoint."),
+        );
+        return;
+      }
+
+      const result = await res.json();
+      setOpenaiSttUrl(result.url);
+      setOpenaiSttApiKey("");
+      setOpenaiSttApiKeyDirty(false);
+      setOpenaiSttApiKeyConfigured(result.api_key_configured);
+      setOpenaiSttConfigured(true);
+      setOpenaiSttConnected(true);
+    } catch (err) {
+      setOpenaiSttConnected(false);
+      setOpenaiSttError(
+        err instanceof Error
+          ? err.message
+          : "Failed to connect to custom endpoint.",
+      );
     } finally {
-      setOpenaiSttBaseUrlSaving(false);
+      setOpenaiSttTesting(false);
     }
-  }, [openaiSttBaseUrl]);
+  }, [openaiSttUrl, openaiSttApiKey, openaiSttApiKeyDirty]);
 
   return {
     loading,
@@ -717,11 +781,19 @@ export function useModels(): UseModels {
       test: testLocalLlm,
       clearStatus: clearLocalStatus,
     },
-    openaiSttBaseUrl,
-    setOpenaiSttBaseUrl,
-    openaiSttBaseUrlSaving,
-    openaiSttBaseUrlError,
-    saveOpenaiSttBaseUrl,
+    openaiStt: {
+      url: openaiSttUrl,
+      setUrl: setOpenaiSttUrl,
+      apiKey: openaiSttApiKey,
+      setApiKey: updateOpenaiSttApiKey,
+      apiKeyConfigured: openaiSttApiKeyConfigured,
+      configured: openaiSttConfigured,
+      testing: openaiSttTesting,
+      connected: openaiSttConnected,
+      error: openaiSttError,
+      test: testOpenaiStt,
+      clearStatus: clearOpenaiSttStatus,
+    },
     configureModel,
     saveKey,
     selectLocalVoice,

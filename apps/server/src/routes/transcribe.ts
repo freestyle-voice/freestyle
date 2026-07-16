@@ -190,7 +190,10 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     );
   }
 
-  const apiKey = getApiKeyForProvider(voiceProvider);
+  const apiKey =
+    voiceProvider === "openai" && readSetting("openai_stt_base_url")?.trim()
+      ? "custom-stt-endpoint"
+      : getApiKeyForProvider(voiceProvider);
   if (!apiKey) {
     // Freestyle Cloud has no stored key — a null token means "signed out".
     if (voiceProvider === FREESTYLE_CLOUD_PROVIDER_ID) {

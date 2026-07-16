@@ -19,6 +19,7 @@ export const SETTINGS_KEYS = {
   mlxAsrKeepAliveMinutes: "mlx_asr_keep_alive_minutes",
   networkCaCertPath: "network_ca_cert_path",
   networkProxyUrl: "network_proxy_url",
+  openaiSttApiKey: "openai_stt_api_key",
   openaiSttBaseUrl: "openai_stt_base_url",
   outputMode: "output_mode",
   soundEnabled: "sound_enabled",

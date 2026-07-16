@@ -30,8 +30,9 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
       return transcribeWithAiSdk(opts, createOpenAI, this.providerId);
     }
 
-    const createOpenAIWithBaseUrl = (config: { apiKey: string }) =>
-      createOpenAI({ apiKey: config.apiKey, baseURL: baseUrl });
+    const apiKey = readSetting("openai_stt_api_key") ?? "";
+    const createOpenAIWithBaseUrl = () =>
+      createOpenAI({ apiKey, baseURL: baseUrl });
 
     return transcribeWithAiSdk(opts, createOpenAIWithBaseUrl, this.providerId);
   }

@@ -1,6 +1,7 @@
 import { z } from "zod/v3";
 
 const OPENAI_STT_BASE_URL_MAX = 2048;
+const OPENAI_STT_API_KEY_MAX = 8192;
 
 function parseHttpUrl(value: string): URL | null {
   try {
@@ -27,6 +28,15 @@ export const openaiSttBaseUrlSchema = z
         "OpenAI STT base URL must be a valid http:// or https:// URL without query strings or hashes (or empty to disable)",
     },
   );
+
+export const openaiSttConfigSchema = z.object({
+  url: openaiSttBaseUrlSchema.refine((value) => value.trim() !== "", {
+    message: "OpenAI STT base URL is required",
+  }),
+  api_key: z.string().max(OPENAI_STT_API_KEY_MAX).optional(),
+});
+
+export type OpenAISttConfigInput = z.infer<typeof openaiSttConfigSchema>;
 
 export function normalizeOpenAISttBaseUrl(input: string): string | undefined {
   const trimmed = input.trim();

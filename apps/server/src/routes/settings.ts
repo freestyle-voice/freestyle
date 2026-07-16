@@ -10,7 +10,9 @@ import {
   disabledPluginsSettingSchema,
   historyRetentionDaysSettingSchema,
   localLlmConfigSchema,
+  normalizeOpenAISttBaseUrl,
   openaiSttBaseUrlSchema,
+  openaiSttConfigSchema,
   pluginsSettingSchema,
   proxyUrlSettingSchema,
   settingValueSchema,
@@ -31,6 +33,45 @@ import {
 import { capture } from "../lib/posthog.js";
 import { applyWhisperRetentionPolicy } from "../lib/whisper/server.js";
 
+const OPENAI_STT_BASE_URL_SETTING = "openai_stt_base_url";
+const OPENAI_STT_API_KEY_SETTING = "openai_stt_api_key";
+const OPENAI_STT_TEST_TIMEOUT_MS = 5000;
+
+function readOpenAISttApiKey(): string {
+  const row = getDb()
+    .prepare("SELECT value FROM settings WHERE key = ?")
+    .get(OPENAI_STT_API_KEY_SETTING) as { value: string } | undefined;
+  return row?.value ?? "";
+}
+
+function persistOpenAISttConfig(url: string, apiKey?: string): void {
+  const db = getDb();
+  db.exec("BEGIN");
+  try {
+    db.prepare(
+      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+    ).run(OPENAI_STT_BASE_URL_SETTING, url);
+
+    if (apiKey !== undefined) {
+      if (apiKey) {
+        db.prepare(
+          `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+        ).run(OPENAI_STT_API_KEY_SETTING, apiKey);
+      } else {
+        db.prepare("DELETE FROM settings WHERE key = ?").run(
+          OPENAI_STT_API_KEY_SETTING,
+        );
+      }
+    }
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
 const settings = new Hono()
   .get("/", (c) => {
     const db = getDb();
@@ -41,13 +82,20 @@ const settings = new Hono()
 
     const result: Record<string, string> = {};
     for (const row of rows) {
-      result[row.key] = row.value;
+      result[row.key] = row.key === OPENAI_STT_API_KEY_SETTING ? "" : row.value;
     }
     return c.json(result);
   })
   .get("/:key", (c) => {
     const db = getDb();
     const key = c.req.param("key");
+    if (key === OPENAI_STT_API_KEY_SETTING) {
+      const configured = !!readOpenAISttApiKey();
+      if (!configured) {
+        return c.json({ error: "Setting not found" }, 404);
+      }
+      return c.json({ key, value: "" });
+    }
     const row = db
       .prepare("SELECT value FROM settings WHERE key = ?")
       .get(key) as { value: string } | undefined;
@@ -61,6 +109,13 @@ const settings = new Hono()
     const db = getDb();
     const key = c.req.param("key");
     const body = c.req.valid("json");
+
+    if (key === OPENAI_STT_API_KEY_SETTING) {
+      return c.json(
+        { error: "Configure the OpenAI STT key through the test endpoint" },
+        400,
+      );
+    }
 
     // Key-specific validation for settings with constrained value shapes.
     if (key === "cleanup_intensity") {
@@ -126,7 +181,7 @@ const settings = new Hono()
       if (!parsed.success) {
         return c.json({ error: "Invalid disabled_plugins setting" }, 400);
       }
-    } else if (key === "openai_stt_base_url") {
+    } else if (key === OPENAI_STT_BASE_URL_SETTING) {
       const parsed = openaiSttBaseUrlSchema.safeParse(body.value);
       if (!parsed.success) {
         return c.json(
@@ -190,6 +245,58 @@ const settings = new Hono()
     }
 
     return c.json({ key, value: body.value });
+  })
+  .post(
+    "/openai-stt/test",
+    zValidator("json", openaiSttConfigSchema),
+    async (c) => {
+      const body = c.req.valid("json");
+      const url = normalizeOpenAISttBaseUrl(body.url);
+      if (!url) {
+        return c.json({ error: "OpenAI STT base URL is required" }, 400);
+      }
+
+      const apiKey =
+        body.api_key === undefined
+          ? readOpenAISttApiKey()
+          : body.api_key.trim();
+
+      try {
+        const res = await fetch(`${url}/models`, {
+          headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+          signal: AbortSignal.timeout(OPENAI_STT_TEST_TIMEOUT_MS),
+        });
+
+        if (!res.ok) {
+          return c.json(
+            { error: `Server returned ${res.status}: ${res.statusText}` },
+            502,
+          );
+        }
+
+        persistOpenAISttConfig(
+          url,
+          body.api_key === undefined ? undefined : apiKey,
+        );
+        return c.json({
+          ok: true,
+          url,
+          api_key_configured: !!apiKey,
+        });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to connect";
+        return c.json({ error: message }, 502);
+      }
+    },
+  )
+  .delete("/openai-stt", (c) => {
+    const db = getDb();
+    db.prepare("DELETE FROM settings WHERE key IN (?, ?)").run(
+      OPENAI_STT_BASE_URL_SETTING,
+      OPENAI_STT_API_KEY_SETTING,
+    );
+    return c.json({ ok: true });
   })
   .delete("/:key", (c) => {
     const db = getDb();

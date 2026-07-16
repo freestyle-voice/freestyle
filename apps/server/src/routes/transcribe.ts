@@ -217,12 +217,18 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   const pluginNeedsRawTranscript = plugins().has("afterTranscribe");
 
   if (voiceProvider === FREESTYLE_CLOUD_PROVIDER_ID && freestyleCleanupActive) {
-    const useCombined = !pluginNeedsRawTranscript;
+    let useCombined = !pluginNeedsRawTranscript;
 
     // Run `beforeCleanup` locally to collect plugin system-prompt fragments,
     // then forward them to the cloud. On the combined path `input.text` is
     // empty (the transcript hasn't been produced yet); plugins that only
     // contribute static fragments (e.g. emoji) work fine.
+    //
+    // The hook can also decide things the cloud's combined mode can't honor:
+    // `skip`, `consume()`/`abort()` (terminal control), or a full `prompt`
+    // override. In those cases fall back to cloud raw STT + the local
+    // post-process path, which applies all of them exactly like the
+    // local/BYOK flow — matching the pre-forwarding behavior.
     let systemFragments: string[] = [];
     if (useCombined && plugins().has("beforeCleanup")) {
       const parsedCtxForCleanup = parseAppContext(
@@ -242,9 +248,17 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         { system: [] as string[] },
         api,
       );
-      if (promptHook.skip || api.control.state !== "running") {
-        // Plugin decided to skip cleanup — fall through with no fragments.
-        systemFragments = [];
+      if (
+        promptHook.skip ||
+        promptHook.prompt !== undefined ||
+        api.control.state !== "running"
+      ) {
+        // The plugin skipped cleanup, went terminal (consume/abort), or
+        // replaced the prompt outright — none of which the cloud's combined
+        // mode can apply. Drop to raw STT so the local post-process path
+        // honors the hook's decision (it re-runs `beforeCleanup` with the
+        // real transcript). Don't forward fragments on this path.
+        useCombined = false;
       } else {
         systemFragments = promptHook.system;
       }

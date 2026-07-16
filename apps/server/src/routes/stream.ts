@@ -280,7 +280,14 @@ const stream = new Hono().get(
       // then include them in the cleanup config so the cloud appends them to
       // its assembled prompt. `input.text` is empty (the transcript hasn't been
       // produced yet); plugins that contribute static fragments work fine.
+      //
+      // The hook can also decide to skip cleanup outright (`skip` or a
+      // `consume()`/`abort()`). Streaming has no local cleanup path, so the
+      // only way to honor that is to tell the cloud to skip post-processing
+      // (`skipPostProcess`) and return the raw transcript. Fragments are only
+      // meaningful when cleanup actually runs, so a skip drops them too.
       let systemFragments: string[] | undefined;
+      let pluginSkipsCleanup = false;
       if (
         voice.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
         isLlmCleanupEnabled() &&
@@ -298,11 +305,9 @@ const stream = new Hono().get(
           { system: [] as string[] },
           hookApi,
         );
-        if (
-          !promptHook.skip &&
-          hookApi.control.state === "running" &&
-          promptHook.system.length > 0
-        ) {
+        pluginSkipsCleanup =
+          promptHook.skip === true || hookApi.control.state !== "running";
+        if (!pluginSkipsCleanup && promptHook.system.length > 0) {
           systemFragments = promptHook.system;
         }
       }
@@ -310,7 +315,7 @@ const stream = new Hono().get(
       const cleanup =
         voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
           ? {
-              skipPostProcess: !isLlmCleanupEnabled(),
+              skipPostProcess: !isLlmCleanupEnabled() || pluginSkipsCleanup,
               ...getEffectiveCleanupTones(),
               appAssignments: getCleanupAppAssignments(),
               ...(systemFragments ? { systemFragments } : {}),
@@ -356,10 +361,14 @@ const stream = new Hono().get(
             }
 
             // Freestyle Cloud streaming. The cloud DO returns cleaned text when
-            // post-processing is on, or the raw transcript when it is off
-            // (`skipPostProcess = !isLlmCleanupEnabled()` was sent on connect).
+            // post-processing is on, or the raw transcript when it is off —
+            // either because cleanup is disabled or a `beforeCleanup` plugin
+            // skipped it (both set `skipPostProcess` on connect). When the
+            // cloud returned raw text, treat it like the cleanup-off branch so
+            // `afterTranscribe`/`Transcribed` still fire on the real transcript.
             if (voice.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
-              const cloudHandledPostProcess = isLlmCleanupEnabled();
+              const cloudHandledPostProcess =
+                isLlmCleanupEnabled() && !pluginSkipsCleanup;
               const cloudText = rawText?.trim() || "";
               let text = cloudText;
 

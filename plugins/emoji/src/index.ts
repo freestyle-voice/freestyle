@@ -85,7 +85,12 @@ export default function emojiPlugin(_options?: PluginOptions): Plugin {
 
     // PUT /settings — update settings
     if (method === "PUT") {
-      const body = await c.req.json<{ placement?: unknown }>();
+      let body: { placement?: unknown };
+      try {
+        body = await c.req.json<{ placement?: unknown }>();
+      } catch {
+        return c.json({ error: "invalid JSON body" }, 400);
+      }
       if (!isValidPlacement(body.placement)) {
         return c.json({ error: 'placement must be "after" or "replace"' }, 400);
       }

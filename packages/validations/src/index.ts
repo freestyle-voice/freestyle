@@ -7,6 +7,7 @@ export * from "./dictionary.js";
 export * from "./export.js";
 export * from "./local-llm.js";
 export * from "./models.js";
+export * from "./openai-stt.js";
 export * from "./plugins.js";
 export * from "./post-process.js";
 export * from "./query.js";

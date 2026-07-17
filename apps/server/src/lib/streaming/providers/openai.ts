@@ -1,6 +1,8 @@
 import { Buffer } from "node:buffer";
 import { createOpenAI } from "@ai-sdk/openai";
+import { sanitizeSttBaseUrl } from "@freestyle-voice/validations";
 import WebSocket from "ws";
+import { readSetting } from "../../db.js";
 import { createPcmUpsampler } from "../pcm.js";
 import type {
   StreamingSessionOptions,
@@ -21,7 +23,18 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "openai";
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
-    return transcribeWithAiSdk(opts, createOpenAI, this.providerId);
+    const baseUrl = sanitizeSttBaseUrl(
+      readSetting("openai_stt_base_url") ?? "",
+    );
+    if (!baseUrl) {
+      return transcribeWithAiSdk(opts, createOpenAI, this.providerId);
+    }
+
+    const apiKey = readSetting("openai_stt_api_key") ?? "";
+    const createOpenAIWithBaseUrl = () =>
+      createOpenAI({ apiKey, baseURL: baseUrl });
+
+    return transcribeWithAiSdk(opts, createOpenAIWithBaseUrl, this.providerId);
   }
 
   supportsStreaming(modelId: string): boolean {

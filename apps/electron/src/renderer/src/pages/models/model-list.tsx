@@ -328,6 +328,7 @@ export function ModelList({
     : 0;
 
   const showLocalLlmForm = type === "llm" && localOnly;
+  const showOpenaiSttForm = type === "voice" && cloudOnly;
 
   const scopedTitle =
     type === "voice"
@@ -417,6 +418,7 @@ export function ModelList({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {showLocalLlmForm && <LocalLlmConnect m={m} />}
+        {showOpenaiSttForm && <OpenaiSttConnect m={m} />}
         {visible.length === 0 ? (
           <ListEmptyState
             type={type}
@@ -773,6 +775,80 @@ function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
         {localLlm.connected === false && localLlm.error && (
           <p className="text-destructive text-[12px] leading-snug">
             {localLlm.error}
+          </p>
+        )}
+      </form>
+    </div>
+  );
+}
+
+function OpenaiSttConnect({ m }: { m: UseModels }): React.JSX.Element {
+  const [showKey, setShowKey] = useState(false);
+  const { openaiStt } = m;
+
+  return (
+    <div className="border-border border-b px-5 py-4">
+      <p className="text-muted-foreground mb-4 text-[13px] leading-relaxed">
+        Point OpenAI transcription at a self-hosted or OpenAI-compatible server
+        (vLLM, LiteLLM, LM Studio). Leave the URL empty to use OpenAI.
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void openaiStt.test();
+        }}
+        className="space-y-3"
+      >
+        <div className="flex items-center gap-2">
+          <Input
+            type="text"
+            value={openaiStt.url}
+            onChange={(e) => {
+              openaiStt.setUrl(e.target.value);
+              openaiStt.clearStatus();
+            }}
+            placeholder="https://example.com/v1"
+            className="min-w-0 flex-1"
+          />
+          <Button
+            type="submit"
+            variant="secondary"
+            size="sm"
+            disabled={openaiStt.testing}
+            className="shrink-0"
+          >
+            {openaiStt.testing ? (
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Testing…
+              </span>
+            ) : (
+              "Test"
+            )}
+          </Button>
+        </div>
+        <InputGroup>
+          <InputGroupInput
+            type={showKey ? "text" : "password"}
+            value={openaiStt.apiKey}
+            onChange={(e) => openaiStt.setApiKey(e.target.value)}
+            placeholder="API key (optional)"
+          />
+          <RevealToggle
+            revealed={showKey}
+            onToggle={() => setShowKey(!showKey)}
+            label="API key"
+          />
+        </InputGroup>
+        {openaiStt.connected === true && (
+          <p className="text-primary text-[12px]">
+            Connected · {openaiStt.models.length}{" "}
+            {openaiStt.models.length === 1 ? "model" : "models"} found
+          </p>
+        )}
+        {openaiStt.connected === false && openaiStt.error && (
+          <p className="text-destructive text-[12px] leading-snug">
+            {openaiStt.error}
           </p>
         )}
       </form>

@@ -14,16 +14,33 @@ import {
 
 const PLUGIN_NAME = "@freestyle-voice/plugin-agent";
 const CONVERSATION_KEY = "conversation";
+const HISTORY_KEY = "conversation-history";
+
+/** A saved conversation with metadata for the settings page card grid. */
+interface SavedConversation {
+  id: string;
+  title: string;
+  createdAt: number;
+  messages: ConversationEntry[];
+}
+
+function uid(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+}
+
+function titleFromMessages(messages: ConversationEntry[]): string {
+  const first = messages.find((m) => m.role === "user");
+  if (!first) return "Conversation";
+  const text = first.content.trim();
+  return text.length > 60 ? `${text.slice(0, 57)}...` : text;
+}
 
 export default function agentPlugin(_options?: PluginOptions): Plugin {
   let storage: PluginStorage | null = null;
   let config: AgentConfig = { ...DEFAULT_CONFIG };
   let conversation: ConversationEntry[] = [];
+  let history: SavedConversation[] = [];
   let logger: (msg: string) => void = () => {};
-  // Whether the current conversation is "live" (its panel is open). A trigger
-  // that arrives when it's NOT active starts a fresh conversation; one that
-  // arrives while active continues the thread. The host marks it inactive when
-  // the panel closes (POST /agent/session/end).
   let conversationActive = false;
   const baseSlug = pluginSlug(PLUGIN_NAME);
 
@@ -33,10 +50,24 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     return m[1] === baseSlug || m[1] === `${baseSlug}-dev`;
   }
 
+  /** Archive the current conversation into history (if non-empty). */
+  async function archiveCurrentConversation(): Promise<void> {
+    if (conversation.length === 0) return;
+    const saved: SavedConversation = {
+      id: uid(),
+      title: titleFromMessages(conversation),
+      createdAt: Date.now(),
+      messages: [...conversation],
+    };
+    history.unshift(saved);
+    // Keep at most 50 saved conversations to avoid unbounded growth.
+    if (history.length > 50) history = history.slice(0, 50);
+    if (storage) await storage.set(HISTORY_KEY, history);
+  }
+
   const handler: MiddlewareHandler = async (c, next) => {
     const reqPath = c.req.path;
 
-    // Config CRUD — the settings page reads and writes here.
     if (ownRoute(reqPath, "/agent/config")) {
       if (c.req.method === "GET") return c.json(config);
       if (c.req.method === "PUT") {
@@ -47,7 +78,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       }
     }
 
-    // Conversation — the pill panel reads and clears it.
+    // Current conversation — the pill panel reads and clears it.
     if (ownRoute(reqPath, "/agent/conversation")) {
       if (c.req.method === "GET") return c.json({ conversation });
       if (c.req.method === "DELETE") {
@@ -58,10 +89,31 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       }
     }
 
-    // The panel closed — end the session so the next trigger starts fresh.
-    // The conversation itself is kept (viewable on the settings page) until the
-    // next trigger clears it or the user clears it explicitly.
+    // Conversation history — the settings page reads and manages it.
+    if (ownRoute(reqPath, "/agent/conversations")) {
+      if (c.req.method === "GET") return c.json({ conversations: history });
+      if (c.req.method === "DELETE") {
+        history = [];
+        if (storage) await storage.set(HISTORY_KEY, history);
+        return c.json({ ok: true });
+      }
+    }
+
+    // Delete a single conversation from history.
+    const singleDelete = reqPath.match(
+      new RegExp(
+        `^/api/plugins/(?:${baseSlug}|${baseSlug}-dev)/agent/conversations/([^/]+)$`,
+      ),
+    );
+    if (singleDelete && c.req.method === "DELETE") {
+      history = history.filter((h) => h.id !== singleDelete[1]);
+      if (storage) await storage.set(HISTORY_KEY, history);
+      return c.json({ ok: true });
+    }
+
     if (ownRoute(reqPath, "/agent/session/end") && c.req.method === "POST") {
+      // Archive the conversation that just ended before resetting.
+      await archiveCurrentConversation();
       conversationActive = false;
       return c.json({ ok: true });
     }
@@ -80,23 +132,16 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       const stored =
         await ctx.storage.get<ConversationEntry[]>(CONVERSATION_KEY);
       if (Array.isArray(stored)) conversation = stored;
+      const storedHistory =
+        await ctx.storage.get<SavedConversation[]>(HISTORY_KEY);
+      if (Array.isArray(storedHistory)) history = storedHistory;
       ctx.logger.info(`voice agent ready on ${ctx.mode}`);
     },
 
-    // Intercept in `afterCleanup`, not `afterTranscribe`: `afterCleanup` is the
-    // one hook that fires on every path — batch, local streaming, AND Freestyle
-    // Cloud streaming with combined cleanup (where `afterTranscribe` is skipped
-    // because there's no separable raw transcript). This is what lets the agent
-    // work for cloud users. The agent name survives cleanup since it leads the
-    // utterance, and cleanup preserves leading content.
     async afterCleanup(_input, output, api) {
       const text = output.text.trim();
       if (!text) return;
 
-      // When a conversation is already live (the panel is open), every
-      // subsequent dictation is a follow-up — route it to the agent without
-      // requiring the name again. When the panel is closed, only intercept
-      // dictation that opens with the agent's name (default "Freestyle").
       const matcher = buildAgentNameRegex(config.agentName);
       const hasName = matcher.test(text);
 
@@ -105,16 +150,14 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       const prompt = hasName ? stripAgentName(text, matcher) : text;
       if (!prompt) return;
 
-      // A fresh trigger (panel closed → named) starts a new thread; a
-      // follow-up (panel open) continues the existing one.
       if (!conversationActive) {
+        // Archive the old conversation before starting fresh.
+        await archiveCurrentConversation();
         conversation = [];
         conversationActive = true;
       }
       conversation.push({ role: "user", content: prompt });
 
-      // Signal the panel to open now and begin an assistant message. Do this
-      // before the LLM call so the pill appears immediately, then streams.
       api.emitStream?.({ type: "streamStart" });
 
       let reply: string;
@@ -146,7 +189,6 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       conversation.push({ role: "assistant", content: reply });
       if (storage) await storage.set(CONVERSATION_KEY, conversation);
 
-      // Hand the utterance to the pill panel instead of pasting it.
       output.text = prompt;
       api.control.consume("voice-agent: handled in the pill panel");
     },

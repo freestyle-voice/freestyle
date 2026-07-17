@@ -212,6 +212,7 @@ export default function AppPage(): React.JSX.Element {
   const [elapsed, setElapsed] = useState(0);
   const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
   const [pillSide, setPillSide] = useState<"center" | "right">("center");
+  const pillSideRef = useRef<"center" | "right">(pillSide);
 
   const supportsSessionTransportRef = useRef(false);
   const recordingSessionUsesTransportRef = useRef(false);
@@ -326,7 +327,7 @@ export default function AppPage(): React.JSX.Element {
           .filter(Boolean)
           .join(" ");
         window.api?.sendTranscriptToPanel?.(text);
-        window.api?.expandPillPanel?.();
+        window.api?.expandPillPanel?.(pillSideRef.current);
         panelOpenRef.current = true;
       }
 
@@ -620,7 +621,7 @@ export default function AppPage(): React.JSX.Element {
           // panel. On streamStart, expand the panel so it appears immediately.
           if (event.type === "streamStart") {
             panelOpenRef.current = true;
-            window.api?.expandPillPanel?.();
+            window.api?.expandPillPanel?.(pillSideRef.current);
           }
           window.api?.sendStreamEventToPanel?.(event);
         },
@@ -1247,7 +1248,9 @@ export default function AppPage(): React.JSX.Element {
     const isTop =
       pos === "top-center" || pos === "top-right" || pos === "custom-top";
     setPillAlign(isTop ? "start" : "end");
-    setPillSide(pos?.endsWith("right") ? "right" : "center");
+    const side = pos?.endsWith("right") ? "right" : ("center" as const);
+    setPillSide(side);
+    pillSideRef.current = side;
   }, []);
 
   useEffect(() => {

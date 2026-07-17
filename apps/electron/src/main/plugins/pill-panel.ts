@@ -112,7 +112,7 @@ export class PillPanelController {
     return this.config !== null;
   }
 
-  expand(): boolean {
+  expand(pillSide?: "center" | "right"): boolean {
     if (!this.window || !this.config || this.expanded) return false;
 
     const { expand } = this.config;
@@ -134,6 +134,21 @@ export class PillPanelController {
 
     let newX = wx;
     let newY = wy;
+
+    // The pill chrome is CSS-centered (or right-aligned) inside the window.
+    // When the window grows wider for the panel, Electron resizes from the
+    // top-left, which shifts the pill chrome on screen.  Compensate by
+    // shifting the window origin so the pill bar stays visually stationary.
+    const widthGrowth = totalWidth - ww;
+    if (widthGrowth > 0) {
+      if (pillSide === "right") {
+        // Right-aligned pill sits at the right edge — grow leftward.
+        newX -= widthGrowth;
+      } else {
+        // Centered pill — grow equally on both sides.
+        newX -= Math.round(widthGrowth / 2);
+      }
+    }
 
     const expandsDown =
       wy + wh + PANEL_GAP + panelHeight <= workArea.y + workArea.height;
@@ -267,10 +282,9 @@ export class PillPanelController {
         partition,
       },
     });
-    // Transparent background lets the glass backdrop-filter in the panel CSS
-    // blur content behind the pill window on macOS.  The panel itself paints
-    // its own translucent tinted bg via CSS, so there's no white flash.
-    view.setBackgroundColor("#00000000");
+    // Paint the panel's card colour immediately so there's no white flash on
+    // the transparent pill window before the plugin page's stylesheet loads.
+    view.setBackgroundColor("#1e1c16");
     view.webContents.once("did-finish-load", () => {
       this.viewReady = true;
       for (const event of this.pendingEvents) {
@@ -375,7 +389,11 @@ export function initPillPanelHost(deps: PillPanelHostDeps): void {
   if (ipcRegistered) return;
   ipcRegistered = true;
 
-  ipcMain.handle("pill-panel:expand", () => controller?.expand() ?? false);
+  ipcMain.handle(
+    "pill-panel:expand",
+    (_e, pillSide?: "center" | "right") =>
+      controller?.expand(pillSide) ?? false,
+  );
   ipcMain.handle("pill-panel:collapse", () => controller?.collapse() ?? false);
   ipcMain.handle(
     "pill-panel:state",
@@ -410,7 +428,7 @@ export function handlePillAction<C extends keyof HostActions>(
   payload: HostActions[C],
 ): boolean {
   if (channel === "pill:expand") {
-    controller?.expand();
+    controller?.expand(); // No pillSide hint from host action; defaults to center
     return true;
   }
   if (channel === "pill:collapse") {

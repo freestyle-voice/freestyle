@@ -47,6 +47,59 @@ function CloseIcon(): React.JSX.Element {
   );
 }
 
+function CopyIcon(): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="4.5" y="4.5" width="7" height="7" rx="1.5" />
+      <path d="M9.5 4.5V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v5A1.5 1.5 0 0 0 3 9.5h1.5" />
+    </svg>
+  );
+}
+
+function CheckIcon(): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 7.5l3 3 5-6" />
+    </svg>
+  );
+}
+
+function CopyButton({ text }: { text: string }): React.JSX.Element {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    window.freestyle?.invoke("copy", { text });
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [text]);
+
+  return (
+    <button
+      type="button"
+      className="copy-btn"
+      onClick={handleCopy}
+      aria-label={copied ? "Copied" : "Copy message"}
+      title={copied ? "Copied" : "Copy"}
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+    </button>
+  );
+}
+
 export function ChatPanel(): React.JSX.Element {
   const [messages, setMessages] = useState<ConversationEntry[]>([]);
   const [pillState, setPillState] = useState<PillState>("idle");
@@ -150,9 +203,12 @@ export function ChatPanel(): React.JSX.Element {
               key={i}
               className={`turn ${msg.role}`}
             >
-              <span className={`turn-role ${msg.role}`}>
-                {msg.role === "user" ? "You" : "Agent"}
-              </span>
+              <div className="turn-header">
+                <span className={`turn-role ${msg.role}`}>
+                  {msg.role === "user" ? "You" : "Agent"}
+                </span>
+                <CopyButton text={msg.content} />
+              </div>
               <div className="turn-text markdown">
                 <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
               </div>

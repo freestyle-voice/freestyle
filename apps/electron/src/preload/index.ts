@@ -297,8 +297,8 @@ const api = {
       expand,
       tokens,
     ),
-  expandPillPanel: (): Promise<boolean> =>
-    ipcRenderer.invoke("pill-panel:expand"),
+  expandPillPanel: (pillSide?: "center" | "right"): Promise<boolean> =>
+    ipcRenderer.invoke("pill-panel:expand", pillSide),
   collapsePillPanel: (): Promise<boolean> =>
     ipcRenderer.invoke("pill-panel:collapse"),
   suppressPillPanelBlurClose: (suppress: boolean): void =>

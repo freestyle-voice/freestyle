@@ -24,23 +24,20 @@
   --accent-foreground: #e8efc9;
   --radius: 14px;
 
-  /* Glass surface — translucent tints over a blurred background. */
-  --panel-bg: rgba(30, 28, 22, 0.82);
-  --panel-border: rgba(58, 54, 45, 0.52);
-  --panel-shadow: 0 12px 40px -8px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 0 rgba(255, 250, 235, 0.06);
-  --panel-highlight: rgba(255, 250, 235, 0.04);
+  --panel-bg: var(--card);
+  --panel-border: var(--border);
+  --panel-shadow: 0 8px 30px -6px rgba(0, 0, 0, 0.45),
+    0 1px 3px rgba(0, 0, 0, 0.2);
+  --panel-highlight: rgba(255, 250, 235, 0.05);
 
   --user-text: rgba(236, 231, 214, 0.7);
   --turn-gap: 10px;
 }
 
 html.light {
-  --panel-bg: rgba(244, 240, 228, 0.78);
-  --panel-border: rgba(214, 205, 184, 0.62);
-  --panel-shadow: 0 12px 40px -8px rgba(22, 20, 15, 0.18),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.65);
-  --panel-highlight: rgba(255, 255, 255, 0.45);
+  --panel-shadow: 0 8px 30px -6px rgba(22, 20, 15, 0.15),
+    0 1px 3px rgba(22, 20, 15, 0.08);
+  --panel-highlight: rgba(255, 255, 255, 0.5);
 
   --user-text: rgba(22, 20, 15, 0.62);
 }
@@ -89,8 +86,6 @@ body {
   border-radius: 14px;
   overflow: hidden;
   box-shadow: var(--panel-shadow);
-  -webkit-backdrop-filter: blur(28px) saturate(1.3);
-  backdrop-filter: blur(28px) saturate(1.3);
 }
 
 /* Inner highlight strip along the top edge for depth */
@@ -181,6 +176,12 @@ body {
   animation: agent-rise 180ms ease;
 }
 
+.turn-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .turn-role {
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 9px;
@@ -191,6 +192,34 @@ body {
 
 .turn-role.user {
   color: var(--primary);
+}
+
+/* Copy button — visible on hover */
+.copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 120ms, background 120ms, color 120ms;
+}
+.turn:hover .copy-btn {
+  opacity: 1;
+}
+.copy-btn:hover {
+  background: color-mix(in srgb, var(--border) 60%, transparent);
+  color: var(--foreground);
+}
+.copy-btn svg {
+  width: 13px;
+  height: 13px;
 }
 
 .turn-text {
@@ -399,12 +428,3 @@ body {
   }
 }
 
-/* ---- Reduced transparency ---- */
-
-@media (prefers-reduced-transparency: reduce) {
-  .panel {
-    background: var(--card);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-}

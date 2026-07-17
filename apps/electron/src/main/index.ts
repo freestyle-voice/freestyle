@@ -469,13 +469,46 @@ function getAppWindowPosition(): { x: number; y: number } {
       typeof custom.x === "number" &&
       typeof custom.y === "number"
     ) {
-      const display = screen.getDisplayMatching({
+      const savedDisplay = screen.getDisplayMatching({
         x: custom.x,
         y: custom.y,
         width: APP_WIDTH,
         height: APP_HEIGHT,
       });
-      const wa = display.workArea;
+
+      // If the cursor is on a different display, translate the custom
+      // position so it appears at the same relative spot on the active
+      // display.  This prevents the pill from getting stuck on one monitor
+      // in multi-display setups.
+      if (savedDisplay.id !== activeDisplay.id) {
+        const srcWA = savedDisplay.workArea;
+        const dstWA = activeDisplay.workArea;
+        // Relative offset within the original display's work area [0..1]
+        const relX = srcWA.width > 0 ? (custom.x - srcWA.x) / srcWA.width : 0;
+        const relY = srcWA.height > 0 ? (custom.y - srcWA.y) / srcWA.height : 0;
+        // Map to the destination display, clamping to stay on screen.
+        const newX = Math.round(
+          Math.max(
+            dstWA.x,
+            Math.min(
+              dstWA.x + dstWA.width - APP_WIDTH,
+              dstWA.x + relX * dstWA.width,
+            ),
+          ),
+        );
+        const newY = Math.round(
+          Math.max(
+            dstWA.y,
+            Math.min(
+              dstWA.y + dstWA.height - APP_HEIGHT,
+              dstWA.y + relY * dstWA.height,
+            ),
+          ),
+        );
+        return { x: newX, y: newY };
+      }
+
+      const wa = savedDisplay.workArea;
       if (
         custom.x >= wa.x &&
         custom.x + APP_WIDTH <= wa.x + wa.width &&

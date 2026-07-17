@@ -44,6 +44,106 @@ function hasActiveDownload(
   );
 }
 
+interface EndpointTestValues {
+  url: string;
+  apiKey: string;
+}
+
+/** The subset of a connect endpoint's state setters {@link runEndpointTest} drives. */
+interface EndpointTestStatus {
+  setTesting: (v: boolean) => void;
+  setConnected: (v: boolean | null) => void;
+  setError: (v: string | null) => void;
+  setModels: (v: string[]) => void;
+}
+
+interface EndpointTestConfig {
+  urlKey: string;
+  apiKey: string;
+  /** When true, an empty URL clears the setting and skips the connectivity probe. */
+  clearUrlWhenEmpty: boolean;
+  probe: (
+    client: ReturnType<typeof getClient>,
+    body: { url: string; api_key: string | undefined },
+  ) => Promise<Response>;
+  status: EndpointTestStatus;
+  onDone: () => Promise<void>;
+}
+
+/**
+ * Persist an endpoint's URL + API key, then probe it for connectivity. Shared
+ * by the local-LLM and custom-STT connect forms, which differ only in their
+ * setting keys, probe endpoint, and whether an empty URL clears the setting.
+ */
+async function runEndpointTest(
+  values: EndpointTestValues,
+  {
+    urlKey,
+    apiKey: apiKeyKey,
+    clearUrlWhenEmpty,
+    probe,
+    status,
+    onDone,
+  }: EndpointTestConfig,
+): Promise<void> {
+  status.setTesting(true);
+  status.setConnected(null);
+  status.setError(null);
+  try {
+    const url = values.url.replace(/\/+$/, "");
+    const key = values.apiKey.trim();
+    const client = getClient();
+
+    const saveUrl =
+      url || !clearUrlWhenEmpty
+        ? client.api.settings[":key"].$put({
+            param: { key: urlKey },
+            json: { value: url },
+          })
+        : client.api.settings[":key"].$delete({ param: { key: urlKey } });
+    const saveKey = key
+      ? client.api.settings[":key"].$put({
+          param: { key: apiKeyKey },
+          json: { value: key },
+        })
+      : client.api.settings[":key"].$delete({ param: { key: apiKeyKey } });
+    await Promise.all([saveUrl, saveKey]);
+
+    if (clearUrlWhenEmpty && !url) {
+      status.setConnected(null);
+      await onDone();
+      return;
+    }
+
+    const res = await probe(client, { url, api_key: key || undefined });
+    if (res.ok) {
+      const result = (await res.json()) as {
+        ok?: boolean;
+        models?: string[];
+        error?: string;
+      };
+      if (result.ok) {
+        status.setConnected(true);
+        status.setModels(result.models ?? []);
+        await onDone();
+        return;
+      }
+      status.setConnected(false);
+      status.setError(
+        typeof result.error === "string" ? result.error : "Connection failed",
+      );
+      return;
+    }
+    status.setConnected(false);
+    status.setError(`HTTP ${res.status}`);
+  } catch (err) {
+    status.setConnected(false);
+    status.setError(err instanceof Error ? err.message : "Connection failed");
+  } finally {
+    status.setTesting(false);
+  }
+}
+
 /**
  * Connection state for an OpenAI-compatible endpoint (local LLM or custom
  * STT). The form fields themselves live in react-hook-form inside the connect
@@ -59,7 +159,7 @@ export interface EndpointConnectState {
   connected: boolean | null;
   error: string | null;
   models: string[];
-  test: (values: { url: string; apiKey: string }) => Promise<void>;
+  test: (values: EndpointTestValues) => Promise<void>;
   clearStatus: () => void;
 }
 
@@ -601,58 +701,22 @@ export function useModels(): UseModels {
   }, []);
 
   const testLocalLlm = useCallback(
-    async (values: { url: string; apiKey: string }) => {
-      setLocalTesting(true);
-      setLocalConnected(null);
-      setLocalError(null);
-      try {
-        const url = values.url.replace(/\/+$/, "");
-        const key = values.apiKey.trim();
-        const client = getClient();
-        await Promise.all([
-          client.api.settings[":key"].$put({
-            param: { key: SETTINGS_KEYS.localLlmUrl },
-            json: { value: url },
-          }),
-          key
-            ? client.api.settings[":key"].$put({
-                param: { key: SETTINGS_KEYS.localLlmApiKey },
-                json: { value: key },
-              })
-            : client.api.settings[":key"].$delete({
-                param: { key: SETTINGS_KEYS.localLlmApiKey },
-              }),
-        ]);
-
-        const res = await client.api.settings["local-llm"].test.$post({
-          json: { url, api_key: key || undefined },
-        });
-
-        if (res.ok) {
-          const result = await res.json();
-          if ("ok" in result && result.ok) {
-            setLocalConnected(true);
-            setLocalModels(result.models ?? []);
-            await loadData();
-            return;
-          }
-          setLocalConnected(false);
-          setLocalError(
-            "error" in result && typeof result.error === "string"
-              ? result.error
-              : "Connection failed",
-          );
-          return;
-        }
-        setLocalConnected(false);
-        setLocalError(`HTTP ${res.status}`);
-      } catch (err) {
-        setLocalConnected(false);
-        setLocalError(err instanceof Error ? err.message : "Connection failed");
-      } finally {
-        setLocalTesting(false);
-      }
-    },
+    (values: EndpointTestValues) =>
+      runEndpointTest(values, {
+        urlKey: SETTINGS_KEYS.localLlmUrl,
+        apiKey: SETTINGS_KEYS.localLlmApiKey,
+        // Local LLM always persists the URL; the connect form requires it.
+        clearUrlWhenEmpty: false,
+        probe: (client, body) =>
+          client.api.settings["local-llm"].test.$post({ json: body }),
+        status: {
+          setTesting: setLocalTesting,
+          setConnected: setLocalConnected,
+          setError: setLocalError,
+          setModels: setLocalModels,
+        },
+        onDone: loadData,
+      }),
     [loadData],
   );
 
@@ -666,68 +730,22 @@ export function useModels(): UseModels {
   }, []);
 
   const testOpenaiStt = useCallback(
-    async (values: { url: string; apiKey: string }) => {
-      setSttTesting(true);
-      setSttConnected(null);
-      setSttError(null);
-      try {
-        const url = values.url.replace(/\/+$/, "");
-        const key = values.apiKey.trim();
-        const client = getClient();
-        await Promise.all([
-          url
-            ? client.api.settings[":key"].$put({
-                param: { key: SETTINGS_KEYS.openaiSttBaseUrl },
-                json: { value: url },
-              })
-            : client.api.settings[":key"].$delete({
-                param: { key: SETTINGS_KEYS.openaiSttBaseUrl },
-              }),
-          key
-            ? client.api.settings[":key"].$put({
-                param: { key: SETTINGS_KEYS.openaiSttApiKey },
-                json: { value: key },
-              })
-            : client.api.settings[":key"].$delete({
-                param: { key: SETTINGS_KEYS.openaiSttApiKey },
-              }),
-        ]);
-
-        if (!url) {
-          setSttConnected(null);
-          await loadData();
-          return;
-        }
-
-        const res = await client.api.settings["openai-stt"].test.$post({
-          json: { url, api_key: key || undefined },
-        });
-
-        if (res.ok) {
-          const result = await res.json();
-          if ("ok" in result && result.ok) {
-            setSttConnected(true);
-            setSttModels(result.models ?? []);
-            await loadData();
-            return;
-          }
-          setSttConnected(false);
-          setSttError(
-            "error" in result && typeof result.error === "string"
-              ? result.error
-              : "Connection failed",
-          );
-          return;
-        }
-        setSttConnected(false);
-        setSttError(`HTTP ${res.status}`);
-      } catch (err) {
-        setSttConnected(false);
-        setSttError(err instanceof Error ? err.message : "Connection failed");
-      } finally {
-        setSttTesting(false);
-      }
-    },
+    (values: EndpointTestValues) =>
+      runEndpointTest(values, {
+        urlKey: SETTINGS_KEYS.openaiSttBaseUrl,
+        apiKey: SETTINGS_KEYS.openaiSttApiKey,
+        // Empty URL disables the custom endpoint, so clear it and skip probing.
+        clearUrlWhenEmpty: true,
+        probe: (client, body) =>
+          client.api.settings["openai-stt"].test.$post({ json: body }),
+        status: {
+          setTesting: setSttTesting,
+          setConnected: setSttConnected,
+          setError: setSttError,
+          setModels: setSttModels,
+        },
+        onDone: loadData,
+      }),
     [loadData],
   );
 

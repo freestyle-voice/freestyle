@@ -1,16 +1,23 @@
 import type { McpServerConfig } from "../shared/types";
 import {
+  cardHeadStyle,
   cardStyle,
-  dangerBtnStyle,
+  emptyRowStyle,
   fieldStackStyle,
   ghostBtnStyle,
+  hintTextStyle,
+  iconGhostBtnStyle,
   inputStyle,
   labelStyle,
-  rowStyle,
+  monoTextareaStyle,
+  sectionDescStyle,
   sectionHeadStyle,
+  sectionIconStyle,
   sectionStyle,
+  sectionTitleRowStyle,
   sectionTitleStyle,
-  subtitleStyle,
+  selectStyle,
+  toggleWrapStyle,
 } from "./styles";
 
 function uid(): string {
@@ -42,43 +49,51 @@ export function McpSection(props: {
   return (
     <section style={sectionStyle}>
       <div style={sectionHeadStyle}>
-        <h2 style={sectionTitleStyle}>MCP servers</h2>
+        <div style={sectionTitleRowStyle}>
+          <span style={sectionIconStyle} aria-hidden>
+            ⚙
+          </span>
+          <h2 style={sectionTitleStyle}>MCP servers</h2>
+        </div>
         <button type="button" style={ghostBtnStyle} onClick={add}>
-          + Add server
+          <span aria-hidden>＋</span> Add server
         </button>
       </div>
-      <p style={{ ...subtitleStyle, marginTop: 0 }}>
+      <p style={sectionDescStyle}>
         Connect Model Context Protocol servers to give the agent tools. Each
         enabled server's tools are available during a turn.
       </p>
 
       {servers.length === 0 && (
-        <p style={{ ...subtitleStyle, opacity: 0.5 }}>No servers configured.</p>
+        <div style={emptyRowStyle}>No servers connected yet.</div>
       )}
 
       {servers.map((s) => (
         <div key={s.id} style={cardStyle}>
-          <div style={{ ...rowStyle, marginBottom: 10 }}>
+          <div style={cardHeadStyle}>
             <input
               style={{ ...inputStyle, flex: 1 }}
               value={s.name}
               onChange={(e) => update(s.id, { name: e.target.value })}
               placeholder="Server name"
+              aria-label="Server name"
             />
-            <label style={{ ...rowStyle, fontSize: 12, gap: 4 }}>
+            <label style={toggleWrapStyle}>
               <input
                 type="checkbox"
                 checked={s.enabled}
                 onChange={(e) => update(s.id, { enabled: e.target.checked })}
               />
-              Enabled
+              On
             </label>
             <button
               type="button"
-              style={dangerBtnStyle}
+              style={iconGhostBtnStyle}
               onClick={() => onChange(servers.filter((x) => x.id !== s.id))}
+              title="Remove server"
+              aria-label="Remove server"
             >
-              Remove
+              ✕
             </button>
           </div>
 
@@ -86,7 +101,7 @@ export function McpSection(props: {
             <div>
               <label style={labelStyle}>Transport</label>
               <select
-                style={inputStyle}
+                style={selectStyle}
                 value={s.transport}
                 onChange={(e) =>
                   update(s.id, {
@@ -94,8 +109,8 @@ export function McpSection(props: {
                   })
                 }
               >
-                <option value="stdio">stdio (local command)</option>
-                <option value="http">http (remote URL)</option>
+                <option value="stdio">stdio · local command</option>
+                <option value="http">http · remote URL</option>
               </select>
             </div>
 
@@ -111,9 +126,9 @@ export function McpSection(props: {
                   />
                 </div>
                 <div>
-                  <label style={labelStyle}>Arguments (one per line)</label>
+                  <label style={labelStyle}>Arguments</label>
                   <textarea
-                    style={{ ...inputStyle, minHeight: 60, resize: "vertical" }}
+                    style={monoTextareaStyle}
                     value={(s.args ?? []).join("\n")}
                     onChange={(e) =>
                       update(s.id, {
@@ -127,6 +142,7 @@ export function McpSection(props: {
                       "-y\n@modelcontextprotocol/server-filesystem\n/path"
                     }
                   />
+                  <p style={hintTextStyle}>One argument per line.</p>
                 </div>
               </>
             ) : (

@@ -1,7 +1,7 @@
 import { createAppLogger } from "@freestyle-voice/utils";
 import { ipcMain } from "electron";
 import type { HostActions } from "freestyle-voice";
-import { handlePillAction } from "./pill-panel.js";
+import { getPillPanelController, handlePillAction } from "./pill-panel.js";
 
 const log = createAppLogger("plugin-bridge");
 
@@ -37,10 +37,17 @@ export function registerPluginBridgeIpc(): void {
   if (registered) return;
   registered = true;
 
-  ipcMain.handle(
-    "plugin-bridge:config",
-    () => deps?.getDashboardTokens() ?? {},
-  );
+  ipcMain.handle("plugin-bridge:config", (e) => {
+    // The pill panel and dashboard pages share this preload/channel but pull
+    // theme tokens from different sources. Route by the calling webContents so
+    // the pill panel gets the pill window's tokens (it may load before the
+    // dashboard exists, when getDashboardTokens() would be empty).
+    const pill = getPillPanelController();
+    if (pill && e.sender.id === pill.getViewWebContentsId()) {
+      return pill.getTokens();
+    }
+    return deps?.getDashboardTokens() ?? {};
+  });
 
   ipcMain.handle(
     "plugin-bridge:action",

@@ -287,8 +287,16 @@ const api = {
     panelId: string,
     entry: string,
     expand: { width: number; height: number },
+    tokens?: Record<string, string>,
   ): Promise<void> =>
-    ipcRenderer.invoke("pill-panel:configure", slug, panelId, entry, expand),
+    ipcRenderer.invoke(
+      "pill-panel:configure",
+      slug,
+      panelId,
+      entry,
+      expand,
+      tokens,
+    ),
   expandPillPanel: (): Promise<boolean> =>
     ipcRenderer.invoke("pill-panel:expand"),
   collapsePillPanel: (): Promise<boolean> =>

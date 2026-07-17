@@ -4,6 +4,29 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Voice Agent</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body, #root {
+        margin: 0;
+        height: 100%;
+        /* The pill window is transparent; the rounded panel paints its own bg. */
+        background: transparent;
+      }
+      body {
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      /* Slim, theme-aware scrollbar for the message list. */
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border, #3A362D);
+        border-radius: 999px;
+        border: 2px solid transparent;
+        background-clip: content-box;
+      }
+      ::-webkit-scrollbar-track { background: transparent; }
+      button { font-family: inherit; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

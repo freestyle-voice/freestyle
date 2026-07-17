@@ -136,6 +136,7 @@ declare global {
         panelId: string,
         entry: string,
         expand: { width: number; height: number },
+        tokens?: Record<string, string>,
       ) => Promise<void>;
       expandPillPanel: () => Promise<boolean>;
       collapsePillPanel: () => Promise<boolean>;

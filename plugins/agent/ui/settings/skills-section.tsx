@@ -1,16 +1,20 @@
 import type { Skill } from "../shared/types";
 import {
+  cardHeadStyle,
   cardStyle,
-  dangerBtnStyle,
+  emptyRowStyle,
   ghostBtnStyle,
+  iconGhostBtnStyle,
   inputStyle,
   labelStyle,
-  rowStyle,
+  sectionDescStyle,
   sectionHeadStyle,
+  sectionIconStyle,
   sectionStyle,
+  sectionTitleRowStyle,
   sectionTitleStyle,
-  subtitleStyle,
   textareaStyle,
+  toggleWrapStyle,
 } from "./styles";
 
 function uid(): string {
@@ -35,43 +39,51 @@ export function SkillsSection(props: {
   return (
     <section style={sectionStyle}>
       <div style={sectionHeadStyle}>
-        <h2 style={sectionTitleStyle}>Skills</h2>
+        <div style={sectionTitleRowStyle}>
+          <span style={sectionIconStyle} aria-hidden>
+            ✦
+          </span>
+          <h2 style={sectionTitleStyle}>Skills</h2>
+        </div>
         <button type="button" style={ghostBtnStyle} onClick={add}>
-          + Add skill
+          <span aria-hidden>＋</span> Add skill
         </button>
       </div>
-      <p style={{ ...subtitleStyle, marginTop: 0 }}>
+      <p style={sectionDescStyle}>
         Reusable instruction sets. Enabled skills are appended to the system
         prompt so the agent applies them on every turn.
       </p>
 
       {skills.length === 0 && (
-        <p style={{ ...subtitleStyle, opacity: 0.5 }}>No skills defined.</p>
+        <div style={emptyRowStyle}>No skills defined yet.</div>
       )}
 
       {skills.map((s) => (
         <div key={s.id} style={cardStyle}>
-          <div style={{ ...rowStyle, marginBottom: 10 }}>
+          <div style={cardHeadStyle}>
             <input
               style={{ ...inputStyle, flex: 1 }}
               value={s.name}
               onChange={(e) => update(s.id, { name: e.target.value })}
               placeholder="Skill name"
+              aria-label="Skill name"
             />
-            <label style={{ ...rowStyle, fontSize: 12, gap: 4 }}>
+            <label style={toggleWrapStyle}>
               <input
                 type="checkbox"
                 checked={s.enabled}
                 onChange={(e) => update(s.id, { enabled: e.target.checked })}
               />
-              Enabled
+              On
             </label>
             <button
               type="button"
-              style={dangerBtnStyle}
+              style={iconGhostBtnStyle}
               onClick={() => onChange(skills.filter((x) => x.id !== s.id))}
+              title="Remove skill"
+              aria-label="Remove skill"
             >
-              Remove
+              ✕
             </button>
           </div>
           <label style={labelStyle}>Instructions</label>
@@ -79,7 +91,7 @@ export function SkillsSection(props: {
             style={textareaStyle}
             value={s.instructions}
             onChange={(e) => update(s.id, { instructions: e.target.value })}
-            placeholder="e.g. When asked to summarize, use three bullet points."
+            placeholder="e.g. When asked to summarize, reply in three bullet points."
           />
         </div>
       ))}

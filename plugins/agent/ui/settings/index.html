@@ -4,6 +4,30 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Voice Agent Settings</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body, #root {
+        margin: 0;
+        min-height: 100%;
+        background: var(--background, #16140F);
+      }
+      body {
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      input:focus, textarea:focus, select:focus {
+        border-color: var(--ring, #8AB62A) !important;
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring, #8AB62A) 22%, transparent);
+      }
+      ::-webkit-scrollbar { width: 10px; }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border, #3A362D);
+        border-radius: 999px;
+        border: 3px solid transparent;
+        background-clip: content-box;
+      }
+      button { font-family: inherit; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

@@ -23,6 +23,7 @@ interface PillPanelConfig {
   panelId: string;
   entry: string;
   expand: { width: number; height: number };
+  tokens?: Record<string, string>;
 }
 
 /**
@@ -301,6 +302,18 @@ export class PillPanelController {
     return this.window;
   }
 
+  /** Theme tokens for the panel page's preload to apply (matches the app). */
+  getTokens(): { tokens?: Record<string, string> } {
+    return this.config?.tokens ? { tokens: this.config.tokens } : {};
+  }
+
+  /** The panel view's webContents id, so the shared config IPC can route to it. */
+  getViewWebContentsId(): number | null {
+    return this.view && !this.view.webContents.isDestroyed()
+      ? this.view.webContents.id
+      : null;
+  }
+
   private destroyView(): void {
     if (!this.view) return;
     if (this.window && !this.window.isDestroyed()) {
@@ -362,8 +375,9 @@ export function initPillPanelHost(deps: PillPanelHostDeps): void {
       panelId: string,
       entry: string,
       expand: { width: number; height: number },
+      tokens?: Record<string, string>,
     ) => {
-      controller?.configure({ slug, panelId, entry, expand });
+      controller?.configure({ slug, panelId, entry, expand, tokens });
     },
   );
 

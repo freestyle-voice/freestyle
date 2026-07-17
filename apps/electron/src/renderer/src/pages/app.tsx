@@ -113,6 +113,42 @@ function formatTimer(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+// Theme tokens forwarded to the pill panel plugin so it matches the app's
+// (warm, earthy) palette instead of falling back to hardcoded colors. Mirrors
+// the dashboard's FORWARDED_TOKENS in pages/plugins/plugin-page.tsx.
+const PILL_PANEL_THEME_TOKENS = [
+  "--background",
+  "--foreground",
+  "--card",
+  "--card-foreground",
+  "--popover",
+  "--popover-foreground",
+  "--primary",
+  "--primary-foreground",
+  "--secondary",
+  "--secondary-foreground",
+  "--muted",
+  "--muted-foreground",
+  "--accent",
+  "--accent-foreground",
+  "--destructive",
+  "--destructive-foreground",
+  "--border",
+  "--input",
+  "--ring",
+  "--radius",
+];
+
+function readThemeTokens(): Record<string, string> {
+  const styles = getComputedStyle(document.documentElement);
+  const tokens: Record<string, string> = {};
+  for (const name of PILL_PANEL_THEME_TOKENS) {
+    const value = styles.getPropertyValue(name).trim();
+    if (value) tokens[name] = value;
+  }
+  return tokens;
+}
+
 const PILL_WIDTH = 216;
 
 const pillInnerStyle: React.CSSProperties = {
@@ -1334,6 +1370,7 @@ export default function AppPage(): React.JSX.Element {
               p.pill.id,
               p.pill.entry,
               p.pill.expand,
+              readThemeTokens(),
             );
             break;
           }

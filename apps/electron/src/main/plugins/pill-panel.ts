@@ -168,6 +168,15 @@ export class PillPanelController {
     // that self-inflicted blur doesn't immediately collapse what we just opened.
     this.blurGuardUntil = Date.now() + PillPanelController.BLUR_SETTLE_MS;
     this.window.focus();
+    // The BrowserWindow focus goes to the pill's own webContents (pill.html).
+    // The panel lives in a child WebContentsView with a *separate* webContents.
+    // Without this, macOS (especially with `type: "panel"`) won't route
+    // wheel/scroll events to the panel — the view's NSView is not the first
+    // responder.  Focusing the view's webContents makes it the input target so
+    // scrolling, text selection, and keyboard events work inside the panel.
+    if (view && !view.webContents.isDestroyed()) {
+      view.webContents.focus();
+    }
     log.info(`pill panel expanded: ${this.config.slug}`);
     return true;
   }
@@ -258,9 +267,10 @@ export class PillPanelController {
         partition,
       },
     });
-    // Paint a dark background immediately so there's no white flash on the
-    // transparent pill window before the plugin page's stylesheet loads.
-    view.setBackgroundColor("#09090b");
+    // Transparent background lets the glass backdrop-filter in the panel CSS
+    // blur content behind the pill window on macOS.  The panel itself paints
+    // its own translucent tinted bg via CSS, so there's no white flash.
+    view.setBackgroundColor("#00000000");
     view.webContents.once("did-finish-load", () => {
       this.viewReady = true;
       for (const event of this.pendingEvents) {

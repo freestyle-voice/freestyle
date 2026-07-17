@@ -1,5 +1,18 @@
+/*
+ * Pill chat panel — Freestyle Voice agent
+ *
+ * Two theme tiers:
+ *   1. `:root` – dark-mode fallbacks used if the host never sends tokens.
+ *   2. Host-injected tokens from the pill renderer's computed styles override
+ *      these via `style.setProperty` in the plugin-bridge preload.
+ *
+ * The `.light` class is toggled on `<html>` by the preload when it detects
+ * light-mode tokens (--background luminance > 0.5).  Light-mode overrides
+ * live under `html.light`.
+ */
+
 :root {
-  /* Host injects the real Freestyle tokens; these are dark-theme fallbacks. */
+  /* Dark-mode defaults (host tokens override these) */
   --background: #16140f;
   --foreground: #ece7d6;
   --card: #1e1c16;
@@ -10,6 +23,26 @@
   --border: #3a362d;
   --accent-foreground: #e8efc9;
   --radius: 14px;
+
+  /* Glass surface — translucent tints over a blurred background. */
+  --panel-bg: rgba(30, 28, 22, 0.82);
+  --panel-border: rgba(58, 54, 45, 0.52);
+  --panel-shadow: 0 12px 40px -8px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 0 rgba(255, 250, 235, 0.06);
+  --panel-highlight: rgba(255, 250, 235, 0.04);
+
+  --user-text: rgba(236, 231, 214, 0.7);
+  --turn-gap: 10px;
+}
+
+html.light {
+  --panel-bg: rgba(244, 240, 228, 0.78);
+  --panel-border: rgba(214, 205, 184, 0.62);
+  --panel-shadow: 0 12px 40px -8px rgba(22, 20, 15, 0.18),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.65);
+  --panel-highlight: rgba(255, 255, 255, 0.45);
+
+  --user-text: rgba(22, 20, 15, 0.62);
 }
 
 * {
@@ -21,7 +54,6 @@ body,
 #root {
   margin: 0;
   height: 100%;
-  /* The pill window is transparent; the rounded panel paints its own bg. */
   background: transparent;
 }
 
@@ -32,51 +64,72 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* ---- Scrollbar ---- */
+
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 999px;
-  border: 2px solid transparent;
-  background-clip: content-box;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* ---- Panel shell ---- */
+/* ---- Panel shell — glass surface ---- */
 
 .panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 16px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--panel-shadow);
+  -webkit-backdrop-filter: blur(28px) saturate(1.3);
+  backdrop-filter: blur(28px) saturate(1.3);
 }
 
-/* ---- Status line (no name, no icon, no buttons) ---- */
+/* Inner highlight strip along the top edge for depth */
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 1px 1px auto 1px;
+  height: 1px;
+  background: var(--panel-highlight);
+  border-radius: 14px 14px 0 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ---- Header: status + close button ---- */
+
+.header {
+  display: flex;
+  align-items: center;
+  padding: 10px 10px 10px 14px;
+  flex-shrink: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+}
 
 .status {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 11px 16px;
-  flex-shrink: 0;
+  gap: 6px;
+  flex: 1;
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted-foreground);
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
 
 .status-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -85,31 +138,53 @@ body {
   animation: agent-pulse 1.4s ease-in-out infinite;
 }
 
-/* ---- Messages: flat, stacked, no bubbles ---- */
+.close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 120ms, color 120ms;
+}
+.close-btn:hover {
+  background: color-mix(in srgb, var(--border) 60%, transparent);
+  color: var(--foreground);
+}
+.close-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ---- Messages ---- */
 
 .messages {
   flex: 1;
-  /* min-height: 0 is critical — without it a flex child won't shrink below its
-     content height and overflow-y never activates in a column flex container. */
   min-height: 0;
   overflow-y: auto;
-  padding: 14px 16px 8px;
+  padding: 10px 14px 6px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--turn-gap);
 }
 
 .turn {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  animation: agent-rise 200ms ease;
+  gap: 2px;
+  animation: agent-rise 180ms ease;
 }
 
 .turn-role {
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 9.5px;
-  letter-spacing: 0.14em;
+  font-size: 9px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted-foreground);
 }
@@ -119,15 +194,14 @@ body {
 }
 
 .turn-text {
-  font-size: 13.5px;
-  line-height: 1.55;
-  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.45;
   word-break: break-word;
   color: var(--foreground);
 }
 
 .turn.user .turn-text {
-  color: color-mix(in srgb, var(--foreground) 78%, var(--muted-foreground));
+  color: var(--user-text);
 }
 
 /* ---- Empty state ---- */
@@ -138,36 +212,36 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 0 28px;
+  gap: 6px;
+  padding: 0 24px;
   text-align: center;
 }
 
 .empty-title {
   font-family: "Instrument Serif", serif;
-  font-size: 26px;
+  font-size: 24px;
   font-style: italic;
   color: var(--primary);
   line-height: 1;
 }
 
 .empty-hint {
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11.5px;
+  line-height: 1.45;
   color: var(--muted-foreground);
 }
 
-/* ---- Typing ---- */
+/* ---- Typing indicator ---- */
 
 .typing {
   display: inline-flex;
-  gap: 4px;
+  gap: 3px;
   padding: 2px 0;
 }
 
 .typing span {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
   background: var(--muted-foreground);
   animation: agent-typing 1.2s ease-in-out infinite;
@@ -179,34 +253,34 @@ body {
   animation-delay: 0.36s;
 }
 
-/* ---- Footer hint ---- */
+/* ---- Footer ---- */
 
 .footer {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 9px 16px;
-  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
-  font-size: 11px;
+  gap: 6px;
+  padding: 8px 14px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  font-size: 10.5px;
   color: var(--muted-foreground);
   flex-shrink: 0;
 }
 
 .kbd {
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 5px;
-  border: 1px solid var(--border);
-  background: var(--secondary);
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: color-mix(in srgb, var(--secondary) 50%, transparent);
   color: var(--foreground);
 }
 
-/* ---- Markdown rendering (react-markdown output) ---- */
+/* ---- Markdown (react-markdown output) ---- */
 
 .markdown p {
-  margin: 0 0 6px;
+  margin: 0 0 4px;
 }
 .markdown p:last-child {
   margin-bottom: 0;
@@ -214,22 +288,25 @@ body {
 .markdown strong {
   font-weight: 600;
 }
+.markdown em {
+  font-style: italic;
+}
 .markdown code {
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 12px;
-  padding: 1px 5px;
-  border-radius: 5px;
-  background: var(--secondary, #2a2720);
+  font-size: 11.5px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--secondary) 70%, transparent);
 }
 .markdown pre {
-  margin: 6px 0;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--secondary, #2a2720);
+  margin: 4px 0;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--secondary) 70%, transparent);
   overflow-x: auto;
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11.5px;
+  line-height: 1.45;
 }
 .markdown pre code {
   padding: 0;
@@ -237,44 +314,46 @@ body {
 }
 .markdown ul,
 .markdown ol {
-  margin: 4px 0;
-  padding-left: 20px;
+  margin: 3px 0;
+  padding-left: 18px;
 }
 .markdown li {
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 .markdown a {
-  color: var(--primary, #8ab62a);
+  color: var(--primary);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 .markdown blockquote {
-  margin: 6px 0;
-  padding: 0 0 0 12px;
-  border-left: 3px solid var(--border, #3a362d);
-  color: var(--muted-foreground, #9e977f);
+  margin: 4px 0;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--border);
+  color: var(--muted-foreground);
 }
 .markdown img {
   max-width: 100%;
-  border-radius: 8px;
-  margin: 6px 0;
+  border-radius: 7px;
+  margin: 4px 0;
 }
 .markdown table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
-  margin: 6px 0;
+  font-size: 11.5px;
+  margin: 4px 0;
 }
 .markdown th,
 .markdown td {
-  border: 1px solid var(--border, #3a362d);
-  padding: 5px 8px;
+  border: 1px solid var(--border);
+  padding: 4px 7px;
   text-align: left;
 }
 .markdown th {
   font-weight: 600;
-  background: var(--secondary, #2a2720);
+  background: color-mix(in srgb, var(--secondary) 60%, transparent);
 }
+
+/* ---- Animations ---- */
 
 @keyframes agent-pulse {
   0%,
@@ -296,16 +375,36 @@ body {
   }
   30% {
     opacity: 1;
-    transform: translateY(-3px);
+    transform: translateY(-2px);
   }
 }
 @keyframes agent-rise {
   from {
     opacity: 0;
-    transform: translateY(5px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* ---- Reduced motion ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dot.pulse,
+  .typing span,
+  .turn {
+    animation: none;
+  }
+}
+
+/* ---- Reduced transparency ---- */
+
+@media (prefers-reduced-transparency: reduce) {
+  .panel {
+    background: var(--card);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }

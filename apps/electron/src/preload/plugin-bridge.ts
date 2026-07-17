@@ -23,6 +23,24 @@ function applyTokens(tokens: Record<string, string> | undefined): void {
   for (const [key, value] of Object.entries(tokens)) {
     root.style.setProperty(key, value);
   }
+  // Toggle a `light` class on <html> so plugin CSS can adapt.  We derive the
+  // mode from the --background token: parse the hex and check luminance.
+  const bg = tokens["--background"];
+  if (bg) {
+    const hex = bg.replace("#", "");
+    if (hex.length >= 6) {
+      const r = Number.parseInt(hex.slice(0, 2), 16) / 255;
+      const g = Number.parseInt(hex.slice(2, 4), 16) / 255;
+      const b = Number.parseInt(hex.slice(4, 6), 16) / 255;
+      // Relative luminance (sRGB)
+      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      if (lum > 0.5) {
+        root.classList.add("light");
+      } else {
+        root.classList.remove("light");
+      }
+    }
+  }
 }
 
 // Theme tokens are the only host config the page still needs; fetch them early

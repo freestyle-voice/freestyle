@@ -33,10 +33,23 @@ function statusFor(state: PillState, streaming: boolean): StatusView {
   };
 }
 
+function CloseIcon(): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    >
+      <path d="M3 3l6 6M9 3l-6 6" />
+    </svg>
+  );
+}
+
 export function ChatPanel(): React.JSX.Element {
   const [messages, setMessages] = useState<ConversationEntry[]>([]);
   const [pillState, setPillState] = useState<PillState>("idle");
-  // The live streaming text being built token-by-token.
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -55,7 +68,6 @@ export function ChatPanel(): React.JSX.Element {
     void refresh();
   }, [refresh]);
 
-  // Scroll when messages change or streaming text updates.
   useEffect(() => {
     scrollToEnd();
   }, [messages, streamingText, scrollToEnd]);
@@ -71,7 +83,6 @@ export function ChatPanel(): React.JSX.Element {
           if (event.state === "idle") void refresh();
           break;
         case "transcriptReady":
-          // Buffered (non-streaming) turn — show user msg + fetch the reply.
           setMessages((prev) => [
             ...prev,
             { role: "user", content: event.text },
@@ -79,19 +90,15 @@ export function ChatPanel(): React.JSX.Element {
           void refresh();
           break;
         case "streamStart":
-          // A streaming agent turn began — start accumulating deltas.
           setStreamingText("");
           break;
         case "streamDelta":
           setStreamingText((prev) => (prev ?? "") + event.text);
           break;
-        case "streamEnd": {
-          // Turn complete — fold the streamed text into the message list and
-          // refresh from the server (the plugin stored the full reply).
+        case "streamEnd":
           setStreamingText(null);
           void refresh();
           break;
-        }
       }
     });
 
@@ -99,18 +106,32 @@ export function ChatPanel(): React.JSX.Element {
     return unsub;
   }, [refresh]);
 
+  const handleClose = useCallback(() => {
+    window.freestyle?.pill?.collapse();
+  }, []);
+
   const streaming = streamingText !== null;
   const status = statusFor(pillState, streaming);
   const empty = messages.length === 0 && !streaming;
 
   return (
     <div className="panel">
-      <div className="status">
-        <span
-          className={`status-dot${status.pulse ? " pulse" : ""}`}
-          style={{ background: status.color }}
-        />
-        {status.label}
+      <div className="header">
+        <div className="status">
+          <span
+            className={`status-dot${status.pulse ? " pulse" : ""}`}
+            style={{ background: status.color }}
+          />
+          {status.label}
+        </div>
+        <button
+          type="button"
+          className="close-btn"
+          onClick={handleClose}
+          aria-label="Close panel"
+        >
+          <CloseIcon />
+        </button>
       </div>
 
       {empty ? (

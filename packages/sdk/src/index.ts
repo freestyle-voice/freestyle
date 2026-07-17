@@ -16,6 +16,7 @@ export {
   type HookApi,
   PipelineControl,
   type PipelineControlState,
+  type PluginStreamEvent,
 } from "./hook-api.js";
 export type {
   AfterCleanupInput,

@@ -12,7 +12,13 @@ export type PillState = "idle" | "initializing" | "recording" | "transcribing";
  */
 export type PillEvent =
   | { type: "stateChanged"; state: PillState }
-  | { type: "transcriptReady"; text: string };
+  | { type: "transcriptReady"; text: string }
+  /** A streaming turn began (e.g. an agent started responding). */
+  | { type: "streamStart" }
+  /** An incremental chunk of streamed text (append to the current message). */
+  | { type: "streamDelta"; text: string }
+  /** The streaming turn finished. */
+  | { type: "streamEnd" };
 
 /**
  * The pill panel bridge surface exposed on `window.freestyle.pill` inside a

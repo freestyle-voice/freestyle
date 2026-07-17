@@ -1,5 +1,7 @@
 import type { PillEvent, PillState } from "freestyle-voice";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { getJson } from "../shared/api";
 import type { ConversationEntry } from "../shared/types";
 
@@ -9,7 +11,7 @@ interface StatusView {
   pulse: boolean;
 }
 
-function statusFor(state: PillState, thinking: boolean): StatusView {
+function statusFor(state: PillState, streaming: boolean): StatusView {
   if (state === "recording") {
     return {
       label: "Listening",
@@ -17,7 +19,7 @@ function statusFor(state: PillState, thinking: boolean): StatusView {
       pulse: true,
     };
   }
-  if (thinking || state === "transcribing") {
+  if (streaming || state === "transcribing") {
     return {
       label: "Thinking",
       color: "var(--accent-foreground, #E8EFC9)",
@@ -34,41 +36,62 @@ function statusFor(state: PillState, thinking: boolean): StatusView {
 export function ChatPanel(): React.JSX.Element {
   const [messages, setMessages] = useState<ConversationEntry[]>([]);
   const [pillState, setPillState] = useState<PillState>("idle");
-  const [thinking, setThinking] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // The live streaming text being built token-by-token.
+  const [streamingText, setStreamingText] = useState<string | null>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+
+  const scrollToEnd = useCallback(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, []);
 
   const refresh = useCallback(async () => {
     const data = await getJson<{ conversation: ConversationEntry[] }>(
       "/conversation",
     );
-    if (data?.conversation) {
-      setMessages(data.conversation);
-      setThinking(false);
-    }
+    if (data?.conversation) setMessages(data.conversation);
   }, []);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
+  // Scroll when messages change or streaming text updates.
   useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, thinking]);
+    scrollToEnd();
+  }, [messages, streamingText, scrollToEnd]);
 
   useEffect(() => {
     const pill = window.freestyle?.pill;
     if (!pill) return;
 
     const unsub = pill.subscribe((event: PillEvent) => {
-      if (event.type === "stateChanged") {
-        setPillState(event.state);
-        if (event.state === "idle") void refresh();
-      }
-      if (event.type === "transcriptReady") {
-        setMessages((prev) => [...prev, { role: "user", content: event.text }]);
-        setThinking(true);
-        void refresh();
+      switch (event.type) {
+        case "stateChanged":
+          setPillState(event.state);
+          if (event.state === "idle") void refresh();
+          break;
+        case "transcriptReady":
+          // Buffered (non-streaming) turn — show user msg + fetch the reply.
+          setMessages((prev) => [
+            ...prev,
+            { role: "user", content: event.text },
+          ]);
+          void refresh();
+          break;
+        case "streamStart":
+          // A streaming agent turn began — start accumulating deltas.
+          setStreamingText("");
+          break;
+        case "streamDelta":
+          setStreamingText((prev) => (prev ?? "") + event.text);
+          break;
+        case "streamEnd": {
+          // Turn complete — fold the streamed text into the message list and
+          // refresh from the server (the plugin stored the full reply).
+          setStreamingText(null);
+          void refresh();
+          break;
+        }
       }
     });
 
@@ -76,8 +99,9 @@ export function ChatPanel(): React.JSX.Element {
     return unsub;
   }, [refresh]);
 
-  const status = statusFor(pillState, thinking);
-  const empty = messages.length === 0 && !thinking;
+  const streaming = streamingText !== null;
+  const status = statusFor(pillState, streaming);
+  const empty = messages.length === 0 && !streaming;
 
   return (
     <div className="panel">
@@ -98,7 +122,7 @@ export function ChatPanel(): React.JSX.Element {
           </div>
         </div>
       ) : (
-        <div className="messages" ref={scrollRef}>
+        <div className="messages">
           {messages.map((msg, i) => (
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: append-only chat log
@@ -108,19 +132,30 @@ export function ChatPanel(): React.JSX.Element {
               <span className={`turn-role ${msg.role}`}>
                 {msg.role === "user" ? "You" : "Agent"}
               </span>
-              <span className="turn-text">{msg.content}</span>
+              <div className="turn-text markdown">
+                <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
+              </div>
             </div>
           ))}
-          {thinking && (
+          {streaming && (
             <div className="turn assistant">
               <span className="turn-role assistant">Agent</span>
-              <span className="typing">
-                <span />
-                <span />
-                <span />
-              </span>
+              <div className="turn-text markdown">
+                {streamingText ? (
+                  <Markdown remarkPlugins={[remarkGfm]}>
+                    {streamingText}
+                  </Markdown>
+                ) : (
+                  <span className="typing">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                )}
+              </div>
             </div>
           )}
+          <div ref={endRef} />
         </div>
       )}
 

@@ -89,6 +89,9 @@ body {
 
 .messages {
   flex: 1;
+  /* min-height: 0 is critical — without it a flex child won't shrink below its
+     content height and overflow-y never activates in a column flex container. */
+  min-height: 0;
   overflow-y: auto;
   padding: 14px 16px 8px;
   display: flex;
@@ -198,6 +201,79 @@ body {
   border: 1px solid var(--border);
   background: var(--secondary);
   color: var(--foreground);
+}
+
+/* ---- Markdown rendering (react-markdown output) ---- */
+
+.markdown p {
+  margin: 0 0 6px;
+}
+.markdown p:last-child {
+  margin-bottom: 0;
+}
+.markdown strong {
+  font-weight: 600;
+}
+.markdown code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--secondary, #2a2720);
+}
+.markdown pre {
+  margin: 6px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--secondary, #2a2720);
+  overflow-x: auto;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.markdown pre code {
+  padding: 0;
+  background: none;
+}
+.markdown ul,
+.markdown ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+.markdown li {
+  margin-bottom: 2px;
+}
+.markdown a {
+  color: var(--primary, #8ab62a);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.markdown blockquote {
+  margin: 6px 0;
+  padding: 0 0 0 12px;
+  border-left: 3px solid var(--border, #3a362d);
+  color: var(--muted-foreground, #9e977f);
+}
+.markdown img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 6px 0;
+}
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin: 6px 0;
+}
+.markdown th,
+.markdown td {
+  border: 1px solid var(--border, #3a362d);
+  padding: 5px 8px;
+  text-align: left;
+}
+.markdown th {
+  font-weight: 600;
+  background: var(--secondary, #2a2720);
 }
 
 @keyframes agent-pulse {

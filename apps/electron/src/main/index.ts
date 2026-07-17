@@ -1824,6 +1824,14 @@ app.whenReady().then(async () => {
     if (ctrl) ctrl.sendTranscript(text);
   });
 
+  // IPC: forward live plugin stream events (agent tokens) to the pill panel.
+  ipcMain.on("pill-panel:stream", (_event, streamEvent: unknown) => {
+    const ctrl = getPillPanelController();
+    if (ctrl && streamEvent && typeof streamEvent === "object") {
+      ctrl.sendStreamEvent(streamEvent as import("freestyle-voice").PillEvent);
+    }
+  });
+
   // IPC: fan out per-frame audio levels from the pill to other windows
   // (e.g. the Today tutorial demo) so they can render a live waveform.
   ipcMain.on("audio:level", (_event, level: number) => {

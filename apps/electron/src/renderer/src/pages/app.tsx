@@ -241,6 +241,7 @@ export default function AppPage(): React.JSX.Element {
   // The pill window stays visible so the user can read/continue the exchange;
   // a hotkey press records a follow-up rather than hiding the pill.
   const panelOpenRef = useRef(false);
+  const panelPluginSlugRef = useRef<string | null>(null);
   // Tracks the in-flight prepareSystemAudio() (ducking) call. Ducking runs
   // concurrently with mic acquisition, so every restore must wait for this
   // to settle — otherwise a restore that lands before the duck applies is a
@@ -614,6 +615,15 @@ export default function AppPage(): React.JSX.Element {
           resolver({ raw: text, cleaned: text, disposition });
         },
         onCleaned: () => {},
+        onStream: (event) => {
+          // Forward live plugin stream events (agent tokens) to the pill
+          // panel. On streamStart, expand the panel so it appears immediately.
+          if (event.type === "streamStart") {
+            panelOpenRef.current = true;
+            window.api?.expandPillPanel?.();
+          }
+          window.api?.sendStreamEventToPanel?.(event);
+        },
         onError: (msg, code) => {
           const resolver = streamResolverRef.current;
           // Cloud auth expiry and usage limits are terminal — don't fall back
@@ -1365,6 +1375,7 @@ export default function AppPage(): React.JSX.Element {
           };
         }[]) {
           if (p.pill && p.enabled) {
+            panelPluginSlugRef.current = p.slug;
             window.api?.configurePillPanel?.(
               p.slug,
               p.pill.id,
@@ -1382,9 +1393,17 @@ export default function AppPage(): React.JSX.Element {
       setPluginBadge(text);
     });
     // When the panel collapses (X button or click-outside), the pill is no
-    // longer showing an agent exchange — hide the window and reset the flag.
+    // longer showing an agent exchange — hide the window, reset the flag, and
+    // tell the plugin the session ended so the next trigger starts a fresh
+    // conversation.
     const removeCollapsed = window.api?.onPillPanelCollapsed?.(() => {
       panelOpenRef.current = false;
+      if (panelPluginSlugRef.current) {
+        void apiFetch(
+          `/api/plugins/${panelPluginSlugRef.current}/agent/session/end`,
+          { method: "POST" },
+        ).catch(() => {});
+      }
       if (stateRef.current === "idle") hidePill();
     });
     return () => {

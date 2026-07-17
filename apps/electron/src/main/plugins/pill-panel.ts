@@ -223,6 +223,11 @@ export class PillPanelController {
     this.sendEvent({ type: "transcriptReady", text });
   }
 
+  /** Forward a live plugin stream event (agent delta/start/end) to the panel. */
+  sendStreamEvent(event: PillEvent): void {
+    this.sendEvent(event);
+  }
+
   private sendEvent(event: PillEvent): void {
     // Buffer until the page has loaded — a `transcriptReady` fired the instant
     // a dictation is consumed would otherwise race the view's first paint.

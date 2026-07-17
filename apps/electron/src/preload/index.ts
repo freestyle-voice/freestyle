@@ -312,6 +312,8 @@ const api = {
     ipcRenderer.send("pill-panel:state-change", state),
   sendTranscriptToPanel: (text: string): void =>
     ipcRenderer.send("pill-panel:transcript", text),
+  sendStreamEventToPanel: (event: { type: string; text?: string }): void =>
+    ipcRenderer.send("pill-panel:stream", event),
   onPillBadge: (callback: (text: string | null) => void): (() => void) => {
     const handler = (_: unknown, text: string | null): void => callback(text);
     ipcRenderer.on("pill:set-badge", handler);

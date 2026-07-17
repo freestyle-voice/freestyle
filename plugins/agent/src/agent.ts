@@ -1,8 +1,8 @@
 import {
-  generateText,
   type LanguageModel,
   type ModelMessage,
   stepCountIs,
+  streamText,
 } from "ai";
 import type { PluginLlm } from "freestyle-voice";
 import {
@@ -17,8 +17,10 @@ const MAX_STEPS = 8;
 
 /**
  * Run one agent turn: connect the configured MCP servers, hand their tools to
- * the model along with the conversation, run the tool-calling loop, and return
- * the assistant's reply. MCP connections are always closed afterward.
+ * the model along with the conversation, and stream the reply. `onDelta` fires
+ * for each text chunk as it generates (drives the live pill panel); the full
+ * reply is returned once the stream drains. MCP connections are always closed
+ * afterward.
  */
 export async function runAgentTurn(opts: {
   llm: PluginLlm;
@@ -26,8 +28,9 @@ export async function runAgentTurn(opts: {
   history: ConversationEntry[];
   signal?: AbortSignal;
   log: (msg: string) => void;
+  onDelta?: (text: string) => void;
 }): Promise<string> {
-  const { llm, config, history, signal, log } = opts;
+  const { llm, config, history, signal, log, onDelta } = opts;
 
   const { tools, connections } = await connectEnabledServers(
     config.mcpServers,
@@ -40,7 +43,7 @@ export async function runAgentTurn(opts: {
       content: e.content,
     }));
 
-    const result = await generateText({
+    const result = streamText({
       model: llm.getModel() as LanguageModel,
       system: buildSystemPrompt(config),
       messages,
@@ -49,9 +52,13 @@ export async function runAgentTurn(opts: {
       ...(signal ? { abortSignal: signal } : {}),
     });
 
-    return (
-      result.text.trim() || "I ran the requested tools but have nothing to add."
-    );
+    let full = "";
+    for await (const delta of result.textStream) {
+      full += delta;
+      onDelta?.(delta);
+    }
+
+    return full.trim() || "I ran the requested tools but have nothing to add.";
   } finally {
     await closeConnections(connections);
   }

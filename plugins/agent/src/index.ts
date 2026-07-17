@@ -20,6 +20,11 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
   let config: AgentConfig = { ...DEFAULT_CONFIG };
   let conversation: ConversationEntry[] = [];
   let logger: (msg: string) => void = () => {};
+  // Whether the current conversation is "live" (its panel is open). A trigger
+  // that arrives when it's NOT active starts a fresh conversation; one that
+  // arrives while active continues the thread. The host marks it inactive when
+  // the panel closes (POST /agent/session/end).
+  let conversationActive = false;
   const baseSlug = pluginSlug(PLUGIN_NAME);
 
   function ownRoute(reqPath: string, route: string): boolean {
@@ -47,9 +52,18 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       if (c.req.method === "GET") return c.json({ conversation });
       if (c.req.method === "DELETE") {
         conversation = [];
+        conversationActive = false;
         if (storage) await storage.set(CONVERSATION_KEY, conversation);
         return c.json({ ok: true });
       }
+    }
+
+    // The panel closed — end the session so the next trigger starts fresh.
+    // The conversation itself is kept (viewable on the settings page) until the
+    // next trigger clears it or the user clears it explicitly.
+    if (ownRoute(reqPath, "/agent/session/end") && c.req.method === "POST") {
+      conversationActive = false;
+      return c.json({ ok: true });
     }
 
     return next();
@@ -79,15 +93,29 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       const text = output.text.trim();
       if (!text) return;
 
-      // Only intercept dictation that opens with the agent's name (default
-      // "Freestyle"). Everything else is dictated normally.
+      // When a conversation is already live (the panel is open), every
+      // subsequent dictation is a follow-up — route it to the agent without
+      // requiring the name again. When the panel is closed, only intercept
+      // dictation that opens with the agent's name (default "Freestyle").
       const matcher = buildAgentNameRegex(config.agentName);
-      if (!matcher.test(text)) return;
+      const hasName = matcher.test(text);
 
-      const prompt = stripAgentName(text, matcher);
+      if (!conversationActive && !hasName) return;
+
+      const prompt = hasName ? stripAgentName(text, matcher) : text;
       if (!prompt) return;
 
+      // A fresh trigger (panel closed → named) starts a new thread; a
+      // follow-up (panel open) continues the existing one.
+      if (!conversationActive) {
+        conversation = [];
+        conversationActive = true;
+      }
       conversation.push({ role: "user", content: prompt });
+
+      // Signal the panel to open now and begin an assistant message. Do this
+      // before the LLM call so the pill appears immediately, then streams.
+      api.emitStream?.({ type: "streamStart" });
 
       let reply: string;
       if (api.llm) {
@@ -98,16 +126,22 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
             history: conversation,
             signal: api.signal,
             log: logger,
+            onDelta: (delta) =>
+              api.emitStream?.({ type: "streamDelta", text: delta }),
           });
         } catch (err) {
           reply = `Sorry, the agent turn failed: ${
             err instanceof Error ? err.message : String(err)
           }`;
+          api.emitStream?.({ type: "streamDelta", text: reply });
         }
       } else {
         reply =
           "No language model is configured. Set one under Settings → Models.";
+        api.emitStream?.({ type: "streamDelta", text: reply });
       }
+
+      api.emitStream?.({ type: "streamEnd" });
 
       conversation.push({ role: "assistant", content: reply });
       if (storage) await storage.set(CONVERSATION_KEY, conversation);

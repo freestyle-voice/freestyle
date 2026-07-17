@@ -10,6 +10,7 @@
  * rather than rebuilding the whole client pipeline.
  */
 
+import type { PluginStreamEvent } from "freestyle-voice";
 import { getPCMProcessorUrl } from "./pcm-processor";
 import { encodeWavFromInt16 } from "./wav";
 
@@ -22,6 +23,11 @@ export interface StreamerCallbacks {
     disposition?: "deliver" | "suppressed" | "aborted",
   ) => void;
   onCleaned?: (text: string) => void;
+  /**
+   * A live plugin stream event (e.g. agent tokens) emitted mid-turn by a server
+   * hook via `api.emitStream`. Forwarded verbatim to the pill panel.
+   */
+  onStream?: (event: PluginStreamEvent) => void;
   onError: (message: string, code?: string) => void;
   onReady: () => void;
   onConfig: (config: {
@@ -218,6 +224,7 @@ export class Streamer {
         type: string;
         text?: string;
         disposition?: "deliver" | "suppressed" | "aborted";
+        event?: PluginStreamEvent;
         message?: string;
         code?: string;
         model?: string;
@@ -258,6 +265,9 @@ export class Streamer {
           break;
         case "cleaned":
           this.callbacks.onCleaned?.(msg.text ?? "");
+          break;
+        case "stream":
+          if (msg.event) this.callbacks.onStream?.(msg.event);
           break;
         case "error":
           this.callbacks.onError(msg.message ?? "Unknown error", msg.code);

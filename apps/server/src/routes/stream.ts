@@ -352,7 +352,12 @@ const stream = new Hono().get(
             // One HookApi per dictation, threaded through every stage so a
             // plugin's consume()/abort() in afterTranscribe is visible to
             // cleanup + final rewrites (matching the batch /transcribe route).
-            const api = await createHookApi();
+            // The streaming path has a live socket, so give hooks an
+            // `emitStream` sink that forwards agent/tool deltas to the client
+            // as `stream:*` messages during the turn (before `final`).
+            const api = await createHookApi((event) => {
+              if (!closed) ws.send(JSON.stringify({ type: "stream", event }));
+            });
             // Use commitTime (when the user stopped speaking) to measure only
             // finalization + cleanup latency, not the entire recording session.
             const durationMs =

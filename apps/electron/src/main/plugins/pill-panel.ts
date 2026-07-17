@@ -53,6 +53,14 @@ export class PillPanelController {
   /** Original pill window dimensions before expansion. */
   private originalBounds: Electron.Rectangle | null = null;
 
+  /** Ignore blur-to-close until this timestamp (settle window after expand). */
+  private blurGuardUntil = 0;
+  /** When true, blur never collapses (e.g. while dictating a follow-up). */
+  private suppressBlurClose = false;
+
+  /** Grace period (ms) after expanding during which blur won't collapse. */
+  private static readonly BLUR_SETTLE_MS = 750;
+
   constructor(
     private readonly preloadPath: string,
     private readonly getServerBaseUrl: () => string,
@@ -63,10 +71,19 @@ export class PillPanelController {
   attachWindow(window: BrowserWindow): void {
     this.window = window;
     // Click-outside-to-close: when the expanded pill window loses focus, fold
-    // the panel back. The pill itself is non-focusable when collapsed, so this
-    // only fires while a panel is open.
+    // the panel back. Guarded two ways because the pill is a frameless,
+    // always-on-top, normally-non-focusable panel: focusing it on expand (and
+    // the mic/hotkey activity around a dictation) emits transient `blur` events
+    // that would otherwise collapse the panel the instant it opens.
+    //   1. `blurGuardUntil` ignores blur during a short settle window after
+    //      expanding.
+    //   2. `suppressBlurClose` ignores blur while the user is dictating a
+    //      follow-up (the pill renderer toggles it around recording).
     window.on("blur", () => {
-      if (this.expanded) this.collapse();
+      if (!this.expanded) return;
+      if (Date.now() < this.blurGuardUntil) return;
+      if (this.suppressBlurClose) return;
+      this.collapse();
     });
     window.on("closed", () => {
       this.destroy();
@@ -145,9 +162,27 @@ export class PillPanelController {
     }
 
     this.expanded = true;
+    // Focusing the pill (needed so the panel's text input works) emits a
+    // transient blur on this always-on-top panel; guard the settle window so
+    // that self-inflicted blur doesn't immediately collapse what we just opened.
+    this.blurGuardUntil = Date.now() + PillPanelController.BLUR_SETTLE_MS;
     this.window.focus();
     log.info(`pill panel expanded: ${this.config.slug}`);
     return true;
+  }
+
+  /**
+   * Suppress (or re-enable) blur-to-close. The pill renderer calls this around
+   * a follow-up dictation: starting the mic can pull OS focus away from the
+   * pill, which would otherwise collapse the panel mid-conversation.
+   */
+  setSuppressBlurClose(suppress: boolean): void {
+    this.suppressBlurClose = suppress;
+    // Re-arm the settle guard when unsuppressing so the focus handoff back to
+    // the pill after recording doesn't trip an immediate collapse.
+    if (!suppress) {
+      this.blurGuardUntil = Date.now() + PillPanelController.BLUR_SETTLE_MS;
+    }
   }
 
   collapse(): boolean {
@@ -167,6 +202,9 @@ export class PillPanelController {
     this.window.setFocusable(false);
     this.expanded = false;
     this.originalBounds = null;
+    // Tell the pill renderer the panel is no longer open so its state machine
+    // stops treating hotkey presses as agent follow-ups.
+    this.window.webContents.send("pill-panel:collapsed");
     log.info("pill panel collapsed");
     return true;
   }
@@ -328,6 +366,10 @@ export function initPillPanelHost(deps: PillPanelHostDeps): void {
       controller?.configure({ slug, panelId, entry, expand });
     },
   );
+
+  ipcMain.on("pill-panel:suppress-blur-close", (_e, suppress: boolean) => {
+    controller?.setSuppressBlurClose(suppress);
+  });
 }
 
 /**

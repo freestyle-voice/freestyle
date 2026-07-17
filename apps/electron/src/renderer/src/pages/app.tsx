@@ -201,6 +201,10 @@ export default function AppPage(): React.JSX.Element {
   const appContextRef = useRef<string | null>(null);
   const pendingCommitRef = useRef(false);
   const pillActiveRef = useRef(false);
+  // True while a plugin's pill panel is expanded (e.g. an agent conversation).
+  // The pill window stays visible so the user can read/continue the exchange;
+  // a hotkey press records a follow-up rather than hiding the pill.
+  const panelOpenRef = useRef(false);
   // Tracks the in-flight prepareSystemAudio() (ducking) call. Ducking runs
   // concurrently with mic acquisition, so every restore must wait for this
   // to settle — otherwise a restore that lands before the duck applies is a
@@ -286,6 +290,7 @@ export default function AppPage(): React.JSX.Element {
           .join(" ");
         window.api?.sendTranscriptToPanel?.(text);
         window.api?.expandPillPanel?.();
+        panelOpenRef.current = true;
       }
 
       if (
@@ -304,7 +309,12 @@ export default function AppPage(): React.JSX.Element {
       if (nonEmpty.length === 0) {
         // The consumed dictation opened the panel above — keep the pill
         // visible so the user can see it; don't fall through to the hide path.
+        // Reset the machine to "idle" (recording done) WITHOUT hiding, so the
+        // next hotkey press records a follow-up into the open panel.
         if (suppressed.length > 0) {
+          setPillState("idle");
+          recordingActiveRef.current = false;
+          wantsMicRef.current = false;
           return;
         }
         if (results.some((r) => r.cloudAuthRequired)) {
@@ -791,6 +801,7 @@ export default function AppPage(): React.JSX.Element {
     setPillState("idle");
     setPendingCount(0);
     setPluginBadge(null);
+    panelOpenRef.current = false;
     wantsMicRef.current = false;
     pillActiveRef.current = false;
     queueRef.current = [];
@@ -1300,6 +1311,7 @@ export default function AppPage(): React.JSX.Element {
   }, [applyPillPosition]);
 
   // ---- Pill panel plugin ----
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount to configure the panel + install listeners; hidePill is stable and only read inside the collapse handler.
   useEffect(() => {
     getClient()
       .api.plugins.$get()
@@ -1332,8 +1344,15 @@ export default function AppPage(): React.JSX.Element {
     const removeBadge = window.api?.onPillBadge?.((text) => {
       setPluginBadge(text);
     });
+    // When the panel collapses (X button or click-outside), the pill is no
+    // longer showing an agent exchange — hide the window and reset the flag.
+    const removeCollapsed = window.api?.onPillPanelCollapsed?.(() => {
+      panelOpenRef.current = false;
+      if (stateRef.current === "idle") hidePill();
+    });
     return () => {
       removeBadge?.();
+      removeCollapsed?.();
     };
   }, []);
 
@@ -1343,6 +1362,15 @@ export default function AppPage(): React.JSX.Element {
       // hidePill() clears pillActiveRef before React re-renders idle state.
       if (!pillActiveRef.current) {
         stateRef.current = "idle";
+      }
+      // While the agent panel is open, a hotkey press is a follow-up: keep the
+      // panel from collapsing when the mic pulls focus, and record into it.
+      if (panelOpenRef.current) {
+        window.api?.suppressPillPanelBlurClose?.(true);
+        if (stateRef.current === "idle") {
+          startRecording(false);
+          return;
+        }
       }
       const s = stateRef.current;
       if (s === "idle") {
@@ -1373,9 +1401,16 @@ export default function AppPage(): React.JSX.Element {
       } else if (
         stateRef.current === "transcribing" &&
         !wantsMicRef.current &&
-        isTranscriptionIdle()
+        isTranscriptionIdle() &&
+        // Don't hide while the agent panel is open — the user is mid-exchange.
+        !panelOpenRef.current
       ) {
         hidePill();
+      }
+      // Re-allow click-outside-to-close once the follow-up recording is
+      // committed (focus hands back to the pill after the mic releases).
+      if (panelOpenRef.current) {
+        window.api?.suppressPillPanelBlurClose?.(false);
       }
     });
     const removeCancel = window.api.onPillCancel(() => {

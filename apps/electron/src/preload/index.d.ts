@@ -139,6 +139,8 @@ declare global {
       ) => Promise<void>;
       expandPillPanel: () => Promise<boolean>;
       collapsePillPanel: () => Promise<boolean>;
+      suppressPillPanelBlurClose: (suppress: boolean) => void;
+      onPillPanelCollapsed: (callback: () => void) => () => void;
       sendPillState: (state: string) => void;
       sendTranscriptToPanel: (text: string) => void;
       onPillBadge: (callback: (text: string | null) => void) => () => void;

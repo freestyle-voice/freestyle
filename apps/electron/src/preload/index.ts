@@ -293,6 +293,13 @@ const api = {
     ipcRenderer.invoke("pill-panel:expand"),
   collapsePillPanel: (): Promise<boolean> =>
     ipcRenderer.invoke("pill-panel:collapse"),
+  suppressPillPanelBlurClose: (suppress: boolean): void =>
+    ipcRenderer.send("pill-panel:suppress-blur-close", suppress),
+  onPillPanelCollapsed: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("pill-panel:collapsed", handler);
+    return () => ipcRenderer.removeListener("pill-panel:collapsed", handler);
+  },
   sendPillState: (state: string): void =>
     ipcRenderer.send("pill-panel:state-change", state),
   sendTranscriptToPanel: (text: string): void =>

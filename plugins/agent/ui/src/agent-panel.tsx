@@ -93,8 +93,7 @@ export function AgentPanel(): React.JSX.Element {
       <div ref={scrollRef} style={messagesStyle}>
         {messages.length === 0 && (
           <div style={emptyStyle}>
-            Dictate with "agent:" prefix or from a terminal to start a
-            conversation.
+            Say "agent …" to start, or dictate from a terminal.
           </div>
         )}
         {messages.map((msg, i) => (

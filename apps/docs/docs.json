@@ -53,7 +53,8 @@
             "pages": [
               "plugins/profanity-filter",
               "plugins/audio-transcription",
-              "plugins/voice-commands"
+              "plugins/voice-commands",
+              "plugins/voice-agent"
             ]
           }
         ]

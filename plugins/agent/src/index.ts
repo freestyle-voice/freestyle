@@ -66,18 +66,25 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       const text = output.text.trim();
       if (!text) return;
 
+      // Match a leading "agent" wake word followed by any punctuation or
+      // whitespace — speech-to-text rarely produces the literal "agent:" a
+      // user "says"; it's usually "Agent, …", "Agent. …", or just "Agent …".
+      const wakeWord = /^\s*(hey\s+|ok\s+)?agent\b[\s,.:;!?-]*/i;
+      const hasWakeWord = wakeWord.test(text);
+
       const appName = input.appContext?.appName?.toLowerCase() ?? "";
-      const isAgentTarget =
-        text.toLowerCase().startsWith("agent:") ||
-        text.toLowerCase().startsWith("agent,") ||
+      const isDevApp =
         appName.includes("terminal") ||
         appName.includes("code") ||
         appName.includes("iterm") ||
         appName.includes("warp");
 
-      if (!isAgentTarget) return;
+      if (!hasWakeWord && !isDevApp) return;
 
-      const cleanText = text.replace(/^agent[,:]\s*/i, "");
+      // Strip the wake word when present; in a dev app the whole utterance is
+      // the prompt.
+      const cleanText = hasWakeWord ? text.replace(wakeWord, "").trim() : text;
+      if (!cleanText) return;
       conversation.push({ role: "user", content: cleanText });
 
       if (api.llm) {

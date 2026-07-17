@@ -24,7 +24,54 @@ export function resolveLocalPackage(
   localDir: string,
   specifier: string,
 ): string | null {
-  const pkgDir = path.join(localDir, pluginSlug(specifier));
+  return resolveLocalPackageDir(path.join(localDir, pluginSlug(specifier)));
+}
+
+/**
+ * List loadable plugin entry paths in a directory, sorted by name (stable load
+ * order). Returns absolute paths; missing/unreadable directories yield an empty
+ * list. Two shapes are discovered:
+ *
+ * - Loose module files (`<dir>/foo.ts` / `.js` / `.mjs`) — ad-hoc dev plugins.
+ * - Installed/linked package folders (`<dir>/<slug>/package.json`) — resolved to
+ *   their `main` entry. This is how `create-freestyle-plugin`'s `link` script
+ *   and the npm installer lay plugins out, so a dev-linked plugin's hooks load
+ *   without also having to be listed in the `plugins` setting.
+ */
+export function discoverLocalPlugins(dir: string): string[] {
+  let dirents: fs.Dirent[];
+  try {
+    dirents = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const out: string[] = [];
+  for (const dirent of dirents.sort((a, b) => a.name.localeCompare(b.name))) {
+    const name = dirent.name;
+    if (name.startsWith(".")) continue; // dotfiles + installer staging dirs
+
+    if (dirent.isDirectory()) {
+      const entry = resolveLocalPackageDir(path.join(dir, name));
+      if (entry) out.push(entry);
+      continue;
+    }
+
+    if (
+      LOCAL_PLUGIN_EXTS.includes(path.extname(name)) &&
+      !name.endsWith(".d.ts")
+    ) {
+      out.push(path.join(dir, name));
+    }
+  }
+  return out;
+}
+
+/**
+ * Resolve a plugin package folder to its entry module (`package.json#main`,
+ * default `index.js`), or `null` when the folder isn't a resolvable package.
+ */
+function resolveLocalPackageDir(pkgDir: string): string | null {
   const pkgJsonPath = path.join(pkgDir, "package.json");
   let main = "index.js";
   try {
@@ -37,24 +84,6 @@ export function resolveLocalPackage(
   }
   const entry = path.join(pkgDir, main);
   return fs.existsSync(entry) ? entry : null;
-}
-
-/**
- * List loadable plugin files in a directory, sorted by name (stable load order).
- * Returns absolute paths; missing/unreadable directories yield an empty list.
- */
-export function discoverLocalPlugins(dir: string): string[] {
-  let names: string[];
-  try {
-    names = fs.readdirSync(dir);
-  } catch {
-    return [];
-  }
-  return names
-    .filter((name) => LOCAL_PLUGIN_EXTS.includes(path.extname(name)))
-    .filter((name) => !name.endsWith(".d.ts"))
-    .sort()
-    .map((name) => path.join(dir, name));
 }
 
 /**
@@ -103,6 +132,13 @@ export interface LoadPluginsOptions {
    * Convenience over passing `localFiles` from {@link discoverLocalPlugins}.
    */
   localDir?: string;
+  /**
+   * Predicate to skip a plugin discovered in `localDir` (loose file or package
+   * folder) whose entry path is given. Used to honor the host's disabled list
+   * for dev-linked/dropped-in plugins, which aren't in the `plugins` setting.
+   * Not applied to `entries` — those are pre-filtered by the caller.
+   */
+  isLocalDisabled?: (entryPath: string) => boolean;
   /** Build the context handed to a plugin's `setup` hook. */
   buildContext: (name: string) => PluginContext;
   /** Diagnostics logger. */
@@ -128,6 +164,11 @@ export async function loadPlugins(
   const { buildContext, logger, onError } = options;
   const resolved: Plugin[] = [];
 
+  // Track resolved on-disk entry paths so a plugin reachable via BOTH the
+  // `plugins` setting and local-dir discovery (e.g. an installed package that's
+  // also present as a folder) is loaded only once.
+  const loadedPaths = new Set<string>();
+
   // Built-in plugins are added first, before any user plugins.
   for (const plugin of options.builtin ?? []) {
     resolved.push(plugin);
@@ -140,6 +181,7 @@ export async function loadPlugins(
     const localPath = options.localDir
       ? resolveLocalPackage(options.localDir, entry.specifier)
       : null;
+    if (localPath) loadedPaths.add(path.resolve(localPath));
     const factory = await importFactory(localPath ?? entry.specifier, logger);
     if (factory) {
       collect(
@@ -154,6 +196,9 @@ export async function loadPlugins(
     ...(options.localDir ? discoverLocalPlugins(options.localDir) : []),
   ];
   for (const file of localFiles) {
+    if (loadedPaths.has(path.resolve(file))) continue; // already loaded via a setting entry
+    loadedPaths.add(path.resolve(file));
+    if (options.isLocalDisabled?.(file)) continue;
     const factory = await importFactory(file, logger);
     if (factory) collect(resolved, safeInvoke(factory, file, logger));
   }

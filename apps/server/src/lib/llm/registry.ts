@@ -2,6 +2,10 @@ import type { GroqLanguageModelOptions } from "@ai-sdk/groq";
 import type { PostProcessParams } from "@freestyle-voice/stt";
 import type { LanguageModel } from "ai";
 import { getDb } from "../db.js";
+import {
+  FREESTYLE_CLOUD_PROVIDER_ID,
+  freestyleCloudUrl,
+} from "../freestyle-cloud.js";
 
 /** The provider-options shape accepted by the cleanup `generateText` call. */
 type CleanupProviderOptions = NonNullable<PostProcessParams["providerOptions"]>;
@@ -107,6 +111,23 @@ const PROVIDERS: LlmProvider[] = [
     createModel: async (modelId, apiKey) => {
       const { createMistral } = await import("@ai-sdk/mistral");
       return createMistral({ apiKey }).chat(modelId);
+    },
+  },
+  {
+    // Freestyle Cloud exposes an OpenAI-compatible chat-completions proxy at
+    // `/v2/llm`. This provider only powers the plugin LLM capability
+    // (`buildPluginLlm` → `api.llm`) — Freestyle Cloud *cleanup* takes the
+    // dedicated `postProcessWithFreestyleCloud` path and never reaches
+    // `createChatModel`. The `apiKey` handed in is the signed-in user's session
+    // token (resolved by `getApiKeyForProvider`), which the cloud verifies as
+    // `Authorization: Bearer <token>`.
+    providerId: FREESTYLE_CLOUD_PROVIDER_ID,
+    createModel: async (modelId, apiKey) => {
+      const { createOpenAI } = await import("@ai-sdk/openai");
+      return createOpenAI({
+        apiKey,
+        baseURL: `${freestyleCloudUrl()}/v2/llm`,
+      }).chat(modelId);
     },
   },
   {

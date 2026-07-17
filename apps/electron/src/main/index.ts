@@ -105,6 +105,10 @@ import {
   PipelineStage,
   relayEvent,
 } from "./plugins/index";
+import {
+  getPillPanelController,
+  initPillPanelHost,
+} from "./plugins/pill-panel";
 import { initPluginUiHost, invalidatePluginViews } from "./plugins/ui-host";
 
 const log = createAppLogger("electron");
@@ -595,6 +599,13 @@ function createAppWindow(): void {
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
     return { action: "deny" };
+  });
+
+  initPillPanelHost({
+    window: mainWindow,
+    getServerBaseUrl,
+    getServerToken,
+    getCollapsedSize: () => ({ width: APP_WIDTH, height: APP_HEIGHT }),
   });
 
   mainWindow.loadURL(getPillURL());
@@ -1150,6 +1161,10 @@ async function getOpenAppCandidates(): Promise<OpenAppCandidate[]> {
 }
 
 function hidePill(): void {
+  const panelCtrl = getPillPanelController();
+  if (panelCtrl?.isExpanded()) {
+    panelCtrl.collapse();
+  }
   if (mainWindow?.isVisible()) {
     mainWindow.hide();
   }
@@ -1786,6 +1801,21 @@ app.whenReady().then(async () => {
   // IPC: hide the pill window on request from renderer
   ipcMain.on("pill:hide", () => {
     hidePill();
+  });
+
+  // IPC: forward pill state changes to the pill panel controller so the
+  // plugin's WebContentsView receives live lifecycle events.
+  ipcMain.on("pill-panel:state-change", (_event, state: string) => {
+    const ctrl = getPillPanelController();
+    if (ctrl) {
+      ctrl.setPillState(state as import("freestyle-voice").PillState);
+    }
+  });
+
+  // IPC: forward a suppressed transcript to the pill panel plugin.
+  ipcMain.on("pill-panel:transcript", (_event, text: string) => {
+    const ctrl = getPillPanelController();
+    if (ctrl) ctrl.sendTranscript(text);
   });
 
   // IPC: fan out per-frame audio levels from the pill to other windows

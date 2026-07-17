@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { FreestyleBridge, HostActions } from "freestyle-voice";
+import type {
+  FreestyleBridge,
+  HostActions,
+  PillEvent,
+  PillPanelBridge,
+} from "freestyle-voice";
 
 /**
  * Preload injected into every plugin UI page (running in a sandboxed
@@ -36,6 +41,28 @@ ipcRenderer
     /* leave defaults */
   });
 
+const pillBridge: PillPanelBridge = {
+  getState() {
+    return ipcRenderer.invoke("pill-panel:state");
+  },
+  subscribe(callback: (event: PillEvent) => void) {
+    const handler = (_: unknown, event: PillEvent): void => callback(event);
+    ipcRenderer.on("pill-panel:event", handler);
+    return () => ipcRenderer.removeListener("pill-panel:event", handler);
+  },
+  expand() {
+    return ipcRenderer.invoke("pill-panel:expand").then(() => {});
+  },
+  collapse() {
+    return ipcRenderer.invoke("pill-panel:collapse").then(() => {});
+  },
+  setBadge(text: string | null) {
+    return ipcRenderer
+      .invoke("plugin-bridge:action", "pill:set-badge", { text })
+      .then(() => {});
+  },
+};
+
 const bridge: FreestyleBridge = {
   get serverUrl() {
     return location.origin;
@@ -64,6 +91,8 @@ const bridge: FreestyleBridge = {
   invoke<C extends keyof HostActions>(channel: C, payload: HostActions[C]) {
     return ipcRenderer.invoke("plugin-bridge:action", channel, payload);
   },
+
+  pill: pillBridge,
 };
 
 contextBridge.exposeInMainWorld("freestyle", bridge);

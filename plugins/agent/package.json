@@ -1,0 +1,70 @@
+{
+  "name": "@freestyle-voice/plugin-agent",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Voice-driven AI agent that intercepts dictation and runs LLM turns in an expandable pill panel.",
+  "license": "MIT",
+  "homepage": "https://github.com/freestyle-voice/freestyle/tree/main/plugins/agent#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/freestyle-voice/freestyle.git",
+    "directory": "plugins/agent"
+  },
+  "keywords": [
+    "freestyle",
+    "freestyle-plugin",
+    "voice",
+    "agent",
+    "llm"
+  ],
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "freestyle": {
+    "displayName": "Voice Agent",
+    "icon": "Bot",
+    "contributes": {
+      "pill": {
+        "id": "agent-panel",
+        "title": "Voice Agent",
+        "entry": "dist/ui/index.html",
+        "expand": {
+          "width": 380,
+          "height": 480
+        }
+      },
+      "settings": [
+        {
+          "key": "system_prompt",
+          "type": "string",
+          "label": "System prompt",
+          "description": "Custom system prompt for the agent.",
+          "default": "You are a helpful voice assistant. Respond concisely."
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "pkgroll --minify && vite build",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p ui/tsconfig.json",
+    "link": "node ../../scripts/link-plugin.mjs",
+    "unlink": "node ../../scripts/link-plugin.mjs --unlink"
+  },
+  "dependencies": {
+    "freestyle-voice": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.1",
+    "pkgroll": "^2.27.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "typescript": "^5.8.3",
+    "vite": "^7.3.3"
+  }
+}

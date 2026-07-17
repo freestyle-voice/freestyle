@@ -281,6 +281,28 @@ const api = {
     return () => ipcRenderer.removeListener("mic:activity-changed", handler);
   },
 
+  // --- Pill panel ---
+  configurePillPanel: (
+    slug: string,
+    panelId: string,
+    entry: string,
+    expand: { width: number; height: number },
+  ): Promise<void> =>
+    ipcRenderer.invoke("pill-panel:configure", slug, panelId, entry, expand),
+  expandPillPanel: (): Promise<boolean> =>
+    ipcRenderer.invoke("pill-panel:expand"),
+  collapsePillPanel: (): Promise<boolean> =>
+    ipcRenderer.invoke("pill-panel:collapse"),
+  sendPillState: (state: string): void =>
+    ipcRenderer.send("pill-panel:state-change", state),
+  sendTranscriptToPanel: (text: string): void =>
+    ipcRenderer.send("pill-panel:transcript", text),
+  onPillBadge: (callback: (text: string | null) => void): (() => void) => {
+    const handler = (_: unknown, text: string | null): void => callback(text);
+    ipcRenderer.on("pill:set-badge", handler);
+    return () => ipcRenderer.removeListener("pill:set-badge", handler);
+  },
+
   // --- Plugins ---
   // Discovery, install, catalog, and updates now go directly renderer→server
   // over the typed `hc` client (see renderer/src/lib/plugins-api.ts). Only the

@@ -171,6 +171,7 @@ export default function AppPage(): React.JSX.Element {
   const setPillState = useCallback((next: PillState) => {
     stateRef.current = next;
     setState(next);
+    window.api?.sendPillState?.(next);
   }, []);
   const [elapsed, setElapsed] = useState(0);
   const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
@@ -181,6 +182,7 @@ export default function AppPage(): React.JSX.Element {
   const providerCategoryRef = useRef<string | null>(null);
 
   const [pendingCount, setPendingCount] = useState(0);
+  const [pluginBadge, setPluginBadge] = useState<string | null>(null);
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
@@ -277,6 +279,15 @@ export default function AppPage(): React.JSX.Element {
           .map((r) => ({ promise: Promise.resolve(r) }));
         queueRef.current = [...resolved, ...queueRef.current];
         return;
+      }
+
+      const suppressed = results.filter(
+        (r) => !!r.raw.trim() && r.disposition === "suppressed",
+      );
+      if (suppressed.length > 0) {
+        const text = suppressed.map((r) => r.raw).join(" ");
+        window.api?.sendTranscriptToPanel?.(text);
+        window.api?.expandPillPanel?.();
       }
 
       const nonEmpty = results.filter(isDeliverable);
@@ -1272,6 +1283,44 @@ export default function AppPage(): React.JSX.Element {
     };
   }, [applyPillPosition]);
 
+  // ---- Pill panel plugin ----
+  useEffect(() => {
+    getClient()
+      .api.plugins.$get()
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const plugins = (data as { plugins?: unknown[] } | null)?.plugins;
+        if (!Array.isArray(plugins)) return;
+        for (const p of plugins as {
+          slug: string;
+          enabled: boolean;
+          pill?: {
+            id: string;
+            entry: string;
+            expand: { width: number; height: number };
+          };
+        }[]) {
+          if (p.pill && p.enabled) {
+            window.api?.configurePillPanel?.(
+              p.slug,
+              p.pill.id,
+              p.pill.entry,
+              p.pill.expand,
+            );
+            break;
+          }
+        }
+      })
+      .catch(() => {});
+
+    const removeBadge = window.api?.onPillBadge?.((text) => {
+      setPluginBadge(text);
+    });
+    return () => {
+      removeBadge?.();
+    };
+  }, []);
+
   // ---- Hotkey handlers ----
   useEffect(() => {
     const removeDown = window.api.onHotkeyDown(() => {
@@ -1361,11 +1410,13 @@ export default function AppPage(): React.JSX.Element {
           : "glow-idle";
 
   const badge =
-    state === "recording"
-      ? formatTimer(elapsed)
-      : state === "transcribing" && pendingCount > 0
-        ? `x${pendingCount}`
-        : null;
+    pluginBadge !== null
+      ? pluginBadge
+      : state === "recording"
+        ? formatTimer(elapsed)
+        : state === "transcribing" && pendingCount > 0
+          ? `x${pendingCount}`
+          : null;
 
   const showBars =
     state === "initializing" ||

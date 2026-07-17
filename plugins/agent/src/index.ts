@@ -1,0 +1,98 @@
+import type { Plugin, PluginOptions, PluginStorage } from "freestyle-voice";
+import type { MiddlewareHandler } from "hono";
+
+const PLUGIN_NAME = "@freestyle-voice/plugin-agent";
+const STORAGE_KEY = "conversation";
+const DEFAULT_SYSTEM_PROMPT =
+  "You are a helpful voice assistant. Respond concisely.";
+
+interface ConversationEntry {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export default function agentPlugin(_options?: PluginOptions): Plugin {
+  let storage: PluginStorage | null = null;
+  let systemPrompt = DEFAULT_SYSTEM_PROMPT;
+  let conversation: ConversationEntry[] = [];
+
+  const handler: MiddlewareHandler = async (c, next) => {
+    const reqPath = c.req.path;
+
+    if (reqPath.endsWith("/agent/conversation")) {
+      if (c.req.method === "GET") {
+        return c.json({ conversation, systemPrompt });
+      }
+      if (c.req.method === "DELETE") {
+        conversation = [];
+        if (storage) await storage.set(STORAGE_KEY, conversation);
+        return c.json({ ok: true });
+      }
+    }
+
+    return next();
+  };
+
+  return {
+    name: PLUGIN_NAME,
+    middleware: [handler],
+
+    async setup(ctx) {
+      storage = ctx.storage;
+
+      const stored = await storage.get<ConversationEntry[]>(STORAGE_KEY);
+      if (Array.isArray(stored)) {
+        conversation = stored;
+      }
+
+      const customPrompt = await ctx.settings.getOwn("system_prompt");
+      if (typeof customPrompt === "string" && customPrompt.trim()) {
+        systemPrompt = customPrompt;
+      }
+
+      ctx.logger.info(`agent plugin ready on ${ctx.mode}`);
+    },
+
+    async afterTranscribe(input, output, api) {
+      const text = output.text.trim();
+      if (!text) return;
+
+      const appName = input.appContext?.appName?.toLowerCase() ?? "";
+      const isAgentTarget =
+        text.toLowerCase().startsWith("agent:") ||
+        text.toLowerCase().startsWith("agent,") ||
+        appName.includes("terminal") ||
+        appName.includes("code") ||
+        appName.includes("iterm") ||
+        appName.includes("warp");
+
+      if (!isAgentTarget) return;
+
+      const cleanText = text.replace(/^agent[,:]\s*/i, "");
+      conversation.push({ role: "user", content: cleanText });
+
+      if (api.llm) {
+        const prompt = conversation
+          .map((e) => `${e.role}: ${e.content}`)
+          .join("\n");
+
+        const result = await api.llm.generateText({
+          system: systemPrompt,
+          prompt,
+        });
+
+        conversation.push({ role: "assistant", content: result.text });
+      } else {
+        conversation.push({
+          role: "assistant",
+          content: "LLM not available. Configure a model in Settings > Models.",
+        });
+      }
+
+      if (storage) await storage.set(STORAGE_KEY, conversation);
+
+      output.text = cleanText;
+      api.control.consume("agent-plugin: intercepted for agent turn");
+    },
+  };
+}

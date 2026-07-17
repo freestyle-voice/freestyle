@@ -1,6 +1,7 @@
 import { createAppLogger } from "@freestyle-voice/utils";
 import { type BrowserWindow, ipcMain } from "electron";
 import type { HostActions } from "freestyle-voice";
+import { handlePillAction } from "./pill-panel.js";
 import {
   PluginViewManager,
   pluginBridgePreloadPath,
@@ -92,6 +93,7 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
       channel: C,
       payload: HostActions[C],
     ) => {
+      if (handlePillAction(channel, payload)) return;
       try {
         await currentDeps!.onAction(channel, payload);
       } catch (err) {

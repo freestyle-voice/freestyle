@@ -1,3 +1,5 @@
+import type { PillPanelBridge } from "./pill.js";
+
 /**
  * The bridge API injected into a plugin's UI page as `window.freestyle`. It is
  * the only privileged surface available to plugin web content: a proxied way
@@ -29,6 +31,12 @@ export interface FreestyleBridge {
     channel: C,
     payload: HostActions[C],
   ): Promise<void>;
+  /**
+   * Pill panel bridge surface. Only present when this page is hosted inside
+   * the pill window (i.e. the plugin declared a `contributes.pill` panel).
+   * `undefined` in hub-hosted plugin pages.
+   */
+  pill?: PillPanelBridge;
 }
 
 /** Actions a plugin page can ask the host to perform. */
@@ -39,6 +47,12 @@ export interface HostActions {
   toast: { message: string; variant?: "info" | "success" | "error" };
   /** Navigate the host to an app route (e.g. back to the Plugins hub). */
   navigate: { to: string };
+  /** Expand the pill panel (resize the pill window). */
+  "pill:expand": Record<string, never>;
+  /** Collapse the pill panel (shrink back to pill chrome). */
+  "pill:collapse": Record<string, never>;
+  /** Set a custom badge on the pill chrome. */
+  "pill:set-badge": { text: string | null };
 }
 
 declare global {

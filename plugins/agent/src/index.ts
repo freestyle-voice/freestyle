@@ -2,6 +2,7 @@ import type { Plugin, PluginOptions, PluginStorage } from "freestyle-voice";
 import { pluginSlug } from "freestyle-voice";
 import type { MiddlewareHandler } from "hono";
 import { runAgentTurn } from "./agent.js";
+import { buildAgentNameRegex, stripAgentName } from "./agent-name.js";
 import {
   type AgentConfig,
   type ConversationEntry,
@@ -10,7 +11,6 @@ import {
   normalizeConfig,
   saveConfig,
 } from "./config.js";
-import { buildWakeWordRegex, stripWakeWord } from "./wake-word.js";
 
 const PLUGIN_NAME = "@freestyle-voice/plugin-agent";
 const CONVERSATION_KEY = "conversation";
@@ -73,18 +73,18 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     // one hook that fires on every path — batch, local streaming, AND Freestyle
     // Cloud streaming with combined cleanup (where `afterTranscribe` is skipped
     // because there's no separable raw transcript). This is what lets the agent
-    // work for cloud users. The wake word survives cleanup since it leads the
+    // work for cloud users. The agent name survives cleanup since it leads the
     // utterance, and cleanup preserves leading content.
     async afterCleanup(_input, output, api) {
       const text = output.text.trim();
       if (!text) return;
 
-      // Only intercept dictation that opens with the configured wake word
-      // (default "hey freestyle"). Everything else is dictated normally.
-      const wake = buildWakeWordRegex(config.wakeWord);
-      if (!wake.test(text)) return;
+      // Only intercept dictation that opens with the agent's name (default
+      // "Freestyle"). Everything else is dictated normally.
+      const matcher = buildAgentNameRegex(config.agentName);
+      if (!matcher.test(text)) return;
 
-      const prompt = stripWakeWord(text, wake);
+      const prompt = stripAgentName(text, matcher);
       if (!prompt) return;
 
       conversation.push({ role: "user", content: prompt });

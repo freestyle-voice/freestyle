@@ -1,0 +1,340 @@
+:root {
+  /* Host injects the real Freestyle tokens; these are fallbacks. */
+  --background: #f4f0e4;
+  --foreground: #16140f;
+  --card: #fbf8ee;
+  --primary: #6b8f12;
+  --primary-foreground: #fbf8ee;
+  --muted-foreground: #7b7461;
+  --border: #d6cdb8;
+  --destructive: #dd6e4e;
+  --accent: #6b8f12;
+  --accent-foreground: #16140f;
+  --input: #ebe6d4;
+  --ring: #6b8f12;
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.page {
+  padding: 0 3rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+@media (max-width: 1080px) {
+  .page {
+    padding: 0 2rem 3rem;
+  }
+}
+
+@media (max-width: 820px) {
+  .page {
+    padding: 0 1rem 2rem;
+  }
+}
+
+/* ---- Header ---- */
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.page-title {
+  margin: 0;
+  font-family: "Instrument Serif", serif;
+  font-size: 48px;
+  font-weight: 400;
+  line-height: 0.95;
+  letter-spacing: -0.025em;
+}
+
+.title-accent {
+  font-style: italic;
+  color: var(--primary);
+}
+
+.page-lede {
+  margin: 0;
+  max-width: 46ch;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.muted {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+/* ---- Cards ---- */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 14px);
+  padding: 22px 24px;
+}
+
+.card.error {
+  border-color: var(--destructive);
+  color: var(--destructive);
+}
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted-foreground);
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.card-desc {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+}
+
+/* ---- Fields ---- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.field + .field {
+  margin-top: 16px;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.45;
+}
+
+.input,
+.textarea,
+.select {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  background: var(--input, color-mix(in srgb, currentColor 5%, transparent));
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 12px;
+}
+
+.textarea {
+  min-height: 88px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.textarea.mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  min-height: 64px;
+}
+
+.select {
+  cursor: pointer;
+}
+
+.input:focus,
+.textarea:focus,
+.select:focus {
+  outline: 2px solid var(--ring, var(--accent));
+  outline-offset: 1px;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.7;
+}
+
+/* ---- Buttons ---- */
+
+.btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.btn-ghost {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+
+.btn-ghost:hover {
+  color: var(--foreground);
+  border-color: var(--muted-foreground);
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: none;
+  font-weight: 500;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- List items (MCP servers / skills) ---- */
+
+.item {
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 16px;
+  background: color-mix(in srgb, var(--border) 8%, transparent);
+}
+
+.item + .item {
+  margin-top: 12px;
+}
+
+.item-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.item-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-empty {
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+  font-style: italic;
+  padding: 4px 2px;
+}
+
+/* ---- Toggle ---- */
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle input {
+  accent-color: var(--primary);
+}
+
+/* ---- Icon button ---- */
+
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.icon-btn:hover {
+  color: var(--destructive);
+  border-color: color-mix(in srgb, var(--destructive) 40%, transparent);
+  background: color-mix(in srgb, var(--destructive) 6%, transparent);
+}
+
+/* ---- Conversation viewer ---- */
+
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.turn-role {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.turn-role.user {
+  color: var(--primary);
+}
+
+.turn-text {
+  font-size: 13.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

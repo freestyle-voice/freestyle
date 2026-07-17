@@ -4,23 +4,23 @@ Talk to an AI agent by voice and see its replies in a chat panel that grows out
 of the floating pill.
 
 This is a first-party Freestyle plugin and the reference implementation of the
-**pill panel** API. Say your wake word ("Hey Freestyle …") and, instead of
-pasting your dictation into the focused app, Freestyle runs an agent turn —
-optionally calling tools from your connected MCP servers — and shows the
-conversation in a panel attached to the pill.
+**pill panel** API. Say the agent's name ("Freestyle …") and, instead of pasting
+your dictation into the focused app, Freestyle runs an agent turn — optionally
+calling tools from your connected MCP servers — and shows the conversation in a
+panel attached to the pill.
 
 ## Usage
 
 1. Enable the plugin in **Settings → Plugins**.
-2. Say your wake word at the start of a dictation, e.g. _"Hey Freestyle, what's
-   on my calendar today?"_. The pill grows into a chat panel with your message
-   and the agent's reply.
+2. Say the agent's name at the start of a dictation, e.g. _"Freestyle, what's on
+   my calendar today?"_. The pill grows into a chat panel with your message and
+   the agent's reply.
 3. Press the dictation hotkey again to ask a follow-up — the conversation keeps
    its context.
-4. Close the panel with the **✕** button, or just click outside it.
+4. Close the panel by clicking outside it.
 
-The wake word is matched however speech-to-text punctuates it ("Hey Freestyle,",
-"Hey Freestyle.", or a bare "Freestyle …"), and a leading "hey"/"ok" is always
+The name is matched however speech-to-text punctuates it ("Freestyle,",
+"Freestyle.", or a bare "Freestyle …"), and a leading "hey"/"ok" is always
 optional.
 
 ## Configuration
@@ -28,7 +28,8 @@ optional.
 Open **Voice Agent** in the app sidebar (added when the plugin is enabled) to
 configure:
 
-- **Wake word** — the trigger phrase (default "hey freestyle").
+- **Agent name** — what you say to summon it (default "Freestyle"). It's also
+  woven into the system prompt so the model knows what it's called.
 - **System prompt** — the agent's persona and base instructions.
 - **MCP servers** — connect [Model Context Protocol](https://modelcontextprotocol.io)
   servers over `stdio` (a local command) or `http` (a URL). Every enabled
@@ -36,12 +37,16 @@ configure:
 - **Skills** — named, reusable instruction sets. Enabled skills are appended to
   the system prompt so the agent applies them on every turn.
 
+Settings save automatically as you edit. The page also shows the running
+**conversation**, which you can read or clear.
+
 ## How it works
 
 The plugin combines a server hook with two UI pages:
 
-1. **Interception** — an `afterTranscribe` hook matches the wake word, strips it,
+1. **Interception** — an `afterCleanup` hook matches the agent's name, strips it,
    and calls `api.control.consume()` so nothing is pasted into your focused app.
+   (`afterCleanup` fires on every path, including Freestyle Cloud streaming.)
 2. **Agent turn** — it connects the enabled MCP servers, hands their tools to the
    model (via the SDK's [`api.llm`](https://freestylevoice.com/sdk-reference#pluginllm)
    capability), and runs a tool-calling loop with the AI SDK. Connections are

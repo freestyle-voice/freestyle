@@ -20,7 +20,7 @@ export interface Skill {
 
 export interface AgentConfig {
   systemPrompt: string;
-  wakeWord: string;
+  agentName: string;
   mcpServers: McpServerConfig[];
   skills: Skill[];
 }

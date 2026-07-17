@@ -1,0 +1,235 @@
+:root {
+  /* Host injects the real Freestyle tokens; these are dark-theme fallbacks. */
+  --background: #16140f;
+  --foreground: #ece7d6;
+  --card: #1e1c16;
+  --primary: #8ab62a;
+  --primary-foreground: #16140f;
+  --muted-foreground: #9e977f;
+  --secondary: #2a2720;
+  --border: #3a362d;
+  --accent-foreground: #e8efc9;
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  /* The pill window is transparent; the rounded panel paints its own bg. */
+  background: transparent;
+}
+
+body {
+  font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---- Panel shell ---- */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.45);
+}
+
+/* ---- Status line (no name, no icon, no buttons) ---- */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 11px 16px;
+  flex-shrink: 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.pulse {
+  animation: agent-pulse 1.4s ease-in-out infinite;
+}
+
+/* ---- Messages: flat, stacked, no bubbles ---- */
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  animation: agent-rise 200ms ease;
+}
+
+.turn-role {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.turn-role.user {
+  color: var(--primary);
+}
+
+.turn-text {
+  font-size: 13.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--foreground);
+}
+
+.turn.user .turn-text {
+  color: color-mix(in srgb, var(--foreground) 78%, var(--muted-foreground));
+}
+
+/* ---- Empty state ---- */
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 28px;
+  text-align: center;
+}
+
+.empty-title {
+  font-family: "Instrument Serif", serif;
+  font-size: 26px;
+  font-style: italic;
+  color: var(--primary);
+  line-height: 1;
+}
+
+.empty-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+/* ---- Typing ---- */
+
+.typing {
+  display: inline-flex;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.typing span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+  animation: agent-typing 1.2s ease-in-out infinite;
+}
+.typing span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.typing span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+/* ---- Footer hint ---- */
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  font-size: 11px;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+
+.kbd {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+@keyframes agent-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+@keyframes agent-typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+@keyframes agent-rise {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -3,12 +3,12 @@ title: "Voice Agent"
 description: "Talk to an AI agent by voice and read its replies in a chat panel that grows out of the pill — a worked example of the pill panel API."
 ---
 
-The Voice Agent plugin lets you talk to an AI assistant by voice. Say your wake
-word and, instead of typing your dictation, Freestyle runs an agent turn —
-optionally calling tools from your connected MCP servers — and shows the
+The Voice Agent plugin lets you talk to an AI assistant by voice. Say the
+agent's name and, instead of typing your dictation, Freestyle runs an agent
+turn — optionally calling tools from your connected MCP servers — and shows the
 conversation in a panel that grows out of the floating pill.
 
-> "Hey Freestyle, what's on my calendar today?" → the agent replies in the pill
+> "Freestyle, what's on my calendar today?" → the agent replies in the pill
 > panel, calling your calendar MCP server's tools if one is connected.
 
 It's also the reference implementation of the **pill panel** extension point:
@@ -27,22 +27,22 @@ Or install from **Settings → Plugins** inside the app.
 ## How to use it
 
 1. Enable the plugin in **Settings → Plugins**.
-2. Say your wake word at the start of a dictation, e.g. _"Hey Freestyle, what's
-   the capital of France?"_. The wake word is matched however speech-to-text
-   punctuates it — "Hey Freestyle,", "Hey Freestyle.", or a bare "Freestyle …"
-   all work — and it's stripped before the prompt is sent. Everything without the
-   wake word is dictated into your focused app as normal.
+2. Say the agent's name at the start of a dictation, e.g. _"Freestyle, what's
+   the capital of France?"_. The name is matched however speech-to-text
+   punctuates it — "Freestyle,", "Freestyle.", or a bare "Freestyle …" all
+   work — and it's stripped before the prompt is sent. Everything without the
+   name is dictated into your focused app as normal.
 3. The pill grows into a chat panel with your message and the agent's reply. Keep
    talking to continue the thread — press the dictation hotkey again to reply.
-4. Close the panel with the **✕** button, or click outside it.
+4. Close the panel by clicking outside it.
 
 ## Configuration
 
 Open **Voice Agent** in the app sidebar (added when the plugin is enabled) to
 configure:
 
-- **Wake word** — the trigger phrase (default "hey freestyle"). A leading
-  "hey"/"ok" is always optional.
+- **Agent name** — what you say to summon it (default "Freestyle"). A leading
+  "hey"/"ok" is always optional, and the name is woven into the system prompt.
 - **System prompt** — the agent's persona and base instructions.
 - **MCP servers** — connect [Model Context Protocol](https://modelcontextprotocol.io)
   servers over `stdio` (a local command) or `http` (a URL) to give the agent
@@ -50,11 +50,13 @@ configure:
 - **Skills** — named, reusable instruction sets. Enabled skills are appended to
   the system prompt so the agent applies them on every turn.
 
+Settings save automatically, and the page shows the running conversation.
+
 ## How it works
 
 The plugin combines a server hook with two UI pages:
 
-1. **Interception** — an `afterTranscribe` hook matches the wake word, strips it,
+1. **Interception** — an `afterCleanup` hook matches the agent's name, strips it,
    and calls `api.control.consume()` so the rest of the pipeline is skipped and
    nothing is pasted into your focused app.
 2. **Agent turn** — it connects the enabled MCP servers, hands their tools to the

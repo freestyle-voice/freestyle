@@ -3,30 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' http://127.0.0.1:*; script-src 'self'"
+    />
     <title>Voice Agent</title>
-    <style>
-      * { box-sizing: border-box; }
-      html, body, #root {
-        margin: 0;
-        height: 100%;
-        /* The pill window is transparent; the rounded panel paints its own bg. */
-        background: transparent;
-      }
-      body {
-        -webkit-font-smoothing: antialiased;
-        text-rendering: optimizeLegibility;
-      }
-      /* Slim, theme-aware scrollbar for the message list. */
-      ::-webkit-scrollbar { width: 8px; }
-      ::-webkit-scrollbar-thumb {
-        background: var(--border, #3A362D);
-        border-radius: 999px;
-        border: 2px solid transparent;
-        background-clip: content-box;
-      }
-      ::-webkit-scrollbar-track { background: transparent; }
-      button { font-family: inherit; }
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300..700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div id="root"></div>

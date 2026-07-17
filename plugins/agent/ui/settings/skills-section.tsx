@@ -1,21 +1,4 @@
 import type { Skill } from "../shared/types";
-import {
-  cardHeadStyle,
-  cardStyle,
-  emptyRowStyle,
-  ghostBtnStyle,
-  iconGhostBtnStyle,
-  inputStyle,
-  labelStyle,
-  sectionDescStyle,
-  sectionHeadStyle,
-  sectionIconStyle,
-  sectionStyle,
-  sectionTitleRowStyle,
-  sectionTitleStyle,
-  textareaStyle,
-  toggleWrapStyle,
-} from "./styles";
 
 function uid(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
@@ -37,38 +20,35 @@ export function SkillsSection(props: {
     ]);
 
   return (
-    <section style={sectionStyle}>
-      <div style={sectionHeadStyle}>
-        <div style={sectionTitleRowStyle}>
-          <span style={sectionIconStyle} aria-hidden>
-            ✦
-          </span>
-          <h2 style={sectionTitleStyle}>Skills</h2>
+    <section className="card">
+      <div className="card-head">
+        <div>
+          <div className="eyebrow">Behavior</div>
+          <h2>Skills</h2>
+          <p className="card-desc">
+            Reusable instruction sets, appended to the prompt when enabled.
+          </p>
         </div>
-        <button type="button" style={ghostBtnStyle} onClick={add}>
-          <span aria-hidden>＋</span> Add skill
+        <button type="button" className="btn btn-ghost" onClick={add}>
+          + Add skill
         </button>
       </div>
-      <p style={sectionDescStyle}>
-        Reusable instruction sets. Enabled skills are appended to the system
-        prompt so the agent applies them on every turn.
-      </p>
 
       {skills.length === 0 && (
-        <div style={emptyRowStyle}>No skills defined yet.</div>
+        <p className="item-empty">No skills defined yet.</p>
       )}
 
       {skills.map((s) => (
-        <div key={s.id} style={cardStyle}>
-          <div style={cardHeadStyle}>
+        <div key={s.id} className="item">
+          <div className="item-head">
             <input
-              style={{ ...inputStyle, flex: 1 }}
+              className="input item-name"
               value={s.name}
               onChange={(e) => update(s.id, { name: e.target.value })}
               placeholder="Skill name"
               aria-label="Skill name"
             />
-            <label style={toggleWrapStyle}>
+            <label className="toggle">
               <input
                 type="checkbox"
                 checked={s.enabled}
@@ -78,7 +58,7 @@ export function SkillsSection(props: {
             </label>
             <button
               type="button"
-              style={iconGhostBtnStyle}
+              className="icon-btn"
               onClick={() => onChange(skills.filter((x) => x.id !== s.id))}
               title="Remove skill"
               aria-label="Remove skill"
@@ -86,13 +66,15 @@ export function SkillsSection(props: {
               ✕
             </button>
           </div>
-          <label style={labelStyle}>Instructions</label>
-          <textarea
-            style={textareaStyle}
-            value={s.instructions}
-            onChange={(e) => update(s.id, { instructions: e.target.value })}
-            placeholder="e.g. When asked to summarize, reply in three bullet points."
-          />
+          <div className="field">
+            <span className="label">Instructions</span>
+            <textarea
+              className="textarea"
+              value={s.instructions}
+              onChange={(e) => update(s.id, { instructions: e.target.value })}
+              placeholder="e.g. When asked to summarize, reply in three bullet points."
+            />
+          </div>
         </div>
       ))}
     </section>

@@ -34,22 +34,27 @@ export interface Skill {
 
 export interface AgentConfig {
   systemPrompt: string;
-  /** Trigger phrase, e.g. "hey freestyle". Matched case-insensitively. */
-  wakeWord: string;
+  /**
+   * The agent's name. Doubles as the spoken summon word — saying it at the
+   * start of a dictation (e.g. "Freestyle, …" or "Hey Freestyle …") routes the
+   * utterance to the agent — and is woven into the system prompt so the model
+   * knows what it's called. Matched case-insensitively.
+   */
+  agentName: string;
   mcpServers: McpServerConfig[];
   skills: Skill[];
 }
 
 export const DEFAULT_SYSTEM_PROMPT =
-  "You are Freestyle, a helpful voice assistant. Keep replies concise and " +
-  "conversational since they're read aloud in a small panel. Use the tools " +
-  "available to you when they help answer the request.";
+  "You are a helpful voice assistant. Keep replies concise and conversational " +
+  "since they're read aloud in a small panel. Use the tools available to you " +
+  "when they help answer the request.";
 
-export const DEFAULT_WAKE_WORD = "hey freestyle";
+export const DEFAULT_AGENT_NAME = "Freestyle";
 
 export const DEFAULT_CONFIG: AgentConfig = {
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
-  wakeWord: DEFAULT_WAKE_WORD,
+  agentName: DEFAULT_AGENT_NAME,
   mcpServers: [],
   skills: [],
 };
@@ -69,10 +74,10 @@ export function normalizeConfig(raw: unknown): AgentConfig {
       ? raw.systemPrompt
       : DEFAULT_SYSTEM_PROMPT;
 
-  const wakeWord =
-    typeof raw.wakeWord === "string" && raw.wakeWord.trim()
-      ? raw.wakeWord.trim()
-      : DEFAULT_WAKE_WORD;
+  const agentName =
+    typeof raw.agentName === "string" && raw.agentName.trim()
+      ? raw.agentName.trim()
+      : DEFAULT_AGENT_NAME;
 
   const mcpServers = Array.isArray(raw.mcpServers)
     ? raw.mcpServers.filter(isRecord).map(normalizeMcpServer)
@@ -82,7 +87,7 @@ export function normalizeConfig(raw: unknown): AgentConfig {
     ? raw.skills.filter(isRecord).map(normalizeSkill)
     : [];
 
-  return { systemPrompt, wakeWord, mcpServers, skills };
+  return { systemPrompt, agentName, mcpServers, skills };
 }
 
 function normalizeMcpServer(raw: Record<string, unknown>): McpServerConfig {
@@ -127,15 +132,24 @@ export async function saveConfig(
   await storage.set(CONFIG_KEY, config);
 }
 
-/** Build the full system prompt from the base prompt + enabled skills. */
+/**
+ * Build the full system prompt: the agent's name, the base persona prompt, and
+ * any enabled skills. The name is prepended so the model consistently refers to
+ * itself the way the user summons it.
+ */
 export function buildSystemPrompt(config: AgentConfig): string {
+  const name = config.agentName.trim() || DEFAULT_AGENT_NAME;
+  const parts = [`Your name is ${name}.`, config.systemPrompt];
+
   const enabledSkills = config.skills.filter(
     (s) => s.enabled && s.instructions.trim(),
   );
-  if (enabledSkills.length === 0) return config.systemPrompt;
+  if (enabledSkills.length > 0) {
+    const skillBlocks = enabledSkills
+      .map((s) => `## Skill: ${s.name}\n${s.instructions.trim()}`)
+      .join("\n\n");
+    parts.push(`# Skills\n${skillBlocks}`);
+  }
 
-  const skillBlocks = enabledSkills
-    .map((s) => `## Skill: ${s.name}\n${s.instructions.trim()}`)
-    .join("\n\n");
-  return `${config.systemPrompt}\n\n# Skills\n${skillBlocks}`;
+  return parts.join("\n\n");
 }

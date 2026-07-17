@@ -1,24 +1,4 @@
 import type { McpServerConfig } from "../shared/types";
-import {
-  cardHeadStyle,
-  cardStyle,
-  emptyRowStyle,
-  fieldStackStyle,
-  ghostBtnStyle,
-  hintTextStyle,
-  iconGhostBtnStyle,
-  inputStyle,
-  labelStyle,
-  monoTextareaStyle,
-  sectionDescStyle,
-  sectionHeadStyle,
-  sectionIconStyle,
-  sectionStyle,
-  sectionTitleRowStyle,
-  sectionTitleStyle,
-  selectStyle,
-  toggleWrapStyle,
-} from "./styles";
 
 function uid(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
@@ -47,38 +27,35 @@ export function McpSection(props: {
     ]);
 
   return (
-    <section style={sectionStyle}>
-      <div style={sectionHeadStyle}>
-        <div style={sectionTitleRowStyle}>
-          <span style={sectionIconStyle} aria-hidden>
-            ⚙
-          </span>
-          <h2 style={sectionTitleStyle}>MCP servers</h2>
+    <section className="card">
+      <div className="card-head">
+        <div>
+          <div className="eyebrow">Tools</div>
+          <h2>MCP servers</h2>
+          <p className="card-desc">
+            Connect Model Context Protocol servers to give the agent tools.
+          </p>
         </div>
-        <button type="button" style={ghostBtnStyle} onClick={add}>
-          <span aria-hidden>＋</span> Add server
+        <button type="button" className="btn btn-ghost" onClick={add}>
+          + Add server
         </button>
       </div>
-      <p style={sectionDescStyle}>
-        Connect Model Context Protocol servers to give the agent tools. Each
-        enabled server's tools are available during a turn.
-      </p>
 
       {servers.length === 0 && (
-        <div style={emptyRowStyle}>No servers connected yet.</div>
+        <p className="item-empty">No servers connected yet.</p>
       )}
 
       {servers.map((s) => (
-        <div key={s.id} style={cardStyle}>
-          <div style={cardHeadStyle}>
+        <div key={s.id} className="item">
+          <div className="item-head">
             <input
-              style={{ ...inputStyle, flex: 1 }}
+              className="input item-name"
               value={s.name}
               onChange={(e) => update(s.id, { name: e.target.value })}
               placeholder="Server name"
               aria-label="Server name"
             />
-            <label style={toggleWrapStyle}>
+            <label className="toggle">
               <input
                 type="checkbox"
                 checked={s.enabled}
@@ -88,7 +65,7 @@ export function McpSection(props: {
             </label>
             <button
               type="button"
-              style={iconGhostBtnStyle}
+              className="icon-btn"
               onClick={() => onChange(servers.filter((x) => x.id !== s.id))}
               title="Remove server"
               aria-label="Remove server"
@@ -97,66 +74,62 @@ export function McpSection(props: {
             </button>
           </div>
 
-          <div style={fieldStackStyle}>
-            <div>
-              <label style={labelStyle}>Transport</label>
-              <select
-                style={selectStyle}
-                value={s.transport}
-                onChange={(e) =>
-                  update(s.id, {
-                    transport: e.target.value as "stdio" | "http",
-                  })
-                }
-              >
-                <option value="stdio">stdio · local command</option>
-                <option value="http">http · remote URL</option>
-              </select>
-            </div>
+          <div className="field">
+            <span className="label">Transport</span>
+            <select
+              className="select"
+              value={s.transport}
+              onChange={(e) =>
+                update(s.id, { transport: e.target.value as "stdio" | "http" })
+              }
+            >
+              <option value="stdio">stdio · local command</option>
+              <option value="http">http · remote URL</option>
+            </select>
+          </div>
 
-            {s.transport === "stdio" ? (
-              <>
-                <div>
-                  <label style={labelStyle}>Command</label>
-                  <input
-                    style={inputStyle}
-                    value={s.command ?? ""}
-                    onChange={(e) => update(s.id, { command: e.target.value })}
-                    placeholder="npx"
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>Arguments</label>
-                  <textarea
-                    style={monoTextareaStyle}
-                    value={(s.args ?? []).join("\n")}
-                    onChange={(e) =>
-                      update(s.id, {
-                        args: e.target.value
-                          .split("\n")
-                          .map((a) => a.trim())
-                          .filter(Boolean),
-                      })
-                    }
-                    placeholder={
-                      "-y\n@modelcontextprotocol/server-filesystem\n/path"
-                    }
-                  />
-                  <p style={hintTextStyle}>One argument per line.</p>
-                </div>
-              </>
-            ) : (
-              <div>
-                <label style={labelStyle}>URL</label>
+          {s.transport === "stdio" ? (
+            <>
+              <div className="field">
+                <span className="label">Command</span>
                 <input
-                  style={inputStyle}
-                  value={s.url ?? ""}
-                  onChange={(e) => update(s.id, { url: e.target.value })}
-                  placeholder="https://example.com/mcp"
+                  className="input"
+                  value={s.command ?? ""}
+                  onChange={(e) => update(s.id, { command: e.target.value })}
+                  placeholder="npx"
                 />
               </div>
-            )}
-          </div>
+              <div className="field">
+                <span className="label">Arguments</span>
+                <textarea
+                  className="textarea mono"
+                  value={(s.args ?? []).join("\n")}
+                  onChange={(e) =>
+                    update(s.id, {
+                      args: e.target.value
+                        .split("\n")
+                        .map((a) => a.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                  placeholder={
+                    "-y\n@modelcontextprotocol/server-filesystem\n/path"
+                  }
+                />
+                <span className="hint">One argument per line.</span>
+              </div>
+            </>
+          ) : (
+            <div className="field">
+              <span className="label">URL</span>
+              <input
+                className="input"
+                value={s.url ?? ""}
+                onChange={(e) => update(s.id, { url: e.target.value })}
+                placeholder="https://example.com/mcp"
+              />
+            </div>
+          )}
         </div>
       ))}
     </section>

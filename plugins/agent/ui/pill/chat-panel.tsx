@@ -1,31 +1,7 @@
 import type { PillEvent, PillState } from "freestyle-voice";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { del, getJson } from "../shared/api";
+import { getJson } from "../shared/api";
 import type { ConversationEntry } from "../shared/types";
-import {
-  brandRowStyle,
-  bubbleStyle,
-  composerStyle,
-  emptyHintStyle,
-  emptyMarkStyle,
-  emptyTitleStyle,
-  emptyWrapStyle,
-  headerStyle,
-  iconBtnStyle,
-  KEYFRAMES,
-  kbdStyle,
-  markStyle,
-  messagesStyle,
-  panelStyle,
-  roleLabelStyle,
-  statusDotStyle,
-  statusPillStyle,
-  statusRowStyle,
-  titleStyle,
-  turnStyle,
-  typingDotStyle,
-  typingStyle,
-} from "./styles";
 
 interface StatusView {
   label: string;
@@ -100,96 +76,58 @@ export function ChatPanel(): React.JSX.Element {
     return unsub;
   }, [refresh]);
 
-  const clear = useCallback(async () => {
-    await del("/conversation");
-    setMessages([]);
-  }, []);
-
   const status = statusFor(pillState, thinking);
   const empty = messages.length === 0 && !thinking;
 
   return (
-    <div style={panelStyle}>
-      <style>{KEYFRAMES}</style>
-
-      <header style={headerStyle}>
-        <div style={brandRowStyle}>
-          <span style={markStyle} aria-hidden>
-            ✦
-          </span>
-          <span style={titleStyle}>Voice Agent</span>
-        </div>
-        <div style={statusRowStyle}>
-          <span style={statusPillStyle(status.color)}>
-            <span style={statusDotStyle(status.color, status.pulse)} />
-            {status.label}
-          </span>
-          <button
-            type="button"
-            onClick={clear}
-            style={iconBtnStyle}
-            title="Clear conversation"
-            aria-label="Clear conversation"
-          >
-            ⌫
-          </button>
-          <button
-            type="button"
-            onClick={() => window.freestyle?.pill?.collapse()}
-            style={iconBtnStyle}
-            title="Close"
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-      </header>
+    <div className="panel">
+      <div className="status">
+        <span
+          className={`status-dot${status.pulse ? " pulse" : ""}`}
+          style={{ background: status.color }}
+        />
+        {status.label}
+      </div>
 
       {empty ? (
-        <div style={emptyWrapStyle}>
-          <span style={emptyMarkStyle} aria-hidden>
-            ✦
-          </span>
-          <div style={emptyTitleStyle}>Ask me anything</div>
-          <div style={emptyHintStyle}>
-            Say <b>“Hey Freestyle …”</b> to start. Press your dictation key
-            again to continue the conversation.
+        <div className="empty">
+          <div className="empty-title">Ask me anything</div>
+          <div className="empty-hint">
+            Say the agent's name to start. Press your dictation key again to
+            keep the conversation going.
           </div>
         </div>
       ) : (
-        <div ref={scrollRef} style={messagesStyle}>
+        <div className="messages" ref={scrollRef}>
           {messages.map((msg, i) => (
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: append-only chat log
               key={i}
-              style={{
-                ...turnStyle(msg.role),
-                animation: "agent-rise 200ms ease",
-              }}
+              className={`turn ${msg.role}`}
             >
-              <span style={roleLabelStyle}>
+              <span className={`turn-role ${msg.role}`}>
                 {msg.role === "user" ? "You" : "Agent"}
               </span>
-              <div style={bubbleStyle(msg.role)}>{msg.content}</div>
+              <span className="turn-text">{msg.content}</span>
             </div>
           ))}
           {thinking && (
-            <div style={turnStyle("assistant")}>
-              <span style={roleLabelStyle}>Agent</span>
-              <div style={typingStyle}>
-                <span style={typingDotStyle(0)} />
-                <span style={typingDotStyle(1)} />
-                <span style={typingDotStyle(2)} />
-              </div>
+            <div className="turn assistant">
+              <span className="turn-role assistant">Agent</span>
+              <span className="typing">
+                <span />
+                <span />
+                <span />
+              </span>
             </div>
           )}
         </div>
       )}
 
-      <footer style={composerStyle}>
-        <span style={kbdStyle}>hold your key</span>
-        <span>to reply by voice</span>
-      </footer>
+      <div className="footer">
+        <span className="kbd">hold your key</span>
+        <span>to reply</span>
+      </div>
     </div>
   );
 }

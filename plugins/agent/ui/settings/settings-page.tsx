@@ -1,151 +1,124 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getJson, putJson } from "../shared/api";
 import type { AgentConfig } from "../shared/types";
+import { ConversationCard } from "./conversation-card";
 import { McpSection } from "./mcp-section";
 import { SkillsSection } from "./skills-section";
-import {
-  containerStyle,
-  h1Style,
-  heroMarkStyle,
-  heroStyle,
-  hintTextStyle,
-  inputStyle,
-  labelStyle,
-  pageStyle,
-  primaryBtnStyle,
-  saveBarStyle,
-  savedPillStyle,
-  sectionDescStyle,
-  sectionIconStyle,
-  sectionStyle,
-  sectionTitleRowStyle,
-  sectionTitleStyle,
-  subtitleStyle,
-  textareaStyle,
-} from "./styles";
 
 const EMPTY: AgentConfig = {
   systemPrompt: "",
-  wakeWord: "hey freestyle",
+  agentName: "Freestyle",
   mcpServers: [],
   skills: [],
 };
 
+/** Debounce delay for auto-save after the last edit. */
+const SAVE_DEBOUNCE_MS = 500;
+
 export function SettingsPage(): React.JSX.Element {
   const [config, setConfig] = useState<AgentConfig | null>(null);
-  const [saved, setSaved] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     void getJson<AgentConfig>("/config").then((c) => setConfig(c ?? EMPTY));
   }, []);
 
-  const save = useCallback(async (next: AgentConfig) => {
-    setConfig(next);
-    const result = await putJson<AgentConfig>("/config", next);
-    if (result) {
-      setConfig(result);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1600);
-    }
+  // Auto-save: persist edits after a short debounce so there's no Save button.
+  const persist = useCallback((next: AgentConfig) => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      void putJson<AgentConfig>("/config", next);
+    }, SAVE_DEBOUNCE_MS);
   }, []);
+
+  const update = useCallback(
+    (patch: Partial<AgentConfig>) => {
+      setConfig((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, ...patch };
+        persist(next);
+        return next;
+      });
+    },
+    [persist],
+  );
 
   if (!config) {
     return (
-      <div style={pageStyle}>
-        <div style={containerStyle}>Loading…</div>
-      </div>
+      <main className="page">
+        <p className="muted">Loading…</p>
+      </main>
     );
   }
 
   return (
-    <div style={pageStyle}>
-      <div style={containerStyle}>
-        <header style={heroStyle}>
-          <span style={heroMarkStyle} aria-hidden>
-            ✦
-          </span>
+    <main className="page">
+      <header className="head">
+        <h1 className="page-title">
+          <span className="title-accent">Voice Agent</span>
+        </h1>
+        <p className="page-lede">
+          Talk to an AI agent by voice. Say its name to open a chat panel on the
+          pill — give it tools with MCP servers and shape it with skills.
+        </p>
+      </header>
+
+      <section className="card">
+        <div className="card-head">
           <div>
-            <h1 style={h1Style}>Voice Agent</h1>
-            <p style={subtitleStyle}>
-              Talk to an AI agent by voice. Say your wake word to open a chat
-              panel on the pill — give it tools with MCP servers and shape it
-              with skills.
-            </p>
+            <div className="eyebrow">Identity</div>
+            <h2>Name</h2>
           </div>
-        </header>
-
-        <section style={sectionStyle}>
-          <div style={sectionTitleRowStyle}>
-            <span style={sectionIconStyle} aria-hidden>
-              ⌘
-            </span>
-            <h2 style={sectionTitleStyle}>Trigger</h2>
-          </div>
-          <p style={sectionDescStyle}>How you summon the agent.</p>
-          <label style={labelStyle} htmlFor="wake">
-            Wake word
-          </label>
-          <input
-            id="wake"
-            style={inputStyle}
-            value={config.wakeWord}
-            onChange={(e) => setConfig({ ...config, wakeWord: e.target.value })}
-            onBlur={() => save(config)}
-            placeholder="hey freestyle"
-          />
-          <p style={hintTextStyle}>
-            Dictation starting with this phrase goes to the agent instead of
-            being typed. A leading “hey” / “ok” is always optional.
-          </p>
-        </section>
-
-        <section style={sectionStyle}>
-          <div style={sectionTitleRowStyle}>
-            <span style={sectionIconStyle} aria-hidden>
-              ✎
-            </span>
-            <h2 style={sectionTitleStyle}>Persona</h2>
-          </div>
-          <p style={sectionDescStyle}>The agent's base instructions.</p>
-          <label style={labelStyle} htmlFor="prompt">
-            System prompt
-          </label>
-          <textarea
-            id="prompt"
-            style={textareaStyle}
-            value={config.systemPrompt}
-            onChange={(e) =>
-              setConfig({ ...config, systemPrompt: e.target.value })
-            }
-            onBlur={() => save(config)}
-          />
-        </section>
-
-        <McpSection
-          servers={config.mcpServers}
-          onChange={(mcpServers) => save({ ...config, mcpServers })}
-        />
-
-        <SkillsSection
-          skills={config.skills}
-          onChange={(skills) => save({ ...config, skills })}
-        />
-
-        <div style={saveBarStyle}>
-          {saved && (
-            <span style={savedPillStyle}>
-              <span aria-hidden>✓</span> Saved
-            </span>
-          )}
-          <button
-            type="button"
-            style={primaryBtnStyle}
-            onClick={() => save(config)}
-          >
-            Save changes
-          </button>
         </div>
-      </div>
-    </div>
+        <div className="field">
+          <span className="label">Agent name</span>
+          <input
+            className="input"
+            value={config.agentName}
+            onChange={(e) => update({ agentName: e.target.value })}
+            placeholder="Freestyle"
+          />
+          <span className="hint">
+            Say this at the start of a dictation — “
+            {config.agentName || "Freestyle"}, what's the weather?” — to talk to
+            the agent instead of typing. A leading “hey” / “ok” is always
+            optional, and the agent knows itself by this name.
+          </span>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card-head">
+          <div>
+            <div className="eyebrow">Persona</div>
+            <h2>Instructions</h2>
+          </div>
+        </div>
+        <div className="field">
+          <span className="label">System prompt</span>
+          <textarea
+            className="textarea"
+            value={config.systemPrompt}
+            onChange={(e) => update({ systemPrompt: e.target.value })}
+          />
+          <span className="hint">
+            The agent's base behavior. Enabled skills are appended
+            automatically.
+          </span>
+        </div>
+      </section>
+
+      <McpSection
+        servers={config.mcpServers}
+        onChange={(mcpServers) => update({ mcpServers })}
+      />
+
+      <SkillsSection
+        skills={config.skills}
+        onChange={(skills) => update({ skills })}
+      />
+
+      <ConversationCard />
+    </main>
   );
 }

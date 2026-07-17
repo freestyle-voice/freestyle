@@ -1242,24 +1242,26 @@ async function putServerSetting(key: string, value: string): Promise<boolean> {
 }
 
 /**
- * Read all server-owned settings in one request. Returns an empty map when the
- * server is unreachable.
+ * Read all server-owned settings in one request. Returns `null` when the server
+ * is unreachable — distinct from an empty map (server reachable, nothing
+ * stored) so callers don't mistake a network blip for "unset" and clobber
+ * last-known-good values (e.g. reverting the hotkey mode to its default).
  *
  * All server-owned state (settings, models, history, plugins) lives behind the
  * server — local or a configured remote — so the main process reads it through
  * the API rather than opening the SQLite file directly. This keeps a single
  * source of truth and makes a configured remote server behave identically.
  */
-async function getServerSettings(): Promise<Record<string, string>> {
+async function getServerSettings(): Promise<Record<string, string> | null> {
   try {
     const res = await serverClient().api.settings.$get(
       {},
       { init: { signal: AbortSignal.timeout(SERVER_SETTING_TIMEOUT_MS) } },
     );
-    if (!res.ok) return {};
+    if (!res.ok) return null;
     return (await res.json()) as Record<string, string>;
   } catch {
-    return {};
+    return null;
   }
 }
 
@@ -2367,8 +2369,10 @@ app.whenReady().then(async () => {
   // native-listener rebuild).
   scheduleHotkeyRegistration(DEFAULT_HOTKEY);
   void waitForServerReady().then(async () => {
-    // One request for both keys, instead of a read per key.
+    // One request for both keys, instead of a read per key. Skip if the server
+    // never answered — the default registered above stands.
     const settings = await getServerSettings();
+    if (!settings) return;
     hotkeyActivationMode = hotkeyModeFromSettings(settings);
     const configured = hotkeyFromSettings(settings);
     const accel = configured
@@ -2394,6 +2398,9 @@ app.whenReady().then(async () => {
 
   ipcMain.on("hotkey:reload", () => {
     void getServerSettings().then((settings) => {
+      // Server unreachable — keep last-known-good mode/hotkey rather than
+      // silently reverting to defaults on a transient blip.
+      if (!settings) return;
       hotkeyActivationMode = hotkeyModeFromSettings(settings);
       scheduleHotkeyRegistration(
         hotkeyFromSettings(settings) ?? currentHotkeyAccel ?? undefined,
@@ -2662,7 +2669,9 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     globalShortcut.unregisterAll();
 
     if (!hotkey) {
-      hotkey = hotkeyFromSettings(await getServerSettings());
+      // Unreachable server yields no map; registration falls back to the
+      // default accelerator below.
+      hotkey = hotkeyFromSettings((await getServerSettings()) ?? {});
     }
 
     const normalized =

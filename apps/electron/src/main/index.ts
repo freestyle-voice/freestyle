@@ -2436,7 +2436,6 @@ app.whenReady().then(async () => {
       if (!settings) return;
       scheduleHotkeyBindingsRegistration(
         loadHotkeyBindings(undefined, settings),
-        true,
       );
     });
   });

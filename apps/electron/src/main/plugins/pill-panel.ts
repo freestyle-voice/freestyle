@@ -168,6 +168,9 @@ export class PillPanelController {
     const view = this.ensureView();
     if (view) {
       const viewY = expandsDown ? PILL_CHROME_HEIGHT + PANEL_GAP : 0;
+      // Round the view's corners so they match the panel's CSS border-radius
+      // instead of showing a hard rectangular edge.
+      view.setBorderRadius(14);
       view.setBounds({
         x: 0,
         y: viewY,
@@ -282,9 +285,10 @@ export class PillPanelController {
         partition,
       },
     });
-    // Paint the panel's card colour immediately so there's no white flash on
-    // the transparent pill window before the plugin page's stylesheet loads.
-    view.setBackgroundColor("#1e1c16");
+    // Transparent background so the rounded corners (setBorderRadius) show
+    // through to the desktop, matching the panel's CSS border-radius.  The
+    // panel's own .panel div paints an opaque background, so there's no flash.
+    view.setBackgroundColor("#00000000");
     view.webContents.once("did-finish-load", () => {
       this.viewReady = true;
       for (const event of this.pendingEvents) {

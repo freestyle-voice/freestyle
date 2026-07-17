@@ -1,4 +1,9 @@
-import type { Plugin, PluginOptions, PluginStorage } from "freestyle-voice";
+import type {
+  Plugin,
+  PluginLlm,
+  PluginOptions,
+  PluginStorage,
+} from "freestyle-voice";
 import { pluginSlug } from "freestyle-voice";
 import type { MiddlewareHandler } from "hono";
 import { runAgentTurn } from "./agent.js";
@@ -42,6 +47,8 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
   let history: SavedConversation[] = [];
   let logger: (msg: string) => void = () => {};
   let conversationActive = false;
+  /** Cache the LLM from the last hook call so regenerate can reuse it. */
+  let lastLlm: PluginLlm | null = null;
   const baseSlug = pluginSlug(PLUGIN_NAME);
 
   function ownRoute(reqPath: string, route: string): boolean {
@@ -111,6 +118,37 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       return c.json({ ok: true });
     }
 
+    // Regenerate the last assistant reply (non-streaming).
+    if (ownRoute(reqPath, "/agent/regenerate") && c.req.method === "POST") {
+      if (!lastLlm) {
+        return c.json({ error: "No model available" }, 503);
+      }
+      // Remove the last assistant message if present.
+      if (
+        conversation.length > 0 &&
+        conversation[conversation.length - 1].role === "assistant"
+      ) {
+        conversation.pop();
+      }
+      if (conversation.length === 0) {
+        return c.json({ error: "Nothing to regenerate" }, 400);
+      }
+      try {
+        const reply = await runAgentTurn({
+          llm: lastLlm,
+          config,
+          history: conversation,
+          log: logger,
+        });
+        conversation.push({ role: "assistant", content: reply });
+        if (storage) await storage.set(CONVERSATION_KEY, conversation);
+        return c.json({ reply });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return c.json({ error: msg }, 500);
+      }
+    }
+
     if (ownRoute(reqPath, "/agent/session/end") && c.req.method === "POST") {
       // Archive the conversation that just ended before resetting.
       await archiveCurrentConversation();
@@ -139,6 +177,9 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     },
 
     async afterCleanup(_input, output, api) {
+      // Cache the LLM so regenerate (called outside hook context) can use it.
+      if (api.llm) lastLlm = api.llm;
+
       const text = output.text.trim();
       if (!text) return;
 

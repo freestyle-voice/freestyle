@@ -55,6 +55,15 @@ export async function putJson<T>(
   }
 }
 
+export async function postJson<T>(path: string): Promise<T | null> {
+  try {
+    const res = await call(path, { method: "POST" });
+    return res.ok ? res.json<T>() : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function del(path: string): Promise<void> {
   try {
     await call(path, { method: "DELETE" });

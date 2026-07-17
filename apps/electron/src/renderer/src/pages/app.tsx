@@ -242,6 +242,9 @@ export default function AppPage(): React.JSX.Element {
   // The pill window stays visible so the user can read/continue the exchange;
   // a hotkey press records a follow-up rather than hiding the pill.
   const panelOpenRef = useRef(false);
+  // State mirror of panelOpenRef — drives the render (e.g. disabling the
+  // full-window drag region when the panel is expanded).
+  const [panelOpen, setPanelOpen] = useState(false);
   const panelPluginSlugRef = useRef<string | null>(null);
   // Tracks the in-flight prepareSystemAudio() (ducking) call. Ducking runs
   // concurrently with mic acquisition, so every restore must wait for this
@@ -329,6 +332,7 @@ export default function AppPage(): React.JSX.Element {
         window.api?.sendTranscriptToPanel?.(text);
         window.api?.expandPillPanel?.(pillSideRef.current);
         panelOpenRef.current = true;
+        setPanelOpen(true);
       }
 
       if (
@@ -621,6 +625,7 @@ export default function AppPage(): React.JSX.Element {
           // panel. On streamStart, expand the panel so it appears immediately.
           if (event.type === "streamStart") {
             panelOpenRef.current = true;
+            setPanelOpen(true);
             window.api?.expandPillPanel?.(pillSideRef.current);
           }
           window.api?.sendStreamEventToPanel?.(event);
@@ -849,6 +854,7 @@ export default function AppPage(): React.JSX.Element {
     setPendingCount(0);
     setPluginBadge(null);
     panelOpenRef.current = false;
+    setPanelOpen(false);
     wantsMicRef.current = false;
     pillActiveRef.current = false;
     queueRef.current = [];
@@ -1401,6 +1407,7 @@ export default function AppPage(): React.JSX.Element {
     // conversation.
     const removeCollapsed = window.api?.onPillPanelCollapsed?.(() => {
       panelOpenRef.current = false;
+      setPanelOpen(false);
       if (panelPluginSlugRef.current) {
         void apiFetch(
           `/api/plugins/${panelPluginSlugRef.current}/agent/session/end`,
@@ -1573,7 +1580,18 @@ export default function AppPage(): React.JSX.Element {
       className={`flex h-screen w-screen select-none ${
         pillAlign === "start" ? "items-start" : "items-end"
       } ${pillSide === "right" ? "justify-end pr-3" : "justify-center"}`}
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      style={
+        {
+          // Only enable drag on the full window when the pill panel is NOT
+          // expanded.  When expanded, the pill renderer's webContents fills
+          // the entire enlarged BrowserWindow — a full-window drag region
+          // would sit under the panel WebContentsView and intercept mouse
+          // events (scroll, click, text selection) before they reach the
+          // panel.  The pill bar itself always has its own drag region via
+          // pillInnerStyle, so dragging still works when collapsed.
+          WebkitAppRegion: panelOpen ? "no-drag" : "drag",
+        } as React.CSSProperties
+      }
     >
       <style>
         {`

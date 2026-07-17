@@ -2,36 +2,10 @@ import type { PillEvent, PillState } from "freestyle-voice";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { getJson } from "../shared/api";
+import { getJson, postJson } from "../shared/api";
 import type { ConversationEntry } from "../shared/types";
 
-interface StatusView {
-  label: string;
-  color: string;
-  pulse: boolean;
-}
-
-function statusFor(state: PillState, streaming: boolean): StatusView {
-  if (state === "recording") {
-    return {
-      label: "Listening",
-      color: "var(--primary, #8AB62A)",
-      pulse: true,
-    };
-  }
-  if (streaming || state === "transcribing") {
-    return {
-      label: "Thinking",
-      color: "var(--accent-foreground, #E8EFC9)",
-      pulse: true,
-    };
-  }
-  return {
-    label: "Ready",
-    color: "var(--muted-foreground, #9E977F)",
-    pulse: false,
-  };
-}
+/* ---- Icons ---- */
 
 function CloseIcon(): React.JSX.Element {
   return (
@@ -78,7 +52,65 @@ function CheckIcon(): React.JSX.Element {
   );
 }
 
-function CopyButton({ text }: { text: string }): React.JSX.Element {
+function RegenerateIcon(): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M1.5 7a5.5 5.5 0 0 1 9.9-3.3M12.5 7a5.5 5.5 0 0 1-9.9 3.3" />
+      <path d="M11.5 1.5v2.5H9M2.5 12.5V10H5" />
+    </svg>
+  );
+}
+
+/* ---- Status ---- */
+
+interface StatusView {
+  label: string;
+  color: string;
+  pulse: boolean;
+}
+
+function statusFor(state: PillState, streaming: boolean): StatusView {
+  if (state === "recording") {
+    return {
+      label: "Listening",
+      color: "var(--primary, #8AB62A)",
+      pulse: true,
+    };
+  }
+  if (streaming || state === "transcribing") {
+    return {
+      label: "Thinking",
+      color: "var(--accent-foreground, #E8EFC9)",
+      pulse: true,
+    };
+  }
+  return {
+    label: "Ready",
+    color: "var(--muted-foreground, #9E977F)",
+    pulse: false,
+  };
+}
+
+/* ---- Action buttons below assistant messages ---- */
+
+function MessageActions({
+  text,
+  isLast,
+  onRegenerate,
+  regenerating,
+}: {
+  text: string;
+  isLast: boolean;
+  onRegenerate: () => void;
+  regenerating: boolean;
+}): React.JSX.Element {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
@@ -88,22 +120,39 @@ function CopyButton({ text }: { text: string }): React.JSX.Element {
   }, [text]);
 
   return (
-    <button
-      type="button"
-      className="copy-btn"
-      onClick={handleCopy}
-      aria-label={copied ? "Copied" : "Copy message"}
-      title={copied ? "Copied" : "Copy"}
-    >
-      {copied ? <CheckIcon /> : <CopyIcon />}
-    </button>
+    <div className="msg-actions">
+      <button
+        type="button"
+        className="action-btn"
+        onClick={handleCopy}
+        title={copied ? "Copied" : "Copy"}
+      >
+        {copied ? <CheckIcon /> : <CopyIcon />}
+        <span>{copied ? "Copied" : "Copy"}</span>
+      </button>
+      {isLast && (
+        <button
+          type="button"
+          className="action-btn"
+          onClick={onRegenerate}
+          disabled={regenerating}
+          title="Regenerate"
+        >
+          <RegenerateIcon />
+          <span>{regenerating ? "Regenerating..." : "Regenerate"}</span>
+        </button>
+      )}
+    </div>
   );
 }
+
+/* ---- Main component ---- */
 
 export function ChatPanel(): React.JSX.Element {
   const [messages, setMessages] = useState<ConversationEntry[]>([]);
   const [pillState, setPillState] = useState<PillState>("idle");
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   const scrollToEnd = useCallback(() => {
@@ -163,9 +212,25 @@ export function ChatPanel(): React.JSX.Element {
     window.freestyle?.pill?.collapse();
   }, []);
 
+  const handleRegenerate = useCallback(async () => {
+    setRegenerating(true);
+    const result = await postJson<{ reply: string }>("/regenerate");
+    setRegenerating(false);
+    if (result) void refresh();
+  }, [refresh]);
+
   const streaming = streamingText !== null;
   const status = statusFor(pillState, streaming);
   const empty = messages.length === 0 && !streaming;
+
+  // Find the index of the last assistant message for showing the regenerate button.
+  let lastAssistantIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "assistant") {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
 
   return (
     <div className="panel">
@@ -203,15 +268,20 @@ export function ChatPanel(): React.JSX.Element {
               key={i}
               className={`turn ${msg.role}`}
             >
-              <div className="turn-header">
-                <span className={`turn-role ${msg.role}`}>
-                  {msg.role === "user" ? "You" : "Agent"}
-                </span>
-                <CopyButton text={msg.content} />
-              </div>
+              <span className={`turn-role ${msg.role}`}>
+                {msg.role === "user" ? "You" : "Agent"}
+              </span>
               <div className="turn-text markdown">
                 <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
               </div>
+              {msg.role === "assistant" && (
+                <MessageActions
+                  text={msg.content}
+                  isLast={i === lastAssistantIdx && !streaming}
+                  onRegenerate={handleRegenerate}
+                  regenerating={regenerating}
+                />
+              )}
             </div>
           ))}
           {streaming && (

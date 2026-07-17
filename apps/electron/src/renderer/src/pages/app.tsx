@@ -292,6 +292,12 @@ export default function AppPage(): React.JSX.Element {
 
       const nonEmpty = results.filter(isDeliverable);
       if (nonEmpty.length === 0) {
+        // A plugin consumed the dictation (e.g. an agent turn) — the panel
+        // is now open. Keep the pill visible so the user can see the panel;
+        // don't fall through to the error/hide path below.
+        if (suppressed.length > 0) {
+          return;
+        }
         if (results.some((r) => r.cloudAuthRequired)) {
           hidePill();
           void window.api.cloudPromptSignIn();
@@ -775,6 +781,7 @@ export default function AppPage(): React.JSX.Element {
   const hidePill = useCallback(() => {
     setPillState("idle");
     setPendingCount(0);
+    setPluginBadge(null);
     wantsMicRef.current = false;
     pillActiveRef.current = false;
     queueRef.current = [];

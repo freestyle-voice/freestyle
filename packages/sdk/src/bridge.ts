@@ -32,9 +32,11 @@ export interface FreestyleBridge {
     payload: HostActions[C],
   ): Promise<void>;
   /**
-   * Pill panel bridge surface. Only present when this page is hosted inside
-   * the pill window (i.e. the plugin declared a `contributes.pill` panel).
-   * `undefined` in hub-hosted plugin pages.
+   * Pill panel bridge surface. Available on all plugin pages but only
+   * functional when the page is hosted inside the pill window (i.e. the
+   * plugin declared a `contributes.pill` panel). In hub-hosted pages, calls
+   * are safe no-ops (expand/collapse return immediately, getState returns
+   * "idle", subscribe never fires).
    */
   pill?: PillPanelBridge;
 }

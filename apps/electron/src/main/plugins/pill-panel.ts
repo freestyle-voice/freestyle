@@ -202,6 +202,10 @@ export class PillPanelController {
       },
     });
 
+    // Paint a dark background immediately so there's no white flash on the
+    // transparent pill window before the plugin page's stylesheet loads.
+    this.view.setBackgroundColor("#09090b");
+
     const url = `${this.getServerBaseUrl()}/api/plugins/${encodeURIComponent(slug)}/ui/${entry.replace(/^\/+/, "")}`;
     void this.view.webContents.loadURL(url).catch(() => {});
   }

@@ -1,4 +1,5 @@
 import type { Plugin, PluginOptions, PluginStorage } from "freestyle-voice";
+import { pluginSlug } from "freestyle-voice";
 import type { MiddlewareHandler } from "hono";
 
 const PLUGIN_NAME = "@freestyle-voice/plugin-agent";
@@ -15,11 +16,19 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
   let storage: PluginStorage | null = null;
   let systemPrompt = DEFAULT_SYSTEM_PROMPT;
   let conversation: ConversationEntry[] = [];
+  const baseSlug = pluginSlug(PLUGIN_NAME);
+
+  function isPluginRoute(reqPath: string, route: string): boolean {
+    const m = reqPath.match(new RegExp(`^/api/plugins/([^/]+)${route}$`));
+    if (!m) return false;
+    const slug = m[1];
+    return slug === baseSlug || slug === `${baseSlug}-dev`;
+  }
 
   const handler: MiddlewareHandler = async (c, next) => {
     const reqPath = c.req.path;
 
-    if (reqPath.endsWith("/agent/conversation")) {
+    if (isPluginRoute(reqPath, "/agent/conversation")) {
       if (c.req.method === "GET") {
         return c.json({ conversation, systemPrompt });
       }

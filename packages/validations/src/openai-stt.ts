@@ -30,3 +30,18 @@ export function sanitizeSttBaseUrl(input: string): string | undefined {
   const trimmed = input.trim().replace(/\/+$/, "");
   return trimmed === "" ? undefined : trimmed;
 }
+
+/**
+ * Shape for the STT connect form in the Models page. The URL may be empty
+ * (disables the custom endpoint), so it uses the same relaxed schema the
+ * server enforces on `PUT /settings/openai_stt_base_url`.
+ */
+export const openaiSttConnectFormSchema = z.object({
+  url: openaiSttBaseUrlSchema,
+  apiKey: z.string().max(2048),
+});
+
+export type OpenaiSttConnectForm = z.infer<typeof openaiSttConnectFormSchema>;
+
+/** Shared shape for both endpoint connect forms (local LLM + custom STT). */
+export type EndpointConnectFormValues = { url: string; apiKey: string };

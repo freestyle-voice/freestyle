@@ -11,5 +11,5 @@
     "forceConsistentCasingInFileNames": true,
     "noEmit": true
   },
-  "include": ["src"]
+  "include": ["pill", "settings", "shared"]
 }

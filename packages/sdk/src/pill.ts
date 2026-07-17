@@ -12,8 +12,7 @@ export type PillState = "idle" | "initializing" | "recording" | "transcribing";
  */
 export type PillEvent =
   | { type: "stateChanged"; state: PillState }
-  | { type: "transcriptReady"; text: string }
-  | { type: "panelRequested" };
+  | { type: "transcriptReady"; text: string };
 
 /**
  * The pill panel bridge surface exposed on `window.freestyle.pill` inside a

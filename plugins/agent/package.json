@@ -31,41 +31,44 @@
       "pill": {
         "id": "agent-panel",
         "title": "Voice Agent",
-        "entry": "dist/ui/index.html",
+        "entry": "dist/pill/index.html",
         "expand": {
-          "width": 380,
-          "height": 480
+          "width": 400,
+          "height": 520
         }
       },
-      "settings": [
+      "pages": [
         {
-          "key": "system_prompt",
-          "type": "string",
-          "label": "System prompt",
-          "description": "Custom system prompt for the agent.",
-          "default": "You are a helpful voice assistant. Respond concisely."
+          "id": "agent-settings",
+          "title": "Voice Agent",
+          "icon": "Bot",
+          "entry": "dist/settings/index.html"
         }
       ]
     }
   },
   "scripts": {
-    "build": "pkgroll --minify && vite build",
+    "build": "rm -rf dist && pkgroll --minify && vite build",
     "typecheck": "tsc --noEmit && tsc --noEmit -p ui/tsconfig.json",
     "link": "node ../../scripts/link-plugin.mjs",
     "unlink": "node ../../scripts/link-plugin.mjs --unlink"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "freestyle-voice": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "latest",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.1.1",
+    "ai": "^6.0.191",
     "hono": "^4.12.22",
     "pkgroll": "^2.27.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "typescript": "^5.8.3",
-    "vite": "^7.3.3"
+    "vite": "^7.3.3",
+    "zod": "^4.4.3"
   }
 }

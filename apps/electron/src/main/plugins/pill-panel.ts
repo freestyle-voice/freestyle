@@ -12,7 +12,7 @@ import { bearerAuthHeaders } from "../../shared/server-auth.js";
 
 const log = createAppLogger("pill-panel");
 
-/** The pill chrome height (px) — the WebContentsView sits below it. */
+/** The pill chrome height (px) — the panel sits below (or above) it. */
 const PILL_CHROME_HEIGHT = 90;
 
 /** Gap between pill chrome and the panel (px). */
@@ -30,6 +30,11 @@ interface PillPanelConfig {
  * the pill window. Handles expand/collapse by resizing the pill window, toggling
  * `focusable`, and positioning the panel relative to the pill chrome.
  *
+ * The view is created eagerly on {@link configure} and loaded off-screen so it's
+ * ready before the first event arrives. Events emitted before the page finishes
+ * loading are buffered and flushed on load, so a `transcriptReady` fired the
+ * instant a dictation is consumed is never dropped.
+ *
  * Only one pill panel plugin is active at a time (single-owner model).
  */
 export class PillPanelController {
@@ -39,6 +44,11 @@ export class PillPanelController {
   private config: PillPanelConfig | null = null;
   private pillState: PillState = "idle";
   private authInstalledPartitions = new Set<string>();
+
+  /** True once the panel page has finished its initial load. */
+  private viewReady = false;
+  /** Events queued while the view is still loading; flushed on ready. */
+  private pendingEvents: PillEvent[] = [];
 
   /** Original pill window dimensions before expansion. */
   private originalBounds: Electron.Rectangle | null = null;
@@ -52,6 +62,12 @@ export class PillPanelController {
 
   attachWindow(window: BrowserWindow): void {
     this.window = window;
+    // Click-outside-to-close: when the expanded pill window loses focus, fold
+    // the panel back. The pill itself is non-focusable when collapsed, so this
+    // only fires while a panel is open.
+    window.on("blur", () => {
+      if (this.expanded) this.collapse();
+    });
     window.on("closed", () => {
       this.destroy();
       this.window = null;
@@ -59,13 +75,15 @@ export class PillPanelController {
   }
 
   configure(config: PillPanelConfig): void {
-    if (
+    const changed =
       this.config?.slug !== config.slug ||
-      this.config?.panelId !== config.panelId
-    ) {
-      this.destroy();
-    }
+      this.config?.panelId !== config.panelId;
     this.config = config;
+    if (changed) {
+      this.destroyView();
+      // Warm the view now so it's loaded and listening before the first event.
+      this.ensureView();
+    }
   }
 
   isExpanded(): boolean {
@@ -79,7 +97,7 @@ export class PillPanelController {
   expand(): boolean {
     if (!this.window || !this.config || this.expanded) return false;
 
-    const { expand, slug, entry } = this.config;
+    const { expand } = this.config;
     const [wx, wy] = this.window.getPosition();
     const [ww, wh] = this.window.getSize();
     this.originalBounds = { x: wx, y: wy, width: ww, height: wh };
@@ -89,26 +107,19 @@ export class PillPanelController {
     const totalHeight = PILL_CHROME_HEIGHT + PANEL_GAP + panelHeight;
     const totalWidth = Math.max(ww, panelWidth);
 
-    const display = screen.getDisplayMatching({
+    const workArea = screen.getDisplayMatching({
       x: wx,
       y: wy,
       width: ww,
       height: wh,
-    });
-    const workArea = display.workArea;
+    }).workArea;
 
     let newX = wx;
     let newY = wy;
 
-    const pillBottom = wy + wh;
     const expandsDown =
-      pillBottom + PANEL_GAP + panelHeight <= workArea.y + workArea.height;
-
-    if (expandsDown) {
-      newY = wy;
-    } else {
-      newY = wy + wh - totalHeight;
-    }
+      wy + wh + PANEL_GAP + panelHeight <= workArea.y + workArea.height;
+    if (!expandsDown) newY = wy + wh - totalHeight;
 
     if (newX + totalWidth > workArea.x + workArea.width) {
       newX = workArea.x + workArea.width - totalWidth;
@@ -121,41 +132,35 @@ export class PillPanelController {
     this.window.setResizable(false);
     this.window.setFocusable(true);
 
-    if (!this.view) {
-      this.createView(slug, entry);
-    }
-
-    if (this.view) {
+    const view = this.ensureView();
+    if (view) {
       const viewY = expandsDown ? PILL_CHROME_HEIGHT + PANEL_GAP : 0;
-      this.view.setBounds({
+      view.setBounds({
         x: 0,
         y: viewY,
         width: panelWidth,
         height: panelHeight,
       });
-      this.window.contentView.addChildView(this.view);
+      this.window.contentView.addChildView(view);
     }
 
     this.expanded = true;
     this.window.focus();
-    log.info(`pill panel expanded: ${slug}`);
+    log.info(`pill panel expanded: ${this.config.slug}`);
     return true;
   }
 
   collapse(): boolean {
     if (!this.window || !this.expanded) return false;
 
-    if (this.view) {
-      this.window.contentView.removeChildView(this.view);
-    }
+    if (this.view) this.window.contentView.removeChildView(this.view);
 
-    const collapsed = this.getCollapsedSize();
     const orig = this.originalBounds;
-
     if (orig) {
       this.window.setPosition(orig.x, orig.y);
       this.window.setSize(orig.width, orig.height);
     } else {
+      const collapsed = this.getCollapsedSize();
       this.window.setSize(collapsed.width, collapsed.height);
     }
 
@@ -179,20 +184,28 @@ export class PillPanelController {
     this.sendEvent({ type: "transcriptReady", text });
   }
 
-  requestPanel(): void {
-    this.sendEvent({ type: "panelRequested" });
-  }
-
   private sendEvent(event: PillEvent): void {
+    // Buffer until the page has loaded — a `transcriptReady` fired the instant
+    // a dictation is consumed would otherwise race the view's first paint.
+    if (!this.viewReady) {
+      this.pendingEvents.push(event);
+      this.ensureView();
+      return;
+    }
     if (!this.view || this.view.webContents.isDestroyed()) return;
     this.view.webContents.send("pill-panel:event", event);
   }
 
-  private createView(slug: string, entry: string): void {
+  /** Create (once) and return the panel view, or null when no config/window. */
+  private ensureView(): WebContentsView | null {
+    if (this.view) return this.view;
+    if (!this.window || !this.config) return null;
+
+    const { slug, entry } = this.config;
     const partition = `persist:pill-plugin-${slug}`;
     this.installServerAuth(partition);
 
-    this.view = new WebContentsView({
+    const view = new WebContentsView({
       webPreferences: {
         preload: this.preloadPath,
         contextIsolation: true,
@@ -201,13 +214,21 @@ export class PillPanelController {
         partition,
       },
     });
-
     // Paint a dark background immediately so there's no white flash on the
     // transparent pill window before the plugin page's stylesheet loads.
-    this.view.setBackgroundColor("#09090b");
+    view.setBackgroundColor("#09090b");
+    view.webContents.once("did-finish-load", () => {
+      this.viewReady = true;
+      for (const event of this.pendingEvents) {
+        view.webContents.send("pill-panel:event", event);
+      }
+      this.pendingEvents = [];
+    });
 
     const url = `${this.getServerBaseUrl()}/api/plugins/${encodeURIComponent(slug)}/ui/${entry.replace(/^\/+/, "")}`;
-    void this.view.webContents.loadURL(url).catch(() => {});
+    void view.webContents.loadURL(url).catch(() => {});
+    this.view = view;
+    return view;
   }
 
   private installServerAuth(partition: string): void {
@@ -242,17 +263,22 @@ export class PillPanelController {
     return this.window;
   }
 
+  private destroyView(): void {
+    if (!this.view) return;
+    if (this.window && !this.window.isDestroyed()) {
+      try {
+        this.window.contentView.removeChildView(this.view);
+      } catch {}
+    }
+    this.view.webContents.close();
+    this.view = null;
+    this.viewReady = false;
+    this.pendingEvents = [];
+  }
+
   destroy(): void {
     if (this.expanded) this.collapse();
-    if (this.view) {
-      if (this.window && !this.window.isDestroyed()) {
-        try {
-          this.window.contentView.removeChildView(this.view);
-        } catch {}
-      }
-      this.view.webContents.close();
-      this.view = null;
-    }
+    this.destroyView();
     this.authInstalledPartitions.clear();
   }
 }

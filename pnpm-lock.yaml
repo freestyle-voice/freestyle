@@ -393,10 +393,16 @@ importers:
 
   plugins/agent:
     dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@4.4.3)
       freestyle-voice:
         specifier: workspace:*
         version: link:../../packages/sdk
     devDependencies:
+      '@types/node':
+        specifier: latest
+        version: 26.1.1
       '@types/react':
         specifier: ^19.2.7
         version: 19.2.15
@@ -406,6 +412,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^5.1.1
         version: 5.2.0(vite@7.3.3(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0))
+      ai:
+        specifier: ^6.0.191
+        version: 6.0.191(zod@4.4.3)
       hono:
         specifier: ^4.12.22
         version: 4.12.22
@@ -424,6 +433,9 @@ importers:
       vite:
         specifier: ^7.3.3
         version: 7.3.3(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   plugins/audio-transcription:
     dependencies:
@@ -10266,6 +10278,28 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@modelcontextprotocol/sdk@1.29.0(zod@4.4.3)':
+    dependencies:
+      '@hono/node-server': 1.19.14(hono@4.12.22)
+      ajv: 8.20.0
+      ajv-formats: 3.0.1(ajv@8.20.0)
+      content-type: 1.0.5
+      cors: 2.8.6
+      cross-spawn: 7.0.6
+      eventsource: 3.0.7
+      eventsource-parser: 3.0.8
+      express: 5.2.1
+      express-rate-limit: 8.5.2(express@5.2.1)
+      hono: 4.12.22
+      jose: 6.2.3
+      json-schema-typed: 8.0.2
+      pkce-challenge: 5.0.1
+      raw-body: 3.0.2
+      zod: 4.4.3
+      zod-to-json-schema: 3.25.2(zod@4.4.3)
+    transitivePeerDependencies:
+      - supports-color
+
   '@monogrid/gainmap-js@3.4.0(three@0.184.0)':
     dependencies:
       promise-worker-transferable: 1.0.4
@@ -12073,7 +12107,7 @@ snapshots:
 
   '@types/set-cookie-parser@2.4.10':
     dependencies:
-      '@types/node': 26.1.1
+      '@types/node': 22.19.19
 
   '@types/stats.js@0.17.4': {}
 
@@ -18298,6 +18332,10 @@ snapshots:
   zod-to-json-schema@3.25.2(zod@3.25.76):
     dependencies:
       zod: 3.25.76
+
+  zod-to-json-schema@3.25.2(zod@4.4.3):
+    dependencies:
+      zod: 4.4.3
 
   zod@3.23.8: {}
 

@@ -1,40 +1,53 @@
 import type { Plugin, PluginOptions, PluginStorage } from "freestyle-voice";
 import { pluginSlug } from "freestyle-voice";
 import type { MiddlewareHandler } from "hono";
+import { runAgentTurn } from "./agent.js";
+import {
+  type AgentConfig,
+  type ConversationEntry,
+  DEFAULT_CONFIG,
+  loadConfig,
+  normalizeConfig,
+  saveConfig,
+} from "./config.js";
+import { buildWakeWordRegex, stripWakeWord } from "./wake-word.js";
 
 const PLUGIN_NAME = "@freestyle-voice/plugin-agent";
-const STORAGE_KEY = "conversation";
-const DEFAULT_SYSTEM_PROMPT =
-  "You are a helpful voice assistant. Respond concisely.";
-
-interface ConversationEntry {
-  role: "user" | "assistant";
-  content: string;
-}
+const CONVERSATION_KEY = "conversation";
 
 export default function agentPlugin(_options?: PluginOptions): Plugin {
   let storage: PluginStorage | null = null;
-  let systemPrompt = DEFAULT_SYSTEM_PROMPT;
+  let config: AgentConfig = { ...DEFAULT_CONFIG };
   let conversation: ConversationEntry[] = [];
+  let logger: (msg: string) => void = () => {};
   const baseSlug = pluginSlug(PLUGIN_NAME);
 
-  function isPluginRoute(reqPath: string, route: string): boolean {
+  function ownRoute(reqPath: string, route: string): boolean {
     const m = reqPath.match(new RegExp(`^/api/plugins/([^/]+)${route}$`));
     if (!m) return false;
-    const slug = m[1];
-    return slug === baseSlug || slug === `${baseSlug}-dev`;
+    return m[1] === baseSlug || m[1] === `${baseSlug}-dev`;
   }
 
   const handler: MiddlewareHandler = async (c, next) => {
     const reqPath = c.req.path;
 
-    if (isPluginRoute(reqPath, "/agent/conversation")) {
-      if (c.req.method === "GET") {
-        return c.json({ conversation, systemPrompt });
+    // Config CRUD — the settings page reads and writes here.
+    if (ownRoute(reqPath, "/agent/config")) {
+      if (c.req.method === "GET") return c.json(config);
+      if (c.req.method === "PUT") {
+        const body = await c.req.json().catch(() => null);
+        config = normalizeConfig(body);
+        if (storage) await saveConfig(storage, config);
+        return c.json(config);
       }
+    }
+
+    // Conversation — the pill panel reads and clears it.
+    if (ownRoute(reqPath, "/agent/conversation")) {
+      if (c.req.method === "GET") return c.json({ conversation });
       if (c.req.method === "DELETE") {
         conversation = [];
-        if (storage) await storage.set(STORAGE_KEY, conversation);
+        if (storage) await storage.set(CONVERSATION_KEY, conversation);
         return c.json({ ok: true });
       }
     }
@@ -48,67 +61,54 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
 
     async setup(ctx) {
       storage = ctx.storage;
-
-      const stored = await storage.get<ConversationEntry[]>(STORAGE_KEY);
-      if (Array.isArray(stored)) {
-        conversation = stored;
-      }
-
-      const customPrompt = await ctx.settings.getOwn("system_prompt");
-      if (typeof customPrompt === "string" && customPrompt.trim()) {
-        systemPrompt = customPrompt;
-      }
-
-      ctx.logger.info(`agent plugin ready on ${ctx.mode}`);
+      logger = (msg) => ctx.logger.info(msg);
+      config = await loadConfig(ctx.storage);
+      const stored =
+        await ctx.storage.get<ConversationEntry[]>(CONVERSATION_KEY);
+      if (Array.isArray(stored)) conversation = stored;
+      ctx.logger.info(`voice agent ready on ${ctx.mode}`);
     },
 
-    async afterTranscribe(input, output, api) {
+    async afterTranscribe(_input, output, api) {
       const text = output.text.trim();
       if (!text) return;
 
-      // Match a leading "agent" wake word followed by any punctuation or
-      // whitespace — speech-to-text rarely produces the literal "agent:" a
-      // user "says"; it's usually "Agent, …", "Agent. …", or just "Agent …".
-      const wakeWord = /^\s*(hey\s+|ok\s+)?agent\b[\s,.:;!?-]*/i;
-      const hasWakeWord = wakeWord.test(text);
+      // Only intercept dictation that opens with the configured wake word
+      // (default "hey freestyle"). Everything else is dictated normally.
+      const wake = buildWakeWordRegex(config.wakeWord);
+      if (!wake.test(text)) return;
 
-      const appName = input.appContext?.appName?.toLowerCase() ?? "";
-      const isDevApp =
-        appName.includes("terminal") ||
-        appName.includes("code") ||
-        appName.includes("iterm") ||
-        appName.includes("warp");
+      const prompt = stripWakeWord(text, wake);
+      if (!prompt) return;
 
-      if (!hasWakeWord && !isDevApp) return;
+      conversation.push({ role: "user", content: prompt });
 
-      // Strip the wake word when present; in a dev app the whole utterance is
-      // the prompt.
-      const cleanText = hasWakeWord ? text.replace(wakeWord, "").trim() : text;
-      if (!cleanText) return;
-      conversation.push({ role: "user", content: cleanText });
-
+      let reply: string;
       if (api.llm) {
-        const prompt = conversation
-          .map((e) => `${e.role}: ${e.content}`)
-          .join("\n");
-
-        const result = await api.llm.generateText({
-          system: systemPrompt,
-          prompt,
-        });
-
-        conversation.push({ role: "assistant", content: result.text });
+        try {
+          reply = await runAgentTurn({
+            llm: api.llm,
+            config,
+            history: conversation,
+            signal: api.signal,
+            log: logger,
+          });
+        } catch (err) {
+          reply = `Sorry, the agent turn failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`;
+        }
       } else {
-        conversation.push({
-          role: "assistant",
-          content: "LLM not available. Configure a model in Settings > Models.",
-        });
+        reply =
+          "No language model is configured. Set one under Settings → Models.";
       }
 
-      if (storage) await storage.set(STORAGE_KEY, conversation);
+      conversation.push({ role: "assistant", content: reply });
+      if (storage) await storage.set(CONVERSATION_KEY, conversation);
 
-      output.text = cleanText;
-      api.control.consume("agent-plugin: intercepted for agent turn");
+      // Hand the utterance to the pill panel instead of pasting it.
+      output.text = prompt;
+      api.control.consume("voice-agent: handled in the pill panel");
     },
   };
 }

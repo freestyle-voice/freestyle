@@ -1,16 +1,15 @@
 ---
 title: "Voice Agent"
-description: "Dictate to an AI agent and read its replies in an expandable panel attached to the pill — a worked example of the pill panel API."
+description: "Talk to an AI agent by voice and read its replies in a chat panel that grows out of the pill — a worked example of the pill panel API."
 ---
 
-The Voice Agent plugin lets you talk to an AI assistant by voice. When your
-dictation is meant for the agent, Freestyle runs an LLM turn **instead of typing
-the text** and shows the conversation in a panel that expands out from the
-floating pill.
+The Voice Agent plugin lets you talk to an AI assistant by voice. Say your wake
+word and, instead of typing your dictation, Freestyle runs an agent turn —
+optionally calling tools from your connected MCP servers — and shows the
+conversation in a panel that grows out of the floating pill.
 
-> "agent, summarise the last thing I copied" → the agent replies in the pill panel
->
-> _(dictating while a terminal is focused)_ "explain this error" → agent replies
+> "Hey Freestyle, what's on my calendar today?" → the agent replies in the pill
+> panel, calling your calendar MCP server's tools if one is connected.
 
 It's also the reference implementation of the **pill panel** extension point:
 any plugin can attach its own live UI to the pill the same way. See the
@@ -27,53 +26,57 @@ Or install from **Settings → Plugins** inside the app.
 
 ## How to use it
 
-The plugin only intercepts dictation that looks like it's for the agent —
-everything else is dictated into your focused app as normal.
-
 1. Enable the plugin in **Settings → Plugins**.
-2. Trigger a turn one of two ways:
-   - Say **"agent"** at the start of your dictation (e.g. _"Agent, what's the
-     capital of France?"_). The wake word is matched however speech-to-text
-     punctuates it — "Agent,", "Agent.", or a bare "Agent …" all work, as do
-     "hey agent" and "ok agent" — and it's stripped before the prompt is sent.
-   - Or dictate while a **terminal or code editor** is focused (Terminal, iTerm,
-     Warp, VS Code, …), where the whole utterance is the prompt.
-3. The pill grows into a panel showing your message and the agent's reply. Keep
-   talking to continue the thread.
-4. Press the dictation hotkey again to dismiss the panel, or use **Close** in the
-   panel header. **Clear** wipes the conversation.
+2. Say your wake word at the start of a dictation, e.g. _"Hey Freestyle, what's
+   the capital of France?"_. The wake word is matched however speech-to-text
+   punctuates it — "Hey Freestyle,", "Hey Freestyle.", or a bare "Freestyle …"
+   all work — and it's stripped before the prompt is sent. Everything without the
+   wake word is dictated into your focused app as normal.
+3. The pill grows into a chat panel with your message and the agent's reply. Keep
+   talking to continue the thread — press the dictation hotkey again to reply.
+4. Close the panel with the **✕** button, or click outside it.
 
-Set a custom **System prompt** in the plugin's settings to change the agent's
-persona or instructions.
+## Configuration
+
+Open **Voice Agent** in the app sidebar (added when the plugin is enabled) to
+configure:
+
+- **Wake word** — the trigger phrase (default "hey freestyle"). A leading
+  "hey"/"ok" is always optional.
+- **System prompt** — the agent's persona and base instructions.
+- **MCP servers** — connect [Model Context Protocol](https://modelcontextprotocol.io)
+  servers over `stdio` (a local command) or `http` (a URL) to give the agent
+  tools. Every enabled server's tools are available during a turn.
+- **Skills** — named, reusable instruction sets. Enabled skills are appended to
+  the system prompt so the agent applies them on every turn.
 
 ## How it works
 
-The plugin combines a server hook with a pill panel:
+The plugin combines a server hook with two UI pages:
 
-1. **Interception** — an `afterTranscribe` hook checks the transcript against the
-   trigger rules. On a match it strips the `agent:` prefix and runs a turn with
-   the LLM you've already configured, via the SDK's [`api.llm`](/sdk-reference#pluginllm)
-   capability.
-2. **Consume** — it calls `api.control.consume()`, so the rest of the pipeline is
-   skipped and nothing is pasted into your focused app.
-3. **Panel** — consuming a dictation signals the app to open the pill panel and
-   forward the transcript to it as a `transcriptReady` event. The panel, built on
-   `window.freestyle.pill`, re-fetches the conversation from the plugin's own API
-   route and renders it live, tracking the pill's state as you speak.
+1. **Interception** — an `afterTranscribe` hook matches the wake word, strips it,
+   and calls `api.control.consume()` so the rest of the pipeline is skipped and
+   nothing is pasted into your focused app.
+2. **Agent turn** — it connects the enabled MCP servers, hands their tools to the
+   model (via the SDK's [`api.llm`](/sdk-reference#pluginllm) capability), and runs
+   a tool-calling loop with the AI SDK. Connections are closed when the turn ends.
+3. **Panel** — consuming the dictation signals the app to open the pill panel and
+   forward the transcript as a `transcriptReady` event. The panel, built on
+   `window.freestyle.pill`, renders the conversation live and tracks the pill's
+   state as you speak.
 
-<Note>If no LLM is available, the agent replies with a short "configure a model"
-message instead. The plugin reuses your configured model and keys — there's no
-separate provider to set up. **Signed-in Freestyle Cloud users get this too**, running
-on Freestyle Cloud's managed LLM with no local model required.</Note>
+<Note>If no model is configured, the agent replies asking you to set one under
+Settings → Models. The plugin reuses your configured model and keys — there's no
+separate provider to set up. **Signed-in Freestyle Cloud users get this too**,
+running on Freestyle Cloud's managed LLM.</Note>
 
 ## The pill panel
 
-The conversation UI is a `contributes.pill` panel — a sandboxed page that the
-host overlays on the pill window and sizes per the manifest's `expand`
-dimensions. It subscribes to pill events through `window.freestyle.pill` so it
-knows when you're recording and when a new turn is ready, and it can expand and
-collapse itself. This is the same API any plugin can use to build its own pill
-experience.
+The conversation UI is a `contributes.pill` panel — a sandboxed page the host
+overlays on the pill window, sized per the manifest's `expand` dimensions. It
+subscribes to pill events through `window.freestyle.pill` so it knows when you're
+recording and when a new turn is ready, and it can collapse itself. This is the
+same API any plugin can use to build its own pill experience.
 
 ## Build from source
 
@@ -82,8 +85,8 @@ pnpm install
 pnpm --filter @freestyle-voice/plugin-agent build
 ```
 
-This runs `pkgroll --minify` (server-side plugin code) followed by `vite build`
-(the pill panel UI).
+`pkgroll` bundles the server-side plugin (MCP SDK + AI SDK); `vite` builds the
+pill panel and settings pages.
 
 ## Source
 

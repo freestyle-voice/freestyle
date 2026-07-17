@@ -315,8 +315,7 @@ type PillState = "idle" | "initializing" | "recording" | "transcribing";
 
 type PillEvent =
   | { type: "stateChanged"; state: PillState }
-  | { type: "transcriptReady"; text: string }
-  | { type: "panelRequested" };
+  | { type: "transcriptReady"; text: string };
 
 interface PillPanelBridge {
   getState(): Promise<PillState>;

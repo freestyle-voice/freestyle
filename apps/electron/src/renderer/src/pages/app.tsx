@@ -269,6 +269,20 @@ export default function AppPage(): React.JSX.Element {
       const isDeliverable = (r: TranscribeResult): boolean =>
         !!r.raw.trim() && (r.disposition ?? "deliver") === "deliver";
 
+      // A plugin consumed the dictation (e.g. an agent turn) — forward it to
+      // the pill panel and expand it. This is checked BEFORE the re-queue
+      // branch below: a consumed dictation produces no deliverable text, so it
+      // must never be swallowed by the "still recording / queue non-empty"
+      // re-queue path — otherwise the panel would never open.
+      const suppressed = results.filter(
+        (r) => !!r.raw.trim() && r.disposition === "suppressed",
+      );
+      if (suppressed.length > 0) {
+        const text = suppressed.map((r) => r.raw).join(" ");
+        window.api?.sendTranscriptToPanel?.(text);
+        window.api?.expandPillPanel?.();
+      }
+
       if (
         recordingActiveRef.current ||
         wantsMicRef.current ||
@@ -281,20 +295,10 @@ export default function AppPage(): React.JSX.Element {
         return;
       }
 
-      const suppressed = results.filter(
-        (r) => !!r.raw.trim() && r.disposition === "suppressed",
-      );
-      if (suppressed.length > 0) {
-        const text = suppressed.map((r) => r.raw).join(" ");
-        window.api?.sendTranscriptToPanel?.(text);
-        window.api?.expandPillPanel?.();
-      }
-
       const nonEmpty = results.filter(isDeliverable);
       if (nonEmpty.length === 0) {
-        // A plugin consumed the dictation (e.g. an agent turn) — the panel
-        // is now open. Keep the pill visible so the user can see the panel;
-        // don't fall through to the error/hide path below.
+        // The consumed dictation opened the panel above — keep the pill
+        // visible so the user can see it; don't fall through to the hide path.
         if (suppressed.length > 0) {
           return;
         }

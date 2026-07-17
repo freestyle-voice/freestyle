@@ -56,6 +56,8 @@ interface TestStatus {
   setConnected: (v: boolean | null) => void;
   setError: (v: string | null) => void;
   setModels: (v: string[]) => void;
+  setInitialUrl: (v: string) => void;
+  setInitialApiKey: (v: string) => void;
 }
 
 async function runEndpointTest(
@@ -90,6 +92,10 @@ async function runEndpointTest(
           param: { key: config.apiKeyKey },
         });
     await Promise.all([saveUrl, saveKey]);
+
+    // Keep seed values in sync so the form re-seeds correctly on remount.
+    status.setInitialUrl(url);
+    status.setInitialApiKey(key);
 
     if (config.clearUrlWhenEmpty && !url) {
       status.setConnected(null);
@@ -150,15 +156,16 @@ export function useEndpointConnect(
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<string[]>([]);
 
-  // Seed from persisted settings once.
+  // Seed from persisted settings once, matching the original truthiness guards
+  // in useModels (an empty string does not override the default).
   const seeded = useRef(false);
   useEffect(() => {
     if (seeded.current || !settingsData) return;
     seeded.current = true;
     const url = settingsData[config.urlKey];
-    if (url !== undefined) setInitialUrl(url);
+    if (url) setInitialUrl(url);
     const key = settingsData[config.apiKeyKey];
-    if (key !== undefined) setInitialApiKey(key);
+    if (key) setInitialApiKey(key);
   }, [settingsData, config.urlKey, config.apiKeyKey]);
 
   const clearStatus = useCallback(() => {
@@ -171,7 +178,14 @@ export function useEndpointConnect(
       runEndpointTest(
         values,
         config,
-        { setTesting, setConnected, setError, setModels },
+        {
+          setTesting,
+          setConnected,
+          setError,
+          setModels,
+          setInitialUrl,
+          setInitialApiKey,
+        },
         onDone,
       ),
     [config, onDone],

@@ -36,7 +36,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Controller, type Resolver, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import {
@@ -757,23 +757,12 @@ function EndpointConnectForm({
   const {
     control,
     handleSubmit,
-    reset,
     formState: { errors },
   } = useForm<EndpointConnectFormValues>({
     resolver,
     defaultValues: { url: connect.initialUrl, apiKey: connect.initialApiKey },
     mode: "onBlur",
   });
-
-  // Seed the form once the persisted values resolve. react-hook-form owns the
-  // state afterwards, so later cache updates don't clobber in-progress edits.
-  const seededRef = useRef(false);
-  useEffect(() => {
-    if (seededRef.current) return;
-    if (!connect.initialUrl && !connect.initialApiKey) return;
-    seededRef.current = true;
-    reset({ url: connect.initialUrl, apiKey: connect.initialApiKey });
-  }, [connect.initialUrl, connect.initialApiKey, reset]);
 
   return (
     <div className="border-border border-b px-5 py-4">

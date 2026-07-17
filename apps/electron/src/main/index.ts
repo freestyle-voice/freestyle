@@ -1242,25 +1242,24 @@ async function putServerSetting(key: string, value: string): Promise<boolean> {
 }
 
 /**
- * Read a single server-owned setting over HTTP. Returns `undefined` when the
- * key is unset (404) or the server is unreachable.
+ * Read all server-owned settings in one request. Returns an empty map when the
+ * server is unreachable.
  *
  * All server-owned state (settings, models, history, plugins) lives behind the
  * server — local or a configured remote — so the main process reads it through
  * the API rather than opening the SQLite file directly. This keeps a single
  * source of truth and makes a configured remote server behave identically.
  */
-async function getServerSetting(key: string): Promise<string | undefined> {
+async function getServerSettings(): Promise<Record<string, string>> {
   try {
-    const res = await serverClient().api.settings[":key"].$get(
-      { param: { key } },
+    const res = await serverClient().api.settings.$get(
+      {},
       { init: { signal: AbortSignal.timeout(SERVER_SETTING_TIMEOUT_MS) } },
     );
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as { value?: string };
-    return data.value;
+    if (!res.ok) return {};
+    return (await res.json()) as Record<string, string>;
   } catch {
-    return undefined;
+    return {};
   }
 }
 
@@ -2361,14 +2360,17 @@ app.whenReady().then(async () => {
   });
 
   // Register the hold-to-record hotkey immediately with the default accelerator
-  // so a press right after launch is never dropped. Hotkey config is read
-  // through the server (local or remote), which starts asynchronously — once it
-  // answers, re-register with the configured accelerator + activation mode (only
-  // if they actually differ, to avoid a needless native-listener rebuild).
-  scheduleHotkeyRegistration();
+  // so a press right after launch is never dropped. Pass DEFAULT_HOTKEY
+  // explicitly so this doesn't fire a settings request at the not-yet-ready
+  // server. Once the server answers, re-register with the configured
+  // accelerator + activation mode (only if they differ, to avoid a needless
+  // native-listener rebuild).
+  scheduleHotkeyRegistration(DEFAULT_HOTKEY);
   void waitForServerReady().then(async () => {
-    hotkeyActivationMode = await loadHotkeyModeFromServer();
-    const configured = await loadHotkeyFromServer();
+    // One request for both keys, instead of a read per key.
+    const settings = await getServerSettings();
+    hotkeyActivationMode = hotkeyModeFromSettings(settings);
+    const configured = hotkeyFromSettings(settings);
     const accel = configured
       ? normalizeAccelerator(configured)
       : DEFAULT_HOTKEY;
@@ -2391,9 +2393,11 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.on("hotkey:reload", () => {
-    void loadHotkeyModeFromServer().then((mode) => {
-      hotkeyActivationMode = mode;
-      scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
+    void getServerSettings().then((settings) => {
+      hotkeyActivationMode = hotkeyModeFromSettings(settings);
+      scheduleHotkeyRegistration(
+        hotkeyFromSettings(settings) ?? currentHotkeyAccel ?? undefined,
+      );
     });
   });
 
@@ -2455,15 +2459,19 @@ function isValidAccelerator(accel: string): boolean {
   );
 }
 
-async function loadHotkeyFromServer(): Promise<string | undefined> {
-  const value = await getServerSetting(SETTINGS_KEYS.hotkey);
+/** The configured hotkey accelerator from a settings map, if valid. */
+function hotkeyFromSettings(
+  settings: Record<string, string>,
+): string | undefined {
+  const value = settings[SETTINGS_KEYS.hotkey];
   return value && isValidAccelerator(value) ? value : undefined;
 }
 
-async function loadHotkeyModeFromServer(): Promise<"hold" | "toggle"> {
-  return (await getServerSetting(SETTINGS_KEYS.hotkeyMode)) === "toggle"
-    ? "toggle"
-    : "hold";
+/** The hotkey activation mode from a settings map (defaults to "hold"). */
+function hotkeyModeFromSettings(
+  settings: Record<string, string>,
+): "hold" | "toggle" {
+  return settings[SETTINGS_KEYS.hotkeyMode] === "toggle" ? "toggle" : "hold";
 }
 
 function sendHotkeyDown(): void {
@@ -2654,7 +2662,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     globalShortcut.unregisterAll();
 
     if (!hotkey) {
-      hotkey = await loadHotkeyFromServer();
+      hotkey = hotkeyFromSettings(await getServerSettings());
     }
 
     const normalized =

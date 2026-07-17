@@ -4,8 +4,20 @@
  * base path and JSON handling live here rather than being duplicated.
  */
 
-const SLUG = "freestyle-voice-plugin-agent";
-const BASE = `/api/plugins/${SLUG}/agent`;
+/**
+ * Derive this page's own plugin slug from its URL. The page is served at
+ * `/api/plugins/<slug>/ui/...`, and the slug differs between a production
+ * install (`freestyle-voice-plugin-agent`) and a dev link
+ * (`freestyle-voice-plugin-agent-dev`) — so hardcoding it breaks dev. The
+ * `pluginApiGuard` also confines a page to its own `<slug>` namespace, so
+ * calling the wrong slug 404s (or is blocked). Read it from `location` instead.
+ */
+function ownSlug(): string {
+  const m = location.pathname.match(/\/api\/plugins\/([^/]+)\/ui\//);
+  return m?.[1] ?? "freestyle-voice-plugin-agent";
+}
+
+const BASE = `/api/plugins/${ownSlug()}/agent`;
 
 interface BridgeResponse {
   ok: boolean;

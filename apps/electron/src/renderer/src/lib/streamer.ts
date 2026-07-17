@@ -17,7 +17,10 @@ const TARGET_RATE = 16000;
 
 export interface StreamerCallbacks {
   onPartial: (text: string) => void;
-  onFinal: (text: string) => void;
+  onFinal: (
+    text: string,
+    disposition?: "deliver" | "suppressed" | "aborted",
+  ) => void;
   onCleaned?: (text: string) => void;
   onError: (message: string, code?: string) => void;
   onReady: () => void;
@@ -214,6 +217,7 @@ export class Streamer {
       let msg: {
         type: string;
         text?: string;
+        disposition?: "deliver" | "suppressed" | "aborted";
         message?: string;
         code?: string;
         model?: string;
@@ -250,7 +254,7 @@ export class Streamer {
           this.callbacks.onPartial(msg.text ?? "");
           break;
         case "final":
-          this.callbacks.onFinal(msg.text ?? "");
+          this.callbacks.onFinal(msg.text ?? "", msg.disposition);
           break;
         case "cleaned":
           this.callbacks.onCleaned?.(msg.text ?? "");

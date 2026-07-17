@@ -109,6 +109,7 @@ import {
   getPillPanelController,
   initPillPanelHost,
 } from "./plugins/pill-panel";
+import { registerPluginBridgeIpc } from "./plugins/plugin-bridge-ipc";
 import { initPluginUiHost, invalidatePluginViews } from "./plugins/ui-host";
 
 const log = createAppLogger("electron");
@@ -1731,6 +1732,11 @@ app.on("second-instance", () => {
 app.whenReady().then(async () => {
   void startLinuxPasteHelper();
   void recoverDuckedVolumeFromCrash();
+
+  // Register the shared plugin-bridge IPC once, before any plugin view (pill
+  // panel or dashboard page) can load — the pill panel may open before the
+  // dashboard window is ever created.
+  registerPluginBridgeIpc();
 
   // Set app user model id for windows
   electronApp.setAppUserModelId("com.freestyle.app");

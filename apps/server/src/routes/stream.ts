@@ -16,7 +16,10 @@ import {
   parseAppContext,
   plugins,
 } from "../lib/plugins/index.js";
-import { createHookApi } from "../lib/plugins/pipeline.js";
+import {
+  createHookApi,
+  dispositionFromControl,
+} from "../lib/plugins/pipeline.js";
 import {
   applyFinalRewrites,
   getCleanupAppAssignments,
@@ -473,7 +476,13 @@ const stream = new Hono().get(
                 });
               }
               if (!closed) {
-                ws.send(JSON.stringify({ type: "final", text: finalText }));
+                ws.send(
+                  JSON.stringify({
+                    type: "final",
+                    text: finalText,
+                    disposition: dispositionFromControl(api.control.state),
+                  }),
+                );
               }
               if (!suppressed) {
                 try {
@@ -591,7 +600,13 @@ const stream = new Hono().get(
                 }
                 const deliverText = suppressed ? "" : pp.cleaned;
                 if (!closed) {
-                  ws.send(JSON.stringify({ type: "final", text: deliverText }));
+                  ws.send(
+                    JSON.stringify({
+                      type: "final",
+                      text: deliverText,
+                      disposition: dispositionFromControl(api.control.state),
+                    }),
+                  );
                 }
                 if (!suppressed) {
                   try {

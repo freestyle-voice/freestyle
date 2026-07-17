@@ -274,11 +274,16 @@ export default function AppPage(): React.JSX.Element {
       // branch below: a consumed dictation produces no deliverable text, so it
       // must never be swallowed by the "still recording / queue non-empty"
       // re-queue path — otherwise the panel would never open.
-      const suppressed = results.filter(
-        (r) => !!r.raw.trim() && r.disposition === "suppressed",
-      );
+      //
+      // A consumed dictation's delivered text is intentionally blanked by the
+      // server, so we match on `disposition` alone (not on `raw`). The panel
+      // fetches its own conversation, so it doesn't need the transcript here.
+      const suppressed = results.filter((r) => r.disposition === "suppressed");
       if (suppressed.length > 0) {
-        const text = suppressed.map((r) => r.raw).join(" ");
+        const text = suppressed
+          .map((r) => r.raw)
+          .filter(Boolean)
+          .join(" ");
         window.api?.sendTranscriptToPanel?.(text);
         window.api?.expandPillPanel?.();
       }
@@ -556,11 +561,11 @@ export default function AppPage(): React.JSX.Element {
         },
         onReady: () => {},
         onPartial: () => {},
-        onFinal: (text) => {
+        onFinal: (text, disposition) => {
           const resolver = streamResolverRef.current;
           if (!resolver) return;
           streamResolverRef.current = null;
-          resolver({ raw: text, cleaned: text });
+          resolver({ raw: text, cleaned: text, disposition });
         },
         onCleaned: () => {},
         onError: (msg, code) => {

@@ -69,7 +69,13 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       ctx.logger.info(`voice agent ready on ${ctx.mode}`);
     },
 
-    async afterTranscribe(_input, output, api) {
+    // Intercept in `afterCleanup`, not `afterTranscribe`: `afterCleanup` is the
+    // one hook that fires on every path — batch, local streaming, AND Freestyle
+    // Cloud streaming with combined cleanup (where `afterTranscribe` is skipped
+    // because there's no separable raw transcript). This is what lets the agent
+    // work for cloud users. The wake word survives cleanup since it leads the
+    // utterance, and cleanup preserves leading content.
+    async afterCleanup(_input, output, api) {
       const text = output.text.trim();
       if (!text) return;
 

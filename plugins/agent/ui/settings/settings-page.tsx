@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useRef, useState } from "react";
 import { del, getJson, putJson } from "../shared/api";
 import {
   type AgentConfig,
@@ -86,60 +87,76 @@ function formatDate(ts: number): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+/* ---- Query keys ---- */
+
+const configKey = ["agent-config"] as const;
+const historyKey = ["agent-conversations"] as const;
+
 export function SettingsPage(): React.JSX.Element {
-  const [config, setConfig] = useState<AgentConfig | null>(null);
-  const [conversations, setConversations] = useState<SavedConversation[]>([]);
+  const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const refreshHistory = useCallback(async () => {
-    const data = await getJson<{ conversations: SavedConversation[] }>(
-      "/conversations",
-    );
-    if (data?.conversations) setConversations(data.conversations);
-  }, []);
+  // ---- Config query ----
 
-  useEffect(() => {
-    void getJson<AgentConfig>("/config").then((c) => setConfig(c ?? EMPTY));
-    void refreshHistory();
-    const id = setInterval(refreshHistory, 5000);
-    return () => clearInterval(id);
-  }, [refreshHistory]);
+  const { data: config } = useQuery({
+    queryKey: configKey,
+    queryFn: async () => (await getJson<AgentConfig>("/config")) ?? EMPTY,
+  });
 
-  const persist = useCallback((next: AgentConfig) => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      void putJson<AgentConfig>("/config", next);
-    }, SAVE_DEBOUNCE_MS);
-  }, []);
+  // ---- Conversations query (polls every 5s) ----
+
+  const { data: conversations = [], refetch: refetchHistory } = useQuery({
+    queryKey: historyKey,
+    queryFn: async () => {
+      const data = await getJson<{ conversations: SavedConversation[] }>(
+        "/conversations",
+      );
+      return data?.conversations ?? [];
+    },
+    refetchInterval: 5000,
+  });
+
+  // ---- Config save (debounced, optimistic) ----
 
   const update = useCallback(
     (patch: Partial<AgentConfig>) => {
-      setConfig((prev) => {
+      queryClient.setQueryData<AgentConfig>(configKey, (prev) => {
         if (!prev) return prev;
-        const next = { ...prev, ...patch };
-        persist(next);
-        return next;
+        return { ...prev, ...patch };
       });
+
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        const current = queryClient.getQueryData<AgentConfig>(configKey);
+        if (current) void putJson<AgentConfig>("/config", current);
+      }, SAVE_DEBOUNCE_MS);
     },
-    [persist],
+    [queryClient],
   );
 
-  const deleteConversation = useCallback(
-    async (id: string) => {
-      await del(`/conversations/${id}`);
-      setConversations((prev) => prev.filter((c) => c.id !== id));
+  // ---- Delete single conversation ----
+
+  const deleteConversation = useMutation({
+    mutationFn: (id: string) => del(`/conversations/${id}`),
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData<SavedConversation[]>(historyKey, (prev) =>
+        prev?.filter((c) => c.id !== id),
+      );
       if (selectedId === id) setSelectedId(null);
     },
-    [selectedId],
-  );
+  });
 
-  const clearAll = useCallback(async () => {
-    await del("/conversations");
-    setConversations([]);
-    setSelectedId(null);
-  }, []);
+  // ---- Clear all conversations ----
+
+  const clearAll = useMutation({
+    mutationFn: () => del("/conversations"),
+    onSuccess: () => {
+      queryClient.setQueryData<SavedConversation[]>(historyKey, []);
+      setSelectedId(null);
+    },
+  });
 
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
 
@@ -182,7 +199,7 @@ export function SettingsPage(): React.JSX.Element {
               <button
                 type="button"
                 className="icon-btn"
-                onClick={() => void refreshHistory()}
+                onClick={() => void refetchHistory()}
                 aria-label="Refresh"
                 title="Refresh"
               >
@@ -192,7 +209,7 @@ export function SettingsPage(): React.JSX.Element {
                 <button
                   type="button"
                   className="icon-btn destructive"
-                  onClick={clearAll}
+                  onClick={() => clearAll.mutate()}
                   aria-label="Clear all conversations"
                   title="Clear all"
                 >
@@ -235,7 +252,7 @@ export function SettingsPage(): React.JSX.Element {
           <ConversationViewer
             conversation={selected}
             onClose={() => setSelectedId(null)}
-            onDelete={() => deleteConversation(selected.id)}
+            onDelete={() => deleteConversation.mutate(selected.id)}
           />
         )}
       </div>

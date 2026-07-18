@@ -1,3 +1,4 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PillEvent, PillState } from "freestyle-voice";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
@@ -146,31 +147,45 @@ function MessageActions({
   );
 }
 
+/* ---- Query keys ---- */
+
+const conversationKey = ["agent-conversation"] as const;
+
 /* ---- Main component ---- */
 
 export function ChatPanel(): React.JSX.Element {
-  const [messages, setMessages] = useState<ConversationEntry[]>([]);
+  const queryClient = useQueryClient();
   const [pillState, setPillState] = useState<PillState>("idle");
   const [streamingText, setStreamingText] = useState<string | null>(null);
-  const [regenerating, setRegenerating] = useState(false);
   const [direction, setDirection] = useState<"up" | "down">("down");
   const endRef = useRef<HTMLDivElement>(null);
+
+  // ---- Conversation query ----
+
+  const { data: messages = [] } = useQuery({
+    queryKey: conversationKey,
+    queryFn: async () => {
+      const data = await getJson<{ conversation: ConversationEntry[] }>(
+        "/conversation",
+      );
+      return data?.conversation ?? [];
+    },
+  });
+
+  // ---- Regenerate mutation ----
+
+  const regenerate = useMutation({
+    mutationFn: () => postJson<{ reply: string }>("/regenerate"),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: conversationKey });
+    },
+  });
 
   const scrollToEnd = useCallback(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, []);
 
-  const refresh = useCallback(async () => {
-    const data = await getJson<{ conversation: ConversationEntry[] }>(
-      "/conversation",
-    );
-    if (data?.conversation) setMessages(data.conversation);
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messages and streamingText are intentional trigger deps for auto-scroll
   useEffect(() => {
     scrollToEnd();
   }, [messages, streamingText, scrollToEnd]);
@@ -187,7 +202,9 @@ export function ChatPanel(): React.JSX.Element {
         const event = JSON.parse(e.data) as { type: string; text?: string };
         switch (event.type) {
           case "streamStart":
-            void refresh();
+            void queryClient.invalidateQueries({
+              queryKey: conversationKey,
+            });
             setStreamingText("");
             break;
           case "streamDelta":
@@ -195,7 +212,9 @@ export function ChatPanel(): React.JSX.Element {
             break;
           case "streamEnd":
             setStreamingText(null);
-            void refresh();
+            void queryClient.invalidateQueries({
+              queryKey: conversationKey,
+            });
             break;
         }
       } catch {
@@ -204,7 +223,7 @@ export function ChatPanel(): React.JSX.Element {
     };
 
     return () => es.close();
-  }, [refresh]);
+  }, [queryClient]);
 
   // Also listen to the pill bridge for state changes and transcripts.
   useEffect(() => {
@@ -217,10 +236,10 @@ export function ChatPanel(): React.JSX.Element {
           setPillState(event.state);
           break;
         case "transcriptReady":
-          setMessages((prev) => [
-            ...prev,
-            { role: "user", content: event.text },
-          ]);
+          queryClient.setQueryData<ConversationEntry[]>(
+            conversationKey,
+            (prev) => [...(prev ?? []), { role: "user", content: event.text }],
+          );
           break;
         // Stream events from the pill bridge (WS path).  These arrive in
         // addition to the SSE events — dedup by ignoring them here since
@@ -244,18 +263,11 @@ export function ChatPanel(): React.JSX.Element {
 
     void pill.getState().then(setPillState);
     return unsub;
-  }, [refresh]);
+  }, [queryClient]);
 
   const handleClose = useCallback(() => {
     window.freestyle?.pill?.collapse();
   }, []);
-
-  const handleRegenerate = useCallback(async () => {
-    setRegenerating(true);
-    const result = await postJson<{ reply: string }>("/regenerate");
-    setRegenerating(false);
-    if (result) void refresh();
-  }, [refresh]);
 
   const streaming = streamingText !== null;
   const status = statusFor(pillState, streaming);
@@ -302,11 +314,7 @@ export function ChatPanel(): React.JSX.Element {
       ) : (
         <div className="messages">
           {messages.map((msg, i) => (
-            <div
-              // biome-ignore lint/suspicious/noArrayIndexKey: append-only chat log
-              key={i}
-              className={`turn ${msg.role}`}
-            >
+            <div key={i} className={`turn ${msg.role}`}>
               <span className={`turn-role ${msg.role}`}>
                 {msg.role === "user" ? "You" : "Agent"}
               </span>
@@ -317,8 +325,8 @@ export function ChatPanel(): React.JSX.Element {
                 <MessageActions
                   text={msg.content}
                   isLast={i === lastAssistantIdx && !streaming}
-                  onRegenerate={handleRegenerate}
-                  regenerating={regenerating}
+                  onRegenerate={() => regenerate.mutate()}
+                  regenerating={regenerate.isPending}
                 />
               )}
             </div>

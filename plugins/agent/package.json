@@ -56,20 +56,21 @@
   "dependencies": {
     "@hono/mcp": "^0.3.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@tanstack/react-query": "^5.101.2",
     "freestyle-voice": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "latest",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.0",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.0",
     "@vitejs/plugin-react": "^5.1.1",
     "ai": "^6.0.191",
     "hono": "^4.12.22",
     "pkgroll": "^2.27.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.0",
     "typescript": "^5.8.3",
     "vite": "^7.3.3",
     "zod": "^4.4.3"

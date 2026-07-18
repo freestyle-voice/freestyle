@@ -210,7 +210,7 @@ export function getBuiltinTools(): Record<string, Tool> {
 
   tools.take_screenshot = tool({
     description:
-      "Capture a screenshot of the current screen. Returns base64 PNG by default, or a file path.",
+      "Capture a screenshot of the main display (resized to 1024px wide). Returns base64 JPEG by default, or a file path.",
     inputSchema: jsonSchema({
       type: "object",
       properties: {
@@ -413,7 +413,7 @@ export function registerBuiltinTools(server: McpServer): void {
             {
               type: "image" as const,
               data: result.data,
-              mimeType: "image/png",
+              mimeType: "image/jpeg",
             },
           ],
         };

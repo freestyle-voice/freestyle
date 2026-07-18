@@ -659,6 +659,41 @@ body {
   margin: 0;
 }
 
+/* ---- Headers editor ---- */
+
+.headers-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.headers-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.header-key {
+  flex: 0 0 35%;
+  min-width: 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px !important;
+}
+
+.header-value {
+  flex: 1;
+  min-width: 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px !important;
+}
+
 /* ---- Shared turn roles ---- */
 
 .turn-role {

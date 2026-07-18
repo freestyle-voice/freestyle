@@ -31,7 +31,9 @@ export async function connectMcpServer(
 
   const transport =
     server.transport === "http"
-      ? new StreamableHTTPClientTransport(new URL(requireUrl(server)))
+      ? new StreamableHTTPClientTransport(new URL(requireUrl(server)), {
+          requestInit: buildHttpRequestInit(server),
+        })
       : new StdioClientTransport({
           ...splitCommand(requireCommand(server), server.args),
           env: { ...pickPathEnv(), ...(server.env ?? {}) },
@@ -117,6 +119,15 @@ export async function closeConnections(
   connections: McpConnection[],
 ): Promise<void> {
   await Promise.allSettled(connections.map((c) => c.close()));
+}
+
+/** Build RequestInit with custom headers for HTTP transport. */
+function buildHttpRequestInit(
+  server: McpServerConfig,
+): RequestInit | undefined {
+  const h = server.headers;
+  if (!h || Object.keys(h).length === 0) return undefined;
+  return { headers: { ...h } };
 }
 
 function requireUrl(server: McpServerConfig): string {

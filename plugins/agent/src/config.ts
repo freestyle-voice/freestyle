@@ -23,6 +23,8 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   /** For `http`: the server URL. */
   url?: string;
+  /** For `http`: custom headers (e.g. Authorization). */
+  headers?: Record<string, string>;
   enabled: boolean;
   /** True for the built-in Freestyle Tools server. Cannot be deleted in the UI. */
   builtin?: boolean;
@@ -118,6 +120,13 @@ function normalizeMcpServer(raw: Record<string, unknown>): McpServerConfig {
         )
       : undefined,
     url: typeof raw.url === "string" ? raw.url : undefined,
+    headers: isRecord(raw.headers)
+      ? Object.fromEntries(
+          Object.entries(raw.headers).filter(
+            (e): e is [string, string] => typeof e[1] === "string",
+          ),
+        )
+      : undefined,
     enabled: raw.enabled !== false,
     builtin: raw.builtin === true ? true : undefined,
   };

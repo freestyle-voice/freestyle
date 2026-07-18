@@ -8,6 +8,7 @@ export interface McpServerConfig {
   args?: string[];
   env?: Record<string, string>;
   url?: string;
+  headers?: Record<string, string>;
   enabled: boolean;
   builtin?: boolean;
 }

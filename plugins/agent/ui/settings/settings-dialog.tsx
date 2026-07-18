@@ -74,6 +74,94 @@ export function SettingsDialog({
   const removeSkill = (id: string) =>
     onUpdate({ skills: config.skills.filter((s) => s.id !== id) });
 
+  // ---- inline HeadersEditor ----
+  function HeadersEditor({
+    headers,
+    onChange,
+  }: {
+    headers: Record<string, string>;
+    onChange: (h: Record<string, string>) => void;
+  }): React.JSX.Element {
+    const entries = Object.entries(headers);
+
+    const setEntry = (oldKey: string, newKey: string, value: string): void => {
+      const next = { ...headers };
+      if (oldKey !== newKey) delete next[oldKey];
+      next[newKey] = value;
+      onChange(next);
+    };
+
+    const removeEntry = (key: string): void => {
+      const next = { ...headers };
+      delete next[key];
+      onChange(next);
+    };
+
+    const addEntry = (): void => {
+      // Find a unique default key
+      let key = "";
+      let i = 0;
+      while (key in headers) {
+        i++;
+        key = `Header-${i}`;
+      }
+      onChange({ ...headers, [key]: "" });
+    };
+
+    return (
+      <div className="headers-editor">
+        <div className="headers-editor-head">
+          <label className="dlg-label-sm">Headers</label>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={addEntry}
+          >
+            + Add
+          </button>
+        </div>
+        {entries.length === 0 && (
+          <span className="hint">No custom headers.</span>
+        )}
+        {entries.map(([key, value]) => (
+          <div key={key} className="header-row">
+            <input
+              className="input input-compact header-key"
+              value={key}
+              onChange={(e) => setEntry(key, e.target.value, value)}
+              placeholder="Header name"
+              aria-label="Header name"
+            />
+            <input
+              className="input input-compact header-value"
+              value={value}
+              onChange={(e) => setEntry(key, key, e.target.value)}
+              placeholder="Value"
+              aria-label="Header value"
+              type={
+                key.toLowerCase().includes("auth") ||
+                key.toLowerCase().includes("token") ||
+                key.toLowerCase().includes("key") ||
+                key.toLowerCase().includes("secret")
+                  ? "password"
+                  : "text"
+              }
+            />
+            <button
+              type="button"
+              className="icon-btn destructive"
+              onClick={() => removeEntry(key)}
+              title="Remove header"
+              aria-label="Remove header"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div
       className="dialog-backdrop"
@@ -271,17 +359,25 @@ export function SettingsDialog({
                         </div>
                       </>
                     ) : (
-                      <div className="dlg-row">
-                        <label className="dlg-label-sm">URL</label>
-                        <input
-                          className="input input-compact"
-                          value={s.url ?? ""}
-                          onChange={(e) =>
-                            updateServer(s.id, { url: e.target.value })
+                      <>
+                        <div className="dlg-row">
+                          <label className="dlg-label-sm">URL</label>
+                          <input
+                            className="input input-compact"
+                            value={s.url ?? ""}
+                            onChange={(e) =>
+                              updateServer(s.id, { url: e.target.value })
+                            }
+                            placeholder="https://example.com/mcp"
+                          />
+                        </div>
+                        <HeadersEditor
+                          headers={s.headers ?? {}}
+                          onChange={(headers) =>
+                            updateServer(s.id, { headers })
                           }
-                          placeholder="https://example.com/mcp"
                         />
-                      </div>
+                      </>
                     )}
                   </div>
                 )}

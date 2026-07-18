@@ -1445,7 +1445,6 @@ export default function AppPage(): React.JSX.Element {
       // While the agent panel is open, a hotkey press is a follow-up: keep the
       // panel from collapsing when the mic pulls focus, and record into it.
       if (panelOpenRef.current) {
-        window.api?.suppressPillPanelBlurClose?.(true);
         if (stateRef.current === "idle") {
           startRecording(false);
           return;
@@ -1486,11 +1485,7 @@ export default function AppPage(): React.JSX.Element {
       ) {
         hidePill();
       }
-      // Re-allow click-outside-to-close once the follow-up recording is
-      // committed (focus hands back to the pill after the mic releases).
-      if (panelOpenRef.current) {
-        window.api?.suppressPillPanelBlurClose?.(false);
-      }
+      // (Blur-close is fully disabled while expanded; no unsuppress needed.)
     });
     const removeCancel = window.api.onPillCancel(() => {
       if (stateRef.current !== "idle") cancelRecording();

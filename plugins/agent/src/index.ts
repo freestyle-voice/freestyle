@@ -3,6 +3,7 @@ import type {
   PluginLlm,
   PluginOptions,
   PluginStorage,
+  PluginStreamEvent,
 } from "freestyle-voice";
 import { pluginSlug } from "freestyle-voice";
 import type { MiddlewareHandler } from "hono";
@@ -49,12 +50,24 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
   let lastLlm: PluginLlm | null = null;
   const baseSlug = pluginSlug(PLUGIN_NAME);
 
-  // Turn serialisation: only one agent turn runs at a time.
   let turnChain: Promise<void> = Promise.resolve();
-
-  // afterTranscribe stashes the prompt extracted from the RAW text (before
-  // LLM cleanup can strip the name).  afterCleanup picks it up.
   const pendingPrompts = new WeakMap<object, string>();
+
+  // SSE clients — the panel connects via EventSource to receive live events.
+  const sseClients = new Set<ReadableStreamDefaultController<Uint8Array>>();
+  const encoder = new TextEncoder();
+
+  function broadcastSSE(event: { type: string; text?: string }): void {
+    const data = `data: ${JSON.stringify(event)}\n\n`;
+    const bytes = encoder.encode(data);
+    for (const ctrl of sseClients) {
+      try {
+        ctrl.enqueue(bytes);
+      } catch {
+        sseClients.delete(ctrl);
+      }
+    }
+  }
 
   function ownRoute(reqPath: string, route: string): boolean {
     const m = reqPath.match(new RegExp(`^/api/plugins/([^/]+)${route}$`));
@@ -79,14 +92,20 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     if (storage) await storage.set(CONVERSATION_KEY, conversation);
   }
 
-  /** Run the agent turn, serialised with other turns. Fire-and-forget safe. */
+  /** Emit an event to all channels: the pipeline WS (if available) + SSE. */
+  function emit(
+    event: PluginStreamEvent,
+    pipelineEmit?: (event: PluginStreamEvent) => void,
+  ): void {
+    pipelineEmit?.(event);
+    broadcastSSE(event);
+  }
+
   async function executeAgentTurn(
     prompt: string,
     llm: PluginLlm | undefined,
     signal: AbortSignal | undefined,
-    emitStream:
-      | ((event: import("freestyle-voice").PluginStreamEvent) => void)
-      | undefined,
+    pipelineEmit: ((event: PluginStreamEvent) => void) | undefined,
   ): Promise<void> {
     const previousTurn = turnChain;
     let resolveThisTurn: () => void;
@@ -104,7 +123,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       }
       conversation.push({ role: "user", content: prompt });
 
-      emitStream?.({ type: "streamStart" });
+      emit({ type: "streamStart" }, pipelineEmit);
 
       let reply: string;
       if (llm) {
@@ -116,21 +135,21 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
             signal,
             log: logger,
             onDelta: (delta) =>
-              emitStream?.({ type: "streamDelta", text: delta }),
+              emit({ type: "streamDelta", text: delta }, pipelineEmit),
           });
         } catch (err) {
           reply = `Sorry, the agent turn failed: ${
             err instanceof Error ? err.message : String(err)
           }`;
-          emitStream?.({ type: "streamDelta", text: reply });
+          emit({ type: "streamDelta", text: reply }, pipelineEmit);
         }
       } else {
         reply =
           "No language model is configured. Set one under Settings → Models.";
-        emitStream?.({ type: "streamDelta", text: reply });
+        emit({ type: "streamDelta", text: reply }, pipelineEmit);
       }
 
-      emitStream?.({ type: "streamEnd" });
+      emit({ type: "streamEnd" }, pipelineEmit);
 
       if (conversationActive) {
         conversation.push({ role: "assistant", content: reply });
@@ -218,6 +237,28 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       return c.json({ ok: true });
     }
 
+    // SSE endpoint — the panel connects here for live agent events.
+    if (ownRoute(reqPath, "/agent/stream") && c.req.method === "GET") {
+      let ctrl: ReadableStreamDefaultController<Uint8Array>;
+      const stream = new ReadableStream<Uint8Array>({
+        start(c) {
+          ctrl = c;
+          sseClients.add(ctrl);
+        },
+        cancel() {
+          sseClients.delete(ctrl);
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      });
+    }
+
     return next();
   };
 
@@ -255,12 +296,9 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     async afterCleanup(_input, output, api) {
       if (api.llm) lastLlm = api.llm;
 
-      // Check the stash from afterTranscribe (name detected in raw text).
       let prompt = pendingPrompts.get(api) ?? null;
       pendingPrompts.delete(api);
 
-      // Fallback: match in the cleaned text (Freestyle Cloud streaming path
-      // where afterTranscribe doesn't fire, or when cleanup preserved the name).
       if (!prompt) {
         const text = output.text.trim();
         if (!text) return;
@@ -274,19 +312,14 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
         if (!prompt) return;
       }
 
-      // Consume IMMEDIATELY so the text is never pasted.
       output.text = prompt;
       api.control.consume("voice-agent: handled in the pill panel");
 
-      // If the streaming path is available (WebSocket), the agent turn runs
-      // inline so stream events (start/delta/end) reach the panel live.
-      // Otherwise (batch path), fire-and-forget: the panel polls for the
-      // completed conversation via GET /agent/conversation.
-      if (api.emitStream) {
-        await executeAgentTurn(prompt, api.llm, api.signal, api.emitStream);
-      } else {
-        void executeAgentTurn(prompt, api.llm, api.signal, undefined);
-      }
+      // Always fire-and-forget — the turn runs in the background.  On the WS
+      // streaming path, events also go through api.emitStream (which pipes to
+      // the renderer → IPC → panel).  On the batch path, events only go to
+      // SSE clients (the panel's EventSource connection).
+      void executeAgentTurn(prompt, api.llm, api.signal, api.emitStream);
     },
   };
 }

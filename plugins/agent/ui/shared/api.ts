@@ -19,6 +19,9 @@ function ownSlug(): string {
 
 const BASE = `/api/plugins/${ownSlug()}/agent`;
 
+/** The base API path — exported for constructing direct URLs (e.g. EventSource). */
+export const agentApiBase = BASE;
+
 interface BridgeResponse {
   ok: boolean;
   json: <T>() => T;

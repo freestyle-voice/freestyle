@@ -2,7 +2,7 @@ import type { PillEvent, PillState } from "freestyle-voice";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { getJson, postJson } from "../shared/api";
+import { agentApiBase, getJson, postJson } from "../shared/api";
 import type { ConversationEntry } from "../shared/types";
 
 /* ---- Icons ---- */
@@ -98,7 +98,7 @@ function statusFor(state: PillState, streaming: boolean): StatusView {
   };
 }
 
-/* ---- Action buttons below assistant messages ---- */
+/* ---- Action buttons ---- */
 
 function MessageActions({
   text,
@@ -168,16 +168,44 @@ export function ChatPanel(): React.JSX.Element {
 
   useEffect(() => {
     void refresh();
-    // Poll for conversation updates — covers the batch path where no stream
-    // events are emitted and the agent turn runs in the background.
-    const id = setInterval(refresh, 1000);
-    return () => clearInterval(id);
   }, [refresh]);
 
   useEffect(() => {
     scrollToEnd();
   }, [messages, streamingText, scrollToEnd]);
 
+  // SSE connection — receives live agent events directly from the server.
+  // This works on ALL paths (batch and streaming) because the agent plugin
+  // broadcasts to connected SSE clients regardless of pipeline path.
+  useEffect(() => {
+    const url = `${agentApiBase}/stream`;
+    const es = new EventSource(url);
+
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data) as { type: string; text?: string };
+        switch (event.type) {
+          case "streamStart":
+            void refresh();
+            setStreamingText("");
+            break;
+          case "streamDelta":
+            setStreamingText((prev) => (prev ?? "") + (event.text ?? ""));
+            break;
+          case "streamEnd":
+            setStreamingText(null);
+            void refresh();
+            break;
+        }
+      } catch {
+        // Malformed event — ignore.
+      }
+    };
+
+    return () => es.close();
+  }, [refresh]);
+
+  // Also listen to the pill bridge for state changes and transcripts.
   useEffect(() => {
     const pill = window.freestyle?.pill;
     if (!pill) return;
@@ -186,7 +214,6 @@ export function ChatPanel(): React.JSX.Element {
       switch (event.type) {
         case "stateChanged":
           setPillState(event.state);
-          if (event.state === "idle") void refresh();
           break;
         case "transcriptReady":
           setMessages((prev) => [
@@ -195,19 +222,12 @@ export function ChatPanel(): React.JSX.Element {
           ]);
           void refresh();
           break;
+        // Stream events from the pill bridge (WS path).  These arrive in
+        // addition to the SSE events — dedup by ignoring them here since
+        // SSE is the canonical source now.
         case "streamStart":
-          // Refresh messages from the server. If this is a new conversation
-          // the server has already cleared the old thread and added the new
-          // user message, so this replaces stale messages in the UI.
-          void refresh();
-          setStreamingText("");
-          break;
         case "streamDelta":
-          setStreamingText((prev) => (prev ?? "") + event.text);
-          break;
         case "streamEnd":
-          setStreamingText(null);
-          void refresh();
           break;
       }
     });
@@ -231,7 +251,6 @@ export function ChatPanel(): React.JSX.Element {
   const status = statusFor(pillState, streaming);
   const empty = messages.length === 0 && !streaming;
 
-  // Find the index of the last assistant message for showing the regenerate button.
   let lastAssistantIdx = -1;
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role === "assistant") {

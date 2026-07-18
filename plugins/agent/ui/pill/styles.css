@@ -83,19 +83,33 @@ body {
   height: 100vh;
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
-  border-radius: 14px;
+  /* Flat top (connected to pill bar above), rounded bottom. */
+  border-top: none;
+  border-radius: 0 0 14px 14px;
   overflow: hidden;
   box-shadow: var(--panel-shadow);
+  animation: panel-enter 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scaleY(0.98);
+    transform-origin: top center;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
 }
 
 /* Inner highlight strip along the top edge for depth */
 .panel::before {
   content: "";
   position: absolute;
-  inset: 1px 1px auto 1px;
+  inset: 0 1px auto 1px;
   height: 1px;
   background: var(--panel-highlight);
-  border-radius: 14px 14px 0 0;
   pointer-events: none;
   z-index: 1;
 }

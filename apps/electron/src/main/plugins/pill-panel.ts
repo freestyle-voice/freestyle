@@ -15,8 +15,8 @@ const log = createAppLogger("pill-panel");
 /** The pill chrome height (px) — the panel sits below (or above) it. */
 const PILL_CHROME_HEIGHT = 90;
 
-/** Gap between pill chrome and the panel (px). */
-const PANEL_GAP = 4;
+/** Gap between pill chrome and the panel (px). Zero for a connected look. */
+const PANEL_GAP = 0;
 
 interface PillPanelConfig {
   slug: string;
@@ -175,9 +175,6 @@ export class PillPanelController {
     const view = this.ensureView();
     if (view) {
       const viewY = expandsDown ? PILL_CHROME_HEIGHT + PANEL_GAP : 0;
-      // Round the view's corners so they match the panel's CSS border-radius
-      // instead of showing a hard rectangular edge.
-      view.setBorderRadius(14);
       view.setBounds({
         x: 0,
         y: viewY,

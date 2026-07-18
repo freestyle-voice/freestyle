@@ -151,19 +151,20 @@ function readThemeTokens(): Record<string, string> {
 
 const PILL_WIDTH = 216;
 
-const pillInnerStyle: React.CSSProperties = {
+/** Base pill bar style — values that don't change between collapsed/expanded. */
+const pillBaseStyle: React.CSSProperties = {
   height: 43,
-  width: PILL_WIDTH,
   padding: "0 9px",
-  borderRadius: 25,
   background: "var(--card)",
   color: "var(--foreground)",
-  border: "1px solid var(--border)",
   fontFamily: "'DM Sans', sans-serif",
   fontSize: 13,
   fontWeight: 500,
   cursor: "grab",
   WebkitAppRegion: "drag",
+  transition:
+    "width 280ms cubic-bezier(0.4,0,0.2,1), " +
+    "border-radius 280ms cubic-bezier(0.4,0,0.2,1)",
 } as React.CSSProperties;
 
 interface TranscribeResult {
@@ -246,6 +247,7 @@ export default function AppPage(): React.JSX.Element {
   // full-window drag region when the panel is expanded).
   const [panelOpen, setPanelOpen] = useState(false);
   const panelPluginSlugRef = useRef<string | null>(null);
+  const panelWidthRef = useRef(400);
   // Tracks the in-flight prepareSystemAudio() (ducking) call. Ducking runs
   // concurrently with mic acquisition, so every restore must wait for this
   // to settle — otherwise a restore that lands before the duck applies is a
@@ -1385,6 +1387,7 @@ export default function AppPage(): React.JSX.Element {
         }[]) {
           if (p.pill && p.enabled) {
             panelPluginSlugRef.current = p.slug;
+            panelWidthRef.current = p.pill.expand.width;
             window.api?.configurePillPanel?.(
               p.slug,
               p.pill.id,
@@ -1588,7 +1591,7 @@ export default function AppPage(): React.JSX.Element {
           // would sit under the panel WebContentsView and intercept mouse
           // events (scroll, click, text selection) before they reach the
           // panel.  The pill bar itself always has its own drag region via
-          // pillInnerStyle, so dragging still works when collapsed.
+          // pillBaseStyle, so dragging still works when collapsed.
           WebkitAppRegion: panelOpen ? "no-drag" : "drag",
         } as React.CSSProperties
       }
@@ -1616,20 +1619,33 @@ export default function AppPage(): React.JSX.Element {
 
       <div
         style={{
-          marginBottom: pillAlign === "end" ? 8 : "auto",
-          marginTop: pillAlign === "start" ? 8 : "auto",
+          // When the panel is open the pill bar stretches to the panel width
+          // and its bottom edge sits flush against the panel — no margin.
+          marginBottom: panelOpen ? 0 : pillAlign === "end" ? 8 : "auto",
+          marginTop: panelOpen ? 0 : pillAlign === "start" ? 8 : "auto",
+          transition: "margin 280ms cubic-bezier(0.4,0,0.2,1)",
         }}
       >
         <div
-          className={topGlow}
+          className={panelOpen ? "" : topGlow}
           style={{
-            borderRadius: 25,
-            visibility: state === "idle" ? "hidden" : "visible",
+            borderRadius: panelOpen ? "14px 14px 0 0" : 25,
+            visibility: state === "idle" && !panelOpen ? "hidden" : "visible",
+            transition: "border-radius 280ms cubic-bezier(0.4,0,0.2,1)",
           }}
         >
           <div
             className="inline-flex items-center gap-2.5"
-            style={pillInnerStyle}
+            style={{
+              ...pillBaseStyle,
+              width: panelOpen ? panelWidthRef.current : PILL_WIDTH,
+              borderRadius: panelOpen ? "14px 14px 0 0" : 25,
+              border: "1px solid var(--border)",
+              borderBottom: panelOpen ? "none" : undefined,
+              boxShadow: panelOpen
+                ? "0 -4px 20px -4px rgba(0,0,0,0.15)"
+                : undefined,
+            }}
           >
             <div
               style={

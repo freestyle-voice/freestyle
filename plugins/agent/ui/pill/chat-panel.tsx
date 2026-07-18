@@ -125,10 +125,10 @@ function MessageActions({
         type="button"
         className="action-btn"
         onClick={handleCopy}
+        aria-label={copied ? "Copied" : "Copy"}
         title={copied ? "Copied" : "Copy"}
       >
         {copied ? <CheckIcon /> : <CopyIcon />}
-        <span>{copied ? "Copied" : "Copy"}</span>
       </button>
       {isLast && (
         <button
@@ -136,10 +136,10 @@ function MessageActions({
           className="action-btn"
           onClick={onRegenerate}
           disabled={regenerating}
+          aria-label="Regenerate"
           title="Regenerate"
         >
           <RegenerateIcon />
-          <span>{regenerating ? "Regenerating..." : "Regenerate"}</span>
         </button>
       )}
     </div>

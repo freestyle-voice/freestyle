@@ -204,16 +204,15 @@ body {
 .action-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   border-radius: 6px;
   border: none;
   background: transparent;
   color: var(--muted-foreground);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 9px;
-  letter-spacing: 0.06em;
   cursor: pointer;
+  padding: 0;
   transition: background 120ms, color 120ms;
 }
 .action-btn:hover {

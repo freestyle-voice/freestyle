@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { del, getJson, putJson } from "../shared/api";
-import type { AgentConfig, SavedConversation } from "../shared/types";
+import {
+  type AgentConfig,
+  DEFAULT_TOOL_GROUPS,
+  type SavedConversation,
+} from "../shared/types";
 import { ConversationViewer } from "./conversation-viewer";
 import { SettingsDialog } from "./settings-dialog";
 
@@ -10,6 +14,7 @@ const EMPTY: AgentConfig = {
   mcpServers: [],
   skills: [],
   builtinToolsEnabled: true,
+  builtinToolGroups: { ...DEFAULT_TOOL_GROUPS },
 };
 
 const SAVE_DEBOUNCE_MS = 500;

@@ -39,6 +39,83 @@ export interface Skill {
   enabled: boolean;
 }
 
+/**
+ * Built-in tool group identifiers. Each controls a cluster of related tools
+ * that the user can toggle independently in Settings.
+ */
+export type BuiltinToolGroup =
+  | "filesystem"
+  | "shell"
+  | "clipboard"
+  | "screenshots"
+  | "shortcuts"
+  | "webhooks";
+
+/** Human-readable metadata for each tool group shown in Settings. */
+export interface ToolGroupMeta {
+  id: BuiltinToolGroup;
+  label: string;
+  description: string;
+  tools: string[];
+}
+
+/** All groups in display order — the UI iterates this list. */
+export const TOOL_GROUPS: ToolGroupMeta[] = [
+  {
+    id: "filesystem",
+    label: "File System",
+    description: "read_file, write_file, list_directory, search_files",
+    tools: ["read_file", "write_file", "list_directory", "search_files"],
+  },
+  {
+    id: "shell",
+    label: "Shell",
+    description: "run_command",
+    tools: ["run_command"],
+  },
+  {
+    id: "clipboard",
+    label: "Clipboard & Apps",
+    description:
+      "get_clipboard, set_clipboard, open_url, get_frontmost_app, paste_text",
+    tools: [
+      "get_clipboard",
+      "set_clipboard",
+      "open_url",
+      "get_frontmost_app",
+      "paste_text",
+    ],
+  },
+  {
+    id: "screenshots",
+    label: "Screenshots",
+    description: "take_screenshot",
+    tools: ["take_screenshot"],
+  },
+  {
+    id: "shortcuts",
+    label: "Shortcuts",
+    description: "run_shortcut (macOS only)",
+    tools: ["run_shortcut"],
+  },
+  {
+    id: "webhooks",
+    label: "Webhooks",
+    description: "call_webhook",
+    tools: ["call_webhook"],
+  },
+];
+
+/** Default: all groups enabled. */
+export const DEFAULT_TOOL_GROUPS: Record<BuiltinToolGroup, boolean> = {
+  filesystem: true,
+  shell: true,
+  clipboard: true,
+  screenshots: true,
+  shortcuts: true,
+  webhooks: true,
+};
+
 export interface AgentConfig {
   systemPrompt: string;
   /**
@@ -52,6 +129,8 @@ export interface AgentConfig {
   skills: Skill[];
   /** Whether the built-in Freestyle Tools are active (default true). */
   builtinToolsEnabled: boolean;
+  /** Per-group toggles for built-in tools. Missing keys default to true. */
+  builtinToolGroups: Record<string, boolean>;
 }
 
 export const DEFAULT_SYSTEM_PROMPT =
@@ -67,6 +146,7 @@ export const DEFAULT_CONFIG: AgentConfig = {
   mcpServers: [],
   skills: [],
   builtinToolsEnabled: true,
+  builtinToolGroups: { ...DEFAULT_TOOL_GROUPS },
 };
 
 const CONFIG_KEY = "config";
@@ -99,7 +179,23 @@ export function normalizeConfig(raw: unknown): AgentConfig {
 
   const builtinToolsEnabled = raw.builtinToolsEnabled !== false;
 
-  return { systemPrompt, agentName, mcpServers, skills, builtinToolsEnabled };
+  const builtinToolGroups: Record<string, boolean> = {
+    ...DEFAULT_TOOL_GROUPS,
+  };
+  if (isRecord(raw.builtinToolGroups)) {
+    for (const [k, v] of Object.entries(raw.builtinToolGroups)) {
+      if (typeof v === "boolean") builtinToolGroups[k] = v;
+    }
+  }
+
+  return {
+    systemPrompt,
+    agentName,
+    mcpServers,
+    skills,
+    builtinToolsEnabled,
+    builtinToolGroups,
+  };
 }
 
 function normalizeMcpServer(raw: Record<string, unknown>): McpServerConfig {

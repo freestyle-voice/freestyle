@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { type JSONSchema7, jsonSchema, type Tool, tool } from "ai";
 import { z } from "zod";
+import { TOOL_GROUPS } from "../config.js";
 import { getFrontmostApp, pasteText } from "./tools/context.js";
 import {
   listDirectory,
@@ -18,175 +19,213 @@ import { callWebhook } from "./tools/webhook.js";
  * Returns AI SDK `tool()` objects for all built-in tools. These are merged
  * directly into the `streamText` tool map so the agent can call them without
  * MCP protocol overhead.
+ *
+ * @param disabledGroups - Optional map of group IDs to booleans. Tools
+ *   belonging to a group where the value is `false` are excluded.
  */
-export function getBuiltinTools(): Record<string, Tool> {
+export function getBuiltinTools(
+  disabledGroups?: Record<string, boolean>,
+): Record<string, Tool> {
   const tools: Record<string, Tool> = {};
+
+  // Build a set of tool names that should be skipped.
+  const skip = new Set<string>();
+  if (disabledGroups) {
+    for (const group of TOOL_GROUPS) {
+      if (disabledGroups[group.id] === false) {
+        for (const t of group.tools) skip.add(t);
+      }
+    }
+  }
+
+  const include = (name: string): boolean => !skip.has(name);
 
   // --- Tier 1: Core ---
 
-  tools.read_file = tool({
-    description:
-      "Read the contents of a file. Returns numbered lines. Use offset/limit for large files.",
-    inputSchema: jsonSchema({
-      type: "object",
-      properties: {
-        path: { type: "string", description: "Absolute or relative file path" },
-        offset: {
-          type: "number",
-          description: "Line number to start from (1-indexed, default 1)",
+  if (include("read_file"))
+    tools.read_file = tool({
+      description:
+        "Read the contents of a file. Returns numbered lines. Use offset/limit for large files.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Absolute or relative file path",
+          },
+          offset: {
+            type: "number",
+            description: "Line number to start from (1-indexed, default 1)",
+          },
+          limit: {
+            type: "number",
+            description: "Max lines to return (default: all)",
+          },
         },
-        limit: {
-          type: "number",
-          description: "Max lines to return (default: all)",
-        },
-      },
-      required: ["path"],
-    } satisfies JSONSchema7),
-    execute: async (args) =>
-      readFile(args as { path: string; offset?: number; limit?: number }),
-  });
+        required: ["path"],
+      } satisfies JSONSchema7),
+      execute: async (args) =>
+        readFile(args as { path: string; offset?: number; limit?: number }),
+    });
 
-  tools.write_file = tool({
-    description:
-      "Write content to a file. Creates parent directories if needed. Overwrites existing files.",
-    inputSchema: jsonSchema({
-      type: "object",
-      properties: {
-        path: { type: "string", description: "Absolute or relative file path" },
-        content: { type: "string", description: "Content to write" },
-      },
-      required: ["path", "content"],
-    } satisfies JSONSchema7),
-    execute: async (args) =>
-      writeFile(args as { path: string; content: string }),
-  });
-
-  tools.list_directory = tool({
-    description:
-      "List files and directories at a path. Returns name, type (file/directory/symlink), and size.",
-    inputSchema: jsonSchema({
-      type: "object",
-      properties: {
-        path: {
-          type: "string",
-          description: "Directory path to list",
+  if (include("write_file"))
+    tools.write_file = tool({
+      description:
+        "Write content to a file. Creates parent directories if needed. Overwrites existing files.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Absolute or relative file path",
+          },
+          content: { type: "string", description: "Content to write" },
         },
-      },
-      required: ["path"],
-    } satisfies JSONSchema7),
-    execute: async (args) => listDirectory(args as { path: string }),
-  });
+        required: ["path", "content"],
+      } satisfies JSONSchema7),
+      execute: async (args) =>
+        writeFile(args as { path: string; content: string }),
+    });
 
-  tools.search_files = tool({
-    description:
-      "Search for a regex pattern across files in a directory. Returns matching file:line results.",
-    inputSchema: jsonSchema({
-      type: "object",
-      properties: {
-        pattern: { type: "string", description: "Regex pattern to search for" },
-        path: {
-          type: "string",
-          description: "Directory to search in (default: cwd)",
+  if (include("list_directory"))
+    tools.list_directory = tool({
+      description:
+        "List files and directories at a path. Returns name, type (file/directory/symlink), and size.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Directory path to list",
+          },
         },
-        include: {
-          type: "string",
-          description: "Glob pattern to filter files (e.g. '*.ts')",
-        },
-      },
-      required: ["pattern"],
-    } satisfies JSONSchema7),
-    execute: async (args) =>
-      searchFiles(args as { pattern: string; path?: string; include?: string }),
-  });
+        required: ["path"],
+      } satisfies JSONSchema7),
+      execute: async (args) => listDirectory(args as { path: string }),
+    });
 
-  tools.run_command = tool({
-    description:
-      "Execute a shell command and return stdout, stderr, and exit code. Use for build, test, git, npm, etc.",
-    inputSchema: jsonSchema({
-      type: "object",
-      properties: {
-        command: { type: "string", description: "Shell command to execute" },
-        cwd: {
-          type: "string",
-          description: "Working directory (default: cwd)",
+  if (include("search_files"))
+    tools.search_files = tool({
+      description:
+        "Search for a regex pattern across files in a directory. Returns matching file:line results.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          pattern: {
+            type: "string",
+            description: "Regex pattern to search for",
+          },
+          path: {
+            type: "string",
+            description: "Directory to search in (default: cwd)",
+          },
+          include: {
+            type: "string",
+            description: "Glob pattern to filter files (e.g. '*.ts')",
+          },
         },
-        timeout: {
-          type: "number",
-          description: "Timeout in seconds (default 30, max 120)",
+        required: ["pattern"],
+      } satisfies JSONSchema7),
+      execute: async (args) =>
+        searchFiles(
+          args as { pattern: string; path?: string; include?: string },
+        ),
+    });
+
+  if (include("run_command"))
+    tools.run_command = tool({
+      description:
+        "Execute a shell command and return stdout, stderr, and exit code. Use for build, test, git, npm, etc.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          command: { type: "string", description: "Shell command to execute" },
+          cwd: {
+            type: "string",
+            description: "Working directory (default: cwd)",
+          },
+          timeout: {
+            type: "number",
+            description: "Timeout in seconds (default 30, max 120)",
+          },
         },
-      },
-      required: ["command"],
-    } satisfies JSONSchema7),
-    execute: async (args) =>
-      runCommand(args as { command: string; cwd?: string; timeout?: number }),
-  });
+        required: ["command"],
+      } satisfies JSONSchema7),
+      execute: async (args) =>
+        runCommand(args as { command: string; cwd?: string; timeout?: number }),
+    });
 
-  tools.open_url = tool({
-    description:
-      "Open a URL in the default browser or an app scheme (e.g. slack://). Works on macOS, Linux, and Windows.",
-    inputSchema: jsonSchema({
-      type: "object",
-      properties: {
-        url: {
-          type: "string",
-          description: "URL or app scheme to open",
+  if (include("open_url"))
+    tools.open_url = tool({
+      description:
+        "Open a URL in the default browser or an app scheme (e.g. slack://). Works on macOS, Linux, and Windows.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          url: {
+            type: "string",
+            description: "URL or app scheme to open",
+          },
         },
-      },
-      required: ["url"],
-    } satisfies JSONSchema7),
-    execute: async (args) => openUrl(args as { url: string }),
-  });
+        required: ["url"],
+      } satisfies JSONSchema7),
+      execute: async (args) => openUrl(args as { url: string }),
+    });
 
-  tools.get_clipboard = tool({
-    description: "Read the current text contents of the system clipboard.",
-    inputSchema: jsonSchema({
-      type: "object",
-      properties: {},
-    } satisfies JSONSchema7),
-    execute: async () => getClipboard(),
-  });
+  if (include("get_clipboard"))
+    tools.get_clipboard = tool({
+      description: "Read the current text contents of the system clipboard.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {},
+      } satisfies JSONSchema7),
+      execute: async () => getClipboard(),
+    });
 
-  tools.set_clipboard = tool({
-    description: "Write text to the system clipboard.",
-    inputSchema: jsonSchema({
-      type: "object",
-      properties: {
-        text: { type: "string", description: "Text to copy to clipboard" },
-      },
-      required: ["text"],
-    } satisfies JSONSchema7),
-    execute: async (args) => setClipboard(args as { text: string }),
-  });
+  if (include("set_clipboard"))
+    tools.set_clipboard = tool({
+      description: "Write text to the system clipboard.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          text: { type: "string", description: "Text to copy to clipboard" },
+        },
+        required: ["text"],
+      } satisfies JSONSchema7),
+      execute: async (args) => setClipboard(args as { text: string }),
+    });
 
   // --- Tier 2: Context Awareness ---
 
-  tools.get_frontmost_app = tool({
-    description:
-      "Get the currently focused application name, window title, and browser tab URL (if applicable).",
-    inputSchema: jsonSchema({
-      type: "object",
-      properties: {},
-    } satisfies JSONSchema7),
-    execute: async () => getFrontmostApp(),
-  });
+  if (include("get_frontmost_app"))
+    tools.get_frontmost_app = tool({
+      description:
+        "Get the currently focused application name, window title, and browser tab URL (if applicable).",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {},
+      } satisfies JSONSchema7),
+      execute: async () => getFrontmostApp(),
+    });
 
-  tools.paste_text = tool({
-    description:
-      "Paste text into the currently focused application by writing to the clipboard and simulating Cmd+V / Ctrl+V.",
-    inputSchema: jsonSchema({
-      type: "object",
-      properties: {
-        text: {
-          type: "string",
-          description: "Text to paste into the focused app",
+  if (include("paste_text"))
+    tools.paste_text = tool({
+      description:
+        "Paste text into the currently focused application by writing to the clipboard and simulating Cmd+V / Ctrl+V.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          text: {
+            type: "string",
+            description: "Text to paste into the focused app",
+          },
         },
-      },
-      required: ["text"],
-    } satisfies JSONSchema7),
-    execute: async (args) => pasteText(args as { text: string }),
-  });
+        required: ["text"],
+      } satisfies JSONSchema7),
+      execute: async (args) => pasteText(args as { text: string }),
+    });
 
-  if (IS_MACOS) {
+  if (IS_MACOS && include("run_shortcut")) {
     tools.run_shortcut = tool({
       description:
         "Run a macOS Shortcut by name. Optionally pipe input text to it.",
@@ -208,55 +247,58 @@ export function getBuiltinTools(): Record<string, Tool> {
 
   // --- Tier 3: Power Tools ---
 
-  tools.take_screenshot = tool({
-    description:
-      "Capture a screenshot of the main display (resized to 1024px wide). Returns base64 JPEG by default, or a file path.",
-    inputSchema: jsonSchema({
-      type: "object",
-      properties: {
-        returnImage: {
-          type: "boolean",
-          description:
-            "If true (default), returns base64 PNG. If false, saves to a temp file and returns the path.",
+  if (include("take_screenshot"))
+    tools.take_screenshot = tool({
+      description:
+        "Capture a screenshot of the main display (resized to 1024px wide). Returns base64 JPEG by default, or a file path.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          returnImage: {
+            type: "boolean",
+            description:
+              "If true (default), returns base64 JPEG. If false, saves to a temp file and returns the path.",
+          },
         },
-      },
-    } satisfies JSONSchema7),
-    execute: async (args) => takeScreenshot(args as { returnImage?: boolean }),
-  });
+      } satisfies JSONSchema7),
+      execute: async (args) =>
+        takeScreenshot(args as { returnImage?: boolean }),
+    });
 
-  tools.call_webhook = tool({
-    description:
-      "Make an HTTP request to a URL. Useful for calling webhooks, APIs, or web services.",
-    inputSchema: jsonSchema({
-      type: "object",
-      properties: {
-        url: { type: "string", description: "URL to call" },
-        method: {
-          type: "string",
-          description: "HTTP method (default: POST)",
-          enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  if (include("call_webhook"))
+    tools.call_webhook = tool({
+      description:
+        "Make an HTTP request to a URL. Useful for calling webhooks, APIs, or web services.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          url: { type: "string", description: "URL to call" },
+          method: {
+            type: "string",
+            description: "HTTP method (default: POST)",
+            enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+          },
+          body: {
+            description: "Request body (sent as JSON for POST/PUT/PATCH)",
+          },
+          headers: {
+            type: "object",
+            description: "Additional HTTP headers",
+            additionalProperties: { type: "string" },
+          },
         },
-        body: {
-          description: "Request body (sent as JSON for POST/PUT/PATCH)",
-        },
-        headers: {
-          type: "object",
-          description: "Additional HTTP headers",
-          additionalProperties: { type: "string" },
-        },
-      },
-      required: ["url"],
-    } satisfies JSONSchema7),
-    execute: async (args) =>
-      callWebhook(
-        args as {
-          url: string;
-          method?: string;
-          body?: unknown;
-          headers?: Record<string, string>;
-        },
-      ),
-  });
+        required: ["url"],
+      } satisfies JSONSchema7),
+      execute: async (args) =>
+        callWebhook(
+          args as {
+            url: string;
+            method?: string;
+            body?: unknown;
+            headers?: Record<string, string>;
+          },
+        ),
+    });
 
   return tools;
 }

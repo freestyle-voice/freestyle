@@ -1,6 +1,7 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { setFreestyleVisible } from "./screenshot.js";
+import { pipeToCommand, sleep } from "./util.js";
 
 const execFileP = promisify(execFile);
 
@@ -338,23 +339,4 @@ async function pasteLinux(text: string): Promise<string> {
   } finally {
     await setFreestyleVisible(true);
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-function pipeToCommand(
-  cmd: string,
-  args: string[],
-  input: string,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
-    child.on("error", reject);
-    child.on("close", (code) =>
-      code === 0 ? resolve() : reject(new Error(`${cmd} exited ${code}`)),
-    );
-    child.stdin.end(input);
-  });
 }

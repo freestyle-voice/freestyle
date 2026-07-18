@@ -530,7 +530,7 @@ const stream = new Hono().get(
             // A plugin may suppress the dictation explicitly (consume/abort) or
             // implicitly by emptying the transcript — either skips cleanup.
             if (api.control.state !== "running" || !rawText?.trim()) {
-              ws.send(JSON.stringify({ type: "final", text: "" }));
+              if (!closed) ws.send(JSON.stringify({ type: "final", text: "" }));
               return;
             }
 

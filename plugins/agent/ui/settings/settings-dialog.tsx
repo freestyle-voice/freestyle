@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef } from "react";
-import type { AgentConfig, McpServerConfig, Skill } from "../shared/types";
+import {
+  type AgentConfig,
+  type McpServerConfig,
+  type Skill,
+  TOOL_GROUPS,
+  uid,
+} from "../shared/types";
 
 interface Props {
   config: AgentConfig;
   onUpdate: (patch: Partial<AgentConfig>) => void;
   onClose: () => void;
-}
-
-function uid(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 }
 
 export function SettingsDialog({
@@ -98,9 +100,8 @@ export function SettingsDialog({
     };
 
     const addEntry = (): void => {
-      // Find a unique default key
-      let key = "";
-      let i = 0;
+      let i = 1;
+      let key = `Header-${i}`;
       while (key in headers) {
         i++;
         key = `Header-${i}`;
@@ -228,33 +229,60 @@ export function SettingsDialog({
             </span>
           </div>
 
-          {/* Built-in tools */}
+          {/* Built-in tools — per-group toggles */}
           <div className="dlg-section">
             <div className="dlg-section-head">
-              <span className="eyebrow">Built-in Tools</span>
-            </div>
-            <div className="dlg-item builtin-tools-item">
-              <div className="dlg-item-head">
-                <div className="builtin-tools-label">
-                  <span className="builtin-tools-name">Freestyle Tools</span>
-                  <span className="badge badge-builtin">Built-in</span>
-                </div>
-                <label className="toggle">
-                  <input
-                    type="checkbox"
-                    checked={config.builtinToolsEnabled}
-                    onChange={(e) =>
-                      onUpdate({ builtinToolsEnabled: e.target.checked })
-                    }
-                  />
-                  On
-                </label>
+              <div className="builtin-tools-label">
+                <span className="eyebrow">Built-in Tools</span>
+                <span className="badge badge-builtin">Built-in</span>
               </div>
-              <span className="hint" style={{ marginTop: 4 }}>
-                File system, shell, clipboard, screenshots, shortcuts, webhooks,
-                and more.
-              </span>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={config.builtinToolsEnabled}
+                  onChange={(e) =>
+                    onUpdate({ builtinToolsEnabled: e.target.checked })
+                  }
+                />
+                All
+              </label>
             </div>
+            {config.builtinToolsEnabled && (
+              <div className="tool-groups">
+                {TOOL_GROUPS.map((group) => {
+                  const enabled =
+                    config.builtinToolGroups?.[group.id] !== false;
+                  return (
+                    <div
+                      key={group.id}
+                      className={`tool-group-item${enabled ? "" : " disabled"}`}
+                    >
+                      <div className="tool-group-head">
+                        <span className="tool-group-label">{group.label}</span>
+                        <label className="toggle">
+                          <input
+                            type="checkbox"
+                            checked={enabled}
+                            onChange={(e) =>
+                              onUpdate({
+                                builtinToolGroups: {
+                                  ...config.builtinToolGroups,
+                                  [group.id]: e.target.checked,
+                                },
+                              })
+                            }
+                          />
+                          On
+                        </label>
+                      </div>
+                      <span className="tool-group-tools">
+                        {group.description}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* MCP servers */}

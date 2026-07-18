@@ -3,6 +3,7 @@ import { readFileSync, statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { sleep } from "./util.js";
 
 const execFileP = promisify(execFile);
 
@@ -311,8 +312,4 @@ export async function setFreestyleVisible(visible: boolean): Promise<void> {
       }
     }
   } catch {}
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

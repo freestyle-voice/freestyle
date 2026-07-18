@@ -1,3 +1,8 @@
+/** Generate a unique ID — uses `crypto.randomUUID` when available. */
+export function uid(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+}
+
 /** UI-side mirror of the server config types (kept in sync with src/config.ts). */
 
 export interface McpServerConfig {
@@ -20,12 +25,80 @@ export interface Skill {
   enabled: boolean;
 }
 
+export interface ToolGroupMeta {
+  id: string;
+  label: string;
+  description: string;
+  tools: string[];
+}
+
+/**
+ * Built-in tool groups — must stay in sync with `TOOL_GROUPS` in
+ * `src/config.ts`. Defined here so all UI components share a single source.
+ */
+export const TOOL_GROUPS: ToolGroupMeta[] = [
+  {
+    id: "filesystem",
+    label: "File System",
+    description: "read_file, write_file, list_directory, search_files",
+    tools: ["read_file", "write_file", "list_directory", "search_files"],
+  },
+  {
+    id: "shell",
+    label: "Shell",
+    description: "run_command",
+    tools: ["run_command"],
+  },
+  {
+    id: "clipboard",
+    label: "Clipboard & Apps",
+    description:
+      "get_clipboard, set_clipboard, open_url, get_frontmost_app, paste_text",
+    tools: [
+      "get_clipboard",
+      "set_clipboard",
+      "open_url",
+      "get_frontmost_app",
+      "paste_text",
+    ],
+  },
+  {
+    id: "screenshots",
+    label: "Screenshots",
+    description: "take_screenshot",
+    tools: ["take_screenshot"],
+  },
+  {
+    id: "shortcuts",
+    label: "Shortcuts",
+    description: "run_shortcut (macOS only)",
+    tools: ["run_shortcut"],
+  },
+  {
+    id: "webhooks",
+    label: "Webhooks",
+    description: "call_webhook",
+    tools: ["call_webhook"],
+  },
+];
+
+/** Default: all groups enabled. */
+export const DEFAULT_TOOL_GROUPS: Record<string, boolean> = {
+  filesystem: true,
+  shell: true,
+  clipboard: true,
+  screenshots: true,
+  shortcuts: true,
+  webhooks: true,
+};
+
 export interface AgentConfig {
   systemPrompt: string;
   agentName: string;
   mcpServers: McpServerConfig[];
   skills: Skill[];
   builtinToolsEnabled: boolean;
+  builtinToolGroups: Record<string, boolean>;
 }
 
 export interface ConversationEntry {

@@ -26,13 +26,15 @@ body {
 }
 
 .page {
-  padding: 0 3rem 3rem;
+  padding: 0 3rem 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  height: 100vh;
+  overflow: hidden;
 }
-@media (max-width: 1080px) { .page { padding: 0 2rem 2rem; } }
-@media (max-width: 820px)  { .page { padding: 0 1rem 1.5rem; } }
+@media (max-width: 1080px) { .page { padding: 0 2rem 0; } }
+@media (max-width: 820px)  { .page { padding: 0 1rem 0; } }
 
 /* ---- Header ---- */
 
@@ -102,7 +104,9 @@ body {
 .split-view {
   display: flex;
   gap: 16px;
+  flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .card-grid-pane {
@@ -111,12 +115,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  overflow: hidden;
   transition: flex 250ms ease;
 }
 
 .split-view.has-detail .card-grid-pane {
-  flex: 0 0 240px;
-  max-width: 240px;
+  flex: 0 0 260px;
+  max-width: 260px;
 }
 
 @media (max-width: 820px) {
@@ -135,6 +140,8 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 6px;
+  overflow-y: auto;
+  padding-bottom: 1.5rem;
 }
 
 /* When the detail pane is open, collapse to single column */
@@ -220,12 +227,14 @@ body {
 .detail-pane {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
   animation: slide-in 180ms ease;
+  margin-bottom: 1.5rem;
 }
 
 @keyframes slide-in {
@@ -338,7 +347,7 @@ body {
 }
 
 .dialog {
-  width: min(560px, calc(100vw - 40px));
+  width: min(720px, calc(100vw - 40px));
   max-height: calc(100vh - 60px);
   background: var(--background);
   border: 1px solid var(--border);
@@ -650,6 +659,51 @@ body {
 .badge-builtin {
   background: color-mix(in srgb, var(--primary) 12%, transparent);
   color: var(--primary);
+}
+
+/* ---- Tool groups (per-group toggles) ---- */
+
+.tool-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px;
+}
+
+.tool-group-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary) 3%, var(--card));
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.tool-group-item.disabled {
+  opacity: 0.55;
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.tool-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.tool-group-label {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tool-group-tools {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  line-height: 1.4;
+  word-break: break-all;
 }
 
 .item-empty {

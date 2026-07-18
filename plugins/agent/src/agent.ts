@@ -40,7 +40,9 @@ export async function runAgentTurn(opts: {
 
   // Merge built-in tools (if enabled) with external MCP tools.
   // Built-in tools are added first so external servers can override them.
-  const builtinTools = config.builtinToolsEnabled ? getBuiltinTools() : {};
+  const builtinTools = config.builtinToolsEnabled
+    ? getBuiltinTools(config.builtinToolGroups)
+    : {};
   const tools = { ...builtinTools, ...externalTools };
 
   try {

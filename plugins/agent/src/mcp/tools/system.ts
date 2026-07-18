@@ -1,5 +1,6 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { pipeToCommand } from "./util.js";
 
 const execFileP = promisify(execFile);
 
@@ -85,19 +86,4 @@ export async function setClipboard(args: { text: string }): Promise<string> {
   } catch (err) {
     return `Error writing clipboard: ${err instanceof Error ? err.message : String(err)}`;
   }
-}
-
-function pipeToCommand(
-  cmd: string,
-  args: string[],
-  input: string,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
-    child.on("error", reject);
-    child.on("close", (code) =>
-      code === 0 ? resolve() : reject(new Error(`${cmd} exited ${code}`)),
-    );
-    child.stdin.end(input);
-  });
 }

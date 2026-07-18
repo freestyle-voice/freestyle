@@ -49,10 +49,14 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
   let lastLlm: PluginLlm | null = null;
   const baseSlug = pluginSlug(PLUGIN_NAME);
 
-  // Turn serialisation: only one agent turn runs at a time.  A second
-  // dictation that arrives while the first is still processing is queued
-  // behind the running turn's promise.
+  // Turn serialisation: only one agent turn runs at a time.
   let turnChain: Promise<void> = Promise.resolve();
+
+  // `afterTranscribe` detects the agent name in the RAW text (before LLM
+  // cleanup strips it) and stashes the extracted prompt.  `afterCleanup`
+  // picks up the stash so it works even when cleanup removed the name.
+  // Each pipeline run gets its own HookApi, so we key on the api instance.
+  const pendingPrompts = new WeakMap<object, string>();
 
   function ownRoute(reqPath: string, route: string): boolean {
     const m = reqPath.match(new RegExp(`^/api/plugins/([^/]+)${route}$`));
@@ -150,9 +154,6 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     }
 
     if (ownRoute(reqPath, "/agent/session/end") && c.req.method === "POST") {
-      // Mark inactive immediately.  Archival is deferred to the next fresh
-      // trigger — this avoids archiving an incomplete conversation if the
-      // agent turn is still running when the panel closes.
       conversationActive = false;
       return c.json({ ok: true });
     }
@@ -177,28 +178,55 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       ctx.logger.info(`voice agent ready on ${ctx.mode}`);
     },
 
-    async afterCleanup(_input, output, api) {
-      if (api.llm) lastLlm = api.llm;
-
+    // Detect the agent name in the RAW transcript (before LLM cleanup can
+    // strip it).  Stash the extracted prompt keyed on the HookApi so
+    // afterCleanup can pick it up later in the same pipeline run.
+    //
+    // afterTranscribe does NOT fire on every path (Freestyle Cloud streaming
+    // with combined cleanup skips it), so afterCleanup also checks the
+    // cleaned text as a fallback.
+    afterTranscribe(_input, output, api) {
       const text = output.text.trim();
       if (!text) return;
 
       const matcher = buildAgentNameRegex(config.agentName);
       const hasName = matcher.test(text);
-
-      if (!conversationActive && !hasName) return;
+      if (!hasName && !conversationActive) return;
 
       const prompt = hasName ? stripAgentName(text, matcher) : text;
       if (!prompt) return;
 
-      // Consume the output IMMEDIATELY so the text is never pasted,
-      // regardless of how long the LLM call takes or whether the user
-      // closes the panel during processing.
+      // Stash for afterCleanup to pick up.
+      pendingPrompts.set(api, prompt);
+    },
+
+    async afterCleanup(_input, output, api) {
+      if (api.llm) lastLlm = api.llm;
+
+      // First check the stash from afterTranscribe (name was in raw text).
+      let prompt = pendingPrompts.get(api) ?? null;
+      pendingPrompts.delete(api);
+
+      // Fallback: try matching in the cleaned text (for paths where
+      // afterTranscribe didn't fire, or when cleanup preserved the name).
+      if (!prompt) {
+        const text = output.text.trim();
+        if (!text) return;
+
+        const matcher = buildAgentNameRegex(config.agentName);
+        const hasName = matcher.test(text);
+
+        if (!conversationActive && !hasName) return;
+
+        prompt = hasName ? stripAgentName(text, matcher) : text;
+        if (!prompt) return;
+      }
+
+      // Consume IMMEDIATELY — the text must never be pasted.
       output.text = prompt;
       api.control.consume("voice-agent: handled in the pill panel");
 
-      // Serialise agent turns — a follow-up dictation waits for the
-      // previous turn to finish before running.
+      // Serialise agent turns.
       const previousTurn = turnChain;
       let resolveThisTurn: () => void;
       turnChain = new Promise<void>((r) => {
@@ -243,9 +271,6 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
 
         api.emitStream?.({ type: "streamEnd" });
 
-        // Guard: if the session was ended while the turn was running (user
-        // closed the panel), don't push the reply — the conversation has
-        // already been marked for archival on the next trigger.
         if (conversationActive) {
           conversation.push({ role: "assistant", content: reply });
           await persistConversation();

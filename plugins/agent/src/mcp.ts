@@ -85,7 +85,7 @@ export async function connectEnabledServers(
   tools: Record<string, Tool>;
   connections: McpConnection[];
 }> {
-  const enabled = servers.filter((s) => s.enabled);
+  const enabled = servers.filter((s) => s.enabled && isConfigured(s));
   const tools: Record<string, Tool> = {};
   const connections: McpConnection[] = [];
 
@@ -124,6 +124,12 @@ function requireUrl(server: McpServerConfig): string {
     throw new Error(`MCP server "${server.name}" is missing a URL`);
   }
   return server.url;
+}
+
+/** A server is configured if it has the minimum required connection info. */
+function isConfigured(server: McpServerConfig): boolean {
+  if (server.transport === "http") return !!server.url?.trim();
+  return !!server.command?.trim();
 }
 
 function requireCommand(server: McpServerConfig): string {

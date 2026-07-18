@@ -48,9 +48,9 @@ export function SettingsDialog({
           id: uid(),
           name: "New server",
           transport: "stdio",
-          command: "npx",
+          command: "",
           args: [],
-          enabled: true,
+          enabled: false,
         },
       ],
     });

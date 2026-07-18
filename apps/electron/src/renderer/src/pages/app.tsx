@@ -1629,8 +1629,8 @@ export default function AppPage(): React.JSX.Element {
 
       <div
         style={{
-          marginBottom: panelOpen ? 0 : pillAlign === "end" ? 8 : "auto",
-          marginTop: panelOpen ? 0 : pillAlign === "start" ? 8 : "auto",
+          marginBottom: pillAlign === "end" ? 8 : "auto",
+          marginTop: pillAlign === "start" ? 8 : "auto",
         }}
       >
         <div

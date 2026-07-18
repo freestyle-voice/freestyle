@@ -165,17 +165,18 @@ export async function pasteText(args: { text: string }): Promise<string> {
   const plat = process.platform;
 
   try {
-    // Step 1: write to clipboard
     if (plat === "darwin") {
-      await pipeToCommand("pbcopy", [], args.text);
-    } else if (plat === "win32") {
+      return await pasteMac(args.text);
+    }
+
+    // Step 1: write to clipboard
+    if (plat === "win32") {
       await pipeToCommand(
         "powershell",
         ["-NoProfile", "-Command", "Set-Clipboard -Value $input"],
         args.text,
       );
     } else {
-      // Try each Linux clipboard tool
       let ok = false;
       for (const [cmd, cmdArgs] of [
         ["xclip", ["-selection", "clipboard"]],
@@ -192,19 +193,9 @@ export async function pasteText(args: { text: string }): Promise<string> {
     }
 
     // Step 2: simulate paste keystroke
-    // Small delay to ensure clipboard is written
-    await new Promise((r) => setTimeout(r, 100));
+    await sleep(100);
 
-    if (plat === "darwin") {
-      await execFileP(
-        "osascript",
-        [
-          "-e",
-          'tell application "System Events" to keystroke "v" using command down',
-        ],
-        { timeout: 3000 },
-      );
-    } else if (plat === "win32") {
+    if (plat === "win32") {
       await execFileP(
         "powershell",
         [
@@ -215,7 +206,6 @@ export async function pasteText(args: { text: string }): Promise<string> {
         { timeout: 3000 },
       );
     } else {
-      // Try xdotool (X11) then wtype (Wayland)
       try {
         await execFileP("xdotool", ["key", "ctrl+v"], { timeout: 2000 });
       } catch {
@@ -233,6 +223,102 @@ export async function pasteText(args: { text: string }): Promise<string> {
   } catch (err) {
     return `Failed to paste: ${err instanceof Error ? err.message : String(err)}`;
   }
+}
+
+/**
+ * macOS-specific paste: hides the Freestyle window so it doesn't steal
+ * focus, identifies the previously-frontmost app, activates it, writes
+ * to the clipboard, simulates Cmd+V, then restores the Freestyle window.
+ */
+async function pasteMac(text: string): Promise<string> {
+  // Determine the frontmost app BEFORE hiding Freestyle
+  let targetApp = "";
+  try {
+    const { stdout } = await execFileP(
+      "osascript",
+      [
+        "-e",
+        'tell application "System Events" to get name of first application process whose frontmost is true',
+      ],
+      { timeout: 2000 },
+    );
+    targetApp = stdout.trim();
+  } catch {}
+
+  // If Freestyle itself is frontmost, find the next app
+  if (targetApp === "Freestyle" || !targetApp) {
+    try {
+      const { stdout } = await execFileP(
+        "osascript",
+        [
+          "-e",
+          'tell application "System Events" to get name of every application process whose visible is true and frontmost is false',
+        ],
+        { timeout: 2000 },
+      );
+      const apps = stdout.trim().split(", ").filter(Boolean);
+      targetApp = apps[0] || "";
+    } catch {}
+  }
+
+  // Hide Freestyle so the target app regains focus
+  try {
+    await execFileP(
+      "osascript",
+      [
+        "-e",
+        'tell application "System Events" to set visible of process "Freestyle" to false',
+      ],
+      { timeout: 2000 },
+    );
+  } catch {}
+
+  await sleep(150);
+
+  // Activate the target app
+  if (targetApp) {
+    try {
+      await execFileP(
+        "osascript",
+        ["-e", `tell application "${targetApp}" to activate`],
+        { timeout: 2000 },
+      );
+      await sleep(200);
+    } catch {}
+  }
+
+  // Write to clipboard and simulate Cmd+V
+  await pipeToCommand("pbcopy", [], text);
+  await sleep(50);
+
+  await execFileP(
+    "osascript",
+    [
+      "-e",
+      'tell application "System Events" to keystroke "v" using command down',
+    ],
+    { timeout: 3000 },
+  );
+
+  await sleep(300);
+
+  // Restore Freestyle visibility
+  try {
+    await execFileP(
+      "osascript",
+      [
+        "-e",
+        'tell application "System Events" to set visible of process "Freestyle" to true',
+      ],
+      { timeout: 2000 },
+    );
+  } catch {}
+
+  return `Pasted ${text.length} characters into ${targetApp || "the focused app"}.`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 function pipeToCommand(

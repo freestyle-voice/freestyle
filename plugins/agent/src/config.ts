@@ -49,7 +49,7 @@ export type BuiltinToolGroup =
   | "clipboard"
   | "screenshots"
   | "shortcuts"
-  | "webhooks";
+  | "desktop";
 
 /** Human-readable metadata for each tool group shown in Settings. */
 export interface ToolGroupMeta {
@@ -99,22 +99,33 @@ export const TOOL_GROUPS: ToolGroupMeta[] = [
     tools: ["run_shortcut"],
   },
   {
-    id: "webhooks",
-    label: "Webhooks",
-    description: "call_webhook",
-    tools: ["call_webhook"],
+    id: "desktop",
+    label: "Desktop Control",
+    description:
+      "left_click, right_click, double_click, move_cursor, type_text, press_key",
+    tools: [
+      "left_click",
+      "right_click",
+      "double_click",
+      "move_cursor",
+      "type_text",
+      "press_key",
+    ],
   },
 ];
 
-/** Default: all groups enabled. */
+/** Default: all groups enabled except desktop control (opt-in). */
 export const DEFAULT_TOOL_GROUPS: Record<BuiltinToolGroup, boolean> = {
   filesystem: true,
   shell: true,
   clipboard: true,
   screenshots: true,
   shortcuts: true,
-  webhooks: true,
+  desktop: false,
 };
+
+/** How desktop-control tools actuate. */
+export type ComputerUseMode = "full" | "guided";
 
 export interface AgentConfig {
   systemPrompt: string;
@@ -131,6 +142,12 @@ export interface AgentConfig {
   builtinToolsEnabled: boolean;
   /** Per-group toggles for built-in tools. Missing keys default to true. */
   builtinToolGroups: Record<string, boolean>;
+  /**
+   * How desktop-control tools (mouse/keyboard) behave:
+   *  - `"full"` — directly controls the cursor and keyboard.
+   *  - `"guided"` (default) — shows a ghost-cursor overlay; the user acts.
+   */
+  computerUseMode: ComputerUseMode;
 }
 
 export const DEFAULT_SYSTEM_PROMPT =
@@ -147,6 +164,7 @@ export const DEFAULT_CONFIG: AgentConfig = {
   skills: [],
   builtinToolsEnabled: true,
   builtinToolGroups: { ...DEFAULT_TOOL_GROUPS },
+  computerUseMode: "guided",
 };
 
 const CONFIG_KEY = "config";
@@ -188,6 +206,9 @@ export function normalizeConfig(raw: unknown): AgentConfig {
     }
   }
 
+  const computerUseMode: ComputerUseMode =
+    raw.computerUseMode === "full" ? "full" : "guided";
+
   return {
     systemPrompt,
     agentName,
@@ -195,6 +216,7 @@ export function normalizeConfig(raw: unknown): AgentConfig {
     skills,
     builtinToolsEnabled,
     builtinToolGroups,
+    computerUseMode,
   };
 }
 

@@ -706,6 +706,15 @@ body {
   word-break: break-all;
 }
 
+.desktop-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
 .item-empty {
   font-size: 12px;
   color: var(--muted-foreground);

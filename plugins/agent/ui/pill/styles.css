@@ -437,13 +437,238 @@ body {
   }
 }
 
+/* ---- Tool call cards ---- */
+
+.tool-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-card {
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--secondary) 50%, transparent);
+  overflow: hidden;
+  animation: agent-rise 180ms ease;
+}
+
+.tool-card.tool-error {
+  border-color: color-mix(in srgb, #dd6e4e 30%, var(--border));
+}
+
+.tool-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  background: none;
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+}
+
+.tool-card-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.tool-card-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tool-card-name {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  flex: 1;
+}
+
+.tool-card-chevron {
+  font-size: 9px;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+
+.tool-card-summary {
+  padding: 0 8px 5px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-card-detail {
+  padding: 0 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-card-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tool-card-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-foreground);
+}
+
+.tool-card-pre {
+  margin: 0;
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--secondary) 70%, transparent);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1.4;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/* ---- Ghost cursor guidance overlay ---- */
+
+.guidance-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  overflow: hidden;
+}
+
+.guidance-ring-container {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.guidance-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  border-radius: 999px;
+  border: 2px solid #7C3AED;
+  animation: guidance-ring-expand 900ms ease-out both;
+}
+
+.guidance-ring-delayed {
+  animation-delay: 0.25s;
+}
+
+.guidance-cursor {
+  position: absolute;
+  transform: translate(-2px, -2px);
+  transition: left 480ms cubic-bezier(0.22, 1, 0.36, 1),
+    top 480ms cubic-bezier(0.22, 1, 0.36, 1);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+  animation: guidance-bob 1.6s ease-in-out infinite;
+}
+
+.guidance-caption-wrap {
+  position: absolute;
+  max-width: 220px;
+}
+
+.guidance-caption-animate {
+  animation: guidance-pop 220ms ease-out both;
+}
+
+.guidance-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(17, 17, 20, 0.92);
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  white-space: normal;
+}
+
+.guidance-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #7C3AED;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px #7C3AED;
+}
+
+.guidance-text {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.guidance-literal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(17, 17, 20, 0.82);
+  color: white;
+}
+
+.guidance-literal-kind {
+  opacity: 0.6;
+  font-size: 10px;
+}
+
+.guidance-literal-value {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+}
+
+@keyframes guidance-ring-expand {
+  0% { transform: scale(0.5); opacity: 0.9; }
+  100% { transform: scale(3.6); opacity: 0; }
+}
+
+@keyframes guidance-pop {
+  0% { opacity: 0; transform: translateY(4px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes guidance-bob {
+  0%, 100% { transform: translate(-2px, -2px) translateY(0); }
+  50% { transform: translate(-2px, -2px) translateY(-2px); }
+}
+
 /* ---- Reduced motion ---- */
 
 @media (prefers-reduced-motion: reduce) {
   .status-dot.pulse,
   .typing span,
-  .turn {
+  .turn,
+  .guidance-cursor,
+  .guidance-ring,
+  .guidance-caption-animate {
     animation: none;
+  }
+  .guidance-cursor {
+    transition: none;
   }
 }
 

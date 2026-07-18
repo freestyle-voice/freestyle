@@ -16,6 +16,7 @@ const EMPTY: AgentConfig = {
   skills: [],
   builtinToolsEnabled: true,
   builtinToolGroups: { ...DEFAULT_TOOL_GROUPS },
+  computerUseMode: "guided",
 };
 
 const SAVE_DEBOUNCE_MS = 500;

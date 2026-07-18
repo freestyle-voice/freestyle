@@ -252,6 +252,7 @@ export function SettingsDialog({
                 {TOOL_GROUPS.map((group) => {
                   const enabled =
                     config.builtinToolGroups?.[group.id] !== false;
+                  const isDesktop = group.id === "desktop";
                   return (
                     <div
                       key={group.id}
@@ -278,6 +279,29 @@ export function SettingsDialog({
                       <span className="tool-group-tools">
                         {group.description}
                       </span>
+                      {isDesktop && enabled && (
+                        <div className="desktop-mode-row">
+                          <label className="dlg-label-sm">Mode</label>
+                          <select
+                            className="select select-compact"
+                            value={config.computerUseMode ?? "guided"}
+                            onChange={(e) =>
+                              onUpdate({
+                                computerUseMode: e.target.value as
+                                  | "full"
+                                  | "guided",
+                              })
+                            }
+                          >
+                            <option value="guided">
+                              Guided (shows overlay, user acts)
+                            </option>
+                            <option value="full">
+                              Full (controls mouse & keyboard)
+                            </option>
+                          </select>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

@@ -10,7 +10,12 @@ import {
   buildSystemPrompt,
   type ConversationEntry,
 } from "./config.js";
-import { getBuiltinTools } from "./mcp/index.js";
+import {
+  clearGuidance,
+  getBuiltinTools,
+  type ToolCallEvent,
+} from "./mcp/index.js";
+import type { GuidanceEvent } from "./mcp/tools/desktop.js";
 import { closeConnections, connectEnabledServers } from "./mcp.js";
 
 /** Max tool-calling steps in a single agent turn. */
@@ -30,18 +35,29 @@ export async function runAgentTurn(opts: {
   signal?: AbortSignal;
   log: (msg: string) => void;
   onDelta?: (text: string) => void;
+  onToolCall?: (e: ToolCallEvent) => void;
+  onGuidance?: (e: GuidanceEvent) => void;
 }): Promise<string> {
-  const { llm, config, history, signal, log, onDelta } = opts;
+  const { llm, config, history, signal, log, onDelta, onToolCall, onGuidance } =
+    opts;
 
   const { tools: externalTools, connections } = await connectEnabledServers(
     config.mcpServers,
     log,
   );
 
+  // Determine if desktop-control tools should be active.
+  const desktopEnabled =
+    config.builtinToolsEnabled && config.builtinToolGroups.desktop !== false;
+
   // Merge built-in tools (if enabled) with external MCP tools.
   // Built-in tools are added first so external servers can override them.
   const builtinTools = config.builtinToolsEnabled
-    ? getBuiltinTools(config.builtinToolGroups)
+    ? getBuiltinTools(config.builtinToolGroups, {
+        computerUseMode: desktopEnabled ? config.computerUseMode : undefined,
+        onGuidance,
+        onToolCall,
+      })
     : {};
   const tools = { ...builtinTools, ...externalTools };
 
@@ -51,13 +67,42 @@ export async function runAgentTurn(opts: {
       content: e.content,
     }));
 
+    // Append computer-use instructions to the system prompt when desktop is active.
+    let system = buildSystemPrompt(config);
+    if (desktopEnabled) {
+      const base =
+        "ALWAYS call `take_screenshot` first to see the screen before acting. Click/move coordinates are in the pixel space of the most recent screenshot (logical screen points, top-left origin).";
+      if (config.computerUseMode === "guided") {
+        system += `\n\n# Desktop Control (Guided Mode)\nYou are in GUIDED (teaching) mode. You do NOT control the mouse or keyboard — each tool call instead shows the user a ghost-cursor hint and a caption, and the USER performs the step. ${base} For every action, pass a short \`note\` describing what to do and why (it's shown to the user). Work ONE small step at a time, and after each step take a fresh screenshot to confirm the user completed it before continuing — never assume an action happened.`;
+      } else {
+        system += `\n\n# Desktop Control\nControl the user's desktop directly. ${base} These actions affect the real machine — be deliberate and verify with a fresh screenshot after each step.`;
+      }
+    }
+
     const result = streamText({
       model: llm.getModel() as LanguageModel,
-      system: buildSystemPrompt(config),
+      system,
       messages,
       tools,
       stopWhen: stepCountIs(MAX_STEPS),
       ...(signal ? { abortSignal: signal } : {}),
+      onStepFinish: (step) => {
+        if (!onToolCall) return;
+        for (const tc of step.toolCalls) {
+          const toolResult = step.toolResults.find(
+            (r) => r.toolCallId === tc.toolCallId,
+          );
+          onToolCall({
+            tool: tc.toolName,
+            input: (tc.input ?? {}) as Record<string, unknown>,
+            output:
+              typeof toolResult?.output === "string"
+                ? toolResult.output
+                : JSON.stringify(toolResult?.output ?? ""),
+            isError: false,
+          });
+        }
+      },
     });
 
     let full = "";
@@ -68,6 +113,7 @@ export async function runAgentTurn(opts: {
 
     return full.trim() || "I ran the requested tools but have nothing to add.";
   } finally {
+    clearGuidance(onGuidance);
     await closeConnections(connections);
   }
 }

@@ -17,8 +17,10 @@ import {
   normalizeConfig,
   saveConfig,
 } from "./config.js";
+import type { ToolCallEvent } from "./mcp/index.js";
 import { BUILTIN_TOOL_COUNT } from "./mcp/index.js";
 import { createMcpMiddleware } from "./mcp/server.js";
+import type { GuidanceEvent } from "./mcp/tools/desktop.js";
 
 const PLUGIN_NAME = "@freestyle-voice/plugin-agent";
 const CONVERSATION_KEY = "conversation";
@@ -59,7 +61,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
   const sseClients = new Set<ReadableStreamDefaultController<Uint8Array>>();
   const encoder = new TextEncoder();
 
-  function broadcastSSE(event: { type: string; text?: string }): void {
+  function broadcastSSE(event: Record<string, unknown>): void {
     const data = `data: ${JSON.stringify(event)}\n\n`;
     const bytes = encoder.encode(data);
     for (const ctrl of sseClients) {
@@ -96,10 +98,17 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
 
   /** Emit an event to all channels: the pipeline WS (if available) + SSE. */
   function emit(
-    event: PluginStreamEvent,
+    event: Record<string, unknown>,
     pipelineEmit?: (event: PluginStreamEvent) => void,
   ): void {
-    pipelineEmit?.(event);
+    // Only forward known stream events to the pipeline WS bridge.
+    const t = event.type;
+    if (
+      pipelineEmit &&
+      (t === "streamStart" || t === "streamDelta" || t === "streamEnd")
+    ) {
+      pipelineEmit(event as unknown as PluginStreamEvent);
+    }
     broadcastSSE(event);
   }
 
@@ -138,6 +147,19 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
             log: logger,
             onDelta: (delta) =>
               emit({ type: "streamDelta", text: delta }, pipelineEmit),
+            onToolCall: (e: ToolCallEvent) =>
+              emit(
+                {
+                  type: "toolCall",
+                  tool: e.tool,
+                  input: e.input,
+                  output: e.output,
+                  isError: e.isError,
+                },
+                pipelineEmit,
+              ),
+            onGuidance: (e: GuidanceEvent) =>
+              emit({ type: "guidance", ...e }, pipelineEmit),
           });
         } catch (err) {
           reply = `Sorry, the agent turn failed: ${

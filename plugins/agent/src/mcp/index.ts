@@ -4,6 +4,15 @@ import { z } from "zod";
 import { TOOL_GROUPS } from "../config.js";
 import { getFrontmostApp, pasteText } from "./tools/context.js";
 import {
+  type ComputerUseMode,
+  clickMouse,
+  doubleClick,
+  type GuidanceEvent,
+  moveCursor,
+  pressKey,
+  typeText,
+} from "./tools/desktop.js";
+import {
   listDirectory,
   readFile,
   searchFiles,
@@ -13,7 +22,14 @@ import { takeScreenshot } from "./tools/screenshot.js";
 import { runCommand } from "./tools/shell.js";
 import { IS_MACOS, runShortcut } from "./tools/shortcuts.js";
 import { getClipboard, openUrl, setClipboard } from "./tools/system.js";
-import { callWebhook } from "./tools/webhook.js";
+
+/** Emitted for every tool invocation so the pill panel can render rich cards. */
+export interface ToolCallEvent {
+  tool: string;
+  input: Record<string, unknown>;
+  output: string;
+  isError?: boolean;
+}
 
 /**
  * Returns AI SDK `tool()` objects for all built-in tools. These are merged
@@ -22,9 +38,19 @@ import { callWebhook } from "./tools/webhook.js";
  *
  * @param disabledGroups - Optional map of group IDs to booleans. Tools
  *   belonging to a group where the value is `false` are excluded.
+ * @param opts.computerUseMode - If set, registers computer-use tools
+ *   (mouse/keyboard). `"guided"` mode shows a ghost-cursor overlay instead of
+ *   real input.
+ * @param opts.onGuidance - Callback for guidance events in guided mode.
+ * @param opts.onToolCall - Callback for all tool call events (for rich UI cards).
  */
 export function getBuiltinTools(
   disabledGroups?: Record<string, boolean>,
+  opts?: {
+    computerUseMode?: ComputerUseMode;
+    onGuidance?: (e: GuidanceEvent) => void;
+    onToolCall?: (e: ToolCallEvent) => void;
+  },
 ): Record<string, Tool> {
   const tools: Record<string, Tool> = {};
 
@@ -250,7 +276,7 @@ export function getBuiltinTools(
   if (include("take_screenshot"))
     tools.take_screenshot = tool({
       description:
-        "Capture a screenshot of the main display (resized to 1024px wide). Returns base64 JPEG by default, or a file path.",
+        "Capture a screenshot of the main display (resized to 1024px wide). Returns base64 JPEG by default, or a file path. ALWAYS call this first before any mouse/keyboard action to see the screen.",
       inputSchema: jsonSchema({
         type: "object",
         properties: {
@@ -265,43 +291,158 @@ export function getBuiltinTools(
         takeScreenshot(args as { returnImage?: boolean }),
     });
 
-  if (include("call_webhook"))
-    tools.call_webhook = tool({
-      description:
-        "Make an HTTP request to a URL. Useful for calling webhooks, APIs, or web services.",
+  // --- Tier 4: Computer Use (mouse & keyboard) ---
+
+  const cuMode = opts?.computerUseMode;
+  const onGuidance = opts?.onGuidance;
+
+  if (cuMode && include("left_click"))
+    tools.left_click = tool({
+      description: "Move the cursor to (x, y) and left-click.",
       inputSchema: jsonSchema({
         type: "object",
         properties: {
-          url: { type: "string", description: "URL to call" },
-          method: {
+          x: { type: "number", description: "X coordinate (logical pixels)" },
+          y: { type: "number", description: "Y coordinate (logical pixels)" },
+          note: {
             type: "string",
-            description: "HTTP method (default: POST)",
-            enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-          },
-          body: {
-            description: "Request body (sent as JSON for POST/PUT/PATCH)",
-          },
-          headers: {
-            type: "object",
-            description: "Additional HTTP headers",
-            additionalProperties: { type: "string" },
+            description:
+              "Short caption describing this step for the user, e.g. 'Click the Export button'.",
           },
         },
-        required: ["url"],
+        required: ["x", "y"],
       } satisfies JSONSchema7),
-      execute: async (args) =>
-        callWebhook(
-          args as {
-            url: string;
-            method?: string;
-            body?: unknown;
-            headers?: Record<string, string>;
+      execute: async (args) => {
+        const { x, y, note } = args as {
+          x: number;
+          y: number;
+          note?: string;
+        };
+        return clickMouse(x, y, "left", cuMode, onGuidance, note);
+      },
+    });
+
+  if (cuMode && include("right_click"))
+    tools.right_click = tool({
+      description: "Move the cursor to (x, y) and right-click.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          x: { type: "number", description: "X coordinate (logical pixels)" },
+          y: { type: "number", description: "Y coordinate (logical pixels)" },
+          note: {
+            type: "string",
+            description: "Short caption describing this step.",
           },
-        ),
+        },
+        required: ["x", "y"],
+      } satisfies JSONSchema7),
+      execute: async (args) => {
+        const { x, y, note } = args as {
+          x: number;
+          y: number;
+          note?: string;
+        };
+        return clickMouse(x, y, "right", cuMode, onGuidance, note);
+      },
+    });
+
+  if (cuMode && include("double_click"))
+    tools.double_click = tool({
+      description: "Move the cursor to (x, y) and double-click.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          x: { type: "number", description: "X coordinate (logical pixels)" },
+          y: { type: "number", description: "Y coordinate (logical pixels)" },
+          note: {
+            type: "string",
+            description: "Short caption describing this step.",
+          },
+        },
+        required: ["x", "y"],
+      } satisfies JSONSchema7),
+      execute: async (args) => {
+        const { x, y, note } = args as {
+          x: number;
+          y: number;
+          note?: string;
+        };
+        return doubleClick(x, y, cuMode, onGuidance, note);
+      },
+    });
+
+  if (cuMode && include("move_cursor"))
+    tools.move_cursor = tool({
+      description: "Move the cursor to (x, y) without clicking.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          x: { type: "number", description: "X coordinate (logical pixels)" },
+          y: { type: "number", description: "Y coordinate (logical pixels)" },
+          note: {
+            type: "string",
+            description: "Short caption describing this step.",
+          },
+        },
+        required: ["x", "y"],
+      } satisfies JSONSchema7),
+      execute: async (args) => {
+        const { x, y, note } = args as {
+          x: number;
+          y: number;
+          note?: string;
+        };
+        return moveCursor(x, y, cuMode, onGuidance, note);
+      },
+    });
+
+  if (cuMode && include("type_text"))
+    tools.type_text = tool({
+      description: "Type a string of text at the current keyboard focus.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          text: { type: "string", description: "Text to type" },
+          note: {
+            type: "string",
+            description: "Short caption describing this step.",
+          },
+        },
+        required: ["text"],
+      } satisfies JSONSchema7),
+      execute: async (args) => {
+        const { text: t, note } = args as { text: string; note?: string };
+        return typeText(t, cuMode, onGuidance, note);
+      },
+    });
+
+  if (cuMode && include("press_key"))
+    tools.press_key = tool({
+      description:
+        "Press a single key or chord, e.g. 'return', 'escape', 'cmd+space', 'cmd+shift+4', 'pagedown'.",
+      inputSchema: jsonSchema({
+        type: "object",
+        properties: {
+          keys: { type: "string", description: "Key or chord to press" },
+          note: {
+            type: "string",
+            description: "Short caption describing this step.",
+          },
+        },
+        required: ["keys"],
+      } satisfies JSONSchema7),
+      execute: async (args) => {
+        const { keys, note } = args as { keys: string; note?: string };
+        return pressKey(keys, cuMode, onGuidance, note);
+      },
     });
 
   return tools;
 }
+
+/** Clean up guidance overlay after a turn ends. */
+export { clearGuidance } from "./tools/desktop.js";
 
 /**
  * Register all built-in tools on an McpServer instance (for the external
@@ -462,31 +603,6 @@ export function registerBuiltinTools(server: McpServer): void {
       }
       return {
         content: [{ type: "text" as const, text: result.path }],
-      };
-    },
-  );
-
-  server.tool(
-    "call_webhook",
-    "Make an HTTP request to a URL.",
-    {
-      url: z.string(),
-      method: z.string().optional(),
-      body: z.any().optional(),
-      headers: z.record(z.string(), z.string()).optional(),
-    },
-    async (args) => {
-      const result = await callWebhook({
-        url: args.url,
-        method: args.method,
-        body: args.body,
-        headers: args.headers as Record<string, string> | undefined,
-      });
-      return {
-        content: [
-          { type: "text" as const, text: JSON.stringify(result, null, 2) },
-        ],
-        isError: result.status === 0,
       };
     },
   );

@@ -4,7 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { agentApiBase, getJson, postJson } from "../shared/api";
-import type { ConversationEntry } from "../shared/types";
+import type {
+  ConversationEntry,
+  GuidanceEvent,
+  ToolCallEvent,
+} from "../shared/types";
 
 /* ---- Icons ---- */
 
@@ -147,6 +151,321 @@ function MessageActions({
   );
 }
 
+/* ---- Tool icons ---- */
+
+function TerminalIcon(): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="1.5" y="2" width="11" height="10" rx="1.5" />
+      <path d="M4 5.5l2.5 2L4 9.5" />
+      <path d="M8 9.5h2.5" />
+    </svg>
+  );
+}
+
+function FileIcon(): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M8 1.5H4A1.5 1.5 0 0 0 2.5 3v8A1.5 1.5 0 0 0 4 12.5h6A1.5 1.5 0 0 0 11.5 11V5L8 1.5z" />
+      <path d="M8 1.5V5h3.5" />
+    </svg>
+  );
+}
+
+function CameraIcon(): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M1.5 4.5A1.5 1.5 0 0 1 3 3h1.5l1-1.5h3l1 1.5H11A1.5 1.5 0 0 1 12.5 4.5v5A1.5 1.5 0 0 1 11 11H3a1.5 1.5 0 0 1-1.5-1.5z" />
+      <circle cx="7" cy="7" r="2" />
+    </svg>
+  );
+}
+
+function MouseIcon(): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4.5 2h5A2.5 2.5 0 0 1 12 4.5v5A2.5 2.5 0 0 1 9.5 12h-5A2.5 2.5 0 0 1 2 9.5v-5A2.5 2.5 0 0 1 4.5 2z" />
+      <path d="M7 2v5" />
+    </svg>
+  );
+}
+
+function KeyboardIcon(): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="1" y="3" width="12" height="8" rx="1.5" />
+      <path d="M4 6h1M6.5 6h1M9 6h1M3.5 8.5h7" />
+    </svg>
+  );
+}
+
+function GlobeIcon(): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="7" cy="7" r="5.5" />
+      <path d="M1.5 7h11M7 1.5c1.5 1.5 2.3 3.4 2.3 5.5S8.5 11 7 12.5c-1.5-1.5-2.3-3.4-2.3-5.5S5.5 3 7 1.5z" />
+    </svg>
+  );
+}
+
+function ClipboardIcon(): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M9 1.5H5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5V2a.5.5 0 0 0-.5-.5z" />
+      <path d="M9.5 2.5H11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h1.5" />
+    </svg>
+  );
+}
+
+function WrenchIcon(): React.JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M8.5 1.5a4 4 0 0 0-3.7 5.5L1.5 10.3 3.7 12.5 7 9.2A4 4 0 1 0 8.5 1.5z" />
+    </svg>
+  );
+}
+
+const TOOL_ICON_MAP: Record<string, () => React.JSX.Element> = {
+  run_command: TerminalIcon,
+  read_file: FileIcon,
+  write_file: FileIcon,
+  list_directory: FileIcon,
+  search_files: FileIcon,
+  take_screenshot: CameraIcon,
+  left_click: MouseIcon,
+  right_click: MouseIcon,
+  double_click: MouseIcon,
+  move_cursor: MouseIcon,
+  type_text: KeyboardIcon,
+  press_key: KeyboardIcon,
+  open_url: GlobeIcon,
+  get_clipboard: ClipboardIcon,
+  set_clipboard: ClipboardIcon,
+  paste_text: ClipboardIcon,
+  get_frontmost_app: GlobeIcon,
+  run_shortcut: WrenchIcon,
+};
+
+/* ---- Tool Call Card ---- */
+
+function ToolCallCard({ tc }: { tc: ToolCallEvent }): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const IconComp = TOOL_ICON_MAP[tc.tool] ?? WrenchIcon;
+
+  const inputSummary = Object.entries(tc.input)
+    .filter(([, v]) => v !== undefined && v !== "")
+    .map(([k, v]) => {
+      const val = typeof v === "string" ? v : JSON.stringify(v);
+      return `${k}: ${val.length > 50 ? `${val.slice(0, 47)}...` : val}`;
+    })
+    .join(", ");
+
+  return (
+    <div className={`tool-card${tc.isError ? " tool-error" : ""}`}>
+      <button
+        type="button"
+        className="tool-card-head"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <span className="tool-card-icon">
+          <IconComp />
+        </span>
+        <span className="tool-card-name">{tc.tool}</span>
+        <span className="tool-card-chevron">
+          {expanded ? "\u25B4" : "\u25BE"}
+        </span>
+      </button>
+      {!expanded && inputSummary && (
+        <div className="tool-card-summary">{inputSummary}</div>
+      )}
+      {expanded && (
+        <div className="tool-card-detail">
+          <div className="tool-card-section">
+            <span className="tool-card-label">Input</span>
+            <pre className="tool-card-pre">
+              {JSON.stringify(tc.input, null, 2)}
+            </pre>
+          </div>
+          <div className="tool-card-section">
+            <span className="tool-card-label">Output</span>
+            <pre className="tool-card-pre">{tc.output}</pre>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---- Ghost Cursor Overlay ---- */
+
+const ACCENT = "#7C3AED";
+
+function GhostCursorOverlay({
+  event,
+}: {
+  event: GuidanceEvent | null;
+}): React.JSX.Element | null {
+  const [seq, setSeq] = useState(0);
+
+  useEffect(() => {
+    if (event && event.kind !== "clear") {
+      setSeq((s) => s + 1);
+    }
+  }, [event]);
+
+  if (!event || event.kind === "clear") return null;
+
+  const hasPoint = typeof event.x === "number" && typeof event.y === "number";
+  const isClick =
+    event.kind === "click" ||
+    event.kind === "right_click" ||
+    event.kind === "double_click";
+
+  const caption = event.caption?.trim() || defaultGuidanceLabel(event);
+  const literal =
+    (event.kind === "type" || event.kind === "key") && event.text
+      ? event.text
+      : null;
+
+  return (
+    <div className="guidance-overlay">
+      {hasPoint && isClick && (
+        <div
+          key={`ring-${seq}`}
+          className="guidance-ring-container"
+          style={{ left: event.x, top: event.y }}
+        >
+          <span className="guidance-ring" />
+          {event.kind === "double_click" && (
+            <span className="guidance-ring guidance-ring-delayed" />
+          )}
+        </div>
+      )}
+      {hasPoint && (
+        <div
+          className="guidance-cursor"
+          style={{ left: event.x, top: event.y }}
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 26 26"
+            fill="none"
+            aria-hidden="true"
+          >
+            <title>Guidance cursor</title>
+            <path
+              d="M5 3.2 L5 20.5 L9.4 16.2 L12.2 22.4 L15 21.1 L12.2 15 L18.3 15 Z"
+              fill="white"
+              stroke="#1f2937"
+              strokeWidth="1.3"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
+      )}
+      <div
+        className="guidance-caption-wrap"
+        style={
+          hasPoint
+            ? { left: (event.x ?? 0) + 18, top: (event.y ?? 0) + 16 }
+            : { left: "50%", top: 8, transform: "translateX(-50%)" }
+        }
+      >
+        <div key={`cap-${seq}`} className="guidance-caption-animate">
+          <div className="guidance-pill">
+            <span className="guidance-dot" />
+            <span className="guidance-text">{caption}</span>
+          </div>
+          {literal && (
+            <div className="guidance-literal">
+              <span className="guidance-literal-kind">
+                {event.kind === "key" ? "key" : "text"}
+              </span>
+              <span className="guidance-literal-value">{literal}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function defaultGuidanceLabel(e: GuidanceEvent): string {
+  switch (e.kind) {
+    case "move":
+      return "Move here";
+    case "click":
+      return "Click here";
+    case "right_click":
+      return "Right-click here";
+    case "double_click":
+      return "Double-click here";
+    case "type":
+      return e.text ? `Type "${e.text}"` : "Type here";
+    case "key":
+      return e.text ? `Press ${e.text}` : "Press a key";
+    default:
+      return "";
+  }
+}
+
 /* ---- Query keys ---- */
 
 const conversationKey = ["agent-conversation"] as const;
@@ -158,6 +477,8 @@ export function ChatPanel(): React.JSX.Element {
   const [pillState, setPillState] = useState<PillState>("idle");
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [direction, setDirection] = useState<"up" | "down">("down");
+  const [toolCalls, setToolCalls] = useState<ToolCallEvent[]>([]);
+  const [guidance, setGuidance] = useState<GuidanceEvent | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   // ---- Conversation query ----
@@ -199,22 +520,36 @@ export function ChatPanel(): React.JSX.Element {
 
     es.onmessage = (e) => {
       try {
-        const event = JSON.parse(e.data) as { type: string; text?: string };
+        const event = JSON.parse(e.data) as Record<string, unknown>;
         switch (event.type) {
           case "streamStart":
             void queryClient.invalidateQueries({
               queryKey: conversationKey,
             });
             setStreamingText("");
+            setToolCalls([]);
+            setGuidance(null);
             break;
           case "streamDelta":
-            setStreamingText((prev) => (prev ?? "") + (event.text ?? ""));
+            setStreamingText(
+              (prev) => (prev ?? "") + ((event.text as string) ?? ""),
+            );
             break;
           case "streamEnd":
             setStreamingText(null);
+            setGuidance(null);
             void queryClient.invalidateQueries({
               queryKey: conversationKey,
             });
+            break;
+          case "toolCall":
+            setToolCalls((prev) => [
+              ...prev,
+              event as unknown as ToolCallEvent,
+            ]);
+            break;
+          case "guidance":
+            setGuidance(event as unknown as GuidanceEvent);
             break;
         }
       } catch {
@@ -285,6 +620,7 @@ export function ChatPanel(): React.JSX.Element {
     <div
       className={`panel ${direction === "up" ? "expand-up" : "expand-down"}`}
     >
+      <GhostCursorOverlay event={guidance} />
       <div className="header">
         <div className="status">
           <span
@@ -332,22 +668,31 @@ export function ChatPanel(): React.JSX.Element {
             </div>
           ))}
           {streaming && (
-            <div className="turn assistant">
-              <span className="turn-role assistant">Agent</span>
-              <div className="turn-text markdown">
-                {streamingText ? (
-                  <Markdown remarkPlugins={[remarkGfm]}>
-                    {streamingText}
-                  </Markdown>
-                ) : (
-                  <span className="typing">
-                    <span />
-                    <span />
-                    <span />
-                  </span>
-                )}
+            <>
+              {toolCalls.length > 0 && (
+                <div className="tool-calls">
+                  {toolCalls.map((tc, i) => (
+                    <ToolCallCard key={i} tc={tc} />
+                  ))}
+                </div>
+              )}
+              <div className="turn assistant">
+                <span className="turn-role assistant">Agent</span>
+                <div className="turn-text markdown">
+                  {streamingText ? (
+                    <Markdown remarkPlugins={[remarkGfm]}>
+                      {streamingText}
+                    </Markdown>
+                  ) : (
+                    <span className="typing">
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
+            </>
           )}
           <div ref={endRef} />
         </div>

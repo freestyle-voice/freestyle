@@ -246,6 +246,7 @@ export default function AppPage(): React.JSX.Element {
   // State mirror of panelOpenRef — drives the render (e.g. disabling the
   // full-window drag region when the panel is expanded).
   const [panelOpen, setPanelOpen] = useState(false);
+  const [panelDirection, setPanelDirection] = useState<"up" | "down">("down");
   const panelPluginSlugRef = useRef<string | null>(null);
   const panelWidthRef = useRef(400);
   // Tracks the in-flight prepareSystemAudio() (ducking) call. Ducking runs
@@ -332,7 +333,9 @@ export default function AppPage(): React.JSX.Element {
           .filter(Boolean)
           .join(" ");
         window.api?.sendTranscriptToPanel?.(text);
-        window.api?.expandPillPanel?.(pillSideRef.current);
+        window.api?.expandPillPanel?.(pillSideRef.current).then((r) => {
+          if (r && r.direction) setPanelDirection(r.direction);
+        });
         panelOpenRef.current = true;
         setPanelOpen(true);
       }
@@ -628,7 +631,9 @@ export default function AppPage(): React.JSX.Element {
           if (event.type === "streamStart") {
             panelOpenRef.current = true;
             setPanelOpen(true);
-            window.api?.expandPillPanel?.(pillSideRef.current);
+            window.api?.expandPillPanel?.(pillSideRef.current).then((r) => {
+              if (r && r.direction) setPanelDirection(r.direction);
+            });
           }
           window.api?.sendStreamEventToPanel?.(event);
         },
@@ -1631,7 +1636,11 @@ export default function AppPage(): React.JSX.Element {
         <div
           className={panelOpen ? "" : topGlow}
           style={{
-            borderRadius: panelOpen ? "14px 14px 0 0" : 25,
+            borderRadius: panelOpen
+              ? panelDirection === "up"
+                ? "0 0 14px 14px"
+                : "14px 14px 0 0"
+              : 25,
             visibility: state === "idle" && !panelOpen ? "hidden" : "visible",
             transition: "border-radius 200ms cubic-bezier(0.4,0,0.2,1)",
           }}
@@ -1641,9 +1650,17 @@ export default function AppPage(): React.JSX.Element {
             style={{
               ...pillBaseStyle,
               width: panelOpen ? panelWidthRef.current : PILL_WIDTH,
-              borderRadius: panelOpen ? "14px 14px 0 0" : 25,
+              borderRadius: panelOpen
+                ? panelDirection === "up"
+                  ? "0 0 14px 14px"
+                  : "14px 14px 0 0"
+                : 25,
               border: "1px solid var(--border)",
-              borderBottom: panelOpen ? "none" : undefined,
+              ...(panelOpen
+                ? panelDirection === "up"
+                  ? { borderTop: "none" }
+                  : { borderBottom: "none" }
+                : {}),
             }}
           >
             <div

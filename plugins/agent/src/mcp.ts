@@ -35,6 +35,7 @@ export async function connectMcpServer(
       : new StdioClientTransport({
           ...splitCommand(requireCommand(server), server.args),
           env: { ...pickPathEnv(), ...(server.env ?? {}) },
+          stderr: "pipe",
         });
 
   await withTimeout(client.connect(transport), MCP_CONNECT_TIMEOUT_MS);

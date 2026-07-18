@@ -153,6 +153,7 @@ export function ChatPanel(): React.JSX.Element {
   const [pillState, setPillState] = useState<PillState>("idle");
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [direction, setDirection] = useState<"up" | "down">("down");
   const endRef = useRef<HTMLDivElement>(null);
 
   const scrollToEnd = useCallback(() => {
@@ -228,6 +229,16 @@ export function ChatPanel(): React.JSX.Element {
         case "streamDelta":
         case "streamEnd":
           break;
+        default: {
+          const raw = event as unknown as Record<string, unknown>;
+          if (
+            raw.type === "directionChanged" &&
+            typeof raw.direction === "string"
+          ) {
+            setDirection(raw.direction as "up" | "down");
+          }
+          break;
+        }
       }
     });
 
@@ -259,7 +270,9 @@ export function ChatPanel(): React.JSX.Element {
   }
 
   return (
-    <div className="panel">
+    <div
+      className={`panel ${direction === "up" ? "expand-up" : "expand-down"}`}
+    >
       <div className="header">
         <div className="status">
           <span

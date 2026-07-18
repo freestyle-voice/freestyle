@@ -98,7 +98,9 @@ export class PillPanelController {
     return this.config !== null;
   }
 
-  expand(pillSide?: "center" | "right"): boolean {
+  expand(
+    pillSide?: "center" | "right",
+  ): { expanded: true; direction: "up" | "down" } | false {
     if (!this.window || !this.config || this.expanded) return false;
 
     const { expand } = this.config;
@@ -177,8 +179,16 @@ export class PillPanelController {
     if (view && !view.webContents.isDestroyed()) {
       view.webContents.focus();
     }
-    log.info(`pill panel expanded: ${this.config.slug}`);
-    return true;
+    const direction = expandsDown ? "down" : "up";
+    // Tell the panel its position relative to the pill bar so it can
+    // flip its border-radius (rounded top when above, rounded bottom
+    // when below the pill bar).
+    this.sendEvent({
+      type: "directionChanged",
+      direction,
+    } as unknown as PillEvent);
+    log.info(`pill panel expanded ${direction}: ${this.config.slug}`);
+    return { expanded: true, direction } as const;
   }
 
   collapse(): boolean {

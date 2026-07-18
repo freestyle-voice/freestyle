@@ -138,9 +138,10 @@ declare global {
         expand: { width: number; height: number },
         tokens?: Record<string, string>,
       ) => Promise<void>;
-      expandPillPanel: (pillSide?: "center" | "right") => Promise<boolean>;
+      expandPillPanel: (
+        pillSide?: "center" | "right",
+      ) => Promise<{ expanded: true; direction: "up" | "down" } | false>;
       collapsePillPanel: () => Promise<boolean>;
-      suppressPillPanelBlurClose: (suppress: boolean) => void;
       onPillPanelCollapsed: (callback: () => void) => () => void;
       sendPillState: (state: string) => void;
       sendTranscriptToPanel: (text: string) => void;

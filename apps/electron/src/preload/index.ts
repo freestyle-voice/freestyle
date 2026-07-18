@@ -297,12 +297,12 @@ const api = {
       expand,
       tokens,
     ),
-  expandPillPanel: (pillSide?: "center" | "right"): Promise<boolean> =>
+  expandPillPanel: (
+    pillSide?: "center" | "right",
+  ): Promise<{ expanded: true; direction: "up" | "down" } | false> =>
     ipcRenderer.invoke("pill-panel:expand", pillSide),
   collapsePillPanel: (): Promise<boolean> =>
     ipcRenderer.invoke("pill-panel:collapse"),
-  suppressPillPanelBlurClose: (suppress: boolean): void =>
-    ipcRenderer.send("pill-panel:suppress-blur-close", suppress),
   onPillPanelCollapsed: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("pill-panel:collapsed", handler);

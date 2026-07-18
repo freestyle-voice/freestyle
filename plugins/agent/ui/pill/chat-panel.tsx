@@ -192,6 +192,10 @@ export function ChatPanel(): React.JSX.Element {
           void refresh();
           break;
         case "streamStart":
+          // Refresh messages from the server. If this is a new conversation
+          // the server has already cleared the old thread and added the new
+          // user message, so this replaces stale messages in the UI.
+          void refresh();
           setStreamingText("");
           break;
         case "streamDelta":

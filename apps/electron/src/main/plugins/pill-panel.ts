@@ -67,6 +67,7 @@ export class PillPanelController {
     private readonly getServerBaseUrl: () => string,
     private readonly getServerToken: () => string,
     private readonly getCollapsedSize: () => { width: number; height: number },
+    private readonly markProgrammaticMove?: (x: number, y: number) => void,
   ) {}
 
   attachWindow(window: BrowserWindow): void {
@@ -160,8 +161,14 @@ export class PillPanelController {
     if (newX < workArea.x) newX = workArea.x;
     if (newY < workArea.y) newY = workArea.y;
 
+    // Mark the target as programmatic so the pill's move listener (which
+    // detects user drags and latches pillPosition to "custom") ignores the
+    // position change from the expand.
+    const px = Math.round(newX);
+    const py = Math.round(newY);
+    this.markProgrammaticMove?.(px, py);
     this.window.setSize(totalWidth, totalHeight);
-    this.window.setPosition(Math.round(newX), Math.round(newY));
+    this.window.setPosition(px, py);
     this.window.setResizable(false);
     this.window.setFocusable(true);
 
@@ -220,6 +227,8 @@ export class PillPanelController {
 
     const orig = this.originalBounds;
     if (orig) {
+      // Mark as programmatic so the move listener doesn't latch to "custom".
+      this.markProgrammaticMove?.(orig.x, orig.y);
       this.window.setPosition(orig.x, orig.y);
       this.window.setSize(orig.width, orig.height);
     } else {
@@ -375,6 +384,8 @@ export interface PillPanelHostDeps {
   getServerBaseUrl: () => string;
   getServerToken: () => string;
   getCollapsedSize: () => { width: number; height: number };
+  /** Mark a position as programmatic so the pill's move listener ignores it. */
+  markProgrammaticMove?: (x: number, y: number) => void;
 }
 
 export function initPillPanelHost(deps: PillPanelHostDeps): void {
@@ -386,6 +397,7 @@ export function initPillPanelHost(deps: PillPanelHostDeps): void {
       deps.getServerBaseUrl,
       deps.getServerToken,
       deps.getCollapsedSize,
+      deps.markProgrammaticMove,
     );
   }
   controller.attachWindow(deps.window);

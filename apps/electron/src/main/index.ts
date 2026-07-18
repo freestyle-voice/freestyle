@@ -640,6 +640,7 @@ function createAppWindow(): void {
     getServerBaseUrl,
     getServerToken,
     getCollapsedSize: () => ({ width: APP_WIDTH, height: APP_HEIGHT }),
+    markProgrammaticMove: markProgrammaticTarget,
   });
 
   mainWindow.loadURL(getPillURL());

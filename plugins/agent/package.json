@@ -54,6 +54,7 @@
     "unlink": "node ../../scripts/link-plugin.mjs --unlink"
   },
   "dependencies": {
+    "@hono/mcp": "^0.3.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "freestyle-voice": "workspace:*"
   },

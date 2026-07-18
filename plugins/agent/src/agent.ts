@@ -10,6 +10,7 @@ import {
   buildSystemPrompt,
   type ConversationEntry,
 } from "./config.js";
+import { getBuiltinTools } from "./mcp/index.js";
 import { closeConnections, connectEnabledServers } from "./mcp.js";
 
 /** Max tool-calling steps in a single agent turn. */
@@ -32,10 +33,15 @@ export async function runAgentTurn(opts: {
 }): Promise<string> {
   const { llm, config, history, signal, log, onDelta } = opts;
 
-  const { tools, connections } = await connectEnabledServers(
+  const { tools: externalTools, connections } = await connectEnabledServers(
     config.mcpServers,
     log,
   );
+
+  // Merge built-in tools (if enabled) with external MCP tools.
+  // Built-in tools are added first so external servers can override them.
+  const builtinTools = config.builtinToolsEnabled ? getBuiltinTools() : {};
+  const tools = { ...builtinTools, ...externalTools };
 
   try {
     const messages: ModelMessage[] = history.map((e) => ({

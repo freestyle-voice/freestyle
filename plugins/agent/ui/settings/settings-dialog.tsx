@@ -140,6 +140,35 @@ export function SettingsDialog({
             </span>
           </div>
 
+          {/* Built-in tools */}
+          <div className="dlg-section">
+            <div className="dlg-section-head">
+              <span className="eyebrow">Built-in Tools</span>
+            </div>
+            <div className="dlg-item builtin-tools-item">
+              <div className="dlg-item-head">
+                <div className="builtin-tools-label">
+                  <span className="builtin-tools-name">Freestyle Tools</span>
+                  <span className="badge badge-builtin">Built-in</span>
+                </div>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={config.builtinToolsEnabled}
+                    onChange={(e) =>
+                      onUpdate({ builtinToolsEnabled: e.target.checked })
+                    }
+                  />
+                  On
+                </label>
+              </div>
+              <span className="hint" style={{ marginTop: 4 }}>
+                File system, shell, clipboard, screenshots, shortcuts, webhooks,
+                and more.
+              </span>
+            </div>
+          </div>
+
           {/* MCP servers */}
           <div className="dlg-section">
             <div className="dlg-section-head">
@@ -168,6 +197,7 @@ export function SettingsDialog({
                     }
                     placeholder="Server name"
                     aria-label="Server name"
+                    readOnly={s.builtin}
                   />
                   <label className="toggle">
                     <input
@@ -179,78 +209,82 @@ export function SettingsDialog({
                     />
                     On
                   </label>
-                  <button
-                    type="button"
-                    className="icon-btn destructive"
-                    onClick={() => removeServer(s.id)}
-                    title="Remove"
-                    aria-label="Remove server"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <div className="dlg-item-fields">
-                  <div className="dlg-row">
-                    <label className="dlg-label-sm">Transport</label>
-                    <select
-                      className="select select-compact"
-                      value={s.transport}
-                      onChange={(e) =>
-                        updateServer(s.id, {
-                          transport: e.target.value as "stdio" | "http",
-                        })
-                      }
+                  {!s.builtin && (
+                    <button
+                      type="button"
+                      className="icon-btn destructive"
+                      onClick={() => removeServer(s.id)}
+                      title="Remove"
+                      aria-label="Remove server"
                     >
-                      <option value="stdio">stdio</option>
-                      <option value="http">http</option>
-                    </select>
-                  </div>
-
-                  {s.transport === "stdio" ? (
-                    <>
-                      <div className="dlg-row">
-                        <label className="dlg-label-sm">Command</label>
-                        <input
-                          className="input input-compact"
-                          value={s.command ?? ""}
-                          onChange={(e) =>
-                            updateServer(s.id, { command: e.target.value })
-                          }
-                          placeholder="npx"
-                        />
-                      </div>
-                      <div className="dlg-row">
-                        <label className="dlg-label-sm">Args</label>
-                        <textarea
-                          className="textarea textarea-compact mono"
-                          value={(s.args ?? []).join("\n")}
-                          onChange={(e) =>
-                            updateServer(s.id, {
-                              args: e.target.value
-                                .split("\n")
-                                .map((a) => a.trim())
-                                .filter(Boolean),
-                            })
-                          }
-                          placeholder="-y&#10;@modelcontextprotocol/server-filesystem"
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="dlg-row">
-                      <label className="dlg-label-sm">URL</label>
-                      <input
-                        className="input input-compact"
-                        value={s.url ?? ""}
-                        onChange={(e) =>
-                          updateServer(s.id, { url: e.target.value })
-                        }
-                        placeholder="https://example.com/mcp"
-                      />
-                    </div>
+                      ✕
+                    </button>
                   )}
                 </div>
+
+                {!s.builtin && (
+                  <div className="dlg-item-fields">
+                    <div className="dlg-row">
+                      <label className="dlg-label-sm">Transport</label>
+                      <select
+                        className="select select-compact"
+                        value={s.transport}
+                        onChange={(e) =>
+                          updateServer(s.id, {
+                            transport: e.target.value as "stdio" | "http",
+                          })
+                        }
+                      >
+                        <option value="stdio">stdio</option>
+                        <option value="http">http</option>
+                      </select>
+                    </div>
+
+                    {s.transport === "stdio" ? (
+                      <>
+                        <div className="dlg-row">
+                          <label className="dlg-label-sm">Command</label>
+                          <input
+                            className="input input-compact"
+                            value={s.command ?? ""}
+                            onChange={(e) =>
+                              updateServer(s.id, { command: e.target.value })
+                            }
+                            placeholder="npx"
+                          />
+                        </div>
+                        <div className="dlg-row">
+                          <label className="dlg-label-sm">Args</label>
+                          <textarea
+                            className="textarea textarea-compact mono"
+                            value={(s.args ?? []).join("\n")}
+                            onChange={(e) =>
+                              updateServer(s.id, {
+                                args: e.target.value
+                                  .split("\n")
+                                  .map((a) => a.trim())
+                                  .filter(Boolean),
+                              })
+                            }
+                            placeholder="-y&#10;@modelcontextprotocol/server-filesystem"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="dlg-row">
+                        <label className="dlg-label-sm">URL</label>
+                        <input
+                          className="input input-compact"
+                          value={s.url ?? ""}
+                          onChange={(e) =>
+                            updateServer(s.id, { url: e.target.value })
+                          }
+                          placeholder="https://example.com/mcp"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

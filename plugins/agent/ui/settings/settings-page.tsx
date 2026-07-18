@@ -9,6 +9,7 @@ const EMPTY: AgentConfig = {
   agentName: "Freestyle",
   mcpServers: [],
   skills: [],
+  builtinToolsEnabled: true,
 };
 
 const SAVE_DEBOUNCE_MS = 500;

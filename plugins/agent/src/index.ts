@@ -17,6 +17,8 @@ import {
   normalizeConfig,
   saveConfig,
 } from "./config.js";
+import { BUILTIN_TOOL_COUNT } from "./mcp/index.js";
+import { createMcpMiddleware } from "./mcp/server.js";
 
 const PLUGIN_NAME = "@freestyle-voice/plugin-agent";
 const CONVERSATION_KEY = "conversation";
@@ -237,6 +239,13 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       return c.json({ ok: true });
     }
 
+    if (ownRoute(reqPath, "/agent/builtin-tools") && c.req.method === "GET") {
+      return c.json({
+        enabled: config.builtinToolsEnabled,
+        count: BUILTIN_TOOL_COUNT,
+      });
+    }
+
     // SSE endpoint — the panel connects here for live agent events.
     if (ownRoute(reqPath, "/agent/stream") && c.req.method === "GET") {
       let ctrl: ReadableStreamDefaultController<Uint8Array>;
@@ -262,9 +271,18 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     return next();
   };
 
+  // MCP middleware — serves built-in tools over Streamable HTTP transport at
+  // /api/plugins/<slug>/mcp so external MCP clients can connect.
+  const mcpHandler = createMcpMiddleware((reqPath) => {
+    const m = reqPath.match(
+      new RegExp(`^/api/plugins/(?:${baseSlug}|${baseSlug}-dev)/mcp(?:/|$)`),
+    );
+    return !!m;
+  });
+
   return {
     name: PLUGIN_NAME,
-    middleware: [handler],
+    middleware: [handler, mcpHandler],
 
     async setup(ctx) {
       storage = ctx.storage;

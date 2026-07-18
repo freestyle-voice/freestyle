@@ -614,6 +614,44 @@ body {
   background: color-mix(in srgb, var(--destructive) 5%, transparent);
 }
 
+/* ---- Built-in tools ---- */
+
+.builtin-tools-item {
+  border-color: color-mix(in srgb, var(--primary) 25%, var(--border));
+  background: color-mix(in srgb, var(--primary) 3%, var(--card));
+}
+
+.builtin-tools-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.builtin-tools-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.badge-builtin {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+
 .item-empty {
   font-size: 12px;
   color: var(--muted-foreground);

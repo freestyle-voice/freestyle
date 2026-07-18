@@ -6,6 +6,9 @@ export interface ConversationEntry {
   content: string;
 }
 
+/** Identifier for the built-in Freestyle Tools MCP entry. */
+export const BUILTIN_SERVER_ID = "freestyle-tools";
+
 /** A configured MCP server the agent can pull tools from. */
 export interface McpServerConfig {
   id: string;
@@ -21,6 +24,8 @@ export interface McpServerConfig {
   /** For `http`: the server URL. */
   url?: string;
   enabled: boolean;
+  /** True for the built-in Freestyle Tools server. Cannot be deleted in the UI. */
+  builtin?: boolean;
 }
 
 /** A named, reusable instruction set the agent can apply. */
@@ -43,6 +48,8 @@ export interface AgentConfig {
   agentName: string;
   mcpServers: McpServerConfig[];
   skills: Skill[];
+  /** Whether the built-in Freestyle Tools are active (default true). */
+  builtinToolsEnabled: boolean;
 }
 
 export const DEFAULT_SYSTEM_PROMPT =
@@ -57,6 +64,7 @@ export const DEFAULT_CONFIG: AgentConfig = {
   agentName: DEFAULT_AGENT_NAME,
   mcpServers: [],
   skills: [],
+  builtinToolsEnabled: true,
 };
 
 const CONFIG_KEY = "config";
@@ -87,7 +95,9 @@ export function normalizeConfig(raw: unknown): AgentConfig {
     ? raw.skills.filter(isRecord).map(normalizeSkill)
     : [];
 
-  return { systemPrompt, agentName, mcpServers, skills };
+  const builtinToolsEnabled = raw.builtinToolsEnabled !== false;
+
+  return { systemPrompt, agentName, mcpServers, skills, builtinToolsEnabled };
 }
 
 function normalizeMcpServer(raw: Record<string, unknown>): McpServerConfig {
@@ -109,6 +119,7 @@ function normalizeMcpServer(raw: Record<string, unknown>): McpServerConfig {
       : undefined,
     url: typeof raw.url === "string" ? raw.url : undefined,
     enabled: raw.enabled !== false,
+    builtin: raw.builtin === true ? true : undefined,
   };
 }
 

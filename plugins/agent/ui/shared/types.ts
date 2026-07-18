@@ -9,6 +9,7 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   url?: string;
   enabled: boolean;
+  builtin?: boolean;
 }
 
 export interface Skill {
@@ -23,6 +24,7 @@ export interface AgentConfig {
   agentName: string;
   mcpServers: McpServerConfig[];
   skills: Skill[];
+  builtinToolsEnabled: boolean;
 }
 
 export interface ConversationEntry {

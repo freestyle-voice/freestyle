@@ -125,20 +125,11 @@ body {
   }
 }
 
-/* Inner highlight strip along the open edge for depth */
-.panel.expand-down::before {
+/* Inner highlight strip along the outer edge (rounded side) for depth */
+.panel.expand-up::before {
   content: "";
   position: absolute;
   inset: 0 1px auto 1px;
-  height: 1px;
-  background: var(--panel-highlight);
-  pointer-events: none;
-  z-index: 1;
-}
-.panel.expand-up::after {
-  content: "";
-  position: absolute;
-  inset: auto 1px 0 1px;
   height: 1px;
   background: var(--panel-highlight);
   pointer-events: none;
@@ -332,30 +323,6 @@ body {
 }
 .typing span:nth-child(3) {
   animation-delay: 0.36s;
-}
-
-/* ---- Footer ---- */
-
-.footer {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-top: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
-  font-size: 10.5px;
-  color: var(--muted-foreground);
-  flex-shrink: 0;
-}
-
-.kbd {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 9.5px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  background: color-mix(in srgb, var(--secondary) 50%, transparent);
-  color: var(--foreground);
 }
 
 /* ---- Markdown (react-markdown output) ---- */

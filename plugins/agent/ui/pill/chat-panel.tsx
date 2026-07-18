@@ -344,11 +344,6 @@ export function ChatPanel(): React.JSX.Element {
           <div ref={endRef} />
         </div>
       )}
-
-      <div className="footer">
-        <span className="kbd">hold your key</span>
-        <span>to reply</span>
-      </div>
     </div>
   );
 }

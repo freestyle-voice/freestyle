@@ -13,6 +13,41 @@ const EMPTY: AgentConfig = {
 
 const SAVE_DEBOUNCE_MS = 500;
 
+function TrashIcon(): React.JSX.Element {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M2 3.5h10M5 3.5V2.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1M11 3.5v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-8M5.5 6v4M8.5 6v4" />
+    </svg>
+  );
+}
+
+function RefreshIcon(): React.JSX.Element {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M1.5 7a5.5 5.5 0 0 1 9.9-3.3M12.5 7a5.5 5.5 0 0 1-9.9 3.3" />
+      <path d="M11.5 1.5v2.5H9M2.5 12.5V10H5" />
+    </svg>
+  );
+}
+
 function GearIcon(): React.JSX.Element {
   return (
     <svg
@@ -137,15 +172,28 @@ export function SettingsPage(): React.JSX.Element {
         <div className="card-grid-pane">
           <div className="card-grid-header">
             <span className="eyebrow">Conversations</span>
-            {conversations.length > 0 && (
+            <div style={{ display: "flex", gap: 4 }}>
               <button
                 type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={clearAll}
+                className="icon-btn"
+                onClick={() => void refreshHistory()}
+                aria-label="Refresh"
+                title="Refresh"
               >
-                Clear all
+                <RefreshIcon />
               </button>
-            )}
+              {conversations.length > 0 && (
+                <button
+                  type="button"
+                  className="icon-btn destructive"
+                  onClick={clearAll}
+                  aria-label="Clear all conversations"
+                  title="Clear all"
+                >
+                  <TrashIcon />
+                </button>
+              )}
+            </div>
           </div>
 
           {conversations.length === 0 ? (

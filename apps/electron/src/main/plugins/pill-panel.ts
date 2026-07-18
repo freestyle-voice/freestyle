@@ -13,12 +13,11 @@ import { bearerAuthHeaders } from "../../shared/server-auth.js";
 const log = createAppLogger("pill-panel");
 
 /**
- * Height reserved for the pill bar when expanded.  This is the pill bar's CSS
- * height (43px) + a small top margin (7px).  The panel view starts directly
- * below this, eliminating the 47px transparent gap that existed when using
- * the full 90px PILL_CHROME_HEIGHT.
+ * Height reserved for the pill bar when expanded — matches the pill bar's
+ * CSS height exactly (43px).  The panel view starts directly below this
+ * with zero gap.
  */
-const EXPANDED_CHROME_HEIGHT = 50;
+const EXPANDED_CHROME_HEIGHT = 43;
 
 interface PillPanelConfig {
   slug: string;

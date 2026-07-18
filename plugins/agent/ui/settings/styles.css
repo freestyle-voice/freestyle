@@ -604,6 +604,11 @@ body {
   transition: color 0.12s, border-color 0.12s, background 0.12s;
 }
 .icon-btn:hover {
+  color: var(--foreground);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--border) 30%, transparent);
+}
+.icon-btn.destructive:hover {
   color: var(--destructive);
   border-color: color-mix(in srgb, var(--destructive) 30%, transparent);
   background: color-mix(in srgb, var(--destructive) 5%, transparent);

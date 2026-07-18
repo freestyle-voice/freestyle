@@ -220,7 +220,6 @@ export function ChatPanel(): React.JSX.Element {
             ...prev,
             { role: "user", content: event.text },
           ]);
-          void refresh();
           break;
         // Stream events from the pill bridge (WS path).  These arrive in
         // addition to the SSE events — dedup by ignoring them here since

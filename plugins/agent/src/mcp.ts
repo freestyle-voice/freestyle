@@ -4,6 +4,9 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { type JSONSchema7, jsonSchema, type Tool, tool } from "ai";
 import type { McpServerConfig } from "./config.js";
 
+/** Fast-fail timeout for connecting to an MCP server (ms). */
+const MCP_CONNECT_TIMEOUT_MS = 10_000;
+
 /** A live MCP connection plus the AI SDK tools it exposes. */
 export interface McpConnection {
   serverId: string;
@@ -30,12 +33,11 @@ export async function connectMcpServer(
     server.transport === "http"
       ? new StreamableHTTPClientTransport(new URL(requireUrl(server)))
       : new StdioClientTransport({
-          command: requireCommand(server),
-          args: server.args ?? [],
+          ...splitCommand(requireCommand(server), server.args),
           env: { ...pickPathEnv(), ...(server.env ?? {}) },
         });
 
-  await client.connect(transport);
+  await withTimeout(client.connect(transport), MCP_CONNECT_TIMEOUT_MS);
 
   const { tools: mcpTools } = await client.listTools();
   const tools: Record<string, Tool> = {};
@@ -130,8 +132,34 @@ function requireCommand(server: McpServerConfig): string {
   return server.command;
 }
 
+/**
+ * If the user entered a full command string in the command field (e.g.
+ * `npx -y @modelcontextprotocol/server-filesystem /tmp`) and left the
+ * args field empty, split it into command + args.  Without this, spawn
+ * tries to find an executable named "npx -y ..." which fails and can
+ * fall through to `sh`, causing JSON-RPC stdin to be executed as shell
+ * commands (`sh: method:initialize: command not found`).
+ */
+function splitCommand(
+  command: string,
+  args: string[] | undefined,
+): { command: string; args: string[] } {
+  if (args && args.length > 0) return { command, args };
+  const parts = command.trim().split(/\s+/);
+  return { command: parts[0], args: parts.slice(1) };
+}
+
 /** Pass through PATH so spawned stdio servers can resolve their executables. */
 function pickPathEnv(): Record<string, string> {
   const path = process.env.PATH;
   return path ? { PATH: path } : {};
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms),
+    ),
+  ]);
 }

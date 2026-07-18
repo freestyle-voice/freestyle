@@ -181,7 +181,7 @@ export function SettingsDialog({
                   </label>
                   <button
                     type="button"
-                    className="icon-btn"
+                    className="icon-btn destructive"
                     onClick={() => removeServer(s.id)}
                     title="Remove"
                     aria-label="Remove server"
@@ -296,7 +296,7 @@ export function SettingsDialog({
                   </label>
                   <button
                     type="button"
-                    className="icon-btn"
+                    className="icon-btn destructive"
                     onClick={() => removeSkill(s.id)}
                     title="Remove"
                     aria-label="Remove skill"

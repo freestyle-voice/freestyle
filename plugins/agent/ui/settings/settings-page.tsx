@@ -2,9 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { del, getJson, putJson } from "../shared/api";
 import type { AgentConfig, SavedConversation } from "../shared/types";
 import { ConversationViewer } from "./conversation-viewer";
-import { McpSection } from "./mcp-section";
 import { SettingsDialog } from "./settings-dialog";
-import { SkillsSection } from "./skills-section";
 
 const EMPTY: AgentConfig = {
   systemPrompt: "",

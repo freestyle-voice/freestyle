@@ -52,10 +52,8 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
   // Turn serialisation: only one agent turn runs at a time.
   let turnChain: Promise<void> = Promise.resolve();
 
-  // `afterTranscribe` detects the agent name in the RAW text (before LLM
-  // cleanup strips it) and stashes the extracted prompt.  `afterCleanup`
-  // picks up the stash so it works even when cleanup removed the name.
-  // Each pipeline run gets its own HookApi, so we key on the api instance.
+  // afterTranscribe stashes the prompt extracted from the RAW text (before
+  // LLM cleanup can strip the name).  afterCleanup picks it up.
   const pendingPrompts = new WeakMap<object, string>();
 
   function ownRoute(reqPath: string, route: string): boolean {
@@ -79,6 +77,68 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
 
   async function persistConversation(): Promise<void> {
     if (storage) await storage.set(CONVERSATION_KEY, conversation);
+  }
+
+  /** Run the agent turn, serialised with other turns. Fire-and-forget safe. */
+  async function executeAgentTurn(
+    prompt: string,
+    llm: PluginLlm | undefined,
+    signal: AbortSignal | undefined,
+    emitStream:
+      | ((event: import("freestyle-voice").PluginStreamEvent) => void)
+      | undefined,
+  ): Promise<void> {
+    const previousTurn = turnChain;
+    let resolveThisTurn: () => void;
+    turnChain = new Promise<void>((r) => {
+      resolveThisTurn = r;
+    });
+
+    try {
+      await previousTurn;
+
+      if (!conversationActive) {
+        await archiveCurrentConversation();
+        conversation = [];
+        conversationActive = true;
+      }
+      conversation.push({ role: "user", content: prompt });
+
+      emitStream?.({ type: "streamStart" });
+
+      let reply: string;
+      if (llm) {
+        try {
+          reply = await runAgentTurn({
+            llm,
+            config,
+            history: conversation,
+            signal,
+            log: logger,
+            onDelta: (delta) =>
+              emitStream?.({ type: "streamDelta", text: delta }),
+          });
+        } catch (err) {
+          reply = `Sorry, the agent turn failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`;
+          emitStream?.({ type: "streamDelta", text: reply });
+        }
+      } else {
+        reply =
+          "No language model is configured. Set one under Settings → Models.";
+        emitStream?.({ type: "streamDelta", text: reply });
+      }
+
+      emitStream?.({ type: "streamEnd" });
+
+      if (conversationActive) {
+        conversation.push({ role: "assistant", content: reply });
+        await persistConversation();
+      }
+    } finally {
+      resolveThisTurn!();
+    }
   }
 
   const handler: MiddlewareHandler = async (c, next) => {
@@ -178,13 +238,6 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       ctx.logger.info(`voice agent ready on ${ctx.mode}`);
     },
 
-    // Detect the agent name in the RAW transcript (before LLM cleanup can
-    // strip it).  Stash the extracted prompt keyed on the HookApi so
-    // afterCleanup can pick it up later in the same pipeline run.
-    //
-    // afterTranscribe does NOT fire on every path (Freestyle Cloud streaming
-    // with combined cleanup skips it), so afterCleanup also checks the
-    // cleaned text as a fallback.
     afterTranscribe(_input, output, api) {
       const text = output.text.trim();
       if (!text) return;
@@ -196,19 +249,18 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       const prompt = hasName ? stripAgentName(text, matcher) : text;
       if (!prompt) return;
 
-      // Stash for afterCleanup to pick up.
       pendingPrompts.set(api, prompt);
     },
 
     async afterCleanup(_input, output, api) {
       if (api.llm) lastLlm = api.llm;
 
-      // First check the stash from afterTranscribe (name was in raw text).
+      // Check the stash from afterTranscribe (name detected in raw text).
       let prompt = pendingPrompts.get(api) ?? null;
       pendingPrompts.delete(api);
 
-      // Fallback: try matching in the cleaned text (for paths where
-      // afterTranscribe didn't fire, or when cleanup preserved the name).
+      // Fallback: match in the cleaned text (Freestyle Cloud streaming path
+      // where afterTranscribe doesn't fire, or when cleanup preserved the name).
       if (!prompt) {
         const text = output.text.trim();
         if (!text) return;
@@ -222,61 +274,18 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
         if (!prompt) return;
       }
 
-      // Consume IMMEDIATELY — the text must never be pasted.
+      // Consume IMMEDIATELY so the text is never pasted.
       output.text = prompt;
       api.control.consume("voice-agent: handled in the pill panel");
 
-      // Serialise agent turns.
-      const previousTurn = turnChain;
-      let resolveThisTurn: () => void;
-      turnChain = new Promise<void>((r) => {
-        resolveThisTurn = r;
-      });
-
-      try {
-        await previousTurn;
-
-        if (!conversationActive) {
-          await archiveCurrentConversation();
-          conversation = [];
-          conversationActive = true;
-        }
-        conversation.push({ role: "user", content: prompt });
-
-        api.emitStream?.({ type: "streamStart" });
-
-        let reply: string;
-        if (api.llm) {
-          try {
-            reply = await runAgentTurn({
-              llm: api.llm,
-              config,
-              history: conversation,
-              signal: api.signal,
-              log: logger,
-              onDelta: (delta) =>
-                api.emitStream?.({ type: "streamDelta", text: delta }),
-            });
-          } catch (err) {
-            reply = `Sorry, the agent turn failed: ${
-              err instanceof Error ? err.message : String(err)
-            }`;
-            api.emitStream?.({ type: "streamDelta", text: reply });
-          }
-        } else {
-          reply =
-            "No language model is configured. Set one under Settings → Models.";
-          api.emitStream?.({ type: "streamDelta", text: reply });
-        }
-
-        api.emitStream?.({ type: "streamEnd" });
-
-        if (conversationActive) {
-          conversation.push({ role: "assistant", content: reply });
-          await persistConversation();
-        }
-      } finally {
-        resolveThisTurn!();
+      // If the streaming path is available (WebSocket), the agent turn runs
+      // inline so stream events (start/delta/end) reach the panel live.
+      // Otherwise (batch path), fire-and-forget: the panel polls for the
+      // completed conversation via GET /agent/conversation.
+      if (api.emitStream) {
+        await executeAgentTurn(prompt, api.llm, api.signal, api.emitStream);
+      } else {
+        void executeAgentTurn(prompt, api.llm, api.signal, undefined);
       }
     },
   };

@@ -168,6 +168,10 @@ export function ChatPanel(): React.JSX.Element {
 
   useEffect(() => {
     void refresh();
+    // Poll for conversation updates — covers the batch path where no stream
+    // events are emitted and the agent turn runs in the background.
+    const id = setInterval(refresh, 1000);
+    return () => clearInterval(id);
   }, [refresh]);
 
   useEffect(() => {

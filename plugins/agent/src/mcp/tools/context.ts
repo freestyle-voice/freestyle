@@ -1,5 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { setFreestyleVisible } from "./screenshot.js";
 
 const execFileP = promisify(execFile);
 
@@ -165,61 +166,9 @@ export async function pasteText(args: { text: string }): Promise<string> {
   const plat = process.platform;
 
   try {
-    if (plat === "darwin") {
-      return await pasteMac(args.text);
-    }
-
-    // Step 1: write to clipboard
-    if (plat === "win32") {
-      await pipeToCommand(
-        "powershell",
-        ["-NoProfile", "-Command", "Set-Clipboard -Value $input"],
-        args.text,
-      );
-    } else {
-      let ok = false;
-      for (const [cmd, cmdArgs] of [
-        ["xclip", ["-selection", "clipboard"]],
-        ["xsel", ["--clipboard", "--input"]],
-        ["wl-copy", []],
-      ] as [string, string[]][]) {
-        try {
-          await pipeToCommand(cmd, cmdArgs, args.text);
-          ok = true;
-          break;
-        } catch {}
-      }
-      if (!ok) return "Error: no clipboard tool found";
-    }
-
-    // Step 2: simulate paste keystroke
-    await sleep(100);
-
-    if (plat === "win32") {
-      await execFileP(
-        "powershell",
-        [
-          "-NoProfile",
-          "-Command",
-          "Add-Type -A System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')",
-        ],
-        { timeout: 3000 },
-      );
-    } else {
-      try {
-        await execFileP("xdotool", ["key", "ctrl+v"], { timeout: 2000 });
-      } catch {
-        try {
-          await execFileP("wtype", ["-M", "ctrl", "-k", "v"], {
-            timeout: 2000,
-          });
-        } catch {
-          return "Error: could not simulate paste (install xdotool or wtype)";
-        }
-      }
-    }
-
-    return `Pasted ${args.text.length} characters into the focused app.`;
+    if (plat === "darwin") return await pasteMac(args.text);
+    if (plat === "win32") return await pasteWindows(args.text);
+    return await pasteLinux(args.text);
   } catch (err) {
     return `Failed to paste: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -315,6 +264,80 @@ async function pasteMac(text: string): Promise<string> {
   } catch {}
 
   return `Pasted ${text.length} characters into ${targetApp || "the focused app"}.`;
+}
+
+/**
+ * Windows-specific paste: hides Freestyle, writes to clipboard via
+ * PowerShell, simulates Ctrl+V, then restores Freestyle.
+ */
+async function pasteWindows(text: string): Promise<string> {
+  // Hide Freestyle so the target app can receive focus
+  await setFreestyleVisible(false);
+  await sleep(200);
+
+  try {
+    // Write to clipboard and simulate Ctrl+V in one PowerShell session
+    const script = `
+      Set-Clipboard -Value $args[0]
+      Start-Sleep -Milliseconds 50
+      Add-Type -A System.Windows.Forms
+      [System.Windows.Forms.SendKeys]::SendWait('^v')
+    `;
+    await execFileP("powershell", ["-NoProfile", "-Command", script, text], {
+      timeout: 5000,
+    });
+
+    await sleep(300);
+    return `Pasted ${text.length} characters into the focused app.`;
+  } finally {
+    await setFreestyleVisible(true);
+  }
+}
+
+/**
+ * Linux-specific paste: hides Freestyle, writes to clipboard, simulates
+ * Ctrl+V via xdotool or wtype, then restores Freestyle.
+ */
+async function pasteLinux(text: string): Promise<string> {
+  // Hide Freestyle
+  await setFreestyleVisible(false);
+  await sleep(200);
+
+  try {
+    // Write to clipboard
+    let clipOk = false;
+    for (const [cmd, cmdArgs] of [
+      ["xclip", ["-selection", "clipboard"]],
+      ["xsel", ["--clipboard", "--input"]],
+      ["wl-copy", []],
+    ] as [string, string[]][]) {
+      try {
+        await pipeToCommand(cmd, cmdArgs, text);
+        clipOk = true;
+        break;
+      } catch {}
+    }
+    if (!clipOk)
+      return "Error: no clipboard tool found (install xclip, xsel, or wl-copy)";
+
+    await sleep(50);
+
+    // Simulate Ctrl+V
+    try {
+      await execFileP("xdotool", ["key", "ctrl+v"], { timeout: 2000 });
+    } catch {
+      try {
+        await execFileP("wtype", ["-M", "ctrl", "-k", "v"], { timeout: 2000 });
+      } catch {
+        return "Error: could not simulate paste (install xdotool or wtype)";
+      }
+    }
+
+    await sleep(300);
+    return `Pasted ${text.length} characters into the focused app.`;
+  } finally {
+    await setFreestyleVisible(true);
+  }
 }
 
 function sleep(ms: number): Promise<void> {

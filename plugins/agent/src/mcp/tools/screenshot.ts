@@ -165,36 +165,50 @@ async function getMacCursorScreenBounds(): Promise<{
 }
 
 async function captureWindowsScreen(outPath: string): Promise<void> {
-  const script = `
-    Add-Type -A System.Drawing
-    Add-Type -A System.Windows.Forms
-    $cursor = [System.Windows.Forms.Cursor]::Position
-    $screen = [System.Windows.Forms.Screen]::FromPoint($cursor)
-    $bounds = $screen.Bounds
-    $bmp = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
-    $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-    $bmp.Save('${outPath.replace(/'/g, "''")}', [System.Drawing.Imaging.ImageFormat]::Jpeg)
-    $g.Dispose()
-    $bmp.Dispose()
-  `;
-  await execFileP("powershell", ["-NoProfile", "-Command", script], {
-    timeout: 10_000,
-  });
+  await setFreestyleVisible(false);
+  await sleep(150);
+
+  try {
+    const script = `
+      Add-Type -A System.Drawing
+      Add-Type -A System.Windows.Forms
+      $cursor = [System.Windows.Forms.Cursor]::Position
+      $screen = [System.Windows.Forms.Screen]::FromPoint($cursor)
+      $bounds = $screen.Bounds
+      $bmp = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
+      $g = [System.Drawing.Graphics]::FromImage($bmp)
+      $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+      $bmp.Save('${outPath.replace(/'/g, "''")}', [System.Drawing.Imaging.ImageFormat]::Jpeg)
+      $g.Dispose()
+      $bmp.Dispose()
+    `;
+    await execFileP("powershell", ["-NoProfile", "-Command", script], {
+      timeout: 10_000,
+    });
+  } finally {
+    await setFreestyleVisible(true);
+  }
 }
 
 async function captureLinuxScreen(outPath: string): Promise<boolean> {
-  for (const [cmd, cmdArgs] of [
-    ["grim", [outPath]],
-    ["scrot", [outPath]],
-    ["import", ["-window", "root", outPath]],
-  ] as [string, string[]][]) {
-    try {
-      await execFileP(cmd, cmdArgs, { timeout: 10_000 });
-      return true;
-    } catch {}
+  await setFreestyleVisible(false);
+  await sleep(150);
+
+  try {
+    for (const [cmd, cmdArgs] of [
+      ["grim", [outPath]],
+      ["scrot", [outPath]],
+      ["import", ["-window", "root", outPath]],
+    ] as [string, string[]][]) {
+      try {
+        await execFileP(cmd, cmdArgs, { timeout: 10_000 });
+        return true;
+      } catch {}
+    }
+    return false;
+  } finally {
+    await setFreestyleVisible(true);
   }
-  return false;
 }
 
 /**
@@ -221,17 +235,81 @@ async function resizeWithSips(
 }
 
 /**
- * Hide or show the Freestyle app window via AppleScript. Used to prevent
+ * Hide or show the Freestyle app window. Cross-platform: uses AppleScript on
+ * macOS, PowerShell on Windows, and wmctrl/xdotool on Linux. Used to prevent
  * the pill from appearing in screenshots and to let paste_text target the
  * correct app.
  */
 export async function setFreestyleVisible(visible: boolean): Promise<void> {
-  if (process.platform !== "darwin") return;
+  const plat = process.platform;
   try {
-    const script = visible
-      ? 'tell application "System Events" to set visible of process "Freestyle" to true'
-      : 'tell application "System Events" to set visible of process "Freestyle" to false';
-    await execFileP("osascript", ["-e", script], { timeout: 2000 });
+    if (plat === "darwin") {
+      const script = visible
+        ? 'tell application "System Events" to set visible of process "Freestyle" to true'
+        : 'tell application "System Events" to set visible of process "Freestyle" to false';
+      await execFileP("osascript", ["-e", script], { timeout: 2000 });
+    } else if (plat === "win32") {
+      // Use PowerShell to find the Freestyle window and minimize/restore it
+      const script = visible
+        ? `
+          Add-Type @"
+            using System; using System.Runtime.InteropServices;
+            public class W { [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c); }
+"@
+          $p = Get-Process -Name Freestyle -ErrorAction SilentlyContinue
+          if ($p) { foreach ($h in @($p.MainWindowHandle)) { [W]::ShowWindow($h, 9) | Out-Null } }
+        `
+        : `
+          Add-Type @"
+            using System; using System.Runtime.InteropServices;
+            public class W { [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c); }
+"@
+          $p = Get-Process -Name Freestyle -ErrorAction SilentlyContinue
+          if ($p) { foreach ($h in @($p.MainWindowHandle)) { [W]::ShowWindow($h, 0) | Out-Null } }
+        `;
+      await execFileP("powershell", ["-NoProfile", "-Command", script], {
+        timeout: 3000,
+      });
+    } else {
+      // Linux: try wmctrl, then xdotool
+      if (visible) {
+        try {
+          await execFileP(
+            "wmctrl",
+            ["-r", "Freestyle", "-b", "remove,hidden"],
+            {
+              timeout: 2000,
+            },
+          );
+          return;
+        } catch {}
+        try {
+          await execFileP(
+            "xdotool",
+            ["search", "--name", "Freestyle", "windowactivate"],
+            {
+              timeout: 2000,
+            },
+          );
+        } catch {}
+      } else {
+        try {
+          await execFileP("wmctrl", ["-r", "Freestyle", "-b", "add,hidden"], {
+            timeout: 2000,
+          });
+          return;
+        } catch {}
+        try {
+          await execFileP(
+            "xdotool",
+            ["search", "--name", "Freestyle", "windowminimize"],
+            {
+              timeout: 2000,
+            },
+          );
+        } catch {}
+      }
+    }
   } catch {}
 }
 

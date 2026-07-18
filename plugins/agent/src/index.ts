@@ -21,7 +21,6 @@ const PLUGIN_NAME = "@freestyle-voice/plugin-agent";
 const CONVERSATION_KEY = "conversation";
 const HISTORY_KEY = "conversation-history";
 
-/** A saved conversation with metadata for the settings page card grid. */
 interface SavedConversation {
   id: string;
   title: string;
@@ -47,9 +46,13 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
   let history: SavedConversation[] = [];
   let logger: (msg: string) => void = () => {};
   let conversationActive = false;
-  /** Cache the LLM from the last hook call so regenerate can reuse it. */
   let lastLlm: PluginLlm | null = null;
   const baseSlug = pluginSlug(PLUGIN_NAME);
+
+  // Turn serialisation: only one agent turn runs at a time.  A second
+  // dictation that arrives while the first is still processing is queued
+  // behind the running turn's promise.
+  let turnChain: Promise<void> = Promise.resolve();
 
   function ownRoute(reqPath: string, route: string): boolean {
     const m = reqPath.match(new RegExp(`^/api/plugins/([^/]+)${route}$`));
@@ -57,7 +60,6 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     return m[1] === baseSlug || m[1] === `${baseSlug}-dev`;
   }
 
-  /** Archive the current conversation into history (if non-empty). */
   async function archiveCurrentConversation(): Promise<void> {
     if (conversation.length === 0) return;
     const saved: SavedConversation = {
@@ -67,9 +69,12 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       messages: [...conversation],
     };
     history.unshift(saved);
-    // Keep at most 50 saved conversations to avoid unbounded growth.
     if (history.length > 50) history = history.slice(0, 50);
     if (storage) await storage.set(HISTORY_KEY, history);
+  }
+
+  async function persistConversation(): Promise<void> {
+    if (storage) await storage.set(CONVERSATION_KEY, conversation);
   }
 
   const handler: MiddlewareHandler = async (c, next) => {
@@ -85,18 +90,16 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       }
     }
 
-    // Current conversation — the pill panel reads and clears it.
     if (ownRoute(reqPath, "/agent/conversation")) {
       if (c.req.method === "GET") return c.json({ conversation });
       if (c.req.method === "DELETE") {
         conversation = [];
         conversationActive = false;
-        if (storage) await storage.set(CONVERSATION_KEY, conversation);
+        await persistConversation();
         return c.json({ ok: true });
       }
     }
 
-    // Conversation history — the settings page reads and manages it.
     if (ownRoute(reqPath, "/agent/conversations")) {
       if (c.req.method === "GET") return c.json({ conversations: history });
       if (c.req.method === "DELETE") {
@@ -106,7 +109,6 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       }
     }
 
-    // Delete a single conversation from history.
     const singleDelete = reqPath.match(
       new RegExp(
         `^/api/plugins/(?:${baseSlug}|${baseSlug}-dev)/agent/conversations/([^/]+)$`,
@@ -118,12 +120,10 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       return c.json({ ok: true });
     }
 
-    // Regenerate the last assistant reply (non-streaming).
     if (ownRoute(reqPath, "/agent/regenerate") && c.req.method === "POST") {
       if (!lastLlm) {
         return c.json({ error: "No model available" }, 503);
       }
-      // Remove the last assistant message if present.
       if (
         conversation.length > 0 &&
         conversation[conversation.length - 1].role === "assistant"
@@ -141,7 +141,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
           log: logger,
         });
         conversation.push({ role: "assistant", content: reply });
-        if (storage) await storage.set(CONVERSATION_KEY, conversation);
+        await persistConversation();
         return c.json({ reply });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -150,8 +150,9 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     }
 
     if (ownRoute(reqPath, "/agent/session/end") && c.req.method === "POST") {
-      // Archive the conversation that just ended before resetting.
-      await archiveCurrentConversation();
+      // Mark inactive immediately.  Archival is deferred to the next fresh
+      // trigger — this avoids archiving an incomplete conversation if the
+      // agent turn is still running when the panel closes.
       conversationActive = false;
       return c.json({ ok: true });
     }
@@ -177,7 +178,6 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     },
 
     async afterCleanup(_input, output, api) {
-      // Cache the LLM so regenerate (called outside hook context) can use it.
       if (api.llm) lastLlm = api.llm;
 
       const text = output.text.trim();
@@ -191,47 +191,68 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       const prompt = hasName ? stripAgentName(text, matcher) : text;
       if (!prompt) return;
 
-      if (!conversationActive) {
-        // Archive the old conversation before starting fresh.
-        await archiveCurrentConversation();
-        conversation = [];
-        conversationActive = true;
-      }
-      conversation.push({ role: "user", content: prompt });
-
-      api.emitStream?.({ type: "streamStart" });
-
-      let reply: string;
-      if (api.llm) {
-        try {
-          reply = await runAgentTurn({
-            llm: api.llm,
-            config,
-            history: conversation,
-            signal: api.signal,
-            log: logger,
-            onDelta: (delta) =>
-              api.emitStream?.({ type: "streamDelta", text: delta }),
-          });
-        } catch (err) {
-          reply = `Sorry, the agent turn failed: ${
-            err instanceof Error ? err.message : String(err)
-          }`;
-          api.emitStream?.({ type: "streamDelta", text: reply });
-        }
-      } else {
-        reply =
-          "No language model is configured. Set one under Settings → Models.";
-        api.emitStream?.({ type: "streamDelta", text: reply });
-      }
-
-      api.emitStream?.({ type: "streamEnd" });
-
-      conversation.push({ role: "assistant", content: reply });
-      if (storage) await storage.set(CONVERSATION_KEY, conversation);
-
+      // Consume the output IMMEDIATELY so the text is never pasted,
+      // regardless of how long the LLM call takes or whether the user
+      // closes the panel during processing.
       output.text = prompt;
       api.control.consume("voice-agent: handled in the pill panel");
+
+      // Serialise agent turns — a follow-up dictation waits for the
+      // previous turn to finish before running.
+      const previousTurn = turnChain;
+      let resolveThisTurn: () => void;
+      turnChain = new Promise<void>((r) => {
+        resolveThisTurn = r;
+      });
+
+      try {
+        await previousTurn;
+
+        if (!conversationActive) {
+          await archiveCurrentConversation();
+          conversation = [];
+          conversationActive = true;
+        }
+        conversation.push({ role: "user", content: prompt });
+
+        api.emitStream?.({ type: "streamStart" });
+
+        let reply: string;
+        if (api.llm) {
+          try {
+            reply = await runAgentTurn({
+              llm: api.llm,
+              config,
+              history: conversation,
+              signal: api.signal,
+              log: logger,
+              onDelta: (delta) =>
+                api.emitStream?.({ type: "streamDelta", text: delta }),
+            });
+          } catch (err) {
+            reply = `Sorry, the agent turn failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`;
+            api.emitStream?.({ type: "streamDelta", text: reply });
+          }
+        } else {
+          reply =
+            "No language model is configured. Set one under Settings → Models.";
+          api.emitStream?.({ type: "streamDelta", text: reply });
+        }
+
+        api.emitStream?.({ type: "streamEnd" });
+
+        // Guard: if the session was ended while the turn was running (user
+        // closed the panel), don't push the reply — the conversation has
+        // already been marked for archival on the next trigger.
+        if (conversationActive) {
+          conversation.push({ role: "assistant", content: reply });
+          await persistConversation();
+        }
+      } finally {
+        resolveThisTurn!();
+      }
     },
   };
 }

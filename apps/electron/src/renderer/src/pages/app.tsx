@@ -162,9 +162,9 @@ const pillBaseStyle: React.CSSProperties = {
   fontWeight: 500,
   cursor: "grab",
   WebkitAppRegion: "drag",
-  transition:
-    "width 280ms cubic-bezier(0.4,0,0.2,1), " +
-    "border-radius 280ms cubic-bezier(0.4,0,0.2,1)",
+  // Only animate border-radius — width snaps instantly to avoid a flash of
+  // transparent background while the window is already resized.
+  transition: "border-radius 200ms cubic-bezier(0.4,0,0.2,1)",
 } as React.CSSProperties;
 
 interface TranscribeResult {
@@ -855,6 +855,16 @@ export default function AppPage(): React.JSX.Element {
     setPillState("idle");
     setPendingCount(0);
     setPluginBadge(null);
+    // End the agent session if the panel was open — otherwise the
+    // conversation stays active and the next trigger appends to it
+    // instead of starting fresh.
+    if (panelOpenRef.current && panelPluginSlugRef.current) {
+      void apiFetch(
+        `/api/plugins/${panelPluginSlugRef.current}/agent/session/end`,
+        { method: "POST" },
+      ).catch(() => {});
+      window.api?.collapsePillPanel?.();
+    }
     panelOpenRef.current = false;
     setPanelOpen(false);
     wantsMicRef.current = false;
@@ -1619,11 +1629,8 @@ export default function AppPage(): React.JSX.Element {
 
       <div
         style={{
-          // When the panel is open the pill bar stretches to the panel width
-          // and its bottom edge sits flush against the panel — no margin.
           marginBottom: panelOpen ? 0 : pillAlign === "end" ? 8 : "auto",
           marginTop: panelOpen ? 0 : pillAlign === "start" ? 8 : "auto",
-          transition: "margin 280ms cubic-bezier(0.4,0,0.2,1)",
         }}
       >
         <div
@@ -1631,20 +1638,17 @@ export default function AppPage(): React.JSX.Element {
           style={{
             borderRadius: panelOpen ? "14px 14px 0 0" : 25,
             visibility: state === "idle" && !panelOpen ? "hidden" : "visible",
-            transition: "border-radius 280ms cubic-bezier(0.4,0,0.2,1)",
+            transition: "border-radius 200ms cubic-bezier(0.4,0,0.2,1)",
           }}
         >
           <div
-            className="inline-flex items-center gap-2.5"
+            className="inline-flex items-center justify-center gap-2.5"
             style={{
               ...pillBaseStyle,
               width: panelOpen ? panelWidthRef.current : PILL_WIDTH,
               borderRadius: panelOpen ? "14px 14px 0 0" : 25,
               border: "1px solid var(--border)",
               borderBottom: panelOpen ? "none" : undefined,
-              boxShadow: panelOpen
-                ? "0 -4px 20px -4px rgba(0,0,0,0.15)"
-                : undefined,
             }}
           >
             <div

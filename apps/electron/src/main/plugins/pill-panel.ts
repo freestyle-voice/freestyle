@@ -175,6 +175,11 @@ export class PillPanelController {
     const view = this.ensureView();
     if (view) {
       const viewY = expandsDown ? PILL_CHROME_HEIGHT + PANEL_GAP : 0;
+      // Only bottom corners are rounded (top is flat, connected to the pill
+      // bar).  setBorderRadius applies uniformly, so we use a value that
+      // clips the bottom on Windows/Linux where CSS border-radius alone may
+      // not clip the native view.
+      view.setBorderRadius(14);
       view.setBounds({
         x: 0,
         y: viewY,

@@ -8,6 +8,7 @@ import type {
   ConversationEntry,
   GuidanceEvent,
   ToolCallEvent,
+  ToolCallStartEvent,
 } from "../shared/types";
 
 /* ---- Icons ---- */
@@ -81,11 +82,22 @@ interface StatusView {
   pulse: boolean;
 }
 
-function statusFor(state: PillState, streaming: boolean): StatusView {
+function statusFor(
+  state: PillState,
+  streaming: boolean,
+  activeTool?: string,
+): StatusView {
   if (state === "recording") {
     return {
       label: "Listening",
       color: "var(--primary, #8AB62A)",
+      pulse: true,
+    };
+  }
+  if (activeTool) {
+    return {
+      label: activeTool,
+      color: "var(--accent-foreground, #E8EFC9)",
       pulse: true,
     };
   }
@@ -302,9 +314,21 @@ const TOOL_ICON_MAP: Record<string, () => React.JSX.Element> = {
   run_shortcut: WrenchIcon,
 };
 
+/* ---- Tool call tracking ---- */
+
+/** A tool call in either running or completed state. */
+interface TrackedToolCall {
+  callId: string;
+  tool: string;
+  input: Record<string, unknown>;
+  output?: string;
+  isError?: boolean;
+  running: boolean;
+}
+
 /* ---- Tool Call Card ---- */
 
-function ToolCallCard({ tc }: { tc: ToolCallEvent }): React.JSX.Element {
+function ToolCallCard({ tc }: { tc: TrackedToolCall }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const IconComp = TOOL_ICON_MAP[tc.tool] ?? WrenchIcon;
 
@@ -317,7 +341,9 @@ function ToolCallCard({ tc }: { tc: ToolCallEvent }): React.JSX.Element {
     .join(", ");
 
   return (
-    <div className={`tool-card${tc.isError ? " tool-error" : ""}`}>
+    <div
+      className={`tool-card${tc.isError ? " tool-error" : ""}${tc.running ? " tool-running" : ""}`}
+    >
       <button
         type="button"
         className="tool-card-head"
@@ -327,14 +353,23 @@ function ToolCallCard({ tc }: { tc: ToolCallEvent }): React.JSX.Element {
           <IconComp />
         </span>
         <span className="tool-card-name">{tc.tool}</span>
-        <span className="tool-card-chevron">
-          {expanded ? "\u25B4" : "\u25BE"}
-        </span>
+        {tc.running ? (
+          <span className="tool-card-spinner" />
+        ) : (
+          <span className="tool-card-chevron">
+            {expanded ? "\u25B4" : "\u25BE"}
+          </span>
+        )}
       </button>
-      {!expanded && inputSummary && (
+      {!expanded && !tc.running && inputSummary && (
         <div className="tool-card-summary">{inputSummary}</div>
       )}
-      {expanded && (
+      {tc.running && (
+        <div className="tool-card-summary tool-card-running-hint">
+          {inputSummary || "Running..."}
+        </div>
+      )}
+      {expanded && !tc.running && (
         <div className="tool-card-detail">
           <div className="tool-card-section">
             <span className="tool-card-label">Input</span>
@@ -342,10 +377,12 @@ function ToolCallCard({ tc }: { tc: ToolCallEvent }): React.JSX.Element {
               {JSON.stringify(tc.input, null, 2)}
             </pre>
           </div>
-          <div className="tool-card-section">
-            <span className="tool-card-label">Output</span>
-            <pre className="tool-card-pre">{tc.output}</pre>
-          </div>
+          {tc.output !== undefined && (
+            <div className="tool-card-section">
+              <span className="tool-card-label">Output</span>
+              <pre className="tool-card-pre">{tc.output}</pre>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -477,7 +514,7 @@ export function ChatPanel(): React.JSX.Element {
   const [pillState, setPillState] = useState<PillState>("idle");
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [direction, setDirection] = useState<"up" | "down">("down");
-  const [toolCalls, setToolCalls] = useState<ToolCallEvent[]>([]);
+  const [toolCalls, setToolCalls] = useState<TrackedToolCall[]>([]);
   const [guidance, setGuidance] = useState<GuidanceEvent | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -542,11 +579,30 @@ export function ChatPanel(): React.JSX.Element {
               queryKey: conversationKey,
             });
             break;
-          case "toolCall":
+          case "toolCallStart":
             setToolCalls((prev) => [
               ...prev,
-              event as unknown as ToolCallEvent,
+              {
+                callId: event.callId as string,
+                tool: event.tool as string,
+                input: (event.input ?? {}) as Record<string, unknown>,
+                running: true,
+              },
             ]);
+            break;
+          case "toolCall":
+            setToolCalls((prev) =>
+              prev.map((tc) =>
+                tc.callId === (event.callId as string)
+                  ? {
+                      ...tc,
+                      output: event.output as string,
+                      isError: event.isError as boolean | undefined,
+                      running: false,
+                    }
+                  : tc,
+              ),
+            );
             break;
           case "guidance":
             setGuidance(event as unknown as GuidanceEvent);
@@ -605,7 +661,8 @@ export function ChatPanel(): React.JSX.Element {
   }, []);
 
   const streaming = streamingText !== null;
-  const status = statusFor(pillState, streaming);
+  const runningTool = toolCalls.find((tc) => tc.running);
+  const status = statusFor(pillState, streaming, runningTool?.tool);
   const empty = messages.length === 0 && !streaming;
 
   let lastAssistantIdx = -1;

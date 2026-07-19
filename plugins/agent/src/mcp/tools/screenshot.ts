@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFileSync, statSync, unlinkSync } from "node:fs";
+import { statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -7,59 +7,36 @@ import { sleep } from "./util.js";
 
 const execFileP = promisify(execFile);
 
-/** Max file size in bytes before we refuse to inline as base64 (~4 MB). */
-const MAX_INLINE_BYTES = 4_000_000;
-
-export async function takeScreenshot(args: {
-  returnImage?: boolean;
-}): Promise<{ type: "image"; data: string } | { type: "path"; path: string }> {
-  // Default: return a file path. The model can pass returnImage=true to get
-  // inline base64 when it needs to inspect the screen in detail.
-  const returnImage = args.returnImage === true;
+/**
+ * Capture a full-resolution screenshot. No parameters — the tool is
+ * parameterless (like Anthropic's computer-use screenshot action).
+ *
+ * Returns a file path and image dimensions so the model knows the coordinate
+ * space. The file persists in the temp directory for the session.
+ */
+export async function takeScreenshot(): Promise<string> {
   const tmpPath = join(tmpdir(), `freestyle-screenshot-${Date.now()}.jpg`);
-
   const plat = process.platform;
 
-  try {
-    if (plat === "darwin") {
-      await captureMacScreen(tmpPath);
-    } else if (plat === "win32") {
-      await captureWindowsScreen(tmpPath);
-    } else {
-      const captured = await captureLinuxScreen(tmpPath);
-      if (!captured) {
-        return {
-          type: "path",
-          path: "Error: no screenshot tool found (install grim, scrot, or imagemagick)",
-        };
-      }
+  if (plat === "darwin") {
+    await captureMacScreen(tmpPath);
+  } else if (plat === "win32") {
+    await captureWindowsScreen(tmpPath);
+  } else {
+    const captured = await captureLinuxScreen(tmpPath);
+    if (!captured) {
+      return "Error: no screenshot tool found (install grim, scrot, or imagemagick)";
     }
-
-    if (returnImage) {
-      try {
-        const size = statSync(tmpPath).size;
-        if (size > MAX_INLINE_BYTES) {
-          return {
-            type: "path",
-            path: `Screenshot saved to ${tmpPath} (${(size / 1_000_000).toFixed(1)} MB — too large to inline).`,
-          };
-        }
-      } catch {}
-
-      const buf = readFileSync(tmpPath);
-      try {
-        unlinkSync(tmpPath);
-      } catch {}
-      return { type: "image", data: buf.toString("base64") };
-    }
-
-    return { type: "path", path: tmpPath };
-  } catch (err) {
-    return {
-      type: "path",
-      path: `Error: ${err instanceof Error ? err.message : String(err)}`,
-    };
   }
+
+  // Report file size so the model knows the capture succeeded.
+  let sizeInfo = "";
+  try {
+    const bytes = statSync(tmpPath).size;
+    sizeInfo = ` (${(bytes / 1_000_000).toFixed(1)} MB)`;
+  } catch {}
+
+  return `Screenshot captured${sizeInfo} → ${tmpPath}`;
 }
 
 /**

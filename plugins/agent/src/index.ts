@@ -17,7 +17,7 @@ import {
   normalizeConfig,
   saveConfig,
 } from "./config.js";
-import type { ToolCallEvent } from "./mcp/index.js";
+import type { ToolCallEvent, ToolCallStartEvent } from "./mcp/index.js";
 import { BUILTIN_TOOL_COUNT } from "./mcp/index.js";
 import { createMcpMiddleware } from "./mcp/server.js";
 import type { GuidanceEvent } from "./mcp/tools/desktop.js";
@@ -147,10 +147,21 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
             log: logger,
             onDelta: (delta) =>
               emit({ type: "streamDelta", text: delta }, pipelineEmit),
+            onToolCallStart: (e: ToolCallStartEvent) =>
+              emit(
+                {
+                  type: "toolCallStart",
+                  callId: e.callId,
+                  tool: e.tool,
+                  input: e.input,
+                },
+                pipelineEmit,
+              ),
             onToolCall: (e: ToolCallEvent) =>
               emit(
                 {
                   type: "toolCall",
+                  callId: e.callId,
                   tool: e.tool,
                   input: e.input,
                   output: e.output,

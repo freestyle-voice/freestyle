@@ -23,8 +23,16 @@ import { runCommand } from "./tools/shell.js";
 import { IS_MACOS, runShortcut } from "./tools/shortcuts.js";
 import { getClipboard, openUrl, setClipboard } from "./tools/system.js";
 
-/** Emitted for every tool invocation so the pill panel can render rich cards. */
+/** Emitted when a tool starts executing (no output yet). */
+export interface ToolCallStartEvent {
+  callId: string;
+  tool: string;
+  input: Record<string, unknown>;
+}
+
+/** Emitted when a tool finishes executing. */
 export interface ToolCallEvent {
+  callId: string;
   tool: string;
   input: Record<string, unknown>;
   output: string;
@@ -276,19 +284,12 @@ export function getBuiltinTools(
   if (include("take_screenshot"))
     tools.take_screenshot = tool({
       description:
-        "Capture a full-resolution screenshot of the current display. By default saves to a temp file and returns the path. Pass returnImage=true to get inline base64 JPEG (for visual inspection). ALWAYS call this first before any mouse/keyboard action to see the screen.",
+        "Capture a full-resolution screenshot of the current display. Returns a file path. ALWAYS call this first before any mouse/keyboard action to see the screen.",
       inputSchema: jsonSchema({
         type: "object",
-        properties: {
-          returnImage: {
-            type: "boolean",
-            description:
-              "If true, returns base64 JPEG inline. If false (default), saves to a temp file and returns the path.",
-          },
-        },
+        properties: {},
       } satisfies JSONSchema7),
-      execute: async (args) =>
-        takeScreenshot(args as { returnImage?: boolean }),
+      execute: async () => takeScreenshot(),
     });
 
   // --- Tier 4: Computer Use (mouse & keyboard) ---
@@ -586,23 +587,12 @@ export function registerBuiltinTools(server: McpServer): void {
 
   server.tool(
     "take_screenshot",
-    "Capture a full-resolution screenshot. Returns a file path by default; pass returnImage=true for inline base64 JPEG.",
-    { returnImage: z.boolean().optional() },
-    async (args) => {
-      const result = await takeScreenshot(args);
-      if (result.type === "image") {
-        return {
-          content: [
-            {
-              type: "image" as const,
-              data: result.data,
-              mimeType: "image/jpeg",
-            },
-          ],
-        };
-      }
+    "Capture a full-resolution screenshot. Returns a file path.",
+    {},
+    async () => {
+      const result = await takeScreenshot();
       return {
-        content: [{ type: "text" as const, text: result.path }],
+        content: [{ type: "text" as const, text: result }],
       };
     },
   );

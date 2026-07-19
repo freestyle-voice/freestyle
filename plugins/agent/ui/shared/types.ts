@@ -112,8 +112,18 @@ export interface AgentConfig {
   computerUseMode: ComputerUseMode;
 }
 
-/** Emitted for every tool invocation so the pill panel can render rich cards. */
+/** Emitted when a tool starts executing (no output yet). */
+export interface ToolCallStartEvent {
+  type: "toolCallStart";
+  callId: string;
+  tool: string;
+  input: Record<string, unknown>;
+}
+
+/** Emitted when a tool finishes executing. */
 export interface ToolCallEvent {
+  type: "toolCall";
+  callId: string;
   tool: string;
   input: Record<string, unknown>;
   output: string;

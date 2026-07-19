@@ -14,6 +14,7 @@ import {
   clearGuidance,
   getBuiltinTools,
   type ToolCallEvent,
+  type ToolCallStartEvent,
 } from "./mcp/index.js";
 import type { GuidanceEvent } from "./mcp/tools/desktop.js";
 import { closeConnections, connectEnabledServers } from "./mcp.js";
@@ -35,11 +36,21 @@ export async function runAgentTurn(opts: {
   signal?: AbortSignal;
   log: (msg: string) => void;
   onDelta?: (text: string) => void;
+  onToolCallStart?: (e: ToolCallStartEvent) => void;
   onToolCall?: (e: ToolCallEvent) => void;
   onGuidance?: (e: GuidanceEvent) => void;
 }): Promise<string> {
-  const { llm, config, history, signal, log, onDelta, onToolCall, onGuidance } =
-    opts;
+  const {
+    llm,
+    config,
+    history,
+    signal,
+    log,
+    onDelta,
+    onToolCallStart,
+    onToolCall,
+    onGuidance,
+  } = opts;
 
   const { tools: externalTools, connections } = await connectEnabledServers(
     config.mcpServers,
@@ -86,6 +97,13 @@ export async function runAgentTurn(opts: {
       tools,
       stopWhen: stepCountIs(MAX_STEPS),
       ...(signal ? { abortSignal: signal } : {}),
+      experimental_onToolCallStart: (event) => {
+        onToolCallStart?.({
+          callId: event.toolCall.toolCallId,
+          tool: event.toolCall.toolName,
+          input: (event.toolCall.input ?? {}) as Record<string, unknown>,
+        });
+      },
       onStepFinish: (step) => {
         if (!onToolCall) return;
         for (const tc of step.toolCalls) {
@@ -93,6 +111,7 @@ export async function runAgentTurn(opts: {
             (r) => r.toolCallId === tc.toolCallId,
           );
           onToolCall({
+            callId: tc.toolCallId,
             tool: tc.toolName,
             input: (tc.input ?? {}) as Record<string, unknown>,
             output:

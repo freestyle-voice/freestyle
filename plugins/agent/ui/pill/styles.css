@@ -457,6 +457,10 @@ body {
   border-color: color-mix(in srgb, #dd6e4e 30%, var(--border));
 }
 
+.tool-card.tool-running {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+}
+
 .tool-card-head {
   display: flex;
   align-items: center;
@@ -495,6 +499,20 @@ body {
   font-size: 9px;
   color: var(--muted-foreground);
   flex-shrink: 0;
+}
+
+.tool-card-spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: tool-spin 700ms linear infinite;
+  flex-shrink: 0;
+}
+
+.tool-card-running-hint {
+  color: var(--primary);
 }
 
 .tool-card-summary {
@@ -656,6 +674,10 @@ body {
   50% { transform: translate(-2px, -2px) translateY(-2px); }
 }
 
+@keyframes tool-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ---- Reduced motion ---- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -664,7 +686,8 @@ body {
   .turn,
   .guidance-cursor,
   .guidance-ring,
-  .guidance-caption-animate {
+  .guidance-caption-animate,
+  .tool-card-spinner {
     animation: none;
   }
   .guidance-cursor {

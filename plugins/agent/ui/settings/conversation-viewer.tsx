@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import {
   type ConversationEntry,
   displayToolName,
+  entryParts,
   type SavedConversation,
   type StoredToolCall,
 } from "../shared/types";
@@ -69,20 +70,6 @@ function TrashIcon(): React.JSX.Element {
 }
 
 /* ---- Tool calls (read-only) ---- */
-
-function ToolCallList({
-  toolCalls,
-}: {
-  toolCalls: StoredToolCall[];
-}): React.JSX.Element {
-  return (
-    <div className="detail-tools">
-      {toolCalls.map((tc, i) => (
-        <ArchivedToolCall key={tc.callId || i} tc={tc} />
-      ))}
-    </div>
-  );
-}
 
 function ArchivedToolCall({ tc }: { tc: StoredToolCall }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
@@ -151,16 +138,23 @@ function conversationToMarkdown(conv: SavedConversation): string {
   const lines: string[] = [`# ${conv.title}`, ""];
   for (const msg of conv.messages) {
     lines.push(`## ${msg.role === "user" ? "You" : "Agent"}`);
-    if (msg.role === "assistant" && msg.toolCalls?.length) {
-      for (const tc of msg.toolCalls) {
+    if (msg.role === "user") {
+      lines.push(msg.content, "");
+      continue;
+    }
+    for (const part of entryParts(msg)) {
+      if (part.type === "tool") {
+        const tc = part.tool;
         lines.push(
           `- tool \`${displayToolName(tc.tool)}\` — input: ` +
             `\`${JSON.stringify(tc.input)}\``,
         );
         if (tc.output) lines.push(`  - output: ${tc.output}`);
+      } else if (part.text) {
+        lines.push(part.text);
       }
     }
-    lines.push(msg.content, "");
+    lines.push("");
   }
   return lines.join("\n").trim();
 }
@@ -213,11 +207,7 @@ export function ConversationViewer({
 
       <div className="detail-messages">
         {conversation.messages.map((msg, i) => (
-          <MessageRow
-            // biome-ignore lint/suspicious/noArrayIndexKey: immutable saved log
-            key={i}
-            msg={msg}
-          />
+          <MessageRow key={`${msg.role}-${i}`} msg={msg} />
         ))}
       </div>
     </div>
@@ -233,12 +223,23 @@ function MessageRow({ msg }: { msg: ConversationEntry }): React.JSX.Element {
         </span>
         <CopyButton text={msg.content} label="Copy message" />
       </div>
-      {msg.role === "assistant" &&
-        msg.toolCalls &&
-        msg.toolCalls.length > 0 && <ToolCallList toolCalls={msg.toolCalls} />}
-      <div className="detail-turn-text markdown">
-        <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
-      </div>
+      {msg.role === "user" ? (
+        <div className="detail-turn-text markdown">
+          <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
+        </div>
+      ) : (
+        entryParts(msg).map((part, i) =>
+          part.type === "tool" ? (
+            <div className="detail-tools" key={part.tool.callId || `t${i}`}>
+              <ArchivedToolCall tc={part.tool} />
+            </div>
+          ) : (
+            <div className="detail-turn-text markdown" key={`x${i}`}>
+              <Markdown remarkPlugins={[remarkGfm]}>{part.text}</Markdown>
+            </div>
+          ),
+        )
+      )}
     </div>
   );
 }

@@ -7,8 +7,8 @@ import { agentApiBase, getJson, postJson } from "../shared/api";
 import {
   type ConversationEntry,
   displayToolName,
+  entryParts,
   type GuidanceEvent,
-  type StoredToolCall,
   type UiResource,
 } from "../shared/types";
 import { type WidgetAction, WidgetRenderer } from "./widget-renderer";
@@ -329,6 +329,15 @@ interface TrackedToolCall {
   uiResource?: UiResource;
 }
 
+/**
+ * An ordered segment of the in-progress turn. Text segments hold accumulated
+ * deltas; tool segments reference a `callId` resolved against `toolCalls` so
+ * late-arriving output/widget updates render in place.
+ */
+type LivePart =
+  | { type: "text"; text: string }
+  | { type: "tool"; callId: string };
+
 /* ---- Tool Call Card ---- */
 
 function ToolCallCopyBtn({ text }: { text: string }): React.JSX.Element {
@@ -561,6 +570,10 @@ export function ChatPanel(): React.JSX.Element {
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [direction, setDirection] = useState<"up" | "down">("down");
   const [toolCalls, setToolCalls] = useState<TrackedToolCall[]>([]);
+  // Ordered live-turn segments, preserving text→tool→text interleaving as
+  // events arrive. Tool segments reference a callId so in-place updates
+  // (output/widget) resolve against `toolCalls`.
+  const [liveParts, setLiveParts] = useState<LivePart[]>([]);
   const [guidance, setGuidance] = useState<GuidanceEvent | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -589,10 +602,10 @@ export function ChatPanel(): React.JSX.Element {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: messages, streamingText, and toolCalls are intentional trigger deps for auto-scroll
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messages, streamingText, and liveParts are intentional trigger deps for auto-scroll
   useEffect(() => {
     scrollToEnd();
-  }, [messages, streamingText, toolCalls, scrollToEnd]);
+  }, [messages, streamingText, liveParts, scrollToEnd]);
 
   // SSE connection — receives live agent events directly from the server.
   // This works on ALL paths (batch and streaming) because the agent plugin
@@ -611,23 +624,38 @@ export function ChatPanel(): React.JSX.Element {
             });
             setStreamingText("");
             setToolCalls([]);
+            setLiveParts([]);
             setGuidance(null);
             break;
-          case "streamDelta":
-            setStreamingText(
-              (prev) => (prev ?? "") + ((event.text as string) ?? ""),
-            );
+          case "streamDelta": {
+            const text = (event.text as string) ?? "";
+            setStreamingText((prev) => (prev ?? "") + text);
+            // Append to the trailing text segment, or open a new one.
+            setLiveParts((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.type === "text") {
+                return [
+                  ...prev.slice(0, -1),
+                  { type: "text", text: last.text + text },
+                ];
+              }
+              return [...prev, { type: "text", text }];
+            });
             break;
+          }
           case "streamEnd":
             setStreamingText(null);
             setGuidance(null);
             // Refetch the persisted conversation (which now carries the
-            // assistant message + its tool calls), THEN clear the
-            // transient tool calls so there's no flash where they vanish
-            // before the persisted version arrives.
+            // assistant message + its parts), THEN clear the transient
+            // live state so there's no flash where they vanish before the
+            // persisted version arrives.
             void queryClient
               .invalidateQueries({ queryKey: conversationKey })
-              .then(() => setToolCalls([]));
+              .then(() => {
+                setToolCalls([]);
+                setLiveParts([]);
+              });
             break;
           case "toolCallStart":
             setToolCalls((prev) => [
@@ -638,6 +666,10 @@ export function ChatPanel(): React.JSX.Element {
                 input: (event.input ?? {}) as Record<string, unknown>,
                 running: true,
               },
+            ]);
+            setLiveParts((prev) => [
+              ...prev,
+              { type: "tool", callId: event.callId as string },
             ]);
             break;
           case "toolCall":
@@ -801,25 +833,35 @@ export function ChatPanel(): React.JSX.Element {
                 <span className={`turn-role ${msg.role}`}>
                   {msg.role === "user" ? "You" : "Agent"}
                 </span>
-                {/* Persisted tool calls render inline within the
-                    assistant turn, before its text — exactly where the
-                    agent invoked them. */}
-                {msg.role === "assistant" &&
-                  msg.toolCalls &&
-                  msg.toolCalls.length > 0 && (
-                    <div className="tool-calls">
-                      {msg.toolCalls.map((tc, j) => (
+                {msg.role === "user" ? (
+                  <div className="turn-text markdown">
+                    <Markdown remarkPlugins={[remarkGfm]}>
+                      {msg.content}
+                    </Markdown>
+                  </div>
+                ) : (
+                  // Render text and tool calls inline, in the exact order the
+                  // agent produced them (text→tool→text interleaving).
+                  entryParts(msg).map((part, j) =>
+                    part.type === "tool" ? (
+                      <div
+                        className="tool-calls"
+                        key={part.tool.callId || `t${j}`}
+                      >
                         <ToolCallCard
-                          key={tc.callId || j}
-                          tc={{ ...tc, running: false }}
+                          tc={{ ...part.tool, running: false }}
                           onWidgetAction={handleWidgetAction}
                         />
-                      ))}
-                    </div>
-                  )}
-                <div className="turn-text markdown">
-                  <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
-                </div>
+                      </div>
+                    ) : (
+                      <div className="turn-text markdown" key={`x${j}`}>
+                        <Markdown remarkPlugins={[remarkGfm]}>
+                          {part.text}
+                        </Markdown>
+                      </div>
+                    ),
+                  )
+                )}
                 {msg.role === "assistant" && (
                   <MessageActions
                     text={msg.content}
@@ -837,30 +879,35 @@ export function ChatPanel(): React.JSX.Element {
           {streaming && (
             <div className="turn assistant">
               <span className="turn-role assistant">Agent</span>
-              {toolCalls.length > 0 && (
-                <div className="tool-calls">
-                  {toolCalls.map((tc, j) => (
-                    <ToolCallCard
-                      key={tc.callId || j}
-                      tc={tc}
-                      onWidgetAction={handleWidgetAction}
-                    />
-                  ))}
-                </div>
-              )}
-              <div className="turn-text markdown">
-                {streamingText ? (
-                  <Markdown remarkPlugins={[remarkGfm]}>
-                    {streamingText}
-                  </Markdown>
-                ) : (
+              {liveParts.map((part, j) => {
+                if (part.type === "tool") {
+                  const tc = toolCalls.find((t) => t.callId === part.callId);
+                  if (!tc) return null;
+                  return (
+                    <div className="tool-calls" key={part.callId}>
+                      <ToolCallCard
+                        tc={tc}
+                        onWidgetAction={handleWidgetAction}
+                      />
+                    </div>
+                  );
+                }
+                return (
+                  <div className="turn-text markdown" key={`live-${j}`}>
+                    <Markdown remarkPlugins={[remarkGfm]}>{part.text}</Markdown>
+                  </div>
+                );
+              })}
+              {/* Typing indicator until the first text/tool arrives. */}
+              {liveParts.length === 0 && (
+                <div className="turn-text markdown">
                   <span className="typing">
                     <span />
                     <span />
                     <span />
                   </span>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
           <div ref={endRef} />

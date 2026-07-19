@@ -11,6 +11,7 @@ import { runAgentTurn } from "./agent.js";
 import { buildAgentNameRegex, stripAgentName } from "./agent-name.js";
 import {
   type AgentConfig,
+  type AssistantPart,
   type ConversationEntry,
   DEFAULT_CONFIG,
   loadConfig,
@@ -49,6 +50,46 @@ function titleFromMessages(messages: ConversationEntry[]): string {
   if (!first) return "Conversation";
   const text = first.content.trim();
   return text.length > 60 ? `${text.slice(0, 57)}...` : text;
+}
+
+/**
+ * Builds an assistant turn as ordered text/tool parts. Text deltas coalesce
+ * into the current text part; a tool call closes the current text part and
+ * appends a tool part, so the persisted `parts` mirror the real
+ * text→tool→text interleaving of the stream.
+ */
+function createPartAccumulator(): {
+  addText: (delta: string) => void;
+  addTool: (tool: StoredToolCall) => void;
+  finish: () => AssistantPart[];
+  toolCalls: () => StoredToolCall[];
+} {
+  const parts: AssistantPart[] = [];
+  const tools: StoredToolCall[] = [];
+  let buffer = "";
+
+  const flushText = (): void => {
+    if (buffer) {
+      parts.push({ type: "text", text: buffer });
+      buffer = "";
+    }
+  };
+
+  return {
+    addText: (delta) => {
+      buffer += delta;
+    },
+    addTool: (tool) => {
+      flushText();
+      tools.push(tool);
+      parts.push({ type: "tool", tool });
+    },
+    finish: () => {
+      flushText();
+      return parts;
+    },
+    toolCalls: () => tools,
+  };
 }
 
 /**
@@ -222,9 +263,10 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
 
       emit({ type: "streamStart" }, pipelineEmit);
 
-      // Collect tool calls made during this turn so they persist with the
-      // assistant message (rendered inline, in order, like ChatGPT/Claude).
-      const turnToolCalls: StoredToolCall[] = [];
+      // Accumulate the turn as ordered parts so the real text→tool→text
+      // interleaving is preserved (rendered inline, in order, like
+      // ChatGPT/Claude). `turnToolCalls` is kept for the legacy field.
+      const acc = createPartAccumulator();
 
       let reply: string;
       if (llm) {
@@ -237,8 +279,10 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
             log: logger,
             storage: storage ?? undefined,
             pluginSlug: baseSlug,
-            onDelta: (delta) =>
-              emit({ type: "streamDelta", text: delta }, pipelineEmit),
+            onDelta: (delta) => {
+              acc.addText(delta);
+              emit({ type: "streamDelta", text: delta }, pipelineEmit);
+            },
             onToolCallStart: (e: ToolCallStartEvent) =>
               emit(
                 {
@@ -250,7 +294,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
                 pipelineEmit,
               ),
             onToolCall: (e: ToolCallEvent) => {
-              turnToolCalls.push({
+              acc.addTool({
                 callId: e.callId,
                 tool: e.tool,
                 input: e.input,
@@ -278,21 +322,26 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
           reply = `Sorry, the agent turn failed: ${
             err instanceof Error ? err.message : String(err)
           }`;
+          acc.addText(reply);
           emit({ type: "streamDelta", text: reply }, pipelineEmit);
         }
       } else {
         reply =
           "No language model is configured. Set one under Settings → Models.";
+        acc.addText(reply);
         emit({ type: "streamDelta", text: reply }, pipelineEmit);
       }
 
       emit({ type: "streamEnd" }, pipelineEmit);
 
       if (conversationActive) {
+        const parts = acc.finish();
+        const turnToolCalls = acc.toolCalls();
         conversation.push({
           role: "assistant",
           content: reply,
           ...(turnToolCalls.length > 0 ? { toolCalls: turnToolCalls } : {}),
+          ...(parts.length > 0 ? { parts } : {}),
         });
         await persistConversation();
       }
@@ -362,7 +411,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
         return c.json({ error: "Nothing to regenerate" }, 400);
       }
       try {
-        const regenToolCalls: StoredToolCall[] = [];
+        const acc = createPartAccumulator();
         // Emit the same stream events as a normal turn so the pill panel shows
         // its thinking/streaming state during regeneration.
         emit({ type: "streamStart" });
@@ -373,7 +422,10 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
           log: logger,
           storage: storage ?? undefined,
           pluginSlug: baseSlug,
-          onDelta: (delta) => emit({ type: "streamDelta", text: delta }),
+          onDelta: (delta) => {
+            acc.addText(delta);
+            emit({ type: "streamDelta", text: delta });
+          },
           onToolCallStart: (e) =>
             emit({
               type: "toolCallStart",
@@ -382,7 +434,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
               input: e.input,
             }),
           onToolCall: (e) => {
-            regenToolCalls.push({
+            acc.addTool({
               callId: e.callId,
               tool: e.tool,
               input: e.input,
@@ -401,10 +453,13 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
             });
           },
         });
+        const parts = acc.finish();
+        const regenToolCalls = acc.toolCalls();
         conversation.push({
           role: "assistant",
           content: reply,
           ...(regenToolCalls.length > 0 ? { toolCalls: regenToolCalls } : {}),
+          ...(parts.length > 0 ? { parts } : {}),
         });
         await persistConversation();
         emit({ type: "streamEnd" });

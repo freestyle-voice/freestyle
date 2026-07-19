@@ -100,7 +100,16 @@ export function registerPluginBridgeIpc(): void {
       if (channel === "openExternal") {
         const url = (payload as HostActions["openExternal"]).url;
         if (typeof url === "string" && isOpenableUrl(url)) {
-          void shell.openExternal(url);
+          // openExternal rejects when the OS has no handler for the scheme
+          // (e.g. a `gpay://` deep-link on a desktop without the app). Swallow
+          // it so it doesn't surface as an unhandled rejection.
+          shell.openExternal(url).catch((err) => {
+            log.warn(
+              `openExternal could not open "${url}": ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          });
         } else {
           log.warn(`openExternal blocked for url: ${String(url)}`);
         }

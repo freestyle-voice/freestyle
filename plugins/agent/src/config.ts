@@ -24,12 +24,33 @@ export interface StoredToolCall {
   uiResource?: UiResource;
 }
 
+/** A run of assistant text between tool calls. */
+export interface TextPart {
+  type: "text";
+  text: string;
+}
+
+/** A tool invocation rendered inline at the point it happened. */
+export interface ToolPart {
+  type: "tool";
+  tool: StoredToolCall;
+}
+
+/** An ordered piece of an assistant turn — text or a tool call. */
+export type AssistantPart = TextPart | ToolPart;
+
 /** One message in the agent conversation thread. */
 export interface ConversationEntry {
   role: "user" | "assistant";
   content: string;
   /** Tool calls made while producing this (assistant) message, in order. */
   toolCalls?: StoredToolCall[];
+  /**
+   * Assistant turn broken into ordered text/tool parts, preserving the real
+   * text→tool→text interleaving. Newer than `content`+`toolCalls`; when absent
+   * (older saved conversations) renderers fall back to those fields.
+   */
+  parts?: AssistantPart[];
 }
 
 /** Identifier for the built-in Freestyle Tools MCP entry. */

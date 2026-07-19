@@ -185,10 +185,30 @@ export interface StoredToolCall {
   uiResource?: UiResource;
 }
 
+/** A run of assistant text between tool calls. */
+export interface TextPart {
+  type: "text";
+  text: string;
+}
+
+/** A tool invocation rendered inline at the point it happened. */
+export interface ToolPart {
+  type: "tool";
+  tool: StoredToolCall;
+}
+
+/** An ordered piece of an assistant turn — text or a tool call. */
+export type AssistantPart = TextPart | ToolPart;
+
 export interface ConversationEntry {
   role: "user" | "assistant";
   content: string;
   toolCalls?: StoredToolCall[];
+  /**
+   * Ordered text/tool parts preserving the real interleaving. When absent
+   * (older saved conversations), renderers fall back to `content`+`toolCalls`.
+   */
+  parts?: AssistantPart[];
 }
 
 export interface SavedConversation {
@@ -196,4 +216,17 @@ export interface SavedConversation {
   title: string;
   createdAt: number;
   messages: ConversationEntry[];
+}
+
+/**
+ * Normalize an assistant entry to ordered parts. Uses `parts` when present;
+ * otherwise falls back to the legacy shape (tool calls first, then text) so
+ * older saved conversations still render.
+ */
+export function entryParts(msg: ConversationEntry): AssistantPart[] {
+  if (msg.parts && msg.parts.length > 0) return msg.parts;
+  const parts: AssistantPart[] = [];
+  for (const tool of msg.toolCalls ?? []) parts.push({ type: "tool", tool });
+  if (msg.content) parts.push({ type: "text", text: msg.content });
+  return parts;
 }

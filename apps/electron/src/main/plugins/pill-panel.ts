@@ -35,10 +35,12 @@ interface PillPanelConfig {
  * the pill window. Handles expand/collapse by resizing the pill window, toggling
  * `focusable`, and positioning the panel relative to the pill chrome.
  *
- * The view is created eagerly on {@link configure} and loaded off-screen so it's
- * ready before the first event arrives. Events emitted before the page finishes
- * loading are buffered and flushed on load, so a `transcriptReady` fired the
- * instant a dictation is consumed is never dropped.
+ * The view is created lazily — on the first {@link expand} or the first buffered
+ * event — rather than at {@link configure} time, so a plugin's HTML/CSS isn't
+ * loaded at app startup before the panel is ever needed. Events emitted before
+ * the page finishes loading are buffered (and trigger view creation) then
+ * flushed on load, so a `transcriptReady` fired the instant a dictation is
+ * consumed is never dropped.
  *
  * Only one pill panel plugin is active at a time (single-owner model).
  */
@@ -87,9 +89,12 @@ export class PillPanelController {
       this.config?.panelId !== config.panelId;
     this.config = config;
     if (changed) {
+      // Tear down any stale view but DON'T warm a new one — creating the view
+      // (and loadURL'ing the plugin's HTML/CSS) is deferred until the panel is
+      // first needed. The view is created lazily on the first `expand()` or the
+      // first buffered event (see sendEvent), which still guarantees no event
+      // is dropped while avoiding loading every plugin's UI at app startup.
       this.destroyView();
-      // Warm the view now so it's loaded and listening before the first event.
-      this.ensureView();
     }
   }
 

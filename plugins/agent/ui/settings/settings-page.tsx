@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { del, getJson, putJson } from "../shared/api";
+import { useEffect, useRef, useState } from "react";
+import { agentApiBase, del, getJson, putJson } from "../shared/api";
 import {
   type AgentConfig,
   DEFAULT_TOOL_GROUPS,
@@ -116,6 +116,40 @@ export function SettingsPage(): React.JSX.Element {
       return data?.conversations ?? [];
     },
   });
+
+  // ---- Live updates: refetch conversations as the agent streams ----
+  // The active conversation is a first-class history entry, so refetching
+  // `/conversations` on each turn boundary keeps the list AND the open viewer
+  // current in real time. Debounced so streaming deltas don't hammer the query.
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const es = new EventSource(`${agentApiBase}/stream`);
+    const scheduleRefetch = () => {
+      if (refetchTimer.current) clearTimeout(refetchTimer.current);
+      refetchTimer.current = setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: historyKey });
+      }, 400);
+    };
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data) as { type?: string };
+        if (
+          event.type === "streamStart" ||
+          event.type === "streamDelta" ||
+          event.type === "toolCall" ||
+          event.type === "streamEnd"
+        ) {
+          scheduleRefetch();
+        }
+      } catch {
+        // ignore malformed events
+      }
+    };
+    return () => {
+      es.close();
+      if (refetchTimer.current) clearTimeout(refetchTimer.current);
+    };
+  }, [queryClient]);
 
   // ---- Delete single conversation ----
 

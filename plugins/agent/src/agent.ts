@@ -144,10 +144,37 @@ export async function runAgentTurn(opts: {
   const tools = { ...builtinTools, ...externalTools };
 
   try {
-    const messages: ModelMessage[] = history.map((e) => ({
-      role: e.role,
-      content: e.content,
-    }));
+    // Rebuild the model message list, reconstructing tool-call / tool-result
+    // pairs from the stored toolCalls so the model sees what it already fetched
+    // and doesn't re-run the same tools on follow-up turns.
+    const messages: ModelMessage[] = [];
+    for (const e of history) {
+      if (e.role === "assistant" && e.toolCalls && e.toolCalls.length > 0) {
+        messages.push({
+          role: "assistant",
+          content: [
+            ...e.toolCalls.map((tc) => ({
+              type: "tool-call" as const,
+              toolCallId: tc.callId,
+              toolName: tc.tool,
+              input: tc.input,
+            })),
+            ...(e.content ? [{ type: "text" as const, text: e.content }] : []),
+          ],
+        });
+        messages.push({
+          role: "tool",
+          content: e.toolCalls.map((tc) => ({
+            type: "tool-result" as const,
+            toolCallId: tc.callId,
+            toolName: tc.tool,
+            output: { type: "text" as const, value: tc.output ?? "" },
+          })),
+        });
+      } else {
+        messages.push({ role: e.role, content: e.content });
+      }
+    }
 
     // Append computer-use instructions to the system prompt when desktop is active.
     let system = buildSystemPrompt(config);

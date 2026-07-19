@@ -17,25 +17,41 @@ interface Props {
   onAction?: (action: WidgetAction) => void;
 }
 
+/** Decode a base64 string to UTF-8 text (atob mangles multibyte chars). */
+function decodeBase64Utf8(b64: string): string {
+  try {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return "";
+  }
+}
+
+/** First non-comment, non-empty line of a text/uri-list body. */
+function firstUri(text: string): string | undefined {
+  for (const line of text.split(/\r?\n/)) {
+    const t = line.trim();
+    if (t && !t.startsWith("#")) return t;
+  }
+  return undefined;
+}
+
 /** Resolve the widget's HTML (inline text or base64 blob) or an external URL. */
 function resolveContent(resource: UiResource): {
   srcDoc?: string;
   src?: string;
 } {
-  const mime = resource.mimeType.toLowerCase();
-  // externalUrl variant: the resource text/uri points to an embeddable page.
-  if (mime.includes("uri-list") || resource.uri.startsWith("http")) {
-    // mcp-ui externalUrl encodes the URL in `text`.
-    const url = resource.text?.trim() || resource.uri;
-    if (url.startsWith("http")) return { src: url };
+  const mime = (resource.mimeType ?? "").toLowerCase();
+
+  // externalUrl variant: mimeType is text/uri-list, URL is in `text`.
+  if (mime.includes("uri-list")) {
+    const url = resource.text ? firstUri(resource.text) : undefined;
+    if (url?.startsWith("http")) return { src: url };
   }
+
   if (typeof resource.text === "string") return { srcDoc: resource.text };
   if (typeof resource.blob === "string") {
-    try {
-      return { srcDoc: atob(resource.blob) };
-    } catch {
-      return { srcDoc: "" };
-    }
+    return { srcDoc: decodeBase64Utf8(resource.blob) };
   }
   return { srcDoc: "" };
 }
@@ -56,22 +72,23 @@ export function WidgetRenderer({
 
   const handleMessage = useCallback(
     (e: MessageEvent) => {
-      // Only accept messages from our own iframe's content window.
+      // Only accept messages from our own iframe's content window. A sandboxed
+      // (no allow-same-origin) srcdoc frame reports origin "null"; an external
+      // URL frame reports its real origin. The source check is the primary
+      // guard — a cross-window sender can't forge event.source.
       if (!iframeRef.current || e.source !== iframeRef.current.contentWindow) {
         return;
       }
       const data = e.data as Record<string, unknown> | null;
       if (!data || typeof data !== "object") return;
 
-      // Auto-size: widgets may post their content height.
-      if (
-        data.type === "ui-size-change" ||
-        data.type === "mcp-ui:size" ||
-        data.type === "size"
-      ) {
-        const payload = (data.payload ?? data) as Record<string, unknown>;
+      // Auto-size: mcp-ui posts `{ type: "ui-size-change", payload: { height } }`.
+      if (data.type === "ui-size-change") {
+        const payload = (data.payload ?? {}) as Record<string, unknown>;
         const h = Number(payload.height);
-        if (Number.isFinite(h) && h > 0) setHeight(Math.min(h, 600));
+        if (Number.isFinite(h) && h > 0) {
+          setHeight(Math.max(60, Math.min(h, 600)));
+        }
         return;
       }
 

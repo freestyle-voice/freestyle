@@ -3,6 +3,12 @@ export function uid(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 }
 
+/** Strip the `serverId__` prefix from namespaced MCP tool names. */
+export function displayToolName(name: string): string {
+  const i = name.indexOf("__");
+  return i >= 0 ? name.slice(i + 2) : name;
+}
+
 /** UI-side mirror of the server config types (kept in sync with src/config.ts). */
 
 export type McpAuthMode = "none" | "headers" | "oauth";

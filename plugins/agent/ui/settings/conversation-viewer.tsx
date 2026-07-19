@@ -1,16 +1,14 @@
 import { useCallback, useState } from "react";
-import type { SavedConversation, StoredToolCall } from "../shared/types";
+import {
+  displayToolName,
+  type SavedConversation,
+  type StoredToolCall,
+} from "../shared/types";
 
 interface Props {
   conversation: SavedConversation;
   onClose: () => void;
   onDelete: () => void;
-}
-
-/** Strip the `serverId__` prefix from namespaced MCP tool names. */
-function displayToolName(name: string): string {
-  const i = name.indexOf("__");
-  return i >= 0 ? name.slice(i + 2) : name;
 }
 
 /** Compact, read-only tool call display for archived conversations. */

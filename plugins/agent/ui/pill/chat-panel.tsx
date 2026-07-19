@@ -4,11 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { agentApiBase, getJson, postJson } from "../shared/api";
-import type {
-  ConversationEntry,
-  GuidanceEvent,
-  StoredToolCall,
-  UiResource,
+import {
+  type ConversationEntry,
+  displayToolName,
+  type GuidanceEvent,
+  type StoredToolCall,
+  type UiResource,
 } from "../shared/types";
 import { type WidgetAction, WidgetRenderer } from "./widget-renderer";
 
@@ -330,12 +331,6 @@ interface TrackedToolCall {
 
 /* ---- Tool Call Card ---- */
 
-/** Strip the `serverId__` prefix from namespaced MCP tool names. */
-function displayToolName(name: string): string {
-  const i = name.indexOf("__");
-  return i >= 0 ? name.slice(i + 2) : name;
-}
-
 function ToolCallCopyBtn({ text }: { text: string }): React.JSX.Element {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(
@@ -438,8 +433,6 @@ function ToolCallCard({
 }
 
 /* ---- Ghost Cursor Overlay ---- */
-
-const ACCENT = "#7C3AED";
 
 function GhostCursorOverlay({
   event,
@@ -713,11 +706,22 @@ export function ChatPanel(): React.JSX.Element {
     window.freestyle?.pill?.collapse();
   }, []);
 
-  // A widget posted an action — route it back to the agent as a follow-up
-  // turn (the server translates tool/prompt/intent/link into a prompt and,
-  // for links, uses its open_url tool).
+  // A widget posted an action — route actionable ones back to the agent as a
+  // follow-up turn (the server translates tool/prompt/intent/link into a
+  // prompt). `notify` is informational only, so skip the round-trip.
   const handleWidgetAction = useCallback((action: WidgetAction) => {
-    void postJson("/widget-action", action);
+    if (action.type === "notify") return;
+    void postJson<{ ok?: boolean; error?: string }>(
+      "/widget-action",
+      action,
+    ).then((res) => {
+      if (res?.error) {
+        window.freestyle?.invoke("toast", {
+          message: res.error,
+          variant: "error",
+        });
+      }
+    });
   }, []);
 
   const streaming = streamingText !== null;

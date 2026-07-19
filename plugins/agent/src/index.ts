@@ -101,6 +101,8 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
   let history: SavedConversation[] = [];
   let logger: (msg: string) => void = () => {};
   let conversationActive = false;
+  /** ID of the current conversation's entry in `history` (null = none yet). */
+  let currentId: string | null = null;
   let lastLlm: PluginLlm | null = null;
   const baseSlug = pluginSlug(PLUGIN_NAME);
 
@@ -129,21 +131,52 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     return m[1] === baseSlug || m[1] === `${baseSlug}-dev`;
   }
 
-  async function archiveCurrentConversation(): Promise<void> {
-    if (conversation.length === 0) return;
-    const saved: SavedConversation = {
-      id: uid(),
-      title: titleFromMessages(conversation),
-      createdAt: Date.now(),
-      messages: [...conversation],
-    };
-    history.unshift(saved);
-    if (history.length > 50) history = history.slice(0, 50);
+  /** Persist the whole history list. */
+  async function saveHistory(): Promise<void> {
     if (storage) await storage.set(HISTORY_KEY, history);
   }
 
+  /**
+   * Persist the current conversation into `history` in place. The active
+   * conversation is a first-class entry from its first message, so it survives
+   * an app quit mid-conversation and always appears in the Conversations list.
+   */
   async function persistConversation(): Promise<void> {
-    if (storage) await storage.set(CONVERSATION_KEY, conversation);
+    if (conversation.length === 0) return;
+
+    if (!currentId) {
+      currentId = uid();
+      history.unshift({
+        id: currentId,
+        title: titleFromMessages(conversation),
+        createdAt: Date.now(),
+        messages: [...conversation],
+      });
+      if (history.length > 50) history = history.slice(0, 50);
+    } else {
+      const existing = history.find((h) => h.id === currentId);
+      if (existing) {
+        existing.messages = [...conversation];
+        existing.title = titleFromMessages(conversation);
+      } else {
+        // Entry was trimmed/deleted — re-add it at the top.
+        history.unshift({
+          id: currentId,
+          title: titleFromMessages(conversation),
+          createdAt: Date.now(),
+          messages: [...conversation],
+        });
+        if (history.length > 50) history = history.slice(0, 50);
+      }
+    }
+    await saveHistory();
+  }
+
+  /** End the current conversation so the next prompt starts a fresh one. */
+  function endConversation(): void {
+    conversationActive = false;
+    conversation = [];
+    currentId = null;
   }
 
   /** Emit an event to all channels: the pipeline WS (if available) + SSE. */
@@ -178,11 +211,14 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       await previousTurn;
 
       if (!conversationActive) {
-        await archiveCurrentConversation();
+        // Start a fresh conversation (new entry in history on first persist).
         conversation = [];
+        currentId = null;
         conversationActive = true;
       }
       conversation.push({ role: "user", content: prompt });
+      // Persist immediately so the conversation survives a mid-turn quit.
+      await persistConversation();
 
       emit({ type: "streamStart" }, pipelineEmit);
 
@@ -281,9 +317,9 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     if (ownRoute(reqPath, "/agent/conversation")) {
       if (c.req.method === "GET") return c.json({ conversation });
       if (c.req.method === "DELETE") {
-        conversation = [];
-        conversationActive = false;
-        await persistConversation();
+        // Just end the session — the conversation stays in history. The next
+        // prompt starts a fresh one.
+        endConversation();
         return c.json({ ok: true });
       }
     }
@@ -292,7 +328,8 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       if (c.req.method === "GET") return c.json({ conversations: history });
       if (c.req.method === "DELETE") {
         history = [];
-        if (storage) await storage.set(HISTORY_KEY, history);
+        endConversation();
+        await saveHistory();
         return c.json({ ok: true });
       }
     }
@@ -303,8 +340,11 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       ),
     );
     if (singleDelete && c.req.method === "DELETE") {
-      history = history.filter((h) => h.id !== singleDelete[1]);
-      if (storage) await storage.set(HISTORY_KEY, history);
+      const id = singleDelete[1];
+      history = history.filter((h) => h.id !== id);
+      // If the active conversation was deleted, end the session.
+      if (id === currentId) endConversation();
+      await saveHistory();
       return c.json({ ok: true });
     }
 
@@ -355,7 +395,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     }
 
     if (ownRoute(reqPath, "/agent/session/end") && c.req.method === "POST") {
-      conversationActive = false;
+      endConversation();
       return c.json({ ok: true });
     }
 
@@ -375,6 +415,10 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       if (!lastLlm) {
         return c.json({ error: "No model available" }, 503);
       }
+      // The widget belongs to the current conversation — keep it active so the
+      // action continues the same thread rather than archiving/starting a new
+      // one.
+      if (conversation.length > 0) conversationActive = true;
       // Fire-and-forget: SSE streams the resulting turn to the panel.
       void executeAgentTurn(prompt, lastLlm, undefined, undefined);
       return c.json({ ok: true });
@@ -515,12 +559,28 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       storage = ctx.storage;
       logger = (msg) => ctx.logger.info(msg);
       config = await loadConfig(ctx.storage);
-      const stored =
-        await ctx.storage.get<ConversationEntry[]>(CONVERSATION_KEY);
-      if (Array.isArray(stored)) conversation = stored;
+
       const storedHistory =
         await ctx.storage.get<SavedConversation[]>(HISTORY_KEY);
       if (Array.isArray(storedHistory)) history = storedHistory;
+
+      // One-time migration: older builds kept the active conversation in a
+      // separate key. Fold it into history so it isn't lost.
+      const legacy =
+        await ctx.storage.get<ConversationEntry[]>(CONVERSATION_KEY);
+      if (Array.isArray(legacy) && legacy.length > 0) {
+        history.unshift({
+          id: uid(),
+          title: titleFromMessages(legacy),
+          createdAt: Date.now(),
+          messages: legacy,
+        });
+        await saveHistory();
+        await ctx.storage.delete(CONVERSATION_KEY);
+      }
+
+      // The app restarted — no conversation is active. The last one lives in
+      // history and is viewable; a new prompt starts a fresh thread.
       ctx.logger.info(`voice agent ready on ${ctx.mode}`);
     },
 

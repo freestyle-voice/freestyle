@@ -44,13 +44,14 @@ function extractToolOutput(output: unknown): string {
         } else if (p.type === "image") {
           texts.push("[image]");
         } else if (p.type === "resource") {
-          const res = p.resource as { mimeType?: string } | undefined;
+          const res = p.resource as
+            | { mimeType?: string; uri?: string }
+            | undefined;
           if (res && isUiMimeType(String(res.mimeType))) {
             texts.push("[interactive widget shown to the user]");
           } else {
-            texts.push(
-              `[resource: ${(p as Record<string, unknown>).uri ?? res ?? ""}]`,
-            );
+            const uri = res?.uri ?? (p as { uri?: string }).uri ?? "";
+            texts.push(`[resource: ${uri}]`);
           }
         }
       }

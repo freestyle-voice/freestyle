@@ -485,7 +485,15 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     }
 
     // OAuth callback — the browser redirects here after the user authorizes.
-    if (ownRoute(reqPath, "/agent/oauth/callback") && c.req.method === "GET") {
+    // The trailing path segment is the server id, so multiple OAuth MCP
+    // servers each route their code to the correct pending transport.
+    const oauthCallback = reqPath.match(
+      new RegExp(
+        `^/api/plugins/(?:${baseSlug}|${baseSlug}-dev)/agent/oauth/callback/([^/]+)$`,
+      ),
+    );
+    if (oauthCallback && c.req.method === "GET") {
+      const serverId = decodeURIComponent(oauthCallback[1]);
       const code = c.req.query("code");
       if (!code) {
         const error = c.req.query("error") ?? "unknown";
@@ -496,29 +504,27 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
         );
       }
 
-      // Find the pending transport. There should only be one at a time in
-      // practice (single user), but we try to match by checking each.
-      let finished = false;
-      for (const [serverId, transport] of pendingOAuthTransports) {
-        try {
-          await transport.finishAuth(code);
-          pendingOAuthTransports.delete(serverId);
-          finished = true;
-          break;
-        } catch {
-          // This transport didn't match — try next.
-        }
+      const transport = pendingOAuthTransports.get(serverId);
+      if (!transport) {
+        return c.html(
+          `<!DOCTYPE html><html><body><h3>Authorization failed</h3><p>No pending OAuth flow for this server. Try again from Settings.</p></body></html>`,
+          400,
+        );
       }
 
-      if (finished) {
+      try {
+        await transport.finishAuth(code);
+        pendingOAuthTransports.delete(serverId);
         return c.html(
           `<!DOCTYPE html><html><body style="font-family:system-ui;text-align:center;padding:60px 20px"><h3>Authorization complete</h3><p>You can close this tab and return to Freestyle.</p></body></html>`,
         );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return c.html(
+          `<!DOCTYPE html><html><body><h3>Authorization failed</h3><p>${msg}</p></body></html>`,
+          400,
+        );
       }
-      return c.html(
-        `<!DOCTYPE html><html><body><h3>Authorization failed</h3><p>No pending OAuth flow found. Try again from Settings.</p></body></html>`,
-        400,
-      );
     }
 
     // Check OAuth authorization status for a server.

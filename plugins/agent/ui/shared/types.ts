@@ -109,6 +109,17 @@ export const DEFAULT_TOOL_GROUPS: Record<string, boolean> = {
   desktop: false,
 };
 
+/** Default system prompt — kept in sync with `DEFAULT_SYSTEM_PROMPT` in src/config.ts. */
+export const DEFAULT_SYSTEM_PROMPT =
+  "You are a helpful voice assistant. Keep replies concise and conversational " +
+  "since they're read aloud in a small panel. Use the tools available to you " +
+  "when they help answer the request.\n\n" +
+  "Format your replies with Markdown — the panel renders it. When presenting " +
+  "several items that share the same fields (products, prices, options, " +
+  "comparisons, etc.), use a Markdown table so the data points are easy to " +
+  "scan. Use bullet lists for simple enumerations, **bold** for key values, " +
+  "and `code` for identifiers or commands. Keep tables compact.";
+
 export type ComputerUseMode = "full" | "guided";
 
 export interface AgentConfig {

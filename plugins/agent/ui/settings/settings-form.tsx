@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { del, getJson, postJson, putJson } from "../shared/api";
 import {
   type AgentConfig,
-  DEFAULT_TOOL_GROUPS,
+  DEFAULT_SYSTEM_PROMPT,
   type McpAuthMode,
   type McpServerConfig,
   type Skill,
@@ -12,9 +12,20 @@ import {
 
 /* ---- OAuth status ---- */
 
-function OAuthStatus({ serverId }: { serverId: string }): React.JSX.Element {
+function OAuthStatus({
+  serverId,
+  dirty,
+  onSave,
+}: {
+  serverId: string;
+  /** Whether the form has unsaved changes (OAuth needs the saved config). */
+  dirty: boolean;
+  /** Persist the current draft; resolves once saved. */
+  onSave: () => Promise<void>;
+}): React.JSX.Element {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const checkStatus = useCallback(async () => {
@@ -27,6 +38,7 @@ function OAuthStatus({ serverId }: { serverId: string }): React.JSX.Element {
         clearInterval(pollRef.current);
         pollRef.current = null;
         setBusy(false);
+        setMessage("Authorized");
       }
     }
   }, [serverId]);
@@ -40,13 +52,42 @@ function OAuthStatus({ serverId }: { serverId: string }): React.JSX.Element {
 
   const handleAuthorize = async () => {
     setBusy(true);
-    await postJson(`/oauth/connect?server_id=${encodeURIComponent(serverId)}`);
+    setMessage(null);
+    // OAuth reads the *saved* server config, so persist any pending changes
+    // first (e.g. the user just switched auth to "oauth" or entered the URL).
+    if (dirty) {
+      setMessage("Saving…");
+      await onSave();
+    }
+    setMessage("Opening browser…");
+    const res = await postJson<{ status?: string; message?: string }>(
+      `/oauth/connect?server_id=${encodeURIComponent(serverId)}`,
+    );
+    if (!res) {
+      setBusy(false);
+      setMessage("Failed — check the server URL and try again.");
+      return;
+    }
+    if (res.status === "authorized") {
+      setAuthorized(true);
+      setBusy(false);
+      setMessage("Authorized");
+      return;
+    }
+    if (res.status === "error") {
+      setBusy(false);
+      setMessage(res.message ?? "Authorization failed.");
+      return;
+    }
+    // "redirecting" — poll for completion.
+    setMessage("Complete sign-in in your browser…");
     pollRef.current = setInterval(() => void checkStatus(), 2000);
     setTimeout(() => {
       if (pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
         setBusy(false);
+        setMessage((m) => (m === "Authorized" ? m : "Timed out — try again."));
       }
     }, 120_000);
   };
@@ -54,17 +95,19 @@ function OAuthStatus({ serverId }: { serverId: string }): React.JSX.Element {
   const handleRevoke = async () => {
     await del(`/oauth/revoke?server_id=${encodeURIComponent(serverId)}`);
     setAuthorized(false);
+    setMessage(null);
   };
 
   return (
     <div className="oauth-status">
       <span className={`oauth-dot ${authorized ? "oauth-ok" : "oauth-none"}`} />
       <span className="oauth-label">
-        {authorized === null
-          ? "Checking..."
-          : authorized
-            ? "Authorized"
-            : "Not authorized"}
+        {message ??
+          (authorized === null
+            ? "Checking…"
+            : authorized
+              ? "Authorized"
+              : "Not authorized")}
       </span>
       {authorized ? (
         <button
@@ -81,7 +124,7 @@ function OAuthStatus({ serverId }: { serverId: string }): React.JSX.Element {
           onClick={() => void handleAuthorize()}
           disabled={busy}
         >
-          {busy ? "Waiting..." : "Authorize"}
+          {busy ? "Waiting…" : "Authorize"}
         </button>
       )}
     </div>
@@ -188,9 +231,44 @@ export function SettingsForm({
     structuredClone(initial),
   );
   const [saving, setSaving] = useState(false);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
+  // Baseline snapshot for the dirty check. An in-place save (e.g. before OAuth)
+  // updates this without navigating away, clearing the dirty state.
+  const [initialSnapshot, setInitialSnapshot] = useState(() =>
+    JSON.stringify(initial),
+  );
+  const dirty = JSON.stringify(draft) !== initialSnapshot;
 
   const patch = (p: Partial<AgentConfig>) => setDraft((d) => ({ ...d, ...p }));
+
+  // ---- Built-in tool group toggles ----
+  const enabledCount = TOOL_GROUPS.filter(
+    (g) => draft.builtinToolGroups?.[g.id] !== false,
+  ).length;
+  const allToolsChecked = enabledCount === TOOL_GROUPS.length;
+  const someToolsChecked = enabledCount > 0 && !allToolsChecked;
+
+  // Reflect the mixed state as an indeterminate ("-") checkbox.
+  const allToolsRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (allToolsRef.current) {
+      allToolsRef.current.indeterminate = someToolsChecked;
+    }
+  }, [someToolsChecked]);
+
+  const setGroupEnabled = (id: string, enabled: boolean) => {
+    const groups = { ...draft.builtinToolGroups, [id]: enabled };
+    patch({
+      builtinToolGroups: groups,
+      // Keep the master flag in sync: on if any group is enabled.
+      builtinToolsEnabled: Object.values(groups).some((v) => v !== false),
+    });
+  };
+
+  const toggleAllTools = (on: boolean) => {
+    const groups: Record<string, boolean> = {};
+    for (const g of TOOL_GROUPS) groups[g.id] = on;
+    patch({ builtinToolGroups: groups, builtinToolsEnabled: on });
+  };
 
   const updateServer = (id: string, p: Partial<McpServerConfig>) =>
     patch({
@@ -233,6 +311,13 @@ export function SettingsForm({
   const removeSkill = (id: string) =>
     patch({ skills: draft.skills.filter((s) => s.id !== id) });
 
+  /** Persist the current draft without navigating away (used by OAuth). */
+  const saveDraft = useCallback(async () => {
+    await putJson("/config", draft);
+    // The draft is now the saved baseline — clears the dirty state.
+    setInitialSnapshot(JSON.stringify(draft));
+  }, [draft]);
+
   const handleSave = async () => {
     setSaving(true);
     await putJson("/config", draft);
@@ -268,7 +353,7 @@ export function SettingsForm({
             <button
               type="button"
               className="btn btn-ghost btn-sm"
-              onClick={() => setDraft(structuredClone(initial))}
+              onClick={() => setDraft(JSON.parse(initialSnapshot))}
             >
               Discard
             </button>
@@ -305,9 +390,20 @@ export function SettingsForm({
             </span>
           </div>
           <div className="field">
-            <label className="field-label" htmlFor="sys-prompt">
-              System prompt
-            </label>
+            <div className="field-label-row">
+              <label className="field-label" htmlFor="sys-prompt">
+                System prompt
+              </label>
+              {draft.systemPrompt !== DEFAULT_SYSTEM_PROMPT && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => patch({ systemPrompt: DEFAULT_SYSTEM_PROMPT })}
+                >
+                  Reset to default
+                </button>
+              )}
+            </div>
             <textarea
               id="sys-prompt"
               className="textarea"
@@ -331,70 +427,60 @@ export function SettingsForm({
             </h3>
             <label className="toggle">
               <input
+                ref={allToolsRef}
                 type="checkbox"
-                checked={draft.builtinToolsEnabled}
-                onChange={(e) =>
-                  patch({ builtinToolsEnabled: e.target.checked })
-                }
+                checked={allToolsChecked}
+                onChange={(e) => toggleAllTools(e.target.checked)}
               />
               All
             </label>
           </div>
-          {draft.builtinToolsEnabled && (
-            <div className="tool-groups">
-              {TOOL_GROUPS.map((group) => {
-                const enabled = draft.builtinToolGroups?.[group.id] !== false;
-                const isDesktop = group.id === "desktop";
-                return (
-                  <div
-                    key={group.id}
-                    className={`tool-group-item${enabled ? "" : " disabled"}`}
-                  >
-                    <div className="tool-group-head">
-                      <span className="tool-group-label">{group.label}</span>
-                      <label className="toggle">
-                        <input
-                          type="checkbox"
-                          checked={enabled}
-                          onChange={(e) =>
-                            patch({
-                              builtinToolGroups: {
-                                ...draft.builtinToolGroups,
-                                [group.id]: e.target.checked,
-                              },
-                            })
-                          }
-                        />
-                        On
-                      </label>
-                    </div>
-                    <span className="tool-group-tools">
-                      {group.description}
-                    </span>
-                    {isDesktop && enabled && (
-                      <div className="desktop-mode-row">
-                        <span className="field-label">Mode</span>
-                        <select
-                          className="select select-compact"
-                          value={draft.computerUseMode ?? "guided"}
-                          onChange={(e) =>
-                            patch({
-                              computerUseMode: e.target.value as
-                                | "full"
-                                | "guided",
-                            })
-                          }
-                        >
-                          <option value="guided">Guided</option>
-                          <option value="full">Full control</option>
-                        </select>
-                      </div>
-                    )}
+          <div className="tool-groups">
+            {TOOL_GROUPS.map((group) => {
+              const enabled = draft.builtinToolGroups?.[group.id] !== false;
+              const isDesktop = group.id === "desktop";
+              return (
+                <div
+                  key={group.id}
+                  className={`tool-group-item${enabled ? "" : " disabled"}`}
+                >
+                  <div className="tool-group-head">
+                    <span className="tool-group-label">{group.label}</span>
+                    <label className="toggle">
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={(e) =>
+                          setGroupEnabled(group.id, e.target.checked)
+                        }
+                      />
+                      On
+                    </label>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <span className="tool-group-tools">{group.description}</span>
+                  {isDesktop && enabled && (
+                    <div className="desktop-mode-row">
+                      <span className="field-label">Mode</span>
+                      <select
+                        className="select select-compact"
+                        value={draft.computerUseMode ?? "guided"}
+                        onChange={(e) =>
+                          patch({
+                            computerUseMode: e.target.value as
+                              | "full"
+                              | "guided",
+                          })
+                        }
+                      >
+                        <option value="guided">Guided</option>
+                        <option value="full">Full control</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </section>
 
         {/* MCP Servers */}
@@ -531,7 +617,13 @@ export function SettingsForm({
                           }
                         />
                       )}
-                      {s.auth === "oauth" && <OAuthStatus serverId={s.id} />}
+                      {s.auth === "oauth" && (
+                        <OAuthStatus
+                          serverId={s.id}
+                          dirty={dirty}
+                          onSave={saveDraft}
+                        />
+                      )}
                     </>
                   )}
                 </div>

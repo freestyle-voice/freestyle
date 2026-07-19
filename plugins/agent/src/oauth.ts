@@ -12,9 +12,11 @@ import type { PluginStorage } from "freestyle-voice";
 import { openUrl } from "./mcp/tools/system.js";
 
 /**
- * Module-level map of pending OAuth flows. When an OAuth-configured server
- * triggers `redirectToAuthorization()`, we store the transport here so the
- * callback endpoint can call `finishAuth(code)` on it.
+ * Pending OAuth flows keyed by server id. When an OAuth-configured server
+ * triggers `redirectToAuthorization()`, we store its transport here so the
+ * callback endpoint (which carries the server id in its path) can call
+ * `finishAuth(code)` on the exact transport — supporting multiple concurrent
+ * OAuth MCP servers.
  */
 export const pendingOAuthTransports = new Map<
   string,
@@ -47,7 +49,10 @@ export class PluginOAuthProvider implements OAuthClientProvider {
 
   get redirectUrl(): string {
     const port = serverPort();
-    return `http://127.0.0.1:${port}/api/plugins/${this.slug}/agent/oauth/callback`;
+    // Encode the server id in the callback path so, with multiple OAuth MCP
+    // servers, the callback can route the code to the exact transport. Each
+    // server registers (via DCR) its own unique redirect URI.
+    return `http://127.0.0.1:${port}/api/plugins/${this.slug}/agent/oauth/callback/${encodeURIComponent(this.serverId)}`;
   }
 
   get clientMetadata(): OAuthClientMetadata {

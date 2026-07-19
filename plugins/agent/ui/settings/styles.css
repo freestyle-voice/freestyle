@@ -517,7 +517,6 @@ body {
   flex: 1;
   overflow-y: auto;
   padding-bottom: 2rem;
-  max-width: 640px;
 }
 
 /* ---- Form sections ---- */
@@ -566,6 +565,14 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 24px;
 }
 
 .field-label {

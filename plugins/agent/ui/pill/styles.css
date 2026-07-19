@@ -443,7 +443,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 2px 0;
+  margin: 3px 0 5px;
 }
 
 .tool-card {

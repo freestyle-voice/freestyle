@@ -1,9 +1,20 @@
 import type { PluginStorage } from "freestyle-voice";
 
+/** A completed tool invocation, stored with the assistant message it belongs to. */
+export interface StoredToolCall {
+  callId: string;
+  tool: string;
+  input: Record<string, unknown>;
+  output: string;
+  isError?: boolean;
+}
+
 /** One message in the agent conversation thread. */
 export interface ConversationEntry {
   role: "user" | "assistant";
   content: string;
+  /** Tool calls made while producing this (assistant) message, in order. */
+  toolCalls?: StoredToolCall[];
 }
 
 /** Identifier for the built-in Freestyle Tools MCP entry. */

@@ -149,9 +149,19 @@ export interface GuidanceEvent {
   text?: string;
 }
 
+/** A completed tool invocation stored with its assistant message. */
+export interface StoredToolCall {
+  callId: string;
+  tool: string;
+  input: Record<string, unknown>;
+  output: string;
+  isError?: boolean;
+}
+
 export interface ConversationEntry {
   role: "user" | "assistant";
   content: string;
+  toolCalls?: StoredToolCall[];
 }
 
 export interface SavedConversation {

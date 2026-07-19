@@ -15,6 +15,7 @@ import {
   DEFAULT_CONFIG,
   loadConfig,
   normalizeConfig,
+  type StoredToolCall,
   saveConfig,
 } from "./config.js";
 import type { ToolCallEvent, ToolCallStartEvent } from "./mcp/index.js";
@@ -142,6 +143,10 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
 
       emit({ type: "streamStart" }, pipelineEmit);
 
+      // Collect tool calls made during this turn so they persist with the
+      // assistant message (rendered inline, in order, like ChatGPT/Claude).
+      const turnToolCalls: StoredToolCall[] = [];
+
       let reply: string;
       if (llm) {
         try {
@@ -165,7 +170,14 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
                 },
                 pipelineEmit,
               ),
-            onToolCall: (e: ToolCallEvent) =>
+            onToolCall: (e: ToolCallEvent) => {
+              turnToolCalls.push({
+                callId: e.callId,
+                tool: e.tool,
+                input: e.input,
+                output: e.output,
+                isError: e.isError,
+              });
               emit(
                 {
                   type: "toolCall",
@@ -176,7 +188,8 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
                   isError: e.isError,
                 },
                 pipelineEmit,
-              ),
+              );
+            },
             onGuidance: (e: GuidanceEvent) =>
               emit({ type: "guidance", ...e }, pipelineEmit),
           });
@@ -195,7 +208,11 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       emit({ type: "streamEnd" }, pipelineEmit);
 
       if (conversationActive) {
-        conversation.push({ role: "assistant", content: reply });
+        conversation.push({
+          role: "assistant",
+          content: reply,
+          ...(turnToolCalls.length > 0 ? { toolCalls: turnToolCalls } : {}),
+        });
         await persistConversation();
       }
     } finally {
@@ -260,6 +277,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
         return c.json({ error: "Nothing to regenerate" }, 400);
       }
       try {
+        const regenToolCalls: StoredToolCall[] = [];
         const reply = await runAgentTurn({
           llm: lastLlm,
           config,
@@ -267,8 +285,21 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
           log: logger,
           storage: storage ?? undefined,
           pluginSlug: baseSlug,
+          onToolCall: (e) => {
+            regenToolCalls.push({
+              callId: e.callId,
+              tool: e.tool,
+              input: e.input,
+              output: e.output,
+              isError: e.isError,
+            });
+          },
         });
-        conversation.push({ role: "assistant", content: reply });
+        conversation.push({
+          role: "assistant",
+          content: reply,
+          ...(regenToolCalls.length > 0 ? { toolCalls: regenToolCalls } : {}),
+        });
         await persistConversation();
         return c.json({ reply });
       } catch (err) {

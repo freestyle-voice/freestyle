@@ -7,8 +7,7 @@ import { agentApiBase, getJson, postJson } from "../shared/api";
 import type {
   ConversationEntry,
   GuidanceEvent,
-  ToolCallEvent,
-  ToolCallStartEvent,
+  StoredToolCall,
 } from "../shared/types";
 
 /* ---- Icons ---- */
@@ -608,9 +607,13 @@ export function ChatPanel(): React.JSX.Element {
           case "streamEnd":
             setStreamingText(null);
             setGuidance(null);
-            void queryClient.invalidateQueries({
-              queryKey: conversationKey,
-            });
+            // Refetch the persisted conversation (which now carries the
+            // assistant message + its tool calls), THEN clear the
+            // transient tool calls so there's no flash where they vanish
+            // before the persisted version arrives.
+            void queryClient
+              .invalidateQueries({ queryKey: conversationKey })
+              .then(() => setToolCalls([]));
             break;
           case "toolCallStart":
             setToolCalls((prev) => [
@@ -745,53 +748,53 @@ export function ChatPanel(): React.JSX.Element {
         <div className="messages">
           {messages.map((msg, i) => {
             const isLastAssistant = i === lastAssistantIdx && !streaming;
-            // Tool calls belong to the current turn. When streaming,
-            // they appear before the streaming bubble. After stream
-            // ends, they appear just before the last assistant message
-            // (the final reply that was just persisted).
-            const showToolsBefore =
-              toolCalls.length > 0 && !streaming && i === lastAssistantIdx;
-
             return (
-              <div key={i}>
-                {showToolsBefore && (
-                  <div className="tool-calls">
-                    {toolCalls.map((tc, j) => (
-                      <ToolCallCard key={tc.callId || j} tc={tc} />
-                    ))}
-                  </div>
-                )}
-                <div className={`turn ${msg.role}`}>
-                  <span className={`turn-role ${msg.role}`}>
-                    {msg.role === "user" ? "You" : "Agent"}
-                  </span>
-                  <div className="turn-text markdown">
-                    <Markdown remarkPlugins={[remarkGfm]}>
-                      {msg.content}
-                    </Markdown>
-                  </div>
-                  {msg.role === "assistant" && (
-                    <MessageActions
-                      text={msg.content}
-                      isLast={isLastAssistant}
-                      onRegenerate={() => regenerate.mutate()}
-                      regenerating={regenerate.isPending}
-                    />
+              <div key={i} className={`turn ${msg.role}`}>
+                <span className={`turn-role ${msg.role}`}>
+                  {msg.role === "user" ? "You" : "Agent"}
+                </span>
+                {/* Persisted tool calls render inline within the
+                    assistant turn, before its text — exactly where the
+                    agent invoked them. */}
+                {msg.role === "assistant" &&
+                  msg.toolCalls &&
+                  msg.toolCalls.length > 0 && (
+                    <div className="tool-calls">
+                      {msg.toolCalls.map((tc, j) => (
+                        <ToolCallCard
+                          key={tc.callId || j}
+                          tc={{ ...tc, running: false }}
+                        />
+                      ))}
+                    </div>
                   )}
+                <div className="turn-text markdown">
+                  <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
                 </div>
+                {msg.role === "assistant" && (
+                  <MessageActions
+                    text={msg.content}
+                    isLast={isLastAssistant}
+                    onRegenerate={() => regenerate.mutate()}
+                    regenerating={regenerate.isPending}
+                  />
+                )}
               </div>
             );
           })}
-          {streaming && toolCalls.length > 0 && (
-            <div className="tool-calls">
-              {toolCalls.map((tc, j) => (
-                <ToolCallCard key={tc.callId || j} tc={tc} />
-              ))}
-            </div>
-          )}
+          {/* The in-progress assistant turn: live tool calls + streaming
+              text. Once persisted, this is replaced by the message above
+              (which carries its own toolCalls). */}
           {streaming && (
             <div className="turn assistant">
               <span className="turn-role assistant">Agent</span>
+              {toolCalls.length > 0 && (
+                <div className="tool-calls">
+                  {toolCalls.map((tc, j) => (
+                    <ToolCallCard key={tc.callId || j} tc={tc} />
+                  ))}
+                </div>
+              )}
               <div className="turn-text markdown">
                 {streamingText ? (
                   <Markdown remarkPlugins={[remarkGfm]}>

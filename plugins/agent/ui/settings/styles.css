@@ -258,16 +258,16 @@ body {
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  border: 1px solid var(--border);
+  border: none;
   background: none;
   color: var(--muted-foreground);
   cursor: pointer;
   flex-shrink: 0;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s, background 0.15s;
 }
 .back-btn:hover {
   color: var(--foreground);
-  border-color: var(--muted-foreground);
+  background: color-mix(in srgb, var(--border) 60%, transparent);
 }
 
 .detail-title {
@@ -396,7 +396,6 @@ body {
   opacity: 1;
   width: 26px;
   height: 26px;
-  border: 1px solid var(--border);
 }
 .copy-msg-btn:hover {
   background: color-mix(in srgb, var(--border) 60%, transparent);

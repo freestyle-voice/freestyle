@@ -10,6 +10,17 @@ import { PluginOAuthProvider, pendingOAuthTransports } from "./oauth.js";
 /** Fast-fail timeout for connecting to an MCP server (ms). */
 const MCP_CONNECT_TIMEOUT_MS = 10_000;
 
+/**
+ * JSON.stringify replacer that truncates long string values (e.g. base64
+ * blobs) so debug dumps stay readable while still showing structure/prefix.
+ */
+function replaceLongStrings(_key: string, value: unknown): unknown {
+  if (typeof value === "string" && value.length > 300) {
+    return `${value.slice(0, 300)}…[${value.length} chars]`;
+  }
+  return value;
+}
+
 /** A live MCP connection plus the AI SDK tools it exposes. */
 export interface McpConnection {
   serverId: string;
@@ -107,6 +118,16 @@ export async function connectMcpServer(
           name: mcpTool.name,
           arguments: args as Record<string, unknown>,
         });
+
+        // TEMP DIAGNOSTIC: dump the raw MCP result shape so we can see exactly
+        // how this server ships interactive widgets. Remove once resolved.
+        if (process.env.FREESTYLE_MCP_DEBUG) {
+          console.error(
+            `[mcp-debug] ${mcpTool.name} raw result:\n` +
+              JSON.stringify(result, replaceLongStrings, 2),
+          );
+        }
+
         const content = Array.isArray(result.content)
           ? [...(result.content as unknown[])]
           : result.content

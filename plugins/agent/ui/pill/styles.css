@@ -470,6 +470,29 @@ body {
   transition: height 180ms ease;
 }
 
+.widget-fallback {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.widget-fallback-btn {
+  flex: 1 1 auto;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  background: var(--primary);
+  color: var(--primary-foreground, #0d1108);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+.widget-fallback-btn:hover {
+  filter: brightness(1.08);
+}
+
 .tool-card {
   border-radius: 7px;
   background: color-mix(in srgb, var(--secondary) 40%, transparent);

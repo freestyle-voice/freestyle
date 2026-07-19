@@ -45,6 +45,45 @@ function firstUri(text: string): string | undefined {
   return undefined;
 }
 
+/** A tappable link surfaced from the tool output as a fallback affordance. */
+interface FallbackLink {
+  url: string;
+  label: string;
+}
+
+/** URL schemes we treat as an openable action link in tool output. */
+const ACTION_URL_RE =
+  /\b((?:https?|upi|gpay|phonepe|paytmmp|bhim|credpay|super):\/\/[^\s)"'<>]+)/gi;
+
+/**
+ * Pull openable links out of a tool's text output so we can always show the
+ * user a tappable button — even when a hosted widget renders blank. Payment
+ * deep-links (`upi://`, `gpay://`, …) and any `https://…deeplink`/pay URL are
+ * prioritized and get a friendly label.
+ */
+function extractFallbackLinks(text: string | undefined): FallbackLink[] {
+  if (!text) return [];
+  const seen = new Set<string>();
+  const links: FallbackLink[] = [];
+  for (const m of text.matchAll(ACTION_URL_RE)) {
+    const url = m[1].replace(/[.,]+$/, "");
+    if (seen.has(url)) continue;
+    seen.add(url);
+    const scheme = url.slice(0, url.indexOf(":")).toLowerCase();
+    const isPayment =
+      scheme !== "http" && scheme !== "https"
+        ? true
+        : /pay|deeplink|upi|checkout/i.test(url);
+    links.push({
+      url,
+      label: isPayment ? "Open payment app" : "Open link",
+    });
+  }
+  // Prefer a single, clear payment action when present.
+  const payment = links.find((l) => l.label === "Open payment app");
+  return payment ? [payment] : links.slice(0, 1);
+}
+
 /** Resolve the widget's HTML (inline text or base64 blob) or an external URL. */
 function resolveContent(resource: UiResource): {
   srcDoc?: string;
@@ -208,19 +247,48 @@ export function WidgetRenderer({
     return () => window.removeEventListener("message", handleMessage);
   }, [handleMessage, hasContent]);
 
-  if (!hasContent) return null;
+  // Fallback action links pulled from the tool output (e.g. a payment
+  // deep-link). These guarantee the user has a tappable affordance even when a
+  // hosted widget renders blank or an inline widget lacks a visible control.
+  const fallbackLinks = extractFallbackLinks(toolOutput);
+
+  const openLink = useCallback(
+    (url: string) => onAction?.({ type: "link", payload: { url } }),
+    [onAction],
+  );
+
+  // Nothing to show at all.
+  if (!hasContent && fallbackLinks.length === 0) return null;
 
   return (
-    <div className="widget-frame">
-      <iframe
-        ref={iframeRef}
-        title="Interactive widget"
-        sandbox="allow-scripts allow-forms"
-        onLoad={pushMcpAppData}
-        // srcDoc for inline HTML, src for external URLs.
-        {...(src ? { src } : { srcDoc: srcDoc ?? "" })}
-        style={{ height }}
-      />
-    </div>
+    <>
+      {hasContent && (
+        <div className="widget-frame">
+          <iframe
+            ref={iframeRef}
+            title="Interactive widget"
+            sandbox="allow-scripts allow-forms"
+            onLoad={pushMcpAppData}
+            // srcDoc for inline HTML, src for external URLs.
+            {...(src ? { src } : { srcDoc: srcDoc ?? "" })}
+            style={{ height }}
+          />
+        </div>
+      )}
+      {fallbackLinks.length > 0 && (
+        <div className="widget-fallback">
+          {fallbackLinks.map((link) => (
+            <button
+              key={link.url}
+              type="button"
+              className="widget-fallback-btn"
+              onClick={() => openLink(link.url)}
+            >
+              {link.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

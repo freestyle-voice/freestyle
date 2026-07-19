@@ -130,6 +130,23 @@ declare global {
       onMicActivityChanged: (
         callback: (state: "active" | "inactive" | "unknown") => void,
       ) => () => void;
+      // Pill panel
+      configurePillPanel: (
+        slug: string,
+        panelId: string,
+        entry: string,
+        expand: { width: number; height: number },
+        tokens?: Record<string, string>,
+      ) => Promise<void>;
+      expandPillPanel: (
+        pillSide?: "center" | "right",
+      ) => Promise<{ expanded: true; direction: "up" | "down" } | false>;
+      collapsePillPanel: () => Promise<boolean>;
+      onPillPanelCollapsed: (callback: () => void) => () => void;
+      sendPillState: (state: string) => void;
+      sendTranscriptToPanel: (text: string) => void;
+      sendStreamEventToPanel: (event: { type: string; text?: string }) => void;
+      onPillBadge: (callback: (text: string | null) => void) => () => void;
       // Plugins — discovery/install/catalog/updates go renderer→server over
       // the typed client; only the native view overlay stays on IPC.
       showPluginView: (

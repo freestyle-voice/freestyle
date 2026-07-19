@@ -281,6 +281,45 @@ const api = {
     return () => ipcRenderer.removeListener("mic:activity-changed", handler);
   },
 
+  // --- Pill panel ---
+  configurePillPanel: (
+    slug: string,
+    panelId: string,
+    entry: string,
+    expand: { width: number; height: number },
+    tokens?: Record<string, string>,
+  ): Promise<void> =>
+    ipcRenderer.invoke(
+      "pill-panel:configure",
+      slug,
+      panelId,
+      entry,
+      expand,
+      tokens,
+    ),
+  expandPillPanel: (
+    pillSide?: "center" | "right",
+  ): Promise<{ expanded: true; direction: "up" | "down" } | false> =>
+    ipcRenderer.invoke("pill-panel:expand", pillSide),
+  collapsePillPanel: (): Promise<boolean> =>
+    ipcRenderer.invoke("pill-panel:collapse"),
+  onPillPanelCollapsed: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("pill-panel:collapsed", handler);
+    return () => ipcRenderer.removeListener("pill-panel:collapsed", handler);
+  },
+  sendPillState: (state: string): void =>
+    ipcRenderer.send("pill-panel:state-change", state),
+  sendTranscriptToPanel: (text: string): void =>
+    ipcRenderer.send("pill-panel:transcript", text),
+  sendStreamEventToPanel: (event: { type: string; text?: string }): void =>
+    ipcRenderer.send("pill-panel:stream", event),
+  onPillBadge: (callback: (text: string | null) => void): (() => void) => {
+    const handler = (_: unknown, text: string | null): void => callback(text);
+    ipcRenderer.on("pill:set-badge", handler);
+    return () => ipcRenderer.removeListener("pill:set-badge", handler);
+  },
+
   // --- Plugins ---
   // Discovery, install, catalog, and updates now go directly renderer→server
   // over the typed `hc` client (see renderer/src/lib/plugins-api.ts). Only the

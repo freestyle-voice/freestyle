@@ -10,6 +10,7 @@
  * rather than rebuilding the whole client pipeline.
  */
 
+import type { PluginStreamEvent } from "freestyle-voice";
 import { getPCMProcessorUrl } from "./pcm-processor";
 import { encodeWavFromInt16 } from "./wav";
 
@@ -17,8 +18,16 @@ const TARGET_RATE = 16000;
 
 export interface StreamerCallbacks {
   onPartial: (text: string) => void;
-  onFinal: (text: string) => void;
+  onFinal: (
+    text: string,
+    disposition?: "deliver" | "suppressed" | "aborted",
+  ) => void;
   onCleaned?: (text: string) => void;
+  /**
+   * A live plugin stream event (e.g. agent tokens) emitted mid-turn by a server
+   * hook via `api.emitStream`. Forwarded verbatim to the pill panel.
+   */
+  onStream?: (event: PluginStreamEvent) => void;
   onError: (message: string, code?: string) => void;
   onReady: () => void;
   onConfig: (config: {
@@ -214,6 +223,8 @@ export class Streamer {
       let msg: {
         type: string;
         text?: string;
+        disposition?: "deliver" | "suppressed" | "aborted";
+        event?: PluginStreamEvent;
         message?: string;
         code?: string;
         model?: string;
@@ -250,10 +261,13 @@ export class Streamer {
           this.callbacks.onPartial(msg.text ?? "");
           break;
         case "final":
-          this.callbacks.onFinal(msg.text ?? "");
+          this.callbacks.onFinal(msg.text ?? "", msg.disposition);
           break;
         case "cleaned":
           this.callbacks.onCleaned?.(msg.text ?? "");
+          break;
+        case "stream":
+          if (msg.event) this.callbacks.onStream?.(msg.event);
           break;
         case "error":
           this.callbacks.onError(msg.message ?? "Unknown error", msg.code);

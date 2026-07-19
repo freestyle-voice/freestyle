@@ -1,13 +1,11 @@
-import { createAppLogger } from "@freestyle-voice/utils";
 import { type BrowserWindow, ipcMain } from "electron";
 import type { HostActions } from "freestyle-voice";
+import { setPluginBridgeDeps } from "./plugin-bridge-ipc.js";
 import {
   PluginViewManager,
   pluginBridgePreloadPath,
   type ViewBounds,
 } from "./view-manager.js";
-
-const log = createAppLogger("plugins-ui");
 
 /** Host capabilities the plugin UI layer needs, injected from the main entry. */
 export interface PluginUiHostDeps {
@@ -25,7 +23,6 @@ export interface PluginUiHostDeps {
 }
 
 let viewManager: PluginViewManager | null = null;
-let currentDeps: PluginUiHostDeps | null = null;
 let ipcRegistered = false;
 
 /**
@@ -38,8 +35,6 @@ let ipcRegistered = false;
  * the IPC handlers register only once, while the window/deps update each call.
  */
 export function initPluginUiHost(deps: PluginUiHostDeps): void {
-  currentDeps = deps;
-
   // Reuse a single manager across window re-opens: its session request filters
   // are installed per persistent partition, so a fresh instance each time would
   // orphan the old filter closures (Electron keeps only the last one) and make
@@ -52,6 +47,14 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
     );
   }
   viewManager.attachWindow(deps.window);
+
+  // Feed the shared plugin-bridge IPC our token source + action handler. The
+  // IPC itself is registered once at app startup (registerPluginBridgeIpc),
+  // so the pill panel works even before the dashboard window opens.
+  setPluginBridgeDeps({
+    getDashboardTokens: () => viewManager?.getTokens() ?? {},
+    onDashboardAction: (channel, payload) => deps.onAction(channel, payload),
+  });
 
   if (ipcRegistered) return;
   ipcRegistered = true;
@@ -81,28 +84,6 @@ export function initPluginUiHost(deps: PluginUiHostDeps): void {
   ipcMain.on("plugin-view:invalidate", () => {
     viewManager?.invalidate();
   });
-
-  // The plugin frame's preload fetches its theme tokens over IPC.
-  ipcMain.handle("plugin-bridge:config", () => viewManager?.getTokens() ?? {});
-
-  ipcMain.handle(
-    "plugin-bridge:action",
-    async <C extends keyof HostActions>(
-      _e: unknown,
-      channel: C,
-      payload: HostActions[C],
-    ) => {
-      try {
-        await currentDeps!.onAction(channel, payload);
-      } catch (err) {
-        log.error(
-          `plugin action "${String(channel)}" failed: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    },
-  );
 }
 
 /**

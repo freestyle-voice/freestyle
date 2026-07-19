@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { FreestyleBridge, HostActions } from "freestyle-voice";
+import type {
+  FreestyleBridge,
+  HostActions,
+  PillEvent,
+  PillPanelBridge,
+} from "freestyle-voice";
 
 /**
  * Preload injected into every plugin UI page (running in a sandboxed
@@ -18,6 +23,24 @@ function applyTokens(tokens: Record<string, string> | undefined): void {
   for (const [key, value] of Object.entries(tokens)) {
     root.style.setProperty(key, value);
   }
+  // Toggle a `light` class on <html> so plugin CSS can adapt.  We derive the
+  // mode from the --background token: parse the hex and check luminance.
+  const bg = tokens["--background"];
+  if (bg) {
+    const hex = bg.replace("#", "");
+    if (hex.length >= 6) {
+      const r = Number.parseInt(hex.slice(0, 2), 16) / 255;
+      const g = Number.parseInt(hex.slice(2, 4), 16) / 255;
+      const b = Number.parseInt(hex.slice(4, 6), 16) / 255;
+      // Relative luminance (sRGB)
+      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      if (lum > 0.5) {
+        root.classList.add("light");
+      } else {
+        root.classList.remove("light");
+      }
+    }
+  }
 }
 
 // Theme tokens are the only host config the page still needs; fetch them early
@@ -35,6 +58,28 @@ ipcRenderer
   .catch(() => {
     /* leave defaults */
   });
+
+const pillBridge: PillPanelBridge = {
+  getState() {
+    return ipcRenderer.invoke("pill-panel:state");
+  },
+  subscribe(callback: (event: PillEvent) => void) {
+    const handler = (_: unknown, event: PillEvent): void => callback(event);
+    ipcRenderer.on("pill-panel:event", handler);
+    return () => ipcRenderer.removeListener("pill-panel:event", handler);
+  },
+  expand() {
+    return ipcRenderer.invoke("pill-panel:expand").then(() => {});
+  },
+  collapse() {
+    return ipcRenderer.invoke("pill-panel:collapse").then(() => {});
+  },
+  setBadge(text: string | null) {
+    return ipcRenderer
+      .invoke("plugin-bridge:action", "pill:set-badge", { text })
+      .then(() => {});
+  },
+};
 
 const bridge: FreestyleBridge = {
   get serverUrl() {
@@ -64,6 +109,8 @@ const bridge: FreestyleBridge = {
   invoke<C extends keyof HostActions>(channel: C, payload: HostActions[C]) {
     return ipcRenderer.invoke("plugin-bridge:action", channel, payload);
   },
+
+  pill: pillBridge,
 };
 
 contextBridge.exposeInMainWorld("freestyle", bridge);

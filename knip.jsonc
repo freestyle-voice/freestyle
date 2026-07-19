@@ -16,7 +16,8 @@
     "pkg-config",
     "powershell",
     "powershell.exe",
-    "python3"
+    "python3",
+    "shortcuts"
   ],
   "ignoreFiles": [
     "apps/electron/src/preload/*.d.ts",
@@ -99,10 +100,13 @@
       "project": ["src/**/*.ts"]
     },
     "plugins/*": {
-      "entry": ["src/index.ts", "ui/src/main.{ts,tsx}"],
+      // Most plugins ship a single `ui/src/main.tsx`; some (e.g. the agent)
+      // ship multiple UI entries under `ui/<page>/main.tsx`. Cover both.
+      "entry": ["src/index.ts", "ui/src/main.{ts,tsx}", "ui/*/main.{ts,tsx}"],
       "project": [
         "src/**/*.{ts,tsx}",
         "ui/src/**/*.{ts,tsx,css}",
+        "ui/**/*.{ts,tsx,css}",
         "ui/vite-env.d.ts"
       ]
     }

@@ -264,12 +264,16 @@ interface FreestyleBridge {
   readonly serverUrl: string;  // origin the page is served from (location.origin)
   api(path: string, init?: RequestInit): Promise<Response>;
   invoke<C extends keyof HostActions>(channel: C, payload: HostActions[C]): Promise<void>;
+  pill?: PillPanelBridge;      // functional only inside a pill panel (see below)
 }
 
 interface HostActions {
   copy: { text: string };
   toast: { message: string; variant?: "info" | "success" | "error" };
   navigate: { to: string };
+  "pill:expand": Record<string, never>;   // expand the pill panel
+  "pill:collapse": Record<string, never>; // collapse the pill panel
+  "pill:set-badge": { text: string | null }; // set/clear the pill's badge
 }
 ```
 
@@ -292,6 +296,74 @@ await window.freestyle.invoke("navigate", { to: "/plugins" });
 
 `window.freestyle` is only present inside a hosted plugin page, so guard for it (`if (!window.freestyle) ...`) before use.
 
+## Pill panels
+
+A plugin can attach an **expandable panel to the floating pill** — the small
+always-on-top widget that shows during dictation — instead of (or in addition to)
+a page in the app sidebar. This is the extension point behind rich, live
+experiences: an agent conversation, a running transcript, a command palette, and
+so on. Declare it with `contributes.pill` in the manifest (see [below](#manifest)).
+
+Only **one** plugin can own the pill panel at a time (single-owner). The panel is
+a normal HTML/React page, served the same way as sidebar pages
+(`/api/plugins/<slug>/ui/*`) and sandboxed in its own session partition, so all
+the [UI bridge](#the-ui-bridge) rules still apply. Inside a pill panel the bridge
+gains a `pill` surface:
+
+```ts
+type PillState = "idle" | "initializing" | "recording" | "transcribing";
+
+type PillEvent =
+  | { type: "stateChanged"; state: PillState }
+  | { type: "transcriptReady"; text: string };
+
+interface PillPanelBridge {
+  getState(): Promise<PillState>;
+  subscribe(callback: (event: PillEvent) => void): () => void; // returns unsubscribe
+  expand(): Promise<void>;
+  collapse(): Promise<void>;
+  setBadge(text: string | null): Promise<void>; // null restores the default badge
+}
+```
+
+- **`subscribe(cb)`** — react to pill lifecycle live. `stateChanged` mirrors the
+  pill's recording/transcribing state; `transcriptReady` fires when a server hook
+  consumed a dictation and handed it to your panel (see below).
+- **`expand()` / `collapse()`** — grow the pill window to show the panel, or shrink
+  it back to the bare pill. The panel expands up or down depending on where the
+  pill sits on screen.
+- **`setBadge(text)`** — overwrite the small badge on the pill chrome (normally the
+  timer / pending count). Pass `null` to restore the default.
+
+```ts
+const pill = window.freestyle?.pill;
+if (pill) {
+  const unsubscribe = pill.subscribe((event) => {
+    if (event.type === "transcriptReady") {
+      // the user just dictated something your hook consumed — react to it
+      render(event.text);
+      void pill.expand();
+    }
+  });
+  // call unsubscribe() on teardown
+}
+```
+
+### Driving the panel from a hook
+
+The pill panel is just UI — the logic runs in your server hooks. The usual
+pattern: `afterTranscribe` inspects the transcript, does its work (e.g. an
+`api.llm` turn), persists the result to [`storage`](#pluginstorage), and calls
+`api.control.consume()` so nothing is pasted. Consuming a dictation is the signal
+that opens the panel: the app forwards the consumed transcript to the active pill
+plugin as a `transcriptReady` event and expands the panel. Your panel then reads
+the result back through its own `/api/plugins/<slug>/…` route.
+
+<Note>The `pill` surface is present on every plugin page but only *functional*
+inside the pill window. On a sidebar page the calls are safe no-ops
+(`getState()` resolves `"idle"`, `subscribe` never fires), so guard on the event
+you actually need rather than on `pill` alone.</Note>
+
 ## Manifest
 
 The `freestyle` field in `package.json`.
@@ -303,10 +375,22 @@ The `freestyle` field in `package.json`.
     "contributes": {
       "pages": [
         { "id": "my-page", "title": "My Page", "entry": "dist/ui/index.html", "icon": "Settings" }
-      ]
+      ],
+      "pill": {
+        "id": "my-panel",
+        "title": "My Panel",
+        "entry": "dist/pill/index.html",
+        "expand": { "width": 380, "height": 480 }
+      }
     }
   }
 }
 ```
 
 `icon` is a [lucide](https://lucide.dev) name.
+
+- **`contributes.pages`** — screens in the app sidebar. Each needs an `id`,
+  `title`, and `entry` (the built HTML), plus an optional `icon`.
+- **`contributes.pill`** — a single [pill panel](#pill-panels). `entry` is its
+  built HTML and `expand` sets the panel size (px) when opened. At most one pill
+  panel per plugin, and only one active across all plugins.

@@ -1,0 +1,96 @@
+---
+title: "Voice Agent"
+description: "Talk to an AI agent by voice and read its replies in a chat panel that grows out of the pill — a worked example of the pill panel API."
+---
+
+The Voice Agent plugin lets you talk to an AI assistant by voice. Say the
+agent's name and, instead of typing your dictation, Freestyle runs an agent
+turn — optionally calling tools from your connected MCP servers — and shows the
+conversation in a panel that grows out of the floating pill.
+
+> "Freestyle, what's on my calendar today?" → the agent replies in the pill
+> panel, calling your calendar MCP server's tools if one is connected.
+
+It's also the reference implementation of the **pill panel** extension point:
+any plugin can attach its own live UI to the pill the same way. See the
+[pill panels section of the SDK reference](/sdk-reference#pill-panels) to build
+your own.
+
+## Install
+
+```bash
+npm install @freestyle-voice/plugin-agent
+```
+
+Or install from **Settings → Plugins** inside the app.
+
+## How to use it
+
+1. Enable the plugin in **Settings → Plugins**.
+2. Say the agent's name at the start of a dictation, e.g. _"Freestyle, what's
+   the capital of France?"_. The name is matched however speech-to-text
+   punctuates it — "Freestyle,", "Freestyle.", or a bare "Freestyle …" all
+   work — and it's stripped before the prompt is sent. Everything without the
+   name is dictated into your focused app as normal.
+3. The pill grows into a chat panel with your message and the agent's reply. Keep
+   talking to continue the thread — press the dictation hotkey again to reply.
+4. Close the panel by clicking outside it.
+
+## Configuration
+
+Open **Voice Agent** in the app sidebar (added when the plugin is enabled) to
+configure:
+
+- **Agent name** — what you say to summon it (default "Freestyle"). A leading
+  "hey"/"ok" is always optional, and the name is woven into the system prompt.
+- **System prompt** — the agent's persona and base instructions.
+- **MCP servers** — connect [Model Context Protocol](https://modelcontextprotocol.io)
+  servers over `stdio` (a local command) or `http` (a URL) to give the agent
+  tools. Every enabled server's tools are available during a turn.
+- **Skills** — named, reusable instruction sets. Enabled skills are appended to
+  the system prompt so the agent applies them on every turn.
+
+Settings save automatically, and the page shows the running conversation.
+
+## How it works
+
+The plugin combines a server hook with two UI pages:
+
+1. **Interception** — an `afterCleanup` hook matches the agent's name, strips it,
+   and calls `api.control.consume()` so the rest of the pipeline is skipped and
+   nothing is pasted into your focused app.
+2. **Agent turn** — it connects the enabled MCP servers, hands their tools to the
+   model (via the SDK's [`api.llm`](/sdk-reference#pluginllm) capability), and runs
+   a tool-calling loop with the AI SDK. Connections are closed when the turn ends.
+3. **Panel** — consuming the dictation signals the app to open the pill panel and
+   forward the transcript as a `transcriptReady` event. The panel, built on
+   `window.freestyle.pill`, renders the conversation live and tracks the pill's
+   state as you speak.
+
+<Note>If no model is configured, the agent replies asking you to set one under
+Settings → Models. The plugin reuses your configured model and keys — there's no
+separate provider to set up. **Signed-in Freestyle Cloud users get this too**,
+running on Freestyle Cloud's managed LLM.</Note>
+
+## The pill panel
+
+The conversation UI is a `contributes.pill` panel — a sandboxed page the host
+overlays on the pill window, sized per the manifest's `expand` dimensions. It
+subscribes to pill events through `window.freestyle.pill` so it knows when you're
+recording and when a new turn is ready, and it can collapse itself. This is the
+same API any plugin can use to build its own pill experience.
+
+## Build from source
+
+```bash
+pnpm install
+pnpm --filter @freestyle-voice/plugin-agent build
+```
+
+`pkgroll` bundles the server-side plugin (MCP SDK + AI SDK); `vite` builds the
+pill panel and settings pages.
+
+## Source
+
+[`plugins/agent/`](https://github.com/freestyle-voice/freestyle/tree/main/plugins/agent)
+in the monorepo.

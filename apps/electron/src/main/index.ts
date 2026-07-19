@@ -105,6 +105,11 @@ import {
   PipelineStage,
   relayEvent,
 } from "./plugins/index";
+import {
+  getPillPanelController,
+  initPillPanelHost,
+} from "./plugins/pill-panel";
+import { registerPluginBridgeIpc } from "./plugins/plugin-bridge-ipc";
 import { initPluginUiHost, invalidatePluginViews } from "./plugins/ui-host";
 
 const log = createAppLogger("electron");
@@ -464,13 +469,46 @@ function getAppWindowPosition(): { x: number; y: number } {
       typeof custom.x === "number" &&
       typeof custom.y === "number"
     ) {
-      const display = screen.getDisplayMatching({
+      const savedDisplay = screen.getDisplayMatching({
         x: custom.x,
         y: custom.y,
         width: APP_WIDTH,
         height: APP_HEIGHT,
       });
-      const wa = display.workArea;
+
+      // If the cursor is on a different display, translate the custom
+      // position so it appears at the same relative spot on the active
+      // display.  This prevents the pill from getting stuck on one monitor
+      // in multi-display setups.
+      if (savedDisplay.id !== activeDisplay.id) {
+        const srcWA = savedDisplay.workArea;
+        const dstWA = activeDisplay.workArea;
+        // Relative offset within the original display's work area [0..1]
+        const relX = srcWA.width > 0 ? (custom.x - srcWA.x) / srcWA.width : 0;
+        const relY = srcWA.height > 0 ? (custom.y - srcWA.y) / srcWA.height : 0;
+        // Map to the destination display, clamping to stay on screen.
+        const newX = Math.round(
+          Math.max(
+            dstWA.x,
+            Math.min(
+              dstWA.x + dstWA.width - APP_WIDTH,
+              dstWA.x + relX * dstWA.width,
+            ),
+          ),
+        );
+        const newY = Math.round(
+          Math.max(
+            dstWA.y,
+            Math.min(
+              dstWA.y + dstWA.height - APP_HEIGHT,
+              dstWA.y + relY * dstWA.height,
+            ),
+          ),
+        );
+        return { x: newX, y: newY };
+      }
+
+      const wa = savedDisplay.workArea;
       if (
         custom.x >= wa.x &&
         custom.x + APP_WIDTH <= wa.x + wa.width &&
@@ -595,6 +633,14 @@ function createAppWindow(): void {
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
     return { action: "deny" };
+  });
+
+  initPillPanelHost({
+    window: mainWindow,
+    getServerBaseUrl,
+    getServerToken,
+    getCollapsedSize: () => ({ width: APP_WIDTH, height: APP_HEIGHT }),
+    markProgrammaticMove: markProgrammaticTarget,
   });
 
   mainWindow.loadURL(getPillURL());
@@ -1150,6 +1196,10 @@ async function getOpenAppCandidates(): Promise<OpenAppCandidate[]> {
 }
 
 function hidePill(): void {
+  const panelCtrl = getPillPanelController();
+  if (panelCtrl?.isExpanded()) {
+    panelCtrl.collapse();
+  }
   if (mainWindow?.isVisible()) {
     mainWindow.hide();
   }
@@ -1717,6 +1767,11 @@ app.whenReady().then(async () => {
   void startLinuxPasteHelper();
   void recoverDuckedVolumeFromCrash();
 
+  // Register the shared plugin-bridge IPC once, before any plugin view (pill
+  // panel or dashboard page) can load — the pill panel may open before the
+  // dashboard window is ever created.
+  registerPluginBridgeIpc();
+
   // Set app user model id for windows
   electronApp.setAppUserModelId("com.freestyle.app");
 
@@ -1786,6 +1841,29 @@ app.whenReady().then(async () => {
   // IPC: hide the pill window on request from renderer
   ipcMain.on("pill:hide", () => {
     hidePill();
+  });
+
+  // IPC: forward pill state changes to the pill panel controller so the
+  // plugin's WebContentsView receives live lifecycle events.
+  ipcMain.on("pill-panel:state-change", (_event, state: string) => {
+    const ctrl = getPillPanelController();
+    if (ctrl) {
+      ctrl.setPillState(state as import("freestyle-voice").PillState);
+    }
+  });
+
+  // IPC: forward a suppressed transcript to the pill panel plugin.
+  ipcMain.on("pill-panel:transcript", (_event, text: string) => {
+    const ctrl = getPillPanelController();
+    if (ctrl) ctrl.sendTranscript(text);
+  });
+
+  // IPC: forward live plugin stream events (agent tokens) to the pill panel.
+  ipcMain.on("pill-panel:stream", (_event, streamEvent: unknown) => {
+    const ctrl = getPillPanelController();
+    if (ctrl && streamEvent && typeof streamEvent === "object") {
+      ctrl.sendStreamEvent(streamEvent as import("freestyle-voice").PillEvent);
+    }
   });
 
   // IPC: fan out per-frame audio levels from the pill to other windows

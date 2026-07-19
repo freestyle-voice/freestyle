@@ -113,21 +113,58 @@ function formatTimer(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+// Theme tokens forwarded to the pill panel plugin so it matches the app's
+// (warm, earthy) palette instead of falling back to hardcoded colors. Mirrors
+// the dashboard's FORWARDED_TOKENS in pages/plugins/plugin-page.tsx.
+const PILL_PANEL_THEME_TOKENS = [
+  "--background",
+  "--foreground",
+  "--card",
+  "--card-foreground",
+  "--popover",
+  "--popover-foreground",
+  "--primary",
+  "--primary-foreground",
+  "--secondary",
+  "--secondary-foreground",
+  "--muted",
+  "--muted-foreground",
+  "--accent",
+  "--accent-foreground",
+  "--destructive",
+  "--destructive-foreground",
+  "--border",
+  "--input",
+  "--ring",
+  "--radius",
+];
+
+function readThemeTokens(): Record<string, string> {
+  const styles = getComputedStyle(document.documentElement);
+  const tokens: Record<string, string> = {};
+  for (const name of PILL_PANEL_THEME_TOKENS) {
+    const value = styles.getPropertyValue(name).trim();
+    if (value) tokens[name] = value;
+  }
+  return tokens;
+}
+
 const PILL_WIDTH = 216;
 
-const pillInnerStyle: React.CSSProperties = {
+/** Base pill bar style — values that don't change between collapsed/expanded. */
+const pillBaseStyle: React.CSSProperties = {
   height: 43,
-  width: PILL_WIDTH,
   padding: "0 9px",
-  borderRadius: 25,
   background: "var(--card)",
   color: "var(--foreground)",
-  border: "1px solid var(--border)",
   fontFamily: "'DM Sans', sans-serif",
   fontSize: 13,
   fontWeight: 500,
   cursor: "grab",
   WebkitAppRegion: "drag",
+  // Only animate border-radius — width snaps instantly to avoid a flash of
+  // transparent background while the window is already resized.
+  transition: "border-radius 200ms cubic-bezier(0.4,0,0.2,1)",
 } as React.CSSProperties;
 
 interface TranscribeResult {
@@ -171,16 +208,19 @@ export default function AppPage(): React.JSX.Element {
   const setPillState = useCallback((next: PillState) => {
     stateRef.current = next;
     setState(next);
+    window.api?.sendPillState?.(next);
   }, []);
   const [elapsed, setElapsed] = useState(0);
   const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
   const [pillSide, setPillSide] = useState<"center" | "right">("center");
+  const pillSideRef = useRef<"center" | "right">(pillSide);
 
   const supportsSessionTransportRef = useRef(false);
   const recordingSessionUsesTransportRef = useRef(false);
   const providerCategoryRef = useRef<string | null>(null);
 
   const [pendingCount, setPendingCount] = useState(0);
+  const [pluginBadge, setPluginBadge] = useState<string | null>(null);
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
@@ -199,6 +239,16 @@ export default function AppPage(): React.JSX.Element {
   const appContextRef = useRef<string | null>(null);
   const pendingCommitRef = useRef(false);
   const pillActiveRef = useRef(false);
+  // True while a plugin's pill panel is expanded (e.g. an agent conversation).
+  // The pill window stays visible so the user can read/continue the exchange;
+  // a hotkey press records a follow-up rather than hiding the pill.
+  const panelOpenRef = useRef(false);
+  // State mirror of panelOpenRef — drives the render (e.g. disabling the
+  // full-window drag region when the panel is expanded).
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelDirection, setPanelDirection] = useState<"up" | "down">("down");
+  const panelPluginSlugRef = useRef<string | null>(null);
+  const panelWidthRef = useRef(400);
   // Tracks the in-flight prepareSystemAudio() (ducking) call. Ducking runs
   // concurrently with mic acquisition, so every restore must wait for this
   // to settle — otherwise a restore that lands before the duck applies is a
@@ -267,6 +317,29 @@ export default function AppPage(): React.JSX.Element {
       const isDeliverable = (r: TranscribeResult): boolean =>
         !!r.raw.trim() && (r.disposition ?? "deliver") === "deliver";
 
+      // A plugin consumed the dictation (e.g. an agent turn) — forward it to
+      // the pill panel and expand it. This is checked BEFORE the re-queue
+      // branch below: a consumed dictation produces no deliverable text, so it
+      // must never be swallowed by the "still recording / queue non-empty"
+      // re-queue path — otherwise the panel would never open.
+      //
+      // A consumed dictation's delivered text is intentionally blanked by the
+      // server, so we match on `disposition` alone (not on `raw`). The panel
+      // fetches its own conversation, so it doesn't need the transcript here.
+      const suppressed = results.filter((r) => r.disposition === "suppressed");
+      if (suppressed.length > 0) {
+        const text = suppressed
+          .map((r) => r.raw)
+          .filter(Boolean)
+          .join(" ");
+        window.api?.sendTranscriptToPanel?.(text);
+        window.api?.expandPillPanel?.(pillSideRef.current).then((r) => {
+          if (r && r.direction) setPanelDirection(r.direction);
+        });
+        panelOpenRef.current = true;
+        setPanelOpen(true);
+      }
+
       if (
         recordingActiveRef.current ||
         wantsMicRef.current ||
@@ -281,6 +354,16 @@ export default function AppPage(): React.JSX.Element {
 
       const nonEmpty = results.filter(isDeliverable);
       if (nonEmpty.length === 0) {
+        // The consumed dictation opened the panel above — keep the pill
+        // visible so the user can see it; don't fall through to the hide path.
+        // Reset the machine to "idle" (recording done) WITHOUT hiding, so the
+        // next hotkey press records a follow-up into the open panel.
+        if (suppressed.length > 0) {
+          setPillState("idle");
+          recordingActiveRef.current = false;
+          wantsMicRef.current = false;
+          return;
+        }
         if (results.some((r) => r.cloudAuthRequired)) {
           hidePill();
           void window.api.cloudPromptSignIn();
@@ -535,13 +618,25 @@ export default function AppPage(): React.JSX.Element {
         },
         onReady: () => {},
         onPartial: () => {},
-        onFinal: (text) => {
+        onFinal: (text, disposition) => {
           const resolver = streamResolverRef.current;
           if (!resolver) return;
           streamResolverRef.current = null;
-          resolver({ raw: text, cleaned: text });
+          resolver({ raw: text, cleaned: text, disposition });
         },
         onCleaned: () => {},
+        onStream: (event) => {
+          // Forward live plugin stream events (agent tokens) to the pill
+          // panel. On streamStart, expand the panel so it appears immediately.
+          if (event.type === "streamStart") {
+            panelOpenRef.current = true;
+            setPanelOpen(true);
+            window.api?.expandPillPanel?.(pillSideRef.current).then((r) => {
+              if (r && r.direction) setPanelDirection(r.direction);
+            });
+          }
+          window.api?.sendStreamEventToPanel?.(event);
+        },
         onError: (msg, code) => {
           const resolver = streamResolverRef.current;
           // Cloud auth expiry and usage limits are terminal — don't fall back
@@ -764,6 +859,19 @@ export default function AppPage(): React.JSX.Element {
   const hidePill = useCallback(() => {
     setPillState("idle");
     setPendingCount(0);
+    setPluginBadge(null);
+    // End the agent session if the panel was open — otherwise the
+    // conversation stays active and the next trigger appends to it
+    // instead of starting fresh.
+    if (panelOpenRef.current && panelPluginSlugRef.current) {
+      void apiFetch(
+        `/api/plugins/${panelPluginSlugRef.current}/agent/session/end`,
+        { method: "POST" },
+      ).catch(() => {});
+      window.api?.collapsePillPanel?.();
+    }
+    panelOpenRef.current = false;
+    setPanelOpen(false);
     wantsMicRef.current = false;
     pillActiveRef.current = false;
     queueRef.current = [];
@@ -1163,7 +1271,9 @@ export default function AppPage(): React.JSX.Element {
     const isTop =
       pos === "top-center" || pos === "top-right" || pos === "custom-top";
     setPillAlign(isTop ? "start" : "end");
-    setPillSide(pos?.endsWith("right") ? "right" : "center");
+    const side = pos?.endsWith("right") ? "right" : ("center" as const);
+    setPillSide(side);
+    pillSideRef.current = side;
   }, []);
 
   useEffect(() => {
@@ -1272,12 +1382,78 @@ export default function AppPage(): React.JSX.Element {
     };
   }, [applyPillPosition]);
 
+  // ---- Pill panel plugin ----
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount to configure the panel + install listeners; hidePill is stable and only read inside the collapse handler.
+  useEffect(() => {
+    getClient()
+      .api.plugins.$get()
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        const plugins = (data as { plugins?: unknown[] } | null)?.plugins;
+        if (!Array.isArray(plugins)) return;
+        for (const p of plugins as {
+          slug: string;
+          enabled: boolean;
+          pill?: {
+            id: string;
+            entry: string;
+            expand: { width: number; height: number };
+          };
+        }[]) {
+          if (p.pill && p.enabled) {
+            panelPluginSlugRef.current = p.slug;
+            panelWidthRef.current = p.pill.expand.width;
+            window.api?.configurePillPanel?.(
+              p.slug,
+              p.pill.id,
+              p.pill.entry,
+              p.pill.expand,
+              readThemeTokens(),
+            );
+            break;
+          }
+        }
+      })
+      .catch(() => {});
+
+    const removeBadge = window.api?.onPillBadge?.((text) => {
+      setPluginBadge(text);
+    });
+    // When the panel collapses (X button or click-outside), the pill is no
+    // longer showing an agent exchange — hide the window, reset the flag, and
+    // tell the plugin the session ended so the next trigger starts a fresh
+    // conversation.
+    const removeCollapsed = window.api?.onPillPanelCollapsed?.(() => {
+      panelOpenRef.current = false;
+      setPanelOpen(false);
+      if (panelPluginSlugRef.current) {
+        void apiFetch(
+          `/api/plugins/${panelPluginSlugRef.current}/agent/session/end`,
+          { method: "POST" },
+        ).catch(() => {});
+      }
+      if (stateRef.current === "idle") hidePill();
+    });
+    return () => {
+      removeBadge?.();
+      removeCollapsed?.();
+    };
+  }, []);
+
   // ---- Hotkey handlers ----
   useEffect(() => {
     const removeDown = window.api.onHotkeyDown(() => {
       // hidePill() clears pillActiveRef before React re-renders idle state.
       if (!pillActiveRef.current) {
         stateRef.current = "idle";
+      }
+      // While the agent panel is open, a hotkey press is a follow-up: keep the
+      // panel from collapsing when the mic pulls focus, and record into it.
+      if (panelOpenRef.current) {
+        if (stateRef.current === "idle") {
+          startRecording(false);
+          return;
+        }
       }
       const s = stateRef.current;
       if (s === "idle") {
@@ -1308,10 +1484,13 @@ export default function AppPage(): React.JSX.Element {
       } else if (
         stateRef.current === "transcribing" &&
         !wantsMicRef.current &&
-        isTranscriptionIdle()
+        isTranscriptionIdle() &&
+        // Don't hide while the agent panel is open — the user is mid-exchange.
+        !panelOpenRef.current
       ) {
         hidePill();
       }
+      // (Blur-close is fully disabled while expanded; no unsuppress needed.)
     });
     const removeCancel = window.api.onPillCancel(() => {
       if (stateRef.current !== "idle") cancelRecording();
@@ -1361,11 +1540,13 @@ export default function AppPage(): React.JSX.Element {
           : "glow-idle";
 
   const badge =
-    state === "recording"
-      ? formatTimer(elapsed)
-      : state === "transcribing" && pendingCount > 0
-        ? `x${pendingCount}`
-        : null;
+    pluginBadge !== null
+      ? pluginBadge
+      : state === "recording"
+        ? formatTimer(elapsed)
+        : state === "transcribing" && pendingCount > 0
+          ? `x${pendingCount}`
+          : null;
 
   const showBars =
     state === "initializing" ||
@@ -1412,7 +1593,18 @@ export default function AppPage(): React.JSX.Element {
       className={`flex h-screen w-screen select-none ${
         pillAlign === "start" ? "items-start" : "items-end"
       } ${pillSide === "right" ? "justify-end pr-3" : "justify-center"}`}
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      style={
+        {
+          // Only enable drag on the full window when the pill panel is NOT
+          // expanded.  When expanded, the pill renderer's webContents fills
+          // the entire enlarged BrowserWindow — a full-window drag region
+          // would sit under the panel WebContentsView and intercept mouse
+          // events (scroll, click, text selection) before they reach the
+          // panel.  The pill bar itself always has its own drag region via
+          // pillBaseStyle, so dragging still works when collapsed.
+          WebkitAppRegion: panelOpen ? "no-drag" : "drag",
+        } as React.CSSProperties
+      }
     >
       <style>
         {`
@@ -1442,15 +1634,34 @@ export default function AppPage(): React.JSX.Element {
         }}
       >
         <div
-          className={topGlow}
+          className={panelOpen ? "" : topGlow}
           style={{
-            borderRadius: 25,
-            visibility: state === "idle" ? "hidden" : "visible",
+            borderRadius: panelOpen
+              ? panelDirection === "up"
+                ? "0 0 14px 14px"
+                : "14px 14px 0 0"
+              : 25,
+            visibility: state === "idle" && !panelOpen ? "hidden" : "visible",
+            transition: "border-radius 200ms cubic-bezier(0.4,0,0.2,1)",
           }}
         >
           <div
-            className="inline-flex items-center gap-2.5"
-            style={pillInnerStyle}
+            className="inline-flex items-center justify-center gap-2.5"
+            style={{
+              ...pillBaseStyle,
+              width: panelOpen ? panelWidthRef.current : PILL_WIDTH,
+              borderRadius: panelOpen
+                ? panelDirection === "up"
+                  ? "0 0 14px 14px"
+                  : "14px 14px 0 0"
+                : 25,
+              border: "1px solid var(--border)",
+              ...(panelOpen
+                ? panelDirection === "up"
+                  ? { borderTop: "none" }
+                  : { borderBottom: "none" }
+                : {}),
+            }}
           >
             <div
               style={

@@ -70,10 +70,19 @@ function extractFallbackLinks(text: string | undefined): FallbackLink[] {
     if (seen.has(url)) continue;
     seen.add(url);
     const scheme = url.slice(0, url.indexOf(":")).toLowerCase();
-    const isPayment =
-      scheme !== "http" && scheme !== "https"
-        ? true
-        : /pay|deeplink|upi|checkout/i.test(url);
+    const isCustomScheme = scheme !== "http" && scheme !== "https";
+
+    // Skip bare app-launch stubs (e.g. `gpay://upi/`, `phonepe://`) that carry
+    // no transaction — those show up in a payment *picker* and aren't a real
+    // action. Only surface a custom-scheme link when it has a meaningful
+    // path/query (an actual payment intent).
+    if (isCustomScheme) {
+      const rest = url.slice(url.indexOf("://") + 3);
+      const meaningful = rest.replace(/^upi\/?$/i, "").replace(/\/$/, "");
+      if (!meaningful) continue;
+    }
+
+    const isPayment = isCustomScheme || /pay|deeplink|upi|checkout/i.test(url);
     links.push({
       url,
       label: isPayment ? "Open payment app" : "Open link",
@@ -127,10 +136,18 @@ export function WidgetRenderer({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { srcDoc, src } = resolveContent(resource);
   const mcpApp = isMcpApp(resource);
-  // MCP Apps widgets render nothing until the host pushes data and then report
-  // their size, so start compact to avoid a big empty gap; legacy self-contained
-  // widgets get a reasonable default.
-  const [height, setHeight] = useState(mcpApp ? 40 : 180);
+  // A hosted widget (external `src`) or an MCP Apps widget only proves it has
+  // renderable content by posting a size/handshake message. If it never does,
+  // it's effectively blank — we hide the empty frame and fall back to the
+  // action button below. Inline `srcDoc` widgets are trusted (we can't measure
+  // them across the sandbox, and our own widgets render immediately).
+  const needsProof = !!src || mcpApp;
+  const [proven, setProven] = useState(false);
+
+  // Widgets that must prove themselves start compact to avoid flashing a big
+  // empty box during the grace period; trusted inline widgets get a real
+  // default. Once a size message arrives the frame grows to fit.
+  const [height, setHeight] = useState(needsProof ? 40 : 180);
 
   // Nothing to render — don't show an empty iframe.
   const hasContent = !!src || !!srcDoc?.trim();
@@ -170,6 +187,7 @@ export function WidgetRenderer({
           const h = Number(params.height);
           if (Number.isFinite(h) && h > 0) {
             setHeight(Math.max(60, Math.min(h, 600)));
+            setProven(true);
           }
           break;
         }
@@ -211,6 +229,9 @@ export function WidgetRenderer({
       const data = e.data as Record<string, unknown> | null;
       if (!data || typeof data !== "object") return;
 
+      // Any message from the frame proves it's alive and rendering.
+      setProven(true);
+
       // MCP Apps (JSON-RPC over postMessage): guest → host requests.
       if (data.jsonrpc === "2.0" && typeof data.method === "string") {
         handleMcpAppRequest(data);
@@ -247,6 +268,16 @@ export function WidgetRenderer({
     return () => window.removeEventListener("message", handleMessage);
   }, [handleMessage, hasContent]);
 
+  // A widget that must prove itself (hosted `src` / MCP Apps) gets a grace
+  // period to post a size/handshake. If it stays silent it rendered nothing —
+  // stop reserving space for the empty frame and let the fallback take over.
+  const [gaveUp, setGaveUp] = useState(false);
+  useEffect(() => {
+    if (!hasContent || !needsProof || proven) return;
+    const t = setTimeout(() => setGaveUp(true), 2500);
+    return () => clearTimeout(t);
+  }, [hasContent, needsProof, proven]);
+
   // Fallback action links pulled from the tool output (e.g. a payment
   // deep-link). These guarantee the user has a tappable affordance even when a
   // hosted widget renders blank or an inline widget lacks a visible control.
@@ -257,12 +288,16 @@ export function WidgetRenderer({
     [onAction],
   );
 
+  // Show the frame when it has content AND (it doesn't need to prove itself, or
+  // it has proven / not yet given up). A proven-blank frame is hidden.
+  const showFrame = hasContent && (!needsProof || proven || !gaveUp);
+
   // Nothing to show at all.
-  if (!hasContent && fallbackLinks.length === 0) return null;
+  if (!showFrame && fallbackLinks.length === 0) return null;
 
   return (
     <>
-      {hasContent && (
+      {showFrame && (
         <div className="widget-frame">
           <iframe
             ref={iframeRef}

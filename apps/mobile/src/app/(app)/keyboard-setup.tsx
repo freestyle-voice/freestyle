@@ -1,4 +1,5 @@
 import { useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import { Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -6,17 +7,38 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import {
+  checkMicPermission,
+  type MicPermission,
+  requestMicPermission,
+} from "@/lib/audio/recorder";
 
 const STEPS = [
+  "Grant microphone access below (Freestyle records your voice when you dictate).",
   "Open Settings › General › Keyboard › Keyboards.",
   "Tap “Add New Keyboard…” and choose Freestyle.",
   "Tap Freestyle in the list, then enable “Allow Full Access”.",
-  "In any app, long-press the globe and pick Freestyle to dictate.",
+  "In any app, switch to the Freestyle keyboard and tap the mic to dictate.",
 ];
 
 export default function KeyboardSetupScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const [micStatus, setMicStatus] = useState<MicPermission>("undetermined");
+
+  useEffect(() => {
+    void checkMicPermission().then(setMicStatus);
+  }, []);
+
+  const grantMic = useCallback(async () => {
+    const status =
+      (await checkMicPermission()) === "granted"
+        ? "granted"
+        : await requestMicPermission();
+    setMicStatus(status);
+    // If already denied, the prompt won't show again — send them to Settings.
+    if (status === "denied") void Linking.openSettings();
+  }, []);
 
   return (
     <ThemedView style={styles.container}>
@@ -40,10 +62,37 @@ export default function KeyboardSetupScreen() {
             Type anywhere with your voice
           </ThemedText>
           <ThemedText themeColor="mutedForeground" style={styles.lede}>
-            Add the Freestyle keyboard once, then dictate into any app. Full
-            Access is required so the keyboard can reach the microphone and
-            Freestyle Cloud.
+            Add the Freestyle keyboard once, then use it in any app. Tap the mic
+            and Freestyle opens to capture your voice, then drops the transcript
+            straight back into the field. Full Access lets the keyboard talk to
+            Freestyle and insert your text.
           </ThemedText>
+
+          <Pressable
+            onPress={grantMic}
+            disabled={micStatus === "granted"}
+            style={[
+              styles.micRow,
+              {
+                borderColor:
+                  micStatus === "granted" ? theme.primary : theme.border,
+              },
+            ]}
+          >
+            <View style={styles.switchLabel}>
+              <ThemedText style={styles.rowLabel}>Microphone access</ThemedText>
+              <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
+                {micStatus === "granted"
+                  ? "Granted — Freestyle can record your dictation."
+                  : micStatus === "denied"
+                    ? "Denied — tap to open Settings and enable it."
+                    : "Tap to grant microphone access."}
+              </ThemedText>
+            </View>
+            <ThemedText type="eyebrow" themeColor="primary">
+              {micStatus === "granted" ? "✓" : "Grant"}
+            </ThemedText>
+          </Pressable>
 
           <View style={styles.steps}>
             {STEPS.map((step, i) => (
@@ -91,6 +140,17 @@ const styles = StyleSheet.create({
   content: { paddingVertical: Spacing.four, gap: Spacing.four },
   title: { fontSize: 40, lineHeight: 42, letterSpacing: -1 },
   lede: { fontSize: 15, lineHeight: 22 },
+  micRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    padding: Spacing.three,
+  },
+  switchLabel: { flex: 1 },
+  rowLabel: { fontFamily: Fonts.sansSemiBold, fontSize: 15 },
+  rowHint: { fontSize: 13, lineHeight: 19, marginTop: 2 },
   steps: { gap: Spacing.three, marginTop: Spacing.two },
   step: { flexDirection: "row", alignItems: "flex-start", gap: Spacing.three },
   badge: {

@@ -2,8 +2,9 @@ import ExpoModulesCore
 
 /// Writes the dictation result the keyboard extension reads from the App Group
 /// container (`group.com.freestylevoice.app`). The keyboard can't use the
-/// microphone, so the app captures + transcribes and hands the final text off
-/// here; the keyboard inserts it when it reappears.
+/// microphone (iOS blocks mic capture in keyboard extensions), so the app
+/// captures + transcribes and hands the final text off here; the keyboard
+/// inserts it when it reappears.
 ///
 /// The App Group `UserDefaults` is the cross-process channel between the app and
 /// the keyboard — it needs no Apple Team ID at runtime and is sandboxed to

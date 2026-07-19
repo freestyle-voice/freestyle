@@ -1,12 +1,12 @@
 import Foundation
 
-/// Reads the transcript the containing app hands off through the App Group
-/// container (`group.com.freestylevoice.app`) after dictating.
+/// Reads the dictation transcript the containing app shares with the keyboard
+/// through the App Group container (`group.com.freestylevoice.app`).
 ///
-/// The keyboard extension can't use the microphone, so the app does the capture
-/// + cloud streaming and writes the final transcript here; the keyboard reads it
-/// when it reappears and inserts it into the host text field. The App Group is
-/// the cross-process channel — no Apple Team ID needed at runtime.
+/// The keyboard can't use the microphone (iOS blocks mic capture in keyboard
+/// extensions), so the mic button deep-links into the app, which records +
+/// streams and writes the final transcript here. When the keyboard reappears it
+/// inserts that text and clears the slot.
 enum SharedStore {
     static let appGroup = "group.com.freestylevoice.app"
 

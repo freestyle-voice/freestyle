@@ -1,10 +1,11 @@
 /**
  * Hands dictation results to the iOS keyboard extension.
  *
- * The keyboard can't use the microphone, so it opens this app to capture +
- * transcribe. When a dictation finishes, the app writes the final transcript
- * into the shared App Group container; the keyboard reads it (via
- * `SharedStore.swift`) when it reappears and inserts it into the host field.
+ * The keyboard can't use the microphone (iOS blocks mic capture in keyboard
+ * extensions), so its mic button opens this app to capture + transcribe. When a
+ * dictation finishes, the app writes the final transcript into the shared App
+ * Group container; the keyboard reads it (via `SharedStore.swift`) when it
+ * reappears and inserts it into the host field.
  *
  * No-op on Android (the keyboard is iOS-only) and when the native module is
  * unavailable (e.g. running in Expo Go).

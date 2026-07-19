@@ -6,11 +6,12 @@
  * reader), configures the Info.plist (keyboard service + Full Access request)
  * and entitlements (App Group), and embeds the .appex in the host app.
  *
- * Keyboard extensions can't use the microphone, so dictation is delegated to the
- * containing app: the mic button opens Freestyle via `freestyle://dictate`
- * (needs Full Access), the app captures + streams, and writes the transcript
- * into the App Group; the keyboard reads it via `SharedStore.swift` and inserts
- * it. Full Access also gates App Group access from the extension.
+ * The keyboard can't use the microphone (iOS blocks mic capture in keyboard
+ * extensions), so dictation is delegated to the containing app: the mic button
+ * opens Freestyle via `freestyle://dictate` (needs Full Access), the app
+ * captures + streams, and writes the transcript into the App Group; the keyboard
+ * reads it via `SharedStore.swift` and inserts it. Full Access also gates App
+ * Group and network access from the extension.
  */
 const {
   withXcodeProject,

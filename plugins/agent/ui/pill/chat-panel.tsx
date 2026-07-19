@@ -711,11 +711,26 @@ export function ChatPanel(): React.JSX.Element {
     window.freestyle?.pill?.collapse();
   }, []);
 
-  // A widget posted an action — route actionable ones back to the agent as a
-  // follow-up turn (the server translates tool/prompt/intent/link into a
-  // prompt). `notify` is informational only, so skip the round-trip.
+  // A widget posted an action.
+  //  - `notify` is informational only — ignore.
+  //  - `link` (and `intent` carrying a url) is a deep-link the widget wants
+  //    opened directly (e.g. a `upi://`/`gpay://` payment link). Hand it to the
+  //    OS via the host bridge instead of round-tripping through the agent.
+  //  - `tool` / `prompt` / plain `intent` continue the agent turn: the server
+  //    translates them into a follow-up prompt.
   const handleWidgetAction = useCallback((action: WidgetAction) => {
     if (action.type === "notify") return;
+
+    const url = action.payload?.url;
+    if (
+      (action.type === "link" || action.type === "intent") &&
+      typeof url === "string" &&
+      url.trim()
+    ) {
+      window.freestyle?.invoke("openExternal", { url });
+      return;
+    }
+
     void postJson<{ ok?: boolean; error?: string }>(
       "/widget-action",
       action,

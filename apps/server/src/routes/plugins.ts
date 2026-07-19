@@ -69,6 +69,11 @@ const PLUGIN_UI_CSP =
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
   "font-src 'self' https://fonts.gstatic.com; " +
   "img-src 'self' data: https:; " +
+  // Interactive MCP UI widgets render in sandboxed iframes: inline HTML via
+  // `srcdoc` (origin 'self'/opaque) and hosted widgets via an https `src`.
+  // Allowing `https:` here lets a hosted widget (e.g. a payment page) load;
+  // the iframe sandbox (no allow-same-origin) still isolates it from the host.
+  "frame-src 'self' data: https:; " +
   "connect-src 'self'";
 
 const MIME_BY_EXT: Record<string, string> = {

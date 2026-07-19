@@ -136,6 +136,11 @@ export async function connectMcpServer(
           }
         }
 
+        // Some servers embed a UI resource in the result *by reference*: a
+        // `{type:"resource"}` block with a `uri` but no inline `text`/`blob`.
+        // Fetch the referenced resource so the widget has content to render.
+        await hydrateResourceRefs(client, content);
+
         return content.length > 0 ? content : result;
       },
     });
@@ -152,28 +157,104 @@ export async function connectMcpServer(
 }
 
 /**
- * Whether a resource is a genuine MCP UI (mcp-ui / MCP Apps) widget.
+ * Whether a resource is an interactive MCP UI widget.
  *
- * A real widget is flagged by an explicit marker — NOT merely `text/html`,
- * since many tools legitimately return `text/html` result snippets that are
- * not interactive widgets. We require either:
- *  - the MCP Apps profile MIME (`text/html;profile=mcp-app`), or
- *  - the mcp-ui MIME variants (`application/vnd.mcp-ui+html`, etc.), or
- *  - the `ui://` URI scheme (mcp-ui convention).
+ * Servers use several conventions, so we recognize any of:
+ *  - the MCP Apps profile MIME (`text/html;profile=mcp-app`);
+ *  - the mcp-ui MIME variants (`application/vnd.mcp-ui+html`, etc.);
+ *  - the OpenAI Apps SDK MIME (`text/html+skybridge`);
+ *  - the `ui://` URI scheme (mcp-ui convention);
+ *  - a `text/html` resource whose body actually contains HTML markup, or an
+ *    `http(s)` resource URI (hosted widget) — these are the fallbacks for
+ *    servers (e.g. Swiggy) that don't stamp a widget-specific marker.
+ *
+ * A plain `text/plain` / JSON resource is NOT a widget.
  */
 export function isUiResource(resource: {
   mimeType?: unknown;
   uri?: unknown;
+  text?: unknown;
+  blob?: unknown;
 }): boolean {
   const mime = String(resource.mimeType ?? "").toLowerCase();
   const uri = String(resource.uri ?? "").toLowerCase();
-  return (
+
+  // Explicit widget markers.
+  if (
     mime.includes("profile=mcp-app") ||
     mime.includes("mcp-app") ||
     mime.includes("mcp-ui") ||
     mime.includes("mcp+ui") ||
+    mime.includes("skybridge") ||
     uri.startsWith("ui://")
-  );
+  ) {
+    return true;
+  }
+
+  // Hosted widget: an http(s) resource served as HTML is meant to be embedded.
+  if (uri.startsWith("http") && mime.includes("html")) return true;
+
+  // Inline HTML body under a text/html resource — treat as a widget when the
+  // body actually looks like markup (not an escaped snippet in JSON output).
+  if (mime.startsWith("text/html")) {
+    const body =
+      (typeof resource.text === "string" ? resource.text : "") ||
+      (typeof resource.blob === "string" ? "\u0000blob" : "");
+    return body.length > 0;
+  }
+
+  return false;
+}
+
+/**
+ * Fetch UI resources that are embedded by reference. A `{type:"resource"}`
+ * block may carry only a `uri` (no inline `text`/`blob`); for a `ui://` or
+ * `mcp://`/app resource we call `readResource` and inline the returned body so
+ * the widget can render. `http(s)` URIs are left as-is — the renderer loads
+ * those directly in the iframe.
+ */
+async function hydrateResourceRefs(
+  client: Client,
+  content: unknown[],
+): Promise<void> {
+  for (const part of content) {
+    if (typeof part !== "object" || part === null) continue;
+    const p = part as {
+      type?: string;
+      resource?: Record<string, unknown>;
+    };
+    if (p.type !== "resource" || !p.resource) continue;
+    const r = p.resource;
+    const uri = typeof r.uri === "string" ? r.uri : "";
+    const hasInline =
+      (typeof r.text === "string" && r.text.length > 0) ||
+      (typeof r.blob === "string" && r.blob.length > 0);
+    if (hasInline || !uri) continue;
+    // External URLs render directly in the iframe — no fetch needed.
+    if (uri.startsWith("http")) continue;
+    try {
+      const res = await client.readResource({ uri });
+      const fetched = (res.contents ?? []).find(
+        (rc) =>
+          (typeof (rc as { text?: unknown }).text === "string" &&
+            (rc as { text: string }).text.length > 0) ||
+          typeof (rc as { blob?: unknown }).blob === "string",
+      );
+      if (fetched) {
+        if (typeof (fetched as { text?: unknown }).text === "string") {
+          r.text = (fetched as { text: string }).text;
+        }
+        if (typeof (fetched as { blob?: unknown }).blob === "string") {
+          r.blob = (fetched as { blob: string }).blob;
+        }
+        if (!r.mimeType && (fetched as { mimeType?: unknown }).mimeType) {
+          r.mimeType = (fetched as { mimeType: string }).mimeType;
+        }
+      }
+    } catch {
+      // Fetch failed — leave the ref as-is (renderer will skip if empty).
+    }
+  }
 }
 
 /** Pull the MCP Apps `_meta.ui.resourceUri` from a tool definition, if present. */

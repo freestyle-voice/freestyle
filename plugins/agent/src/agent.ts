@@ -74,12 +74,16 @@ function extractUiResource(output: unknown): UiResource | undefined {
     if (p.type !== "resource" || !p.resource) continue;
     const r = p.resource;
     if (!isUiResource(r)) continue;
+    const uri = String(r.uri ?? "");
     const text = typeof r.text === "string" ? r.text : undefined;
     const blob = typeof r.blob === "string" ? r.blob : undefined;
-    // A widget with no renderable content is not worth showing.
-    if (!text?.trim() && !blob?.trim()) continue;
+    // A widget needs *something* to render: inline HTML, a base64 body, or an
+    // external URL the iframe can load. Otherwise it's an empty shell — skip.
+    const hasBody = !!text?.trim() || !!blob?.trim();
+    const isExternal = uri.startsWith("http");
+    if (!hasBody && !isExternal) continue;
     return {
-      uri: String(r.uri ?? ""),
+      uri,
       mimeType: String(r.mimeType ?? "text/html"),
       text,
       blob,

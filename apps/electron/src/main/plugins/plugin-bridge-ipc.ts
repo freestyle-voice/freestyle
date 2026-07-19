@@ -1,9 +1,34 @@
 import { createAppLogger } from "@freestyle-voice/utils";
-import { clipboard, ipcMain } from "electron";
+import { clipboard, ipcMain, shell } from "electron";
 import type { HostActions } from "freestyle-voice";
 import { getPillPanelController, handlePillAction } from "./pill-panel.js";
 
 const log = createAppLogger("plugin-bridge");
+
+/** Schemes a widget is allowed to open via `openExternal`. */
+const OPENABLE_SCHEMES = new Set([
+  "http:",
+  "https:",
+  "mailto:",
+  "tel:",
+  // UPI / payment app deep-links.
+  "upi:",
+  "gpay:",
+  "phonepe:",
+  "paytmmp:",
+  "bhim:",
+  "credpay:",
+  "super:",
+]);
+
+/** Reject `file:`, `javascript:`, and other unexpected/unsafe schemes. */
+function isOpenableUrl(url: string): boolean {
+  try {
+    return OPENABLE_SCHEMES.has(new URL(url).protocol);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Shared `plugin-bridge:*` IPC used by *every* plugin `WebContentsView` — the
@@ -66,6 +91,19 @@ export function registerPluginBridgeIpc(): void {
       if (channel === "copy") {
         const text = (payload as HostActions["copy"]).text;
         if (typeof text === "string") clipboard.writeText(text);
+        return;
+      }
+
+      // `openExternal` hands a URL (http(s) or a custom scheme like a `upi://`
+      // payment deep-link) to the OS. Window-agnostic so widgets in the pill
+      // can trigger it. Only allow safe-looking schemes.
+      if (channel === "openExternal") {
+        const url = (payload as HostActions["openExternal"]).url;
+        if (typeof url === "string" && isOpenableUrl(url)) {
+          void shell.openExternal(url);
+        } else {
+          log.warn(`openExternal blocked for url: ${String(url)}`);
+        }
         return;
       }
 

@@ -58,10 +58,18 @@ function resolveContent(resource: UiResource): {
     if (url?.startsWith("http")) return { src: url };
   }
 
-  if (typeof resource.text === "string") return { srcDoc: resource.text };
-  if (typeof resource.blob === "string") {
+  // Inline content takes precedence when present.
+  if (typeof resource.text === "string" && resource.text.trim()) {
+    return { srcDoc: resource.text };
+  }
+  if (typeof resource.blob === "string" && resource.blob.trim()) {
     return { srcDoc: decodeBase64Utf8(resource.blob) };
   }
+
+  // Hosted widget: no inline body, but the resource URI is an http(s) page the
+  // iframe can load directly.
+  if (resource.uri?.startsWith("http")) return { src: resource.uri };
+
   return { srcDoc: "" };
 }
 

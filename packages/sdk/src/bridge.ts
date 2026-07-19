@@ -49,6 +49,13 @@ export interface HostActions {
   toast: { message: string; variant?: "info" | "success" | "error" };
   /** Navigate the host to an app route (e.g. back to the Plugins hub). */
   navigate: { to: string };
+  /**
+   * Open a URL in the OS default handler — an external browser for http(s), or
+   * the registered app for a custom scheme (e.g. a `upi://` / `gpay://` payment
+   * deep-link). Used by interactive widgets to hand off actions the host can't
+   * complete in-process.
+   */
+  openExternal: { url: string };
   /** Expand the pill panel (resize the pill window). */
   "pill:expand": Record<string, never>;
   /** Collapse the pill panel (shrink back to pill chrome). */

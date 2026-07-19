@@ -328,128 +328,98 @@ body {
   color: var(--foreground);
 }
 
-/* ---- Settings dialog ---- */
+/* ---- Settings view (full-page form) ---- */
 
-.dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(22, 20, 15, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  animation: fade-in 120ms ease;
-}
-
-@keyframes fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-.dialog {
-  width: min(720px, calc(100vw - 40px));
-  max-height: calc(100vh - 60px);
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 12px 40px -6px rgba(0, 0, 0, 0.2);
+.settings-view {
   display: flex;
   flex-direction: column;
-  animation: dialog-rise 180ms ease;
+  flex: 1;
+  min-height: 0;
+  animation: slide-in 180ms ease;
 }
 
-@keyframes dialog-rise {
-  from { opacity: 0; transform: translateY(6px) scale(0.98); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.dialog-header {
+.settings-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--border);
+  gap: 10px;
+  padding-bottom: 12px;
   flex-shrink: 0;
 }
 
-.dialog-title {
+.settings-title {
   margin: 0;
   font-size: 15px;
   font-weight: 500;
+  flex: 1;
 }
 
-.dialog-close {
+.settings-toolbar-right {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: none;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-}
-.dialog-close:hover {
-  color: var(--foreground);
-  border-color: var(--border);
+  gap: 6px;
 }
 
-.dialog-body {
+.settings-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
+  padding-bottom: 2rem;
 }
 
-/* ---- Dialog sections (flat form, not nested cards) ---- */
+/* ---- Form sections ---- */
 
-.dlg-section {
+.form-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px 0;
+  gap: 10px;
+  padding: 16px 0;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
-.dlg-section:last-child {
+.form-section:first-child {
+  padding-top: 0;
+}
+.form-section:last-child {
   border-bottom: none;
 }
 
-.dlg-section-head {
+.section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
-.dlg-row {
+.section-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-row {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.dlg-label {
-  font-size: 12px;
+.field-label {
+  font-size: 11.5px;
   font-weight: 500;
   flex-shrink: 0;
-  min-width: 80px;
-  color: var(--foreground);
-}
-
-.dlg-label-sm {
-  font-size: 11px;
-  font-weight: 500;
-  flex-shrink: 0;
-  min-width: 64px;
+  min-width: 68px;
   color: var(--muted-foreground);
 }
 
-/* ---- Dialog list items (MCP servers, skills) ---- */
+/* ---- Form cards (MCP servers, skills) ---- */
 
-.dlg-item {
+.form-card {
   border: 1px solid var(--border);
   border-radius: 9px;
   padding: 10px 12px;
@@ -459,20 +429,36 @@ body {
   background: var(--card);
 }
 
-.dlg-item + .dlg-item {
+.form-card + .form-card {
   margin-top: 6px;
 }
 
-.dlg-item-head {
+.form-card-head {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.dlg-item-fields {
+.form-card-body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* ---- Primary button ---- */
+
+.btn-primary {
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 500;
+}
+.btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 85%, black);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* ---- Shared form elements ---- */

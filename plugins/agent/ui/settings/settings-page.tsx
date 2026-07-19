@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useRef, useState } from "react";
+import { useState } from "react";
 import { del, getJson, putJson } from "../shared/api";
 import {
   type AgentConfig,
@@ -7,7 +7,7 @@ import {
   type SavedConversation,
 } from "../shared/types";
 import { ConversationViewer } from "./conversation-viewer";
-import { SettingsDialog } from "./settings-dialog";
+import { SettingsForm } from "./settings-form";
 
 const EMPTY: AgentConfig = {
   systemPrompt: "",
@@ -18,8 +18,6 @@ const EMPTY: AgentConfig = {
   builtinToolGroups: { ...DEFAULT_TOOL_GROUPS },
   computerUseMode: "guided",
 };
-
-const SAVE_DEBOUNCE_MS = 500;
 
 function TrashIcon(): React.JSX.Element {
   return (
@@ -93,11 +91,12 @@ function formatDate(ts: number): string {
 const configKey = ["agent-config"] as const;
 const historyKey = ["agent-conversations"] as const;
 
+type View = "conversations" | "settings";
+
 export function SettingsPage(): React.JSX.Element {
   const queryClient = useQueryClient();
+  const [view, setView] = useState<View>("conversations");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---- Config query ----
 
@@ -106,7 +105,7 @@ export function SettingsPage(): React.JSX.Element {
     queryFn: async () => (await getJson<AgentConfig>("/config")) ?? EMPTY,
   });
 
-  // ---- Conversations query (polls every 5s) ----
+  // ---- Conversations query ----
 
   const { data: conversations = [], refetch: refetchHistory } = useQuery({
     queryKey: historyKey,
@@ -117,24 +116,6 @@ export function SettingsPage(): React.JSX.Element {
       return data?.conversations ?? [];
     },
   });
-
-  // ---- Config save (debounced, optimistic) ----
-
-  const update = useCallback(
-    (patch: Partial<AgentConfig>) => {
-      queryClient.setQueryData<AgentConfig>(configKey, (prev) => {
-        if (!prev) return prev;
-        return { ...prev, ...patch };
-      });
-
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        const current = queryClient.getQueryData<AgentConfig>(configKey);
-        if (current) void putJson<AgentConfig>("/config", current);
-      }, SAVE_DEBOUNCE_MS);
-    },
-    [queryClient],
-  );
 
   // ---- Delete single conversation ----
 
@@ -168,6 +149,25 @@ export function SettingsPage(): React.JSX.Element {
     );
   }
 
+  // ---- Settings view ----
+
+  if (view === "settings") {
+    return (
+      <main className="page">
+        <SettingsForm
+          config={config}
+          onSave={(updated) => {
+            queryClient.setQueryData<AgentConfig>(configKey, updated);
+            setView("conversations");
+          }}
+          onBack={() => setView("conversations")}
+        />
+      </main>
+    );
+  }
+
+  // ---- Conversations view ----
+
   return (
     <main className="page">
       <header className="head">
@@ -182,7 +182,7 @@ export function SettingsPage(): React.JSX.Element {
         <button
           type="button"
           className="settings-btn"
-          onClick={() => setSettingsOpen(true)}
+          onClick={() => setView("settings")}
           aria-label="Agent settings"
           title="Settings"
         >
@@ -256,14 +256,6 @@ export function SettingsPage(): React.JSX.Element {
           />
         )}
       </div>
-
-      {settingsOpen && config && (
-        <SettingsDialog
-          config={config}
-          onUpdate={update}
-          onClose={() => setSettingsOpen(false)}
-        />
-      )}
     </main>
   );
 }

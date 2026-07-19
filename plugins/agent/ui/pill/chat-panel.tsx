@@ -334,6 +334,29 @@ function displayToolName(name: string): string {
   return i >= 0 ? name.slice(i + 2) : name;
 }
 
+function ToolCallCopyBtn({ text }: { text: string }): React.JSX.Element {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      window.freestyle?.invoke("copy", { text });
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    },
+    [text],
+  );
+  return (
+    <button
+      type="button"
+      className="tool-copy-btn"
+      onClick={handleCopy}
+      title={copied ? "Copied" : "Copy output"}
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+    </button>
+  );
+}
+
 function ToolCallCard({ tc }: { tc: TrackedToolCall }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const toolName = displayToolName(tc.tool);
@@ -363,9 +386,12 @@ function ToolCallCard({ tc }: { tc: TrackedToolCall }): React.JSX.Element {
         {tc.running ? (
           <span className="tool-card-spinner" />
         ) : (
-          <span className="tool-card-chevron">
-            {expanded ? "\u25B4" : "\u25BE"}
-          </span>
+          <>
+            {tc.output !== undefined && <ToolCallCopyBtn text={tc.output} />}
+            <span className="tool-card-chevron">
+              {expanded ? "\u25B4" : "\u25BE"}
+            </span>
+          </>
         )}
       </button>
       {!expanded && !tc.running && inputSummary && (

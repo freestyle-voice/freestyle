@@ -23,6 +23,32 @@ import { closeConnections, connectEnabledServers } from "./mcp.js";
 const MAX_STEPS = 8;
 
 /**
+ * Extract human-readable text from a tool result. MCP tools return content
+ * arrays like `[{type:"text", text:"..."}]`. Built-in tools return plain
+ * strings. This normalizes both to a displayable string.
+ */
+function extractToolOutput(output: unknown): string {
+  if (typeof output === "string") return output;
+  if (Array.isArray(output)) {
+    const texts: string[] = [];
+    for (const part of output) {
+      if (typeof part === "object" && part !== null) {
+        const p = part as Record<string, unknown>;
+        if (p.type === "text" && typeof p.text === "string") {
+          texts.push(p.text);
+        } else if (p.type === "image") {
+          texts.push("[image]");
+        } else if (p.type === "resource") {
+          texts.push(`[resource: ${(p as Record<string, unknown>).uri ?? ""}]`);
+        }
+      }
+    }
+    if (texts.length > 0) return texts.join("\n");
+  }
+  return JSON.stringify(output ?? "");
+}
+
+/**
  * Run one agent turn: connect the configured MCP servers, hand their tools to
  * the model along with the conversation, and stream the reply. `onDelta` fires
  * for each text chunk as it generates (drives the live pill panel); the full
@@ -119,10 +145,7 @@ export async function runAgentTurn(opts: {
             callId: tc.toolCallId,
             tool: tc.toolName,
             input: (tc.input ?? {}) as Record<string, unknown>,
-            output:
-              typeof toolResult?.output === "string"
-                ? toolResult.output
-                : JSON.stringify(toolResult?.output ?? ""),
+            output: extractToolOutput(toolResult?.output),
             isError: false,
           });
         }

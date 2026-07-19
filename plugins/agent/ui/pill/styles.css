@@ -509,6 +509,33 @@ body {
   opacity: 0.5;
 }
 
+.tool-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: none;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 120ms, color 120ms;
+}
+.tool-card:hover .tool-copy-btn {
+  opacity: 0.6;
+}
+.tool-copy-btn:hover {
+  opacity: 1 !important;
+  color: var(--foreground);
+}
+.tool-copy-btn svg {
+  width: 11px;
+  height: 11px;
+}
+
 .tool-card-spinner {
   width: 9px;
   height: 9px;

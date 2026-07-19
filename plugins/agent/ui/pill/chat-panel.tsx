@@ -724,32 +724,30 @@ export function ChatPanel(): React.JSX.Element {
               )}
             </div>
           ))}
+          {toolCalls.length > 0 && (
+            <div className="tool-calls">
+              {toolCalls.map((tc, i) => (
+                <ToolCallCard key={i} tc={tc} />
+              ))}
+            </div>
+          )}
           {streaming && (
-            <>
-              {toolCalls.length > 0 && (
-                <div className="tool-calls">
-                  {toolCalls.map((tc, i) => (
-                    <ToolCallCard key={i} tc={tc} />
-                  ))}
-                </div>
-              )}
-              <div className="turn assistant">
-                <span className="turn-role assistant">Agent</span>
-                <div className="turn-text markdown">
-                  {streamingText ? (
-                    <Markdown remarkPlugins={[remarkGfm]}>
-                      {streamingText}
-                    </Markdown>
-                  ) : (
-                    <span className="typing">
-                      <span />
-                      <span />
-                      <span />
-                    </span>
-                  )}
-                </div>
+            <div className="turn assistant">
+              <span className="turn-role assistant">Agent</span>
+              <div className="turn-text markdown">
+                {streamingText ? (
+                  <Markdown remarkPlugins={[remarkGfm]}>
+                    {streamingText}
+                  </Markdown>
+                ) : (
+                  <span className="typing">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                )}
               </div>
-            </>
+            </div>
           )}
           <div ref={endRef} />
         </div>

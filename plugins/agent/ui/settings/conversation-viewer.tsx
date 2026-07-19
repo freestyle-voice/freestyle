@@ -1,10 +1,55 @@
 import { useCallback, useState } from "react";
-import type { SavedConversation } from "../shared/types";
+import type { SavedConversation, StoredToolCall } from "../shared/types";
 
 interface Props {
   conversation: SavedConversation;
   onClose: () => void;
   onDelete: () => void;
+}
+
+/** Strip the `serverId__` prefix from namespaced MCP tool names. */
+function displayToolName(name: string): string {
+  const i = name.indexOf("__");
+  return i >= 0 ? name.slice(i + 2) : name;
+}
+
+/** Compact, read-only tool call display for archived conversations. */
+function ToolCallList({
+  toolCalls,
+}: {
+  toolCalls: StoredToolCall[];
+}): React.JSX.Element {
+  return (
+    <div className="detail-tools">
+      {toolCalls.map((tc, i) => (
+        <ArchivedToolCall key={tc.callId || i} tc={tc} />
+      ))}
+    </div>
+  );
+}
+
+function ArchivedToolCall({ tc }: { tc: StoredToolCall }): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className={`detail-tool${tc.isError ? " tool-error" : ""}`}>
+      <button
+        type="button"
+        className="detail-tool-head"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <span className="detail-tool-name">{displayToolName(tc.tool)}</span>
+        <span className="detail-tool-chevron">{expanded ? "▴" : "▾"}</span>
+      </button>
+      {expanded && (
+        <div className="detail-tool-body">
+          <pre className="detail-tool-pre">
+            {JSON.stringify(tc.input, null, 2)}
+          </pre>
+          {tc.output && <pre className="detail-tool-pre">{tc.output}</pre>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function CopyIcon(): React.JSX.Element {
@@ -114,6 +159,11 @@ export function ConversationViewer({
               </span>
               <CopyButton text={msg.content} />
             </div>
+            {msg.role === "assistant" &&
+              msg.toolCalls &&
+              msg.toolCalls.length > 0 && (
+                <ToolCallList toolCalls={msg.toolCalls} />
+              )}
             <div className="detail-turn-text">{msg.content}</div>
           </div>
         ))}

@@ -328,6 +328,77 @@ body {
   color: var(--foreground);
 }
 
+/* ---- Archived tool calls ---- */
+
+.detail-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 2px 0 6px;
+}
+
+.detail-tool {
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--primary) 4%, var(--card));
+  border-left: 2px solid color-mix(in srgb, var(--primary) 40%, var(--border));
+  overflow: hidden;
+}
+
+.detail-tool.tool-error {
+  border-left-color: var(--destructive);
+}
+
+.detail-tool-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  background: none;
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.detail-tool-name {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.detail-tool-chevron {
+  font-size: 8px;
+  color: var(--muted-foreground);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.detail-tool-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 8px 6px;
+}
+
+.detail-tool-pre {
+  margin: 0;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--input) 60%, transparent);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow-y: auto;
+  color: var(--muted-foreground);
+}
+
 /* ---- Settings view (full-page form) ---- */
 
 .settings-view {

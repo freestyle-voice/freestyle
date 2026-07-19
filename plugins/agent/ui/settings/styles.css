@@ -390,6 +390,14 @@ body {
   transition: opacity 120ms, background 120ms, color 120ms;
 }
 .detail-turn:hover .copy-msg-btn { opacity: 1; }
+/* Header copy (whole conversation) is not inside a .detail-turn, so it has no
+   hover parent to reveal it — keep it always visible. */
+.copy-msg-btn.always-visible {
+  opacity: 1;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+}
 .copy-msg-btn:hover {
   background: color-mix(in srgb, var(--border) 60%, transparent);
   color: var(--foreground);

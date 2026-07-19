@@ -118,9 +118,12 @@ function ArchivedToolCall({ tc }: { tc: StoredToolCall }): React.JSX.Element {
 function CopyButton({
   text,
   label,
+  alwaysVisible = false,
 }: {
   text: string;
   label: string;
+  /** When true, the button stays visible instead of appearing on row hover. */
+  alwaysVisible?: boolean;
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false);
 
@@ -133,7 +136,7 @@ function CopyButton({
   return (
     <button
       type="button"
-      className="copy-msg-btn"
+      className={`copy-msg-btn${alwaysVisible ? " always-visible" : ""}`}
       onClick={handleCopy}
       aria-label={copied ? "Copied" : label}
       title={copied ? "Copied" : label}
@@ -195,6 +198,7 @@ export function ConversationViewer({
         <CopyButton
           text={conversationToMarkdown(conversation)}
           label="Copy whole conversation"
+          alwaysVisible
         />
         <button
           type="button"

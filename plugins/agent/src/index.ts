@@ -45,6 +45,21 @@ function uid(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 }
 
+/**
+ * Escape a string for safe interpolation into HTML text/attribute content.
+ * The OAuth callback echoes query params (error, error_description) and
+ * server error messages into an HTML page; without escaping these are a
+ * reflected-XSS vector.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function titleFromMessages(messages: ConversationEntry[]): string {
   const first = messages.find((m) => m.role === "user");
   if (!first) return "Conversation";
@@ -61,12 +76,13 @@ function titleFromMessages(messages: ConversationEntry[]): string {
 function createPartAccumulator(): {
   addText: (delta: string) => void;
   addTool: (tool: StoredToolCall) => void;
-  finish: () => AssistantPart[];
+  finish: (fallbackText?: string) => AssistantPart[];
   toolCalls: () => StoredToolCall[];
 } {
   const parts: AssistantPart[] = [];
   const tools: StoredToolCall[] = [];
   let buffer = "";
+  let sawText = false;
 
   const flushText = (): void => {
     if (buffer) {
@@ -77,6 +93,7 @@ function createPartAccumulator(): {
 
   return {
     addText: (delta) => {
+      if (delta) sawText = true;
       buffer += delta;
     },
     addTool: (tool) => {
@@ -84,8 +101,15 @@ function createPartAccumulator(): {
       tools.push(tool);
       parts.push({ type: "tool", tool });
     },
-    finish: () => {
+    // `fallbackText` covers a tools-only turn: the model streamed no text, so
+    // `runAgentTurn` returns a synthetic message. Without this the persisted
+    // `parts` would carry only tool parts and the message text (kept in
+    // `content`) would never render, since renderers prefer `parts`.
+    finish: (fallbackText) => {
       flushText();
+      if (!sawText && fallbackText) {
+        parts.push({ type: "text", text: fallbackText });
+      }
       return parts;
     },
     toolCalls: () => tools,
@@ -236,21 +260,33 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     broadcastSSE(event);
   }
 
+  /**
+   * Serialize a unit of work against the single conversation state. All turns
+   * (voice-triggered, widget-action, regenerate) mutate the shared
+   * `conversation` array, so they must run one at a time to avoid interleaved
+   * pushes corrupting the thread.
+   */
+  async function serializeTurn<T>(work: () => Promise<T>): Promise<T> {
+    const previousTurn = turnChain;
+    let resolveThisTurn: () => void;
+    turnChain = new Promise<void>((r) => {
+      resolveThisTurn = r;
+    });
+    try {
+      await previousTurn;
+      return await work();
+    } finally {
+      resolveThisTurn!();
+    }
+  }
+
   async function executeAgentTurn(
     prompt: string,
     llm: PluginLlm | undefined,
     signal: AbortSignal | undefined,
     pipelineEmit: ((event: PluginStreamEvent) => void) | undefined,
   ): Promise<void> {
-    const previousTurn = turnChain;
-    let resolveThisTurn: () => void;
-    turnChain = new Promise<void>((r) => {
-      resolveThisTurn = r;
-    });
-
-    try {
-      await previousTurn;
-
+    await serializeTurn(async () => {
       if (!conversationActive) {
         // Start a fresh conversation (new entry in history on first persist).
         conversation = [];
@@ -335,7 +371,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       emit({ type: "streamEnd" }, pipelineEmit);
 
       if (conversationActive) {
-        const parts = acc.finish();
+        const parts = acc.finish(reply);
         const turnToolCalls = acc.toolCalls();
         conversation.push({
           role: "assistant",
@@ -345,9 +381,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
         });
         await persistConversation();
       }
-    } finally {
-      resolveThisTurn!();
-    }
+    });
   }
 
   const handler: MiddlewareHandler = async (c, next) => {
@@ -398,77 +432,93 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     }
 
     if (ownRoute(reqPath, "/agent/regenerate") && c.req.method === "POST") {
-      if (!lastLlm) {
+      const regenLlm = lastLlm;
+      if (!regenLlm) {
         return c.json({ error: "No model available" }, 503);
       }
-      if (
-        conversation.length > 0 &&
-        conversation[conversation.length - 1].role === "assistant"
-      ) {
-        conversation.pop();
-      }
-      if (conversation.length === 0) {
-        return c.json({ error: "Nothing to regenerate" }, 400);
-      }
-      try {
-        const acc = createPartAccumulator();
-        // Emit the same stream events as a normal turn so the pill panel shows
-        // its thinking/streaming state during regeneration.
-        emit({ type: "streamStart" });
-        const reply = await runAgentTurn({
-          llm: lastLlm,
-          config,
-          history: conversation,
-          log: logger,
-          storage: storage ?? undefined,
-          pluginSlug: baseSlug,
-          onDelta: (delta) => {
-            acc.addText(delta);
-            emit({ type: "streamDelta", text: delta });
-          },
-          onToolCallStart: (e) =>
-            emit({
-              type: "toolCallStart",
-              callId: e.callId,
-              tool: e.tool,
-              input: e.input,
-            }),
-          onToolCall: (e) => {
-            acc.addTool({
-              callId: e.callId,
-              tool: e.tool,
-              input: e.input,
-              output: e.output,
-              isError: e.isError,
-              ...(e.uiResource ? { uiResource: e.uiResource } : {}),
+      // Serialize against in-flight turns: regenerate mutates the shared
+      // `conversation` array, so it must not interleave with a voice- or
+      // widget-triggered turn.
+      const result = await serializeTurn(
+        async (): Promise<
+          | { ok: true; reply: string }
+          | { ok: false; status: 400 | 500; error: string }
+        > => {
+          if (
+            conversation.length > 0 &&
+            conversation[conversation.length - 1].role === "assistant"
+          ) {
+            conversation.pop();
+          }
+          if (conversation.length === 0) {
+            return { ok: false, status: 400, error: "Nothing to regenerate" };
+          }
+          try {
+            const acc = createPartAccumulator();
+            // Emit the same stream events as a normal turn so the pill panel
+            // shows its thinking/streaming state during regeneration.
+            emit({ type: "streamStart" });
+            const reply = await runAgentTurn({
+              llm: regenLlm,
+              config,
+              history: conversation,
+              log: logger,
+              storage: storage ?? undefined,
+              pluginSlug: baseSlug,
+              onDelta: (delta) => {
+                acc.addText(delta);
+                emit({ type: "streamDelta", text: delta });
+              },
+              onToolCallStart: (e) =>
+                emit({
+                  type: "toolCallStart",
+                  callId: e.callId,
+                  tool: e.tool,
+                  input: e.input,
+                }),
+              onToolCall: (e) => {
+                acc.addTool({
+                  callId: e.callId,
+                  tool: e.tool,
+                  input: e.input,
+                  output: e.output,
+                  isError: e.isError,
+                  ...(e.uiResource ? { uiResource: e.uiResource } : {}),
+                });
+                emit({
+                  type: "toolCall",
+                  callId: e.callId,
+                  tool: e.tool,
+                  input: e.input,
+                  output: e.output,
+                  isError: e.isError,
+                  ...(e.uiResource ? { uiResource: e.uiResource } : {}),
+                });
+              },
             });
-            emit({
-              type: "toolCall",
-              callId: e.callId,
-              tool: e.tool,
-              input: e.input,
-              output: e.output,
-              isError: e.isError,
-              ...(e.uiResource ? { uiResource: e.uiResource } : {}),
+            const parts = acc.finish(reply);
+            const regenToolCalls = acc.toolCalls();
+            conversation.push({
+              role: "assistant",
+              content: reply,
+              ...(regenToolCalls.length > 0
+                ? { toolCalls: regenToolCalls }
+                : {}),
+              ...(parts.length > 0 ? { parts } : {}),
             });
-          },
-        });
-        const parts = acc.finish();
-        const regenToolCalls = acc.toolCalls();
-        conversation.push({
-          role: "assistant",
-          content: reply,
-          ...(regenToolCalls.length > 0 ? { toolCalls: regenToolCalls } : {}),
-          ...(parts.length > 0 ? { parts } : {}),
-        });
-        await persistConversation();
-        emit({ type: "streamEnd" });
-        return c.json({ reply });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        emit({ type: "streamEnd" });
-        return c.json({ error: msg }, 500);
-      }
+            await persistConversation();
+            emit({ type: "streamEnd" });
+            return { ok: true, reply };
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            emit({ type: "streamEnd" });
+            return { ok: false, status: 500, error: msg };
+          }
+        },
+      );
+      return result.ok
+        ? c.json({ reply: result.reply })
+        : c.json({ error: result.error }, result.status);
     }
 
     if (ownRoute(reqPath, "/agent/session/end") && c.req.method === "POST") {
@@ -554,7 +604,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
         const error = c.req.query("error") ?? "unknown";
         const desc = c.req.query("error_description") ?? "";
         return c.html(
-          `<!DOCTYPE html><html><body><h3>Authorization failed</h3><p>${error}: ${desc}</p><p>You can close this tab.</p></body></html>`,
+          `<!DOCTYPE html><html><body><h3>Authorization failed</h3><p>${escapeHtml(error)}: ${escapeHtml(desc)}</p><p>You can close this tab.</p></body></html>`,
           400,
         );
       }
@@ -576,7 +626,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return c.html(
-          `<!DOCTYPE html><html><body><h3>Authorization failed</h3><p>${msg}</p></body></html>`,
+          `<!DOCTYPE html><html><body><h3>Authorization failed</h3><p>${escapeHtml(msg)}</p></body></html>`,
           400,
         );
       }

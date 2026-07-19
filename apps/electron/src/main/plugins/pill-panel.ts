@@ -60,6 +60,9 @@ export class PillPanelController {
   /** Original pill window dimensions before expansion. */
   private originalBounds: Electron.Rectangle | null = null;
 
+  /** Original `resizable` state, restored on collapse. */
+  private originalResizable = false;
+
   constructor(
     private readonly preloadPath: string,
     private readonly getServerBaseUrl: () => string,
@@ -159,8 +162,16 @@ export class PillPanelController {
     const px = Math.round(newX);
     const py = Math.round(newY);
     this.markProgrammaticMove?.(px, py);
-    this.window.setSize(totalWidth, totalHeight);
-    this.window.setPosition(px, py);
+    // Single atomic bounds change: separate setSize + setPosition can produce
+    // a flicker on Linux/Windows where the WM clamps the intermediate size
+    // before the position lands.
+    this.window.setBounds({
+      x: px,
+      y: py,
+      width: totalWidth,
+      height: totalHeight,
+    });
+    this.originalResizable = this.window.isResizable();
     this.window.setResizable(false);
     this.window.setFocusable(true);
 
@@ -191,10 +202,7 @@ export class PillPanelController {
     // Tell the panel its position relative to the pill bar so it can
     // flip its border-radius (rounded top when above, rounded bottom
     // when below the pill bar).
-    this.sendEvent({
-      type: "directionChanged",
-      direction,
-    } as unknown as PillEvent);
+    this.sendEvent({ type: "directionChanged", direction });
     log.info(`pill panel expanded ${direction}: ${this.config.slug}`);
     return { expanded: true, direction } as const;
   }
@@ -208,13 +216,14 @@ export class PillPanelController {
     if (orig) {
       // Mark as programmatic so the move listener doesn't latch to "custom".
       this.markProgrammaticMove?.(orig.x, orig.y);
-      this.window.setPosition(orig.x, orig.y);
-      this.window.setSize(orig.width, orig.height);
+      this.window.setBounds(orig);
     } else {
       const collapsed = this.getCollapsedSize();
       this.window.setSize(collapsed.width, collapsed.height);
     }
 
+    // Restore the resizable state expand() overrode.
+    this.window.setResizable(this.originalResizable);
     this.window.setFocusable(false);
     this.expanded = false;
     this.originalBounds = null;
@@ -278,6 +287,9 @@ export class PillPanelController {
     // panel's own .panel div paints an opaque background, so there's no flash.
     view.setBackgroundColor("#00000000");
     view.webContents.once("did-finish-load", () => {
+      // The view can be torn down between loadURL and did-finish-load
+      // (panel closed, plugin reloaded); sending to a dead webContents throws.
+      if (view.webContents.isDestroyed()) return;
       this.viewReady = true;
       for (const event of this.pendingEvents) {
         view.webContents.send("pill-panel:event", event);
@@ -342,7 +354,9 @@ export class PillPanelController {
         this.window.contentView.removeChildView(this.view);
       } catch {}
     }
-    this.view.webContents.close();
+    if (!this.view.webContents.isDestroyed()) {
+      this.view.webContents.close();
+    }
     this.view = null;
     this.viewReady = false;
     this.pendingEvents = [];

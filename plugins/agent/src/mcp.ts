@@ -424,10 +424,14 @@ function pickPathEnv(): Record<string, string> {
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms),
-    ),
-  ]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+  });
+  // Clear the timer once the race settles so a resolved connection doesn't
+  // leave a dangling timeout that fires later (unhandled rejection) and keeps
+  // the event loop alive.
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }

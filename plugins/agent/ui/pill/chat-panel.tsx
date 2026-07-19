@@ -576,6 +576,9 @@ export function ChatPanel(): React.JSX.Element {
   const [liveParts, setLiveParts] = useState<LivePart[]>([]);
   const [guidance, setGuidance] = useState<GuidanceEvent | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  // Monotonic turn counter: bumped on each streamStart so a delayed streamEnd
+  // cleanup doesn't wipe the live state of a turn that already started.
+  const turnSeqRef = useRef(0);
 
   // ---- Conversation query ----
 
@@ -619,6 +622,7 @@ export function ChatPanel(): React.JSX.Element {
         const event = JSON.parse(e.data) as Record<string, unknown>;
         switch (event.type) {
           case "streamStart":
+            turnSeqRef.current += 1;
             void queryClient.invalidateQueries({
               queryKey: conversationKey,
             });
@@ -643,20 +647,24 @@ export function ChatPanel(): React.JSX.Element {
             });
             break;
           }
-          case "streamEnd":
+          case "streamEnd": {
             setStreamingText(null);
             setGuidance(null);
             // Refetch the persisted conversation (which now carries the
             // assistant message + its parts), THEN clear the transient
             // live state so there's no flash where they vanish before the
-            // persisted version arrives.
+            // persisted version arrives. Capture the turn so a new stream
+            // starting during the refetch isn't cleared out from under us.
+            const seq = turnSeqRef.current;
             void queryClient
               .invalidateQueries({ queryKey: conversationKey })
               .then(() => {
+                if (turnSeqRef.current !== seq) return;
                 setToolCalls([]);
                 setLiveParts([]);
               });
             break;
+          }
           case "toolCallStart":
             setToolCalls((prev) => [
               ...prev,
@@ -696,6 +704,15 @@ export function ChatPanel(): React.JSX.Element {
       }
     };
 
+    // EventSource auto-reconnects on drop. When it does, our live stream state
+    // may be stale (we could have missed a streamEnd), so re-sync the persisted
+    // conversation once the connection reopens.
+    es.onerror = () => {
+      if (es.readyState === EventSource.CONNECTING) {
+        void queryClient.invalidateQueries({ queryKey: conversationKey });
+      }
+    };
+
     return () => es.close();
   }, [queryClient]);
 
@@ -715,6 +732,9 @@ export function ChatPanel(): React.JSX.Element {
             (prev) => [...(prev ?? []), { role: "user", content: event.text }],
           );
           break;
+        case "directionChanged":
+          setDirection(event.direction);
+          break;
         // Stream events from the pill bridge (WS path).  These arrive in
         // addition to the SSE events — dedup by ignoring them here since
         // SSE is the canonical source now.
@@ -722,16 +742,6 @@ export function ChatPanel(): React.JSX.Element {
         case "streamDelta":
         case "streamEnd":
           break;
-        default: {
-          const raw = event as unknown as Record<string, unknown>;
-          if (
-            raw.type === "directionChanged" &&
-            typeof raw.direction === "string"
-          ) {
-            setDirection(raw.direction as "up" | "down");
-          }
-          break;
-        }
       }
     });
 

@@ -18,7 +18,13 @@ export type PillEvent =
   /** An incremental chunk of streamed text (append to the current message). */
   | { type: "streamDelta"; text: string }
   /** The streaming turn finished. */
-  | { type: "streamEnd" };
+  | { type: "streamEnd" }
+  /**
+   * The panel expanded and its position relative to the pill bar is known, so
+   * the panel can flip its border-radius (rounded top when above, rounded
+   * bottom when below).
+   */
+  | { type: "directionChanged"; direction: "up" | "down" };
 
 /**
  * The pill panel bridge surface exposed on `window.freestyle.pill` inside a

@@ -107,6 +107,16 @@ const APPLE_KEY_CODES: Record<string, number> = {
   f12: 111,
 };
 
+/**
+ * Escape a literal string for Windows SendKeys. The characters
+ * `+ ^ % ~ ( ) { } [ ]` are control sequences there; each must be wrapped in
+ * braces to be sent verbatim. Braces themselves are escaped first so we don't
+ * double-wrap.
+ */
+function escapeSendKeysLiteral(text: string): string {
+  return text.replace(/[+^%~(){}[\]]/g, (ch) => `{${ch}}`);
+}
+
 function buildKeystrokeScript(chord: string): string {
   const parts = chord
     .split("+")
@@ -350,8 +360,10 @@ export async function typeText(
   if (IS_MAC) {
     await cliclick([`t:${text}`]);
   } else if (IS_WIN) {
-    // SendKeys doesn't handle special chars well; use clip + paste for longer text
-    const escaped = text.replace(/'/g, "''");
+    // SendKeys treats + ^ % ~ ( ) { } [ ] as control sequences, so literal
+    // text containing them must be wrapped in braces (e.g. "{+}"). Escape
+    // those first, then the PowerShell single-quote for the -Command string.
+    const escaped = escapeSendKeysLiteral(text).replace(/'/g, "''");
     const script = `
 Add-Type -A System.Windows.Forms
 [System.Windows.Forms.SendKeys]::SendWait('${escaped}')

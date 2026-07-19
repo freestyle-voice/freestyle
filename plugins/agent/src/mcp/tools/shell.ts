@@ -28,6 +28,8 @@ function isDangerous(command: string): string | null {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 120_000;
+/** Floor so a tiny/zero `timeout` can't kill the command before it starts. */
+const MIN_TIMEOUT_MS = 1_000;
 
 export async function runCommand(args: {
   command: string;
@@ -40,7 +42,10 @@ export async function runCommand(args: {
   }
 
   const timeoutMs = Math.min(
-    Math.max(0, (args.timeout ?? DEFAULT_TIMEOUT_MS / 1000) * 1000),
+    Math.max(
+      MIN_TIMEOUT_MS,
+      (args.timeout ?? DEFAULT_TIMEOUT_MS / 1000) * 1000,
+    ),
     MAX_TIMEOUT_MS,
   );
 

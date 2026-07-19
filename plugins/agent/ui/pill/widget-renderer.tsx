@@ -152,9 +152,25 @@ export function WidgetRenderer({
   // Nothing to render — don't show an empty iframe.
   const hasContent = !!src || !!srcDoc?.trim();
 
-  const post = useCallback((message: unknown) => {
-    iframeRef.current?.contentWindow?.postMessage(message, "*");
-  }, []);
+  // For an external `src` widget, target its own origin so tool input/result
+  // data can't leak to an attacker origin if the frame navigates away. A
+  // sandboxed `srcDoc` frame has the opaque origin "null", which only matches
+  // targetOrigin "*", so keep "*" in that case.
+  const targetOrigin = (() => {
+    if (!src) return "*";
+    try {
+      return new URL(src).origin;
+    } catch {
+      return "*";
+    }
+  })();
+
+  const post = useCallback(
+    (message: unknown) => {
+      iframeRef.current?.contentWindow?.postMessage(message, targetOrigin);
+    },
+    [targetOrigin],
+  );
 
   /**
    * MCP Apps widgets render nothing until the host pushes the tool input +
@@ -229,21 +245,24 @@ export function WidgetRenderer({
       const data = e.data as Record<string, unknown> | null;
       if (!data || typeof data !== "object") return;
 
-      // Any message from the frame proves it's alive and rendering.
-      setProven(true);
-
-      // MCP Apps (JSON-RPC over postMessage): guest → host requests.
+      // MCP Apps (JSON-RPC over postMessage): guest → host requests. A
+      // well-formed JSON-RPC message means the widget's runtime booted and
+      // completed its handshake — that's genuine proof of life (unlike an
+      // arbitrary stray postMessage, which we ignore for the proof check).
       if (data.jsonrpc === "2.0" && typeof data.method === "string") {
+        setProven(true);
         handleMcpAppRequest(data);
         return;
       }
 
       // Auto-size: mcp-ui posts `{ type: "ui-size-change", payload: { height } }`.
+      // A valid size is proof the widget rendered real content.
       if (data.type === "ui-size-change") {
         const payload = (data.payload ?? {}) as Record<string, unknown>;
         const h = Number(payload.height);
         if (Number.isFinite(h) && h > 0) {
           setHeight(Math.max(60, Math.min(h, 600)));
+          setProven(true);
         }
         return;
       }
@@ -277,6 +296,15 @@ export function WidgetRenderer({
     const t = setTimeout(() => setGaveUp(true), 2500);
     return () => clearTimeout(t);
   }, [hasContent, needsProof, proven]);
+
+  // When the resource changes (a new widget replaces this one), reset the
+  // per-widget state — otherwise a stale height/proven/gaveUp from the previous
+  // widget leaks into the new one (useState initializers only run on mount).
+  useEffect(() => {
+    setProven(false);
+    setGaveUp(false);
+    setHeight(needsProof ? 40 : 180);
+  }, [needsProof]);
 
   // Fallback action links pulled from the tool output (e.g. a payment
   // deep-link). These guarantee the user has a tappable affordance even when a

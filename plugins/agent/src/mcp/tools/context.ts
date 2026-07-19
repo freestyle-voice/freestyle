@@ -225,12 +225,14 @@ async function pasteMac(text: string): Promise<string> {
 
   await sleep(150);
 
-  // Activate the target app
+  // Activate the target app. Escape backslashes/quotes so an app whose name
+  // contains a double-quote can't break out of the AppleScript string literal.
   if (targetApp) {
+    const escapedApp = targetApp.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     try {
       await execFileP(
         "osascript",
-        ["-e", `tell application "${targetApp}" to activate`],
+        ["-e", `tell application "${escapedApp}" to activate`],
         { timeout: 2000 },
       );
       await sleep(200);

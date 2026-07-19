@@ -51,6 +51,49 @@ function titleFromMessages(messages: ConversationEntry[]): string {
   return text.length > 60 ? `${text.slice(0, 57)}...` : text;
 }
 
+/**
+ * Convert an MCP UI widget action into a concise synthetic user prompt so the
+ * agent can continue the turn. Handles the mcp-ui action shapes: `tool`,
+ * `prompt`, `intent`, `link`, `notify`.
+ */
+function widgetActionToPrompt(action: {
+  type?: string;
+  payload?: Record<string, unknown>;
+}): string | null {
+  const { type, payload = {} } = action;
+  switch (type) {
+    case "prompt": {
+      const p = payload.prompt;
+      return typeof p === "string" && p.trim() ? p.trim() : null;
+    }
+    case "tool": {
+      const toolName = payload.toolName ?? payload.tool;
+      const params = payload.params ?? payload.arguments ?? {};
+      return `The user interacted with the widget and chose to run "${String(
+        toolName,
+      )}" with parameters ${JSON.stringify(params)}. Continue accordingly.`;
+    }
+    case "intent": {
+      const intent = payload.intent;
+      const params = payload.params ?? {};
+      return `The user triggered the "${String(
+        intent,
+      )}" intent from the widget with ${JSON.stringify(
+        params,
+      )}. Continue accordingly.`;
+    }
+    case "link": {
+      const url = payload.url;
+      return typeof url === "string"
+        ? `Open this link for the user: ${url}`
+        : null;
+    }
+    default:
+      // notify / unknown — nothing actionable for the agent.
+      return null;
+  }
+}
+
 export default function agentPlugin(_options?: PluginOptions): Plugin {
   let storage: PluginStorage | null = null;
   let config: AgentConfig = { ...DEFAULT_CONFIG };
@@ -177,6 +220,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
                 input: e.input,
                 output: e.output,
                 isError: e.isError,
+                ...(e.uiResource ? { uiResource: e.uiResource } : {}),
               });
               emit(
                 {
@@ -186,6 +230,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
                   input: e.input,
                   output: e.output,
                   isError: e.isError,
+                  ...(e.uiResource ? { uiResource: e.uiResource } : {}),
                 },
                 pipelineEmit,
               );
@@ -292,6 +337,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
               input: e.input,
               output: e.output,
               isError: e.isError,
+              ...(e.uiResource ? { uiResource: e.uiResource } : {}),
             });
           },
         });
@@ -310,6 +356,27 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
 
     if (ownRoute(reqPath, "/agent/session/end") && c.req.method === "POST") {
       conversationActive = false;
+      return c.json({ ok: true });
+    }
+
+    // Widget action from an MCP UI resource — the user interacted with a
+    // rendered widget (tool/prompt/intent/link). Translate it into a follow-up
+    // agent turn so the conversation continues naturally.
+    if (ownRoute(reqPath, "/agent/widget-action") && c.req.method === "POST") {
+      const body = (await c.req.json().catch(() => null)) as {
+        type?: string;
+        payload?: Record<string, unknown>;
+      } | null;
+      if (!body) return c.json({ error: "Invalid body" }, 400);
+
+      const prompt = widgetActionToPrompt(body);
+      if (!prompt) return c.json({ ok: true, ignored: true });
+
+      if (!lastLlm) {
+        return c.json({ error: "No model available" }, 503);
+      }
+      // Fire-and-forget: SSE streams the resulting turn to the panel.
+      void executeAgentTurn(prompt, lastLlm, undefined, undefined);
       return c.json({ ok: true });
     }
 

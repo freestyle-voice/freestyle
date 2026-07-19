@@ -123,6 +123,14 @@ export interface ToolCallStartEvent {
   input: Record<string, unknown>;
 }
 
+/** An MCP UI resource (MCP Apps / mcp-ui) for rendering an interactive widget. */
+export interface UiResource {
+  uri: string;
+  mimeType: string;
+  text?: string;
+  blob?: string;
+}
+
 /** Emitted when a tool finishes executing. */
 export interface ToolCallEvent {
   type: "toolCall";
@@ -131,6 +139,7 @@ export interface ToolCallEvent {
   input: Record<string, unknown>;
   output: string;
   isError?: boolean;
+  uiResource?: UiResource;
 }
 
 /** Guidance event for the ghost cursor overlay. */
@@ -156,6 +165,7 @@ export interface StoredToolCall {
   input: Record<string, unknown>;
   output: string;
   isError?: boolean;
+  uiResource?: UiResource;
 }
 
 export interface ConversationEntry {

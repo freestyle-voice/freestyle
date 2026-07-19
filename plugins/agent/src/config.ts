@@ -1,5 +1,18 @@
 import type { PluginStorage } from "freestyle-voice";
 
+/**
+ * An MCP UI resource (MCP Apps / mcp-ui). Returned by tools that want to
+ * render an interactive widget instead of (or alongside) plain text.
+ */
+export interface UiResource {
+  uri: string;
+  mimeType: string;
+  /** Inline HTML (for text/html resources). */
+  text?: string;
+  /** Base64-encoded HTML. */
+  blob?: string;
+}
+
 /** A completed tool invocation, stored with the assistant message it belongs to. */
 export interface StoredToolCall {
   callId: string;
@@ -7,6 +20,8 @@ export interface StoredToolCall {
   input: Record<string, unknown>;
   output: string;
   isError?: boolean;
+  /** Interactive UI widget returned by the tool (MCP UI), if any. */
+  uiResource?: UiResource;
 }
 
 /** One message in the agent conversation thread. */

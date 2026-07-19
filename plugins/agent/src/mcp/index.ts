@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { type JSONSchema7, jsonSchema, type Tool, tool } from "ai";
 import { z } from "zod";
-import { TOOL_GROUPS } from "../config.js";
+import { TOOL_GROUPS, type UiResource } from "../config.js";
 import { getFrontmostApp, pasteText } from "./tools/context.js";
 import {
   type ComputerUseMode,
@@ -37,6 +37,7 @@ export interface ToolCallEvent {
   input: Record<string, unknown>;
   output: string;
   isError?: boolean;
+  uiResource?: UiResource;
 }
 
 /**

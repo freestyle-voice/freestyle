@@ -8,7 +8,9 @@ import type {
   ConversationEntry,
   GuidanceEvent,
   StoredToolCall,
+  UiResource,
 } from "../shared/types";
+import { type WidgetAction, WidgetRenderer } from "./widget-renderer";
 
 /* ---- Icons ---- */
 
@@ -323,6 +325,7 @@ interface TrackedToolCall {
   output?: string;
   isError?: boolean;
   running: boolean;
+  uiResource?: UiResource;
 }
 
 /* ---- Tool Call Card ---- */
@@ -356,7 +359,13 @@ function ToolCallCopyBtn({ text }: { text: string }): React.JSX.Element {
   );
 }
 
-function ToolCallCard({ tc }: { tc: TrackedToolCall }): React.JSX.Element {
+function ToolCallCard({
+  tc,
+  onWidgetAction,
+}: {
+  tc: TrackedToolCall;
+  onWidgetAction?: (action: WidgetAction) => void;
+}): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const toolName = displayToolName(tc.tool);
   const IconComp = TOOL_ICON_MAP[toolName] ?? WrenchIcon;
@@ -370,52 +379,59 @@ function ToolCallCard({ tc }: { tc: TrackedToolCall }): React.JSX.Element {
     .join(", ");
 
   return (
-    <div
-      className={`tool-card${tc.isError ? " tool-error" : ""}${tc.running ? " tool-running" : ""}`}
-    >
-      <button
-        type="button"
-        className="tool-card-head"
-        onClick={() => setExpanded(!expanded)}
+    <div className="tool-call-block">
+      <div
+        className={`tool-card${tc.isError ? " tool-error" : ""}${tc.running ? " tool-running" : ""}`}
       >
-        <span className="tool-card-icon">
-          <IconComp />
-        </span>
-        <span className="tool-card-name">{toolName}</span>
-        {tc.running ? (
-          <span className="tool-card-spinner" />
-        ) : (
-          <>
-            {tc.output !== undefined && <ToolCallCopyBtn text={tc.output} />}
-            <span className="tool-card-chevron">
-              {expanded ? "\u25B4" : "\u25BE"}
-            </span>
-          </>
-        )}
-      </button>
-      {!expanded && !tc.running && inputSummary && (
-        <div className="tool-card-summary">{inputSummary}</div>
-      )}
-      {tc.running && (
-        <div className="tool-card-summary tool-card-running-hint">
-          {inputSummary || "Running..."}
-        </div>
-      )}
-      {expanded && !tc.running && (
-        <div className="tool-card-detail">
-          <div className="tool-card-section">
-            <span className="tool-card-label">Input</span>
-            <pre className="tool-card-pre">
-              {JSON.stringify(tc.input, null, 2)}
-            </pre>
-          </div>
-          {tc.output !== undefined && (
-            <div className="tool-card-section">
-              <span className="tool-card-label">Output</span>
-              <pre className="tool-card-pre">{tc.output}</pre>
-            </div>
+        <button
+          type="button"
+          className="tool-card-head"
+          onClick={() => setExpanded(!expanded)}
+        >
+          <span className="tool-card-icon">
+            <IconComp />
+          </span>
+          <span className="tool-card-name">{toolName}</span>
+          {tc.running ? (
+            <span className="tool-card-spinner" />
+          ) : (
+            <>
+              {tc.output !== undefined && <ToolCallCopyBtn text={tc.output} />}
+              <span className="tool-card-chevron">
+                {expanded ? "\u25B4" : "\u25BE"}
+              </span>
+            </>
           )}
-        </div>
+        </button>
+        {!expanded && !tc.running && inputSummary && (
+          <div className="tool-card-summary">{inputSummary}</div>
+        )}
+        {tc.running && (
+          <div className="tool-card-summary tool-card-running-hint">
+            {inputSummary || "Running..."}
+          </div>
+        )}
+        {expanded && !tc.running && (
+          <div className="tool-card-detail">
+            <div className="tool-card-section">
+              <span className="tool-card-label">Input</span>
+              <pre className="tool-card-pre">
+                {JSON.stringify(tc.input, null, 2)}
+              </pre>
+            </div>
+            {tc.output !== undefined && (
+              <div className="tool-card-section">
+                <span className="tool-card-label">Output</span>
+                <pre className="tool-card-pre">{tc.output}</pre>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {/* Interactive MCP UI widget renders as a prominent block below the
+          collapsible tool card. */}
+      {tc.uiResource && !tc.running && (
+        <WidgetRenderer resource={tc.uiResource} onAction={onWidgetAction} />
       )}
     </div>
   );
@@ -634,6 +650,7 @@ export function ChatPanel(): React.JSX.Element {
                       ...tc,
                       output: event.output as string,
                       isError: event.isError as boolean | undefined,
+                      uiResource: event.uiResource as UiResource | undefined,
                       running: false,
                     }
                   : tc,
@@ -694,6 +711,13 @@ export function ChatPanel(): React.JSX.Element {
 
   const handleClose = useCallback(() => {
     window.freestyle?.pill?.collapse();
+  }, []);
+
+  // A widget posted an action — route it back to the agent as a follow-up
+  // turn (the server translates tool/prompt/intent/link into a prompt and,
+  // for links, uses its open_url tool).
+  const handleWidgetAction = useCallback((action: WidgetAction) => {
+    void postJson("/widget-action", action);
   }, []);
 
   const streaming = streamingText !== null;
@@ -764,6 +788,7 @@ export function ChatPanel(): React.JSX.Element {
                         <ToolCallCard
                           key={tc.callId || j}
                           tc={{ ...tc, running: false }}
+                          onWidgetAction={handleWidgetAction}
                         />
                       ))}
                     </div>
@@ -791,7 +816,11 @@ export function ChatPanel(): React.JSX.Element {
               {toolCalls.length > 0 && (
                 <div className="tool-calls">
                   {toolCalls.map((tc, j) => (
-                    <ToolCallCard key={tc.callId || j} tc={tc} />
+                    <ToolCallCard
+                      key={tc.callId || j}
+                      tc={tc}
+                      onWidgetAction={handleWidgetAction}
+                    />
                   ))}
                 </div>
               )}

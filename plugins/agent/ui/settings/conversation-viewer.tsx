@@ -46,6 +46,11 @@ function ArchivedToolCall({ tc }: { tc: StoredToolCall }): React.JSX.Element {
             {JSON.stringify(tc.input, null, 2)}
           </pre>
           {tc.output && <pre className="detail-tool-pre">{tc.output}</pre>}
+          {tc.uiResource && (
+            <span className="detail-tool-widget-chip">
+              Interactive widget (shown live in the pill)
+            </span>
+          )}
         </div>
       )}
     </div>

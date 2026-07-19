@@ -5,6 +5,7 @@ import {
   streamText,
 } from "ai";
 import type { PluginLlm, PluginStorage } from "freestyle-voice";
+import type { UiResource } from "./config.js";
 import {
   type AgentConfig,
   buildSystemPrompt,
@@ -17,7 +18,11 @@ import {
   type ToolCallStartEvent,
 } from "./mcp/index.js";
 import type { GuidanceEvent } from "./mcp/tools/desktop.js";
-import { closeConnections, connectEnabledServers } from "./mcp.js";
+import {
+  closeConnections,
+  connectEnabledServers,
+  isUiMimeType,
+} from "./mcp.js";
 
 /** Max tool-calling steps in a single agent turn. */
 const MAX_STEPS = 8;
@@ -39,13 +44,43 @@ function extractToolOutput(output: unknown): string {
         } else if (p.type === "image") {
           texts.push("[image]");
         } else if (p.type === "resource") {
-          texts.push(`[resource: ${(p as Record<string, unknown>).uri ?? ""}]`);
+          const res = p.resource as { mimeType?: string } | undefined;
+          if (res && isUiMimeType(String(res.mimeType))) {
+            texts.push("[interactive widget shown to the user]");
+          } else {
+            texts.push(
+              `[resource: ${(p as Record<string, unknown>).uri ?? res ?? ""}]`,
+            );
+          }
         }
       }
     }
     if (texts.length > 0) return texts.join("\n");
   }
   return JSON.stringify(output ?? "");
+}
+
+/**
+ * Find an MCP UI resource in a tool result content array, if present. Handles
+ * both the resource-block shape `{type:"resource", resource:{...}}` and a bare
+ * resource object.
+ */
+function extractUiResource(output: unknown): UiResource | undefined {
+  if (!Array.isArray(output)) return undefined;
+  for (const part of output) {
+    if (typeof part !== "object" || part === null) continue;
+    const p = part as { type?: string; resource?: Record<string, unknown> };
+    if (p.type !== "resource" || !p.resource) continue;
+    const r = p.resource;
+    if (!isUiMimeType(String(r.mimeType))) continue;
+    return {
+      uri: String(r.uri ?? ""),
+      mimeType: String(r.mimeType ?? "text/html"),
+      text: typeof r.text === "string" ? r.text : undefined,
+      blob: typeof r.blob === "string" ? r.blob : undefined,
+    };
+  }
+  return undefined;
 }
 
 /**
@@ -141,12 +176,14 @@ export async function runAgentTurn(opts: {
           const toolResult = step.toolResults.find(
             (r) => r.toolCallId === tc.toolCallId,
           );
+          const uiResource = extractUiResource(toolResult?.output);
           onToolCall({
             callId: tc.toolCallId,
             tool: tc.toolName,
             input: (tc.input ?? {}) as Record<string, unknown>,
             output: extractToolOutput(toolResult?.output),
             isError: false,
+            ...(uiResource ? { uiResource } : {}),
           });
         }
       },

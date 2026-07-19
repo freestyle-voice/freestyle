@@ -90,6 +90,10 @@ export async function connectMcpServer(
 
   for (const mcpTool of mcpTools) {
     const namespaced = `${server.id}__${mcpTool.name}`;
+    // MCP Apps pattern: the tool links to a UI resource via _meta.ui.resourceUri.
+    // We fetch that resource after the call and fold it into the content so the
+    // downstream extractor sees a uniform embedded-resource shape.
+    const uiResourceUri = extractMetaUiUri(mcpTool);
     tools[namespaced] = tool({
       description: mcpTool.description ?? mcpTool.name,
       inputSchema: jsonSchema(
@@ -103,7 +107,28 @@ export async function connectMcpServer(
           name: mcpTool.name,
           arguments: args as Record<string, unknown>,
         });
-        return result.content ?? result;
+        const content = Array.isArray(result.content)
+          ? [...(result.content as unknown[])]
+          : result.content
+            ? [result.content]
+            : [];
+
+        // MCP Apps: fetch the linked UI resource and embed it in the content.
+        if (uiResourceUri && !contentHasUiResource(content)) {
+          try {
+            const res = await client.readResource({ uri: uiResourceUri });
+            const uiContent = (res.contents ?? []).find((rc) =>
+              isUiMimeType(String((rc as { mimeType?: string }).mimeType)),
+            );
+            if (uiContent) {
+              content.push({ type: "resource", resource: uiContent });
+            }
+          } catch {
+            // Resource fetch failed — fall back to text content only.
+          }
+        }
+
+        return content.length > 0 ? content : result;
       },
     });
   }
@@ -116,6 +141,42 @@ export async function connectMcpServer(
   };
 
   return { connection, tools };
+}
+
+/** MIME types that indicate an MCP UI (mcp-ui / MCP Apps) HTML resource. */
+export function isUiMimeType(mimeType: string): boolean {
+  if (!mimeType) return false;
+  const m = mimeType.toLowerCase();
+  return (
+    m.startsWith("text/html") ||
+    m.includes("mcp-app") ||
+    m.includes("mcp-ui") ||
+    m.includes("mcp+ui")
+  );
+}
+
+/** Pull the MCP Apps `_meta.ui.resourceUri` from a tool definition, if present. */
+function extractMetaUiUri(mcpTool: unknown): string | undefined {
+  if (typeof mcpTool !== "object" || mcpTool === null) return undefined;
+  const meta = (mcpTool as { _meta?: unknown })._meta;
+  if (typeof meta !== "object" || meta === null) return undefined;
+  const ui = (meta as { ui?: unknown }).ui;
+  if (typeof ui !== "object" || ui === null) return undefined;
+  const uri = (ui as { resourceUri?: unknown }).resourceUri;
+  return typeof uri === "string" ? uri : undefined;
+}
+
+/** Whether a content array already carries a UI resource block. */
+function contentHasUiResource(content: unknown[]): boolean {
+  return content.some((part) => {
+    if (typeof part !== "object" || part === null) return false;
+    const p = part as { type?: string; resource?: { mimeType?: string } };
+    return (
+      p.type === "resource" &&
+      !!p.resource &&
+      isUiMimeType(String(p.resource.mimeType))
+    );
+  });
 }
 
 /**

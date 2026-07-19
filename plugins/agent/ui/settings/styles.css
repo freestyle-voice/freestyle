@@ -399,6 +399,17 @@ body {
   color: var(--muted-foreground);
 }
 
+.detail-tool-widget-chip {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
 /* ---- Settings view (full-page form) ---- */
 
 .settings-view {

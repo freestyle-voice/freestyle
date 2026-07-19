@@ -276,14 +276,14 @@ export function getBuiltinTools(
   if (include("take_screenshot"))
     tools.take_screenshot = tool({
       description:
-        "Capture a screenshot of the main display (resized to 1024px wide). Returns base64 JPEG by default, or a file path. ALWAYS call this first before any mouse/keyboard action to see the screen.",
+        "Capture a full-resolution screenshot of the current display. By default saves to a temp file and returns the path. Pass returnImage=true to get inline base64 JPEG (for visual inspection). ALWAYS call this first before any mouse/keyboard action to see the screen.",
       inputSchema: jsonSchema({
         type: "object",
         properties: {
           returnImage: {
             type: "boolean",
             description:
-              "If true (default), returns base64 JPEG. If false, saves to a temp file and returns the path.",
+              "If true, returns base64 JPEG inline. If false (default), saves to a temp file and returns the path.",
           },
         },
       } satisfies JSONSchema7),
@@ -586,7 +586,7 @@ export function registerBuiltinTools(server: McpServer): void {
 
   server.tool(
     "take_screenshot",
-    "Capture a screenshot of the current screen.",
+    "Capture a full-resolution screenshot. Returns a file path by default; pass returnImage=true for inline base64 JPEG.",
     { returnImage: z.boolean().optional() },
     async (args) => {
       const result = await takeScreenshot(args);

@@ -7,16 +7,15 @@ import { sleep } from "./util.js";
 
 const execFileP = promisify(execFile);
 
-/** Max dimension (width) for screenshots sent to the model. */
-const MAX_WIDTH = 1024;
-
-/** Max file size in bytes before we refuse to inline as base64 (~1.5 MB). */
-const MAX_INLINE_BYTES = 1_500_000;
+/** Max file size in bytes before we refuse to inline as base64 (~4 MB). */
+const MAX_INLINE_BYTES = 4_000_000;
 
 export async function takeScreenshot(args: {
   returnImage?: boolean;
 }): Promise<{ type: "image"; data: string } | { type: "path"; path: string }> {
-  const returnImage = args.returnImage !== false;
+  // Default: return a file path. The model can pass returnImage=true to get
+  // inline base64 when it needs to inspect the screen in detail.
+  const returnImage = args.returnImage === true;
   const tmpPath = join(tmpdir(), `freestyle-screenshot-${Date.now()}.jpg`);
 
   const plat = process.platform;
@@ -24,7 +23,6 @@ export async function takeScreenshot(args: {
   try {
     if (plat === "darwin") {
       await captureMacScreen(tmpPath);
-      await resizeWithSips(tmpPath, MAX_WIDTH);
     } else if (plat === "win32") {
       await captureWindowsScreen(tmpPath);
     } else {
@@ -210,29 +208,6 @@ async function captureLinuxScreen(outPath: string): Promise<boolean> {
   } finally {
     await setFreestyleVisible(true);
   }
-}
-
-/**
- * Resize an image using macOS's built-in `sips` command. Only shrinks; if the
- * image is already smaller than maxWidth, no-op.
- */
-async function resizeWithSips(
-  filePath: string,
-  maxWidth: number,
-): Promise<void> {
-  try {
-    const { stdout } = await execFileP("sips", ["-g", "pixelWidth", filePath], {
-      timeout: 5000,
-    });
-    const match = stdout.match(/pixelWidth:\s*(\d+)/);
-    if (!match) return;
-    const currentWidth = Number(match[1]);
-    if (currentWidth <= maxWidth) return;
-
-    await execFileP("sips", ["--resampleWidth", String(maxWidth), filePath], {
-      timeout: 5000,
-    });
-  } catch {}
 }
 
 /**

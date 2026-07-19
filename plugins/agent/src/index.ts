@@ -363,6 +363,9 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
       }
       try {
         const regenToolCalls: StoredToolCall[] = [];
+        // Emit the same stream events as a normal turn so the pill panel shows
+        // its thinking/streaming state during regeneration.
+        emit({ type: "streamStart" });
         const reply = await runAgentTurn({
           llm: lastLlm,
           config,
@@ -370,8 +373,25 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
           log: logger,
           storage: storage ?? undefined,
           pluginSlug: baseSlug,
+          onDelta: (delta) => emit({ type: "streamDelta", text: delta }),
+          onToolCallStart: (e) =>
+            emit({
+              type: "toolCallStart",
+              callId: e.callId,
+              tool: e.tool,
+              input: e.input,
+            }),
           onToolCall: (e) => {
             regenToolCalls.push({
+              callId: e.callId,
+              tool: e.tool,
+              input: e.input,
+              output: e.output,
+              isError: e.isError,
+              ...(e.uiResource ? { uiResource: e.uiResource } : {}),
+            });
+            emit({
+              type: "toolCall",
               callId: e.callId,
               tool: e.tool,
               input: e.input,
@@ -387,9 +407,11 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
           ...(regenToolCalls.length > 0 ? { toolCalls: regenToolCalls } : {}),
         });
         await persistConversation();
+        emit({ type: "streamEnd" });
         return c.json({ reply });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        emit({ type: "streamEnd" });
         return c.json({ error: msg }, 500);
       }
     }

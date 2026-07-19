@@ -65,10 +65,13 @@ function resolveContent(resource: UiResource): {
 export function WidgetRenderer({
   resource,
   onAction,
-}: Props): React.JSX.Element {
+}: Props): React.JSX.Element | null {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(180);
   const { srcDoc, src } = resolveContent(resource);
+
+  // Nothing to render — don't show an empty iframe.
+  const hasContent = !!src || !!srcDoc?.trim();
 
   const handleMessage = useCallback(
     (e: MessageEvent) => {
@@ -107,9 +110,12 @@ export function WidgetRenderer({
   );
 
   useEffect(() => {
+    if (!hasContent) return;
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [handleMessage]);
+  }, [handleMessage, hasContent]);
+
+  if (!hasContent) return null;
 
   return (
     <div className="widget-frame">

@@ -1,5 +1,5 @@
 import { createAppLogger } from "@freestyle-voice/utils";
-import { ipcMain } from "electron";
+import { clipboard, ipcMain } from "electron";
 import type { HostActions } from "freestyle-voice";
 import { getPillPanelController, handlePillAction } from "./pill-panel.js";
 
@@ -59,6 +59,16 @@ export function registerPluginBridgeIpc(): void {
       // Pill-scoped actions (expand/collapse/set-badge) are handled by the pill
       // controller regardless of which window is open.
       if (handlePillAction(channel, payload)) return;
+
+      // `copy` is window-agnostic — handle it directly so it works from the
+      // pill panel even when the dashboard (and its onDashboardAction) has
+      // never been created.
+      if (channel === "copy") {
+        const text = (payload as HostActions["copy"]).text;
+        if (typeof text === "string") clipboard.writeText(text);
+        return;
+      }
+
       try {
         await deps?.onDashboardAction(channel, payload);
       } catch (err) {

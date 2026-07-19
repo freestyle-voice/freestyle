@@ -114,12 +114,20 @@ export async function connectMcpServer(
             : [];
 
         // MCP Apps: fetch the linked UI resource and embed it in the content.
+        // The _meta link is itself the widget marker, so accept the first
+        // returned resource (fall back to any text/html one).
         if (uiResourceUri && !contentHasUiResource(content)) {
           try {
             const res = await client.readResource({ uri: uiResourceUri });
-            const uiContent = (res.contents ?? []).find((rc) =>
-              isUiMimeType(String((rc as { mimeType?: string }).mimeType)),
-            );
+            const uiContent =
+              (res.contents ?? []).find((rc) =>
+                isUiResource(rc as { mimeType?: unknown; uri?: unknown }),
+              ) ??
+              (res.contents ?? []).find((rc) =>
+                String((rc as { mimeType?: string }).mimeType ?? "")
+                  .toLowerCase()
+                  .startsWith("text/html"),
+              );
             if (uiContent) {
               content.push({ type: "resource", resource: uiContent });
             }
@@ -143,15 +151,28 @@ export async function connectMcpServer(
   return { connection, tools };
 }
 
-/** MIME types that indicate an MCP UI (mcp-ui / MCP Apps) HTML resource. */
-export function isUiMimeType(mimeType: string): boolean {
-  if (!mimeType) return false;
-  const m = mimeType.toLowerCase();
+/**
+ * Whether a resource is a genuine MCP UI (mcp-ui / MCP Apps) widget.
+ *
+ * A real widget is flagged by an explicit marker — NOT merely `text/html`,
+ * since many tools legitimately return `text/html` result snippets that are
+ * not interactive widgets. We require either:
+ *  - the MCP Apps profile MIME (`text/html;profile=mcp-app`), or
+ *  - the mcp-ui MIME variants (`application/vnd.mcp-ui+html`, etc.), or
+ *  - the `ui://` URI scheme (mcp-ui convention).
+ */
+export function isUiResource(resource: {
+  mimeType?: unknown;
+  uri?: unknown;
+}): boolean {
+  const mime = String(resource.mimeType ?? "").toLowerCase();
+  const uri = String(resource.uri ?? "").toLowerCase();
   return (
-    m.startsWith("text/html") ||
-    m.includes("mcp-app") ||
-    m.includes("mcp-ui") ||
-    m.includes("mcp+ui")
+    mime.includes("profile=mcp-app") ||
+    mime.includes("mcp-app") ||
+    mime.includes("mcp-ui") ||
+    mime.includes("mcp+ui") ||
+    uri.startsWith("ui://")
   );
 }
 
@@ -170,12 +191,11 @@ function extractMetaUiUri(mcpTool: unknown): string | undefined {
 function contentHasUiResource(content: unknown[]): boolean {
   return content.some((part) => {
     if (typeof part !== "object" || part === null) return false;
-    const p = part as { type?: string; resource?: { mimeType?: string } };
-    return (
-      p.type === "resource" &&
-      !!p.resource &&
-      isUiMimeType(String(p.resource.mimeType))
-    );
+    const p = part as {
+      type?: string;
+      resource?: { mimeType?: unknown; uri?: unknown };
+    };
+    return p.type === "resource" && !!p.resource && isUiResource(p.resource);
   });
 }
 

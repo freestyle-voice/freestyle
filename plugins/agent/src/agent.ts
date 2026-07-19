@@ -21,7 +21,7 @@ import type { GuidanceEvent } from "./mcp/tools/desktop.js";
 import {
   closeConnections,
   connectEnabledServers,
-  isUiMimeType,
+  isUiResource,
 } from "./mcp.js";
 
 /** Max tool-calling steps in a single agent turn. */
@@ -47,7 +47,7 @@ function extractToolOutput(output: unknown): string {
           const res = p.resource as
             | { mimeType?: string; uri?: string }
             | undefined;
-          if (res && isUiMimeType(String(res.mimeType))) {
+          if (res && isUiResource(res)) {
             texts.push("[interactive widget shown to the user]");
           } else {
             const uri = res?.uri ?? (p as { uri?: string }).uri ?? "";
@@ -73,12 +73,16 @@ function extractUiResource(output: unknown): UiResource | undefined {
     const p = part as { type?: string; resource?: Record<string, unknown> };
     if (p.type !== "resource" || !p.resource) continue;
     const r = p.resource;
-    if (!isUiMimeType(String(r.mimeType))) continue;
+    if (!isUiResource(r)) continue;
+    const text = typeof r.text === "string" ? r.text : undefined;
+    const blob = typeof r.blob === "string" ? r.blob : undefined;
+    // A widget with no renderable content is not worth showing.
+    if (!text?.trim() && !blob?.trim()) continue;
     return {
       uri: String(r.uri ?? ""),
       mimeType: String(r.mimeType ?? "text/html"),
-      text: typeof r.text === "string" ? r.text : undefined,
-      blob: typeof r.blob === "string" ? r.blob : undefined,
+      text,
+      blob,
     };
   }
   return undefined;

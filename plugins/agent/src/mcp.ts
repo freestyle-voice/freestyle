@@ -69,12 +69,16 @@ export async function connectMcpServer(
   try {
     await withTimeout(client.connect(transport), MCP_CONNECT_TIMEOUT_MS);
   } catch (err) {
-    pendingOAuthTransports.delete(server.id);
     if (err instanceof UnauthorizedError && server.auth === "oauth") {
+      // Keep the transport in pendingOAuthTransports — the browser will
+      // redirect to the callback endpoint, which needs to call finishAuth()
+      // on this transport instance.
       throw new Error(
         `OAuth authorization required for "${server.name}". Complete the flow in your browser, then retry.`,
       );
     }
+    // Non-OAuth errors: clean up.
+    pendingOAuthTransports.delete(server.id);
     throw err;
   }
 

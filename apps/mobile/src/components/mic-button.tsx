@@ -1,3 +1,4 @@
+import { Mic, Square } from "lucide-react-native";
 import { useEffect } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
@@ -9,7 +10,6 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-import { MicGlyph, StopGlyph } from "@/components/icons";
 import { Radius } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 
@@ -116,9 +116,9 @@ export function MicButton({
           ]}
         >
           {state === "recording" ? (
-            <StopGlyph color={fg} size={26} />
+            <Square color={fg} fill={fg} size={22} />
           ) : (
-            <MicGlyph color={fg} size={30} />
+            <Mic color={fg} size={30} />
           )}
         </Pressable>
       </Animated.View>

@@ -1,12 +1,12 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
+import { Settings } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Pressable, Share, StyleSheet, View } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { SettingsGlyph } from "@/components/icons";
 import { MicButton, type MicState } from "@/components/mic-button";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -230,7 +230,7 @@ export default function VoiceScreen() {
             hitSlop={12}
             style={[styles.settingsButton, { borderColor: theme.border }]}
           >
-            <SettingsGlyph color={theme.mutedForeground} size={18} />
+            <Settings color={theme.mutedForeground} size={18} />
           </Pressable>
         </View>
 

@@ -1,4 +1,5 @@
 import { useRouter } from "expo-router";
+import { Check } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import { Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -89,9 +90,13 @@ export default function KeyboardSetupScreen() {
                     : "Tap to grant microphone access."}
               </ThemedText>
             </View>
-            <ThemedText type="eyebrow" themeColor="primary">
-              {micStatus === "granted" ? "✓" : "Grant"}
-            </ThemedText>
+            {micStatus === "granted" ? (
+              <Check color={theme.primary} size={18} />
+            ) : (
+              <ThemedText type="eyebrow" themeColor="primary">
+                Grant
+              </ThemedText>
+            )}
           </Pressable>
 
           <View style={styles.steps}>

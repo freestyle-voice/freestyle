@@ -286,9 +286,9 @@ export function SettingsForm({
 
       {/* Scrollable form */}
       <div className="settings-body">
-        {/* Identity */}
+        {/* Identity + System Prompt in one section */}
         <section className="form-section">
-          <h3 className="section-title">Identity</h3>
+          <h3 className="section-title">General</h3>
           <div className="field">
             <label className="field-label" htmlFor="agent-name">
               Agent name
@@ -300,15 +300,16 @@ export function SettingsForm({
               onChange={(e) => patch({ agentName: e.target.value })}
               placeholder="Freestyle"
             />
-            <span className="hint">The name spoken to summon the agent.</span>
+            <span className="hint">
+              The name spoken to summon the agent (e.g. "Hey Freestyle, ...").
+            </span>
           </div>
-        </section>
-
-        {/* System prompt */}
-        <section className="form-section">
-          <h3 className="section-title">System Prompt</h3>
           <div className="field">
+            <label className="field-label" htmlFor="sys-prompt">
+              System prompt
+            </label>
             <textarea
+              id="sys-prompt"
               className="textarea"
               value={draft.systemPrompt}
               onChange={(e) => patch({ systemPrompt: e.target.value })}
@@ -316,7 +317,7 @@ export function SettingsForm({
               rows={4}
             />
             <span className="hint">
-              Base behavior. Enabled skills are appended automatically.
+              Base instructions. Enabled skills are appended automatically.
             </span>
           </div>
         </section>

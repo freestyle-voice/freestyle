@@ -26,15 +26,15 @@ body {
 }
 
 .page {
-  padding: 0 3rem 0;
+  padding: 16px 3rem 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
   height: 100vh;
   overflow: hidden;
 }
-@media (max-width: 1080px) { .page { padding: 0 2rem 0; } }
-@media (max-width: 820px)  { .page { padding: 0 1rem 0; } }
+@media (max-width: 1080px) { .page { padding: 16px 2rem 0; } }
+@media (max-width: 820px)  { .page { padding: 12px 1rem 0; } }
 
 /* ---- Header ---- */
 
@@ -342,14 +342,19 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-bottom: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
   flex-shrink: 0;
 }
 
 .settings-title {
   margin: 0;
-  font-size: 15px;
-  font-weight: 500;
+  font-family: "Instrument Serif", serif;
+  font-size: 22px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--primary);
   flex: 1;
 }
 
@@ -363,6 +368,7 @@ body {
   flex: 1;
   overflow-y: auto;
   padding-bottom: 2rem;
+  max-width: 640px;
 }
 
 /* ---- Form sections ---- */
@@ -370,12 +376,12 @@ body {
 .form-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  gap: 12px;
+  padding: 20px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
 }
 .form-section:first-child {
-  padding-top: 0;
+  padding-top: 8px;
 }
 .form-section:last-child {
   border-bottom: none;
@@ -390,8 +396,12 @@ body {
 
 .section-title {
   margin: 0;
-  font-size: 13px;
-  font-weight: 600;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted-foreground);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -400,7 +410,7 @@ body {
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
 }
 
 .field-row {
@@ -410,27 +420,32 @@ body {
 }
 
 .field-label {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
   flex-shrink: 0;
-  min-width: 68px;
-  color: var(--muted-foreground);
+  min-width: 72px;
+  color: var(--foreground);
 }
 
 /* ---- Form cards (MCP servers, skills) ---- */
 
 .form-card {
   border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 10px 12px;
+  border-radius: 10px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   background: var(--card);
+  transition: border-color 0.15s;
+}
+
+.form-card:hover {
+  border-color: color-mix(in srgb, var(--border) 80%, var(--foreground));
 }
 
 .form-card + .form-card {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .form-card-head {
@@ -442,7 +457,9 @@ body {
 .form-card-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
 }
 
 /* ---- Primary button ---- */

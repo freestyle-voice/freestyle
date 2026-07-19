@@ -176,7 +176,7 @@ export function SettingsPage(): React.JSX.Element {
             <span className="title-accent">Voice Agent</span>
           </h1>
           <p className="page-lede">
-            Talk to an AI agent by voice. Say its name to start a conversation.
+            Say "<strong>{config.agentName}</strong>" to start a conversation.
           </p>
         </div>
         <button

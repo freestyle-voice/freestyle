@@ -328,9 +328,16 @@ interface TrackedToolCall {
 
 /* ---- Tool Call Card ---- */
 
+/** Strip the `serverId__` prefix from namespaced MCP tool names. */
+function displayToolName(name: string): string {
+  const i = name.indexOf("__");
+  return i >= 0 ? name.slice(i + 2) : name;
+}
+
 function ToolCallCard({ tc }: { tc: TrackedToolCall }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
-  const IconComp = TOOL_ICON_MAP[tc.tool] ?? WrenchIcon;
+  const toolName = displayToolName(tc.tool);
+  const IconComp = TOOL_ICON_MAP[toolName] ?? WrenchIcon;
 
   const inputSummary = Object.entries(tc.input)
     .filter(([, v]) => v !== undefined && v !== "")
@@ -352,7 +359,7 @@ function ToolCallCard({ tc }: { tc: TrackedToolCall }): React.JSX.Element {
         <span className="tool-card-icon">
           <IconComp />
         </span>
-        <span className="tool-card-name">{tc.tool}</span>
+        <span className="tool-card-name">{toolName}</span>
         {tc.running ? (
           <span className="tool-card-spinner" />
         ) : (
@@ -543,10 +550,10 @@ export function ChatPanel(): React.JSX.Element {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: messages and streamingText are intentional trigger deps for auto-scroll
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messages, streamingText, and toolCalls are intentional trigger deps for auto-scroll
   useEffect(() => {
     scrollToEnd();
-  }, [messages, streamingText, scrollToEnd]);
+  }, [messages, streamingText, toolCalls, scrollToEnd]);
 
   // SSE connection — receives live agent events directly from the server.
   // This works on ALL paths (batch and streaming) because the agent plugin
@@ -662,7 +669,11 @@ export function ChatPanel(): React.JSX.Element {
 
   const streaming = streamingText !== null;
   const runningTool = toolCalls.find((tc) => tc.running);
-  const status = statusFor(pillState, streaming, runningTool?.tool);
+  const status = statusFor(
+    pillState,
+    streaming,
+    runningTool ? displayToolName(runningTool.tool) : undefined,
+  );
   const empty = messages.length === 0 && !streaming;
 
   let lastAssistantIdx = -1;
@@ -706,28 +717,49 @@ export function ChatPanel(): React.JSX.Element {
         </div>
       ) : (
         <div className="messages">
-          {messages.map((msg, i) => (
-            <div key={i} className={`turn ${msg.role}`}>
-              <span className={`turn-role ${msg.role}`}>
-                {msg.role === "user" ? "You" : "Agent"}
-              </span>
-              <div className="turn-text markdown">
-                <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
+          {messages.map((msg, i) => {
+            const isLastAssistant = i === lastAssistantIdx && !streaming;
+            // Tool calls belong to the current turn. When streaming,
+            // they appear before the streaming bubble. After stream
+            // ends, they appear just before the last assistant message
+            // (the final reply that was just persisted).
+            const showToolsBefore =
+              toolCalls.length > 0 && !streaming && i === lastAssistantIdx;
+
+            return (
+              <div key={i}>
+                {showToolsBefore && (
+                  <div className="tool-calls">
+                    {toolCalls.map((tc, j) => (
+                      <ToolCallCard key={tc.callId || j} tc={tc} />
+                    ))}
+                  </div>
+                )}
+                <div className={`turn ${msg.role}`}>
+                  <span className={`turn-role ${msg.role}`}>
+                    {msg.role === "user" ? "You" : "Agent"}
+                  </span>
+                  <div className="turn-text markdown">
+                    <Markdown remarkPlugins={[remarkGfm]}>
+                      {msg.content}
+                    </Markdown>
+                  </div>
+                  {msg.role === "assistant" && (
+                    <MessageActions
+                      text={msg.content}
+                      isLast={isLastAssistant}
+                      onRegenerate={() => regenerate.mutate()}
+                      regenerating={regenerate.isPending}
+                    />
+                  )}
+                </div>
               </div>
-              {msg.role === "assistant" && (
-                <MessageActions
-                  text={msg.content}
-                  isLast={i === lastAssistantIdx && !streaming}
-                  onRegenerate={() => regenerate.mutate()}
-                  regenerating={regenerate.isPending}
-                />
-              )}
-            </div>
-          ))}
-          {toolCalls.length > 0 && (
+            );
+          })}
+          {streaming && toolCalls.length > 0 && (
             <div className="tool-calls">
-              {toolCalls.map((tc, i) => (
-                <ToolCallCard key={i} tc={tc} />
+              {toolCalls.map((tc, j) => (
+                <ToolCallCard key={tc.callId || j} tc={tc} />
               ))}
             </div>
           )}

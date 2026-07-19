@@ -442,31 +442,32 @@ body {
 .tool-calls {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
+  padding: 2px 0;
 }
 
 .tool-card {
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--secondary) 50%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--secondary) 40%, transparent);
   overflow: hidden;
-  animation: agent-rise 180ms ease;
+  animation: agent-rise 140ms ease;
+  border-left: 2px solid var(--border);
 }
 
 .tool-card.tool-error {
-  border-color: color-mix(in srgb, #dd6e4e 30%, var(--border));
+  border-left-color: #dd6e4e;
 }
 
 .tool-card.tool-running {
-  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+  border-left-color: var(--primary);
 }
 
 .tool-card-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   width: 100%;
-  padding: 5px 8px;
+  padding: 4px 8px;
   border: none;
   background: none;
   color: var(--foreground);
@@ -477,34 +478,41 @@ body {
 }
 
 .tool-card-icon {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
   color: var(--muted-foreground);
+  opacity: 0.7;
 }
 
 .tool-card-icon svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 
 .tool-card-name {
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 500;
   flex: 1;
+  color: var(--muted-foreground);
+}
+
+.tool-card.tool-running .tool-card-name {
+  color: var(--foreground);
 }
 
 .tool-card-chevron {
-  font-size: 9px;
+  font-size: 8px;
   color: var(--muted-foreground);
   flex-shrink: 0;
+  opacity: 0.5;
 }
 
 .tool-card-spinner {
-  width: 10px;
-  height: 10px;
-  border: 1.5px solid var(--border);
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid color-mix(in srgb, var(--border) 60%, transparent);
   border-top-color: var(--primary);
   border-radius: 50%;
   animation: tool-spin 700ms linear infinite;
@@ -512,21 +520,23 @@ body {
 }
 
 .tool-card-running-hint {
-  color: var(--primary);
+  color: color-mix(in srgb, var(--primary) 80%, var(--muted-foreground));
+  font-style: italic;
 }
 
 .tool-card-summary {
-  padding: 0 8px 5px;
+  padding: 0 8px 4px;
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 9.5px;
   color: var(--muted-foreground);
+  opacity: 0.7;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .tool-card-detail {
-  padding: 0 8px 6px;
+  padding: 2px 8px 6px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -540,25 +550,27 @@ body {
 
 .tool-card-label {
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 9px;
+  font-size: 8.5px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--muted-foreground);
+  opacity: 0.6;
 }
 
 .tool-card-pre {
   margin: 0;
   padding: 4px 6px;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--secondary) 70%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--secondary) 60%, transparent);
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 9.5px;
   line-height: 1.4;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 120px;
+  max-height: 100px;
   overflow-y: auto;
+  color: var(--muted-foreground);
 }
 
 /* ---- Ghost cursor guidance overlay ---- */

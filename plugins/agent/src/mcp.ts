@@ -1,8 +1,11 @@
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { type JSONSchema7, jsonSchema, type Tool, tool } from "ai";
+import type { PluginStorage } from "freestyle-voice";
 import type { McpServerConfig } from "./config.js";
+import { PluginOAuthProvider, pendingOAuthTransports } from "./oauth.js";
 
 /** Fast-fail timeout for connecting to an MCP server (ms). */
 const MCP_CONNECT_TIMEOUT_MS = 10_000;
@@ -23,24 +26,60 @@ export interface McpConnection {
  */
 export async function connectMcpServer(
   server: McpServerConfig,
+  opts?: { storage?: PluginStorage; pluginSlug?: string },
 ): Promise<{ connection: McpConnection; tools: Record<string, Tool> }> {
   const client = new Client(
     { name: "freestyle-voice-agent", version: "0.1.0" },
     { capabilities: {} },
   );
 
-  const transport =
-    server.transport === "http"
-      ? new StreamableHTTPClientTransport(new URL(requireUrl(server)), {
-          requestInit: buildHttpRequestInit(server),
-        })
-      : new StdioClientTransport({
-          ...splitCommand(requireCommand(server), server.args),
-          env: { ...pickPathEnv(), ...(server.env ?? {}) },
-          stderr: "pipe",
-        });
+  let transport: StdioClientTransport | StreamableHTTPClientTransport;
 
-  await withTimeout(client.connect(transport), MCP_CONNECT_TIMEOUT_MS);
+  if (server.transport === "http") {
+    const url = new URL(requireUrl(server));
+    const transportOpts: Record<string, unknown> = {};
+
+    if (server.auth === "oauth" && opts?.storage && opts?.pluginSlug) {
+      const provider = new PluginOAuthProvider(
+        server.id,
+        opts.storage,
+        opts.pluginSlug,
+      );
+      transportOpts.authProvider = provider;
+    } else if (server.auth === "headers") {
+      const init = buildHttpRequestInit(server);
+      if (init) transportOpts.requestInit = init;
+    }
+
+    const httpTransport = new StreamableHTTPClientTransport(url, transportOpts);
+
+    if (server.auth === "oauth") {
+      pendingOAuthTransports.set(server.id, httpTransport);
+    }
+
+    transport = httpTransport;
+  } else {
+    transport = new StdioClientTransport({
+      ...splitCommand(requireCommand(server), server.args),
+      env: { ...pickPathEnv(), ...(server.env ?? {}) },
+      stderr: "pipe",
+    });
+  }
+
+  try {
+    await withTimeout(client.connect(transport), MCP_CONNECT_TIMEOUT_MS);
+  } catch (err) {
+    pendingOAuthTransports.delete(server.id);
+    if (err instanceof UnauthorizedError && server.auth === "oauth") {
+      throw new Error(
+        `OAuth authorization required for "${server.name}". Complete the flow in your browser, then retry.`,
+      );
+    }
+    throw err;
+  }
+
+  // Connection succeeded — clear from pending map (tokens are now saved).
+  pendingOAuthTransports.delete(server.id);
 
   const { tools: mcpTools } = await client.listTools();
   const tools: Record<string, Tool> = {};
@@ -83,6 +122,7 @@ export async function connectMcpServer(
 export async function connectEnabledServers(
   servers: McpServerConfig[],
   log: (msg: string) => void,
+  opts?: { storage?: PluginStorage; pluginSlug?: string },
 ): Promise<{
   tools: Record<string, Tool>;
   connections: McpConnection[];
@@ -92,7 +132,7 @@ export async function connectEnabledServers(
   const connections: McpConnection[] = [];
 
   const settled = await Promise.allSettled(
-    enabled.map((s) => connectMcpServer(s)),
+    enabled.map((s) => connectMcpServer(s, opts)),
   );
 
   settled.forEach((result, i) => {

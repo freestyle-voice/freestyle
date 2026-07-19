@@ -9,6 +9,9 @@ export interface ConversationEntry {
 /** Identifier for the built-in Freestyle Tools MCP entry. */
 export const BUILTIN_SERVER_ID = "freestyle-tools";
 
+/** Authentication mode for HTTP MCP servers. */
+export type McpAuthMode = "none" | "headers" | "oauth";
+
 /** A configured MCP server the agent can pull tools from. */
 export interface McpServerConfig {
   id: string;
@@ -23,7 +26,14 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   /** For `http`: the server URL. */
   url?: string;
-  /** For `http`: custom headers (e.g. Authorization). */
+  /**
+   * Authentication mode for HTTP servers:
+   * - `"none"` (default) — no authentication.
+   * - `"headers"` — static custom headers (e.g. Authorization: Bearer).
+   * - `"oauth"` — full OAuth 2.1 with PKCE, DCR, and token refresh.
+   */
+  auth?: McpAuthMode;
+  /** For `http` with `auth: "headers"`: custom headers. */
   headers?: Record<string, string>;
   enabled: boolean;
   /** True for the built-in Freestyle Tools server. Cannot be deleted in the UI. */
@@ -222,6 +232,10 @@ export function normalizeConfig(raw: unknown): AgentConfig {
 
 function normalizeMcpServer(raw: Record<string, unknown>): McpServerConfig {
   const transport = raw.transport === "http" ? "http" : "stdio";
+  const authRaw = raw.auth;
+  const auth: McpAuthMode =
+    authRaw === "headers" || authRaw === "oauth" ? authRaw : "none";
+
   return {
     id: typeof raw.id === "string" && raw.id ? raw.id : crypto.randomUUID(),
     name: typeof raw.name === "string" ? raw.name : "Untitled server",
@@ -238,6 +252,7 @@ function normalizeMcpServer(raw: Record<string, unknown>): McpServerConfig {
         )
       : undefined,
     url: typeof raw.url === "string" ? raw.url : undefined,
+    auth,
     headers: isRecord(raw.headers)
       ? Object.fromEntries(
           Object.entries(raw.headers).filter(

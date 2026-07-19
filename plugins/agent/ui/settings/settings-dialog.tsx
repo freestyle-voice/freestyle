@@ -1,11 +1,91 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { del, getJson, postJson } from "../shared/api";
 import {
   type AgentConfig,
+  type McpAuthMode,
   type McpServerConfig,
   type Skill,
   TOOL_GROUPS,
   uid,
 } from "../shared/types";
+
+/* ---- OAuth status component ---- */
+
+function OAuthStatus({ serverId }: { serverId: string }): React.JSX.Element {
+  const [authorized, setAuthorized] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const checkStatus = useCallback(async () => {
+    const data = await getJson<{ authorized: boolean }>(
+      `/oauth/status?server_id=${encodeURIComponent(serverId)}`,
+    );
+    if (data) {
+      setAuthorized(data.authorized);
+      if (data.authorized && pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+        setBusy(false);
+      }
+    }
+  }, [serverId]);
+
+  useEffect(() => {
+    void checkStatus();
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [checkStatus]);
+
+  const handleAuthorize = async () => {
+    setBusy(true);
+    await postJson(`/oauth/connect?server_id=${encodeURIComponent(serverId)}`);
+    pollRef.current = setInterval(() => void checkStatus(), 2000);
+    setTimeout(() => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+        setBusy(false);
+      }
+    }, 120_000);
+  };
+
+  const handleRevoke = async () => {
+    await del(`/oauth/revoke?server_id=${encodeURIComponent(serverId)}`);
+    setAuthorized(false);
+  };
+
+  return (
+    <div className="oauth-status">
+      <span className={`oauth-dot ${authorized ? "oauth-ok" : "oauth-none"}`} />
+      <span className="oauth-label">
+        {authorized === null
+          ? "Checking..."
+          : authorized
+            ? "Authorized"
+            : "Not authorized"}
+      </span>
+      {authorized ? (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm oauth-btn"
+          onClick={() => void handleRevoke()}
+        >
+          Revoke
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm oauth-btn"
+          onClick={() => void handleAuthorize()}
+          disabled={busy}
+        >
+          {busy ? "Waiting..." : "Authorize"}
+        </button>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   config: AgentConfig;
@@ -423,12 +503,31 @@ export function SettingsDialog({
                             placeholder="https://example.com/mcp"
                           />
                         </div>
-                        <HeadersEditor
-                          headers={s.headers ?? {}}
-                          onChange={(headers) =>
-                            updateServer(s.id, { headers })
-                          }
-                        />
+                        <div className="dlg-row">
+                          <label className="dlg-label-sm">Auth</label>
+                          <select
+                            className="select select-compact"
+                            value={s.auth ?? "none"}
+                            onChange={(e) =>
+                              updateServer(s.id, {
+                                auth: e.target.value as McpAuthMode,
+                              })
+                            }
+                          >
+                            <option value="none">None</option>
+                            <option value="headers">Headers</option>
+                            <option value="oauth">OAuth</option>
+                          </select>
+                        </div>
+                        {s.auth === "headers" && (
+                          <HeadersEditor
+                            headers={s.headers ?? {}}
+                            onChange={(headers) =>
+                              updateServer(s.id, { headers })
+                            }
+                          />
+                        )}
+                        {s.auth === "oauth" && <OAuthStatus serverId={s.id} />}
                       </>
                     )}
                   </div>

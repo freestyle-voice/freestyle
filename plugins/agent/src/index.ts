@@ -21,6 +21,12 @@ import type { ToolCallEvent, ToolCallStartEvent } from "./mcp/index.js";
 import { BUILTIN_TOOL_COUNT } from "./mcp/index.js";
 import { createMcpMiddleware } from "./mcp/server.js";
 import type { GuidanceEvent } from "./mcp/tools/desktop.js";
+import { connectMcpServer } from "./mcp.js";
+import {
+  clearOAuthData,
+  hasOAuthTokens,
+  pendingOAuthTransports,
+} from "./oauth.js";
 
 const PLUGIN_NAME = "@freestyle-voice/plugin-agent";
 const CONVERSATION_KEY = "conversation";
@@ -145,6 +151,8 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
             history: conversation,
             signal,
             log: logger,
+            storage: storage ?? undefined,
+            pluginSlug: baseSlug,
             onDelta: (delta) =>
               emit({ type: "streamDelta", text: delta }, pipelineEmit),
             onToolCallStart: (e: ToolCallStartEvent) =>
@@ -257,6 +265,8 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
           config,
           history: conversation,
           log: logger,
+          storage: storage ?? undefined,
+          pluginSlug: baseSlug,
         });
         conversation.push({ role: "assistant", content: reply });
         await persistConversation();
@@ -277,6 +287,92 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
         enabled: config.builtinToolsEnabled,
         count: BUILTIN_TOOL_COUNT,
       });
+    }
+
+    // ---- OAuth routes ----
+
+    // Trigger the OAuth authorization flow for an HTTP MCP server.
+    if (ownRoute(reqPath, "/agent/oauth/connect") && c.req.method === "POST") {
+      const serverId = c.req.query("server_id");
+      if (!serverId) return c.json({ error: "Missing server_id" }, 400);
+
+      const server = config.mcpServers.find((s) => s.id === serverId);
+      if (!server) return c.json({ error: "Server not found" }, 404);
+      if (server.auth !== "oauth")
+        return c.json({ error: "Server is not configured for OAuth" }, 400);
+
+      if (storage && (await hasOAuthTokens(serverId, storage))) {
+        return c.json({ status: "authorized" });
+      }
+
+      try {
+        await connectMcpServer(server, {
+          storage: storage ?? undefined,
+          pluginSlug: baseSlug,
+        });
+        return c.json({ status: "authorized" });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("OAuth authorization required")) {
+          return c.json({ status: "redirecting" });
+        }
+        return c.json({ status: "error", message: msg }, 500);
+      }
+    }
+
+    // OAuth callback — the browser redirects here after the user authorizes.
+    if (ownRoute(reqPath, "/agent/oauth/callback") && c.req.method === "GET") {
+      const code = c.req.query("code");
+      if (!code) {
+        const error = c.req.query("error") ?? "unknown";
+        const desc = c.req.query("error_description") ?? "";
+        return c.html(
+          `<!DOCTYPE html><html><body><h3>Authorization failed</h3><p>${error}: ${desc}</p><p>You can close this tab.</p></body></html>`,
+          400,
+        );
+      }
+
+      // Find the pending transport. There should only be one at a time in
+      // practice (single user), but we try to match by checking each.
+      let finished = false;
+      for (const [serverId, transport] of pendingOAuthTransports) {
+        try {
+          await transport.finishAuth(code);
+          pendingOAuthTransports.delete(serverId);
+          finished = true;
+          break;
+        } catch {
+          // This transport didn't match — try next.
+        }
+      }
+
+      if (finished) {
+        return c.html(
+          `<!DOCTYPE html><html><body style="font-family:system-ui;text-align:center;padding:60px 20px"><h3>Authorization complete</h3><p>You can close this tab and return to Freestyle.</p></body></html>`,
+        );
+      }
+      return c.html(
+        `<!DOCTYPE html><html><body><h3>Authorization failed</h3><p>No pending OAuth flow found. Try again from Settings.</p></body></html>`,
+        400,
+      );
+    }
+
+    // Check OAuth authorization status for a server.
+    if (ownRoute(reqPath, "/agent/oauth/status") && c.req.method === "GET") {
+      const serverId = c.req.query("server_id");
+      if (!serverId) return c.json({ error: "Missing server_id" }, 400);
+      const authorized = storage
+        ? await hasOAuthTokens(serverId, storage)
+        : false;
+      return c.json({ authorized });
+    }
+
+    // Revoke OAuth authorization for a server.
+    if (ownRoute(reqPath, "/agent/oauth/revoke") && c.req.method === "DELETE") {
+      const serverId = c.req.query("server_id");
+      if (!serverId) return c.json({ error: "Missing server_id" }, 400);
+      if (storage) await clearOAuthData(serverId, storage);
+      return c.json({ ok: true });
     }
 
     // SSE endpoint — the panel connects here for live agent events.

@@ -116,7 +116,6 @@ export function SettingsPage(): React.JSX.Element {
       );
       return data?.conversations ?? [];
     },
-    refetchInterval: 5000,
   });
 
   // ---- Config save (debounced, optimistic) ----

@@ -4,7 +4,7 @@ import {
   stepCountIs,
   streamText,
 } from "ai";
-import type { PluginLlm } from "freestyle-voice";
+import type { PluginLlm, PluginStorage } from "freestyle-voice";
 import {
   type AgentConfig,
   buildSystemPrompt,
@@ -39,6 +39,8 @@ export async function runAgentTurn(opts: {
   onToolCallStart?: (e: ToolCallStartEvent) => void;
   onToolCall?: (e: ToolCallEvent) => void;
   onGuidance?: (e: GuidanceEvent) => void;
+  storage?: PluginStorage;
+  pluginSlug?: string;
 }): Promise<string> {
   const {
     llm,
@@ -50,11 +52,14 @@ export async function runAgentTurn(opts: {
     onToolCallStart,
     onToolCall,
     onGuidance,
+    storage,
+    pluginSlug,
   } = opts;
 
   const { tools: externalTools, connections } = await connectEnabledServers(
     config.mcpServers,
     log,
+    { storage, pluginSlug },
   );
 
   // Determine if desktop-control tools should be active.

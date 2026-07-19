@@ -715,6 +715,42 @@ body {
   border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
 
+/* ---- OAuth status ---- */
+
+.oauth-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0 2px;
+}
+
+.oauth-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.oauth-dot.oauth-ok {
+  background: #22c55e;
+  box-shadow: 0 0 4px #22c55e80;
+}
+
+.oauth-dot.oauth-none {
+  background: var(--muted-foreground);
+  opacity: 0.5;
+}
+
+.oauth-label {
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+  flex: 1;
+}
+
+.oauth-btn {
+  flex-shrink: 0;
+}
+
 .item-empty {
   font-size: 12px;
   color: var(--muted-foreground);

@@ -5,6 +5,8 @@ export function uid(): string {
 
 /** UI-side mirror of the server config types (kept in sync with src/config.ts). */
 
+export type McpAuthMode = "none" | "headers" | "oauth";
+
 export interface McpServerConfig {
   id: string;
   name: string;
@@ -13,6 +15,7 @@ export interface McpServerConfig {
   args?: string[];
   env?: Record<string, string>;
   url?: string;
+  auth?: McpAuthMode;
   headers?: Record<string, string>;
   enabled: boolean;
   builtin?: boolean;

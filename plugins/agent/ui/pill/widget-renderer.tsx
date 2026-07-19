@@ -13,8 +13,17 @@ export interface WidgetAction {
 
 interface Props {
   resource: UiResource;
+  /** The arguments the tool was called with (for MCP Apps tool-input). */
+  toolInput?: Record<string, unknown>;
+  /** The tool's text result (for MCP Apps tool-result). */
+  toolOutput?: string;
   /** Called when the widget posts an action. Return value is ignored. */
   onAction?: (action: WidgetAction) => void;
+}
+
+/** True for an MCP Apps widget (needs the JSON-RPC tool-input/result push). */
+function isMcpApp(resource: UiResource): boolean {
+  return (resource.mimeType ?? "").toLowerCase().includes("mcp-app");
 }
 
 /** Decode a base64 string to UTF-8 text (atob mangles multibyte chars). */
@@ -64,14 +73,84 @@ function resolveContent(resource: UiResource): {
  */
 export function WidgetRenderer({
   resource,
+  toolInput,
+  toolOutput,
   onAction,
 }: Props): React.JSX.Element | null {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState(180);
   const { srcDoc, src } = resolveContent(resource);
+  const mcpApp = isMcpApp(resource);
+  // MCP Apps widgets render nothing until the host pushes data and then report
+  // their size, so start compact to avoid a big empty gap; legacy self-contained
+  // widgets get a reasonable default.
+  const [height, setHeight] = useState(mcpApp ? 40 : 180);
 
   // Nothing to render — don't show an empty iframe.
   const hasContent = !!src || !!srcDoc?.trim();
+
+  const post = useCallback((message: unknown) => {
+    iframeRef.current?.contentWindow?.postMessage(message, "*");
+  }, []);
+
+  /**
+   * MCP Apps widgets render nothing until the host pushes the tool input +
+   * result over JSON-RPC. Send those notifications once the iframe loads.
+   */
+  const pushMcpAppData = useCallback(() => {
+    if (!mcpApp) return;
+    if (toolInput) {
+      post({
+        jsonrpc: "2.0",
+        method: "ui/notifications/tool-input",
+        params: { input: toolInput },
+      });
+    }
+    post({
+      jsonrpc: "2.0",
+      method: "ui/notifications/tool-result",
+      params: {
+        result: { content: [{ type: "text", text: toolOutput ?? "" }] },
+      },
+    });
+  }, [mcpApp, toolInput, toolOutput, post]);
+
+  /** Translate an MCP Apps guest→host JSON-RPC request into a widget action. */
+  const handleMcpAppRequest = useCallback(
+    (msg: Record<string, unknown>) => {
+      const params = (msg.params ?? {}) as Record<string, unknown>;
+      switch (msg.method) {
+        case "ui/notifications/size-changed": {
+          const h = Number(params.height);
+          if (Number.isFinite(h) && h > 0) {
+            setHeight(Math.max(60, Math.min(h, 600)));
+          }
+          break;
+        }
+        case "tools/call":
+          onAction?.({
+            type: "tool",
+            payload: {
+              toolName: params.name ?? params.toolName,
+              params: params.arguments ?? params.params ?? {},
+            },
+          });
+          break;
+        case "ui/message":
+          onAction?.({ type: "prompt", payload: { prompt: params.message } });
+          break;
+        case "ui/open-link":
+          onAction?.({ type: "link", payload: { url: params.url } });
+          break;
+        default:
+          break;
+      }
+      // Acknowledge requests that carry an id (fire-and-forget for the agent).
+      if (msg.id !== undefined) {
+        post({ jsonrpc: "2.0", id: msg.id, result: {} });
+      }
+    },
+    [onAction, post],
+  );
 
   const handleMessage = useCallback(
     (e: MessageEvent) => {
@@ -84,6 +163,12 @@ export function WidgetRenderer({
       }
       const data = e.data as Record<string, unknown> | null;
       if (!data || typeof data !== "object") return;
+
+      // MCP Apps (JSON-RPC over postMessage): guest → host requests.
+      if (data.jsonrpc === "2.0" && typeof data.method === "string") {
+        handleMcpAppRequest(data);
+        return;
+      }
 
       // Auto-size: mcp-ui posts `{ type: "ui-size-change", payload: { height } }`.
       if (data.type === "ui-size-change") {
@@ -106,7 +191,7 @@ export function WidgetRenderer({
         });
       }
     },
-    [onAction],
+    [onAction, handleMcpAppRequest],
   );
 
   useEffect(() => {
@@ -123,6 +208,7 @@ export function WidgetRenderer({
         ref={iframeRef}
         title="Interactive widget"
         sandbox="allow-scripts allow-forms"
+        onLoad={pushMcpAppData}
         // srcDoc for inline HTML, src for external URLs.
         {...(src ? { src } : { srcDoc: srcDoc ?? "" })}
         style={{ height }}

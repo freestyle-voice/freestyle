@@ -426,7 +426,12 @@ function ToolCallCard({
       {/* Interactive MCP UI widget renders as a prominent block below the
           collapsible tool card. */}
       {tc.uiResource && !tc.running && (
-        <WidgetRenderer resource={tc.uiResource} onAction={onWidgetAction} />
+        <WidgetRenderer
+          resource={tc.uiResource}
+          toolInput={tc.input}
+          toolOutput={tc.output}
+          onAction={onWidgetAction}
+        />
       )}
     </div>
   );

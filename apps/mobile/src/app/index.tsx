@@ -19,5 +19,5 @@ export default function Index() {
     );
   }
 
-  return <Redirect href={signedIn ? "/(app)" : "/sign-in"} />;
+  return <Redirect href={signedIn ? "/(app)/(tabs)" : "/sign-in"} />;
 }

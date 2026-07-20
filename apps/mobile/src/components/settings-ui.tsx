@@ -19,7 +19,11 @@ import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 
-/** Full-screen scaffold: back button, large serif title, scrollable body. */
+/**
+ * Full-screen scaffold for pushed pages (Settings, Profile, Keyboard). The
+ * page title lives in the top nav bar — Back on the left, title centered — so
+ * it reads like a standard navigation header. Body scrolls below.
+ */
 export function SettingsScreenScaffold({
   title,
   subtitle,
@@ -34,30 +38,35 @@ export function SettingsScreenScaffold({
   return (
     <ThemedView style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-        <View style={styles.topBar}>
+        <View style={styles.navBar}>
           <Pressable
             onPress={() => router.back()}
             hitSlop={12}
-            style={styles.backButton}
+            style={styles.navBack}
             accessibilityRole="button"
             accessibilityLabel="Back"
           >
-            <ChevronLeft color={theme.primary} size={20} />
+            <ChevronLeft color={theme.primary} size={22} />
             <ThemedText style={[styles.backText, { color: theme.primary }]}>
               Back
             </ThemedText>
           </Pressable>
+          <ThemedText style={styles.navTitle} numberOfLines={1}>
+            {title}
+          </ThemedText>
+          {/* Balances the back button so the title stays centered. */}
+          <View style={styles.navBack} />
         </View>
         <ScrollView
           contentContainerStyle={[styles.body, styles.tabBody]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <ThemedText type="title" style={styles.screenTitle}>
-            {title}
-          </ThemedText>
           {subtitle ? (
-            <ThemedText themeColor="mutedForeground" style={styles.subtitle}>
+            <ThemedText
+              themeColor="mutedForeground"
+              style={styles.leadSubtitle}
+            >
               {subtitle}
             </ThemedText>
           ) : null}
@@ -69,11 +78,10 @@ export function SettingsScreenScaffold({
 }
 
 /**
- * Tab-root scaffold: large serif title + subtitle and a scrollable body, but
- * NO back button — used by the top-level tabs (History, Vocabulary, Tone,
- * Dictionary). The Settings + Profile header actions live top-right so those
- * pages are reachable from every tab. An optional `action` renders to the left
- * of the header actions (e.g. History's clear button).
+ * Tab-root scaffold: the page title sits in the top nav bar (left) with the
+ * Settings + Profile actions (right) — matching the pushed-page header so the
+ * whole app reads consistently. An optional `action` renders just left of the
+ * header actions (e.g. History's clear button).
  */
 export function TabScreenScaffold({
   title,
@@ -90,7 +98,9 @@ export function TabScreenScaffold({
     <ThemedView style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <View style={styles.tabHeader}>
-          <View style={styles.tabHeaderSpacer} />
+          <ThemedText style={styles.tabHeaderTitle} numberOfLines={1}>
+            {title}
+          </ThemedText>
           <View style={styles.tabHeaderActions}>
             {action}
             <HeaderActions />
@@ -101,11 +111,11 @@ export function TabScreenScaffold({
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <ThemedText type="title" style={styles.tabTitle}>
-            {title}
-          </ThemedText>
           {subtitle ? (
-            <ThemedText themeColor="mutedForeground" style={styles.subtitle}>
+            <ThemedText
+              themeColor="mutedForeground"
+              style={styles.leadSubtitle}
+            >
               {subtitle}
             </ThemedText>
           ) : null}
@@ -227,16 +237,25 @@ export function OptionCard({
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four },
-  topBar: {
+  navBar: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingTop: Spacing.two,
+    paddingBottom: Spacing.two,
   },
-  backButton: {
+  navBack: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 2,
-    marginLeft: -4,
+    gap: 1,
+    marginLeft: -6,
+    minWidth: 76,
+  },
+  navTitle: {
+    flex: 1,
+    textAlign: "center",
+    fontFamily: Fonts.sansSemiBold,
+    fontSize: 17,
   },
   backText: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   body: { paddingBottom: Spacing.six, gap: Spacing.four },
@@ -249,20 +268,29 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.three,
     paddingBottom: Spacing.one,
   },
-  tabHeaderSpacer: { flex: 1 },
+  tabHeaderTitle: {
+    flex: 1,
+    fontFamily: Fonts.sansSemiBold,
+    fontSize: 22,
+    letterSpacing: -0.3,
+  },
   tabHeaderActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.two,
   },
-  screenTitle: { marginTop: Spacing.three },
-  // Title sits right under the header actions on tab roots.
-  tabTitle: { marginTop: Spacing.two },
   subtitle: {
     fontSize: 14,
     lineHeight: 20,
     marginTop: Spacing.one,
     marginBottom: Spacing.two,
+  },
+  // Subtitle at the top of a pushed page (no big serif title above it).
+  leadSubtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: Spacing.one,
+    marginBottom: Spacing.one,
   },
 
   card: {

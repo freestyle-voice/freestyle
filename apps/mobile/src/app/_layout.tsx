@@ -13,17 +13,31 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { Colors } from "@/constants/theme";
+import { ColorModeProvider, useColorMode } from "@/lib/color-mode";
 
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
-  const scheme = useColorScheme();
-  const theme = Colors[scheme === "dark" ? "dark" : "light"];
+function RootNavigator() {
+  const { scheme } = useColorMode();
+  const theme = Colors[scheme];
 
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: theme.background },
+        }}
+      />
+    </GestureHandlerRootView>
+  );
+}
+
+export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     InstrumentSerif_400Regular,
     InstrumentSerif_400Regular_Italic,
@@ -42,14 +56,8 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: theme.background },
-        }}
-      />
-    </GestureHandlerRootView>
+    <ColorModeProvider>
+      <RootNavigator />
+    </ColorModeProvider>
   );
 }

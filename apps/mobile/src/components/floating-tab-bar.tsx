@@ -1,16 +1,15 @@
 /**
- * Docked navigation bar.
+ * Bottom navigation bar.
  *
- * A single rounded, elevated capsule floating above the bottom edge with five
- * equally-weighted icon buttons: History · Vocab · Home · Tone · Dict. Home
- * sits in the center. The active tab tints olive; there are no text labels and
- * no active dot — the color change alone signals selection.
+ * Five equally-weighted icon buttons: History · Vocab · Home · Tone · Dict,
+ * with Home centered. Transparent (no capsule / blur background), sitting
+ * close to the bottom edge. The active tab tints olive; no text labels and no
+ * active dot — color alone signals selection.
  *
  * Recording lives on the Home screen itself; the center Home button is simply
  * how you return to it from any other tab.
  */
 
-import { useRouter } from "expo-router";
 import type { BottomTabBarProps } from "expo-router/build/react-navigation/bottom-tabs";
 import {
   BookOpen,
@@ -23,7 +22,7 @@ import {
 import { Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Radius, Spacing } from "@/constants/theme";
+import { Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 
 interface NavSpec {
@@ -72,18 +71,11 @@ function NavButton({
 }
 
 export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
-  const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const router = useRouter();
 
   const focusedName = state.routes[state.index]?.name;
 
   const go = (name: string) => {
-    if (name === "index") {
-      // Home is not a rendered tab route from a nav standpoint; route to it.
-      if (focusedName !== "index") router.navigate("/(app)");
-      return;
-    }
     const target = state.routes.find((r) => r.name === name);
     if (!target) return;
     const event = navigation.emit({
@@ -99,18 +91,9 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   return (
     <View
       pointerEvents="box-none"
-      style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 10) }]}
+      style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 6) }]}
     >
-      <View
-        style={[
-          styles.bar,
-          {
-            backgroundColor: theme.card,
-            borderColor: theme.cardRing,
-            shadowColor: theme.foreground,
-          },
-        ]}
-      >
+      <View style={styles.bar}>
         {ITEMS.map((spec) => (
           <NavButton
             key={spec.name}
@@ -124,7 +107,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   );
 }
 
-const BAR_HEIGHT = 64;
+const BAR_HEIGHT = 56;
 
 const styles = StyleSheet.create({
   wrap: {
@@ -142,12 +125,6 @@ const styles = StyleSheet.create({
     width: "100%",
     height: BAR_HEIGHT,
     paddingHorizontal: Spacing.three,
-    borderRadius: Radius["2xl"] + 8,
-    borderWidth: 1,
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 12,
   },
   navButton: {
     flex: 1,

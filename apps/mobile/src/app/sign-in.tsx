@@ -27,7 +27,7 @@ export default function SignInScreen() {
         return;
       }
       // On native the session resolves reactively; route once it's set.
-      router.replace("/(app)");
+      router.replace("/(app)/(tabs)");
     },
     [signInWith, router],
   );

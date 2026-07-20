@@ -1,117 +1,120 @@
 import SwiftUI
 import UIKit
 
-/// Freestyle voice keyboard — a full QWERTY keyboard (à la Apple's) with a mic
-/// button in the top-right toolbar for voice dictation.
-///
-/// Dictation can't happen here: iOS blocks microphone capture inside keyboard
-/// extensions (every capture API — AVAudioEngine, RemoteIO, AVAudioRecorder —
-/// fails on-device, matching Apple's app-extension restriction). So the mic
-/// button deep-links into the Freestyle app (via a SwiftUI `Link`, the only
-/// mechanism that reliably opens the host app from a keyboard on iOS 18+), which
-/// records + streams to the cloud and writes the transcript into the App Group.
-/// When the keyboard reappears, `insertPendingTranscriptIfAny()` inserts it.
-final class KeyboardViewController: UIInputViewController {
-    // MARK: - Palette
-
-    private enum Palette {
-        static func background(_ dark: Bool) -> UIColor {
-            dark ? UIColor(white: 0.09, alpha: 1) : UIColor(red: 0.82, green: 0.83, blue: 0.85, alpha: 1)
-        }
-        static func key(_ dark: Bool) -> UIColor {
-            dark ? UIColor(white: 0.35, alpha: 1) : .white
-        }
-        static func specialKey(_ dark: Bool) -> UIColor {
-            dark ? UIColor(white: 0.20, alpha: 1) : UIColor(red: 0.68, green: 0.70, blue: 0.73, alpha: 1)
-        }
-        /// The engaged/active key (matches Apple's lit shift key): a light key
-        /// with a dark glyph, in both light and dark appearances.
-        static func activeKey(_ dark: Bool) -> UIColor { .white }
-        static func activeGlyph(_ dark: Bool) -> UIColor { UIColor(white: 0.05, alpha: 1) }
-        static func keyText(_ dark: Bool) -> UIColor {
-            dark ? .white : UIColor(white: 0.05, alpha: 1)
-        }
-        static func muted(_ dark: Bool) -> UIColor {
-            dark ? UIColor(white: 0.6, alpha: 1) : UIColor(white: 0.35, alpha: 1)
-        }
-        static func accent(_ dark: Bool) -> UIColor {
-            dark ? UIColor(red: 0.54, green: 0.71, blue: 0.16, alpha: 1)
-                 : UIColor(red: 0.42, green: 0.56, blue: 0.07, alpha: 1)
-        }
+/// Freestyle's design tokens, mirrored from `apps/mobile/src/constants/theme.ts`
+/// (which is itself lifted from `DESIGN.md`). A keyboard extension can't share
+/// code with the React Native app, so the palette is duplicated here as raw hex.
+/// Warm paper substrate, near-black ink, olive accent — never pure white/black.
+private enum Freestyle {
+    struct Palette {
+        let background: UIColor
+        let foreground: UIColor
+        let card: UIColor
+        let primary: UIColor
+        let primaryForeground: UIColor
+        let secondary: UIColor
+        let mutedForeground: UIColor
+        let border: UIColor
+        let destructive: UIColor
     }
+
+    static let light = Palette(
+        background: UIColor(hex: 0xF4F0E4),
+        foreground: UIColor(hex: 0x16140F),
+        card: UIColor(hex: 0xFBF8EE),
+        primary: UIColor(hex: 0x6B8F12),
+        primaryForeground: UIColor(hex: 0xFBF8EE),
+        secondary: UIColor(hex: 0xECE7D6),
+        mutedForeground: UIColor(hex: 0x7B7461),
+        border: UIColor(hex: 0xD6CDB8),
+        destructive: UIColor(hex: 0xDD6E4E)
+    )
+
+    static let dark = Palette(
+        background: UIColor(hex: 0x16140F),
+        foreground: UIColor(hex: 0xECE7D6),
+        card: UIColor(hex: 0x1E1C16),
+        primary: UIColor(hex: 0x8AB62A),
+        primaryForeground: UIColor(hex: 0x16140F),
+        secondary: UIColor(hex: 0x2A2720),
+        mutedForeground: UIColor(hex: 0x9E977F),
+        border: UIColor(hex: 0x3A362D),
+        destructive: UIColor(hex: 0xE0805F)
+    )
+
+    static func palette(dark: Bool) -> Palette { dark ? Self.dark : Self.light }
+}
+
+extension UIColor {
+    /// Build a color from a 24-bit RGB hex literal (e.g. `0x6B8F12`).
+    convenience init(hex: UInt32) {
+        self.init(
+            red: CGFloat((hex >> 16) & 0xFF) / 255,
+            green: CGFloat((hex >> 8) & 0xFF) / 255,
+            blue: CGFloat(hex & 0xFF) / 255,
+            alpha: 1
+        )
+    }
+}
+
+extension Color {
+    /// SwiftUI mirror of `UIColor(hex:)` for the mic control.
+    init(hex: UInt32) { self.init(UIColor(hex: hex)) }
+}
+
+/// Freestyle voice keyboard — a minimal, mic-focused keyboard extension.
+///
+/// iOS blocks microphone capture inside keyboard extensions (every capture API —
+/// AVAudioEngine, RemoteIO, AVAudioRecorder — fails on-device, matching Apple's
+/// app-extension restriction). So the mic button deep-links into the Freestyle
+/// app (via a SwiftUI `Link`, the only mechanism that reliably opens the host
+/// app from a keyboard on iOS 18+), which records + streams to the cloud and
+/// writes the transcript into the App Group. When the keyboard reappears,
+/// `insertPendingTranscriptIfAny()` inserts it.
+///
+/// Users switch to their normal system keyboard (via the globe key) for regular
+/// typing. This keyboard exists solely for voice dictation.
+final class KeyboardViewController: UIInputViewController {
 
     // MARK: - State
 
-    private enum Layer { case letters, numbers, symbols }
-    private enum ShiftState { case off, on, capsLock }
-
-    private var layer: Layer = .letters
-    private var shift: ShiftState = .on  // start capitalized (sentence start)
-
-    /// Letter buttons whose case flips with shift, keyed by their base char.
-    private var letterButtons: [(button: UIButton, base: String)] = []
-    private var shiftButton: UIButton?
-
-    private var lastShiftTapAt: TimeInterval = 0
     private var deleteTimer: Timer?
     private var deleteRepeatCount = 0
     private var lastInsertedAt: Double = 0
 
-    private let toolbar = UIView()
-    private let brandLabel = UILabel()
-    private let statusLabel = UILabel()
-    private let keysContainer = UIStackView()
     private var micHost: UIHostingController<MicLink>?
-
-    // MARK: - Metrics
-
-    private let rowHeight: CGFloat = 46
-    private let rowSpacing: CGFloat = 9
-    private let keySpacing: CGFloat = 6
-    private let toolbarHeight: CGFloat = 44
+    private let statusLabel = UILabel()
+    private var hintLabel: UILabel?
+    private var globeButton: UIButton?
+    private var spaceButton: UIButton?
+    private var deleteButton: UIButton?
+    private var commaButton: UIButton?
+    private var periodButton: UIButton?
+    private var returnButton: UIButton?
 
     // MARK: - Lifecycle
 
     override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
-        configureDictationBehavior()
+        hasDictationKey = true
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        configureDictationBehavior()
-    }
-
-    /// Setting `hasDictationKey = true` tells iOS we provide our own dictation
-    /// (the toolbar mic → app hand-off), so the system drops its redundant
-    /// dictation mic from the bottom bar. It has to be re-applied across the
-    /// lifecycle — setting it only in `viewDidLoad` doesn't take effect.
-    private func configureDictationBehavior() {
         hasDictationKey = true
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        configureDictationBehavior()
+        hasDictationKey = true
         buildLayout()
-        renderKeys()
         applyColors()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        configureDictationBehavior()
+        hasDictationKey = true
         insertPendingTranscriptIfAny()
-        applyAutoCap()
-    }
-
-    override func textDidChange(_ textInput: UITextInput?) {
-        super.textDidChange(textInput)
-        // Only refresh auto-capitalization here — this fires on every keystroke,
-        // so re-coloring the whole key tree / rebuilding the SwiftUI mic host
-        // (as `applyColors()` does) would add per-keystroke lag. Appearance
-        // changes are handled by `traitCollectionDidChange`.
-        applyAutoCap()
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -123,419 +126,227 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: - Layout
 
+    /// Standard iOS keyboard height (4 rows × 46pt + 3 gaps × 9pt + toolbar 44pt
+    /// + top/bottom spacing). Matches the system keyboard so the transition
+    /// between Freestyle and the user's normal keyboard doesn't jump.
     private func buildLayout() {
-        let totalHeight = toolbarHeight + rowSpacing
-            + rowHeight * 4 + rowSpacing * 3 + rowSpacing
-        let heightConstraint = view.heightAnchor.constraint(equalToConstant: totalHeight)
+        let keyboardHeight: CGFloat = 291
+        let heightConstraint = view.heightAnchor.constraint(equalToConstant: keyboardHeight)
         heightConstraint.priority = .required - 1
         heightConstraint.isActive = true
 
-        // Toolbar: brand/status on the left, mic on the right.
-        toolbar.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(toolbar)
-
-        brandLabel.text = "Freestyle"
-        brandLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-        statusLabel.font = .systemFont(ofSize: 12, weight: .regular)
+        // --- Status label (top area, shown briefly after transcript insertion)
+        statusLabel.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
+        statusLabel.textAlignment = .center
         statusLabel.text = ""
-        let brandStack = UIStackView(arrangedSubviews: [brandLabel, statusLabel])
-        brandStack.axis = .horizontal
-        brandStack.spacing = 8
-        brandStack.alignment = .firstBaseline
-        brandStack.translatesAutoresizingMaskIntoConstraints = false
-        toolbar.addSubview(brandStack)
+        statusLabel.isHidden = true
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(statusLabel)
 
+        // --- Mic button (center, prominent) — deep-links to the app
         let mic = UIHostingController(
             rootView: MicLink(destination: URL(string: "freestyle://dictate")!, dark: isDark)
         )
         mic.view.backgroundColor = .clear
         mic.view.translatesAutoresizingMaskIntoConstraints = false
         addChild(mic)
-        toolbar.addSubview(mic.view)
+        view.addSubview(mic.view)
         mic.didMove(toParent: self)
         micHost = mic
 
-        keysContainer.axis = .vertical
-        keysContainer.spacing = rowSpacing
-        keysContainer.alignment = .fill
-        keysContainer.distribution = .fillEqually
-        keysContainer.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(keysContainer)
+        // --- Hint below the mic (mono eyebrow, mirrors the app's status text)
+        let hint = UILabel()
+        hint.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        hint.attributedText = NSAttributedString(
+            string: "TAP TO DICTATE",
+            attributes: [.kern: 1.2]
+        )
+        hint.textAlignment = .center
+        hint.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(hint)
+        hintLabel = hint
 
-        let g = view.layoutMarginsGuide
+        // --- Bottom row: globe | , | . | space | delete | return
+        let bottomRow = UIStackView()
+        bottomRow.axis = .horizontal
+        bottomRow.spacing = 6
+        bottomRow.alignment = .fill
+        bottomRow.distribution = .fill
+        bottomRow.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(bottomRow)
+
+        // Globe key — switch keyboards
+        let globe = UIButton(type: .system)
+        globe.setImage(UIImage(systemName: "globe"), for: .normal)
+        globe.addTarget(self, action: #selector(handleNextKeyboard), for: .touchUpInside)
+        globe.isHidden = !needsInputModeSwitchKey
+        globe.layer.cornerRadius = 8
+        globe.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        bottomRow.addArrangedSubview(globe)
+        globeButton = globe
+
+        // Comma & period — grouped on the left for quick punctuation
+        // without switching keyboards.
+        let comma = makeCharKey(",")
+        comma.widthAnchor.constraint(equalToConstant: 40).isActive = true
+        bottomRow.addArrangedSubview(comma)
+        commaButton = comma
+
+        let period = makeCharKey(".")
+        period.widthAnchor.constraint(equalToConstant: 40).isActive = true
+        bottomRow.addArrangedSubview(period)
+        periodButton = period
+
+        // Space bar — wide, stretches to fill
+        let space = UIButton(type: .system)
+        space.setTitle("space", for: .normal)
+        space.titleLabel?.font = .systemFont(ofSize: 16, weight: .regular)
+        space.layer.cornerRadius = 8
+        space.addAction(UIAction { [weak self] _ in
+            UIDevice.current.playInputClick()
+            self?.textDocumentProxy.insertText(" ")
+        }, for: .touchDown)
+        bottomRow.addArrangedSubview(space)
+        spaceButton = space
+
+        // Delete key — with hold-to-repeat
+        let del = UIButton(type: .system)
+        del.setImage(UIImage(systemName: "delete.left"), for: .normal)
+        del.layer.cornerRadius = 8
+        del.addTarget(self, action: #selector(handleDeleteDown), for: .touchDown)
+        for event: UIControl.Event in [.touchUpInside, .touchUpOutside, .touchCancel] {
+            del.addTarget(self, action: #selector(handleDeleteUp), for: event)
+        }
+        del.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        bottomRow.addArrangedSubview(del)
+        deleteButton = del
+
+        // Return key — insert a newline without switching keyboards
+        let ret = UIButton(type: .system)
+        ret.setImage(UIImage(systemName: "return.left"), for: .normal)
+        ret.layer.cornerRadius = 8
+        ret.addAction(UIAction { [weak self] _ in
+            UIDevice.current.playInputClick()
+            self?.textDocumentProxy.insertText("\n")
+        }, for: .touchUpInside)
+        ret.widthAnchor.constraint(equalToConstant: 48).isActive = true
+        bottomRow.addArrangedSubview(ret)
+        returnButton = ret
+
+        // --- Constraints
+        let micSize: CGFloat = 64
+
         NSLayoutConstraint.activate([
-            toolbar.topAnchor.constraint(equalTo: view.topAnchor),
-            toolbar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            toolbar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            toolbar.heightAnchor.constraint(equalToConstant: toolbarHeight),
+            // Status label — centered near the top.
+            statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            statusLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
 
-            brandStack.leadingAnchor.constraint(equalTo: g.leadingAnchor, constant: 6),
-            brandStack.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
+            // Mic — centered in the upper 2/3 of the keyboard area.
+            mic.view.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            mic.view.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -30),
+            mic.view.widthAnchor.constraint(equalToConstant: micSize),
+            mic.view.heightAnchor.constraint(equalToConstant: micSize),
 
-            mic.view.trailingAnchor.constraint(equalTo: g.trailingAnchor, constant: -4),
-            mic.view.centerYAnchor.constraint(equalTo: toolbar.centerYAnchor),
-            mic.view.widthAnchor.constraint(equalToConstant: 34),
-            mic.view.heightAnchor.constraint(equalToConstant: 34),
+            // Hint — just below the mic.
+            hint.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            hint.topAnchor.constraint(equalTo: mic.view.bottomAnchor, constant: 12),
 
-            keysContainer.topAnchor.constraint(equalTo: toolbar.bottomAnchor, constant: rowSpacing),
-            keysContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 3),
-            keysContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -3),
-            keysContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -rowSpacing),
+            // Bottom row — pinned to bottom with standard keyboard margins.
+            bottomRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 3),
+            bottomRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -3),
+            bottomRow.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -9),
+            bottomRow.heightAnchor.constraint(equalToConstant: 46),
         ])
     }
 
-    // MARK: - Key rendering
-
-    private func renderKeys() {
-        letterButtons.removeAll()
-        shiftButton = nil
-        keysContainer.arrangedSubviews.forEach {
-            keysContainer.removeArrangedSubview($0)
-            $0.removeFromSuperview()
-        }
-
-        switch layer {
-        case .letters:
-            keysContainer.addArrangedSubview(letterRow(["q","w","e","r","t","y","u","i","o","p"]))
-            keysContainer.addArrangedSubview(insetRow(["a","s","d","f","g","h","j","k","l"]))
-            keysContainer.addArrangedSubview(shiftRow(["z","x","c","v","b","n","m"]))
-        case .numbers:
-            keysContainer.addArrangedSubview(letterRow(["1","2","3","4","5","6","7","8","9","0"]))
-            keysContainer.addArrangedSubview(letterRow(["-","/",":",";","(",")","$","&","@","\""]))
-            keysContainer.addArrangedSubview(symbolRow(toggleTitle: "#+=", toggleLayer: .symbols,
-                                                        keys: [".",",","?","!","'"]))
-        case .symbols:
-            keysContainer.addArrangedSubview(letterRow(["[","]","{","}","#","%","^","*","+","="]))
-            keysContainer.addArrangedSubview(letterRow(["_","\\","|","~","<",">","€","£","¥","•"]))
-            keysContainer.addArrangedSubview(symbolRow(toggleTitle: "123", toggleLayer: .numbers,
-                                                        keys: [".",",","?","!","'"]))
-        }
-        keysContainer.addArrangedSubview(bottomRow())
-        updateLetterCase()
+    /// A punctuation key styled like the space bar. Inserts on touch-down to
+    /// match the delete key and avoid dropped taps during fast entry.
+    private func makeCharKey(_ char: String) -> UIButton {
+        let key = UIButton(type: .system)
+        key.setTitle(char, for: .normal)
+        key.titleLabel?.font = .systemFont(ofSize: 18, weight: .regular)
+        key.layer.cornerRadius = 8
+        key.addAction(UIAction { [weak self] _ in
+            UIDevice.current.playInputClick()
+            self?.textDocumentProxy.insertText(char)
+        }, for: .touchDown)
+        return key
     }
 
-    /// A full-width row of equal character keys.
-    private func letterRow(_ chars: [String]) -> UIStackView {
-        let row = hStack()
-        for c in chars { row.addArrangedSubview(charKey(c)) }
-        return row
-    }
+    // MARK: - Actions
 
-    /// A row inset on both sides (like Apple's home row) so keys stay aligned.
-    private func insetRow(_ chars: [String]) -> UIStackView {
-        let row = hStack(equal: false)
-        row.addArrangedSubview(spacer())
-        let inner = hStack()
-        for c in chars { inner.addArrangedSubview(charKey(c)) }
-        row.addArrangedSubview(inner)
-        row.addArrangedSubview(spacer())
-        return row
-    }
-
-    /// The letters row prefixed with shift and suffixed with delete.
-    private func shiftRow(_ chars: [String]) -> UIStackView {
-        let row = hStack(equal: false)
-        let shiftKey = specialKey(image: shiftSymbolName())
-        shiftKey.addTarget(self, action: #selector(handleShift), for: .touchUpInside)
-        shiftKey.widthAnchor.constraint(equalToConstant: 46).isActive = true
-        shiftButton = shiftKey
-        row.addArrangedSubview(shiftKey)
-
-        let inner = hStack()
-        for c in chars { inner.addArrangedSubview(charKey(c)) }
-        row.addArrangedSubview(inner)
-
-        let del = specialKey(image: "delete.left")
-        del.widthAnchor.constraint(equalToConstant: 46).isActive = true
-        addDeleteBehavior(del)
-        row.addArrangedSubview(del)
-        return row
-    }
-
-    /// Row 3 for number/symbol layers: layer toggle + punctuation + delete.
-    private func symbolRow(toggleTitle: String, toggleLayer: Layer, keys: [String]) -> UIStackView {
-        let row = hStack(equal: false)
-        let toggle = specialKey(title: toggleTitle)
-        toggle.widthAnchor.constraint(equalToConstant: 46).isActive = true
-        toggle.addAction(UIAction { [weak self] _ in self?.switchTo(toggleLayer) }, for: .touchUpInside)
-        row.addArrangedSubview(toggle)
-
-        let inner = hStack()
-        for c in keys { inner.addArrangedSubview(charKey(c)) }
-        row.addArrangedSubview(inner)
-
-        let del = specialKey(image: "delete.left")
-        del.widthAnchor.constraint(equalToConstant: 46).isActive = true
-        addDeleteBehavior(del)
-        row.addArrangedSubview(del)
-        return row
-    }
-
-    /// The bottom row: layer switch, globe, space, return.
-    private func bottomRow() -> UIStackView {
-        let row = hStack(equal: false)
-
-        let layerTitle = layer == .letters ? "123" : "ABC"
-        let layerKey = specialKey(title: layerTitle)
-        layerKey.widthAnchor.constraint(equalToConstant: 92).isActive = true
-        layerKey.addAction(UIAction { [weak self] _ in
-            self?.switchTo(self?.layer == .letters ? .numbers : .letters)
-        }, for: .touchUpInside)
-        row.addArrangedSubview(layerKey)
-
-        if needsInputModeSwitchKey {
-            let globe = specialKey(image: "globe")
-            globe.widthAnchor.constraint(equalToConstant: 44).isActive = true
-            globe.addTarget(self, action: #selector(handleNextKeyboard), for: .touchUpInside)
-            row.addArrangedSubview(globe)
-        }
-
-        let space = charKey(" ", title: "space")
-        row.addArrangedSubview(space)
-
-        let ret = specialKey(title: "return")
-        ret.widthAnchor.constraint(equalToConstant: 100).isActive = true
-        ret.addAction(UIAction { [weak self] _ in
-            self?.textDocumentProxy.insertText("\n")
-            self?.applyAutoCap()
-        }, for: .touchUpInside)
-        row.addArrangedSubview(ret)
-        return row
-    }
-
-    // MARK: - Key factories
-
-    /// A horizontal row. `equal` (default) distributes width evenly across every
-    /// arranged view; pass `false` for rows that mix fixed-width special keys
-    /// with a flexible letter group, so only the group stretches to fill.
-    private func hStack(equal: Bool = true) -> UIStackView {
-        let s = UIStackView()
-        s.axis = .horizontal
-        s.spacing = keySpacing
-        s.distribution = equal ? .fillEqually : .fill
-        s.alignment = .fill
-        return s
-    }
-
-    private func spacer() -> UIView {
-        let v = UIView()
-        v.widthAnchor.constraint(equalToConstant: 16).isActive = true
-        return v
-    }
-
-    private func charKey(_ char: String, title: String? = nil) -> UIButton {
-        let b = baseButton()
-        b.setTitle(title ?? char, for: .normal)
-        b.titleLabel?.font = .systemFont(ofSize: title == nil ? 22 : 15, weight: .regular)
-        b.backgroundColor = Palette.key(isDark)
-        b.addAction(UIAction { [weak self] _ in self?.insertChar(char) }, for: .touchUpInside)
-        if title == nil, char.rangeOfCharacter(from: .letters) != nil, char.count == 1 {
-            letterButtons.append((b, char))
-        }
-        return b
-    }
-
-    private func specialKey(title: String? = nil, image: String? = nil) -> UIButton {
-        let b = baseButton()
-        if let title {
-            b.setTitle(title, for: .normal)
-            b.titleLabel?.font = .systemFont(ofSize: 15, weight: .regular)
-        }
-        if let image {
-            b.setImage(UIImage(systemName: image), for: .normal)
-        }
-        b.backgroundColor = Palette.specialKey(isDark)
-        return b
-    }
-
-    private func baseButton() -> UIButton {
-        let b = UIButton(type: .system)
-        b.layer.cornerRadius = 6
-        b.layer.shadowColor = UIColor.black.cgColor
-        b.layer.shadowOpacity = 0.28
-        b.layer.shadowOffset = CGSize(width: 0, height: 1)
-        b.layer.shadowRadius = 0
-        b.tintColor = Palette.keyText(isDark)
-        b.setTitleColor(Palette.keyText(isDark), for: .normal)
-        return b
-    }
+    @objc private func handleNextKeyboard() { advanceToNextInputMode() }
 
     // MARK: - Delete (with hold-to-repeat)
 
-    private func addDeleteBehavior(_ button: UIButton) {
-        button.addTarget(self, action: #selector(handleDeleteDown), for: .touchDown)
-        for event: UIControl.Event in [.touchUpInside, .touchUpOutside, .touchCancel] {
-            button.addTarget(self, action: #selector(handleDeleteUp), for: event)
-        }
-    }
-
     /// iOS-style backspace: a tap deletes one character; holding auto-repeats
-    /// character-by-character after a short delay, then — once the user keeps
-    /// holding — switches to deleting whole words on a slower ~0.5s cadence so
-    /// it stays easy to stop before deleting too much.
+    /// with an accelerating rate (starts ~0.12s, floors at ~0.04s).
     @objc private func handleDeleteDown() {
+        UIDevice.current.playInputClick()
         textDocumentProxy.deleteBackward()
         deleteRepeatCount = 0
         deleteTimer?.invalidate()
-        // Initial hold delay before auto-repeat kicks in.
         deleteTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
-            self?.startCharDeleteRepeat()
+            self?.scheduleNextDelete()
         }
     }
 
-    private func startCharDeleteRepeat() {
+    private func scheduleNextDelete() {
         deleteTimer?.invalidate()
-        deleteTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        let interval = max(0.04, 0.12 - Double(deleteRepeatCount) * 0.012)
+        deleteTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             guard let self else { return }
+            self.textDocumentProxy.deleteBackward()
             self.deleteRepeatCount += 1
-            // After ~1.8s of char deletes (18 × 0.1s), escalate to word deletes.
-            if self.deleteRepeatCount >= 18 {
-                self.startWordDeleteRepeat()
-            } else {
-                self.textDocumentProxy.deleteBackward()
-            }
+            self.scheduleNextDelete()
         }
-    }
-
-    private func startWordDeleteRepeat() {
-        deleteTimer?.invalidate()
-        deleteWordBackward()
-        deleteTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            self?.deleteWordBackward()
-        }
-    }
-
-    /// Delete the trailing whitespace run plus the word before the cursor.
-    private func deleteWordBackward() {
-        guard let before = textDocumentProxy.documentContextBeforeInput, !before.isEmpty else {
-            textDocumentProxy.deleteBackward()
-            return
-        }
-        func isBreak(_ c: Character) -> Bool { c == " " || c == "\n" || c == "\t" }
-
-        var chars = Array(before)
-        var count = 0
-        while let last = chars.last, isBreak(last) { chars.removeLast(); count += 1 }
-        while let last = chars.last, !isBreak(last) { chars.removeLast(); count += 1 }
-        for _ in 0..<max(count, 1) { textDocumentProxy.deleteBackward() }
     }
 
     @objc private func handleDeleteUp() {
         deleteTimer?.invalidate()
         deleteTimer = nil
         deleteRepeatCount = 0
-        applyAutoCap()
-    }
-
-    // MARK: - Actions
-
-    private func insertChar(_ char: String) {
-        let out: String
-        if char.count == 1, char.rangeOfCharacter(from: .letters) != nil {
-            out = shift == .off ? char : char.uppercased()
-        } else {
-            out = char
-        }
-        textDocumentProxy.insertText(out)
-
-        // A one-shot shift falls back to lowercase after a letter.
-        if shift == .on {
-            shift = .off
-            updateLetterCase()
-            updateShiftAppearance()
-        }
-    }
-
-    @objc private func handleShift() {
-        let now = Date().timeIntervalSince1970
-        if now - lastShiftTapAt < 0.3 {
-            shift = .capsLock
-        } else {
-            shift = (shift == .off) ? .on : .off
-        }
-        lastShiftTapAt = now
-        updateLetterCase()
-        updateShiftAppearance()
-    }
-
-    @objc private func handleNextKeyboard() { advanceToNextInputMode() }
-
-    private func switchTo(_ newLayer: Layer) {
-        layer = newLayer
-        renderKeys()
-        applyColors()
-    }
-
-    /// Capitalize sentence starts (unless caps lock or the user forced shift off).
-    private func applyAutoCap() {
-        guard layer == .letters, shift != .capsLock else { return }
-        let before = textDocumentProxy.documentContextBeforeInput ?? ""
-        let trimmed = before.trimmingCharacters(in: .whitespaces)
-        let atSentenceStart = before.isEmpty
-            || trimmed.isEmpty
-            || before.hasSuffix(". ")
-            || before.hasSuffix("? ")
-            || before.hasSuffix("! ")
-            || before.hasSuffix("\n")
-        let newShift: ShiftState = atSentenceStart ? .on : .off
-        if newShift != shift {
-            shift = newShift
-            updateLetterCase()
-            updateShiftAppearance()
-        }
     }
 
     // MARK: - Appearance
 
-    private func updateLetterCase() {
-        let upper = shift != .off
-        for (button, base) in letterButtons {
-            button.setTitle(upper ? base.uppercased() : base, for: .normal)
-        }
-    }
-
-    private func shiftSymbolName() -> String {
-        switch shift {
-        case .off: return "shift"
-        case .on: return "shift.fill"
-        case .capsLock: return "capslock.fill"
-        }
-    }
-
-    private func updateShiftAppearance() {
-        guard let shiftButton else { return }
-        shiftButton.setImage(UIImage(systemName: shiftSymbolName()), for: .normal)
-        let active = shift != .off
-        shiftButton.backgroundColor = active ? Palette.activeKey(isDark) : Palette.specialKey(isDark)
-        shiftButton.tintColor = active ? Palette.activeGlyph(isDark) : Palette.keyText(isDark)
-    }
-
     private func applyColors() {
         let dark = isDark
-        view.backgroundColor = Palette.background(dark)
-        brandLabel.textColor = Palette.muted(dark)
-        statusLabel.textColor = Palette.muted(dark)
-        micHost?.rootView = MicLink(destination: URL(string: "freestyle://dictate")!, dark: dark)
-        renderKeyColors(in: keysContainer, dark: dark)
-        updateShiftAppearance()
-    }
+        let c = Freestyle.palette(dark: dark)
 
-    private func renderKeyColors(in stack: UIStackView, dark: Bool) {
-        for view in stack.arrangedSubviews {
-            if let inner = view as? UIStackView {
-                renderKeyColors(in: inner, dark: dark)
-            } else if let button = view as? UIButton {
-                let isSpecial = button.currentImage != nil
-                    || ["space", "return", "123", "ABC", "#+="].contains(button.currentTitle ?? "")
-                if button.currentTitle == "space" {
-                    button.backgroundColor = Palette.key(dark)
-                } else {
-                    button.backgroundColor = isSpecial ? Palette.specialKey(dark) : Palette.key(dark)
-                }
-                button.tintColor = Palette.keyText(dark)
-                button.setTitleColor(Palette.keyText(dark), for: .normal)
-            }
+        // Warm paper canvas — never the stock iOS gray.
+        view.backgroundColor = c.background
+
+        // Character keys (space, comma, period) sit on the card surface with
+        // ink-colored text and a hairline border, echoing the app's cards.
+        let charKeys = [spaceButton, commaButton, periodButton]
+        for key in charKeys {
+            key?.backgroundColor = c.card
+            key?.setTitleColor(c.foreground, for: .normal)
+            key?.layer.borderWidth = 1
+            key?.layer.borderColor = c.border.cgColor
+            // A whisper of depth in light mode; flat in dark (DESIGN.md §4).
+            key?.layer.shadowColor = UIColor.black.cgColor
+            key?.layer.shadowOpacity = dark ? 0 : 0.08
+            key?.layer.shadowOffset = CGSize(width: 0, height: 1)
+            key?.layer.shadowRadius = 1
         }
+
+        // Special keys (globe, delete, return) use the subtle secondary fill
+        // with muted-ink icons.
+        let specialKeys = [globeButton, deleteButton, returnButton]
+        for key in specialKeys {
+            key?.backgroundColor = c.secondary
+            key?.tintColor = c.mutedForeground
+            key?.layer.borderWidth = 1
+            key?.layer.borderColor = c.border.cgColor
+        }
+
+        // Mono micro-labels in muted ink (DESIGN.md §3).
+        statusLabel.textColor = c.mutedForeground
+        hintLabel?.textColor = c.mutedForeground
+
+        micHost?.rootView = MicLink(destination: URL(string: "freestyle://dictate")!, dark: dark)
     }
 
     // MARK: - App-handoff transcript insertion
@@ -555,11 +366,24 @@ final class KeyboardViewController: UIInputViewController {
         }
         textDocumentProxy.insertText(pending.text)
 
-        statusLabel.text = "Inserted ✓"
+        statusLabel.isHidden = false
+        statusLabel.attributedText = NSAttributedString(
+            string: "INSERTED ✓",
+            attributes: [.kern: 1.2]
+        )
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
-            self?.statusLabel.text = ""
+            guard let self else { return }
+            self.statusLabel.attributedText = nil
+            self.statusLabel.text = ""
+            self.statusLabel.isHidden = true
         }
     }
+}
+
+/// Enables the system key-click sound/haptic (`playInputClick()`), which fires
+/// only while the keyboard is visible and, for haptics, when Full Access is on.
+extension KeyboardViewController: UIInputViewAudioFeedback {
+    var enableInputClicksWhenVisible: Bool { true }
 }
 
 /// The mic control. A SwiftUI `Link` is the only mechanism that reliably opens
@@ -569,19 +393,22 @@ struct MicLink: View {
     let destination: URL
     let dark: Bool
 
+    /// Olive accent, matching `mic-button.tsx` and DESIGN.md `--primary`.
+    private var olive: Color { Color(hex: dark ? 0x8AB62A : 0x6B8F12) }
+    private var iconColor: Color { Color(hex: dark ? 0x16140F : 0xFBF8EE) }
+
     var body: some View {
         Link(destination: destination) {
             Image(systemName: "mic.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(dark ? Color(white: 0.10) : .white)
-                .frame(width: 34, height: 34)
-                .background(
-                    dark
-                        ? Color(red: 0.54, green: 0.71, blue: 0.16)
-                        : Color(red: 0.42, green: 0.56, blue: 0.07)
-                )
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundColor(iconColor)
+                .frame(width: 64, height: 64)
+                .background(olive)
                 .clipShape(Circle())
                 .contentShape(Circle())
+                // Soft olive glow lifts the mic off the paper (mirrors the
+                // shadow on the app's MicButton).
+                .shadow(color: olive.opacity(0.45), radius: 12, x: 0, y: 5)
         }
     }
 }

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Skeleton } from "@/components/skeleton";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
@@ -18,12 +19,25 @@ export default function SettingsScreen() {
   const { user, signedIn, signOut } = useAuth();
   const { settings, setLanguage, setCleanup, setOverallTone } = useSettings();
   const [usage, setUsage] = useState<CloudUsageBalance | null>(null);
+  const [usageLoading, setUsageLoading] = useState(true);
 
   useEffect(() => {
     if (!signedIn) return;
+    let active = true;
+    setUsageLoading(true);
     fetchCloudUsage()
-      .then(setUsage)
-      .catch(() => setUsage(null));
+      .then((data) => {
+        if (active) setUsage(data);
+      })
+      .catch(() => {
+        if (active) setUsage(null);
+      })
+      .finally(() => {
+        if (active) setUsageLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [signedIn]);
 
   return (
@@ -49,12 +63,11 @@ export default function SettingsScreen() {
               label="Signed in as"
               value={user?.email ?? user?.name ?? "—"}
             />
-            {usage ? (
-              <Row
-                label="Credits"
-                value={`${usage.remaining} / ${usage.limit}`}
-              />
-            ) : null}
+            <Row
+              label="Credits"
+              value={usage ? `${usage.remaining} / ${usage.limit}` : "—"}
+              loading={usageLoading}
+            />
           </Section>
 
           <Section title="Language">
@@ -207,13 +220,25 @@ function Section({
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({
+  label,
+  value,
+  loading = false,
+}: {
+  label: string;
+  value: string;
+  loading?: boolean;
+}) {
   return (
     <View style={styles.row}>
       <ThemedText themeColor="mutedForeground" style={styles.rowLabel}>
         {label}
       </ThemedText>
-      <ThemedText style={styles.rowValue}>{value}</ThemedText>
+      {loading ? (
+        <Skeleton width={64} height={16} />
+      ) : (
+        <ThemedText style={styles.rowValue}>{value}</ThemedText>
+      )}
     </View>
   );
 }

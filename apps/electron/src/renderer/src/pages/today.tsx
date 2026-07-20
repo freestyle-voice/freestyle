@@ -1,6 +1,8 @@
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
+import { Badge } from "@renderer/components/ui/badge";
 import { Progress } from "@renderer/components/ui/progress";
+import { useUpgradeModal } from "@renderer/components/upgrade-modal";
 import { getClient } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
@@ -176,10 +178,12 @@ export default function TodayPage(): React.JSX.Element {
   const { user } = useCloudAuth();
   const {
     balance: cloudUsage,
+    isPro,
     updatedAt: cloudUsageUpdatedAt,
     isFetching: cloudUsageFetching,
     refresh: refreshCloudUsage,
   } = useCloudUsage(!!user);
+  const { openUpgradeModal } = useUpgradeModal();
   const queryClient = useQueryClient();
 
   const { data: entries = null } = useQuery({
@@ -339,29 +343,53 @@ export default function TodayPage(): React.JSX.Element {
               </div>
             </div>
 
-            <div className="mb-3 flex items-baseline gap-1.5">
-              <span className="serif-italic text-foreground text-[34px] leading-none">
-                {cloudUsage.remaining.toLocaleString()}
-              </span>
-              <span className="text-muted-foreground text-[11px] font-medium">
-                / {cloudUsage.limit.toLocaleString()}
-              </span>
-            </div>
+            {isPro ? (
+              <div className="flex items-center gap-2">
+                <span className="serif-italic text-foreground text-[26px] leading-none">
+                  Unlimited
+                </span>
+                <Badge className="mono h-4 px-1.5 text-[9px] uppercase tracking-[0.12em]">
+                  Pro
+                </Badge>
+              </div>
+            ) : (
+              <>
+                <div className="mb-3 flex items-baseline gap-1.5">
+                  <span className="serif-italic text-foreground text-[34px] leading-none">
+                    {cloudUsage.remaining.toLocaleString()}
+                  </span>
+                  <span className="text-muted-foreground text-[11px] font-medium">
+                    / {cloudUsage.limit.toLocaleString()} words
+                  </span>
+                </div>
 
-            <Progress value={usagePercent(cloudUsage)} className="h-1.5" />
+                <Progress value={usagePercent(cloudUsage)} className="h-1.5" />
 
-            <div className="text-muted-foreground mt-2.5 flex items-center justify-between text-[10.5px]">
-              <span className="mono tracking-[0.08em]">
-                {usagePercent(cloudUsage)}% used
-              </span>
-              <span>
-                Resets{" "}
-                {new Date(cloudUsage.resetsAt).toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                })}
-              </span>
-            </div>
+                <div className="text-muted-foreground mt-2.5 flex items-center justify-between text-[10.5px]">
+                  <span className="mono tracking-[0.08em]">
+                    {usagePercent(cloudUsage)}% used
+                  </span>
+                  <span>
+                    Resets{" "}
+                    {new Date(cloudUsage.resetsAt).toLocaleDateString(
+                      undefined,
+                      {
+                        month: "short",
+                        day: "numeric",
+                      },
+                    )}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => openUpgradeModal()}
+                  className="text-primary hover:text-primary/80 mt-2.5 text-[11px] font-medium transition-colors"
+                >
+                  Upgrade for unlimited →
+                </button>
+              </>
+            )}
           </section>
         )}
 

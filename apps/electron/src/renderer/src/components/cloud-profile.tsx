@@ -1,3 +1,4 @@
+import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import {
   DropdownMenu,
@@ -6,15 +7,27 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@renderer/components/ui/dropdown-menu";
+import { useUpgradeModal } from "@renderer/components/upgrade-modal";
 import { useCloudAuth } from "@renderer/lib/auth-context";
+import { useCloudUsage } from "@renderer/lib/use-cloud-usage";
 import { cn } from "@renderer/lib/utils";
-import { ChevronsUpDown, Cloud, Loader2, LogIn, LogOut } from "lucide-react";
+import {
+  ChevronsUpDown,
+  Cloud,
+  CreditCard,
+  Loader2,
+  LogIn,
+  LogOut,
+  Sparkles,
+} from "lucide-react";
 
 const ROW =
   "flex w-full items-center gap-2.5 rounded-[7px] border border-transparent px-2.5 py-1.5 text-[13px] transition-colors";
 
 export function CloudProfileButton(): React.JSX.Element {
   const { user, loading, signingIn, signIn, signOut } = useCloudAuth();
+  const { isPro, openBillingPortal } = useCloudUsage(!!user);
+  const { openUpgradeModal } = useUpgradeModal();
 
   if (loading) {
     return (
@@ -77,8 +90,15 @@ export function CloudProfileButton(): React.JSX.Element {
             />
           ) : null}
           <span className="min-w-0 flex-1 text-left leading-tight">
-            <span className="text-foreground block truncate font-medium">
-              {user.name || user.email}
+            <span className="flex items-center gap-1.5">
+              <span className="text-foreground min-w-0 truncate font-medium">
+                {user.name || user.email}
+              </span>
+              {isPro ? (
+                <Badge className="mono h-4 shrink-0 px-1.5 text-[9px] uppercase tracking-[0.12em]">
+                  Pro
+                </Badge>
+              ) : null}
             </span>
             {user.name ? (
               <span className="text-muted-foreground block truncate text-[11px]">
@@ -103,6 +123,21 @@ export function CloudProfileButton(): React.JSX.Element {
             {user.email}
           </div>
         </div>
+        <DropdownMenuSeparator />
+        {isPro ? (
+          <DropdownMenuItem onSelect={() => void openBillingPortal()}>
+            <CreditCard />
+            Manage subscription
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem
+            className="text-primary data-highlighted:text-primary"
+            onSelect={() => openUpgradeModal()}
+          >
+            <Sparkles className="text-primary" />
+            Upgrade to Pro
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onSelect={() => void signOut()}>
           <LogOut />

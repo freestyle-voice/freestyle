@@ -1,11 +1,9 @@
-import { useRouter } from "expo-router";
-import { Check, ChevronLeft } from "lucide-react-native";
+import { Check } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
-import { Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Linking, Pressable, StyleSheet, View } from "react-native";
 
+import { SettingsScreenScaffold } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
-import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import {
@@ -24,7 +22,6 @@ const STEPS = [
 
 export default function KeyboardSetupScreen() {
   const theme = useTheme();
-  const router = useRouter();
   const [micStatus, setMicStatus] = useState<MicPermission>("undetermined");
 
   useEffect(() => {
@@ -42,117 +39,69 @@ export default function KeyboardSetupScreen() {
   }, []);
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={12}
-            style={styles.backButton}
-          >
-            <ChevronLeft color={theme.primary} size={20} />
-            <ThemedText style={[styles.backText, { color: theme.primary }]}>
-              Back
-            </ThemedText>
-          </Pressable>
+    <SettingsScreenScaffold
+      title="Voice keyboard"
+      subtitle="Add the Freestyle keyboard once, then use it in any app. Tap the mic and Freestyle opens to capture your voice, then drops the transcript straight back into the field. Full Access lets the keyboard talk to Freestyle and insert your text."
+    >
+      <Pressable
+        onPress={grantMic}
+        disabled={micStatus === "granted"}
+        style={[
+          styles.micRow,
+          {
+            borderColor: micStatus === "granted" ? theme.primary : theme.border,
+          },
+        ]}
+      >
+        <View style={styles.switchLabel}>
+          <ThemedText style={styles.rowLabel}>Microphone access</ThemedText>
+          <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
+            {micStatus === "granted"
+              ? "Granted — Freestyle can record your dictation."
+              : micStatus === "denied"
+                ? "Denied — tap to open Settings and enable it."
+                : "Tap to grant microphone access."}
+          </ThemedText>
         </View>
-
-        <ScrollView
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
-          <ThemedText type="display" style={styles.title}>
-            Type anywhere with your voice
+        {micStatus === "granted" ? (
+          <Check color={theme.primary} size={18} />
+        ) : (
+          <ThemedText type="eyebrow" themeColor="primary">
+            Grant
           </ThemedText>
-          <ThemedText themeColor="mutedForeground" style={styles.lede}>
-            Add the Freestyle keyboard once, then use it in any app. Tap the mic
-            and Freestyle opens to capture your voice, then drops the transcript
-            straight back into the field. Full Access lets the keyboard talk to
-            Freestyle and insert your text.
-          </ThemedText>
+        )}
+      </Pressable>
 
-          <Pressable
-            onPress={grantMic}
-            disabled={micStatus === "granted"}
-            style={[
-              styles.micRow,
-              {
-                borderColor:
-                  micStatus === "granted" ? theme.primary : theme.border,
-              },
-            ]}
-          >
-            <View style={styles.switchLabel}>
-              <ThemedText style={styles.rowLabel}>Microphone access</ThemedText>
-              <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
-                {micStatus === "granted"
-                  ? "Granted — Freestyle can record your dictation."
-                  : micStatus === "denied"
-                    ? "Denied — tap to open Settings and enable it."
-                    : "Tap to grant microphone access."}
+      <View style={styles.steps}>
+        {STEPS.map((step, i) => (
+          <View key={step} style={styles.step}>
+            <View style={[styles.badge, { backgroundColor: theme.accent }]}>
+              <ThemedText
+                style={[styles.badgeText, { color: theme.accentForeground }]}
+              >
+                {i + 1}
               </ThemedText>
             </View>
-            {micStatus === "granted" ? (
-              <Check color={theme.primary} size={18} />
-            ) : (
-              <ThemedText type="eyebrow" themeColor="primary">
-                Grant
-              </ThemedText>
-            )}
-          </Pressable>
-
-          <View style={styles.steps}>
-            {STEPS.map((step, i) => (
-              <View key={step} style={styles.step}>
-                <View style={[styles.badge, { backgroundColor: theme.accent }]}>
-                  <ThemedText
-                    style={[
-                      styles.badgeText,
-                      { color: theme.accentForeground },
-                    ]}
-                  >
-                    {i + 1}
-                  </ThemedText>
-                </View>
-                <ThemedText style={styles.stepText}>{step}</ThemedText>
-              </View>
-            ))}
+            <ThemedText style={styles.stepText}>{step}</ThemedText>
           </View>
+        ))}
+      </View>
 
-          <Pressable
-            onPress={() => void Linking.openSettings()}
-            style={[styles.cta, { backgroundColor: theme.primary }]}
-          >
-            <ThemedText
-              style={[styles.ctaText, { color: theme.primaryForeground }]}
-            >
-              Open Settings
-            </ThemedText>
-          </Pressable>
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+      <Pressable
+        onPress={() => void Linking.openSettings()}
+        style={[styles.cta, { backgroundColor: theme.primary }]}
+      >
+        <ThemedText
+          style={[styles.ctaText, { color: theme.primaryForeground }]}
+        >
+          Open Settings
+        </ThemedText>
+      </Pressable>
+    </SettingsScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1, paddingHorizontal: Spacing.four },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingTop: Spacing.two,
-  },
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    marginLeft: -4,
-  },
-  backText: { fontFamily: Fonts.sansMedium, fontSize: 15 },
-  content: { paddingVertical: Spacing.four, gap: Spacing.four },
-  title: { fontSize: 40, lineHeight: 42, letterSpacing: -1 },
-  lede: { fontSize: 15, lineHeight: 22 },
   micRow: {
     flexDirection: "row",
     alignItems: "center",

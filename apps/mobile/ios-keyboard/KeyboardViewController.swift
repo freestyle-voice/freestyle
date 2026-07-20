@@ -166,7 +166,7 @@ final class KeyboardViewController: UIInputViewController {
         view.addSubview(hint)
         hintLabel = hint
 
-        // --- Bottom row: globe | , | . | space | delete | return
+        // --- Bottom row: globe | , | . | space | return | delete
         let bottomRow = UIStackView()
         bottomRow.axis = .horizontal
         bottomRow.spacing = 6
@@ -209,18 +209,6 @@ final class KeyboardViewController: UIInputViewController {
         bottomRow.addArrangedSubview(space)
         spaceButton = space
 
-        // Delete key — with hold-to-repeat
-        let del = UIButton(type: .system)
-        del.setImage(UIImage(systemName: "delete.left"), for: .normal)
-        del.layer.cornerRadius = 8
-        del.addTarget(self, action: #selector(handleDeleteDown), for: .touchDown)
-        for event: UIControl.Event in [.touchUpInside, .touchUpOutside, .touchCancel] {
-            del.addTarget(self, action: #selector(handleDeleteUp), for: event)
-        }
-        del.widthAnchor.constraint(equalToConstant: 44).isActive = true
-        bottomRow.addArrangedSubview(del)
-        deleteButton = del
-
         // Return key — insert a newline without switching keyboards
         let ret = UIButton(type: .system)
         ret.setImage(UIImage(systemName: "return.left"), for: .normal)
@@ -232,6 +220,19 @@ final class KeyboardViewController: UIInputViewController {
         ret.widthAnchor.constraint(equalToConstant: 48).isActive = true
         bottomRow.addArrangedSubview(ret)
         returnButton = ret
+
+        // Delete key — with hold-to-repeat. Kept as the rightmost key so it's
+        // where the thumb expects it, matching the system keyboard.
+        let del = UIButton(type: .system)
+        del.setImage(UIImage(systemName: "delete.left"), for: .normal)
+        del.layer.cornerRadius = 8
+        del.addTarget(self, action: #selector(handleDeleteDown), for: .touchDown)
+        for event: UIControl.Event in [.touchUpInside, .touchUpOutside, .touchCancel] {
+            del.addTarget(self, action: #selector(handleDeleteUp), for: event)
+        }
+        del.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        bottomRow.addArrangedSubview(del)
+        deleteButton = del
 
         // --- Constraints
         let micSize: CGFloat = 64

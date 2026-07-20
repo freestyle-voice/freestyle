@@ -1,11 +1,10 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
-import { Settings } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import { Pressable, Share, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { HeaderActions } from "@/components/header-actions";
 import { MicButton } from "@/components/mic-button";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -18,7 +17,6 @@ import { useDictation } from "@/lib/audio/use-dictation";
 
 export default function VoiceScreen() {
   const theme = useTheme();
-  const router = useRouter();
   const { signedIn } = useAuth();
 
   const [text, setText] = useState("");
@@ -62,15 +60,7 @@ export default function VoiceScreen() {
           <ThemedText type="eyebrow" themeColor="mutedForeground">
             Freestyle
           </ThemedText>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Settings"
-            onPress={() => router.push("/(app)/settings")}
-            hitSlop={12}
-            style={[styles.settingsButton, { borderColor: theme.border }]}
-          >
-            <Settings color={theme.mutedForeground} size={18} />
-          </Pressable>
+          <HeaderActions />
         </View>
 
         <TranscriptView
@@ -133,16 +123,9 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.three,
     paddingBottom: Spacing.two,
   },
-  settingsButton: {
-    width: 38,
-    height: 38,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   actions: {
     flexDirection: "row",
+    justifyContent: "center",
     gap: Spacing.two,
     paddingVertical: Spacing.two,
   },
@@ -161,7 +144,8 @@ const styles = StyleSheet.create({
   footer: {
     alignItems: "center",
     gap: Spacing.three,
-    paddingBottom: Spacing.five,
+    // Sit just above the docked tab bar (bar + raised mic + safe inset).
+    paddingBottom: 120,
   },
   status: {
     fontFamily: Fonts.mono,

@@ -8,23 +8,23 @@
  * validations package if the enums change.
  */
 
-export type CleanupPersonalTone = "polished" | "casual" | "very_casual";
-export type CleanupWorkTone = "direct" | "friendly" | "formal";
-export type CleanupEmailTone = "casual" | "warm" | "formal";
-export type CleanupOverallTone = "casual" | "neutral" | "professional";
+export type CleanupPersonalTone = "polished" | "casual" | "very_casual" | "off";
+export type CleanupWorkTone = "direct" | "friendly" | "formal" | "off";
+export type CleanupEmailTone = "casual" | "warm" | "formal" | "off";
+export type CleanupOverallTone = "casual" | "neutral" | "professional" | "off";
 export type CleanupIntensity = "low" | "medium" | "high" | "custom";
 
-export const DEFAULT_PERSONAL_TONE: CleanupPersonalTone = "casual";
-export const DEFAULT_WORK_TONE: CleanupWorkTone = "friendly";
-export const DEFAULT_EMAIL_TONE: CleanupEmailTone = "warm";
+// Defaults mirror the desktop app: every surface tone starts "off" and rides
+// along until the user dials it in; intensity seeds at "medium".
+export const DEFAULT_PERSONAL_TONE: CleanupPersonalTone = "off";
+export const DEFAULT_WORK_TONE: CleanupWorkTone = "off";
+export const DEFAULT_EMAIL_TONE: CleanupEmailTone = "off";
 export const DEFAULT_OVERALL_TONE: CleanupOverallTone = "neutral";
-export const DEFAULT_INTENSITY: CleanupIntensity = "low";
+export const DEFAULT_INTENSITY: CleanupIntensity = "medium";
 
 /**
  * Full tone selection sent to the cloud so streaming and batch post-processing
- * behave like the desktop. Mobile keeps a single user-facing "overall tone"
- * dial for now; the surface-specific tones (personal/work/email) ride along at
- * their defaults so the cloud always has a complete picture.
+ * behave like the desktop.
  */
 export interface CleanupTones {
   personalTone: CleanupPersonalTone;
@@ -40,11 +40,65 @@ export const DEFAULT_TONES: CleanupTones = {
   overallTone: DEFAULT_OVERALL_TONE,
 };
 
-export const OVERALL_TONE_OPTIONS: {
-  value: CleanupOverallTone;
+export interface ToneOption<T> {
+  value: T;
   label: string;
-}[] = [
-  { value: "casual", label: "Casual" },
-  { value: "neutral", label: "Neutral" },
-  { value: "professional", label: "Professional" },
+  hint: string;
+}
+
+const OFF_HINT = "Leave this destination untouched.";
+
+export const INTENSITY_OPTIONS: ToneOption<CleanupIntensity>[] = [
+  { value: "low", label: "Light", hint: "Fix punctuation, keep my wording." },
+  {
+    value: "medium",
+    label: "Balanced",
+    hint: "Remove filler and tidy grammar.",
+  },
+  {
+    value: "high",
+    label: "Polished",
+    hint: "Rewrite for clarity and flow.",
+  },
+  {
+    value: "custom",
+    label: "Custom",
+    hint: "Write your own cleanup instructions.",
+  },
+];
+
+export const PERSONAL_TONE_OPTIONS: ToneOption<CleanupPersonalTone>[] = [
+  { value: "polished", label: "Polished", hint: "Clean but still personal." },
+  { value: "casual", label: "Casual", hint: "Relaxed, everyday voice." },
+  {
+    value: "very_casual",
+    label: "Very casual",
+    hint: "Loose, texting-style.",
+  },
+  { value: "off", label: "Off", hint: OFF_HINT },
+];
+
+export const WORK_TONE_OPTIONS: ToneOption<CleanupWorkTone>[] = [
+  { value: "direct", label: "Direct", hint: "Concise and to the point." },
+  { value: "friendly", label: "Friendly", hint: "Warm but professional." },
+  { value: "formal", label: "Formal", hint: "Buttoned-up and precise." },
+  { value: "off", label: "Off", hint: OFF_HINT },
+];
+
+export const EMAIL_TONE_OPTIONS: ToneOption<CleanupEmailTone>[] = [
+  { value: "casual", label: "Casual", hint: "Quick, breezy emails." },
+  { value: "warm", label: "Warm", hint: "Friendly and considerate." },
+  { value: "formal", label: "Formal", hint: "Polished correspondence." },
+  { value: "off", label: "Off", hint: OFF_HINT },
+];
+
+export const OVERALL_TONE_OPTIONS: ToneOption<CleanupOverallTone>[] = [
+  { value: "casual", label: "Casual", hint: "Relaxed everywhere else." },
+  { value: "neutral", label: "Neutral", hint: "Balanced, natural voice." },
+  {
+    value: "professional",
+    label: "Professional",
+    hint: "Clean and composed.",
+  },
+  { value: "off", label: "Off", hint: OFF_HINT },
 ];

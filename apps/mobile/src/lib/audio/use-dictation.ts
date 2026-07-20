@@ -14,9 +14,14 @@ import { Alert } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
 import type { MicState } from "@/components/mic-button";
-import { DEFAULT_INTENSITY } from "@/lib/cleanup-tones";
 import { authHeaders } from "@/lib/cloud/session";
 import { CloudStreamSession } from "@/lib/cloud/stream";
+import {
+  applyDictionaryReplacements,
+  useEntries,
+  vocabularyTerms,
+} from "@/lib/entries";
+import { useHistory } from "@/lib/history";
 import { languageHint, tonesForCloud, useSettings } from "@/lib/settings";
 import {
   checkMicPermission,
@@ -60,6 +65,8 @@ export function useDictation({
   autoStart = false,
 }: UseDictationOptions): Dictation {
   const { settings } = useSettings();
+  const { vocabulary, dictionary } = useEntries();
+  const { addHistory } = useHistory();
 
   const [micState, setMicState] = useState<MicState>("idle");
   const [partial, setPartial] = useState("");
@@ -69,6 +76,9 @@ export function useDictation({
 
   const sessionRef = useRef<CloudStreamSession | null>(null);
   const startedAt = useRef(0);
+  // Recording length captured at commit time, read back when the final arrives
+  // so the saved history entry records how long the dictation actually was.
+  const committedDurationRef = useRef(0);
   const recordingRef = useRef(false);
   // Set synchronously on press-in so a rapid double-tap can't kick off two
   // recordings before the async permission check flips `recordingRef`.
@@ -85,6 +95,11 @@ export function useDictation({
   const onStartRef = useRef(onRecordingStart);
   useEffect(() => {
     onStartRef.current = onRecordingStart;
+  });
+  // Keep the latest addHistory so saving doesn't rebuild beginRecording.
+  const addHistoryRef = useRef(addHistory);
+  useEffect(() => {
+    addHistoryRef.current = addHistory;
   });
 
   const recorder = useRecorder({
@@ -131,9 +146,11 @@ export function useDictation({
     sessionRef.current = new CloudStreamSession({
       cookie: headers.Cookie,
       language: languageHint(settings.language),
+      vocabulary: vocabularyTerms(vocabulary),
       cleanup: {
         skipPostProcess: !settings.cleanup,
-        intensity: DEFAULT_INTENSITY,
+        intensity: settings.intensity,
+        customPrompt: settings.customPrompt || undefined,
         ...tonesForCloud(settings),
       },
       callbacks: {
@@ -143,8 +160,15 @@ export function useDictation({
           setPartial("");
           setMicState("idle");
           teardownSession();
-          const text = t.trim();
-          if (text) onFinalRef.current(text);
+          // Dictionary replacement runs locally on the final transcript, after
+          // the cloud's cleanup — mirroring the desktop. Entries never leave
+          // the device.
+          const text = applyDictionaryReplacements(t.trim(), dictionary).trim();
+          if (text) {
+            // Persist to local history before handing off to the caller.
+            addHistoryRef.current(text, committedDurationRef.current);
+            onFinalRef.current(text);
+          }
           void Haptics.notificationAsync(
             Haptics.NotificationFeedbackType.Success,
           );
@@ -181,7 +205,7 @@ export function useDictation({
       teardownSession();
       Alert.alert("Recording failed", "Could not start the microphone.");
     }
-  }, [recorder, settings, teardownSession, signedIn]);
+  }, [recorder, settings, vocabulary, dictionary, teardownSession, signedIn]);
 
   const finishRecording = useCallback(() => {
     if (!recordingRef.current) return;
@@ -197,6 +221,7 @@ export function useDictation({
     }
 
     setMicState("finalizing");
+    committedDurationRef.current = elapsed;
     sessionRef.current?.setAudioDurationMs(elapsed);
     sessionRef.current?.commit();
   }, [recorder, teardownSession, level]);

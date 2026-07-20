@@ -59,6 +59,8 @@ export interface StreamSessionOptions {
   cookie: string;
   /** Normalized ISO-639-1 hint; omit for auto-detect. */
   language?: string;
+  /** ASR recognition-bias terms (the user's vocabulary). */
+  vocabulary?: string[];
   cleanup: StreamCleanupPreferences;
   callbacks: StreamCallbacks;
 }
@@ -110,10 +112,12 @@ export class CloudStreamSession {
   }
 
   private buildStartMessage() {
-    const { language, cleanup } = this.opts;
+    const { language, vocabulary, cleanup } = this.opts;
     return {
       type: "start" as const,
       language: language || undefined,
+      // Recognition-bias terms; the cloud passes these to the ASR as context.
+      vocabulary: vocabulary?.length ? { terms: vocabulary } : undefined,
       skipPostProcess: cleanup.skipPostProcess,
       // Send the full cleanup/tone payload so streaming post-processing behaves
       // like the desktop and batch paths. Omitted entirely when the user has

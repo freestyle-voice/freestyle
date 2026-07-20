@@ -71,6 +71,7 @@ function NavButton({
 }
 
 export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
 
   const focusedName = state.routes[state.index]?.name;
@@ -91,7 +92,16 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   return (
     <View
       pointerEvents="box-none"
-      style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 6) }]}
+      style={[
+        styles.wrap,
+        {
+          // Slightly translucent card surface + hairline top border so the
+          // bar reads as a distinct surface without a heavy blur.
+          backgroundColor: withAlpha(theme.card, 0.9),
+          borderTopColor: theme.border,
+          paddingBottom: Math.max(insets.bottom, 6),
+        },
+      ]}
     >
       <View style={styles.bar}>
         {ITEMS.map((spec) => (
@@ -107,6 +117,14 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   );
 }
 
+/** Append an alpha channel to a #rrggbb hex color. */
+function withAlpha(hex: string, alpha: number): string {
+  const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255)
+    .toString(16)
+    .padStart(2, "0");
+  return `${hex}${a}`;
+}
+
 const BAR_HEIGHT = 56;
 
 const styles = StyleSheet.create({
@@ -117,6 +135,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: "center",
     paddingHorizontal: Spacing.three,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   bar: {
     flexDirection: "row",

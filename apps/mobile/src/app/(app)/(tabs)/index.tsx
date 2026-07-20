@@ -57,7 +57,7 @@ export default function VoiceScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <ThemedText type="eyebrow" themeColor="mutedForeground">
+          <ThemedText type="title" style={styles.brand}>
             Freestyle
           </ThemedText>
           <HeaderActions />
@@ -123,6 +123,7 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.three,
     paddingBottom: Spacing.two,
   },
+  brand: { fontSize: 30, lineHeight: 34 },
   actions: {
     flexDirection: "row",
     justifyContent: "center",

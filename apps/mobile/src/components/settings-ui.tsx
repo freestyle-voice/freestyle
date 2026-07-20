@@ -51,7 +51,7 @@ export function SettingsScreenScaffold({
               Back
             </ThemedText>
           </Pressable>
-          <ThemedText style={styles.navTitle} numberOfLines={1}>
+          <ThemedText type="title" style={styles.navTitle} numberOfLines={1}>
             {title}
           </ThemedText>
           {/* Balances the back button so the title stays centered. */}
@@ -98,7 +98,11 @@ export function TabScreenScaffold({
     <ThemedView style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <View style={styles.tabHeader}>
-          <ThemedText style={styles.tabHeaderTitle} numberOfLines={1}>
+          <ThemedText
+            type="title"
+            style={styles.tabHeaderTitle}
+            numberOfLines={1}
+          >
             {title}
           </ThemedText>
           <View style={styles.tabHeaderActions}>
@@ -254,8 +258,8 @@ const styles = StyleSheet.create({
   navTitle: {
     flex: 1,
     textAlign: "center",
-    fontFamily: Fonts.sansSemiBold,
-    fontSize: 17,
+    fontSize: 26,
+    lineHeight: 30,
   },
   backText: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   body: { paddingBottom: Spacing.six, gap: Spacing.four },
@@ -270,9 +274,8 @@ const styles = StyleSheet.create({
   },
   tabHeaderTitle: {
     flex: 1,
-    fontFamily: Fonts.sansSemiBold,
-    fontSize: 22,
-    letterSpacing: -0.3,
+    fontSize: 30,
+    lineHeight: 34,
   },
   tabHeaderActions: {
     flexDirection: "row",

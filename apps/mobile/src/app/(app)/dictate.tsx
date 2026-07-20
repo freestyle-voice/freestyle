@@ -1,11 +1,9 @@
-import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, View } from "react-native";
-import { useSharedValue } from "react-native-reanimated";
+import { useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { MicButton, type MicState } from "@/components/mic-button";
+import { MicButton } from "@/components/mic-button";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { TranscriptView } from "@/components/transcript-view";
@@ -13,18 +11,8 @@ import { Waveform } from "@/components/waveform";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
-import {
-  checkMicPermission,
-  requestMicPermission,
-  useRecorder,
-} from "@/lib/audio/recorder";
-import { DEFAULT_INTENSITY } from "@/lib/cleanup-tones";
-import { authHeaders } from "@/lib/cloud/session";
-import { CloudStreamSession } from "@/lib/cloud/stream";
+import { useDictation } from "@/lib/audio/use-dictation";
 import { setPendingTranscript } from "@/lib/keyboard-bridge";
-import { languageHint, tonesForCloud, useSettings } from "@/lib/settings";
-
-const MIN_RECORDING_MS = 350;
 
 /**
  * Focused dictation screen launched by the keyboard (`freestyle://dictate`).
@@ -36,147 +24,19 @@ export default function DictateScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { signedIn } = useAuth();
-  const { settings } = useSettings();
 
-  const [micState, setMicState] = useState<MicState>("idle");
-  const [partial, setPartial] = useState("");
   const [result, setResult] = useState("");
-  const level = useSharedValue(0);
 
-  const sessionRef = useRef<CloudStreamSession | null>(null);
-  const startedAt = useRef(0);
-  const recordingRef = useRef(false);
-  const startingRef = useRef(false);
-  const autoStarted = useRef(false);
-
-  const recorder = useRecorder({
-    onFrame: (frame) => sessionRef.current?.sendAudio(frame),
-    onLevel: (v) => {
-      level.value = v;
+  const { micState, partial, level, toggle } = useDictation({
+    signedIn,
+    autoStart: true,
+    onRecordingStart: () => setResult(""),
+    onFinal: (text) => {
+      setResult(text);
+      // Hand the transcript to the keyboard for insertion.
+      setPendingTranscript(text);
     },
   });
-
-  const teardownSession = useCallback(() => {
-    sessionRef.current?.close();
-    sessionRef.current = null;
-  }, []);
-
-  useEffect(() => teardownSession, [teardownSession]);
-
-  const beginRecording = useCallback(async () => {
-    if (recordingRef.current || startingRef.current || !signedIn) return;
-    const headers = authHeaders();
-    if (!headers) return;
-    startingRef.current = true;
-
-    const perm =
-      (await checkMicPermission()) === "granted"
-        ? "granted"
-        : await requestMicPermission();
-    if (perm !== "granted") {
-      startingRef.current = false;
-      Alert.alert(
-        "Microphone needed",
-        "Enable microphone access in Settings to dictate.",
-      );
-      return;
-    }
-
-    recordingRef.current = true;
-    startingRef.current = false;
-    startedAt.current = Date.now();
-    setPartial("");
-    setResult("");
-    setMicState("recording");
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    sessionRef.current = new CloudStreamSession({
-      cookie: headers.Cookie,
-      language: languageHint(settings.language),
-      cleanup: {
-        skipPostProcess: !settings.cleanup,
-        intensity: DEFAULT_INTENSITY,
-        ...tonesForCloud(settings),
-      },
-      callbacks: {
-        onReady: () => {},
-        onPartial: (t) => setPartial(t),
-        onFinal: (t) => {
-          setPartial("");
-          const text = t.trim();
-          setMicState("idle");
-          teardownSession();
-          if (text) {
-            setResult(text);
-            // Hand the transcript to the keyboard for insertion.
-            setPendingTranscript(text);
-          }
-          void Haptics.notificationAsync(
-            Haptics.NotificationFeedbackType.Success,
-          );
-        },
-        onError: (message, code) => {
-          setMicState("idle");
-          teardownSession();
-          if (code === "usage_exceeded") {
-            Alert.alert(
-              "Out of credits",
-              "You've used your free Freestyle credits for now.",
-            );
-          } else {
-            Alert.alert("Transcription failed", message);
-          }
-          void Haptics.notificationAsync(
-            Haptics.NotificationFeedbackType.Error,
-          );
-        },
-        onClose: () => {
-          setMicState((s) => (s === "finalizing" ? "idle" : s));
-        },
-      },
-    });
-
-    try {
-      await recorder.start();
-    } catch {
-      recordingRef.current = false;
-      startingRef.current = false;
-      setMicState("idle");
-      teardownSession();
-      Alert.alert("Recording failed", "Could not start the microphone.");
-    }
-  }, [recorder, settings, teardownSession, signedIn]);
-
-  const finishRecording = useCallback(() => {
-    if (!recordingRef.current) return;
-    recordingRef.current = false;
-    level.value = 0;
-    recorder.stop();
-
-    const elapsed = Date.now() - startedAt.current;
-    if (elapsed < MIN_RECORDING_MS) {
-      teardownSession();
-      setMicState("idle");
-      return;
-    }
-
-    setMicState("finalizing");
-    sessionRef.current?.setAudioDurationMs(elapsed);
-    sessionRef.current?.commit();
-  }, [recorder, teardownSession, level]);
-
-  // Auto-start recording as soon as the screen opens (it was launched by a mic
-  // tap on the keyboard), so the user can just speak.
-  useEffect(() => {
-    if (autoStarted.current || !signedIn) return;
-    autoStarted.current = true;
-    void beginRecording();
-  }, [beginRecording, signedIn]);
-
-  const toggle = useCallback(() => {
-    if (recordingRef.current) finishRecording();
-    else void beginRecording();
-  }, [beginRecording, finishRecording]);
 
   const status =
     micState === "recording"

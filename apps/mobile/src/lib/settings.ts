@@ -49,10 +49,9 @@ const DEFAULTS: DictationSettings = {
   overallTone: DEFAULT_OVERALL_TONE,
 };
 
-/** Load and persist dictation settings. `ready` gates UI until the load lands. */
+/** Load and persist dictation settings. */
 export function useSettings() {
   const [settings, setSettings] = useState<DictationSettings>(DEFAULTS);
-  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -67,7 +66,6 @@ export function useSettings() {
         overallTone:
           (overallTone as CleanupOverallTone) ?? DEFAULTS.overallTone,
       });
-      setReady(true);
     })();
   }, []);
 
@@ -86,7 +84,7 @@ export function useSettings() {
     void setPref(OVERALL_TONE_KEY, overallTone);
   }, []);
 
-  return { settings, ready, setLanguage, setCleanup, setOverallTone };
+  return { settings, setLanguage, setCleanup, setOverallTone };
 }
 
 /** Convert an app language code to the cloud's hint (drops "auto"). */

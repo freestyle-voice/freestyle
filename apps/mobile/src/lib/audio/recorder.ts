@@ -35,7 +35,7 @@ export async function requestMicPermission(): Promise<MicPermission> {
 }
 
 /** Configure the audio session for recording. Call before starting a stream. */
-export async function enableRecordingMode(): Promise<void> {
+async function enableRecordingMode(): Promise<void> {
   await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
 }
 
@@ -62,7 +62,6 @@ function peakLevel(data: ArrayBuffer): number {
 export interface Recorder {
   start: () => Promise<void>;
   stop: () => void;
-  isStreaming: boolean;
 }
 
 /**
@@ -82,7 +81,7 @@ export function useRecorder(callbacks: RecorderCallbacks): Recorder {
     cb.current.onLevel?.(peakLevel(buffer.data));
   }, []);
 
-  const { stream, isStreaming } = useAudioStream({
+  const { stream } = useAudioStream({
     sampleRate: TARGET_SAMPLE_RATE,
     channels: 1,
     encoding: "int16",
@@ -98,5 +97,5 @@ export function useRecorder(callbacks: RecorderCallbacks): Recorder {
     stream.stop();
   }, [stream]);
 
-  return { start, stop, isStreaming };
+  return { start, stop };
 }

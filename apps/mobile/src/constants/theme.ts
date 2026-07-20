@@ -49,7 +49,6 @@ export const Fonts = {
   sansMedium: "DMSans_500Medium",
   sansSemiBold: "DMSans_600SemiBold",
   mono: "JetBrainsMono_400Regular",
-  monoMedium: "JetBrainsMono_500Medium",
 } as const;
 
 export const Spacing = {
@@ -69,5 +68,3 @@ export const Radius = {
   xl: 24,
   full: 999,
 } as const;
-
-export const MaxContentWidth = 800;

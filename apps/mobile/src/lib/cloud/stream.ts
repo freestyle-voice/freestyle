@@ -2,8 +2,7 @@
  * Real-time streaming STT client for Freestyle Cloud (`WSS /v2/stream`).
  *
  * Protocol mirrors the desktop's cloud provider exactly:
- *   - Client → server JSON control messages: `start`, `context`, `commit`,
- *     `cancel`.
+ *   - Client → server JSON control messages: `start`, `commit`.
  *   - Client → server binary frames: raw PCM16LE, 16 kHz, mono.
  *   - Server → client JSON: `config`, `session.ready`, `partial`, `final`,
  *     `error`.
@@ -209,12 +208,7 @@ export class CloudStreamSession {
     this.send({ type: "commit", audioDurationMs: this.audioDurationMs });
   }
 
-  /** Abandon the current recording without producing a final transcript. */
-  cancel(): void {
-    this.send({ type: "cancel" });
-    this.audioDurationMs = 0;
-  }
-
+  /** Tear down the WebSocket, ending the session without a final transcript. */
   close(): void {
     this.closed = true;
     if (this.ws.readyState <= WebSocket.OPEN) this.ws.close();

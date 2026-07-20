@@ -7,10 +7,7 @@ import {
   InstrumentSerif_400Regular,
   InstrumentSerif_400Regular_Italic,
 } from "@expo-google-fonts/instrument-serif";
-import {
-  JetBrainsMono_400Regular,
-  JetBrainsMono_500Medium,
-} from "@expo-google-fonts/jetbrains-mono";
+import { JetBrainsMono_400Regular } from "@expo-google-fonts/jetbrains-mono";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -34,7 +31,6 @@ export default function RootLayout() {
     DMSans_500Medium,
     DMSans_600SemiBold,
     JetBrainsMono_400Regular,
-    JetBrainsMono_500Medium,
   });
 
   useEffect(() => {

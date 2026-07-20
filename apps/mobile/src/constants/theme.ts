@@ -17,6 +17,13 @@ export const Colors = {
     accentForeground: "#2E3F05",
     destructive: "#DD6E4E",
     border: "#D6CDB8",
+    // Cloud's `ring-foreground/10` — ink at 10%, for the faint card hairline.
+    cardRing: "rgba(22, 20, 15, 0.10)",
+    // Cloud's destructive button: bg-destructive/10 → /20 on press.
+    destructiveTint: "rgba(221, 110, 78, 0.10)",
+    destructiveTintPressed: "rgba(221, 110, 78, 0.20)",
+    // Cloud's `--input` — the switch-off track / input border.
+    switchTrack: "#E3DCC8",
   },
   dark: {
     background: "#16140F",
@@ -31,6 +38,13 @@ export const Colors = {
     accentForeground: "#E8EFC9",
     destructive: "#E0805F",
     border: "#3A362D",
+    // Cloud's `ring-foreground/10` in dark — cream at 10%.
+    cardRing: "rgba(236, 231, 214, 0.10)",
+    // Cloud's destructive button in dark: bg-destructive/20 → /30 on press.
+    destructiveTint: "rgba(224, 128, 95, 0.18)",
+    destructiveTintPressed: "rgba(224, 128, 95, 0.28)",
+    // Cloud's `--input` in dark — the switch-off track / input border.
+    switchTrack: "#3A362D",
   },
 } as const;
 
@@ -62,9 +76,10 @@ export const Spacing = {
 } as const;
 
 export const Radius = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
+  sm: 6,
+  md: 8,
+  lg: 10,
+  xl: 14,
+  "2xl": 18,
   full: 999,
 } as const;

@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { Check } from "lucide-react-native";
+import { Check, ChevronLeft } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import { Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -45,14 +45,16 @@ export default function KeyboardSetupScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12}>
-            <ThemedText type="eyebrow" themeColor="primary">
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={12}
+            style={styles.backButton}
+          >
+            <ChevronLeft color={theme.primary} size={20} />
+            <ThemedText style={[styles.backText, { color: theme.primary }]}>
               Back
             </ThemedText>
           </Pressable>
-          <ThemedText type="eyebrow" themeColor="mutedForeground">
-            Voice Keyboard
-          </ThemedText>
         </View>
 
         <ScrollView
@@ -138,10 +140,16 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, paddingHorizontal: Spacing.four },
   header: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
     paddingTop: Spacing.two,
   },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    marginLeft: -4,
+  },
+  backText: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   content: { paddingVertical: Spacing.four, gap: Spacing.four },
   title: { fontSize: 40, lineHeight: 42, letterSpacing: -1 },
   lede: { fontSize: 15, lineHeight: 22 },
@@ -150,7 +158,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: Spacing.three,
     borderWidth: 1,
-    borderRadius: Radius.lg,
+    borderRadius: Radius.xl,
     padding: Spacing.three,
   },
   switchLabel: { flex: 1 },

@@ -3,7 +3,12 @@ import { StyleSheet, Text, type TextProps } from "react-native";
 import { Fonts, type ThemeColor } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 
-export type ThemedTextType = "body" | "display" | "displayItalic" | "eyebrow";
+export type ThemedTextType =
+  | "body"
+  | "title"
+  | "display"
+  | "displayItalic"
+  | "eyebrow";
 
 export type ThemedTextProps = TextProps & {
   type?: ThemedTextType;
@@ -23,6 +28,7 @@ export function ThemedText({
       style={[
         { color: theme[themeColor ?? "foreground"] },
         type === "body" && styles.body,
+        type === "title" && styles.title,
         type === "display" && styles.display,
         type === "displayItalic" && styles.displayItalic,
         type === "eyebrow" && styles.eyebrow,
@@ -38,6 +44,13 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.sans,
     fontSize: 14,
     lineHeight: 21,
+  },
+  // Instrument Serif screen title — smaller than the display hero.
+  title: {
+    fontFamily: Fonts.serif,
+    fontSize: 32,
+    lineHeight: 36,
+    letterSpacing: -0.5,
   },
   // Instrument Serif display — the signature page title.
   display: {

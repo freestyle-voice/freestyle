@@ -16,6 +16,10 @@ import Darwin
 var fnIsDown = false
 var lastModifierFlags: NSEvent.ModifierFlags = []
 
+/// Marker stamped onto the app's own injected paste events by macos-fast-paste,
+/// used to ignore them here. Keep in sync with macos-fast-paste.swift.
+let freestyleSyntheticMarker: Int64 = 0x4653_5459 // "FSTY"
+
 /// Modifier + key hotkeys (e.g. Option+U) are swallowed so macOS dead keys do not
 /// reach the foreground app. Modifier-only hotkeys (e.g. RightOption) are not.
 struct ParsedHotkey {
@@ -374,6 +378,10 @@ guard let monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, h
 // tap may not surface when another app is focused, because macOS handles them first.
 var keyDownMonitor: Any?
 keyDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+    // Skip the app's own injected paste — see macos-fast-paste.swift.
+    if event.cgEvent?.getIntegerValueField(.eventSourceUserData) == freestyleSyntheticMarker {
+        return
+    }
     emitFlags(event.modifierFlags)
     guard let name = keyCodeToName(event.keyCode) else { return }
     emit("KEY_DOWN:\(name)")
@@ -396,6 +404,14 @@ let keyEventTap = CGEvent.tapCreate(
             if let keyEventTapPort {
                 CGEvent.tapEnable(tap: keyEventTapPort, enable: true)
             }
+            return Unmanaged.passUnretained(event)
+        }
+
+        // Ignore the app's own injected paste (Cmd+V from macos-fast-paste).
+        // Those events carry a synthetic Command flag with no matching key-up,
+        // so reacting to them would leave a phantom "command" modifier stuck and
+        // block the next Fn/Globe hotkey press. See macos-fast-paste.swift.
+        if event.getIntegerValueField(.eventSourceUserData) == freestyleSyntheticMarker {
             return Unmanaged.passUnretained(event)
         }
 

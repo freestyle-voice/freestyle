@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { parsePluginPages, pluginSlug } from "./ui.js";
+import {
+  parsePluginPages,
+  parsePluginSettingsFields,
+  pluginSlug,
+} from "./ui.js";
 
 describe("pluginSlug", () => {
   it("makes scoped package names URL/route-safe", () => {
     expect(pluginSlug("@freestyle-voice/plugin-audio-transcription")).toBe(
       "freestyle-voice-plugin-audio-transcription",
     );
+  });
+
+  it("is deterministic for the same name", () => {
+    expect(pluginSlug("@acme/foo")).toBe(pluginSlug("@acme/foo"));
   });
 
   it("round-trips through a URL host (no @ or /)", () => {
@@ -58,5 +66,71 @@ describe("parsePluginPages", () => {
       },
     });
     expect(pages.map((p) => p.id)).toEqual(["a"]);
+  });
+});
+
+describe("parsePluginSettingsFields", () => {
+  it("returns [] for missing/invalid manifests", () => {
+    expect(parsePluginSettingsFields(undefined)).toEqual([]);
+    expect(parsePluginSettingsFields(null)).toEqual([]);
+    expect(parsePluginSettingsFields({})).toEqual([]);
+    expect(parsePluginSettingsFields({ contributes: {} })).toEqual([]);
+    expect(
+      parsePluginSettingsFields({ contributes: { settings: "nope" } }),
+    ).toEqual([]);
+  });
+
+  it("parses each field type", () => {
+    const fields = parsePluginSettingsFields({
+      contributes: {
+        settings: [
+          { key: "prefix", type: "string", label: "Prefix", default: "hi" },
+          { key: "count", type: "number", label: "Count" },
+          { key: "enabled", type: "boolean", label: "Enabled", default: true },
+          {
+            key: "mode",
+            type: "select",
+            label: "Mode",
+            options: [
+              { value: "a", label: "A" },
+              { value: "b", label: "B" },
+            ],
+            default: "a",
+          },
+        ],
+      },
+    });
+    expect(fields).toEqual([
+      { key: "prefix", type: "string", label: "Prefix", default: "hi" },
+      { key: "count", type: "number", label: "Count" },
+      { key: "enabled", type: "boolean", label: "Enabled", default: true },
+      {
+        key: "mode",
+        type: "select",
+        label: "Mode",
+        options: [
+          { value: "a", label: "A" },
+          { value: "b", label: "B" },
+        ],
+        default: "a",
+      },
+    ]);
+  });
+
+  it("drops invalid fields and de-dupes keys", () => {
+    const fields = parsePluginSettingsFields({
+      contributes: {
+        settings: [
+          { key: "a", type: "string", label: "A" },
+          { key: "a", type: "string", label: "Dup" },
+          { key: "", type: "string", label: "no key" },
+          { key: "b", type: "bogus", label: "Bad type" },
+          { key: "c", type: "select", label: "No options" },
+          { key: "d", type: "select", label: "Empty options", options: [] },
+          "not an object",
+        ],
+      },
+    });
+    expect(fields.map((f) => f.key)).toEqual(["a"]);
   });
 });

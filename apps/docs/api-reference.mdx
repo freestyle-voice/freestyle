@@ -43,7 +43,6 @@ The Freestyle server is a [Hono](https://hono.dev) app that runs on `http://127.
 | Method | Path | Description |
 | --- | --- | --- |
 | `POST` | `/api/transcribe` | Main transcription endpoint. Accepts audio as multipart form data or raw binary. Transcribes via configured voice provider and optionally runs LLM cleanup. Headers: `x-app-context` (JSON), `x-audio-duration-ms`, `x-skip-post-process`. |
-| `GET` | `/stream` | WebSocket endpoint for real-time streaming transcription. Handles binary audio frames and JSON control messages (`context`, `start`, `commit`, `cancel`). |
 | `POST` | `/api/post-process` | Run LLM cleanup on text independently. Body: `{ text, appContext?, language? }`. |
 
 ## API keys
@@ -116,7 +115,7 @@ Output formatting rules matched by the app you're typing in.
 | Method | Path | Description |
 | --- | --- | --- |
 | `POST` | `/api/plugins/reload` | Reload server-side plugin registry. Re-reads settings and re-runs `setup()`. |
-| `GET` | `/api/plugins/catalog` | Return the built-in plugin catalog. |
+| `GET` | `/api/plugins/catalog` | Return the plugin catalog from the cloud registry. |
 | `POST` | `/api/plugins/install` | Install a plugin from npm. Body: `{ npmName, version? }`. Downloads, stages atomically, adds specifier, and reloads. |
 | `POST` | `/api/plugins/uninstall` | Uninstall a plugin. Body: `{ specifier }`. Removes package and specifier. |
 | `POST` | `/api/plugins/check-updates` | Check for updates against npm. Body: `{ plugins: [{ name, currentVersion }] }`. |
@@ -159,9 +158,3 @@ Apple Silicon only.
 | `DELETE` | `/api/mlx-asr/models/:model` | Delete a downloaded model. |
 | `POST` | `/api/mlx-asr/server/start` | Start the local MLX ASR server. Body: `{ modelId? }`. |
 | `POST` | `/api/mlx-asr/server/stop` | Stop the local MLX ASR server. |
-
-## MCP
-
-| Method | Path | Description |
-| --- | --- | --- |
-| `ALL` | `/mcp` | MCP Streamable HTTP transport endpoint. See the [MCP integration guide](/mcp) for details. |

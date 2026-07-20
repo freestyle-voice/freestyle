@@ -15,13 +15,14 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import {
+  maxOutputTokensForCleanup,
+  sanitizeTranscriptText,
+} from "@freestyle-voice/stt";
 import { generateText } from "ai";
-
-import { maxOutputTokensForCleanup } from "../src/lib/editor/max-output-tokens.ts";
-import { sanitizeTranscriptText } from "../src/lib/editor/model-hints.ts";
 import { buildRewritePrompt } from "../src/lib/editor/prompts.ts";
 import { getGroqChatModel } from "../src/lib/groq-http.ts";
-import { groqCleanupProviderOptions } from "../src/lib/post-process.ts";
+import { groqCleanupProviderOptions } from "../src/lib/llm/registry.ts";
 
 const MODEL_ID = "openai/gpt-oss-20b";
 const INTENSITY = "low" as const;
@@ -281,7 +282,6 @@ function checkStructural(
   mode: string,
   tone: string,
   output: string,
-  expected: string,
 ): { ok: boolean; errors: string[] } {
   const errors: string[] = [];
   const trimmed = output.trim();
@@ -373,7 +373,7 @@ async function runCase(
     providerOptions: groqCleanupProviderOptions(MODEL_ID),
   });
   const output = sanitizeTranscriptText(result.text);
-  const { ok, errors } = checkStructural(mode, tone, output, testCase.expected);
+  const { ok, errors } = checkStructural(mode, tone, output);
   return {
     id: testCase.id,
     label: testCase.label,

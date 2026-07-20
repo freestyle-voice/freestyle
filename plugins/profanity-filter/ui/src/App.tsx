@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FreestyleBridge } from "freestyle-voice";
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 
 const ROUTE = "/api/plugins/freestyle-voice-profanity-filter/replacements";
@@ -22,10 +22,29 @@ function getBridge(): FreestyleBridge {
   return b;
 }
 
+/**
+ * Guard against a bridge that doesn't resolve a real `Response` (e.g. a plugin
+ * UI bundle built against an older SDK whose `api()` returned a proxy wrapper).
+ * Without this, `res.status` reads as `undefined` and surfaces the opaque
+ * "server returned undefined" error instead of an actionable message.
+ */
+function assertResponse(res: unknown): asserts res is Response {
+  if (
+    !res ||
+    typeof (res as Response).status !== "number" ||
+    typeof (res as Response).json !== "function"
+  ) {
+    throw new Error(
+      "plugin API unavailable — the host bridge is out of date; try restarting Freestyle",
+    );
+  }
+}
+
 async function fetchReplacements(): Promise<ReplacementsResponse> {
   const res = await getBridge().api(ROUTE);
+  assertResponse(res);
   if (!res.ok) throw new Error(`server returned ${res.status}`);
-  return res.json<ReplacementsResponse>();
+  return (await res.json()) as ReplacementsResponse;
 }
 
 /**
@@ -42,10 +61,9 @@ async function mutateReplacements(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  assertResponse(res);
   if (!res.ok) {
-    const err = await res
-      .json<{ error?: string }>()
-      .catch(() => ({}) as { error?: string });
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error ?? `server returned ${res.status}`);
   }
 }
@@ -53,31 +71,6 @@ async function mutateReplacements(
 // ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
-
-function BackButton() {
-  return (
-    <button
-      type="button"
-      className="back-btn"
-      onClick={() => window.freestyle?.invoke("navigate", { to: "/plugins" })}
-    >
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="m15 18-6-6 6-6" />
-      </svg>
-      Plugins
-    </button>
-  );
-}
 
 interface AddFormValues {
   word: string;
@@ -143,14 +136,14 @@ function AddWordForm() {
   );
 }
 
-function WordRow({
+const WordRow = memo(function WordRow({
   entry,
   onDelete,
   onUpdate,
 }: {
   entry: Entry;
-  onDelete: () => void;
-  onUpdate: (alts: string[]) => void;
+  onDelete: (word: string) => void;
+  onUpdate: (word: string, alts: string[]) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
@@ -170,7 +163,7 @@ function WordRow({
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    if (alts.length > 0) onUpdate(alts);
+    if (alts.length > 0) onUpdate(entry.word, alts);
     setEditing(false);
   };
 
@@ -226,7 +219,7 @@ function WordRow({
             <button
               type="button"
               className="row-btn delete-btn"
-              onClick={onDelete}
+              onClick={() => onDelete(entry.word)}
               aria-label="Delete"
             >
               Delete
@@ -236,19 +229,25 @@ function WordRow({
       )}
     </li>
   );
-}
+});
 
 function WordList({ entries }: { entries: Entry[] }) {
   const [query, setQuery] = useState("");
   const queryClient = useQueryClient();
   const q = query.trim().toLowerCase();
-  const filtered = q
-    ? entries.filter(
-        (e) =>
-          e.word.includes(q) ||
-          e.alternatives.some((a) => a.toLowerCase().includes(q)),
-      )
-    : entries;
+  // Recompute the filtered view only when the entries or query change, not on
+  // every parent re-render (e.g. while a mutation is in flight).
+  const filtered = useMemo(
+    () =>
+      q
+        ? entries.filter(
+            (e) =>
+              e.word.toLowerCase().includes(q) ||
+              e.alternatives.some((a) => a.toLowerCase().includes(q)),
+          )
+        : entries,
+    [entries, q],
+  );
 
   const deleteMutation = useMutation({
     mutationFn: (word: string) => mutateReplacements("DELETE", { word }),
@@ -267,6 +266,18 @@ function WordList({ entries }: { entries: Entry[] }) {
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["replacements"] }),
   });
+
+  // Stable handlers so the memoized WordRow only re-renders when its own entry
+  // changes. react-query's `mutate` identity is stable across renders.
+  const handleDelete = useCallback(
+    (word: string) => deleteMutation.mutate(word),
+    [deleteMutation.mutate],
+  );
+  const handleUpdate = useCallback(
+    (word: string, alternatives: string[]) =>
+      updateMutation.mutate({ word, alternatives }),
+    [updateMutation.mutate],
+  );
 
   const rowError = deleteMutation.error ?? updateMutation.error;
 
@@ -298,10 +309,8 @@ function WordList({ entries }: { entries: Entry[] }) {
             <WordRow
               key={e.word}
               entry={e}
-              onDelete={() => deleteMutation.mutate(e.word)}
-              onUpdate={(alts) =>
-                updateMutation.mutate({ word: e.word, alternatives: alts })
-              }
+              onDelete={handleDelete}
+              onUpdate={handleUpdate}
             />
           ))}
         </ul>
@@ -328,9 +337,11 @@ export function App() {
 
   return (
     <main className="page">
-      <BackButton />
       <header className="head-row">
-        <h1 className="page-title">Filtered words</h1>
+        <h1 className="page-title">
+          <span className="title-accent">Filtered words</span>
+          <span>. </span>
+        </h1>
         <button
           type="button"
           className="reset-btn"

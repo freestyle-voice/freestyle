@@ -1,16 +1,22 @@
+import { sanitizeTranscriptText } from "@freestyle-voice/stt";
 import { createAppLogger } from "@freestyle-voice/utils";
 import { Hono } from "hono";
 import { readSetting } from "../lib/db.js";
-import { sanitizeTranscriptText } from "../lib/editor/model-hints.js";
+import { getRewritePromptContext } from "../lib/editor/rewrite-context.js";
+import { formatError } from "../lib/format-error.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,
   FreestyleCloudUsageError,
   isTransientCloudError,
+  prewarmFreestyleCloudConnection,
   transcribeWithFreestyleCloud,
 } from "../lib/freestyle-cloud.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import { getLanguageSetting } from "../lib/language.js";
+import { MLX_ASR_PROVIDER_ID } from "../lib/mlx-asr/constants.js";
+import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
+import { canRunMlxAsr, startMlxInBackground } from "../lib/mlx-asr/server.js";
 import {
   FreestyleEventType,
   PipelineStage,
@@ -18,23 +24,33 @@ import {
   plugins,
 } from "../lib/plugins/index.js";
 import {
+  createHookApi,
+  dispositionFromControl,
+  emitAbortEvent,
+} from "../lib/plugins/pipeline.js";
+import {
   applyFinalRewrites,
   getCleanupAppAssignments,
-  getCleanupCustomPrompt,
-  getCleanupEmailTone,
-  getCleanupIntensity,
-  getCleanupOverallTone,
-  getCleanupPersonalTone,
-  getCleanupWorkTone,
+  getEffectiveCleanupTones,
   postProcess,
+  prewarmPostProcess,
+  resolveAppContextForCleanup,
 } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
 import { invalidateSession } from "../lib/sessions.js";
 import { CloudAuthError } from "../lib/streaming/providers/freestyle-cloud.js";
 import { getProvider } from "../lib/streaming/registry.js";
+import { stripProviderPrefix } from "../lib/streaming/types.js";
 import { getApiKeyForProvider } from "../lib/streaming-stt.js";
-import { resolveAsrVocabularyBias } from "../lib/vocabulary-bias.js";
+import { getCloudVocabularyBias } from "../lib/vocabulary.js";
+import {
+  buildAsrVocabularyBias,
+  resolveAsrVocabularyBias,
+} from "../lib/vocabulary-bias.js";
+import { isServerBinaryAvailable } from "../lib/whisper/binary.js";
+import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
+import { startInBackground } from "../lib/whisper/server.js";
 
 const log = createAppLogger("transcribe");
 
@@ -88,7 +104,15 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     )} contentType=${contentType.slice(0, 40)}`,
   );
 
-  const appContext = decodeAppContext(c.req.header("x-app-context"));
+  const appContext = resolveAppContextForCleanup(
+    decodeAppContext(c.req.header("x-app-context")),
+  );
+  // Parse app name and resolve tone-routing destination once for analytics.
+  const parsedCtx = parseAppContext(appContext);
+  const { destination: routedDestination } = getRewritePromptContext(
+    appContext,
+    getCleanupAppAssignments(),
+  );
 
   let audioDurationMs = 0;
   if (audioData.length > 44) {
@@ -112,106 +136,243 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   let rawText: string;
   let transcribeDurationInSeconds: number | undefined;
   const language = getLanguageSetting();
+  const api = await createHookApi();
 
-  const provider = getProvider(defaults.voice.provider);
+  // Plugin hook: preprocess the recorded audio, or override which provider,
+  // model, language, or ASR vocabulary bias transcribes this dictation.
+  // Runs before any provider/key resolution so overrides actually take
+  // effect. `api.control.consume()` here skips STT entirely.
+  const beforeTranscribeOutput = await plugins().run(
+    "beforeTranscribe",
+    {
+      providerId: defaults.voice.provider,
+      modelId: defaults.voice.model_id,
+      audioDurationMs,
+      ...(parsedCtx ? { appContext: parsedCtx } : {}),
+    },
+    {
+      audio: audioData,
+      providerId: defaults.voice.provider,
+      modelId: defaults.voice.model_id,
+    },
+    api,
+  );
+  audioData = beforeTranscribeOutput.audio;
+  const voiceProvider = beforeTranscribeOutput.providerId;
+  const voiceModel = beforeTranscribeOutput.modelId;
+  const languageOverride = beforeTranscribeOutput.language;
+
+  // A plugin consumed/aborted the dictation in a server hook: return blank
+  // output so any client suppresses delivery, carry the disposition/reason,
+  // and (on abort) emit the documented `pipelineError` event exactly once.
+  const suppressedResponse = () => {
+    emitAbortEvent(api, PipelineStage.Transcribe);
+    return c.json({
+      raw: "",
+      cleaned: "",
+      model: voiceModel,
+      durationMs: Date.now() - start,
+      audioDurationMs,
+      disposition: dispositionFromControl(api.control.state),
+      ...(api.control.reason ? { reason: api.control.reason } : {}),
+    });
+  };
+
+  if (api.control.state !== "running") {
+    return suppressedResponse();
+  }
+
+  const provider = getProvider(voiceProvider);
   if (!provider) {
     return c.json(
-      {
-        error: `Unsupported transcription provider: ${defaults.voice.provider}`,
-      },
+      { error: `Unsupported transcription provider: ${voiceProvider}` },
       400,
     );
   }
 
-  const apiKey = getApiKeyForProvider(defaults.voice.provider);
+  const apiKey = getApiKeyForProvider(voiceProvider);
   if (!apiKey) {
     // Freestyle Cloud has no stored key — a null token means "signed out".
-    if (defaults.voice.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
+    if (voiceProvider === FREESTYLE_CLOUD_PROVIDER_ID) {
       return c.json({ error: "cloud_auth_required" }, 401);
     }
     return c.json(
-      {
-        error: `No API key configured for provider: ${defaults.voice.provider}`,
-      },
+      { error: `No API key configured for provider: ${voiceProvider}` },
       400,
     );
   }
 
-  const voiceProvider = defaults.voice.provider;
-  const voiceModel = defaults.voice.model_id;
   const skipPostProcess = c.req.header("x-skip-post-process") === "true";
   const freestyleCleanupActive =
     !skipPostProcess &&
     defaults.llm?.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
     readSetting("llm_cleanup") === "true";
 
+  // Freestyle Cloud's combined STT+cleanup mode does its work remotely.
+  // `afterTranscribe` needs the raw transcript, so when a plugin implements
+  // it we fall back to cloud's raw STT mode + the local post-process path
+  // (one extra round trip). `beforeCleanup` does NOT need the transcript
+  // (it contributes system-prompt fragments), so we run it locally and
+  // forward its output to the cloud in the same combined request.
+  const pluginNeedsRawTranscript = plugins().has("afterTranscribe");
+
   if (voiceProvider === FREESTYLE_CLOUD_PROVIDER_ID && freestyleCleanupActive) {
+    let useCombined = !pluginNeedsRawTranscript;
+
+    // Run `beforeCleanup` locally to collect plugin system-prompt fragments,
+    // then forward them to the cloud. On the combined path `input.text` is
+    // empty (the transcript hasn't been produced yet); plugins that only
+    // contribute static fragments (e.g. emoji) work fine.
+    //
+    // The hook can also decide things the cloud's combined mode can't honor:
+    // `skip`, `consume()`/`abort()` (terminal control), or a full `prompt`
+    // override. In those cases fall back to cloud raw STT + the local
+    // post-process path, which applies all of them exactly like the
+    // local/BYOK flow — matching the pre-forwarding behavior.
+    let systemFragments: string[] = [];
+    if (useCombined && plugins().has("beforeCleanup")) {
+      const parsedCtxForCleanup = parseAppContext(
+        resolveAppContextForCleanup(appContext),
+      );
+      const { destination: resolvedDest } = getRewritePromptContext(
+        resolveAppContextForCleanup(appContext),
+        getCleanupAppAssignments(),
+      );
+      const promptHook = await plugins().run(
+        "beforeCleanup",
+        {
+          text: "",
+          appContext: parsedCtxForCleanup,
+          destination: resolvedDest,
+        },
+        { system: [] as string[] },
+        api,
+      );
+      if (
+        promptHook.skip ||
+        promptHook.prompt !== undefined ||
+        api.control.state !== "running"
+      ) {
+        // The plugin skipped cleanup, went terminal (consume/abort), or
+        // replaced the prompt outright — none of which the cloud's combined
+        // mode can apply. Drop to raw STT so the local post-process path
+        // honors the hook's decision (it re-runs `beforeCleanup` with the
+        // real transcript). Don't forward fragments on this path.
+        useCombined = false;
+      } else {
+        systemFragments = promptHook.system;
+      }
+    }
+
     try {
+      // A `beforeTranscribe` plugin can override the ASR vocabulary bias; honor
+      // it on the cloud path too (else fall back to the user's DB vocabulary),
+      // so the override behaves the same regardless of provider.
+      const vocabulary = beforeTranscribeOutput.bias
+        ? { terms: beforeTranscribeOutput.bias }
+        : getCloudVocabularyBias();
       const result = await transcribeWithFreestyleCloud({
         token: apiKey,
         audio: audioData,
-        language,
+        language: languageOverride ?? language,
         appContext,
-        mode: "combined",
-        intensity: getCleanupIntensity(),
-        customPrompt: getCleanupCustomPrompt(),
-        personalTone: getCleanupPersonalTone(),
-        workTone: getCleanupWorkTone(),
-        emailTone: getCleanupEmailTone(),
-        overallTone: getCleanupOverallTone(),
+        mode: useCombined ? "combined" : "raw",
+        vocabulary,
+        ...(useCombined ? getEffectiveCleanupTones() : {}),
         appAssignments: getCleanupAppAssignments(),
+        ...(useCombined && systemFragments.length > 0
+          ? { systemFragments }
+          : {}),
       });
       rawText = sanitizeTranscriptText(result.raw ?? "");
-      // The cloud already ran STT + LLM cleanup; still apply the local-only
-      // dictionary replacements and `afterCleanup` plugin hook on the way out.
-      const cleaned = await applyFinalRewrites(
-        sanitizeTranscriptText(result.cleaned ?? rawText),
-        appContext,
-        rawText,
-      );
-      const durationMs = Date.now() - start;
-      const inputTokens = result.usage?.inputTokens ?? 0;
-      const outputTokens = result.usage?.outputTokens ?? 0;
 
-      try {
-        saveProcessedHistory({
+      if (useCombined) {
+        // An empty transcript (silence, or a clipped first clip on a cold
+        // provider switch) must be suppressed like every other path —
+        // otherwise we'd persist a blank history row and paste nothing.
+        // `suppressedResponse()` returns blank output without saving history.
+        if (!rawText.trim() || api.control.state !== "running") {
+          return suppressedResponse();
+        }
+        // The cloud already ran STT + LLM cleanup; still apply the
+        // local-only dictionary replacements and `afterCleanup` plugin hook
+        // on the way out. Fall back to the raw transcript when the cloud
+        // returns an empty cleaned string (`||`, not `??`, so "" is caught).
+        const cleaned = await applyFinalRewrites(
+          sanitizeTranscriptText(result.cleaned || rawText),
+          appContext,
           rawText,
-          cleanedText: cleaned !== rawText ? cleaned : null,
-          voiceProvider,
-          voiceModel,
-          llmProvider: FREESTYLE_CLOUD_PROVIDER_ID,
-          llmModel: defaults.llm?.model_id ?? "freestyle-cloud/post-process",
-          durationMs,
-          audioDurationMs,
-          inputTokens,
-          outputTokens,
-          costUsd: 0,
+          api,
+        );
+        // An `afterCleanup` plugin can consume/abort here too. Terminal
+        // control state suppresses delivery on every path, so blank the
+        // output rather than returning text the pipeline decided to drop.
+        if (api.control.state !== "running") {
+          return suppressedResponse();
+        }
+        const durationMs = Date.now() - start;
+        const inputTokens = result.usage?.inputTokens ?? 0;
+        const outputTokens = result.usage?.outputTokens ?? 0;
+
+        try {
+          saveProcessedHistory({
+            rawText,
+            cleanedText: cleaned !== rawText ? cleaned : null,
+            voiceProvider,
+            voiceModel,
+            llmProvider: FREESTYLE_CLOUD_PROVIDER_ID,
+            llmModel: defaults.llm?.model_id ?? "freestyle-cloud/post-process",
+            durationMs,
+            audioDurationMs,
+            inputTokens,
+            outputTokens,
+            costUsd: 0,
+          });
+        } catch (err) {
+          log.error(`Failed to save history: ${err}`);
+        }
+
+        capture("transcription completed", {
+          provider: voiceProvider,
+          provider_category: routeVoiceProviderCategory(voiceProvider),
+          model: voiceModel,
+          duration_ms: durationMs,
+          audio_duration_ms: audioDurationMs,
+          post_processed: true,
+          llm_provider: FREESTYLE_CLOUD_PROVIDER_ID,
+          llm_model: defaults.llm?.model_id,
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          cost_usd: 0,
+          app_name: parsedCtx?.appName,
+          destination: routedDestination,
+          has_app_context: !!appContext,
         });
-      } catch (err) {
-        log.error(`Failed to save history: ${err}`);
+
+        return c.json({
+          raw: rawText,
+          cleaned,
+          model: voiceModel,
+          provider_category: routeVoiceProviderCategory(voiceProvider),
+          durationMs,
+          disposition: dispositionFromControl(api.control.state),
+        });
       }
 
-      capture("transcription completed", {
-        provider: voiceProvider,
-        provider_category: routeVoiceProviderCategory(voiceProvider),
-        model: voiceModel,
-        duration_ms: durationMs,
-        audio_duration_ms: audioDurationMs,
-        post_processed: true,
-        llm_provider: FREESTYLE_CLOUD_PROVIDER_ID,
-        llm_model: defaults.llm?.model_id,
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        cost_usd: 0,
-      });
-
-      return c.json({
-        raw: rawText,
-        cleaned,
-        model: voiceModel,
-        provider_category: routeVoiceProviderCategory(voiceProvider),
-        durationMs,
-      });
+      // Raw-mode fallback: run the same afterTranscribe hook + shared
+      // post-process path used by the local/BYOK flow below.
+      rawText = (
+        await plugins().run(
+          "afterTranscribe",
+          {
+            providerId: voiceProvider,
+            modelId: voiceModel,
+            appContext: parsedCtx,
+          },
+          { text: rawText },
+          api,
+        )
+      ).text;
     } catch (err) {
       if (err instanceof FreestyleCloudAuthError) {
         invalidateSession();
@@ -220,6 +381,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       if (err instanceof FreestyleCloudUsageError) {
         return c.json({ error: "usage_exceeded", resetsAt: err.resetsAt }, 429);
       }
+      log.error(
+        `cloud transcribe failed (${voiceProvider}/${voiceModel}): ${formatError(err)}`,
+      );
       // Transient network faults / upstream 5xx aren't app defects — surface
       // them to the user but don't report them to error tracking.
       if (!isTransientCloudError(err)) {
@@ -233,83 +397,85 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         500,
       );
     }
-  }
-
-  try {
-    const bias = resolveAsrVocabularyBias(
-      defaults.voice.provider,
-      defaults.voice.model_id,
-    );
-    log.debug(`bias=${JSON.stringify(bias)}`);
-    const t0 = Date.now();
-    const result = await provider.transcribe({
-      audio: audioData,
-      model: defaults.voice.model_id,
-      apiKey,
-      ...(language ? { language } : {}),
-      bias,
-    });
-    rawText = sanitizeTranscriptText(result.text);
-
-    // Plugin hook: rewrite the raw transcript before cleanup.
-    rawText = (
-      await plugins().run(
-        "afterTranscribe",
-        {
-          providerId: defaults.voice.provider,
-          modelId: defaults.voice.model_id,
-          appContext: parseAppContext(appContext),
-        },
-        { text: rawText },
-      )
-    ).text;
-    transcribeDurationInSeconds = result.durationInSeconds;
-
-    log.debug(
-      `STT took ${Date.now() - t0}ms | rawText=${JSON.stringify(rawText).slice(0, 120)}`,
-    );
-  } catch (err) {
-    // Expired/invalid cloud session — ask the desktop app to re-authenticate.
-    if (err instanceof CloudAuthError) {
-      invalidateSession();
-      return c.json({ error: "cloud_auth_required" }, 401);
-    }
-    if (!isTransientCloudError(err)) {
-      captureException(err, {
-        provider: defaults.voice.provider,
-        model: defaults.voice.model_id,
+  } else {
+    try {
+      // A plugin-provided bias list is a set of raw terms — rebuild the
+      // provider-specific structure from them rather than the DB vocabulary.
+      const bias = beforeTranscribeOutput.bias
+        ? buildAsrVocabularyBias(
+            voiceProvider,
+            voiceModel,
+            beforeTranscribeOutput.bias,
+          )
+        : resolveAsrVocabularyBias(voiceProvider, voiceModel);
+      log.debug(`bias=${JSON.stringify(bias)}`);
+      const t0 = Date.now();
+      const result = await provider.transcribe({
+        audio: audioData,
+        model: voiceModel,
+        apiKey,
+        ...((languageOverride ?? language)
+          ? { language: languageOverride ?? language }
+          : {}),
+        bias,
       });
+      rawText = sanitizeTranscriptText(result.text);
+
+      // Plugin hook: rewrite the raw transcript before cleanup.
+      rawText = (
+        await plugins().run(
+          "afterTranscribe",
+          {
+            providerId: voiceProvider,
+            modelId: voiceModel,
+            appContext: parsedCtx,
+          },
+          { text: rawText },
+          api,
+        )
+      ).text;
+      transcribeDurationInSeconds = result.durationInSeconds;
+
+      log.debug(
+        `STT took ${Date.now() - t0}ms | rawText=${JSON.stringify(rawText).slice(0, 120)}`,
+      );
+    } catch (err) {
+      // Expired/invalid cloud session — ask the desktop app to re-authenticate.
+      if (err instanceof CloudAuthError) {
+        invalidateSession();
+        return c.json({ error: "cloud_auth_required" }, 401);
+      }
+      log.error(
+        `transcribe failed (${voiceProvider}/${voiceModel}): ${formatError(err)}`,
+      );
+      if (!isTransientCloudError(err)) {
+        captureException(err, { provider: voiceProvider, model: voiceModel });
+      }
+      void plugins().emit({
+        type: FreestyleEventType.PipelineError,
+        stage: PipelineStage.Transcribe,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      capture("transcription failed", {
+        provider: voiceProvider,
+        provider_category: routeVoiceProviderCategory(voiceProvider),
+        model: voiceModel,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return c.json(
+        {
+          error: "Transcription failed",
+          detail: err instanceof Error ? err.message : String(err),
+        },
+        500,
+      );
     }
-    void plugins().emit({
-      type: FreestyleEventType.PipelineError,
-      stage: PipelineStage.Transcribe,
-      message: err instanceof Error ? err.message : String(err),
-    });
-    capture("transcription failed", {
-      provider: defaults.voice.provider,
-      provider_category: routeVoiceProviderCategory(defaults.voice.provider),
-      model: defaults.voice.model_id,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return c.json(
-      {
-        error: "Transcription failed",
-        detail: err instanceof Error ? err.message : String(err),
-      },
-      500,
-    );
   }
 
   const durationMs = Date.now() - start;
 
-  if (!rawText.trim()) {
-    return c.json({
-      raw: "",
-      cleaned: "",
-      model: defaults.voice.model_id,
-      durationMs,
-      audioDurationMs,
-    });
+  if (!rawText.trim() || api.control.state !== "running") {
+    return suppressedResponse();
   }
 
   void plugins().emit({
@@ -340,6 +506,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       duration_ms: durationMs,
       audio_duration_ms: audioDurationMs,
       post_processed: false,
+      app_name: parsedCtx?.appName,
+      destination: routedDestination,
+      has_app_context: !!appContext,
     });
 
     return c.json({
@@ -357,6 +526,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     pp = await postProcess(rawText, appContext, {
       language,
       source: "batch",
+      api,
     });
   } catch (err) {
     if (err instanceof FreestyleCloudAuthError) {
@@ -372,6 +542,11 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     `post-process took ${Date.now() - ppStart}ms | cleaned=${JSON.stringify(pp.cleaned).slice(0, 120)}`,
   );
 
+  // STT and cleanup ran on separate models, so the user-perceived latency is
+  // the full request → cleaned text. `durationMs` above is STT-only; recompute
+  // now so history, analytics, and the response all report the same total.
+  const totalDurationMs = Date.now() - start;
+
   try {
     saveProcessedHistory({
       rawText,
@@ -380,7 +555,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       voiceModel,
       llmProvider: pp.llmProvider,
       llmModel: pp.llmModel,
-      durationMs: Date.now() - start,
+      durationMs: totalDurationMs,
       audioDurationMs,
       inputTokens: pp.inputTokens,
       outputTokens: pp.outputTokens,
@@ -390,13 +565,13 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     log.error(`Failed to save history: ${err}`);
   }
 
-  log.debug(`total ${Date.now() - start}ms`);
+  log.debug(`total ${totalDurationMs}ms`);
 
   capture("transcription completed", {
     provider: voiceProvider,
     provider_category: routeVoiceProviderCategory(voiceProvider),
     model: voiceModel,
-    duration_ms: durationMs,
+    duration_ms: totalDurationMs,
     audio_duration_ms: audioDurationMs,
     post_processed: true,
     llm_provider: pp.llmProvider,
@@ -404,20 +579,97 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     input_tokens: pp.inputTokens,
     output_tokens: pp.outputTokens,
     cost_usd: pp.costUsd,
+    app_name: parsedCtx?.appName,
+    destination: pp.destination,
+    has_app_context: !!appContext,
   });
 
+  // `beforeCleanup`/`afterCleanup` run inside postProcess, after the
+  // raw-stage guard above — a consume/abort there still needs to suppress
+  // delivery. Blank the output so any client drops it even if it ignores
+  // `disposition`, and emit the abort event on that path too.
+  const suppressed = api.control.state !== "running";
+  emitAbortEvent(api, PipelineStage.Transcribe);
   return c.json({
-    raw: rawText,
-    cleaned: pp.cleaned,
+    raw: suppressed ? "" : rawText,
+    cleaned: suppressed ? "" : pp.cleaned,
     model: voiceModel,
     provider_category: routeVoiceProviderCategory(voiceProvider),
-    durationMs,
+    durationMs: totalDurationMs,
     audioDurationMs,
     llmModel: pp.llmModel,
     inputTokens: pp.inputTokens,
     outputTokens: pp.outputTokens,
     costUsd: pp.costUsd,
+    disposition: dispositionFromControl(api.control.state),
   });
 });
 
 export default transcribeRoute;
+
+/**
+ * Pre-warm the local ASR server for the currently-selected voice model so it
+ * loads while the user is still speaking, instead of stalling at submission.
+ *
+ * The client fires this fire-and-forget on recording start. We dispatch on the
+ * default voice provider: only local engines (whisper/mlx) need warming, and
+ * each has its own availability gate. Cloud/BYOK providers are a cheap no-op.
+ * The underlying `startInBackground` helpers are themselves fire-and-forget and
+ * no-op when the server is already warm, so repeated calls are safe.
+ *
+ * Kept as a separate router (mounted alongside `transcribeRoute` at
+ * `/transcribe`) so it can be added to the typed RPC surface without reindenting
+ * the large batch-transcribe handler above.
+ */
+export const transcribePreWarmRoute = new Hono().post("/pre-warm", (c) => {
+  try {
+    // Warm the cleanup LLM connection while the user is still speaking, so the
+    // post-transcription handoff reuses a hot socket. Independent of the voice
+    // provider; a no-op unless cleanup is enabled and the configured provider
+    // supports prewarming (e.g. Groq).
+    prewarmPostProcess();
+
+    const defaults = getDefaultModels();
+    const provider = defaults.voice?.provider;
+
+    // Warm the Freestyle Cloud TLS connection when this dictation will reach the
+    // cloud — cloud voice (the transcribe POST) or cloud cleanup (when cleanup
+    // is enabled). undici pools the socket by origin for the real request.
+    const cloudCleanup =
+      defaults.llm?.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
+      readSetting("llm_cleanup") === "true";
+    if (provider === FREESTYLE_CLOUD_PROVIDER_ID || cloudCleanup) {
+      const token = getApiKeyForProvider(FREESTYLE_CLOUD_PROVIDER_ID);
+      if (token) prewarmFreestyleCloudConnection(token);
+    }
+
+    if (!defaults.voice || !provider) {
+      return c.json({ ok: true, warming: null });
+    }
+
+    const modelId = stripProviderPrefix(defaults.voice.model_id);
+
+    if (provider === WHISPER_PROVIDER_ID) {
+      if (!isServerBinaryAvailable()) {
+        return c.json({ ok: true, warming: null });
+      }
+      startInBackground(modelId);
+      return c.json({ ok: true, warming: "whisper" });
+    }
+
+    if (provider === MLX_ASR_PROVIDER_ID) {
+      if (!canRunMlxAsr()) return c.json({ ok: true, warming: null });
+      if (getMlxModelStatus(modelId)?.status !== "ready") {
+        return c.json({ ok: true, warming: null });
+      }
+      startMlxInBackground(modelId);
+      return c.json({ ok: true, warming: "mlx" });
+    }
+
+    return c.json({ ok: true, warming: null });
+  } catch {
+    // Best-effort warmup — DB not ready or any other init issue is non-fatal;
+    // the lazy start at submission time remains the fallback.
+    return c.json({ ok: true, warming: null });
+  }
+});

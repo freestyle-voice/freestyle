@@ -19,9 +19,40 @@ export interface PluginUIPage {
   entry: string;
 }
 
+/**
+ * A single declarative settings field a plugin contributes. The host renders
+ * these in the plugin's detail page and persists values to this plugin's
+ * namespaced settings (`ctx.settings.getOwn(key)`), so a plugin gets
+ * configuration without building a full UI page.
+ */
+export type PluginSettingField =
+  | {
+      key: string;
+      type: "string" | "number";
+      label: string;
+      description?: string;
+      default?: string;
+    }
+  | {
+      key: string;
+      type: "boolean";
+      label: string;
+      description?: string;
+      default?: boolean;
+    }
+  | {
+      key: string;
+      type: "select";
+      label: string;
+      description?: string;
+      options: { value: string; label: string }[];
+      default?: string;
+    };
+
 /** The `freestyle.contributes` block of a plugin's `package.json`. */
 export interface PluginContributes {
   pages?: PluginUIPage[];
+  settings?: PluginSettingField[];
 }
 
 /** The `freestyle` block of a plugin's `package.json`. */
@@ -44,9 +75,11 @@ export interface PluginManifest {
 
 /**
  * Derive a URL- and route-safe slug from a package name, e.g.
- * `@freestyle-voice/plugin-audio-transcription` → `freestyle-voice-plugin-audio-transcription`.
- * Used as the `freestyle-plugin://` host and the `/plugins/:slug/...` route
- * segment, since package names can contain `@` and `/` which are unsafe in both.
+ * `@freestyle-voice/plugin-audio-transcription` →
+ * `freestyle-voice-plugin-audio-transcription`.
+ * Used as the `/plugins/:slug/...` route segment, the on-disk package dir, and
+ * the per-plugin session partition, since package names can contain `@` and `/`
+ * which are unsafe in those contexts.
  */
 export function pluginSlug(name: string): string {
   return name
@@ -89,6 +122,99 @@ export function parsePluginPages(freestyleField: unknown): PluginUIPage[] {
       title,
       entry,
       ...(typeof icon === "string" && icon ? { icon } : {}),
+    });
+  }
+  return result;
+}
+
+type SettingFieldType = PluginSettingField["type"];
+
+function isSettingFieldType(value: string): value is SettingFieldType {
+  return (
+    value === "string" ||
+    value === "number" ||
+    value === "boolean" ||
+    value === "select"
+  );
+}
+
+/**
+ * Parse and validate the `freestyle` field's `contributes.settings` into a
+ * normalized list of {@link PluginSettingField}. Tolerant of missing/malformed
+ * input, mirroring {@link parsePluginPages}: unknown shapes, invalid fields,
+ * and duplicate keys are dropped rather than throwing.
+ */
+export function parsePluginSettingsFields(
+  freestyleField: unknown,
+): PluginSettingField[] {
+  if (!isRecord(freestyleField)) return [];
+  const contributes = freestyleField.contributes;
+  if (!isRecord(contributes)) return [];
+  const fields = contributes.settings;
+  if (!Array.isArray(fields)) return [];
+
+  const result: PluginSettingField[] = [];
+  const seen = new Set<string>();
+  for (const field of fields) {
+    if (!isRecord(field)) continue;
+    const { key, type, label } = field;
+    if (typeof key !== "string" || !key) continue;
+    if (typeof type !== "string" || !isSettingFieldType(type)) continue;
+    if (typeof label !== "string" || !label) continue;
+    if (seen.has(key)) continue;
+
+    const description =
+      typeof field.description === "string" && field.description
+        ? field.description
+        : undefined;
+
+    if (type === "select") {
+      const options = field.options;
+      if (!Array.isArray(options)) continue;
+      const parsedOptions = options
+        .filter(isRecord)
+        .filter(
+          (o): o is { value: string; label: string } =>
+            typeof o.value === "string" && typeof o.label === "string",
+        )
+        .map((o) => ({ value: o.value, label: o.label }));
+      if (parsedOptions.length === 0) continue;
+      seen.add(key);
+      result.push({
+        key,
+        type,
+        label,
+        options: parsedOptions,
+        ...(description ? { description } : {}),
+        ...(typeof field.default === "string"
+          ? { default: field.default }
+          : {}),
+      });
+      continue;
+    }
+
+    if (type === "boolean") {
+      seen.add(key);
+      result.push({
+        key,
+        type,
+        label,
+        ...(description ? { description } : {}),
+        ...(typeof field.default === "boolean"
+          ? { default: field.default }
+          : {}),
+      });
+      continue;
+    }
+
+    // "string" | "number"
+    seen.add(key);
+    result.push({
+      key,
+      type,
+      label,
+      ...(description ? { description } : {}),
+      ...(typeof field.default === "string" ? { default: field.default } : {}),
     });
   }
   return result;

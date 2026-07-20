@@ -36,7 +36,7 @@ const DEFAULT_MLX_WORKER_LATEST_URL = `https://github.com/freestyle-voice/freest
 // Keep this in sync with scripts/build_mlx_asr_worker.sh so unchanged worker
 // builds don't force users to redownload identical archives on every app release.
 const MLX_WORKER_BUILD_SPEC =
-  "pyinstaller=6.20.0;mlx-audio=0.4.3;huggingface_hub=1.17.0;bundle=onedir";
+  "pyinstaller=6.20.0;mlx-audio=0.4.3;huggingface_hub=1.17.0;transformers>=5.7,<5.13;bundle=onedir";
 
 export interface MlxRuntimeDownloadStatus {
   available: boolean;

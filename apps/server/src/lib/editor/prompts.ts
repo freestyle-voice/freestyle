@@ -9,6 +9,7 @@ import {
   type CleanupToneDestination,
   type CleanupWorkTone,
   DEFAULT_CLEANUP_EMAIL_TONE,
+  DEFAULT_CLEANUP_INTENSITY,
   DEFAULT_CLEANUP_OVERALL_TONE,
   DEFAULT_CLEANUP_PERSONAL_TONE,
   DEFAULT_CLEANUP_WORK_TONE,
@@ -136,36 +137,40 @@ function buildDestinationToneBlock(options: {
   const destinationPriorityBlock =
     "\n\nDestination rule priority: when the destination tone or destination structure instructions below conflict with the general style guidance above, follow the destination tone for capitalization, punctuation, paragraph feel, and formality, AND follow the destination structure for layout (greeting/body/sign-off placement, paragraph breaks). The destination structure instructions ARE an override of the 'do not convert prose into email format' rule above when the transcript clearly looks like a dictated email. These destination instructions do not override meaning preservation, factual fidelity, or the rule against inventing content the speaker did not say.";
 
+  // A sector tone of "off" means styling is turned off for that destination:
+  // skip the priority block, the tone block, and (for email) the structure
+  // block, so cleanup runs the base preset only.
   switch (options.destination) {
-    case "personal":
+    case "personal": {
+      const tone = options.personalTone ?? DEFAULT_CLEANUP_PERSONAL_TONE;
+      if (tone === "off") return "";
       return (
         destinationPriorityBlock +
-        buildPersonalToneBlock(
-          options.personalTone ?? DEFAULT_CLEANUP_PERSONAL_TONE,
-        ) +
-        ((options.personalTone ?? DEFAULT_CLEANUP_PERSONAL_TONE) === "casual" &&
-        options.personalSurface === "discord"
+        buildPersonalToneBlock(tone) +
+        (tone === "casual" && options.personalSurface === "discord"
           ? buildDiscordCasualOverlay()
           : "")
       );
-    case "work":
+    }
+    case "work": {
+      const tone = options.workTone ?? DEFAULT_CLEANUP_WORK_TONE;
+      if (tone === "off") return "";
+      return destinationPriorityBlock + buildWorkToneBlock(tone);
+    }
+    case "email": {
+      const tone = options.emailTone ?? DEFAULT_CLEANUP_EMAIL_TONE;
+      if (tone === "off") return "";
       return (
         destinationPriorityBlock +
-        buildWorkToneBlock(options.workTone ?? DEFAULT_CLEANUP_WORK_TONE)
-      );
-    case "email":
-      return (
-        destinationPriorityBlock +
-        buildEmailToneBlock(options.emailTone ?? DEFAULT_CLEANUP_EMAIL_TONE) +
+        buildEmailToneBlock(tone) +
         buildEmailStructureBlock()
       );
-    default:
-      return (
-        destinationPriorityBlock +
-        buildOverallToneBlock(
-          options.overallTone ?? DEFAULT_CLEANUP_OVERALL_TONE,
-        )
-      );
+    }
+    default: {
+      const tone = options.overallTone ?? DEFAULT_CLEANUP_OVERALL_TONE;
+      if (tone === "off") return "";
+      return destinationPriorityBlock + buildOverallToneBlock(tone);
+    }
   }
 }
 
@@ -173,6 +178,7 @@ function buildDestinationUserPromptBlock(options: {
   destination: CleanupToneDestination;
   personalTone?: CleanupPersonalTone;
   personalSurface?: "discord" | null;
+  emailTone?: CleanupEmailTone;
 }): string {
   switch (options.destination) {
     case "personal":
@@ -187,6 +193,8 @@ function buildDestinationUserPromptBlock(options: {
           return "";
       }
     case "email":
+      if ((options.emailTone ?? DEFAULT_CLEANUP_EMAIL_TONE) === "off")
+        return "";
       return "\n\nOutput target for this transcript: when the transcript starts with a greeting word (hi, hey, hello, dear, good morning, good afternoon, greetings) or uses email-style phrasing (i'm writing to, i hope this finds you well, i wanted to follow up, attaching, reaching out regarding, please find attached, let's stay in touch), treat it as a dictated email and return a properly formatted email body. Put the greeting on its own line followed by a blank line — this is required even for short greetings like 'hi' or 'good morning'. Break the body into one to three short paragraphs separated by blank lines. Put a spoken sign-off on its own line. If the transcript does not look like an email, return normal cleaned prose with no email layout. Never invent a subject line, greeting, sign-off, or paragraph the speaker did not say.";
     default:
       return "";
@@ -236,9 +244,10 @@ export function buildRewritePrompt(
     destination: options?.destination ?? "overall",
     personalTone: options?.personalTone,
     personalSurface: options?.personalSurface,
+    emailTone: options?.emailTone,
   });
   const baseSystem = resolveBaseCleanupPrompt(
-    options?.intensity ?? "low",
+    options?.intensity ?? DEFAULT_CLEANUP_INTENSITY,
     options?.customPrompt,
   );
 

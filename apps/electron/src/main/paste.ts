@@ -528,6 +528,8 @@ async function doPasteIntoFocusedApp(
   log.debug(`pasting ${text?.length ?? 0} chars`);
   if (!text?.trim()) return;
 
+  text = `${text} `;
+
   const prior = snapshotClipboard();
   clipboard.writeText(text);
 

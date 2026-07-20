@@ -1,3 +1,5 @@
+import { configureModelSchema } from "@freestyle-voice/validations";
+import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import {
@@ -15,15 +17,12 @@ import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "../lib/mlx-asr/reconcile.js";
 import { canRunMlxAsr } from "../lib/mlx-asr/server.js";
 import { capture } from "../lib/posthog.js";
-import { stripProviderPrefix } from "../lib/streaming/types.js";
-import { isServerBinaryAvailable } from "../lib/whisper/binary.js";
 import {
   LEGACY_WHISPER_MODELS,
   WHISPER_MODELS,
   WHISPER_PROVIDER_ID,
 } from "../lib/whisper/constants.js";
 import { getModelStatus } from "../lib/whisper/models.js";
-import { startInBackground } from "../lib/whisper/server.js";
 
 interface AvailableModel {
   provider_id: string;
@@ -437,22 +436,9 @@ const models = new Hono()
     }[];
     return c.json(rows);
   })
-  .post("/configured", async (c) => {
+  .post("/configured", zValidator("json", configureModelSchema), (c) => {
     const db = getDb();
-    const body = await c.req.json<{
-      provider: string;
-      model_id: string;
-      model_name: string;
-      type: "voice" | "llm";
-      is_default?: boolean;
-    }>();
-
-    if (!body.provider || !body.model_id || !body.model_name || !body.type) {
-      return c.json(
-        { error: "provider, model_id, model_name, and type are required" },
-        400,
-      );
-    }
+    const body = c.req.valid("json");
 
     // If setting as default, unset any existing default for this type
     if (body.is_default) {
@@ -513,16 +499,6 @@ const models = new Hono()
       provider: row.provider,
       model_id: row.model_id,
     });
-
-    // Pre-warm the local whisper server so the first transcription after a
-    // model switch doesn't pay the model-load latency.
-    if (
-      row.type === "voice" &&
-      row.provider === WHISPER_PROVIDER_ID &&
-      isServerBinaryAvailable()
-    ) {
-      startInBackground(stripProviderPrefix(row.model_id));
-    }
 
     return c.json({ ok: true });
   })

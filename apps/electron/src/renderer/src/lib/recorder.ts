@@ -16,8 +16,6 @@ export class Recorder {
 
   /**
    * Acquire the microphone stream without starting a MediaRecorder.
-   * Use this when the Streamer handles audio capture and you only
-   * need the stream for visualization.
    *
    * Reuses the existing stream when its tracks are still live to
    * avoid the costly getUserMedia() round-trip on repeated calls.
@@ -55,10 +53,7 @@ export class Recorder {
     return this.stream;
   }
 
-  /**
-   * Acquire the mic AND start a MediaRecorder for the REST fallback
-   * path (when streaming is unavailable).
-   */
+  /** Acquire the mic AND start a MediaRecorder to capture the recording. */
   async start(deviceId?: string | null): Promise<MediaStream> {
     this.chunks = [];
     const stream = await this.acquireStream(deviceId);

@@ -1,30 +1,52 @@
+import {
+  DEFAULT_HISTORY_FILTERS,
+  type HistoryFiltersSetting,
+  type HistoryPreset,
+  parseHistoryFilters,
+} from "@freestyle-voice/validations";
+import { DragSpacer } from "@renderer/components/drag-spacer";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
-import { Input } from "@renderer/components/ui/input";
 import { Label } from "@renderer/components/ui/label";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@renderer/components/ui/sheet";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@renderer/components/ui/popover";
+import { Switch } from "@renderer/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@renderer/components/ui/tooltip";
+import { usePersistentJsonState } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
+import { type DiffSegment, diffWords } from "@renderer/lib/history-diff";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import {
+  CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
   Clock,
   Copy,
+  Eraser,
+  FileDiff,
   Filter,
-  Redo2,
+  FlaskConical,
+  PanelRight,
   Search,
+  Sparkles,
   Trash2,
-  Undo2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { type DateRange, DayPicker } from "react-day-picker";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
@@ -91,6 +113,27 @@ function getLocalDateString(d: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function parseLocalDate(value: string): Date | undefined {
+  if (!value) return undefined;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return undefined;
+  return new Date(year, month - 1, day);
+}
+
+function formatRangeDate(value: string): string {
+  if (!value) return "Select";
+  const date = parseLocalDate(value);
+  if (!date) return "Select";
+  const day = date.getDate();
+  const month = date.toLocaleDateString(undefined, { month: "short" });
+  const year = date.getFullYear();
+  return `${day} ${month}, ${year}`;
+}
+
+function formatRangeLabel(start: string, end: string): string {
+  return `${formatRangeDate(start)} - ${formatRangeDate(end)}`;
+}
+
 /** Get a date key for grouping: "Today", "Yesterday", or "Day, Mon DD" */
 function getDateGroup(iso: string): string {
   const d = new Date(`${iso}Z`);
@@ -110,17 +153,41 @@ function getDateGroup(iso: string): string {
 }
 
 const PAGE_SIZE = 20;
+const DEV_HISTORY_SEED_ENABLED = import.meta.env.DEV;
 
 export default function HistoryPage(): React.JSX.Element {
   const { t } = useTranslation();
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
-  const [activePreset, setActivePreset] = useState<
-    "today" | "weekly" | "monthly" | "all-time" | "custom"
-  >("weekly");
-  const [customStartDate, setCustomStartDate] = useState("");
-  const [customEndDate, setCustomEndDate] = useState("");
-  const [filterOpen, setFilterOpen] = useState(false);
+
+  // ── Persisted filter + view state ──────────────────────────────────────
+  // Date range and view toggles are UI-only preferences, so — like each page's
+  // active tab — they live in localStorage rather than the server settings
+  // store. `usePersistentJsonState` reads them synchronously on mount, so they
+  // survive navigation and app restarts with no fetch round-trip. Diff mode and
+  // AI-edit visibility are global toggles applied to every entry at once
+  // (driven from the filter panel) rather than per-card state.
+  const [filters, setFilters] = usePersistentJsonState(
+    "history.filters",
+    DEFAULT_HISTORY_FILTERS,
+    parseHistoryFilters,
+  );
+  const {
+    preset: activePreset,
+    customStartDate,
+    customEndDate,
+    filterOpen,
+    diffMode,
+    showAiEdits,
+    nerdMode,
+  } = filters;
+
+  // Merge a partial change into the persisted filter blob.
+  const patchFilters = useCallback(
+    (patch: Partial<HistoryFiltersSetting>) =>
+      setFilters((prev) => ({ ...prev, ...patch })),
+    [setFilters],
+  );
 
   // Calculate preset dates dynamically on every render
   const todayStr = getLocalDateString(new Date());
@@ -147,10 +214,6 @@ export default function HistoryPage(): React.JSX.Element {
     endDate = customEndDate;
   }
 
-  const isTodayPreset = activePreset === "today";
-  const isWeeklyPreset = activePreset === "weekly";
-  const isMonthlyPreset = activePreset === "monthly";
-
   const getTimeLabel = (): string => {
     if (activePreset === "weekly") return t("history.timeLabelPast7");
     if (activePreset === "today") return t("history.timeLabelToday");
@@ -161,6 +224,67 @@ export default function HistoryPage(): React.JSX.Element {
   const timeLabel = getTimeLabel();
 
   const filterCount = activePreset !== "all-time" ? 1 : 0;
+
+  // Whether the current filter + view state already matches the page defaults,
+  // so the reset button can be disabled when there's nothing to clear.
+  // `filterOpen` is excluded — it's the panel's own visibility, not a filter.
+  const isDefaultFilters =
+    activePreset === DEFAULT_HISTORY_FILTERS.preset &&
+    customStartDate === DEFAULT_HISTORY_FILTERS.customStartDate &&
+    customEndDate === DEFAULT_HISTORY_FILTERS.customEndDate &&
+    diffMode === DEFAULT_HISTORY_FILTERS.diffMode &&
+    showAiEdits === DEFAULT_HISTORY_FILTERS.showAiEdits &&
+    nerdMode === DEFAULT_HISTORY_FILTERS.nerdMode;
+
+  const applyPreset = useCallback(
+    (preset: HistoryPreset): void => {
+      patchFilters({ preset });
+      setPage(0);
+    },
+    [patchFilters],
+  );
+
+  const selectDateRange = useCallback(
+    (range: DateRange | undefined): void => {
+      patchFilters({
+        preset: "custom",
+        customStartDate: range?.from ? getLocalDateString(range.from) : "",
+        customEndDate: range?.to ? getLocalDateString(range.to) : "",
+      });
+      setPage(0);
+    },
+    [patchFilters],
+  );
+
+  // Restore the page's initial defaults (not "all time"). Leaves the panel's
+  // open/closed state untouched so the panel doesn't collapse out from under
+  // the click.
+  const resetFilters = useCallback((): void => {
+    setFilters((prev) => ({
+      ...DEFAULT_HISTORY_FILTERS,
+      filterOpen: prev.filterOpen,
+    }));
+    setPage(0);
+  }, [setFilters]);
+
+  const closeFilter = useCallback(
+    () => patchFilters({ filterOpen: false }),
+    [patchFilters],
+  );
+
+  // Stable setters for the filter panel's view toggles (memoized child).
+  const setDiffMode = useCallback(
+    (value: boolean) => patchFilters({ diffMode: value }),
+    [patchFilters],
+  );
+  const setShowAiEdits = useCallback(
+    (value: boolean) => patchFilters({ showAiEdits: value }),
+    [patchFilters],
+  );
+  const setNerdMode = useCallback(
+    (value: boolean) => patchFilters({ nerdMode: value }),
+    [patchFilters],
+  );
 
   const queryClient = useQueryClient();
 
@@ -191,11 +315,56 @@ export default function HistoryPage(): React.JSX.Element {
       const statsData = statsRes.ok ? ((await statsRes.json()) as Stats) : null;
       return { ...items, stats: statsData };
     },
+    // Keep showing the previous results while a new filter/page/search query
+    // loads. Without this every filter change is a brand-new query key with no
+    // cache, so `isLoading` flips true and the whole page blanks to the loading
+    // spinner — the "page re-renders" flash.
+    placeholderData: keepPreviousData,
   });
 
-  const entries = historyData?.items ?? [];
-  const total = historyData?.total ?? 0;
-  const stats = historyData?.stats ?? null;
+  const apiEntries = historyData?.items ?? [];
+  const devSeedEntry = useMemo<HistoryEntry | null>(() => {
+    if (!DEV_HISTORY_SEED_ENABLED) return null;
+    if (search && !"inline filter panel visual test".includes(search)) {
+      return null;
+    }
+    if (startDate && todayStr < startDate) return null;
+    if (endDate && todayStr > endDate) return null;
+
+    return {
+      id: -419,
+      raw_text: "Inline filter panel visual test.",
+      cleaned_text:
+        "Inline filter panel visual test entry for reviewing the History layout.",
+      voice_provider: "dev-seed",
+      voice_model: "dev-seed/local",
+      llm_provider: "dev-seed",
+      llm_model: "dev-seed/cleanup",
+      duration_ms: 640,
+      audio_duration_ms: 3200,
+      input_tokens: 18,
+      output_tokens: 12,
+      cost_usd: 0,
+      created_at: new Date().toISOString().replace("T", " ").slice(0, 19),
+    };
+  }, [endDate, search, startDate, todayStr]);
+  const hasDevSeedEntry = apiEntries.length === 0 && devSeedEntry !== null;
+  const entries = hasDevSeedEntry ? [devSeedEntry] : apiEntries;
+  const total = hasDevSeedEntry ? 1 : (historyData?.total ?? 0);
+  const stats = hasDevSeedEntry
+    ? {
+        total_sessions: 1,
+        total_duration_ms: 640,
+        total_input_tokens: 18,
+        total_output_tokens: 12,
+        total_cost_usd: 0,
+        avg_duration_ms: 640,
+        total_words: 12,
+        today_sessions: 1,
+        today_cost: 0,
+        unfiltered_total_sessions: 1,
+      }
+    : (historyData?.stats ?? null);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const { data: historyPausedData } = useQuery({
@@ -259,17 +428,18 @@ export default function HistoryPage(): React.JSX.Element {
   const isGenuineEmpty = stats?.unfiltered_total_sessions === 0;
 
   return (
-    <div
-      className="flex h-full min-h-0 flex-col"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    >
-      <div className="h-7 shrink-0" />
+    <div className="flex h-full min-h-0 flex-col">
+      <DragSpacer />
       <div
         className="responsive-page-scroll flex-1 overflow-auto"
         style={
           {
-            WebkitAppRegion: "no-drag",
             scrollbarWidth: "none",
+            // When the filter panel is open it should sit flush against the
+            // window's right and bottom edges, so drop the page's right and
+            // bottom padding here — the bottom padding is re-applied to just
+            // the feed column so its divider line still runs edge-to-edge.
+            ...(filterOpen ? { paddingRight: 0, paddingBottom: 0 } : {}),
           } as React.CSSProperties
         }
       >
@@ -280,278 +450,202 @@ export default function HistoryPage(): React.JSX.Element {
         {isGenuineEmpty ? (
           <EmptyState />
         ) : (
-          <>
-            {/* Stats */}
-            <div className="border-border mb-7 grid grid-cols-2 gap-2.5 border-b pb-7 md:grid-cols-4">
-              <Stat
-                n={(stats?.total_words ?? 0).toLocaleString()}
-                l={t("history.wordsStat", { label: timeLabel })}
-              />
-              <Stat
-                n={String(stats?.total_sessions ?? 0)}
-                l={t("history.sessionsStat", { label: timeLabel })}
-              />
-              <Stat
-                n={
-                  stats && stats.avg_duration_ms > 0
-                    ? formatSeconds(Math.round(stats.avg_duration_ms))
-                    : "—"
-                }
-                l={t("history.avgLatency")}
-              />
-              <Stat
-                accent
-                n={`$${(stats?.total_cost_usd ?? 0).toFixed(2)}`}
-                l={t("history.costStat", { label: timeLabel })}
-              />
-            </div>
-
-            {/* Search & Filter Row */}
-            <div className="mb-6 flex gap-2">
-              <div className="border-border bg-card flex flex-1 items-center gap-2 rounded-lg border px-3 py-2">
-                <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setPage(0);
-                  }}
-                  placeholder={
-                    total === 1
-                      ? t("history.searchSingular", { total })
-                      : t("history.searchPlural", { total })
-                  }
-                  className="placeholder:text-muted-foreground/80 text-foreground flex-1 bg-transparent text-[13px] outline-none"
-                />
-                <span className="mono text-muted-foreground text-[10px]">
-                  {SEARCH_SHORTCUT_LABEL}
-                </span>
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => setFilterOpen(true)}
+          <div
+            className={cn(
+              "grid min-w-0 gap-7",
+              filterOpen &&
+                "min-h-[calc(100vh-88px)] grid-cols-[minmax(0,1fr)_minmax(300px,340px)] gap-5",
+            )}
+          >
+            <div className={cn("min-w-0", filterOpen && "pb-12")}>
+              {/* Stats */}
+              <div
                 className={cn(
-                  "text-muted-foreground",
-                  filterCount > 0 && "border-primary text-primary bg-primary/5",
+                  "border-border mb-7 grid grid-cols-2 gap-2.5 border-b pb-7",
+                  !filterOpen &&
+                    (nerdMode ? "md:grid-cols-3" : "md:grid-cols-4"),
                 )}
               >
-                <Filter data-icon="inline-start" />
-                <span>{t("history.filtersBtn")}</span>
-                {filterCount > 0 && (
-                  <Badge className="h-4 min-w-4 px-1 text-[9px] font-bold">
-                    {filterCount}
-                  </Badge>
+                <Stat
+                  n={(stats?.total_words ?? 0).toLocaleString()}
+                  l={t("history.wordsStat", { label: timeLabel })}
+                />
+                <Stat
+                  n={String(stats?.total_sessions ?? 0)}
+                  l={t("history.sessionsStat", { label: timeLabel })}
+                />
+                <Stat
+                  n={
+                    stats && stats.avg_duration_ms > 0
+                      ? formatSeconds(Math.round(stats.avg_duration_ms))
+                      : "—"
+                  }
+                  l={t("history.avgLatency")}
+                />
+                <Stat
+                  accent
+                  n={`$${(stats?.total_cost_usd ?? 0).toFixed(2)}`}
+                  l={t("history.costStat", { label: timeLabel })}
+                />
+                {nerdMode && (
+                  <>
+                    <Stat
+                      n={(stats?.total_input_tokens ?? 0).toLocaleString()}
+                      l={t("history.tokensInStat")}
+                    />
+                    <Stat
+                      n={(stats?.total_output_tokens ?? 0).toLocaleString()}
+                      l={t("history.tokensOutStat")}
+                    />
+                  </>
                 )}
-              </Button>
+              </div>
+
+              {/* Search & Filter Row */}
+              <div className="mb-6 flex gap-2">
+                <div className="border-border bg-card flex flex-1 items-center gap-2 rounded-lg border px-3 py-2">
+                  <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setPage(0);
+                    }}
+                    placeholder={
+                      total === 1
+                        ? t("history.searchSingular", { total })
+                        : t("history.searchPlural", { total })
+                    }
+                    className="placeholder:text-muted-foreground/80 text-foreground flex-1 bg-transparent text-[13px] outline-none"
+                  />
+                  <span className="mono text-muted-foreground text-[10px]">
+                    {SEARCH_SHORTCUT_LABEL}
+                  </span>
+                </div>
+                {!filterOpen && (
+                  <Button
+                    variant="outline"
+                    onClick={() => patchFilters({ filterOpen: true })}
+                    className={cn(
+                      "text-muted-foreground h-auto self-stretch",
+                      filterCount > 0 &&
+                        "border-primary text-primary bg-primary/5",
+                    )}
+                    aria-expanded={filterOpen}
+                  >
+                    <Filter data-icon="inline-start" />
+                    <span>{t("history.filtersBtn")}</span>
+                    {filterCount > 0 && (
+                      <Badge className="h-4 min-w-4 px-1 text-[9px] font-bold">
+                        {filterCount}
+                      </Badge>
+                    )}
+                  </Button>
+                )}
+              </div>
+
+              {entries.length === 0 ? (
+                <NoSearchResults
+                  hasSearch={!!search}
+                  hasDates={activePreset !== "all-time"}
+                  onClear={() => {
+                    setSearch("");
+                    patchFilters({
+                      preset: "all-time",
+                      customStartDate: "",
+                      customEndDate: "",
+                    });
+                    setPage(0);
+                  }}
+                />
+              ) : (
+                groups.map((group) =>
+                  group.items.length === 0 ? null : (
+                    <FeedGroup
+                      key={group.label}
+                      label={
+                        group.label === "Today"
+                          ? t("history.groupToday")
+                          : group.label === "Yesterday"
+                            ? t("history.groupYesterday")
+                            : group.label
+                      }
+                    >
+                      {group.items.map((entry) => (
+                        <FeedItem
+                          key={entry.id}
+                          entry={entry}
+                          onDelete={deleteEntry}
+                          diffMode={diffMode}
+                          showAiEdits={showAiEdits}
+                          nerdMode={nerdMode}
+                        />
+                      ))}
+                    </FeedGroup>
+                  ),
+                )
+              )}
+
+              {/* Pagination */}
+              {total > PAGE_SIZE && (
+                <div className="border-border mt-4 flex items-center justify-between border-t pt-4">
+                  <span className="mono text-muted-foreground text-[11px] uppercase tracking-[0.12em]">
+                    {total}{" "}
+                    {total === 1
+                      ? t("history.sessionSingular")
+                      : t("history.sessionPlural")}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => setPage((p) => Math.max(0, p - 1))}
+                      disabled={page === 0}
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft />
+                    </Button>
+                    <span className="mono text-muted-foreground px-2 text-[11px]">
+                      {page + 1} / {totalPages}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() =>
+                        setPage((p) => Math.min(totalPages - 1, p + 1))
+                      }
+                      disabled={page >= totalPages - 1}
+                      aria-label="Next page"
+                    >
+                      <ChevronRight />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {entries.length === 0 ? (
-              <NoSearchResults
-                hasSearch={!!search}
-                hasDates={activePreset !== "all-time"}
-                onClear={() => {
-                  setSearch("");
-                  setActivePreset("all-time");
-                  setCustomStartDate("");
-                  setCustomEndDate("");
-                  setPage(0);
-                }}
+            {filterOpen && (
+              <FilterPanel
+                activePreset={activePreset}
+                startDate={startDate}
+                endDate={endDate}
+                diffMode={diffMode}
+                showAiEdits={showAiEdits}
+                nerdMode={nerdMode}
+                onPreset={applyPreset}
+                onSelectRange={selectDateRange}
+                onReset={resetFilters}
+                resetDisabled={isDefaultFilters}
+                onClose={closeFilter}
+                onDiffModeChange={setDiffMode}
+                onShowAiEditsChange={setShowAiEdits}
+                onNerdModeChange={setNerdMode}
               />
-            ) : (
-              groups.map((group) =>
-                group.items.length === 0 ? null : (
-                  <FeedGroup
-                    key={group.label}
-                    label={
-                      group.label === "Today"
-                        ? t("history.groupToday")
-                        : group.label === "Yesterday"
-                          ? t("history.groupYesterday")
-                          : group.label
-                    }
-                  >
-                    {group.items.map((entry) => (
-                      <FeedItem
-                        key={entry.id}
-                        entry={entry}
-                        onDelete={deleteEntry}
-                      />
-                    ))}
-                  </FeedGroup>
-                ),
-              )
             )}
-
-            {/* Pagination */}
-            {total > PAGE_SIZE && (
-              <div className="border-border mt-4 flex items-center justify-between border-t pt-4">
-                <span className="mono text-muted-foreground text-[11px] uppercase tracking-[0.12em]">
-                  {total}{" "}
-                  {total === 1
-                    ? t("history.sessionSingular")
-                    : t("history.sessionPlural")}
-                </span>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => setPage((p) => Math.max(0, p - 1))}
-                    disabled={page === 0}
-                    aria-label="Previous page"
-                  >
-                    <ChevronLeft />
-                  </Button>
-                  <span className="mono text-muted-foreground px-2 text-[11px]">
-                    {page + 1} / {totalPages}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() =>
-                      setPage((p) => Math.min(totalPages - 1, p + 1))
-                    }
-                    disabled={page >= totalPages - 1}
-                    aria-label="Next page"
-                  >
-                    <ChevronRight />
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
+          </div>
         )}
       </div>
-
-      <Sheet open={filterOpen} onOpenChange={setFilterOpen}>
-        <SheetContent className="flex flex-col p-6 w-[340px] sm:w-[400px]">
-          <SheetHeader className="p-0 mb-4">
-            <SheetTitle className="text-lg font-semibold">
-              {t("history.filterTitle")}
-            </SheetTitle>
-          </SheetHeader>
-
-          <div className="flex flex-col gap-5 flex-1">
-            <div className="flex flex-col gap-2">
-              <Label
-                htmlFor="start-date-input"
-                className="mono text-muted-foreground text-[10px] uppercase tracking-wider"
-              >
-                {t("history.startDate")}
-              </Label>
-              <Input
-                id="start-date-input"
-                type="date"
-                value={startDate}
-                max={endDate || undefined}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setActivePreset("custom");
-                  if (endDate && val > endDate) {
-                    setCustomStartDate(endDate);
-                    setCustomEndDate(endDate);
-                  } else {
-                    setCustomStartDate(val);
-                    setCustomEndDate(endDate);
-                  }
-                  setPage(0);
-                }}
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label
-                htmlFor="end-date-input"
-                className="mono text-muted-foreground text-[10px] uppercase tracking-wider"
-              >
-                {t("history.endDate")}
-              </Label>
-              <Input
-                id="end-date-input"
-                type="date"
-                value={endDate}
-                min={startDate || undefined}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setActivePreset("custom");
-                  if (startDate && val < startDate) {
-                    setCustomEndDate(startDate);
-                    setCustomStartDate(startDate);
-                  } else {
-                    setCustomEndDate(val);
-                    setCustomStartDate(startDate);
-                  }
-                  setPage(0);
-                }}
-              />
-            </div>
-
-            {/* Quick Presets */}
-            <div className="flex flex-col gap-2 mt-2">
-              <span className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
-                {t("history.presetsLabel")}
-              </span>
-              <div className="grid grid-cols-3 gap-2">
-                <Button
-                  variant={isTodayPreset ? "default" : "outline"}
-                  size="sm"
-                  className="w-full"
-                  onClick={() => {
-                    setActivePreset("today");
-                    setPage(0);
-                  }}
-                >
-                  {t("history.presetToday")}
-                </Button>
-                <Button
-                  variant={isWeeklyPreset ? "default" : "outline"}
-                  size="sm"
-                  className="w-full"
-                  onClick={() => {
-                    setActivePreset("weekly");
-                    setPage(0);
-                  }}
-                >
-                  {t("history.presetLast7")}
-                </Button>
-                <Button
-                  variant={isMonthlyPreset ? "default" : "outline"}
-                  size="sm"
-                  className="w-full"
-                  onClick={() => {
-                    setActivePreset("monthly");
-                    setPage(0);
-                  }}
-                >
-                  {t("history.presetLast30")}
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-auto pt-4 border-t border-border flex gap-3">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => {
-                setActivePreset("all-time");
-                setCustomStartDate("");
-                setCustomEndDate("");
-                setPage(0);
-              }}
-            >
-              {t("history.clearAll")}
-            </Button>
-            <Button
-              variant="default"
-              className="flex-1"
-              onClick={() => setFilterOpen(false)}
-            >
-              {t("history.done")}
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }
@@ -559,6 +653,263 @@ export default function HistoryPage(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 // Subcomponents
 // ---------------------------------------------------------------------------
+
+const PRESETS: { value: HistoryPreset; labelKey: string }[] = [
+  { value: "today", labelKey: "history.presetToday" },
+  { value: "weekly", labelKey: "history.presetLast7" },
+  { value: "monthly", labelKey: "history.presetLast30" },
+  { value: "all-time", labelKey: "history.presetAllTime" },
+];
+
+/**
+ * The History filter sidebar. Memoized so it doesn't re-render on unrelated
+ * page state changes (search typing, pagination, data refetches). All handlers
+ * are stabilized by the parent with `useCallback`.
+ */
+const FilterPanel = memo(function FilterPanel({
+  activePreset,
+  startDate,
+  endDate,
+  diffMode,
+  showAiEdits,
+  nerdMode,
+  onPreset,
+  onSelectRange,
+  onReset,
+  resetDisabled,
+  onClose,
+  onDiffModeChange,
+  onShowAiEditsChange,
+  onNerdModeChange,
+}: {
+  activePreset: HistoryPreset;
+  startDate: string;
+  endDate: string;
+  diffMode: boolean;
+  showAiEdits: boolean;
+  nerdMode: boolean;
+  onPreset: (preset: HistoryPreset) => void;
+  onSelectRange: (range: DateRange | undefined) => void;
+  onReset: () => void;
+  resetDisabled: boolean;
+  onClose: () => void;
+  onDiffModeChange: (value: boolean) => void;
+  onShowAiEditsChange: (value: boolean) => void;
+  onNerdModeChange: (value: boolean) => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const selectedDateRange: DateRange = {
+    from: parseLocalDate(startDate),
+    to: parseLocalDate(endDate),
+  };
+
+  return (
+    // Wrapper stretches to the full height of the feed column so the divider
+    // line runs edge-to-edge; the panel itself stays sticky within it.
+    <div className="border-border/70 border-l">
+      <aside className="sticky top-0 flex h-[calc(100vh-88px)] min-h-[520px] flex-col overflow-hidden px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)] animate-in fade-in-0 slide-in-from-right-3 duration-200">
+        <div className="border-border/70 flex h-10 items-center gap-1.5 border-b pb-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-foreground text-[14px] font-semibold">
+              {t("history.filterTitle")}
+            </h2>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onReset}
+            disabled={resetDisabled}
+            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            aria-label={t("history.reset")}
+            title={t("history.reset")}
+          >
+            <Eraser />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onClose}
+            aria-label="Close filters"
+            title="Close filters"
+          >
+            <PanelRight />
+          </Button>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto pt-4 pr-1">
+          {/* Date range */}
+          <div className="flex flex-col gap-2.5">
+            <Label className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
+              {t("history.dateRangeLabel")}
+            </Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="border-border/75 bg-card/45 hover:bg-card/60 h-9 w-full justify-start gap-2 px-3 text-left text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
+                >
+                  <CalendarDays data-icon="inline-start" />
+                  <span className="truncate">
+                    {formatRangeLabel(startDate, endDate)}
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                className="w-[320px] translate-x-2 overflow-visible p-2"
+                collisionPadding={8}
+                sideOffset={6}
+              >
+                <DayPicker
+                  mode="range"
+                  numberOfMonths={2}
+                  selected={selectedDateRange}
+                  onSelect={onSelectRange}
+                  defaultMonth={selectedDateRange.from ?? selectedDateRange.to}
+                  classNames={{
+                    root: "p-0",
+                    months: "flex gap-3",
+                    month: "flex flex-col gap-2",
+                    month_caption: "flex h-6 items-center justify-center",
+                    caption_label: "text-[12px] font-medium text-foreground",
+                    nav: "absolute inset-x-2 top-2 flex items-center justify-between",
+                    button_previous:
+                      "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
+                    button_next:
+                      "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
+                    chevron: "size-3.5 fill-current",
+                    month_grid: "w-full border-collapse border-spacing-0",
+                    weekdays: "flex",
+                    weekday:
+                      "text-muted-foreground flex size-5 items-center justify-center text-[9px] font-normal",
+                    week: "flex w-full",
+                    day: "relative flex size-5 items-center justify-center p-0 text-center text-[10px]",
+                    day_button:
+                      "relative z-10 inline-flex size-5 items-center justify-center rounded transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                    outside: "text-muted-foreground/45",
+                    today:
+                      "after:bg-primary after:absolute after:bottom-1 after:left-1/2 after:z-20 after:size-1 after:-translate-x-1/2 after:rounded-full",
+                    selected:
+                      "text-primary-foreground after:!hidden [&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary",
+                    range_start:
+                      "bg-primary/15 rounded-l-md [&>button]:rounded-l [&>button]:rounded-r-none",
+                    range_middle:
+                      "bg-primary/15 [&>button]:rounded-none [&>button]:!bg-transparent [&>button]:!text-foreground [&>button]:hover:!bg-transparent",
+                    range_end:
+                      "bg-primary/15 rounded-r-md [&>button]:rounded-r [&>button]:rounded-l-none",
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {/* Presets — plain buttons, active one is always highlighted */}
+          <div className="flex flex-col gap-2.5">
+            <span className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
+              {t("history.presetsLabel")}
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              {PRESETS.map((preset) => {
+                const active = activePreset === preset.value;
+                return (
+                  <Button
+                    key={preset.value}
+                    variant={active ? "default" : "outline"}
+                    size="sm"
+                    className="h-8 w-full justify-center text-[11px]"
+                    aria-pressed={active}
+                    onClick={() => onPreset(preset.value)}
+                  >
+                    {t(preset.labelKey)}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* View — global toggles that apply to every entry at once */}
+          <div className="flex flex-col gap-2.5">
+            <span className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
+              {t("history.viewLabel")}
+            </span>
+            <div className="border-border/70 bg-card/35 flex flex-col divide-y divide-border/60 rounded-lg border">
+              <ViewToggleRow
+                icon={
+                  <FileDiff className="text-muted-foreground h-3.5 w-3.5" />
+                }
+                title={t("history.diffToggle")}
+                description={t("history.diffToggleDesc")}
+                checked={diffMode}
+                onCheckedChange={onDiffModeChange}
+              />
+              <ViewToggleRow
+                icon={
+                  <Sparkles className="text-muted-foreground h-3.5 w-3.5" />
+                }
+                title={t("history.aiEditToggle")}
+                description={t("history.aiEditToggleDesc")}
+                checked={showAiEdits}
+                // Diff mode already shows both raw and cleaned, so the plain
+                // AI-edit toggle is moot while diff mode is on.
+                disabled={diffMode}
+                onCheckedChange={onShowAiEditsChange}
+              />
+              <ViewToggleRow
+                icon={
+                  <FlaskConical className="text-muted-foreground h-3.5 w-3.5" />
+                }
+                title={t("history.nerdToggle")}
+                description={t("history.nerdToggleDesc")}
+                checked={nerdMode}
+                onCheckedChange={onNerdModeChange}
+              />
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+});
+
+function ViewToggleRow({
+  icon,
+  title,
+  description,
+  checked,
+  disabled,
+  onCheckedChange,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  checked: boolean;
+  disabled?: boolean;
+  onCheckedChange: (value: boolean) => void;
+}): React.JSX.Element {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2.5 px-3 py-2.5",
+        disabled && "opacity-50",
+      )}
+    >
+      {icon}
+      <div className="min-w-0 flex-1">
+        <div className="text-foreground text-[12px] font-medium">{title}</div>
+        <div className="text-muted-foreground text-[10.5px] leading-snug">
+          {description}
+        </div>
+      </div>
+      <Switch
+        size="sm"
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onCheckedChange}
+        aria-label={title}
+      />
+    </div>
+  );
+}
 
 function PageHeader({
   title,
@@ -627,22 +978,61 @@ function FeedGroup({
   );
 }
 
-function FeedItem({
+const FeedItem = memo(function FeedItem({
   entry,
   onDelete,
+  diffMode,
+  showAiEdits,
+  nerdMode,
 }: {
   entry: HistoryEntry;
   onDelete: (id: number) => void;
+  // Global view toggles driven from the filter panel.
+  diffMode: boolean;
+  showAiEdits: boolean;
+  nerdMode: boolean;
 }): React.JSX.Element {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const hasAiEdit =
     !!entry.cleaned_text && entry.cleaned_text.trim() !== entry.raw_text.trim();
-  const [showAiEdit, setShowAiEdit] = useState(hasAiEdit);
+  const showDiff = diffMode && hasAiEdit;
+  const showCleaned = showAiEdits && hasAiEdit;
   const text =
-    showAiEdit && entry.cleaned_text ? entry.cleaned_text : entry.raw_text;
+    showCleaned && entry.cleaned_text ? entry.cleaned_text : entry.raw_text;
+  const diff = useMemo(
+    () =>
+      showDiff && entry.cleaned_text
+        ? diffWords(entry.raw_text, entry.cleaned_text)
+        : null,
+    [showDiff, entry.raw_text, entry.cleaned_text],
+  );
   const voice = shortModel(entry.voice_model) || entry.voice_provider;
   const llm = shortModel(entry.llm_model);
-  const modelLabel = llm ? `${voice} · ${llm}` : voice;
+  // In nerd mode, qualify each model with its provider (STT and post-process),
+  // shown right in the header label rather than in a separate line below. The
+  // post-process provider is only prefixed when it differs from the STT
+  // provider — otherwise it's the same string repeated, so we drop it.
+  const voiceLabel =
+    nerdMode && entry.voice_provider
+      ? `${entry.voice_provider}/${voice}`
+      : voice;
+  const llmLabel =
+    llm &&
+    nerdMode &&
+    entry.llm_provider &&
+    entry.llm_provider !== entry.voice_provider
+      ? `${entry.llm_provider}/${llm}`
+      : llm;
+  const modelLabel = llmLabel ? `${voiceLabel} · ${llmLabel}` : voiceLabel;
+
+  // "Stats for nerds" — surface the data we store but normally hide.
+  const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const wpm =
+    entry.audio_duration_ms > 0
+      ? Math.round(wordCount / (entry.audio_duration_ms / 60000))
+      : null;
+  const hasTokens = entry.input_tokens > 0 || entry.output_tokens > 0;
 
   const copyText = useCallback(async () => {
     await navigator.clipboard.writeText(text);
@@ -653,34 +1043,21 @@ function FeedItem({
   return (
     <div className="group px-1.5 py-3.5">
       <div className="mb-2 flex items-center gap-2.5">
-        <span className="mono text-foreground text-[11px] font-medium tracking-[0.04em]">
+        <span className="mono text-foreground shrink-0 text-[11px] font-medium tracking-[0.04em]">
           {formatClock(entry.created_at)}
         </span>
-        <span className="bg-muted-foreground/50 h-[3px] w-[3px] rounded-full" />
-        <span className="mono text-primary text-[10.5px] font-semibold uppercase tracking-[0.12em]">
-          {modelLabel}
-        </span>
-        <span className="flex-1" />
-        <span className="mono text-muted-foreground text-[10px] tracking-[0.06em]">
-          {formatSeconds(entry.audio_duration_ms || entry.duration_ms)}
-        </span>
-        {entry.cost_usd > 0 && (
-          <span className="mono text-muted-foreground text-[10px]">
-            · {formatCost(entry.cost_usd)}
-          </span>
-        )}
-        <div className="ml-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-          {hasAiEdit && (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => setShowAiEdit((value) => !value)}
-              title={showAiEdit ? "Undo AI edit" : "Redo AI edit"}
-              aria-label={showAiEdit ? "Undo AI edit" : "Redo AI edit"}
-            >
-              {showAiEdit ? <Undo2 /> : <Redo2 />}
-            </Button>
-          )}
+        <span className="bg-muted-foreground/50 h-[3px] w-[3px] shrink-0 rounded-full" />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="mono text-primary min-w-0 flex-1 cursor-default truncate text-[10.5px] font-semibold uppercase tracking-[0.12em]">
+              {modelLabel}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{modelLabel}</TooltipContent>
+        </Tooltip>
+        {/* Copy/delete sit before the duration so the actions don't leave a
+            reserved blank at the far-right edge when not hovering. */}
+        <div className="mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           <Button
             variant="ghost"
             size="icon-xs"
@@ -701,15 +1078,81 @@ function FeedItem({
             <Trash2 />
           </Button>
         </div>
+        <span className="mono text-muted-foreground shrink-0 text-[10px] tracking-[0.06em]">
+          {formatSeconds(entry.audio_duration_ms || entry.duration_ms)}
+        </span>
+        {entry.cost_usd > 0 && (
+          <span className="mono text-muted-foreground shrink-0 text-[10px]">
+            · {formatCost(entry.cost_usd)}
+          </span>
+        )}
       </div>
       <p
         className="text-foreground m-0 text-[16px] leading-[1.55]"
         style={{ textWrap: "pretty" as never }}
         dir="auto"
       >
-        “{text}”
+        “{diff ? <DiffText segments={diff} /> : text}”
       </p>
+      {nerdMode && (
+        <div className="mono text-muted-foreground/80 mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] tracking-[0.04em]">
+          <span>
+            {t("history.nerdCompute", {
+              label: formatSeconds(entry.duration_ms),
+            })}
+          </span>
+          {wpm !== null && <span>· {t("history.nerdWpm", { n: wpm })}</span>}
+          {hasTokens && (
+            <span>
+              ·{" "}
+              {t("history.nerdTok", {
+                in: entry.input_tokens,
+                out: entry.output_tokens,
+              })}
+            </span>
+          )}
+          <span>· {formatCost(entry.cost_usd)}</span>
+        </div>
+      )}
     </div>
+  );
+});
+
+/**
+ * Inline rendering of a raw→cleaned diff: words the post-processing removed
+ * are struck through, words it added are highlighted. Unchanged words render
+ * plainly, so both outputs are visible in a single reading pass.
+ */
+function DiffText({
+  segments,
+}: {
+  segments: DiffSegment[];
+}): React.JSX.Element {
+  return (
+    <>
+      {segments.map((seg, idx) => {
+        if (seg.type === "same") return seg.text;
+        // Keep the segment's trailing whitespace outside the styled span so
+        // the strikethrough/background doesn't bleed into the gap after it.
+        const content = seg.text.trimEnd();
+        const trailing = seg.text.slice(content.length);
+        return seg.type === "del" ? (
+          <span key={idx}>
+            <del className="text-destructive bg-destructive/10 decoration-destructive/60 rounded-[3px]">
+              {content}
+            </del>
+            {trailing}
+          </span>
+        ) : (
+          <span key={idx}>
+            <ins className="text-primary bg-primary/10 rounded-[3px] no-underline">
+              {content}
+            </ins>
+            {trailing}
+          </span>
+        );
+      })}
+    </>
   );
 }
 

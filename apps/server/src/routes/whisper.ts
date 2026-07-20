@@ -1,4 +1,5 @@
-import { createAppLogger } from "@freestyle-voice/utils";
+import { serverStartSchema } from "@freestyle-voice/validations";
+import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { capture } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
@@ -30,8 +31,6 @@ import {
   startInBackground,
   stopServer,
 } from "../lib/whisper/server.js";
-
-const log = createAppLogger("whisper");
 
 const whisper = new Hono()
   .get("/status", (c) => {
@@ -97,11 +96,8 @@ const whisper = new Hono()
 
     return c.json({ ok: deleted });
   })
-  .post("/server/start", async (c) => {
-    const body = await c.req
-      .json<{ modelId?: string }>()
-      .catch(() => ({ modelId: undefined }));
-    let modelId = body.modelId;
+  .post("/server/start", zValidator("json", serverStartSchema), async (c) => {
+    let modelId = c.req.valid("json").modelId;
 
     if (!modelId) {
       const defaults = getDefaultModels();
@@ -123,17 +119,3 @@ const whisper = new Hono()
   });
 
 export default whisper;
-
-export function autoStartWhisperServer(): void {
-  try {
-    const defaults = getDefaultModels();
-    if (defaults.voice?.provider !== WHISPER_PROVIDER_ID) return;
-    if (!isServerBinaryAvailable()) return;
-
-    const modelId = stripProviderPrefix(defaults.voice.model_id);
-    log.debug(`Auto-starting server for model: ${modelId}`);
-    startInBackground(modelId);
-  } catch {
-    // DB not ready or other init issue — silently skip
-  }
-}

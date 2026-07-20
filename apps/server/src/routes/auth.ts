@@ -1,3 +1,5 @@
+import { deviceTokenSchema } from "@freestyle-voice/validations";
+import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import {
   DeviceFlowError,
@@ -32,16 +34,11 @@ const auth = new Hono()
     const code = await requestDeviceCode();
     return c.json(code);
   })
-  .post("/device/token", async (c) => {
-    const body = (await c.req.json().catch(() => null)) as {
-      device_code?: unknown;
-    } | null;
-    if (!body || typeof body.device_code !== "string") {
-      return c.json({ error: "device_code required" }, 400);
-    }
+  .post("/device/token", zValidator("json", deviceTokenSchema), async (c) => {
+    const { device_code } = c.req.valid("json");
 
     try {
-      const token = await pollDeviceToken(body.device_code);
+      const token = await pollDeviceToken(device_code);
       const user = await fetchCloudUser(token.access_token);
       const now = Date.now();
       setSession({

@@ -16,13 +16,15 @@
       "@freestyle-voice/utils": ["../../packages/utils/src/index.ts"],
       "@freestyle-voice/validations": [
         "../../packages/validations/src/index.ts"
-      ]
+      ],
+      "@freestyle-voice/stt": ["../../packages/stt/src/index.ts"]
     }
   },
   "include": [
     "src/**/*",
     "../../packages/sdk/src/**/*",
     "../../packages/utils/src/**/*",
-    "../../packages/validations/src/**/*"
+    "../../packages/validations/src/**/*",
+    "../../packages/stt/src/**/*"
   ]
 }

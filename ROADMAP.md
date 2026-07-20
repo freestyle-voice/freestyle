@@ -10,7 +10,7 @@
   <a href="https://discord.gg/Fmgt5yZCDu"><img src="https://img.shields.io/badge/Discord-Join%20Server-5865F2.svg?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
-# Roadmap (Last update 06/09/2026)
+# Roadmap (Last update 07/08/2026)
 
 Hey there! I'm Matt. I'm one of the maintainers of Freestyle. I really appreciate you taking the time to go through our roadmap and considering contributing to the project. It means a lot
 
@@ -22,38 +22,28 @@ If you're interested in contributing, read the [CONTRIBUTING.md](CONTRIBUTING.md
 
 # Freestyle Core
 Lead: @matteo8p
-Core open source transcription features. This section is always going to be in progress. 
 
-**Objective:** Our mission is to build open source voice dictation with world class latency and accuracy. We should be able to provide that for free and private. The goal of this section of the project is to work towards these optimizations, and deliver great UX. 
+**Objective:** Build quality, beautiful voice transcription
 
-1️⃣ All features must work _consistently_ across all platforms (Mac, Windows, Linux). Limit the amount of platform divergence (feature exists on Linux, not on Windows etc.) 
+1️⃣ Simplify the models page. Make it easy for users to configure Freestyle Transcribe in the models page. Log in button to use Freestyle Transcribe if they're logged out. Also provide the option to configure local models at the bottom.
 
-2️⃣ [STT models] Transcription latency is optimized. This means that Freestyle efficiently uses all STT models end to end. Minimizes time from user stops talking to paste. 
+2️⃣ Modify the onboarding. Enforce sign in / create account in production (skippable on dev) "Sign in via Browser". Remove "Choose a different model" on the onboarding. Have them use Freestyle Transcribe from the start. 
 
-3️⃣ [STT models] Transcription accuracy is high. Users must be guided to use high quality models that transcribe accurately. Inferior models are dismissed.  
+3️⃣ Improve the UI. Simplify the tones page. Add the ability to manage billing
 
-4️⃣ [STT models] ASR biasing works across all models. Remove models that don't have ASR biasing. Again, all features must work. Make sure ASR biasing works consistently. 
-
-5️⃣ [Post processing] Post processing is high quality and high latency. Does corrections like clean out "uhms, buts", and "It's 4:00, wait scratch that, it's 5:00" -> "it's 5". The type of nice post-processing experience that Wispr Flow has. 
-
-6️⃣ [Post processing] Context aware corrections. Depending on what the user is seeing, format the text for that format. This is the formats feature
-
-7️⃣ [Post processing] Dictionary / Shortcuts feature works consistently. 
-
-8️⃣ Codebase must be clean and extendable. Much of the codebase has been vibed today. That's okay to start, but not sustainable to maintain long term. Clean up the codebase and ensure it's easy to onboard, easy to work with long term. 
+The above lists the new features that we want to build. We want to continue maintaining the cleanliness of our codebase and the robustness of the project. General UI/UX improvements and functional enhancements, along with bug fixes, are a continuous effort. 
 
 # Cloud
 Lead: @MathurAditya724
 
-**Objective:** Freestyle is open source and local-first, but we a consistent pitfall I've seen is that it alienates the non-developer. Non-developers may not know how to set up an API key or understand which models to choose and use. We plan to spin up a simple cloud service that is highly opinionated and is a high quality dictation stack out of the box. What's he saying?
+**Objective:** 
 
-1️⃣ Open source the project. The code for the cloud service will be MIT license open source. We will have our hosted version, but anyone is free to use that code and self-host their own service.
+1️⃣ Make Freestyle Transcribe robust, fast, and accurate. Freestyle Transcribe must support all of our existing features, such as dictionary, vocabulary, and tone. We must try to do this in sub-second latency, shooting for 400 milliseconds. 
 
-2️⃣ This cloud service must have low latency and high accuracy with all of the features that Freestyle supports. It has the same specs as Freestyle Core.
+2️⃣ Add billing and managing to Freestyle Transcribe Pro. 
 
-3️⃣ Figure out the pricing structure. We want the pricing to be extremely cheap with a very small margin. Usage based billing. Still make this stack self-hostable and our cloud optional.
+3️⃣ Have free tier be 1000 words / week. Set up billing on Stripe. Billing details are TBD, but we're shooting for $9 / month for Pro, unlimited usage and zero-data retention by default. 
 
-# Community and docs page
-Lead: @matteo8p
+# Future work (TBD)
 
-**Objective:** Build a strong community of open-source contributors interested in working on voice dictation. Maintain the community discussions through Discord. Keep the GitHub repo clean and organized. Grow project interest. 
+1️⃣ Freestyle templates. When a user onboards freestyle, they can choose a template based on their role, such as software developer, student, healthcare, etc. Once they've chosen a role, we can give them special presets. These presets may contain things like custom vocabulary and a tailored experience. 

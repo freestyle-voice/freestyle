@@ -222,7 +222,7 @@ export function AppAssignments({
           {items.length > 0 ? (
             <section className="space-y-2.5">
               <div className="flex items-center justify-between gap-3">
-                <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.14em]">
+                <span className="text-muted-foreground text-[11px] font-semibold">
                   {t("tone.apps.currentRoutes")}
                 </span>
               </div>
@@ -240,7 +240,7 @@ export function AppAssignments({
 
           <section className="space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.14em]">
+              <span className="text-muted-foreground text-[11px] font-semibold">
                 {t("tone.apps.openApps")}
               </span>
               <Button
@@ -323,7 +323,7 @@ export function AppAssignments({
           <section className="space-y-3 border-t border-border/70 pt-5">
             <div className="flex items-center gap-2">
               <Globe className="text-muted-foreground size-4" />
-              <span className="mono text-muted-foreground text-[10px] uppercase tracking-[0.14em]">
+              <span className="text-muted-foreground text-[11px] font-semibold">
                 {t("tone.apps.websiteLabel")}
               </span>
             </div>

@@ -1,6 +1,10 @@
+import { createAppLogger } from "@freestyle-voice/utils";
 import { Hono } from "hono";
+import { formatError } from "../lib/format-error.js";
 import { fetchCloudUsage } from "../lib/freestyle-cloud.js";
 import { getSessionToken } from "../lib/sessions.js";
+
+const log = createAppLogger("usage");
 
 const usage = new Hono().get("/", async (c) => {
   const token = getSessionToken();
@@ -11,6 +15,7 @@ const usage = new Hono().get("/", async (c) => {
     const balance = await fetchCloudUsage(token);
     return c.json(balance);
   } catch (err) {
+    log.warn(`failed to fetch cloud usage: ${formatError(err)}`);
     return c.json(
       {
         error: "Failed to fetch usage",

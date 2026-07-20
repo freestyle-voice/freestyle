@@ -141,9 +141,6 @@
       "outputModeDesc": "In die aktive App einfügen oder in die Zwischenablage kopieren.",
       "outputModePaste": "In App einfügen",
       "outputModeClipboard": "In Zwischenablage kopieren",
-      "transcriptionPrompt": "Transkriptions-Eingabe",
-      "transcriptionPromptDesc": "Fachbegriffe, Namen oder Jargon auflisten, um die Genauigkeit des Sprachmodells zu verbessern.",
-      "transcriptionPromptPlaceholder": "z.B. TypeScript, React, Kubernetes, JIRA…",
       "sound": "Klangfeedback",
       "soundDesc": "Sanfte Töne zu Beginn und Ende der Aufnahme.",
       "needsModifier": "Tastenkombinationen benötigen eine Modifikatortaste oder Maustaste"
@@ -501,7 +498,6 @@
     "apiKeys": "API-Schlüssel",
     "noApiKeys": "Noch keine API-Schlüssel — wählen Sie oben ein Cloud-Modell und Sie werden nach einem Schlüssel gefragt.",
     "onDevice": "Auf dem Gerät",
-    "onDeviceNoKey": "Kein Schlüssel erforderlich · läuft lokal",
     "keyInvalid": "Schlüssel ungültig — aktualisieren oder löschen",
     "keyStored": "Schlüssel im Schlüsselbund gespeichert",
     "keyStoredWithHint": "Schlüssel {{hint}} im Schlüsselbund gespeichert",

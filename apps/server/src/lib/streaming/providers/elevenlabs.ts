@@ -42,10 +42,13 @@ function resolveRealtimeModelId(model: string): string {
   return short;
 }
 
+const TOKEN_REQUEST_TIMEOUT_MS = 10_000;
+
 async function getSingleUseToken(apiKey: string): Promise<string> {
   const res = await fetch(ELEVENLABS_TOKEN_URL, {
     method: "POST",
     headers: { "xi-api-key": apiKey },
+    signal: AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -292,14 +295,21 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
         }, USER_COMMIT_TIMEOUT_MS);
       },
       cancel(): void {
+        // ElevenLabs is kept warm across recordings, so a cancel must not close
+        // the socket — that would fire onClose and make the route reconnect.
+        // Drop the in-flight transcript and re-arm auto-commit for reuse, like
+        // reset(); close() is used for real teardown.
         clearCommitTimeout();
-        stopAutoCommit();
         pendingChunks.length = 0;
         userCommitPending = false;
         finalDelivered = false;
-        if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
         accumulatedText = "";
         partialText = "";
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          startAutoCommit();
+        } else {
+          stopAutoCommit();
+        }
       },
       close(): void {
         clearCommitTimeout();

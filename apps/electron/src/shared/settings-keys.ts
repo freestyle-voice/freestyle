@@ -10,6 +10,7 @@ export const SETTINGS_KEYS = {
   hotkey: "hotkey",
   hotkeyMode: "hotkey_mode",
   historyPaused: "history_paused",
+  historyRetentionDays: "history_retention_days",
   language: "language",
   llmCleanup: "llm_cleanup",
   localLlmApiKey: "local_llm_api_key",
@@ -18,10 +19,11 @@ export const SETTINGS_KEYS = {
   mlxAsrKeepAliveMinutes: "mlx_asr_keep_alive_minutes",
   networkCaCertPath: "network_ca_cert_path",
   networkProxyUrl: "network_proxy_url",
+  openaiSttApiKey: "openai_stt_api_key",
+  openaiSttBaseUrl: "openai_stt_base_url",
   outputMode: "output_mode",
   soundEnabled: "sound_enabled",
   theme: "theme",
-  transcriptionPrompt: "transcription_prompt",
 } as const;
 
 export type SettingsKey = (typeof SETTINGS_KEYS)[keyof typeof SETTINGS_KEYS];

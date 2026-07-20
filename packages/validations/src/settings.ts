@@ -16,7 +16,8 @@ export const cleanupIntensitySchema = z.enum([
 
 export type CleanupIntensity = z.infer<typeof cleanupIntensitySchema>;
 
-export const DEFAULT_CLEANUP_INTENSITY: CleanupIntensity = "low";
+// Default cleanup strength for new users and missing settings.
+export const DEFAULT_CLEANUP_INTENSITY: CleanupIntensity = "medium";
 
 /**
  * Upper bound on a user-authored custom cleanup prompt. Comfortably above the
@@ -69,6 +70,28 @@ export const proxyUrlSettingSchema = z
 /** Filesystem path to a custom CA certificate bundle. Empty string clears it. */
 export const caCertPathSettingSchema = z.string().max(4096);
 
+export const HISTORY_RETENTION_DAYS_MAX = 3650;
+
+export function parseRetentionDays(
+  value: string | null | undefined,
+): number | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const days = Number(trimmed);
+  if (days < 1 || days > HISTORY_RETENTION_DAYS_MAX) return null;
+  return days;
+}
+
+export const historyRetentionDaysSettingSchema = z
+  .string()
+  .refine(
+    (value) => value.trim() === "" || parseRetentionDays(value) !== null,
+    {
+      message: `Retention must be a whole number of days between 1 and ${HISTORY_RETENTION_DAYS_MAX} (or empty to disable)`,
+    },
+  );
+
 /**
  * Combined shape for the Network settings form. The renderer drives a
  * react-hook-form with this schema so its inline validation matches exactly
@@ -80,3 +103,59 @@ export const networkSettingsFormSchema = z.object({
 });
 
 export type NetworkSettingsForm = z.infer<typeof networkSettingsFormSchema>;
+
+/** Date-range preset shown on the History page filter panel. */
+export const historyPresetSchema = z.enum([
+  "today",
+  "weekly",
+  "monthly",
+  "all-time",
+  "custom",
+]);
+
+export type HistoryPreset = z.infer<typeof historyPresetSchema>;
+
+/**
+ * Persisted History-page filter + view state, stored as a single JSON blob in
+ * the renderer's `localStorage` (key `history.filters`) so a user's date range
+ * and view toggles survive navigating away and back (and app restarts). It's a
+ * UI-only preference, so it lives client-side rather than in the settings store.
+ */
+export const historyFiltersSettingSchema = z.object({
+  preset: historyPresetSchema,
+  customStartDate: z.string().max(32),
+  customEndDate: z.string().max(32),
+  filterOpen: z.boolean(),
+  diffMode: z.boolean(),
+  showAiEdits: z.boolean(),
+  nerdMode: z.boolean(),
+});
+
+export type HistoryFiltersSetting = z.infer<typeof historyFiltersSettingSchema>;
+
+/** Initial defaults for the History filter panel (matches the page's state). */
+export const DEFAULT_HISTORY_FILTERS: HistoryFiltersSetting = {
+  preset: "weekly",
+  customStartDate: "",
+  customEndDate: "",
+  filterOpen: false,
+  diffMode: false,
+  showAiEdits: true,
+  nerdMode: false,
+};
+
+/**
+ * Coerce an arbitrary persisted value into a valid {@link HistoryFiltersSetting},
+ * falling back to defaults for any missing or malformed fields.
+ */
+export function parseHistoryFilters(
+  value: string | null | undefined,
+): HistoryFiltersSetting {
+  if (!value) return DEFAULT_HISTORY_FILTERS;
+  try {
+    const parsed = historyFiltersSettingSchema.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : DEFAULT_HISTORY_FILTERS;
+  } catch {
+    return DEFAULT_HISTORY_FILTERS;
+  }
+}

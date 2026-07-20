@@ -1,8 +1,5 @@
 import { stripProviderPrefix } from "./streaming/types.js";
-import {
-  getTranscriptionContextPrompt,
-  loadVocabularyTerms,
-} from "./vocabulary.js";
+import { loadVocabularyTerms } from "./vocabulary.js";
 
 /** ASR-only vocabulary bias (first recognition step). Not used in post-process. */
 export type AsrVocabularyBias =
@@ -20,9 +17,6 @@ const ELEVENLABS_BATCH_KEYTERM_MAX = 100;
 const ELEVENLABS_REALTIME_KEYTERM_MAX = 50;
 const ELEVENLABS_TERM_MAX_CHARS = 20;
 const ELEVENLABS_BATCH_TERM_MAX_CHARS = 50;
-/** Soniox context budget is ~8k tokens total; cap terms and background text. */
-const SONIOX_TERM_MAX = 100;
-const SONIOX_CONTEXT_TEXT_MAX = 2_000;
 
 function capTerms(terms: string[], max: number): string[] {
   const seen = new Set<string>();
@@ -39,37 +33,21 @@ function capTerms(terms: string[], max: number): string[] {
   return out;
 }
 
-function buildPromptText(
-  terms: string[],
-  contextPrompt?: string,
-): string | null {
-  const parts: string[] = [];
-  if (contextPrompt?.trim()) parts.push(contextPrompt.trim());
-
-  if (terms.length > 0) {
-    let list = terms.join(", ");
-    const prefix = parts.length > 0 ? " Terms: " : "Terms: ";
-    const budget = PROMPT_CHAR_BUDGET - parts.join(" ").length - prefix.length;
-    if (budget > 0 && list.length > budget) {
-      const trimmed: string[] = [];
-      let len = 0;
-      for (const t of terms) {
-        const next = trimmed.length === 0 ? t : `${trimmed.join(", ")}, ${t}`;
-        if (next.length > budget) break;
-        trimmed.push(t);
-        len = next.length;
-        void len;
-      }
-      list = trimmed.join(", ");
+function buildPromptText(terms: string[]): string | null {
+  if (terms.length === 0) return null;
+  let list = terms.join(", ");
+  const budget = PROMPT_CHAR_BUDGET - "Terms: ".length;
+  if (list.length > budget) {
+    const trimmed: string[] = [];
+    for (const t of terms) {
+      const next = trimmed.length === 0 ? t : `${trimmed.join(", ")}, ${t}`;
+      if (next.length > budget) break;
+      trimmed.push(t);
     }
-    if (list) {
-      parts.push(parts.length > 0 ? `Terms: ${list}.` : `Terms: ${list}.`);
-    }
+    list = trimmed.join(", ");
   }
-
-  const text = parts.join(" ").trim();
-  if (!text) return null;
-  return text.slice(0, PROMPT_CHAR_BUDGET);
+  if (!list) return null;
+  return `Terms: ${list}.`.slice(0, PROMPT_CHAR_BUDGET);
 }
 
 function expandNova2Keywords(terms: string[]): string[] {
@@ -120,11 +98,10 @@ export function buildAsrVocabularyBias(
   providerId: string,
   modelId: string,
   terms: string[],
-  contextPrompt?: string,
   streaming = false,
 ): AsrVocabularyBias | null {
   const capped = capTerms(terms, DEEPGRAM_KEYTERM_MAX);
-  if (capped.length === 0 && !contextPrompt?.trim()) return null;
+  if (capped.length === 0) return null;
 
   const short = stripProviderPrefix(modelId);
 
@@ -133,7 +110,7 @@ export function buildAsrVocabularyBias(
     case "groq":
     // whisper.cpp accepts the same OpenAI-style initial prompt (224-token budget).
     case "local-whisper": {
-      const text = buildPromptText(capped, contextPrompt);
+      const text = buildPromptText(capped);
       return text ? { kind: "prompt", text } : null;
     }
     case "deepgram": {
@@ -170,24 +147,15 @@ export function buildAsrVocabularyBias(
         ? { kind: "elevenlabs-keyterms", terms: keyterms }
         : null;
     }
-    case "local-mlx": {
-      const parts: string[] = [];
-      if (contextPrompt?.trim()) parts.push(contextPrompt.trim());
-      if (capped.length > 0) {
-        parts.push(`Technical terms: ${capped.join(", ")}`);
-      }
-      const text = parts.join(" ").trim().slice(0, PROMPT_CHAR_BUDGET);
-      return text ? { kind: "prompt", text } : null;
-    }
     case "soniox": {
-      const terms = capTerms(capped, SONIOX_TERM_MAX);
-      const text = contextPrompt?.trim().slice(0, SONIOX_CONTEXT_TEXT_MAX);
-      if (terms.length === 0 && !text) return null;
-      return {
-        kind: "soniox-context",
-        terms,
-        ...(text ? { text } : {}),
-      };
+      return { kind: "soniox-context", terms: capped };
+    }
+    case "local-mlx": {
+      const text = `Technical terms: ${capped.join(", ")}`.slice(
+        0,
+        PROMPT_CHAR_BUDGET,
+      );
+      return text ? { kind: "prompt", text } : null;
     }
     default:
       return null;
@@ -200,12 +168,5 @@ export function resolveAsrVocabularyBias(
   streaming = false,
 ): AsrVocabularyBias | null {
   const terms = loadVocabularyTerms();
-  const contextPrompt = getTranscriptionContextPrompt();
-  return buildAsrVocabularyBias(
-    providerId,
-    modelId,
-    terms,
-    contextPrompt,
-    streaming,
-  );
+  return buildAsrVocabularyBias(providerId, modelId, terms, streaming);
 }

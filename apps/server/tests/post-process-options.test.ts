@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groqCleanupProviderOptions } from "../src/lib/post-process.js";
+import { groqCleanupProviderOptions } from "../src/lib/llm/registry.js";
 
 describe("groqCleanupProviderOptions", () => {
   it("disables visible reasoning for qwen3 cleanup", () => {

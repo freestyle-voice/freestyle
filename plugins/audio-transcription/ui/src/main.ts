@@ -9,14 +9,9 @@ import { toWav16k } from "./to-wav.js";
 
 const bridge: FreestyleBridge | undefined = window.freestyle;
 
-const backBtn = requireEl<HTMLButtonElement>("#back-btn");
 const dropzone = requireEl<HTMLLabelElement>("#dropzone");
 const fileInput = requireEl<HTMLInputElement>("#file-input");
 const results = requireEl<HTMLUListElement>("#results");
-
-backBtn.addEventListener("click", () => {
-  bridge?.invoke("navigate", { to: "/plugins" });
-});
 
 function requireEl<T extends Element>(selector: string): T {
   const el = document.querySelector<T>(selector);
@@ -65,6 +60,9 @@ async function transcribe(file: File): Promise<void> {
     return;
   }
 
+  const abort = new AbortController();
+  row.setAbort(abort);
+
   try {
     // Freestyle's transcription providers expect 16 kHz mono PCM WAV, so decode
     // and resample the dropped file (wav/mp3/m4a/…) before uploading.
@@ -83,6 +81,7 @@ async function transcribe(file: File): Promise<void> {
       method: "POST",
       headers: { "content-type": "audio/wav" },
       body: await wav.arrayBuffer(),
+      signal: abort.signal,
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
@@ -108,6 +107,8 @@ async function transcribe(file: File): Promise<void> {
       ...(typeof data.costUsd === "number" ? { costUsd: data.costUsd } : {}),
     });
   } catch (err) {
+    // Aborted by the user — row already removed by the cancel button handler.
+    if (abort.signal.aborted) return;
     row.fail(err instanceof Error ? err.message : String(err));
   }
 }
@@ -123,6 +124,8 @@ interface Row {
   el: HTMLLIElement;
   done(text: string, meta: ResultMeta): void;
   fail(message: string): void;
+  /** Wire an AbortController so the cancel button can abort the request. */
+  setAbort(controller: AbortController): void;
 }
 
 function createRow(fileName: string): Row {
@@ -154,12 +157,25 @@ function createRow(fileName: string): Row {
     statusLabel.textContent = `Transcribing… ${formatElapsed(Date.now() - startedAt)}`;
   }, 1000);
 
-  head.append(name, status);
+  const cancelBtn = iconButton(ICON_X, "Cancel transcription");
+  cancelBtn.className = "result-action result-action-cancel";
+  let abortController: AbortController | undefined;
+  cancelBtn.addEventListener("click", () => {
+    abortController?.abort();
+    window.clearInterval(timer);
+    el.remove();
+  });
+
+  head.append(name, status, cancelBtn);
   el.append(head);
 
   return {
     el,
+    setAbort(controller) {
+      abortController = controller;
+    },
     done(text, meta) {
+      cancelBtn.remove();
       window.clearInterval(timer);
       status.remove();
       const body = document.createElement("p");
@@ -171,7 +187,7 @@ function createRow(fileName: string): Row {
       // operate on the full text below.
       if (text) {
         body.classList.add("is-clamped");
-        head.append(buildActions(text, fileName));
+        head.append(buildActions(text, fileName, el));
       }
 
       const metrics = formatMetrics(meta);
@@ -188,11 +204,17 @@ function createRow(fileName: string): Row {
     },
     fail(message) {
       window.clearInterval(timer);
+      cancelBtn.remove();
       status.remove();
+
+      const tail = document.createElement("div");
+      tail.className = "result-tail";
       const failed = document.createElement("span");
       failed.className = "result-status is-error";
       failed.textContent = "Failed";
-      head.append(failed);
+      tail.append(failed, makeDeleteButton(el));
+
+      head.append(tail);
       const body = document.createElement("p");
       body.className = "result-text is-error";
       body.textContent = message;
@@ -210,8 +232,12 @@ function formatElapsed(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-/** Copy + Download icon buttons that act on the full transcript text. */
-function buildActions(text: string, fileName: string): HTMLDivElement {
+/** Copy + Download + Delete icon buttons that act on the full transcript text. */
+function buildActions(
+  text: string,
+  fileName: string,
+  row: HTMLLIElement,
+): HTMLDivElement {
   const actions = document.createElement("div");
   actions.className = "result-actions";
 
@@ -224,8 +250,18 @@ function buildActions(text: string, fileName: string): HTMLDivElement {
   const download = iconButton(ICON_DOWNLOAD, "Download transcript");
   download.addEventListener("click", () => downloadText(text, fileName));
 
-  actions.append(copy, download);
+  const del = makeDeleteButton(row);
+
+  actions.append(copy, download, del);
   return actions;
+}
+
+/** Build a delete button that removes its parent result row. */
+function makeDeleteButton(row: HTMLLIElement): HTMLButtonElement {
+  const del = iconButton(ICON_TRASH, "Delete entry");
+  del.classList.add("result-action-delete");
+  del.addEventListener("click", () => row.remove());
+  return del;
 }
 
 /** Build a small square icon button containing the given inline SVG. */
@@ -273,6 +309,10 @@ const ICON_CHECK =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
 const ICON_DOWNLOAD =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></svg>';
+const ICON_TRASH =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-.7 11.1a2 2 0 0 1-2 1.9H7.7a2 2 0 0 1-2-1.9L5 6"/></svg>';
+const ICON_X =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>';
 
 /** Build the short metric chips shown under a transcript. */
 function formatMetrics(meta: ResultMeta): string[] {

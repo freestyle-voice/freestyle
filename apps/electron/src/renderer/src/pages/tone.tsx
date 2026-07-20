@@ -41,9 +41,11 @@ import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import type { AvailableModel } from "@renderer/lib/models";
+import { SETTINGS_QUERY_KEY, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import {
@@ -129,6 +131,12 @@ const PERSONAL_OPTIONS: ToneCardOption<CleanupPersonalTone>[] = [
     descKey: "tone.personal.cards.very_casual.desc",
     sampleKey: "tone.personal.cards.very_casual.sample",
   },
+  {
+    value: "off",
+    titleKey: "tone.personal.cards.off.title",
+    descKey: "tone.personal.cards.off.desc",
+    sampleKey: "tone.personal.cards.off.sample",
+  },
 ];
 
 const WORK_OPTIONS: ToneCardOption<CleanupWorkTone>[] = [
@@ -149,6 +157,12 @@ const WORK_OPTIONS: ToneCardOption<CleanupWorkTone>[] = [
     titleKey: "tone.work.cards.formal.title",
     descKey: "tone.work.cards.formal.desc",
     sampleKey: "tone.work.cards.formal.sample",
+  },
+  {
+    value: "off",
+    titleKey: "tone.work.cards.off.title",
+    descKey: "tone.work.cards.off.desc",
+    sampleKey: "tone.work.cards.off.sample",
   },
 ];
 
@@ -171,6 +185,12 @@ const EMAIL_OPTIONS: ToneCardOption<CleanupEmailTone>[] = [
     descKey: "tone.email.cards.formal.desc",
     sampleKey: "tone.email.cards.formal.sample",
   },
+  {
+    value: "off",
+    titleKey: "tone.email.cards.off.title",
+    descKey: "tone.email.cards.off.desc",
+    sampleKey: "tone.email.cards.off.sample",
+  },
 ];
 
 const OVERALL_OPTIONS: ToneCardOption<CleanupOverallTone>[] = [
@@ -192,15 +212,21 @@ const OVERALL_OPTIONS: ToneCardOption<CleanupOverallTone>[] = [
     descKey: "tone.everythingElse.cards.professional.desc",
     sampleKey: "tone.everythingElse.cards.professional.sample",
   },
+  {
+    value: "off",
+    titleKey: "tone.everythingElse.cards.off.title",
+    descKey: "tone.everythingElse.cards.off.desc",
+    sampleKey: "tone.everythingElse.cards.off.sample",
+  },
 ];
 
 export default function TonePage(): React.JSX.Element {
   const { t } = useTranslation();
   const cloudAuth = useCloudAuth();
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [llmCleanup, setLlmCleanup] = useState(false);
   const [cleanupIntensity, setCleanupIntensity] =
-    useState<CleanupIntensity>("low");
+    useState<CleanupIntensity>("medium");
   const [cleanupCustomPrompt, setCleanupCustomPrompt] = useState("");
   const [savedCleanupCustomPrompt, setSavedCleanupCustomPrompt] = useState("");
   const [savingCustomPrompt, setSavingCustomPrompt] = useState(false);
@@ -217,7 +243,6 @@ export default function TonePage(): React.JSX.Element {
     DEFAULT_CLEANUP_OVERALL_TONE,
   );
   const [assignments, setAssignments] = useState<CleanupAppAssignment[]>([]);
-  const [hasCleanupModel, setHasCleanupModel] = useState(false);
   const [usingCloud, setUsingCloud] = useState(false);
   const [activeTab, setActiveTab] = usePersistentState<ToneTab>(
     "tone.activeTab",
@@ -227,66 +252,73 @@ export default function TonePage(): React.JSX.Element {
 
   const customPromptDirty = cleanupCustomPrompt !== savedCleanupCustomPrompt;
 
-  const loadData = useCallback(async () => {
-    try {
-      const client = getClient();
-      const [settingsRes, modelsRes] = await Promise.all([
-        client.api.settings.$get(),
-        client.api.models.configured.$get(),
-      ]);
+  const settingsQuery = useQuery(settingsQueryOptions());
 
-      if (settingsRes.ok) {
-        const settings = await settingsRes.json();
-        setLlmCleanup(settings[SETTINGS_KEYS.llmCleanup] === "true");
-        setCleanupIntensity(
-          parseCleanupIntensity(settings[SETTINGS_KEYS.cleanupIntensity]),
-        );
+  const configuredQuery = useQuery({
+    queryKey: ["models", "configured"],
+    queryFn: async () => {
+      const res = await getClient().api.models.configured.$get();
+      if (!res.ok) throw new Error("Failed to load configured models");
+      return (await res.json()) as ConfiguredModel[];
+    },
+  });
 
-        const prompt = settings[SETTINGS_KEYS.cleanupCustomPrompt];
-        if (typeof prompt === "string") {
-          setCleanupCustomPrompt(prompt);
-          setSavedCleanupCustomPrompt(prompt);
-        }
+  const loading = settingsQuery.isLoading || configuredQuery.isLoading;
 
-        setPersonalTone(
-          parseCleanupPersonalTone(settings[SETTINGS_KEYS.cleanupPersonalTone]),
-        );
-        setWorkTone(
-          parseCleanupWorkTone(settings[SETTINGS_KEYS.cleanupWorkTone]),
-        );
-        setEmailTone(
-          parseCleanupEmailTone(settings[SETTINGS_KEYS.cleanupEmailTone]),
-        );
-        setOverallTone(
-          parseCleanupOverallTone(settings[SETTINGS_KEYS.cleanupOverallTone]),
-        );
-        setAssignments(
-          normalizeManagedAssignments(
-            parseCleanupAppAssignments(
-              settings[SETTINGS_KEYS.cleanupAppAssignments],
-            ),
-          ),
-        );
-      }
+  // Whether a default cleanup (LLM) model is configured — drives the banners.
+  const hasCleanupModel = useMemo(
+    () =>
+      (configuredQuery.data ?? []).some(
+        (model) => model.type === "llm" && model.is_default === 1,
+      ),
+    [configuredQuery.data],
+  );
 
-      if (modelsRes.ok) {
-        const configured = (await modelsRes.json()) as ConfiguredModel[];
-        setHasCleanupModel(
-          configured.some(
-            (model) => model.type === "llm" && model.is_default === 1,
-          ),
-        );
-      }
-    } catch (err) {
-      console.error("Failed to load tone settings:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Seed editable tone/cleanup state from persisted settings once. Save
+  // handlers update local state directly, so we don't re-seed on later
+  // invalidations (which would clobber in-progress edits).
+  const seededRef = useRef(false);
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    const settings = settingsQuery.data;
+    if (!settings || seededRef.current) return;
+    seededRef.current = true;
+
+    setLlmCleanup(settings[SETTINGS_KEYS.llmCleanup] === "true");
+    setCleanupIntensity(
+      parseCleanupIntensity(settings[SETTINGS_KEYS.cleanupIntensity]),
+    );
+    const prompt = settings[SETTINGS_KEYS.cleanupCustomPrompt];
+    if (typeof prompt === "string") {
+      setCleanupCustomPrompt(prompt);
+      setSavedCleanupCustomPrompt(prompt);
+    }
+    setPersonalTone(
+      parseCleanupPersonalTone(settings[SETTINGS_KEYS.cleanupPersonalTone]),
+    );
+    setWorkTone(parseCleanupWorkTone(settings[SETTINGS_KEYS.cleanupWorkTone]));
+    setEmailTone(
+      parseCleanupEmailTone(settings[SETTINGS_KEYS.cleanupEmailTone]),
+    );
+    setOverallTone(
+      parseCleanupOverallTone(settings[SETTINGS_KEYS.cleanupOverallTone]),
+    );
+    setAssignments(
+      normalizeManagedAssignments(
+        parseCleanupAppAssignments(
+          settings[SETTINGS_KEYS.cleanupAppAssignments],
+        ),
+      ),
+    );
+  }, [settingsQuery.data]);
+
+  const reload = useCallback(
+    () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: ["models", "configured"] }),
+      ]),
+    [queryClient],
+  );
 
   const saveSetting = useCallback(async (key: string, value: string) => {
     // The Hono client does not throw on non-2xx — surface server rejections so
@@ -343,13 +375,13 @@ export default function TonePage(): React.JSX.Element {
 
       await saveSetting(SETTINGS_KEYS.llmCleanup, "true");
       setLlmCleanup(true);
-      await loadData();
+      await reload();
     } catch (err) {
       console.error("Failed to enable cleanup:", err);
     } finally {
       setUsingCloud(false);
     }
-  }, [cloudAuth, loadData, saveSetting, usingCloud]);
+  }, [cloudAuth, reload, saveSetting, usingCloud]);
 
   const selectCleanupMode = useCallback(
     (next: CleanupCardValue) => {
@@ -520,7 +552,6 @@ export default function TonePage(): React.JSX.Element {
               onSaveCustomPrompt={() => void saveCleanupCustomPrompt()}
               onResetToPreset={resetToPresetMode}
               savingCustomPrompt={savingCustomPrompt}
-              disabled={!llmCleanup}
             />
           </TabsContent>
 
@@ -539,7 +570,6 @@ export default function TonePage(): React.JSX.Element {
               allAssignments={assignments}
               onAddAssignment={addAssignment}
               onRemoveAssignment={removeAssignment}
-              disabled={!llmCleanup}
             />
           </TabsContent>
 
@@ -556,7 +586,6 @@ export default function TonePage(): React.JSX.Element {
               allAssignments={assignments}
               onAddAssignment={addAssignment}
               onRemoveAssignment={removeAssignment}
-              disabled={!llmCleanup}
             />
           </TabsContent>
 
@@ -573,7 +602,6 @@ export default function TonePage(): React.JSX.Element {
               allAssignments={assignments}
               onAddAssignment={addAssignment}
               onRemoveAssignment={removeAssignment}
-              disabled={!llmCleanup}
             />
           </TabsContent>
 
@@ -593,7 +621,6 @@ export default function TonePage(): React.JSX.Element {
               allAssignments={assignments}
               onAddAssignment={addAssignment}
               onRemoveAssignment={removeAssignment}
-              disabled={!llmCleanup}
             />
           </TabsContent>
         </Tabs>
@@ -752,6 +779,7 @@ function CleanupTonePanel({
           {CLEANUP_OPTIONS.map((option, index) => {
             const selected = option.value === value;
             return (
+              // biome-ignore lint/a11y/useSemanticElements: roving-tabindex radiogroup on styled buttons; <input type="radio"> would need a full restyle of the card layout.
               <button
                 key={option.value}
                 type="button"
@@ -1057,6 +1085,7 @@ function SubsetTonePanel<T extends string>({
           {options.map((option, index) => {
             const selected = option.value === value;
             return (
+              // biome-ignore lint/a11y/useSemanticElements: roving-tabindex radiogroup on styled buttons; <input type="radio"> would need a full restyle of the card layout.
               <button
                 key={option.value}
                 type="button"
@@ -1124,7 +1153,11 @@ function SubsetTonePanel<T extends string>({
             <Eyebrow text={t("tone.cleanup.preview.resultLabel")} accent />
             <span className="border-border/70 h-px flex-1 border-t" />
           </div>
-          {renderPreview(t(activeOption.sampleKey), false)}
+          {activeOption.value === "off" ? (
+            <NotePreview sample={t(activeOption.sampleKey)} selected={false} />
+          ) : (
+            renderPreview(t(activeOption.sampleKey), false)
+          )}
         </div>
       </div>
     </div>

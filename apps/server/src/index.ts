@@ -1,16 +1,24 @@
+import { createAppLogger } from "@freestyle-voice/utils";
 import { type ServerType, serve } from "@hono/node-server";
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
+import { logger } from "hono/logger";
+import { requestId } from "hono/request-id";
+import { timeout } from "hono/timeout";
 import { WebSocketServer } from "ws";
+import { authMiddleware, setAuthToken } from "./lib/auth.js";
+import { formatError } from "./lib/format-error.js";
 import { isTransientCloudError } from "./lib/freestyle-cloud.js";
+import { startHistoryRetentionSweep } from "./lib/history-store.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
   activateManagedMlxRuntimeForAppVersion,
   prefetchManagedMlxRuntimeForAppRelease,
 } from "./lib/mlx-asr/runtime.js";
 import { configureNetwork } from "./lib/network.js";
+import { pluginApiGuard } from "./lib/plugin-api-guard.js";
 import {
   disposeServerPlugins,
   initServerPlugins,
@@ -19,8 +27,23 @@ import {
 import { captureException, shutdownPosthog } from "./lib/posthog.js";
 import { trustedOriginMiddleware } from "./lib/trusted-origin.js";
 import routes from "./routes";
-import { autoStartMlxAsrServer } from "./routes/mlx-asr.js";
-import { autoStartWhisperServer } from "./routes/whisper.js";
+
+const httpLog = createAppLogger("http");
+
+// Lightweight CRUD routers get a request timeout. Transcription, post-process,
+// model downloads (whisper/mlx-asr), and the auth device-flow poll are
+// intentionally excluded — they can legitimately run longer than this window.
+const REQUEST_TIMEOUT_MS = 30_000;
+const TIMEOUT_PREFIXES = [
+  "/api/settings",
+  "/api/keys",
+  "/api/dictionary",
+  "/api/vocabulary",
+  "/api/history",
+  "/api/models",
+  "/api/plugins",
+  "/api/usage",
+];
 
 async function shutdownServer(): Promise<void> {
   await disposeServerPlugins().catch(() => {});
@@ -31,38 +54,94 @@ process.on("SIGINT", () => shutdownServer().finally(() => process.exit(0)));
 process.on("SIGTERM", () => shutdownServer().finally(() => process.exit(0)));
 
 /**
- * Build the Hono app with plugin middleware injected in resolved order between
- * the hardcoded security middleware and routes. Called after plugins are loaded
- * so `middleware` contributions are available at construction time.
+ * A stable middleware that dispatches the *current* plugin middleware chain
+ * (read from the live registry on every request) in resolved order. Mounting
+ * this once at construction — instead of spreading the middleware array in —
+ * means a runtime `reloadServerPlugins()` is observed immediately: a
+ * newly-enabled plugin's routes become reachable, and a disabled plugin's stop
+ * responding, all without reconstructing the app or restarting the server.
+ *
+ * Each plugin middleware may short-circuit (return a `Response`) or call its
+ * own `next()` to defer to the following one; when the whole chain defers, the
+ * outer `next()` hands off to the app's routes.
  */
-function createApp(pluginMiddleware: MiddlewareHandler[] = []) {
+const pluginMiddlewareDispatcher: MiddlewareHandler = async (c, next) => {
+  const chain = plugins().collectMiddleware();
+  if (chain.length === 0) return next();
+
+  // Compose the chain so `next` at position i runs handler i+1, and the final
+  // `next` falls through to the app's own routes (the outer `next`).
+  const dispatch = (index: number): Promise<void> => {
+    if (index >= chain.length) return next() as Promise<void>;
+    return chain[index](c, () => dispatch(index + 1)) as Promise<void>;
+  };
+  return dispatch(0);
+};
+
+/**
+ * Build the Hono app. Plugin middleware is dispatched from the *live* registry
+ * per request (see {@link pluginMiddlewareDispatcher}) rather than baked in at
+ * construction, so enabling/installing a plugin at runtime (via
+ * `reloadServerPlugins()`) mounts its contributed routes without a restart.
+ */
+function createApp() {
   const base = new Hono()
     .use(trustedOriginMiddleware)
-    // CORS for renderer requests (skip WebSocket upgrades)
-    .use((c, next) => {
-      if (c.req.header("upgrade")?.toLowerCase() === "websocket") {
-        return next();
-      }
-      return cors()(c, next);
-    });
+    // Confine plugin-UI-originated requests to their own plugin namespace, so a
+    // same-origin plugin page can't reach keys/auth/settings or other plugins.
+    .use(pluginApiGuard)
+    // CORS for renderer requests. Must run BEFORE auth: the desktop renderer
+    // talks to a remote server cross-origin (app:// -> http://remote), so any
+    // request with an Authorization header triggers an OPTIONS preflight that
+    // carries no token. cors() answers the preflight and short-circuits it, so
+    // auth never rejects it; real requests still fall through to auth.
+    .use(cors())
+    // Bearer-token auth for standalone/remote deployments. A no-op when no
+    // token is configured (the default loopback Electron case), so it never
+    // affects the in-process server.
+    .use(authMiddleware)
+    // Correlation id per request (also surfaced via the X-Request-Id header).
+    .use(requestId())
+    // Access log — routed through the app logger at debug level, so it shows in
+    // dev but stays quiet in production. Only method/path/status are logged.
+    .use(
+      logger((message, ...rest) => httpLog.debug([message, ...rest].join(" "))),
+    );
 
-  // Mount plugin middleware in resolved order (enforce: pre → none → post).
-  for (const mw of pluginMiddleware) {
-    base.use(mw);
+  // Request timeout on lightweight CRUD routers only (see TIMEOUT_PREFIXES).
+  for (const prefix of TIMEOUT_PREFIXES) {
+    base.use(prefix, timeout(REQUEST_TIMEOUT_MS));
+    base.use(`${prefix}/*`, timeout(REQUEST_TIMEOUT_MS));
   }
+
+  // Dispatch plugin middleware from the live registry, so a runtime reload
+  // (enable/disable/install) takes effect on the next request without a restart.
+  base.use(pluginMiddlewareDispatcher);
 
   const app = base
     .onError((err, c) => {
       // Let Hono's own exceptions (e.g. bearerAuth's 401) keep their response,
       // but still report genuine server errors.
       if (err instanceof HTTPException) {
-        if (err.status >= 500) captureException(err);
+        if (err.status >= 500) {
+          httpLog.error(
+            `${c.req.method} ${c.req.path} -> ${err.status}: ${formatError(err)}`,
+          );
+          captureException(err);
+        }
         const res = err.getResponse();
         // Preserve CORS so the cross-origin renderer can read auth errors.
         const origin = c.req.header("origin");
         if (origin) res.headers.set("Access-Control-Allow-Origin", origin);
         return res;
       }
+      // Always log the failure locally so it's visible in dev and captured in
+      // the diagnostics log file — otherwise a 500 only shows as a status code
+      // in the access log with no detail. `captureException` (below) is gated,
+      // but local logging never is.
+      httpLog.error(
+        `${c.req.method} ${c.req.path} -> 500: ${formatError(err)}`,
+      );
       // Transient network faults (e.g. `fetch failed` / ECONNRESET when calling
       // Freestyle Cloud) and upstream 5xx responses aren't app defects. Every
       // route already guards its own reporting; guard here too so anything that
@@ -86,6 +165,12 @@ export interface StartServerOptions {
    * (e.g. when running the server standalone inside a container/VM).
    */
   host?: string;
+  /**
+   * Optional bearer token required on all requests (except `/api/health`).
+   * Empty/undefined disables auth — appropriate for the loopback Electron
+   * server. Set it for standalone/remote deployments exposed on a network.
+   */
+  token?: string;
 }
 
 export interface RunningServer {
@@ -95,7 +180,7 @@ export interface RunningServer {
 }
 
 /**
- * Start the Freestyle HTTP server with WebSocket support.
+ * Start the Freestyle HTTP server.
  *
  * Shared by the Electron main process (loopback, in-process) and the
  * standalone container entrypoint (see startup.ts).
@@ -106,21 +191,27 @@ export interface RunningServer {
 export async function startServer(
   options: StartServerOptions = {},
 ): Promise<RunningServer> {
-  const { port = 4649, host = "127.0.0.1" } = options;
+  const { port = 4649, host = "127.0.0.1", token } = options;
+
+  // Configure bearer-token auth before the app is built so authMiddleware picks
+  // it up. Empty/undefined keeps the server open (loopback Electron default).
+  setAuthToken(token);
 
   // Install the global network dispatcher (corporate proxy + custom CA) before
   // anything issues a fetch, so model downloads and cloud/API calls honor it.
   configureNetwork();
 
-  // Load plugins (built-in + user) before constructing the app so middleware
-  // contributions are mounted at the correct position in the chain.
+  // Load plugins (built-in + user) before serving. The app dispatches plugin
+  // middleware from the live registry per request, so later runtime reloads
+  // (enable/disable/install) take effect without reconstructing the app.
   await initServerPlugins();
 
-  const pluginMiddleware = plugins().collectMiddleware();
-  const app = createApp(pluginMiddleware);
-  const wss = new WebSocketServer({ noServer: true });
+  const app = createApp();
+
+  startHistoryRetentionSweep();
 
   return new Promise((resolve, reject) => {
+    const wss = new WebSocketServer({ noServer: true });
     const server = serve(
       {
         fetch: app.fetch,
@@ -137,7 +228,7 @@ export async function startServer(
   });
 }
 
-export { closeDb } from "./lib/db.js";
+export { closeDb, writeSetting } from "./lib/db.js";
 export { stopMlxServer } from "./lib/mlx-asr/server.js";
 export { configureNetwork } from "./lib/network.js";
 export {
@@ -155,8 +246,6 @@ export { captureException, shutdownPosthog } from "./lib/posthog.js";
 export { stopServer as stopWhisperServer } from "./lib/whisper/server.js";
 export {
   activateManagedMlxRuntimeForAppVersion,
-  autoStartMlxAsrServer,
-  autoStartWhisperServer,
   prefetchManagedMlxRuntimeForAppRelease,
   reconcileUnsupportedMlxVoiceDefault,
 };

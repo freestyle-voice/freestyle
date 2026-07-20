@@ -108,7 +108,7 @@
       "permissions": "Permissions",
       "data": "Data",
       "network": "Network",
-      "developer": "Developer"
+      "experimental": "Experimental"
     },
     "application": {
       "autoUpdate": "Automatic updates",
@@ -159,9 +159,6 @@
       "outputModeDesc": "Paste into the active app, or copy to clipboard.",
       "outputModePaste": "Paste into app",
       "outputModeClipboard": "Copy to clipboard",
-      "transcriptionPrompt": "Transcription prompt",
-      "transcriptionPromptDesc": "List domain terms, names, or jargon to nudge the speech model toward better accuracy.",
-      "transcriptionPromptPlaceholder": "e.g. TypeScript, React, Kubernetes, JIRA…",
       "sound": "Sound feedback",
       "soundDesc": "Soft chimes at the start and end of recording.",
       "needsModifier": "Hotkeys need a modifier or side mouse button"
@@ -191,6 +188,13 @@
     "data": {
       "pauseHistory": "Pause history",
       "pauseHistoryDesc": "Stop saving new transcription sessions to history until you turn this off.",
+      "autoDelete": "Auto-delete history",
+      "autoDeleteDesc": "Automatically delete saved sessions older than the selected period. Runs once a day.",
+      "autoDeleteNever": "Never",
+      "autoDelete7": "After 7 days",
+      "autoDelete30": "After 30 days",
+      "autoDeleteCustom": "Custom",
+      "autoDeleteDays": "days",
       "history": "Transcription history",
       "historyDesc": "Permanently delete every saved session — this can't be undone.",
       "clearHistory": "Clear history",
@@ -211,17 +215,17 @@
       "saved": "Saved",
       "invalidProxy": "Enter a valid http://, https:// or socks:// URL, or leave it blank.",
       "invalidCaCert": "Enter a valid certificate file path, or leave it blank.",
-      "envNote": "The app also honors HTTP_PROXY, HTTPS_PROXY, NO_PROXY, NODE_EXTRA_CA_CERTS and SSL_CERT_FILE from the environment."
-    },
-    "developer": {
-      "mcp": "MCP server",
-      "mcpDesc": "Freestyle runs a local Model Context Protocol server so an AI agent (Claude Desktop, Cursor, etc.) can manage your dictionary, vocabulary, and format rules. Add the connection below to your MCP client.",
-      "mcpUrl": "Server URL",
-      "mcpConfig": "Client config (HTTP)",
-      "mcpRemoteConfig": "Client config (stdio via mcp-remote)",
-      "mcpRemoteNote": "Use this form for clients that don't support HTTP MCP servers directly, such as Claude Desktop.",
-      "copy": "Copy",
-      "copied": "Copied"
+      "envNote": "The app also honors HTTP_PROXY, HTTPS_PROXY, NO_PROXY, NODE_EXTRA_CA_CERTS and SSL_CERT_FILE from the environment.",
+      "server": "Server",
+      "serverDesc": "Use the built-in local server, or connect to a self-hosted Freestyle server.",
+      "serverTokenPlaceholder": "Access token (optional)",
+      "usingLocal": "Using the built-in local server",
+      "testConnection": "Test",
+      "resetToLocal": "Reset to local",
+      "statusTesting": "Testing…",
+      "statusOk": "Connected",
+      "statusUnreachable": "Couldn't reach that server",
+      "statusUnauthorized": "Invalid or missing access token"
     }
   },
   "today": {
@@ -245,7 +249,22 @@
     "presetToday": "Today",
     "presetLast7": "Last 7 Days",
     "presetLast30": "Last 30 Days",
+    "presetAllTime": "All Time",
     "clearAll": "Clear All",
+    "reset": "Reset",
+    "dateRangeLabel": "Date range",
+    "viewLabel": "View",
+    "diffToggle": "Diff mode",
+    "diffToggleDesc": "Highlight what AI cleanup changed",
+    "aiEditToggle": "AI edits",
+    "aiEditToggleDesc": "Show cleaned text instead of the raw transcript",
+    "nerdToggle": "Stats for nerds",
+    "nerdToggleDesc": "Show tokens, latency and words per minute",
+    "tokensInStat": "tokens in",
+    "tokensOutStat": "tokens out",
+    "nerdWpm": "{{n}} wpm",
+    "nerdTok": "{{in}}→{{out}} tok",
+    "nerdCompute": "{{label}} compute",
     "done": "Done",
     "filtersBtn": "Filters",
     "timeLabelPast7": "past 7 days",
@@ -435,6 +454,11 @@
           "title": "Very casual",
           "desc": "Lowercase and shorthand.",
           "sample": "running like 10 min late be there soon"
+        },
+        "off": {
+          "title": "Off",
+          "desc": "No styling — just clean text.",
+          "sample": "Hey, I'm running about 10 minutes late. I'll be there soon."
         }
       }
     },
@@ -462,6 +486,11 @@
           "title": "Formal",
           "desc": "Formal and full.",
           "sample": "I reviewed the document. A few revisions are still required, particularly in the introduction and footer links."
+        },
+        "off": {
+          "title": "Off",
+          "desc": "No styling — just clean text.",
+          "sample": "I reviewed the doc. A couple changes are still needed: tighten the intro and update the footer links."
         }
       }
     },
@@ -489,6 +518,11 @@
           "title": "Formal",
           "desc": "Formal and structured.",
           "sample": "Hi Sam,\n\nI'm writing to confirm our meeting on Thursday at 2:00 PM. I will send the revised plan tomorrow morning. Please let me know if there is anything else you would like included.\n\nThank you,"
+        },
+        "off": {
+          "title": "Off",
+          "desc": "No email formatting — just clean text.",
+          "sample": "Hi Sam, just confirming we're still on for Thursday at 2. I'll send the revised plan tomorrow morning. Let me know if you want anything else added. Thanks."
         }
       }
     },
@@ -514,6 +548,11 @@
           "title": "Professional",
           "desc": "Polished and composed.",
           "sample": "I've pushed the fix; it should be ready to test now."
+        },
+        "off": {
+          "title": "Off",
+          "desc": "No styling — just clean text.",
+          "sample": "Just pushed the fix. Should be good to test now."
         }
       }
     }
@@ -524,7 +563,6 @@
     "apiKeys": "API keys",
     "noApiKeys": "No API keys yet — choose a cloud model above and you'll be prompted for a key.",
     "onDevice": "On-device",
-    "onDeviceNoKey": "No key needed · runs locally",
     "keyInvalid": "Key invalid — update or delete",
     "keyStored": "Key stored in keychain",
     "keyStoredWithHint": "Key {{hint}} stored in keychain",
@@ -535,6 +573,43 @@
     "deleteProviderTitle": "Delete provider",
     "deleteProviderMsgBase": "Delete the <b>{{provider}}</b> API key? This also removes all configured models for this provider",
     "deleteProviderCurrentSuffix": ", including a model you're currently using",
+    "pair": {
+      "transcriptionKicker": "Transcription · required",
+      "cleanupKicker": "AI cleanup · optional",
+      "cleanupKickerLocked": "AI cleanup · included",
+      "changeVoice": "Change voice transcription model",
+      "changeVoiceShort": "Change model",
+      "change": "Change",
+      "pickModel": "Pick a model",
+      "noneSelected": "None selected",
+      "via": "via",
+      "includedWithFreestyle": "Included with Freestyle Transcribe",
+      "configureWarming": "Configure model warming"
+    },
+    "picker": {
+      "transcription": "Transcription",
+      "cleanup": "AI cleanup",
+      "freestyleTranscribe": "Freestyle Transcribe",
+      "recommended": "Recommended",
+      "managedSignedIn": "Managed cloud · signed in",
+      "managedSignIn": "Managed cloud · sign in once, no API key",
+      "freestyleBundleSignedIn": "Managed cloud · transcription and AI cleanup included",
+      "freestyleBundleSignIn": "Managed cloud · sign in once · transcription and cleanup included",
+      "onDevice": "On {{phrase}}",
+      "yourApiKey": "Your API key",
+      "unavailableOnDevice": "Unavailable on this device",
+      "modelCount": "{{count}} models",
+      "cloudModelCount": "{{count}} cloud models",
+      "byokProviders": "Groq, OpenAI, and more",
+      "ollamaHint": "Ollama, LM Studio…",
+      "browseLocalVoice": "Browse on-device transcription models",
+      "browseByokVoice": "Browse cloud transcription models with your API key",
+      "browseLocalCleanup": "Browse on-device cleanup models",
+      "browseByokCleanup": "Browse cloud cleanup models with your API key",
+      "openModelSource": "Open model source"
+    },
+    "keyUpdate": "Update API key",
+    "keyDelete": "Delete provider",
     "cleanup": {
       "title": "Cleanup intensity",
       "levelLow": "Low",
@@ -577,19 +652,23 @@
       "installed": "Installed",
       "browse": "Browse"
     },
-    "loading": "Loading plugins…",
     "emptyTitle": "No plugins yet",
     "empty": "Install a plugin to add features. Browse the available ones or add your own.",
     "missingBadge": "Missing",
     "missingHint": "Listed but not installed on disk. Uninstall to remove it.",
-    "open": "Open",
     "more": "More options",
     "install": "Install",
     "installing": "Installing…",
     "update": "Update",
     "updating": "Updating…",
     "updateAvailable": "v{{version}} available",
-    "uninstall": "Uninstall plugin",
+    "uninstall": "Uninstall",
+    "uninstallConfirm": {
+      "title": "Uninstall {{name}}?",
+      "description": "All data and settings associated with this plugin will be deleted. This action cannot be undone.",
+      "dontAskAgain": "Don't ask me again",
+      "cancel": "Cancel"
+    },
     "enablePlugin": "Enable plugin",
     "disablePlugin": "Disable plugin",
     "searchPlaceholder": "Search plugins…",

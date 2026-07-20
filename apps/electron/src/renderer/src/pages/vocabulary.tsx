@@ -3,6 +3,7 @@ import {
   createVocabularySchema,
 } from "@freestyle-voice/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { DragSpacer } from "@renderer/components/drag-spacer";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { getClient } from "@renderer/lib/api";
@@ -21,7 +22,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -230,15 +231,9 @@ export default function VocabularyPage(): React.JSX.Element {
   const isEmpty = total === 0 && !search;
 
   return (
-    <div
-      className="flex h-full min-h-0 flex-col"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    >
-      <div className="h-7 shrink-0" />
-      <div
-        className="responsive-page-scroll flex-1 overflow-auto"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      >
+    <div className="flex h-full min-h-0 flex-col">
+      <DragSpacer />
+      <div className="responsive-page-scroll flex-1 overflow-auto">
         <PageHeader title={t("vocabulary.title")} />
 
         {isEmpty && !showForm ? (
@@ -496,7 +491,7 @@ function FormField({
   );
 }
 
-function EntryRow({
+const EntryRow = memo(function EntryRow({
   entry,
   isLast,
   onEdit,
@@ -546,7 +541,7 @@ function EntryRow({
       </div>
     </div>
   );
-}
+});
 
 function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
   const { t } = useTranslation();

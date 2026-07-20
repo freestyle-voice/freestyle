@@ -61,7 +61,7 @@
       {
         "group": "Advanced",
         "icon": "settings",
-        "pages": ["api-reference", "mcp", "self-hosting"]
+        "pages": ["api-reference", "self-hosting"]
       }
     ],
     "global": {

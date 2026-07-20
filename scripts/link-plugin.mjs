@@ -183,7 +183,7 @@ fs.mkdirSync(devDir, { recursive: true });
 const devPkg = {
   name: devName(pluginName),
   version: pkg.version || "0.0.0-dev",
-  description: `[DEV] ${pkg.description || pluginName}`,
+  description: pkg.description || pluginName,
   main: pkg.main || "dist/index.js",
 };
 

@@ -10,6 +10,14 @@ PYTHON_BIN="${PYTHON_BIN:-python3.12}"
 PYINSTALLER_VERSION="${PYINSTALLER_VERSION:-6.20.0}"
 MLX_AUDIO_VERSION="${MLX_AUDIO_VERSION:-0.4.3}"
 HUGGINGFACE_HUB_VERSION="${HUGGINGFACE_HUB_VERSION:-1.17.0}"
+# transformers 5.13.0 rewrote AutoTokenizer.register() to require a config class; mlx-lm still
+# registers with a string at import time, so any mlx-lm import raises
+# "AttributeError: 'str' object has no attribute '__module__'" and the worker exits code 1.
+# Pin below 5.13 until mlx-lm's fix ships. Working band: transformers>=5.7,<5.13.
+# Refs: freestyle-voice/freestyle#403, ml-explore/mlx-lm#1458.
+# Any dependency change here must also update MLX_WORKER_BUILD_SPEC in
+# apps/server/src/lib/mlx-asr/runtime.ts, or installed workers never re-download.
+TRANSFORMERS_SPEC="${TRANSFORMERS_SPEC:->=5.7,<5.13}"
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   echo "Python 3.12 is required to build the MLX ASR worker." >&2
@@ -22,6 +30,7 @@ fi
 "${VENV_DIR}/bin/python" -m pip install -U \
   "pyinstaller==${PYINSTALLER_VERSION}" \
   "mlx-audio==${MLX_AUDIO_VERSION}" \
+  "transformers${TRANSFORMERS_SPEC}" \
   "huggingface_hub[hf_xet]==${HUGGINGFACE_HUB_VERSION}"
 
 rm -rf "${ROOT_DIR}/build/mlx_asr_worker" "${DIST_DIR}/mlx_asr_worker"

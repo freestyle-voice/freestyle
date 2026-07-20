@@ -42,17 +42,19 @@ import {
 } from "@renderer/lib/models";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS, PLATFORM } from "@renderer/lib/platform";
+import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   Check,
   ChevronLeft,
   ClipboardPaste,
+  ExternalLink,
   HardDrive,
   Key,
   Keyboard,
   Loader2,
-  LogIn,
   Mic,
   Shield,
   X,
@@ -89,8 +91,18 @@ type LinuxSetup = {
 const RECOMMENDED_MLX_DEF = "qwen3-0.6b-8bit";
 const RECOMMENDED_WHISPER_DEF = "small-q5_1";
 
+/** True while any local model is downloading or verifying. */
+function hasActiveDownload(
+  models: { status: string }[] | undefined | null,
+): boolean {
+  return !!models?.some(
+    (m) => m.status === "downloading" || m.status === "verifying",
+  );
+}
+
 export default function OnboardingPage(): React.JSX.Element {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>("cloud");
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -118,10 +130,6 @@ export default function OnboardingPage(): React.JSX.Element {
     string | null
   >(null);
   const [selectedMlxDefId, setSelectedMlxDefId] = useState<string | null>(null);
-  const [mlxStatus, setMlxStatus] = useState<MlxAsrStatus | null>(null);
-  const [whisperStatus, setWhisperStatus] = useState<WhisperStatus | null>(
-    null,
-  );
   const [apiKeys, setApiKeys] = useState<Set<string>>(new Set());
   const [language, setLanguage] = useState<string>(defaultLanguage);
   const autoPicked = useRef(false);
@@ -132,11 +140,6 @@ export default function OnboardingPage(): React.JSX.Element {
     defId: string;
     engine: "whisper" | "mlx";
   } | null>(null);
-  // True once we know whether MLX can run on this machine — so the auto-pick
-  // waits for the Qwen-vs-Whisper decision instead of settling on Whisper
-  // Base while the MLX status request is still in flight.
-  const [mlxResolved, setMlxResolved] = useState(false);
-
   // Full model selector overlay (cloud + everything else)
   const [showSelector, setShowSelector] = useState(false);
   const [selectorSource, setSelectorSource] = useState<"cloud" | "local">(
@@ -180,7 +183,7 @@ export default function OnboardingPage(): React.JSX.Element {
       ? "Release to save · Esc to cancel"
       : "Press a modifier or side mouse button… · Esc to cancel";
 
-  // Load permissions + saved hotkey
+  // Load permissions
   useEffect(() => {
     resolveMicStatus()
       .then(setMicStatus)
@@ -195,14 +198,15 @@ export default function OnboardingPage(): React.JSX.Element {
         .then((setup) => setup && setLinuxSetup(setup))
         .catch(() => {});
     }
-    getClient()
-      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.hotkey } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value) setHotkey(data.value as string);
-      })
-      .catch(() => {});
   }, []);
+
+  // Saved hotkey, read from the shared settings cache (deduped with every other
+  // settings consumer instead of a dedicated GET /api/settings/:key).
+  const { data: settingsData } = useQuery(settingsQueryOptions());
+  useEffect(() => {
+    const value = settingsData?.[SETTINGS_KEYS.hotkey];
+    if (value) setHotkey(value);
+  }, [settingsData]);
 
   useEffect(() => {
     return window.api?.onFullscreenChanged(setIsFullscreen);
@@ -245,66 +249,46 @@ export default function OnboardingPage(): React.JSX.Element {
       .catch(() => {});
   }, []);
 
-  const loadWhisperStatus = useCallback(async () => {
-    try {
+  // Whisper / MLX status via React Query. refetchInterval replaces the manual
+  // 500ms setInterval polling: it polls only while a download/verify is active
+  // and stops automatically once everything settles.
+  const whisperQuery = useQuery({
+    queryKey: ["whisper-status"],
+    queryFn: async () => {
       const res = await getClient().api.whisper.status.$get();
-      if (res.ok) {
-        const data: WhisperStatus = await res.json();
-        setWhisperStatus(data);
-        return data;
-      }
-    } catch {}
-    return null;
-  }, []);
+      if (!res.ok) throw new Error("Failed to load whisper status");
+      return (await res.json()) as WhisperStatus;
+    },
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      return d && (d.binaryDownloading || hasActiveDownload(d.models))
+        ? 500
+        : false;
+    },
+    staleTime: 0,
+  });
 
-  const loadMlxStatus = useCallback(async (refresh = false) => {
-    try {
-      const res = refresh
-        ? await getClient().api["mlx-asr"].status.$get({
-            query: { refresh: "1" },
-          })
-        : await getClient().api["mlx-asr"].status.$get();
-      if (res.ok) {
-        const data: MlxAsrStatus = await res.json();
-        setMlxStatus(data);
-        return data;
-      }
-    } catch {
-    } finally {
-      // Settled — whether the probe succeeded or failed, the auto-pick can
-      // now proceed (a failed probe means MLX isn't usable → Whisper Base).
-      setMlxResolved(true);
-    }
-    return null;
-  }, []);
+  const mlxQuery = useQuery({
+    queryKey: ["mlx-status"],
+    enabled: IS_MAC,
+    queryFn: async () => {
+      const res = await getClient().api["mlx-asr"].status.$get();
+      if (!res.ok) throw new Error("Failed to load MLX ASR status");
+      return (await res.json()) as MlxAsrStatus;
+    },
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      return d && hasActiveDownload(d.models) ? 500 : false;
+    },
+    staleTime: 0,
+  });
 
-  useEffect(() => {
-    loadWhisperStatus();
-    // MLX only exists on Apple Silicon; elsewhere there's nothing to wait for.
-    if (IS_MAC) loadMlxStatus();
-    else setMlxResolved(true);
-  }, [loadWhisperStatus, loadMlxStatus]);
-
-  // Poll while a download is active (whisper or mlx)
-  useEffect(() => {
-    const hasActiveDownload =
-      whisperStatus?.binaryDownloading ||
-      whisperStatus?.models.some(
-        (m) => m.status === "downloading" || m.status === "verifying",
-      );
-    if (!hasActiveDownload) return;
-    const interval = setInterval(() => loadWhisperStatus(), 500);
-    return () => clearInterval(interval);
-  }, [whisperStatus, loadWhisperStatus]);
-
-  useEffect(() => {
-    const hasActiveDownload = mlxStatus?.models?.some(
-      (m) => m.status === "downloading" || m.status === "verifying",
-    );
-    if (!hasActiveDownload) return;
-    const interval = setInterval(() => loadMlxStatus(), 500);
-    return () => clearInterval(interval);
-  }, [mlxStatus, loadMlxStatus]);
+  const whisperStatus = whisperQuery.data ?? null;
+  const mlxStatus = mlxQuery.data ?? null;
+  // True once we know whether MLX can run — the auto-pick waits for the
+  // Qwen-vs-Whisper decision instead of settling on Whisper Base while the MLX
+  // probe is in flight. Non-Mac has nothing to wait for.
+  const mlxResolved = !IS_MAC || mlxQuery.isFetched;
 
   const requestMic = useCallback(async () => {
     capture("onboarding_mic_permission_clicked", { action: "allow" });
@@ -479,9 +463,9 @@ export default function OnboardingPage(): React.JSX.Element {
       await getClient().api.whisper.models[":model"].download.$post({
         param: { model: modelId },
       });
-      loadWhisperStatus();
+      void queryClient.invalidateQueries({ queryKey: ["whisper-status"] });
     },
-    [loadWhisperStatus],
+    [queryClient],
   );
 
   const downloadMlxModel = useCallback(
@@ -489,9 +473,9 @@ export default function OnboardingPage(): React.JSX.Element {
       await getClient().api["mlx-asr"].models[":model"].download.$post({
         param: { model: modelId },
       });
-      loadMlxStatus();
+      void queryClient.invalidateQueries({ queryKey: ["mlx-status"] });
     },
-    [loadMlxStatus],
+    [queryClient],
   );
 
   const downloadLocalModel = useCallback(
@@ -811,7 +795,6 @@ export default function OnboardingPage(): React.JSX.Element {
             draftKeys={draftKeys}
             captureHint={captureHint}
             modelReady={chosenReady}
-            modelName={chosen?.name}
             localModel={showLocalSetupPanel ? localSetupModel : undefined}
             onDownloadLocal={startLocalDownload}
             onRetryLocal={retryLocalDownload}
@@ -823,10 +806,6 @@ export default function OnboardingPage(): React.JSX.Element {
                   : "notReady"
                 : null
             }
-            onOpenSelector={() => {
-              capture("onboarding_model_selector_opened");
-              setShowSelector(true);
-            }}
             onStartRecording={() => {
               capture("onboarding_hotkey_change_started");
               startHotkeyRecording();
@@ -864,9 +843,17 @@ export default function OnboardingPage(): React.JSX.Element {
           onDownload={downloadLocalModel}
           onRetryLocal={(defId, engine) => {
             if (engine === "mlx") {
-              void loadMlxStatus(true).then((data) => {
-                if (data?.canRun) void downloadMlxModel(defId);
-              });
+              // Force a fresh MLX capability probe, prime the cache, then
+              // download only if the machine can actually run it.
+              void (async () => {
+                const res = await getClient()
+                  .api["mlx-asr"].status.$get({ query: { refresh: "1" } })
+                  .catch(() => null);
+                if (!res?.ok) return;
+                const data = (await res.json()) as MlxAsrStatus;
+                queryClient.setQueryData(["mlx-status"], data);
+                if (data.canRun) void downloadMlxModel(defId);
+              })();
             } else {
               downloadWhisperModel(defId);
             }
@@ -1146,24 +1133,30 @@ function CloudStep({
           <Check className="text-accent-foreground size-4 shrink-0" />
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={onSignIn}
-          disabled={signingIn}
-          className="mt-6 flex w-full items-center justify-center gap-2.5 rounded-[11px] bg-primary px-5 py-3 text-[14px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-60"
-        >
-          {signingIn ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              Signing in…
-            </>
-          ) : (
-            <>
-              <LogIn className="size-[18px]" />
-              Sign in / Create account
-            </>
-          )}
-        </button>
+        <>
+          <p className="text-muted-foreground mt-3 max-w-[340px] text-[14px] leading-relaxed">
+            Do work 4X faster with voice. Sign in to get started.
+          </p>
+
+          <button
+            type="button"
+            onClick={onSignIn}
+            disabled={signingIn}
+            className="mt-7 flex w-full items-center justify-center gap-2.5 rounded-[11px] bg-primary px-5 py-3 text-[14px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-60"
+          >
+            {signingIn ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Opening browser…
+              </>
+            ) : (
+              <>
+                Sign in via browser
+                <ExternalLink className="size-4 opacity-70" />
+              </>
+            )}
+          </button>
+        </>
       )}
 
       {error && (
@@ -1178,15 +1171,19 @@ function CloudStep({
           <ArrowRight data-icon="inline-end" />
         </Button>
       ) : (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onSkip}
-          disabled={signingIn}
-          className="text-muted-foreground mt-2 h-auto px-2 py-1 text-[12px]"
-        >
-          Skip for now
-        </Button>
+        // Skipping sign-in is a local-development affordance only — in
+        // production the browser sign-in is the sole way past this step.
+        import.meta.env.DEV && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onSkip}
+            disabled={signingIn}
+            className="text-muted-foreground mt-2 h-auto px-2 py-1 text-[12px]"
+          >
+            Skip for now (dev)
+          </Button>
+        )
       )}
     </div>
   );
@@ -1606,13 +1603,11 @@ function TutorialStep({
   draftKeys,
   captureHint,
   modelReady,
-  modelName,
   localModel,
   onDownloadLocal,
   onRetryLocal,
   canFinish,
   finishBlockedReason,
-  onOpenSelector,
   onStartRecording,
   onCancelRecording,
   onDictation,
@@ -1624,13 +1619,11 @@ function TutorialStep({
   draftKeys: string[];
   captureHint: string;
   modelReady: boolean;
-  modelName?: string;
   localModel: VoiceItem | undefined;
   onDownloadLocal: () => void;
   onRetryLocal: () => void;
   canFinish: boolean;
   finishBlockedReason: "downloading" | "notReady" | null;
-  onOpenSelector: () => void;
   onStartRecording: () => void;
   onCancelRecording: () => void;
   onDictation: () => void;
@@ -1651,19 +1644,6 @@ function TutorialStep({
         onDownload={onDownloadLocal}
         onRetry={onRetryLocal}
       />
-
-      {/* The model is visible and changeable here — where it can be tested. */}
-      <div className="mt-3 flex justify-center">
-        <Button
-          variant="link"
-          onClick={onOpenSelector}
-          className="mono text-muted-foreground hover:text-foreground h-auto p-0 text-[11px] underline underline-offset-[3px]"
-        >
-          {modelReady && modelName
-            ? t("onboarding.tutorial.usingModel", { name: modelName })
-            : t("onboarding.tutorial.chooseModel")}
-        </Button>
-      </div>
 
       {/* Hotkey rebind — a single minimal control */}
       <div className="mt-5 flex justify-center">

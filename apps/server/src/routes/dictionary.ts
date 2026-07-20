@@ -1,6 +1,8 @@
 import {
   dictionarySchema,
   exportSchema,
+  importDictionarySchema,
+  querySchema,
   updateDictionarySchema,
 } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
@@ -16,19 +18,24 @@ interface DictionaryRow {
   updated_at: string;
 }
 
-const dictionary = new Hono()
-  .get("/", (c) => {
-    const db = getDb();
-    const limit = Math.min(Number(c.req.query("limit") || 50), 200);
-    const offset = Number(c.req.query("offset") || 0);
-    const search = c.req.query("search")?.trim() || "";
-    const orderByParam = c.req.query("orderBy") || "-created_at";
+const ALLOWED_ORDER_COLUMNS = new Set(["created_at", "updated_at", "key"]);
 
-    const desc = orderByParam.startsWith("-");
-    const column = desc ? orderByParam.slice(1) : orderByParam;
-    const allowedColumns = new Set(["created_at", "updated_at", "key"]);
-    const orderColumn = allowedColumns.has(column) ? column : "created_at";
-    const orderDir = desc ? "DESC" : "ASC";
+const dictionary = new Hono()
+  .get("/", zValidator("query", querySchema), (c) => {
+    const db = getDb();
+    const { limit, offset, search: rawSearch, orderBy } = c.req.valid("query");
+    const search = rawSearch?.trim() || "";
+
+    const orderColumn =
+      orderBy && ALLOWED_ORDER_COLUMNS.has(orderBy.column)
+        ? orderBy.column
+        : "created_at";
+    // Default ordering (no orderBy param) is newest-first.
+    const orderDir = orderBy
+      ? orderBy.order === "desc"
+        ? "DESC"
+        : "ASC"
+      : "DESC";
 
     let rows: DictionaryRow[];
     let countRow: { count: number };
@@ -152,16 +159,9 @@ const dictionary = new Hono()
         return c.json({ error: `Unsupported export type: ${type}` }, 400);
     }
   })
-  .post("/import", async (c) => {
+  .post("/import", zValidator("json", importDictionarySchema), (c) => {
     const db = getDb();
-    const body = await c.req.json<{ key: string; value: string }[]>();
-
-    if (!Array.isArray(body)) {
-      return c.json(
-        { error: "Expected a JSON array of {key, value} objects" },
-        400,
-      );
-    }
+    const body = c.req.valid("json");
 
     let imported = 0;
     let skipped = 0;

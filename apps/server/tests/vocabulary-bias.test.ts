@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { sonioxContextFromBias } from "../src/lib/streaming/transcribe-bias.js";
 import { buildAsrVocabularyBias } from "../src/lib/vocabulary-bias.js";
 
 function terms(count: number, prefix = "term"): string[] {
@@ -8,11 +7,9 @@ function terms(count: number, prefix = "term"): string[] {
 
 describe("buildAsrVocabularyBias", () => {
   describe("empty input", () => {
-    it("returns null when there are no terms and no context", () => {
+    it("returns null when there are no terms", () => {
       expect(buildAsrVocabularyBias("openai", "whisper-1", [])).toBeNull();
-      expect(
-        buildAsrVocabularyBias("deepgram", "nova-3", [], undefined, true),
-      ).toBeNull();
+      expect(buildAsrVocabularyBias("deepgram", "nova-3", [], true)).toBeNull();
     });
 
     it("returns null for unknown providers", () => {
@@ -36,30 +33,6 @@ describe("buildAsrVocabularyBias", () => {
         kind: "prompt",
         text: "Terms: TypeScript, Kubernetes.",
       });
-    });
-
-    it("includes context prompt with vocabulary terms", () => {
-      const bias = buildAsrVocabularyBias(
-        "openai",
-        "whisper-1",
-        ["Nguyen"],
-        "Medical dictation.",
-      );
-      expect(bias?.kind).toBe("prompt");
-      if (bias?.kind === "prompt") {
-        expect(bias.text).toContain("Medical dictation.");
-        expect(bias.text).toContain("Terms: Nguyen.");
-      }
-    });
-
-    it("returns context-only prompt when terms are empty", () => {
-      const bias = buildAsrVocabularyBias(
-        "openai",
-        "whisper-1",
-        [],
-        "Speak clearly.",
-      );
-      expect(bias).toEqual({ kind: "prompt", text: "Speak clearly." });
     });
 
     it("deduplicates terms case-insensitively", () => {
@@ -107,7 +80,6 @@ describe("buildAsrVocabularyBias", () => {
         "deepgram",
         "deepgram/nova-3",
         ["Freestyle", "Kubernetes"],
-        undefined,
         false,
       );
       expect(bias).toEqual({
@@ -121,7 +93,6 @@ describe("buildAsrVocabularyBias", () => {
         "deepgram",
         "nova-3-general",
         terms(40),
-        undefined,
         true,
       );
       expect(bias?.kind).toBe("deepgram-keyterms");
@@ -135,7 +106,6 @@ describe("buildAsrVocabularyBias", () => {
         "deepgram",
         "nova-3",
         terms(150),
-        undefined,
         false,
       );
       expect(bias?.kind).toBe("deepgram-keyterms");
@@ -149,7 +119,6 @@ describe("buildAsrVocabularyBias", () => {
         "deepgram",
         "nova-2",
         ["account number", "TypeScript"],
-        undefined,
         false,
       );
       expect(bias).toEqual({
@@ -163,18 +132,6 @@ describe("buildAsrVocabularyBias", () => {
         buildAsrVocabularyBias("deepgram", "whisper-large", ["Freestyle"]),
       ).toBeNull();
     });
-
-    it("ignores context prompt without terms", () => {
-      expect(
-        buildAsrVocabularyBias(
-          "deepgram",
-          "nova-3",
-          [],
-          "Medical dictation.",
-          false,
-        ),
-      ).toBeNull();
-    });
   });
 
   describe("elevenlabs", () => {
@@ -183,7 +140,6 @@ describe("buildAsrVocabularyBias", () => {
         "elevenlabs",
         "scribe_v2",
         ["Freestyle", "Nguyen"],
-        undefined,
         false,
       );
       expect(bias).toEqual({
@@ -203,7 +159,6 @@ describe("buildAsrVocabularyBias", () => {
         "elevenlabs",
         "scribe_v2_realtime",
         terms(60),
-        undefined,
         true,
       );
       expect(bias?.kind).toBe("elevenlabs-keyterms");
@@ -217,7 +172,6 @@ describe("buildAsrVocabularyBias", () => {
         "elevenlabs",
         "scribe_v2_realtime",
         ["abcdefghijklmnopqrstuvwxyz"],
-        undefined,
         true,
       );
       expect(bias).toEqual({
@@ -232,7 +186,6 @@ describe("buildAsrVocabularyBias", () => {
         "elevenlabs",
         "scribe_v2",
         [longTerm],
-        undefined,
         false,
       );
       expect(bias).toEqual({
@@ -253,99 +206,11 @@ describe("buildAsrVocabularyBias", () => {
         text: "Technical terms: TypeScript, Kubernetes",
       });
     });
-
-    it("includes context prompt for mlx", () => {
-      const bias = buildAsrVocabularyBias(
-        "local-mlx",
-        "qwen",
-        ["Nguyen"],
-        "Medical dictation.",
-      );
-      expect(bias?.kind).toBe("prompt");
-      if (bias?.kind === "prompt") {
-        expect(bias.text).toContain("Medical dictation.");
-        expect(bias.text).toContain("Technical terms: Nguyen");
-      }
-    });
-
-    it("returns context-only mlx prompt when terms are empty", () => {
-      const bias = buildAsrVocabularyBias(
-        "local-mlx",
-        "qwen",
-        [],
-        "Speak clearly.",
-      );
-      expect(bias).toEqual({ kind: "prompt", text: "Speak clearly." });
-    });
-  });
-
-  describe("soniox", () => {
-    it("maps vocabulary terms to soniox-context", () => {
-      const bias = buildAsrVocabularyBias(
-        "soniox",
-        "soniox/stt-rt-v4",
-        ["Freestyle", "Kubernetes"],
-        undefined,
-        true,
-      );
-      expect(bias).toEqual({
-        kind: "soniox-context",
-        terms: ["Freestyle", "Kubernetes"],
-      });
-    });
-
-    it("includes transcription prompt as context text", () => {
-      const bias = buildAsrVocabularyBias(
-        "soniox",
-        "soniox/stt-rt-v4",
-        ["Acme Corp"],
-        "Medical dictation about diabetes care.",
-        true,
-      );
-      expect(bias).toEqual({
-        kind: "soniox-context",
-        terms: ["Acme Corp"],
-        text: "Medical dictation about diabetes care.",
-      });
-    });
-
-    it("returns null when there is nothing to send", () => {
-      expect(
-        buildAsrVocabularyBias(
-          "soniox",
-          "soniox/stt-rt-v4",
-          [],
-          undefined,
-          true,
-        ),
-      ).toBeNull();
-    });
-  });
-});
-
-describe("sonioxContextFromBias", () => {
-  it("builds Soniox WebSocket context object", () => {
-    expect(
-      sonioxContextFromBias({
-        kind: "soniox-context",
-        terms: ["Celebrex", "Xanax"],
-        text: "Healthcare call.",
-      }),
-    ).toEqual({
-      terms: ["Celebrex", "Xanax"],
-      text: "Healthcare call.",
-    });
-  });
-
-  it("ignores non-soniox bias kinds", () => {
-    expect(
-      sonioxContextFromBias({ kind: "prompt", text: "Terms: foo." }),
-    ).toBeUndefined();
   });
 });
 
 describe("resolveAsrVocabularyBias", () => {
-  it("loads terms and settings from the database", async () => {
+  it("loads terms from the database", async () => {
     const { getDb } = await import("../src/lib/db.js");
     const { resolveAsrVocabularyBias } = await import(
       "../src/lib/vocabulary-bias.js"
@@ -356,15 +221,29 @@ describe("resolveAsrVocabularyBias", () => {
       "Freestyle",
       null,
     );
-    db.prepare(
-      "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    ).run("transcription_prompt", "Dictation context.");
 
     const bias = resolveAsrVocabularyBias("openai", "whisper-1", false);
     expect(bias?.kind).toBe("prompt");
     if (bias?.kind === "prompt") {
-      expect(bias.text).toContain("Dictation context.");
       expect(bias.text).toContain("Freestyle");
     }
+  });
+});
+
+describe("soniox", () => {
+  it("builds soniox-context bias with terms", () => {
+    const bias = buildAsrVocabularyBias("soniox", "stt-rt-v4", [
+      "Freestyle",
+      "Kubernetes",
+    ]);
+    expect(bias).toEqual({
+      kind: "soniox-context",
+      terms: ["Freestyle", "Kubernetes"],
+    });
+  });
+
+  it("returns null for empty terms", () => {
+    const bias = buildAsrVocabularyBias("soniox", "stt-rt-v4", []);
+    expect(bias).toBeNull();
   });
 });

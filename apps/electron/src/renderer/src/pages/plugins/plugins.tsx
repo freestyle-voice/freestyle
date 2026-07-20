@@ -1,3 +1,4 @@
+import { DragSpacer } from "@renderer/components/drag-spacer";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import {
@@ -10,20 +11,25 @@ import {
 import { Input } from "@renderer/components/ui/input";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import { usePersistentState } from "@renderer/hooks/use-persistent-state";
+import {
+  getPluginCatalog,
+  installPlugin,
+  listPlugins,
+  setPluginEnabled,
+  uninstallPlugin,
+} from "@renderer/lib/plugins-api";
 import type {
   PluginCatalogEntry,
   PluginInfo,
   PluginUpdateResult,
 } from "@shared/plugins";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowRight,
-  Loader2,
-  MoreHorizontal,
-  Puzzle,
-  Search,
-} from "lucide-react";
-import { useMemo, useState } from "react";
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { Loader2, MoreHorizontal, Puzzle, Search } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import {
@@ -31,6 +37,7 @@ import {
   resolvePluginIcon,
   usePluginUpdates,
 } from "./helpers";
+import { PluginsLoadingSkeleton } from "./plugin-skeletons";
 
 type Tab = "browse" | "installed";
 
@@ -49,25 +56,23 @@ export default function PluginsPage(): React.JSX.Element {
 
   const { data: plugins = [], isLoading: loading } = useQuery({
     queryKey: ["plugins"],
-    queryFn: () => window.api.refreshPlugins(),
+    queryFn: () => listPlugins(),
+    placeholderData: keepPreviousData,
   });
 
-  const setPlugins = (updated: PluginInfo[]) => {
-    queryClient.setQueryData(["plugins"], updated);
-  };
+  const setPlugins = useCallback(
+    (updated: PluginInfo[]) => {
+      queryClient.setQueryData(["plugins"], updated);
+    },
+    [queryClient],
+  );
 
   const { data: updatesMap } = usePluginUpdates(plugins);
 
   return (
-    <div
-      className="flex h-full min-h-0 flex-col"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    >
-      <div className="h-7 shrink-0" />
-      <div
-        className="responsive-page-scroll flex-1 overflow-auto"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      >
+    <div className="flex h-full min-h-0 flex-col">
+      <DragSpacer />
+      <div className="responsive-page-scroll flex-1 overflow-auto">
         <header className="mb-7">
           <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
             <span className="serif-italic text-primary">
@@ -98,7 +103,7 @@ export default function PluginsPage(): React.JSX.Element {
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t("plugins.searchPlaceholder")}
               aria-label={t("plugins.searchPlaceholder")}
-              className="h-9 pl-9 text-[13px]"
+              className="h-10 pl-9 text-[13px]"
             />
           </div>
         </div>
@@ -158,11 +163,7 @@ function InstalledTab({
   );
 
   if (loading) {
-    return (
-      <p className="text-muted-foreground py-10 text-center text-sm">
-        {t("plugins.loading")}
-      </p>
-    );
+    return <PluginsLoadingSkeleton />;
   }
   if (plugins.length === 0) {
     return (
@@ -214,19 +215,18 @@ function PluginCard({
   const queryClient = useQueryClient();
   const Icon = resolvePluginIcon(plugin.icon ?? plugin.pages[0]?.icon);
 
-  const page = plugin.pages[0];
-
   const [busy, setBusy] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const toggle = async (enabled: boolean): Promise<void> => {
-    onChange(await window.api.setPluginEnabled(plugin.specifier, enabled));
+    onChange(await setPluginEnabled(plugin.specifier, enabled));
   };
 
   const uninstall = async (): Promise<void> => {
     setBusy(true);
     try {
-      onChange(await window.api.uninstallPlugin(plugin.specifier));
+      onChange(await uninstallPlugin(plugin.specifier));
     } finally {
       setBusy(false);
     }
@@ -235,7 +235,7 @@ function PluginCard({
   const doUpdate = async (): Promise<void> => {
     setUpdating(true);
     try {
-      onChange(await window.api.installPlugin(plugin.specifier));
+      onChange(await installPlugin(plugin.specifier));
       // Invalidate the update-check cache so the badge disappears immediately.
       void queryClient.invalidateQueries({ queryKey: ["plugin-updates"] });
     } catch {
@@ -245,8 +245,14 @@ function PluginCard({
     }
   };
 
+  const isDev = plugin.slug.endsWith("-dev");
+
   return (
-    <div className="border-border bg-card hover:bg-card/70 flex w-full items-center gap-4 rounded-[14px] border p-5 transition-colors">
+    <button
+      type="button"
+      className="border-border bg-card hover:bg-card/70 flex w-full cursor-pointer items-center gap-4 rounded-[14px] border p-5 text-left transition-colors"
+      onClick={() => navigate(`/plugins/${plugin.slug}`)}
+    >
       <div className="border-border bg-secondary flex size-11 shrink-0 items-center justify-center rounded-[10px] border">
         <Icon
           className={
@@ -267,6 +273,14 @@ function PluginCard({
             <span className="mono text-muted-foreground text-[10px]">
               v{plugin.version}
             </span>
+          ) : null}
+          {isDev ? (
+            <Badge
+              variant="outline"
+              className="mono h-4 border-yellow-500/30 bg-yellow-500/15 px-1.5 text-[9px] text-yellow-700 uppercase tracking-[0.12em] dark:text-yellow-300"
+            >
+              Dev
+            </Badge>
           ) : null}
           {update?.updateAvailable ? (
             <Badge
@@ -294,7 +308,10 @@ function PluginCard({
         </p>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div
+        className="flex shrink-0 items-center gap-2"
+        onClickCapture={(e) => e.stopPropagation()}
+      >
         {!plugin.missing && update?.updateAvailable ? (
           <Button
             variant="outline"
@@ -306,18 +323,7 @@ function PluginCard({
             {updating ? t("plugins.updating") : t("plugins.update")}
           </Button>
         ) : null}
-        {!plugin.missing && page ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!plugin.enabled}
-            onClick={() => navigate(`/plugins/${plugin.slug}/${page.id}`)}
-          >
-            {t("plugins.open")}
-            <ArrowRight data-icon="inline-end" />
-          </Button>
-        ) : null}
-        <DropdownMenu>
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
@@ -331,11 +337,11 @@ function PluginCard({
             {!plugin.missing ? (
               <>
                 <DropdownMenuItem
-                  onClick={() => navigate(`/plugins/${plugin.slug}`)}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void toggle(!plugin.enabled);
+                  }}
                 >
-                  {t("plugins.detail.title")}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void toggle(!plugin.enabled)}>
                   {t(
                     plugin.enabled
                       ? "plugins.disablePlugin"
@@ -348,14 +354,17 @@ function PluginCard({
             <DropdownMenuItem
               variant="destructive"
               disabled={busy}
-              onClick={() => void uninstall()}
+              onClick={() => {
+                setMenuOpen(false);
+                void uninstall();
+              }}
             >
               {t("plugins.uninstall")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -374,10 +383,8 @@ function BrowseTab({
 
   const { data: catalog, isError: error } = useQuery({
     queryKey: ["plugin-catalog"],
-    queryFn: async () => {
-      const res = await window.api.getPluginCatalog();
-      return res.plugins;
-    },
+    queryFn: () => getPluginCatalog(),
+    placeholderData: keepPreviousData,
     retry: 1,
   });
 
@@ -402,11 +409,7 @@ function BrowseTab({
     );
   }
   if (!catalog) {
-    return (
-      <p className="text-muted-foreground py-10 text-center text-sm">
-        {t("plugins.loading")}
-      </p>
-    );
+    return <PluginsLoadingSkeleton />;
   }
   if (filtered.length === 0) {
     return (
@@ -452,7 +455,7 @@ function CatalogCard({
     setBusy(true);
     setError(null);
     try {
-      onChange(await window.api.installPlugin(entry.npmName));
+      onChange(await installPlugin(entry.npmName));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

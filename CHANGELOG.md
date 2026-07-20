@@ -1,4 +1,132 @@
 # Changelog
+## 0.5.2
+
+### New Features ✨
+
+- Restore streaming audio behind experimental flag by @MathurAditya724 in [#467](https://github.com/freestyle-voice/freestyle/pull/467)
+
+### Bug Fixes 🐛
+
+- (plugins) Replace plain text loading state with skeleton animations by @MathurAditya724 in [#469](https://github.com/freestyle-voice/freestyle/pull/469)
+- (settings) Invalidate history queries after clearing data by @MathurAditya724 in [#468](https://github.com/freestyle-voice/freestyle/pull/468)
+
+## 0.5.1
+
+### New Features ✨
+
+#### Plugins
+
+- Fetch catalog from cloud with static fallback by @MathurAditya724 in [#464](https://github.com/freestyle-voice/freestyle/pull/464)
+- Show plugin UI pages as sidebar nav items by @MathurAditya724 in [#463](https://github.com/freestyle-voice/freestyle/pull/463)
+
+#### Other
+
+- (server) Deepgram AI SDK provider + Freestyle Cloud connection prewarm by @MathurAditya724 in [#460](https://github.com/freestyle-voice/freestyle/pull/460)
+- Extract shared @freestyle-voice/stt package and migrate apps/server by @MathurAditya724 in [#446](https://github.com/freestyle-voice/freestyle/pull/446)
+
+### Bug Fixes 🐛
+
+- (settings) Reorder pill position options top-first by @MathurAditya724 in [#454](https://github.com/freestyle-voice/freestyle/pull/454)
+- Update cloud plugins endpoint URL by @MathurAditya724 in [#465](https://github.com/freestyle-voice/freestyle/pull/465)
+- MacOS Fn/paste hotkey desync and local server error logging by @MathurAditya724 in [#457](https://github.com/freestyle-voice/freestyle/pull/457)
+
+### Internal Changes 🔧
+
+#### Electron
+
+- Defer AI SDK loading and non-critical boot work by @MathurAditya724 in [#453](https://github.com/freestyle-voice/freestyle/pull/453)
+- Add bundle analysis and lazy-load i18n locales by @MathurAditya724 in [#451](https://github.com/freestyle-voice/freestyle/pull/451)
+
+#### Server
+
+- Unify cloud model adapters behind provider registries by @MathurAditya724 in [#459](https://github.com/freestyle-voice/freestyle/pull/459)
+- Lazy-load local ASR servers with on-demand pre-warm by @MathurAditya724 in [#456](https://github.com/freestyle-voice/freestyle/pull/456)
+
+#### Other
+
+- (cloud-usage) Manual refresh instead of per-transcription refetch by @MathurAditya724 in [#458](https://github.com/freestyle-voice/freestyle/pull/458)
+- Enforce conventional commit PR titles by @MathurAditya724 in [#450](https://github.com/freestyle-voice/freestyle/pull/450)
+
+## 0.5.0
+
+### New Features ✨
+
+- Auto-delete transcription history after a configurable period by @dchaudhari7177 in [#424](https://github.com/freestyle-voice/freestyle/pull/424)
+
+### Other
+
+- Add trailing white space to paste. by @matteo8p in [#445](https://github.com/freestyle-voice/freestyle/pull/445)
+
+## 0.4.5
+
+### Bug Fixes 🐛
+
+- (history) Disable reset on defaults and clear filter panel bg by @MathurAditya724 in [#440](https://github.com/freestyle-voice/freestyle/pull/440)
+- (models) Remove non-interactive On-device row from API keys section by @MathurAditya724 in [#442](https://github.com/freestyle-voice/freestyle/pull/442)
+
+### Other
+
+- release: 0.1.1 by @MathurAditya724 in [4957a23c](https://github.com/freestyle-voice/freestyle/commit/4957a23cc7a230ae3dd1d67bf7aa152a87930e79)
+- release: 0.4.4 by @MathurAditya724 in [0c2a364e](https://github.com/freestyle-voice/freestyle/commit/0c2a364ef8aba21c3d8b37fe2f37cccac35f7313)
+
+## 0.4.4
+
+### New Features ✨
+
+- (history) Persist filters and add global view toggles by @MathurAditya724 in [#435](https://github.com/freestyle-voice/freestyle/pull/435)
+- Diff mode for AI-edited history entries by @dchaudhari7177 in [#425](https://github.com/freestyle-voice/freestyle/pull/425)
+- Send custom vocabulary to cloud v2 transcribe by @MathurAditya724 in [#428](https://github.com/freestyle-voice/freestyle/pull/428)
+- Add "Always on" option to MLX model warming (never unload) by @Maheidem in [#407](https://github.com/freestyle-voice/freestyle/pull/407)
+
+### Bug Fixes 🐛
+
+- (ui) Match filter button height with searchbar in history page by @dchaudhari7177 in [#423](https://github.com/freestyle-voice/freestyle/pull/423)
+
+### Other
+
+- Harden API validation and tighten renderer performance by @MathurAditya724 in [#436](https://github.com/freestyle-voice/freestyle/pull/436)
+- Replace history filter drawer with the inline filter panel by @tulsianigatik07-tech in [#426](https://github.com/freestyle-voice/freestyle/pull/426)
+- Add softer tone sound by @matteo8p in [#433](https://github.com/freestyle-voice/freestyle/pull/433)
+- Fix/model page rework by @tigerisaac in [#431](https://github.com/freestyle-voice/freestyle/pull/431)
+- Remove asr biasing from the settings page. Modify the onboarding page by @matteo8p in [#432](https://github.com/freestyle-voice/freestyle/pull/432)
+- Change sidebar color and the scrolling of the right card by @matteo8p in [#430](https://github.com/freestyle-voice/freestyle/pull/430)
+- Shortened roadmap by @matteo8p in [#429](https://github.com/freestyle-voice/freestyle/pull/429)
+- Remove extra bottom spacing on the settings page by @tulsianigatik07-tech in [#422](https://github.com/freestyle-voice/freestyle/pull/422)
+- Restore independent Freestyle Cloud transcription and cleanup by @MathurAditya724 in [#427](https://github.com/freestyle-voice/freestyle/pull/427)
+- Enable Tone panel and switch cloud transcribe to v2 by @MathurAditya724 in [#416](https://github.com/freestyle-voice/freestyle/pull/416)
+- Users of an old Qwen3-ASR version must update to the newest one upon use. by @matteo8p in [#414](https://github.com/freestyle-voice/freestyle/pull/414)
+
+## 0.4.3
+
+### Bug Fixes 🐛
+
+- (electron) Normalize transcription pill bars to the voice band by @AyushSrivastava1818 in [#376](https://github.com/freestyle-voice/freestyle/pull/376)
+- Pin transformers to <5.13 in mlx-asr worker build by @Maheidem in [#404](https://github.com/freestyle-voice/freestyle/pull/404)
+
+### Other
+
+- Remove MCP endpoint by @matteo8p in [#412](https://github.com/freestyle-voice/freestyle/pull/412)
+- Simplify the transcription logic on the front end (v3) by @matteo8p in [#411](https://github.com/freestyle-voice/freestyle/pull/411)
+- Remove streaming capacity by @matteo8p in [#410](https://github.com/freestyle-voice/freestyle/pull/410)
+- NORMALIZE UI LABEL TYPOGRAPHY by @tulsianigatik07-tech in [#409](https://github.com/freestyle-voice/freestyle/pull/409)
+- Feat/tone page rework by @tigerisaac in [#408](https://github.com/freestyle-voice/freestyle/pull/408)
+- Add directories to tsconfig. by @matteo8p in [#406](https://github.com/freestyle-voice/freestyle/pull/406)
+
+## 0.4.2
+
+### Bug Fixes 🐛
+
+- (stt) Send vocabulary bias to Freestyle Cloud streaming by @tigerisaac in [#398](https://github.com/freestyle-voice/freestyle/pull/398)
+- Compound hotkey suppression blocks dictation activation by @MathurAditya724 in [#396](https://github.com/freestyle-voice/freestyle/pull/396)
+
+### Internal Changes 🔧
+
+- (onboarding) Use provider-neutral sign-in icon and primary button by @MathurAditya724 in [#395](https://github.com/freestyle-voice/freestyle/pull/395)
+
+### Other
+
+- Fix High/Med cleanup prompts to be more consistent by @tigerisaac in [#397](https://github.com/freestyle-voice/freestyle/pull/397)
+
 ## 0.4.1
 
 ### Bug Fixes 🐛

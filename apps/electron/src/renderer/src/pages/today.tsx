@@ -1,3 +1,4 @@
+import { DragSpacer } from "@renderer/components/drag-spacer";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { Progress } from "@renderer/components/ui/progress";
 import { getClient } from "@renderer/lib/api";
@@ -5,6 +6,7 @@ import { useCloudAuth } from "@renderer/lib/auth-context";
 import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -61,18 +63,71 @@ function formatClock(d: Date): string {
     .toLowerCase();
 }
 
+/** Human-friendly "last updated" label from an epoch-ms timestamp. */
+function formatUpdatedAt(ms: number | null): string {
+  if (!ms) return "never";
+  const diffSec = Math.round((Date.now() - ms) / 1000);
+  if (diffSec < 60) return "just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  return formatClock(new Date(ms));
+}
+
 function formatMinutes(totalSec: number): string {
   const m = Math.floor(totalSec / 60);
   const s = Math.round(totalSec % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+const MODEL_LABEL_OVERRIDES: Record<string, string> = {
+  api: "API",
+  asr: "ASR",
+  deepgram: "Deepgram",
+  elevenlabs: "ElevenLabs",
+  "freestyle-cloud": "Freestyle Cloud",
+  "freestyle-cloud/stt": "Freestyle Cloud / STT",
+  "freestyle-cloud/post-process": "Freestyle Cloud / Post-process",
+  gpt: "GPT",
+  groq: "Groq",
+  llm: "LLM",
+  mlx: "MLX",
+  openai: "OpenAI",
+  stt: "STT",
+  "post-process": "Post-process",
+};
+
+function titleizeModelPart(part: string): string {
+  const normalized = part.trim();
+  const override = MODEL_LABEL_OVERRIDES[normalized.toLowerCase()];
+  if (override) return override;
+  if (!normalized) return normalized;
+  return normalized
+    .split("-")
+    .map((token) => {
+      const tokenOverride = MODEL_LABEL_OVERRIDES[token.toLowerCase()];
+      if (tokenOverride) return tokenOverride;
+      if (/^[A-Z0-9]+$/.test(token)) return token;
+      return `${token.charAt(0).toUpperCase()}${token.slice(1)}`;
+    })
+    .join(" ");
+}
+
+function formatModelIdForDisplay(modelId: string): string {
+  const normalized = modelId.trim();
+  const override = MODEL_LABEL_OVERRIDES[normalized.toLowerCase()];
+  if (override) return override;
+  return normalized.split("/").map(titleizeModelPart).join(" / ");
+}
+
 function formatModelLabel(entry: HistoryEntry): string {
   const voice = entry.voice_model || entry.voice_provider;
+  const voiceLabel = formatModelIdForDisplay(voice);
   if (entry.llm_model) {
-    return `${voice} · ${entry.llm_model}`;
+    return `${voiceLabel} · ${formatModelIdForDisplay(entry.llm_model)}`;
   }
-  return voice;
+  return voiceLabel;
 }
 
 // Build a 24-bin (per-hour) histogram of word activity for today.
@@ -119,15 +174,22 @@ function buildModelBuckets(entries: HistoryEntry[]): UsageBucket[] {
 export default function TodayPage(): React.JSX.Element {
   const { t } = useTranslation();
   const { user } = useCloudAuth();
-  const cloudUsage = useCloudUsage(!!user);
+  const {
+    balance: cloudUsage,
+    updatedAt: cloudUsageUpdatedAt,
+    isFetching: cloudUsageFetching,
+    refresh: refreshCloudUsage,
+  } = useCloudUsage(!!user);
   const queryClient = useQueryClient();
 
   const { data: entries = null } = useQuery({
     queryKey: ["today-history"],
     queryFn: async () => {
-      const res = await getClient().api.history.$get({
-        query: { limit: "200", orderBy: "-created_at" },
-      });
+      const q: Record<string, string> = {
+        limit: "200",
+        orderBy: "-created_at",
+      };
+      const res = await getClient().api.history.$get({ query: q });
       if (!res.ok) return [];
       const data = await res.json();
       const now = new Date();
@@ -190,19 +252,11 @@ export default function TodayPage(): React.JSX.Element {
   return (
     <div className="flex h-full min-h-0">
       {/* Center column */}
-      <div
-        className="flex min-w-0 flex-1 flex-col"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      >
-        <div className="h-7 shrink-0" />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <DragSpacer />
         <div
           className="responsive-page-scroll flex-1 overflow-auto pt-12 !pb-5"
-          style={
-            {
-              WebkitAppRegion: "no-drag",
-              scrollbarWidth: "none",
-            } as React.CSSProperties
-          }
+          style={{ scrollbarWidth: "none" } as React.CSSProperties}
         >
           <TutorialDemo />
 
@@ -228,7 +282,7 @@ export default function TodayPage(): React.JSX.Element {
       </div>
 
       {/* Right rail — day summary */}
-      <aside className="border-border bg-sidebar mt-16 mr-4 mb-4 hidden w-[280px] shrink-0 flex-col gap-7 overflow-auto rounded-2xl border px-7 pt-7 pb-9 lg:flex">
+      <aside className="no-scrollbar border-border bg-sidebar mt-16 mr-4 mb-4 hidden w-[280px] shrink-0 flex-col gap-7 overflow-auto rounded-2xl border px-7 pt-7 pb-9 lg:flex">
         <section>
           <RailLabel>{t("today.inNumbers")}</RailLabel>
           <RailStat
@@ -260,31 +314,54 @@ export default function TodayPage(): React.JSX.Element {
 
         {cloudUsage && (
           <section>
-            <RailLabel>Cloud Usage</RailLabel>
-            <div className="mb-2 flex items-baseline gap-2.5">
-              <span className="serif-italic text-foreground text-[26px] leading-none min-w-[70px]">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-muted-foreground text-[11px] font-semibold">
+                Cloud Usage
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground/70 text-[10px]">
+                  {formatUpdatedAt(cloudUsageUpdatedAt)}
+                </span>
+                <button
+                  type="button"
+                  onClick={refreshCloudUsage}
+                  disabled={cloudUsageFetching}
+                  aria-label="Refresh cloud usage"
+                  className="text-muted-foreground hover:text-foreground hover:bg-card -mr-1.5 rounded-md p-1.5 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw
+                    className={cn(
+                      "size-3",
+                      cloudUsageFetching && "animate-spin",
+                    )}
+                  />
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-3 flex items-baseline gap-1.5">
+              <span className="serif-italic text-foreground text-[34px] leading-none">
                 {cloudUsage.remaining.toLocaleString()}
               </span>
-              <span className="mono text-muted-foreground text-[10px] leading-snug tracking-[0.12em] uppercase">
-                credits left
-              </span>
-            </div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="mono text-muted-foreground text-[10px] tracking-[0.1em]">
-                {usagePercent(cloudUsage)}% used
-              </span>
-              <span className="mono text-muted-foreground text-[10px]">
+              <span className="text-muted-foreground text-[11px] font-medium">
                 / {cloudUsage.limit.toLocaleString()}
               </span>
             </div>
-            <Progress value={usagePercent(cloudUsage)} className="h-1" />
-            <p className="text-muted-foreground mt-2 text-[10.5px]">
-              Resets{" "}
-              {new Date(cloudUsage.resetsAt).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-              })}
-            </p>
+
+            <Progress value={usagePercent(cloudUsage)} className="h-1.5" />
+
+            <div className="text-muted-foreground mt-2.5 flex items-center justify-between text-[10.5px]">
+              <span className="mono tracking-[0.08em]">
+                {usagePercent(cloudUsage)}% used
+              </span>
+              <span>
+                Resets{" "}
+                {new Date(cloudUsage.resetsAt).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </span>
+            </div>
           </section>
         )}
 
@@ -330,7 +407,7 @@ function TimelineNode({ entry }: { entry: HistoryEntry }): React.JSX.Element {
 
       <div className="border-border bg-card rounded-[11px] border px-[18px] py-[14px]">
         <div className="mb-2 flex items-center gap-2.5">
-          <span className="mono text-primary text-[10.5px] font-semibold tracking-[0.14em] uppercase">
+          <span className="text-primary text-[11.5px] font-semibold">
             {formatModelLabel(entry)}
           </span>
           <span className="flex-1" />
@@ -339,8 +416,8 @@ function TimelineNode({ entry }: { entry: HistoryEntry }): React.JSX.Element {
             {audioSec}s · {words} wds
           </span>
         </div>
-        <p className="text-foreground m-0 text-[15px] leading-[1.55]">
-          “{text}”
+        <p className="text-foreground m-0 line-clamp-3 text-[15px] leading-[1.55]">
+          "{text}"
         </p>
       </div>
     </div>
@@ -368,7 +445,7 @@ function RailLabel({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <div className="mono text-muted-foreground mb-3 text-[10px] tracking-[0.18em] uppercase">
+    <div className="text-muted-foreground mb-3 text-[11px] font-semibold">
       {children}
     </div>
   );
@@ -397,7 +474,7 @@ function RailStat({
       >
         {n}
       </span>
-      <span className="mono text-muted-foreground text-[10px] leading-snug tracking-[0.12em] uppercase">
+      <span className="text-muted-foreground text-[11px] font-medium leading-snug">
         {l}
       </span>
     </div>
@@ -408,7 +485,7 @@ function UsageBar({ label, pct }: UsageBucket): React.JSX.Element {
   return (
     <div className="mb-3">
       <div className="flex items-center justify-between mb-1">
-        <span className="mono text-foreground text-[10.5px] tracking-[0.1em] uppercase">
+        <span className="text-foreground text-[11.5px] font-medium">
           {label}
         </span>
         <span className="mono text-muted-foreground text-[10.5px]">{pct}%</span>

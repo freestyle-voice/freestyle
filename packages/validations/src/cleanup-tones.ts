@@ -1,14 +1,28 @@
 import { z } from "zod/v3";
 
+// "off" is a valid value for every sector tone. It means the user has turned
+// styling off for that destination: cleanup still runs the base preset, but no
+// destination tone or structure block is applied (see destination-style.ts).
 export const cleanupPersonalToneSchema = z.enum([
   "polished",
   "casual",
   "very_casual",
+  "off",
 ]);
 
-export const cleanupWorkToneSchema = z.enum(["direct", "friendly", "formal"]);
+export const cleanupWorkToneSchema = z.enum([
+  "direct",
+  "friendly",
+  "formal",
+  "off",
+]);
 
-export const cleanupEmailToneSchema = z.enum(["casual", "warm", "formal"]);
+export const cleanupEmailToneSchema = z.enum([
+  "casual",
+  "warm",
+  "formal",
+  "off",
+]);
 
 // "Everything else" — the tone applied to destinations we don't recognize as
 // personal, work, or email. A plain formality dial rather than a surface-shaped
@@ -17,6 +31,7 @@ export const cleanupOverallToneSchema = z.enum([
   "casual",
   "neutral",
   "professional",
+  "off",
 ]);
 
 export type CleanupPersonalTone = z.infer<typeof cleanupPersonalToneSchema>;
@@ -35,10 +50,10 @@ export type CleanupToneDestination = z.infer<
   typeof cleanupToneDestinationSchema
 >;
 
-export const DEFAULT_CLEANUP_PERSONAL_TONE: CleanupPersonalTone = "casual";
-export const DEFAULT_CLEANUP_WORK_TONE: CleanupWorkTone = "friendly";
-export const DEFAULT_CLEANUP_EMAIL_TONE: CleanupEmailTone = "warm";
-export const DEFAULT_CLEANUP_OVERALL_TONE: CleanupOverallTone = "neutral";
+export const DEFAULT_CLEANUP_PERSONAL_TONE: CleanupPersonalTone = "off";
+export const DEFAULT_CLEANUP_WORK_TONE: CleanupWorkTone = "off";
+export const DEFAULT_CLEANUP_EMAIL_TONE: CleanupEmailTone = "off";
+export const DEFAULT_CLEANUP_OVERALL_TONE: CleanupOverallTone = "off";
 
 export function parseCleanupPersonalTone(
   value: string | null | undefined,
@@ -66,6 +81,21 @@ export function parseCleanupOverallTone(
 ): CleanupOverallTone {
   const result = cleanupOverallToneSchema.safeParse(value);
   return result.success ? result.data : DEFAULT_CLEANUP_OVERALL_TONE;
+}
+
+/** True when every sector tone is off — no destination routing is needed. */
+export function areAllCleanupTonesOff(tones: {
+  personalTone: CleanupPersonalTone;
+  workTone: CleanupWorkTone;
+  emailTone: CleanupEmailTone;
+  overallTone: CleanupOverallTone;
+}): boolean {
+  return (
+    tones.personalTone === "off" &&
+    tones.workTone === "off" &&
+    tones.emailTone === "off" &&
+    tones.overallTone === "off"
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -25,6 +25,9 @@ const START_TIMEOUT_MS = 120_000;
 const TRANSCRIBE_TIMEOUT_MS = 300_000;
 const DEFAULT_KEEP_ALIVE_MINUTES = 10;
 const MAX_KEEP_ALIVE_MINUTES = 10;
+// Sentinel keep-alive value meaning "never unload" — the model stays resident
+// until the app quits. Stored as -1 in the settings table.
+const KEEP_ALIVE_ALWAYS = -1;
 
 interface WorkerResponse {
   id?: number;
@@ -99,6 +102,8 @@ export function getMlxAsrKeepAliveMinutes(): number {
     if (!row) return DEFAULT_KEEP_ALIVE_MINUTES;
     const minutes = Number(row.value);
     if (!Number.isFinite(minutes)) return DEFAULT_KEEP_ALIVE_MINUTES;
+    // Any negative value is the "always on" sentinel (never unload).
+    if (Math.round(minutes) < 0) return KEEP_ALIVE_ALWAYS;
     return Math.min(Math.max(Math.round(minutes), 0), MAX_KEEP_ALIVE_MINUTES);
   } catch {
     return DEFAULT_KEEP_ALIVE_MINUTES;
@@ -476,6 +481,12 @@ function scheduleUnload(): void {
   if (!workerProcess) return;
   if (pending.size > 0) return;
   const minutes = getMlxAsrKeepAliveMinutes();
+
+  if (minutes === KEEP_ALIVE_ALWAYS) {
+    // "Always on": keep the model resident indefinitely; never schedule unload.
+    return;
+  }
+
   const delayMs = minutes * 60_000;
 
   if (delayMs <= 0) {

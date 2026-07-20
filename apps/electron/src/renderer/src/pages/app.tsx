@@ -1,6 +1,17 @@
 import { Orb } from "@renderer/components/ui/orb";
 import { capture } from "@renderer/lib/analytics";
-import { getApiBase, getClient, refreshApiBase } from "@renderer/lib/api";
+import {
+  apiFetch,
+  getApiBase,
+  getClient,
+  getServerToken,
+  isRemoteServer,
+  refreshApiBase,
+} from "@renderer/lib/api";
+import {
+  applyNeedsAppContextForCleanup,
+  refreshNeedsAppContextForCleanup,
+} from "@renderer/lib/cleanup-app-context";
 import { Recorder } from "@renderer/lib/recorder";
 import { Streamer } from "@renderer/lib/streamer";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -27,7 +38,29 @@ type BarMode = "connecting" | "listening" | "speaking";
 let _soundEnabled = true;
 let _outputMode = "paste";
 let _audioPlaybackMode: AudioPlaybackMode = "off";
+let _streamingAudioEnabled = false;
 let _toneCtx: AudioContext | null = null;
+
+/**
+ * Whether any loaded plugin implements `beforeOutput` (a suppression-capable
+ * output hook). Cached so the delivery hot path doesn't round-trip every time.
+ * Drives the fail-closed policy in `deliverFinal`: when a hook exists and the
+ * `/deliver` call fails, we must NOT paste the raw text (that would bypass a
+ * redaction/PII plugin). Assumed absent until proven present.
+ */
+let _beforeOutputHookPresent = false;
+
+async function refreshBeforeOutputHookPresence(): Promise<void> {
+  try {
+    const res = await getClient().api.output.hook.$get(
+      {},
+      { init: { signal: AbortSignal.timeout(3000) } },
+    );
+    if (res.ok) _beforeOutputHookPresent = (await res.json()).present;
+  } catch {
+    // Leave the last-known value; a stale "present" errs safe (fail closed).
+  }
+}
 
 function getToneCtx(): AudioContext {
   if (!_toneCtx || _toneCtx.state === "closed") _toneCtx = new AudioContext();
@@ -36,11 +69,11 @@ function getToneCtx(): AudioContext {
 
 type TonePreset = "start" | "stop";
 const TONE_PRESETS: Record<TonePreset, { freq: number; ms: number }> = {
-  start: { freq: 880, ms: 100 },
-  stop: { freq: 660, ms: 100 },
+  start: { freq: 347, ms: 125 }, // F4
+  stop: { freq: 255, ms: 125 }, // C4
 };
 
-async function playTone(preset: TonePreset, volume = 0.3): Promise<void> {
+async function playTone(preset: TonePreset, volume = 0.16): Promise<void> {
   if (!_soundEnabled) return;
   const { freq, ms } = TONE_PRESETS[preset];
   try {
@@ -50,12 +83,18 @@ async function playTone(preset: TonePreset, volume = 0.3): Promise<void> {
     const gain = ctx.createGain();
     osc.type = "sine";
     osc.frequency.value = freq;
-    gain.gain.setValueAtTime(volume, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + ms / 1000);
+    const now = ctx.currentTime;
+    const dur = ms / 1000;
+    const attack = Math.min(0.02, dur * 0.25);
+    const g = gain.gain;
+    g.setValueAtTime(0.0001, now);
+    g.linearRampToValueAtTime(volume, now + attack);
+    g.exponentialRampToValueAtTime(0.001, now + dur);
+    g.linearRampToValueAtTime(0, now + dur + 0.012);
     osc.connect(gain);
     gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + ms / 1000);
+    osc.start(now);
+    osc.stop(now + dur + 0.02);
   } catch {}
 }
 
@@ -98,6 +137,13 @@ interface TranscribeResult {
   cloudAuthRequired?: boolean;
   usageExceeded?: boolean;
   providerCategory?: string;
+  /**
+   * Terminal pipeline disposition from the server. A plugin that called
+   * `api.control.consume()`/`abort()` in a server hook resolves to
+   * `"suppressed"`/`"aborted"` here, and the dictation is dropped without
+   * delivery. Defaults to `"deliver"` for older server responses.
+   */
+  disposition?: "deliver" | "suppressed" | "aborted";
 }
 
 const USAGE_LIMIT_DIALOG_TITLE = "Usage limit reached";
@@ -129,6 +175,7 @@ export default function AppPage(): React.JSX.Element {
   const [elapsed, setElapsed] = useState(0);
   const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
   const [pillSide, setPillSide] = useState<"center" | "right">("center");
+
   const supportsSessionTransportRef = useRef(false);
   const recordingSessionUsesTransportRef = useRef(false);
   const providerCategoryRef = useRef<string | null>(null);
@@ -170,6 +217,11 @@ export default function AppPage(): React.JSX.Element {
     null,
   );
   const drainAgainRef = useRef(false);
+  // Set when the user presses the hotkey to start a new dictation while a
+  // streaming commit is still finalizing. The single WebSocket/PCM buffer can't
+  // host two streaming sessions at once, so instead of dropping the press we
+  // replay it once the pending commit resolves.
+  const pendingReRecordRef = useRef(false);
 
   const isTranscriptionIdle = useCallback(
     (): boolean =>
@@ -208,19 +260,26 @@ export default function AppPage(): React.JSX.Element {
         return;
       }
 
+      // A dictation is deliverable only when it has text AND the server
+      // didn't mark it suppressed/aborted (a plugin calling
+      // `api.control.consume()`/`abort()` in a server hook). Absent
+      // disposition (older responses) is treated as "deliver".
+      const isDeliverable = (r: TranscribeResult): boolean =>
+        !!r.raw.trim() && (r.disposition ?? "deliver") === "deliver";
+
       if (
         recordingActiveRef.current ||
         wantsMicRef.current ||
         queueRef.current.length > 0
       ) {
         const resolved = results
-          .filter((r) => r.raw.trim())
+          .filter(isDeliverable)
           .map((r) => ({ promise: Promise.resolve(r) }));
         queueRef.current = [...resolved, ...queueRef.current];
         return;
       }
 
-      const nonEmpty = results.filter((r) => r.raw.trim());
+      const nonEmpty = results.filter(isDeliverable);
       if (nonEmpty.length === 0) {
         if (results.some((r) => r.cloudAuthRequired)) {
           hidePill();
@@ -267,7 +326,13 @@ export default function AppPage(): React.JSX.Element {
           }
           if (res.ok) {
             const data = await res.json();
-            finalText = data.cleaned || combined;
+            // A plugin that consumed/aborted during the multi-segment merge
+            // suppresses delivery: keep the text empty so it's dropped below,
+            // rather than falling back to the combined raw.
+            finalText =
+              data.disposition && data.disposition !== "deliver"
+                ? ""
+                : data.cleaned || combined;
           } else if (res.status === 401) {
             const body = (await res.json().catch(() => null)) as {
               error?: string;
@@ -299,10 +364,59 @@ export default function AppPage(): React.JSX.Element {
       }
 
       try {
-        if (_outputMode === "clipboard") {
-          await window.api.copyText(finalText, appContextRef.current);
-        } else {
-          await window.api.pasteText(finalText, appContextRef.current);
+        const requestedMode =
+          _outputMode === "clipboard" ? "clipboard" : "paste";
+        let deliverText = finalText;
+        let deliverMode: "paste" | "clipboard" = requestedMode;
+        let shouldDeliver = true;
+
+        // Run the `beforeOutput` plugin hook server-side, on the final
+        // (post multi-segment-merge) text — this is the one point where the
+        // fully-assembled dictation is known, whether it came from a single
+        // chunk or several combined via `/api/post-process`.
+        //
+        // Fail-closed: if a `beforeOutput` hook exists (it may suppress/redact)
+        // and this call fails, we must NOT paste the raw text — dropping the
+        // dictation is safer than leaking un-redacted output. When no such hook
+        // is present, a transient failure falls back to delivering unchanged.
+        try {
+          const res = await getClient().api.output.deliver.$post({
+            json: {
+              text: finalText,
+              mode: requestedMode,
+              appContext: appContextRef.current,
+            },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            deliverText = data.output.text;
+            deliverMode =
+              data.output.mode === "clipboard" ? "clipboard" : "paste";
+            shouldDeliver = data.disposition === "deliver";
+            // The call succeeded, so the server's registry is reachable: refresh
+            // our cached hook-presence for the next (possibly failing) delivery.
+            void refreshBeforeOutputHookPresence();
+          } else if (_beforeOutputHookPresent) {
+            shouldDeliver = false;
+          }
+        } catch {
+          if (_beforeOutputHookPresent) {
+            // Fail closed: a suppression-capable hook exists but we couldn't run
+            // it. Drop delivery rather than risk leaking un-redacted text.
+            shouldDeliver = false;
+            console.warn(
+              "[pill] beforeOutput unreachable; suppressing delivery (fail-closed)",
+            );
+          }
+          // Otherwise best-effort — deliver the client-decided text/mode.
+        }
+
+        if (shouldDeliver && deliverText.trim()) {
+          if (deliverMode === "clipboard") {
+            await window.api.copyText(deliverText, appContextRef.current);
+          } else {
+            await window.api.pasteText(deliverText, appContextRef.current);
+          }
         }
       } catch (err) {
         console.error("[pill] paste/copy failed:", err);
@@ -310,8 +424,8 @@ export default function AppPage(): React.JSX.Element {
       window.api.sendTranscriptionDone();
 
       // North-star usage metric: fires exactly once per completed dictation,
-      // at the single point where single-chunk, multi-chunk, and
-      // session-transport paths converge and text is delivered to the user.
+      // at the single point where single-chunk and multi-chunk paths converge
+      // and text is delivered to the user.
       const providerCategory =
         nonEmpty.find((r) => r.providerCategory)?.providerCategory ??
         providerCategoryRef.current ??
@@ -361,7 +475,7 @@ export default function AppPage(): React.JSX.Element {
         headers["x-app-context"] = encodeAppContext(appContextRef.current);
       if (queueRef.current.length > 0 || drainingRef.current)
         headers["x-skip-post-process"] = "true";
-      return fetch(`${getApiBase()}/api/transcribe`, {
+      return apiFetch("/api/transcribe", {
         method: "POST",
         body: wavBlob,
         headers,
@@ -405,11 +519,11 @@ export default function AppPage(): React.JSX.Element {
     [],
   );
 
-  // ---- Streamer (lazy singleton) ----
+  // ---- Streamer (lazy singleton, only created when streaming is enabled) ----
   // biome-ignore lint/correctness/useExhaustiveDependencies: singleton
   const getStreamer = useCallback((): Streamer => {
     if (!streamerRef.current) {
-      streamerRef.current = new Streamer(getApiBase(), {
+      streamerRef.current = new Streamer(getApiBase(), getServerToken(), {
         onConfig: (config) => {
           supportsSessionTransportRef.current = config.sessionTransport;
           if (config.providerCategory) {
@@ -515,19 +629,48 @@ export default function AppPage(): React.JSX.Element {
       const dataArray = freqDataRef.current;
       if (analyser && dataArray) {
         analyser.getByteFrequencyData(dataArray);
-        const sliceSize = Math.floor(analyser.frequencyBinCount / BARS);
-        const raw: number[] = [];
-        let totalSum = 0;
-        for (let i = 0; i < BARS; i++) {
-          let sum = 0;
-          for (let j = 0; j < sliceSize; j++)
-            sum += dataArray[i * sliceSize + j];
-          const val = sum / sliceSize / 255;
-          raw.push(val);
-          totalSum += val;
+        const VOICE_MIN = 80;
+        const VOICE_MAX = 4000;
+
+        const sampleRate = analyser.context.sampleRate;
+        const binWidth = sampleRate / analyser.fftSize;
+
+        const startBin = Math.max(0, Math.floor(VOICE_MIN / binWidth));
+        const endBin = Math.min(
+          analyser.frequencyBinCount,
+          Math.ceil(VOICE_MAX / binWidth),
+        );
+
+        // Compute one overall voice level
+        let sum = 0;
+        for (let i = startBin; i < endBin; i++) {
+          sum += dataArray[i];
         }
+
+        const voiceLevel = sum / (Math.max(1, endBin - startBin) * 255);
+
+        const raw: number[] = [];
+        const center = (BARS - 1) / 2;
+        const sigma = BARS / 4;
+
+        const binCount = Math.max(1, endBin - startBin);
+
+        for (let i = 0; i < BARS; i++) {
+          const distance = i - center;
+
+          // Bell-shaped weighting
+          const weight = Math.exp(-(distance * distance) / (2 * sigma * sigma));
+          const sampleIndex =
+            startBin + Math.floor((i / (BARS - 1)) * (binCount - 1));
+
+          const localVariation = 0.85 + (dataArray[sampleIndex] / 255) * 0.3;
+
+          raw.push(Math.min(1, voiceLevel * weight * localVariation * 2.5));
+        }
+
         barsRef.current = smoothBars(barsRef.current, raw);
-        const volume = Math.min(1, (totalSum / BARS) * 2.5);
+
+        const volume = Math.min(1, voiceLevel * 2.5);
         volumeRef.current = volume;
         const now = performance.now();
         if (now - lastIpcTimeRef.current >= 100) {
@@ -585,7 +728,7 @@ export default function AppPage(): React.JSX.Element {
 
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
+      analyser.fftSize = 1024;
       analyser.smoothingTimeConstant = 0.4;
       source.connect(analyser);
       audioSourceRef.current = source;
@@ -628,6 +771,7 @@ export default function AppPage(): React.JSX.Element {
     drainAgainRef.current = false;
     recordingActiveRef.current = false;
     streamResolverRef.current = null;
+    pendingReRecordRef.current = false;
     stopVisualization();
     window.api.hidePill();
   }, [stopVisualization, setPillState]);
@@ -667,26 +811,46 @@ export default function AppPage(): React.JSX.Element {
       pillActiveRef.current = true;
       pendingCommitRef.current = false;
 
-      appContextRef.current = null;
-      const streamer = getStreamer();
-      try {
-        streamer.setContext(null);
-      } catch {}
+      // Warm the pipeline while the user is speaking so submission doesn't pay
+      // startup latency: the local ASR server (whisper/mlx) model load and the
+      // cloud cleanup LLM connection (e.g. Groq TLS handshake). Fire-and-forget:
+      // the server decides what needs warming (no-op where nothing applies), and
+      // lazy start at submission remains the fallback if this doesn't land.
+      void getClient()
+        .api.transcribe["pre-warm"].$post()
+        .catch(() => {});
 
-      window.api
-        ?.getFrontmostApp()
-        .then((app) => {
-          appContextRef.current = app;
-          try {
-            streamer.setContext(app);
-          } catch {}
-        })
-        .catch(() => {
-          appContextRef.current = null;
-          try {
-            streamer.setContext(null);
-          } catch {}
-        });
+      appContextRef.current = null;
+      // Only create the streamer when streaming is enabled.
+      if (_streamingAudioEnabled) {
+        try {
+          getStreamer().setContext(null);
+        } catch {}
+      }
+
+      void refreshNeedsAppContextForCleanup().then((needsAppContext) => {
+        if (!needsAppContext || !wantsMicRef.current) return;
+        void window.api
+          ?.getFrontmostApp()
+          .then((app) => {
+            if (!wantsMicRef.current) return;
+            appContextRef.current = app;
+            if (_streamingAudioEnabled) {
+              try {
+                getStreamer().setContext(app);
+              } catch {}
+            }
+          })
+          .catch(() => {
+            if (!wantsMicRef.current) return;
+            appContextRef.current = null;
+            if (_streamingAudioEnabled) {
+              try {
+                getStreamer().setContext(null);
+              } catch {}
+            }
+          });
+      });
 
       setPillState("initializing");
       startBarAnimation("connecting");
@@ -708,14 +872,20 @@ export default function AppPage(): React.JSX.Element {
 
       try {
         recordingSessionUsesTransportRef.current =
-          supportsSessionTransportRef.current;
+          _streamingAudioEnabled && supportsSessionTransportRef.current;
 
-        const stream = await recorderRef.current.acquireStream();
+        // When session transport is active the streamer handles audio capture
+        // directly — we only need the raw mic stream for the analyser. When
+        // it's not (batch path), start the MediaRecorder so we get a WAV.
+        const stream = recordingSessionUsesTransportRef.current
+          ? await recorderRef.current.acquireStream()
+          : await recorderRef.current.start();
 
         if (!wantsMicRef.current) {
           recorderRef.current.cancel();
           recorderRef.current.releaseStream();
           void restoreSystemAudioSafely();
+          streamerRef.current?.cancel();
           if (forReRecord) {
             resumeTranscribingOrHide();
           }
@@ -745,9 +915,11 @@ export default function AppPage(): React.JSX.Element {
         }, 100);
 
         startListening(stream);
-        try {
-          await streamer.startCapture(stream);
-        } catch {}
+        if (_streamingAudioEnabled) {
+          try {
+            await getStreamer().startCapture(stream);
+          } catch {}
+        }
       } catch (err) {
         pendingCommitRef.current = false;
         recorderRef.current.releaseStream();
@@ -815,6 +987,8 @@ export default function AppPage(): React.JSX.Element {
     setPillState("transcribing");
     startBarAnimation("speaking");
 
+    // Streaming session transport path: the streamer already has the audio —
+    // commit it over the WebSocket and wait for the server's final message.
     if (recordingSessionUsesTransportRef.current && streamerRef.current) {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
@@ -838,24 +1012,28 @@ export default function AppPage(): React.JSX.Element {
               });
             }
           }
-        }, 15000);
-      }).finally(() => {
-        setPendingCount((c) => Math.max(0, c - 1));
+        }, 15_000);
       });
       streamerRef.current.commit();
-      queueRef.current.push({ promise: transcribePromise });
-      drainQueue();
+      queueRef.current.push({
+        promise: transcribePromise.finally(() => {
+          setPendingCount((c) => Math.max(0, c - 1));
+          // Replay a re-record press that arrived while this commit was
+          // finalizing (see the hotkey-down handler). Only when nothing else
+          // has already taken the mic.
+          if (pendingReRecordRef.current && !wantsMicRef.current) {
+            pendingReRecordRef.current = false;
+            void startRecording(true);
+          }
+        }),
+      });
+      void drainQueue();
       return;
     }
 
-    streamerRef.current?.commit();
-
-    let wavBlob: Blob | null = null;
-    if (recorderRef.current.isRecording()) {
-      wavBlob = await recorderRef.current.stop();
-    } else {
-      wavBlob = streamerRef.current?.getWavBlob() ?? null;
-    }
+    const wavBlob = recorderRef.current.isRecording()
+      ? await recorderRef.current.stop()
+      : null;
     recorderRef.current.releaseStream();
 
     if (!pillActiveRef.current) {
@@ -889,14 +1067,16 @@ export default function AppPage(): React.JSX.Element {
       hidePill();
       window.api.showErrorDialog(
         "Server Unreachable",
-        `Cannot reach Freestyle server at ${getApiBase()}. Quit and reopen the app.`,
+        isRemoteServer()
+          ? `Cannot reach the server at ${getApiBase()}. Check the server URL in Settings → Network, or reset to the local server.`
+          : `Cannot reach Freestyle server at ${getApiBase()}. Quit and reopen the app.`,
       );
       return;
     }
 
     setPendingCount((c) => c + 1);
-    const transcribePromise: Promise<TranscribeResult> = fetch(
-      `${getApiBase()}/api/transcribe`,
+    const transcribePromise: Promise<TranscribeResult> = apiFetch(
+      "/api/transcribe",
       { method: "POST", body: wavBlob, headers },
     )
       .then(async (res) => {
@@ -931,18 +1111,22 @@ export default function AppPage(): React.JSX.Element {
           raw?: string;
           cleaned?: string;
           provider_category?: string;
+          disposition?: "deliver" | "suppressed" | "aborted";
         };
         return {
           raw: (data.raw || "").trim(),
           cleaned: (data.cleaned || data.raw || "").trim(),
           providerCategory: data.provider_category,
+          disposition: data.disposition,
         };
       })
       .catch((err) => {
         const msg = err instanceof Error ? err.message : "Transcription failed";
         const hint =
           msg.includes("fetch") || msg.includes("Failed")
-            ? ` (${getApiBase()} unreachable — quit and reopen the app)`
+            ? isRemoteServer()
+              ? ` (${getApiBase()} unreachable — check Settings → Network)`
+              : ` (${getApiBase()} unreachable — quit and reopen the app)`
             : "";
         return { raw: "", cleaned: "", error: `${msg}${hint}` };
       })
@@ -956,24 +1140,20 @@ export default function AppPage(): React.JSX.Element {
     hidePill,
     drainQueue,
     startBarAnimation,
-    restFallbackTranscribe,
     setPillState,
     resumeTranscribingOrHide,
     isTranscriptionIdle,
     restoreSystemAudioSafely,
+    restFallbackTranscribe,
+    startRecording,
   ]);
 
   // ---- Cancel ----
   const cancelRecording = useCallback(() => {
-    const resolver = streamResolverRef.current;
-    if (resolver) {
-      streamResolverRef.current = null;
-      resolver({ raw: "", cleaned: "" });
-    }
-    streamerRef.current?.cancel();
     recorderRef.current.cancel();
     recorderRef.current.releaseStream();
     void restoreSystemAudioSafely();
+    streamerRef.current?.cancel();
     window.api?.sendRecordingCancelled();
     hidePill();
   }, [hidePill, restoreSystemAudioSafely]);
@@ -987,57 +1167,59 @@ export default function AppPage(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
+    // Read every persisted preference in a single request instead of one GET
+    // per key. Missing keys are simply absent from the map (no 404s), and the
+    // legacy audio-playback fallbacks read from the same snapshot.
     getClient()
-      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.soundEnabled } })
+      .api.settings.$get()
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value === "false") _soundEnabled = false;
+      .then((settings) => {
+        if (!settings) return;
+
+        if (settings[SETTINGS_KEYS.soundEnabled] === "false") {
+          _soundEnabled = false;
+        }
+
+        const mode = settings.audio_playback_mode;
+        if (mode) {
+          _audioPlaybackMode = normalizeAudioPlaybackMode(mode);
+        } else if (settings.pause_playback_while_recording === "true") {
+          _audioPlaybackMode = "pause";
+        } else {
+          _audioPlaybackMode =
+            settings.audio_ducking_enabled === "true" ? "duck" : "off";
+        }
+
+        const outputMode = settings[SETTINGS_KEYS.outputMode];
+        if (outputMode) _outputMode = outputMode;
+
+        // Warm the cleanup-context cache from the same snapshot instead of
+        // firing a second GET /api/settings.
+        applyNeedsAppContextForCleanup(settings);
       })
       .catch(() => {});
-    void (async () => {
-      try {
-        const modeResponse = await getClient().api.settings[":key"].$get({
-          param: { key: "audio_playback_mode" },
-        });
-        const modeData = modeResponse.ok ? await modeResponse.json() : null;
-        if (modeData?.value) {
-          _audioPlaybackMode = normalizeAudioPlaybackMode(modeData.value);
-          return;
-        }
 
-        const legacyPauseResponse = await getClient().api.settings[":key"].$get(
-          {
-            param: { key: "pause_playback_while_recording" },
-          },
-        );
-        const legacyPauseData = legacyPauseResponse.ok
-          ? await legacyPauseResponse.json()
-          : null;
-        if (legacyPauseData?.value === "true") {
-          _audioPlaybackMode = "pause";
-          return;
-        }
-
-        const legacyDuckResponse = await getClient().api.settings[":key"].$get({
-          param: { key: "audio_ducking_enabled" },
-        });
-        const legacyDuckData = legacyDuckResponse.ok
-          ? await legacyDuckResponse.json()
-          : null;
-        _audioPlaybackMode = legacyDuckData?.value === "true" ? "duck" : "off";
-      } catch {}
-    })();
+    // Streaming audio flag (experimental — stored in config.freestyle.json).
+    // When enabled, eagerly create the Streamer so the WebSocket connects and
+    // the onConfig callback (which sets supportsSessionTransportRef) fires
+    // before the first recording.
     getClient()
-      .api.settings[":key"].$get({ param: { key: SETTINGS_KEYS.outputMode } })
+      .api.config.$get()
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.value) _outputMode = data.value;
+      .then((config) => {
+        if (config?.flags?.streaming_audio === true) {
+          _streamingAudioEnabled = true;
+          getStreamer();
+        }
       })
       .catch(() => {});
     window.api
       ?.getPillPosition()
       .then(applyPillPosition)
       .catch(() => {});
+    // Prime the `beforeOutput` hook-presence cache so the very first dictation's
+    // delivery already applies the correct fail-closed policy.
+    void refreshBeforeOutputHookPresence();
 
     // Listen for live changes from the settings UI
     const removePillPos = window.api?.onPillPositionChanged(applyPillPosition);
@@ -1052,11 +1234,41 @@ export default function AppPage(): React.JSX.Element {
         _audioPlaybackMode = normalizeAudioPlaybackMode(mode);
       },
     );
+    // Apply the toggle live — the flag is a module-level var read once above,
+    // so without this it wouldn't take effect until the pill window reloaded.
+    // Disabling tears the streamer down so its reconnect loop and AudioContext
+    // don't linger.
+    const removeStreamingAudio = window.api?.onStreamingAudioChanged(
+      (enabled) => {
+        _streamingAudioEnabled = enabled;
+        if (enabled) {
+          getStreamer();
+        } else {
+          streamerRef.current?.destroy();
+          streamerRef.current = null;
+          supportsSessionTransportRef.current = false;
+        }
+      },
+    );
+    // The server target (URL/token) changed in Settings. Re-point this window's
+    // API client and tear down the streamer so its next connection uses the new
+    // server — no app restart needed. A fresh streamer is created lazily on the
+    // next recording (or immediately if streaming is enabled).
+    const removeServerChanged = window.api?.onServerChanged(() => {
+      void refreshApiBase().finally(() => {
+        streamerRef.current?.destroy();
+        streamerRef.current = null;
+        supportsSessionTransportRef.current = false;
+        if (_streamingAudioEnabled) getStreamer();
+      });
+    });
     return () => {
       removePillPos?.();
       removeOutputMode?.();
       removeAudioDucking?.();
       removeAudioPlaybackMode?.();
+      removeStreamingAudio?.();
+      removeServerChanged?.();
     };
   }, [applyPillPosition]);
 
@@ -1075,17 +1287,16 @@ export default function AppPage(): React.JSX.Element {
           hidePill();
           return;
         }
-        // Resolve the pending stream promise so the previous transcription
-        // does not hang for 30 s waiting for a result that will be dropped
-        // by the generation counter on the server side. Start re-record
-        // first so wantsMicRef is set before the empty resolve reaches
-        // drainQueue.
-        void startRecording(true);
-        const resolver = streamResolverRef.current;
-        if (resolver) {
-          streamResolverRef.current = null;
-          resolver({ raw: "", cleaned: "" });
+        // A pending streaming commit owns the single WebSocket + PCM buffer,
+        // so a second streaming session can't run alongside it. Defer the
+        // re-record until the commit resolves rather than dropping the press.
+        if (streamResolverRef.current !== null) {
+          pendingReRecordRef.current = true;
+          return;
         }
+        // A previous batch transcription is still in flight; start a new
+        // recording alongside it. Its result is queued and drained normally.
+        void startRecording(true);
       }
     });
     const removeUp = window.api.onHotkeyUp(() => {

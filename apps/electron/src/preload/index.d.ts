@@ -4,13 +4,7 @@ import type {
   AudioPlaybackMode,
 } from "../shared/audio-playback";
 import type { OpenAppCandidate } from "../shared/open-apps";
-import type {
-  PluginCatalogEntry,
-  PluginInfo,
-  PluginUpdateCheck,
-  PluginUpdateResult,
-  PluginViewBounds,
-} from "../shared/plugins";
+import type { PluginViewBounds } from "../shared/plugins";
 
 declare global {
   interface Window {
@@ -30,6 +24,11 @@ declare global {
       hidePill: () => void;
       showErrorDialog: (title: string, message: string) => Promise<void>;
       getServerPort: () => Promise<number>;
+      getServerUrl: () => Promise<string>;
+      setServerUrl: (url: string) => Promise<string>;
+      getServerToken: () => Promise<string>;
+      setServerToken: (token: string) => Promise<string>;
+      onServerChanged: (callback: () => void) => () => void;
       openLogsFolder: () => Promise<boolean>;
       openExternal: (url: string) => Promise<boolean>;
       cloudPromptSignIn: () => Promise<boolean>;
@@ -103,6 +102,10 @@ declare global {
       onAudioDuckingChanged: (
         callback: (enabled: boolean) => void,
       ) => () => void;
+      sendStreamingAudioChanged: (enabled: boolean) => void;
+      onStreamingAudioChanged: (
+        callback: (enabled: boolean) => void,
+      ) => () => void;
       sendAudioPlaybackModeChanged: (mode: AudioPlaybackMode) => void;
       onAudioPlaybackModeChanged: (
         callback: (mode: AudioPlaybackMode) => void,
@@ -127,30 +130,18 @@ declare global {
       onMicActivityChanged: (
         callback: (state: "active" | "inactive" | "unknown") => void,
       ) => () => void;
-      // Plugins
-      listPlugins: () => Promise<PluginInfo[]>;
-      refreshPlugins: () => Promise<PluginInfo[]>;
-      setPluginEnabled: (
-        specifier: string,
-        enabled: boolean,
-      ) => Promise<PluginInfo[]>;
-      getPluginCatalog: () => Promise<{ plugins: PluginCatalogEntry[] }>;
-      installPlugin: (
-        npmName: string,
-        version?: string,
-      ) => Promise<PluginInfo[]>;
-      uninstallPlugin: (specifier: string) => Promise<PluginInfo[]>;
-      checkPluginUpdates: (
-        plugins: PluginUpdateCheck[],
-      ) => Promise<PluginUpdateResult[]>;
+      // Plugins — discovery/install/catalog/updates go renderer→server over
+      // the typed client; only the native view overlay stays on IPC.
       showPluginView: (
         slug: string,
         pageId: string,
+        entry: string,
         bounds: PluginViewBounds,
         tokens?: Record<string, string>,
       ) => Promise<boolean>;
       setPluginViewBounds: (bounds: PluginViewBounds) => void;
       hidePluginView: () => void;
+      invalidatePluginView: () => void;
       onPluginNavigate: (callback: (to: string) => void) => () => void;
     };
   }

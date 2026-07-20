@@ -59,6 +59,18 @@ guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: vKey, keyDown:
 
 keyDown.flags = .maskCommand
 keyUp.flags = .maskCommand
+
+// Tag these synthetic events so our own key listener can recognize and ignore
+// them. Without this, the listener sees the Cmd+V flag mask on the injected V
+// events, records a "command" modifier as held, and — because no real Command
+// key-up ever follows — leaves that modifier stuck. A stuck modifier then
+// suppresses the next solo Fn/Globe hotkey activation until an unrelated key
+// press resyncs the modifier state. Keep this constant in sync with the guard
+// in macos-key-listener.swift.
+let freestyleSyntheticMarker: Int64 = 0x4653_5459 // "FSTY"
+keyDown.setIntegerValueField(.eventSourceUserData, value: freestyleSyntheticMarker)
+keyUp.setIntegerValueField(.eventSourceUserData, value: freestyleSyntheticMarker)
+
 keyDown.post(tap: .cgSessionEventTap)
 usleep(8000)
 keyUp.post(tap: .cgSessionEventTap)

@@ -185,13 +185,13 @@ The word list itself isn't a static option — it's managed from the plugin's UI
 
 ## The API bridge
 
-Your UI page is sandboxed. It can't touch the filesystem or reach the local server directly. Instead, Freestyle injects `window.freestyle`, a small pre-authenticated bridge. It's the only privileged surface a page gets.
+Your UI page is served by the local server and confined to its own `/api/plugins/<slug>/…` namespace (plus `/api/health`) — it can't touch the filesystem or read settings, keys, or history. Freestyle injects `window.freestyle` as the privileged surface a page gets.
 
 It does three things:
 
-- **`api(path, init?)`** calls a server route. The bearer token and loopback origin are handled for you, so use it instead of `fetch`. It returns a `FreestyleResponse` (`ok`, `status`, `headers`, `json()` / `text()` / `arrayBuffer()`).
+- **`api(path, init?)`** calls a server route. Plugin UI is served same-origin with the server, so this is a thin wrapper over `fetch` and returns a **native `Response`** — call `res.ok`, `res.json()`, `res.text()` as usual.
 - **`invoke(channel, payload)`** runs a host action: `copy`, `toast`, or `navigate`.
-- **`serverUrl`** and **`token`** are there if you need the raw values.
+- **`serverUrl`** is the origin the page is served from, if you need the raw value.
 
 Always guard for the bridge first, since the page can be opened outside the host during development:
 
@@ -206,7 +206,7 @@ const res = await bridge.api("/api/plugins/freestyle-voice-profanity-filter/repl
 if (!res.ok) throw new Error(`server returned ${res.status}`);
 const data = await res.json();
 
-// POST works too. Send a Blob or ArrayBuffer, not FormData.
+// POST works too — it's a normal fetch, so any body type is fine.
 await bridge.api("/api/transcribe", {
   method: "POST",
   headers: { "content-type": "audio/wav" },

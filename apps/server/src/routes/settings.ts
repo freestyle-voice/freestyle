@@ -8,7 +8,10 @@ import {
   cleanupPersonalToneSchema,
   cleanupWorkToneSchema,
   disabledPluginsSettingSchema,
+  historyRetentionDaysSettingSchema,
   localLlmConfigSchema,
+  openaiSttBaseUrlSchema,
+  openaiSttConfigSchema,
   pluginsSettingSchema,
   proxyUrlSettingSchema,
   settingValueSchema,
@@ -16,6 +19,10 @@ import {
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import {
+  HISTORY_RETENTION_SETTING_KEY,
+  purgeExpiredHistory,
+} from "../lib/history-store.js";
 import { applyMlxAsrRetentionPolicy } from "../lib/mlx-asr/server.js";
 import {
   CA_CERT_PATH_SETTING,
@@ -120,6 +127,17 @@ const settings = new Hono()
       if (!parsed.success) {
         return c.json({ error: "Invalid disabled_plugins setting" }, 400);
       }
+    } else if (key === "openai_stt_base_url") {
+      const parsed = openaiSttBaseUrlSchema.safeParse(body.value);
+      if (!parsed.success) {
+        return c.json(
+          {
+            error:
+              parsed.error.issues[0]?.message ?? "Invalid OpenAI STT base URL",
+          },
+          400,
+        );
+      }
     } else if (key === PROXY_URL_SETTING) {
       const parsed = proxyUrlSettingSchema.safeParse(body.value);
       if (!parsed.success) {
@@ -133,6 +151,17 @@ const settings = new Hono()
       if (!parsed.success) {
         return c.json({ error: "Invalid CA certificate path" }, 400);
       }
+    } else if (key === HISTORY_RETENTION_SETTING_KEY) {
+      const parsed = historyRetentionDaysSettingSchema.safeParse(body.value);
+      if (!parsed.success) {
+        return c.json(
+          {
+            error:
+              parsed.error.issues[0]?.message ?? "Invalid history retention",
+          },
+          400,
+        );
+      }
     }
 
     db.prepare(
@@ -145,6 +174,9 @@ const settings = new Hono()
     }
     if (key === "whisper_keep_alive_minutes") {
       applyWhisperRetentionPolicy();
+    }
+    if (key === HISTORY_RETENTION_SETTING_KEY) {
+      purgeExpiredHistory();
     }
     // Re-install the global dispatcher so proxy/CA changes take effect for the
     // next download without an app restart.
@@ -174,6 +206,47 @@ const settings = new Hono()
   .post(
     "/local-llm/test",
     zValidator("json", localLlmConfigSchema),
+    async (c) => {
+      const body = c.req.valid("json");
+      const url = body.url.replace(/\/+$/, "").replace(/\/v1$/, "");
+
+      try {
+        const res = await fetch(`${url}/v1/models`, {
+          headers: {
+            ...(body.api_key
+              ? { Authorization: `Bearer ${body.api_key}` }
+              : {}),
+          },
+          signal: AbortSignal.timeout(5000),
+        });
+
+        if (!res.ok) {
+          return c.json(
+            { error: `Server returned ${res.status}: ${res.statusText}` },
+            502,
+          );
+        }
+
+        const data = (await res.json()) as {
+          data?: { id: string }[];
+        };
+
+        let models: string[] = [];
+        if (data.data && Array.isArray(data.data)) {
+          models = data.data.map((m) => m.id);
+        }
+
+        return c.json({ ok: true, models });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to connect";
+        return c.json({ error: message }, 502);
+      }
+    },
+  )
+  .post(
+    "/openai-stt/test",
+    zValidator("json", openaiSttConfigSchema),
     async (c) => {
       const body = c.req.valid("json");
       const url = body.url.replace(/\/+$/, "").replace(/\/v1$/, "");

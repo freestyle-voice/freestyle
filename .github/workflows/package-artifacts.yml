@@ -15,6 +15,7 @@ on:
   push:
     branches:
       - "release-sdk/**"
+      - "release-stt/**"
       - "release-create-freestyle-plugin/**"
       - "release-plugin-**"
 
@@ -51,6 +52,10 @@ jobs:
               echo "path=packages/sdk" >> "$GITHUB_OUTPUT"
               echo "name=freestyle-voice" >> "$GITHUB_OUTPUT"
               ;;
+            release-stt/*)
+              echo "path=packages/stt" >> "$GITHUB_OUTPUT"
+              echo "name=@freestyle-voice/stt" >> "$GITHUB_OUTPUT"
+              ;;
             release-create-freestyle-plugin/*)
               echo "path=packages/create-freestyle-plugin" >> "$GITHUB_OUTPUT"
               echo "name=create-freestyle-plugin" >> "$GITHUB_OUTPUT"
@@ -62,6 +67,10 @@ jobs:
             release-plugin-profanity-filter/*)
               echo "path=plugins/profanity-filter" >> "$GITHUB_OUTPUT"
               echo "name=@freestyle-voice/profanity-filter" >> "$GITHUB_OUTPUT"
+              ;;
+            release-plugin-emoji/*)
+              echo "path=plugins/emoji" >> "$GITHUB_OUTPUT"
+              echo "name=@freestyle-voice/plugin-emoji" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "::error::No package mapping for branch $BRANCH"

@@ -9,6 +9,7 @@ import { createAuthClient } from "better-auth/client";
 import { deviceAuthorizationClient } from "better-auth/client/plugins";
 import type { CloudUser } from "./sessions.js";
 import { CLOUD_TRANSCRIBE_TIMEOUT_MS } from "./streaming/types.js";
+import type { CloudVocabularyBias } from "./vocabulary.js";
 
 export const FREESTYLE_CLOUD_PROVIDER_ID = "freestyle-cloud";
 export const FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID = "freestyle-cloud/stt";
@@ -216,14 +217,9 @@ export function freestyleCloudUrl(): string {
   );
 }
 
-/**
- * Build the WebSocket URL for the cloud streaming STT endpoint.
- * Converts `https://` → `wss://` and `http://` → `ws://`.
- */
+/** WebSocket URL for the cloud streaming endpoint (`/v2/stream`). */
 export function freestyleCloudStreamWsUrl(): string {
-  const base = freestyleCloudUrl();
-  const wsBase = base.replace(/^http/, "ws");
-  return `${wsBase}/v2/stream`;
+  return `${freestyleCloudUrl().replace(/^http/, "ws")}/v2/stream`;
 }
 
 function createCloudAuthClient() {
@@ -372,6 +368,8 @@ function appendCleanupFormFields(
   prefs: {
     intensity?: string;
     customPrompt?: string | null;
+    /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
+    systemFragments?: string[];
   } & CloudCleanupTones,
 ): void {
   if (prefs.intensity) form.append("intensity", prefs.intensity);
@@ -382,6 +380,9 @@ function appendCleanupFormFields(
   if (prefs.overallTone) form.append("overallTone", prefs.overallTone);
   if (prefs.appAssignments && prefs.appAssignments.length > 0) {
     form.append("appAssignments", JSON.stringify(prefs.appAssignments));
+  }
+  if (prefs.systemFragments && prefs.systemFragments.length > 0) {
+    form.append("systemFragments", JSON.stringify(prefs.systemFragments));
   }
 }
 
@@ -394,6 +395,10 @@ export async function transcribeWithFreestyleCloud(
     mode: "raw" | "combined";
     intensity?: string;
     customPrompt?: string | null;
+    /** Custom-vocabulary bias to steer recognition (independent of cleanup). */
+    vocabulary?: CloudVocabularyBias;
+    /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
+    systemFragments?: string[];
   } & CloudCleanupTones,
 ): Promise<CloudTranscribeResult> {
   const audio = opts.audio as Uint8Array<ArrayBuffer>;
@@ -405,6 +410,10 @@ export async function transcribeWithFreestyleCloud(
   form.append("audio", new Blob([audio], { type: "audio/wav" }), "audio.wav");
   if (opts.language) form.append("language", opts.language);
   if (opts.appContext) form.append("appContext", opts.appContext);
+  // Vocabulary bias applies to the recognizer regardless of cleanup mode.
+  if (opts.vocabulary?.terms.length) {
+    form.append("vocabulary", JSON.stringify(opts.vocabulary));
+  }
   if (opts.mode === "raw") {
     form.append("skipPostProcess", "true");
   } else {
@@ -426,13 +435,17 @@ export async function postProcessWithFreestyleCloud(
     language?: string;
     intensity?: string;
     customPrompt?: string | null;
+    /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
+    systemFragments?: string[];
   } & CloudCleanupTones,
 ): Promise<{
   cleaned: string;
   usage?: { inputTokens?: number; outputTokens?: number };
 }> {
   // The JSON body carries `appAssignments` as a real array (unlike the
-  // multipart transcribe path, which JSON-encodes it).
+  // multipart transcribe path, which JSON-encodes it). `customPrompt` is
+  // omitted (not sent as null) when absent: the cloud schema validates it as
+  // `z.string().optional()`, which rejects an explicit null with a 400.
   return cloudJson("/v2/post-process", opts.token, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -441,12 +454,15 @@ export async function postProcessWithFreestyleCloud(
       appContext: opts.appContext ?? null,
       language: opts.language,
       intensity: opts.intensity,
-      customPrompt: opts.customPrompt ?? null,
+      customPrompt: opts.customPrompt || undefined,
       personalTone: opts.personalTone,
       workTone: opts.workTone,
       emailTone: opts.emailTone,
       overallTone: opts.overallTone,
       appAssignments: opts.appAssignments,
+      ...(opts.systemFragments && opts.systemFragments.length > 0
+        ? { systemFragments: opts.systemFragments }
+        : {}),
     }),
   });
 }
@@ -458,8 +474,39 @@ export async function postProcessWithFreestyleCloud(
 export async function fetchCloudUsage(
   token: string,
 ): Promise<CloudUsageBalance> {
-  return cloudJson<CloudUsageBalance>("/v1/usage", token, {
+  return cloudJson<CloudUsageBalance>("/usage", token, {
     method: "GET",
     signal: AbortSignal.timeout(10_000),
   });
+}
+
+/** Upper bound for the best-effort connection prewarm. */
+const CLOUD_PREWARM_TIMEOUT_MS = 5_000;
+
+let cloudPrewarmPromise: Promise<void> | null = null;
+
+/**
+ * Warm the TLS connection to Freestyle Cloud while the user is still speaking,
+ * so the transcribe/cleanup POST on commit reuses a hot socket instead of
+ * paying the DNS+TCP+TLS handshake on the critical path. A cheap authenticated
+ * GET to `/usage` opens the connection, which undici then pools by origin for
+ * the real request. Fire-and-forget: concurrent calls dedupe and failures are
+ * swallowed — the lazy connect on the actual request remains the fallback.
+ */
+export function prewarmFreestyleCloudConnection(token: string): void {
+  if (cloudPrewarmPromise) return;
+  cloudPrewarmPromise = (async () => {
+    try {
+      await fetch(`${freestyleCloudUrl()}/usage`, {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}` },
+        keepalive: true,
+        signal: AbortSignal.timeout(CLOUD_PREWARM_TIMEOUT_MS),
+      });
+    } catch {
+      // Best-effort — nothing to do; the real request will connect lazily.
+    } finally {
+      cloudPrewarmPromise = null;
+    }
+  })();
 }

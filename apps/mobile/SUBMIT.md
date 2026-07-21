@@ -13,8 +13,8 @@ the config that lives in the repo and the one-time / manual steps that do not.
 - `eas.json` → `submit.production`:
   - iOS: `ascAppId` + `appleTeamId` — **replace the placeholders** before first submit.
   - Android: first release goes to the `internal` track as a `draft`.
-- `.eas/workflows/submit-ios.yml` — build (production) → TestFlight on push to `main`.
-- `.eas/workflows/submit-android.yml` — build (production) → Play submit on push to `main`.
+- `.eas/workflows/submit-ios.yml` — build (production) → TestFlight, manual trigger.
+- `.eas/workflows/submit-android.yml` — build (production) → Play submit, manual trigger.
 
 ## One-time credential setup (interactive, not in repo)
 
@@ -33,6 +33,9 @@ App Information → Apple ID) and `appleTeamId`.
 Register both bundle IDs in the Apple Developer portal if not already present:
 `com.freestylevoice.app` and `com.freestylevoice.app.keyboard`, each with the
 App Group `group.com.freestylevoice.app` enabled.
+
+For the `submit-ios.yml` workflow's `testflight` job, also configure the App Store
+Connect connection in the Expo dashboard (Project settings → Connections).
 
 ### Android — Google Service Account key
 
@@ -67,7 +70,9 @@ Verify the iOS production build embeds and signs the `FreestyleKeyboard` extensi
 
 ## CI (EAS Workflows)
 
-Run manually or on push to `main`:
+These workflows are **manual-trigger only** (`workflow_dispatch`) — this is a
+monorepo, so an `on: push` trigger would build and submit the mobile app on every
+unrelated merge to `main`. Run them explicitly:
 
 ```sh
 eas workflow:run submit-ios.yml

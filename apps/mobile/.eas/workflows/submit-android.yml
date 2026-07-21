@@ -1,8 +1,10 @@
 name: Submit Android
 
+# Manual trigger only. This is a monorepo — an `on: push` trigger would build and
+# submit the mobile app on every unrelated merge to main. Run with:
+#   eas workflow:run submit-android.yml
 on:
-  push:
-    branches: ['main']
+  workflow_dispatch:
 
 jobs:
   build_android:

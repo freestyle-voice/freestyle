@@ -1,6 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { LogOut } from "lucide-react-native";
-import { useEffect, useState } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 
 import { Card, SettingsScreenScaffold } from "@/components/settings-ui";
@@ -9,34 +9,20 @@ import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
-import { type CloudUsageBalance, fetchCloudUsage } from "@/lib/cloud/usage";
+import { fetchCloudUsage } from "@/lib/cloud/usage";
 import { initialsFor } from "@/lib/initials";
 
 export default function ProfileScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { user, signedIn, signOut } = useAuth();
-  const [usage, setUsage] = useState<CloudUsageBalance | null>(null);
-  const [usageLoading, setUsageLoading] = useState(true);
 
-  useEffect(() => {
-    if (!signedIn) return;
-    let active = true;
-    setUsageLoading(true);
-    fetchCloudUsage()
-      .then((data) => {
-        if (active) setUsage(data);
-      })
-      .catch(() => {
-        if (active) setUsage(null);
-      })
-      .finally(() => {
-        if (active) setUsageLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [signedIn]);
+  const { data: usage, isLoading: usageLoading } = useQuery({
+    queryKey: ["cloud-usage"],
+    queryFn: fetchCloudUsage,
+    enabled: signedIn,
+    retry: 1,
+  });
 
   return (
     <SettingsScreenScaffold title="Profile">

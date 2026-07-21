@@ -1,7 +1,6 @@
 import { useRouter } from "expo-router";
 import type { LucideIcon } from "lucide-react-native";
 import {
-  Check,
   ChevronRight,
   Globe,
   Keyboard,
@@ -29,8 +28,8 @@ const APPEARANCE: {
   label: string;
   icon: LucideIcon;
 }[] = [
-  { value: "system", label: "System", icon: Monitor },
   { value: "light", label: "Light", icon: Sun },
+  { value: "system", label: "System", icon: Monitor },
   { value: "dark", label: "Dark", icon: Moon },
 ];
 
@@ -68,7 +67,9 @@ export default function SettingsScreen() {
 
       <Card>
         <SectionTitle icon={Monitor} title="Appearance" />
-        <View style={styles.segment}>
+        <View
+          style={[styles.toggleTrack, { backgroundColor: theme.secondary }]}
+        >
           {APPEARANCE.map((opt) => {
             const active = preference === opt.value;
             const Icon = opt.icon;
@@ -77,44 +78,20 @@ export default function SettingsScreen() {
                 key={opt.value}
                 onPress={() => setPreference(opt.value)}
                 accessibilityRole="button"
+                accessibilityLabel={opt.label}
                 accessibilityState={active ? { selected: true } : {}}
                 style={[
-                  styles.segmentItem,
-                  {
-                    backgroundColor: active ? theme.accent : "transparent",
-                    borderColor: active ? theme.primary : theme.border,
+                  styles.toggleItem,
+                  active && {
+                    backgroundColor: theme.card,
+                    borderColor: theme.border,
                   },
                 ]}
               >
                 <Icon
-                  color={
-                    active ? theme.accentForeground : theme.mutedForeground
-                  }
-                  size={20}
+                  color={active ? theme.foreground : theme.mutedForeground}
+                  size={18}
                 />
-                <ThemedText
-                  style={[
-                    styles.segmentLabel,
-                    {
-                      color: active
-                        ? theme.accentForeground
-                        : theme.mutedForeground,
-                    },
-                  ]}
-                >
-                  {opt.label}
-                </ThemedText>
-                {active ? (
-                  <View
-                    style={[styles.tick, { backgroundColor: theme.primary }]}
-                  >
-                    <Check
-                      color={theme.primaryForeground}
-                      size={11}
-                      strokeWidth={3}
-                    />
-                  </View>
-                ) : null}
               </Pressable>
             );
           })}
@@ -180,28 +157,18 @@ const styles = StyleSheet.create({
   navRowContent: { flex: 1 },
   navRowLabel: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   navRowValue: { fontSize: 13, marginTop: 1 },
-  segment: {
+  toggleTrack: {
     flexDirection: "row",
-    gap: Spacing.two,
+    borderRadius: Radius.lg,
+    padding: 3,
   },
-  segmentItem: {
+  toggleItem: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingVertical: Spacing.three,
-    borderRadius: Radius.lg,
+    paddingVertical: Spacing.two + 2,
+    borderRadius: Radius.md,
     borderWidth: 1,
-  },
-  segmentLabel: { fontFamily: Fonts.sansMedium, fontSize: 13 },
-  tick: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    width: 16,
-    height: 16,
-    borderRadius: Radius.full,
-    alignItems: "center",
-    justifyContent: "center",
+    borderColor: "transparent",
   },
 });

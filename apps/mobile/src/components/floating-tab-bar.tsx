@@ -22,7 +22,7 @@ import {
 import { Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Spacing } from "@/constants/theme";
+import { Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 
 interface NavSpec {
@@ -95,15 +95,20 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
       style={[
         styles.wrap,
         {
-          // Slightly translucent card surface + hairline top border so the
-          // bar reads as a distinct surface without a heavy blur.
-          backgroundColor: withAlpha(theme.card, 0.9),
-          borderTopColor: theme.border,
-          paddingBottom: Math.max(insets.bottom, 6),
+          // Sit just above the home indicator / bottom edge.
+          paddingBottom: Math.max(insets.bottom - 10, 4),
         },
       ]}
     >
-      <View style={styles.bar}>
+      <View
+        style={[
+          styles.pill,
+          {
+            backgroundColor: withAlpha(theme.card, 0.92),
+            borderColor: theme.border,
+          },
+        ]}
+      >
         {ITEMS.map((spec) => (
           <NavButton
             key={spec.name}
@@ -125,7 +130,7 @@ function withAlpha(hex: string, alpha: number): string {
   return `${hex}${a}`;
 }
 
-const BAR_HEIGHT = 56;
+const BAR_HEIGHT = 52;
 
 const styles = StyleSheet.create({
   wrap: {
@@ -134,16 +139,17 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     alignItems: "center",
-    paddingHorizontal: Spacing.three,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: Spacing.four,
   },
-  bar: {
+  pill: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     width: "100%",
     height: BAR_HEIGHT,
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    borderRadius: Radius.full,
+    borderWidth: 1,
   },
   navButton: {
     flex: 1,

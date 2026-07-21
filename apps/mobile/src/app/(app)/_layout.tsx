@@ -27,7 +27,16 @@ export default function AppLayout() {
             <Stack.Screen name="settings" />
             <Stack.Screen name="profile" />
             <Stack.Screen name="keyboard-setup" />
-            <Stack.Screen name="dictate" />
+            <Stack.Screen
+              name="dictate"
+              options={{
+                // Present as a full-screen modal so it sits above the tab
+                // stack and pops off cleanly — the user always returns to
+                // wherever they were (home, history, etc.), never to a stale
+                // dictate screen left in the stack.
+                presentation: "fullScreenModal",
+              }}
+            />
           </Stack>
         </HistoryProvider>
       </EntriesProvider>

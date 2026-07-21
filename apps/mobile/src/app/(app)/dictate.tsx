@@ -54,10 +54,7 @@ export default function DictateScreen() {
           <ThemedText type="eyebrow" themeColor="mutedForeground">
             Voice Keyboard
           </ThemedText>
-          <Pressable
-            onPress={() => router.replace("/(app)/(tabs)")}
-            hitSlop={12}
-          >
+          <Pressable onPress={() => router.back()} hitSlop={12}>
             <ThemedText type="eyebrow" themeColor="primary">
               Done
             </ThemedText>

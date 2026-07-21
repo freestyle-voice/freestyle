@@ -8,6 +8,7 @@ import {
   InstrumentSerif_400Regular_Italic,
 } from "@expo-google-fonts/instrument-serif";
 import { JetBrainsMono_400Regular } from "@expo-google-fonts/jetbrains-mono";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -17,6 +18,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { Colors } from "@/constants/theme";
 import { ColorModeProvider, useColorMode } from "@/lib/color-mode";
+import { queryClient } from "@/lib/query";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -56,8 +58,10 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <ColorModeProvider>
-      <RootNavigator />
-    </ColorModeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ColorModeProvider>
+        <RootNavigator />
+      </ColorModeProvider>
+    </QueryClientProvider>
   );
 }

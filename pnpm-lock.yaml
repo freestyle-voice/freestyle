@@ -218,6 +218,9 @@ importers:
       '@react-native-async-storage/async-storage':
         specifier: 2.2.0
         version: 2.2.0(react-native@0.86.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(@types/react@19.2.15)(react@19.2.3))
+      '@tanstack/react-query':
+        specifier: ^5.101.2
+        version: 5.101.2(react@19.2.3)
       better-auth:
         specifier: ^1.6.23
         version: 1.6.23(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.3))(react@19.2.3)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@26.1.1)(msw@2.14.6(@types/node@26.1.1)(typescript@6.0.3))(vite@7.3.3(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.22.4)(yaml@2.9.0)))
@@ -14783,7 +14786,9 @@ snapshots:
       metro-runtime: 0.84.4
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/normalize-colors@0.86.0': {}
 
@@ -15291,6 +15296,11 @@ snapshots:
       vite: 7.3.3(@types/node@22.19.19)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.22.4)(yaml@2.9.0)
 
   '@tanstack/query-core@5.101.2': {}
+
+  '@tanstack/react-query@5.101.2(react@19.2.3)':
+    dependencies:
+      '@tanstack/query-core': 5.101.2
+      react: 19.2.3
 
   '@tanstack/react-query@5.101.2(react@19.2.6)':
     dependencies:

@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingTop: Spacing.two,
-    paddingBottom: Spacing.two,
+    paddingBottom: Spacing.three,
   },
   navBack: {
     flexDirection: "row",
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
   leadSubtitle: {
     fontSize: 14,
     lineHeight: 20,
-    marginTop: Spacing.one,
+    marginTop: -Spacing.one,
     marginBottom: Spacing.one,
   },
 

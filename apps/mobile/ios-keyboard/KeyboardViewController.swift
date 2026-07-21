@@ -315,37 +315,47 @@ final class KeyboardViewController: UIInputViewController {
         let dark = isDark
         let c = Freestyle.palette(dark: dark)
 
-        // Warm paper canvas — never the stock iOS gray.
-        view.backgroundColor = c.background
+        // Match the default Apple keyboard appearance — use system colors for
+        // the background and keys so it feels native. Only the mic button
+        // keeps the Freestyle olive accent.
 
-        // Character keys (space, comma, period) sit on the card surface with
-        // ink-colored text and a hairline border, echoing the app's cards.
+        // Standard iOS keyboard background.
+        view.backgroundColor = dark
+            ? UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1) // #1C1C1E approx
+            : UIColor(red: 0.82, green: 0.84, blue: 0.86, alpha: 1) // #D1D5DB approx
+
+        // Character keys (space, comma, period) — white/dark raised key style.
         let charKeys = [spaceButton, commaButton, periodButton]
         for key in charKeys {
-            key?.backgroundColor = c.card
-            key?.setTitleColor(c.foreground, for: .normal)
-            key?.layer.borderWidth = 1
-            key?.layer.borderColor = c.border.cgColor
-            // A whisper of depth in light mode; flat in dark (DESIGN.md §4).
+            key?.backgroundColor = dark
+                ? UIColor(white: 0.35, alpha: 1)
+                : .white
+            key?.setTitleColor(dark ? .white : .black, for: .normal)
+            key?.layer.borderWidth = 0
+            key?.layer.borderColor = nil
             key?.layer.shadowColor = UIColor.black.cgColor
-            key?.layer.shadowOpacity = dark ? 0 : 0.08
+            key?.layer.shadowOpacity = dark ? 0 : 0.15
             key?.layer.shadowOffset = CGSize(width: 0, height: 1)
-            key?.layer.shadowRadius = 1
+            key?.layer.shadowRadius = 0.5
         }
 
-        // Special keys (globe, delete, return) use the subtle secondary fill
-        // with muted-ink icons.
+        // Special keys (globe, delete, return) — darker/lighter fill like the
+        // system keyboard's shift/backspace keys.
         let specialKeys = [globeButton, deleteButton, returnButton]
         for key in specialKeys {
-            key?.backgroundColor = c.secondary
-            key?.tintColor = c.mutedForeground
-            key?.layer.borderWidth = 1
-            key?.layer.borderColor = c.border.cgColor
+            key?.backgroundColor = dark
+                ? UIColor(white: 0.22, alpha: 1)
+                : UIColor(red: 0.68, green: 0.71, blue: 0.74, alpha: 1) // #ADB5BD approx
+            key?.tintColor = dark ? .white : .black
+            key?.layer.borderWidth = 0
+            key?.layer.borderColor = nil
         }
 
-        // Mono micro-labels in muted ink (DESIGN.md §3).
+        // Labels use standard system text colors.
         statusLabel.textColor = c.mutedForeground
-        hintLabel?.textColor = c.mutedForeground
+        hintLabel?.textColor = dark
+            ? UIColor(white: 0.6, alpha: 1)
+            : UIColor(white: 0.4, alpha: 1)
 
         micHost?.rootView = MicLink(destination: URL(string: "freestyle://dictate")!, dark: dark)
     }

@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Freestyle",
-    "slug": "mobile",
+    "slug": "freestyle",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -17,7 +17,13 @@
     },
     "android": {
       "package": "com.freestylevoice.app",
-      "permissions": ["RECORD_AUDIO"],
+      "permissions": [
+        "RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#F4F0E4",
         "foregroundImage": "./assets/images/freestyle-mark.png"
@@ -48,6 +54,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e27180f1-83df-470b-8bcb-346057e87550"
+      }
+    },
+    "owner": "freestyle-voice"
   }
 }

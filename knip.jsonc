@@ -94,6 +94,18 @@
       },
       "ignoreDependencies": ["@types/json-schema", "node:sqlite"]
     },
+    "apps/mobile": {
+      // expo-router uses file-based routing under src/app plus the config
+      // plugin entry, so treat those as roots and scan all app source.
+      "entry": ["src/app/**/*.{ts,tsx}", "app.json"],
+      "project": ["src/**/*.{ts,tsx}"],
+      "paths": {
+        "@/*": ["./src/*"]
+      },
+      // knip's Expo plugin infers expo-updates from the app config even when
+      // OTA updates aren't configured; it isn't a real dependency here.
+      "ignoreDependencies": ["expo-updates"]
+    },
     "packages/create-freestyle-plugin": {
       "entry": ["src/index.ts"],
       "project": ["src/**/*.ts"]

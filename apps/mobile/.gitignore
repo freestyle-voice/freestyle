@@ -41,3 +41,7 @@ example
 # generated native folders
 /ios
 /android
+
+# local iOS signing credentials (EAS uses remote/server-managed credentials)
+credentials.json
+/credentials/

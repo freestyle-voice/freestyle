@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { MicButton } from "@/components/mic-button";
 import { ThemedText } from "@/components/themed-text";
@@ -23,6 +23,7 @@ import { setPendingTranscript } from "@/lib/keyboard-bridge";
 export default function DictateScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { signedIn } = useAuth();
 
   const [result, setResult] = useState("");
@@ -49,7 +50,15 @@ export default function DictateScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <View
+        style={[
+          styles.safeArea,
+          {
+            paddingTop: insets.top + Spacing.two,
+            paddingBottom: insets.bottom + Spacing.two,
+          },
+        ]}
+      >
         <View style={styles.header}>
           <ThemedText type="eyebrow" themeColor="mutedForeground">
             Voice Keyboard
@@ -91,7 +100,7 @@ export default function DictateScreen() {
             onPressOut={() => {}}
           />
         </View>
-      </SafeAreaView>
+      </View>
     </ThemedView>
   );
 }
@@ -103,7 +112,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: Spacing.three,
     paddingBottom: Spacing.two,
   },
   returnCard: {
@@ -117,7 +125,7 @@ const styles = StyleSheet.create({
   footer: {
     alignItems: "center",
     gap: Spacing.three,
-    paddingBottom: Spacing.five,
+    paddingBottom: Spacing.three,
   },
   status: {
     fontFamily: Fonts.mono,

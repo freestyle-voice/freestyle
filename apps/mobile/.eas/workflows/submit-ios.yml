@@ -4,7 +4,7 @@ name: Submit iOS
 # submit the mobile app on every unrelated merge to main. Run with:
 #   eas workflow:run submit-ios.yml
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 jobs:
   build_ios:

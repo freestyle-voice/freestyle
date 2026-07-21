@@ -7,14 +7,16 @@ the config that lives in the repo and the one-time / manual steps that do not.
 - iOS keyboard extension: `com.freestylevoice.app.keyboard` (App Group `group.com.freestylevoice.app`)
 - EAS project: `freestyle-voice` org, projectId in `app.json` → `extra.eas.projectId`
 
+> **Status:** iOS first. Android is deferred — the Android submit workflow and
+> credentials setup will be added later.
+
 ## In-repo config
 
 - `eas.json` → `build.production` (cloud build, `autoIncrement`, remote credentials)
 - `eas.json` → `submit.production`:
-  - iOS: `ascAppId` + `appleTeamId` — **replace the placeholders** before first submit.
-  - Android: first release goes to the `internal` track as a `draft`.
+  - iOS: `ascAppId` (`6793253767`) + `appleTeamId` (`X87V5R2F7D`) — set.
+  - Android: first release goes to the `internal` track as a `draft` (deferred).
 - `.eas/workflows/submit-ios.yml` — build (production) → TestFlight, manual trigger.
-- `.eas/workflows/submit-android.yml` — build (production) → Play submit, manual trigger.
 
 ## One-time credential setup (interactive, not in repo)
 
@@ -28,7 +30,7 @@ eas credentials --platform ios
 ```
 
 Then fill `eas.json` `submit.production.ios.ascAppId` (App Store Connect →
-App Information → Apple ID) and `appleTeamId`.
+App Information → Apple ID) and `appleTeamId` — done: `6793253767` / `X87V5R2F7D`.
 
 Register both bundle IDs in the Apple Developer portal if not already present:
 `com.freestylevoice.app` and `com.freestylevoice.app.keyboard`, each with the
@@ -37,7 +39,9 @@ App Group `group.com.freestylevoice.app` enabled.
 For the `submit-ios.yml` workflow's `testflight` job, also configure the App Store
 Connect connection in the Expo dashboard (Project settings → Connections).
 
-### Android — Google Service Account key
+### Android — Google Service Account key (deferred)
+
+Android submission is not set up yet. When picking it back up:
 
 1. Create a key: https://expo.fyi/creating-google-service-account
 2. Grant it release permissions in Google Play Console.
@@ -54,9 +58,8 @@ The app record for `com.freestylevoice.app` must already exist in Play Console.
 
 ```sh
 cd apps/mobile
-eas build  --platform all --profile production
-eas submit --platform ios      --profile production   # → TestFlight (~10–15 min processing)
-eas submit --platform android  --profile production   # → Play internal track (draft)
+eas build  --platform ios --profile production
+eas submit --platform ios --profile production   # → TestFlight (~10–15 min processing)
 ```
 
 Verify the iOS production build embeds and signs the `FreestyleKeyboard` extension.
@@ -65,18 +68,15 @@ Verify the iOS production build embeds and signs the `FreestyleKeyboard` extensi
 
 - **App Store Connect:** metadata, screenshots, privacy manifest / mic + keyboard
   usage declarations → select build → submit for App Review.
-- **Play Console:** store listing, Data Safety form, content rating → promote
-  `internal` → `production`.
 
 ## CI (EAS Workflows)
 
-These workflows are **manual-trigger only** (`workflow_dispatch`) — this is a
-monorepo, so an `on: push` trigger would build and submit the mobile app on every
-unrelated merge to `main`. Run them explicitly:
+The iOS workflow is **manual-trigger only** (`workflow_dispatch`) — this is a
+monorepo, so an `on: push` trigger would build and submit the app on every
+unrelated merge to `main`. Run it explicitly:
 
 ```sh
 eas workflow:run submit-ios.yml
-eas workflow:run submit-android.yml
 ```
 
 External CI/CD needs an `EXPO_TOKEN` secret.

@@ -116,10 +116,7 @@ export function TabScreenScaffold({
           keyboardShouldPersistTaps="handled"
         >
           {subtitle ? (
-            <ThemedText
-              themeColor="mutedForeground"
-              style={styles.leadSubtitle}
-            >
+            <ThemedText themeColor="mutedForeground" style={styles.subtitle}>
               {subtitle}
             </ThemedText>
           ) : null}
@@ -270,7 +267,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingTop: Spacing.three,
-    paddingBottom: Spacing.one,
+    paddingBottom: Spacing.two,
   },
   tabHeaderTitle: {
     flex: 1,

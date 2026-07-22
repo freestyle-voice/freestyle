@@ -31,7 +31,7 @@ Sentry.init({
   tracesSampleRate: 1.0,
 
   integrations: [
-    Sentry.expoRouterIntegration({
+    Sentry.reactNavigationIntegration({
       enableTimeToInitialDisplay: !isRunningInExpoGo(),
     }),
     Sentry.mobileReplayIntegration({

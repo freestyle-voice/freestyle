@@ -8,7 +8,9 @@ import {
   InstrumentSerif_400Regular_Italic,
 } from "@expo-google-fonts/instrument-serif";
 import { JetBrainsMono_400Regular } from "@expo-google-fonts/jetbrains-mono";
+import * as Sentry from "@sentry/react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { isRunningInExpoGo } from "expo";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -19,6 +21,35 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Colors } from "@/constants/theme";
 import { ColorModeProvider, useColorMode } from "@/lib/color-mode";
 import { queryClient } from "@/lib/query";
+
+Sentry.init({
+  dsn: "https://51fcf17635446e0a220b3ff41b266821@o4509750817325057.ingest.us.sentry.io/4511780563124224",
+
+  sendDefaultPii: true,
+
+  // Tracing
+  tracesSampleRate: 1.0,
+
+  integrations: [
+    Sentry.expoRouterIntegration({
+      enableTimeToInitialDisplay: !isRunningInExpoGo(),
+    }),
+    Sentry.mobileReplayIntegration({
+      maskAllText: true,
+      maskAllImages: true,
+      maskAllVectors: true,
+    }),
+  ],
+
+  enableNativeFramesTracking: !isRunningInExpoGo(),
+
+  // Session Replay
+  replaysOnErrorSampleRate: 1.0,
+  replaysSessionSampleRate: 0.1,
+
+  // Logs
+  enableLogs: true,
+});
 
 SplashScreen.preventAutoHideAsync();
 
@@ -39,7 +70,7 @@ function RootNavigator() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const [fontsLoaded] = useFonts({
     InstrumentSerif_400Regular,
     InstrumentSerif_400Regular_Italic,
@@ -65,3 +96,5 @@ export default function RootLayout() {
     </QueryClientProvider>
   );
 }
+
+export default Sentry.wrap(RootLayout);

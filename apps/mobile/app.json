@@ -31,6 +31,14 @@
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "freestyle-mobile",
+          "organization": "test101-n4"
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",

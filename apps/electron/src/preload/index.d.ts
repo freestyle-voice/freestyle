@@ -3,6 +3,11 @@ import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
 } from "../shared/audio-playback";
+import type {
+  HotkeyBindingKind,
+  HotkeyRecorderError,
+  SetHotkeyBindingResult,
+} from "../shared/hotkey-bindings";
 import type { OpenAppCandidate } from "../shared/open-apps";
 import type { PluginViewBounds } from "../shared/plugins";
 
@@ -21,6 +26,10 @@ declare global {
       updateHotkey: (hotkey: string) => void;
       reloadHotkey: () => void;
       setHotkeyMode: (mode: "hold" | "toggle") => void;
+      setHotkeyBinding: (
+        kind: HotkeyBindingKind,
+        accelerator: string | null,
+      ) => Promise<SetHotkeyBindingResult>;
       hidePill: () => void;
       showErrorDialog: (title: string, message: string) => Promise<void>;
       getServerPort: () => Promise<number>;
@@ -49,17 +58,33 @@ declare global {
       openMicSettings: () => void;
       getOnboardingComplete: () => Promise<boolean>;
       setOnboardingComplete: () => void;
-      startHotkeyRecording: () => void;
+      startHotkeyRecording: (kind?: HotkeyBindingKind) => void;
       pauseHotkeyRecording: () => void;
       stopHotkeyRecording: (hotkey?: string) => void;
       onHotkeyRecordModifiers: (
-        callback: (modifiers: string[]) => void,
+        callback: (payload: {
+          kind: HotkeyBindingKind;
+          modifiers: string[];
+        }) => void,
       ) => () => void;
       onHotkeyRecordCaptured: (
-        callback: (combo: { modifiers: string[]; key: string }) => void,
+        callback: (payload: {
+          kind: HotkeyBindingKind;
+          combo: { modifiers: string[]; key: string };
+        }) => void,
       ) => () => void;
-      onHotkeyRecordReleased: (callback: () => void) => () => void;
-      onHotkeyRecordCancel: (callback: () => void) => () => void;
+      onHotkeyRecordReleased: (
+        callback: (payload: { kind: HotkeyBindingKind }) => void,
+      ) => () => void;
+      onHotkeyRecordCancel: (
+        callback: (payload: { kind: HotkeyBindingKind }) => void,
+      ) => () => void;
+      onHotkeyRecordError: (
+        callback: (payload: {
+          kind: HotkeyBindingKind;
+          error: HotkeyRecorderError;
+        }) => void,
+      ) => () => void;
       // Auto-updater
       checkForUpdate: () => Promise<{
         version: string;

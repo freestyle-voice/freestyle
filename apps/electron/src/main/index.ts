@@ -56,6 +56,7 @@ import {
   startServer as startFreestyleServer,
   stopMlxServer,
   stopWhisperServer,
+  writeSetting,
 } from "@freestyle-voice/server";
 import { createAppLogger, enableFileLogging } from "@freestyle-voice/utils";
 import { serverUrlSchema } from "@freestyle-voice/validations";
@@ -81,12 +82,21 @@ import { hc } from "hono/client";
 import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
+import type { HotkeyBindingKind } from "../shared/hotkey-bindings";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
+import { acceleratorsEqual } from "../shared/hotkey-utils";
 import type { OpenAppCandidate } from "../shared/open-apps";
 import { bearerAuthHeaders } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
+import { runFactoryResetLifecycle } from "./factory-reset-lifecycle";
+import { HotkeyBindingService } from "./hotkey-binding-service";
+import {
+  type HotkeyBindings,
+  HotkeyManager,
+  type ManagedHotkeyListenerOptions,
+} from "./hotkey-manager";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
@@ -288,17 +298,12 @@ let settingsWindow: BrowserWindow | null = null;
 // to avoid spawning a second window during that gap.
 let settingsWindowCreating: Promise<void> | null = null;
 let tray: Tray | null = null;
-let keyListener: NativeKeyListener | null = null;
 // Latching flag: set only once the native key listener has started
 // successfully, which requires Accessibility permission and therefore
 // proves it is granted. NOT set on the globalShortcut fallback, which
-// needs no permission and would otherwise produce a false positive. The
-// flag persists even when keyListener is temporarily torn down for hotkey
-// recording.
+// needs no permission and would otherwise produce a false positive.
 let accessibilityConfirmed = false;
-let hotkeyPressed = false;
-let currentHotkeyAccel: string | null = null;
-let hotkeyActivationMode: "hold" | "toggle" = "hold";
+let hotkeyManager: HotkeyManager;
 let micListener: MicListener | null = null;
 let hotkeyRecorder: HotkeyRecorder | null = null;
 const audioPlaybackController = new AudioPlaybackController();
@@ -662,7 +667,9 @@ async function buildSettingsWindow(initialPath?: string): Promise<void> {
   settingsWindow.on("closed", () => {
     if (hotkeyRecorder) {
       stopHotkeyRecorderProcess();
-      scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
+    }
+    if (hotkeyManager.getState().paused) {
+      scheduleHotkeyResume();
     }
     settingsWindow = null;
   });
@@ -1156,8 +1163,7 @@ function hidePill(): void {
   // Session ended (cancel, error, or paste complete). Clear latched hotkey
   // state so the next press starts fresh — e.g. after ESC while still
   // holding the dictation key.
-  hotkeyPressed = false;
-  clearHotkeyStuckWatchdog();
+  hotkeyManager.acknowledgeRecordingEnded();
   // Unregister Escape shortcut when pill is hidden
   try {
     globalShortcut.unregister("Escape");
@@ -1373,49 +1379,58 @@ async function factoryReset(): Promise<void> {
   if (response !== 1) return;
 
   try {
-    await stopWhisperServer().catch(() => {});
-    await stopMlxServer().catch(() => {});
+    await runFactoryResetLifecycle({
+      manager: hotkeyManager,
+      performReset: async () => {
+        await stopWhisperServer().catch(() => {});
+        await stopMlxServer().catch(() => {});
 
-    if (keyListener) {
-      keyListener.stop();
-      keyListener = null;
-    }
-    if (micListener) {
-      micListener.stop();
-      micListener = null;
-    }
-    if (process.platform === "win32") {
-      globalShortcut.unregisterAll();
-    }
+        if (micListener) {
+          micListener.stop();
+          micListener = null;
+        }
+        if (process.platform === "win32") {
+          globalShortcut.unregisterAll();
+        }
 
-    try {
-      closeDb();
-    } catch {}
+        try {
+          closeDb();
+        } catch {}
 
-    if (httpServer) {
-      httpServer.close();
-      httpServer = null;
-    }
+        if (httpServer) {
+          httpServer.close();
+          httpServer = null;
+        }
 
-    const userData = app.getPath("userData");
-    for (const f of [
-      "settings.json",
-      "freestyle.db",
-      "freestyle.db-wal",
-      "freestyle.db-shm",
-    ]) {
-      await rm(join(userData, f), { force: true });
-    }
+        const userData = app.getPath("userData");
+        for (const f of [
+          "settings.json",
+          "freestyle.db",
+          "freestyle.db-wal",
+          "freestyle.db-shm",
+        ]) {
+          await rm(join(userData, f), { force: true });
+        }
 
-    settingsCache = null;
-    if (process.platform === "linux") {
-      linuxAutostart.setEnabled(false);
-    } else {
-      app.setLoginItemSettings({ openAtLogin: false });
-    }
-
-    app.relaunch();
-    app.exit(0);
+        settingsCache = null;
+        if (process.platform === "linux") {
+          linuxAutostart.setEnabled(false);
+        } else {
+          app.setLoginItemSettings({ openAtLogin: false });
+        }
+      },
+      scheduleRelaunch: () => app.relaunch(),
+      exit: () => app.exit(0),
+      logResumeFailure: (resumeError) => {
+        log.error(
+          `Failed to resume hotkeys after factory-reset failure: ${
+            resumeError instanceof Error
+              ? resumeError.message
+              : String(resumeError)
+          }`,
+        );
+      },
+    });
   } catch (err) {
     log.error(
       `factory-reset failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -1975,31 +1990,54 @@ app.whenReady().then(async () => {
   });
 
   // IPC: hotkey recording — global native listener + renderer DOM on macOS
-  ipcMain.on("hotkey-record:start", () => {
-    // Pause the active hotkey listener so it doesn't fire during recording
-    if (keyListener) {
-      keyListener.stop();
-      keyListener = null;
+  ipcMain.on("hotkey-record:start", (_event, kind: unknown) => {
+    if (kind !== "hold" && kind !== "toggle") {
+      hotkeyRecorderLog.warn(
+        "Ignoring hotkey recorder start with invalid kind",
+      );
+      return;
     }
-    globalShortcut.unregisterAll();
+    hotkeyManager.pause();
 
     stopHotkeyRecorderProcess();
+    // E2E drives the renderer's DOM fallback so recorder behavior is testable
+    // without depending on a locally compiled native binary or OS permissions.
+    if (process.env.FREESTYLE_E2E === "1") return;
+
     const target =
       settingsWindow?.webContents ?? mainWindow?.webContents ?? null;
-    if (!target) return;
+    if (!target) {
+      scheduleHotkeyResume();
+      return;
+    }
 
-    hotkeyRecorder = new HotkeyRecorder({
+    let recorder: HotkeyRecorder;
+    const recoverBindings = (): void => {
+      if (hotkeyRecorder !== recorder) return;
+      stopHotkeyRecorderProcess();
+      scheduleHotkeyResume();
+    };
+    recorder = new HotkeyRecorder(kind, {
       onModifiers: () => {},
       onCaptured: () => {},
       onCancel: () => {
-        stopHotkeyRecorderProcess();
-        scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
+        recoverBindings();
       },
       onError: (message) => {
         hotkeyRecorderLog.warn(message);
+        if (!target.isDestroyed()) {
+          target.send("hotkey-record:error", {
+            kind,
+            error: "recorder_failed",
+          });
+        }
+        recoverBindings();
       },
     });
-    hotkeyRecorder.start(target);
+    hotkeyRecorder = recorder;
+    if (!recorder.start(target)) {
+      recoverBindings();
+    }
   });
 
   ipcMain.on("hotkey-record:pause-recorder", () => {
@@ -2008,11 +2046,11 @@ app.whenReady().then(async () => {
 
   ipcMain.on("hotkey-record:stop", (_event, hotkey?: string) => {
     stopHotkeyRecorderProcess();
-    scheduleHotkeyRegistration(
-      typeof hotkey === "string" && hotkey.length > 0
-        ? hotkey
-        : (currentHotkeyAccel ?? undefined),
-    );
+    if (typeof hotkey === "string" && hotkey.length > 0) {
+      scheduleHotkeyRegistration(hotkey, true);
+    } else {
+      scheduleHotkeyResume();
+    }
   });
 
   // Set database path for the server before any API calls
@@ -2362,23 +2400,18 @@ app.whenReady().then(async () => {
   });
 
   // Register the hold-to-record hotkey immediately with the default accelerator
-  // so a press right after launch is never dropped. Pass DEFAULT_HOTKEY
-  // explicitly so this doesn't fire a settings request at the not-yet-ready
-  // server. Once the server answers, re-register with the configured
-  // accelerator + activation mode (only if they differ, to avoid a needless
-  // native-listener rebuild).
-  scheduleHotkeyRegistration(DEFAULT_HOTKEY);
-  void waitForServerReady().then(async () => {
-    // One request for both keys, instead of a read per key. Skip if the server
-    // never answered — the default registered above stands.
+  // so a press right after launch is never dropped. Once the server answers,
+  // load both configured bindings together and only rebuild the native
+  // listeners when either binding differs.
+  scheduleHotkeyBindingsRegistration({ hold: DEFAULT_HOTKEY, toggle: null });
+  void waitForServerReady().then(async (ready) => {
+    if (!ready) return;
     const settings = await getServerSettings();
     if (!settings) return;
-    hotkeyActivationMode = hotkeyModeFromSettings(settings);
-    const configured = hotkeyFromSettings(settings);
-    const accel = configured
-      ? normalizeAccelerator(configured)
-      : DEFAULT_HOTKEY;
-    if (accel !== currentHotkeyAccel) scheduleHotkeyRegistration(configured);
+    scheduleHotkeyBindingsRegistration(
+      loadHotkeyBindings(undefined, settings),
+      true,
+    );
   });
 
   // Start microphone activity monitoring
@@ -2393,26 +2426,28 @@ app.whenReady().then(async () => {
 
   // Listen for hotkey changes from the settings UI
   ipcMain.on("hotkey:update", (_event, newHotkey: string) => {
-    scheduleHotkeyRegistration(newHotkey);
+    scheduleHotkeyRegistration(newHotkey, true);
   });
 
   ipcMain.on("hotkey:reload", () => {
     void getServerSettings().then((settings) => {
-      // Server unreachable — keep last-known-good mode/hotkey rather than
-      // silently reverting to defaults on a transient blip.
+      // Server unreachable — keep both last-known-good bindings rather than
+      // silently reverting either one to its default on a transient blip.
       if (!settings) return;
-      hotkeyActivationMode = hotkeyModeFromSettings(settings);
-      scheduleHotkeyRegistration(
-        hotkeyFromSettings(settings) ?? currentHotkeyAccel ?? undefined,
+      scheduleHotkeyBindingsRegistration(
+        loadHotkeyBindings(undefined, settings),
       );
     });
   });
 
-  ipcMain.on("hotkey:set-mode", (_event, mode: string) => {
-    hotkeyActivationMode = mode === "toggle" ? "toggle" : "hold";
-    hotkeyPressed = false;
-    clearHotkeyStuckWatchdog();
-    scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
+  ipcMain.on("hotkey:set-mode", () => {
+    hotkeyLog.debug(
+      "Ignoring deprecated hotkey:set-mode; hold and toggle bindings now have fixed semantics.",
+    );
+  });
+
+  ipcMain.handle("hotkey:set-binding", (_event, kind, accelerator) => {
+    return hotkeyBindingService.setBinding(kind, accelerator);
   });
 });
 
@@ -2466,19 +2501,92 @@ function isValidAccelerator(accel: string): boolean {
   );
 }
 
-/** The configured hotkey accelerator from a settings map, if valid. */
-function hotkeyFromSettings(
-  settings: Record<string, string>,
-): string | undefined {
-  const value = settings[SETTINGS_KEYS.hotkey];
-  return value && isValidAccelerator(value) ? value : undefined;
+function loadHotkeySettingFromDB(key: string): string | undefined {
+  try {
+    const dbPath = process.env.FREESTYLE_DB_PATH;
+    if (dbPath) {
+      const { DatabaseSync } = require("node:sqlite");
+      const db = new DatabaseSync(dbPath);
+      const row = db
+        .prepare("SELECT value FROM settings WHERE key = ?")
+        .get(key) as { value: string } | undefined;
+      db.close();
+      if (row?.value && isValidAccelerator(row.value)) {
+        return row.value;
+      }
+    }
+  } catch {
+    // Ignore errors
+  }
+  return undefined;
 }
 
-/** The hotkey activation mode from a settings map (defaults to "hold"). */
-function hotkeyModeFromSettings(
-  settings: Record<string, string>,
-): "hold" | "toggle" {
-  return settings[SETTINGS_KEYS.hotkeyMode] === "toggle" ? "toggle" : "hold";
+function loadHotkeyBindings(
+  holdOverride?: string,
+  settings?: Record<string, string>,
+): HotkeyBindings {
+  const loadSetting = settings
+    ? (key: string): string | undefined => settings[key]
+    : loadHotkeySettingFromDB;
+  const savedHold = loadSetting(SETTINGS_KEYS.hotkey);
+  const holdCandidate = holdOverride || savedHold;
+  const hold =
+    holdCandidate && isValidAccelerator(holdCandidate)
+      ? normalizeAccelerator(holdCandidate)
+      : DEFAULT_HOTKEY;
+
+  const savedToggle = loadSetting(SETTINGS_KEYS.hotkeyToggle);
+  let toggle =
+    savedToggle && isValidAccelerator(savedToggle)
+      ? normalizeAccelerator(savedToggle)
+      : null;
+  if (toggle && acceleratorsEqual(hold, toggle)) {
+    hotkeyLog.warn(
+      `Ignoring toggle hotkey "${toggle}" because it matches the hold hotkey.`,
+    );
+    toggle = null;
+  }
+
+  return { hold, toggle };
+}
+
+function loadPersistedHotkeyBinding(kind: HotkeyBindingKind): string | null {
+  const dbPath = process.env.FREESTYLE_DB_PATH;
+  if (!dbPath) throw new Error("Hotkey settings database is unavailable");
+  const key =
+    kind === "hold" ? SETTINGS_KEYS.hotkey : SETTINGS_KEYS.hotkeyToggle;
+  const { DatabaseSync } = require("node:sqlite");
+  const db = new DatabaseSync(dbPath);
+  try {
+    const row = db
+      .prepare("SELECT value FROM settings WHERE key = ?")
+      .get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  } finally {
+    db.close();
+  }
+}
+
+function persistHotkeyBinding(
+  kind: HotkeyBindingKind,
+  accelerator: string | null,
+): void {
+  const key =
+    kind === "hold" ? SETTINGS_KEYS.hotkey : SETTINGS_KEYS.hotkeyToggle;
+  if (accelerator !== null) {
+    writeSetting(key, accelerator);
+    return;
+  }
+
+  const dbPath = process.env.FREESTYLE_DB_PATH;
+  if (!dbPath) throw new Error("Hotkey settings database is unavailable");
+  const { DatabaseSync } = require("node:sqlite");
+  const db = new DatabaseSync(dbPath);
+  try {
+    db.prepare("DELETE FROM settings WHERE key = ?").run(key);
+  } finally {
+    db.close();
+  }
 }
 
 function sendHotkeyDown(): void {
@@ -2507,79 +2615,6 @@ function sendHotkeyUp(): void {
   }
   mainWindow?.webContents.send("hotkey:up");
   settingsWindow?.webContents.send("hotkey:up");
-}
-
-const HOTKEY_STUCK_TIMEOUT_MS = 5 * 60 * 1000;
-let hotkeyStuckTimer: NodeJS.Timeout | null = null;
-
-function clearHotkeyStuckWatchdog(): void {
-  if (hotkeyStuckTimer) {
-    clearTimeout(hotkeyStuckTimer);
-    hotkeyStuckTimer = null;
-  }
-}
-
-function armHotkeyStuckWatchdog(): void {
-  clearHotkeyStuckWatchdog();
-  hotkeyStuckTimer = setTimeout(() => {
-    hotkeyStuckTimer = null;
-    if (!hotkeyPressed) return;
-    hotkeyLog.warn(
-      "Hold-mode hotkey saw no key-up for 5 minutes; forcing release.",
-    );
-    hotkeyPressed = false;
-    sendHotkeyUp();
-  }, HOTKEY_STUCK_TIMEOUT_MS);
-}
-
-function handleNativeHotkeyDown(): void {
-  if (hotkeyActivationMode === "toggle") {
-    if (!hotkeyPressed) {
-      hotkeyPressed = true;
-      sendHotkeyDown();
-    } else {
-      hotkeyPressed = false;
-      sendHotkeyUp();
-    }
-    return;
-  }
-
-  if (!hotkeyPressed) {
-    hotkeyPressed = true;
-    armHotkeyStuckWatchdog();
-    sendHotkeyDown();
-  }
-}
-
-function handleNativeHotkeyUp(): void {
-  if (hotkeyActivationMode === "toggle") return;
-
-  if (hotkeyPressed) {
-    hotkeyPressed = false;
-    clearHotkeyStuckWatchdog();
-    sendHotkeyUp();
-  }
-}
-
-// Notify once per session when hold-to-talk degrades to toggle mode, so the
-// user isn't left wondering why holding the hotkey stopped working.
-let hotkeyDegradedNotified = false;
-function notifyHotkeyDegraded(accel: string, nativeError: string): void {
-  if (hotkeyDegradedNotified || hotkeyActivationMode !== "hold") return;
-  hotkeyDegradedNotified = true;
-  let fix = "";
-  if (
-    process.platform === "linux" &&
-    nativeError.includes("No accessible input devices")
-  ) {
-    fix =
-      " To enable hold-to-talk, run: sudo usermod -aG input $USER — then log out and back in.";
-  }
-  const body = `Hold-to-talk isn't available, so "${accel}" now toggles recording on and off.${fix}`;
-  hotkeyLog.warn(body);
-  if (Notification.isSupported()) {
-    new Notification({ title: "Freestyle is in toggle mode", body }).show();
-  }
 }
 
 // Rate-limited so a broken paste backend doesn't fire a notification per
@@ -2614,17 +2649,10 @@ function notifyPasteFailed(): void {
 /** Electron globalShortcut rejects some combos (e.g. Alt+Super on Linux). */
 const LINUX_GLOBAL_SHORTCUT_FALLBACK = "F9";
 
-function registerGlobalShortcutToggle(accel: string): string | null {
-  const onToggle = (): void => {
-    if (!hotkeyPressed) {
-      hotkeyPressed = true;
-      sendHotkeyDown();
-    } else {
-      hotkeyPressed = false;
-      sendHotkeyUp();
-    }
-  };
-
+function registerGlobalShortcutToggle(
+  accel: string,
+  onToggle: () => void,
+): string | null {
   const candidates =
     process.platform === "linux" && /super/i.test(accel)
       ? [accel, LINUX_GLOBAL_SHORTCUT_FALLBACK]
@@ -2649,136 +2677,144 @@ function registerGlobalShortcutToggle(accel: string): string | null {
   return null;
 }
 
-function scheduleHotkeyRegistration(hotkey?: string): void {
-  void registerHotkey(hotkey).catch((err) => {
+function surfaceHotkeyError(message: string): void {
+  const errorPayload = { message };
+  mainWindow?.webContents.send("hotkey:error", errorPayload);
+  settingsWindow?.webContents.send("hotkey:error", errorPayload);
+}
+
+function surfaceHoldUnavailableError(
+  accel: string,
+  nativeError?: string,
+): void {
+  let fix = "";
+  if (
+    process.platform === "linux" &&
+    nativeError?.includes("No accessible input devices")
+  ) {
+    fix = " Run: sudo usermod -aG input $USER — then log out and back in.";
+  }
+  const message = `Hold-to-record hotkey "${accel}" is unavailable.${fix}`;
+  hotkeyLog.error(message);
+  surfaceHotkeyError(message);
+  if (Notification.isSupported()) {
+    new Notification({
+      title: "Hold hotkey unavailable",
+      body: message,
+    }).show();
+  }
+}
+
+function createManagedNativeListener(
+  options: ManagedHotkeyListenerOptions,
+): NativeKeyListener {
+  return new NativeKeyListener({
+    hotkey: options.accelerator,
+    onKeyDown: options.onKeyDown,
+    onKeyUp: options.onKeyUp,
+    onError: options.onError,
+    onReady: options.onReady,
+    onPermanentFailure: options.onPermanentFailure,
+  });
+}
+
+hotkeyManager = new HotkeyManager({
+  createListener: createManagedNativeListener,
+  registerFallback: registerGlobalShortcutToggle,
+  unregisterFallback: (accelerator) => {
+    globalShortcut.unregister(accelerator);
+  },
+  sendHotkeyDown,
+  sendHotkeyUp,
+  surfaceHoldUnavailableError,
+  surfaceToggleUnavailableError: (accelerator) => {
+    surfaceHotkeyError(
+      `Could not register toggle hotkey "${accelerator}". Try a different key combination in Settings.`,
+    );
+  },
+  onNativeListenerReady: (binding, accelerator) => {
+    accessibilityConfirmed = true;
+    hotkeyLog.debug(
+      `Native ${binding} hotkey listener ready for "${accelerator}"`,
+    );
+  },
+  log: (message) => hotkeyLog.warn(message),
+});
+
+const hotkeyBindingService = new HotkeyBindingService({
+  readPersistedBinding: loadPersistedHotkeyBinding,
+  persistBinding: persistHotkeyBinding,
+  registerBindings: (bindings) => hotkeyManager.registerBindings(bindings),
+  resumeIfPaused: async () => {
+    const { paused, destroyed } = hotkeyManager.getState();
+    if (paused && !destroyed) await hotkeyManager.resume();
+  },
+  validateAccelerator: isValidAccelerator,
+  normalizeAccelerator,
+  acceleratorsEqual,
+  defaultHold: DEFAULT_HOTKEY,
+  logRecoveryFailure: (message, error) => {
+    hotkeyLog.error(
+      `${message}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  },
+});
+
+if (process.env.FREESTYLE_E2E === "1") {
+  const testGlobal = globalThis as typeof globalThis & {
+    __freestyleHotkeyManager?: HotkeyManager;
+  };
+  testGlobal.__freestyleHotkeyManager = hotkeyManager;
+}
+
+function scheduleHotkeyRegistration(
+  holdOverride?: string,
+  preserveCurrentToggle = false,
+): void {
+  const bindings = loadHotkeyBindings(holdOverride);
+  if (preserveCurrentToggle) {
+    const current = hotkeyManager.getDesiredBindings();
+    if (current) bindings.toggle = current.toggle;
+  }
+  scheduleHotkeyBindingsRegistration(bindings);
+}
+
+function scheduleHotkeyBindingsRegistration(
+  bindings: HotkeyBindings,
+  skipIfUnchanged = false,
+): void {
+  const current = hotkeyManager.getDesiredBindings();
+  if (
+    skipIfUnchanged &&
+    current &&
+    acceleratorsEqual(current.hold, bindings.hold) &&
+    ((current.toggle === null && bindings.toggle === null) ||
+      (current.toggle !== null &&
+        bindings.toggle !== null &&
+        acceleratorsEqual(current.toggle, bindings.toggle)))
+  ) {
+    return;
+  }
+
+  void hotkeyManager.registerBindings(bindings).catch((err) => {
     hotkeyLog.error(
       `Hotkey registration failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   });
 }
 
-async function registerHotkey(hotkey?: string): Promise<void> {
-  try {
-    // Tear down previous listener
-    if (keyListener) {
-      keyListener.stop();
-      keyListener = null;
-    }
-    hotkeyPressed = false;
-    clearHotkeyStuckWatchdog();
-    globalShortcut.unregisterAll();
-
-    if (!hotkey) {
-      // Unreachable server yields no map; registration falls back to the
-      // default accelerator below.
-      hotkey = hotkeyFromSettings((await getServerSettings()) ?? {});
-    }
-
-    const normalized =
-      hotkey && isValidAccelerator(hotkey)
-        ? normalizeAccelerator(hotkey)
-        : null;
-    const accel = normalized ?? DEFAULT_HOTKEY;
-    currentHotkeyAccel = accel;
-
-    // Try native key listener binary first (all platforms)
-    let nativeError = "";
-    const listener = new NativeKeyListener({
-      hotkey: accel,
-      onKeyDown: handleNativeHotkeyDown,
-      onKeyUp: handleNativeHotkeyUp,
-      onError: (error) => {
-        nativeError = error;
-        hotkeyLog.error(`Native key listener error: ${error}`);
-      },
-      onReady: () => {
-        hotkeyLog.debug(`Native key listener ready for "${accel}"`);
-      },
-      onPermanentFailure: () => {
-        if (keyListener !== listener) return;
-        hotkeyLog.error(
-          "Native key listener permanently failed; falling back to Electron globalShortcut (toggle mode).",
-        );
-        listener.stop();
-        keyListener = null;
-        if (hotkeyPressed) {
-          hotkeyPressed = false;
-          clearHotkeyStuckWatchdog();
-          sendHotkeyUp();
-        }
-        const registeredAccel = registerGlobalShortcutToggle(accel);
-        if (registeredAccel) {
-          notifyHotkeyDegraded(accel, nativeError);
-        } else {
-          const errorPayload = {
-            message: `The hotkey listener stopped working and "${accel}" could not be re-registered. Restart Freestyle or pick a different combination in Settings.`,
-          };
-          mainWindow?.webContents.send("hotkey:error", errorPayload);
-          settingsWindow?.webContents.send("hotkey:error", errorPayload);
-        }
-      },
-    });
-    keyListener = listener;
-
-    const started = await listener.start();
-
-    // Another registerHotkey call may have replaced keyListener while we
-    // were awaiting — if so, abandon this attempt.
-    if (keyListener !== listener) {
-      listener.stop();
-      return;
-    }
-
-    if (started) {
-      accessibilityConfirmed = true;
-      hotkeyDegradedNotified = false;
-    } else {
-      hotkeyLog.warn(
-        "Native key listener unavailable, falling back to Electron globalShortcut (toggle mode).",
-      );
-      listener.stop();
-      keyListener = null;
-
-      // Fallback: globalShortcut has no key-up — always use toggle semantics
-      const registeredAccel = registerGlobalShortcutToggle(accel);
-      if (registeredAccel) {
-        // Do NOT latch accessibilityConfirmed here. Registering a global
-        // shortcut requires no Accessibility permission on macOS, so a
-        // successful registration proves nothing about whether the app can
-        // post CGEvents / send Apple Events. Latching it here would make
-        // permissions:check-accessibility report a false positive, hide the
-        // "grant Accessibility" prompt during onboarding, and leave paste
-        // silently broken in the notarized prod build. Only the native key
-        // listener starting (above) is real proof of Accessibility.
-        notifyHotkeyDegraded(accel, nativeError);
-      } else {
-        let message = `Could not register hotkey "${accel}". Try a different key combination in Settings.`;
-        if (
-          process.platform === "linux" &&
-          nativeError.includes("No accessible input devices")
-        ) {
-          message = `Hotkey "${accel}" requires access to input devices. Run: sudo usermod -aG input $USER — then log out and back in.`;
-        }
-        const errorPayload = { message };
-        mainWindow?.webContents.send("hotkey:error", errorPayload);
-        settingsWindow?.webContents.send("hotkey:error", errorPayload);
-      }
-    }
-  } catch (err) {
+function scheduleHotkeyResume(): void {
+  void hotkeyManager.resume().catch((err) => {
     hotkeyLog.error(
-      `registerHotkey failed: ${err instanceof Error ? err.message : String(err)}`,
+      `Hotkey resume failed: ${err instanceof Error ? err.message : String(err)}`,
     );
-  }
+  });
 }
 
-// Clean up key listener and mic listener on quit
 app.on("will-quit", () => {
   audioPlaybackController.restoreSync();
   stopLinuxPasteHelper();
-  if (keyListener) {
-    keyListener.stop();
-    keyListener = null;
-  }
+  hotkeyManager.stop();
   if (micListener) {
     micListener.stop();
     micListener = null;
@@ -2814,10 +2850,7 @@ function cleanupBeforeQuit(): void {
   stopLinuxPasteHelper();
   stopWhisperServer().catch(() => {});
   stopMlxServer().catch(() => {});
-  if (keyListener) {
-    keyListener.stop();
-    keyListener = null;
-  }
+  hotkeyManager.stop();
   if (micListener) {
     micListener.stop();
     micListener = null;

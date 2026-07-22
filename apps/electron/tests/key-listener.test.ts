@@ -95,7 +95,7 @@ test("adding a modifier after solo Fn activation keeps hold-to-talk active", asy
 
 test("hotkey recorder preserves modifiers emitted with Fn chord lines", () => {
   const modifiers: string[][] = [];
-  const recorder = new HotkeyRecorder({
+  const recorder = new HotkeyRecorder("hold", {
     onModifiers: (nextModifiers) => modifiers.push(nextModifiers),
     onCaptured: () => {},
     onCancel: () => {},
@@ -104,4 +104,81 @@ test("hotkey recorder preserves modifiers emitted with Fn chord lines", () => {
   recorder.handleLine("FN_DOWN:control,option,shift,command");
 
   expect(modifiers).toEqual([["Control", "Alt", "Shift", "Command", "Fn"]]);
+});
+
+test("hotkey recorder events carry the active binding kind", () => {
+  const sent: Array<{ channel: string; payload: unknown }> = [];
+  const recorder = new HotkeyRecorder("toggle", {
+    onModifiers: () => {},
+    onCaptured: () => {},
+    onCancel: () => {},
+  }) as unknown as LineHandler & {
+    target: { send: (channel: string, payload: unknown) => void };
+  };
+  recorder.target = {
+    send: (channel, payload) => sent.push({ channel, payload }),
+  };
+
+  recorder.handleLine("RECORD_MODIFIERS:Control,Alt");
+  recorder.handleLine("RECORD_KEY:Space");
+  recorder.handleLine("RECORD_RELEASE");
+
+  expect(sent).toEqual([
+    {
+      channel: "hotkey-record:modifiers",
+      payload: { kind: "toggle", modifiers: ["Control", "Alt"] },
+    },
+    {
+      channel: "hotkey-record:captured",
+      payload: {
+        kind: "toggle",
+        combo: { modifiers: ["Control", "Alt"], key: "Space" },
+      },
+    },
+    { channel: "hotkey-record:released", payload: { kind: "toggle" } },
+  ]);
+});
+
+test("hotkey recorder reports a start failure once per session", () => {
+  const errors: string[] = [];
+  const recorder = new HotkeyRecorder("hold", {
+    onModifiers: () => {},
+    onCaptured: () => {},
+    onCancel: () => {},
+    onError: (message) => errors.push(message),
+  }) as HotkeyRecorder & {
+    reportTerminalError(message: string): void;
+  };
+  const currentPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", {
+    configurable: true,
+    value: "unsupported",
+  });
+  try {
+    expect(recorder.start({ send: () => {} } as never)).toBe(false);
+    recorder.reportTerminalError("duplicate recovery");
+  } finally {
+    if (currentPlatform) {
+      Object.defineProperty(process, "platform", currentPlatform);
+    }
+  }
+
+  expect(errors).toEqual(["Unsupported platform: unsupported"]);
+});
+
+test("hotkey recorder cancel completes once", () => {
+  let cancelCalls = 0;
+  const recorder = new HotkeyRecorder("toggle", {
+    onModifiers: () => {},
+    onCaptured: () => {},
+    onCancel: () => cancelCalls++,
+  }) as unknown as LineHandler & {
+    target: { send: () => void };
+  };
+  recorder.target = { send: () => {} };
+
+  recorder.handleLine("RECORD_CANCEL");
+  recorder.handleLine("RECORD_CANCEL");
+
+  expect(cancelCalls).toBe(1);
 });

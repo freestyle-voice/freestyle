@@ -9,6 +9,7 @@ export const SETTINGS_KEYS = {
   freestyleCloudPanelExpanded: "freestyle_cloud_panel_expanded",
   hotkey: "hotkey",
   hotkeyMode: "hotkey_mode",
+  hotkeyToggle: "hotkey_toggle",
   historyPaused: "history_paused",
   historyRetentionDays: "history_retention_days",
   language: "language",

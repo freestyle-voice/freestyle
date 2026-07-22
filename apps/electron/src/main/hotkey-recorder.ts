@@ -1,6 +1,6 @@
 /**
  * Global hotkey rebinding — spawns a platform listener while the user picks a
- * new shortcut in Settings. Restores the recording IPC removed in #50.
+ * new shortcut in Settings.
  *
  * macOS: native binary (Fn / right modifiers) + renderer DOM (Alt+Space, etc.)
  * Windows / Linux: native binary in --record mode
@@ -9,6 +9,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createAppLogger } from "@freestyle-voice/utils";
 import type { WebContents } from "electron";
+import type { HotkeyBindingKind } from "../shared/hotkey-bindings";
 import { getNativeBinaryPath } from "./native-binary";
 
 const log = createAppLogger("hotkey-recorder");
@@ -59,25 +60,30 @@ export class HotkeyRecorder {
   private target: WebContents | null = null;
   private callbacks: HotkeyRecorderCallbacks;
   private pendingModifiers: string[] = [];
+  private terminalErrorReported = false;
 
-  constructor(callbacks: HotkeyRecorderCallbacks) {
+  constructor(
+    readonly kind: HotkeyBindingKind,
+    callbacks: HotkeyRecorderCallbacks,
+  ) {
     this.callbacks = callbacks;
   }
 
   start(target: WebContents): boolean {
     this.stop();
+    this.terminalErrorReported = false;
     this.target = target;
     this.pendingModifiers = [];
 
     const binaryName = BINARY_NAMES[process.platform];
     if (!binaryName) {
-      this.callbacks.onError?.(`Unsupported platform: ${process.platform}`);
+      this.reportTerminalError(`Unsupported platform: ${process.platform}`);
       return false;
     }
 
     const binaryPath = getNativeBinaryPath(binaryName);
     if (!binaryPath) {
-      this.callbacks.onError?.(
+      this.reportTerminalError(
         `Native key listener binary not found: ${binaryName}`,
       );
       return false;
@@ -95,7 +101,7 @@ export class HotkeyRecorder {
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (err) {
-      this.callbacks.onError?.(
+      this.reportTerminalError(
         `Failed to spawn hotkey recorder: ${err instanceof Error ? err.message : String(err)}`,
       );
       return false;
@@ -121,12 +127,12 @@ export class HotkeyRecorder {
       const unexpected = this.target !== null;
       this.process = null;
       if (unexpected) {
-        this.callbacks.onError?.("Hotkey recorder process exited");
+        this.reportTerminalError("Hotkey recorder process exited");
       }
     });
 
     this.process.on("error", (err) => {
-      this.callbacks.onError?.(`Hotkey recorder process error: ${err.message}`);
+      this.reportTerminalError(`Hotkey recorder process error: ${err.message}`);
       this.process = null;
     });
 
@@ -147,23 +153,33 @@ export class HotkeyRecorder {
     }
   }
 
+  private reportTerminalError(message: string): void {
+    if (!this.target || this.terminalErrorReported) return;
+    this.terminalErrorReported = true;
+    this.callbacks.onError?.(message);
+  }
+
   private sendModifiers(modifiers: string[]): void {
     this.pendingModifiers = modifiers;
-    this.target?.send("hotkey-record:modifiers", modifiers);
+    this.target?.send("hotkey-record:modifiers", {
+      kind: this.kind,
+      modifiers,
+    });
     this.callbacks.onModifiers(modifiers);
   }
 
   private sendCaptured(combo: HotkeyCombo): void {
-    this.target?.send("hotkey-record:captured", combo);
+    this.target?.send("hotkey-record:captured", { kind: this.kind, combo });
     this.callbacks.onCaptured(combo);
   }
 
   private sendReleased(): void {
-    this.target?.send("hotkey-record:released");
+    this.target?.send("hotkey-record:released", { kind: this.kind });
   }
 
   private sendCancel(): void {
-    this.target?.send("hotkey-record:cancel");
+    if (!this.target) return;
+    this.target?.send("hotkey-record:cancel", { kind: this.kind });
     this.callbacks.onCancel();
     this.stop();
   }

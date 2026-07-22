@@ -265,6 +265,41 @@ jobs:
           CI: "1"
         run: pnpm exec expo prebuild --no-install --clean
 
+  mobile-android:
+    name: Mobile (Android build)
+    needs: [changes, lint, mobile]
+    if: needs.changes.outputs.run_mobile == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: "package.json"
+          cache: "pnpm"
+
+      # React Native 0.86 (Expo SDK 57) requires JDK 17.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Prebuild Android project
+        working-directory: apps/mobile
+        env:
+          CI: "1"
+        run: pnpm exec expo prebuild --platform android --clean
+
+      - name: Assemble debug APK
+        working-directory: apps/mobile/android
+        run: ./gradlew assembleDebug --no-daemon
+
   build-linux:
     name: Build (Linux)
     needs: [changes, lint, typecheck, test-server]
@@ -477,6 +512,7 @@ jobs:
       - test-electron
       - build-plugins
       - mobile
+      - mobile-android
       - build-linux
       - build-mac
       - build-windows

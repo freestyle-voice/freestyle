@@ -66,25 +66,44 @@ extension Color {
 ///
 /// iOS blocks microphone capture inside keyboard extensions (every capture API —
 /// AVAudioEngine, RemoteIO, AVAudioRecorder — fails on-device, matching Apple's
-/// app-extension restriction). So the mic button deep-links into the Freestyle
-/// app (via a SwiftUI `Link`, the only mechanism that reliably opens the host
-/// app from a keyboard on iOS 18+), which records + streams to the cloud and
-/// writes the transcript into the App Group. When the keyboard reappears,
-/// `insertPendingTranscriptIfAny()` inserts it.
+/// app-extension restriction). So the app owns the mic and the keyboard drives
+/// it over the App Group via `FreestyleDictationBridge`:
+///
+///   • First mic tap (session not alive) sends a `start` command and opens the
+///     app once via a SwiftUI `Link` (the only mechanism that reliably launches
+///     the host app from a keyboard on iOS 18+). The app arms a resident mic
+///     session and publishes `armed`.
+///   • Once armed, the mic tap toggles capture in place: `beginCapture` while
+///     armed, `commit` while capturing — no app relaunch. The keyboard shows
+///     live status + partials read from the state channel.
+///   • On a `ready` state the keyboard inserts the final transcript (guarded by
+///     `insertionToken` so each result inserts exactly once) and acks it.
 ///
 /// Users switch to their normal system keyboard (via the globe key) for regular
 /// typing. This keyboard exists solely for voice dictation.
 final class KeyboardViewController: UIInputViewController {
 
-    // MARK: - State
+    // MARK: - Bridge / session state
+
+    private let bridge = FreestyleDictationBridge()
+    private var statePollTimer: Timer?
+    private var lastInsertedToken = ""
+    /// Cached so we only rebuild the mic control when the phase or liveness
+    /// actually changes, not on every 0.3s poll tick.
+    private var lastRenderedPhase: FreestyleDictationState.Phase?
+    private var lastRenderedAlive = false
+
+    // MARK: - Keys / UI state
 
     private var deleteTimer: Timer?
     private var deleteRepeatCount = 0
-    private var lastInsertedAt: Double = 0
 
-    private var micHost: UIHostingController<MicLink>?
+    private var micHost: UIHostingController<MicControl>?
     private let statusLabel = UILabel()
     private var hintLabel: UILabel?
+    private let meterTrack = UIView()
+    private let meterFill = UIView()
+    private var meterFillWidth: NSLayoutConstraint?
     private var globeButton: UIButton?
     private var spaceButton: UIButton?
     private var deleteButton: UIButton?
@@ -114,7 +133,18 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         hasDictationKey = true
-        insertPendingTranscriptIfAny()
+        syncSharedState()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        startPollingSharedState()
+        syncSharedState()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        stopPollingSharedState()
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -135,18 +165,20 @@ final class KeyboardViewController: UIInputViewController {
         heightConstraint.priority = .required - 1
         heightConstraint.isActive = true
 
-        // --- Status label (top area, shown briefly after transcript insertion)
+        // --- Status label (top area) — live dictation status, briefly reused
+        // for the "inserted" confirmation.
         statusLabel.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
         statusLabel.textAlignment = .center
+        statusLabel.numberOfLines = 2
         statusLabel.text = ""
         statusLabel.isHidden = true
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(statusLabel)
 
-        // --- Mic button (center, prominent) — deep-links to the app
-        let mic = UIHostingController(
-            rootView: MicLink(destination: URL(string: "freestyle://dictate")!, dark: isDark)
-        )
+        // --- Mic control (center, prominent). Depending on session state it
+        // either deep-links (SwiftUI `Link`, to arm the session) or toggles
+        // capture in place (a button that posts commands to the app).
+        let mic = UIHostingController(rootView: makeMicControl(dark: isDark))
         mic.view.backgroundColor = .clear
         mic.view.translatesAutoresizingMaskIntoConstraints = false
         addChild(mic)
@@ -165,6 +197,17 @@ final class KeyboardViewController: UIInputViewController {
         hint.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(hint)
         hintLabel = hint
+
+        // --- Mic level meter — a thin bar under the hint, shown while capturing.
+        meterTrack.layer.cornerRadius = 2
+        meterTrack.clipsToBounds = true
+        meterTrack.isHidden = true
+        meterTrack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(meterTrack)
+
+        meterFill.layer.cornerRadius = 2
+        meterFill.translatesAutoresizingMaskIntoConstraints = false
+        meterTrack.addSubview(meterFill)
 
         // --- Bottom row: globe | , | . | space | return | delete
         let bottomRow = UIStackView()
@@ -240,7 +283,9 @@ final class KeyboardViewController: UIInputViewController {
         NSLayoutConstraint.activate([
             // Status label — centered near the top.
             statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            statusLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
+            statusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 16),
+            statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -16),
+            statusLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
 
             // Mic — centered in the upper 2/3 of the keyboard area.
             mic.view.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -252,12 +297,28 @@ final class KeyboardViewController: UIInputViewController {
             hint.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             hint.topAnchor.constraint(equalTo: mic.view.bottomAnchor, constant: 12),
 
+            // Meter — a fixed-width track just below the hint.
+            meterTrack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            meterTrack.topAnchor.constraint(equalTo: hint.bottomAnchor, constant: 10),
+            meterTrack.widthAnchor.constraint(equalToConstant: 140),
+            meterTrack.heightAnchor.constraint(equalToConstant: 4),
+
+            // Meter fill — pinned to the leading edge, width driven by level.
+            meterFill.leadingAnchor.constraint(equalTo: meterTrack.leadingAnchor),
+            meterFill.topAnchor.constraint(equalTo: meterTrack.topAnchor),
+            meterFill.bottomAnchor.constraint(equalTo: meterTrack.bottomAnchor),
+
             // Bottom row — pinned to bottom with standard keyboard margins.
             bottomRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 3),
             bottomRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -3),
             bottomRow.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -9),
             bottomRow.heightAnchor.constraint(equalToConstant: 46),
         ])
+
+        // Dynamic meter-fill width, updated as the level changes.
+        let fillWidth = meterFill.widthAnchor.constraint(equalToConstant: 0)
+        fillWidth.isActive = true
+        meterFillWidth = fillWidth
     }
 
     /// A punctuation key styled like the space bar. Inserts on touch-down to
@@ -272,6 +333,56 @@ final class KeyboardViewController: UIInputViewController {
             self?.textDocumentProxy.insertText(char)
         }, for: .touchDown)
         return key
+    }
+
+    // MARK: - Mic control
+
+    /// Build the mic control for the current session state.
+    ///
+    /// When no live session exists the control is a SwiftUI `Link` that opens
+    /// the app (arming it). Once the session is alive the control is an in-place
+    /// button that toggles capture via the command channel, so the user never
+    /// has to leave the keyboard again for the rest of the session.
+    private func makeMicControl(dark: Bool) -> MicControl {
+        let state = bridge.loadState()
+        let alive = bridge.isSessionAlive(state)
+
+        if alive {
+            let capturing = state.phase == .capturing
+            let processing = state.phase == .transcribing
+            return MicControl(
+                mode: .inPlace(capturing: capturing, processing: processing),
+                dark: dark,
+                onTap: { [weak self] in self?.handleMicTapWhileArmed() }
+            )
+        }
+
+        // No live session: deep-link to arm. Send the `start` command first so
+        // the app has it waiting when it launches.
+        return MicControl(
+            mode: .link(destination: URL(string: "freestyle://dictate")!),
+            dark: dark,
+            onLinkActivate: { [weak self] in self?.bridge.sendCommand(.start) }
+        )
+    }
+
+    /// Mic tapped while the session is alive: toggle capture in place.
+    private func handleMicTapWhileArmed() {
+        UIDevice.current.playInputClick()
+        let state = bridge.loadState()
+        switch state.phase {
+        case .armed, .ready:
+            // Armed (or just inserted a phrase and re-armed): the app already
+            // holds the mic warm, so begin the next phrase in place — no app
+            // relaunch. This is the "tap again → just records" path.
+            bridge.sendCommand(.beginCapture)
+        case .capturing:
+            bridge.sendCommand(.commit)
+        case .arming, .transcribing, .idle, .failed:
+            break // busy or not ready — ignore
+        }
+        // Reflect the intent immediately; the poll will reconcile with truth.
+        syncSharedState()
     }
 
     // MARK: - Actions
@@ -307,6 +418,141 @@ final class KeyboardViewController: UIInputViewController {
         deleteTimer?.invalidate()
         deleteTimer = nil
         deleteRepeatCount = 0
+    }
+
+    // MARK: - Shared state polling (app → keyboard)
+
+    private func startPollingSharedState() {
+        guard statePollTimer == nil else { return }
+        let timer = Timer(timeInterval: 0.3, repeats: true) { [weak self] _ in
+            self?.syncSharedState()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        statePollTimer = timer
+    }
+
+    private func stopPollingSharedState() {
+        statePollTimer?.invalidate()
+        statePollTimer = nil
+    }
+
+    /// Read the app's published state and reconcile the keyboard UI:
+    ///  1. Insert a ready transcript (exactly once, via `insertionToken`).
+    ///  2. Rebuild the mic control + status text when the phase/liveness changes.
+    private func syncSharedState() {
+        let state = bridge.loadState()
+        let alive = bridge.isSessionAlive(state)
+
+        // 1. Insert a ready transcript, then ack so the app can re-arm.
+        if alive,
+           state.phase == .ready,
+           !state.insertionToken.isEmpty,
+           state.insertionToken != lastInsertedToken,
+           !state.finalTranscript.isEmpty {
+            insertTranscript(state.finalTranscript)
+            lastInsertedToken = state.insertionToken
+            bridge.sendCommand(.ackInsert, ackInsertionToken: state.insertionToken)
+        }
+
+        // 2. Rebuild the mic control only when something visible changed.
+        if state.phase != lastRenderedPhase || alive != lastRenderedAlive {
+            lastRenderedPhase = state.phase
+            lastRenderedAlive = alive
+            micHost?.rootView = makeMicControl(dark: isDark)
+        }
+        updateStatus(for: state, alive: alive)
+    }
+
+    private func insertTranscript(_ text: String) {
+        let before = textDocumentProxy.documentContextBeforeInput ?? ""
+        if let last = before.last, !last.isWhitespace {
+            textDocumentProxy.insertText(" ")
+        }
+        textDocumentProxy.insertText(text)
+    }
+
+    // MARK: - Status / hint text
+
+    private func updateStatus(for state: FreestyleDictationState, alive: Bool) {
+        let capturing = alive && state.phase == .capturing
+        updateMeter(level: capturing ? state.level : 0, visible: capturing)
+
+        // Partial transcript takes over the status line while capturing.
+        if capturing, !state.partialTranscript.isEmpty {
+            setStatus(state.partialTranscript, mono: false)
+            setHint("TAP TO STOP")
+            return
+        }
+
+        let hint: String
+        let status: String?
+        if alive {
+            switch state.phase {
+            case .arming:
+                status = "Waking Freestyle…"; hint = "ONE SEC"
+            case .armed:
+                status = nil; hint = "TAP TO SPEAK"
+            case .capturing:
+                status = "Listening…"; hint = "TAP TO STOP"
+            case .transcribing:
+                status = "Polishing…"; hint = "ONE SEC"
+            case .ready:
+                status = nil; hint = "INSERTED ✓"
+            case .idle, .failed:
+                status = nil; hint = "TAP TO DICTATE"
+            }
+        } else {
+            status = nil
+            hint = "TAP TO DICTATE"
+        }
+
+        if let status {
+            setStatus(status, mono: true)
+        } else {
+            clearStatus()
+        }
+        setHint(hint)
+    }
+
+    private func setStatus(_ text: String, mono: Bool) {
+        statusLabel.isHidden = false
+        statusLabel.font = mono
+            ? .monospacedSystemFont(ofSize: 11, weight: .medium)
+            : .systemFont(ofSize: 13, weight: .regular)
+        if mono {
+            statusLabel.attributedText = NSAttributedString(
+                string: text.uppercased(),
+                attributes: [.kern: 1.2]
+            )
+        } else {
+            statusLabel.attributedText = nil
+            statusLabel.text = text
+        }
+    }
+
+    private func clearStatus() {
+        statusLabel.isHidden = true
+        statusLabel.attributedText = nil
+        statusLabel.text = ""
+    }
+
+    private func setHint(_ text: String) {
+        hintLabel?.attributedText = NSAttributedString(
+            string: text,
+            attributes: [.kern: 1.2]
+        )
+    }
+
+    /// Drive the mic-level bar. `level` is clamped to [0, 1]; the fill width is
+    /// a fraction of the 140pt track. Hidden entirely when not capturing.
+    private func updateMeter(level: Double, visible: Bool) {
+        meterTrack.isHidden = !visible
+        guard visible else {
+            meterFillWidth?.constant = 0
+            return
+        }
+        let clamped = CGFloat(max(0, min(1, level)))
+        meterFillWidth?.constant = 140 * clamped
     }
 
     // MARK: - Appearance
@@ -357,37 +603,13 @@ final class KeyboardViewController: UIInputViewController {
             ? UIColor(white: 0.6, alpha: 1)
             : UIColor(white: 0.4, alpha: 1)
 
-        micHost?.rootView = MicLink(destination: URL(string: "freestyle://dictate")!, dark: dark)
-    }
+        // Meter — subtle track, olive fill (matches the mic accent).
+        meterTrack.backgroundColor = dark
+            ? UIColor(white: 1, alpha: 0.12)
+            : UIColor(white: 0, alpha: 0.10)
+        meterFill.backgroundColor = c.primary
 
-    // MARK: - App-handoff transcript insertion
-
-    private func insertPendingTranscriptIfAny() {
-        guard let pending = SharedStore.pendingTranscript(),
-              pending.timestamp > lastInsertedAt,
-              !pending.text.isEmpty
-        else { return }
-
-        lastInsertedAt = pending.timestamp
-        SharedStore.clearPendingTranscript()
-
-        let before = textDocumentProxy.documentContextBeforeInput ?? ""
-        if let last = before.last, !last.isWhitespace {
-            textDocumentProxy.insertText(" ")
-        }
-        textDocumentProxy.insertText(pending.text)
-
-        statusLabel.isHidden = false
-        statusLabel.attributedText = NSAttributedString(
-            string: "INSERTED ✓",
-            attributes: [.kern: 1.2]
-        )
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
-            guard let self else { return }
-            self.statusLabel.attributedText = nil
-            self.statusLabel.text = ""
-            self.statusLabel.isHidden = true
-        }
+        micHost?.rootView = makeMicControl(dark: dark)
     }
 }
 
@@ -397,29 +619,94 @@ extension KeyboardViewController: UIInputViewAudioFeedback {
     var enableInputClicksWhenVisible: Bool { true }
 }
 
-/// The mic control. A SwiftUI `Link` is the only mechanism that reliably opens
-/// the containing app from a keyboard extension on iOS 18+ (the old
-/// `openURL:` responder-chain hack force-returns false).
-struct MicLink: View {
-    let destination: URL
+/// The mic control. Two modes:
+///  - `.link`: a SwiftUI `Link` that opens the containing app — the only
+///    mechanism that reliably launches the host app from a keyboard on iOS 18+
+///    (the old `openURL:` responder-chain hack force-returns false). Used to arm
+///    a fresh session.
+///  - `.inPlace`: a plain button that toggles capture via the command channel
+///    once the session is already alive, so the user stays in the keyboard.
+///    While the app is transcribing it shows a spinner so the user knows the
+///    result is being polished, not lost.
+struct MicControl: View {
+    enum Mode {
+        case link(destination: URL)
+        case inPlace(capturing: Bool, processing: Bool)
+    }
+
+    let mode: Mode
     let dark: Bool
+    var onTap: (() -> Void)?
+    var onLinkActivate: (() -> Void)?
 
     /// Olive accent, matching `mic-button.tsx` and DESIGN.md `--primary`.
     private var olive: Color { Color(hex: dark ? 0x8AB62A : 0x6B8F12) }
+    private var destructive: Color { Color(hex: dark ? 0xE0805F : 0xDD6E4E) }
     private var iconColor: Color { Color(hex: dark ? 0x16140F : 0xFBF8EE) }
+    private var muted: Color { Color(hex: dark ? 0x2A2720 : 0xECE7D6) }
+    private var mutedIcon: Color { Color(hex: dark ? 0x9E977F : 0x7B7461) }
 
     var body: some View {
-        Link(destination: destination) {
-            Image(systemName: "mic.fill")
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundColor(iconColor)
-                .frame(width: 64, height: 64)
-                .background(olive)
-                .clipShape(Circle())
-                .contentShape(Circle())
-                // Soft olive glow lifts the mic off the paper (mirrors the
-                // shadow on the app's MicButton).
-                .shadow(color: olive.opacity(0.45), radius: 12, x: 0, y: 5)
+        switch mode {
+        case let .link(destination):
+            Link(destination: destination) {
+                circle(systemImage: "mic.fill", fill: olive)
+            }
+            .simultaneousGesture(TapGesture().onEnded { onLinkActivate?() })
+        case let .inPlace(capturing, processing):
+            if processing {
+                // Non-interactive spinner while the app polishes the transcript.
+                ProcessingCircle(
+                    fill: muted, tint: mutedIcon
+                )
+            } else {
+                Button(action: { onTap?() }) {
+                    circle(
+                        systemImage: capturing ? "stop.fill" : "mic.fill",
+                        fill: capturing ? destructive : olive
+                    )
+                }
+                .buttonStyle(.plain)
+            }
         }
+    }
+
+    private func circle(systemImage: String, fill: Color) -> some View {
+        Image(systemName: systemImage)
+            .font(.system(size: 24, weight: .semibold))
+            .foregroundColor(iconColor)
+            .frame(width: 64, height: 64)
+            .background(fill)
+            .clipShape(Circle())
+            .contentShape(Circle())
+            // Soft glow lifts the mic off the paper (mirrors the app's MicButton).
+            .shadow(color: fill.opacity(0.45), radius: 12, x: 0, y: 5)
+    }
+}
+
+/// A spinning progress ring shown in place of the mic while the app is
+/// transcribing, so the user can see processing is happening.
+private struct ProcessingCircle: View {
+    let fill: Color
+    let tint: Color
+    @State private var spinning = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(fill)
+                .frame(width: 64, height: 64)
+            Circle()
+                .trim(from: 0, to: 0.7)
+                .stroke(tint, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .frame(width: 28, height: 28)
+                .rotationEffect(.degrees(spinning ? 360 : 0))
+                .animation(
+                    .linear(duration: 0.9).repeatForever(autoreverses: false),
+                    value: spinning
+                )
+        }
+        .frame(width: 64, height: 64)
+        .onAppear { spinning = true }
     }
 }

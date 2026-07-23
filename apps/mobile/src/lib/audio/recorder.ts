@@ -46,17 +46,31 @@ export interface RecorderCallbacks {
   onLevel?: (level: number) => void;
 }
 
-/** Peak absolute amplitude of an Int16 buffer, normalized to [0, 1]. */
-function peakLevel(data: ArrayBuffer): number {
+/**
+ * Perceived loudness of an Int16 buffer, normalized to ~[0, 1].
+ *
+ * Uses RMS (energy) rather than peak: peak spikes on the loudest single sample
+ * and jitters wildly, whereas RMS tracks how loud the frame actually *sounds*,
+ * which is what the visualizer should depict. The RMS of typical speech is well
+ * below full-scale, so we apply a gain and a mild curve so normal talking fills
+ * a satisfying portion of the meter without clipping on peaks.
+ */
+function rmsLevel(data: ArrayBuffer): number {
   const samples = new Int16Array(data);
-  let peak = 0;
-  // Sample sparsely — we only need a coarse level for the visualizer.
-  const step = Math.max(1, Math.floor(samples.length / 256));
+  if (samples.length === 0) return 0;
+  // Sample sparsely — a coarse level is all the visualizer needs.
+  const step = Math.max(1, Math.floor(samples.length / 512));
+  let sumSquares = 0;
+  let count = 0;
   for (let i = 0; i < samples.length; i += step) {
-    const abs = Math.abs(samples[i]);
-    if (abs > peak) peak = abs;
+    const s = samples[i] / 32_768;
+    sumSquares += s * s;
+    count++;
   }
-  return Math.min(1, peak / 32_768);
+  const rms = Math.sqrt(sumSquares / Math.max(1, count));
+  // Gain so conversational speech (~0.05–0.15 RMS) reaches a lively level, and
+  // a gentle sqrt curve to lift quiet passages while still leaving headroom.
+  return Math.min(1, Math.sqrt(rms * 3.2));
 }
 
 export interface Recorder {
@@ -78,7 +92,7 @@ export function useRecorder(callbacks: RecorderCallbacks): Recorder {
   const handleBuffer = useCallback((buffer: AudioStreamBuffer) => {
     const frame = toCloudFrame(buffer.data, buffer.sampleRate, buffer.channels);
     if (frame) cb.current.onFrame(frame);
-    cb.current.onLevel?.(peakLevel(buffer.data));
+    cb.current.onLevel?.(rmsLevel(buffer.data));
   }, []);
 
   const { stream } = useAudioStream({

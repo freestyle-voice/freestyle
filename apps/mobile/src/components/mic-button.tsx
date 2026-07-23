@@ -5,8 +5,8 @@ import Animated, {
   interpolate,
   type SharedValue,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
-  withRepeat,
   withTiming,
 } from "react-native-reanimated";
 
@@ -25,6 +25,11 @@ interface MicButtonProps {
 
 const SIZE = 92;
 
+// Fast attack, slow decay so the halo swells sharply with speech and settles
+// gently — same feel as the waveform, so both react to real loudness.
+const ATTACK = 0.5;
+const DECAY = 0.14;
+
 /** The primary press-and-hold / tap-to-toggle record control. */
 export function MicButton({
   state,
@@ -34,43 +39,44 @@ export function MicButton({
 }: MicButtonProps) {
   const theme = useTheme();
   const press = useSharedValue(1);
-  // A continuous breathing driver for the halo while recording, so the rings
-  // move even during silence and swell further with the live level.
-  const breathe = useSharedValue(0);
   const recording = useSharedValue(0);
 
   useEffect(() => {
     recording.value = withTiming(state === "recording" ? 1 : 0, {
       duration: 260,
     });
-    if (state === "recording") {
-      breathe.value = withRepeat(withTiming(1, { duration: 1400 }), -1, true);
-    } else {
-      breathe.value = withTiming(0, { duration: 300 });
-    }
-  }, [state, breathe, recording]);
+  }, [state, recording]);
+
+  // Smoothed loudness (fast attack / slow decay) drives the halo. No idle
+  // breathing loop: when the user is silent the rings collapse to the button
+  // edge, so the pulse depicts the voice, not a decorative animation.
+  const drive = useSharedValue(0);
+  useDerivedValue(() => {
+    const next = level.value * recording.value;
+    const prev = drive.value;
+    const k = next > prev ? ATTACK : DECAY;
+    drive.value = prev + (next - prev) * k;
+  });
 
   const buttonStyle = useAnimatedStyle(() => ({
     transform: [{ scale: press.value }],
   }));
 
-  // Two rings at different phases give a layered "sonar" pulse. Each expands
-  // with breathe + live level and fades as it grows.
+  // Two rings at slightly different reach give a layered "sonar" swell that
+  // grows with loudness and fades as it expands.
   const ringOuter = useAnimatedStyle(() => {
-    const drive = (breathe.value + level.value * 1.2) * recording.value;
-    const scale = 1 + interpolate(drive, [0, 1.2], [0.05, 0.7]);
+    const scale = 1 + interpolate(drive.value, [0, 1], [0, 0.7]);
     return {
       transform: [{ scale }],
-      opacity: recording.value * interpolate(scale, [1, 1.7], [0.5, 0]),
+      opacity: recording.value * interpolate(scale, [1, 1.7], [0.55, 0]),
     };
   });
 
   const ringInner = useAnimatedStyle(() => {
-    const drive = (breathe.value + level.value * 1.2) * recording.value;
-    const scale = 1 + interpolate(drive, [0, 1.2], [0.05, 0.7]) * 0.6;
+    const scale = 1 + interpolate(drive.value, [0, 1], [0, 0.42]);
     return {
       transform: [{ scale }],
-      opacity: recording.value * interpolate(scale, [1, 1.42], [0.6, 0]),
+      opacity: recording.value * interpolate(scale, [1, 1.42], [0.65, 0]),
     };
   });
 

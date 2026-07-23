@@ -1,3 +1,4 @@
+import * as AppleAuthentication from "expo-apple-authentication";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
@@ -14,6 +15,7 @@ import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { type SocialProvider, useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
+import { useColorMode } from "@/lib/color-mode";
 
 const PROVIDER_LABELS: Record<SocialProvider, string> = {
   apple: "Continue with Apple",
@@ -22,15 +24,18 @@ const PROVIDER_LABELS: Record<SocialProvider, string> = {
 };
 
 // Present providers in the order each platform's users expect: Apple first on
-// iOS, Google first on Android. GitHub always trails.
+// iOS, Google first on Android. GitHub always trails. On iOS the Apple option
+// renders as Apple's official native button (HIG requirement), so it's excluded
+// from the generic list here and rendered separately.
 const PROVIDER_ORDER: SocialProvider[] = Platform.select({
-  ios: ["apple", "google", "github"],
+  ios: ["google", "github"],
   default: ["google", "apple", "github"],
 });
 
 export default function SignInScreen() {
   const router = useRouter();
   const { signInWith } = useAuth();
+  const { scheme } = useColorMode();
 
   const [pending, setPending] = useState<SocialProvider | null>(null);
   const [error, setError] = useState("");
@@ -50,6 +55,8 @@ export default function SignInScreen() {
     },
     [signInWith, router],
   );
+
+  const isIOS = Platform.OS === "ios";
 
   return (
     <ThemedView style={styles.container}>
@@ -77,6 +84,22 @@ export default function SignInScreen() {
             </ThemedText>
           ) : null}
 
+          {isIOS ? (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={
+                AppleAuthentication.AppleAuthenticationButtonType.CONTINUE
+              }
+              buttonStyle={
+                scheme === "dark"
+                  ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                  : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+              }
+              cornerRadius={999}
+              style={styles.appleButton}
+              onPress={() => handleSignIn("apple")}
+            />
+          ) : null}
+
           {PROVIDER_ORDER.map((provider, index) => (
             <ProviderButton
               key={provider}
@@ -84,7 +107,7 @@ export default function SignInScreen() {
               onPress={() => handleSignIn(provider)}
               loading={pending === provider}
               disabled={pending !== null}
-              variant={index === 0 ? "primary" : "outline"}
+              variant={!isIOS && index === 0 ? "primary" : "outline"}
             />
           ))}
 
@@ -170,6 +193,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  appleButton: { height: 54, width: "100%" },
   buttonDisabled: { opacity: 0.5 },
   buttonText: { fontFamily: Fonts.sansSemiBold, fontSize: 16 },
   legal: {

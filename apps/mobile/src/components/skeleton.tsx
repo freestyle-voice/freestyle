@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { StyleSheet } from "react-native";
 import Animated, {
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withRepeat,
   withTiming,
@@ -20,6 +21,9 @@ interface SkeletonProps {
  * A muted placeholder block that gently pulses while data loads. Uses the
  * theme's `muted` fill and a subtle opacity breathe on the UI thread — no
  * spinners, in keeping with the calm editorial aesthetic (DESIGN.md §8).
+ *
+ * Respects the OS "Reduce Motion" setting: when enabled, the pulse loop is
+ * suppressed and the block renders as a static placeholder.
  */
 export function Skeleton({
   width,
@@ -27,11 +31,13 @@ export function Skeleton({
   radius = Radius.sm,
 }: SkeletonProps) {
   const theme = useTheme();
-  const pulse = useSharedValue(0.5);
+  const reduceMotion = useReducedMotion();
+  const pulse = useSharedValue(reduceMotion ? 0.75 : 0.5);
 
   useEffect(() => {
+    if (reduceMotion) return;
     pulse.value = withRepeat(withTiming(1, { duration: 900 }), -1, true);
-  }, [pulse]);
+  }, [pulse, reduceMotion]);
 
   const style = useAnimatedStyle(() => ({ opacity: pulse.value }));
 

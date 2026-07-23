@@ -3,8 +3,9 @@
  *
  * Five equally-weighted icon buttons: History · Vocab · Home · Tone · Dict,
  * with Home centered. Transparent (no capsule / blur background), sitting
- * close to the bottom edge. The active tab tints olive; no text labels and no
- * active dot — color alone signals selection.
+ * close to the bottom edge. The active tab is signalled by an olive tint AND a
+ * small dot beneath the icon (plus a heavier stroke) — so selection reads
+ * without relying on color alone.
  *
  * Recording lives on the Home screen itself; the center Home button is simply
  * how you return to it from any other tab.
@@ -65,6 +66,15 @@ function NavButton({
         color={focused ? theme.primary : theme.mutedForeground}
         size={24}
         strokeWidth={focused ? 2.4 : 2}
+      />
+      {/* Non-color cue: an active dot so selection reads without relying on
+          the olive tint alone. Reserve the slot when unfocused to avoid a
+          vertical shift. */}
+      <View
+        style={[
+          styles.activeDot,
+          { backgroundColor: focused ? theme.primary : "transparent" },
+        ]}
       />
     </Pressable>
   );
@@ -156,5 +166,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: Spacing.two,
+    gap: 3,
+  },
+  activeDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
   },
 });

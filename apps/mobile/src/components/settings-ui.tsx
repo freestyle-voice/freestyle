@@ -58,7 +58,7 @@ export function SettingsScreenScaffold({
           <View style={styles.navBack} />
         </View>
         <ScrollView
-          contentContainerStyle={[styles.body, styles.tabBody]}
+          contentContainerStyle={styles.body}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -259,8 +259,11 @@ const styles = StyleSheet.create({
     lineHeight: 30,
   },
   backText: { fontFamily: Fonts.sansMedium, fontSize: 15 },
-  body: { paddingBottom: Spacing.six, gap: Spacing.four },
-  // Tab roots sit under the floating pill tab bar, so clear extra space.
+  // Pushed pages have no tab bar, but the dictation strip can slide down into
+  // that space, so leave room for it at the end of the scroll.
+  body: { paddingBottom: 100, gap: Spacing.four },
+  // Tab roots sit under the floating pill tab bar (and the strip above it), so
+  // clear extra space.
   tabBody: { paddingBottom: 120 },
   tabHeader: {
     flexDirection: "row",

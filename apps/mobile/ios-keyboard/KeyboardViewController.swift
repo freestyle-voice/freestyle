@@ -349,8 +349,9 @@ final class KeyboardViewController: UIInputViewController {
 
         if alive {
             let capturing = state.phase == .capturing
+            let processing = state.phase == .transcribing
             return MicControl(
-                mode: .inPlace(capturing: capturing),
+                mode: .inPlace(capturing: capturing, processing: processing),
                 dark: dark,
                 onTap: { [weak self] in self?.handleMicTapWhileArmed() }
             )
@@ -625,10 +626,12 @@ extension KeyboardViewController: UIInputViewAudioFeedback {
 ///    a fresh session.
 ///  - `.inPlace`: a plain button that toggles capture via the command channel
 ///    once the session is already alive, so the user stays in the keyboard.
+///    While the app is transcribing it shows a spinner so the user knows the
+///    result is being polished, not lost.
 struct MicControl: View {
     enum Mode {
         case link(destination: URL)
-        case inPlace(capturing: Bool)
+        case inPlace(capturing: Bool, processing: Bool)
     }
 
     let mode: Mode
@@ -640,6 +643,8 @@ struct MicControl: View {
     private var olive: Color { Color(hex: dark ? 0x8AB62A : 0x6B8F12) }
     private var destructive: Color { Color(hex: dark ? 0xE0805F : 0xDD6E4E) }
     private var iconColor: Color { Color(hex: dark ? 0x16140F : 0xFBF8EE) }
+    private var muted: Color { Color(hex: dark ? 0x2A2720 : 0xECE7D6) }
+    private var mutedIcon: Color { Color(hex: dark ? 0x9E977F : 0x7B7461) }
 
     var body: some View {
         switch mode {
@@ -648,14 +653,21 @@ struct MicControl: View {
                 circle(systemImage: "mic.fill", fill: olive)
             }
             .simultaneousGesture(TapGesture().onEnded { onLinkActivate?() })
-        case let .inPlace(capturing):
-            Button(action: { onTap?() }) {
-                circle(
-                    systemImage: capturing ? "stop.fill" : "mic.fill",
-                    fill: capturing ? destructive : olive
+        case let .inPlace(capturing, processing):
+            if processing {
+                // Non-interactive spinner while the app polishes the transcript.
+                ProcessingCircle(
+                    fill: muted, tint: mutedIcon
                 )
+            } else {
+                Button(action: { onTap?() }) {
+                    circle(
+                        systemImage: capturing ? "stop.fill" : "mic.fill",
+                        fill: capturing ? destructive : olive
+                    )
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
     }
 
@@ -669,5 +681,32 @@ struct MicControl: View {
             .contentShape(Circle())
             // Soft glow lifts the mic off the paper (mirrors the app's MicButton).
             .shadow(color: fill.opacity(0.45), radius: 12, x: 0, y: 5)
+    }
+}
+
+/// A spinning progress ring shown in place of the mic while the app is
+/// transcribing, so the user can see processing is happening.
+private struct ProcessingCircle: View {
+    let fill: Color
+    let tint: Color
+    @State private var spinning = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(fill)
+                .frame(width: 64, height: 64)
+            Circle()
+                .trim(from: 0, to: 0.7)
+                .stroke(tint, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .frame(width: 28, height: 28)
+                .rotationEffect(.degrees(spinning ? 360 : 0))
+                .animation(
+                    .linear(duration: 0.9).repeatForever(autoreverses: false),
+                    value: spinning
+                )
+        }
+        .frame(width: 64, height: 64)
+        .onAppear { spinning = true }
     }
 }

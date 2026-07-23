@@ -20,6 +20,7 @@ interface KeyboardDictationContextValue {
   partial: string;
   finalText: string;
   toggle: () => void;
+  dismiss: () => void;
 }
 
 const KeyboardDictationContext =
@@ -31,12 +32,12 @@ export function KeyboardDictationProvider({
   children: ReactNode;
 }) {
   const { signedIn } = useAuth();
-  const { active, phase, partial, finalText, toggle } =
+  const { active, phase, partial, finalText, toggle, dismiss } =
     useKeyboardDictationBridge(signedIn);
 
   const value = useMemo(
-    () => ({ active, phase, partial, finalText, toggle }),
-    [active, phase, partial, finalText, toggle],
+    () => ({ active, phase, partial, finalText, toggle, dismiss }),
+    [active, phase, partial, finalText, toggle, dismiss],
   );
 
   return (

@@ -69,6 +69,9 @@ interface UseKeyboardDictationBridge {
   level: ReturnType<typeof useSharedValue<number>>;
   /** On-screen mic tap: begin/commit capture, mirroring a keyboard mic tap. */
   toggle: () => void;
+  /** Dismiss the on-screen session entirely: cancel any capture and release
+   *  the mic (the user tapped the strip's close button). */
+  dismiss: () => void;
 }
 
 export function useKeyboardDictationBridge(
@@ -265,6 +268,16 @@ export function useKeyboardDictationBridge(
     }
   }, [session, publish, signedIn]);
 
+  // --- Dismiss the on-screen session: cancel any capture and release the mic.
+  const dismiss = useCallback(() => {
+    if (reArmTimerRef.current) {
+      clearTimeout(reArmTimerRef.current);
+      reArmTimerRef.current = null;
+    }
+    pendingInsertRef.current = "";
+    session.disarm();
+  }, [session]);
+
   // --- Forward the live mic level to the keyboard meter while capturing.
   useEffect(() => {
     if (!available || phase !== "capturing") return;
@@ -331,5 +344,6 @@ export function useKeyboardDictationBridge(
     finalText,
     level: session.level,
     toggle,
+    dismiss,
   };
 }

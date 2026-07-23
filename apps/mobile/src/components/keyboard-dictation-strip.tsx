@@ -1,29 +1,27 @@
 /**
- * A slim, always-on-top status strip that reflects the resident keyboard
- * dictation session. It appears only while a session is active (armed →
- * capturing → finalizing → ready) and tells the user what's happening plus the
- * one manual step iOS forces on us: switching back to their app.
+ * A slim, floating status strip that reflects the resident keyboard dictation
+ * session while the app is in the foreground.
+ *
+ * It surfaces ONLY the two "something is happening" phases — `capturing`
+ * (listening) and `transcribing` (processing) — not the armed/ready/idle
+ * states. Those in-between states are the keyboard's job to show; on the app we
+ * keep the strip out of the way unless there's live activity to report.
  *
  * It deliberately does NOT own the session (the provider does) and carries no
- * transcript editing UI — the transcript is inserted by the keyboard. This is
- * the "minimal status strip" the user sees on the first cold arm; afterwards it
- * just floats above whatever screen is showing.
+ * transcript editing UI — the transcript is inserted by the keyboard. Tapping
+ * the body toggles capture (start/stop); the trailing close button dismisses
+ * the session (releases the mic) and hides the strip.
  *
  * Anchored to the BOTTOM, floating just above the tab bar — not the top, where
- * it would cover each screen's header (brand title + settings/profile icons).
- * Bottom also keeps it near the mic-focused area, mirroring the desktop pill.
+ * it would cover each screen's header. On pushed pages that have no tab bar
+ * (Settings, Profile, Keyboard setup) it slides down to where the tab bar
+ * would be, and slides back up over the tab bar when you return to a tab.
  */
 
-import {
-  AlertTriangle,
-  Check,
-  Loader,
-  type LucideIcon,
-  Mic,
-  Sparkles,
-} from "lucide-react-native";
+import { usePathname } from "expo-router";
+import { Loader, Mic, X } from "lucide-react-native";
 import { useEffect, useRef } from "react";
-import { Animated, Pressable, StyleSheet, View } from "react-native";
+import { Animated, Easing, Pressable, StyleSheet, View } from "react-native";
 import { useReducedMotion } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -36,94 +34,173 @@ import { useKeyboardDictation } from "@/lib/keyboard/keyboard-dictation-provider
 /**
  * Space the tab bar occupies at the bottom edge, so the strip can sit just
  * above it. Mirrors `floating-tab-bar.tsx`: BAR_HEIGHT (52) + its wrap padding
- * (`max(insets.bottom - 10, 4)`), plus a small gap.
+ * (`max(insets.bottom - 10, 4)`).
  */
 const TAB_BAR_HEIGHT = 52;
+
+/** Only these phases warrant an on-screen strip — real, live activity. */
+function isVisiblePhase(phase: Phase): boolean {
+  return phase === "capturing" || phase === "transcribing";
+}
+
+/** Pushed (non-tab) routes have no floating tab bar underneath. */
+function isTabRoute(pathname: string): boolean {
+  return !(
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/profile") ||
+    pathname.startsWith("/keyboard-setup")
+  );
+}
 
 export function KeyboardDictationStrip() {
   const session = useKeyboardDictation();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
+  const pathname = usePathname();
   const opacity = useRef(new Animated.Value(0)).current;
+  // Vertical offset used to slide the strip down (into the tab-bar gap) on
+  // pushed pages and back up over the tab bar on tab pages.
+  const drop = useRef(new Animated.Value(0)).current;
 
-  const active = session?.active ?? false;
+  const phase: Phase = session?.phase ?? "idle";
+  const visible = (session?.active ?? false) && isVisiblePhase(phase);
+
+  // On tab pages the strip sits ABOVE the tab bar; on pushed pages there's no
+  // tab bar, so it drops down into that space.
+  const onTab = isTabRoute(pathname);
+  const tabGap = TAB_BAR_HEIGHT + Math.max(insets.bottom - 10, 4);
 
   useEffect(() => {
-    // Respect Reduce Motion: snap in/out instead of fading.
     Animated.timing(opacity, {
-      toValue: active ? 1 : 0,
+      toValue: visible ? 1 : 0,
       duration: reduceMotion ? 0 : 180,
       useNativeDriver: true,
     }).start();
-  }, [active, opacity, reduceMotion]);
+  }, [visible, opacity, reduceMotion]);
 
-  if (!session || !active) return null;
+  useEffect(() => {
+    Animated.timing(drop, {
+      // Slide down by the tab-bar gap when there's no tab bar beneath us.
+      toValue: onTab ? 0 : tabGap,
+      duration: reduceMotion ? 0 : 240,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [onTab, tabGap, drop, reduceMotion]);
 
-  const { phase, partial } = session;
-  // State is conveyed by BOTH a phase icon (shape) and its color — never color
-  // alone — so the status reads without relying on hue perception.
-  const Icon = iconFor(phase);
+  if (!session || !visible) return null;
+
+  const { partial } = session;
   const iconColor =
     phase === "capturing" ? theme.primary : theme.mutedForeground;
 
-  // Sit just above the tab bar: tab-bar height + its bottom padding + a gap.
-  const bottom = TAB_BAR_HEIGHT + Math.max(insets.bottom - 10, 4) + Spacing.two;
+  // Base offset: sit just above the tab bar (on tab pages). The `drop`
+  // translate then pushes it into the gap on pushed pages.
+  const bottom = tabGap + Spacing.two;
 
   return (
     <Animated.View
       pointerEvents="box-none"
-      style={[styles.wrap, { bottom, opacity }]}
+      style={[
+        styles.wrap,
+        { bottom, opacity, transform: [{ translateY: drop }] },
+      ]}
     >
-      <Pressable
-        onPress={session.toggle}
+      <View
         style={[
           styles.pill,
           { backgroundColor: theme.card, borderColor: theme.border },
         ]}
       >
-        <Icon color={iconColor} size={16} strokeWidth={2.4} />
-        <View style={styles.copy}>
-          <ThemedText style={styles.title}>{titleFor(phase)}</ThemedText>
-          <ThemedText themeColor="mutedForeground" style={styles.hint}>
-            {phase === "capturing" && partial ? partial : hintFor(phase)}
-          </ThemedText>
-        </View>
-      </Pressable>
+        <Pressable
+          onPress={session.toggle}
+          style={styles.body}
+          accessibilityRole="button"
+          accessibilityLabel={
+            phase === "capturing" ? "Stop dictation" : "Dictation status"
+          }
+        >
+          <PhaseIcon
+            phase={phase}
+            color={iconColor}
+            reduceMotion={reduceMotion}
+          />
+          <View style={styles.copy}>
+            <ThemedText style={styles.title}>{titleFor(phase)}</ThemedText>
+            <ThemedText themeColor="mutedForeground" style={styles.hint}>
+              {phase === "capturing" && partial ? partial : hintFor(phase)}
+            </ThemedText>
+          </View>
+        </Pressable>
+        <Pressable
+          onPress={session.dismiss}
+          hitSlop={10}
+          style={styles.close}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss dictation"
+        >
+          <X color={theme.mutedForeground} size={16} strokeWidth={2.4} />
+        </Pressable>
+      </View>
     </Animated.View>
   );
 }
 
-/** A distinct glyph per phase so state is legible without relying on color. */
-function iconFor(phase: Phase): LucideIcon {
-  switch (phase) {
-    case "capturing":
-      return Mic;
-    case "transcribing":
-      return Sparkles;
-    case "ready":
-      return Check;
-    case "failed":
-      return AlertTriangle;
-    default:
-      return Loader;
+/**
+ * The leading phase icon: a mic while listening, and a spinning loader while
+ * processing (spin suppressed under Reduce Motion — a static loader still reads
+ * as "working").
+ */
+function PhaseIcon({
+  phase,
+  color,
+  reduceMotion,
+}: {
+  phase: Phase;
+  color: string;
+  reduceMotion: boolean;
+}) {
+  const spin = useRef(new Animated.Value(0)).current;
+  const spinning = phase === "transcribing" && !reduceMotion;
+
+  useEffect(() => {
+    if (!spinning) return;
+    const loop = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 900,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      spin.setValue(0);
+    };
+  }, [spinning, spin]);
+
+  if (phase === "transcribing") {
+    const rotate = spin.interpolate({
+      inputRange: [0, 1],
+      outputRange: ["0deg", "360deg"],
+    });
+    return (
+      <Animated.View style={{ transform: [{ rotate }] }}>
+        <Loader color={color} size={16} strokeWidth={2.4} />
+      </Animated.View>
+    );
   }
+  return <Mic color={color} size={16} strokeWidth={2.4} />;
 }
 
 function titleFor(phase: Phase): string {
   switch (phase) {
-    case "arming":
-      return "Waking up…";
-    case "armed":
-      return "Ready to dictate";
     case "capturing":
       return "Listening";
     case "transcribing":
-      return "Polishing";
-    case "ready":
-      return "Inserted";
-    case "failed":
-      return "Something went wrong";
+      return "Processing";
     default:
       return "Freestyle";
   }
@@ -131,18 +208,10 @@ function titleFor(phase: Phase): string {
 
 function hintFor(phase: Phase): string {
   switch (phase) {
-    case "arming":
-      return "Starting your mic";
-    case "armed":
-      return "Switch back to your app and tap the mic";
     case "capturing":
-      return "Tap the keyboard mic when you're done";
+      return "Tap to stop, or use the keyboard mic";
     case "transcribing":
       return "Cleaning up your words";
-    case "ready":
-      return "Switch back — your text is in";
-    case "failed":
-      return "Tap to try again";
     default:
       return "";
   }
@@ -163,7 +232,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.full,
     paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
+    paddingLeft: Spacing.three,
+    paddingRight: Spacing.two,
     maxWidth: 420,
     width: "100%",
     // Subtle lift — shadow above, since the strip floats over content near
@@ -174,7 +244,20 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -2 },
     elevation: 4,
   },
+  body: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+  },
   copy: { flex: 1 },
   title: { fontFamily: Fonts.sansSemiBold, fontSize: 14 },
   hint: { fontSize: 12, lineHeight: 16 },
+  close: {
+    width: 28,
+    height: 28,
+    borderRadius: Radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

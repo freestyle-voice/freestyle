@@ -12,11 +12,12 @@
  * wherever the user is. So there's nothing to navigate to.
  *
  * Without this file, `/dictate` matches no route and Expo Router lands on the
- * built-in "unmatched route" screen — the app looks stuck/blank after tapping
- * the keyboard mic. `redirectSystemPath` runs *before* routing (unlike a
- * `_layout` effect, which races Expo Router's own navigation), so we rewrite the
- * dictation link to the app's home tab and let the provider take over. Every
- * other URL passes through untouched.
+ * `+not-found` screen — the app looks stuck after tapping the keyboard mic.
+ * `redirectSystemPath` runs *before* routing (unlike a `_layout` effect, which
+ * races Expo Router's own navigation), so we rewrite the dictation link to the
+ * app's home tab and let the provider take over. Every other unknown URL still
+ * falls through to `+not-found`, which surfaces the attempted path for
+ * debugging.
  *
  * Must not throw — a throw here can crash the app on launch (see the Expo Router
  * "Customizing links" guide), so everything is wrapped defensively.

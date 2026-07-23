@@ -74,6 +74,46 @@ export function getSessionToken(): string | null {
   return getSession()?.token ?? null;
 }
 
+export interface SessionExpiry {
+  /** Epoch ms when the token expires, or null if it never expires locally. */
+  expiresAt: number | null;
+  /** Ms remaining until expiry, or null when there is no expiry. */
+  remainingMs: number | null;
+}
+
+/**
+ * Report the current session's expiry without mutating it. Returns null when
+ * there is no (valid) session. Unlike {@link getSession}, this is purely
+ * informational — callers use it to decide whether to renew or warn the user.
+ * Note: {@link getSession} still invalidates an already-expired session, so a
+ * non-null result here always describes a live token.
+ */
+export function getSessionExpiry(): SessionExpiry | null {
+  const session = getSession();
+  if (!session) return null;
+  const expiresAt = session.expiresAt ?? null;
+  return {
+    expiresAt,
+    remainingMs: expiresAt === null ? null : expiresAt - Date.now(),
+  };
+}
+
+/**
+ * Update only the expiry timestamps of the stored session, leaving the token
+ * and user untouched. Used by the keep-alive scheduler after the cloud slides
+ * the session window forward. No-op when there is no session.
+ */
+export function touchSessionExpiry(expiresAt: number): void {
+  const session = getSession();
+  if (!session) return;
+  const now = Date.now();
+  getDb()
+    .prepare(
+      "UPDATE sessions SET expires_at = ?, issued_at = ?, updated_at = ? WHERE id = 1",
+    )
+    .run(expiresAt, now, now);
+}
+
 export function getSessionUser(): CloudUser | null {
   return getSession()?.user ?? null;
 }

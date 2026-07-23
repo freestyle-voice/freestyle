@@ -25,6 +25,7 @@ import {
   plugins,
 } from "./lib/plugins/index.js";
 import { captureException, shutdownPosthog } from "./lib/posthog.js";
+import { startSessionKeepAlive } from "./lib/session-keepalive.js";
 import { trustedOriginMiddleware } from "./lib/trusted-origin.js";
 import routes from "./routes";
 
@@ -209,6 +210,10 @@ export async function startServer(
   const app = createApp();
 
   startHistoryRetentionSweep();
+
+  // Keep the Freestyle Cloud session alive by sliding its expiry before the
+  // local token lapses (the cloud issues no refresh token). Fire-and-forget.
+  startSessionKeepAlive();
 
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ noServer: true });

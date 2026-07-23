@@ -3,6 +3,7 @@ import "./fonts.css";
 
 import { CloudSignInModal } from "@renderer/components/cloud-signin-modal";
 import { ErrorBoundary } from "@renderer/components/error-boundary";
+import { SessionExpiredModal } from "@renderer/components/session-expired-modal";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import i18n, { initI18n } from "@renderer/i18n";
 import { initApiBase } from "@renderer/lib/api";
@@ -84,6 +85,7 @@ function mount(): void {
                 <TooltipProvider>
                   <CloudAuthProvider>
                     <CloudSignInModal />
+                    <SessionExpiredModal />
                     <Suspense fallback={<RouteFallback />}>
                       <Routes>
                         <Route

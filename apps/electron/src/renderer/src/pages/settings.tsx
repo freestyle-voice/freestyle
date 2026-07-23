@@ -1268,10 +1268,6 @@ function Row({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Usage & Billing — weekly usage summary + upgrade / manage plans
-// ---------------------------------------------------------------------------
-
 function BillingPanel(): React.JSX.Element {
   const { user } = useCloudAuth();
   const {
@@ -1311,10 +1307,6 @@ function BillingPanel(): React.JSX.Element {
   );
 }
 
-/**
- * Weekly usage readout for the Billing tab: "Unlimited" for Pro, a
- * remaining/limit meter for free users, and a sign-in nudge when signed out.
- */
 function UsageSummary({
   signedIn,
   balance,

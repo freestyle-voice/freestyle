@@ -1269,7 +1269,7 @@ export default function AppPage(): React.JSX.Element {
       removeStreamingAudio?.();
       removeServerChanged?.();
     };
-  }, [applyPillPosition]);
+  }, [applyPillPosition, getStreamer]);
 
   // ---- Hotkey handlers ----
   useEffect(() => {

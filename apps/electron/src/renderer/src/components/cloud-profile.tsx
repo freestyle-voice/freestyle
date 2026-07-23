@@ -24,12 +24,6 @@ import {
 const ROW =
   "flex w-full items-center gap-2.5 rounded-[7px] border border-transparent px-2.5 py-1.5 text-[13px] transition-colors";
 
-/**
- * Sidebar upsell shown just above the profile button for signed-in free
- * users: a compact weekly-usage readout plus the "Upgrade to Pro" CTA (the
- * dropdown no longer carries an upgrade action). Renders nothing for Pro or
- * signed-out users, or until the balance is known.
- */
 export function UpgradeCtaCard(): React.JSX.Element | null {
   const { user } = useCloudAuth();
   const { balance, isPro } = useCloudUsage(!!user);

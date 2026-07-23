@@ -74,17 +74,6 @@ export function usagePercent(balance: CloudUsageBalance): number {
   );
 }
 
-/**
- * Fetches cloud usage balance. Cached for an hour (staleTime), but invalidated
- * after every completed dictation (via the pill's "transcription done"
- * broadcast) so the balance stays current without manual refreshes. Consumers
- * still expose a manual refresh too. Returns null when not signed in or if the
- * fetch fails (best-effort).
- *
- * Also exposes the billing surface: the user's plan (free/pro), launching a
- * Stripe Checkout (with a poll-until-pro pending state), and opening the
- * Stripe Billing Portal.
- */
 export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
   const [checkoutStatus, setCheckoutStatus] = useState<CheckoutStatus>("idle");
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -107,13 +96,6 @@ export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
     retry: 1,
   });
 
-  // Each completed dictation debits usage on the cloud, but the balance is
-  // cached with a long staleTime and lives in the dashboard window while the
-  // transcription runs in the pill. The pill broadcasts "transcription done"
-  // to every window (the same signal Today uses to refresh its history), so
-  // invalidate here to pull the fresh balance instead of showing a stale one
-  // until the next manual refresh. Concurrent invalidations across hook
-  // instances coalesce into a single refetch.
   useEffect(() => {
     if (!signedIn) return;
     const remove = window.api?.onTranscriptionDone(() => {
@@ -126,20 +108,12 @@ export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
   const plan: "free" | "pro" = balance?.plan === "pro" ? "pro" : "free";
   const isPro = plan === "pro" || balance?.unlimited === true;
 
-  // Resolve a pending checkout to success once the cloud reports Pro. isPro
-  // derives from the polled balance, so this re-runs whenever a poll lands.
   useEffect(() => {
     if (checkoutStatus === "pending" && isPro) {
       setCheckoutStatus("success");
     }
   }, [checkoutStatus, isPro]);
 
-  // Safety timeout: a pending checkout must never wedge the button forever.
-  // Arm a real wall-clock timer when entering "pending" — it fires even if the
-  // balance poll keeps erroring (the old poll-count-based deadline would never
-  // trigger in that case, since it only advanced on a successful fetch). On
-  // expiry, fall back to idle so the user can retry. The updater guards against
-  // a success transition that raced just before the timer fired.
   useEffect(() => {
     if (checkoutStatus !== "pending") return;
     const timer = setTimeout(() => {

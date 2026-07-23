@@ -187,27 +187,13 @@ function PlanHeader({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Pricing plans — the Free / Pro / Enterprise cards with a billing-period
-// toggle. Shared by the upgrade modal and the Usage & Billing settings tab.
-// The billing surface (checkout state, portal) is passed in so each host owns
-// a single useCloudUsage instance rather than forking checkout state.
-// ---------------------------------------------------------------------------
-
 export interface PricingPlansProps {
-  /** True when the user is already on Pro. */
   isPro: boolean;
-  /** Current checkout lifecycle (drives the Pro button's busy/error states). */
   checkoutStatus: CheckoutStatus;
-  /** Human-readable failure reason when checkoutStatus === "error". */
   checkoutError: string | null;
-  /** Launch a Stripe Checkout for the given period. */
   startCheckout: (period: BillingPeriod) => void;
-  /** Cancel a pending checkout and return the button to idle. */
   resetCheckout: () => void;
-  /** Open the Stripe Billing Portal (Pro only). */
   openBillingPortal: () => void;
-  /** True while the billing portal is being opened. */
   portalOpening: boolean;
 }
 
@@ -252,7 +238,6 @@ export function PricingPlans({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        {/* Free */}
         <PlanCard>
           <PlanHeader name="Free" price="$0" priceNote="forever" />
           <FeatureList features={FREE_FEATURES} />
@@ -268,7 +253,6 @@ export function PricingPlans({
           ) : null}
         </PlanCard>
 
-        {/* Pro */}
         <PlanCard featured>
           <PlanHeader
             name="Pro"
@@ -345,7 +329,6 @@ export function PricingPlans({
           )}
         </PlanCard>
 
-        {/* Enterprise */}
         <PlanCard>
           <PlanHeader
             name="Enterprise"

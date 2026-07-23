@@ -1,15 +1,19 @@
 import { Redirect, Stack } from "expo-router";
 
+import { KeyboardDictationStrip } from "@/components/keyboard-dictation-strip";
 import { useAuth } from "@/hooks/use-auth";
 import { EntriesProvider } from "@/lib/entries";
 import { HistoryProvider } from "@/lib/history";
+import { KeyboardDictationProvider } from "@/lib/keyboard/keyboard-dictation-provider";
 import { SettingsProvider } from "@/lib/settings";
 
 /**
  * Authenticated area. A Stack hosts the bottom-tab group `(tabs)` plus the
- * pushed pages (settings, profile, keyboard setup, dictate). Because these
- * pages are pushed on top of the whole tab group, Back returns to whichever
- * tab was active — not always Home.
+ * pushed pages (settings, profile, keyboard setup). The resident keyboard
+ * dictation session lives in a provider here (not on any one screen) so it
+ * survives across navigation — the whole point is that after the first
+ * hand-off the user never has to return to a specific screen. A floating
+ * status strip surfaces its state above whatever page is showing.
  */
 export default function AppLayout() {
   const { signedIn, loading } = useAuth();
@@ -22,22 +26,15 @@ export default function AppLayout() {
     <SettingsProvider>
       <EntriesProvider>
         <HistoryProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="settings" />
-            <Stack.Screen name="profile" />
-            <Stack.Screen name="keyboard-setup" />
-            <Stack.Screen
-              name="dictate"
-              options={{
-                // Present as a full-screen modal so it sits above the tab
-                // stack and pops off cleanly — the user always returns to
-                // wherever they were (home, history, etc.), never to a stale
-                // dictate screen left in the stack.
-                presentation: "fullScreenModal",
-              }}
-            />
-          </Stack>
+          <KeyboardDictationProvider>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="settings" />
+              <Stack.Screen name="profile" />
+              <Stack.Screen name="keyboard-setup" />
+            </Stack>
+            <KeyboardDictationStrip />
+          </KeyboardDictationProvider>
         </HistoryProvider>
       </EntriesProvider>
     </SettingsProvider>

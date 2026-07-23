@@ -23,7 +23,7 @@ const path = require("node:path");
 
 const EXT_NAME = "FreestyleKeyboard";
 const APP_GROUP = "group.com.freestylevoice.app";
-const SOURCE_FILES = ["KeyboardViewController.swift", "SharedStore.swift"];
+const SOURCE_FILES = ["KeyboardViewController.swift", "DictationBridge.swift"];
 const DEPLOYMENT_TARGET = "16.0";
 
 function withKeyboardExtension(config) {

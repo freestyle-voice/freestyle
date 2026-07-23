@@ -1,5 +1,6 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
+import { useIsFocused } from "expo-router";
 import { useCallback, useState } from "react";
 import { Pressable, Share, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -18,12 +19,17 @@ import { useDictation } from "@/lib/audio/use-dictation";
 export default function VoiceScreen() {
   const theme = useTheme();
   const { signedIn } = useAuth();
+  // This tab stays mounted while the resident keyboard session runs in the
+  // background provider. Gate its mic on focus so the Home recorder can't fight
+  // the resident session for the audio session (two active recorders = "Could
+  // not start the microphone").
+  const focused = useIsFocused();
 
   const [text, setText] = useState("");
   const [copied, setCopied] = useState(false);
 
   const { micState, partial, level, onPressIn, onPressOut } = useDictation({
-    signedIn,
+    signedIn: signedIn && focused,
     onRecordingStart: () => setCopied(false),
     onFinal: (t) => setText((prev) => (prev ? `${prev} ${t}` : t)),
   });

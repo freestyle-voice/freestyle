@@ -10,6 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.freestylevoice.app",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Freestyle needs microphone access to transcribe your voice.",
         "ITSAppUsesNonExemptEncryption": false
@@ -57,6 +58,7 @@
       "expo-secure-store",
       "expo-web-browser",
       "expo-asset",
+      "expo-apple-authentication",
       "./plugins/withKeyboardExtension",
       "./plugins/withPodResourceBundleSigning"
     ],

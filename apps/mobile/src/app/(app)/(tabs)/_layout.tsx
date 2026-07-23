@@ -4,7 +4,7 @@ import { FloatingTabBar } from "@/components/floating-tab-bar";
 
 /**
  * The five bottom-tab destinations. Pushed pages (settings, profile, keyboard
- * setup, dictate) live in the parent Stack so navigating to them preserves the
+ * setup) live in the parent Stack so navigating to them preserves the
  * active tab and lets Back return here.
  */
 export default function TabsLayout() {

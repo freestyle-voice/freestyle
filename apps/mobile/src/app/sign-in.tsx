@@ -1,6 +1,12 @@
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
@@ -8,6 +14,19 @@ import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { type SocialProvider, useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
+
+const PROVIDER_LABELS: Record<SocialProvider, string> = {
+  apple: "Continue with Apple",
+  google: "Continue with Google",
+  github: "Continue with GitHub",
+};
+
+// Present providers in the order each platform's users expect: Apple first on
+// iOS, Google first on Android. GitHub always trails.
+const PROVIDER_ORDER: SocialProvider[] = Platform.select({
+  ios: ["apple", "google", "github"],
+  default: ["google", "apple", "github"],
+});
 
 export default function SignInScreen() {
   const router = useRouter();
@@ -58,27 +77,16 @@ export default function SignInScreen() {
             </ThemedText>
           ) : null}
 
-          <ProviderButton
-            label="Continue with Google"
-            onPress={() => handleSignIn("google")}
-            loading={pending === "google"}
-            disabled={pending !== null}
-            variant="primary"
-          />
-          <ProviderButton
-            label="Continue with GitHub"
-            onPress={() => handleSignIn("github")}
-            loading={pending === "github"}
-            disabled={pending !== null}
-            variant="outline"
-          />
-          <ProviderButton
-            label="Continue with Apple"
-            onPress={() => handleSignIn("apple")}
-            loading={pending === "apple"}
-            disabled={pending !== null}
-            variant="outline"
-          />
+          {PROVIDER_ORDER.map((provider, index) => (
+            <ProviderButton
+              key={provider}
+              label={PROVIDER_LABELS[provider]}
+              onPress={() => handleSignIn(provider)}
+              loading={pending === provider}
+              disabled={pending !== null}
+              variant={index === 0 ? "primary" : "outline"}
+            />
+          ))}
 
           <ThemedText themeColor="mutedForeground" style={styles.legal}>
             We only use your account to sync credits and preferences.

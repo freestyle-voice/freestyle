@@ -8,6 +8,10 @@
  * transcript editing UI — the transcript is inserted by the keyboard. This is
  * the "minimal status strip" the user sees on the first cold arm; afterwards it
  * just floats above whatever screen is showing.
+ *
+ * Anchored to the BOTTOM, floating just above the tab bar — not the top, where
+ * it would cover each screen's header (brand title + settings/profile icons).
+ * Bottom also keeps it near the mic-focused area, mirroring the desktop pill.
  */
 
 import { useEffect, useRef } from "react";
@@ -19,6 +23,13 @@ import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import type { Phase } from "@/lib/keyboard/dictation-bridge";
 import { useKeyboardDictation } from "@/lib/keyboard/keyboard-dictation-provider";
+
+/**
+ * Space the tab bar occupies at the bottom edge, so the strip can sit just
+ * above it. Mirrors `floating-tab-bar.tsx`: BAR_HEIGHT (52) + its wrap padding
+ * (`max(insets.bottom - 10, 4)`), plus a small gap.
+ */
+const TAB_BAR_HEIGHT = 52;
 
 export function KeyboardDictationStrip() {
   const session = useKeyboardDictation();
@@ -42,10 +53,13 @@ export function KeyboardDictationStrip() {
   const dotColor =
     phase === "capturing" ? theme.primary : theme.mutedForeground;
 
+  // Sit just above the tab bar: tab-bar height + its bottom padding + a gap.
+  const bottom = TAB_BAR_HEIGHT + Math.max(insets.bottom - 10, 4) + Spacing.two;
+
   return (
     <Animated.View
       pointerEvents="box-none"
-      style={[styles.wrap, { top: insets.top + Spacing.one, opacity }]}
+      style={[styles.wrap, { bottom, opacity }]}
     >
       <Pressable
         onPress={session.toggle}
@@ -122,11 +136,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     maxWidth: 420,
     width: "100%",
-    // Subtle lift.
+    // Subtle lift — shadow above, since the strip floats over content near
+    // the bottom edge.
     shadowColor: "#000",
     shadowOpacity: 0.12,
     shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: -2 },
     elevation: 4,
   },
   dot: { width: 8, height: 8, borderRadius: 4 },

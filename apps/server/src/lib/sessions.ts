@@ -74,6 +74,22 @@ export function getSessionToken(): string | null {
   return getSession()?.token ?? null;
 }
 
+/**
+ * Update only the expiry timestamps of the stored session, leaving the token
+ * and user untouched. Used by the keep-alive scheduler after the cloud slides
+ * the session window forward. No-op when there is no session.
+ */
+export function touchSessionExpiry(expiresAt: number): void {
+  const session = getSession();
+  if (!session) return;
+  const now = Date.now();
+  getDb()
+    .prepare(
+      "UPDATE sessions SET expires_at = ?, issued_at = ?, updated_at = ? WHERE id = 1",
+    )
+    .run(expiresAt, now, now);
+}
+
 export function getSessionUser(): CloudUser | null {
   return getSession()?.user ?? null;
 }

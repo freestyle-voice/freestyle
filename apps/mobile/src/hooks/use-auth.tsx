@@ -10,7 +10,7 @@ import { authClient } from "@/lib/cloud/auth-client";
 import { type CloudUser, signOutCloud } from "@/lib/cloud/session";
 import { clearKeyboardSession } from "@/lib/keyboard-bridge";
 
-export type SocialProvider = "google" | "github";
+export type SocialProvider = "google" | "github" | "apple";
 
 interface AuthState {
   user: CloudUser | null;

@@ -72,6 +72,13 @@ export default function SignInScreen() {
             disabled={pending !== null}
             variant="outline"
           />
+          <ProviderButton
+            label="Continue with Apple"
+            onPress={() => handleSignIn("apple")}
+            loading={pending === "apple"}
+            disabled={pending !== null}
+            variant="outline"
+          />
 
           <ThemedText themeColor="mutedForeground" style={styles.legal}>
             We only use your account to sync credits and preferences.

@@ -14,8 +14,17 @@
  * Bottom also keeps it near the mic-focused area, mirroring the desktop pill.
  */
 
+import {
+  AlertTriangle,
+  Check,
+  Loader,
+  type LucideIcon,
+  Mic,
+  Sparkles,
+} from "lucide-react-native";
 import { useEffect, useRef } from "react";
 import { Animated, Pressable, StyleSheet, View } from "react-native";
+import { useReducedMotion } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
@@ -35,22 +44,27 @@ export function KeyboardDictationStrip() {
   const session = useKeyboardDictation();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const reduceMotion = useReducedMotion();
   const opacity = useRef(new Animated.Value(0)).current;
 
   const active = session?.active ?? false;
 
   useEffect(() => {
+    // Respect Reduce Motion: snap in/out instead of fading.
     Animated.timing(opacity, {
       toValue: active ? 1 : 0,
-      duration: 180,
+      duration: reduceMotion ? 0 : 180,
       useNativeDriver: true,
     }).start();
-  }, [active, opacity]);
+  }, [active, opacity, reduceMotion]);
 
   if (!session || !active) return null;
 
   const { phase, partial } = session;
-  const dotColor =
+  // State is conveyed by BOTH a phase icon (shape) and its color — never color
+  // alone — so the status reads without relying on hue perception.
+  const Icon = iconFor(phase);
+  const iconColor =
     phase === "capturing" ? theme.primary : theme.mutedForeground;
 
   // Sit just above the tab bar: tab-bar height + its bottom padding + a gap.
@@ -68,7 +82,7 @@ export function KeyboardDictationStrip() {
           { backgroundColor: theme.card, borderColor: theme.border },
         ]}
       >
-        <View style={[styles.dot, { backgroundColor: dotColor }]} />
+        <Icon color={iconColor} size={16} strokeWidth={2.4} />
         <View style={styles.copy}>
           <ThemedText style={styles.title}>{titleFor(phase)}</ThemedText>
           <ThemedText themeColor="mutedForeground" style={styles.hint}>
@@ -78,6 +92,22 @@ export function KeyboardDictationStrip() {
       </Pressable>
     </Animated.View>
   );
+}
+
+/** A distinct glyph per phase so state is legible without relying on color. */
+function iconFor(phase: Phase): LucideIcon {
+  switch (phase) {
+    case "capturing":
+      return Mic;
+    case "transcribing":
+      return Sparkles;
+    case "ready":
+      return Check;
+    case "failed":
+      return AlertTriangle;
+    default:
+      return Loader;
+  }
 }
 
 function titleFor(phase: Phase): string {
@@ -144,7 +174,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -2 },
     elevation: 4,
   },
-  dot: { width: 8, height: 8, borderRadius: 4 },
   copy: { flex: 1 },
   title: { fontFamily: Fonts.sansSemiBold, fontSize: 14 },
   hint: { fontSize: 12, lineHeight: 16 },

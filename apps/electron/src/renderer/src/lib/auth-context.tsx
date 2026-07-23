@@ -46,20 +46,27 @@ function useCloudAuthState(): UseCloudAuth {
   const signInAttemptRef = useRef(0);
 
   const refresh = useCallback(async (): Promise<CloudUser | null> => {
+    // `reached` distinguishes "server said not-authenticated" from "couldn't
+    // reach the server". A transient network/server blip must NOT be mistaken
+    // for an expired session, or it would spuriously pop the re-sign-in modal.
+    let reached = false;
     const user = await getClient()
       .api.auth.status.$get()
       .then(async (res) => {
         if (!res.ok) return null;
+        reached = true;
         const data = await res.json();
         return data.user ?? null;
       })
       .catch(() => null);
-    // Detect a session that lapsed while signed in (e.g. token expired). Only
-    // flag the transition from signed-in → signed-out, not a fresh cold start.
-    if (!user && wasSignedInRef.current) setSessionExpired(true);
-    if (user) setSessionExpired(false);
-    wasSignedInRef.current = !!user;
-    setUser(user);
+    if (reached) {
+      // Flag only the confirmed transition from signed-in → signed-out (e.g.
+      // the token expired), not a fresh cold start.
+      if (!user && wasSignedInRef.current) setSessionExpired(true);
+      if (user) setSessionExpired(false);
+      wasSignedInRef.current = !!user;
+      setUser(user);
+    }
     return user;
   }, []);
 

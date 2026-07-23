@@ -13,7 +13,6 @@ import { applyFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js"
 import { capture, identifyCloudUser } from "../lib/posthog.js";
 import {
   getSession,
-  getSessionExpiry,
   getSessionUser,
   invalidateSession,
   setSession,
@@ -29,12 +28,7 @@ const auth = new Hono()
   })
   .get("/status", (c) => {
     const user = getSessionUser();
-    const expiry = getSessionExpiry();
-    return c.json({
-      authenticated: !!user,
-      user,
-      expiresAt: expiry?.expiresAt ?? null,
-    });
+    return c.json({ authenticated: !!user, user });
   })
   .post("/device/code", async (c) => {
     const code = await requestDeviceCode();

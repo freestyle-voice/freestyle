@@ -25,7 +25,10 @@ import {
   plugins,
 } from "./lib/plugins/index.js";
 import { captureException, shutdownPosthog } from "./lib/posthog.js";
-import { startSessionKeepAlive } from "./lib/session-keepalive.js";
+import {
+  startSessionKeepAlive,
+  stopSessionKeepAlive,
+} from "./lib/session-keepalive.js";
 import { trustedOriginMiddleware } from "./lib/trusted-origin.js";
 import routes from "./routes";
 
@@ -47,6 +50,7 @@ const TIMEOUT_PREFIXES = [
 ];
 
 async function shutdownServer(): Promise<void> {
+  stopSessionKeepAlive();
   await disposeServerPlugins().catch(() => {});
   await shutdownPosthog();
 }

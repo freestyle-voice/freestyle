@@ -4,12 +4,7 @@ import {
   SESSION_LIFETIME_MS,
 } from "../src/lib/freestyle-cloud.js";
 import { renewSession } from "../src/lib/session-keepalive.js";
-import {
-  clearSession,
-  getSession,
-  getSessionExpiry,
-  setSession,
-} from "../src/lib/sessions.js";
+import { clearSession, getSession, setSession } from "../src/lib/sessions.js";
 
 vi.mock("../src/lib/freestyle-cloud.js", async (importOriginal) => {
   const actual =
@@ -59,12 +54,12 @@ describe("renewSession", () => {
 
   it("renews when within the 2-day threshold", async () => {
     signInWithRemaining(24 * 60 * 60 * 1000); // 1 day
-    const before = getSessionExpiry()?.expiresAt ?? 0;
+    const before = getSession()?.expiresAt ?? 0;
 
     await expect(renewSession()).resolves.toBe("renewed");
 
     expect(cloud.fetchCloudUser).toHaveBeenCalledTimes(1);
-    const after = getSessionExpiry()?.expiresAt ?? 0;
+    const after = getSession()?.expiresAt ?? 0;
     expect(after).toBeGreaterThan(before);
     // New expiry should be ~one full lifetime out from now.
     expect(after).toBeGreaterThan(Date.now() + SESSION_LIFETIME_MS - 5_000);

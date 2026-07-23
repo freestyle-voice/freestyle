@@ -7,7 +7,6 @@ import {
 import { captureException } from "./posthog.js";
 import {
   getSession,
-  getSessionExpiry,
   invalidateSession,
   touchSessionExpiry,
 } from "./sessions.js";
@@ -34,20 +33,18 @@ export type RenewResult = "renewed" | "not-needed" | "no-session" | "expired";
  *   refresh). When false, renews only within {@link RENEW_THRESHOLD_MS}.
  */
 export async function renewSession(force = false): Promise<RenewResult> {
-  const expiry = getSessionExpiry();
-  if (!expiry) return "no-session";
+  const session = getSession();
+  if (!session) return "no-session";
 
   // No local expiry means the cloud never sent one — nothing to slide.
-  if (expiry.remainingMs === null) return "not-needed";
+  if (session.expiresAt == null) return "not-needed";
 
-  if (!force && expiry.remainingMs > RENEW_THRESHOLD_MS) return "not-needed";
-
-  const token = getSession()?.token;
-  if (!token) return "no-session";
+  const remainingMs = session.expiresAt - Date.now();
+  if (!force && remainingMs > RENEW_THRESHOLD_MS) return "not-needed";
 
   try {
     // Touching an authenticated endpoint slides the cloud session window.
-    await fetchCloudUser(token);
+    await fetchCloudUser(session.token);
     touchSessionExpiry(Date.now() + SESSION_LIFETIME_MS);
     return "renewed";
   } catch (err) {

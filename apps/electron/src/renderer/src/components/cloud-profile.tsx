@@ -7,9 +7,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@renderer/components/ui/dropdown-menu";
+import { Progress } from "@renderer/components/ui/progress";
 import { useUpgradeModal } from "@renderer/components/upgrade-modal";
 import { useCloudAuth } from "@renderer/lib/auth-context";
-import { useCloudUsage } from "@renderer/lib/use-cloud-usage";
+import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
 import { cn } from "@renderer/lib/utils";
 import {
   ChevronsUpDown,
@@ -18,16 +19,53 @@ import {
   Loader2,
   LogIn,
   LogOut,
-  Sparkles,
 } from "lucide-react";
 
 const ROW =
   "flex w-full items-center gap-2.5 rounded-[7px] border border-transparent px-2.5 py-1.5 text-[13px] transition-colors";
 
+/**
+ * Sidebar upsell shown just above the profile button for signed-in free
+ * users: a compact weekly-usage readout plus the "Upgrade to Pro" CTA (the
+ * dropdown no longer carries an upgrade action). Renders nothing for Pro or
+ * signed-out users, or until the balance is known.
+ */
+export function UpgradeCtaCard(): React.JSX.Element | null {
+  const { user } = useCloudAuth();
+  const { balance, isPro } = useCloudUsage(!!user);
+  const { openUpgradeModal } = useUpgradeModal();
+
+  if (!user || isPro || !balance) return null;
+
+  const pct = usagePercent(balance);
+
+  return (
+    <div
+      className="glass-card mx-3 mt-2 rounded-[10px] border p-3"
+      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+    >
+      <div className="text-foreground text-[12px] font-medium">
+        {balance.remaining.toLocaleString()} words left
+      </div>
+      <Progress value={pct} className="mt-1.5 h-1.5" />
+      <p className="text-muted-foreground mt-2.5 text-[11px] leading-snug">
+        Free plan includes {balance.limit.toLocaleString()} words per week.
+        Upgrade to Pro for unlimited dictation.
+      </p>
+      <Button
+        size="sm"
+        onClick={() => openUpgradeModal()}
+        className="mt-2.5 w-full"
+      >
+        Upgrade to Pro
+      </Button>
+    </div>
+  );
+}
+
 export function CloudProfileButton(): React.JSX.Element {
   const { user, loading, signingIn, signIn, signOut } = useCloudAuth();
   const { isPro, openBillingPortal } = useCloudUsage(!!user);
-  const { openUpgradeModal } = useUpgradeModal();
 
   if (loading) {
     return (
@@ -125,20 +163,14 @@ export function CloudProfileButton(): React.JSX.Element {
         </div>
         <DropdownMenuSeparator />
         {isPro ? (
-          <DropdownMenuItem onSelect={() => void openBillingPortal()}>
-            <CreditCard />
-            Manage subscription
-          </DropdownMenuItem>
-        ) : (
-          <DropdownMenuItem
-            className="text-primary data-highlighted:text-primary"
-            onSelect={() => openUpgradeModal()}
-          >
-            <Sparkles className="text-primary" />
-            Upgrade to Pro
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuSeparator />
+          <>
+            <DropdownMenuItem onSelect={() => void openBillingPortal()}>
+              <CreditCard />
+              Manage subscription
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         <DropdownMenuItem variant="destructive" onSelect={() => void signOut()}>
           <LogOut />
           Sign out

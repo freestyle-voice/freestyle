@@ -1,14 +1,9 @@
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
-import { Badge } from "@renderer/components/ui/badge";
 import { Progress } from "@renderer/components/ui/progress";
-import { useUpgradeModal } from "@renderer/components/upgrade-modal";
 import { getClient } from "@renderer/lib/api";
-import { useCloudAuth } from "@renderer/lib/auth-context";
-import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -63,18 +58,6 @@ function formatClock(d: Date): string {
       hour12: true,
     })
     .toLowerCase();
-}
-
-/** Human-friendly "last updated" label from an epoch-ms timestamp. */
-function formatUpdatedAt(ms: number | null): string {
-  if (!ms) return "never";
-  const diffSec = Math.round((Date.now() - ms) / 1000);
-  if (diffSec < 60) return "just now";
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  return formatClock(new Date(ms));
 }
 
 function formatMinutes(totalSec: number): string {
@@ -175,15 +158,6 @@ function buildModelBuckets(entries: HistoryEntry[]): UsageBucket[] {
 
 export default function TodayPage(): React.JSX.Element {
   const { t } = useTranslation();
-  const { user } = useCloudAuth();
-  const {
-    balance: cloudUsage,
-    isPro,
-    updatedAt: cloudUsageUpdatedAt,
-    isFetching: cloudUsageFetching,
-    refresh: refreshCloudUsage,
-  } = useCloudUsage(!!user);
-  const { openUpgradeModal } = useUpgradeModal();
   const queryClient = useQueryClient();
 
   const { data: entries = null } = useQuery({
@@ -315,83 +289,6 @@ export default function TodayPage(): React.JSX.Element {
             buckets.map((b) => <UsageBar key={b.label} {...b} />)
           )}
         </section>
-
-        {cloudUsage && (
-          <section>
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-muted-foreground text-[11px] font-semibold">
-                Cloud Usage
-              </span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-muted-foreground/70 text-[10px]">
-                  {formatUpdatedAt(cloudUsageUpdatedAt)}
-                </span>
-                <button
-                  type="button"
-                  onClick={refreshCloudUsage}
-                  disabled={cloudUsageFetching}
-                  aria-label="Refresh cloud usage"
-                  className="text-muted-foreground hover:text-foreground hover:bg-card -mr-1.5 rounded-md p-1.5 transition-colors disabled:opacity-50"
-                >
-                  <RefreshCw
-                    className={cn(
-                      "size-3",
-                      cloudUsageFetching && "animate-spin",
-                    )}
-                  />
-                </button>
-              </div>
-            </div>
-
-            {isPro ? (
-              <div className="flex items-center gap-2">
-                <span className="serif-italic text-foreground text-[26px] leading-none">
-                  Unlimited
-                </span>
-                <Badge className="mono h-4 px-1.5 text-[9px] uppercase tracking-[0.12em]">
-                  Pro
-                </Badge>
-              </div>
-            ) : (
-              <>
-                <div className="mb-3 flex items-baseline gap-1.5">
-                  <span className="serif-italic text-foreground text-[34px] leading-none">
-                    {cloudUsage.remaining.toLocaleString()}
-                  </span>
-                  <span className="text-muted-foreground text-[11px] font-medium">
-                    / {cloudUsage.limit.toLocaleString()} words
-                  </span>
-                </div>
-
-                <Progress value={usagePercent(cloudUsage)} className="h-1.5" />
-
-                <div className="text-muted-foreground mt-2.5 flex items-center justify-between text-[10.5px]">
-                  <span className="mono tracking-[0.08em]">
-                    {usagePercent(cloudUsage)}% used
-                  </span>
-                  <span>
-                    Resets{" "}
-                    {new Date(cloudUsage.resetsAt).toLocaleDateString(
-                      undefined,
-                      {
-                        month: "short",
-                        day: "numeric",
-                      },
-                    )}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => openUpgradeModal()}
-                  className="text-primary hover:text-primary/80 mt-2.5 text-[11px] font-medium transition-colors"
-                >
-                  Upgrade for unlimited →
-                </button>
-              </>
-            )}
-          </section>
-        )}
 
         <section>
           <RailLabel>{t("today.activity24h")}</RailLabel>

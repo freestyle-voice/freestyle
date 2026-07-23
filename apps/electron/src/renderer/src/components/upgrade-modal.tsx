@@ -10,10 +10,11 @@ import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import {
   type BillingPeriod,
+  type CheckoutStatus,
   useCloudUsage,
 } from "@renderer/lib/use-cloud-usage";
 import { cn } from "@renderer/lib/utils";
-import { Check, CircleCheck, Loader2, Mail, Sparkles } from "lucide-react";
+import { Check, CircleCheck, Loader2, Mail } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -83,7 +84,7 @@ export function UpgradeModalProvider({
 // ---------------------------------------------------------------------------
 
 const FREE_FEATURES = [
-  "1,000 words per week on desktop",
+  "2,000 words per week on desktop",
   "Transcribe + Polish — full dictation",
   "History, dictionary, vocabulary, tone & plugins",
   "All languages",
@@ -187,6 +188,190 @@ function PlanHeader({
 }
 
 // ---------------------------------------------------------------------------
+// Pricing plans — the Free / Pro / Enterprise cards with a billing-period
+// toggle. Shared by the upgrade modal and the Usage & Billing settings tab.
+// The billing surface (checkout state, portal) is passed in so each host owns
+// a single useCloudUsage instance rather than forking checkout state.
+// ---------------------------------------------------------------------------
+
+export interface PricingPlansProps {
+  /** True when the user is already on Pro. */
+  isPro: boolean;
+  /** Current checkout lifecycle (drives the Pro button's busy/error states). */
+  checkoutStatus: CheckoutStatus;
+  /** Human-readable failure reason when checkoutStatus === "error". */
+  checkoutError: string | null;
+  /** Launch a Stripe Checkout for the given period. */
+  startCheckout: (period: BillingPeriod) => void;
+  /** Cancel a pending checkout and return the button to idle. */
+  resetCheckout: () => void;
+  /** Open the Stripe Billing Portal (Pro only). */
+  openBillingPortal: () => void;
+  /** True while the billing portal is being opened. */
+  portalOpening: boolean;
+}
+
+export function PricingPlans({
+  isPro,
+  checkoutStatus,
+  checkoutError,
+  startCheckout,
+  resetCheckout,
+  openBillingPortal,
+  portalOpening,
+}: PricingPlansProps): React.JSX.Element {
+  const [period, setPeriod] = useState<BillingPeriod>("annual");
+  const checkoutBusy =
+    checkoutStatus === "launching" || checkoutStatus === "pending";
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex justify-center">
+        <SegmentedControl
+          size="sm"
+          value={period}
+          onValueChange={(v) => setPeriod(v as BillingPeriod)}
+          options={[
+            { value: "monthly", label: "Monthly" },
+            {
+              value: "annual",
+              label: (
+                <span className="flex items-center gap-1.5">
+                  Annual
+                  <Badge
+                    variant="secondary"
+                    className="mono h-4 px-1.5 text-[9.5px]"
+                  >
+                    −25%
+                  </Badge>
+                </span>
+              ),
+            },
+          ]}
+        />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {/* Free */}
+        <PlanCard>
+          <PlanHeader name="Free" price="$0" priceNote="forever" />
+          <FeatureList features={FREE_FEATURES} />
+          {!isPro ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4 w-full"
+              disabled
+            >
+              Current plan
+            </Button>
+          ) : null}
+        </PlanCard>
+
+        {/* Pro */}
+        <PlanCard featured>
+          <PlanHeader
+            name="Pro"
+            price={period === "annual" ? "$9" : "$12"}
+            priceNote={
+              period === "annual" ? "/ month, billed annually" : "/ month"
+            }
+            badge={
+              isPro ? (
+                <Badge className="mono h-4 px-1.5 text-[9.5px] uppercase tracking-[0.08em]">
+                  Current
+                </Badge>
+              ) : (
+                <Badge className="mono h-4 px-1.5 text-[9.5px] uppercase tracking-[0.08em]">
+                  Popular
+                </Badge>
+              )
+            }
+          />
+          <FeatureList
+            intro="Everything in Free, plus:"
+            features={PRO_FEATURES}
+          />
+          {isPro ? (
+            <div className="mt-4 flex flex-col gap-2">
+              <Button variant="outline" size="sm" className="w-full" disabled>
+                Current plan
+              </Button>
+              <Button
+                size="sm"
+                className="w-full"
+                disabled={portalOpening}
+                onClick={() => void openBillingPortal()}
+              >
+                {portalOpening ? <Loader2 className="animate-spin" /> : null}
+                Manage subscription
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-4 flex flex-col gap-1.5">
+              <Button
+                size="sm"
+                className="w-full"
+                disabled={checkoutBusy}
+                onClick={() => void startCheckout(period)}
+              >
+                {checkoutBusy ? <Loader2 className="animate-spin" /> : null}
+                {checkoutStatus === "launching"
+                  ? "Opening checkout…"
+                  : checkoutStatus === "pending"
+                    ? "Waiting for payment…"
+                    : "Upgrade to Pro"}
+              </Button>
+              {checkoutStatus === "pending" ? (
+                <>
+                  <p className="text-muted-foreground text-center text-[11px] leading-snug">
+                    Finish paying in your browser.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => resetCheckout()}
+                    className="text-muted-foreground hover:text-foreground mx-auto text-[11px] underline underline-offset-2 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : null}
+              {checkoutStatus === "error" && checkoutError ? (
+                <p className="text-destructive text-center text-[11px] leading-snug">
+                  {checkoutError}
+                </p>
+              ) : null}
+            </div>
+          )}
+        </PlanCard>
+
+        {/* Enterprise */}
+        <PlanCard>
+          <PlanHeader
+            name="Enterprise"
+            price="from $20"
+            priceNote="/ user / month"
+          />
+          <FeatureList
+            intro="Everything in Pro, plus:"
+            features={ENTERPRISE_FEATURES}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4 w-full"
+            onClick={() => void window.api.openExternal(SALES_MAILTO)}
+          >
+            <Mail />
+            Contact sales
+          </Button>
+        </PlanCard>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Modal
 // ---------------------------------------------------------------------------
 
@@ -207,7 +392,6 @@ function UpgradeModal({
     openBillingPortal,
     portalOpening,
   } = useCloudUsage(!!user);
-  const [period, setPeriod] = useState<BillingPeriod>("annual");
 
   const close = useCallback(() => {
     onOpenChange(false);
@@ -217,9 +401,6 @@ function UpgradeModal({
       resetCheckout();
     }
   }, [onOpenChange, checkoutStatus, resetCheckout]);
-
-  const checkoutBusy =
-    checkoutStatus === "launching" || checkoutStatus === "pending";
 
   return (
     <Dialog
@@ -250,150 +431,17 @@ function UpgradeModal({
               <DialogDescription className="text-[12.5px]">
                 Unlimited dictation, synced everywhere you work.
               </DialogDescription>
-              <SegmentedControl
-                size="sm"
-                className="mt-1"
-                value={period}
-                onValueChange={(v) => setPeriod(v as BillingPeriod)}
-                options={[
-                  { value: "monthly", label: "Monthly" },
-                  {
-                    value: "annual",
-                    label: (
-                      <span className="flex items-center gap-1.5">
-                        Annual
-                        <Badge
-                          variant="secondary"
-                          className="mono h-4 px-1.5 text-[9.5px]"
-                        >
-                          −25%
-                        </Badge>
-                      </span>
-                    ),
-                  },
-                ]}
-              />
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              {/* Free */}
-              <PlanCard>
-                <PlanHeader name="Free" price="$0" priceNote="forever" />
-                <FeatureList features={FREE_FEATURES} />
-                {!isPro ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-4 w-full"
-                    disabled
-                  >
-                    Current plan
-                  </Button>
-                ) : null}
-              </PlanCard>
-
-              {/* Pro */}
-              <PlanCard featured>
-                <PlanHeader
-                  name="Pro"
-                  price={period === "annual" ? "$9" : "$12"}
-                  priceNote={
-                    period === "annual" ? "/ month, billed annually" : "/ month"
-                  }
-                  badge={
-                    isPro ? (
-                      <Badge className="mono h-4 px-1.5 text-[9.5px] uppercase tracking-[0.08em]">
-                        Current
-                      </Badge>
-                    ) : (
-                      <Badge className="mono h-4 px-1.5 text-[9.5px] uppercase tracking-[0.08em]">
-                        Popular
-                      </Badge>
-                    )
-                  }
-                />
-                <FeatureList
-                  intro="Everything in Free, plus:"
-                  features={PRO_FEATURES}
-                />
-                {isPro ? (
-                  <div className="mt-4 flex flex-col gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      disabled
-                    >
-                      Current plan
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="w-full"
-                      disabled={portalOpening}
-                      onClick={() => void openBillingPortal()}
-                    >
-                      {portalOpening ? (
-                        <Loader2 className="animate-spin" />
-                      ) : null}
-                      Manage subscription
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="mt-4 flex flex-col gap-1.5">
-                    <Button
-                      size="sm"
-                      className="w-full"
-                      disabled={checkoutBusy}
-                      onClick={() => void startCheckout(period)}
-                    >
-                      {checkoutBusy ? (
-                        <Loader2 className="animate-spin" />
-                      ) : (
-                        <Sparkles />
-                      )}
-                      {checkoutStatus === "launching"
-                        ? "Opening checkout…"
-                        : checkoutStatus === "pending"
-                          ? "Waiting for payment…"
-                          : "Start Pro"}
-                    </Button>
-                    {checkoutStatus === "pending" ? (
-                      <p className="text-muted-foreground text-center text-[11px] leading-snug">
-                        Finish paying in your browser — this updates
-                        automatically.
-                      </p>
-                    ) : null}
-                    {checkoutStatus === "error" && checkoutError ? (
-                      <p className="text-destructive text-center text-[11px] leading-snug">
-                        {checkoutError}
-                      </p>
-                    ) : null}
-                  </div>
-                )}
-              </PlanCard>
-
-              {/* Enterprise */}
-              <PlanCard>
-                <PlanHeader
-                  name="Enterprise"
-                  price="from $20"
-                  priceNote="/ user / month"
-                />
-                <FeatureList
-                  intro="Everything in Pro, plus:"
-                  features={ENTERPRISE_FEATURES}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4 w-full"
-                  onClick={() => void window.api.openExternal(SALES_MAILTO)}
-                >
-                  <Mail />
-                  Contact sales
-                </Button>
-              </PlanCard>
-            </div>
+            <PricingPlans
+              isPro={isPro}
+              checkoutStatus={checkoutStatus}
+              checkoutError={checkoutError}
+              startCheckout={startCheckout}
+              resetCheckout={resetCheckout}
+              openBillingPortal={openBillingPortal}
+              portalOpening={portalOpening}
+            />
           </div>
         )}
       </DialogContent>

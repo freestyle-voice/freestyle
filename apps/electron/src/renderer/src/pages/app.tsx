@@ -146,9 +146,14 @@ interface TranscribeResult {
   disposition?: "deliver" | "suppressed" | "aborted";
 }
 
-const USAGE_LIMIT_DIALOG_TITLE = "Usage limit reached";
+/**
+ * Error text attached to usage-limit results. The interactive prompt (with an
+ * "Upgrade to Pro" action) is shown by the main process via
+ * `window.api.cloudPromptUpgrade()` — this string only surfaces where a plain
+ * error message is needed.
+ */
 const USAGE_LIMIT_DIALOG_MESSAGE =
-  "You've used all of your Freestyle Cloud transcription for now. It resets soon — or switch to a local or bring-your-own-key model in Settings > Models.";
+  "You've used your free Freestyle Cloud dictation for this week. Upgrade to Pro for unlimited dictation, or switch to a local or bring-your-own-key model in Settings > Models.";
 
 /**
  * The app context (process name + window title) can contain characters
@@ -288,10 +293,7 @@ export default function AppPage(): React.JSX.Element {
         }
         if (results.some((r) => r.usageExceeded)) {
           hidePill();
-          window.api.showErrorDialog(
-            USAGE_LIMIT_DIALOG_TITLE,
-            USAGE_LIMIT_DIALOG_MESSAGE,
-          );
+          void window.api.cloudPromptUpgrade();
           return;
         }
         const errMsg = results.find((r) => r.error)?.error;
@@ -563,10 +565,7 @@ export default function AppPage(): React.JSX.Element {
               resolver({ raw: "", cleaned: "", usageExceeded: true });
             } else if (pillActiveRef.current) {
               hidePill();
-              window.api.showErrorDialog(
-                USAGE_LIMIT_DIALOG_TITLE,
-                USAGE_LIMIT_DIALOG_MESSAGE,
-              );
+              void window.api.cloudPromptUpgrade();
             }
             return;
           }
@@ -1270,7 +1269,7 @@ export default function AppPage(): React.JSX.Element {
       removeStreamingAudio?.();
       removeServerChanged?.();
     };
-  }, [applyPillPosition]);
+  }, [applyPillPosition, getStreamer]);
 
   // ---- Hotkey handlers ----
   useEffect(() => {

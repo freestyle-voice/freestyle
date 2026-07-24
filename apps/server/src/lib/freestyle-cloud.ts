@@ -186,6 +186,13 @@ export interface CloudUsageBalance {
   totalConsumed: number;
   windowStart: string;
   resetsAt: string;
+  /**
+   * Subscription plan. Older cloud versions omit it — callers must treat an
+   * absent value as "free".
+   */
+  plan?: "free" | "pro";
+  /** True when the plan has no word limit (Pro). Absent means limited. */
+  unlimited?: boolean;
 }
 
 export interface CloudTranscribeResult {
@@ -489,6 +496,78 @@ export async function fetchCloudUsage(
     method: "GET",
     signal: AbortSignal.timeout(10_000),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Billing (Stripe via the cloud's Better Auth Stripe plugin)
+// ---------------------------------------------------------------------------
+
+/**
+ * Where Stripe sends the browser after checkout completes/cancels. These land
+ * on the marketing site — the desktop app detects the upgrade by polling
+ * `/usage` until `plan` flips to "pro", not via a redirect back into the app.
+ */
+const CHECKOUT_SUCCESS_URL = "https://freestylevoice.com/checkout/success";
+const CHECKOUT_CANCEL_URL = "https://freestylevoice.com/checkout/cancel";
+const BILLING_PORTAL_RETURN_URL = "https://freestylevoice.com";
+const BILLING_REQUEST_TIMEOUT_MS = 15_000;
+
+function assertBillingUrl(url: unknown): asserts url is string {
+  if (typeof url !== "string" || !url) {
+    throw new Error("Freestyle Cloud billing response did not include a URL");
+  }
+}
+
+/**
+ * Create a Stripe hosted Checkout session for the Pro plan. Returns the URL
+ * the user must open in their browser to pay.
+ */
+export async function createCheckoutSession(
+  token: string,
+  opts: { annual: boolean },
+): Promise<{ url: string }> {
+  const { url } = await cloudJson<{ url?: string; redirect?: boolean }>(
+    "/auth/subscription/upgrade",
+    token,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        plan: "pro",
+        annual: opts.annual,
+        successUrl: CHECKOUT_SUCCESS_URL,
+        cancelUrl: CHECKOUT_CANCEL_URL,
+      }),
+      signal: AbortSignal.timeout(BILLING_REQUEST_TIMEOUT_MS),
+    },
+  );
+  assertBillingUrl(url);
+  return { url };
+}
+
+/**
+ * Create a Stripe Billing Portal session (manage the subscription: payment
+ * method, invoices, cancel). Uses `/auth/subscription/billing-portal` — the
+ * portal home — rather than `/auth/subscription/cancel`, which pre-loads
+ * Stripe's cancel-confirmation flow and is the wrong landing page for a
+ * generic "Manage subscription" action. Returns the portal URL to open in the
+ * user's browser.
+ */
+export async function createBillingPortalSession(
+  token: string,
+): Promise<{ url: string }> {
+  const { url } = await cloudJson<{ url?: string; redirect?: boolean }>(
+    "/auth/subscription/billing-portal",
+    token,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ returnUrl: BILLING_PORTAL_RETURN_URL }),
+      signal: AbortSignal.timeout(BILLING_REQUEST_TIMEOUT_MS),
+    },
+  );
+  assertBillingUrl(url);
+  return { url };
 }
 
 /** Upper bound for the best-effort connection prewarm. */

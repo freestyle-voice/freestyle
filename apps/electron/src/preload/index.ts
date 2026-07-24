@@ -51,6 +51,8 @@ const api = {
     ipcRenderer.invoke("open:external", url),
   cloudPromptSignIn: (): Promise<boolean> =>
     ipcRenderer.invoke("cloud:prompt-sign-in"),
+  cloudPromptUpgrade: (): Promise<boolean> =>
+    ipcRenderer.invoke("cloud:prompt-upgrade"),
   onHotkeyDown: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("hotkey:down", handler);

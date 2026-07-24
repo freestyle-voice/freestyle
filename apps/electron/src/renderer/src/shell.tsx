@@ -1,6 +1,9 @@
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
-import { CloudProfileButton } from "@renderer/components/cloud-profile";
+import {
+  CloudProfileButton,
+  UpgradeCtaCard,
+} from "@renderer/components/cloud-profile";
 import { Badge } from "@renderer/components/ui/badge";
 import { LINKS } from "@renderer/lib/links";
 import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform";
@@ -274,6 +277,7 @@ export default function AppShell(): React.JSX.Element {
         ) : null}
         <div className="flex-1" />
         <NavList items={footerNav} />
+        <UpgradeCtaCard />
         <div
           className="border-sidebar-border mx-3 mt-2 border-t pt-2"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}

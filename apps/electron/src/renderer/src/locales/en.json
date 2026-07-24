@@ -107,6 +107,7 @@
       "display": "Display",
       "permissions": "Permissions",
       "data": "Data",
+      "billing": "Usage and Billing",
       "network": "Network",
       "experimental": "Experimental"
     },

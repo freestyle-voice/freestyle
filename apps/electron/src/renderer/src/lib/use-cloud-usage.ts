@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { getClient } from "./api";
 import { ONE_HOUR } from "./query";
 
@@ -35,6 +35,36 @@ export type CheckoutStatus =
 const CHECKOUT_POLL_INTERVAL_MS = 5_000;
 /** Give up waiting for payment after 10 minutes. */
 const CHECKOUT_POLL_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * Checkout state lives in a module-level store shared by every useCloudUsage
+ * instance, so a checkout started on one surface (e.g. the settings tab) stays
+ * visible and keeps polling from the always-mounted upgrade modal instance
+ * even if the originating surface unmounts.
+ */
+interface CheckoutStore {
+  status: CheckoutStatus;
+  error: string | null;
+}
+
+let checkoutStore: CheckoutStore = { status: "idle", error: null };
+const checkoutListeners = new Set<() => void>();
+
+function getCheckoutStore(): CheckoutStore {
+  return checkoutStore;
+}
+
+function subscribeCheckout(listener: () => void): () => void {
+  checkoutListeners.add(listener);
+  return () => {
+    checkoutListeners.delete(listener);
+  };
+}
+
+function updateCheckout(next: Partial<CheckoutStore>): void {
+  checkoutStore = { ...checkoutStore, ...next };
+  for (const listener of checkoutListeners) listener();
+}
 
 export interface UseCloudUsageResult {
   /** Latest fetched balance, or null when not signed in / fetch failed. */
@@ -75,8 +105,10 @@ export function usagePercent(balance: CloudUsageBalance): number {
 }
 
 export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
-  const [checkoutStatus, setCheckoutStatus] = useState<CheckoutStatus>("idle");
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const { status: checkoutStatus, error: checkoutError } = useSyncExternalStore(
+    subscribeCheckout,
+    getCheckoutStore,
+  );
   const [portalOpening, setPortalOpening] = useState(false);
   const queryClient = useQueryClient();
 
@@ -84,7 +116,7 @@ export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
     queryKey: ["cloud-usage"],
     queryFn: async () => {
       const res = await getClient().api.usage.$get();
-      if (!res.ok) return null;
+      if (!res.ok) throw new Error(`Failed to fetch usage (${res.status})`);
       return (await res.json()) as CloudUsageBalance;
     },
     enabled: signedIn,
@@ -109,23 +141,36 @@ export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
   const isPro = plan === "pro" || balance?.unlimited === true;
 
   useEffect(() => {
+    if (!signedIn && checkoutStore.status !== "idle") {
+      updateCheckout({ status: "idle", error: null });
+    }
+  }, [signedIn]);
+
+  useEffect(() => {
     if (checkoutStatus === "pending" && isPro) {
-      setCheckoutStatus("success");
+      updateCheckout({ status: "success" });
     }
   }, [checkoutStatus, isPro]);
 
   useEffect(() => {
     if (checkoutStatus !== "pending") return;
     const timer = setTimeout(() => {
-      setCheckoutStatus((s) => (s === "pending" ? "idle" : s));
+      if (checkoutStore.status === "pending") {
+        updateCheckout({ status: "idle" });
+      }
     }, CHECKOUT_POLL_WINDOW_MS);
     return () => clearTimeout(timer);
   }, [checkoutStatus]);
 
   const startCheckout = useCallback(
     async (period: BillingPeriod): Promise<void> => {
-      setCheckoutStatus("launching");
-      setCheckoutError(null);
+      if (
+        checkoutStore.status === "launching" ||
+        checkoutStore.status === "pending"
+      ) {
+        return;
+      }
+      updateCheckout({ status: "launching", error: null });
       try {
         const res = await getClient().api.billing.checkout.$post({
           json: { period },
@@ -140,20 +185,20 @@ export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
         const { url } = (await res.json()) as { url: string };
         const opened = await window.api.openExternal(url);
         if (!opened) throw new Error("Could not open the browser");
-        setCheckoutStatus("pending");
+        updateCheckout({ status: "pending" });
       } catch (err) {
-        setCheckoutError(
-          err instanceof Error ? err.message : "Could not start checkout",
-        );
-        setCheckoutStatus("error");
+        updateCheckout({
+          status: "error",
+          error:
+            err instanceof Error ? err.message : "Could not start checkout",
+        });
       }
     },
     [],
   );
 
   const resetCheckout = useCallback((): void => {
-    setCheckoutStatus("idle");
-    setCheckoutError(null);
+    updateCheckout({ status: "idle", error: null });
   }, []);
 
   const openBillingPortal = useCallback(async (): Promise<boolean> => {

@@ -191,7 +191,7 @@ export interface PricingPlansProps {
   isPro: boolean;
   checkoutStatus: CheckoutStatus;
   checkoutError: string | null;
-  startCheckout: (period: BillingPeriod) => void;
+  startCheckout: (period: BillingPeriod) => void | Promise<void>;
   resetCheckout: () => void;
   openBillingPortal: () => void;
   portalOpening: boolean;
@@ -206,9 +206,18 @@ export function PricingPlans({
   openBillingPortal,
   portalOpening,
 }: PricingPlansProps): React.JSX.Element {
+  const { user, signingIn, signIn } = useCloudAuth();
   const [period, setPeriod] = useState<BillingPeriod>("annual");
   const checkoutBusy =
     checkoutStatus === "launching" || checkoutStatus === "pending";
+
+  const handleUpgrade = useCallback(async (): Promise<void> => {
+    if (!user) {
+      const signedInUser = await signIn();
+      if (!signedInUser) return;
+    }
+    await startCheckout(period);
+  }, [user, signIn, startCheckout, period]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -296,15 +305,19 @@ export function PricingPlans({
               <Button
                 size="sm"
                 className="w-full"
-                disabled={checkoutBusy}
-                onClick={() => void startCheckout(period)}
+                disabled={checkoutBusy || signingIn}
+                onClick={() => void handleUpgrade()}
               >
-                {checkoutBusy ? <Loader2 className="animate-spin" /> : null}
-                {checkoutStatus === "launching"
-                  ? "Opening checkout…"
-                  : checkoutStatus === "pending"
-                    ? "Waiting for payment…"
-                    : "Upgrade to Pro"}
+                {checkoutBusy || signingIn ? (
+                  <Loader2 className="animate-spin" />
+                ) : null}
+                {signingIn
+                  ? "Signing in…"
+                  : checkoutStatus === "launching"
+                    ? "Opening checkout…"
+                    : checkoutStatus === "pending"
+                      ? "Waiting for payment…"
+                      : "Upgrade to Pro"}
               </Button>
               {checkoutStatus === "pending" ? (
                 <>

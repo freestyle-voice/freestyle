@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -27,6 +28,7 @@ const CloudAuthContext = createContext<UseCloudAuth | null>(null);
 
 /** Renderer-side state for Freestyle Cloud sign-in (drives the OAuth device flow in main). */
 function useCloudAuthState(): UseCloudAuth {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<CloudUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
@@ -94,6 +96,7 @@ function useCloudAuthState(): UseCloudAuth {
         }
         const data = await tokenRes.json();
         if (attempt !== signInAttemptRef.current) return null;
+        queryClient.removeQueries({ queryKey: ["cloud-usage"] });
         setUser(data.user);
         return data.user;
       }
@@ -116,7 +119,7 @@ function useCloudAuthState(): UseCloudAuth {
       });
 
     return signInPromiseRef.current;
-  }, []);
+  }, [queryClient]);
 
   const cancelSignIn = useCallback((): void => {
     cancelledRef.current = true;
@@ -131,7 +134,8 @@ function useCloudAuthState(): UseCloudAuth {
       .api.auth["sign-out"].$post()
       .catch(() => {});
     setUser(null);
-  }, []);
+    queryClient.removeQueries({ queryKey: ["cloud-usage"] });
+  }, [queryClient]);
 
   return {
     user,

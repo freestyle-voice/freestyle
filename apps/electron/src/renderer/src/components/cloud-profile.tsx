@@ -39,12 +39,16 @@ export function UpgradeCtaCard(): React.JSX.Element | null {
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
     >
       <div className="text-foreground text-[12px] font-medium">
-        {balance.remaining.toLocaleString()} words left
+        {balance.remaining.toLocaleString()}
+        <span className="text-muted-foreground font-normal">
+          {" "}
+          / {balance.limit.toLocaleString()}
+        </span>{" "}
+        words left
       </div>
       <Progress value={pct} className="mt-1.5 h-1.5" />
       <p className="text-muted-foreground mt-2.5 text-[11px] leading-snug">
-        Free plan includes {balance.limit.toLocaleString()} words per week.
-        Upgrade to Pro for unlimited dictation.
+        Currently on a free plan, upgrade to Pro for unlimited dictation.
       </p>
       <Button
         size="sm"

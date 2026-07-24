@@ -19,6 +19,17 @@ const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 const CLIENT_ID = "freestyle-desktop";
 const DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
 
+/**
+ * The lifetime Freestyle Cloud grants a session token, in milliseconds (7 days).
+ *
+ * The cloud issues no refresh token; instead better-auth slides the expiry
+ * forward by this amount whenever the session is validated after its 24h
+ * `updateAge` window. We mirror that here when renewing locally: a successful
+ * `get-session` call means the cloud extended the window, so we recompute the
+ * local `expiresAt` from now. See `renewSession()`.
+ */
+export const SESSION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+
 export class FreestyleCloudAuthError extends Error {
   constructor(message = "Freestyle Cloud sign-in required") {
     super(message);

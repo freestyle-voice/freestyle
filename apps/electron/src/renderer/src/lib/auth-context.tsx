@@ -17,6 +17,13 @@ export interface UseCloudAuth {
   /** Device user code, surfaced while a sign-in is pending. */
   userCode: string | null;
   error: string | null;
+  /**
+   * True when a previously signed-in session has lapsed (e.g. the token
+   * expired while the app was closed). Drives a re-sign-in prompt. Cleared
+   * once the user signs in again or explicitly dismisses it.
+   */
+  sessionExpired: boolean;
+  dismissSessionExpired: () => void;
   refresh: () => Promise<CloudUser | null>;
   signIn: () => Promise<CloudUser | null>;
   /** Abort an in-flight sign-in (driven from the pending modal). */
@@ -34,21 +41,39 @@ function useCloudAuthState(): UseCloudAuth {
   const [signingIn, setSigningIn] = useState(false);
   const [userCode, setUserCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const wasSignedInRef = useRef(false);
   const cancelledRef = useRef(false);
   const signInPromiseRef = useRef<Promise<CloudUser | null> | null>(null);
   const signInAttemptRef = useRef(0);
 
   const refresh = useCallback(async (): Promise<CloudUser | null> => {
+    // `reached` distinguishes "server said not-authenticated" from "couldn't
+    // reach the server". A transient network/server blip must NOT be mistaken
+    // for an expired session, or it would spuriously pop the re-sign-in modal.
+    let reached = false;
     const user = await getClient()
       .api.auth.status.$get()
       .then(async (res) => {
         if (!res.ok) return null;
+        reached = true;
         const data = await res.json();
         return data.user ?? null;
       })
       .catch(() => null);
-    setUser(user);
+    if (reached) {
+      // Flag only the confirmed transition from signed-in → signed-out (e.g.
+      // the token expired), not a fresh cold start.
+      if (!user && wasSignedInRef.current) setSessionExpired(true);
+      if (user) setSessionExpired(false);
+      wasSignedInRef.current = !!user;
+      setUser(user);
+    }
     return user;
+  }, []);
+
+  const dismissSessionExpired = useCallback((): void => {
+    setSessionExpired(false);
   }, []);
 
   useEffect(() => {
@@ -97,6 +122,8 @@ function useCloudAuthState(): UseCloudAuth {
         const data = await tokenRes.json();
         if (attempt !== signInAttemptRef.current) return null;
         queryClient.removeQueries({ queryKey: ["cloud-usage"] });
+        wasSignedInRef.current = true;
+        setSessionExpired(false);
         setUser(data.user);
         return data.user;
       }
@@ -133,6 +160,8 @@ function useCloudAuthState(): UseCloudAuth {
     await getClient()
       .api.auth["sign-out"].$post()
       .catch(() => {});
+    wasSignedInRef.current = false;
+    setSessionExpired(false);
     setUser(null);
     queryClient.removeQueries({ queryKey: ["cloud-usage"] });
   }, [queryClient]);
@@ -143,6 +172,8 @@ function useCloudAuthState(): UseCloudAuth {
     signingIn,
     userCode,
     error,
+    sessionExpired,
+    dismissSessionExpired,
     refresh,
     signIn,
     cancelSignIn,

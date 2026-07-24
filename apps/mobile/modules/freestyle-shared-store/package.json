@@ -1,0 +1,7 @@
+{
+  "name": "freestyle-shared-store",
+  "version": "1.0.0",
+  "description": "App Group bridge shared with the Freestyle iOS keyboard extension",
+  "main": "index.ts",
+  "private": true
+}

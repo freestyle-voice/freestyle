@@ -5,6 +5,8 @@
     "build": "turbo build --filter=!docs",
     "dev": "turbo dev --filter=!docs",
     "dev:docs": "turbo dev --filter=docs",
+    "dev:ios": "turbo ios --filter=@freestyle-voice/mobile",
+    "dev:android": "turbo android --filter=@freestyle-voice/mobile",
     "format": "biome check --write .",
     "knip": "knip",
     "test": "turbo test",

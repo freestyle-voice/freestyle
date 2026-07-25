@@ -163,6 +163,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
+  const [advancedMode, setAdvancedMode] = useState(false);
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
     parseSettingsSection(window.location.hash),
   );
@@ -353,6 +354,7 @@ export default function SettingsPage(): React.JSX.Element {
     if (s[SETTINGS_KEYS.outputMode]) setOutputMode(s[SETTINGS_KEYS.outputMode]);
     if (s[SETTINGS_KEYS.soundEnabled] === "false") setSoundEnabled(false);
     if (s[SETTINGS_KEYS.historyPaused] === "true") setHistoryPaused(true);
+    if (s[SETTINGS_KEYS.advancedMode] === "true") setAdvancedMode(true);
 
     const retentionDays = parseRetentionDays(
       s[SETTINGS_KEYS.historyRetentionDays],
@@ -535,6 +537,28 @@ export default function SettingsPage(): React.JSX.Element {
     setShowOnLaunch(enabled);
     window.api?.setShowDashboardOnLaunch(enabled);
   }, []);
+
+  const handleAdvancedModeToggle = useCallback(
+    (enabled: boolean) => {
+      setAdvancedMode(enabled);
+      // Patch the shared settings cache so the sidebar (which reads the same
+      // query) shows/hides the Models tab immediately, without a refetch.
+      queryClient.setQueryData<Record<string, string>>(
+        SETTINGS_QUERY_KEY,
+        (prev) => ({
+          ...(prev ?? {}),
+          [SETTINGS_KEYS.advancedMode]: String(enabled),
+        }),
+      );
+      getClient()
+        .api.settings[":key"].$put({
+          param: { key: SETTINGS_KEYS.advancedMode },
+          json: { value: String(enabled) },
+        })
+        .catch(() => {});
+    },
+    [queryClient],
+  );
 
   const clearHistory = useCallback(async () => {
     if (!confirm(t("settings.data.clearHistoryConfirm"))) {
@@ -743,11 +767,20 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.application.showOnLaunch")}
                 desc={t("settings.application.showOnLaunchDesc")}
-                last
               >
                 <Switch
                   checked={showOnLaunch}
                   onCheckedChange={handleShowOnLaunchToggle}
+                />
+              </Row>
+              <Row
+                label={t("settings.application.advancedMode")}
+                desc={t("settings.application.advancedModeDesc")}
+                last
+              >
+                <Switch
+                  checked={advancedMode}
+                  onCheckedChange={handleAdvancedModeToggle}
                 />
               </Row>
             </SettingsPanel>

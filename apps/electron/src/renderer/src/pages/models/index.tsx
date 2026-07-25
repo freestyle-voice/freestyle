@@ -1,9 +1,13 @@
 import { Button } from "@renderer/components/ui/button";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import type { AvailableModel } from "@renderer/lib/models";
+import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
+import { SETTINGS_KEYS } from "@shared/settings-keys";
+import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle,
+  Info,
   Key,
   Loader2,
   Pencil,
@@ -12,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { useNavigate } from "react-router";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { Eyebrow, PageHeader, PageShell } from "./page-chrome";
@@ -34,6 +39,13 @@ export default function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const m = useModels();
   const cloudAuth = useCloudAuth();
+  const navigate = useNavigate();
+
+  // Advanced mode gates this page in the sidebar. When it's off, the page can
+  // still be reached directly (deep link / redirect); surface a banner that
+  // points the user to the toggle instead of silently hiding functionality.
+  const { data: settings } = useQuery(settingsQueryOptions());
+  const advancedMode = settings?.[SETTINGS_KEYS.advancedMode] === "true";
 
   const [modal, setModal] = useState<ModalState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -314,6 +326,11 @@ export default function ModelsPage(): React.JSX.Element {
   return (
     <PageShell>
       <PageHeader title={t("models.title")} />
+      {!advancedMode && (
+        <AdvancedModeBanner
+          onEnable={() => navigate("/settings#application")}
+        />
+      )}
       <div className="space-y-6">
         <PairCard
           voice={m.defaultVoice}
@@ -420,6 +437,32 @@ export default function ModelsPage(): React.JSX.Element {
         />
       )}
     </PageShell>
+  );
+}
+
+function AdvancedModeBanner({
+  onEnable,
+}: {
+  onEnable: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div className="border-border mb-6 flex items-start gap-3 rounded-lg border bg-muted/40 px-4 py-3">
+      <Info className="text-muted-foreground mt-0.5 size-4 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="text-foreground/90 text-[13px] leading-relaxed">
+          {t("models.advancedModeBanner")}
+        </p>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="shrink-0"
+        onClick={onEnable}
+      >
+        {t("models.advancedModeBannerAction")}
+      </Button>
+    </div>
   );
 }
 

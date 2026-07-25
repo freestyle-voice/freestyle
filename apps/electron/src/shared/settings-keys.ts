@@ -1,4 +1,5 @@
 export const SETTINGS_KEYS = {
+  advancedMode: "advanced_mode",
   cleanupAppAssignments: "cleanup_app_assignments",
   cleanupCustomPrompt: "cleanup_custom_prompt",
   cleanupEmailTone: "cleanup_email_tone",

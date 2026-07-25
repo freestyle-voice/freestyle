@@ -344,6 +344,15 @@ export default function OnboardingPage(): React.JSX.Element {
         },
       })
       .catch(() => {});
+    // A BYOK cloud model (OpenAI, Groq, …) is an explicit move off the default
+    // Freestyle Transcribe service, so the user is managing models directly —
+    // enable advanced mode so the Models page stays available.
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.advancedMode },
+        json: { value: "true" },
+      })
+      .catch(() => {});
     capture("onboarding_model_completed", {
       model_id: model.model_id,
       kind: "cloud",
@@ -445,6 +454,16 @@ export default function OnboardingPage(): React.JSX.Element {
         })
         .catch(() => {});
       if (makeDefault) {
+        // Choosing a local model as the default means the user is managing
+        // models directly, so surface the Models page by enabling advanced
+        // mode. Cloud users keep the default (Freestyle Transcribe) and never
+        // hit this path, so advanced mode stays off for them.
+        getClient()
+          .api.settings[":key"].$put({
+            param: { key: SETTINGS_KEYS.advancedMode },
+            json: { value: "true" },
+          })
+          .catch(() => {});
         // The funnel's model-step event: with auto-setup this fires for every
         // user; `source` separates the silent default from explicit picks.
         capture("onboarding_model_completed", {

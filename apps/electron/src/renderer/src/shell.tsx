@@ -9,12 +9,14 @@ import { useCloudAuth } from "@renderer/lib/auth-context";
 import { LINKS } from "@renderer/lib/links";
 import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform";
 import { listPlugins } from "@renderer/lib/plugins-api";
+import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import {
   pluginDisplayName,
   resolvePluginIcon,
 } from "@renderer/pages/plugins/helpers";
 import type { PluginInfo } from "@shared/plugins";
+import { SETTINGS_KEYS } from "@shared/settings-keys";
 import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -198,13 +200,29 @@ export default function AppShell(): React.JSX.Element {
 
   const pluginNav = usePluginNavItems(plugins);
 
+  // Advanced mode gates the Models page. Read from the shared settings cache so
+  // toggling it in Settings updates the sidebar without a full refetch.
+  const { data: settings } = useQuery(settingsQueryOptions());
+  const advancedMode = settings?.[SETTINGS_KEYS.advancedMode] === "true";
+
+  // Filter the static nav (hide Models when advanced mode is off) and re-number
+  // the Cmd+N shortcuts sequentially so there's no gap when an item is hidden
+  // (e.g. Plugins becomes Cmd+5 when Models is absent).
+  const staticNav = useMemo(
+    () =>
+      STATIC_NAV.filter(
+        (item) => item.to !== "/settings/models" || advancedMode,
+      ).map((item, idx) => ({ ...item, shortcut: String(idx + 1) })),
+    [advancedMode],
+  );
+
   const navItems: NavItem[] = useMemo(
     () =>
-      STATIC_NAV.map((item) => ({
+      staticNav.map((item) => ({
         ...item,
         label: t(item.labelKey) as string,
       })),
-    [t],
+    [staticNav, t],
   );
   const mainNav = navItems.filter((item) => !item.footer);
   const footerNav = navItems.filter((item) => item.footer);
@@ -214,14 +232,14 @@ export default function AppShell(): React.JSX.Element {
     const handler = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       const idx = Number(e.key) - 1;
-      if (idx >= 0 && idx < STATIC_NAV.length) {
+      if (idx >= 0 && idx < staticNav.length) {
         e.preventDefault();
-        navigate(STATIC_NAV[idx].to);
+        navigate(staticNav[idx].to);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [navigate]);
+  }, [navigate, staticNav]);
 
   useEffect(() => {
     return window.api?.onFullscreenChanged(setIsFullscreen);

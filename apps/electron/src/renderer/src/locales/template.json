@@ -116,7 +116,9 @@
       "launchAtStartup": "Launch at startup",
       "launchAtStartupDesc": "Automatically start Freestyle when you log in to your computer.",
       "showOnLaunch": "Show dashboard on launch",
-      "showOnLaunchDesc": "Open the dashboard window when Freestyle starts."
+      "showOnLaunchDesc": "Open the dashboard window when Freestyle starts.",
+      "advancedMode": "Advanced mode",
+      "advancedModeDesc": "Show the Models page for manual voice and cleanup model configuration."
     },
     "recording": {
       "hotkey": "Hotkey",
@@ -563,6 +565,8 @@
   "models": {
     "title": "Models",
     "loading": "Loading models…",
+    "advancedModeBanner": "Advanced mode is off. Enable it in Settings › Application to keep the Models page in the sidebar.",
+    "advancedModeBannerAction": "Open settings",
     "apiKeys": "API keys",
     "noApiKeys": "No API keys yet — choose a cloud model above and you'll be prompted for a key.",
     "onDevice": "On-device",

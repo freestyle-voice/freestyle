@@ -3,92 +3,12 @@ import type {
   CleanupToneDestination,
 } from "@freestyle-voice/validations";
 import { parseAppContextPayload } from "./app-context.js";
+import { getCleanupPromptConfig } from "./prompt-config.js";
 
 export interface RewritePromptContext {
   destination: CleanupToneDestination;
   personalSurface: "discord" | null;
 }
-
-const EMAIL_APP_NAMES = new Set([
-  "mail",
-  "outlook",
-  "microsoft outlook",
-  "mimestream",
-  "superhuman",
-  "spark",
-  "spark desktop",
-  "canary mail",
-  "thunderbird",
-  "airmail",
-  "em client",
-  "postbox",
-  "hey",
-]);
-
-const WORK_APP_NAMES = new Set([
-  "slack",
-  "linkedin",
-  "teams",
-  "microsoft teams",
-]);
-
-const PERSONAL_APP_NAMES = new Set([
-  "messages",
-  "imessage",
-  "whatsapp",
-  "telegram",
-  "discord",
-]);
-
-const EMAIL_PATTERNS = [
-  "mail.google.com",
-  "workspace.google.com/mail",
-  "gmail",
-  "outlook.office.com",
-  "outlook.live.com",
-  "outlook.office365.com",
-  "outlook.office",
-  "outlook",
-  "mail.yahoo.com",
-  "mail.yahoo",
-  "yahoo mail",
-  "mail.proton.me",
-  "proton.me/mail",
-  "protonmail.com",
-  "proton mail",
-  "superhuman",
-  "spark mail",
-  "mimestream",
-  "app.fastmail.com",
-  "fastmail",
-  "hey.com",
-  "hey email",
-  "icloud.com/mail",
-  "mail.app",
-  "apple mail",
-  "canary mail",
-] as const;
-
-const WORK_PATTERNS = [
-  "slack.com",
-  "slack",
-  "linkedin.com",
-  "linkedin",
-  "teams.microsoft.com",
-  "microsoft teams",
-  "teams",
-] as const;
-
-const PERSONAL_PATTERNS = [
-  "messages",
-  "imessage",
-  "whatsapp",
-  "telegram",
-  "discord.com",
-  "discord",
-] as const;
-
-const DISCORD_PATTERNS = ["discord.com", "discord"] as const;
 
 export function buildMatchContext(rawContext: string | null): string {
   if (!rawContext) return "";
@@ -146,12 +66,13 @@ export function getRewritePromptContext(
     return { destination: "overall", personalSurface: null };
   }
 
+  const routing = getCleanupPromptConfig().routing;
   const ctx = parseAppContextPayload(rawContext);
   const appName = normalizeAppName(ctx?.app);
   const matchText = buildMatchContext(rawContext).toLowerCase();
   const personalSurface =
-    matchesAny(appName, DISCORD_PATTERNS) ||
-    matchesAny(matchText, DISCORD_PATTERNS)
+    matchesAny(appName, routing.discordPatterns) ||
+    matchesAny(matchText, routing.discordPatterns)
       ? "discord"
       : null;
 
@@ -165,25 +86,25 @@ export function getRewritePromptContext(
     };
   }
 
-  if (EMAIL_APP_NAMES.has(appName)) {
+  if (routing.emailAppNames.includes(appName)) {
     return { destination: "email", personalSurface: null };
   }
-  if (WORK_APP_NAMES.has(appName)) {
+  if (routing.workAppNames.includes(appName)) {
     return { destination: "work", personalSurface: null };
   }
-  if (PERSONAL_APP_NAMES.has(appName)) {
+  if (routing.personalAppNames.includes(appName)) {
     return { destination: "personal", personalSurface };
   }
 
   if (!matchText) return { destination: "overall", personalSurface: null };
 
-  if (matchesAny(matchText, EMAIL_PATTERNS)) {
+  if (matchesAny(matchText, routing.emailPatterns)) {
     return { destination: "email", personalSurface: null };
   }
-  if (matchesAny(matchText, WORK_PATTERNS)) {
+  if (matchesAny(matchText, routing.workPatterns)) {
     return { destination: "work", personalSurface: null };
   }
-  if (matchesAny(matchText, PERSONAL_PATTERNS)) {
+  if (matchesAny(matchText, routing.personalPatterns)) {
     return { destination: "personal", personalSurface };
   }
 

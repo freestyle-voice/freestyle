@@ -9,6 +9,7 @@ import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
 import { WebSocketServer } from "ws";
 import { authMiddleware, setAuthToken } from "./lib/auth.js";
+import { refreshCleanupPromptConfig } from "./lib/editor/prompt-config.js";
 import { formatError } from "./lib/format-error.js";
 import { isTransientCloudError } from "./lib/freestyle-cloud.js";
 import { startHistoryRetentionSweep } from "./lib/history-store.js";
@@ -205,6 +206,11 @@ export async function startServer(
   // Install the global network dispatcher (corporate proxy + custom CA) before
   // anything issues a fetch, so model downloads and cloud/API calls honor it.
   configureNetwork();
+
+  // Warm the cleanup-prompt config from Freestyle Cloud so the latest presets
+  // and tone blocks are in memory before the first dictation. Fire-and-forget:
+  // it never throws and falls back to the bundled copy when offline.
+  void refreshCleanupPromptConfig();
 
   // Load plugins (built-in + user) before serving. The app dispatches plugin
   // middleware from the live registry per request, so later runtime reloads

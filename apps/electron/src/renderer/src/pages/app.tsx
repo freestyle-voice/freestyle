@@ -38,7 +38,6 @@ type BarMode = "connecting" | "listening" | "speaking";
 let _soundEnabled = true;
 let _outputMode = "paste";
 let _audioPlaybackMode: AudioPlaybackMode = "off";
-let _streamingAudioEnabled = false;
 let _toneCtx: AudioContext | null = null;
 
 /**
@@ -820,12 +819,10 @@ export default function AppPage(): React.JSX.Element {
         .catch(() => {});
 
       appContextRef.current = null;
-      // Only create the streamer when streaming is enabled.
-      if (_streamingAudioEnabled) {
-        try {
-          getStreamer().setContext(null);
-        } catch {}
-      }
+      // Streaming is always active — prime the streamer's context.
+      try {
+        getStreamer().setContext(null);
+      } catch {}
 
       void refreshNeedsAppContextForCleanup().then((needsAppContext) => {
         if (!needsAppContext || !wantsMicRef.current) return;
@@ -834,20 +831,16 @@ export default function AppPage(): React.JSX.Element {
           .then((app) => {
             if (!wantsMicRef.current) return;
             appContextRef.current = app;
-            if (_streamingAudioEnabled) {
-              try {
-                getStreamer().setContext(app);
-              } catch {}
-            }
+            try {
+              getStreamer().setContext(app);
+            } catch {}
           })
           .catch(() => {
             if (!wantsMicRef.current) return;
             appContextRef.current = null;
-            if (_streamingAudioEnabled) {
-              try {
-                getStreamer().setContext(null);
-              } catch {}
-            }
+            try {
+              getStreamer().setContext(null);
+            } catch {}
           });
       });
 
@@ -871,7 +864,7 @@ export default function AppPage(): React.JSX.Element {
 
       try {
         recordingSessionUsesTransportRef.current =
-          _streamingAudioEnabled && supportsSessionTransportRef.current;
+          supportsSessionTransportRef.current;
 
         // When session transport is active the streamer handles audio capture
         // directly — we only need the raw mic stream for the analyser. When
@@ -914,11 +907,9 @@ export default function AppPage(): React.JSX.Element {
         }, 100);
 
         startListening(stream);
-        if (_streamingAudioEnabled) {
-          try {
-            await getStreamer().startCapture(stream);
-          } catch {}
-        }
+        try {
+          await getStreamer().startCapture(stream);
+        } catch {}
       } catch (err) {
         pendingCommitRef.current = false;
         recorderRef.current.releaseStream();
@@ -1198,20 +1189,11 @@ export default function AppPage(): React.JSX.Element {
       })
       .catch(() => {});
 
-    // Streaming audio flag (experimental — stored in config.freestyle.json).
-    // When enabled, eagerly create the Streamer so the WebSocket connects and
-    // the onConfig callback (which sets supportsSessionTransportRef) fires
-    // before the first recording.
-    getClient()
-      .api.config.$get()
-      .then((r) => (r.ok ? r.json() : null))
-      .then((config) => {
-        if (config?.flags?.streaming_audio === true) {
-          _streamingAudioEnabled = true;
-          getStreamer();
-        }
-      })
-      .catch(() => {});
+    // Streaming is always active. Eagerly create the Streamer so the WebSocket
+    // connects and the onConfig callback (which sets supportsSessionTransportRef)
+    // fires before the first recording. Session-transport support is negotiated
+    // per provider — non-streaming providers fall back to the batch path.
+    getStreamer();
     window.api
       ?.getPillPosition()
       .then(applyPillPosition)
@@ -1233,32 +1215,16 @@ export default function AppPage(): React.JSX.Element {
         _audioPlaybackMode = normalizeAudioPlaybackMode(mode);
       },
     );
-    // Apply the toggle live — the flag is a module-level var read once above,
-    // so without this it wouldn't take effect until the pill window reloaded.
-    // Disabling tears the streamer down so its reconnect loop and AudioContext
-    // don't linger.
-    const removeStreamingAudio = window.api?.onStreamingAudioChanged(
-      (enabled) => {
-        _streamingAudioEnabled = enabled;
-        if (enabled) {
-          getStreamer();
-        } else {
-          streamerRef.current?.destroy();
-          streamerRef.current = null;
-          supportsSessionTransportRef.current = false;
-        }
-      },
-    );
     // The server target (URL/token) changed in Settings. Re-point this window's
     // API client and tear down the streamer so its next connection uses the new
-    // server — no app restart needed. A fresh streamer is created lazily on the
-    // next recording (or immediately if streaming is enabled).
+    // server — no app restart needed. A fresh streamer is created immediately so
+    // session-transport support is renegotiated before the next recording.
     const removeServerChanged = window.api?.onServerChanged(() => {
       void refreshApiBase().finally(() => {
         streamerRef.current?.destroy();
         streamerRef.current = null;
         supportsSessionTransportRef.current = false;
-        if (_streamingAudioEnabled) getStreamer();
+        getStreamer();
       });
     });
     return () => {
@@ -1266,7 +1232,6 @@ export default function AppPage(): React.JSX.Element {
       removeOutputMode?.();
       removeAudioDucking?.();
       removeAudioPlaybackMode?.();
-      removeStreamingAudio?.();
       removeServerChanged?.();
     };
   }, [applyPillPosition, getStreamer]);

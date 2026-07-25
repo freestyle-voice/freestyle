@@ -45,13 +45,7 @@ import { useCloudAuth } from "@renderer/lib/auth-context";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
-import {
-  CONFIG_QUERY_KEY,
-  configQueryOptions,
-  type FreestyleConfig,
-  SETTINGS_QUERY_KEY,
-  settingsQueryOptions,
-} from "@renderer/lib/query";
+import { SETTINGS_QUERY_KEY, settingsQueryOptions } from "@renderer/lib/query";
 import {
   type CloudUsageBalance,
   usagePercent,
@@ -64,7 +58,6 @@ import {
   Cloud,
   Download,
   ExternalLink,
-  FlaskConical,
   FolderOpen,
   Info,
   Keyboard,
@@ -119,7 +112,6 @@ const settingsSectionIds = [
   "data",
   "billing",
   "network",
-  "experimental",
 ] as const;
 
 type SettingsSectionId = (typeof settingsSectionIds)[number];
@@ -171,7 +163,6 @@ export default function SettingsPage(): React.JSX.Element {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
-  const [streamingAudio, setStreamingAudio] = useState(false);
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
     parseSettingsSection(window.location.hash),
   );
@@ -384,15 +375,6 @@ export default function SettingsPage(): React.JSX.Element {
       setAudioPlaybackMode("duck");
     }
   }, [settingsQuery.data]);
-
-  // Experimental flags from config.freestyle.json, cached alongside the rest of
-  // the settings page rather than re-fetched on every visit.
-  const configQuery = useQuery(configQueryOptions());
-  useEffect(() => {
-    if (configQuery.data) {
-      setStreamingAudio(configQuery.data.flags.streaming_audio === true);
-    }
-  }, [configQuery.data]);
 
   // Load available audio input devices
   useEffect(() => {
@@ -622,27 +604,6 @@ export default function SettingsPage(): React.JSX.Element {
       }
     },
     [saveHistoryRetention],
-  );
-
-  const handleStreamingAudioToggle = useCallback(
-    (enabled: boolean) => {
-      setStreamingAudio(enabled);
-      window.api?.sendStreamingAudioChanged(enabled);
-      getClient()
-        .api.config.flags[":key"].$put({
-          param: { key: "streaming_audio" },
-          json: { value: enabled },
-        })
-        .then(() => {
-          queryClient.setQueryData<FreestyleConfig>(CONFIG_QUERY_KEY, (prev) =>
-            prev
-              ? { ...prev, flags: { ...prev.flags, streaming_audio: enabled } }
-              : prev,
-          );
-        })
-        .catch(() => {});
-    },
-    [queryClient],
   );
 
   const handleAudioPlaybackModeChange = useCallback((value: string) => {
@@ -1166,28 +1127,6 @@ export default function SettingsPage(): React.JSX.Element {
           {activeSection === "billing" && <BillingPanel />}
 
           {activeSection === "network" && <NetworkPanel />}
-
-          {activeSection === "experimental" && (
-            <SettingsPanel>
-              <div className="border-border bg-secondary/40 text-muted-foreground mb-4 flex items-start gap-2.5 rounded-[10px] border px-3.5 py-3 text-[12px] leading-[1.55]">
-                <FlaskConical className="mt-px h-3.5 w-3.5 shrink-0 opacity-70" />
-                <span>
-                  These features are experimental and may change or be removed
-                  in future releases. Enable them to try new capabilities early.
-                </span>
-              </div>
-              <Row
-                label="Streaming audio"
-                desc="Stream audio in real-time for lower-latency dictation. Supported by Freestyle Transcribe, OpenAI, Deepgram, ElevenLabs, and Soniox."
-                last
-              >
-                <Switch
-                  checked={streamingAudio}
-                  onCheckedChange={handleStreamingAudioToggle}
-                />
-              </Row>
-            </SettingsPanel>
-          )}
         </div>
       </div>
     </div>

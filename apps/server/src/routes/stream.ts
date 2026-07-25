@@ -2,7 +2,6 @@ import { sanitizeTranscriptText } from "@freestyle-voice/stt";
 import { createAppLogger } from "@freestyle-voice/utils";
 import { upgradeWebSocket } from "@hono/node-server";
 import { Hono } from "hono";
-import { getFlag } from "../lib/config.js";
 import { getRewritePromptContext } from "../lib/editor/rewrite-context.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
@@ -47,13 +46,6 @@ const LOG_PIPELINE_LATENCY = process.env.FREESTYLE_LOG_PIPELINE_LATENCY !== "0";
 
 const stream = new Hono().get(
   "/",
-  (c, next) => {
-    // Streaming is gated behind the experimental flag.
-    if (!getFlag("streaming_audio")) {
-      return c.json({ error: "Streaming audio is not enabled" }, 400);
-    }
-    return next();
-  },
   upgradeWebSocket(() => {
     let upstream: StreamSession | null = null;
     let closed = false;

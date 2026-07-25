@@ -5,6 +5,7 @@ import {
   parseHistoryFilters,
 } from "@freestyle-voice/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
+import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { Label } from "@renderer/components/ui/label";
@@ -13,13 +14,18 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@renderer/components/ui/popover";
+import { Progress } from "@renderer/components/ui/progress";
+import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import { Switch } from "@renderer/components/ui/switch";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@renderer/components/ui/tooltip";
-import { usePersistentJsonState } from "@renderer/hooks/use-persistent-state";
+import {
+  usePersistentJsonState,
+  usePersistentState,
+} from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
 import { type DiffSegment, diffWords } from "@renderer/lib/history-diff";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
@@ -30,6 +36,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  BarChart3,
   CalendarDays,
   Check,
   ChevronLeft,
@@ -44,8 +51,9 @@ import {
   Search,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type DateRange, DayPicker } from "react-day-picker";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
@@ -155,10 +163,76 @@ function getDateGroup(iso: string): string {
 const PAGE_SIZE = 20;
 const DEV_HISTORY_SEED_ENABLED = import.meta.env.DEV;
 
+// Which tab the right-hand panel shows: aggregate stats or the filter controls.
+type RightTab = "stats" | "filters";
+const isRightTab = (v: string): v is RightTab =>
+  v === "stats" || v === "filters";
+
+function wordCount(text: string): number {
+  const trimmed = text.trim();
+  return trimmed ? trimmed.split(/\s+/).length : 0;
+}
+
+/** 24-bin histogram of words dictated per local hour of day. */
+function buildHourly(entries: HistoryEntry[]): number[] {
+  const bins = new Array(24).fill(0);
+  for (const e of entries) {
+    const hour = new Date(`${e.created_at}Z`).getHours();
+    bins[hour] += wordCount(e.cleaned_text || e.raw_text);
+  }
+  return bins;
+}
+
+interface UsageBucket {
+  label: string;
+  pct: number;
+}
+
+/** Top voice models by usage share, capped at 4 + an "other" rollup. */
+function buildModelBuckets(entries: HistoryEntry[]): UsageBucket[] {
+  const counts = new Map<string, number>();
+  for (const e of entries) {
+    const key = shortModel(e.voice_model) || e.voice_provider || "unknown";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const total = entries.length || 1;
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const top = sorted.slice(0, 4);
+  const rest = sorted.slice(4).reduce((sum, [, n]) => sum + n, 0);
+  const buckets = top.map(([label, n]) => ({
+    label,
+    pct: Math.round((n / total) * 100),
+  }));
+  if (rest > 0) {
+    buckets.push({ label: "other", pct: Math.round((rest / total) * 100) });
+  }
+  return buckets;
+}
+
 export default function HistoryPage(): React.JSX.Element {
   const { t } = useTranslation();
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
+
+  // The intro hero (dictation tutorial) can be dismissed for good. Persisted in
+  // localStorage so it stays hidden across navigation and app restarts.
+  const [heroDismissed, setHeroDismissed] = usePersistentState<"0" | "1">(
+    "today.heroDismissed",
+    "0",
+    (v): v is "0" | "1" => v === "0" || v === "1",
+  );
+  const dismissHero = useCallback(
+    () => setHeroDismissed("1"),
+    [setHeroDismissed],
+  );
+
+  // Which tab the right panel shows. UI-only preference, persisted like the
+  // page's other view state.
+  const [rightTab, setRightTab] = usePersistentState<RightTab>(
+    "today.rightTab",
+    "stats",
+    isRightTab,
+  );
 
   // ── Persisted filter + view state ──────────────────────────────────────
   // Date range and view toggles are UI-only preferences, so — like each page's
@@ -270,6 +344,15 @@ export default function HistoryPage(): React.JSX.Element {
   const closeFilter = useCallback(
     () => patchFilters({ filterOpen: false }),
     [patchFilters],
+  );
+
+  // Open the right panel to a specific tab.
+  const openPanel = useCallback(
+    (tab: RightTab) => {
+      setRightTab(tab);
+      patchFilters({ filterOpen: true });
+    },
+    [patchFilters, setRightTab],
   );
 
   // Stable setters for the filter panel's view toggles (memoized child).
@@ -387,6 +470,25 @@ export default function HistoryPage(): React.JSX.Element {
     return () => remove?.();
   }, [queryClient]);
 
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchShortcutEnabled = total > 0 || !!search;
+
+  useEffect(() => {
+    if (!searchShortcutEnabled) return;
+
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return;
+      e.preventDefault();
+      const input = searchInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.select();
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [searchShortcutEnabled]);
+
   const invalidate = useCallback(
     () => queryClient.invalidateQueries({ queryKey: ["history"] }),
     [queryClient],
@@ -417,6 +519,20 @@ export default function HistoryPage(): React.JSX.Element {
     return out;
   }, [entries]);
 
+  // Derived visualisations for the Stats tab, computed from the loaded page of
+  // entries (the histogram + model mix reflect what's currently in view).
+  const hourly = useMemo(() => buildHourly(entries), [entries]);
+  const buckets = useMemo(() => buildModelBuckets(entries), [entries]);
+  const avgWpm = useMemo(() => {
+    let words = 0;
+    let audioMs = 0;
+    for (const e of entries) {
+      words += wordCount(e.cleaned_text || e.raw_text);
+      audioMs += e.audio_duration_ms;
+    }
+    return audioMs > 0 ? Math.round(words / (audioMs / 60000)) : 0;
+  }, [entries]);
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -427,222 +543,226 @@ export default function HistoryPage(): React.JSX.Element {
 
   const isGenuineEmpty = stats?.unfiltered_total_sessions === 0;
 
+  const hero = heroDismissed === "0" && !isGenuineEmpty && (
+    <div className="relative mb-7">
+      <button
+        type="button"
+        onClick={dismissHero}
+        aria-label={t("history.dismissHero")}
+        title={t("history.dismissHero")}
+        className="text-muted-foreground hover:bg-card hover:text-foreground absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent transition-colors"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+      <TutorialDemo />
+    </div>
+  );
+
+  const searchRow = (
+    <div className="mb-6 flex gap-2">
+      <div className="border-border bg-card flex flex-1 items-center gap-2 rounded-lg border px-3 py-2">
+        <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+        <input
+          ref={searchInputRef}
+          type="text"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(0);
+          }}
+          placeholder={
+            total === 1
+              ? t("history.searchSingular", { total })
+              : t("history.searchPlural", { total })
+          }
+          className="placeholder:text-muted-foreground/80 text-foreground flex-1 bg-transparent text-[13px] outline-none"
+        />
+        <span className="mono text-muted-foreground text-[10px]">
+          {SEARCH_SHORTCUT_LABEL}
+        </span>
+      </div>
+      {!filterOpen && (
+        <>
+          <Button
+            variant="outline"
+            onClick={() => openPanel("stats")}
+            className="text-muted-foreground h-auto self-stretch"
+          >
+            <BarChart3 data-icon="inline-start" />
+            <span>{t("history.statsBtn")}</span>
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => openPanel("filters")}
+            className={cn(
+              "text-muted-foreground h-auto self-stretch",
+              filterCount > 0 && "border-primary text-primary bg-primary/5",
+            )}
+            aria-expanded={filterOpen}
+          >
+            <Filter data-icon="inline-start" />
+            <span>{t("history.filtersBtn")}</span>
+            {filterCount > 0 && (
+              <Badge className="h-4 min-w-4 px-1 text-[9px] font-bold">
+                {filterCount}
+              </Badge>
+            )}
+          </Button>
+        </>
+      )}
+    </div>
+  );
+
+  const feed =
+    entries.length === 0 ? (
+      <NoSearchResults
+        hasSearch={!!search}
+        hasDates={activePreset !== "all-time"}
+        onClear={() => {
+          setSearch("");
+          patchFilters({
+            preset: "all-time",
+            customStartDate: "",
+            customEndDate: "",
+          });
+          setPage(0);
+        }}
+      />
+    ) : (
+      groups.map((group) =>
+        group.items.length === 0 ? null : (
+          <FeedGroup
+            key={group.label}
+            label={
+              group.label === "Today"
+                ? t("history.groupToday")
+                : group.label === "Yesterday"
+                  ? t("history.groupYesterday")
+                  : group.label
+            }
+          >
+            {group.items.map((entry) => (
+              <FeedItem
+                key={entry.id}
+                entry={entry}
+                onDelete={deleteEntry}
+                diffMode={diffMode}
+                showAiEdits={showAiEdits}
+                nerdMode={nerdMode}
+              />
+            ))}
+          </FeedGroup>
+        ),
+      )
+    );
+
+  const pagination = total > PAGE_SIZE && (
+    <div className="border-border mt-4 flex items-center justify-between border-t pt-4">
+      <span className="mono text-muted-foreground text-[11px] uppercase tracking-[0.12em]">
+        {total}{" "}
+        {total === 1
+          ? t("history.sessionSingular")
+          : t("history.sessionPlural")}
+      </span>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setPage((p) => Math.max(0, p - 1))}
+          disabled={page === 0}
+          aria-label="Previous page"
+        >
+          <ChevronLeft />
+        </Button>
+        <span className="mono text-muted-foreground px-2 text-[11px]">
+          {page + 1} / {totalPages}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+          disabled={page >= totalPages - 1}
+          aria-label="Next page"
+        >
+          <ChevronRight />
+        </Button>
+      </div>
+    </div>
+  );
+
+  const rightPanel = filterOpen && (
+    <RightPanel
+      tab={rightTab}
+      onTabChange={setRightTab}
+      stats={stats}
+      timeLabel={timeLabel}
+      nerdMode={nerdMode}
+      buckets={buckets}
+      hourly={hourly}
+      avgWpm={avgWpm}
+      activePreset={activePreset}
+      startDate={startDate}
+      endDate={endDate}
+      diffMode={diffMode}
+      showAiEdits={showAiEdits}
+      onPreset={applyPreset}
+      onSelectRange={selectDateRange}
+      onReset={resetFilters}
+      resetDisabled={isDefaultFilters}
+      onClose={closeFilter}
+      onDiffModeChange={setDiffMode}
+      onShowAiEditsChange={setShowAiEdits}
+      onNerdModeChange={setNerdMode}
+    />
+  );
+
+  // When the panel is open, split the page into a scrollable feed column and a
+  // fixed, full-height right panel. The DragSpacer stays at the top; the feed
+  // column owns its own scroll so the panel never scrolls out of view.
+  if (filterOpen && !isGenuineEmpty) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <DragSpacer />
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
+          <div
+            className="responsive-page-scroll min-w-0 overflow-auto pt-5"
+            style={
+              {
+                scrollbarWidth: "none",
+                paddingRight: "1.25rem",
+              } as React.CSSProperties
+            }
+          >
+            {historyPaused && <HistoryPausedNotice />}
+            {hero}
+            {searchRow}
+            {feed}
+            {pagination}
+          </div>
+          {rightPanel}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <DragSpacer />
       <div
-        className="responsive-page-scroll flex-1 overflow-auto"
-        style={
-          {
-            scrollbarWidth: "none",
-            // When the filter panel is open it should sit flush against the
-            // window's right and bottom edges, so drop the page's right and
-            // bottom padding here — the bottom padding is re-applied to just
-            // the feed column so its divider line still runs edge-to-edge.
-            ...(filterOpen ? { paddingRight: 0, paddingBottom: 0 } : {}),
-          } as React.CSSProperties
-        }
+        className="responsive-page-scroll flex-1 overflow-auto pt-5"
+        style={{ scrollbarWidth: "none" } as React.CSSProperties}
       >
-        <PageHeader title={t("history.title")} />
-
         {historyPaused && <HistoryPausedNotice />}
+
+        {hero}
 
         {isGenuineEmpty ? (
           <EmptyState />
         ) : (
-          <div
-            className={cn(
-              "grid min-w-0 gap-7",
-              filterOpen &&
-                "min-h-[calc(100vh-88px)] grid-cols-[minmax(0,1fr)_minmax(300px,340px)] gap-5",
-            )}
-          >
-            <div className={cn("min-w-0", filterOpen && "pb-12")}>
-              {/* Stats */}
-              <div
-                className={cn(
-                  "border-border mb-7 grid grid-cols-2 gap-2.5 border-b pb-7",
-                  !filterOpen &&
-                    (nerdMode ? "md:grid-cols-3" : "md:grid-cols-4"),
-                )}
-              >
-                <Stat
-                  n={(stats?.total_words ?? 0).toLocaleString()}
-                  l={t("history.wordsStat", { label: timeLabel })}
-                />
-                <Stat
-                  n={String(stats?.total_sessions ?? 0)}
-                  l={t("history.sessionsStat", { label: timeLabel })}
-                />
-                <Stat
-                  n={
-                    stats && stats.avg_duration_ms > 0
-                      ? formatSeconds(Math.round(stats.avg_duration_ms))
-                      : "—"
-                  }
-                  l={t("history.avgLatency")}
-                />
-                <Stat
-                  accent
-                  n={`$${(stats?.total_cost_usd ?? 0).toFixed(2)}`}
-                  l={t("history.costStat", { label: timeLabel })}
-                />
-                {nerdMode && (
-                  <>
-                    <Stat
-                      n={(stats?.total_input_tokens ?? 0).toLocaleString()}
-                      l={t("history.tokensInStat")}
-                    />
-                    <Stat
-                      n={(stats?.total_output_tokens ?? 0).toLocaleString()}
-                      l={t("history.tokensOutStat")}
-                    />
-                  </>
-                )}
-              </div>
-
-              {/* Search & Filter Row */}
-              <div className="mb-6 flex gap-2">
-                <div className="border-border bg-card flex flex-1 items-center gap-2 rounded-lg border px-3 py-2">
-                  <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value);
-                      setPage(0);
-                    }}
-                    placeholder={
-                      total === 1
-                        ? t("history.searchSingular", { total })
-                        : t("history.searchPlural", { total })
-                    }
-                    className="placeholder:text-muted-foreground/80 text-foreground flex-1 bg-transparent text-[13px] outline-none"
-                  />
-                  <span className="mono text-muted-foreground text-[10px]">
-                    {SEARCH_SHORTCUT_LABEL}
-                  </span>
-                </div>
-                {!filterOpen && (
-                  <Button
-                    variant="outline"
-                    onClick={() => patchFilters({ filterOpen: true })}
-                    className={cn(
-                      "text-muted-foreground h-auto self-stretch",
-                      filterCount > 0 &&
-                        "border-primary text-primary bg-primary/5",
-                    )}
-                    aria-expanded={filterOpen}
-                  >
-                    <Filter data-icon="inline-start" />
-                    <span>{t("history.filtersBtn")}</span>
-                    {filterCount > 0 && (
-                      <Badge className="h-4 min-w-4 px-1 text-[9px] font-bold">
-                        {filterCount}
-                      </Badge>
-                    )}
-                  </Button>
-                )}
-              </div>
-
-              {entries.length === 0 ? (
-                <NoSearchResults
-                  hasSearch={!!search}
-                  hasDates={activePreset !== "all-time"}
-                  onClear={() => {
-                    setSearch("");
-                    patchFilters({
-                      preset: "all-time",
-                      customStartDate: "",
-                      customEndDate: "",
-                    });
-                    setPage(0);
-                  }}
-                />
-              ) : (
-                groups.map((group) =>
-                  group.items.length === 0 ? null : (
-                    <FeedGroup
-                      key={group.label}
-                      label={
-                        group.label === "Today"
-                          ? t("history.groupToday")
-                          : group.label === "Yesterday"
-                            ? t("history.groupYesterday")
-                            : group.label
-                      }
-                    >
-                      {group.items.map((entry) => (
-                        <FeedItem
-                          key={entry.id}
-                          entry={entry}
-                          onDelete={deleteEntry}
-                          diffMode={diffMode}
-                          showAiEdits={showAiEdits}
-                          nerdMode={nerdMode}
-                        />
-                      ))}
-                    </FeedGroup>
-                  ),
-                )
-              )}
-
-              {/* Pagination */}
-              {total > PAGE_SIZE && (
-                <div className="border-border mt-4 flex items-center justify-between border-t pt-4">
-                  <span className="mono text-muted-foreground text-[11px] uppercase tracking-[0.12em]">
-                    {total}{" "}
-                    {total === 1
-                      ? t("history.sessionSingular")
-                      : t("history.sessionPlural")}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => setPage((p) => Math.max(0, p - 1))}
-                      disabled={page === 0}
-                      aria-label="Previous page"
-                    >
-                      <ChevronLeft />
-                    </Button>
-                    <span className="mono text-muted-foreground px-2 text-[11px]">
-                      {page + 1} / {totalPages}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() =>
-                        setPage((p) => Math.min(totalPages - 1, p + 1))
-                      }
-                      disabled={page >= totalPages - 1}
-                      aria-label="Next page"
-                    >
-                      <ChevronRight />
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {filterOpen && (
-              <FilterPanel
-                activePreset={activePreset}
-                startDate={startDate}
-                endDate={endDate}
-                diffMode={diffMode}
-                showAiEdits={showAiEdits}
-                nerdMode={nerdMode}
-                onPreset={applyPreset}
-                onSelectRange={selectDateRange}
-                onReset={resetFilters}
-                resetDisabled={isDefaultFilters}
-                onClose={closeFilter}
-                onDiffModeChange={setDiffMode}
-                onShowAiEditsChange={setShowAiEdits}
-                onNerdModeChange={setNerdMode}
-              />
-            )}
+          <div className="min-w-0">
+            {searchRow}
+            {feed}
+            {pagination}
           </div>
         )}
       </div>
@@ -662,11 +782,19 @@ const PRESETS: { value: HistoryPreset; labelKey: string }[] = [
 ];
 
 /**
- * The History filter sidebar. Memoized so it doesn't re-render on unrelated
- * page state changes (search typing, pagination, data refetches). All handlers
- * are stabilized by the parent with `useCallback`.
+ * The right-hand panel. Hosts two tabs — aggregate Stats and the date/view
+ * Filters — with a shared header (tab switcher + close button). Memoized so it
+ * doesn't re-render on unrelated page state (search typing, pagination). All
+ * handlers are stabilized by the parent with `useCallback`.
  */
-const FilterPanel = memo(function FilterPanel({
+const RightPanel = memo(function RightPanel({
+  tab,
+  onTabChange,
+  stats,
+  timeLabel,
+  buckets,
+  hourly,
+  avgWpm,
   activePreset,
   startDate,
   endDate,
@@ -682,6 +810,13 @@ const FilterPanel = memo(function FilterPanel({
   onShowAiEditsChange,
   onNerdModeChange,
 }: {
+  tab: RightTab;
+  onTabChange: (tab: RightTab) => void;
+  stats: Stats | null;
+  timeLabel: string;
+  buckets: UsageBucket[];
+  hourly: number[];
+  avgWpm: number;
   activePreset: HistoryPreset;
   startDate: string;
   endDate: string;
@@ -704,172 +839,434 @@ const FilterPanel = memo(function FilterPanel({
   };
 
   return (
-    // Wrapper stretches to the full height of the feed column so the divider
-    // line runs edge-to-edge; the panel itself stays sticky within it.
-    <div className="border-border/70 border-l">
-      <aside className="sticky top-0 flex h-[calc(100vh-88px)] min-h-[520px] flex-col overflow-hidden px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)] animate-in fade-in-0 slide-in-from-right-3 duration-200">
+    // Fills the full height of its grid cell and stays fixed while the feed
+    // column scrolls independently beside it.
+    <div className="border-border/70 min-h-0 border-l">
+      <aside className="flex h-full min-h-0 flex-col overflow-hidden px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)] animate-in fade-in-0 slide-in-from-right-3 duration-200">
         <div className="border-border/70 flex h-10 items-center gap-1.5 border-b pb-3">
           <div className="min-w-0 flex-1">
-            <h2 className="text-foreground text-[14px] font-semibold">
-              {t("history.filterTitle")}
-            </h2>
+            <SegmentedControl
+              size="sm"
+              value={tab}
+              onValueChange={(v) => onTabChange(v as RightTab)}
+              options={[
+                {
+                  value: "stats",
+                  label: t("history.statsTab"),
+                  icon: BarChart3,
+                },
+                {
+                  value: "filters",
+                  label: t("history.filtersTab"),
+                  icon: Filter,
+                },
+              ]}
+            />
           </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onReset}
-            disabled={resetDisabled}
-            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-            aria-label={t("history.reset")}
-            title={t("history.reset")}
-          >
-            <Eraser />
-          </Button>
+          {tab === "filters" && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onReset}
+              disabled={resetDisabled}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+              aria-label={t("history.reset")}
+              title={t("history.reset")}
+            >
+              <Eraser />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon-sm"
             onClick={onClose}
-            aria-label="Close filters"
-            title="Close filters"
+            aria-label={t("history.closePanel")}
+            title={t("history.closePanel")}
           >
             <PanelRight />
           </Button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto pt-4 pr-1">
-          {/* Date range */}
-          <div className="flex flex-col gap-2.5">
-            <Label className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
-              {t("history.dateRangeLabel")}
-            </Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="border-border/75 bg-card/45 hover:bg-card/60 h-9 w-full justify-start gap-2 px-3 text-left text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
-                >
-                  <CalendarDays data-icon="inline-start" />
-                  <span className="truncate">
-                    {formatRangeLabel(startDate, endDate)}
-                  </span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent
-                align="end"
-                className="w-[320px] translate-x-2 overflow-visible p-2"
-                collisionPadding={8}
-                sideOffset={6}
-              >
-                <DayPicker
-                  mode="range"
-                  numberOfMonths={2}
-                  selected={selectedDateRange}
-                  onSelect={onSelectRange}
-                  defaultMonth={selectedDateRange.from ?? selectedDateRange.to}
-                  classNames={{
-                    root: "p-0",
-                    months: "flex gap-3",
-                    month: "flex flex-col gap-2",
-                    month_caption: "flex h-6 items-center justify-center",
-                    caption_label: "text-[12px] font-medium text-foreground",
-                    nav: "absolute inset-x-2 top-2 flex items-center justify-between",
-                    button_previous:
-                      "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
-                    button_next:
-                      "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
-                    chevron: "size-3.5 fill-current",
-                    month_grid: "w-full border-collapse border-spacing-0",
-                    weekdays: "flex",
-                    weekday:
-                      "text-muted-foreground flex size-5 items-center justify-center text-[9px] font-normal",
-                    week: "flex w-full",
-                    day: "relative flex size-5 items-center justify-center p-0 text-center text-[10px]",
-                    day_button:
-                      "relative z-10 inline-flex size-5 items-center justify-center rounded transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                    outside: "text-muted-foreground/45",
-                    today:
-                      "after:bg-primary after:absolute after:bottom-1 after:left-1/2 after:z-20 after:size-1 after:-translate-x-1/2 after:rounded-full",
-                    selected:
-                      "text-primary-foreground after:!hidden [&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary",
-                    range_start:
-                      "bg-primary/15 rounded-l-md [&>button]:rounded-l [&>button]:rounded-r-none",
-                    range_middle:
-                      "bg-primary/15 [&>button]:rounded-none [&>button]:!bg-transparent [&>button]:!text-foreground [&>button]:hover:!bg-transparent",
-                    range_end:
-                      "bg-primary/15 rounded-r-md [&>button]:rounded-r [&>button]:rounded-l-none",
-                  }}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          {/* Presets — plain buttons, active one is always highlighted */}
-          <div className="flex flex-col gap-2.5">
-            <span className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
-              {t("history.presetsLabel")}
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              {PRESETS.map((preset) => {
-                const active = activePreset === preset.value;
-                return (
+        {tab === "stats" ? (
+          <StatsTab
+            stats={stats}
+            timeLabel={timeLabel}
+            nerdMode={nerdMode}
+            buckets={buckets}
+            hourly={hourly}
+            avgWpm={avgWpm}
+          />
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto pt-4 pr-1">
+            {/* Date range */}
+            <div className="flex flex-col gap-2.5">
+              <Label className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
+                {t("history.dateRangeLabel")}
+              </Label>
+              <Popover>
+                <PopoverTrigger asChild>
                   <Button
-                    key={preset.value}
-                    variant={active ? "default" : "outline"}
-                    size="sm"
-                    className="h-8 w-full justify-center text-[11px]"
-                    aria-pressed={active}
-                    onClick={() => onPreset(preset.value)}
+                    variant="outline"
+                    className="border-border/75 bg-card/45 hover:bg-card/60 h-9 w-full justify-start gap-2 px-3 text-left text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
                   >
-                    {t(preset.labelKey)}
+                    <CalendarDays data-icon="inline-start" />
+                    <span className="truncate">
+                      {formatRangeLabel(startDate, endDate)}
+                    </span>
                   </Button>
-                );
-              })}
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  className="w-[320px] translate-x-2 overflow-visible p-2"
+                  collisionPadding={8}
+                  sideOffset={6}
+                >
+                  <DayPicker
+                    mode="range"
+                    numberOfMonths={2}
+                    selected={selectedDateRange}
+                    onSelect={onSelectRange}
+                    defaultMonth={
+                      selectedDateRange.from ?? selectedDateRange.to
+                    }
+                    classNames={{
+                      root: "p-0",
+                      months: "flex gap-3",
+                      month: "flex flex-col gap-2",
+                      month_caption: "flex h-6 items-center justify-center",
+                      caption_label: "text-[12px] font-medium text-foreground",
+                      nav: "absolute inset-x-2 top-2 flex items-center justify-between",
+                      button_previous:
+                        "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
+                      button_next:
+                        "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
+                      chevron: "size-3.5 fill-current",
+                      month_grid: "w-full border-collapse border-spacing-0",
+                      weekdays: "flex",
+                      weekday:
+                        "text-muted-foreground flex size-5 items-center justify-center text-[9px] font-normal",
+                      week: "flex w-full",
+                      day: "relative flex size-5 items-center justify-center p-0 text-center text-[10px]",
+                      day_button:
+                        "relative z-10 inline-flex size-5 items-center justify-center rounded transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                      outside: "text-muted-foreground/45",
+                      today:
+                        "after:bg-primary after:absolute after:bottom-1 after:left-1/2 after:z-20 after:size-1 after:-translate-x-1/2 after:rounded-full",
+                      selected:
+                        "text-primary-foreground after:!hidden [&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary",
+                      range_start:
+                        "bg-primary/15 rounded-l-md [&>button]:rounded-l [&>button]:rounded-r-none",
+                      range_middle:
+                        "bg-primary/15 [&>button]:rounded-none [&>button]:!bg-transparent [&>button]:!text-foreground [&>button]:hover:!bg-transparent",
+                      range_end:
+                        "bg-primary/15 rounded-r-md [&>button]:rounded-r [&>button]:rounded-l-none",
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
-          </div>
 
-          {/* View — global toggles that apply to every entry at once */}
-          <div className="flex flex-col gap-2.5">
-            <span className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
-              {t("history.viewLabel")}
-            </span>
-            <div className="border-border/70 bg-card/35 flex flex-col divide-y divide-border/60 rounded-lg border">
-              <ViewToggleRow
-                icon={
-                  <FileDiff className="text-muted-foreground h-3.5 w-3.5" />
-                }
-                title={t("history.diffToggle")}
-                description={t("history.diffToggleDesc")}
-                checked={diffMode}
-                onCheckedChange={onDiffModeChange}
-              />
-              <ViewToggleRow
-                icon={
-                  <Sparkles className="text-muted-foreground h-3.5 w-3.5" />
-                }
-                title={t("history.aiEditToggle")}
-                description={t("history.aiEditToggleDesc")}
-                checked={showAiEdits}
-                // Diff mode already shows both raw and cleaned, so the plain
-                // AI-edit toggle is moot while diff mode is on.
-                disabled={diffMode}
-                onCheckedChange={onShowAiEditsChange}
-              />
-              <ViewToggleRow
-                icon={
-                  <FlaskConical className="text-muted-foreground h-3.5 w-3.5" />
-                }
-                title={t("history.nerdToggle")}
-                description={t("history.nerdToggleDesc")}
-                checked={nerdMode}
-                onCheckedChange={onNerdModeChange}
-              />
+            {/* Presets — plain buttons, active one is always highlighted */}
+            <div className="flex flex-col gap-2.5">
+              <span className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
+                {t("history.presetsLabel")}
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                {PRESETS.map((preset) => {
+                  const active = activePreset === preset.value;
+                  return (
+                    <Button
+                      key={preset.value}
+                      variant={active ? "default" : "outline"}
+                      size="sm"
+                      className="h-8 w-full justify-center text-[11px]"
+                      aria-pressed={active}
+                      onClick={() => onPreset(preset.value)}
+                    >
+                      {t(preset.labelKey)}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* View — global toggles that apply to every entry at once */}
+            <div className="flex flex-col gap-2.5">
+              <span className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
+                {t("history.viewLabel")}
+              </span>
+              <div className="border-border/70 bg-card/35 flex flex-col divide-y divide-border/60 rounded-lg border">
+                <ViewToggleRow
+                  icon={
+                    <FileDiff className="text-muted-foreground h-3.5 w-3.5" />
+                  }
+                  title={t("history.diffToggle")}
+                  description={t("history.diffToggleDesc")}
+                  checked={diffMode}
+                  onCheckedChange={onDiffModeChange}
+                />
+                <ViewToggleRow
+                  icon={
+                    <Sparkles className="text-muted-foreground h-3.5 w-3.5" />
+                  }
+                  title={t("history.aiEditToggle")}
+                  description={t("history.aiEditToggleDesc")}
+                  checked={showAiEdits}
+                  // Diff mode already shows both raw and cleaned, so the plain
+                  // AI-edit toggle is moot while diff mode is on.
+                  disabled={diffMode}
+                  onCheckedChange={onShowAiEditsChange}
+                />
+                <ViewToggleRow
+                  icon={
+                    <FlaskConical className="text-muted-foreground h-3.5 w-3.5" />
+                  }
+                  title={t("history.nerdToggle")}
+                  description={t("history.nerdToggleDesc")}
+                  checked={nerdMode}
+                  onCheckedChange={onNerdModeChange}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </aside>
     </div>
   );
 });
+
+/** Aggregate stats + visualisations for the active date range. */
+function StatsTab({
+  stats,
+  timeLabel,
+  nerdMode,
+  buckets,
+  hourly,
+  avgWpm,
+}: {
+  stats: Stats | null;
+  timeLabel: string;
+  nerdMode: boolean;
+  buckets: UsageBucket[];
+  hourly: number[];
+  avgWpm: number;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-auto pt-4 pr-1">
+      {/* Headline numbers — cards in a 2-up grid */}
+      <div className="grid grid-cols-2 gap-2.5">
+        <StatCard
+          span2
+          inline
+          n={(stats?.total_words ?? 0).toLocaleString()}
+          l={t("today.wordsLabel")}
+          sub={timeLabel}
+        />
+        <StatCard
+          inline
+          n={String(stats?.total_sessions ?? 0)}
+          l={t("today.sessionsLabel")}
+          sub={timeLabel}
+        />
+        {(stats?.total_cost_usd ?? 0) > 0 && (
+          <StatCard
+            inline
+            n={`$${(stats?.total_cost_usd ?? 0).toFixed(2)}`}
+            l={t("today.costLabel")}
+            sub={timeLabel}
+          />
+        )}
+        <StatCard accent n={String(avgWpm)} l={t("today.avgWpm")} />
+        <StatCard
+          n={
+            stats && stats.avg_duration_ms > 0
+              ? formatSeconds(Math.round(stats.avg_duration_ms))
+              : "—"
+          }
+          l={t("history.avgLatency")}
+        />
+        {nerdMode && (
+          <>
+            <StatCard
+              n={(stats?.total_input_tokens ?? 0).toLocaleString()}
+              l={t("history.tokensInStat")}
+            />
+            <StatCard
+              n={(stats?.total_output_tokens ?? 0).toLocaleString()}
+              l={t("history.tokensOutStat")}
+            />
+          </>
+        )}
+      </div>
+
+      {/* Most used models */}
+      <div className="flex flex-col gap-2.5">
+        <RailLabel>{t("today.mostUsed")}</RailLabel>
+        {buckets.length === 0 ? (
+          <p className="serif-italic text-muted-foreground text-[13px]">
+            {t("today.noModelsYet")}
+          </p>
+        ) : (
+          buckets.map((b) => <UsageBar key={b.label} {...b} />)
+        )}
+      </div>
+
+      {/* 24h activity */}
+      <div className="mb-6 flex flex-col gap-2.5">
+        <RailLabel>{t("today.activity24h")}</RailLabel>
+        <HourSpark data={hourly} />
+      </div>
+    </div>
+  );
+}
+
+function RailLabel({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
+      {children}
+    </div>
+  );
+}
+
+/** A bordered stat card matching the filter panel's card styling. */
+function StatCard({
+  n,
+  l,
+  sub,
+  accent,
+  span2,
+  inline,
+}: {
+  n: string;
+  l: string;
+  // Optional secondary label rendered below (e.g. the time range).
+  sub?: string;
+  accent?: boolean;
+  // Span both grid columns.
+  span2?: boolean;
+  // Render the primary label inline (small text) next to the number.
+  inline?: boolean;
+}): React.JSX.Element {
+  return (
+    <div
+      className={cn(
+        "border-border/70 bg-card/35 rounded-lg border px-3.5 py-3",
+        span2 && "col-span-2",
+      )}
+    >
+      {inline ? (
+        <>
+          <div className="flex items-baseline gap-2">
+            <span
+              className={cn(
+                "serif-italic text-[30px] leading-none",
+                accent ? "text-primary" : "text-foreground",
+              )}
+            >
+              {n}
+            </span>
+            <span className="mono text-muted-foreground text-[9.5px] uppercase tracking-[0.12em]">
+              {l}
+            </span>
+          </div>
+          {sub && (
+            <div className="mono text-muted-foreground/70 mt-1.5 text-[9.5px] uppercase tracking-[0.12em]">
+              {sub}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div
+            className={cn(
+              "serif-italic text-[30px] leading-none",
+              accent ? "text-primary" : "text-foreground",
+            )}
+          >
+            {n}
+          </div>
+          <div className="mono text-muted-foreground mt-2 text-[9.5px] uppercase leading-tight tracking-[0.12em]">
+            {l}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function UsageBar({ label, pct }: UsageBucket): React.JSX.Element {
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-foreground text-[11.5px] font-medium">
+          {label}
+        </span>
+        <span className="mono text-muted-foreground text-[10.5px]">{pct}%</span>
+      </div>
+      <Progress value={pct} className="h-1" />
+    </div>
+  );
+}
+
+function HourSpark({ data }: { data: number[] }): React.JSX.Element {
+  const max = Math.max(1, ...data);
+  const W = 280;
+  const chartH = 64;
+  const barW = W / 24;
+  const labelHours = [0, 6, 12, 18, 23];
+  return (
+    <svg
+      viewBox={`0 0 ${W} 78`}
+      width="100%"
+      height={78}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Activity over 24 hours"
+      className="block"
+    >
+      <line
+        x1={0}
+        y1={chartH - 0.5}
+        x2={W}
+        y2={chartH - 0.5}
+        stroke="var(--border)"
+      />
+      {data.map((v, i) => {
+        const h = v > 0 ? Math.max(2, (v / max) * (chartH - 6)) : 0;
+        return (
+          <rect
+            key={i}
+            x={i * barW + barW * 0.18}
+            y={chartH - h}
+            width={barW * 0.64}
+            height={h}
+            rx={1}
+            fill={v > 0 ? "var(--primary)" : "var(--border)"}
+            fillOpacity={v > 0 ? 0.85 : 0.4}
+          />
+        );
+      })}
+      {labelHours.map((hr) => (
+        <text
+          key={hr}
+          x={hr * barW + barW * 0.5}
+          y={76}
+          textAnchor="middle"
+          fontFamily="JetBrains Mono, monospace"
+          fontSize={9}
+          fill="var(--muted-foreground)"
+        >
+          {hr === 23 ? "24" : String(hr).padStart(2, "0")}
+        </text>
+      ))}
+    </svg>
+  );
+}
 
 function ViewToggleRow({
   icon,
@@ -907,54 +1304,6 @@ function ViewToggleRow({
         onCheckedChange={onCheckedChange}
         aria-label={title}
       />
-    </div>
-  );
-}
-
-function PageHeader({
-  title,
-  subtitle,
-}: {
-  title: string;
-  subtitle?: string;
-}): React.JSX.Element {
-  return (
-    <div className="mb-7">
-      <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-        <span className="serif-italic text-primary">{title}</span>
-        <span>. </span>
-      </h1>
-      {subtitle && (
-        <p className="text-muted-foreground mt-2.5 max-w-[580px] text-[14px] leading-[1.5]">
-          {subtitle}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function Stat({
-  n,
-  l,
-  accent,
-}: {
-  n: string;
-  l: string;
-  accent?: boolean;
-}): React.JSX.Element {
-  return (
-    <div className="border-border bg-card rounded-[11px] border px-[18px] py-4">
-      <div
-        className={cn(
-          "serif-italic text-[38px] leading-none",
-          accent ? "text-primary" : "text-foreground",
-        )}
-      >
-        {n}
-      </div>
-      <div className="mono text-muted-foreground mt-2 text-[10px] uppercase tracking-[0.14em]">
-        {l}
-      </div>
     </div>
   );
 }

@@ -526,12 +526,15 @@ export default function AppPage(): React.JSX.Element {
     if (!streamerRef.current) {
       streamerRef.current = new Streamer(getApiBase(), getServerToken(), {
         onConfig: (config) => {
+          // Only update support for *future* sessions. The per-session decision
+          // (recordingSessionUsesTransportRef) is latched once in startRecording
+          // and must never be mutated mid-session: a config arriving after the
+          // first recording has already committed to the batch path would flip
+          // commit to the streaming path, which captured no audio → "No audio
+          // captured". This is the first-dictation-after-restart failure.
           supportsSessionTransportRef.current = config.sessionTransport;
           if (config.providerCategory) {
             providerCategoryRef.current = config.providerCategory;
-          }
-          if (wantsMicRef.current) {
-            recordingSessionUsesTransportRef.current = config.sessionTransport;
           }
         },
         onReady: () => {},
@@ -540,6 +543,19 @@ export default function AppPage(): React.JSX.Element {
           const resolver = streamResolverRef.current;
           if (!resolver) return;
           streamResolverRef.current = null;
+          // A short clip can stream to a live provider that finalizes before it
+          // has recognized any words (cold Soniox/Freestyle Cloud session), so
+          // the streaming final comes back empty even though audio was captured.
+          // Salvage via the batch REST path with the recorded WAV the streamer
+          // still has buffered — the same clip transcribes fine one-shot. If no
+          // WAV exists (genuine silence) the empty result stands.
+          if (!text.trim()) {
+            const fallback = restFallbackTranscribe("");
+            if (fallback) {
+              void fallback.then(resolver);
+              return;
+            }
+          }
           resolver({ raw: text, cleaned: text });
         },
         onCleaned: () => {},
@@ -964,7 +980,7 @@ export default function AppPage(): React.JSX.Element {
     freqDataRef.current = null;
 
     const recordingDuration = Date.now() - startTimeRef.current;
-    if (recordingDuration < 500) {
+    if (recordingDuration < 250) {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
       streamerRef.current?.cancel();

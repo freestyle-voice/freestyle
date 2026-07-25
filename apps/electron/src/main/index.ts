@@ -1560,7 +1560,11 @@ function buildTrayContextMenu(): Menu {
   return Menu.buildFromTemplate([
     {
       label: "Settings",
-      click: () => showSettingsWindow(),
+      click: () => showSettingsWindow("/settings"),
+    },
+    {
+      label: "Help",
+      click: () => showSettingsWindow("/help"),
     },
     buildUpdateMenuItem(),
     ...(is.dev
@@ -1632,7 +1636,7 @@ function rebuildMenus(): void {
               {
                 label: "Settings",
                 accelerator: "CommandOrControl+,",
-                click: () => showSettingsWindow(),
+                click: () => showSettingsWindow("/settings"),
               },
               { type: "separator" as const },
               buildUpdateMenuItem(),
@@ -1682,6 +1686,15 @@ function rebuildMenus(): void {
     {
       role: "window",
       submenu: [{ role: "minimize" }, { role: "close" }],
+    },
+    {
+      role: "help",
+      submenu: [
+        {
+          label: "Freestyle Help",
+          click: () => showSettingsWindow("/help"),
+        },
+      ],
     },
   ]);
   Menu.setApplicationMenu(appMenu);

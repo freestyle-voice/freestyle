@@ -14,8 +14,8 @@ import {
   installGlobalErrorHandlers,
   reportError,
 } from "@renderer/lib/report-error";
+import HistoryPage from "@renderer/pages/history";
 import NotFoundPage from "@renderer/pages/not-found";
-import TodayPage from "@renderer/pages/today";
 import AppShell from "@renderer/shell";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
@@ -30,7 +30,6 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router";
 const OnboardingPage = lazy(() => import("@renderer/onboarding"));
 const DictionaryPage = lazy(() => import("@renderer/pages/dictionary"));
 const HelpPage = lazy(() => import("@renderer/pages/help"));
-const HistoryPage = lazy(() => import("@renderer/pages/history"));
 const ModelsPage = lazy(() => import("@renderer/pages/models"));
 const PluginDetailPage = lazy(
   () => import("@renderer/pages/plugins/plugin-detail"),
@@ -100,7 +99,7 @@ function mount(): void {
                           />
 
                           <Route element={<AppShell />}>
-                            <Route path="/today" element={<TodayPage />} />
+                            <Route path="/today" element={<HistoryPage />} />
                             <Route element={<PagePad />}>
                               <Route
                                 path="/settings"
@@ -134,7 +133,7 @@ function mount(): void {
                               />
                               <Route
                                 path="/settings/history"
-                                element={<HistoryPage />}
+                                element={<Navigate to="/today" replace />}
                               />
                               <Route path="/help" element={<HelpPage />} />
                               <Route

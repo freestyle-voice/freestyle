@@ -23,7 +23,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -139,6 +139,24 @@ export default function DictionaryPage(): React.JSX.Element {
   );
 
   const importRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchShortcutEnabled = !(total === 0 && !search && !showForm);
+
+  useEffect(() => {
+    if (!searchShortcutEnabled) return;
+
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return;
+      e.preventDefault();
+      const input = searchInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.select();
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [searchShortcutEnabled]);
 
   const exportJson = useCallback(async () => {
     try {
@@ -213,6 +231,7 @@ export default function DictionaryPage(): React.JSX.Element {
               <div className="border-border bg-card flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-lg border px-3 py-2">
                 <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
                 <input
+                  ref={searchInputRef}
                   type="text"
                   value={search}
                   onChange={(e) => {

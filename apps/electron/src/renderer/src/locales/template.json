@@ -229,15 +229,13 @@
     }
   },
   "today": {
-    "readyWhenYouAre": "ready when you are…",
-    "inNumbers": "In numbers",
-    "wordsToday": "words today",
     "avgWpm": "avg wpm",
-    "minSpoken": "min spoken",
+    "wordsLabel": "words",
+    "sessionsLabel": "sessions",
+    "costLabel": "cost",
     "mostUsed": "Most used",
     "noModelsYet": "No models yet. Models will appear here as you dictate.",
-    "activity24h": "Activity · 24h",
-    "emptyTimeline": "your day is unwritten — your first session will land here."
+    "activity24h": "Activity · 24h"
   },
   "history": {
     "title": "History",
@@ -267,6 +265,11 @@
     "nerdCompute": "{{label}} compute",
     "done": "Done",
     "filtersBtn": "Filters",
+    "statsBtn": "Stats",
+    "statsTab": "Stats",
+    "filtersTab": "Filters",
+    "closePanel": "Close panel",
+    "dismissHero": "Dismiss",
     "timeLabelPast7": "past 7 days",
     "timeLabelToday": "today",
     "timeLabelPast30": "past 30 days",

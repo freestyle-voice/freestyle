@@ -5,6 +5,7 @@ import {
   UpgradeCtaCard,
 } from "@renderer/components/cloud-profile";
 import { Badge } from "@renderer/components/ui/badge";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import { LINKS } from "@renderer/lib/links";
 import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform";
 import { listPlugins } from "@renderer/lib/plugins-api";
@@ -20,7 +21,6 @@ import {
   Book,
   BookOpen,
   CircleHelp,
-  Clock,
   Cpu,
   FileText,
   Languages,
@@ -53,52 +53,46 @@ const STATIC_NAV: {
 }[] = [
   { to: "/today", icon: BookOpen, shortcut: "1", labelKey: "shell.nav.today" },
   {
-    to: "/settings/history",
-    icon: Clock,
-    shortcut: "2",
-    labelKey: "shell.nav.history",
-  },
-  {
     to: "/settings/dictionary",
     icon: Book,
-    shortcut: "3",
+    shortcut: "2",
     labelKey: "shell.nav.dictionary",
   },
   {
     to: "/settings/vocabulary",
     icon: Languages,
-    shortcut: "4",
+    shortcut: "3",
     labelKey: "shell.nav.vocabulary",
   },
   {
     to: "/settings/tone",
     icon: FileText,
-    shortcut: "5",
+    shortcut: "4",
     labelKey: "shell.nav.tone",
   },
   {
     to: "/settings/models",
     icon: Cpu,
-    shortcut: "6",
+    shortcut: "5",
     labelKey: "shell.nav.models",
   },
   {
     to: "/plugins",
     icon: Puzzle,
-    shortcut: "7",
+    shortcut: "6",
     labelKey: "shell.nav.plugins",
   },
   {
     to: "/settings",
     icon: Settings,
-    shortcut: "8",
+    shortcut: "7",
     labelKey: "shell.nav.settings",
     footer: true,
   },
   {
     to: "/help",
     icon: CircleHelp,
-    shortcut: "9",
+    shortcut: "8",
     labelKey: "shell.nav.help",
     footer: true,
   },
@@ -190,6 +184,7 @@ export default function AppShell(): React.JSX.Element {
   const location = useLocation();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { t } = useTranslation();
+  const { user } = useCloudAuth();
 
   // A plugin page renders a native WebContentsView that paints above the DOM,
   // so the floating social bar would be occluded. Hide it while a plugin page
@@ -235,7 +230,7 @@ export default function AppShell(): React.JSX.Element {
   return (
     <div className="glass-window-shell flex h-screen min-h-0">
       <aside
-        className="glass-sidebar flex w-[220px] shrink-0 flex-col border-r"
+        className="glass-sidebar flex min-h-0 w-[220px] shrink-0 flex-col border-r"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
         {/* Brand row — top padding leaves space for macOS traffic lights */}
@@ -268,15 +263,26 @@ export default function AppShell(): React.JSX.Element {
           )}
         </div>
 
-        <NavList items={mainNav} />
-        {pluginNav.length > 0 ? (
+        <div
+          className="no-scrollbar min-h-0 flex-1 overflow-y-auto"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          <NavList items={mainNav} />
+          {pluginNav.length > 0 ? (
+            <>
+              <div className="border-sidebar-border mx-3 my-1.5 border-t" />
+              <NavList items={pluginNav} />
+            </>
+          ) : null}
+        </div>
+        {!user ? (
           <>
-            <div className="border-sidebar-border mx-3 my-1.5 border-t" />
-            <NavList items={pluginNav} />
+            {pluginNav.length > 0 ? (
+              <div className="border-sidebar-border mx-3 my-1.5 border-t" />
+            ) : null}
+            <NavList items={footerNav} />
           </>
         ) : null}
-        <div className="flex-1" />
-        <NavList items={footerNav} />
         <UpgradeCtaCard />
         <div
           className="border-sidebar-border mx-3 mt-2 border-t pt-2"

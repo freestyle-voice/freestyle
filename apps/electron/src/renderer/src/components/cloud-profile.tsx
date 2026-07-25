@@ -14,12 +14,15 @@ import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
 import { cn } from "@renderer/lib/utils";
 import {
   ChevronsUpDown,
+  CircleHelp,
   Cloud,
   CreditCard,
   Loader2,
   LogIn,
   LogOut,
+  Settings,
 } from "lucide-react";
+import { useNavigate } from "react-router";
 
 const ROW =
   "flex w-full items-center gap-2.5 rounded-[7px] border border-transparent px-2.5 py-1.5 text-[13px] transition-colors";
@@ -64,6 +67,7 @@ export function UpgradeCtaCard(): React.JSX.Element | null {
 export function CloudProfileButton(): React.JSX.Element {
   const { user, loading, signingIn, signIn, signOut } = useCloudAuth();
   const { isPro, openBillingPortal } = useCloudUsage(!!user);
+  const navigate = useNavigate();
 
   if (loading) {
     return (
@@ -169,6 +173,15 @@ export function CloudProfileButton(): React.JSX.Element {
             <DropdownMenuSeparator />
           </>
         ) : null}
+        <DropdownMenuItem onSelect={() => navigate("/settings")}>
+          <Settings />
+          Settings
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => navigate("/help")}>
+          <CircleHelp />
+          Help
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onSelect={() => void signOut()}>
           <LogOut />
           Sign out

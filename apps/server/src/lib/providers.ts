@@ -10,6 +10,7 @@ const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
   "anthropic",
   "google",
   "mistral",
+  "openrouter",
   "local-llm",
   "freestyle-cloud",
 ]);

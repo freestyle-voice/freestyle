@@ -98,6 +98,7 @@ export const LLM_PROVIDERS = [
   "google",
   "groq",
   "mistral",
+  "openrouter",
   "local-llm",
 ];
 
@@ -127,6 +128,7 @@ export const PROVIDER_KEY_URLS: Record<string, string> = {
   anthropic: "https://console.anthropic.com/settings/keys",
   google: "https://aistudio.google.com/apikey",
   mistral: "https://console.mistral.ai/api-keys",
+  openrouter: "https://openrouter.ai/keys",
 };
 
 export function displayProviderName(

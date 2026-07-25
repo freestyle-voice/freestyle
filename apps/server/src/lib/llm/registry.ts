@@ -131,6 +131,20 @@ const PROVIDERS: LlmProvider[] = [
     },
   },
   {
+    // OpenRouter is an AI gateway exposing an OpenAI-compatible
+    // chat-completions API. Model IDs are stored prefixed as
+    // `openrouter/<vendor>/<model>` and stripped to `<vendor>/<model>` before
+    // being handed to the gateway (see `PROVIDER_PREFIXED_CHAT_MODELS`).
+    providerId: "openrouter",
+    createModel: async (modelId, apiKey) => {
+      const { createOpenAI } = await import("@ai-sdk/openai");
+      return createOpenAI({
+        apiKey,
+        baseURL: "https://openrouter.ai/api/v1",
+      }).chat(modelId);
+    },
+  },
+  {
     providerId: "local-llm",
     local: true,
     createModel: async (modelId) => {

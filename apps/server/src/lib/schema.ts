@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = 15;
+const SCHEMA_VERSION = 14;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -406,26 +406,6 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
       );
     } catch {
       // Older or partially migrated databases may not have these tables yet.
-    }
-  }
-
-  if (currentVersion < 15) {
-    // Advanced mode gates the Models page. New users default to off (Freestyle
-    // Transcribe is auto-configured for them). Existing users who already have
-    // any configured models have effectively been "advanced" all along, so
-    // auto-enable the flag to preserve their Models page and current setup.
-    try {
-      const configured = db
-        .prepare("SELECT 1 FROM model_configs LIMIT 1")
-        .get();
-      if (configured) {
-        db.prepare(
-          `INSERT INTO settings (key, value, updated_at) VALUES ('advanced_mode', 'true', datetime('now'))
-           ON CONFLICT(key) DO UPDATE SET value = 'true', updated_at = datetime('now')`,
-        ).run();
-      }
-    } catch {
-      // Older or partially migrated databases may not have the table yet.
     }
   }
 

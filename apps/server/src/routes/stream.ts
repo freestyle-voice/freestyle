@@ -321,6 +321,7 @@ const stream = new Hono().get(
         model: voice.model_id,
         language: config.language,
         bias: config.bias,
+        appContext: effectiveAppContext(),
         cleanup,
         callbacks: {
           onReady: (readyModel) => {

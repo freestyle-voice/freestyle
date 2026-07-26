@@ -1,5 +1,8 @@
 import WebSocket from "ws";
-import { sonioxContextFromBias } from "../transcribe-bias.js";
+import {
+  sonioxContextFromBias,
+  sonioxGeneralFromAppContext,
+} from "../transcribe-bias.js";
 import type {
   StreamingSessionOptions,
   StreamSession,
@@ -35,6 +38,7 @@ function buildSonioxSessionConfig(opts: {
   model: string;
   language?: string;
   bias?: TranscribeOptions["bias"];
+  appContext?: string | null;
 }): Record<string, unknown> {
   const config: Record<string, unknown> = {
     api_key: opts.apiKey,
@@ -46,8 +50,12 @@ function buildSonioxSessionConfig(opts: {
   };
   const hints = languageHints(opts.language);
   if (hints) config.language_hints = hints;
-  const context = sonioxContextFromBias(opts.bias);
-  if (context) config.context = context;
+  const context: Record<string, unknown> = {
+    ...sonioxContextFromBias(opts.bias),
+  };
+  const general = sonioxGeneralFromAppContext(opts.appContext);
+  if (general) context.general = general;
+  if (Object.keys(context).length > 0) config.context = context;
   return config;
 }
 
@@ -75,6 +83,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
         ws.send(JSON.stringify(config));
         ws.send(Buffer.from(opts.audio));
         ws.send(JSON.stringify({ type: "finalize" }));
+        ws.send("");
       });
 
       ws.on("message", (raw) => {
@@ -104,10 +113,6 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
           else nonFinal.push(token);
         }
 
-        if (nonFinal.length === 0 && finalTokens.length > 0) {
-          finish(renderTokens(finalTokens, []).trim());
-        }
-
         if (msg.finished) {
           finish(renderTokens(finalTokens, nonFinal).trim());
         }
@@ -128,7 +133,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
-    const { apiKey, model, language, bias, callbacks } = opts;
+    const { apiKey, model, language, bias, appContext, callbacks } = opts;
     const short = stripProviderPrefix(model);
 
     const finalTokens: SonioxToken[] = [];
@@ -162,6 +167,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
         model,
         language,
         bias,
+        appContext,
       });
       ws.send(JSON.stringify(config));
       configured = true;

@@ -418,6 +418,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
           ? { language: languageOverride ?? language }
           : {}),
         bias,
+        appContext,
       });
       rawText = sanitizeTranscriptText(result.text);
 

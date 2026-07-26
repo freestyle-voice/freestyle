@@ -211,7 +211,7 @@ export const VOICE_META: Record<
     cost: 0.4,
     note: "Excellent across 99 languages",
   },
-  "soniox/stt-rt-v4": {
+  "soniox/stt-rt-v5": {
     speed: 5,
     quality: 5,
     cost: 0.12,

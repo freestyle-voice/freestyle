@@ -41,6 +41,7 @@ export interface TranscribeOptions {
   language?: string;
   /** ASR-only vocabulary bias for the first recognition pass. */
   bias?: AsrVocabularyBias | null;
+  appContext?: string | null;
 }
 
 export interface TranscribeResult {
@@ -93,6 +94,7 @@ export interface StreamingSessionOptions {
   language?: string;
   /** ASR-only vocabulary bias for the first recognition pass. */
   bias?: AsrVocabularyBias | null;
+  appContext?: string | null;
   /**
    * Cleanup preferences for server-side post-processing providers. Mirrors the
    * batch `/v2/transcribe` payload so streaming and batch behave identically.

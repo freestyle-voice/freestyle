@@ -75,7 +75,8 @@ export class FreestyleCloudTranscriptionProvider
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
-    const { apiKey, model, language, cleanup, callbacks, bias } = opts;
+    const { apiKey, model, language, cleanup, callbacks, bias, appContext } =
+      opts;
 
     if (!apiKey) {
       throw new FreestyleCloudAuthError();
@@ -103,6 +104,7 @@ export class FreestyleCloudTranscriptionProvider
       language: language || undefined,
       skipPostProcess: cleanup?.skipPostProcess ?? false,
       ...(vocabulary ? { vocabulary } : {}),
+      ...(currentContext ? { context: currentContext } : {}),
       ...(cleanup && !cleanup.skipPostProcess
         ? {
             intensity: cleanup.intensity,
@@ -122,8 +124,8 @@ export class FreestyleCloudTranscriptionProvider
     let configured = false;
     let closed = false;
     // Track context and audio duration so we can forward them with commit.
-    // The stream route sets these via context messages and the commit payload.
-    let currentContext: string | null = null;
+    // The stream route updates these via context messages and the commit payload.
+    let currentContext: string | null = appContext ?? null;
     let currentAudioDurationMs = 0;
 
     ws.on("open", () => {

@@ -170,8 +170,8 @@ const BUILTIN_VOICE_MODELS: AvailableModel[] = [
   {
     provider_id: "soniox",
     provider_name: "Soniox",
-    model_id: "soniox/stt-rt-v4",
-    model_name: "Soniox Realtime v4",
+    model_id: "soniox/stt-rt-v5",
+    model_name: "Soniox Realtime v5",
     family: "soniox",
     type: "voice",
   },

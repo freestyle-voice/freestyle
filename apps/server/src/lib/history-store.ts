@@ -1,5 +1,6 @@
 import { parseRetentionDays } from "@freestyle-voice/validations";
 import { getDb, readSetting } from "./db.js";
+import { countFixes } from "./fixes.js";
 import { capture, captureException } from "./posthog.js";
 
 export const HISTORY_PAUSED_SETTING_KEY = "history_paused";
@@ -103,8 +104,8 @@ export function saveProcessedHistory(entry: ProcessedHistoryEntry): boolean {
   getDb()
     .prepare(
       `INSERT INTO transcription_history
-         (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (raw_text, cleaned_text, voice_provider, voice_model, llm_provider, llm_model, duration_ms, audio_duration_ms, input_tokens, output_tokens, cost_usd, fixes_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       entry.rawText,
@@ -118,6 +119,7 @@ export function saveProcessedHistory(entry: ProcessedHistoryEntry): boolean {
       entry.inputTokens,
       entry.outputTokens,
       entry.costUsd,
+      countFixes(entry.rawText, entry.cleanedText),
     );
 
   return true;

@@ -25,9 +25,9 @@ import {
   CircleHelp,
   Cpu,
   FileText,
-  Languages,
   Puzzle,
   Settings,
+  Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -55,16 +55,16 @@ const STATIC_NAV: {
 }[] = [
   { to: "/today", icon: BookOpen, shortcut: "1", labelKey: "shell.nav.today" },
   {
-    to: "/settings/dictionary",
+    to: "/settings/vocabulary",
     icon: Book,
     shortcut: "2",
-    labelKey: "shell.nav.dictionary",
+    labelKey: "shell.nav.vocabulary",
   },
   {
-    to: "/settings/vocabulary",
-    icon: Languages,
+    to: "/settings/dictionary",
+    icon: Zap,
     shortcut: "3",
-    labelKey: "shell.nav.vocabulary",
+    labelKey: "shell.nav.dictionary",
   },
   {
     to: "/settings/tone",

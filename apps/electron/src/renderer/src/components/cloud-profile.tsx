@@ -119,7 +119,7 @@ export function CloudProfileButton(): React.JSX.Element {
           type="button"
           className={cn(
             ROW,
-            "text-foreground hover:bg-card/50 data-[state=open]:bg-card data-[state=open]:border-border",
+            "text-foreground hover:bg-card/50 cursor-pointer data-[state=open]:bg-card data-[state=open]:border-border",
           )}
         >
           {user.image ? (

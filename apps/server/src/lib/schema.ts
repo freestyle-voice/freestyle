@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
+import { countFixes } from "./fixes.js";
 
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 16;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -406,6 +407,57 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
       );
     } catch {
       // Older or partially migrated databases may not have these tables yet.
+    }
+  }
+
+  if (currentVersion < 15) {
+    // Persist how many words post-processing changed per session so the stats
+    // sidebar can aggregate "AI fixes" in SQL. Backfill existing rows from the
+    // stored raw/cleaned pair; rows without cleanup stay at 0.
+    try {
+      db.exec(
+        "ALTER TABLE transcription_history ADD COLUMN fixes_count INTEGER NOT NULL DEFAULT 0",
+      );
+    } catch {
+      // Column may already exist
+    }
+    const rows = db
+      .prepare(
+        "SELECT id, raw_text, cleaned_text FROM transcription_history WHERE cleaned_text IS NOT NULL",
+      )
+      .all() as { id: number; raw_text: string; cleaned_text: string }[];
+    const update = db.prepare(
+      "UPDATE transcription_history SET fixes_count = ? WHERE id = ?",
+    );
+    for (const row of rows) {
+      update.run(countFixes(row.raw_text, row.cleaned_text), row.id);
+    }
+  }
+
+  if (currentVersion < 16) {
+    // Repair pass for v15: a dev-server restart mid-edit could stamp the DB
+    // as v15 without the column actually existing. Re-ensure the column and
+    // recompute the backfill; both steps are idempotent.
+    const hasColumn = (
+      db.prepare("PRAGMA table_info(transcription_history)").all() as {
+        name: string;
+      }[]
+    ).some((col) => col.name === "fixes_count");
+    if (!hasColumn) {
+      db.exec(
+        "ALTER TABLE transcription_history ADD COLUMN fixes_count INTEGER NOT NULL DEFAULT 0",
+      );
+    }
+    const rows = db
+      .prepare(
+        "SELECT id, raw_text, cleaned_text FROM transcription_history WHERE cleaned_text IS NOT NULL",
+      )
+      .all() as { id: number; raw_text: string; cleaned_text: string }[];
+    const update = db.prepare(
+      "UPDATE transcription_history SET fixes_count = ? WHERE id = ?",
+    );
+    for (const row of rows) {
+      update.run(countFixes(row.raw_text, row.cleaned_text), row.id);
     }
   }
 

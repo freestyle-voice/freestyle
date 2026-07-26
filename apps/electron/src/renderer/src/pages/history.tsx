@@ -1,21 +1,24 @@
 import {
   DEFAULT_HISTORY_FILTERS,
   type HistoryFiltersSetting,
-  type HistoryPreset,
   parseHistoryFilters,
 } from "@freestyle-voice/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
-import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@renderer/components/ui/dialog";
 import { Label } from "@renderer/components/ui/label";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@renderer/components/ui/popover";
-import { Progress } from "@renderer/components/ui/progress";
-import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import { Switch } from "@renderer/components/ui/switch";
 import {
   Tooltip,
@@ -36,17 +39,15 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
-  BarChart3,
   CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
   Clock,
   Copy,
-  Eraser,
   FileDiff,
-  Filter,
   FlaskConical,
+  GraduationCap,
   PanelRight,
   Search,
   Sparkles,
@@ -82,10 +83,19 @@ interface Stats {
   total_output_tokens: number;
   total_cost_usd: number;
   avg_duration_ms: number;
+  total_audio_ms: number;
+  total_fixes: number;
   total_words: number;
   today_sessions: number;
   today_cost: number;
   unfiltered_total_sessions: number;
+}
+
+/** One local day of usage from GET /api/history/daily, feeding the heatmap. */
+interface DayActivity {
+  day: string;
+  words: number;
+  sessions: number;
 }
 
 function formatClock(iso: string): string {
@@ -162,60 +172,19 @@ function getDateGroup(iso: string): string {
 
 const PAGE_SIZE = 20;
 const DEV_HISTORY_SEED_ENABLED = import.meta.env.DEV;
-
-// Which tab the right-hand panel shows: aggregate stats or the filter controls.
-type RightTab = "stats" | "filters";
-const isRightTab = (v: string): v is RightTab =>
-  v === "stats" || v === "filters";
-
-function wordCount(text: string): number {
-  const trimmed = text.trim();
-  return trimmed ? trimmed.split(/\s+/).length : 0;
-}
-
-/** 24-bin histogram of words dictated per local hour of day. */
-function buildHourly(entries: HistoryEntry[]): number[] {
-  const bins = new Array(24).fill(0);
-  for (const e of entries) {
-    const hour = new Date(`${e.created_at}Z`).getHours();
-    bins[hour] += wordCount(e.cleaned_text || e.raw_text);
-  }
-  return bins;
-}
-
-interface UsageBucket {
-  label: string;
-  pct: number;
-}
-
-/** Top voice models by usage share, capped at 4 + an "other" rollup. */
-function buildModelBuckets(entries: HistoryEntry[]): UsageBucket[] {
-  const counts = new Map<string, number>();
-  for (const e of entries) {
-    const key = shortModel(e.voice_model) || e.voice_provider || "unknown";
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  const total = entries.length || 1;
-  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  const top = sorted.slice(0, 4);
-  const rest = sorted.slice(4).reduce((sum, [, n]) => sum + n, 0);
-  const buckets = top.map(([label, n]) => ({
-    label,
-    pct: Math.round((n / total) * 100),
-  }));
-  if (rest > 0) {
-    buckets.push({ label: "other", pct: Math.round((rest / total) * 100) });
-  }
-  return buckets;
-}
+const STATS_WIDTH_MIN = 260;
+const STATS_WIDTH_MAX = 480;
 
 export default function HistoryPage(): React.JSX.Element {
   const { t } = useTranslation();
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
+  // The filter dialog is transient UI, not persisted state.
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // The intro hero (dictation tutorial) can be dismissed for good. Persisted in
-  // localStorage so it stays hidden across navigation and app restarts.
+  // The intro hero (dictation tutorial) can be dismissed with its X and
+  // brought back from the filter dialog's Tutorial toggle. Persisted in
+  // localStorage so the choice survives navigation and app restarts.
   const [heroDismissed, setHeroDismissed] = usePersistentState<"0" | "1">(
     "today.heroDismissed",
     "0",
@@ -225,13 +194,56 @@ export default function HistoryPage(): React.JSX.Element {
     () => setHeroDismissed("1"),
     [setHeroDismissed],
   );
+  const setShowTutorial = useCallback(
+    (value: boolean) => setHeroDismissed(value ? "0" : "1"),
+    [setHeroDismissed],
+  );
 
-  // Which tab the right panel shows. UI-only preference, persisted like the
-  // page's other view state.
-  const [rightTab, setRightTab] = usePersistentState<RightTab>(
-    "today.rightTab",
-    "stats",
-    isRightTab,
+  // Stats sidebar visibility and width. Open by default, collapsible, and
+  // resizable by dragging its left edge; both persisted across sessions.
+  const [statsOpenRaw, setStatsOpenRaw] = usePersistentState<"0" | "1">(
+    "today.statsOpen",
+    "1",
+    (v): v is "0" | "1" => v === "0" || v === "1",
+  );
+  const statsOpen = statsOpenRaw === "1";
+  const openStats = useCallback(() => setStatsOpenRaw("1"), [setStatsOpenRaw]);
+  const closeStats = useCallback(() => setStatsOpenRaw("0"), [setStatsOpenRaw]);
+  const [statsWidthRaw, setStatsWidthRaw] = usePersistentState<string>(
+    "today.statsWidth",
+    "320",
+    (v): v is string => /^\d+$/.test(v),
+  );
+  const statsWidth = Math.min(
+    STATS_WIDTH_MAX,
+    Math.max(STATS_WIDTH_MIN, Number(statsWidthRaw) || 320),
+  );
+  const setStatsWidth = useCallback(
+    (w: number) =>
+      setStatsWidthRaw(
+        String(Math.min(STATS_WIDTH_MAX, Math.max(STATS_WIDTH_MIN, w))),
+      ),
+    [setStatsWidthRaw],
+  );
+  // The panel sits flush against the window's right edge, so its width is
+  // simply the distance from the pointer to that edge, clamped.
+  const onResizeStart = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const el = e.currentTarget;
+      el.setPointerCapture(e.pointerId);
+      const onMove = (ev: PointerEvent): void => {
+        setStatsWidth(Math.round(window.innerWidth - ev.clientX));
+      };
+      const onUp = (ev: PointerEvent): void => {
+        el.releasePointerCapture(ev.pointerId);
+        el.removeEventListener("pointermove", onMove);
+        el.removeEventListener("pointerup", onUp);
+      };
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onUp);
+    },
+    [setStatsWidth],
   );
 
   // ── Persisted filter + view state ──────────────────────────────────────
@@ -250,7 +262,6 @@ export default function HistoryPage(): React.JSX.Element {
     preset: activePreset,
     customStartDate,
     customEndDate,
-    filterOpen,
     diffMode,
     showAiEdits,
     nerdMode,
@@ -263,96 +274,31 @@ export default function HistoryPage(): React.JSX.Element {
     [setFilters],
   );
 
-  // Calculate preset dates dynamically on every render
   const todayStr = getLocalDateString(new Date());
-  const start7 = new Date();
-  start7.setDate(start7.getDate() - 7);
-  const start7Str = getLocalDateString(start7);
-  const start30 = new Date();
-  start30.setDate(start30.getDate() - 30);
-  const start30Str = getLocalDateString(start30);
 
-  let startDate = "";
-  let endDate = "";
-  if (activePreset === "today") {
-    startDate = todayStr;
-    endDate = todayStr;
-  } else if (activePreset === "weekly") {
-    startDate = start7Str;
-    endDate = todayStr;
-  } else if (activePreset === "monthly") {
-    startDate = start30Str;
-    endDate = todayStr;
-  } else if (activePreset === "custom") {
-    startDate = customStartDate;
-    endDate = customEndDate;
-  }
+  // Presets are gone: the only date filter is an explicit custom range.
+  // Legacy persisted presets (today/weekly/monthly) are treated as all-time.
+  const hasCustomRange =
+    activePreset === "custom" && !!(customStartDate || customEndDate);
+  const startDate = hasCustomRange ? customStartDate : "";
+  const endDate = hasCustomRange ? customEndDate : "";
 
-  const getTimeLabel = (): string => {
-    if (activePreset === "weekly") return t("history.timeLabelPast7");
-    if (activePreset === "today") return t("history.timeLabelToday");
-    if (activePreset === "monthly") return t("history.timeLabelPast30");
-    if (activePreset === "all-time") return t("history.timeLabelAllTime");
-    return t("history.timeLabelFiltered");
-  };
-  const timeLabel = getTimeLabel();
+  const timeLabel = hasCustomRange
+    ? t("history.timeLabelFiltered")
+    : t("history.timeLabelAllTime");
 
-  const filterCount = activePreset !== "all-time" ? 1 : 0;
-
-  // Whether the current filter + view state already matches the page defaults,
-  // so the reset button can be disabled when there's nothing to clear.
-  // `filterOpen` is excluded — it's the panel's own visibility, not a filter.
-  const isDefaultFilters =
-    activePreset === DEFAULT_HISTORY_FILTERS.preset &&
-    customStartDate === DEFAULT_HISTORY_FILTERS.customStartDate &&
-    customEndDate === DEFAULT_HISTORY_FILTERS.customEndDate &&
-    diffMode === DEFAULT_HISTORY_FILTERS.diffMode &&
-    showAiEdits === DEFAULT_HISTORY_FILTERS.showAiEdits &&
-    nerdMode === DEFAULT_HISTORY_FILTERS.nerdMode;
-
-  const applyPreset = useCallback(
-    (preset: HistoryPreset): void => {
-      patchFilters({ preset });
-      setPage(0);
-    },
-    [patchFilters],
-  );
+  const filterCount = hasCustomRange ? 1 : 0;
 
   const selectDateRange = useCallback(
     (range: DateRange | undefined): void => {
       patchFilters({
-        preset: "custom",
+        preset: range ? "custom" : "all-time",
         customStartDate: range?.from ? getLocalDateString(range.from) : "",
         customEndDate: range?.to ? getLocalDateString(range.to) : "",
       });
       setPage(0);
     },
     [patchFilters],
-  );
-
-  // Restore the page's initial defaults (not "all time"). Leaves the panel's
-  // open/closed state untouched so the panel doesn't collapse out from under
-  // the click.
-  const resetFilters = useCallback((): void => {
-    setFilters((prev) => ({
-      ...DEFAULT_HISTORY_FILTERS,
-      filterOpen: prev.filterOpen,
-    }));
-    setPage(0);
-  }, [setFilters]);
-
-  const closeFilter = useCallback(
-    () => patchFilters({ filterOpen: false }),
-    [patchFilters],
-  );
-
-  // Open the right panel to a specific tab.
-  const openPanel = useCallback(
-    (tab: RightTab) => {
-      setRightTab(tab);
-      patchFilters({ filterOpen: true });
-    },
-    [patchFilters, setRightTab],
   );
 
   // Stable setters for the filter panel's view toggles (memoized child).
@@ -442,6 +388,8 @@ export default function HistoryPage(): React.JSX.Element {
         total_output_tokens: 12,
         total_cost_usd: 0,
         avg_duration_ms: 640,
+        total_audio_ms: 3200,
+        total_fixes: 3,
         total_words: 12,
         today_sessions: 1,
         today_cost: 0,
@@ -461,6 +409,19 @@ export default function HistoryPage(): React.JSX.Element {
     },
   });
   const historyPaused = historyPausedData ?? false;
+
+  // Per-day usage for the heatmap. Fixed lookback window on the server, so it
+  // ignores the list filters; shares the "history" key prefix so a completed
+  // transcription invalidates it along with the feed.
+  const { data: dailyData } = useQuery({
+    queryKey: ["history", "daily"],
+    queryFn: async () => {
+      const res = await getClient().api.history.daily.$get();
+      if (!res.ok) return [] as DayActivity[];
+      const data = (await res.json()) as { days: DayActivity[] };
+      return data.days;
+    },
+  });
 
   // Refetch when the pill reports a completed transcription.
   useEffect(() => {
@@ -519,19 +480,32 @@ export default function HistoryPage(): React.JSX.Element {
     return out;
   }, [entries]);
 
-  // Derived visualisations for the Stats tab, computed from the loaded page of
-  // entries (the histogram + model mix reflect what's currently in view).
-  const hourly = useMemo(() => buildHourly(entries), [entries]);
-  const buckets = useMemo(() => buildModelBuckets(entries), [entries]);
-  const avgWpm = useMemo(() => {
-    let words = 0;
-    let audioMs = 0;
-    for (const e of entries) {
-      words += wordCount(e.cleaned_text || e.raw_text);
-      audioMs += e.audio_duration_ms;
+  // Overall speaking speed for the active date range, from the server
+  // aggregates (words over spoken-audio minutes).
+  const avgWpm =
+    stats && stats.total_audio_ms > 0
+      ? Math.round(stats.total_words / (stats.total_audio_ms / 60000))
+      : 0;
+
+  // Heatmap series. With the dev seed active there's no real history, so
+  // synthesize a deterministic few months to make the heatmap reviewable.
+  const daily = useMemo<DayActivity[]>(() => {
+    if (!hasDevSeedEntry) return dailyData ?? [];
+    const out: DayActivity[] = [];
+    const d = new Date();
+    for (let i = 0; i < 112; i++) {
+      const words = (i * 37) % 7 === 0 ? 0 : 40 + ((i * 53) % 360);
+      if (words > 0) {
+        out.push({
+          day: getLocalDateString(d),
+          words,
+          sessions: 1 + (i % 3),
+        });
+      }
+      d.setDate(d.getDate() - 1);
     }
-    return audioMs > 0 ? Math.round(words / (audioMs / 60000)) : 0;
-  }, [entries]);
+    return out;
+  }, [dailyData, hasDevSeedEntry]);
 
   if (loading) {
     return (
@@ -577,38 +551,33 @@ export default function HistoryPage(): React.JSX.Element {
           }
           className="placeholder:text-muted-foreground/80 text-foreground flex-1 bg-transparent text-[13px] outline-none"
         />
-        <span className="mono text-muted-foreground text-[10px]">
+        <span className="text-muted-foreground text-[10px]">
           {SEARCH_SHORTCUT_LABEL}
         </span>
       </div>
-      {!filterOpen && (
-        <>
-          <Button
-            variant="outline"
-            onClick={() => openPanel("stats")}
-            className="text-muted-foreground h-auto self-stretch"
-          >
-            <BarChart3 data-icon="inline-start" />
-            <span>{t("history.statsBtn")}</span>
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => openPanel("filters")}
-            className={cn(
-              "text-muted-foreground h-auto self-stretch",
-              filterCount > 0 && "border-primary text-primary bg-primary/5",
-            )}
-            aria-expanded={filterOpen}
-          >
-            <Filter data-icon="inline-start" />
-            <span>{t("history.filtersBtn")}</span>
-            {filterCount > 0 && (
-              <Badge className="h-4 min-w-4 px-1 text-[9px] font-bold">
-                {filterCount}
-              </Badge>
-            )}
-          </Button>
-        </>
+      <Button
+        variant="link"
+        onClick={() => setFiltersOpen(true)}
+        className={cn(
+          "h-auto self-center px-2 text-[13px] underline",
+          filterCount > 0
+            ? "text-primary"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        {t("history.filtersBtn")}
+      </Button>
+      {!statsOpen && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="self-center"
+          onClick={openStats}
+          aria-label={t("history.openStats")}
+          title={t("history.openStats")}
+        >
+          <PanelRight />
+        </Button>
       )}
     </div>
   );
@@ -617,7 +586,7 @@ export default function HistoryPage(): React.JSX.Element {
     entries.length === 0 ? (
       <NoSearchResults
         hasSearch={!!search}
-        hasDates={activePreset !== "all-time"}
+        hasDates={hasCustomRange}
         onClear={() => {
           setSearch("");
           patchFilters({
@@ -658,7 +627,7 @@ export default function HistoryPage(): React.JSX.Element {
 
   const pagination = total > PAGE_SIZE && (
     <div className="border-border mt-4 flex items-center justify-between border-t pt-4">
-      <span className="mono text-muted-foreground text-[11px] uppercase tracking-[0.12em]">
+      <span className="text-muted-foreground text-[11px]">
         {total}{" "}
         {total === 1
           ? t("history.sessionSingular")
@@ -674,7 +643,7 @@ export default function HistoryPage(): React.JSX.Element {
         >
           <ChevronLeft />
         </Button>
-        <span className="mono text-muted-foreground px-2 text-[11px]">
+        <span className="text-muted-foreground px-2 text-[11px]">
           {page + 1} / {totalPages}
         </span>
         <Button
@@ -690,82 +659,83 @@ export default function HistoryPage(): React.JSX.Element {
     </div>
   );
 
-  const rightPanel = filterOpen && (
-    <RightPanel
-      tab={rightTab}
-      onTabChange={setRightTab}
-      stats={stats}
-      timeLabel={timeLabel}
-      nerdMode={nerdMode}
-      buckets={buckets}
-      hourly={hourly}
-      avgWpm={avgWpm}
-      activePreset={activePreset}
+  const filtersModal = (
+    <FiltersModal
+      open={filtersOpen}
+      onOpenChange={setFiltersOpen}
       startDate={startDate}
       endDate={endDate}
       diffMode={diffMode}
       showAiEdits={showAiEdits}
-      onPreset={applyPreset}
+      nerdMode={nerdMode}
+      showTutorial={heroDismissed === "0"}
       onSelectRange={selectDateRange}
-      onReset={resetFilters}
-      resetDisabled={isDefaultFilters}
-      onClose={closeFilter}
       onDiffModeChange={setDiffMode}
       onShowAiEditsChange={setShowAiEdits}
       onNerdModeChange={setNerdMode}
+      onShowTutorialChange={setShowTutorial}
     />
   );
 
-  // When the panel is open, split the page into a scrollable feed column and a
-  // fixed, full-height right panel. The DragSpacer stays at the top; the feed
-  // column owns its own scroll so the panel never scrolls out of view.
-  if (filterOpen && !isGenuineEmpty) {
+  if (isGenuineEmpty) {
     return (
       <div className="flex h-full min-h-0 flex-col">
         <DragSpacer />
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
-          <div
-            className="responsive-page-scroll min-w-0 overflow-auto pt-5"
-            style={
-              {
-                scrollbarWidth: "none",
-                paddingRight: "1.25rem",
-              } as React.CSSProperties
-            }
-          >
-            {historyPaused && <HistoryPausedNotice />}
-            {hero}
-            {searchRow}
-            {feed}
-            {pagination}
-          </div>
-          {rightPanel}
+        <div
+          className="responsive-page-scroll flex-1 overflow-auto pt-5"
+          style={{ scrollbarWidth: "none" } as React.CSSProperties}
+        >
+          {historyPaused && <HistoryPausedNotice />}
+          {hero}
+          <EmptyState />
         </div>
       </div>
     );
   }
 
+  // Split layout: a scrollable feed column beside the collapsible, resizable
+  // stats panel. The DragSpacer stays at the top; the feed column owns its own
+  // scroll so the panel never scrolls out of view.
   return (
     <div className="flex h-full min-h-0 flex-col">
       <DragSpacer />
       <div
-        className="responsive-page-scroll flex-1 overflow-auto pt-5"
-        style={{ scrollbarWidth: "none" } as React.CSSProperties}
+        className="grid min-h-0 flex-1"
+        style={{
+          gridTemplateColumns: statsOpen
+            ? `minmax(0,1fr) ${statsWidth}px`
+            : "minmax(0,1fr)",
+        }}
       >
-        {historyPaused && <HistoryPausedNotice />}
-
-        {hero}
-
-        {isGenuineEmpty ? (
-          <EmptyState />
-        ) : (
-          <div className="min-w-0">
-            {searchRow}
-            {feed}
-            {pagination}
-          </div>
+        <div
+          className="responsive-page-scroll min-w-0 overflow-auto pt-5"
+          style={
+            {
+              scrollbarWidth: "none",
+              paddingRight: statsOpen ? "1.25rem" : undefined,
+            } as React.CSSProperties
+          }
+        >
+          {historyPaused && <HistoryPausedNotice />}
+          {hero}
+          {searchRow}
+          {feed}
+          {pagination}
+        </div>
+        {statsOpen && (
+          <StatsPanel
+            stats={stats}
+            timeLabel={timeLabel}
+            daily={daily}
+            avgWpm={avgWpm}
+            width={statsWidth}
+            onClose={closeStats}
+            onResizeStart={onResizeStart}
+            onWidthChange={setStatsWidth}
+          />
         )}
       </div>
+      {filtersModal}
     </div>
   );
 }
@@ -774,63 +744,110 @@ export default function HistoryPage(): React.JSX.Element {
 // Subcomponents
 // ---------------------------------------------------------------------------
 
-const PRESETS: { value: HistoryPreset; labelKey: string }[] = [
-  { value: "today", labelKey: "history.presetToday" },
-  { value: "weekly", labelKey: "history.presetLast7" },
-  { value: "monthly", labelKey: "history.presetLast30" },
-  { value: "all-time", labelKey: "history.presetAllTime" },
-];
-
 /**
- * The right-hand panel. Hosts two tabs — aggregate Stats and the date/view
- * Filters — with a shared header (tab switcher + close button). Memoized so it
- * doesn't re-render on unrelated page state (search typing, pagination). All
- * handlers are stabilized by the parent with `useCallback`.
+ * The right-hand stats panel: collapsible via its header button and resizable
+ * by dragging its left edge. Memoized so it doesn't re-render on unrelated
+ * page state (search typing, pagination).
  */
-const RightPanel = memo(function RightPanel({
-  tab,
-  onTabChange,
+const StatsPanel = memo(function StatsPanel({
   stats,
   timeLabel,
-  buckets,
-  hourly,
+  daily,
   avgWpm,
-  activePreset,
+  width,
+  onClose,
+  onResizeStart,
+  onWidthChange,
+}: {
+  stats: Stats | null;
+  timeLabel: string;
+  daily: DayActivity[];
+  avgWpm: number;
+  width: number;
+  onClose: () => void;
+  onResizeStart: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onWidthChange: (width: number) => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  return (
+    // Fills the full height of its grid cell and stays fixed while the feed
+    // column scrolls independently beside it.
+    <div className="border-border/70 relative min-h-0 border-l">
+      {/* Invisible drag handle straddling the panel's left border. Focusable
+          window-splitter: arrow keys nudge the width for keyboard users. */}
+      {/* biome-ignore lint/a11y/useSemanticElements: an <hr> can't act as a focusable, draggable window splitter */}
+      <div
+        role="separator"
+        tabIndex={0}
+        aria-orientation="vertical"
+        aria-label={t("history.resizeStats")}
+        aria-valuenow={width}
+        aria-valuemin={STATS_WIDTH_MIN}
+        aria-valuemax={STATS_WIDTH_MAX}
+        onPointerDown={onResizeStart}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft") {
+            e.preventDefault();
+            onWidthChange(width + 16);
+          } else if (e.key === "ArrowRight") {
+            e.preventDefault();
+            onWidthChange(width - 16);
+          }
+        }}
+        className="hover:bg-primary/25 active:bg-primary/40 focus-visible:bg-primary/25 absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize transition-colors outline-none"
+      />
+      <aside className="flex h-full min-h-0 flex-col overflow-hidden px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)]">
+        <div className="-mr-1.5 flex justify-end">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={onClose}
+            aria-label={t("history.closeStats")}
+            title={t("history.closeStats")}
+          >
+            <PanelRight />
+          </Button>
+        </div>
+        <StatsTab
+          stats={stats}
+          timeLabel={timeLabel}
+          daily={daily}
+          avgWpm={avgWpm}
+        />
+      </aside>
+    </div>
+  );
+});
+
+/** Date-range + view options, presented as a modal dialog. */
+const FiltersModal = memo(function FiltersModal({
+  open,
+  onOpenChange,
   startDate,
   endDate,
   diffMode,
   showAiEdits,
   nerdMode,
-  onPreset,
+  showTutorial,
   onSelectRange,
-  onReset,
-  resetDisabled,
-  onClose,
   onDiffModeChange,
   onShowAiEditsChange,
   onNerdModeChange,
+  onShowTutorialChange,
 }: {
-  tab: RightTab;
-  onTabChange: (tab: RightTab) => void;
-  stats: Stats | null;
-  timeLabel: string;
-  buckets: UsageBucket[];
-  hourly: number[];
-  avgWpm: number;
-  activePreset: HistoryPreset;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   startDate: string;
   endDate: string;
   diffMode: boolean;
   showAiEdits: boolean;
   nerdMode: boolean;
-  onPreset: (preset: HistoryPreset) => void;
+  showTutorial: boolean;
   onSelectRange: (range: DateRange | undefined) => void;
-  onReset: () => void;
-  resetDisabled: boolean;
-  onClose: () => void;
   onDiffModeChange: (value: boolean) => void;
   onShowAiEditsChange: (value: boolean) => void;
   onNerdModeChange: (value: boolean) => void;
+  onShowTutorialChange: (value: boolean) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const selectedDateRange: DateRange = {
@@ -839,199 +856,147 @@ const RightPanel = memo(function RightPanel({
   };
 
   return (
-    // Fills the full height of its grid cell and stays fixed while the feed
-    // column scrolls independently beside it.
-    <div className="border-border/70 min-h-0 border-l">
-      <aside className="flex h-full min-h-0 flex-col overflow-hidden px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)] animate-in fade-in-0 slide-in-from-right-3 duration-200">
-        <div className="border-border/70 flex h-10 items-center gap-1.5 border-b pb-3">
-          <div className="min-w-0 flex-1">
-            <SegmentedControl
-              size="sm"
-              value={tab}
-              onValueChange={(v) => onTabChange(v as RightTab)}
-              options={[
-                {
-                  value: "stats",
-                  label: t("history.statsTab"),
-                  icon: BarChart3,
-                },
-                {
-                  value: "filters",
-                  label: t("history.filtersTab"),
-                  icon: Filter,
-                },
-              ]}
-            />
-          </div>
-          {tab === "filters" && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={onReset}
-              disabled={resetDisabled}
-              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-              aria-label={t("history.reset")}
-              title={t("history.reset")}
-            >
-              <Eraser />
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onClose}
-            aria-label={t("history.closePanel")}
-            title={t("history.closePanel")}
-          >
-            <PanelRight />
-          </Button>
-        </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>{t("history.filterTitle")}</DialogTitle>
+        </DialogHeader>
 
-        {tab === "stats" ? (
-          <StatsTab
-            stats={stats}
-            timeLabel={timeLabel}
-            nerdMode={nerdMode}
-            buckets={buckets}
-            hourly={hourly}
-            avgWpm={avgWpm}
-          />
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto pt-4 pr-1">
-            {/* Date range */}
-            <div className="flex flex-col gap-2.5">
-              <Label className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
+        <div className="flex flex-col gap-5">
+          {/* Date range */}
+          <div className="flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <Label className="text-muted-foreground text-[12px]">
                 {t("history.dateRangeLabel")}
               </Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="border-border/75 bg-card/45 hover:bg-card/60 h-9 w-full justify-start gap-2 px-3 text-left text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
-                  >
-                    <CalendarDays data-icon="inline-start" />
-                    <span className="truncate">
-                      {formatRangeLabel(startDate, endDate)}
-                    </span>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="end"
-                  className="w-[320px] translate-x-2 overflow-visible p-2"
-                  collisionPadding={8}
-                  sideOffset={6}
+              {(startDate || endDate) && (
+                <Button
+                  variant="link"
+                  size="xs"
+                  className="text-muted-foreground hover:text-foreground h-auto p-0 text-[11px] underline"
+                  onClick={() => onSelectRange(undefined)}
                 >
-                  <DayPicker
-                    mode="range"
-                    numberOfMonths={2}
-                    selected={selectedDateRange}
-                    onSelect={onSelectRange}
-                    defaultMonth={
-                      selectedDateRange.from ?? selectedDateRange.to
-                    }
-                    classNames={{
-                      root: "p-0",
-                      months: "flex gap-3",
-                      month: "flex flex-col gap-2",
-                      month_caption: "flex h-6 items-center justify-center",
-                      caption_label: "text-[12px] font-medium text-foreground",
-                      nav: "absolute inset-x-2 top-2 flex items-center justify-between",
-                      button_previous:
-                        "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
-                      button_next:
-                        "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
-                      chevron: "size-3.5 fill-current",
-                      month_grid: "w-full border-collapse border-spacing-0",
-                      weekdays: "flex",
-                      weekday:
-                        "text-muted-foreground flex size-5 items-center justify-center text-[9px] font-normal",
-                      week: "flex w-full",
-                      day: "relative flex size-5 items-center justify-center p-0 text-center text-[10px]",
-                      day_button:
-                        "relative z-10 inline-flex size-5 items-center justify-center rounded transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                      outside: "text-muted-foreground/45",
-                      today:
-                        "after:bg-primary after:absolute after:bottom-1 after:left-1/2 after:z-20 after:size-1 after:-translate-x-1/2 after:rounded-full",
-                      selected:
-                        "text-primary-foreground after:!hidden [&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary",
-                      range_start:
-                        "bg-primary/15 rounded-l-md [&>button]:rounded-l [&>button]:rounded-r-none",
-                      range_middle:
-                        "bg-primary/15 [&>button]:rounded-none [&>button]:!bg-transparent [&>button]:!text-foreground [&>button]:hover:!bg-transparent",
-                      range_end:
-                        "bg-primary/15 rounded-r-md [&>button]:rounded-r [&>button]:rounded-l-none",
-                    }}
-                  />
-                </PopoverContent>
-              </Popover>
+                  {t("history.clearDates")}
+                </Button>
+              )}
             </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="border-border/75 bg-card/45 hover:bg-card/60 h-9 w-full justify-start gap-2 px-3 text-left text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
+                >
+                  <CalendarDays data-icon="inline-start" />
+                  <span className="truncate">
+                    {formatRangeLabel(startDate, endDate)}
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                className="w-[320px] overflow-visible p-2"
+                collisionPadding={8}
+                sideOffset={6}
+              >
+                <DayPicker
+                  mode="range"
+                  numberOfMonths={2}
+                  selected={selectedDateRange}
+                  onSelect={onSelectRange}
+                  defaultMonth={selectedDateRange.from ?? selectedDateRange.to}
+                  classNames={{
+                    root: "p-0",
+                    months: "flex gap-3",
+                    month: "flex flex-col gap-2",
+                    month_caption: "flex h-6 items-center justify-center",
+                    caption_label: "text-[12px] font-medium text-foreground",
+                    nav: "absolute inset-x-2 top-2 flex items-center justify-between",
+                    button_previous:
+                      "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
+                    button_next:
+                      "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
+                    chevron: "size-3.5 fill-current",
+                    month_grid: "w-full border-collapse border-spacing-0",
+                    weekdays: "flex",
+                    weekday:
+                      "text-muted-foreground flex size-5 items-center justify-center text-[9px] font-normal",
+                    week: "flex w-full",
+                    day: "relative flex size-5 items-center justify-center p-0 text-center text-[10px]",
+                    day_button:
+                      "relative z-10 inline-flex size-5 items-center justify-center rounded transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                    outside: "text-muted-foreground/45",
+                    today:
+                      "after:bg-primary after:absolute after:bottom-1 after:left-1/2 after:z-20 after:size-1 after:-translate-x-1/2 after:rounded-full",
+                    selected:
+                      "text-primary-foreground after:!hidden [&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary",
+                    range_start:
+                      "bg-primary/15 rounded-l-md [&>button]:rounded-l [&>button]:rounded-r-none",
+                    range_middle:
+                      "bg-primary/15 [&>button]:rounded-none [&>button]:!bg-transparent [&>button]:!text-foreground [&>button]:hover:!bg-transparent",
+                    range_end:
+                      "bg-primary/15 rounded-r-md [&>button]:rounded-r [&>button]:rounded-l-none",
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
 
-            {/* Presets — plain buttons, active one is always highlighted */}
-            <div className="flex flex-col gap-2.5">
-              <span className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
-                {t("history.presetsLabel")}
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                {PRESETS.map((preset) => {
-                  const active = activePreset === preset.value;
-                  return (
-                    <Button
-                      key={preset.value}
-                      variant={active ? "default" : "outline"}
-                      size="sm"
-                      className="h-8 w-full justify-center text-[11px]"
-                      aria-pressed={active}
-                      onClick={() => onPreset(preset.value)}
-                    >
-                      {t(preset.labelKey)}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* View — global toggles that apply to every entry at once */}
-            <div className="flex flex-col gap-2.5">
-              <span className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
-                {t("history.viewLabel")}
-              </span>
-              <div className="border-border/70 bg-card/35 flex flex-col divide-y divide-border/60 rounded-lg border">
-                <ViewToggleRow
-                  icon={
-                    <FileDiff className="text-muted-foreground h-3.5 w-3.5" />
-                  }
-                  title={t("history.diffToggle")}
-                  description={t("history.diffToggleDesc")}
-                  checked={diffMode}
-                  onCheckedChange={onDiffModeChange}
-                />
-                <ViewToggleRow
-                  icon={
-                    <Sparkles className="text-muted-foreground h-3.5 w-3.5" />
-                  }
-                  title={t("history.aiEditToggle")}
-                  description={t("history.aiEditToggleDesc")}
-                  checked={showAiEdits}
-                  // Diff mode already shows both raw and cleaned, so the plain
-                  // AI-edit toggle is moot while diff mode is on.
-                  disabled={diffMode}
-                  onCheckedChange={onShowAiEditsChange}
-                />
-                <ViewToggleRow
-                  icon={
-                    <FlaskConical className="text-muted-foreground h-3.5 w-3.5" />
-                  }
-                  title={t("history.nerdToggle")}
-                  description={t("history.nerdToggleDesc")}
-                  checked={nerdMode}
-                  onCheckedChange={onNerdModeChange}
-                />
-              </div>
+          {/* View — global toggles that apply to every entry at once */}
+          <div className="flex flex-col gap-2.5">
+            <span className="text-muted-foreground text-[10px]">
+              {t("history.viewLabel")}
+            </span>
+            <div className="border-border/70 bg-card/35 flex flex-col divide-y divide-border/60 rounded-lg border">
+              <ViewToggleRow
+                icon={
+                  <FileDiff className="text-muted-foreground h-3.5 w-3.5" />
+                }
+                title={t("history.diffToggle")}
+                description={t("history.diffToggleDesc")}
+                checked={diffMode}
+                onCheckedChange={onDiffModeChange}
+              />
+              <ViewToggleRow
+                icon={
+                  <Sparkles className="text-muted-foreground h-3.5 w-3.5" />
+                }
+                title={t("history.aiEditToggle")}
+                description={t("history.aiEditToggleDesc")}
+                checked={showAiEdits}
+                // Diff mode already shows both raw and cleaned, so the plain
+                // AI-edit toggle is moot while diff mode is on.
+                disabled={diffMode}
+                onCheckedChange={onShowAiEditsChange}
+              />
+              <ViewToggleRow
+                icon={
+                  <FlaskConical className="text-muted-foreground h-3.5 w-3.5" />
+                }
+                title={t("history.nerdToggle")}
+                description={t("history.nerdToggleDesc")}
+                checked={nerdMode}
+                onCheckedChange={onNerdModeChange}
+              />
+              <ViewToggleRow
+                icon={
+                  <GraduationCap className="text-muted-foreground h-3.5 w-3.5" />
+                }
+                title={t("history.tutorialToggle")}
+                description={t("history.tutorialToggleDesc")}
+                checked={showTutorial}
+                onCheckedChange={onShowTutorialChange}
+              />
             </div>
           </div>
-        )}
-      </aside>
-    </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ink" onClick={() => onOpenChange(false)}>
+            {t("history.done")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 });
 
@@ -1039,16 +1004,12 @@ const RightPanel = memo(function RightPanel({
 function StatsTab({
   stats,
   timeLabel,
-  nerdMode,
-  buckets,
-  hourly,
+  daily,
   avgWpm,
 }: {
   stats: Stats | null;
   timeLabel: string;
-  nerdMode: boolean;
-  buckets: UsageBucket[];
-  hourly: number[];
+  daily: DayActivity[];
   avgWpm: number;
 }): React.JSX.Element {
   const { t } = useTranslation();
@@ -1059,63 +1020,25 @@ function StatsTab({
         <StatCard
           span2
           inline
+          accent
+          n={String(avgWpm)}
+          l={t("today.wpmLabel")}
+          sub={timeLabel}
+        />
+        <StatCard
           n={(stats?.total_words ?? 0).toLocaleString()}
           l={t("today.wordsLabel")}
-          sub={timeLabel}
         />
         <StatCard
-          inline
-          n={String(stats?.total_sessions ?? 0)}
-          l={t("today.sessionsLabel")}
-          sub={timeLabel}
+          n={(stats?.total_fixes ?? 0).toLocaleString()}
+          l={t("today.fixesLabel")}
         />
-        {(stats?.total_cost_usd ?? 0) > 0 && (
-          <StatCard
-            inline
-            n={`$${(stats?.total_cost_usd ?? 0).toFixed(2)}`}
-            l={t("today.costLabel")}
-            sub={timeLabel}
-          />
-        )}
-        <StatCard accent n={String(avgWpm)} l={t("today.avgWpm")} />
-        <StatCard
-          n={
-            stats && stats.avg_duration_ms > 0
-              ? formatSeconds(Math.round(stats.avg_duration_ms))
-              : "—"
-          }
-          l={t("history.avgLatency")}
-        />
-        {nerdMode && (
-          <>
-            <StatCard
-              n={(stats?.total_input_tokens ?? 0).toLocaleString()}
-              l={t("history.tokensInStat")}
-            />
-            <StatCard
-              n={(stats?.total_output_tokens ?? 0).toLocaleString()}
-              l={t("history.tokensOutStat")}
-            />
-          </>
-        )}
       </div>
 
-      {/* Most used models */}
-      <div className="flex flex-col gap-2.5">
-        <RailLabel>{t("today.mostUsed")}</RailLabel>
-        {buckets.length === 0 ? (
-          <p className="serif-italic text-muted-foreground text-[13px]">
-            {t("today.noModelsYet")}
-          </p>
-        ) : (
-          buckets.map((b) => <UsageBar key={b.label} {...b} />)
-        )}
-      </div>
-
-      {/* 24h activity */}
+      {/* Daily usage heatmap */}
       <div className="mb-6 flex flex-col gap-2.5">
-        <RailLabel>{t("today.activity24h")}</RailLabel>
-        <HourSpark data={hourly} />
+        <RailLabel>{t("today.dailyActivity")}</RailLabel>
+        <DailyHeatmap data={daily} />
       </div>
     </div>
   );
@@ -1126,11 +1049,7 @@ function RailLabel({
 }: {
   children: React.ReactNode;
 }): React.JSX.Element {
-  return (
-    <div className="mono text-muted-foreground text-[10px] uppercase tracking-[0.16em]">
-      {children}
-    </div>
-  );
+  return <div className="text-muted-foreground text-[10px]">{children}</div>;
 }
 
 /** A bordered stat card matching the filter panel's card styling. */
@@ -1170,12 +1089,10 @@ function StatCard({
             >
               {n}
             </span>
-            <span className="mono text-muted-foreground text-[9.5px] uppercase tracking-[0.12em]">
-              {l}
-            </span>
+            <span className="text-muted-foreground text-[9.5px]">{l}</span>
           </div>
           {sub && (
-            <div className="mono text-muted-foreground/70 mt-1.5 text-[9.5px] uppercase tracking-[0.12em]">
+            <div className="text-muted-foreground/70 mt-1.5 text-[9.5px]">
               {sub}
             </div>
           )}
@@ -1190,7 +1107,7 @@ function StatCard({
           >
             {n}
           </div>
-          <div className="mono text-muted-foreground mt-2 text-[9.5px] uppercase leading-tight tracking-[0.12em]">
+          <div className="text-muted-foreground mt-2 text-[9.5px] leading-tight">
             {l}
           </div>
         </>
@@ -1199,72 +1116,140 @@ function StatCard({
   );
 }
 
-function UsageBar({ label, pct }: UsageBucket): React.JSX.Element {
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between">
-        <span className="text-foreground text-[11.5px] font-medium">
-          {label}
-        </span>
-        <span className="mono text-muted-foreground text-[10.5px]">{pct}%</span>
-      </div>
-      <Progress value={pct} className="h-1" />
-    </div>
-  );
-}
+// Heatmap geometry: GitHub-style week columns, Sunday-start, newest week last.
+const HEATMAP_WEEKS = 16;
+const HEATMAP_CELL = 11;
+const HEATMAP_GAP = 2;
+const HEATMAP_PITCH = HEATMAP_CELL + HEATMAP_GAP;
+// Word-count intensity steps, low → high, on the olive primary.
+const HEATMAP_OPACITIES = [0.25, 0.5, 0.75, 1];
 
-function HourSpark({ data }: { data: number[] }): React.JSX.Element {
-  const max = Math.max(1, ...data);
-  const W = 280;
-  const chartH = 64;
-  const barW = W / 24;
-  const labelHours = [0, 6, 12, 18, 23];
-  return (
-    <svg
-      viewBox={`0 0 ${W} 78`}
-      width="100%"
-      height={78}
-      preserveAspectRatio="none"
-      role="img"
-      aria-label="Activity over 24 hours"
-      className="block"
-    >
-      <line
-        x1={0}
-        y1={chartH - 0.5}
-        x2={W}
-        y2={chartH - 0.5}
-        stroke="var(--border)"
-      />
-      {data.map((v, i) => {
-        const h = v > 0 ? Math.max(2, (v / max) * (chartH - 6)) : 0;
-        return (
-          <rect
-            key={i}
-            x={i * barW + barW * 0.18}
-            y={chartH - h}
-            width={barW * 0.64}
-            height={h}
-            rx={1}
-            fill={v > 0 ? "var(--primary)" : "var(--border)"}
-            fillOpacity={v > 0 ? 0.85 : 0.4}
-          />
-        );
-      })}
-      {labelHours.map((hr) => (
-        <text
-          key={hr}
-          x={hr * barW + barW * 0.5}
-          y={76}
-          textAnchor="middle"
-          fontFamily="JetBrains Mono, monospace"
-          fontSize={9}
-          fill="var(--muted-foreground)"
+/** GitHub-commit-style heatmap of words dictated per local day. */
+function DailyHeatmap({ data }: { data: DayActivity[] }): React.JSX.Element {
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language;
+
+  const byDay = useMemo(
+    () => new Map(data.map((d) => [d.day, d.words])),
+    [data],
+  );
+  const max = Math.max(1, ...data.map((d) => d.words));
+
+  const leftPad = 22; // weekday labels
+  const topPad = 14; // month labels
+  const width = leftPad + HEATMAP_WEEKS * HEATMAP_PITCH - HEATMAP_GAP;
+  const height = topPad + 7 * HEATMAP_PITCH - HEATMAP_GAP;
+
+  // First cell = Sunday of the week (HEATMAP_WEEKS - 1) weeks before this one.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const gridStart = new Date(today);
+  gridStart.setDate(
+    gridStart.getDate() - gridStart.getDay() - (HEATMAP_WEEKS - 1) * 7,
+  );
+
+  const cells: React.JSX.Element[] = [];
+  const monthLabels: { x: number; label: string }[] = [];
+  let prevMonth = -1;
+  for (let w = 0; w < HEATMAP_WEEKS; w++) {
+    const weekStart = new Date(gridStart);
+    weekStart.setDate(gridStart.getDate() + w * 7);
+    if (weekStart.getMonth() !== prevMonth) {
+      // Drop the previous label when a month boundary lands within two
+      // columns of it, so short leading months don't collide.
+      const x = leftPad + w * HEATMAP_PITCH;
+      const last = monthLabels[monthLabels.length - 1];
+      if (last && x - last.x < 3 * HEATMAP_PITCH) monthLabels.pop();
+      monthLabels.push({
+        x,
+        label: weekStart.toLocaleDateString(lang, { month: "short" }),
+      });
+      prevMonth = weekStart.getMonth();
+    }
+    for (let d = 0; d < 7; d++) {
+      const date = new Date(gridStart);
+      date.setDate(gridStart.getDate() + w * 7 + d);
+      if (date > today) continue;
+      const words = byDay.get(getLocalDateString(date)) ?? 0;
+      const level = words > 0 ? Math.min(4, Math.ceil((words / max) * 4)) : 0;
+      cells.push(
+        <rect
+          key={`${w}-${d}`}
+          x={leftPad + w * HEATMAP_PITCH}
+          y={topPad + d * HEATMAP_PITCH}
+          width={HEATMAP_CELL}
+          height={HEATMAP_CELL}
+          rx={2}
+          fill={level > 0 ? "var(--primary)" : "var(--border)"}
+          fillOpacity={level > 0 ? HEATMAP_OPACITIES[level - 1] : 0.4}
         >
-          {hr === 23 ? "24" : String(hr).padStart(2, "0")}
-        </text>
-      ))}
-    </svg>
+          <title>
+            {`${t("today.heatmapWords", { count: words })} · ${date.toLocaleDateString(lang, { month: "short", day: "numeric" })}`}
+          </title>
+        </rect>,
+      );
+    }
+  }
+
+  // Mon / Wed / Fri row labels, from real dates so they localize.
+  const weekdayLabels = [1, 3, 5].map((d) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + d);
+    return {
+      y: topPad + d * HEATMAP_PITCH + HEATMAP_CELL - 3,
+      label: date.toLocaleDateString(lang, { weekday: "narrow" }),
+    };
+  });
+
+  return (
+    <div className="flex flex-col gap-2">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width="100%"
+        role="img"
+        aria-label={t("today.dailyActivity")}
+        className="block h-auto"
+      >
+        {monthLabels.map((m) => (
+          <text
+            key={m.x}
+            x={m.x}
+            y={9}
+            fontSize={8}
+            fill="var(--muted-foreground)"
+          >
+            {m.label}
+          </text>
+        ))}
+        {weekdayLabels.map((wd) => (
+          <text
+            key={wd.y}
+            x={0}
+            y={wd.y}
+            fontSize={8}
+            fill="var(--muted-foreground)"
+          >
+            {wd.label}
+          </text>
+        ))}
+        {cells}
+      </svg>
+      <div className="text-muted-foreground flex items-center justify-end gap-1 text-[9px]">
+        <span className="mr-0.5">{t("today.heatmapLess")}</span>
+        <span
+          className="size-[9px] rounded-[2px]"
+          style={{ background: "var(--border)", opacity: 0.4 }}
+        />
+        {HEATMAP_OPACITIES.map((o) => (
+          <span
+            key={o}
+            className="size-[9px] rounded-[2px]"
+            style={{ background: "var(--primary)", opacity: o }}
+          />
+        ))}
+        <span className="ml-0.5">{t("today.heatmapMore")}</span>
+      </div>
+    </div>
   );
 }
 
@@ -1318,9 +1303,7 @@ function FeedGroup({
   return (
     <div className="mb-7">
       <div className="mb-3 flex items-center gap-3">
-        <div className="mono text-muted-foreground text-[10px] uppercase tracking-[0.18em]">
-          {label}
-        </div>
+        <div className="text-muted-foreground text-[10px]">{label}</div>
       </div>
       <div className="flex flex-col">{children}</div>
     </div>
@@ -1392,13 +1375,13 @@ const FeedItem = memo(function FeedItem({
   return (
     <div className="group px-1.5 py-3.5">
       <div className="mb-2 flex items-center gap-2.5">
-        <span className="mono text-foreground shrink-0 text-[11px] font-medium tracking-[0.04em]">
+        <span className="text-foreground shrink-0 text-[11px] font-medium">
           {formatClock(entry.created_at)}
         </span>
         <span className="bg-muted-foreground/50 h-[3px] w-[3px] shrink-0 rounded-full" />
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="mono text-primary min-w-0 flex-1 cursor-default truncate text-[10.5px] font-semibold uppercase tracking-[0.12em]">
+            <span className="text-primary min-w-0 flex-1 cursor-default truncate text-[10.5px] font-semibold">
               {modelLabel}
             </span>
           </TooltipTrigger>
@@ -1427,11 +1410,11 @@ const FeedItem = memo(function FeedItem({
             <Trash2 />
           </Button>
         </div>
-        <span className="mono text-muted-foreground shrink-0 text-[10px] tracking-[0.06em]">
+        <span className="text-muted-foreground shrink-0 text-[10px]">
           {formatSeconds(entry.audio_duration_ms || entry.duration_ms)}
         </span>
         {entry.cost_usd > 0 && (
-          <span className="mono text-muted-foreground shrink-0 text-[10px]">
+          <span className="text-muted-foreground shrink-0 text-[10px]">
             · {formatCost(entry.cost_usd)}
           </span>
         )}
@@ -1444,7 +1427,7 @@ const FeedItem = memo(function FeedItem({
         “{diff ? <DiffText segments={diff} /> : text}”
       </p>
       {nerdMode && (
-        <div className="mono text-muted-foreground/80 mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] tracking-[0.04em]">
+        <div className="text-muted-foreground/80 mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px]">
           <span>
             {t("history.nerdCompute", {
               label: formatSeconds(entry.duration_ms),

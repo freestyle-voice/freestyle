@@ -348,6 +348,9 @@ importers:
       better-auth:
         specifier: ^1.6.20
         version: 1.6.20(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.9.1)(msw@2.14.6(@types/node@25.9.1)(typescript@5.9.3))(vite@7.3.3(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.22.4)(yaml@2.9.0)))
+      diff:
+        specifier: ^8.0.4
+        version: 8.0.4
       hono:
         specifier: ^4.12.22
         version: 4.12.22
@@ -16226,7 +16229,7 @@ snapshots:
       react-refresh: 0.14.2
     optionalDependencies:
       '@babel/runtime': 7.29.2
-      expo: 57.0.7(@babel/core@7.29.0)(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.6)(expo-router@57.0.7)(react-dom@19.2.6(react@19.2.6))(react-native-worklets@0.10.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(react-native@0.86.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(@types/react@19.2.15)(react@19.2.6))(react@19.2.6))(react-native@0.86.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(@types/react@19.2.15)(react@19.2.6))(react@19.2.6)(typescript@5.9.3)
+      expo: 57.0.7(@babel/core@7.29.0)(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.6)(expo-router@57.0.7)(react-dom@19.2.6(react@19.2.3))(react-native-worklets@0.10.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(react-native@0.86.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3))(react-native@0.86.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
     transitivePeerDependencies:
       - '@babel/core'
       - supports-color

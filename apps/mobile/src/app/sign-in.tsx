@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { AppleIcon, GitHubIcon, GoogleIcon } from "@/components/provider-icons";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
@@ -104,6 +105,7 @@ export default function SignInScreen() {
             <ProviderButton
               key={provider}
               label={PROVIDER_LABELS[provider]}
+              provider={provider}
               onPress={() => handleSignIn(provider)}
               loading={pending === provider}
               disabled={pending !== null}
@@ -122,12 +124,14 @@ export default function SignInScreen() {
 
 function ProviderButton({
   label,
+  provider,
   onPress,
   loading,
   disabled,
   variant,
 }: {
   label: string;
+  provider: SocialProvider;
   onPress: () => void;
   loading: boolean;
   disabled: boolean;
@@ -135,6 +139,7 @@ function ProviderButton({
 }) {
   const theme = useTheme();
   const primary = variant === "primary";
+  const textColor = primary ? theme.primaryForeground : theme.foreground;
 
   return (
     <Pressable
@@ -149,21 +154,30 @@ function ProviderButton({
       ]}
     >
       {loading ? (
-        <ActivityIndicator
-          color={primary ? theme.primaryForeground : theme.foreground}
-        />
+        <ActivityIndicator color={textColor} />
       ) : (
-        <ThemedText
-          style={[
-            styles.buttonText,
-            { color: primary ? theme.primaryForeground : theme.foreground },
-          ]}
-        >
-          {label}
-        </ThemedText>
+        <>
+          <ProviderIcon provider={provider} color={textColor} />
+          <ThemedText style={[styles.buttonText, { color: textColor }]}>
+            {label}
+          </ThemedText>
+        </>
       )}
     </Pressable>
   );
+}
+
+/** Renders the correct brand mark for a provider. */
+function ProviderIcon({
+  provider,
+  color,
+}: {
+  provider: SocialProvider;
+  color: string;
+}) {
+  if (provider === "google") return <GoogleIcon size={20} />;
+  if (provider === "github") return <GitHubIcon size={20} color={color} />;
+  return <AppleIcon size={20} color={color} />;
 }
 
 const styles = StyleSheet.create({
@@ -188,10 +202,12 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.one,
   },
   button: {
-    height: 54,
-    borderRadius: Radius.full,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: Spacing.two,
+    height: 54,
+    borderRadius: Radius.full,
   },
   appleButton: { height: 54, width: "100%" },
   buttonDisabled: { opacity: 0.5 },

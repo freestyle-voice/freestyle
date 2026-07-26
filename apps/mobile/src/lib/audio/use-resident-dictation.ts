@@ -31,11 +31,12 @@
 
 import * as Haptics from "expo-haptics";
 import { useCallback, useEffect, useRef } from "react";
-import { AppState } from "react-native";
+import { Alert, AppState } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
 import { authHeaders } from "@/lib/cloud/session";
 import { CloudStreamSession } from "@/lib/cloud/stream";
+import { startProCheckout } from "@/lib/cloud/subscription";
 import {
   applyDictionaryReplacements,
   useEntries,
@@ -204,6 +205,19 @@ export function useResidentDictation(
           const recoverable = streamOnRef.current;
           stateRef.current = recoverable ? "armed" : "idle";
           cbRef.current.onError?.(friendly, recoverable);
+          if (code === "usage_exceeded") {
+            Alert.alert(
+              "Out of credits",
+              "You've used your free credits for this week. Upgrade to Pro for unlimited dictation.",
+              [
+                { text: "Not now", style: "cancel" },
+                {
+                  text: "Upgrade",
+                  onPress: () => void startProCheckout(false),
+                },
+              ],
+            );
+          }
           void Haptics.notificationAsync(
             Haptics.NotificationFeedbackType.Error,
           );

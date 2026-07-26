@@ -4,6 +4,7 @@
   "version": "0.0.2",
   "dependencies": {
     "@better-auth/expo": "^1.6.23",
+    "@better-auth/stripe": "^1.6.23",
     "@expo-google-fonts/dm-sans": "^0.4.2",
     "@expo-google-fonts/instrument-serif": "^0.4.1",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",

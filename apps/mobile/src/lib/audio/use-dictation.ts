@@ -16,6 +16,7 @@ import { useSharedValue } from "react-native-reanimated";
 import type { MicState } from "@/components/mic-button";
 import { authHeaders } from "@/lib/cloud/session";
 import { CloudStreamSession } from "@/lib/cloud/stream";
+import { startProCheckout } from "@/lib/cloud/subscription";
 import {
   applyDictionaryReplacements,
   useEntries,
@@ -179,7 +180,14 @@ export function useDictation({
           if (code === "usage_exceeded") {
             Alert.alert(
               "Out of credits",
-              "You've used your free Freestyle credits for now.",
+              "You've used your free credits for this week. Upgrade to Pro for unlimited dictation.",
+              [
+                { text: "Not now", style: "cancel" },
+                {
+                  text: "Upgrade",
+                  onPress: () => void startProCheckout(false),
+                },
+              ],
             );
           } else {
             Alert.alert("Transcription failed", message);

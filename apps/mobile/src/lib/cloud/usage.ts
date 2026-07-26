@@ -12,6 +12,8 @@ export interface CloudUsageBalance {
   totalConsumed: number;
   windowStart: string;
   resetsAt: string;
+  plan: "free" | "pro";
+  unlimited: boolean;
 }
 
 export async function fetchCloudUsage(): Promise<CloudUsageBalance> {

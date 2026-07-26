@@ -1,10 +1,12 @@
-import { Redirect, Stack } from "expo-router";
+import { Redirect, Stack, useRouter, useSegments } from "expo-router";
+import { useEffect } from "react";
 
 import { KeyboardDictationStrip } from "@/components/keyboard-dictation-strip";
 import { useAuth } from "@/hooks/use-auth";
 import { EntriesProvider } from "@/lib/entries";
 import { HistoryProvider } from "@/lib/history";
 import { KeyboardDictationProvider } from "@/lib/keyboard/keyboard-dictation-provider";
+import { OnboardingProvider, useOnboarding } from "@/lib/onboarding";
 import { SettingsProvider } from "@/lib/settings";
 
 /**
@@ -26,17 +28,42 @@ export default function AppLayout() {
     <SettingsProvider>
       <EntriesProvider>
         <HistoryProvider>
-          <KeyboardDictationProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="settings" />
-              <Stack.Screen name="profile" />
-              <Stack.Screen name="keyboard-setup" />
-            </Stack>
-            <KeyboardDictationStrip />
-          </KeyboardDictationProvider>
+          <OnboardingProvider>
+            <KeyboardDictationProvider>
+              <OnboardingGate />
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="onboarding" />
+                <Stack.Screen name="settings" />
+                <Stack.Screen name="profile" />
+                <Stack.Screen name="keyboard-setup" />
+                <Stack.Screen name="billing" />
+              </Stack>
+              <KeyboardDictationStrip />
+            </KeyboardDictationProvider>
+          </OnboardingProvider>
         </HistoryProvider>
       </EntriesProvider>
     </SettingsProvider>
   );
+}
+
+/**
+ * Redirects first-run users to the wizard. Rendered under the providers so it
+ * can read the onboarding flag; a no-op once complete. Uses imperative
+ * navigation (not <Redirect>) so it doesn't fight the Stack's own screens.
+ */
+function OnboardingGate() {
+  const { complete, ready } = useOnboarding();
+  const router = useRouter();
+  const segments = useSegments();
+
+  useEffect(() => {
+    if (!ready || complete) return;
+    // Don't redirect if already on the onboarding screen.
+    if (segments[segments.length - 1] === "onboarding") return;
+    router.replace("/(app)/onboarding");
+  }, [ready, complete, segments, router]);
+
+  return null;
 }

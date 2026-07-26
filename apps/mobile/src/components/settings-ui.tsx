@@ -16,7 +16,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { HeaderActions } from "@/components/header-actions";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { Fonts, Radius, Spacing } from "@/constants/theme";
+import { Fonts, Layout, Radius, Spacing } from "@/constants/theme";
+import { useResponsive } from "@/hooks/use-responsive";
 import { useTheme } from "@/hooks/use-theme";
 
 /**
@@ -35,10 +36,11 @@ export function SettingsScreenScaffold({
 }) {
   const theme = useTheme();
   const router = useRouter();
+  const { navTitleSize } = useResponsive();
   return (
     <ThemedView style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-        <View style={styles.navBar}>
+        <View style={[styles.navBar, styles.centerColumn]}>
           <Pressable
             onPress={() => router.back()}
             hitSlop={12}
@@ -51,14 +53,21 @@ export function SettingsScreenScaffold({
               Back
             </ThemedText>
           </Pressable>
-          <ThemedText type="title" style={styles.navTitle} numberOfLines={1}>
+          <ThemedText
+            type="title"
+            style={[
+              styles.navTitle,
+              { fontSize: navTitleSize, lineHeight: navTitleSize + 4 },
+            ]}
+            numberOfLines={1}
+          >
             {title}
           </ThemedText>
           {/* Balances the back button so the title stays centered. */}
           <View style={styles.navBack} />
         </View>
         <ScrollView
-          contentContainerStyle={styles.body}
+          contentContainerStyle={[styles.body, styles.centerColumn]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -94,13 +103,17 @@ export function TabScreenScaffold({
   action?: ReactNode;
   children: ReactNode;
 }) {
+  const { tabTitleSize } = useResponsive();
   return (
     <ThemedView style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-        <View style={styles.tabHeader}>
+        <View style={[styles.tabHeader, styles.centerColumn]}>
           <ThemedText
             type="title"
-            style={styles.tabHeaderTitle}
+            style={[
+              styles.tabHeaderTitle,
+              { fontSize: tabTitleSize, lineHeight: tabTitleSize + 4 },
+            ]}
             numberOfLines={1}
           >
             {title}
@@ -111,7 +124,11 @@ export function TabScreenScaffold({
           </View>
         </View>
         <ScrollView
-          contentContainerStyle={[styles.body, styles.tabBody]}
+          contentContainerStyle={[
+            styles.body,
+            styles.tabBody,
+            styles.centerColumn,
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -238,6 +255,11 @@ export function OptionCard({
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four },
+  centerColumn: {
+    width: "100%",
+    maxWidth: Layout.contentMaxWidth,
+    alignSelf: "center" as const,
+  },
   navBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -255,8 +277,6 @@ const styles = StyleSheet.create({
   navTitle: {
     flex: 1,
     textAlign: "center",
-    fontSize: 26,
-    lineHeight: 30,
   },
   backText: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   // Pushed pages have no tab bar, but the dictation strip can slide down into
@@ -274,8 +294,6 @@ const styles = StyleSheet.create({
   },
   tabHeaderTitle: {
     flex: 1,
-    fontSize: 30,
-    lineHeight: 34,
   },
   tabHeaderActions: {
     flexDirection: "row",

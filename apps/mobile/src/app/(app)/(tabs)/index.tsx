@@ -11,14 +11,16 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { TranscriptView } from "@/components/transcript-view";
 import { Waveform } from "@/components/waveform";
-import { Fonts, Radius, Spacing } from "@/constants/theme";
+import { Fonts, Layout, Radius, Spacing } from "@/constants/theme";
 import { useAuth } from "@/hooks/use-auth";
+import { useResponsive } from "@/hooks/use-responsive";
 import { useTheme } from "@/hooks/use-theme";
 import { useDictation } from "@/lib/audio/use-dictation";
 
 export default function VoiceScreen() {
   const theme = useTheme();
   const { signedIn } = useAuth();
+  const { brandSize } = useResponsive();
   // This tab stays mounted while the resident keyboard session runs in the
   // background provider. Gate its mic on focus so the Home recorder can't fight
   // the resident session for the audio session (two active recorders = "Could
@@ -62,57 +64,68 @@ export default function VoiceScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
-          <ThemedText type="title" style={styles.brand}>
-            Freestyle
-          </ThemedText>
-          <HeaderActions />
-        </View>
-
-        <TranscriptView
-          text={text}
-          partial={partial}
-          placeholder="Your words will appear here."
-        />
-
-        {text && micState === "idle" ? (
-          <View style={styles.actions}>
-            <Pressable
-              onPress={copy}
-              style={[styles.action, { backgroundColor: theme.primary }]}
+        <View style={styles.column}>
+          <View style={styles.header}>
+            <ThemedText
+              type="title"
+              style={[
+                styles.brand,
+                { fontSize: brandSize, lineHeight: brandSize + 4 },
+              ]}
             >
-              <ThemedText
-                style={[styles.actionText, { color: theme.primaryForeground }]}
-              >
-                {copied ? "Copied" : "Copy"}
-              </ThemedText>
-            </Pressable>
-            <Pressable
-              onPress={share}
-              style={[styles.actionOutline, { borderColor: theme.border }]}
-            >
-              <ThemedText style={styles.actionText}>Share</ThemedText>
-            </Pressable>
-            <Pressable
-              onPress={clear}
-              style={[styles.actionOutline, { borderColor: theme.border }]}
-            >
-              <ThemedText style={styles.actionText}>Clear</ThemedText>
-            </Pressable>
+              Freestyle
+            </ThemedText>
+            <HeaderActions />
           </View>
-        ) : null}
 
-        <View style={styles.footer}>
-          <Waveform level={level} active={micState === "recording"} />
-          <ThemedText themeColor="mutedForeground" style={styles.status}>
-            {status}
-          </ThemedText>
-          <MicButton
-            state={micState}
-            level={level}
-            onPressIn={onPressIn}
-            onPressOut={onPressOut}
+          <TranscriptView
+            text={text}
+            partial={partial}
+            placeholder="Your words will appear here."
           />
+
+          {text && micState === "idle" ? (
+            <View style={styles.actions}>
+              <Pressable
+                onPress={copy}
+                style={[styles.action, { backgroundColor: theme.primary }]}
+              >
+                <ThemedText
+                  style={[
+                    styles.actionText,
+                    { color: theme.primaryForeground },
+                  ]}
+                >
+                  {copied ? "Copied" : "Copy"}
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                onPress={share}
+                style={[styles.actionOutline, { borderColor: theme.border }]}
+              >
+                <ThemedText style={styles.actionText}>Share</ThemedText>
+              </Pressable>
+              <Pressable
+                onPress={clear}
+                style={[styles.actionOutline, { borderColor: theme.border }]}
+              >
+                <ThemedText style={styles.actionText}>Clear</ThemedText>
+              </Pressable>
+            </View>
+          ) : null}
+
+          <View style={styles.footer}>
+            <Waveform level={level} active={micState === "recording"} />
+            <ThemedText themeColor="mutedForeground" style={styles.status}>
+              {status}
+            </ThemedText>
+            <MicButton
+              state={micState}
+              level={level}
+              onPressIn={onPressIn}
+              onPressOut={onPressOut}
+            />
+          </View>
         </View>
       </SafeAreaView>
     </ThemedView>
@@ -122,6 +135,12 @@ export default function VoiceScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four },
+  column: {
+    flex: 1,
+    width: "100%",
+    maxWidth: Layout.contentMaxWidth,
+    alignSelf: "center" as const,
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -129,7 +148,7 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.three,
     paddingBottom: Spacing.two,
   },
-  brand: { fontSize: 30, lineHeight: 34 },
+  brand: {},
   actions: {
     flexDirection: "row",
     justifyContent: "center",

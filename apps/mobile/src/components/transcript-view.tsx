@@ -2,6 +2,7 @@ import { ScrollView, StyleSheet } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
 import { Spacing } from "@/constants/theme";
+import { useResponsive } from "@/hooks/use-responsive";
 import { useTheme } from "@/hooks/use-theme";
 
 interface TranscriptViewProps {
@@ -19,6 +20,7 @@ export function TranscriptView({
   placeholder,
 }: TranscriptViewProps) {
   const theme = useTheme();
+  const { transcriptSize, transcriptPlaceholderSize } = useResponsive();
   const empty = !text && !partial;
 
   return (
@@ -28,14 +30,37 @@ export function TranscriptView({
       showsVerticalScrollIndicator={false}
     >
       {empty ? (
-        <ThemedText themeColor="mutedForeground" style={styles.placeholder}>
+        <ThemedText
+          themeColor="mutedForeground"
+          style={[
+            styles.placeholder,
+            {
+              fontSize: transcriptPlaceholderSize,
+              lineHeight: transcriptPlaceholderSize + 10,
+            },
+          ]}
+        >
           {placeholder}
         </ThemedText>
       ) : (
-        <ThemedText style={styles.text}>
+        <ThemedText
+          style={[
+            styles.text,
+            { fontSize: transcriptSize, lineHeight: transcriptSize + 10 },
+          ]}
+        >
           {text}
           {text && partial ? " " : ""}
-          <ThemedText style={[styles.text, { color: theme.mutedForeground }]}>
+          <ThemedText
+            style={[
+              styles.text,
+              {
+                color: theme.mutedForeground,
+                fontSize: transcriptSize,
+                lineHeight: transcriptSize + 10,
+              },
+            ]}
+          >
             {partial}
           </ThemedText>
         </ThemedText>
@@ -47,6 +72,6 @@ export function TranscriptView({
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingVertical: Spacing.three },
-  text: { fontSize: 20, lineHeight: 30 },
-  placeholder: { fontSize: 18, lineHeight: 28 },
+  text: {},
+  placeholder: {},
 });

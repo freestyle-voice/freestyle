@@ -23,7 +23,7 @@ import {
 import { Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Radius, Spacing } from "@/constants/theme";
+import { Layout, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 
 interface NavSpec {
@@ -156,6 +156,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     width: "100%",
+    maxWidth: Layout.tabBarMaxWidth,
     height: BAR_HEIGHT,
     paddingHorizontal: Spacing.four,
     borderRadius: Radius.full,

@@ -83,3 +83,26 @@ export const Radius = {
   "2xl": 18,
   full: 999,
 } as const;
+
+/**
+ * Responsive layout tokens for iPad / tablet support.
+ *
+ * `contentMaxWidth` caps the reading/settings column so content doesn't stretch
+ * edge-to-edge on wide screens. On phones the maxWidth is wider than the screen
+ * minus gutters, so it's a no-op. On iPad, content centers automatically via
+ * `alignSelf: "center"`.
+ *
+ * `tabBarMaxWidth` caps the floating tab bar pill so the 5 icons stay compact.
+ *
+ * `tabletBreakpoint` is the window width above which we apply a modest
+ * typographic scale-up (titles, transcript). `useWindowDimensions()` makes this
+ * rotation- and Split-View-safe with no manual listener.
+ */
+export const Layout = {
+  /** Max width for the centered content column (cards, lists, inputs). */
+  contentMaxWidth: 600,
+  /** Max width for the floating tab bar pill. */
+  tabBarMaxWidth: 480,
+  /** Window width threshold above which we treat the device as a tablet. */
+  tabletBreakpoint: 700,
+} as const;

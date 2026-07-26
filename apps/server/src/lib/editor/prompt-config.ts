@@ -321,23 +321,31 @@ function isValidConfig(value: unknown): value is CleanupPromptConfig {
   ) {
     return false;
   }
-  if (!c.presets?.low || !c.presets?.medium || !c.presets?.high) return false;
+  const isStr = (v: unknown): v is string =>
+    typeof v === "string" && v.length > 0;
+  if (
+    !isStr(c.presets?.low) ||
+    !isStr(c.presets?.medium) ||
+    !isStr(c.presets?.high)
+  ) {
+    return false;
+  }
   const tb = c.toneBlocks;
   if (
-    !tb?.personal?.polished ||
-    !tb.personal?.casual ||
-    !tb.personal?.very_casual ||
-    !tb.discordCasualOverlay ||
-    !tb.work?.direct ||
-    !tb.work?.formal ||
-    !tb.work?.friendly ||
-    !tb.email?.casual ||
-    !tb.email?.formal ||
-    !tb.email?.warm ||
-    !tb.overall?.casual ||
-    !tb.overall?.neutral ||
-    !tb.overall?.professional ||
-    !tb.emailStructure
+    !isStr(tb?.personal?.polished) ||
+    !isStr(tb?.personal?.casual) ||
+    !isStr(tb?.personal?.very_casual) ||
+    !isStr(tb?.discordCasualOverlay) ||
+    !isStr(tb?.work?.direct) ||
+    !isStr(tb?.work?.formal) ||
+    !isStr(tb?.work?.friendly) ||
+    !isStr(tb?.email?.casual) ||
+    !isStr(tb?.email?.formal) ||
+    !isStr(tb?.email?.warm) ||
+    !isStr(tb?.overall?.casual) ||
+    !isStr(tb?.overall?.neutral) ||
+    !isStr(tb?.overall?.professional) ||
+    !isStr(tb?.emailStructure)
   ) {
     return false;
   }

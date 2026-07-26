@@ -97,6 +97,23 @@ describe("cleanup prompt config fetcher", () => {
     expect(getCleanupPromptConfig()).toBe(BUNDLED_CLEANUP_PROMPT_CONFIG);
   });
 
+  it("ignores a payload whose preset/tone bodies are not strings", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          cloudPayload({
+            presets: { low: 42, medium: "m", high: "h" },
+          }),
+        ),
+        { status: 200 },
+      ),
+    );
+
+    await refreshCleanupPromptConfig();
+
+    expect(getCleanupPromptConfig()).toBe(BUNDLED_CLEANUP_PROMPT_CONFIG);
+  });
+
   it("ignores a non-2xx response", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("nope", { status: 500 }),

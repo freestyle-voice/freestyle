@@ -11,6 +11,7 @@ const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
   "google",
   "mistral",
   "openrouter",
+  "vercel",
   "local-llm",
   "freestyle-cloud",
 ]);

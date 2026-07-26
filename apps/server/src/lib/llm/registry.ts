@@ -145,6 +145,18 @@ const PROVIDERS: LlmProvider[] = [
     },
   },
   {
+    // Vercel AI Gateway — OpenAI-compatible chat-completions API. Model IDs are
+    // `<vendor>/<model>` (e.g. `anthropic/claude-opus-4.8`), used as-is.
+    providerId: "vercel",
+    createModel: async (modelId, apiKey) => {
+      const { createOpenAI } = await import("@ai-sdk/openai");
+      return createOpenAI({
+        apiKey,
+        baseURL: "https://ai-gateway.vercel.sh/v1",
+      }).chat(modelId);
+    },
+  },
+  {
     providerId: "local-llm",
     local: true,
     createModel: async (modelId) => {

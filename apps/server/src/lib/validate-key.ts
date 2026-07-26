@@ -167,6 +167,20 @@ async function validateOpenRouter(apiKey: string): Promise<ValidationResult> {
   return { valid: false, error: `OpenRouter returned HTTP ${res.status}.` };
 }
 
+async function validateVercel(apiKey: string): Promise<ValidationResult> {
+  const res = await fetch("https://ai-gateway.vercel.sh/v1/models", {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (res.ok) return { valid: true };
+  if (res.status === 401 || res.status === 403)
+    return {
+      valid: false,
+      error: "Invalid API key. Please check and try again.",
+    };
+  return { valid: false, error: `Vercel returned HTTP ${res.status}.` };
+}
+
 // ---------------------------------------------------------------------------
 // Dispatcher
 // ---------------------------------------------------------------------------
@@ -183,6 +197,7 @@ const LIVE_VALIDATORS: Record<
   google: validateGoogle,
   mistral: validateMistral,
   openrouter: validateOpenRouter,
+  vercel: validateVercel,
 };
 
 export async function validateApiKey(

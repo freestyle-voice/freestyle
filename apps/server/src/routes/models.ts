@@ -191,6 +191,7 @@ const BUILTIN_VOICE_MODELS: AvailableModel[] = [
 // gateway here and it works end to end with no further wiring.
 const LLM_GATEWAYS: Record<string, string> = {
   openrouter: "OpenRouter",
+  vercel: "Vercel AI Gateway",
 };
 
 // Cleanup-LLM providers the app can actually run (see lib/providers.ts).

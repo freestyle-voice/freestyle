@@ -104,6 +104,7 @@ export const LLM_PROVIDERS = [
   "groq",
   "mistral",
   "openrouter",
+  "vercel",
   "local-llm",
 ];
 
@@ -117,6 +118,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   soniox: "Soniox",
   mistral: "Mistral",
   openrouter: "OpenRouter",
+  vercel: "Vercel AI Gateway",
   "freestyle-cloud": "Freestyle Transcribe",
   "local-llm": "Local LLM",
   "local-whisper": "Local Whisper",
@@ -134,6 +136,7 @@ export const PROVIDER_KEY_URLS: Record<string, string> = {
   google: "https://aistudio.google.com/apikey",
   mistral: "https://console.mistral.ai/api-keys",
   openrouter: "https://openrouter.ai/keys",
+  vercel: "https://vercel.com/d?to=%2F%5Bteam%5D%2F~%2Fai-gateway%2Fapi-keys",
 };
 
 export function displayProviderName(

@@ -7,6 +7,11 @@ export interface AvailableModel {
   type: "voice" | "llm";
   /** Surfaced in the default picker; non-curated models live behind "All models". */
   curated?: boolean;
+  /**
+   * Display name of the LLM gateway fronting this model (e.g. "OpenRouter"),
+   * shown as a small badge in the picker. Absent for first-party vendors.
+   */
+  gateway?: string;
 }
 
 export interface WhisperModelDef {

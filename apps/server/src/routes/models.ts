@@ -35,6 +35,12 @@ interface AvailableModel {
   cost_output?: number;
   /** Surfaced in the default picker; non-curated models live behind "All models". */
   curated?: boolean;
+  /**
+   * Display name of the LLM gateway fronting this model (e.g. "OpenRouter"),
+   * when the provider is an aggregator rather than a first-party vendor. The
+   * picker shows this as a small badge next to the model.
+   */
+  gateway?: string;
 }
 
 const DEPRECATED_STATUS = "deprecated";
@@ -83,64 +89,6 @@ async function fetchLocalLlmModels(): Promise<AvailableModel[]> {
     cost_input: 0,
     cost_output: 0,
   }));
-}
-
-interface OpenRouterModel {
-  id: string;
-  name?: string;
-  architecture?: { input_modalities?: string[]; output_modalities?: string[] };
-  pricing?: { prompt?: string; completion?: string };
-}
-
-// OpenRouter is an AI gateway with an OpenAI-compatible API. Its catalog isn't
-// in models.dev, so we fetch it directly (mirrors `fetchLocalLlmModels`) and
-// only when the user has stored an OpenRouter key. Pricing is per-token USD;
-// we scale to per-million to match the models.dev cost convention.
-async function fetchOpenRouterModels(): Promise<AvailableModel[]> {
-  const db = getDb();
-  const row = db
-    .prepare("SELECT key FROM api_keys WHERE provider = 'openrouter'")
-    .get() as { key: string } | undefined;
-  if (!row?.key) return [];
-
-  const res = await fetch("https://openrouter.ai/api/v1/models", {
-    headers: { Authorization: `Bearer ${row.key}` },
-    signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
-  });
-  if (!res.ok) return [];
-
-  const data = (await res.json()) as { data?: OpenRouterModel[] };
-  if (!data.data || !Array.isArray(data.data)) return [];
-
-  const models: AvailableModel[] = [];
-  for (const m of data.data) {
-    const inputMods = m.architecture?.input_modalities ?? ["text"];
-    const outputMods = m.architecture?.output_modalities ?? ["text"];
-    if (!inputMods.includes("text") || !outputMods.includes("text")) continue;
-    if (
-      UNSUITABLE_CLEANUP_MODEL_PATTERN.test(`${m.id} ${m.name ?? ""}`.trim())
-    ) {
-      continue;
-    }
-
-    const promptPrice = Number(m.pricing?.prompt);
-    const completionPrice = Number(m.pricing?.completion);
-    models.push({
-      provider_id: "openrouter",
-      provider_name: "OpenRouter",
-      model_id: `openrouter/${m.id}`,
-      model_name: m.name ?? m.id,
-      family: m.id.split("/")[0] ?? "openrouter",
-      type: "llm",
-      cost_input: Number.isFinite(promptPrice)
-        ? promptPrice * 1_000_000
-        : undefined,
-      cost_output: Number.isFinite(completionPrice)
-        ? completionPrice * 1_000_000
-        : undefined,
-    });
-  }
-  return models;
 }
 
 // Local voice models (curated + legacy that's still downloaded — the
@@ -235,6 +183,16 @@ const BUILTIN_VOICE_MODELS: AvailableModel[] = [
   },
 ];
 
+// OpenAI-compatible LLM gateways (aggregators fronting many vendors' models).
+// Their catalogs live in models.dev under a single provider key, so they flow
+// through the same registry loop as first-party vendors — no key required to
+// list them. Models are tagged with the gateway's display name (badge in the
+// picker) and stay non-curated (behind "Show all models"). Add any future
+// gateway here and it works end to end with no further wiring.
+const LLM_GATEWAYS: Record<string, string> = {
+  openrouter: "OpenRouter",
+};
+
 // Cleanup-LLM providers the app can actually run (see lib/providers.ts).
 const SUPPORTED_LLM_PROVIDERS = new Set([
   "openai",
@@ -242,6 +200,7 @@ const SUPPORTED_LLM_PROVIDERS = new Set([
   "google",
   "groq",
   "mistral",
+  ...Object.keys(LLM_GATEWAYS),
 ]);
 
 // One fast-tier cleanup model per provider, surfaced by default; everything
@@ -335,7 +294,7 @@ export async function isCleanupModelSupported(
   modelId: string,
 ): Promise<boolean> {
   if (providerId === "local-llm") return true;
-  if (providerId === "openrouter") return true;
+  if (providerId in LLM_GATEWAYS) return true;
   if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return true;
 
   try {
@@ -422,6 +381,7 @@ const models = new Hono()
               cost_input: model.cost?.input,
               cost_output: model.cost?.output,
               curated: CURATED_LLM_IDS.has(`${providerId}/${model.id}`),
+              gateway: LLM_GATEWAYS[providerId],
             });
           }
         }
@@ -467,13 +427,6 @@ const models = new Hono()
         available.push(...localModels.map((m) => ({ ...m, curated: true })));
       } catch {
         // Local LLM server not reachable
-      }
-
-      try {
-        const openRouterModels = await fetchOpenRouterModels();
-        available.push(...openRouterModels);
-      } catch {
-        // OpenRouter unreachable or no key — gateway models simply omitted
       }
 
       return c.json(available);

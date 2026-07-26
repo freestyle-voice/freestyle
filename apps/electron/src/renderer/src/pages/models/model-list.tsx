@@ -68,6 +68,8 @@ interface Row {
   selected: boolean;
   /** Shown by default; non-curated rows live behind "Show all models". */
   curated?: boolean;
+  /** LLM gateway display name (e.g. "OpenRouter"); rendered as a meta badge. */
+  gateway?: string;
   recommended?: boolean;
   hasKey?: boolean;
   status?: WhisperModelDownloadState["status"];
@@ -166,13 +168,21 @@ function buildLlmRows(
   for (const [providerId, { providerName, models }] of m.llmModelsByProvider) {
     if (providerId === FREESTYLE_CLOUD_CLEANUP.provider_id) continue;
     for (const model of models) {
+      // For gateway models the meta line reads "<vendor> via <gateway>"
+      // (e.g. "Microsoft via OpenRouter"). Vendor is the model_id prefix; some
+      // gateway IDs carry a "~" alias prefix ("~openai/...") — strip it.
+      const vendor = model.model_id.replace(/^~/, "").split("/")[0] ?? "";
+      const meta = model.gateway
+        ? vendor.charAt(0).toUpperCase() + vendor.slice(1)
+        : providerName;
       rows.push({
         key: model.model_id,
         name: model.model_name,
         source: "cloud",
         provider: providerId,
-        meta: providerName,
+        meta,
         curated: model.curated === true,
+        gateway: model.gateway,
         selected:
           m.defaultLlm?.model_id === model.model_id &&
           m.defaultLlm?.provider === model.provider_id,
@@ -323,7 +333,11 @@ export function ModelList({
       r.provider !== filter
     )
       return false;
-    if (q && !`${r.name} ${r.meta}`.toLowerCase().includes(q)) return false;
+    if (
+      q &&
+      !`${r.name} ${r.meta} ${r.gateway ?? ""}`.toLowerCase().includes(q)
+    )
+      return false;
     return true;
   });
   const visible = filteredRows.filter((r) => {
@@ -550,7 +564,16 @@ function ModelRow({
           )}
         </div>
         <div className="text-muted-foreground mt-0.5 text-[12px]">
-          {row.meta}
+          {row.gateway ? (
+            <>
+              {row.meta}
+              {row.meta && " "}
+              <span className="text-muted-foreground/70">via</span>{" "}
+              {row.gateway}
+            </>
+          ) : (
+            row.meta
+          )}
         </div>
         {local && status === "error" && row.state?.error && (
           <div className="text-destructive mt-1 text-[11.5px] leading-snug">

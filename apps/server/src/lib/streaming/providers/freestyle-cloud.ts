@@ -26,6 +26,7 @@ export {
 interface CloudServerMessage {
   type: "config" | "session.ready" | "partial" | "final" | "error";
   text?: string;
+  raw?: string;
   model?: string;
   streaming?: boolean;
   message?: string;
@@ -152,7 +153,7 @@ export class FreestyleCloudTranscriptionProvider
         case "final":
           // The cloud DO already ran Groq LLM post-processing.
           // Deliver as-is — the desktop must NOT re-run postProcess().
-          callbacks.onFinal(msg.text ?? "");
+          callbacks.onFinal(msg.text ?? "", msg.raw);
           break;
         case "error":
           // Forward the cloud's error code (e.g. "usage_exceeded",

@@ -335,9 +335,12 @@ const stream = new Hono().get(
             }
             ws.send(JSON.stringify({ type: "partial", text }));
           },
-          onFinal: async (rawText) => {
+          onFinal: async (rawText, upstreamRawText) => {
             if (upstream !== session) return;
             rawText = sanitizeTranscriptText(rawText);
+            const upstreamRaw = upstreamRawText
+              ? sanitizeTranscriptText(upstreamRawText)
+              : undefined;
             // One HookApi per dictation, threaded through every stage so a
             // plugin's consume()/abort() in afterTranscribe is visible to
             // cleanup + final rewrites (matching the batch /transcribe route).
@@ -468,10 +471,12 @@ const stream = new Hono().get(
                 ws.send(JSON.stringify({ type: "final", text: finalText }));
               }
               if (!suppressed) {
+                const historyRawText = upstreamRaw || cloudText;
                 try {
                   saveProcessedHistory({
-                    rawText: cloudText,
-                    cleanedText: finalText !== cloudText ? finalText : null,
+                    rawText: historyRawText,
+                    cleanedText:
+                      finalText !== historyRawText ? finalText : null,
                     voiceProvider: voiceDefaults!.provider,
                     voiceModel: voiceDefaults!.model_id,
                     llmProvider,

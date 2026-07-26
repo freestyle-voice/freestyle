@@ -10,7 +10,7 @@ import type { AsrVocabularyBias } from "../vocabulary-bias.js";
 export interface StreamCallbacks {
   onReady: (model: string) => void;
   onPartial: (text: string) => void;
-  onFinal: (text: string) => void;
+  onFinal: (text: string, raw?: string) => void;
   onError: (message: string, code?: string) => void;
   onClose: () => void;
 }

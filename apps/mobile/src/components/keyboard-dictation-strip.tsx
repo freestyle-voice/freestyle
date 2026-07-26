@@ -38,9 +38,16 @@ import { useKeyboardDictation } from "@/lib/keyboard/keyboard-dictation-provider
  */
 const TAB_BAR_HEIGHT = 52;
 
-/** Only these phases warrant an on-screen strip — real, live activity. */
+/** Show the strip whenever the session is live — warm mic, active capture, or
+ *  processing. Hidden only for `idle` (no session) and `failed` (already reset). */
 function isVisiblePhase(phase: Phase): boolean {
-  return phase === "capturing" || phase === "transcribing";
+  return (
+    phase === "arming" ||
+    phase === "armed" ||
+    phase === "capturing" ||
+    phase === "transcribing" ||
+    phase === "ready"
+  );
 }
 
 /** Pushed (non-tab) routes have no floating tab bar underneath. */
@@ -197,6 +204,11 @@ function PhaseIcon({
 
 function titleFor(phase: Phase): string {
   switch (phase) {
+    case "arming":
+      return "Starting mic…";
+    case "armed":
+    case "ready":
+      return "Mic ready";
     case "capturing":
       return "Listening";
     case "transcribing":
@@ -208,6 +220,11 @@ function titleFor(phase: Phase): string {
 
 function hintFor(phase: Phase): string {
   switch (phase) {
+    case "arming":
+      return "One moment";
+    case "armed":
+    case "ready":
+      return "Tap to speak, or close to stop";
     case "capturing":
       return "Tap to stop, or use the keyboard mic";
     case "transcribing":

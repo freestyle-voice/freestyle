@@ -2,10 +2,13 @@
  * Bottom navigation bar.
  *
  * Five equally-weighted icon buttons: History · Vocab · Home · Tone · Dict,
- * with Home centered. Transparent (no capsule / blur background), sitting
- * close to the bottom edge. The active tab is signalled by an olive tint AND a
- * small dot beneath the icon (plus a heavier stroke) — so selection reads
- * without relying on color alone.
+ * with Home centered. A rounded "bubble" sits behind the active tab and slides
+ * horizontally to whichever tab is selected — the active icon contrasts inside
+ * the bubble (accent background + dark icon), inactive icons are muted.
+ *
+ * The bubble is a shape/position cue independent of color, so selection reads
+ * without relying on the olive tint alone (accessibility parity with the
+ * previous dot indicator). Slide animation respects Reduce Motion.
  *
  * Recording lives on the Home screen itself; the center Home button is simply
  * how you return to it from any other tab.
@@ -20,7 +23,19 @@ import {
   Replace,
   Sparkles,
 } from "lucide-react-native";
-import { Pressable, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type LayoutChangeEvent,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Layout, Radius, Spacing } from "@/constants/theme";
@@ -40,6 +55,12 @@ const ITEMS: NavSpec[] = [
   { name: "tone", label: "Tone", icon: Sparkles },
   { name: "dictionary", label: "Dict", icon: Replace },
 ];
+
+/** Horizontal inset inside each slot so the bubble reads as a pill, not a
+ *  full-width block. */
+const BUBBLE_INSET = 6;
+/** Vertical inset — the bubble is slightly shorter than BAR_HEIGHT. */
+const BUBBLE_V_INSET = 6;
 
 function NavButton({
   spec,
@@ -63,18 +84,9 @@ function NavButton({
       style={styles.navButton}
     >
       <Icon
-        color={focused ? theme.primary : theme.mutedForeground}
+        color={focused ? theme.accentForeground : theme.mutedForeground}
         size={24}
         strokeWidth={focused ? 2.4 : 2}
-      />
-      {/* Non-color cue: an active dot so selection reads without relying on
-          the olive tint alone. Reserve the slot when unfocused to avoid a
-          vertical shift. */}
-      <View
-        style={[
-          styles.activeDot,
-          { backgroundColor: focused ? theme.primary : "transparent" },
-        ]}
       />
     </Pressable>
   );
@@ -83,8 +95,42 @@ function NavButton({
 export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const reduceMotion = useReducedMotion();
 
   const focusedName = state.routes[state.index]?.name;
+  const activeIndex = ITEMS.findIndex((i) => i.name === focusedName);
+
+  // --- Measure the row so the bubble knows how wide each slot is.
+  const [rowWidth, setRowWidth] = useState(0);
+  const slotWidth = rowWidth > 0 ? rowWidth / ITEMS.length : 0;
+
+  const onRowLayout = useCallback((e: LayoutChangeEvent) => {
+    setRowWidth(e.nativeEvent.layout.width);
+  }, []);
+
+  // --- Sliding bubble position.
+  const bubbleX = useSharedValue(0);
+  // Track whether we've placed the bubble at least once (skip the first
+  // animation so it doesn't slide in from X=0 on mount).
+  const placed = useRef(false);
+
+  useEffect(() => {
+    if (slotWidth <= 0 || activeIndex < 0) return;
+    const target = slotWidth * activeIndex + BUBBLE_INSET;
+    if (!placed.current) {
+      // First placement — jump without animation.
+      bubbleX.value = target;
+      placed.current = true;
+    } else {
+      bubbleX.value = withTiming(target, {
+        duration: reduceMotion ? 0 : 260,
+      });
+    }
+  }, [activeIndex, slotWidth, bubbleX, reduceMotion]);
+
+  const bubbleStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: bubbleX.value }],
+  }));
 
   const go = (name: string) => {
     const target = state.routes.find((r) => r.name === name);
@@ -98,6 +144,8 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
       navigation.navigate(name);
     }
   };
+
+  const bubbleWidth = slotWidth > 0 ? slotWidth - BUBBLE_INSET * 2 : 0;
 
   return (
     <View
@@ -119,6 +167,23 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
           },
         ]}
       >
+        {/* The sliding bubble — absolutely positioned behind the icons. */}
+        <View style={styles.bubbleTrack} onLayout={onRowLayout}>
+          {slotWidth > 0 && (
+            <Animated.View
+              style={[
+                styles.bubble,
+                {
+                  width: bubbleWidth,
+                  backgroundColor: theme.accent,
+                },
+                bubbleStyle,
+              ]}
+            />
+          )}
+        </View>
+
+        {/* Icon row on top of the bubble. */}
         {ITEMS.map((spec) => (
           <NavButton
             key={spec.name}
@@ -162,16 +227,24 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     borderWidth: 1,
   },
+  /** Covers the same area as the icon row so the measured width matches. */
+  bubbleTrack: {
+    position: "absolute",
+    top: BUBBLE_V_INSET,
+    bottom: BUBBLE_V_INSET,
+    left: Spacing.four,
+    right: Spacing.four,
+  },
+  bubble: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    borderRadius: Radius.full,
+  },
   navButton: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: Spacing.two,
-    gap: 3,
-  },
-  activeDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
   },
 });

@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     alignItems: "center",
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: Spacing.three,
   },
   pill: {
     flexDirection: "row",
@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: Layout.tabBarMaxWidth,
     height: BAR_HEIGHT,
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: Spacing.two,
     borderRadius: Radius.full,
     borderWidth: 1,
   },
@@ -232,8 +232,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: BUBBLE_V_INSET,
     bottom: BUBBLE_V_INSET,
-    left: Spacing.four,
-    right: Spacing.four,
+    left: Spacing.two,
+    right: Spacing.two,
   },
   bubble: {
     position: "absolute",

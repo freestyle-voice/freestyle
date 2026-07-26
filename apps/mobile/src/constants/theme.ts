@@ -102,7 +102,7 @@ export const Layout = {
   /** Max width for the centered content column (cards, lists, inputs). */
   contentMaxWidth: 600,
   /** Max width for the floating tab bar pill. */
-  tabBarMaxWidth: 480,
+  tabBarMaxWidth: 560,
   /** Window width threshold above which we treat the device as a tablet. */
   tabletBreakpoint: 700,
 } as const;

@@ -37,34 +37,6 @@ export function buildLanguageBlock(language: string | undefined): string {
   return `\n\nLanguage constraint: the transcript language is ${descriptor}. Return the final edited text in the same language and script. Do not translate to English or another language. If the transcript mixes languages, preserve each span in the language spoken.${punctuationHint}`;
 }
 
-function buildPersonalToneBlock(
-  tone: Exclude<CleanupPersonalTone, "off">,
-): string {
-  return getCleanupPromptConfig().toneBlocks.personal[tone];
-}
-
-function buildDiscordCasualOverlay(): string {
-  return getCleanupPromptConfig().toneBlocks.discordCasualOverlay;
-}
-
-function buildWorkToneBlock(tone: Exclude<CleanupWorkTone, "off">): string {
-  return getCleanupPromptConfig().toneBlocks.work[tone];
-}
-
-function buildEmailToneBlock(tone: Exclude<CleanupEmailTone, "off">): string {
-  return getCleanupPromptConfig().toneBlocks.email[tone];
-}
-
-function buildOverallToneBlock(
-  tone: Exclude<CleanupOverallTone, "off">,
-): string {
-  return getCleanupPromptConfig().toneBlocks.overall[tone];
-}
-
-function buildEmailStructureBlock(): string {
-  return getCleanupPromptConfig().toneBlocks.emailStructure;
-}
-
 function buildDestinationToneBlock(options: {
   destination: CleanupToneDestination;
   personalTone?: CleanupPersonalTone;
@@ -73,8 +45,9 @@ function buildDestinationToneBlock(options: {
   emailTone?: CleanupEmailTone;
   overallTone?: CleanupOverallTone;
 }): string {
-  const destinationPriorityBlock =
-    getCleanupPromptConfig().destinationPriorityBlock;
+  const config = getCleanupPromptConfig();
+  const priority = config.destinationPriorityBlock;
+  const toneBlocks = config.toneBlocks;
 
   // A sector tone of "off" means styling is turned off for that destination:
   // skip the priority block, the tone block, and (for email) the structure
@@ -84,31 +57,27 @@ function buildDestinationToneBlock(options: {
       const tone = options.personalTone ?? DEFAULT_CLEANUP_PERSONAL_TONE;
       if (tone === "off") return "";
       return (
-        destinationPriorityBlock +
-        buildPersonalToneBlock(tone) +
+        priority +
+        toneBlocks.personal[tone] +
         (tone === "casual" && options.personalSurface === "discord"
-          ? buildDiscordCasualOverlay()
+          ? toneBlocks.discordCasualOverlay
           : "")
       );
     }
     case "work": {
       const tone = options.workTone ?? DEFAULT_CLEANUP_WORK_TONE;
       if (tone === "off") return "";
-      return destinationPriorityBlock + buildWorkToneBlock(tone);
+      return priority + toneBlocks.work[tone];
     }
     case "email": {
       const tone = options.emailTone ?? DEFAULT_CLEANUP_EMAIL_TONE;
       if (tone === "off") return "";
-      return (
-        destinationPriorityBlock +
-        buildEmailToneBlock(tone) +
-        buildEmailStructureBlock()
-      );
+      return priority + toneBlocks.email[tone] + toneBlocks.emailStructure;
     }
     default: {
       const tone = options.overallTone ?? DEFAULT_CLEANUP_OVERALL_TONE;
       if (tone === "off") return "";
-      return destinationPriorityBlock + buildOverallToneBlock(tone);
+      return priority + toneBlocks.overall[tone];
     }
   }
 }

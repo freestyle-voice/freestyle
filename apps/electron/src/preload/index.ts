@@ -51,6 +51,8 @@ const api = {
     ipcRenderer.invoke("open:external", url),
   cloudPromptSignIn: (): Promise<boolean> =>
     ipcRenderer.invoke("cloud:prompt-sign-in"),
+  cloudPromptUpgrade: (): Promise<boolean> =>
+    ipcRenderer.invoke("cloud:prompt-upgrade"),
   onHotkeyDown: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("hotkey:down", handler);
@@ -207,16 +209,6 @@ const api = {
     ipcRenderer.on("settings:audio-ducking-changed", handler);
     return () =>
       ipcRenderer.removeListener("settings:audio-ducking-changed", handler);
-  },
-  sendStreamingAudioChanged: (enabled: boolean): void =>
-    ipcRenderer.send("settings:streaming-audio-changed", enabled),
-  onStreamingAudioChanged: (
-    callback: (enabled: boolean) => void,
-  ): (() => void) => {
-    const handler = (_: unknown, enabled: boolean): void => callback(enabled);
-    ipcRenderer.on("settings:streaming-audio-changed", handler);
-    return () =>
-      ipcRenderer.removeListener("settings:streaming-audio-changed", handler);
   },
   sendAudioPlaybackModeChanged: (mode: AudioPlaybackMode): void =>
     ipcRenderer.send("settings:audio-playback-mode-changed", mode),

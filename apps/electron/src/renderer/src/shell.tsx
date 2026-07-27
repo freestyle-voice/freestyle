@@ -1,28 +1,33 @@
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
-import { CloudProfileButton } from "@renderer/components/cloud-profile";
+import {
+  CloudProfileButton,
+  UpgradeCtaCard,
+} from "@renderer/components/cloud-profile";
 import { Badge } from "@renderer/components/ui/badge";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import { LINKS } from "@renderer/lib/links";
 import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform";
 import { listPlugins } from "@renderer/lib/plugins-api";
+import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import {
   pluginDisplayName,
   resolvePluginIcon,
 } from "@renderer/pages/plugins/helpers";
 import type { PluginInfo } from "@shared/plugins";
+import { SETTINGS_KEYS } from "@shared/settings-keys";
 import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
   Book,
   BookOpen,
   CircleHelp,
-  Clock,
   Cpu,
   FileText,
-  Languages,
   Puzzle,
   Settings,
+  Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -50,52 +55,46 @@ const STATIC_NAV: {
 }[] = [
   { to: "/today", icon: BookOpen, shortcut: "1", labelKey: "shell.nav.today" },
   {
-    to: "/settings/history",
-    icon: Clock,
+    to: "/settings/vocabulary",
+    icon: Book,
     shortcut: "2",
-    labelKey: "shell.nav.history",
+    labelKey: "shell.nav.vocabulary",
   },
   {
     to: "/settings/dictionary",
-    icon: Book,
+    icon: Zap,
     shortcut: "3",
     labelKey: "shell.nav.dictionary",
   },
   {
-    to: "/settings/vocabulary",
-    icon: Languages,
-    shortcut: "4",
-    labelKey: "shell.nav.vocabulary",
-  },
-  {
     to: "/settings/tone",
     icon: FileText,
-    shortcut: "5",
+    shortcut: "4",
     labelKey: "shell.nav.tone",
   },
   {
     to: "/settings/models",
     icon: Cpu,
-    shortcut: "6",
+    shortcut: "5",
     labelKey: "shell.nav.models",
   },
   {
     to: "/plugins",
     icon: Puzzle,
-    shortcut: "7",
+    shortcut: "6",
     labelKey: "shell.nav.plugins",
   },
   {
     to: "/settings",
     icon: Settings,
-    shortcut: "8",
+    shortcut: "7",
     labelKey: "shell.nav.settings",
     footer: true,
   },
   {
     to: "/help",
     icon: CircleHelp,
-    shortcut: "9",
+    shortcut: "8",
     labelKey: "shell.nav.help",
     footer: true,
   },
@@ -187,6 +186,7 @@ export default function AppShell(): React.JSX.Element {
   const location = useLocation();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { t } = useTranslation();
+  const { user } = useCloudAuth();
 
   // A plugin page renders a native WebContentsView that paints above the DOM,
   // so the floating social bar would be occluded. Hide it while a plugin page
@@ -200,13 +200,29 @@ export default function AppShell(): React.JSX.Element {
 
   const pluginNav = usePluginNavItems(plugins);
 
+  // Advanced mode gates the Models page. Read from the shared settings cache so
+  // toggling it in Settings updates the sidebar without a full refetch.
+  const { data: settings } = useQuery(settingsQueryOptions());
+  const advancedMode = settings?.[SETTINGS_KEYS.advancedMode] === "true";
+
+  // Filter the static nav (hide Models when advanced mode is off) and re-number
+  // the Cmd+N shortcuts sequentially so there's no gap when an item is hidden
+  // (e.g. Plugins becomes Cmd+5 when Models is absent).
+  const staticNav = useMemo(
+    () =>
+      STATIC_NAV.filter(
+        (item) => item.to !== "/settings/models" || advancedMode,
+      ).map((item, idx) => ({ ...item, shortcut: String(idx + 1) })),
+    [advancedMode],
+  );
+
   const navItems: NavItem[] = useMemo(
     () =>
-      STATIC_NAV.map((item) => ({
+      staticNav.map((item) => ({
         ...item,
         label: t(item.labelKey) as string,
       })),
-    [t],
+    [staticNav, t],
   );
   const mainNav = navItems.filter((item) => !item.footer);
   const footerNav = navItems.filter((item) => item.footer);
@@ -216,14 +232,14 @@ export default function AppShell(): React.JSX.Element {
     const handler = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       const idx = Number(e.key) - 1;
-      if (idx >= 0 && idx < STATIC_NAV.length) {
+      if (idx >= 0 && idx < staticNav.length) {
         e.preventDefault();
-        navigate(STATIC_NAV[idx].to);
+        navigate(staticNav[idx].to);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [navigate]);
+  }, [navigate, staticNav]);
 
   useEffect(() => {
     return window.api?.onFullscreenChanged(setIsFullscreen);
@@ -232,7 +248,7 @@ export default function AppShell(): React.JSX.Element {
   return (
     <div className="glass-window-shell flex h-screen min-h-0">
       <aside
-        className="glass-sidebar flex w-[220px] shrink-0 flex-col border-r"
+        className="glass-sidebar flex min-h-0 w-[220px] shrink-0 flex-col border-r"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
         {/* Brand row — top padding leaves space for macOS traffic lights */}
@@ -265,15 +281,27 @@ export default function AppShell(): React.JSX.Element {
           )}
         </div>
 
-        <NavList items={mainNav} />
-        {pluginNav.length > 0 ? (
+        <div
+          className="no-scrollbar min-h-0 flex-1 overflow-y-auto"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          <NavList items={mainNav} />
+          {pluginNav.length > 0 ? (
+            <>
+              <div className="border-sidebar-border mx-3 my-1.5 border-t" />
+              <NavList items={pluginNav} />
+            </>
+          ) : null}
+        </div>
+        {!user ? (
           <>
-            <div className="border-sidebar-border mx-3 my-1.5 border-t" />
-            <NavList items={pluginNav} />
+            {pluginNav.length > 0 ? (
+              <div className="border-sidebar-border mx-3 my-1.5 border-t" />
+            ) : null}
+            <NavList items={footerNav} />
           </>
         ) : null}
-        <div className="flex-1" />
-        <NavList items={footerNav} />
+        <UpgradeCtaCard />
         <div
           className="border-sidebar-border mx-3 mt-2 border-t pt-2"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}

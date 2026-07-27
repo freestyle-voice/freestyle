@@ -1,0 +1,22 @@
+name: Submit iOS
+
+# Manual trigger only. This is a monorepo — an `on: push` trigger would build and
+# submit the mobile app on every unrelated merge to main. Run with:
+#   eas workflow:run submit-ios.yml
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build_ios:
+    name: Build iOS app
+    type: build
+    params:
+      platform: ios
+      profile: production
+
+  submit_ios:
+    name: Submit to TestFlight
+    needs: [build_ios]
+    type: testflight
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}

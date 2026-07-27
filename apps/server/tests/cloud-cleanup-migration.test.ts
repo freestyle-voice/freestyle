@@ -34,6 +34,22 @@ function createV13Db(): DatabaseSync {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(provider, model_id, type)
     );
+
+    CREATE TABLE transcription_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      raw_text TEXT NOT NULL,
+      cleaned_text TEXT,
+      voice_provider TEXT NOT NULL,
+      voice_model TEXT NOT NULL,
+      llm_provider TEXT,
+      llm_model TEXT,
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      audio_duration_ms INTEGER NOT NULL DEFAULT 0,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      cost_usd REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
   return instance;
 }

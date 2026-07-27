@@ -24,6 +24,7 @@ import type { HookApi } from "freestyle-voice";
 import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
 import { getDb, readSetting } from "./db.js";
 import { applyDictionaryReplacements } from "./dictionary-replacements.js";
+import { ensureCleanupPromptConfigFresh } from "./editor/prompt-config.js";
 import { buildRewritePrompt } from "./editor/prompts.js";
 import { getRewritePromptContext } from "./editor/rewrite-context.js";
 import {
@@ -218,6 +219,11 @@ export async function postProcess(
   appContext: string | null,
   options: PostProcessOptions = {},
 ): Promise<PostProcessResult> {
+  // Opportunistically refresh the cleanup-prompt config if the cached copy has
+  // aged past its TTL. Fire-and-forget: the current dictation uses whatever is
+  // already in memory (fresh, stale, or bundled); this only warms the next one.
+  void ensureCleanupPromptConfigFresh();
+
   const normalizedRawText = sanitizeTranscriptText(rawText);
   const source = options.source ?? "batch";
   const ppStart = Date.now();

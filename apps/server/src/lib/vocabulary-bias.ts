@@ -1,5 +1,8 @@
 import { stripProviderPrefix } from "./streaming/types.js";
-import { loadVocabularyTerms } from "./vocabulary.js";
+import {
+  buildVocabularyNoteText,
+  loadVocabularyEntries,
+} from "./vocabulary.js";
 
 /** ASR-only vocabulary bias (first recognition step). Not used in post-process. */
 export type AsrVocabularyBias =
@@ -13,6 +16,8 @@ const PROMPT_CHAR_BUDGET = 900;
 const DEEPGRAM_KEYTERM_MAX = 100;
 /** Keep streaming URLs short — long keyterm lists break the WS handshake. */
 const DEEPGRAM_STREAMING_KEYTERM_MAX = 25;
+const SONIOX_TERM_MAX = 500;
+const SONIOX_TERMS_CHAR_BUDGET = 6000;
 const ELEVENLABS_BATCH_KEYTERM_MAX = 100;
 const ELEVENLABS_REALTIME_KEYTERM_MAX = 50;
 const ELEVENLABS_TERM_MAX_CHARS = 20;
@@ -67,6 +72,18 @@ function expandNova2Keywords(terms: string[]): string[] {
   return out;
 }
 
+function capSonioxTerms(terms: string[]): string[] {
+  const capped = capTerms(terms, SONIOX_TERM_MAX);
+  const out: string[] = [];
+  let used = 0;
+  for (const term of capped) {
+    if (used + term.length > SONIOX_TERMS_CHAR_BUDGET) break;
+    out.push(term);
+    used += term.length;
+  }
+  return out;
+}
+
 function capElevenLabsTerms(
   terms: string[],
   maxCount: number,
@@ -99,8 +116,9 @@ export function buildAsrVocabularyBias(
   modelId: string,
   terms: string[],
   streaming = false,
+  noteText?: string,
 ): AsrVocabularyBias | null {
-  const capped = capTerms(terms, DEEPGRAM_KEYTERM_MAX);
+  const capped = capTerms(terms, SONIOX_TERM_MAX);
   if (capped.length === 0) return null;
 
   const short = stripProviderPrefix(modelId);
@@ -147,8 +165,15 @@ export function buildAsrVocabularyBias(
         ? { kind: "elevenlabs-keyterms", terms: keyterms }
         : null;
     }
-    case "soniox": {
-      return { kind: "soniox-context", terms: capped };
+    case "soniox":
+    case "freestyle-cloud": {
+      const sonioxTerms = capSonioxTerms(capped);
+      if (sonioxTerms.length === 0) return null;
+      return {
+        kind: "soniox-context",
+        terms: sonioxTerms,
+        ...(noteText ? { text: noteText } : {}),
+      };
     }
     case "local-mlx": {
       const text = `Technical terms: ${capped.join(", ")}`.slice(
@@ -167,6 +192,12 @@ export function resolveAsrVocabularyBias(
   modelId: string,
   streaming = false,
 ): AsrVocabularyBias | null {
-  const terms = loadVocabularyTerms();
-  return buildAsrVocabularyBias(providerId, modelId, terms, streaming);
+  const entries = loadVocabularyEntries();
+  return buildAsrVocabularyBias(
+    providerId,
+    modelId,
+    entries.map((e) => e.term),
+    streaming,
+    buildVocabularyNoteText(entries),
+  );
 }

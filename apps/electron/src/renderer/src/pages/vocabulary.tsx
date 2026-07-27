@@ -11,10 +11,10 @@ import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Book,
   ChevronLeft,
   ChevronRight,
   Download,
-  Languages,
   Pencil,
   Plus,
   Search,
@@ -548,7 +548,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
   return (
     <div className="border-border bg-card mt-4 rounded-[14px] border border-dashed px-9 py-[52px] text-center">
       <div className="bg-accent mx-auto mb-[18px] inline-flex h-16 w-16 items-center justify-center rounded-2xl">
-        <Languages className="text-primary h-7 w-7" />
+        <Book className="text-primary h-7 w-7" />
       </div>
       <h2 className="serif text-foreground m-0 text-[32px] font-medium leading-none">
         {t("vocabulary.emptyTitle")}

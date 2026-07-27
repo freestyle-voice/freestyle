@@ -32,6 +32,7 @@ declare global {
       openLogsFolder: () => Promise<boolean>;
       openExternal: (url: string) => Promise<boolean>;
       cloudPromptSignIn: () => Promise<boolean>;
+      cloudPromptUpgrade: () => Promise<boolean>;
       onHotkeyDown: (callback: () => void) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;
       onPillCancel: (callback: () => void) => () => void;
@@ -100,10 +101,6 @@ declare global {
       onOutputModeChanged: (callback: (mode: string) => void) => () => void;
       sendAudioDuckingChanged: (enabled: boolean) => void;
       onAudioDuckingChanged: (
-        callback: (enabled: boolean) => void,
-      ) => () => void;
-      sendStreamingAudioChanged: (enabled: boolean) => void;
-      onStreamingAudioChanged: (
         callback: (enabled: boolean) => void,
       ) => () => void;
       sendAudioPlaybackModeChanged: (mode: AudioPlaybackMode) => void;

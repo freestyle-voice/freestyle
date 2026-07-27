@@ -9,12 +9,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import { LanguageSelector } from "@renderer/components/language-selector";
+import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import {
   InputGroup,
   InputGroupInput,
 } from "@renderer/components/ui/input-group";
+import { Progress } from "@renderer/components/ui/progress";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import {
@@ -25,6 +27,7 @@ import {
   SelectValue,
 } from "@renderer/components/ui/select";
 import { Switch } from "@renderer/components/ui/switch";
+import { PricingPlans } from "@renderer/components/upgrade-modal";
 import {
   comboDisplayKeys,
   formatAcceleratorKeys,
@@ -38,23 +41,23 @@ import {
   getLocalApiBase,
   refreshApiBase,
 } from "@renderer/lib/api";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
+import { SETTINGS_QUERY_KEY, settingsQueryOptions } from "@renderer/lib/query";
 import {
-  CONFIG_QUERY_KEY,
-  configQueryOptions,
-  type FreestyleConfig,
-  SETTINGS_QUERY_KEY,
-  settingsQueryOptions,
-} from "@renderer/lib/query";
+  type CloudUsageBalance,
+  usagePercent,
+  useCloudUsage,
+} from "@renderer/lib/use-cloud-usage";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  Cloud,
   Download,
   ExternalLink,
-  FlaskConical,
   FolderOpen,
   Info,
   Keyboard,
@@ -64,6 +67,7 @@ import {
   Monitor,
   Moon,
   Pause,
+  RefreshCw,
   Sun,
   Trash2,
   Volume2,
@@ -106,8 +110,8 @@ const settingsSectionIds = [
   "display",
   "permissions",
   "data",
+  "billing",
   "network",
-  "experimental",
 ] as const;
 
 type SettingsSectionId = (typeof settingsSectionIds)[number];
@@ -159,7 +163,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
-  const [streamingAudio, setStreamingAudio] = useState(false);
+  const [advancedMode, setAdvancedMode] = useState(false);
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
     parseSettingsSection(window.location.hash),
   );
@@ -350,6 +354,7 @@ export default function SettingsPage(): React.JSX.Element {
     if (s[SETTINGS_KEYS.outputMode]) setOutputMode(s[SETTINGS_KEYS.outputMode]);
     if (s[SETTINGS_KEYS.soundEnabled] === "false") setSoundEnabled(false);
     if (s[SETTINGS_KEYS.historyPaused] === "true") setHistoryPaused(true);
+    if (s[SETTINGS_KEYS.advancedMode] === "true") setAdvancedMode(true);
 
     const retentionDays = parseRetentionDays(
       s[SETTINGS_KEYS.historyRetentionDays],
@@ -372,15 +377,6 @@ export default function SettingsPage(): React.JSX.Element {
       setAudioPlaybackMode("duck");
     }
   }, [settingsQuery.data]);
-
-  // Experimental flags from config.freestyle.json, cached alongside the rest of
-  // the settings page rather than re-fetched on every visit.
-  const configQuery = useQuery(configQueryOptions());
-  useEffect(() => {
-    if (configQuery.data) {
-      setStreamingAudio(configQuery.data.flags.streaming_audio === true);
-    }
-  }, [configQuery.data]);
 
   // Load available audio input devices
   useEffect(() => {
@@ -542,6 +538,28 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.setShowDashboardOnLaunch(enabled);
   }, []);
 
+  const handleAdvancedModeToggle = useCallback(
+    (enabled: boolean) => {
+      setAdvancedMode(enabled);
+      // Patch the shared settings cache so the sidebar (which reads the same
+      // query) shows/hides the Models tab immediately, without a refetch.
+      queryClient.setQueryData<Record<string, string>>(
+        SETTINGS_QUERY_KEY,
+        (prev) => ({
+          ...(prev ?? {}),
+          [SETTINGS_KEYS.advancedMode]: String(enabled),
+        }),
+      );
+      getClient()
+        .api.settings[":key"].$put({
+          param: { key: SETTINGS_KEYS.advancedMode },
+          json: { value: String(enabled) },
+        })
+        .catch(() => {});
+    },
+    [queryClient],
+  );
+
   const clearHistory = useCallback(async () => {
     if (!confirm(t("settings.data.clearHistoryConfirm"))) {
       return;
@@ -610,27 +628,6 @@ export default function SettingsPage(): React.JSX.Element {
       }
     },
     [saveHistoryRetention],
-  );
-
-  const handleStreamingAudioToggle = useCallback(
-    (enabled: boolean) => {
-      setStreamingAudio(enabled);
-      window.api?.sendStreamingAudioChanged(enabled);
-      getClient()
-        .api.config.flags[":key"].$put({
-          param: { key: "streaming_audio" },
-          json: { value: enabled },
-        })
-        .then(() => {
-          queryClient.setQueryData<FreestyleConfig>(CONFIG_QUERY_KEY, (prev) =>
-            prev
-              ? { ...prev, flags: { ...prev.flags, streaming_audio: enabled } }
-              : prev,
-          );
-        })
-        .catch(() => {});
-    },
-    [queryClient],
   );
 
   const handleAudioPlaybackModeChange = useCallback((value: string) => {
@@ -770,11 +767,20 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.application.showOnLaunch")}
                 desc={t("settings.application.showOnLaunchDesc")}
-                last
               >
                 <Switch
                   checked={showOnLaunch}
                   onCheckedChange={handleShowOnLaunchToggle}
+                />
+              </Row>
+              <Row
+                label={t("settings.application.advancedMode")}
+                desc={t("settings.application.advancedModeDesc")}
+                last
+              >
+                <Switch
+                  checked={advancedMode}
+                  onCheckedChange={handleAdvancedModeToggle}
                 />
               </Row>
             </SettingsPanel>
@@ -1151,29 +1157,9 @@ export default function SettingsPage(): React.JSX.Element {
             </SettingsPanel>
           )}
 
-          {activeSection === "network" && <NetworkPanel />}
+          {activeSection === "billing" && <BillingPanel />}
 
-          {activeSection === "experimental" && (
-            <SettingsPanel>
-              <div className="border-border bg-secondary/40 text-muted-foreground mb-4 flex items-start gap-2.5 rounded-[10px] border px-3.5 py-3 text-[12px] leading-[1.55]">
-                <FlaskConical className="mt-px h-3.5 w-3.5 shrink-0 opacity-70" />
-                <span>
-                  These features are experimental and may change or be removed
-                  in future releases. Enable them to try new capabilities early.
-                </span>
-              </div>
-              <Row
-                label="Streaming audio"
-                desc="Stream audio in real-time for lower-latency dictation. Supported by Freestyle Transcribe, OpenAI, Deepgram, ElevenLabs, and Soniox."
-                last
-              >
-                <Switch
-                  checked={streamingAudio}
-                  onCheckedChange={handleStreamingAudioToggle}
-                />
-              </Row>
-            </SettingsPanel>
-          )}
+          {activeSection === "network" && <NetworkPanel />}
         </div>
       </div>
     </div>
@@ -1250,6 +1236,133 @@ function Row({
         </p>
       </div>
       <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function BillingPanel(): React.JSX.Element {
+  const { user } = useCloudAuth();
+  const {
+    balance,
+    isPro,
+    isFetching,
+    refresh,
+    startCheckout,
+    checkoutStatus,
+    checkoutError,
+    resetCheckout,
+    openBillingPortal,
+    portalOpening,
+  } = useCloudUsage(!!user);
+
+  return (
+    <SettingsPanel>
+      <div className="flex flex-col gap-6 pb-24">
+        <UsageSummary
+          signedIn={!!user}
+          balance={balance}
+          isPro={isPro}
+          isFetching={isFetching}
+          onRefresh={refresh}
+        />
+        <PricingPlans
+          isPro={isPro}
+          checkoutStatus={checkoutStatus}
+          checkoutError={checkoutError}
+          startCheckout={startCheckout}
+          resetCheckout={resetCheckout}
+          openBillingPortal={openBillingPortal}
+          portalOpening={portalOpening}
+        />
+      </div>
+    </SettingsPanel>
+  );
+}
+
+function UsageSummary({
+  signedIn,
+  balance,
+  isPro,
+  isFetching,
+  onRefresh,
+}: {
+  signedIn: boolean;
+  balance: CloudUsageBalance | null;
+  isPro: boolean;
+  isFetching: boolean;
+  onRefresh: () => void;
+}): React.JSX.Element {
+  if (!signedIn) {
+    return (
+      <div className="glass-card flex items-start gap-3 rounded-[12px] border p-4">
+        <Cloud className="text-primary mt-0.5 size-5 shrink-0" />
+        <div className="min-w-0">
+          <div className="text-foreground text-[13px] font-medium">
+            Sign in to Freestyle Cloud
+          </div>
+          <p className="text-muted-foreground mt-0.5 text-[12px] leading-[1.5]">
+            Sign in from the account menu in the bottom-left to track your
+            weekly usage and manage your plan.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="glass-card rounded-[12px] border p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground mono text-[10.5px] font-medium uppercase tracking-[0.12em]">
+          This week
+        </span>
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-[11px] transition-colors"
+        >
+          <RefreshCw className={cn("size-3", isFetching && "animate-spin")} />
+          Refresh
+        </button>
+      </div>
+
+      {isPro ? (
+        <div className="mt-3 flex items-center gap-2">
+          <span className="serif-italic text-foreground text-[30px] leading-none">
+            Unlimited
+          </span>
+          <Badge className="mono h-4 px-1.5 text-[9px] uppercase tracking-[0.12em]">
+            Pro
+          </Badge>
+        </div>
+      ) : balance ? (
+        <>
+          <div className="mt-3 mb-3 flex items-baseline gap-1.5">
+            <span className="serif-italic text-foreground text-[34px] leading-none">
+              {balance.remaining.toLocaleString()}
+            </span>
+            <span className="text-muted-foreground text-[11px] font-medium">
+              / {balance.limit.toLocaleString()} words remaining
+            </span>
+          </div>
+          <Progress value={usagePercent(balance)} className="h-1.5" />
+          <div className="text-muted-foreground mt-2.5 flex items-center justify-between text-[10.5px]">
+            <span className="mono tracking-[0.08em]">
+              {usagePercent(balance)}% used
+            </span>
+            <span>
+              Resets{" "}
+              {new Date(balance.resetsAt).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+              })}
+            </span>
+          </div>
+        </>
+      ) : (
+        <div className="text-muted-foreground mt-3 text-[12px]">
+          Usage is unavailable right now.
+        </div>
+      )}
     </div>
   );
 }

@@ -35,11 +35,20 @@ export function openStreamingSession(opts: {
   model: string;
   language?: string;
   bias?: AsrVocabularyBias | null;
+  appContext?: string | null;
   cleanup?: StreamCleanupPreferences;
   callbacks: StreamCallbacks;
 }): StreamSession {
-  const { providerId, apiKey, model, language, bias, cleanup, callbacks } =
-    opts;
+  const {
+    providerId,
+    apiKey,
+    model,
+    language,
+    bias,
+    appContext,
+    cleanup,
+    callbacks,
+  } = opts;
 
   const provider = getProvider(providerId);
   if (!provider) {
@@ -59,6 +68,7 @@ export function openStreamingSession(opts: {
     model,
     language,
     bias,
+    appContext,
     cleanup,
     callbacks,
   });

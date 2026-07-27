@@ -228,11 +228,31 @@ describe("resolveAsrVocabularyBias", () => {
       expect(bias.text).toContain("Freestyle");
     }
   });
+
+  it("feeds term notes into soniox background text", async () => {
+    const { getDb } = await import("../src/lib/db.js");
+    const { resolveAsrVocabularyBias } = await import(
+      "../src/lib/vocabulary-bias.js"
+    );
+
+    const db = getDb();
+    db.prepare("INSERT INTO vocabulary (term, notes) VALUES (?, ?)").run(
+      "Soniox",
+      "speech-to-text provider",
+    );
+
+    const bias = resolveAsrVocabularyBias("soniox", "stt-rt-v5", true);
+    expect(bias?.kind).toBe("soniox-context");
+    if (bias?.kind === "soniox-context") {
+      expect(bias.terms).toContain("Soniox");
+      expect(bias.text).toContain("Soniox: speech-to-text provider");
+    }
+  });
 });
 
 describe("soniox", () => {
   it("builds soniox-context bias with terms", () => {
-    const bias = buildAsrVocabularyBias("soniox", "stt-rt-v4", [
+    const bias = buildAsrVocabularyBias("soniox", "stt-rt-v5", [
       "Freestyle",
       "Kubernetes",
     ]);
@@ -243,7 +263,71 @@ describe("soniox", () => {
   });
 
   it("returns null for empty terms", () => {
-    const bias = buildAsrVocabularyBias("soniox", "stt-rt-v4", []);
+    const bias = buildAsrVocabularyBias("soniox", "stt-rt-v5", []);
+    expect(bias).toBeNull();
+  });
+
+  it("caps terms at 500", () => {
+    const bias = buildAsrVocabularyBias("soniox", "stt-rt-v5", terms(600));
+    expect(bias?.kind).toBe("soniox-context");
+    if (bias?.kind === "soniox-context") {
+      expect(bias.terms).toHaveLength(500);
+    }
+  });
+
+  it("caps cumulative term characters at 6000", () => {
+    const longTerms = terms(100, "x".repeat(100));
+    const bias = buildAsrVocabularyBias("soniox", "stt-rt-v5", longTerms);
+    expect(bias?.kind).toBe("soniox-context");
+    if (bias?.kind === "soniox-context") {
+      const totalChars = bias.terms.reduce((sum, t) => sum + t.length, 0);
+      expect(totalChars).toBeLessThanOrEqual(6000);
+      expect(bias.terms.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("includes note text as background context", () => {
+    const bias = buildAsrVocabularyBias(
+      "soniox",
+      "stt-rt-v5",
+      ["Freestyle"],
+      true,
+      "Freestyle: our voice dictation app",
+    );
+    expect(bias).toEqual({
+      kind: "soniox-context",
+      terms: ["Freestyle"],
+      text: "Freestyle: our voice dictation app",
+    });
+  });
+
+  it("omits text when no note text is supplied", () => {
+    const bias = buildAsrVocabularyBias("soniox", "stt-rt-v5", ["Freestyle"]);
+    expect(bias).toEqual({ kind: "soniox-context", terms: ["Freestyle"] });
+  });
+});
+
+describe("freestyle-cloud", () => {
+  it("builds soniox-context bias for the cloud streaming path", () => {
+    const bias = buildAsrVocabularyBias(
+      "freestyle-cloud",
+      "freestyle-cloud/streaming",
+      ["Freestyle", "Kubernetes"],
+      true,
+    );
+    expect(bias).toEqual({
+      kind: "soniox-context",
+      terms: ["Freestyle", "Kubernetes"],
+    });
+  });
+
+  it("returns null for empty terms", () => {
+    const bias = buildAsrVocabularyBias(
+      "freestyle-cloud",
+      "freestyle-cloud/streaming",
+      [],
+      true,
+    );
     expect(bias).toBeNull();
   });
 });

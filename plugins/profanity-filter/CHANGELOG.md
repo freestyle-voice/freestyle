@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+- No documented changes.
+
 ## 0.1.1
 
 - Harden API validation and tighten renderer performance by @MathurAditya724 in [#436](https://github.com/freestyle-voice/freestyle/pull/436)

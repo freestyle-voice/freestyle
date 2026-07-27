@@ -1,4 +1,61 @@
 # Changelog
+## 0.6.0
+
+### New Features ✨
+
+#### Billing
+
+- Add denominator to billing by @matteo8p in [#493](https://github.com/freestyle-voice/freestyle/pull/493)
+- Add billing to freestyle by @matteo8p in [#484](https://github.com/freestyle-voice/freestyle/pull/484)
+
+#### Mobile
+
+- Add Sign in with Apple button by @MathurAditya724 in [#491](https://github.com/freestyle-voice/freestyle/pull/491)
+- Integrate Sentry for error tracking and session replay by @MathurAditya724 in [#488](https://github.com/freestyle-voice/freestyle/pull/488)
+- Configure EAS Submit for App Store & Play Store by @MathurAditya724 in [#487](https://github.com/freestyle-voice/freestyle/pull/487)
+- Expo app with iOS voice keyboard extension by @MathurAditya724 in [#482](https://github.com/freestyle-voice/freestyle/pull/482)
+
+#### Plugins
+
+- Give Freestyle Cloud users an LLM capability by @MathurAditya724 in [#476](https://github.com/freestyle-voice/freestyle/pull/476)
+- Forward beforeCleanup system fragments to Freestyle Cloud by @MathurAditya724 in [#474](https://github.com/freestyle-voice/freestyle/pull/474)
+- Overhaul plugin pipeline with cancellation, capture hooks, and LLM capability by @MathurAditya724 in [#462](https://github.com/freestyle-voice/freestyle/pull/462)
+
+#### Other
+
+- (analytics) Track app context and tone destination in PostHog by @MathurAditya724 in [#472](https://github.com/freestyle-voice/freestyle/pull/472)
+- (models) Support custom OpenAI-compatible STT endpoints by @MathurAditya724 in [#479](https://github.com/freestyle-voice/freestyle/pull/479)
+- (settings) Connect to a self-hosted server from the Network tab by @MathurAditya724 in [#475](https://github.com/freestyle-voice/freestyle/pull/475)
+- Make streaming audio always-on by @MathurAditya724 in [#494](https://github.com/freestyle-voice/freestyle/pull/494)
+
+### Bug Fixes 🐛
+
+#### Mobile
+
+- Declare keyboard extension for EAS credential provisioning by @MathurAditya724 in [1752f317](https://github.com/freestyle-voice/freestyle/commit/1752f3174cb5ea26ccacb78d434cf94383671d28)
+- Harden resource-bundle signing plugin by @MathurAditya724 in [197f8216](https://github.com/freestyle-voice/freestyle/commit/197f8216c8bfd5ea709e8e3de111f9ab18b5c8e2)
+- EAS iOS build credentials + resource-bundle signing by @MathurAditya724 in [07897a9f](https://github.com/freestyle-voice/freestyle/commit/07897a9fef3886609f641a0aa1405fd050719c3c)
+
+#### Other
+
+- (server) Keep Freestyle Cloud session alive before 7-day token expiry by @MathurAditya724 in [#490](https://github.com/freestyle-voice/freestyle/pull/490)
+- (shell) Remove "Star the repo" text from GitHub icon by @MathurAditya724 in [#471](https://github.com/freestyle-voice/freestyle/pull/471)
+
+### Documentation 📚
+
+- Refresh plugin system for the new pipeline API by @MathurAditya724 in [#478](https://github.com/freestyle-voice/freestyle/pull/478)
+
+### Internal Changes 🔧
+
+- (mobile) Set app version to 0.0.1 by @MathurAditya724 in [c388c81f](https://github.com/freestyle-voice/freestyle/commit/c388c81fb04e931dd69e450aa5a15bcaf6790ad2)
+- (models) Drive endpoint connect forms with react-hook-form by @MathurAditya724 in [#480](https://github.com/freestyle-voice/freestyle/pull/480)
+- Cleanup by @MathurAditya724 in [#495](https://github.com/freestyle-voice/freestyle/pull/495)
+- Cache native binary compilation with turbo by @MathurAditya724 in [#486](https://github.com/freestyle-voice/freestyle/pull/486)
+
+### Other
+
+- Create eas.json by @MathurAditya724 in [b330aec8](https://github.com/freestyle-voice/freestyle/commit/b330aec867e075f27c96ee086a18f65616810adf)
+
 ## 0.5.2
 
 ### New Features ✨

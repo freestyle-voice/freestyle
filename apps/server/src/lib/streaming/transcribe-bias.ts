@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { parseAppContext } from "freestyle-voice";
 import type { AsrVocabularyBias } from "../vocabulary-bias.js";
 import type { TranscribeResult } from "./types.js";
 import { CLOUD_TRANSCRIBE_TIMEOUT_MS, stripProviderPrefix } from "./types.js";
@@ -151,4 +152,31 @@ export function sonioxContextFromBias(
   if (bias.terms.length > 0) context.terms = bias.terms;
   if (bias.text?.trim()) context.text = bias.text.trim();
   return Object.keys(context).length > 0 ? context : undefined;
+}
+
+export interface SonioxGeneralEntry {
+  key: string;
+  value: string;
+}
+
+const SONIOX_GENERAL_VALUE_MAX_CHARS = 256;
+
+export function sonioxGeneralFromAppContext(
+  appContext: string | null | undefined,
+): SonioxGeneralEntry[] | undefined {
+  const parsed = parseAppContext(appContext);
+  if (!parsed) return undefined;
+  const entries: SonioxGeneralEntry[] = [];
+  const push = (key: string, value: string | undefined) => {
+    const trimmed = value?.trim();
+    if (!trimmed) return;
+    entries.push({
+      key,
+      value: trimmed.slice(0, SONIOX_GENERAL_VALUE_MAX_CHARS),
+    });
+  };
+  push("application", parsed.appName);
+  push("window title", parsed.windowTitle);
+  push("url", parsed.url);
+  return entries.length > 0 ? entries : undefined;
 }

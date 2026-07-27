@@ -38,7 +38,6 @@ type BarMode = "connecting" | "listening" | "speaking";
 let _soundEnabled = true;
 let _outputMode = "paste";
 let _audioPlaybackMode: AudioPlaybackMode = "off";
-let _streamingAudioEnabled = false;
 let _toneCtx: AudioContext | null = null;
 
 /**
@@ -183,9 +182,14 @@ interface TranscribeResult {
   disposition?: "deliver" | "suppressed" | "aborted";
 }
 
-const USAGE_LIMIT_DIALOG_TITLE = "Usage limit reached";
+/**
+ * Error text attached to usage-limit results. The interactive prompt (with an
+ * "Upgrade to Pro" action) is shown by the main process via
+ * `window.api.cloudPromptUpgrade()` — this string only surfaces where a plain
+ * error message is needed.
+ */
 const USAGE_LIMIT_DIALOG_MESSAGE =
-  "You've used all of your Freestyle Cloud transcription for now. It resets soon — or switch to a local or bring-your-own-key model in Settings > Models.";
+  "You've used your free Freestyle Cloud dictation for this week. Upgrade to Pro for unlimited dictation, or switch to a local or bring-your-own-key model in Settings > Models.";
 
 /**
  * The app context (process name + window title) can contain characters
@@ -371,10 +375,7 @@ export default function AppPage(): React.JSX.Element {
         }
         if (results.some((r) => r.usageExceeded)) {
           hidePill();
-          window.api.showErrorDialog(
-            USAGE_LIMIT_DIALOG_TITLE,
-            USAGE_LIMIT_DIALOG_MESSAGE,
-          );
+          void window.api.cloudPromptUpgrade();
           return;
         }
         const errMsg = results.find((r) => r.error)?.error;
@@ -590,11 +591,13 @@ export default function AppPage(): React.JSX.Element {
             raw?: string;
             cleaned?: string;
             provider_category?: string;
+            disposition?: "deliver" | "suppressed" | "aborted";
           };
           return {
             raw: (data.raw || "").trim(),
             cleaned: (data.cleaned || data.raw || "").trim(),
             providerCategory: data.provider_category,
+            disposition: data.disposition,
           };
         })
         .catch(() => ({ raw: "", cleaned: "", error: errorMsg }));
@@ -608,12 +611,15 @@ export default function AppPage(): React.JSX.Element {
     if (!streamerRef.current) {
       streamerRef.current = new Streamer(getApiBase(), getServerToken(), {
         onConfig: (config) => {
+          // Only update support for *future* sessions. The per-session decision
+          // (recordingSessionUsesTransportRef) is latched once in startRecording
+          // and must never be mutated mid-session: a config arriving after the
+          // first recording has already committed to the batch path would flip
+          // commit to the streaming path, which captured no audio → "No audio
+          // captured". This is the first-dictation-after-restart failure.
           supportsSessionTransportRef.current = config.sessionTransport;
           if (config.providerCategory) {
             providerCategoryRef.current = config.providerCategory;
-          }
-          if (wantsMicRef.current) {
-            recordingSessionUsesTransportRef.current = config.sessionTransport;
           }
         },
         onReady: () => {},
@@ -622,6 +628,20 @@ export default function AppPage(): React.JSX.Element {
           const resolver = streamResolverRef.current;
           if (!resolver) return;
           streamResolverRef.current = null;
+          // A short clip can stream to a live provider that finalizes before it
+          // has recognized any words (cold Soniox/Freestyle Cloud session), so
+          // the streaming final comes back empty even though audio was captured.
+          // Salvage via the batch REST path with the recorded WAV the streamer
+          // still has buffered — the same clip transcribes fine one-shot. If no
+          // WAV exists (genuine silence) the empty result stands. Suppressed or
+          // aborted plugin results must remain empty and must not be retried.
+          if (!text.trim() && (disposition ?? "deliver") === "deliver") {
+            const fallback = restFallbackTranscribe("");
+            if (fallback) {
+              void fallback.then(resolver);
+              return;
+            }
+          }
           resolver({ raw: text, cleaned: text, disposition });
         },
         onCleaned: () => {},
@@ -658,10 +678,7 @@ export default function AppPage(): React.JSX.Element {
               resolver({ raw: "", cleaned: "", usageExceeded: true });
             } else if (pillActiveRef.current) {
               hidePill();
-              window.api.showErrorDialog(
-                USAGE_LIMIT_DIALOG_TITLE,
-                USAGE_LIMIT_DIALOG_MESSAGE,
-              );
+              void window.api.cloudPromptUpgrade();
             }
             return;
           }
@@ -929,12 +946,10 @@ export default function AppPage(): React.JSX.Element {
         .catch(() => {});
 
       appContextRef.current = null;
-      // Only create the streamer when streaming is enabled.
-      if (_streamingAudioEnabled) {
-        try {
-          getStreamer().setContext(null);
-        } catch {}
-      }
+      // Streaming is always active — prime the streamer's context.
+      try {
+        getStreamer().setContext(null);
+      } catch {}
 
       void refreshNeedsAppContextForCleanup().then((needsAppContext) => {
         if (!needsAppContext || !wantsMicRef.current) return;
@@ -943,20 +958,16 @@ export default function AppPage(): React.JSX.Element {
           .then((app) => {
             if (!wantsMicRef.current) return;
             appContextRef.current = app;
-            if (_streamingAudioEnabled) {
-              try {
-                getStreamer().setContext(app);
-              } catch {}
-            }
+            try {
+              getStreamer().setContext(app);
+            } catch {}
           })
           .catch(() => {
             if (!wantsMicRef.current) return;
             appContextRef.current = null;
-            if (_streamingAudioEnabled) {
-              try {
-                getStreamer().setContext(null);
-              } catch {}
-            }
+            try {
+              getStreamer().setContext(null);
+            } catch {}
           });
       });
 
@@ -980,7 +991,7 @@ export default function AppPage(): React.JSX.Element {
 
       try {
         recordingSessionUsesTransportRef.current =
-          _streamingAudioEnabled && supportsSessionTransportRef.current;
+          supportsSessionTransportRef.current;
 
         // When session transport is active the streamer handles audio capture
         // directly — we only need the raw mic stream for the analyser. When
@@ -1023,11 +1034,9 @@ export default function AppPage(): React.JSX.Element {
         }, 100);
 
         startListening(stream);
-        if (_streamingAudioEnabled) {
-          try {
-            await getStreamer().startCapture(stream);
-          } catch {}
-        }
+        try {
+          await getStreamer().startCapture(stream);
+        } catch {}
       } catch (err) {
         pendingCommitRef.current = false;
         recorderRef.current.releaseStream();
@@ -1082,7 +1091,7 @@ export default function AppPage(): React.JSX.Element {
     freqDataRef.current = null;
 
     const recordingDuration = Date.now() - startTimeRef.current;
-    if (recordingDuration < 500) {
+    if (recordingDuration < 250) {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
       streamerRef.current?.cancel();
@@ -1309,20 +1318,11 @@ export default function AppPage(): React.JSX.Element {
       })
       .catch(() => {});
 
-    // Streaming audio flag (experimental — stored in config.freestyle.json).
-    // When enabled, eagerly create the Streamer so the WebSocket connects and
-    // the onConfig callback (which sets supportsSessionTransportRef) fires
-    // before the first recording.
-    getClient()
-      .api.config.$get()
-      .then((r) => (r.ok ? r.json() : null))
-      .then((config) => {
-        if (config?.flags?.streaming_audio === true) {
-          _streamingAudioEnabled = true;
-          getStreamer();
-        }
-      })
-      .catch(() => {});
+    // Streaming is always active. Eagerly create the Streamer so the WebSocket
+    // connects and the onConfig callback (which sets supportsSessionTransportRef)
+    // fires before the first recording. Session-transport support is negotiated
+    // per provider — non-streaming providers fall back to the batch path.
+    getStreamer();
     window.api
       ?.getPillPosition()
       .then(applyPillPosition)
@@ -1344,32 +1344,16 @@ export default function AppPage(): React.JSX.Element {
         _audioPlaybackMode = normalizeAudioPlaybackMode(mode);
       },
     );
-    // Apply the toggle live — the flag is a module-level var read once above,
-    // so without this it wouldn't take effect until the pill window reloaded.
-    // Disabling tears the streamer down so its reconnect loop and AudioContext
-    // don't linger.
-    const removeStreamingAudio = window.api?.onStreamingAudioChanged(
-      (enabled) => {
-        _streamingAudioEnabled = enabled;
-        if (enabled) {
-          getStreamer();
-        } else {
-          streamerRef.current?.destroy();
-          streamerRef.current = null;
-          supportsSessionTransportRef.current = false;
-        }
-      },
-    );
     // The server target (URL/token) changed in Settings. Re-point this window's
     // API client and tear down the streamer so its next connection uses the new
-    // server — no app restart needed. A fresh streamer is created lazily on the
-    // next recording (or immediately if streaming is enabled).
+    // server — no app restart needed. A fresh streamer is created immediately so
+    // session-transport support is renegotiated before the next recording.
     const removeServerChanged = window.api?.onServerChanged(() => {
       void refreshApiBase().finally(() => {
         streamerRef.current?.destroy();
         streamerRef.current = null;
         supportsSessionTransportRef.current = false;
-        if (_streamingAudioEnabled) getStreamer();
+        getStreamer();
       });
     });
     return () => {
@@ -1377,10 +1361,9 @@ export default function AppPage(): React.JSX.Element {
       removeOutputMode?.();
       removeAudioDucking?.();
       removeAudioPlaybackMode?.();
-      removeStreamingAudio?.();
       removeServerChanged?.();
     };
-  }, [applyPillPosition]);
+  }, [applyPillPosition, getStreamer]);
 
   // ---- Pill panel plugin ----
   // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount to configure the panel + install listeners; hidePill is stable and only read inside the collapse handler.

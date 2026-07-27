@@ -7,6 +7,11 @@ export interface AvailableModel {
   type: "voice" | "llm";
   /** Surfaced in the default picker; non-curated models live behind "All models". */
   curated?: boolean;
+  /**
+   * Display name of the LLM gateway fronting this model (e.g. "OpenRouter"),
+   * shown as a small badge in the picker. Absent for first-party vendors.
+   */
+  gateway?: string;
 }
 
 export interface WhisperModelDef {
@@ -98,6 +103,8 @@ export const LLM_PROVIDERS = [
   "google",
   "groq",
   "mistral",
+  "openrouter",
+  "vercel",
   "local-llm",
 ];
 
@@ -111,6 +118,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   soniox: "Soniox",
   mistral: "Mistral",
   openrouter: "OpenRouter",
+  vercel: "Vercel AI Gateway",
   "freestyle-cloud": "Freestyle Transcribe",
   "local-llm": "Local LLM",
   "local-whisper": "Local Whisper",
@@ -127,6 +135,8 @@ export const PROVIDER_KEY_URLS: Record<string, string> = {
   anthropic: "https://console.anthropic.com/settings/keys",
   google: "https://aistudio.google.com/apikey",
   mistral: "https://console.mistral.ai/api-keys",
+  openrouter: "https://openrouter.ai/keys",
+  vercel: "https://vercel.com/d?to=%2F%5Bteam%5D%2F~%2Fai-gateway%2Fapi-keys",
 };
 
 export function displayProviderName(
@@ -211,7 +221,7 @@ export const VOICE_META: Record<
     cost: 0.4,
     note: "Excellent across 99 languages",
   },
-  "soniox/stt-rt-v4": {
+  "soniox/stt-rt-v5": {
     speed: 5,
     quality: 5,
     cost: 0.12,

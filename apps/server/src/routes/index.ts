@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { capture, captureException, getDeviceId } from "../lib/posthog.js";
 import apiKeys from "./api-keys.js";
 import auth from "./auth.js";
+import billing from "./billing.js";
 import configRoute from "./config.js";
 import dictionary from "./dictionary.js";
 import eventsRoute from "./events.js";
@@ -71,6 +72,7 @@ const apiRouter = new Hono()
   .route("/output", outputRoute)
   .route("/events", eventsRoute)
   .route("/usage", usage)
+  .route("/billing", billing)
   .route("/plugins", pluginsRoute)
   .route("/whisper", whisper)
   .route("/mlx-asr", mlxAsr);

@@ -12,11 +12,25 @@
     "XDG_SESSION_TYPE"
   ],
   "tasks": {
+    "compile:native": {
+      "inputs": ["native/**"],
+      "outputs": ["resources/bin/**"]
+    },
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "compile:native"],
       "outputs": ["dist/**", "build/**"]
     },
     "dev": {
+      "dependsOn": ["^build", "compile:native"],
+      "persistent": true,
+      "cache": false
+    },
+    "ios": {
+      "dependsOn": ["^build"],
+      "persistent": true,
+      "cache": false
+    },
+    "android": {
       "dependsOn": ["^build"],
       "persistent": true,
       "cache": false

@@ -135,7 +135,7 @@ export type HistoryFiltersSetting = z.infer<typeof historyFiltersSettingSchema>;
 
 /** Initial defaults for the History filter panel (matches the page's state). */
 export const DEFAULT_HISTORY_FILTERS: HistoryFiltersSetting = {
-  preset: "weekly",
+  preset: "today",
   customStartDate: "",
   customEndDate: "",
   filterOpen: false,

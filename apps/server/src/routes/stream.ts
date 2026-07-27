@@ -2,7 +2,6 @@ import { sanitizeTranscriptText } from "@freestyle-voice/stt";
 import { createAppLogger } from "@freestyle-voice/utils";
 import { upgradeWebSocket } from "@hono/node-server";
 import { Hono } from "hono";
-import { getFlag } from "../lib/config.js";
 import { getRewritePromptContext } from "../lib/editor/rewrite-context.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
@@ -50,13 +49,6 @@ const LOG_PIPELINE_LATENCY = process.env.FREESTYLE_LOG_PIPELINE_LATENCY !== "0";
 
 const stream = new Hono().get(
   "/",
-  (c, next) => {
-    // Streaming is gated behind the experimental flag.
-    if (!getFlag("streaming_audio")) {
-      return c.json({ error: "Streaming audio is not enabled" }, 400);
-    }
-    return next();
-  },
   upgradeWebSocket(() => {
     let upstream: StreamSession | null = null;
     let closed = false;
@@ -332,6 +324,7 @@ const stream = new Hono().get(
         model: voice.model_id,
         language: config.language,
         bias: config.bias,
+        appContext: effectiveAppContext(),
         cleanup,
         callbacks: {
           onReady: (readyModel) => {
@@ -346,9 +339,12 @@ const stream = new Hono().get(
             }
             ws.send(JSON.stringify({ type: "partial", text }));
           },
-          onFinal: async (rawText) => {
+          onFinal: async (rawText, upstreamRawText) => {
             if (upstream !== session) return;
             rawText = sanitizeTranscriptText(rawText);
+            const upstreamRaw = upstreamRawText
+              ? sanitizeTranscriptText(upstreamRawText)
+              : undefined;
             // One HookApi per dictation, threaded through every stage so a
             // plugin's consume()/abort() in afterTranscribe is visible to
             // cleanup + final rewrites (matching the batch /transcribe route).
@@ -490,10 +486,12 @@ const stream = new Hono().get(
                 );
               }
               if (!suppressed) {
+                const historyRawText = upstreamRaw || cloudText;
                 try {
                   saveProcessedHistory({
-                    rawText: cloudText,
-                    cleanedText: finalText !== cloudText ? finalText : null,
+                    rawText: historyRawText,
+                    cleanedText:
+                      finalText !== historyRawText ? finalText : null,
                     voiceProvider: voiceDefaults!.provider,
                     voiceModel: voiceDefaults!.model_id,
                     llmProvider,

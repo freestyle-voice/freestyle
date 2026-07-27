@@ -1,12 +1,18 @@
 import {
   DEFAULT_HISTORY_FILTERS,
   type HistoryFiltersSetting,
-  type HistoryPreset,
   parseHistoryFilters,
 } from "@freestyle-voice/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
-import { Badge } from "@renderer/components/ui/badge";
+import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { Button } from "@renderer/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@renderer/components/ui/dialog";
 import { Label } from "@renderer/components/ui/label";
 import {
   Popover,
@@ -19,7 +25,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@renderer/components/ui/tooltip";
-import { usePersistentJsonState } from "@renderer/hooks/use-persistent-state";
+import {
+  usePersistentJsonState,
+  usePersistentState,
+} from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
 import { type DiffSegment, diffWords } from "@renderer/lib/history-diff";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
@@ -36,16 +45,16 @@ import {
   ChevronRight,
   Clock,
   Copy,
-  Eraser,
   FileDiff,
-  Filter,
   FlaskConical,
+  GraduationCap,
   PanelRight,
   Search,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type DateRange, DayPicker } from "react-day-picker";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
@@ -74,10 +83,19 @@ interface Stats {
   total_output_tokens: number;
   total_cost_usd: number;
   avg_duration_ms: number;
+  total_audio_ms: number;
+  total_fixes: number;
   total_words: number;
   today_sessions: number;
   today_cost: number;
   unfiltered_total_sessions: number;
+}
+
+/** One local day of usage from GET /api/history/daily, feeding the heatmap. */
+interface DayActivity {
+  day: string;
+  words: number;
+  sessions: number;
 }
 
 function formatClock(iso: string): string {
@@ -154,11 +172,79 @@ function getDateGroup(iso: string): string {
 
 const PAGE_SIZE = 20;
 const DEV_HISTORY_SEED_ENABLED = import.meta.env.DEV;
+const STATS_WIDTH_MIN = 260;
+const STATS_WIDTH_MAX = 480;
 
 export default function HistoryPage(): React.JSX.Element {
   const { t } = useTranslation();
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
+  // The filter dialog is transient UI, not persisted state.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // The intro hero (dictation tutorial) can be dismissed with its X and
+  // brought back from the filter dialog's Tutorial toggle. Persisted in
+  // localStorage so the choice survives navigation and app restarts.
+  const [heroDismissed, setHeroDismissed] = usePersistentState<"0" | "1">(
+    "today.heroDismissed",
+    "0",
+    (v): v is "0" | "1" => v === "0" || v === "1",
+  );
+  const dismissHero = useCallback(
+    () => setHeroDismissed("1"),
+    [setHeroDismissed],
+  );
+  const setShowTutorial = useCallback(
+    (value: boolean) => setHeroDismissed(value ? "0" : "1"),
+    [setHeroDismissed],
+  );
+
+  // Stats sidebar visibility and width. Open by default, collapsible, and
+  // resizable by dragging its left edge; both persisted across sessions.
+  const [statsOpenRaw, setStatsOpenRaw] = usePersistentState<"0" | "1">(
+    "today.statsOpen",
+    "1",
+    (v): v is "0" | "1" => v === "0" || v === "1",
+  );
+  const statsOpen = statsOpenRaw === "1";
+  const openStats = useCallback(() => setStatsOpenRaw("1"), [setStatsOpenRaw]);
+  const closeStats = useCallback(() => setStatsOpenRaw("0"), [setStatsOpenRaw]);
+  const [statsWidthRaw, setStatsWidthRaw] = usePersistentState<string>(
+    "today.statsWidth",
+    "320",
+    (v): v is string => /^\d+$/.test(v),
+  );
+  const statsWidth = Math.min(
+    STATS_WIDTH_MAX,
+    Math.max(STATS_WIDTH_MIN, Number(statsWidthRaw) || 320),
+  );
+  const setStatsWidth = useCallback(
+    (w: number) =>
+      setStatsWidthRaw(
+        String(Math.min(STATS_WIDTH_MAX, Math.max(STATS_WIDTH_MIN, w))),
+      ),
+    [setStatsWidthRaw],
+  );
+  // The panel sits flush against the window's right edge, so its width is
+  // simply the distance from the pointer to that edge, clamped.
+  const onResizeStart = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const el = e.currentTarget;
+      el.setPointerCapture(e.pointerId);
+      const onMove = (ev: PointerEvent): void => {
+        setStatsWidth(Math.round(window.innerWidth - ev.clientX));
+      };
+      const onUp = (ev: PointerEvent): void => {
+        el.releasePointerCapture(ev.pointerId);
+        el.removeEventListener("pointermove", onMove);
+        el.removeEventListener("pointerup", onUp);
+      };
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onUp);
+    },
+    [setStatsWidth],
+  );
 
   // ── Persisted filter + view state ──────────────────────────────────────
   // Date range and view toggles are UI-only preferences, so — like each page's
@@ -176,7 +262,6 @@ export default function HistoryPage(): React.JSX.Element {
     preset: activePreset,
     customStartDate,
     customEndDate,
-    filterOpen,
     diffMode,
     showAiEdits,
     nerdMode,
@@ -189,86 +274,30 @@ export default function HistoryPage(): React.JSX.Element {
     [setFilters],
   );
 
-  // Calculate preset dates dynamically on every render
   const todayStr = getLocalDateString(new Date());
-  const start7 = new Date();
-  start7.setDate(start7.getDate() - 7);
-  const start7Str = getLocalDateString(start7);
-  const start30 = new Date();
-  start30.setDate(start30.getDate() - 30);
-  const start30Str = getLocalDateString(start30);
 
-  let startDate = "";
-  let endDate = "";
-  if (activePreset === "today") {
-    startDate = todayStr;
-    endDate = todayStr;
-  } else if (activePreset === "weekly") {
-    startDate = start7Str;
-    endDate = todayStr;
-  } else if (activePreset === "monthly") {
-    startDate = start30Str;
-    endDate = todayStr;
-  } else if (activePreset === "custom") {
-    startDate = customStartDate;
-    endDate = customEndDate;
-  }
+  // Presets are gone: the only date filter is an explicit custom range.
+  // Legacy persisted presets (today/weekly/monthly) are treated as all-time.
+  const hasCustomRange =
+    activePreset === "custom" && !!(customStartDate || customEndDate);
+  const startDate = hasCustomRange ? customStartDate : "";
+  const endDate = hasCustomRange ? customEndDate : "";
 
-  const getTimeLabel = (): string => {
-    if (activePreset === "weekly") return t("history.timeLabelPast7");
-    if (activePreset === "today") return t("history.timeLabelToday");
-    if (activePreset === "monthly") return t("history.timeLabelPast30");
-    if (activePreset === "all-time") return t("history.timeLabelAllTime");
-    return t("history.timeLabelFiltered");
-  };
-  const timeLabel = getTimeLabel();
+  const timeLabel = hasCustomRange
+    ? t("history.timeLabelFiltered")
+    : t("history.timeLabelAllTime");
 
-  const filterCount = activePreset !== "all-time" ? 1 : 0;
-
-  // Whether the current filter + view state already matches the page defaults,
-  // so the reset button can be disabled when there's nothing to clear.
-  // `filterOpen` is excluded — it's the panel's own visibility, not a filter.
-  const isDefaultFilters =
-    activePreset === DEFAULT_HISTORY_FILTERS.preset &&
-    customStartDate === DEFAULT_HISTORY_FILTERS.customStartDate &&
-    customEndDate === DEFAULT_HISTORY_FILTERS.customEndDate &&
-    diffMode === DEFAULT_HISTORY_FILTERS.diffMode &&
-    showAiEdits === DEFAULT_HISTORY_FILTERS.showAiEdits &&
-    nerdMode === DEFAULT_HISTORY_FILTERS.nerdMode;
-
-  const applyPreset = useCallback(
-    (preset: HistoryPreset): void => {
-      patchFilters({ preset });
-      setPage(0);
-    },
-    [patchFilters],
-  );
+  const filterCount = hasCustomRange ? 1 : 0;
 
   const selectDateRange = useCallback(
     (range: DateRange | undefined): void => {
       patchFilters({
-        preset: "custom",
+        preset: range ? "custom" : "all-time",
         customStartDate: range?.from ? getLocalDateString(range.from) : "",
         customEndDate: range?.to ? getLocalDateString(range.to) : "",
       });
       setPage(0);
     },
-    [patchFilters],
-  );
-
-  // Restore the page's initial defaults (not "all time"). Leaves the panel's
-  // open/closed state untouched so the panel doesn't collapse out from under
-  // the click.
-  const resetFilters = useCallback((): void => {
-    setFilters((prev) => ({
-      ...DEFAULT_HISTORY_FILTERS,
-      filterOpen: prev.filterOpen,
-    }));
-    setPage(0);
-  }, [setFilters]);
-
-  const closeFilter = useCallback(
-    () => patchFilters({ filterOpen: false }),
     [patchFilters],
   );
 
@@ -359,6 +388,8 @@ export default function HistoryPage(): React.JSX.Element {
         total_output_tokens: 12,
         total_cost_usd: 0,
         avg_duration_ms: 640,
+        total_audio_ms: 3200,
+        total_fixes: 3,
         total_words: 12,
         today_sessions: 1,
         today_cost: 0,
@@ -379,6 +410,19 @@ export default function HistoryPage(): React.JSX.Element {
   });
   const historyPaused = historyPausedData ?? false;
 
+  // Per-day usage for the heatmap. Fixed lookback window on the server, so it
+  // ignores the list filters; shares the "history" key prefix so a completed
+  // transcription invalidates it along with the feed.
+  const { data: dailyData } = useQuery({
+    queryKey: ["history", "daily"],
+    queryFn: async () => {
+      const res = await getClient().api.history.daily.$get();
+      if (!res.ok) return [] as DayActivity[];
+      const data = (await res.json()) as { days: DayActivity[] };
+      return data.days;
+    },
+  });
+
   // Refetch when the pill reports a completed transcription.
   useEffect(() => {
     const remove = window.api?.onTranscriptionDone(() => {
@@ -386,6 +430,25 @@ export default function HistoryPage(): React.JSX.Element {
     });
     return () => remove?.();
   }, [queryClient]);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchShortcutEnabled = total > 0 || !!search;
+
+  useEffect(() => {
+    if (!searchShortcutEnabled) return;
+
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return;
+      e.preventDefault();
+      const input = searchInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.select();
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [searchShortcutEnabled]);
 
   const invalidate = useCallback(
     () => queryClient.invalidateQueries({ queryKey: ["history"] }),
@@ -417,6 +480,33 @@ export default function HistoryPage(): React.JSX.Element {
     return out;
   }, [entries]);
 
+  // Overall speaking speed for the active date range, from the server
+  // aggregates (words over spoken-audio minutes).
+  const avgWpm =
+    stats && stats.total_audio_ms > 0
+      ? Math.round(stats.total_words / (stats.total_audio_ms / 60000))
+      : 0;
+
+  // Heatmap series. With the dev seed active there's no real history, so
+  // synthesize a deterministic few months to make the heatmap reviewable.
+  const daily = useMemo<DayActivity[]>(() => {
+    if (!hasDevSeedEntry) return dailyData ?? [];
+    const out: DayActivity[] = [];
+    const d = new Date();
+    for (let i = 0; i < 112; i++) {
+      const words = (i * 37) % 7 === 0 ? 0 : 40 + ((i * 53) % 360);
+      if (words > 0) {
+        out.push({
+          day: getLocalDateString(d),
+          words,
+          sessions: 1 + (i % 3),
+        });
+      }
+      d.setDate(d.getDate() - 1);
+    }
+    return out;
+  }, [dailyData, hasDevSeedEntry]);
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -427,225 +517,225 @@ export default function HistoryPage(): React.JSX.Element {
 
   const isGenuineEmpty = stats?.unfiltered_total_sessions === 0;
 
+  const hero = heroDismissed === "0" && !isGenuineEmpty && (
+    <div className="relative mb-7">
+      <button
+        type="button"
+        onClick={dismissHero}
+        aria-label={t("history.dismissHero")}
+        title={t("history.dismissHero")}
+        className="text-muted-foreground hover:bg-card hover:text-foreground absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent transition-colors"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+      <TutorialDemo />
+    </div>
+  );
+
+  const searchRow = (
+    <div className="mb-6 flex gap-2">
+      <div className="border-border bg-card flex flex-1 items-center gap-2 rounded-lg border px-3 py-2">
+        <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+        <input
+          ref={searchInputRef}
+          type="text"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(0);
+          }}
+          placeholder={
+            total === 1
+              ? t("history.searchSingular", { total })
+              : t("history.searchPlural", { total })
+          }
+          className="placeholder:text-muted-foreground/80 text-foreground flex-1 bg-transparent text-[13px] outline-none"
+        />
+        <span className="text-muted-foreground text-[10px]">
+          {SEARCH_SHORTCUT_LABEL}
+        </span>
+      </div>
+      <Button
+        variant="link"
+        onClick={() => setFiltersOpen(true)}
+        className={cn(
+          "h-auto self-center px-2 text-[13px] underline",
+          filterCount > 0
+            ? "text-primary"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        {t("history.filtersBtn")}
+      </Button>
+      {!statsOpen && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="self-center"
+          onClick={openStats}
+          aria-label={t("history.openStats")}
+          title={t("history.openStats")}
+        >
+          <PanelRight />
+        </Button>
+      )}
+    </div>
+  );
+
+  const feed =
+    entries.length === 0 ? (
+      <NoSearchResults
+        hasSearch={!!search}
+        hasDates={hasCustomRange}
+        onClear={() => {
+          setSearch("");
+          patchFilters({
+            preset: "all-time",
+            customStartDate: "",
+            customEndDate: "",
+          });
+          setPage(0);
+        }}
+      />
+    ) : (
+      groups.map((group) =>
+        group.items.length === 0 ? null : (
+          <FeedGroup
+            key={group.label}
+            label={
+              group.label === "Today"
+                ? t("history.groupToday")
+                : group.label === "Yesterday"
+                  ? t("history.groupYesterday")
+                  : group.label
+            }
+          >
+            {group.items.map((entry) => (
+              <FeedItem
+                key={entry.id}
+                entry={entry}
+                onDelete={deleteEntry}
+                diffMode={diffMode}
+                showAiEdits={showAiEdits}
+                nerdMode={nerdMode}
+              />
+            ))}
+          </FeedGroup>
+        ),
+      )
+    );
+
+  const pagination = total > PAGE_SIZE && (
+    <div className="border-border mt-4 flex items-center justify-between border-t pt-4">
+      <span className="text-muted-foreground text-[11px]">
+        {total}{" "}
+        {total === 1
+          ? t("history.sessionSingular")
+          : t("history.sessionPlural")}
+      </span>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setPage((p) => Math.max(0, p - 1))}
+          disabled={page === 0}
+          aria-label="Previous page"
+        >
+          <ChevronLeft />
+        </Button>
+        <span className="text-muted-foreground px-2 text-[11px]">
+          {page + 1} / {totalPages}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+          disabled={page >= totalPages - 1}
+          aria-label="Next page"
+        >
+          <ChevronRight />
+        </Button>
+      </div>
+    </div>
+  );
+
+  const filtersModal = (
+    <FiltersModal
+      open={filtersOpen}
+      onOpenChange={setFiltersOpen}
+      startDate={startDate}
+      endDate={endDate}
+      diffMode={diffMode}
+      showAiEdits={showAiEdits}
+      nerdMode={nerdMode}
+      showTutorial={heroDismissed === "0"}
+      onSelectRange={selectDateRange}
+      onDiffModeChange={setDiffMode}
+      onShowAiEditsChange={setShowAiEdits}
+      onNerdModeChange={setNerdMode}
+      onShowTutorialChange={setShowTutorial}
+    />
+  );
+
+  if (isGenuineEmpty) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <DragSpacer />
+        <div
+          className="responsive-page-scroll flex-1 overflow-auto pt-5"
+          style={{ scrollbarWidth: "none" } as React.CSSProperties}
+        >
+          {historyPaused && <HistoryPausedNotice />}
+          {hero}
+          <EmptyState />
+        </div>
+      </div>
+    );
+  }
+
+  // Split layout: a scrollable feed column beside the collapsible, resizable
+  // stats panel. The DragSpacer stays at the top; the feed column owns its own
+  // scroll so the panel never scrolls out of view.
   return (
     <div className="flex h-full min-h-0 flex-col">
       <DragSpacer />
       <div
-        className="responsive-page-scroll flex-1 overflow-auto"
-        style={
-          {
-            scrollbarWidth: "none",
-            // When the filter panel is open it should sit flush against the
-            // window's right and bottom edges, so drop the page's right and
-            // bottom padding here — the bottom padding is re-applied to just
-            // the feed column so its divider line still runs edge-to-edge.
-            ...(filterOpen ? { paddingRight: 0, paddingBottom: 0 } : {}),
-          } as React.CSSProperties
-        }
+        className="grid min-h-0 flex-1"
+        style={{
+          gridTemplateColumns: statsOpen
+            ? `minmax(0,1fr) ${statsWidth}px`
+            : "minmax(0,1fr)",
+        }}
       >
-        <PageHeader title={t("history.title")} />
-
-        {historyPaused && <HistoryPausedNotice />}
-
-        {isGenuineEmpty ? (
-          <EmptyState />
-        ) : (
-          <div
-            className={cn(
-              "grid min-w-0 gap-7",
-              filterOpen &&
-                "min-h-[calc(100vh-88px)] grid-cols-[minmax(0,1fr)_minmax(300px,340px)] gap-5",
-            )}
-          >
-            <div className={cn("min-w-0", filterOpen && "pb-12")}>
-              {/* Stats */}
-              <div
-                className={cn(
-                  "border-border mb-7 grid grid-cols-2 gap-2.5 border-b pb-7",
-                  !filterOpen &&
-                    (nerdMode ? "md:grid-cols-3" : "md:grid-cols-4"),
-                )}
-              >
-                <Stat
-                  n={(stats?.total_words ?? 0).toLocaleString()}
-                  l={t("history.wordsStat", { label: timeLabel })}
-                />
-                <Stat
-                  n={String(stats?.total_sessions ?? 0)}
-                  l={t("history.sessionsStat", { label: timeLabel })}
-                />
-                <Stat
-                  n={
-                    stats && stats.avg_duration_ms > 0
-                      ? formatSeconds(Math.round(stats.avg_duration_ms))
-                      : "—"
-                  }
-                  l={t("history.avgLatency")}
-                />
-                <Stat
-                  accent
-                  n={`$${(stats?.total_cost_usd ?? 0).toFixed(2)}`}
-                  l={t("history.costStat", { label: timeLabel })}
-                />
-                {nerdMode && (
-                  <>
-                    <Stat
-                      n={(stats?.total_input_tokens ?? 0).toLocaleString()}
-                      l={t("history.tokensInStat")}
-                    />
-                    <Stat
-                      n={(stats?.total_output_tokens ?? 0).toLocaleString()}
-                      l={t("history.tokensOutStat")}
-                    />
-                  </>
-                )}
-              </div>
-
-              {/* Search & Filter Row */}
-              <div className="mb-6 flex gap-2">
-                <div className="border-border bg-card flex flex-1 items-center gap-2 rounded-lg border px-3 py-2">
-                  <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value);
-                      setPage(0);
-                    }}
-                    placeholder={
-                      total === 1
-                        ? t("history.searchSingular", { total })
-                        : t("history.searchPlural", { total })
-                    }
-                    className="placeholder:text-muted-foreground/80 text-foreground flex-1 bg-transparent text-[13px] outline-none"
-                  />
-                  <span className="mono text-muted-foreground text-[10px]">
-                    {SEARCH_SHORTCUT_LABEL}
-                  </span>
-                </div>
-                {!filterOpen && (
-                  <Button
-                    variant="outline"
-                    onClick={() => patchFilters({ filterOpen: true })}
-                    className={cn(
-                      "text-muted-foreground h-auto self-stretch",
-                      filterCount > 0 &&
-                        "border-primary text-primary bg-primary/5",
-                    )}
-                    aria-expanded={filterOpen}
-                  >
-                    <Filter data-icon="inline-start" />
-                    <span>{t("history.filtersBtn")}</span>
-                    {filterCount > 0 && (
-                      <Badge className="h-4 min-w-4 px-1 text-[9px] font-bold">
-                        {filterCount}
-                      </Badge>
-                    )}
-                  </Button>
-                )}
-              </div>
-
-              {entries.length === 0 ? (
-                <NoSearchResults
-                  hasSearch={!!search}
-                  hasDates={activePreset !== "all-time"}
-                  onClear={() => {
-                    setSearch("");
-                    patchFilters({
-                      preset: "all-time",
-                      customStartDate: "",
-                      customEndDate: "",
-                    });
-                    setPage(0);
-                  }}
-                />
-              ) : (
-                groups.map((group) =>
-                  group.items.length === 0 ? null : (
-                    <FeedGroup
-                      key={group.label}
-                      label={
-                        group.label === "Today"
-                          ? t("history.groupToday")
-                          : group.label === "Yesterday"
-                            ? t("history.groupYesterday")
-                            : group.label
-                      }
-                    >
-                      {group.items.map((entry) => (
-                        <FeedItem
-                          key={entry.id}
-                          entry={entry}
-                          onDelete={deleteEntry}
-                          diffMode={diffMode}
-                          showAiEdits={showAiEdits}
-                          nerdMode={nerdMode}
-                        />
-                      ))}
-                    </FeedGroup>
-                  ),
-                )
-              )}
-
-              {/* Pagination */}
-              {total > PAGE_SIZE && (
-                <div className="border-border mt-4 flex items-center justify-between border-t pt-4">
-                  <span className="mono text-muted-foreground text-[11px] uppercase tracking-[0.12em]">
-                    {total}{" "}
-                    {total === 1
-                      ? t("history.sessionSingular")
-                      : t("history.sessionPlural")}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => setPage((p) => Math.max(0, p - 1))}
-                      disabled={page === 0}
-                      aria-label="Previous page"
-                    >
-                      <ChevronLeft />
-                    </Button>
-                    <span className="mono text-muted-foreground px-2 text-[11px]">
-                      {page + 1} / {totalPages}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() =>
-                        setPage((p) => Math.min(totalPages - 1, p + 1))
-                      }
-                      disabled={page >= totalPages - 1}
-                      aria-label="Next page"
-                    >
-                      <ChevronRight />
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {filterOpen && (
-              <FilterPanel
-                activePreset={activePreset}
-                startDate={startDate}
-                endDate={endDate}
-                diffMode={diffMode}
-                showAiEdits={showAiEdits}
-                nerdMode={nerdMode}
-                onPreset={applyPreset}
-                onSelectRange={selectDateRange}
-                onReset={resetFilters}
-                resetDisabled={isDefaultFilters}
-                onClose={closeFilter}
-                onDiffModeChange={setDiffMode}
-                onShowAiEditsChange={setShowAiEdits}
-                onNerdModeChange={setNerdMode}
-              />
-            )}
-          </div>
+        <div
+          className="responsive-page-scroll min-w-0 overflow-auto pt-5"
+          style={
+            {
+              scrollbarWidth: "none",
+              paddingRight: statsOpen ? "1.25rem" : undefined,
+            } as React.CSSProperties
+          }
+        >
+          {historyPaused && <HistoryPausedNotice />}
+          {hero}
+          {searchRow}
+          {feed}
+          {pagination}
+        </div>
+        {statsOpen && (
+          <StatsPanel
+            stats={stats}
+            timeLabel={timeLabel}
+            daily={daily}
+            avgWpm={avgWpm}
+            width={statsWidth}
+            onClose={closeStats}
+            onResizeStart={onResizeStart}
+            onWidthChange={setStatsWidth}
+          />
         )}
       </div>
+      {filtersModal}
     </div>
   );
 }
@@ -654,48 +744,110 @@ export default function HistoryPage(): React.JSX.Element {
 // Subcomponents
 // ---------------------------------------------------------------------------
 
-const PRESETS: { value: HistoryPreset; labelKey: string }[] = [
-  { value: "today", labelKey: "history.presetToday" },
-  { value: "weekly", labelKey: "history.presetLast7" },
-  { value: "monthly", labelKey: "history.presetLast30" },
-  { value: "all-time", labelKey: "history.presetAllTime" },
-];
-
 /**
- * The History filter sidebar. Memoized so it doesn't re-render on unrelated
- * page state changes (search typing, pagination, data refetches). All handlers
- * are stabilized by the parent with `useCallback`.
+ * The right-hand stats panel: collapsible via its header button and resizable
+ * by dragging its left edge. Memoized so it doesn't re-render on unrelated
+ * page state (search typing, pagination).
  */
-const FilterPanel = memo(function FilterPanel({
-  activePreset,
+const StatsPanel = memo(function StatsPanel({
+  stats,
+  timeLabel,
+  daily,
+  avgWpm,
+  width,
+  onClose,
+  onResizeStart,
+  onWidthChange,
+}: {
+  stats: Stats | null;
+  timeLabel: string;
+  daily: DayActivity[];
+  avgWpm: number;
+  width: number;
+  onClose: () => void;
+  onResizeStart: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onWidthChange: (width: number) => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  return (
+    // Fills the full height of its grid cell and stays fixed while the feed
+    // column scrolls independently beside it.
+    <div className="border-border/70 relative min-h-0 border-l">
+      {/* Invisible drag handle straddling the panel's left border. Focusable
+          window-splitter: arrow keys nudge the width for keyboard users. */}
+      {/* biome-ignore lint/a11y/useSemanticElements: an <hr> can't act as a focusable, draggable window splitter */}
+      <div
+        role="separator"
+        tabIndex={0}
+        aria-orientation="vertical"
+        aria-label={t("history.resizeStats")}
+        aria-valuenow={width}
+        aria-valuemin={STATS_WIDTH_MIN}
+        aria-valuemax={STATS_WIDTH_MAX}
+        onPointerDown={onResizeStart}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowLeft") {
+            e.preventDefault();
+            onWidthChange(width + 16);
+          } else if (e.key === "ArrowRight") {
+            e.preventDefault();
+            onWidthChange(width - 16);
+          }
+        }}
+        className="hover:bg-primary/25 active:bg-primary/40 focus-visible:bg-primary/25 absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize transition-colors outline-none"
+      />
+      <aside className="flex h-full min-h-0 flex-col overflow-hidden px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)]">
+        <div className="-mr-1.5 flex justify-end">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={onClose}
+            aria-label={t("history.closeStats")}
+            title={t("history.closeStats")}
+          >
+            <PanelRight />
+          </Button>
+        </div>
+        <StatsTab
+          stats={stats}
+          timeLabel={timeLabel}
+          daily={daily}
+          avgWpm={avgWpm}
+        />
+      </aside>
+    </div>
+  );
+});
+
+/** Date-range + view options, presented as a modal dialog. */
+const FiltersModal = memo(function FiltersModal({
+  open,
+  onOpenChange,
   startDate,
   endDate,
   diffMode,
   showAiEdits,
   nerdMode,
-  onPreset,
+  showTutorial,
   onSelectRange,
-  onReset,
-  resetDisabled,
-  onClose,
   onDiffModeChange,
   onShowAiEditsChange,
   onNerdModeChange,
+  onShowTutorialChange,
 }: {
-  activePreset: HistoryPreset;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   startDate: string;
   endDate: string;
   diffMode: boolean;
   showAiEdits: boolean;
   nerdMode: boolean;
-  onPreset: (preset: HistoryPreset) => void;
+  showTutorial: boolean;
   onSelectRange: (range: DateRange | undefined) => void;
-  onReset: () => void;
-  resetDisabled: boolean;
-  onClose: () => void;
   onDiffModeChange: (value: boolean) => void;
   onShowAiEditsChange: (value: boolean) => void;
   onNerdModeChange: (value: boolean) => void;
+  onShowTutorialChange: (value: boolean) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const selectedDateRange: DateRange = {
@@ -704,44 +856,30 @@ const FilterPanel = memo(function FilterPanel({
   };
 
   return (
-    // Wrapper stretches to the full height of the feed column so the divider
-    // line runs edge-to-edge; the panel itself stays sticky within it.
-    <div className="border-border/70 border-l">
-      <aside className="sticky top-0 flex h-[calc(100vh-88px)] min-h-[520px] flex-col overflow-hidden px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)] animate-in fade-in-0 slide-in-from-right-3 duration-200">
-        <div className="border-border/70 flex h-10 items-center gap-1.5 border-b pb-3">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-foreground text-[14px] font-semibold">
-              {t("history.filterTitle")}
-            </h2>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onReset}
-            disabled={resetDisabled}
-            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-            aria-label={t("history.reset")}
-            title={t("history.reset")}
-          >
-            <Eraser />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onClose}
-            aria-label="Close filters"
-            title="Close filters"
-          >
-            <PanelRight />
-          </Button>
-        </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>{t("history.filterTitle")}</DialogTitle>
+        </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto pt-4 pr-1">
+        <div className="flex flex-col gap-5">
           {/* Date range */}
           <div className="flex flex-col gap-2.5">
-            <Label className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
-              {t("history.dateRangeLabel")}
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-muted-foreground text-[12px]">
+                {t("history.dateRangeLabel")}
+              </Label>
+              {(startDate || endDate) && (
+                <Button
+                  variant="link"
+                  size="xs"
+                  className="text-muted-foreground hover:text-foreground h-auto p-0 text-[11px] underline"
+                  onClick={() => onSelectRange(undefined)}
+                >
+                  {t("history.clearDates")}
+                </Button>
+              )}
+            </div>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -755,8 +893,8 @@ const FilterPanel = memo(function FilterPanel({
                 </Button>
               </PopoverTrigger>
               <PopoverContent
-                align="end"
-                className="w-[320px] translate-x-2 overflow-visible p-2"
+                align="start"
+                className="w-[320px] overflow-visible p-2"
                 collisionPadding={8}
                 sideOffset={6}
               >
@@ -803,33 +941,9 @@ const FilterPanel = memo(function FilterPanel({
             </Popover>
           </div>
 
-          {/* Presets — plain buttons, active one is always highlighted */}
-          <div className="flex flex-col gap-2.5">
-            <span className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
-              {t("history.presetsLabel")}
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              {PRESETS.map((preset) => {
-                const active = activePreset === preset.value;
-                return (
-                  <Button
-                    key={preset.value}
-                    variant={active ? "default" : "outline"}
-                    size="sm"
-                    className="h-8 w-full justify-center text-[11px]"
-                    aria-pressed={active}
-                    onClick={() => onPreset(preset.value)}
-                  >
-                    {t(preset.labelKey)}
-                  </Button>
-                );
-              })}
-            </div>
-          </div>
-
           {/* View — global toggles that apply to every entry at once */}
           <div className="flex flex-col gap-2.5">
-            <span className="mono text-muted-foreground text-[10px] uppercase tracking-wider">
+            <span className="text-muted-foreground text-[10px]">
               {t("history.viewLabel")}
             </span>
             <div className="border-border/70 bg-card/35 flex flex-col divide-y divide-border/60 rounded-lg border">
@@ -863,13 +977,281 @@ const FilterPanel = memo(function FilterPanel({
                 checked={nerdMode}
                 onCheckedChange={onNerdModeChange}
               />
+              <ViewToggleRow
+                icon={
+                  <GraduationCap className="text-muted-foreground h-3.5 w-3.5" />
+                }
+                title={t("history.tutorialToggle")}
+                description={t("history.tutorialToggleDesc")}
+                checked={showTutorial}
+                onCheckedChange={onShowTutorialChange}
+              />
             </div>
           </div>
         </div>
-      </aside>
-    </div>
+
+        <DialogFooter>
+          <Button variant="ink" onClick={() => onOpenChange(false)}>
+            {t("history.done")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 });
+
+/** Aggregate stats + visualisations for the active date range. */
+function StatsTab({
+  stats,
+  timeLabel,
+  daily,
+  avgWpm,
+}: {
+  stats: Stats | null;
+  timeLabel: string;
+  daily: DayActivity[];
+  avgWpm: number;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-auto pt-4 pr-1">
+      {/* Headline numbers — cards in a 2-up grid */}
+      <div className="grid grid-cols-2 gap-2.5">
+        <StatCard
+          span2
+          inline
+          accent
+          n={String(avgWpm)}
+          l={t("today.wpmLabel")}
+          sub={timeLabel}
+        />
+        <StatCard
+          n={(stats?.total_words ?? 0).toLocaleString()}
+          l={t("today.wordsLabel")}
+        />
+        <StatCard
+          n={(stats?.total_fixes ?? 0).toLocaleString()}
+          l={t("today.fixesLabel")}
+        />
+      </div>
+
+      {/* Daily usage heatmap */}
+      <div className="mb-6 flex flex-col gap-2.5">
+        <RailLabel>{t("today.dailyActivity")}</RailLabel>
+        <DailyHeatmap data={daily} />
+      </div>
+    </div>
+  );
+}
+
+function RailLabel({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return <div className="text-muted-foreground text-[10px]">{children}</div>;
+}
+
+/** A bordered stat card matching the filter panel's card styling. */
+function StatCard({
+  n,
+  l,
+  sub,
+  accent,
+  span2,
+  inline,
+}: {
+  n: string;
+  l: string;
+  // Optional secondary label rendered below (e.g. the time range).
+  sub?: string;
+  accent?: boolean;
+  // Span both grid columns.
+  span2?: boolean;
+  // Render the primary label inline (small text) next to the number.
+  inline?: boolean;
+}): React.JSX.Element {
+  return (
+    <div
+      className={cn(
+        "border-border/70 bg-card/35 rounded-lg border px-3.5 py-3",
+        span2 && "col-span-2",
+      )}
+    >
+      {inline ? (
+        <>
+          <div className="flex items-baseline gap-2">
+            <span
+              className={cn(
+                "serif-italic text-[30px] leading-none",
+                accent ? "text-primary" : "text-foreground",
+              )}
+            >
+              {n}
+            </span>
+            <span className="text-muted-foreground text-[9.5px]">{l}</span>
+          </div>
+          {sub && (
+            <div className="text-muted-foreground/70 mt-1.5 text-[9.5px]">
+              {sub}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div
+            className={cn(
+              "serif-italic text-[30px] leading-none",
+              accent ? "text-primary" : "text-foreground",
+            )}
+          >
+            {n}
+          </div>
+          <div className="text-muted-foreground mt-2 text-[9.5px] leading-tight">
+            {l}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Heatmap geometry: GitHub-style week columns, Sunday-start, newest week last.
+const HEATMAP_WEEKS = 16;
+const HEATMAP_CELL = 11;
+const HEATMAP_GAP = 2;
+const HEATMAP_PITCH = HEATMAP_CELL + HEATMAP_GAP;
+// Word-count intensity steps, low → high, on the olive primary.
+const HEATMAP_OPACITIES = [0.25, 0.5, 0.75, 1];
+
+/** GitHub-commit-style heatmap of words dictated per local day. */
+function DailyHeatmap({ data }: { data: DayActivity[] }): React.JSX.Element {
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language;
+
+  const byDay = useMemo(
+    () => new Map(data.map((d) => [d.day, d.words])),
+    [data],
+  );
+  const max = Math.max(1, ...data.map((d) => d.words));
+
+  const leftPad = 22; // weekday labels
+  const topPad = 14; // month labels
+  const width = leftPad + HEATMAP_WEEKS * HEATMAP_PITCH - HEATMAP_GAP;
+  const height = topPad + 7 * HEATMAP_PITCH - HEATMAP_GAP;
+
+  // First cell = Sunday of the week (HEATMAP_WEEKS - 1) weeks before this one.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const gridStart = new Date(today);
+  gridStart.setDate(
+    gridStart.getDate() - gridStart.getDay() - (HEATMAP_WEEKS - 1) * 7,
+  );
+
+  const cells: React.JSX.Element[] = [];
+  const monthLabels: { x: number; label: string }[] = [];
+  let prevMonth = -1;
+  for (let w = 0; w < HEATMAP_WEEKS; w++) {
+    const weekStart = new Date(gridStart);
+    weekStart.setDate(gridStart.getDate() + w * 7);
+    if (weekStart.getMonth() !== prevMonth) {
+      // Drop the previous label when a month boundary lands within two
+      // columns of it, so short leading months don't collide.
+      const x = leftPad + w * HEATMAP_PITCH;
+      const last = monthLabels[monthLabels.length - 1];
+      if (last && x - last.x < 3 * HEATMAP_PITCH) monthLabels.pop();
+      monthLabels.push({
+        x,
+        label: weekStart.toLocaleDateString(lang, { month: "short" }),
+      });
+      prevMonth = weekStart.getMonth();
+    }
+    for (let d = 0; d < 7; d++) {
+      const date = new Date(gridStart);
+      date.setDate(gridStart.getDate() + w * 7 + d);
+      if (date > today) continue;
+      const words = byDay.get(getLocalDateString(date)) ?? 0;
+      const level = words > 0 ? Math.min(4, Math.ceil((words / max) * 4)) : 0;
+      cells.push(
+        <rect
+          key={`${w}-${d}`}
+          x={leftPad + w * HEATMAP_PITCH}
+          y={topPad + d * HEATMAP_PITCH}
+          width={HEATMAP_CELL}
+          height={HEATMAP_CELL}
+          rx={2}
+          fill={level > 0 ? "var(--primary)" : "var(--border)"}
+          fillOpacity={level > 0 ? HEATMAP_OPACITIES[level - 1] : 0.4}
+        >
+          <title>
+            {`${t("today.heatmapWords", { count: words })} · ${date.toLocaleDateString(lang, { month: "short", day: "numeric" })}`}
+          </title>
+        </rect>,
+      );
+    }
+  }
+
+  // Mon / Wed / Fri row labels, from real dates so they localize.
+  const weekdayLabels = [1, 3, 5].map((d) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + d);
+    return {
+      y: topPad + d * HEATMAP_PITCH + HEATMAP_CELL - 3,
+      label: date.toLocaleDateString(lang, { weekday: "narrow" }),
+    };
+  });
+
+  return (
+    <div className="flex flex-col gap-2">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width="100%"
+        role="img"
+        aria-label={t("today.dailyActivity")}
+        className="block h-auto"
+      >
+        {monthLabels.map((m) => (
+          <text
+            key={m.x}
+            x={m.x}
+            y={9}
+            fontSize={8}
+            fill="var(--muted-foreground)"
+          >
+            {m.label}
+          </text>
+        ))}
+        {weekdayLabels.map((wd) => (
+          <text
+            key={wd.y}
+            x={0}
+            y={wd.y}
+            fontSize={8}
+            fill="var(--muted-foreground)"
+          >
+            {wd.label}
+          </text>
+        ))}
+        {cells}
+      </svg>
+      <div className="text-muted-foreground flex items-center justify-end gap-1 text-[9px]">
+        <span className="mr-0.5">{t("today.heatmapLess")}</span>
+        <span
+          className="size-[9px] rounded-[2px]"
+          style={{ background: "var(--border)", opacity: 0.4 }}
+        />
+        {HEATMAP_OPACITIES.map((o) => (
+          <span
+            key={o}
+            className="size-[9px] rounded-[2px]"
+            style={{ background: "var(--primary)", opacity: o }}
+          />
+        ))}
+        <span className="ml-0.5">{t("today.heatmapMore")}</span>
+      </div>
+    </div>
+  );
+}
 
 function ViewToggleRow({
   icon,
@@ -911,54 +1293,6 @@ function ViewToggleRow({
   );
 }
 
-function PageHeader({
-  title,
-  subtitle,
-}: {
-  title: string;
-  subtitle?: string;
-}): React.JSX.Element {
-  return (
-    <div className="mb-7">
-      <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-        <span className="serif-italic text-primary">{title}</span>
-        <span>. </span>
-      </h1>
-      {subtitle && (
-        <p className="text-muted-foreground mt-2.5 max-w-[580px] text-[14px] leading-[1.5]">
-          {subtitle}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function Stat({
-  n,
-  l,
-  accent,
-}: {
-  n: string;
-  l: string;
-  accent?: boolean;
-}): React.JSX.Element {
-  return (
-    <div className="border-border bg-card rounded-[11px] border px-[18px] py-4">
-      <div
-        className={cn(
-          "serif-italic text-[38px] leading-none",
-          accent ? "text-primary" : "text-foreground",
-        )}
-      >
-        {n}
-      </div>
-      <div className="mono text-muted-foreground mt-2 text-[10px] uppercase tracking-[0.14em]">
-        {l}
-      </div>
-    </div>
-  );
-}
-
 function FeedGroup({
   label,
   children,
@@ -969,9 +1303,7 @@ function FeedGroup({
   return (
     <div className="mb-7">
       <div className="mb-3 flex items-center gap-3">
-        <div className="mono text-muted-foreground text-[10px] uppercase tracking-[0.18em]">
-          {label}
-        </div>
+        <div className="text-muted-foreground text-[10px]">{label}</div>
       </div>
       <div className="flex flex-col">{children}</div>
     </div>
@@ -1043,13 +1375,13 @@ const FeedItem = memo(function FeedItem({
   return (
     <div className="group px-1.5 py-3.5">
       <div className="mb-2 flex items-center gap-2.5">
-        <span className="mono text-foreground shrink-0 text-[11px] font-medium tracking-[0.04em]">
+        <span className="text-foreground shrink-0 text-[11px] font-medium">
           {formatClock(entry.created_at)}
         </span>
         <span className="bg-muted-foreground/50 h-[3px] w-[3px] shrink-0 rounded-full" />
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="mono text-primary min-w-0 flex-1 cursor-default truncate text-[10.5px] font-semibold uppercase tracking-[0.12em]">
+            <span className="text-primary min-w-0 flex-1 cursor-default truncate text-[10.5px] font-semibold">
               {modelLabel}
             </span>
           </TooltipTrigger>
@@ -1078,11 +1410,11 @@ const FeedItem = memo(function FeedItem({
             <Trash2 />
           </Button>
         </div>
-        <span className="mono text-muted-foreground shrink-0 text-[10px] tracking-[0.06em]">
+        <span className="text-muted-foreground shrink-0 text-[10px]">
           {formatSeconds(entry.audio_duration_ms || entry.duration_ms)}
         </span>
         {entry.cost_usd > 0 && (
-          <span className="mono text-muted-foreground shrink-0 text-[10px]">
+          <span className="text-muted-foreground shrink-0 text-[10px]">
             · {formatCost(entry.cost_usd)}
           </span>
         )}
@@ -1095,7 +1427,7 @@ const FeedItem = memo(function FeedItem({
         “{diff ? <DiffText segments={diff} /> : text}”
       </p>
       {nerdMode && (
-        <div className="mono text-muted-foreground/80 mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] tracking-[0.04em]">
+        <div className="text-muted-foreground/80 mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px]">
           <span>
             {t("history.nerdCompute", {
               label: formatSeconds(entry.duration_ms),

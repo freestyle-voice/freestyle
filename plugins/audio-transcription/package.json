@@ -1,6 +1,6 @@
 {
   "name": "@freestyle-voice/plugin-audio-transcription",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Transcribe audio files by dropping them into Freestyle.",
   "license": "MIT",

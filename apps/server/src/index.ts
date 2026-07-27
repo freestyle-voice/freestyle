@@ -9,6 +9,7 @@ import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
 import { WebSocketServer } from "ws";
 import { authMiddleware, setAuthToken } from "./lib/auth.js";
+import { refreshCleanupPromptConfig } from "./lib/editor/prompt-config.js";
 import { formatError } from "./lib/format-error.js";
 import { isTransientCloudError } from "./lib/freestyle-cloud.js";
 import { startHistoryRetentionSweep } from "./lib/history-store.js";
@@ -25,6 +26,10 @@ import {
   plugins,
 } from "./lib/plugins/index.js";
 import { captureException, shutdownPosthog } from "./lib/posthog.js";
+import {
+  startSessionKeepAlive,
+  stopSessionKeepAlive,
+} from "./lib/session-keepalive.js";
 import { trustedOriginMiddleware } from "./lib/trusted-origin.js";
 import routes from "./routes";
 
@@ -46,6 +51,7 @@ const TIMEOUT_PREFIXES = [
 ];
 
 async function shutdownServer(): Promise<void> {
+  stopSessionKeepAlive();
   await disposeServerPlugins().catch(() => {});
   await shutdownPosthog();
 }
@@ -201,6 +207,11 @@ export async function startServer(
   // anything issues a fetch, so model downloads and cloud/API calls honor it.
   configureNetwork();
 
+  // Warm the cleanup-prompt config from Freestyle Cloud so the latest presets
+  // and tone blocks are in memory before the first dictation. Fire-and-forget:
+  // it never throws and falls back to the bundled copy when offline.
+  void refreshCleanupPromptConfig();
+
   // Load plugins (built-in + user) before serving. The app dispatches plugin
   // middleware from the live registry per request, so later runtime reloads
   // (enable/disable/install) take effect without reconstructing the app.
@@ -209,6 +220,10 @@ export async function startServer(
   const app = createApp();
 
   startHistoryRetentionSweep();
+
+  // Keep the Freestyle Cloud session alive by sliding its expiry before the
+  // local token lapses (the cloud issues no refresh token). Fire-and-forget.
+  startSessionKeepAlive();
 
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ noServer: true });

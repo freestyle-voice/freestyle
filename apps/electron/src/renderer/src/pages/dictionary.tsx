@@ -12,7 +12,6 @@ import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Book,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -22,8 +21,9 @@ import {
   Trash2,
   Upload,
   X,
+  Zap,
 } from "lucide-react";
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -139,6 +139,24 @@ export default function DictionaryPage(): React.JSX.Element {
   );
 
   const importRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchShortcutEnabled = !(total === 0 && !search && !showForm);
+
+  useEffect(() => {
+    if (!searchShortcutEnabled) return;
+
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return;
+      e.preventDefault();
+      const input = searchInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.select();
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [searchShortcutEnabled]);
 
   const exportJson = useCallback(async () => {
     try {
@@ -213,6 +231,7 @@ export default function DictionaryPage(): React.JSX.Element {
               <div className="border-border bg-card flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-lg border px-3 py-2">
                 <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
                 <input
+                  ref={searchInputRef}
                   type="text"
                   value={search}
                   onChange={(e) => {
@@ -514,7 +533,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
   return (
     <div className="border-border bg-card mt-4 rounded-[14px] border border-dashed px-9 py-[52px] text-center">
       <div className="bg-accent mx-auto mb-[18px] inline-flex h-16 w-16 items-center justify-center rounded-2xl">
-        <Book className="text-primary h-7 w-7" />
+        <Zap className="text-primary h-7 w-7" />
       </div>
       <h2 className="serif text-foreground m-0 text-[32px] font-medium leading-none">
         {t("dictionary.emptyTitle")}

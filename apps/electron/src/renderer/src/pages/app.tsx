@@ -47,12 +47,10 @@ const SAMPLE_MS = 75;
 /** Frequency band summed to get the voice level, in Hz. */
 const VOICE_MIN_HZ = 80;
 const VOICE_MAX_HZ = 4000;
-/**
- * Per-frame easing for the recording waveform. Symmetric (unlike RISE/FALL)
- * and quick enough to settle well within one SAMPLE_MS, so a level reads as
- * travelling cleanly from bar to bar rather than smearing across several.
- */
-const LEVEL_EASE = 0.5;
+/** Per-frame easing for the live recording waveform. The faster fall keeps
+ * speech endings crisp instead of tapering gradually into the resting dots. */
+const LEVEL_RISE = 0.5;
+const LEVEL_FALL = 0.72;
 
 /**
  * Response curve for the recording waveform, applied to the raw voice level.
@@ -233,7 +231,6 @@ const pillInnerStyle: React.CSSProperties = {
   border: "1px solid rgba(255, 255, 255, 0.10)",
   backdropFilter: "blur(20px) saturate(180%)",
   WebkitBackdropFilter: "blur(20px) saturate(180%)",
-  boxShadow: "0 6px 20px rgba(0, 0, 0, 0.30), 0 1px 3px rgba(0, 0, 0, 0.22)",
   cursor: "grab",
   WebkitAppRegion: "drag",
   transition: "width 260ms cubic-bezier(0.22, 1, 0.36, 1)",
@@ -800,8 +797,8 @@ export default function AppPage(): React.JSX.Element {
         return;
       }
 
-      rise = LEVEL_EASE;
-      fall = LEVEL_EASE;
+      rise = LEVEL_RISE;
+      fall = LEVEL_FALL;
       analyser.getByteFrequencyData(data);
 
       const { startBin, endBin, levelDivisor } = voiceBandRef.current;

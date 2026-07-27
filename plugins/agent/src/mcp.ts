@@ -46,6 +46,76 @@ function dumpWidgetResult(toolName: string, result: unknown): void {
   }
 }
 
+/** Model-visible tool-result content parts (subset of the AI SDK union). */
+type ModelContentPart =
+  | { type: "text"; text: string }
+  | { type: "image-data"; data: string; mediaType: string };
+
+/**
+ * Convert a raw MCP tool result into model-visible content. Without this the
+ * AI SDK serializes the whole result as JSON, so image blocks reach the model
+ * as base64-in-JSON (invisible to vision models) and widget/resource blobs
+ * bloat the context. This maps:
+ *  - `text`  → a text part;
+ *  - `image` → an `image-data` part so vision models actually see it;
+ *  - UI `resource` (widget) → a short note (its HTML/blob is for the renderer);
+ *  - other non-UI `resource` → its inline text or a `[resource: uri]` ref.
+ * Audio and unknown blocks are dropped. Falls back to JSON text when nothing
+ * maps.
+ */
+function mcpResultToModelOutput(
+  output: unknown,
+):
+  | { type: "content"; value: ModelContentPart[] }
+  | { type: "text"; value: string } {
+  const content = Array.isArray(output)
+    ? output
+    : Array.isArray((output as { content?: unknown })?.content)
+      ? (output as { content: unknown[] }).content
+      : null;
+
+  if (!content) {
+    return {
+      type: "text",
+      value: typeof output === "string" ? output : JSON.stringify(output ?? ""),
+    };
+  }
+
+  const value: ModelContentPart[] = [];
+  for (const part of content) {
+    if (typeof part !== "object" || part === null) continue;
+    const p = part as Record<string, unknown>;
+    if (p.type === "text" && typeof p.text === "string") {
+      value.push({ type: "text", text: p.text });
+    } else if (p.type === "image" && typeof p.data === "string") {
+      value.push({
+        type: "image-data",
+        data: p.data,
+        mediaType: typeof p.mimeType === "string" ? p.mimeType : "image/png",
+      });
+    } else if (p.type === "resource") {
+      const res = p.resource as { uri?: unknown; text?: unknown } | undefined;
+      if (res && isUiResource(res)) {
+        value.push({
+          type: "text",
+          text: "[interactive widget shown to the user]",
+        });
+      } else {
+        const rtext = typeof res?.text === "string" ? res.text : "";
+        value.push({
+          type: "text",
+          text: rtext || `[resource: ${String(res?.uri ?? "")}]`,
+        });
+      }
+    }
+  }
+
+  if (value.length === 0) {
+    return { type: "text", value: JSON.stringify(output ?? "") };
+  }
+  return { type: "content", value };
+}
+
 /** A live MCP connection plus the AI SDK tools it exposes. */
 export interface McpConnection {
   serverId: string;
@@ -187,6 +257,10 @@ export async function connectMcpServer(
 
         return content.length > 0 ? content : result;
       },
+      // Map the MCP content into model-visible content so image results are
+      // actually seen (as images) and widget/resource blobs don't bloat the
+      // context as raw JSON.
+      toModelOutput: ({ output }) => mcpResultToModelOutput(output),
     });
   }
 

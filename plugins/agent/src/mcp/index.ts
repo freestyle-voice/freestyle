@@ -285,12 +285,31 @@ export function getBuiltinTools(
   if (include("take_screenshot"))
     tools.take_screenshot = tool({
       description:
-        "Capture a full-resolution screenshot of the current display. Returns a file path. ALWAYS call this first before any mouse/keyboard action to see the screen.",
+        "Capture a screenshot of the display under the cursor and return the image so you can see the screen. ALWAYS call this first before any mouse/keyboard action.",
       inputSchema: jsonSchema({
         type: "object",
         properties: {},
       } satisfies JSONSchema7),
       execute: async () => takeScreenshot(),
+      // Attach the captured image as real image content so vision-capable
+      // models can see it. Without this the model would only receive the text
+      // summary (a file path) and be effectively blind.
+      toModelOutput: ({ output }) => {
+        if (output.base64 && output.mediaType) {
+          return {
+            type: "content",
+            value: [
+              { type: "text", text: output.text },
+              {
+                type: "image-data",
+                data: output.base64,
+                mediaType: output.mediaType,
+              },
+            ],
+          };
+        }
+        return { type: "text", value: output.text };
+      },
     });
 
   // --- Tier 4: Computer Use (mouse & keyboard) ---
@@ -588,13 +607,22 @@ export function registerBuiltinTools(server: McpServer): void {
 
   server.tool(
     "take_screenshot",
-    "Capture a full-resolution screenshot. Returns a file path.",
+    "Capture a screenshot of the display under the cursor and return the image.",
     {},
     async () => {
       const result = await takeScreenshot();
-      return {
-        content: [{ type: "text" as const, text: result }],
-      };
+      const content: Array<
+        | { type: "text"; text: string }
+        | { type: "image"; data: string; mimeType: string }
+      > = [{ type: "text", text: result.text }];
+      if (result.base64 && result.mediaType) {
+        content.push({
+          type: "image",
+          data: result.base64,
+          mimeType: result.mediaType,
+        });
+      }
+      return { content };
     },
   );
 }

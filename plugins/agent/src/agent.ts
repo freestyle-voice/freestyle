@@ -34,6 +34,17 @@ const MAX_STEPS = 8;
  */
 function extractToolOutput(output: unknown): string {
   if (typeof output === "string") return output;
+  // Structured tool results (e.g. take_screenshot) carry a human-readable
+  // `text` summary alongside binary fields like base64 image data. Surface only
+  // the text so the UI card and stored history don't balloon with base64.
+  if (
+    typeof output === "object" &&
+    output !== null &&
+    !Array.isArray(output) &&
+    typeof (output as { text?: unknown }).text === "string"
+  ) {
+    return (output as { text: string }).text;
+  }
   if (Array.isArray(output)) {
     const texts: string[] = [];
     for (const part of output) {

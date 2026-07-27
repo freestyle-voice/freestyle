@@ -43,6 +43,31 @@ const SAMPLE_MS = 75;
  */
 const LEVEL_EASE = 0.5;
 
+/**
+ * Response curve for the recording waveform, applied to the raw voice level.
+ *
+ * `getByteFrequencyData` is already dB-scaled, and the old mapping (a linear
+ * gain with a hard clamp) ran straight into its ceiling: anything above a
+ * soft voice pinned every bar to full height, which both looked cramped
+ * against the capsule and threw away all the dynamics.
+ *
+ * These drive a saturating exponential instead — steep at the bottom so a
+ * whisper already reaches roughly half height, then flattening toward
+ * BAR_CEILING, which no amount of volume quite reaches.
+ *
+ * BAR_NOISE_FLOOR is subtracted first so room tone still renders as the
+ * resting dots rather than a permanent low ripple. It and BAR_GAIN are the
+ * two worth re-tuning against a real mic.
+ */
+const BAR_NOISE_FLOOR = 0.05;
+const BAR_GAIN = 8;
+const BAR_CEILING = 0.82;
+
+function barHeightFor(voiceLevel: number): number {
+  const excess = Math.max(0, voiceLevel - BAR_NOISE_FLOOR);
+  return BAR_CEILING * (1 - Math.exp(-BAR_GAIN * excess));
+}
+
 type PillState = "idle" | "initializing" | "recording" | "transcribing";
 
 type BarMode = "connecting" | "listening" | "speaking";
@@ -689,9 +714,13 @@ export default function AppPage(): React.JSX.Element {
         // sampled level hands off one slot to the left, and the rightmost bar
         // takes the newest sample — a shift register, so a loud moment reads
         // as moving right-to-left across a stationary row.
+        // Bar heights use the compressed curve; the level broadcast over IPC
+        // stays on the old linear scale, since the dashboard's own
+        // visualisation is calibrated against it.
+        const height = barHeightFor(voiceLevel);
         const level = Math.min(1, voiceLevel * 2.8);
         const sample = sampleRef.current;
-        sample.peak = Math.max(sample.peak, level);
+        sample.peak = Math.max(sample.peak, height);
 
         const now = performance.now();
         let elapsed = now - sample.lastSampleAt;
@@ -704,7 +733,7 @@ export default function AppPage(): React.JSX.Element {
         while (elapsed >= SAMPLE_MS) {
           targetsRef.current.shift();
           targetsRef.current.push(sample.peak);
-          sample.peak = level;
+          sample.peak = height;
           sample.lastSampleAt += SAMPLE_MS;
           elapsed -= SAMPLE_MS;
         }

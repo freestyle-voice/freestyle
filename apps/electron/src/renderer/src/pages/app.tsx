@@ -20,15 +20,7 @@ import {
 } from "../../../shared/audio-playback";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
-/** Bars visible inside the capsule. */
 const BARS = 12;
-/**
- * One spare bar at each end, sitting just outside the viewBox. While
- * recording, the row scrolls continuously: the right-hand spare is the sample
- * currently sliding into view and the left-hand one is sliding out. The SVG
- * viewport clips both, so the waveform enters and leaves cleanly.
- */
-const DISPLAY_BARS = BARS + 2;
 const RISE = 0.55;
 const FALL = 0.22;
 const SVG_WIDTH = 72;
@@ -40,11 +32,16 @@ const BAR_WIDTH = 2.5;
 /** Horizontal pitch between bars. */
 const BAR_PITCH = SVG_WIDTH / BARS;
 /**
- * How long each bar represents. The row advances one bar per interval, so
- * this sets the scroll speed (~80px/s) — brisk enough to read as live audio
- * without turning into a blur.
+ * How long each bar represents while recording. Every interval the sampled
+ * levels hand off one slot to the left; the bars themselves never move.
  */
 const SAMPLE_MS = 75;
+/**
+ * Per-frame easing for the recording waveform. Symmetric (unlike RISE/FALL)
+ * and quick enough to settle well within one SAMPLE_MS, so a level reads as
+ * travelling cleanly from bar to bar rather than smearing across several.
+ */
+const LEVEL_EASE = 0.5;
 
 type PillState = "idle" | "initializing" | "recording" | "transcribing";
 
@@ -116,16 +113,16 @@ async function playTone(preset: TonePreset, volume = 0.16): Promise<void> {
   } catch {}
 }
 
-function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
-}
-
 function smoothBars(prev: number[], next: number[]): number[] {
   return prev.map((p, i) => {
     const n = next[i] ?? 0;
     const k = n > p ? RISE : FALL;
     return p + (n - p) * k;
   });
+}
+
+function easeBars(prev: number[], next: number[], k: number): number[] {
+  return prev.map((p, i) => p + ((next[i] ?? 0) - p) * k);
 }
 
 const PILL_HEIGHT = 30;
@@ -214,16 +211,17 @@ export default function AppPage(): React.JSX.Element {
   const analyserCtxRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserNodeRef = useRef<AnalyserNode | null>(null);
-  const barsRef = useRef<number[]>(new Array(DISPLAY_BARS).fill(0));
+  /** Heights actually drawn; eased toward `targetsRef` every frame. */
+  const barsRef = useRef<number[]>(new Array(BARS).fill(0));
   const barsSvgRef = useRef<SVGSVGElement>(null);
-  const barsGroupRef = useRef<SVGGElement>(null);
   /**
-   * Scroll state for the recording waveform. `frac` is the progress (0..1)
-   * toward the next sample and drives a sub-pixel translate, so the row
-   * glides rather than stepping one bar at a time. `peak` holds the loudest
-   * level seen since the last sample so a brief transient isn't missed.
+   * Sampled levels, oldest first. While recording this is a shift register:
+   * each slot hands its value to its left-hand neighbour once per SAMPLE_MS.
+   * `peak` holds the loudest level seen since the last hand-off, so a brief
+   * transient between frames isn't missed.
    */
-  const scrollRef = useRef({ lastSampleAt: 0, frac: 0, peak: 0 });
+  const targetsRef = useRef<number[]>(new Array(BARS).fill(0));
+  const sampleRef = useRef({ lastSampleAt: 0, peak: 0 });
   const volumeRef = useRef(0);
   const rafRef = useRef<number>(0);
   const startTimeRef = useRef(0);
@@ -635,12 +633,6 @@ export default function AppPage(): React.JSX.Element {
   const applyBarsToSvg = useCallback(() => {
     const svg = barsSvgRef.current;
     if (!svg) return;
-    const frac = scrollRef.current.frac;
-    barsGroupRef.current?.setAttribute(
-      "transform",
-      `translate(${-frac * BAR_PITCH} 0)`,
-    );
-
     const lines = svg.querySelectorAll("line");
     for (let i = 0; i < lines.length; i++) {
       const val = barsRef.current[i] ?? 0;
@@ -649,15 +641,7 @@ export default function AppPage(): React.JSX.Element {
       const h = Math.max(BAR_WIDTH, val * SVG_HEIGHT);
       lines[i].setAttribute("y1", String((SVG_HEIGHT + h) / 2));
       lines[i].setAttribute("y2", String((SVG_HEIGHT - h) / 2));
-
-      // Fade a bar out over the last half-pitch at either end so samples
-      // dissolve at the capsule's edges instead of popping in and out.
-      const x = BAR_PITCH * (i + 0.5) - BAR_PITCH - frac * BAR_PITCH;
-      const edge =
-        clamp01(x / (BAR_PITCH * 0.5)) *
-        clamp01((SVG_WIDTH - x) / (BAR_PITCH * 0.5));
-
-      lines[i].style.opacity = String((0.32 + val * 0.68) * edge);
+      lines[i].style.opacity = String(0.32 + val * 0.68);
     }
   }, []);
 
@@ -671,8 +655,8 @@ export default function AppPage(): React.JSX.Element {
       // jump to real audio levels reads as the pill "catching" your voice.
       const t = (performance.now() - modeStartRef.current) / 1000;
       const raw: number[] = [];
-      for (let i = 0; i < DISPLAY_BARS; i++) {
-        raw.push(0.06 + 0.07 * (1 + Math.sin(t * 3.2 - (i - 1) * 0.42)));
+      for (let i = 0; i < BARS; i++) {
+        raw.push(0.06 + 0.07 * (1 + Math.sin(t * 3.2 - i * 0.42)));
       }
       barsRef.current = smoothBars(barsRef.current, raw);
       volumeRef.current = 0.15;
@@ -701,35 +685,41 @@ export default function AppPage(): React.JSX.Element {
 
         const voiceLevel = sum / (Math.max(1, endBin - startBin) * 255);
 
-        // Scrolling waveform, tape-deck style: every SAMPLE_MS the row shifts
-        // one bar to the left and the newest level enters from the right, so
-        // each bar is a frozen moment of audio rather than a live meter. The
-        // bars deliberately aren't smoothed toward a target here — easing them
-        // would smear the history and wash the motion out.
+        // The bars hold still; only their values travel. Every SAMPLE_MS each
+        // sampled level hands off one slot to the left, and the rightmost bar
+        // takes the newest sample — a shift register, so a loud moment reads
+        // as moving right-to-left across a stationary row.
         const level = Math.min(1, voiceLevel * 2.8);
-        const scroll = scrollRef.current;
-        scroll.peak = Math.max(scroll.peak, level);
+        const sample = sampleRef.current;
+        sample.peak = Math.max(sample.peak, level);
 
         const now = performance.now();
-        let elapsed = now - scroll.lastSampleAt;
+        let elapsed = now - sample.lastSampleAt;
         // A long stall (window occluded, GC pause) shouldn't replay every
-        // missed sample — jump straight to the present instead.
-        if (elapsed > SAMPLE_MS * DISPLAY_BARS) {
-          scroll.lastSampleAt = now;
+        // missed hand-off — jump straight to the present instead.
+        if (elapsed > SAMPLE_MS * BARS) {
+          sample.lastSampleAt = now;
           elapsed = 0;
         }
         while (elapsed >= SAMPLE_MS) {
-          barsRef.current.shift();
-          barsRef.current.push(scroll.peak);
-          scroll.peak = level;
-          scroll.lastSampleAt += SAMPLE_MS;
+          targetsRef.current.shift();
+          targetsRef.current.push(sample.peak);
+          sample.peak = level;
+          sample.lastSampleAt += SAMPLE_MS;
           elapsed -= SAMPLE_MS;
         }
-        scroll.frac = elapsed / SAMPLE_MS;
 
-        // The bar still sliding into view tracks the live level so the
-        // leading edge responds instantly rather than a sample behind.
-        barsRef.current[DISPLAY_BARS - 1] = scroll.peak;
+        // The newest slot tracks the live level so the right-hand bar reacts
+        // the moment you speak, rather than a full sample later.
+        targetsRef.current[BARS - 1] = sample.peak;
+
+        // Ease toward the sampled values so each hand-off is a smooth morph
+        // between neighbouring heights instead of a visible step.
+        barsRef.current = easeBars(
+          barsRef.current,
+          targetsRef.current,
+          LEVEL_EASE,
+        );
 
         volumeRef.current = level;
         if (now - lastIpcTimeRef.current >= 100) {
@@ -746,8 +736,8 @@ export default function AppPage(): React.JSX.Element {
       const phase = (t % (SWEEP + GAP)) / SWEEP;
       const head = phase * (BARS + 4) - 2;
       const raw: number[] = [];
-      for (let i = 0; i < DISPLAY_BARS; i++) {
-        const d = i - 1 - head;
+      for (let i = 0; i < BARS; i++) {
+        const d = i - head;
         raw.push(0.08 + 0.72 * Math.exp(-(d * d) / 3.2));
       }
       barsRef.current = smoothBars(barsRef.current, raw);
@@ -764,13 +754,7 @@ export default function AppPage(): React.JSX.Element {
       cancelAnimationFrame(rafRef.current);
       barModeRef.current = mode;
       modeStartRef.current = performance.now();
-      // Only "listening" scrolls; the other modes animate in place, so their
-      // translate must sit at zero or the row renders half a bar off-centre.
-      scrollRef.current = {
-        lastSampleAt: performance.now(),
-        frac: 0,
-        peak: 0,
-      };
+      sampleRef.current = { lastSampleAt: performance.now(), peak: 0 };
       rafRef.current = requestAnimationFrame(runBars);
     },
     [runBars],
@@ -819,8 +803,9 @@ export default function AppPage(): React.JSX.Element {
     audioSourceRef.current = null;
     analyserNodeRef.current = null;
     freqDataRef.current = null;
-    barsRef.current = new Array(DISPLAY_BARS).fill(0);
-    scrollRef.current = { lastSampleAt: 0, frac: 0, peak: 0 };
+    barsRef.current = new Array(BARS).fill(0);
+    targetsRef.current = new Array(BARS).fill(0);
+    sampleRef.current = { lastSampleAt: 0, peak: 0 };
     volumeRef.current = 0;
   }, []);
 
@@ -1396,26 +1381,22 @@ export default function AppPage(): React.JSX.Element {
       role="img"
       aria-label="Audio levels"
     >
-      <g ref={barsGroupRef}>
-        {Array.from({ length: DISPLAY_BARS }, (_, i) => {
-          // Shifted one pitch left so index 0 is the off-screen spare and
-          // index 1 is the first bar actually inside the viewBox.
-          const x = BAR_PITCH * (i + 0.5) - BAR_PITCH;
-          return (
-            <line
-              key={i}
-              x1={x}
-              y1={SVG_HEIGHT / 2 + BAR_WIDTH / 2}
-              x2={x}
-              y2={SVG_HEIGHT / 2 - BAR_WIDTH / 2}
-              stroke={barColor}
-              strokeWidth={BAR_WIDTH}
-              strokeLinecap="round"
-              style={{ opacity: 0.32, transition: "stroke 220ms ease" }}
-            />
-          );
-        })}
-      </g>
+      {Array.from({ length: BARS }, (_, i) => {
+        const x = BAR_PITCH * (i + 0.5);
+        return (
+          <line
+            key={i}
+            x1={x}
+            y1={SVG_HEIGHT / 2 + BAR_WIDTH / 2}
+            x2={x}
+            y2={SVG_HEIGHT / 2 - BAR_WIDTH / 2}
+            stroke={barColor}
+            strokeWidth={BAR_WIDTH}
+            strokeLinecap="round"
+            style={{ opacity: 0.32, transition: "stroke 220ms ease" }}
+          />
+        );
+      })}
     </svg>
   );
 

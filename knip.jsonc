@@ -104,7 +104,9 @@
       },
       // knip's Expo plugin infers expo-updates from the app config even when
       // OTA updates aren't configured; it isn't a real dependency here.
-      "ignoreDependencies": ["expo-updates"]
+      // @sentry/cli is invoked by Sentry's generated native Xcode build phase,
+      // not imported from TypeScript sources.
+      "ignoreDependencies": ["expo-updates", "@sentry/cli"]
     },
     "packages/create-freestyle-plugin": {
       "entry": ["src/index.ts"],

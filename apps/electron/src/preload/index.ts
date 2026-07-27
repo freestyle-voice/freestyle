@@ -6,7 +6,10 @@ import type {
 } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { OpenAppCandidate } from "../shared/open-apps";
-import type { PillCancelMode } from "../shared/pill-cancel";
+import {
+  normalizePillCancelMode,
+  type PillCancelMode,
+} from "../shared/pill-cancel";
 import type { PluginViewBounds } from "../shared/plugins";
 
 // Custom APIs for renderer
@@ -207,7 +210,8 @@ const api = {
   onPillCancelModeChanged: (
     callback: (mode: PillCancelMode) => void,
   ): (() => void) => {
-    const handler = (_: unknown, mode: PillCancelMode): void => callback(mode);
+    const handler = (_: unknown, mode: unknown): void =>
+      callback(normalizePillCancelMode(mode));
     ipcRenderer.on("settings:pill-cancel-mode-changed", handler);
     return () =>
       ipcRenderer.removeListener("settings:pill-cancel-mode-changed", handler);

@@ -35,6 +35,10 @@ const SVG_HEIGHT = 14;
 const BAR_WIDTH = 2.5;
 /** Horizontal pitch between bars. */
 const BAR_PITCH = SVG_WIDTH / BARS;
+const BAR_X_POSITIONS = Array.from(
+  { length: BARS },
+  (_, index) => BAR_PITCH * (index + 0.5),
+);
 /**
  * How long each bar represents while recording. Every interval the sampled
  * levels hand off one slot to the left; the bars themselves never move.
@@ -993,6 +997,13 @@ export default function AppPage(): React.JSX.Element {
     recordingActiveRef.current = false;
     streamResolverRef.current = null;
     pendingReRecordRef.current = false;
+    // Hiding removes the hovered element before onMouseLeave can fire. Reset
+    // its transient reveal state so the next session does not inherit an open
+    // cancel button; the "always" preference remains pinned open.
+    hoveredRef.current = false;
+    cancelTargetRef.current = cancelModeRef.current === "always" ? 1 : 0;
+    cancelOpenRef.current = cancelTargetRef.current;
+    lastCancelWriteRef.current = -1;
     stopVisualization();
     window.api.hidePill();
   }, [stopVisualization, setPillState]);
@@ -1594,11 +1605,10 @@ export default function AppPage(): React.JSX.Element {
         role="img"
         aria-label="Audio levels"
       >
-        {Array.from({ length: BARS }, (_, i) => {
-          const x = BAR_PITCH * (i + 0.5);
+        {BAR_X_POSITIONS.map((x) => {
           return (
             <line
-              key={i}
+              key={x}
               x1={x}
               y1={SVG_HEIGHT / 2 + BAR_WIDTH / 2}
               x2={x}
@@ -1644,10 +1654,6 @@ export default function AppPage(): React.JSX.Element {
           .pill-cancel-glyph { transition: opacity 140ms ease; }
           .pill-cancel:hover .pill-cancel-glyph { opacity: 1; }
 
-          /* Hover mode: the slot stays reserved and the hit area stays live,
-             so the disc can fade in under the cursor. Revealing on the hit
-             area as well as the capsule means it still works if the capsule's
-             drag region swallows hover events. */
           @media (prefers-reduced-motion: reduce) {
             .pill-in { animation-duration: 1ms; }
             .pill-cancel { transition-duration: 1ms; }

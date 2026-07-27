@@ -83,6 +83,7 @@ import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { OpenAppCandidate } from "../shared/open-apps";
+import { normalizePillCancelMode } from "../shared/pill-cancel";
 import { bearerAuthHeaders } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { AudioPlaybackController } from "./audio-control/controller";
@@ -1784,8 +1785,11 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send("settings:output-mode-changed", mode);
   });
 
-  ipcMain.on("settings:pill-cancel-mode-changed", (_event, mode: string) => {
-    mainWindow?.webContents.send("settings:pill-cancel-mode-changed", mode);
+  ipcMain.on("settings:pill-cancel-mode-changed", (_event, mode: unknown) => {
+    mainWindow?.webContents.send(
+      "settings:pill-cancel-mode-changed",
+      normalizePillCancelMode(mode),
+    );
   });
 
   ipcMain.on("settings:audio-ducking-changed", (_event, enabled: boolean) => {

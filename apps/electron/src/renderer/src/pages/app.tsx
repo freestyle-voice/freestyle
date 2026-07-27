@@ -18,12 +18,20 @@ import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
 } from "../../../shared/audio-playback";
+import {
+  normalizePillCancelMode,
+  type PillCancelMode,
+} from "../../../shared/pill-cancel";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
-const BARS = 12;
+// Two bars shorter than the row used to be: the cancel button's slot is
+// reserved whether or not it's currently visible, so the waveform gives up
+// the space rather than the capsule growing. BAR_PITCH is unchanged, so the
+// bars keep their original density.
+const BARS = 10;
 const RISE = 0.55;
 const FALL = 0.22;
-const SVG_WIDTH = 72;
+const SVG_WIDTH = 60;
 /** Peak bar height. Kept well under PILL_HEIGHT so the waveform never
  * crowds the capsule's edge, even at full volume. */
 const SVG_HEIGHT = 14;
@@ -197,6 +205,9 @@ const PILL_HEIGHT = 30;
 /** Resting width. Grows by PILL_BADGE_EXTRA when the queue badge is shown. */
 const PILL_WIDTH = 104;
 const PILL_BADGE_EXTRA = 18;
+/** Diameter of the cancel button, and of the hit area padded around it. */
+const CANCEL_SIZE = 16;
+const CANCEL_HIT_SIZE = 22;
 
 /**
  * The pill floats over arbitrary application windows, so it commits to a
@@ -267,6 +278,7 @@ export default function AppPage(): React.JSX.Element {
   }, []);
   const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
   const [pillSide, setPillSide] = useState<"center" | "right">("center");
+  const [cancelMode, setCancelMode] = useState<PillCancelMode>("hover");
 
   const supportsSessionTransportRef = useRef(false);
   const recordingSessionUsesTransportRef = useRef(false);
@@ -1337,6 +1349,10 @@ export default function AppPage(): React.JSX.Element {
         const outputMode = settings[SETTINGS_KEYS.outputMode];
         if (outputMode) _outputMode = outputMode;
 
+        setCancelMode(
+          normalizePillCancelMode(settings[SETTINGS_KEYS.pillCancelButton]),
+        );
+
         // Warm the cleanup-context cache from the same snapshot instead of
         // firing a second GET /api/settings.
         applyNeedsAppContextForCleanup(settings);
@@ -1361,6 +1377,9 @@ export default function AppPage(): React.JSX.Element {
     const removeOutputMode = window.api?.onOutputModeChanged((mode) => {
       _outputMode = mode;
     });
+    const removeCancelMode = window.api?.onPillCancelModeChanged((mode) => {
+      setCancelMode(normalizePillCancelMode(mode));
+    });
     const removeAudioDucking = window.api?.onAudioDuckingChanged((enabled) => {
       _audioPlaybackMode = enabled ? "duck" : "off";
     });
@@ -1384,6 +1403,7 @@ export default function AppPage(): React.JSX.Element {
     return () => {
       removePillPos?.();
       removeOutputMode?.();
+      removeCancelMode?.();
       removeAudioDucking?.();
       removeAudioPlaybackMode?.();
       removeServerChanged?.();
@@ -1525,15 +1545,54 @@ export default function AppPage(): React.JSX.Element {
           .pill-in {
             animation: pill-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
           }
+
+          /* Glass disc: a translucent white fill over the capsule, lifted by a
+             one-pixel inner highlight along the top edge. */
+          .pill-cancel {
+            background: rgba(255, 255, 255, 0.11);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+            transition:
+              opacity 180ms cubic-bezier(0.22, 1, 0.36, 1),
+              transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+              background-color 140ms ease,
+              border-color 140ms ease;
+          }
+          .pill-cancel:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.24);
+          }
+          .pill-cancel:active { transform: scale(0.92); }
+          .pill-cancel-glyph { transition: opacity 140ms ease; }
+          .pill-cancel:hover .pill-cancel-glyph { opacity: 1; }
+
+          /* Hover mode: the slot stays reserved and the hit area stays live,
+             so the disc can fade in under the cursor. Revealing on the hit
+             area as well as the capsule means it still works if the capsule's
+             drag region swallows hover events. */
+          .pill--hover-cancel .pill-cancel {
+            opacity: 0;
+            transform: scale(0.7);
+          }
+          .pill--hover-cancel:hover .pill-cancel,
+          .pill--hover-cancel .pill-cancel-hit:hover .pill-cancel {
+            opacity: 1;
+            transform: scale(1);
+          }
+
           @media (prefers-reduced-motion: reduce) {
             .pill-in { animation-duration: 1ms; }
+            .pill-cancel { transition-duration: 1ms; }
+            .pill--hover-cancel .pill-cancel { transform: none; }
           }
         `}
       </style>
 
       {state !== "idle" && (
         <div
-          className="pill-in inline-flex items-center justify-center gap-1.5"
+          className={`pill-in inline-flex items-center justify-center gap-1.5${
+            cancelMode === "hover" ? " pill--hover-cancel" : ""
+          }`}
           style={{
             ...pillInnerStyle,
             width: badge ? PILL_WIDTH + PILL_BADGE_EXTRA : PILL_WIDTH,
@@ -1561,6 +1620,54 @@ export default function AppPage(): React.JSX.Element {
               {badge}
             </span>
           )}
+
+          {/* The hit area is wider than the disc and always accepts the
+              cursor, so hover mode has something to reveal against. */}
+          <span
+            className="pill-cancel-hit inline-flex items-center justify-center"
+            style={
+              {
+                width: CANCEL_HIT_SIZE,
+                height: CANCEL_HIT_SIZE,
+                marginRight: -(CANCEL_HIT_SIZE - CANCEL_SIZE) / 2,
+                flexShrink: 0,
+                WebkitAppRegion: "no-drag",
+              } as React.CSSProperties
+            }
+          >
+            <button
+              type="button"
+              className="pill-cancel inline-flex items-center justify-center"
+              onClick={cancelRecording}
+              // The pill window has no i18n provider (only the dashboard
+              // does), and no other string in it is translated. Not worth
+              // pulling the i18next runtime in for one label.
+              aria-label="Cancel dictation"
+              style={{
+                width: CANCEL_SIZE,
+                height: CANCEL_SIZE,
+                borderRadius: "50%",
+                padding: 0,
+                cursor: "default",
+              }}
+            >
+              <svg
+                className="pill-cancel-glyph"
+                width={CANCEL_SIZE}
+                height={CANCEL_SIZE}
+                viewBox="0 0 16 16"
+                aria-hidden="true"
+                style={{ opacity: 0.78 }}
+              >
+                <path
+                  d="M5.9 5.9 10.1 10.1 M10.1 5.9 5.9 10.1"
+                  stroke="#F5F1E4"
+                  strokeWidth={1.4}
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </span>
         </div>
       )}
     </div>

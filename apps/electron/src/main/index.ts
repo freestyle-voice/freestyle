@@ -1784,6 +1784,10 @@ app.whenReady().then(async () => {
     mainWindow?.webContents.send("settings:output-mode-changed", mode);
   });
 
+  ipcMain.on("settings:pill-cancel-mode-changed", (_event, mode: string) => {
+    mainWindow?.webContents.send("settings:pill-cancel-mode-changed", mode);
+  });
+
   ipcMain.on("settings:audio-ducking-changed", (_event, enabled: boolean) => {
     mainWindow?.webContents.send("settings:audio-ducking-changed", enabled);
   });

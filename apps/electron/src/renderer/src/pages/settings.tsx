@@ -86,6 +86,10 @@ import {
   normalizeAudioPlaybackMode,
 } from "../../../shared/audio-playback";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
+import {
+  normalizePillCancelMode,
+  type PillCancelMode,
+} from "../../../shared/pill-cancel";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
 // ---------------------------------------------------------------------------
@@ -148,6 +152,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [language, setLanguage] = useState("auto");
   const [outputMode, setOutputMode] = useState("paste");
   const [pillPosition, setPillPosition] = useState("bottom-center");
+  const [pillCancel, setPillCancel] = useState<PillCancelMode>("hover");
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [historyPaused, setHistoryPaused] = useState(false);
   const [historyRetention, setHistoryRetention] = useState<
@@ -352,6 +357,7 @@ export default function SettingsPage(): React.JSX.Element {
     if (s[SETTINGS_KEYS.hotkeyMode] === "toggle") setHotkeyMode("toggle");
     if (s[SETTINGS_KEYS.language]) setLanguage(s[SETTINGS_KEYS.language]);
     if (s[SETTINGS_KEYS.outputMode]) setOutputMode(s[SETTINGS_KEYS.outputMode]);
+    setPillCancel(normalizePillCancelMode(s[SETTINGS_KEYS.pillCancelButton]));
     if (s[SETTINGS_KEYS.soundEnabled] === "false") setSoundEnabled(false);
     if (s[SETTINGS_KEYS.historyPaused] === "true") setHistoryPaused(true);
     if (s[SETTINGS_KEYS.advancedMode] === "true") setAdvancedMode(true);
@@ -523,6 +529,18 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.setPillPosition(value);
   }, []);
 
+  const handlePillCancelChange = useCallback((value: string) => {
+    const mode = normalizePillCancelMode(value);
+    setPillCancel(mode);
+    window.api?.sendPillCancelModeChanged(mode);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.pillCancelButton },
+        json: { value: mode },
+      })
+      .catch(() => {});
+  }, []);
+
   const handleAutoUpdateToggle = useCallback((enabled: boolean) => {
     setAutoUpdate(enabled);
     window.api?.setAutoUpdate(enabled);
@@ -673,6 +691,14 @@ export default function SettingsPage(): React.JSX.Element {
       opts.push({ id: "custom", label: t("settings.display.positionCustom") });
     return opts;
   }, [pillPosition, t]);
+
+  const cancelButtonOptions = useMemo<SegmentOption[]>(
+    () => [
+      { id: "hover", label: t("settings.display.cancelButtonHover") },
+      { id: "always", label: t("settings.display.cancelButtonAlways") },
+    ],
+    [t],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -1008,7 +1034,6 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.display.widgetPosition")}
                 desc={t("settings.display.widgetPositionDesc")}
-                last
               >
                 <Segment
                   compact
@@ -1016,6 +1041,18 @@ export default function SettingsPage(): React.JSX.Element {
                   options={positionOptions}
                   active={pillPosition}
                   onSelect={handlePillPositionChange}
+                />
+              </Row>
+              <Row
+                label={t("settings.display.cancelButton")}
+                desc={t("settings.display.cancelButtonDesc")}
+                last
+              >
+                <Segment
+                  compact
+                  options={cancelButtonOptions}
+                  active={pillCancel}
+                  onSelect={handlePillCancelChange}
                 />
               </Row>
             </SettingsPanel>

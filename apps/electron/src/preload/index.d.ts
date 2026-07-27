@@ -4,6 +4,7 @@ import type {
   AudioPlaybackMode,
 } from "../shared/audio-playback";
 import type { OpenAppCandidate } from "../shared/open-apps";
+import type { PillCancelMode } from "../shared/pill-cancel";
 import type { PluginViewBounds } from "../shared/plugins";
 
 declare global {
@@ -99,6 +100,11 @@ declare global {
       // Output mode
       sendOutputModeChanged: (mode: string) => void;
       onOutputModeChanged: (callback: (mode: string) => void) => () => void;
+      // Pill cancel button
+      sendPillCancelModeChanged: (mode: PillCancelMode) => void;
+      onPillCancelModeChanged: (
+        callback: (mode: PillCancelMode) => void,
+      ) => () => void;
       sendAudioDuckingChanged: (enabled: boolean) => void;
       onAudioDuckingChanged: (
         callback: (enabled: boolean) => void,

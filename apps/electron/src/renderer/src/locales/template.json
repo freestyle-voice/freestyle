@@ -177,7 +177,11 @@
       "positionBottomRight": "Bottom · Right",
       "positionTopCenter": "Top · Center",
       "positionTopRight": "Top · Right",
-      "positionCustom": "Custom"
+      "positionCustom": "Custom",
+      "cancelButton": "Cancel button",
+      "cancelButtonDesc": "Show a cancel button on the floating pill. Escape always cancels too.",
+      "cancelButtonHover": "On hover",
+      "cancelButtonAlways": "Always"
     },
     "permissions": {
       "microphone": "Microphone",

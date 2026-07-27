@@ -24,14 +24,10 @@ import {
 } from "../../../shared/pill-cancel";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
-// Two bars shorter than the row used to be: the cancel button's slot is
-// reserved whether or not it's currently visible, so the waveform gives up
-// the space rather than the capsule growing. BAR_PITCH is unchanged, so the
-// bars keep their original density.
-const BARS = 10;
+const BARS = 12;
 const RISE = 0.55;
 const FALL = 0.22;
-const SVG_WIDTH = 60;
+const SVG_WIDTH = 72;
 /** Peak bar height. Kept well under PILL_HEIGHT so the waveform never
  * crowds the capsule's edge, even at full volume. */
 const SVG_HEIGHT = 14;
@@ -205,9 +201,19 @@ const PILL_HEIGHT = 30;
 /** Resting width. Grows by PILL_BADGE_EXTRA when the queue badge is shown. */
 const PILL_WIDTH = 104;
 const PILL_BADGE_EXTRA = 18;
-/** Diameter of the cancel button, and of the hit area padded around it. */
+/**
+ * The cancel button lives at the left end of the capsule, and its space is
+ * only taken while it's on screen. Opening it widens its slot to CANCEL_SLOT
+ * (the disc plus a gap) and narrows the waveform's viewport by exactly
+ * CANCEL_HIDDEN_BARS bars' worth, so the capsule's width never changes — the
+ * two oldest samples make way and the rest of the row slides across.
+ */
 const CANCEL_SIZE = 16;
-const CANCEL_HIT_SIZE = 22;
+const CANCEL_SLOT = 23;
+const CANCEL_HIDDEN_BARS = 2;
+const CANCEL_HIDDEN_SPAN = CANCEL_HIDDEN_BARS * BAR_PITCH;
+/** Per-frame easing of the open/close amount; ~95% of the way in ~230ms. */
+const CANCEL_EASE = 0.2;
 
 /**
  * The pill floats over arbitrary application windows, so it commits to a
@@ -298,6 +304,20 @@ export default function AppPage(): React.JSX.Element {
    * frame, so it reads this rather than re-querying the DOM each time.
    */
   const barLinesRef = useRef<SVGLineElement[]>([]);
+  /**
+   * How far the cancel button is open, 0 (hidden, full waveform) to 1 (shown,
+   * two bars given up). Eased in the draw loop rather than by CSS so the
+   * layout, the button's fade and the outgoing bars' fade all advance on the
+   * same clock. `lastCancelWrite` keeps a settled value from re-writing
+   * styles — and so from laying out — every frame.
+   */
+  const cancelOpenRef = useRef(0);
+  const cancelTargetRef = useRef(0);
+  const lastCancelWriteRef = useRef(-1);
+  const cancelSlotRef = useRef<HTMLSpanElement>(null);
+  const waveClipRef = useRef<HTMLSpanElement>(null);
+  const hoveredRef = useRef(false);
+  const cancelModeRef = useRef<PillCancelMode>("hover");
   /**
    * What the bars are easing toward. Every mode writes this; while recording
    * it doubles as a shift register, each slot handing its value to its
@@ -830,6 +850,12 @@ export default function AppPage(): React.JSX.Element {
     // neighbouring heights rather than a visible step.
     easeBars(bars, targets, rise, fall);
 
+    // Advance the cancel button's open/close on the same clock as the bars.
+    const open =
+      cancelOpenRef.current +
+      (cancelTargetRef.current - cancelOpenRef.current) * CANCEL_EASE;
+    cancelOpenRef.current = open;
+
     const lines = barLinesRef.current;
     for (let i = 0; i < lines.length; i++) {
       const val = bars[i] ?? 0;
@@ -839,7 +865,26 @@ export default function AppPage(): React.JSX.Element {
       const line = lines[i];
       line.setAttribute("y1", String((SVG_HEIGHT + h) / 2));
       line.setAttribute("y2", String((SVG_HEIGHT - h) / 2));
-      line.style.opacity = String(0.32 + val * 0.68);
+      // The oldest bars fade as the button takes their space, so they dissolve
+      // rather than being sliced by the viewport edge closing over them.
+      const yielding = i < CANCEL_HIDDEN_BARS ? 1 - open : 1;
+      line.style.opacity = String((0.32 + val * 0.68) * yielding);
+    }
+
+    // Writing these lays out the capsule, so only do it while the value is
+    // actually moving — a settled button costs nothing.
+    if (Math.abs(open - lastCancelWriteRef.current) > 0.002) {
+      lastCancelWriteRef.current = open;
+      const slot = cancelSlotRef.current;
+      const clip = waveClipRef.current;
+      if (slot) {
+        slot.style.width = `${CANCEL_SLOT * open}px`;
+        slot.style.opacity = String(open);
+        slot.style.transform = `scale(${0.72 + 0.28 * open})`;
+        // Don't let a disc that is still fading in swallow a click.
+        slot.style.pointerEvents = open > 0.5 ? "auto" : "none";
+      }
+      if (clip) clip.style.width = `${SVG_WIDTH - CANCEL_HIDDEN_SPAN * open}px`;
     }
 
     rafRef.current = requestAnimationFrame(runBars);
@@ -855,6 +900,11 @@ export default function AppPage(): React.JSX.Element {
       // way in. This also means a re-record starts from a flat row instead of
       // inheriting the previous dictation's waveform.
       targetsRef.current.fill(0);
+      // The pill remounts each time it is shown, so start the button at its
+      // resting state rather than animating it open, and force the first
+      // style write against the fresh elements.
+      cancelOpenRef.current = cancelTargetRef.current;
+      lastCancelWriteRef.current = -1;
       sampleRef.current = {
         lastSampleAt: performance.now(),
         peak: 0,
@@ -1410,6 +1460,23 @@ export default function AppPage(): React.JSX.Element {
     };
   }, [applyPillPosition, getStreamer]);
 
+  // "always" pins the button open; "hover" lets the pointer drive it.
+  useEffect(() => {
+    cancelModeRef.current = cancelMode;
+    cancelTargetRef.current =
+      cancelMode === "always" || hoveredRef.current ? 1 : 0;
+  }, [cancelMode]);
+
+  const handlePillEnter = useCallback(() => {
+    hoveredRef.current = true;
+    cancelTargetRef.current = 1;
+  }, []);
+
+  const handlePillLeave = useCallback(() => {
+    hoveredRef.current = false;
+    if (cancelModeRef.current !== "always") cancelTargetRef.current = 0;
+  }, []);
+
   // ---- Hotkey handlers ----
   useEffect(() => {
     const removeDown = window.api.onHotkeyDown(() => {
@@ -1495,39 +1562,56 @@ export default function AppPage(): React.JSX.Element {
   // in-flight transcription is already implied by the sweeping waveform.
   const badge = pendingCount > 1 ? String(pendingCount) : null;
 
+  // The viewport the waveform is seen through. It narrows from the left as the
+  // button opens; the SVG inside is pinned to its right edge, so the newest
+  // samples hold their place and only the oldest slide out of view.
   const waveform = (
-    <svg
-      ref={captureBarLines}
-      width={SVG_WIDTH}
-      height={SVG_HEIGHT}
-      viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-      style={
-        {
-          display: "block",
-          flexShrink: 0,
-          WebkitAppRegion: "no-drag",
-        } as React.CSSProperties
-      }
-      role="img"
-      aria-label="Audio levels"
+    <span
+      ref={waveClipRef}
+      style={{
+        position: "relative",
+        display: "block",
+        width: SVG_WIDTH,
+        height: SVG_HEIGHT,
+        overflow: "hidden",
+        flexShrink: 0,
+      }}
     >
-      {Array.from({ length: BARS }, (_, i) => {
-        const x = BAR_PITCH * (i + 0.5);
-        return (
-          <line
-            key={i}
-            x1={x}
-            y1={SVG_HEIGHT / 2 + BAR_WIDTH / 2}
-            x2={x}
-            y2={SVG_HEIGHT / 2 - BAR_WIDTH / 2}
-            stroke={barColor}
-            strokeWidth={BAR_WIDTH}
-            strokeLinecap="round"
-            style={{ opacity: 0.32, transition: "stroke 220ms ease" }}
-          />
-        );
-      })}
-    </svg>
+      <svg
+        ref={captureBarLines}
+        width={SVG_WIDTH}
+        height={SVG_HEIGHT}
+        viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
+        style={
+          {
+            display: "block",
+            position: "absolute",
+            right: 0,
+            top: 0,
+            WebkitAppRegion: "no-drag",
+          } as React.CSSProperties
+        }
+        role="img"
+        aria-label="Audio levels"
+      >
+        {Array.from({ length: BARS }, (_, i) => {
+          const x = BAR_PITCH * (i + 0.5);
+          return (
+            <line
+              key={i}
+              x1={x}
+              y1={SVG_HEIGHT / 2 + BAR_WIDTH / 2}
+              x2={x}
+              y2={SVG_HEIGHT / 2 - BAR_WIDTH / 2}
+              stroke={barColor}
+              strokeWidth={BAR_WIDTH}
+              strokeLinecap="round"
+              style={{ opacity: 0.32, transition: "stroke 220ms ease" }}
+            />
+          );
+        })}
+      </svg>
+    </span>
   );
 
   return (
@@ -1570,29 +1654,23 @@ export default function AppPage(): React.JSX.Element {
              so the disc can fade in under the cursor. Revealing on the hit
              area as well as the capsule means it still works if the capsule's
              drag region swallows hover events. */
-          .pill--hover-cancel .pill-cancel {
-            opacity: 0;
-            transform: scale(0.7);
-          }
-          .pill--hover-cancel:hover .pill-cancel,
-          .pill--hover-cancel .pill-cancel-hit:hover .pill-cancel {
-            opacity: 1;
-            transform: scale(1);
-          }
-
           @media (prefers-reduced-motion: reduce) {
             .pill-in { animation-duration: 1ms; }
             .pill-cancel { transition-duration: 1ms; }
-            .pill--hover-cancel .pill-cancel { transform: none; }
           }
         `}
       </style>
 
       {state !== "idle" && (
+        // The capsule is a status indicator, not a control, so an interactive
+        // role would misdescribe it. These handlers only reveal the cancel
+        // button, which is a real <button> with its own label, and the same
+        // action is on Escape — nothing here is pointer-only.
+        // biome-ignore lint/a11y/noStaticElementInteractions: see above
         <div
-          className={`pill-in inline-flex items-center justify-center gap-1.5${
-            cancelMode === "hover" ? " pill--hover-cancel" : ""
-          }`}
+          className="pill-in inline-flex items-center justify-center"
+          onMouseEnter={handlePillEnter}
+          onMouseLeave={handlePillLeave}
           style={{
             ...pillInnerStyle,
             width: badge ? PILL_WIDTH + PILL_BADGE_EXTRA : PILL_WIDTH,
@@ -1600,37 +1678,26 @@ export default function AppPage(): React.JSX.Element {
             marginTop: pillAlign === "start" ? 8 : 0,
           }}
         >
-          {waveform}
-
-          {badge && (
-            <span
-              className="mono"
-              style={
-                {
-                  fontSize: 9,
-                  lineHeight: 1,
-                  letterSpacing: "0.04em",
-                  color: "rgba(245, 241, 228, 0.55)",
-                  flexShrink: 0,
-                  // Restore pointer events on the badge label.
-                  WebkitAppRegion: "no-drag",
-                } as React.CSSProperties
-              }
-            >
-              {badge}
-            </span>
-          )}
-
-          {/* The hit area is wider than the disc and always accepts the
-              cursor, so hover mode has something to reveal against. */}
+          {/* Slot on the left. Its width is driven by the draw loop, from
+              zero (closed) to CANCEL_SLOT — the disc plus the gap to the
+              waveform — so nothing else needs a margin. */}
           <span
-            className="pill-cancel-hit inline-flex items-center justify-center"
+            ref={cancelSlotRef}
+            className="inline-flex items-center justify-start"
             style={
               {
-                width: CANCEL_HIT_SIZE,
-                height: CANCEL_HIT_SIZE,
-                marginRight: -(CANCEL_HIT_SIZE - CANCEL_SIZE) / 2,
+                // Width alone carries the layout: CANCEL_SLOT is the disc plus
+                // the gap to the waveform, so the disc sits at the left of the
+                // slot and the remainder is that gap. No padding — it would be
+                // added on top of the animated width.
+                width: 0,
+                height: CANCEL_SIZE,
+                opacity: 0,
                 flexShrink: 0,
+                // Grow out of the capsule's left edge rather than from the
+                // slot's centre, and don't clip the disc while it scales.
+                transformOrigin: "left center",
+                pointerEvents: "none",
                 WebkitAppRegion: "no-drag",
               } as React.CSSProperties
             }
@@ -1648,6 +1715,7 @@ export default function AppPage(): React.JSX.Element {
                 height: CANCEL_SIZE,
                 borderRadius: "50%",
                 padding: 0,
+                flexShrink: 0,
                 cursor: "default",
               }}
             >
@@ -1668,6 +1736,27 @@ export default function AppPage(): React.JSX.Element {
               </svg>
             </button>
           </span>
+
+          {waveform}
+
+          {badge && (
+            <span
+              className="mono"
+              style={
+                {
+                  fontSize: 9,
+                  lineHeight: 1,
+                  letterSpacing: "0.04em",
+                  color: "rgba(245, 241, 228, 0.55)",
+                  flexShrink: 0,
+                  // Restore pointer events on the badge label.
+                  WebkitAppRegion: "no-drag",
+                } as React.CSSProperties
+              }
+            >
+              {badge}
+            </span>
+          )}
         </div>
       )}
     </div>

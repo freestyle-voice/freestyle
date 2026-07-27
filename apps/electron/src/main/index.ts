@@ -398,26 +398,6 @@ function getPillAlignmentForCustom(): "custom-top" | "custom-bottom" {
   return wy < midY ? "custom-top" : "custom-bottom";
 }
 
-// True when the pill window's current position sits within a display's work
-// area — i.e. it's safe to re-show it in place without recomputing a slot.
-// Used to keep the pill where the user left it across hide/show cycles (e.g.
-// closing the chat panel and pressing the hotkey again).
-function isPillOnScreen(win: BrowserWindow): boolean {
-  const [x, y] = win.getPosition();
-  const wa = screen.getDisplayMatching({
-    x,
-    y,
-    width: APP_WIDTH,
-    height: APP_HEIGHT,
-  }).workArea;
-  return (
-    x >= wa.x &&
-    y >= wa.y &&
-    x + APP_WIDTH <= wa.x + wa.width &&
-    y + APP_HEIGHT <= wa.y + wa.height
-  );
-}
-
 // Computes a preset pill slot for a specific display. The pill is aligned
 // inside the window via CSS (justify-center or justify-end).
 //
@@ -834,17 +814,9 @@ function showPill(): void {
   }
 
   if (!mainWindow.isVisible()) {
-    // Re-showing a merely-hidden pill must not relocate it — e.g. after the
-    // chat panel closes and the user presses the hotkey again. Keep the last
-    // position when it's still on-screen; only recompute a slot when it isn't
-    // (display disconnected, resolution change, first-ever placement).
-    if (isPillOnScreen(mainWindow)) {
-      mainWindow.showInactive();
-    } else {
-      const { x, y } = getAppWindowPosition();
-      setProgrammaticPosition(mainWindow, x, y);
-      mainWindow.showInactive();
-    }
+    const { x, y } = getAppWindowPosition();
+    setProgrammaticPosition(mainWindow, x, y);
+    mainWindow.showInactive();
   }
 
   registerPillEscape();

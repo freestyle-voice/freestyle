@@ -68,6 +68,43 @@ function barHeightFor(voiceLevel: number): number {
   return BAR_CEILING * (1 - Math.exp(-BAR_GAIN * excess));
 }
 
+/**
+ * Random spread that gives the waveform texture instead of a flat plateau
+ * while you talk. Two components, because one alone doesn't cover the range:
+ *
+ * `scale` multiplies the level *before* the response curve. An upward kick is
+ * compressed by the saturation rather than clipping flat against the ceiling,
+ * and the effect scales with loudness for free — a jittered room tone still
+ * lands under the resting-dot threshold, so silence stays still. But the same
+ * saturation flattens it out again once you're loud.
+ *
+ * `trim` then takes a downward-only bite out of the height *after* the curve,
+ * which is what keeps the peaks alive where the curve has gone flat. Only ever
+ * subtracting means the ceiling still holds.
+ *
+ * Both are drawn once per sample rather than per frame, so the values freeze
+ * into the row and travel left with it. Re-rolling every frame would read as
+ * flicker rather than as waveform texture.
+ */
+const BAR_JITTER = 0.35;
+const BAR_TRIM = 0.14;
+
+interface BarJitter {
+  scale: number;
+  trim: number;
+}
+
+function nextJitter(): BarJitter {
+  return {
+    scale: 1 + (Math.random() * 2 - 1) * BAR_JITTER,
+    trim: Math.random() * BAR_TRIM,
+  };
+}
+
+function sampleHeight(voiceLevel: number, jitter: BarJitter): number {
+  return barHeightFor(voiceLevel * jitter.scale) * (1 - jitter.trim);
+}
+
 type PillState = "idle" | "initializing" | "recording" | "transcribing";
 
 type BarMode = "connecting" | "listening" | "speaking";
@@ -246,7 +283,11 @@ export default function AppPage(): React.JSX.Element {
    * transient between frames isn't missed.
    */
   const targetsRef = useRef<number[]>(new Array(BARS).fill(0));
-  const sampleRef = useRef({ lastSampleAt: 0, peak: 0 });
+  const sampleRef = useRef<{
+    lastSampleAt: number;
+    peak: number;
+    jitter: BarJitter;
+  }>({ lastSampleAt: 0, peak: 0, jitter: { scale: 1, trim: 0 } });
   const volumeRef = useRef(0);
   const rafRef = useRef<number>(0);
   const startTimeRef = useRef(0);
@@ -714,13 +755,14 @@ export default function AppPage(): React.JSX.Element {
         // sampled level hands off one slot to the left, and the rightmost bar
         // takes the newest sample — a shift register, so a loud moment reads
         // as moving right-to-left across a stationary row.
-        // Bar heights use the compressed curve; the level broadcast over IPC
-        // stays on the old linear scale, since the dashboard's own
-        // visualisation is calibrated against it.
-        const height = barHeightFor(voiceLevel);
+        // The level broadcast over IPC stays on the old linear scale, since
+        // the dashboard's own visualisation is calibrated against it.
         const level = Math.min(1, voiceLevel * 2.8);
         const sample = sampleRef.current;
-        sample.peak = Math.max(sample.peak, height);
+        // Peak-hold stays in raw level space; the response curve and this
+        // sample's jitter are applied at hand-off, so both land once per
+        // sample rather than being recomputed every frame.
+        sample.peak = Math.max(sample.peak, voiceLevel);
 
         const now = performance.now();
         let elapsed = now - sample.lastSampleAt;
@@ -732,15 +774,17 @@ export default function AppPage(): React.JSX.Element {
         }
         while (elapsed >= SAMPLE_MS) {
           targetsRef.current.shift();
-          targetsRef.current.push(sample.peak);
-          sample.peak = height;
+          targetsRef.current.push(sampleHeight(sample.peak, sample.jitter));
+          sample.peak = voiceLevel;
+          sample.jitter = nextJitter();
           sample.lastSampleAt += SAMPLE_MS;
           elapsed -= SAMPLE_MS;
         }
 
         // The newest slot tracks the live level so the right-hand bar reacts
-        // the moment you speak, rather than a full sample later.
-        targetsRef.current[BARS - 1] = sample.peak;
+        // the moment you speak, rather than a full sample later. It keeps this
+        // sample's jitter, so its height doesn't shift when it hands off.
+        targetsRef.current[BARS - 1] = sampleHeight(sample.peak, sample.jitter);
 
         // Ease toward the sampled values so each hand-off is a smooth morph
         // between neighbouring heights instead of a visible step.
@@ -783,7 +827,11 @@ export default function AppPage(): React.JSX.Element {
       cancelAnimationFrame(rafRef.current);
       barModeRef.current = mode;
       modeStartRef.current = performance.now();
-      sampleRef.current = { lastSampleAt: performance.now(), peak: 0 };
+      sampleRef.current = {
+        lastSampleAt: performance.now(),
+        peak: 0,
+        jitter: nextJitter(),
+      };
       rafRef.current = requestAnimationFrame(runBars);
     },
     [runBars],
@@ -834,7 +882,11 @@ export default function AppPage(): React.JSX.Element {
     freqDataRef.current = null;
     barsRef.current = new Array(BARS).fill(0);
     targetsRef.current = new Array(BARS).fill(0);
-    sampleRef.current = { lastSampleAt: 0, peak: 0 };
+    sampleRef.current = {
+      lastSampleAt: 0,
+      peak: 0,
+      jitter: { scale: 1, trim: 0 },
+    };
     volumeRef.current = 0;
   }, []);
 

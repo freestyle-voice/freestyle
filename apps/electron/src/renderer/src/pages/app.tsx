@@ -36,6 +36,9 @@ const BAR_PITCH = SVG_WIDTH / BARS;
  * levels hand off one slot to the left; the bars themselves never move.
  */
 const SAMPLE_MS = 75;
+/** Frequency band summed to get the voice level, in Hz. */
+const VOICE_MIN_HZ = 80;
+const VOICE_MAX_HZ = 4000;
 /**
  * Per-frame easing for the recording waveform. Symmetric (unlike RISE/FALL)
  * and quick enough to settle well within one SAMPLE_MS, so a level reads as
@@ -62,11 +65,6 @@ const LEVEL_EASE = 0.5;
 const BAR_NOISE_FLOOR = 0.05;
 const BAR_GAIN = 8;
 const BAR_CEILING = 0.82;
-
-function barHeightFor(voiceLevel: number): number {
-  const excess = Math.max(0, voiceLevel - BAR_NOISE_FLOOR);
-  return BAR_CEILING * (1 - Math.exp(-BAR_GAIN * excess));
-}
 
 /**
  * Random spread that gives the waveform texture instead of a flat plateau
@@ -101,8 +99,10 @@ function nextJitter(): BarJitter {
   };
 }
 
-function sampleHeight(voiceLevel: number, jitter: BarJitter): number {
-  return barHeightFor(voiceLevel * jitter.scale) * (1 - jitter.trim);
+/** Maps one sampled voice level, plus that sample's jitter, to a bar height. */
+function barHeightFor(voiceLevel: number, jitter: BarJitter): number {
+  const excess = Math.max(0, voiceLevel * jitter.scale - BAR_NOISE_FLOOR);
+  return BAR_CEILING * (1 - Math.exp(-BAR_GAIN * excess)) * (1 - jitter.trim);
 }
 
 type PillState = "idle" | "initializing" | "recording" | "transcribing";
@@ -175,16 +175,22 @@ async function playTone(preset: TonePreset, volume = 0.16): Promise<void> {
   } catch {}
 }
 
-function smoothBars(prev: number[], next: number[]): number[] {
-  return prev.map((p, i) => {
-    const n = next[i] ?? 0;
-    const k = n > p ? RISE : FALL;
-    return p + (n - p) * k;
-  });
-}
-
-function easeBars(prev: number[], next: number[], k: number): number[] {
-  return prev.map((p, i) => p + ((next[i] ?? 0) - p) * k);
+/**
+ * Advances `bars` one frame toward `targets`, in place — this runs at 60fps,
+ * so it deliberately doesn't allocate. Separate rise and fall rates let a
+ * waveform snap up to a peak and settle back more gently; pass the same value
+ * for both to ease symmetrically.
+ */
+function easeBars(
+  bars: number[],
+  targets: number[],
+  rise: number,
+  fall: number,
+): void {
+  for (let i = 0; i < bars.length; i++) {
+    const target = targets[i] ?? 0;
+    bars[i] += (target - bars[i]) * (target > bars[i] ? rise : fall);
+  }
 }
 
 const PILL_HEIGHT = 30;
@@ -275,12 +281,16 @@ export default function AppPage(): React.JSX.Element {
   const analyserNodeRef = useRef<AnalyserNode | null>(null);
   /** Heights actually drawn; eased toward `targetsRef` every frame. */
   const barsRef = useRef<number[]>(new Array(BARS).fill(0));
-  const barsSvgRef = useRef<SVGSVGElement>(null);
   /**
-   * Sampled levels, oldest first. While recording this is a shift register:
-   * each slot hands its value to its left-hand neighbour once per SAMPLE_MS.
-   * `peak` holds the loudest level seen since the last hand-off, so a brief
-   * transient between frames isn't missed.
+   * The bar elements, captured when the SVG mounts. The draw step runs every
+   * frame, so it reads this rather than re-querying the DOM each time.
+   */
+  const barLinesRef = useRef<SVGLineElement[]>([]);
+  /**
+   * What the bars are easing toward. Every mode writes this; while recording
+   * it doubles as a shift register, each slot handing its value to its
+   * left-hand neighbour once per SAMPLE_MS. `peak` holds the loudest level
+   * seen since the last hand-off, so a brief transient isn't missed.
    */
   const targetsRef = useRef<number[]>(new Array(BARS).fill(0));
   const sampleRef = useRef<{
@@ -288,7 +298,6 @@ export default function AppPage(): React.JSX.Element {
     peak: number;
     jitter: BarJitter;
   }>({ lastSampleAt: 0, peak: 0, jitter: { scale: 1, trim: 0 } });
-  const volumeRef = useRef(0);
   const rafRef = useRef<number>(0);
   const startTimeRef = useRef(0);
   const wantsMicRef = useRef(false);
@@ -306,6 +315,13 @@ export default function AppPage(): React.JSX.Element {
   const modeStartRef = useRef(0);
   const lastIpcTimeRef = useRef(0);
   const freqDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  /**
+   * The voice band (80-4000Hz) as analyser bin indices, plus the divisor that
+   * turns a bin sum into a 0..1 level. Derived once when the analyser is
+   * built — sample rate and fftSize are fixed for the life of the node, so
+   * there's no reason to recompute this every frame.
+   */
+  const voiceBandRef = useRef({ startBin: 0, endBin: 0, levelDivisor: 1 });
 
   const queueRef = useRef<QueueEntry[]>([]);
   const drainingRef = useRef(false);
@@ -696,130 +712,126 @@ export default function AppPage(): React.JSX.Element {
   }, []);
 
   // ---- Bar animation loop ----
-  const applyBarsToSvg = useCallback(() => {
-    const svg = barsSvgRef.current;
-    if (!svg) return;
-    const lines = svg.querySelectorAll("line");
-    for (let i = 0; i < lines.length; i++) {
-      const val = barsRef.current[i] ?? 0;
-      // A bar never fully collapses: at rest it is exactly as tall as it is
-      // wide, so the round caps leave a row of evenly spaced dots.
-      const h = Math.max(BAR_WIDTH, val * SVG_HEIGHT);
-      lines[i].setAttribute("y1", String((SVG_HEIGHT + h) / 2));
-      lines[i].setAttribute("y2", String((SVG_HEIGHT - h) / 2));
-      lines[i].style.opacity = String(0.32 + val * 0.68);
-    }
+  // The bar elements are created once per mount and only ever have their
+  // geometry rewritten, so grab them as the SVG mounts and let the draw loop
+  // iterate a plain array instead of querying the DOM 60 times a second.
+  const captureBarLines = useCallback((svg: SVGSVGElement | null) => {
+    barLinesRef.current = svg ? Array.from(svg.querySelectorAll("line")) : [];
   }, []);
 
+  // One frame: work out what the bars should be aiming at, ease them toward
+  // it, then draw. Runs at 60fps for the whole time the pill is up, so
+  // everything here reuses buffers rather than allocating.
   const runBars = useCallback(() => {
     const mode = barModeRef.current;
     if (!mode) return;
+
+    const now = performance.now();
+    const targets = targetsRef.current;
+    const bars = barsRef.current;
+    // Only the live waveform eases symmetrically; the generated patterns keep
+    // the snappier rise and gentler fall.
+    let rise = RISE;
+    let fall = FALL;
 
     if (mode === "connecting") {
       // A slow, low-amplitude breath travelling along the row: the pill is
       // awake but has nothing to show yet. Deliberately understated so the
       // jump to real audio levels reads as the pill "catching" your voice.
-      const t = (performance.now() - modeStartRef.current) / 1000;
-      const raw: number[] = [];
+      const t = (now - modeStartRef.current) / 1000;
       for (let i = 0; i < BARS; i++) {
-        raw.push(0.06 + 0.07 * (1 + Math.sin(t * 3.2 - i * 0.42)));
-      }
-      barsRef.current = smoothBars(barsRef.current, raw);
-      volumeRef.current = 0.15;
-    } else if (mode === "listening") {
-      const analyser = analyserNodeRef.current;
-      const dataArray = freqDataRef.current;
-      if (analyser && dataArray) {
-        analyser.getByteFrequencyData(dataArray);
-        const VOICE_MIN = 80;
-        const VOICE_MAX = 4000;
-
-        const sampleRate = analyser.context.sampleRate;
-        const binWidth = sampleRate / analyser.fftSize;
-
-        const startBin = Math.max(0, Math.floor(VOICE_MIN / binWidth));
-        const endBin = Math.min(
-          analyser.frequencyBinCount,
-          Math.ceil(VOICE_MAX / binWidth),
-        );
-
-        // Compute one overall voice level
-        let sum = 0;
-        for (let i = startBin; i < endBin; i++) {
-          sum += dataArray[i];
-        }
-
-        const voiceLevel = sum / (Math.max(1, endBin - startBin) * 255);
-
-        // The bars hold still; only their values travel. Every SAMPLE_MS each
-        // sampled level hands off one slot to the left, and the rightmost bar
-        // takes the newest sample — a shift register, so a loud moment reads
-        // as moving right-to-left across a stationary row.
-        // The level broadcast over IPC stays on the old linear scale, since
-        // the dashboard's own visualisation is calibrated against it.
-        const level = Math.min(1, voiceLevel * 2.8);
-        const sample = sampleRef.current;
-        // Peak-hold stays in raw level space; the response curve and this
-        // sample's jitter are applied at hand-off, so both land once per
-        // sample rather than being recomputed every frame.
-        sample.peak = Math.max(sample.peak, voiceLevel);
-
-        const now = performance.now();
-        let elapsed = now - sample.lastSampleAt;
-        // A long stall (window occluded, GC pause) shouldn't replay every
-        // missed hand-off — jump straight to the present instead.
-        if (elapsed > SAMPLE_MS * BARS) {
-          sample.lastSampleAt = now;
-          elapsed = 0;
-        }
-        while (elapsed >= SAMPLE_MS) {
-          targetsRef.current.shift();
-          targetsRef.current.push(sampleHeight(sample.peak, sample.jitter));
-          sample.peak = voiceLevel;
-          sample.jitter = nextJitter();
-          sample.lastSampleAt += SAMPLE_MS;
-          elapsed -= SAMPLE_MS;
-        }
-
-        // The newest slot tracks the live level so the right-hand bar reacts
-        // the moment you speak, rather than a full sample later. It keeps this
-        // sample's jitter, so its height doesn't shift when it hands off.
-        targetsRef.current[BARS - 1] = sampleHeight(sample.peak, sample.jitter);
-
-        // Ease toward the sampled values so each hand-off is a smooth morph
-        // between neighbouring heights instead of a visible step.
-        barsRef.current = easeBars(
-          barsRef.current,
-          targetsRef.current,
-          LEVEL_EASE,
-        );
-
-        volumeRef.current = level;
-        if (now - lastIpcTimeRef.current >= 100) {
-          lastIpcTimeRef.current = now;
-          window.api?.sendAudioLevel(level);
-        }
+        targets[i] = 0.06 + 0.07 * (1 + Math.sin(t * 3.2 - i * 0.42));
       }
     } else if (mode === "speaking") {
       // Transcribing: a single soft bump sweeping left to right on a loop,
       // with a pause between passes. Reads as progress rather than as audio.
-      const t = (performance.now() - modeStartRef.current) / 1000;
+      const t = (now - modeStartRef.current) / 1000;
       const SWEEP = 1.15; // seconds of travel
       const GAP = 0.35; // seconds of rest between passes
-      const phase = (t % (SWEEP + GAP)) / SWEEP;
-      const head = phase * (BARS + 4) - 2;
-      const raw: number[] = [];
+      const head = ((t % (SWEEP + GAP)) / SWEEP) * (BARS + 4) - 2;
       for (let i = 0; i < BARS; i++) {
         const d = i - head;
-        raw.push(0.08 + 0.72 * Math.exp(-(d * d) / 3.2));
+        targets[i] = 0.08 + 0.72 * Math.exp(-(d * d) / 3.2);
       }
-      barsRef.current = smoothBars(barsRef.current, raw);
-      volumeRef.current = 0.4;
+    } else {
+      const analyser = analyserNodeRef.current;
+      const data = freqDataRef.current;
+      // The analyser is torn down a frame or two before the mode switches off
+      // "listening" on commit. Keep the loop running and the bars frozen
+      // until it does — never bail out of the rAF chain here.
+      if (!analyser || !data) {
+        rafRef.current = requestAnimationFrame(runBars);
+        return;
+      }
+
+      rise = LEVEL_EASE;
+      fall = LEVEL_EASE;
+      analyser.getByteFrequencyData(data);
+
+      const { startBin, endBin, levelDivisor } = voiceBandRef.current;
+      let sum = 0;
+      for (let i = startBin; i < endBin; i++) sum += data[i];
+      const voiceLevel = sum / levelDivisor;
+
+      // The bars hold still; only their values travel. Every SAMPLE_MS each
+      // sampled level hands off one slot to the left and the rightmost bar
+      // takes the newest sample, so a loud moment reads as moving
+      // right-to-left across a stationary row.
+      const sample = sampleRef.current;
+      // Peak-hold stays in raw level space; the response curve and this
+      // sample's jitter are applied at hand-off, so both land once per sample
+      // rather than being recomputed every frame.
+      sample.peak = Math.max(sample.peak, voiceLevel);
+
+      let elapsed = now - sample.lastSampleAt;
+      // A long stall (window occluded, GC pause) shouldn't replay every
+      // missed hand-off — jump straight to the present instead.
+      if (elapsed > SAMPLE_MS * BARS) {
+        sample.lastSampleAt = now;
+        elapsed = 0;
+      }
+      while (elapsed >= SAMPLE_MS) {
+        // Shift left by hand rather than via shift()/push(), which would
+        // reallocate the backing store on every hand-off.
+        for (let i = 0; i < BARS - 1; i++) targets[i] = targets[i + 1];
+        targets[BARS - 1] = barHeightFor(sample.peak, sample.jitter);
+        sample.peak = voiceLevel;
+        sample.jitter = nextJitter();
+        sample.lastSampleAt += SAMPLE_MS;
+        elapsed -= SAMPLE_MS;
+      }
+
+      // The newest slot tracks the live level so the right-hand bar reacts the
+      // moment you speak, rather than a full sample later. It keeps this
+      // sample's jitter, so its height doesn't shift when it hands off.
+      targets[BARS - 1] = barHeightFor(sample.peak, sample.jitter);
+
+      // The dashboard's own visualisation is calibrated against the original
+      // linear scale, so the level broadcast over IPC stays on it.
+      if (now - lastIpcTimeRef.current >= 100) {
+        lastIpcTimeRef.current = now;
+        window.api?.sendAudioLevel(Math.min(1, voiceLevel * 2.8));
+      }
     }
 
-    applyBarsToSvg();
+    // Ease toward the targets so a hand-off is a smooth morph between
+    // neighbouring heights rather than a visible step.
+    easeBars(bars, targets, rise, fall);
+
+    const lines = barLinesRef.current;
+    for (let i = 0; i < lines.length; i++) {
+      const val = bars[i] ?? 0;
+      // A bar never fully collapses: at rest it is exactly as tall as it is
+      // wide, so the round caps leave a row of evenly spaced dots.
+      const h = Math.max(BAR_WIDTH, val * SVG_HEIGHT);
+      const line = lines[i];
+      line.setAttribute("y1", String((SVG_HEIGHT + h) / 2));
+      line.setAttribute("y2", String((SVG_HEIGHT - h) / 2));
+      line.style.opacity = String(0.32 + val * 0.68);
+    }
+
     rafRef.current = requestAnimationFrame(runBars);
-  }, [applyBarsToSvg]);
+  }, []);
 
   // ---- Visualization control ----
   const startBarAnimation = useCallback(
@@ -827,6 +839,10 @@ export default function AppPage(): React.JSX.Element {
       cancelAnimationFrame(rafRef.current);
       barModeRef.current = mode;
       modeStartRef.current = performance.now();
+      // Every mode now writes the shared target buffer, so clear it on the
+      // way in. This also means a re-record starts from a flat row instead of
+      // inheriting the previous dictation's waveform.
+      targetsRef.current.fill(0);
       sampleRef.current = {
         lastSampleAt: performance.now(),
         peak: 0,
@@ -862,6 +878,20 @@ export default function AppPage(): React.JSX.Element {
       analyserNodeRef.current = analyser;
       freqDataRef.current = new Uint8Array(analyser.frequencyBinCount);
 
+      // Resolve the voice band to bin indices once, here, rather than on
+      // every frame of the draw loop.
+      const binWidth = ctx.sampleRate / analyser.fftSize;
+      const startBin = Math.max(0, Math.floor(VOICE_MIN_HZ / binWidth));
+      const endBin = Math.min(
+        analyser.frequencyBinCount,
+        Math.ceil(VOICE_MAX_HZ / binWidth),
+      );
+      voiceBandRef.current = {
+        startBin,
+        endBin,
+        levelDivisor: Math.max(1, endBin - startBin) * 255,
+      };
+
       startBarAnimation("listening");
     },
     [startBarAnimation],
@@ -880,14 +910,13 @@ export default function AppPage(): React.JSX.Element {
     audioSourceRef.current = null;
     analyserNodeRef.current = null;
     freqDataRef.current = null;
-    barsRef.current = new Array(BARS).fill(0);
-    targetsRef.current = new Array(BARS).fill(0);
+    barsRef.current.fill(0);
+    targetsRef.current.fill(0);
     sampleRef.current = {
       lastSampleAt: 0,
       peak: 0,
       jitter: { scale: 1, trim: 0 },
     };
-    volumeRef.current = 0;
   }, []);
 
   // ---- Hide pill ----
@@ -1446,9 +1475,9 @@ export default function AppPage(): React.JSX.Element {
   // in-flight transcription is already implied by the sweeping waveform.
   const badge = pendingCount > 1 ? String(pendingCount) : null;
 
-  const renderBars = (ref?: React.RefObject<SVGSVGElement | null>) => (
+  const waveform = (
     <svg
-      ref={ref}
+      ref={captureBarLines}
       width={SVG_WIDTH}
       height={SVG_HEIGHT}
       viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
@@ -1512,7 +1541,7 @@ export default function AppPage(): React.JSX.Element {
             marginTop: pillAlign === "start" ? 8 : 0,
           }}
         >
-          {renderBars(barsSvgRef)}
+          {waveform}
 
           {badge && (
             <span

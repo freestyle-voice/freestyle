@@ -283,6 +283,12 @@ const stream = new Hono().get(
       // meaningful when cleanup actually runs, so a skip drops them too.
       let systemFragments: string[] | undefined;
       let pluginSkipsCleanup = false;
+      // An afterTranscribe plugin (e.g. the agent's "Hey Freestyle" trigger)
+      // must see the raw transcript. Freestyle Cloud's combined cleanup never
+      // exposes it, so when such a plugin is loaded we make the cloud return
+      // raw STT and run cleanup locally instead — mirroring the batch
+      // /transcribe route (see `pluginNeedsRawTranscript` there).
+      const pluginNeedsRawTranscript = plugins().has("afterTranscribe");
       if (
         voice.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
         isLlmCleanupEnabled() &&
@@ -310,7 +316,10 @@ const stream = new Hono().get(
       const cleanup =
         voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
           ? {
-              skipPostProcess: !isLlmCleanupEnabled() || pluginSkipsCleanup,
+              skipPostProcess:
+                !isLlmCleanupEnabled() ||
+                pluginSkipsCleanup ||
+                pluginNeedsRawTranscript,
               ...getEffectiveCleanupTones(),
               appAssignments: getCleanupAppAssignments(),
               ...(systemFragments ? { systemFragments } : {}),
@@ -370,7 +379,19 @@ const stream = new Hono().get(
             // skipped it (both set `skipPostProcess` on connect). When the
             // cloud returned raw text, treat it like the cleanup-off branch so
             // `afterTranscribe`/`Transcribed` still fire on the real transcript.
-            if (voice.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
+            // When an afterTranscribe plugin needs the raw transcript we asked
+            // the cloud to skip combined cleanup (skipPostProcess above), so it
+            // returns raw STT. Route that through the shared local
+            // afterTranscribe + postProcess path below so the raw wake phrase is
+            // visible to the plugin and cleanup still runs locally.
+            const cloudRawForPlugin =
+              pluginNeedsRawTranscript &&
+              isLlmCleanupEnabled() &&
+              !pluginSkipsCleanup;
+            if (
+              voice.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
+              !cloudRawForPlugin
+            ) {
               const cloudHandledPostProcess =
                 isLlmCleanupEnabled() && !pluginSkipsCleanup;
               const cloudText = rawText?.trim() || "";

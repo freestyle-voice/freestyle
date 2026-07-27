@@ -1630,23 +1630,17 @@ export default function AppPage(): React.JSX.Element {
             animation: pill-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
           }
 
-          /* Glass disc: a translucent white fill over the capsule, lifted by a
-             one-pixel inner highlight along the top edge. */
+          /* No chip behind the mark — it sits directly on the capsule, and
+             reads as part of it. The button keeps its box as a hit target;
+             only the glyph is drawn. */
           .pill-cancel {
-            background: rgba(255, 255, 255, 0.11);
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
-            transition:
-              opacity 180ms cubic-bezier(0.22, 1, 0.36, 1),
-              transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
-              background-color 140ms ease,
-              border-color 140ms ease;
+            background: none;
+            border: 0;
+            transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
           }
-          .pill-cancel:hover {
-            background: rgba(255, 255, 255, 0.2);
-            border-color: rgba(255, 255, 255, 0.24);
-          }
-          .pill-cancel:active { transform: scale(0.92); }
+          .pill-cancel:active { transform: scale(0.86); }
+          /* Resting dim enough to sit alongside the quiet bars, full strength
+             under the cursor so it's clearly the thing you're about to hit. */
           .pill-cancel-glyph { transition: opacity 140ms ease; }
           .pill-cancel:hover .pill-cancel-glyph { opacity: 1; }
 
@@ -1713,7 +1707,6 @@ export default function AppPage(): React.JSX.Element {
               style={{
                 width: CANCEL_SIZE,
                 height: CANCEL_SIZE,
-                borderRadius: "50%",
                 padding: 0,
                 flexShrink: 0,
                 cursor: "default",
@@ -1725,12 +1718,14 @@ export default function AppPage(): React.JSX.Element {
                 height={CANCEL_SIZE}
                 viewBox="0 0 16 16"
                 aria-hidden="true"
-                style={{ opacity: 0.78 }}
+                style={{ opacity: 0.6 }}
               >
+                {/* Larger and thinner than it was inside the disc: with no
+                    chip to give it presence, the mark carries itself. */}
                 <path
-                  d="M5.9 5.9 10.1 10.1 M10.1 5.9 5.9 10.1"
+                  d="M4.7 4.7 11.3 11.3 M11.3 4.7 4.7 11.3"
                   stroke="#F5F1E4"
-                  strokeWidth={1.4}
+                  strokeWidth={1.5}
                   strokeLinecap="round"
                 />
               </svg>

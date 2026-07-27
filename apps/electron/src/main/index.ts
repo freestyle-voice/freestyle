@@ -175,8 +175,8 @@ process.on("unhandledRejection", (reason) => {
 });
 
 const DEFAULT_PORT = 4649;
-const APP_WIDTH = 260;
-const APP_HEIGHT = 90;
+const APP_WIDTH = 160;
+const APP_HEIGHT = 60;
 
 // ---------------------------------------------------------------------------
 // settings.json helpers — single source for read/write of the lightweight

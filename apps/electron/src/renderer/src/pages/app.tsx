@@ -1914,10 +1914,18 @@ export default function AppPage(): React.JSX.Element {
     // Two frames: one for the resize to land, one for the browser to lay the
     // card out at its start values so the transition has something to run
     // from. Setting both in the same frame would jump straight to the end.
-    const frame = requestAnimationFrame(() =>
-      requestAnimationFrame(() => setRoomReady(true)),
-    );
-    return () => cancelAnimationFrame(frame);
+    //
+    // Both ids are held, because a dismiss (or an unmount) landing in the
+    // ~16ms between them would otherwise leave the inner frame uncancelled
+    // and still writing state.
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setRoomReady(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
   }, [showCard]);
 
   const cardOpen = showCard && roomReady;

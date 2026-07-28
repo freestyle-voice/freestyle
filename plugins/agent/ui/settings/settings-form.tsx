@@ -254,10 +254,13 @@ export function SettingsForm({
   const patch = (p: Partial<AgentConfig>) => setDraft((d) => ({ ...d, ...p }));
 
   // ---- Built-in tool group toggles ----
-  const enabledCount = TOOL_GROUPS.filter(
+  // Hidden groups (e.g. shelved screenshots/shortcuts/desktop control) aren't
+  // shown or counted, and the "All" toggle leaves them untouched.
+  const visibleGroups = TOOL_GROUPS.filter((g) => !g.hidden);
+  const enabledCount = visibleGroups.filter(
     (g) => draft.builtinToolGroups?.[g.id] !== false,
   ).length;
-  const allToolsChecked = enabledCount === TOOL_GROUPS.length;
+  const allToolsChecked = enabledCount === visibleGroups.length;
   const someToolsChecked = enabledCount > 0 && !allToolsChecked;
 
   // Reflect the mixed state as an indeterminate ("-") checkbox.
@@ -278,9 +281,12 @@ export function SettingsForm({
   };
 
   const toggleAllTools = (on: boolean) => {
-    const groups: Record<string, boolean> = {};
-    for (const g of TOOL_GROUPS) groups[g.id] = on;
-    patch({ builtinToolGroups: groups, builtinToolsEnabled: on });
+    const groups: Record<string, boolean> = { ...draft.builtinToolGroups };
+    for (const g of visibleGroups) groups[g.id] = on;
+    patch({
+      builtinToolGroups: groups,
+      builtinToolsEnabled: Object.values(groups).some((v) => v !== false),
+    });
   };
 
   const updateServer = (id: string, p: Partial<McpServerConfig>) =>
@@ -449,7 +455,7 @@ export function SettingsForm({
             </label>
           </div>
           <div className="tool-groups">
-            {TOOL_GROUPS.map((group) => {
+            {visibleGroups.map((group) => {
               const enabled = draft.builtinToolGroups?.[group.id] !== false;
               const isDesktop = group.id === "desktop";
               return (

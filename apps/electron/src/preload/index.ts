@@ -51,6 +51,16 @@ const api = {
     ipcRenderer.invoke("open:external", url),
   cloudPromptSignIn: (): Promise<boolean> =>
     ipcRenderer.invoke("cloud:prompt-sign-in"),
+  // Whether the re-auth dialog asked to start sign-in; clears the flag on read.
+  consumePendingCloudSignIn: (): Promise<boolean> =>
+    ipcRenderer.invoke("cloud:consume-pending-sign-in"),
+  // Fired when the re-auth dialog's "Sign in again" is chosen while the
+  // dashboard is already open, so it can start the device flow without a reload.
+  onCloudStartSignIn: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("cloud:start-sign-in", handler);
+    return () => ipcRenderer.removeListener("cloud:start-sign-in", handler);
+  },
   cloudPromptUpgrade: (): Promise<boolean> =>
     ipcRenderer.invoke("cloud:prompt-upgrade"),
   onHotkeyDown: (callback: () => void): (() => void) => {

@@ -32,6 +32,8 @@ declare global {
       openLogsFolder: () => Promise<boolean>;
       openExternal: (url: string) => Promise<boolean>;
       cloudPromptSignIn: () => Promise<boolean>;
+      consumePendingCloudSignIn: () => Promise<boolean>;
+      onCloudStartSignIn: (callback: () => void) => () => void;
       cloudPromptUpgrade: () => Promise<boolean>;
       onHotkeyDown: (callback: () => void) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;

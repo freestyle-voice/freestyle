@@ -80,6 +80,23 @@ function useCloudAuthState(): UseCloudAuth {
     refresh().finally(() => setLoading(false));
   }, [refresh]);
 
+  // Single re-auth path: when a lapsed session is detected here, funnel through
+  // the same native prompt the pill uses on a 401 (main single-flights it), so
+  // there's one prompt and one flow. Fire once per expiry; declining clears the
+  // flag so a later refresh doesn't immediately re-prompt.
+  const promptedRef = useRef(false);
+  useEffect(() => {
+    if (!sessionExpired) {
+      promptedRef.current = false;
+      return;
+    }
+    if (promptedRef.current || signingIn) return;
+    promptedRef.current = true;
+    void window.api.cloudPromptSignIn().then((accepted) => {
+      if (!accepted) dismissSessionExpired();
+    });
+  }, [sessionExpired, signingIn, dismissSessionExpired]);
+
   const signIn = useCallback(async (): Promise<CloudUser | null> => {
     if (signInPromiseRef.current) return signInPromiseRef.current;
 

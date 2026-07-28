@@ -304,6 +304,14 @@ let accessibilityConfirmed = false;
 let hotkeyPressed = false;
 let currentHotkeyAccel: string | null = null;
 let hotkeyActivationMode: "hold" | "toggle" = "hold";
+// Set when the re-auth dialog's "Sign in again" is chosen so the settings
+// window can pick up the intent and kick off the device flow on load. Consumed
+// once by the renderer (see the `cloud:consume-pending-sign-in` IPC handler).
+let pendingCloudSignIn = false;
+// Single-flight guard for the re-auth prompt. Both the pill's reactive 401 path
+// and the dashboard's proactive session-expiry detection funnel through the one
+// `cloud:prompt-sign-in` dialog, so this prevents two dialogs stacking up.
+let signInPromptOpen = false;
 let micListener: MicListener | null = null;
 let hotkeyRecorder: HotkeyRecorder | null = null;
 const audioPlaybackController = new AudioPlaybackController();
@@ -1966,17 +1974,54 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle("cloud:prompt-sign-in", async () => {
-    const { response } = await dialog.showMessageBox({
-      type: "info",
-      message: "Sign in to Freestyle Transcribe",
-      detail:
-        "Freestyle Transcribe needs you to sign in before it can transcribe or clean up text. Open Models settings to sign in or switch providers.",
-      buttons: ["Open Models", "Not Now"],
-      defaultId: 0,
-      cancelId: 1,
-    });
-    if (response !== 0) return false;
-    showSettingsWindow("/settings/models");
+    // Single-flight: if a prompt is already up (e.g. the pill triggered it),
+    // don't stack a second one when the dashboard also detects the expiry.
+    if (signInPromptOpen) return false;
+    signInPromptOpen = true;
+    let response: number;
+    try {
+      ({ response } = await dialog.showMessageBox({
+        type: "info",
+        message: "Sign in to Freestyle",
+        detail:
+          "Your Freestyle Cloud session has expired or isn't valid on this server, so transcription and cleanup can't run. Sign in again to keep going, or open Models to switch providers.",
+        // "Sign in again" is the primary action for the common case (an expired
+        // or server-mismatched token). "Open Models" is the secondary escape
+        // hatch for switching providers or using a local/BYOK model.
+        buttons: ["Sign in again", "Open Models", "Not now"],
+        defaultId: 0,
+        cancelId: 2,
+      }));
+    } finally {
+      signInPromptOpen = false;
+    }
+    if (response === 0) {
+      // If the dashboard is already open, tell it to start sign-in in place
+      // (no reload). Otherwise flag the intent and open the settings window;
+      // its renderer consumes the flag on mount and starts the device flow.
+      if (settingsWindow) {
+        settingsWindow.show();
+        settingsWindow.focus();
+        settingsWindow.webContents.send("cloud:start-sign-in");
+      } else {
+        pendingCloudSignIn = true;
+        showSettingsWindow("/settings/models");
+      }
+      return true;
+    }
+    if (response === 1) {
+      showSettingsWindow("/settings/models");
+      return true;
+    }
+    return false;
+  });
+
+  // The settings renderer calls this once on mount to learn whether it should
+  // immediately start the Freestyle Cloud sign-in flow (set by the re-auth
+  // dialog above). Reading it clears the flag so a later reload won't re-prompt.
+  ipcMain.handle("cloud:consume-pending-sign-in", async () => {
+    if (!pendingCloudSignIn) return false;
+    pendingCloudSignIn = false;
     return true;
   });
 

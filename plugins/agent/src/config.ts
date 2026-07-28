@@ -114,6 +114,14 @@ export interface ToolGroupMeta {
   label: string;
   description: string;
   tools: string[];
+  /**
+   * Hidden groups are not shown in Settings and are off by default. Used to
+   * shelve capabilities that aren't ready to ship (screenshots, macOS
+   * Shortcuts, and desktop control) without deleting their implementation —
+   * flip this back to expose them again. Their tool code still lives under
+   * `src/mcp/tools/` and is registered the moment a group is re-enabled.
+   */
+  hidden?: boolean;
 }
 
 /** All groups in display order — the UI iterates this list. */
@@ -148,12 +156,14 @@ export const TOOL_GROUPS: ToolGroupMeta[] = [
     label: "Screenshots",
     description: "take_screenshot",
     tools: ["take_screenshot"],
+    hidden: true,
   },
   {
     id: "shortcuts",
     label: "Shortcuts",
     description: "run_shortcut (macOS only)",
     tools: ["run_shortcut"],
+    hidden: true,
   },
   {
     id: "desktop",
@@ -168,16 +178,21 @@ export const TOOL_GROUPS: ToolGroupMeta[] = [
       "type_text",
       "press_key",
     ],
+    hidden: true,
   },
 ];
 
-/** Default: all groups enabled except desktop control (opt-in). */
+/**
+ * Default enabled state per group. Screenshots, Shortcuts, and Desktop Control
+ * are shelved (off + hidden) until their UX and OS-permission story is sorted;
+ * see {@link ToolGroupMeta.hidden}. The remaining groups are on by default.
+ */
 export const DEFAULT_TOOL_GROUPS: Record<BuiltinToolGroup, boolean> = {
   filesystem: true,
   shell: true,
   clipboard: true,
-  screenshots: true,
-  shortcuts: true,
+  screenshots: false,
+  shortcuts: false,
   desktop: false,
 };
 
@@ -208,9 +223,12 @@ export interface AgentConfig {
 }
 
 export const DEFAULT_SYSTEM_PROMPT =
-  "You are a helpful voice assistant. Keep replies concise and conversational " +
-  "since they're read aloud in a small panel. Use the tools available to you " +
-  "when they help answer the request.\n\n" +
+  "You are the user's proactive personal assistant. Take initiative to finish " +
+  "the task at hand: use the tools available to you to look things up, take " +
+  "actions, and follow through end to end, making reasonable assumptions " +
+  "instead of asking unnecessary questions. Keep replies concise and " +
+  "conversational since they're read aloud in a small panel, and lead with " +
+  "the result.\n\n" +
   "Format your replies with Markdown — the panel renders it. When presenting " +
   "several items that share the same fields (products, prices, options, " +
   "comparisons, etc.), use a Markdown table so the data points are easy to " +
@@ -219,11 +237,60 @@ export const DEFAULT_SYSTEM_PROMPT =
 
 export const DEFAULT_AGENT_NAME = "Freestyle";
 
+/**
+ * Predefined starter skills shipped with every fresh install. They're a ready
+ * library the user can toggle on in Settings — kept disabled by default so
+ * they don't bloat every prompt. The always-on assistant persona lives in
+ * {@link DEFAULT_SYSTEM_PROMPT} (client) and the server's base prompt; these
+ * add focused, opt-in specializations on top.
+ */
+export const DEFAULT_SKILLS: Skill[] = [
+  {
+    id: "starter-writing",
+    name: "Writing & Communication",
+    instructions:
+      "Help draft, rewrite, and polish emails, messages, and documents. Match " +
+      "the requested tone and audience, keep it clear and concise, and return " +
+      "ready-to-send text without preamble. Offer a shorter and a longer option " +
+      "only when it genuinely helps.",
+    enabled: false,
+  },
+  {
+    id: "starter-research",
+    name: "Research & Fact-Checking",
+    instructions:
+      "For questions about current events or facts that may have changed, search " +
+      "the web first, then answer in your own words: a one-line takeaway followed " +
+      "by the key points. Refer to sources by name rather than raw URLs, and flag " +
+      "anything uncertain or conflicting.",
+    enabled: false,
+  },
+  {
+    id: "starter-coding",
+    name: "Coding & Terminal",
+    instructions:
+      "Act as a hands-on coding assistant. Read the relevant files before " +
+      "proposing changes, prefer minimal focused edits, and explain what changed " +
+      "in a sentence or two. When running shell or git commands, say what you're " +
+      "about to do and never run destructive commands without confirmation.",
+    enabled: false,
+  },
+  {
+    id: "starter-planning",
+    name: "Planning & Notes",
+    instructions:
+      "Turn rambling dictation into structured output: a short summary, clear " +
+      "next steps or action items (with owners and due dates when mentioned), and " +
+      "any open questions. Keep the formatting tight and skimmable.",
+    enabled: false,
+  },
+];
+
 export const DEFAULT_CONFIG: AgentConfig = {
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   agentName: DEFAULT_AGENT_NAME,
   mcpServers: [],
-  skills: [],
+  skills: DEFAULT_SKILLS.map((s) => ({ ...s })),
   builtinToolsEnabled: true,
   builtinToolGroups: { ...DEFAULT_TOOL_GROUPS },
   computerUseMode: "guided",

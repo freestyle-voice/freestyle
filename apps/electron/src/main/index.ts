@@ -1996,13 +1996,19 @@ app.whenReady().then(async () => {
       signInPromptOpen = false;
     }
     if (response === 0) {
-      // If the dashboard is already open, tell it to start sign-in in place
-      // (no reload). Otherwise flag the intent and open the settings window;
-      // its renderer consumes the flag on mount and starts the device flow.
+      // If the dashboard is already open and fully loaded, tell it to start
+      // sign-in in place (no reload) via the live event. If it's still loading,
+      // the bridge's listener may not be registered yet, so fall back to the
+      // pending flag which the bridge consumes on mount. With no window at all,
+      // open one and let the flag drive it.
       if (settingsWindow) {
         settingsWindow.show();
         settingsWindow.focus();
-        settingsWindow.webContents.send("cloud:start-sign-in");
+        if (settingsWindow.webContents.isLoading()) {
+          pendingCloudSignIn = true;
+        } else {
+          settingsWindow.webContents.send("cloud:start-sign-in");
+        }
       } else {
         pendingCloudSignIn = true;
         showSettingsWindow("/settings/models");

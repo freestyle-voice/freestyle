@@ -82,10 +82,20 @@ function useCloudAuthState(): UseCloudAuth {
 
   // Single re-auth path: when a lapsed session is detected here, funnel through
   // the same native prompt the pill uses on a 401 (main single-flights it), so
-  // there's one prompt and one flow. Fire once per expiry; declining clears the
-  // flag so a later refresh doesn't immediately re-prompt.
+  // there's one prompt and one flow. `promptedRef` prevents a second concurrent
+  // prompt (StrictMode double-invoke, or the effect re-running). Declining
+  // clears the expiry flag so a later refresh doesn't immediately re-prompt.
   const promptedRef = useRef(false);
+  // Tracks the previous `signingIn` value so we can detect when a sign-in
+  // attempt has just finished. If it failed/was cancelled while the session is
+  // still expired, we re-arm `promptedRef` so the user gets prompted again
+  // instead of being stuck with no way to recover.
+  const prevSigningInRef = useRef(signingIn);
   useEffect(() => {
+    const signInJustEnded = prevSigningInRef.current && !signingIn;
+    prevSigningInRef.current = signingIn;
+    if (signInJustEnded) promptedRef.current = false;
+
     if (!sessionExpired) {
       promptedRef.current = false;
       return;

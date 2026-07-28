@@ -176,8 +176,20 @@ process.on("unhandledRejection", (reason) => {
 });
 
 const DEFAULT_PORT = 4649;
+/**
+ * The pill's own slot: every position in this file is computed against these
+ * dimensions, whatever size the window currently is. See `pillExpandOffset`.
+ */
 const APP_WIDTH = 160;
 const APP_HEIGHT = 60;
+/**
+ * The window is grown to this while the renderer shows its expanded status
+ * card (a failure the user has to answer — see `pill:set-expanded`). The extra
+ * area is transparent and empty, so it stays collapsed the rest of the time
+ * rather than sitting over the user's screen as a dead zone.
+ */
+const PILL_CARD_WIDTH = 340;
+const PILL_CARD_HEIGHT = 144;
 
 // ---------------------------------------------------------------------------
 // settings.json helpers — single source for read/write of the lightweight
@@ -370,13 +382,90 @@ function markProgrammaticTarget(x: number, y: number): void {
   }, 1000);
 }
 
+/**
+ * How far the window's origin has been pushed out to make room for the
+ * expanded card, so the pill itself doesn't move. Zero while collapsed.
+ *
+ * Everything else in this file works in *slot* coordinates — where the
+ * collapsed 160x60 pill sits — and this offset is applied at the two places
+ * that touch real window coordinates: `setProgrammaticPosition` on the way
+ * out, and the `move` listener on the way in. Latching it at expand time
+ * (rather than recomputing it) guarantees the collapse lands exactly where
+ * the expand started, even if the anchor preference changed in between.
+ */
+let pillExpandOffset = { dx: 0, dy: 0 };
+
 function setProgrammaticPosition(
   win: BrowserWindow,
   x: number,
   y: number,
 ): void {
-  markProgrammaticTarget(x, y);
-  win.setPosition(x, y);
+  const tx = x - pillExpandOffset.dx;
+  const ty = y - pillExpandOffset.dy;
+  markProgrammaticTarget(tx, ty);
+  win.setPosition(tx, ty);
+}
+
+/** Which capsule edge stays pinned when the window grows around the pill. */
+function getPillAnchor(): { side: "center" | "right"; edge: "top" | "bottom" } {
+  const position = (readSettings().pillPosition as string) || "bottom-center";
+  if (position === "custom") {
+    return {
+      side: "center",
+      edge: getPillAlignmentForCustom() === "custom-top" ? "top" : "bottom",
+    };
+  }
+  return {
+    side: position.endsWith("right") ? "right" : "center",
+    edge: position.startsWith("top") ? "top" : "bottom",
+  };
+}
+
+/**
+ * Grow/shrink the pill window around the pill, keeping the capsule's anchored
+ * edge fixed on screen. The renderer drives this: it asks for the room a beat
+ * before it animates the card in, and gives it back once the card is gone.
+ */
+function setPillExpanded(expanded: boolean): void {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+  const isExpanded = pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0;
+  if (expanded === isExpanded) return;
+
+  const [x, y] = win.getPosition();
+  let target: { x: number; y: number; width: number; height: number };
+
+  if (expanded) {
+    const { side, edge } = getPillAnchor();
+    pillExpandOffset = {
+      dx:
+        side === "right"
+          ? PILL_CARD_WIDTH - APP_WIDTH
+          : Math.round((PILL_CARD_WIDTH - APP_WIDTH) / 2),
+      dy: edge === "top" ? 0 : PILL_CARD_HEIGHT - APP_HEIGHT,
+    };
+    target = {
+      x: x - pillExpandOffset.dx,
+      y: y - pillExpandOffset.dy,
+      width: PILL_CARD_WIDTH,
+      height: PILL_CARD_HEIGHT,
+    };
+  } else {
+    target = {
+      x: x + pillExpandOffset.dx,
+      y: y + pillExpandOffset.dy,
+      width: APP_WIDTH,
+      height: APP_HEIGHT,
+    };
+    pillExpandOffset = { dx: 0, dy: 0 };
+  }
+
+  markProgrammaticTarget(target.x, target.y);
+  // The window is created non-resizable, which on some platforms also pins
+  // its size against setBounds. Lift the constraint just for this call.
+  win.setResizable(true);
+  win.setBounds(target);
+  win.setResizable(false);
 }
 
 // Returns the pill alignment token for a custom position, using the actual
@@ -529,15 +618,15 @@ function createAppWindow(): void {
   let moveTimeout: NodeJS.Timeout | null = null;
   mainWindow.on("move", () => {
     if (!mainWindow) return;
-    const [nx, ny] = mainWindow.getPosition();
+    const [rawX, rawY] = mainWindow.getPosition();
 
     // Ignore events that match the programmatic target (the window settling
     // after a setProgrammaticPosition call). Clear the target once we see
     // the first matching position so subsequent real drags are captured.
     if (
       programmaticTarget &&
-      nx === programmaticTarget.x &&
-      ny === programmaticTarget.y
+      rawX === programmaticTarget.x &&
+      rawY === programmaticTarget.y
     ) {
       if (programmaticCleanupTimer) clearTimeout(programmaticCleanupTimer);
       programmaticTarget = null;
@@ -548,6 +637,12 @@ function createAppWindow(): void {
     // If programmaticTarget is set but coords don't match yet, the window is
     // still mid-animation — ignore until it settles.
     if (programmaticTarget) return;
+
+    // Work in slot coordinates: while the status card is up the window origin
+    // sits outside the capsule, and saving *that* as the custom position would
+    // walk the pill across the screen on every expand/collapse cycle.
+    const nx = rawX + pillExpandOffset.dx;
+    const ny = rawY + pillExpandOffset.dy;
 
     // Ignore sub-threshold moves so accidental bumps don't override the preset.
     const currentSetting = readSettings().pillPosition as string;
@@ -574,7 +669,10 @@ function createAppWindow(): void {
       const [fx, fy] = mainWindow.getPosition();
       writeSettings({
         pillPosition: "custom",
-        pillCustomPosition: { x: fx, y: fy },
+        pillCustomPosition: {
+          x: fx + pillExpandOffset.dx,
+          y: fy + pillExpandOffset.dy,
+        },
       });
       const alignment = getPillAlignmentForCustom();
       mainWindow.webContents.send("settings:pill-position-changed", alignment);
@@ -1154,6 +1252,9 @@ function hidePill(): void {
   if (mainWindow?.isVisible()) {
     mainWindow.hide();
   }
+  // The next session starts as a bare capsule, so give the extra room back
+  // now — the renderer's own collapse only runs when it animates a card away.
+  setPillExpanded(false);
   // Session ended (cancel, error, or paste complete). Clear latched hotkey
   // state so the next press starts fresh — e.g. after ESC while still
   // holding the dictation key.
@@ -1803,6 +1904,11 @@ app.whenReady().then(async () => {
   // IPC: hide the pill window on request from renderer
   ipcMain.on("pill:hide", () => {
     hidePill();
+  });
+
+  // IPC: the renderer needs (or no longer needs) room for the status card.
+  ipcMain.on("pill:set-expanded", (_event, expanded: boolean) => {
+    setPillExpanded(expanded === true);
   });
 
   // IPC: fan out per-frame audio levels from the pill to other windows

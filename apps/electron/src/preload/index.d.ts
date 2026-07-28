@@ -23,6 +23,7 @@ declare global {
       reloadHotkey: () => void;
       setHotkeyMode: (mode: "hold" | "toggle") => void;
       hidePill: () => void;
+      setPillExpanded: (expanded: boolean) => void;
       showErrorDialog: (title: string, message: string) => Promise<void>;
       getServerPort: () => Promise<number>;
       getServerUrl: () => Promise<string>;

@@ -12,7 +12,7 @@ import {
   refreshNeedsAppContextForCleanup,
 } from "@renderer/lib/cleanup-app-context";
 import { Recorder } from "@renderer/lib/recorder";
-import { Streamer } from "@renderer/lib/streamer";
+import { Streamer, type StreamerConnectionState } from "@renderer/lib/streamer";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AudioPlaybackMode,
@@ -24,17 +24,23 @@ import {
 } from "../../../shared/pill-cancel";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
-const BARS = 12;
+const BARS = 10;
 const RISE = 0.55;
 const FALL = 0.22;
-const SVG_WIDTH = 72;
 /** Peak bar height. Kept well under PILL_HEIGHT so the waveform never
  * crowds the capsule's edge, even at full volume. */
 const SVG_HEIGHT = 14;
 /** Bar thickness; also the height of a bar at rest (drawn as a round dot). */
 const BAR_WIDTH = 2.5;
-/** Horizontal pitch between bars. */
-const BAR_PITCH = SVG_WIDTH / BARS;
+/**
+ * Horizontal pitch between bars — fixed, so the row's density never changes.
+ * The waveform's width follows from it and from BARS, and the difference
+ * against PILL_CORE_WIDTH is the margin the row sits in: dropping a bar makes
+ * the row narrower and the capsule's edges roomier, rather than spreading the
+ * remaining bars further apart.
+ */
+const BAR_PITCH = 6;
+const SVG_WIDTH = BARS * BAR_PITCH;
 const BAR_X_POSITIONS = Array.from(
   { length: BARS },
   (_, index) => BAR_PITCH * (index + 0.5),
@@ -47,10 +53,22 @@ const SAMPLE_MS = 75;
 /** Frequency band summed to get the voice level, in Hz. */
 const VOICE_MIN_HZ = 80;
 const VOICE_MAX_HZ = 4000;
-/** Per-frame easing for the live recording waveform. The faster fall keeps
- * speech endings crisp instead of tapering gradually into the resting dots. */
-const LEVEL_RISE = 0.5;
-const LEVEL_FALL = 0.72;
+/**
+ * Per-frame easing for the live recording waveform. Both are deliberately
+ * close to 1: this row is a level meter, and the eye reads any lag between a
+ * syllable and the bar answering it as the app being slow. What smoothing is
+ * left is only there to keep single-frame FFT noise from flickering the row —
+ * everything below ~0.6 starts to feel like the waveform is trailing you.
+ */
+const LEVEL_RISE = 0.8;
+const LEVEL_FALL = 0.78;
+/**
+ * The analyser's own exponential smoothing across FFT frames. This one is
+ * upstream of everything else, so its lag is paid twice over — once on the way
+ * up and once on the way down. Low enough to stay out of the way; not zero,
+ * which would put raw bin noise straight into the bars.
+ */
+const ANALYSER_SMOOTHING = 0.15;
 
 /**
  * Response curve for the recording waveform, applied to the raw voice level.
@@ -111,7 +129,28 @@ function barHeightFor(voiceLevel: number, jitter: BarJitter): number {
   return BAR_CEILING * (1 - Math.exp(-BAR_GAIN * excess)) * (1 - jitter.trim);
 }
 
-type PillState = "idle" | "initializing" | "recording" | "transcribing";
+type PillState =
+  | "idle"
+  | "initializing"
+  | "recording"
+  | "transcribing"
+  | "error";
+
+/**
+ * Every notice here is something having gone wrong, which is the whole bar for
+ * showing one: a cold cloud session that is merely slow gets no mark at all,
+ * because the pill appears on every single dictation and a spinner that cries
+ * wolf on the happy path is just noise over the user's work. The first two are
+ * recoveries in progress (a turning ring); the rest are stalled (an alert
+ * ring).
+ */
+type PillNotice =
+  | "reconnecting"
+  | "retrying"
+  | "sign-in"
+  | "limit"
+  | "unavailable"
+  | null;
 
 type BarMode = "connecting" | "listening" | "speaking";
 
@@ -200,9 +239,19 @@ function easeBars(
 }
 
 const PILL_HEIGHT = 30;
-/** Resting width. Grows by PILL_BADGE_EXTRA when the queue badge is shown. */
-const PILL_WIDTH = 104;
-const PILL_BADGE_EXTRA = 18;
+/**
+ * The capsule's fixed core — the cancel slot and the waveform. Status that has
+ * to be disclosed (the aside) is appended *outside* this, and grows the capsule
+ * by exactly its own width, so the waveform never shifts or shrinks to make
+ * room for a label.
+ *
+ * Wide enough to hold the waveform with an even margin either side at rest,
+ * and to still contain it once the cancel button has opened (which costs the
+ * row a net BAR_PITCH * CANCEL_HIDDEN_BARS less than the slot it takes).
+ */
+const PILL_CORE_WIDTH = 96;
+/** The expanded card, in the space `window.api.setPillExpanded` opens up. */
+const PILL_CARD_WIDTH = 300;
 /**
  * The cancel button lives at the left end of the capsule, and its space is
  * only taken while it's on screen. Opening it widens its slot to CANCEL_SLOT
@@ -218,22 +267,45 @@ const CANCEL_HIDDEN_SPAN = CANCEL_HIDDEN_BARS * BAR_PITCH;
 const CANCEL_EASE = 0.2;
 
 /**
+ * Status sits at the other end of the capsule, in a mark the same size as the
+ * cancel one — a spinner while something is still working, an alert once it
+ * isn't. The distinction between the two ends is action (left) vs state
+ * (right), which is also why this one is a circular silhouette rather than a
+ * bare glyph. The slot is the mark plus the gap to the capsule's edge.
+ */
+const STATUS_SIZE = CANCEL_SIZE;
+const STATUS_GAP = 6;
+const STATUS_SLOT = STATUS_SIZE + STATUS_GAP;
+
+/**
  * The pill floats over arbitrary application windows, so it commits to a
  * single dark treatment in both themes rather than following the app theme —
  * a light pill reads as a blown-out blob over dark editors. The tint is the
  * brand's dark surface, translucent over a blur so it picks up a hint of
  * whatever is behind it.
  */
+const SURFACE = "rgba(22, 20, 15, 0.92)";
+const SURFACE_BORDER = "1px solid rgba(255, 255, 255, 0.10)";
+const BLUR = "blur(20px) saturate(180%)";
+/** Cream ink, and the terracotta the palette reserves for failures. */
+const INK = "#F5F1E4";
+const ALERT = "#E0805F";
+/**
+ * The waveform is the exception to the cream: solid white at full opacity, in
+ * every state. Level is expressed by bar height alone, so nothing here is
+ * dimmed to encode it.
+ */
+const BAR_COLOR = "#FFFFFF";
+
 const pillInnerStyle: React.CSSProperties = {
   height: PILL_HEIGHT,
   borderRadius: PILL_HEIGHT / 2,
-  background: "rgba(22, 20, 15, 0.92)",
-  border: "1px solid rgba(255, 255, 255, 0.10)",
-  backdropFilter: "blur(20px) saturate(180%)",
-  WebkitBackdropFilter: "blur(20px) saturate(180%)",
+  background: SURFACE,
+  border: SURFACE_BORDER,
+  backdropFilter: BLUR,
+  WebkitBackdropFilter: BLUR,
   cursor: "grab",
   WebkitAppRegion: "drag",
-  transition: "width 260ms cubic-bezier(0.22, 1, 0.36, 1)",
 } as React.CSSProperties;
 
 interface TranscribeResult {
@@ -286,10 +358,23 @@ export default function AppPage(): React.JSX.Element {
   const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
   const [pillSide, setPillSide] = useState<"center" | "right">("center");
   const [cancelMode, setCancelMode] = useState<PillCancelMode>("hover");
+  const [pillNotice, setPillNoticeState] = useState<PillNotice>(null);
+  const pillNoticeRef = useRef<PillNotice>(null);
+  const setPillNotice = useCallback((notice: PillNotice) => {
+    pillNoticeRef.current = notice;
+    setPillNoticeState(notice);
+  }, []);
+  const [canRetry, setCanRetry] = useState(false);
 
   const supportsSessionTransportRef = useRef(false);
   const recordingSessionUsesTransportRef = useRef(false);
   const providerCategoryRef = useRef<string | null>(null);
+  const streamSessionErrorRef = useRef<{
+    message: string;
+    code?: string;
+  } | null>(null);
+  const failedTranscriptionErrorRef = useRef("Transcription failed");
+  const lastRecordingDurationRef = useRef(0);
 
   const [pendingCount, setPendingCount] = useState(0);
 
@@ -436,8 +521,10 @@ export default function AppPage(): React.JSX.Element {
         }
         const errMsg = results.find((r) => r.error)?.error;
         if (errMsg) {
-          hidePill();
-          window.api.showErrorDialog("Transcription Failed", errMsg);
+          failedTranscriptionErrorRef.current = errMsg;
+          setCanRetry(streamerRef.current?.hasCapturedAudio() ?? false);
+          setPillNotice("unavailable");
+          setPillState("error");
         } else if (wantsMicRef.current) {
           // Re-record may have resolved the in-flight stream with an empty
           // result; a new recording is starting — keep the pill visible.
@@ -609,7 +696,7 @@ export default function AppPage(): React.JSX.Element {
       if (!wavBlob) return null;
       const headers: Record<string, string> = {
         "Content-Type": "audio/wav",
-        "x-audio-duration-ms": String(Date.now() - startTimeRef.current),
+        "x-audio-duration-ms": String(lastRecordingDurationRef.current),
       };
       if (appContextRef.current)
         headers["x-app-context"] = encodeAppContext(appContextRef.current);
@@ -659,6 +746,23 @@ export default function AppPage(): React.JSX.Element {
     [],
   );
 
+  const resolveStreamingWithFallback = useCallback(
+    (message: string): boolean => {
+      const resolver = streamResolverRef.current;
+      if (!resolver) return false;
+      streamResolverRef.current = null;
+      setPillNotice("retrying");
+      const fallback = restFallbackTranscribe(message);
+      if (fallback) {
+        void fallback.then(resolver);
+      } else {
+        resolver({ raw: "", cleaned: "", error: message });
+      }
+      return true;
+    },
+    [restFallbackTranscribe, setPillNotice],
+  );
+
   // ---- Streamer (lazy singleton, only created when streaming is enabled) ----
   // biome-ignore lint/correctness/useExhaustiveDependencies: singleton
   const getStreamer = useCallback((): Streamer => {
@@ -676,9 +780,38 @@ export default function AppPage(): React.JSX.Element {
             providerCategoryRef.current = config.providerCategory;
           }
         },
-        onReady: () => {},
+        onReady: () => {
+          if (pillNoticeRef.current === "reconnecting") {
+            setPillNotice(null);
+          }
+        },
+        onConnectionState: (connectionState: StreamerConnectionState) => {
+          if (
+            connectionState === "reconnecting" ||
+            connectionState === "disconnected"
+          ) {
+            if (
+              resolveStreamingWithFallback(
+                "Connection interrupted while transcribing",
+              )
+            ) {
+              return;
+            }
+            if (
+              pillActiveRef.current &&
+              recordingSessionUsesTransportRef.current &&
+              providerCategoryRef.current === "freestyle_cloud"
+            ) {
+              setPillNotice("reconnecting");
+            }
+          }
+          // A reconnected socket is not yet a working session — the notice
+          // stays up until `onReady` says the session is live again, so the
+          // mark doesn't blink off and on in the middle of one recovery.
+        },
         onPartial: () => {},
         onFinal: (text) => {
+          setPillNotice(null);
           const resolver = streamResolverRef.current;
           if (!resolver) return;
           streamResolverRef.current = null;
@@ -707,6 +840,9 @@ export default function AppPage(): React.JSX.Element {
             streamResolverRef.current = null;
             if (resolver) {
               resolver({ raw: "", cleaned: "", cloudAuthRequired: true });
+            } else if (wantsMicRef.current) {
+              streamSessionErrorRef.current = { message: msg, code };
+              setPillNotice("sign-in");
             } else if (pillActiveRef.current) {
               hidePill();
               void window.api.cloudPromptSignIn();
@@ -717,6 +853,9 @@ export default function AppPage(): React.JSX.Element {
             streamResolverRef.current = null;
             if (resolver) {
               resolver({ raw: "", cleaned: "", usageExceeded: true });
+            } else if (wantsMicRef.current) {
+              streamSessionErrorRef.current = { message: msg, code };
+              setPillNotice("limit");
             } else if (pillActiveRef.current) {
               hidePill();
               void window.api.cloudPromptUpgrade();
@@ -724,20 +863,21 @@ export default function AppPage(): React.JSX.Element {
             return;
           }
           if (resolver) {
-            streamResolverRef.current = null;
-            const fallback = restFallbackTranscribe(msg);
-            if (fallback) {
-              void fallback.then(resolver);
-              return;
-            }
-            resolver({ raw: "", cleaned: "", error: msg });
+            resolveStreamingWithFallback(msg);
             return;
           }
-          if (!supportsSessionTransportRef.current) return;
+          if (wantsMicRef.current && recordingSessionUsesTransportRef.current) {
+            streamSessionErrorRef.current = { message: msg, code };
+            if (providerCategoryRef.current === "freestyle_cloud") {
+              setPillNotice("unavailable");
+            }
+            return;
+          }
           if (!pillActiveRef.current) return;
-          if (wantsMicRef.current) return;
-          hidePill();
-          window.api.showErrorDialog("Transcription Failed", msg);
+          failedTranscriptionErrorRef.current = msg;
+          setCanRetry(streamerRef.current?.hasCapturedAudio() ?? false);
+          setPillNotice("unavailable");
+          setPillState("error");
         },
       });
     }
@@ -813,7 +953,8 @@ export default function AppPage(): React.JSX.Element {
       const sample = sampleRef.current;
       // Peak-hold stays in raw level space; the response curve and this
       // sample's jitter are applied at hand-off, so both land once per sample
-      // rather than being recomputed every frame.
+      // rather than being recomputed every frame. Note what this value is now
+      // *not* used for: the newest bar. See below.
       sample.peak = Math.max(sample.peak, voiceLevel);
 
       let elapsed = now - sample.lastSampleAt;
@@ -827,17 +968,25 @@ export default function AppPage(): React.JSX.Element {
         // Shift left by hand rather than via shift()/push(), which would
         // reallocate the backing store on every hand-off.
         for (let i = 0; i < BARS - 1; i++) targets[i] = targets[i + 1];
-        targets[BARS - 1] = barHeightFor(sample.peak, sample.jitter);
+        // The window that just closed is written as its *peak*, over the
+        // second-newest slot — overwriting the live value the shift just moved
+        // there. History is what peak-hold is for: once a bar has stopped
+        // being the live one, it should show the loudest thing that happened
+        // while it was, so a syllable can't fall between two frames.
+        targets[BARS - 2] = barHeightFor(sample.peak, sample.jitter);
         sample.peak = voiceLevel;
         sample.jitter = nextJitter();
         sample.lastSampleAt += SAMPLE_MS;
         elapsed -= SAMPLE_MS;
       }
 
-      // The newest slot tracks the live level so the right-hand bar reacts the
-      // moment you speak, rather than a full sample later. It keeps this
-      // sample's jitter, so its height doesn't shift when it hands off.
-      targets[BARS - 1] = barHeightFor(sample.peak, sample.jitter);
+      // The newest slot, by contrast, tracks the live level and nothing else.
+      // Drawing it from the peak-hold is what made both ends of a word feel
+      // late: the bar could only fall at the next hand-off, up to a full
+      // SAMPLE_MS after you had actually stopped. Now the right-hand bar is a
+      // meter — it rises and falls with your voice, this frame — and only
+      // becomes a peak once it hands off and joins the history.
+      targets[BARS - 1] = barHeightFor(voiceLevel, sample.jitter);
 
       // The dashboard's own visualisation is calibrated against the original
       // linear scale, so the level broadcast over IPC stays on it.
@@ -866,10 +1015,13 @@ export default function AppPage(): React.JSX.Element {
       const line = lines[i];
       line.setAttribute("y1", String((SVG_HEIGHT + h) / 2));
       line.setAttribute("y2", String((SVG_HEIGHT - h) / 2));
-      // The oldest bars fade as the button takes their space, so they dissolve
-      // rather than being sliced by the viewport edge closing over them.
-      const yielding = i < CANCEL_HIDDEN_BARS ? 1 - open : 1;
-      line.style.opacity = String((0.32 + val * 0.68) * yielding);
+      // The bars are drawn at full strength — height alone carries the level,
+      // with no dimming on top of it. The one exception is structural: the
+      // oldest bars fade as the cancel button takes their space, so they
+      // dissolve rather than being sliced by the viewport edge closing over
+      // them.
+      line.style.opacity =
+        i < CANCEL_HIDDEN_BARS && open > 0 ? String(1 - open) : "1";
     }
 
     // Writing these lays out the capsule, so only do it while the value is
@@ -935,7 +1087,7 @@ export default function AppPage(): React.JSX.Element {
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 1024;
-      analyser.smoothingTimeConstant = 0.4;
+      analyser.smoothingTimeConstant = ANALYSER_SMOOTHING;
       source.connect(analyser);
       audioSourceRef.current = source;
       analyserNodeRef.current = analyser;
@@ -959,6 +1111,36 @@ export default function AppPage(): React.JSX.Element {
     },
     [startBarAnimation],
   );
+
+  const retryFailedTranscription = useCallback(() => {
+    if (stateRef.current !== "error") return;
+    const retry = restFallbackTranscribe(
+      failedTranscriptionErrorRef.current || "Transcription failed",
+    );
+    if (!retry) {
+      setCanRetry(false);
+      return;
+    }
+    setCanRetry(false);
+    setPillNotice("retrying");
+    setPillState("transcribing");
+    // The draw loop is parked while the card is up (see the card effect), so
+    // the capsule needs its sweep started again rather than resumed.
+    startBarAnimation("speaking");
+    setPendingCount((count) => count + 1);
+    queueRef.current.push({
+      promise: retry.finally(() => {
+        setPendingCount((count) => Math.max(0, count - 1));
+      }),
+    });
+    void drainQueue();
+  }, [
+    drainQueue,
+    restFallbackTranscribe,
+    setPillNotice,
+    setPillState,
+    startBarAnimation,
+  ]);
 
   const stopVisualization = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
@@ -984,6 +1166,8 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- Hide pill ----
   const hidePill = useCallback(() => {
+    setPillNotice(null);
+    setCanRetry(false);
     setPillState("idle");
     setPendingCount(0);
     wantsMicRef.current = false;
@@ -993,6 +1177,7 @@ export default function AppPage(): React.JSX.Element {
     drainAgainRef.current = false;
     recordingActiveRef.current = false;
     streamResolverRef.current = null;
+    streamSessionErrorRef.current = null;
     pendingReRecordRef.current = false;
     // Hiding removes the hovered element before onMouseLeave can fire. Reset
     // its transient reveal state so the next session does not inherit an open
@@ -1003,7 +1188,7 @@ export default function AppPage(): React.JSX.Element {
     lastCancelWriteRef.current = -1;
     stopVisualization();
     window.api.hidePill();
-  }, [stopVisualization, setPillState]);
+  }, [setPillNotice, stopVisualization, setPillState]);
 
   const resumeTranscribingOrHide = useCallback(() => {
     if (isTranscriptionIdle()) {
@@ -1039,6 +1224,10 @@ export default function AppPage(): React.JSX.Element {
       wantsMicRef.current = true;
       pillActiveRef.current = true;
       pendingCommitRef.current = false;
+      streamSessionErrorRef.current = null;
+      lastRecordingDurationRef.current = 0;
+      setPillNotice(null);
+      setCanRetry(false);
 
       // Warm the pipeline while the user is speaking so submission doesn't pay
       // startup latency: the local ASR server (whisper/mlx) model load and the
@@ -1153,6 +1342,7 @@ export default function AppPage(): React.JSX.Element {
       startListening,
       hidePill,
       getStreamer,
+      setPillNotice,
       setPillState,
       resumeTranscribingOrHide,
       restoreSystemAudioSafely,
@@ -1188,6 +1378,7 @@ export default function AppPage(): React.JSX.Element {
     freqDataRef.current = null;
 
     const recordingDuration = Date.now() - startTimeRef.current;
+    lastRecordingDurationRef.current = recordingDuration;
     if (recordingDuration < 250) {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
@@ -1207,6 +1398,54 @@ export default function AppPage(): React.JSX.Element {
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
 
+      const streamError = streamSessionErrorRef.current;
+      streamSessionErrorRef.current = null;
+      if (streamError?.code === "cloud_auth_required") {
+        streamerRef.current.cancel();
+        hidePill();
+        void window.api.cloudPromptSignIn();
+        return;
+      }
+      if (streamError?.code === "usage_exceeded") {
+        streamerRef.current.cancel();
+        hidePill();
+        void window.api.cloudPromptUpgrade();
+        return;
+      }
+
+      const transportFailure =
+        streamError?.message ??
+        (!streamerRef.current.isConnected()
+          ? "Connection interrupted while recording"
+          : null);
+      if (transportFailure) {
+        streamerRef.current.cancel();
+        setPillNotice("retrying");
+        setPendingCount((count) => count + 1);
+        const fallback =
+          restFallbackTranscribe(transportFailure) ??
+          Promise.resolve({
+            raw: "",
+            cleaned: "",
+            error: transportFailure,
+          });
+        queueRef.current.push({
+          promise: fallback.finally(() => {
+            setPendingCount((count) => Math.max(0, count - 1));
+            if (pendingReRecordRef.current && !wantsMicRef.current) {
+              pendingReRecordRef.current = false;
+              void startRecording(true);
+            }
+          }),
+        });
+        void drainQueue();
+        return;
+      }
+
+      // A cold cloud session at commit time is just latency, not a fault: the
+      // sweeping waveform already says the dictation is being worked on, and
+      // the commit timeout below is what turns a genuinely stuck session into
+      // something the user is told about.
       setPendingCount((c) => c + 1);
       const transcribePromise = new Promise<TranscribeResult>((resolve) => {
         streamResolverRef.current = resolve;
@@ -1245,6 +1484,10 @@ export default function AppPage(): React.JSX.Element {
       return;
     }
 
+    // startCapture() also runs for the batch path so the analyser and a
+    // retryable PCM copy stay available. Stop that auxiliary capture now;
+    // otherwise it remains logically active until the next dictation.
+    streamerRef.current?.cancel();
     const wavBlob = recorderRef.current.isRecording()
       ? await recorderRef.current.stop()
       : null;
@@ -1278,13 +1521,12 @@ export default function AppPage(): React.JSX.Element {
 
     const serverOk = await refreshApiBase();
     if (!serverOk) {
-      hidePill();
-      window.api.showErrorDialog(
-        "Server Unreachable",
-        isRemoteServer()
-          ? `Cannot reach the server at ${getApiBase()}. Check the server URL in Settings → Network, or reset to the local server.`
-          : `Cannot reach Freestyle server at ${getApiBase()}. Quit and reopen the app.`,
-      );
+      failedTranscriptionErrorRef.current = isRemoteServer()
+        ? `Cannot reach the server at ${getApiBase()}`
+        : `Cannot reach Freestyle server at ${getApiBase()}`;
+      setCanRetry(streamerRef.current?.hasCapturedAudio() ?? false);
+      setPillNotice("unavailable");
+      setPillState("error");
       return;
     }
 
@@ -1360,6 +1602,7 @@ export default function AppPage(): React.JSX.Element {
     restoreSystemAudioSafely,
     restFallbackTranscribe,
     startRecording,
+    setPillNotice,
   ]);
 
   // ---- Cancel ----
@@ -1495,6 +1738,12 @@ export default function AppPage(): React.JSX.Element {
       const s = stateRef.current;
       if (s === "idle") {
         startRecording(false);
+      } else if (s === "error") {
+        // A fresh hotkey press means "start a new dictation". The failed
+        // capture remains retryable from the visible Retry button until then.
+        setPillNotice(null);
+        setCanRetry(false);
+        void startRecording(false);
       } else if (s === "transcribing" && !wantsMicRef.current) {
         if (isTranscriptionIdle()) {
           hidePill();
@@ -1540,6 +1789,7 @@ export default function AppPage(): React.JSX.Element {
     cancelRecording,
     hidePill,
     isTranscriptionIdle,
+    setPillNotice,
   ]);
 
   // ---- Cleanup on unmount ----
@@ -1561,14 +1811,130 @@ export default function AppPage(): React.JSX.Element {
   }, [cancelRecording]);
 
   // ---- Render ----
-  // State is carried entirely by the waveform's brightness — no coloured glow,
-  // no chrome. Recording is the only fully-lit state; everything else recedes.
-  const barColor =
-    state === "recording" ? "#F5F1E4" : "rgba(245, 241, 228, 0.62)";
+  // Two surfaces share one anchor: the capsule, which is the whole UI on the
+  // happy path, and — only when a dictation has actually failed — a card that
+  // takes over to say what happened and offer the way out. Anything short of
+  // a failure (a slow connect, a retry in flight) stays in the capsule as a
+  // single mark at its right-hand end. Prose belongs in the card; the capsule
+  // sits over whatever the user is actually doing, so it only ever earns a
+  // glyph, and the words behind it are in the tooltip and to screen readers.
+  const isFreestyleCloud = providerCategoryRef.current === "freestyle_cloud";
+  const showCard = state === "error";
+
+  // What that mark means. Errors are the card's job, so a "working" notice
+  // here is a spinner and a stalled one is the alert mark.
+  const statusLabel = showCard
+    ? null
+    : pillNotice === "reconnecting"
+      ? "Reconnecting"
+      : pillNotice === "retrying"
+        ? "Retrying"
+        : pillNotice === "sign-in"
+          ? "Sign in needed"
+          : pillNotice === "limit"
+            ? "Limit reached"
+            : pillNotice === "unavailable"
+              ? isFreestyleCloud
+                ? "Cloud offline"
+                : "Unavailable"
+              : null;
+  const statusIsAlert =
+    pillNotice === "unavailable" ||
+    pillNotice === "sign-in" ||
+    pillNotice === "limit";
 
   // Only worth showing when more than one dictation is stacked up; a single
   // in-flight transcription is already implied by the sweeping waveform.
-  const badge = pendingCount > 1 ? String(pendingCount) : null;
+  const statusCount =
+    pendingCount > 1 && !statusLabel ? String(pendingCount) : null;
+  const wantsStatus = !showCard && !!(statusLabel || statusCount);
+
+  const cardTitle =
+    pillNotice === "sign-in"
+      ? "Sign in to continue"
+      : pillNotice === "limit"
+        ? "Weekly limit reached"
+        : isFreestyleCloud
+          ? "Cloud offline"
+          : "Transcription failed";
+  const cardBody = failedTranscriptionErrorRef.current;
+
+  // What each surface is *currently drawing*, which is not the same as what
+  // the state says once it starts leaving: the notice that put it there is
+  // usually cleared in the same tick it's dismissed, and re-rendering an empty
+  // label (or a re-derived title) would blank the surface a beat before it has
+  // finished animating out. Latching holds the last real content until the
+  // surface is gone. Writing a ref during render is safe here — it's derived
+  // purely from this render's own values, so a repeat render is a no-op.
+  const statusContentRef = useRef({
+    label: null as string | null,
+    count: null as string | null,
+    isAlert: false,
+  });
+  if (wantsStatus) {
+    statusContentRef.current = {
+      label: statusLabel,
+      count: statusCount,
+      isAlert: statusIsAlert,
+    };
+  }
+  const status = statusContentRef.current;
+
+  const cardContentRef = useRef({ title: "", body: "", canRetry: false });
+  if (showCard) {
+    cardContentRef.current = { title: cardTitle, body: cardBody, canRetry };
+  }
+  const card = cardContentRef.current;
+
+  const accessibleStatus = showCard
+    ? `${cardTitle}. ${cardBody}`
+    : (statusLabel ??
+      (state === "initializing"
+        ? "Preparing microphone"
+        : state === "recording"
+          ? "Listening"
+          : state === "transcribing"
+            ? "Transcribing"
+            : ""));
+
+  // ---- Room for the card ----
+  // The capsule, status mark and all, fits the pill window as it is; only the
+  // card needs the window grown around it first, so that it animates into
+  // space that already exists instead of being clipped for a frame or two.
+  // `roomReady` is that handshake; giving the room back waits for the card to
+  // finish leaving.
+  const [roomReady, setRoomReady] = useState(false);
+  useEffect(() => {
+    if (!showCard) {
+      setRoomReady(false);
+      const timer = setTimeout(() => window.api?.setPillExpanded(false), 300);
+      return () => clearTimeout(timer);
+    }
+    window.api?.setPillExpanded(true);
+    // Two frames: one for the resize to land, one for the browser to lay the
+    // card out at its start values so the transition has something to run
+    // from. Setting both in the same frame would jump straight to the end.
+    const frame = requestAnimationFrame(() =>
+      requestAnimationFrame(() => setRoomReady(true)),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [showCard]);
+
+  const cardOpen = showCard && roomReady;
+
+  // The card can sit there for as long as the user takes to answer it, and
+  // the waveform underneath is neither visible nor meaningful by then — park
+  // the draw loop once the capsule has finished fading out.
+  useEffect(() => {
+    if (!showCard) return;
+    const timer = setTimeout(stopVisualization, 260);
+    return () => clearTimeout(timer);
+  }, [showCard, stopVisualization]);
+
+  // Grow the card out of the capsule it replaces, not out of thin air.
+  const transformOrigin = `${pillSide === "right" ? "right" : "center"} ${
+    pillAlign === "start" ? "top" : "bottom"
+  }`;
 
   // The viewport the waveform is seen through. It narrows from the left as the
   // button opens; the SVG inside is pinned to its right edge, so the newest
@@ -1599,8 +1965,7 @@ export default function AppPage(): React.JSX.Element {
             WebkitAppRegion: "no-drag",
           } as React.CSSProperties
         }
-        role="img"
-        aria-label="Audio levels"
+        aria-hidden="true"
       >
         {BAR_X_POSITIONS.map((x) => {
           return (
@@ -1610,10 +1975,9 @@ export default function AppPage(): React.JSX.Element {
               y1={SVG_HEIGHT / 2 + BAR_WIDTH / 2}
               x2={x}
               y2={SVG_HEIGHT / 2 - BAR_WIDTH / 2}
-              stroke={barColor}
+              stroke={BAR_COLOR}
               strokeWidth={BAR_WIDTH}
               strokeLinecap="round"
-              style={{ opacity: 0.32, transition: "stroke 220ms ease" }}
             />
           );
         })}
@@ -1621,20 +1985,60 @@ export default function AppPage(): React.JSX.Element {
     </span>
   );
 
+  const layerClass = `pill-layer absolute inset-0 flex ${
+    pillAlign === "start" ? "items-start" : "items-end"
+  } ${pillSide === "right" ? "justify-end pr-3" : "justify-center"}`;
+
   return (
-    <div
-      className={`flex h-screen w-screen select-none ${
-        pillAlign === "start" ? "items-start" : "items-end"
-      } ${pillSide === "right" ? "justify-end pr-3" : "justify-center"}`}
-    >
+    <div className="relative h-screen w-screen select-none overflow-hidden">
       <style>
         {`
-          @keyframes pill-in {
-            from { opacity: 0; transform: translateY(6px) scale(0.88); }
-            to   { opacity: 1; transform: translateY(0)   scale(1); }
+          /* One easing for every size and position change in the pill, so the
+             capsule growing a label and the card taking over read as the same
+             piece of motion. Out-of-view surfaces leave faster than the
+             incoming one arrives — the swap should feel like a handover, not
+             a crossfade of two equals. */
+          .pill-layer { pointer-events: none; }
+
+          .pill-surface {
+            opacity: 0;
+            transform: scale(0.96);
+            transition: opacity 140ms ease, transform 140ms cubic-bezier(0.4, 0, 1, 1);
+            pointer-events: none;
           }
-          .pill-in {
-            animation: pill-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+          .pill-surface[data-show="true"] {
+            opacity: 1;
+            transform: none;
+            transition: opacity 200ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+            pointer-events: auto;
+          }
+          .pill-card[data-show="false"] { transform: scale(0.94) translateY(4px); }
+
+          /* The status mark's slot, opening from the capsule's right end the
+             same way the cancel slot opens from its left. */
+          .pill-status {
+            width: 0;
+            opacity: 0;
+            overflow: hidden;
+            flex-shrink: 0;
+            transition: width 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease;
+          }
+          .pill-status[data-open="true"] {
+            width: ${STATUS_SLOT}px;
+            opacity: 1;
+          }
+          .pill-status-mark {
+            transform: scale(0.7);
+            transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+          }
+          .pill-status[data-open="true"] .pill-status-mark { transform: none; }
+
+          /* Progress has no percentage to show and no text to read, so the
+             turning ring is the whole message: something is still happening. */
+          @keyframes pill-spin { to { transform: rotate(360deg); } }
+          .pill-spinner {
+            transform-origin: 50% 50%;
+            animation: pill-spin 900ms linear infinite;
           }
 
           /* No chip behind the mark — it sits directly on the capsule, and
@@ -1649,113 +2053,353 @@ export default function AppPage(): React.JSX.Element {
           /* Resting dim enough to sit alongside the quiet bars, full strength
              under the cursor so it's clearly the thing you're about to hit. */
           .pill-cancel-glyph { transition: opacity 140ms ease; }
-          .pill-cancel:hover .pill-cancel-glyph { opacity: 1; }
+
+          .pill-action {
+            border: 0;
+            border-radius: 999px;
+            height: 26px;
+            padding: 0 12px;
+            font-size: 11.5px;
+            font-weight: 500;
+            line-height: 1;
+            letter-spacing: 0.005em;
+            cursor: default;
+            transition: background-color 140ms ease, color 140ms ease, transform 140ms ease;
+          }
+          .pill-action:active { transform: scale(0.97); }
+          .pill-action-ghost {
+            background: transparent;
+            color: rgba(245, 241, 228, 0.6);
+          }
+          .pill-action-primary {
+            background: ${INK};
+            color: #16140F;
+          }
+
+          @media (hover: hover) and (pointer: fine) {
+            .pill-cancel:hover .pill-cancel-glyph { opacity: 1; }
+            .pill-action-ghost:hover {
+              background: rgba(245, 241, 228, 0.1);
+              color: rgba(245, 241, 228, 0.88);
+            }
+            .pill-action-primary:hover { background: #FFFDF5; }
+          }
 
           @media (prefers-reduced-motion: reduce) {
-            .pill-in { animation-duration: 1ms; }
-            .pill-cancel { transition-duration: 1ms; }
+            .pill-surface,
+            .pill-surface[data-show="true"],
+            .pill-status,
+            .pill-status-mark,
+            .pill-cancel,
+            .pill-action { transition-duration: 1ms !important; }
+            .pill-card[data-show="false"] { transform: none; }
+            /* A spinner that doesn't turn says nothing, so slow it rather
+               than stopping it. */
+            .pill-spinner { animation-duration: 2.4s; }
           }
         `}
       </style>
 
       {state !== "idle" && (
-        // The capsule is a status indicator, not a control, so an interactive
-        // role would misdescribe it. These handlers only reveal the cancel
-        // button, which is a real <button> with its own label, and the same
-        // action is on Escape — nothing here is pointer-only.
-        // biome-ignore lint/a11y/noStaticElementInteractions: see above
-        <div
-          className="pill-in inline-flex items-center justify-center"
-          onMouseEnter={handlePillEnter}
-          onMouseLeave={handlePillLeave}
-          style={{
-            ...pillInnerStyle,
-            width: badge ? PILL_WIDTH + PILL_BADGE_EXTRA : PILL_WIDTH,
-            marginBottom: pillAlign === "end" ? 8 : 0,
-            marginTop: pillAlign === "start" ? 8 : 0,
-          }}
-        >
-          {/* Slot on the left. Its width is driven by the draw loop, from
-              zero (closed) to CANCEL_SLOT — the disc plus the gap to the
-              waveform — so nothing else needs a margin. */}
-          <span
-            ref={cancelSlotRef}
-            className="inline-flex items-center justify-start"
-            style={
-              {
-                // Width alone carries the layout: CANCEL_SLOT is the disc plus
-                // the gap to the waveform, so the disc sits at the left of the
-                // slot and the remainder is that gap. No padding — it would be
-                // added on top of the animated width.
-                width: 0,
-                height: CANCEL_SIZE,
-                opacity: 0,
-                flexShrink: 0,
-                // Grow out of the capsule's left edge rather than from the
-                // slot's centre, and don't clip the disc while it scales.
-                transformOrigin: "left center",
-                pointerEvents: "none",
-                WebkitAppRegion: "no-drag",
-              } as React.CSSProperties
-            }
-          >
-            <button
-              type="button"
-              className="pill-cancel inline-flex items-center justify-center"
-              onClick={cancelRecording}
-              // The pill window has no i18n provider (only the dashboard
-              // does), and no other string in it is translated. Not worth
-              // pulling the i18next runtime in for one label.
-              aria-label="Cancel dictation"
-              style={{
-                width: CANCEL_SIZE,
-                height: CANCEL_SIZE,
-                padding: 0,
-                flexShrink: 0,
-                cursor: "default",
-              }}
-            >
-              <svg
-                className="pill-cancel-glyph"
-                width={CANCEL_SIZE}
-                height={CANCEL_SIZE}
-                viewBox="0 0 16 16"
-                aria-hidden="true"
-                style={{ opacity: 0.6 }}
-              >
-                {/* Larger and thinner than it was inside the disc: with no
-                    chip to give it presence, the mark carries itself. */}
-                <path
-                  d="M4.7 4.7 11.3 11.3 M11.3 4.7 4.7 11.3"
-                  stroke="#F5F1E4"
-                  strokeWidth={1.5}
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
+        <>
+          <span className="sr-only" role="status" aria-live="polite">
+            {accessibleStatus}
           </span>
 
-          {waveform}
+          {/* ---- Capsule ---- */}
+          <div className={layerClass} aria-hidden={cardOpen}>
+            {/* The capsule is a status indicator, not a control, so an
+                interactive role would misdescribe it. These handlers only
+                reveal the cancel button, which is a real <button> with its own
+                label, and the same action is on Escape — nothing here is
+                pointer-only. */}
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}
+            <div
+              className="pill-surface inline-flex items-center"
+              data-show={!showCard}
+              onMouseEnter={handlePillEnter}
+              onMouseLeave={handlePillLeave}
+              style={{
+                ...pillInnerStyle,
+                transformOrigin,
+                marginBottom: pillAlign === "end" ? 8 : 0,
+                marginTop: pillAlign === "start" ? 8 : 0,
+              }}
+            >
+              {/* The fixed core: the cancel slot's width is driven by the draw
+                  loop, from zero (closed) to CANCEL_SLOT — the disc plus the
+                  gap to the waveform — and the waveform gives up exactly that
+                  much, so the core's own width never changes. */}
+              <span
+                className="inline-flex items-center justify-center"
+                style={{ width: PILL_CORE_WIDTH, flexShrink: 0 }}
+              >
+                <span
+                  ref={cancelSlotRef}
+                  className="inline-flex items-center justify-start"
+                  style={
+                    {
+                      // Width alone carries the layout, so no padding — it
+                      // would be added on top of the animated width.
+                      width: 0,
+                      height: CANCEL_SIZE,
+                      opacity: 0,
+                      flexShrink: 0,
+                      // Grow out of the capsule's left edge rather than from
+                      // the slot's centre, and don't clip the disc while it
+                      // scales.
+                      transformOrigin: "left center",
+                      pointerEvents: "none",
+                      WebkitAppRegion: "no-drag",
+                    } as React.CSSProperties
+                  }
+                >
+                  <button
+                    type="button"
+                    className="pill-cancel inline-flex items-center justify-center"
+                    onClick={cancelRecording}
+                    // The pill window has no i18n provider (only the dashboard
+                    // does), and no other string in it is translated. Not worth
+                    // pulling the i18next runtime in for one label.
+                    aria-label="Cancel dictation"
+                    style={{
+                      width: CANCEL_SIZE,
+                      height: CANCEL_SIZE,
+                      padding: 0,
+                      flexShrink: 0,
+                      cursor: "default",
+                    }}
+                  >
+                    <svg
+                      className="pill-cancel-glyph"
+                      width={CANCEL_SIZE}
+                      height={CANCEL_SIZE}
+                      viewBox="0 0 16 16"
+                      aria-hidden="true"
+                      style={{ opacity: 0.6 }}
+                    >
+                      {/* Larger and thinner than it was inside the disc: with
+                          no chip to give it presence, the mark carries
+                          itself. */}
+                      <path
+                        d="M4.7 4.7 11.3 11.3 M11.3 4.7 4.7 11.3"
+                        stroke={INK}
+                        strokeWidth={1.5}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+                </span>
 
-          {badge && (
-            <span
-              className="mono"
+                {waveform}
+              </span>
+
+              {/* Status, outside the core: the capsule grows to the right by
+                  one mark's width and nothing else moves. The words are in
+                  the tooltip — and in the live region above — so the glyph
+                  itself doesn't have to spell anything out. */}
+              <span
+                className="pill-status inline-flex items-center justify-end"
+                data-open={wantsStatus}
+                title={status.label ?? undefined}
+                aria-hidden="true"
+                style={
+                  {
+                    height: STATUS_SIZE,
+                    WebkitAppRegion: "no-drag",
+                  } as React.CSSProperties
+                }
+              >
+                <span
+                  className="pill-status-mark inline-flex items-center justify-center"
+                  style={{
+                    width: STATUS_SIZE,
+                    height: STATUS_SIZE,
+                    marginRight: STATUS_GAP,
+                    flexShrink: 0,
+                  }}
+                >
+                  {status.label ? (
+                    status.isAlert ? (
+                      <svg
+                        width={STATUS_SIZE}
+                        height={STATUS_SIZE}
+                        viewBox="0 0 16 16"
+                      >
+                        <title>{status.label}</title>
+                        <circle
+                          cx="8"
+                          cy="8"
+                          r="5.6"
+                          fill="none"
+                          stroke={ALERT}
+                          strokeWidth={1.4}
+                        />
+                        <path
+                          d="M8 5.1v3.3"
+                          stroke={ALERT}
+                          strokeWidth={1.4}
+                          strokeLinecap="round"
+                        />
+                        <circle cx="8" cy="10.7" r="0.8" fill={ALERT} />
+                      </svg>
+                    ) : (
+                      <svg
+                        className="pill-spinner"
+                        width={STATUS_SIZE}
+                        height={STATUS_SIZE}
+                        viewBox="0 0 16 16"
+                      >
+                        <title>{status.label}</title>
+                        {/* The track keeps the mark the same weight as the
+                            cancel one even where the arc isn't drawn. */}
+                        <circle
+                          cx="8"
+                          cy="8"
+                          r="5.6"
+                          fill="none"
+                          stroke={INK}
+                          strokeOpacity={0.18}
+                          strokeWidth={1.4}
+                        />
+                        <path
+                          d="M8 2.4a5.6 5.6 0 0 1 5.6 5.6"
+                          fill="none"
+                          stroke={INK}
+                          strokeOpacity={0.8}
+                          strokeWidth={1.4}
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    )
+                  ) : (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        lineHeight: 1,
+                        letterSpacing: "0.01em",
+                        color: "rgba(245, 241, 228, 0.6)",
+                      }}
+                    >
+                      {status.count}
+                    </span>
+                  )}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          {/* ---- Failure card ---- */}
+          <div className={layerClass} aria-hidden={!cardOpen}>
+            <div
+              className="pill-surface pill-card"
+              data-show={cardOpen}
               style={
                 {
-                  fontSize: 9,
-                  lineHeight: 1,
-                  letterSpacing: "0.04em",
-                  color: "rgba(245, 241, 228, 0.55)",
-                  flexShrink: 0,
-                  // Restore pointer events on the badge label.
-                  WebkitAppRegion: "no-drag",
+                  width: PILL_CARD_WIDTH,
+                  padding: "13px 15px 12px",
+                  borderRadius: 20,
+                  background: SURFACE,
+                  border: SURFACE_BORDER,
+                  backdropFilter: BLUR,
+                  WebkitBackdropFilter: BLUR,
+                  boxShadow: "0 8px 28px rgba(0, 0, 0, 0.3)",
+                  transformOrigin,
+                  marginBottom: pillAlign === "end" ? 8 : 0,
+                  marginTop: pillAlign === "start" ? 8 : 0,
+                  cursor: "grab",
+                  WebkitAppRegion: "drag",
                 } as React.CSSProperties
               }
             >
-              {badge}
-            </span>
-          )}
-        </div>
+              <div className="flex items-start" style={{ gap: 10 }}>
+                <span
+                  className="inline-flex items-center justify-center"
+                  style={{
+                    width: 20,
+                    height: 20,
+                    marginTop: 1,
+                    borderRadius: "50%",
+                    background: "rgba(224, 128, 95, 0.16)",
+                    flexShrink: 0,
+                  }}
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 12 12"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6 3.1v3.3"
+                      stroke={ALERT}
+                      strokeWidth={1.6}
+                      strokeLinecap="round"
+                    />
+                    <circle cx="6" cy="8.7" r="0.85" fill={ALERT} />
+                  </svg>
+                </span>
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      lineHeight: 1.2,
+                      color: INK,
+                    }}
+                  >
+                    {card.title}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 3,
+                      fontSize: 11.5,
+                      lineHeight: 1.35,
+                      color: "rgba(245, 241, 228, 0.58)",
+                      // Two lines is enough for any message worth reading at
+                      // this size; the rest is in the logs.
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {card.body}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className="flex items-center justify-end"
+                style={
+                  {
+                    gap: 6,
+                    marginTop: 11,
+                    WebkitAppRegion: "no-drag",
+                  } as React.CSSProperties
+                }
+              >
+                <button
+                  type="button"
+                  className="pill-action pill-action-ghost"
+                  onClick={hidePill}
+                >
+                  Dismiss
+                </button>
+                {card.canRetry && (
+                  <button
+                    type="button"
+                    className="pill-action pill-action-primary"
+                    onClick={retryFailedTranscription}
+                  >
+                    Retry
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

@@ -33,6 +33,10 @@ const api = {
   setHotkeyMode: (mode: "hold" | "toggle"): void =>
     ipcRenderer.send("hotkey:set-mode", mode),
   hidePill: (): void => ipcRenderer.send("pill:hide"),
+  // Ask the pill window to grow around the capsule (or shrink back) so the
+  // expanded status card has somewhere to render.
+  setPillExpanded: (expanded: boolean): void =>
+    ipcRenderer.send("pill:set-expanded", expanded),
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),
   getServerPort: (): Promise<number> => ipcRenderer.invoke("server:port"),

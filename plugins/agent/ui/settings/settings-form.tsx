@@ -27,6 +27,7 @@ function OAuthStatus({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const checkStatus = useCallback(async () => {
     const data = await getJson<{ authorized: boolean }>(
@@ -37,6 +38,10 @@ function OAuthStatus({
       if (data.authorized && pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
         setBusy(false);
         setMessage("Authorized");
       }
@@ -45,8 +50,11 @@ function OAuthStatus({
 
   useEffect(() => {
     void checkStatus();
+    // Clear both the poll and the 2-minute guard on unmount so neither fires a
+    // setState on an unmounted component.
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, [checkStatus]);
 
@@ -82,7 +90,8 @@ function OAuthStatus({
     // "redirecting" — poll for completion.
     setMessage("Complete sign-in in your browser…");
     pollRef.current = setInterval(() => void checkStatus(), 2000);
-    setTimeout(() => {
+    timeoutRef.current = setTimeout(() => {
+      timeoutRef.current = null;
       if (pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
@@ -178,8 +187,12 @@ function HeadersEditor({
         </button>
       </div>
       {entries.length === 0 && <span className="hint">No custom headers.</span>}
-      {entries.map(([key, value]) => (
-        <div key={key} className="header-row">
+      {entries.map(([key, value], i) => (
+        // Key by row position, not the header name: the name is editable, so
+        // keying on it would remount the input on every keystroke and drop
+        // focus. Rows aren't reordered, so a positional key is stable.
+        // biome-ignore lint/suspicious/noArrayIndexKey: header rows aren't reordered
+        <div key={`hdr-${i}`} className="header-row">
           <input
             className="input input-compact header-key"
             value={key}

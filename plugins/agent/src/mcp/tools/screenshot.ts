@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -24,7 +24,11 @@ const MAX_IMAGE_EDGE = 1568;
 export interface ScreenshotResult {
   /** Human-readable summary (file path + size, or an error message). */
   text: string;
-  /** Absolute path to the captured image on disk. */
+  /**
+   * Absolute path to the captured image on disk. Only set on the rare path
+   * where the capture succeeded but the bytes couldn't be read back (so the
+   * temp file still exists); on success the file is deleted after reading.
+   */
   path?: string;
   /** Base-64 encoded image bytes (omitted on failure). */
   base64?: string;
@@ -72,6 +76,11 @@ export async function takeScreenshot(): Promise<ScreenshotResult> {
   let base64: string | undefined;
   try {
     base64 = readFileSync(tmpPath).toString("base64");
+    // Bytes are in memory now — delete the temp file so captures don't
+    // accumulate in tmpdir for the life of the machine. Best-effort.
+    try {
+      rmSync(tmpPath);
+    } catch {}
   } catch {
     // Captured but couldn't read the file back — no image to attach. The temp
     // path stays in the structured `path` field only; it is deliberately kept
@@ -85,9 +94,10 @@ export async function takeScreenshot(): Promise<ScreenshotResult> {
   // NOTE: `text` must not include the temp file path. It is surfaced to the
   // model (as the caption beside the image) and replayed from history on later
   // turns, so a path here would get spoken/spelled out by the voice agent.
+  // `path` is intentionally omitted on success — the file was just deleted and
+  // the image now lives in `base64`.
   return {
     text: `Screenshot captured${sizeInfo}.`,
-    path: tmpPath,
     base64,
     mediaType: "image/jpeg",
   };

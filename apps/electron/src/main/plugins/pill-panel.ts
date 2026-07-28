@@ -73,13 +73,9 @@ export class PillPanelController {
 
   attachWindow(window: BrowserWindow): void {
     this.window = window;
-    // When the agent panel is expanded, never auto-collapse on blur.
-    // The user closes the panel explicitly via the X button or hidePill.
-    // This prevents the panel from vanishing mid-conversation when the
-    // user clicks outside, Cmd+Tabs, or anything else steals focus.
-    window.on("blur", () => {
-      if (this.expanded) return;
-    });
+    // The panel never auto-collapses on blur — the user closes it explicitly
+    // via the X button or hidePill, so it can't vanish mid-conversation when
+    // focus is stolen (click-away, Cmd+Tab, etc.). No blur handler needed.
     window.on("closed", () => {
       this.destroy();
       this.window = null;

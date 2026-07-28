@@ -1,6 +1,3 @@
-import { appendFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -12,39 +9,6 @@ import { PluginOAuthProvider, pendingOAuthTransports } from "./oauth.js";
 
 /** Fast-fail timeout for connecting to an MCP server (ms). */
 const MCP_CONNECT_TIMEOUT_MS = 10_000;
-
-/** Where the widget diagnostic dump is written (see dumpWidgetResult). */
-const WIDGET_DEBUG_FILE = join(tmpdir(), "freestyle-mcp-widgets.log");
-
-/** True if a tool result carries any embedded resource (i.e. a widget). */
-function resultHasResource(result: unknown): boolean {
-  const content = (result as { content?: unknown })?.content;
-  const arr = Array.isArray(content) ? content : content ? [content] : [];
-  return arr.some(
-    (p) =>
-      typeof p === "object" &&
-      p !== null &&
-      (p as { type?: string }).type === "resource",
-  );
-}
-
-/**
- * Append the full raw tool result to a temp file whenever it contains a widget
- * resource. This is a self-serve diagnostic: reproduce the flow once, then
- * share the file so we can see exactly how the server ships its widget
- * (mimeType, uri, _meta, inline HTML / QR data). Writes the FULL payload — no
- * truncation — because the widget body (e.g. a QR data URL) is the whole point.
- */
-function dumpWidgetResult(toolName: string, result: unknown): void {
-  try {
-    const entry =
-      `\n===== ${new Date().toISOString()} ${toolName} =====\n` +
-      `${JSON.stringify(result, null, 2)}\n`;
-    appendFileSync(WIDGET_DEBUG_FILE, entry);
-  } catch {
-    // Diagnostics are best-effort; never break a tool call over logging.
-  }
-}
 
 /** Model-visible tool-result content parts (subset of the AI SDK union). */
 type ModelContentPart =
@@ -191,7 +155,16 @@ export async function connectMcpServer(
   // Connection succeeded — clear from pending map (tokens are now saved).
   pendingOAuthTransports.delete(server.id);
 
-  const { tools: mcpTools } = await client.listTools();
+  // From here the client is open. Any failure while listing/adapting tools must
+  // close it, otherwise a spawned stdio child (or HTTP transport) is orphaned —
+  // `connectEnabledServers` only records rejected servers, never their client.
+  let mcpTools: Awaited<ReturnType<Client["listTools"]>>["tools"];
+  try {
+    ({ tools: mcpTools } = await client.listTools());
+  } catch (err) {
+    await client.close().catch(() => {});
+    throw err;
+  }
   const tools: Record<string, Tool> = {};
 
   for (const mcpTool of mcpTools) {
@@ -213,13 +186,6 @@ export async function connectMcpServer(
           name: mcpTool.name,
           arguments: args as Record<string, unknown>,
         });
-
-        // TEMP DIAGNOSTIC: when a result carries a widget resource, dump the
-        // full raw payload to a temp file so we can see exactly how this server
-        // ships interactive widgets. Remove once widget rendering is resolved.
-        if (resultHasResource(result)) {
-          dumpWidgetResult(mcpTool.name, result);
-        }
 
         const content = Array.isArray(result.content)
           ? [...(result.content as unknown[])]

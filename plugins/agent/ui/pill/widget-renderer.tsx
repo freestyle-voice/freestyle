@@ -300,11 +300,14 @@ export function WidgetRenderer({
   // When the resource changes (a new widget replaces this one), reset the
   // per-widget state — otherwise a stale height/proven/gaveUp from the previous
   // widget leaks into the new one (useState initializers only run on mount).
+  // Keyed on the resource's identity (uri + rendered content), not `needsProof`
+  // alone: two different widgets with the same `needsProof` value would
+  // otherwise skip the reset.
   useEffect(() => {
     setProven(false);
     setGaveUp(false);
     setHeight(needsProof ? 40 : 180);
-  }, [needsProof]);
+  }, [resource.uri, src, srcDoc, needsProof]);
 
   // Fallback action links pulled from the tool output (e.g. a payment
   // deep-link). These guarantee the user has a tappable affordance even when a

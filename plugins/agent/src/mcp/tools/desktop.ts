@@ -403,9 +403,12 @@ export async function pressKey(
       .replace(/ctrl\+/gi, "^")
       .replace(/alt\+/gi, "%")
       .replace(/shift\+/gi, "+");
+    // Escape the PowerShell single-quote so a chord containing `'` can't break
+    // out of the -Command string (mirrors typeText above).
+    const escaped = winChord.replace(/'/g, "''");
     const script = `
 Add-Type -A System.Windows.Forms
-[System.Windows.Forms.SendKeys]::SendWait('${winChord}')
+[System.Windows.Forms.SendKeys]::SendWait('${escaped}')
 `;
     await execFileP("powershell", ["-NoProfile", "-Command", script], {
       timeout: 5000,

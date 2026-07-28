@@ -68,7 +68,9 @@ export async function searchFiles(args: {
 
   const grepArgs = ["-rn", "--max-count=100"];
   if (args.include) grepArgs.push("--include", args.include);
-  grepArgs.push(args.pattern, ".");
+  // `-e <pattern>` and the `--` end-of-options marker stop a pattern (or path)
+  // beginning with `-` from being parsed as a grep flag.
+  grepArgs.push("-e", args.pattern, "--", ".");
 
   try {
     const { stdout } = await execFileP("grep", grepArgs, {

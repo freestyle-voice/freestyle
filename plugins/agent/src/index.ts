@@ -20,7 +20,7 @@ import {
   saveConfig,
 } from "./config.js";
 import type { ToolCallEvent, ToolCallStartEvent } from "./mcp/index.js";
-import { BUILTIN_TOOL_COUNT } from "./mcp/index.js";
+import { countBuiltinTools } from "./mcp/index.js";
 import { createMcpMiddleware } from "./mcp/server.js";
 import type { GuidanceEvent } from "./mcp/tools/desktop.js";
 import { connectMcpServer } from "./mcp.js";
@@ -554,7 +554,7 @@ export default function agentPlugin(_options?: PluginOptions): Plugin {
     if (ownRoute(reqPath, "/agent/builtin-tools") && c.req.method === "GET") {
       return c.json({
         enabled: config.builtinToolsEnabled,
-        count: BUILTIN_TOOL_COUNT,
+        count: countBuiltinTools(config),
       });
     }
 

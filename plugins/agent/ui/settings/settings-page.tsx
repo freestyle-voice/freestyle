@@ -1,23 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { agentApiBase, del, getJson, putJson } from "../shared/api";
-import {
-  type AgentConfig,
-  DEFAULT_TOOL_GROUPS,
-  type SavedConversation,
-} from "../shared/types";
+import type { AgentConfig, SavedConversation } from "../shared/types";
 import { ConversationViewer } from "./conversation-viewer";
 import { SettingsForm } from "./settings-form";
-
-const EMPTY: AgentConfig = {
-  systemPrompt: "",
-  agentName: "Freestyle",
-  mcpServers: [],
-  skills: [],
-  builtinToolsEnabled: true,
-  builtinToolGroups: { ...DEFAULT_TOOL_GROUPS },
-  computerUseMode: "guided",
-};
 
 function TrashIcon(): React.JSX.Element {
   return (
@@ -100,20 +86,37 @@ export function SettingsPage(): React.JSX.Element {
 
   // ---- Config query ----
 
-  const { data: config } = useQuery({
+  const {
+    data: config,
+    isError: configError,
+    isLoading: configLoading,
+    refetch: refetchConfig,
+  } = useQuery({
     queryKey: configKey,
-    queryFn: async () => (await getJson<AgentConfig>("/config")) ?? EMPTY,
+    // `/config` always returns a full object; a null here means the request
+    // itself failed, so throw to surface it as an error state (with retry)
+    // instead of silently rendering defaults.
+    queryFn: async () => {
+      const data = await getJson<AgentConfig>("/config");
+      if (!data) throw new Error("Failed to load settings");
+      return data;
+    },
   });
 
   // ---- Conversations query ----
 
-  const { data: conversations = [], refetch: refetchHistory } = useQuery({
+  const {
+    data: conversations = [],
+    isError: historyError,
+    refetch: refetchHistory,
+  } = useQuery({
     queryKey: historyKey,
     queryFn: async () => {
       const data = await getJson<{ conversations: SavedConversation[] }>(
         "/conversations",
       );
-      return data?.conversations ?? [];
+      if (!data) throw new Error("Failed to load conversations");
+      return data.conversations ?? [];
     },
   });
 
@@ -178,7 +181,21 @@ export function SettingsPage(): React.JSX.Element {
   if (!config) {
     return (
       <main className="page">
-        <p className="muted">Loading...</p>
+        {configError ? (
+          <div className="empty-state">
+            <p className="empty-title-text">Couldn't load settings</p>
+            <p className="empty-hint">The agent server may not be running.</p>
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={() => void refetchConfig()}
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <p className="muted">{configLoading ? "Loading..." : ""}</p>
+        )}
       </main>
     );
   }
@@ -253,7 +270,18 @@ export function SettingsPage(): React.JSX.Element {
             </div>
           </div>
 
-          {conversations.length === 0 ? (
+          {historyError ? (
+            <div className="empty-state">
+              <p className="empty-title-text">Couldn't load conversations</p>
+              <button
+                type="button"
+                className="settings-btn"
+                onClick={() => void refetchHistory()}
+              >
+                Retry
+              </button>
+            </div>
+          ) : conversations.length === 0 ? (
             <div className="empty-state">
               <p className="empty-title-text">No conversations yet</p>
               <p className="empty-hint">

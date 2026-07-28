@@ -22,6 +22,13 @@ const PILL_EDGE_MARGIN = 8;
  */
 const EXPANDED_CHROME_HEIGHT = PILL_BAR_HEIGHT + PILL_EDGE_MARGIN;
 
+/**
+ * Cap on events buffered before the panel view finishes loading. Bounds memory
+ * if the view is slow to load or never loads; oldest events past the cap are
+ * dropped (the newest are the ones worth replaying).
+ */
+const MAX_PENDING_EVENTS = 100;
+
 interface PillPanelConfig {
   slug: string;
   panelId: string;
@@ -252,7 +259,15 @@ export class PillPanelController {
     // Buffer until the page has loaded — a `transcriptReady` fired the instant
     // a dictation is consumed would otherwise race the view's first paint.
     if (!this.viewReady) {
+      // Cap the buffer so a view that never loads (crash / failed load) can't
+      // grow it without bound; drop the oldest events past the cap.
       this.pendingEvents.push(event);
+      if (this.pendingEvents.length > MAX_PENDING_EVENTS) {
+        this.pendingEvents.splice(
+          0,
+          this.pendingEvents.length - MAX_PENDING_EVENTS,
+        );
+      }
       this.ensureView();
       return;
     }
@@ -290,6 +305,13 @@ export class PillPanelController {
       for (const event of this.pendingEvents) {
         view.webContents.send("pill-panel:event", event);
       }
+      this.pendingEvents = [];
+    });
+    // If the initial load fails the view never becomes ready, so buffered
+    // events would pile up forever. Log it and drop the backlog.
+    view.webContents.on("did-fail-load", (_e, code, desc, url) => {
+      if (code === -3) return; // ERR_ABORTED — superseded navigation, not a failure
+      log.error(`view failed to load (${code} ${desc}): ${url}`);
       this.pendingEvents = [];
     });
 

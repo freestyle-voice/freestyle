@@ -124,6 +124,11 @@ export async function connectMcpServer(
     const httpTransport = new StreamableHTTPClientTransport(url, transportOpts);
 
     if (server.auth === "oauth") {
+      // Close any prior pending flow for this server first, so re-initiating
+      // auth (e.g. a second connect attempt) doesn't orphan the earlier
+      // transport still sitting in the map.
+      const prior = pendingOAuthTransports.get(server.id);
+      if (prior && prior !== httpTransport) void prior.close().catch(() => {});
       pendingOAuthTransports.set(server.id, httpTransport);
     }
 
@@ -154,6 +159,14 @@ export async function connectMcpServer(
 
   // Connection succeeded — clear from pending map (tokens are now saved).
   pendingOAuthTransports.delete(server.id);
+
+  // Drain the stdio child's stderr. With `stderr: "pipe"` nothing reads it, so
+  // a chatty server would eventually fill the pipe buffer and stall the child.
+  // Attaching a `data` listener switches the stream to flowing mode so the
+  // buffer keeps draining; we discard the chunks.
+  if (transport instanceof StdioClientTransport) {
+    transport.stderr?.on("data", () => {});
+  }
 
   // From here the client is open. Any failure while listing/adapting tools must
   // close it, otherwise a spawned stdio child (or HTTP transport) is orphaned —

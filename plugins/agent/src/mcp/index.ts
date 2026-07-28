@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { type JSONSchema7, jsonSchema, type Tool, tool } from "ai";
 import { z } from "zod";
-import { TOOL_GROUPS, type UiResource } from "../config.js";
+import { type AgentConfig, TOOL_GROUPS, type UiResource } from "../config.js";
 import { getFrontmostApp, pasteText } from "./tools/context.js";
 import {
   type ComputerUseMode,
@@ -627,5 +627,19 @@ export function registerBuiltinTools(server: McpServer): void {
   );
 }
 
-/** Number of built-in tools (for UI display). */
-export const BUILTIN_TOOL_COUNT = Object.keys(getBuiltinTools()).length;
+/**
+ * Number of built-in tools a turn would actually expose for `config`. Mirrors
+ * the enabling logic in `agent.ts` (desktop/computer-use tools only when that
+ * group is on) so the count shown in the UI matches what's really available —
+ * including platform-dependent tools (e.g. `run_shortcut` on macOS) — rather
+ * than a static count computed with no config.
+ */
+export function countBuiltinTools(config: AgentConfig): number {
+  if (!config.builtinToolsEnabled) return 0;
+  const desktopEnabled = config.builtinToolGroups.desktop !== false;
+  return Object.keys(
+    getBuiltinTools(config.builtinToolGroups, {
+      computerUseMode: desktopEnabled ? config.computerUseMode : undefined,
+    }),
+  ).length;
+}

@@ -1,0 +1,427 @@
+import type { PluginStorage } from "freestyle-voice";
+
+/**
+ * An MCP UI resource (MCP Apps / mcp-ui). Returned by tools that want to
+ * render an interactive widget instead of (or alongside) plain text.
+ */
+export interface UiResource {
+  uri: string;
+  mimeType: string;
+  /** Inline HTML (for text/html resources). */
+  text?: string;
+  /** Base64-encoded HTML. */
+  blob?: string;
+}
+
+/** A completed tool invocation, stored with the assistant message it belongs to. */
+export interface StoredToolCall {
+  callId: string;
+  tool: string;
+  input: Record<string, unknown>;
+  output: string;
+  isError?: boolean;
+  /** Interactive UI widget returned by the tool (MCP UI), if any. */
+  uiResource?: UiResource;
+}
+
+/** A run of assistant text between tool calls. */
+export interface TextPart {
+  type: "text";
+  text: string;
+}
+
+/** A tool invocation rendered inline at the point it happened. */
+export interface ToolPart {
+  type: "tool";
+  tool: StoredToolCall;
+}
+
+/** An ordered piece of an assistant turn — text or a tool call. */
+export type AssistantPart = TextPart | ToolPart;
+
+/** One message in the agent conversation thread. */
+export interface ConversationEntry {
+  role: "user" | "assistant";
+  content: string;
+  /** Tool calls made while producing this (assistant) message, in order. */
+  toolCalls?: StoredToolCall[];
+  /**
+   * Assistant turn broken into ordered text/tool parts, preserving the real
+   * text→tool→text interleaving. Newer than `content`+`toolCalls`; when absent
+   * (older saved conversations) renderers fall back to those fields.
+   */
+  parts?: AssistantPart[];
+}
+
+/** Identifier for the built-in Freestyle Tools MCP entry. */
+export const BUILTIN_SERVER_ID = "freestyle-tools";
+
+/** Authentication mode for HTTP MCP servers. */
+export type McpAuthMode = "none" | "headers" | "oauth";
+
+/** A configured MCP server the agent can pull tools from. */
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  /** Transport. `stdio` spawns a local command; `http` connects to a URL. */
+  transport: "stdio" | "http";
+  /** For `stdio`: the executable to spawn (e.g. "npx"). */
+  command?: string;
+  /** For `stdio`: arguments passed to the command. */
+  args?: string[];
+  /** For `stdio`: extra environment variables. */
+  env?: Record<string, string>;
+  /** For `http`: the server URL. */
+  url?: string;
+  /**
+   * Authentication mode for HTTP servers:
+   * - `"none"` (default) — no authentication.
+   * - `"headers"` — static custom headers (e.g. Authorization: Bearer).
+   * - `"oauth"` — full OAuth 2.1 with PKCE, DCR, and token refresh.
+   */
+  auth?: McpAuthMode;
+  /** For `http` with `auth: "headers"`: custom headers. */
+  headers?: Record<string, string>;
+  enabled: boolean;
+  /** True for the built-in Freestyle Tools server. Cannot be deleted in the UI. */
+  builtin?: boolean;
+}
+
+/** A named, reusable instruction set the agent can apply. */
+export interface Skill {
+  id: string;
+  name: string;
+  /** Instructions injected into the system prompt when the skill is enabled. */
+  instructions: string;
+  enabled: boolean;
+}
+
+/**
+ * Built-in tool group identifiers. Each controls a cluster of related tools
+ * that the user can toggle independently in Settings.
+ */
+export type BuiltinToolGroup =
+  | "filesystem"
+  | "shell"
+  | "clipboard"
+  | "screenshots"
+  | "shortcuts"
+  | "desktop";
+
+/** Human-readable metadata for each tool group shown in Settings. */
+export interface ToolGroupMeta {
+  id: BuiltinToolGroup;
+  label: string;
+  description: string;
+  tools: string[];
+  /**
+   * Hidden groups are not shown in Settings and are off by default. Used to
+   * shelve capabilities that aren't ready to ship (screenshots, macOS
+   * Shortcuts, and desktop control) without deleting their implementation —
+   * flip this back to expose them again. Their tool code still lives under
+   * `src/mcp/tools/` and is registered the moment a group is re-enabled.
+   */
+  hidden?: boolean;
+}
+
+/** All groups in display order — the UI iterates this list. */
+export const TOOL_GROUPS: ToolGroupMeta[] = [
+  {
+    id: "filesystem",
+    label: "File System",
+    description: "read_file, write_file, list_directory, search_files",
+    tools: ["read_file", "write_file", "list_directory", "search_files"],
+  },
+  {
+    id: "shell",
+    label: "Shell",
+    description: "run_command",
+    tools: ["run_command"],
+  },
+  {
+    id: "clipboard",
+    label: "Clipboard & Apps",
+    description:
+      "get_clipboard, set_clipboard, open_url, get_frontmost_app, paste_text",
+    tools: [
+      "get_clipboard",
+      "set_clipboard",
+      "open_url",
+      "get_frontmost_app",
+      "paste_text",
+    ],
+  },
+  {
+    id: "screenshots",
+    label: "Screenshots",
+    description: "take_screenshot",
+    tools: ["take_screenshot"],
+    hidden: true,
+  },
+  {
+    id: "shortcuts",
+    label: "Shortcuts",
+    description: "run_shortcut (macOS only)",
+    tools: ["run_shortcut"],
+    hidden: true,
+  },
+  {
+    id: "desktop",
+    label: "Desktop Control",
+    description:
+      "left_click, right_click, double_click, move_cursor, type_text, press_key",
+    tools: [
+      "left_click",
+      "right_click",
+      "double_click",
+      "move_cursor",
+      "type_text",
+      "press_key",
+    ],
+    hidden: true,
+  },
+];
+
+/**
+ * Default enabled state per group. Screenshots, Shortcuts, and Desktop Control
+ * are shelved (off + hidden) until their UX and OS-permission story is sorted;
+ * see {@link ToolGroupMeta.hidden}. The remaining groups are on by default.
+ */
+export const DEFAULT_TOOL_GROUPS: Record<BuiltinToolGroup, boolean> = {
+  filesystem: true,
+  shell: true,
+  clipboard: true,
+  screenshots: false,
+  shortcuts: false,
+  desktop: false,
+};
+
+/** How desktop-control tools actuate. */
+export type ComputerUseMode = "full" | "guided";
+
+export interface AgentConfig {
+  systemPrompt: string;
+  /**
+   * The agent's name. Doubles as the spoken summon word — saying it at the
+   * start of a dictation (e.g. "Freestyle, …" or "Hey Freestyle …") routes the
+   * utterance to the agent — and is woven into the system prompt so the model
+   * knows what it's called. Matched case-insensitively.
+   */
+  agentName: string;
+  mcpServers: McpServerConfig[];
+  skills: Skill[];
+  /** Whether the built-in Freestyle Tools are active (default true). */
+  builtinToolsEnabled: boolean;
+  /** Per-group toggles for built-in tools. Missing keys default to true. */
+  builtinToolGroups: Record<string, boolean>;
+  /**
+   * How desktop-control tools (mouse/keyboard) behave:
+   *  - `"full"` — directly controls the cursor and keyboard.
+   *  - `"guided"` (default) — shows a ghost-cursor overlay; the user acts.
+   */
+  computerUseMode: ComputerUseMode;
+}
+
+export const DEFAULT_SYSTEM_PROMPT =
+  "You are the user's proactive personal assistant. Take initiative to finish " +
+  "the task at hand: use the tools available to you to look things up, take " +
+  "actions, and follow through end to end, making reasonable assumptions " +
+  "instead of asking unnecessary questions. Keep replies concise and " +
+  "conversational since they're read aloud in a small panel, and lead with " +
+  "the result.\n\n" +
+  "Format your replies with Markdown — the panel renders it. When presenting " +
+  "several items that share the same fields (products, prices, options, " +
+  "comparisons, etc.), use a Markdown table so the data points are easy to " +
+  "scan. Use bullet lists for simple enumerations, **bold** for key values, " +
+  "and `code` for identifiers or commands. Keep tables compact.";
+
+export const DEFAULT_AGENT_NAME = "Freestyle";
+
+/**
+ * Predefined starter skills shipped with every fresh install. They're a ready
+ * library the user can toggle on in Settings — kept disabled by default so
+ * they don't bloat every prompt. The always-on assistant persona lives in
+ * {@link DEFAULT_SYSTEM_PROMPT} (client) and the server's base prompt; these
+ * add focused, opt-in specializations on top.
+ */
+export const DEFAULT_SKILLS: Skill[] = [
+  {
+    id: "starter-writing",
+    name: "Writing & Communication",
+    instructions:
+      "Help draft, rewrite, and polish emails, messages, and documents. Match " +
+      "the requested tone and audience, keep it clear and concise, and return " +
+      "ready-to-send text without preamble. Offer a shorter and a longer option " +
+      "only when it genuinely helps.",
+    enabled: false,
+  },
+  {
+    id: "starter-research",
+    name: "Research & Fact-Checking",
+    instructions:
+      "For questions about current events or facts that may have changed, search " +
+      "the web first, then answer in your own words: a one-line takeaway followed " +
+      "by the key points. Refer to sources by name rather than raw URLs, and flag " +
+      "anything uncertain or conflicting.",
+    enabled: false,
+  },
+  {
+    id: "starter-coding",
+    name: "Coding & Terminal",
+    instructions:
+      "Act as a hands-on coding assistant. Read the relevant files before " +
+      "proposing changes, prefer minimal focused edits, and explain what changed " +
+      "in a sentence or two. When running shell or git commands, say what you're " +
+      "about to do and never run destructive commands without confirmation.",
+    enabled: false,
+  },
+  {
+    id: "starter-planning",
+    name: "Planning & Notes",
+    instructions:
+      "Turn rambling dictation into structured output: a short summary, clear " +
+      "next steps or action items (with owners and due dates when mentioned), and " +
+      "any open questions. Keep the formatting tight and skimmable.",
+    enabled: false,
+  },
+];
+
+export const DEFAULT_CONFIG: AgentConfig = {
+  systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  agentName: DEFAULT_AGENT_NAME,
+  mcpServers: [],
+  skills: DEFAULT_SKILLS.map((s) => ({ ...s })),
+  builtinToolsEnabled: true,
+  builtinToolGroups: { ...DEFAULT_TOOL_GROUPS },
+  computerUseMode: "guided",
+};
+
+const CONFIG_KEY = "config";
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/** Coerce untrusted stored/POSTed data into a valid, fully-populated config. */
+export function normalizeConfig(raw: unknown): AgentConfig {
+  if (!isRecord(raw)) return { ...DEFAULT_CONFIG };
+
+  const systemPrompt =
+    typeof raw.systemPrompt === "string" && raw.systemPrompt.trim()
+      ? raw.systemPrompt
+      : DEFAULT_SYSTEM_PROMPT;
+
+  const agentName =
+    typeof raw.agentName === "string" && raw.agentName.trim()
+      ? raw.agentName.trim()
+      : DEFAULT_AGENT_NAME;
+
+  const mcpServers = Array.isArray(raw.mcpServers)
+    ? raw.mcpServers.filter(isRecord).map(normalizeMcpServer)
+    : [];
+
+  const skills = Array.isArray(raw.skills)
+    ? raw.skills.filter(isRecord).map(normalizeSkill)
+    : [];
+
+  const builtinToolsEnabled = raw.builtinToolsEnabled !== false;
+
+  const builtinToolGroups: Record<string, boolean> = {
+    ...DEFAULT_TOOL_GROUPS,
+  };
+  if (isRecord(raw.builtinToolGroups)) {
+    for (const [k, v] of Object.entries(raw.builtinToolGroups)) {
+      if (typeof v === "boolean") builtinToolGroups[k] = v;
+    }
+  }
+
+  const computerUseMode: ComputerUseMode =
+    raw.computerUseMode === "full" ? "full" : "guided";
+
+  return {
+    systemPrompt,
+    agentName,
+    mcpServers,
+    skills,
+    builtinToolsEnabled,
+    builtinToolGroups,
+    computerUseMode,
+  };
+}
+
+function normalizeMcpServer(raw: Record<string, unknown>): McpServerConfig {
+  const transport = raw.transport === "http" ? "http" : "stdio";
+  const authRaw = raw.auth;
+  const auth: McpAuthMode =
+    authRaw === "headers" || authRaw === "oauth" ? authRaw : "none";
+
+  return {
+    id: typeof raw.id === "string" && raw.id ? raw.id : crypto.randomUUID(),
+    name: typeof raw.name === "string" ? raw.name : "Untitled server",
+    transport,
+    command: typeof raw.command === "string" ? raw.command : undefined,
+    args: Array.isArray(raw.args)
+      ? raw.args.filter((a): a is string => typeof a === "string")
+      : undefined,
+    env: isRecord(raw.env)
+      ? Object.fromEntries(
+          Object.entries(raw.env).filter(
+            (e): e is [string, string] => typeof e[1] === "string",
+          ),
+        )
+      : undefined,
+    url: typeof raw.url === "string" ? raw.url : undefined,
+    auth,
+    headers: isRecord(raw.headers)
+      ? Object.fromEntries(
+          Object.entries(raw.headers).filter(
+            (e): e is [string, string] => typeof e[1] === "string",
+          ),
+        )
+      : undefined,
+    enabled: raw.enabled !== false,
+    builtin: raw.builtin === true ? true : undefined,
+  };
+}
+
+function normalizeSkill(raw: Record<string, unknown>): Skill {
+  return {
+    id: typeof raw.id === "string" && raw.id ? raw.id : crypto.randomUUID(),
+    name: typeof raw.name === "string" ? raw.name : "Untitled skill",
+    instructions: typeof raw.instructions === "string" ? raw.instructions : "",
+    enabled: raw.enabled !== false,
+  };
+}
+
+export async function loadConfig(storage: PluginStorage): Promise<AgentConfig> {
+  return normalizeConfig(await storage.get(CONFIG_KEY));
+}
+
+export async function saveConfig(
+  storage: PluginStorage,
+  config: AgentConfig,
+): Promise<void> {
+  await storage.set(CONFIG_KEY, config);
+}
+
+/**
+ * Build the full system prompt: the agent's name, the base persona prompt, and
+ * any enabled skills. The name is prepended so the model consistently refers to
+ * itself the way the user summons it.
+ */
+export function buildSystemPrompt(config: AgentConfig): string {
+  const name = config.agentName.trim() || DEFAULT_AGENT_NAME;
+  const parts = [`Your name is ${name}.`, config.systemPrompt];
+
+  const enabledSkills = config.skills.filter(
+    (s) => s.enabled && s.instructions.trim(),
+  );
+  if (enabledSkills.length > 0) {
+    const skillBlocks = enabledSkills
+      .map((s) => `## Skill: ${s.name}\n${s.instructions.trim()}`)
+      .join("\n\n");
+    parts.push(`# Skills\n${skillBlocks}`);
+  }
+
+  return parts.join("\n\n");
+}

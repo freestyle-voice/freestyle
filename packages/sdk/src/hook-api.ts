@@ -4,6 +4,17 @@ import type { PluginLlm } from "./llm.js";
 export type PipelineControlState = "running" | "consumed" | "aborted";
 
 /**
+ * A live, incremental event a hook can push mid-turn — e.g. an agent streaming
+ * its reply token-by-token. The host forwards these to the client during the
+ * dictation, before the hook returns. Reaches the pill panel as the matching
+ * `PillEvent` (`streamStart`/`streamDelta`/`streamEnd`).
+ */
+export type PluginStreamEvent =
+  | { type: "streamStart" }
+  | { type: "streamDelta"; text: string }
+  | { type: "streamEnd" };
+
+/**
  * Explicit cancellation/suppression control for a single dictation's pipeline
  * run, shared across every hook invoked for that dictation (`beforeTranscribe`
  * → `afterTranscribe` → `beforeCleanup` → `afterCleanup` → `beforeOutput`).
@@ -103,14 +114,28 @@ export interface HookApi {
    * `afterCleanup`); never for `beforeOutput`.
    */
   readonly llm?: PluginLlm;
+  /**
+   * Push a live streaming event to the client mid-turn (e.g. agent tokens as
+   * they generate). Present only when the host can stream during this
+   * dictation — the streaming STT path. A no-op otherwise, so guard is not
+   * required, but check `emitStream` if you want to skip streaming work when
+   * there's no live channel. See {@link PluginStreamEvent}.
+   */
+  readonly emitStream?: (event: PluginStreamEvent) => void;
 }
 
 /** Build a {@link HookApi} around a fresh {@link PipelineControl}. */
-export function createHookApi(overrides: { llm?: PluginLlm } = {}): HookApi {
+export function createHookApi(
+  overrides: {
+    llm?: PluginLlm;
+    emitStream?: (event: PluginStreamEvent) => void;
+  } = {},
+): HookApi {
   const control = new PipelineControl();
   return {
     control,
     signal: control.signal,
     ...(overrides.llm ? { llm: overrides.llm } : {}),
+    ...(overrides.emitStream ? { emitStream: overrides.emitStream } : {}),
   };
 }

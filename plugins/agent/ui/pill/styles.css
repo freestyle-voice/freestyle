@@ -1,0 +1,783 @@
+/*
+ * Pill chat panel — Freestyle Voice agent
+ *
+ * Two theme tiers:
+ *   1. `:root` – dark-mode fallbacks used if the host never sends tokens.
+ *   2. Host-injected tokens from the pill renderer's computed styles override
+ *      these via `style.setProperty` in the plugin-bridge preload.
+ *
+ * The `.light` class is toggled on `<html>` by the preload when it detects
+ * light-mode tokens (--background luminance > 0.5).  Light-mode overrides
+ * live under `html.light`.
+ */
+
+:root {
+  /* Dark-mode defaults (host tokens override these) */
+  --background: #16140f;
+  --foreground: #ece7d6;
+  --card: #1e1c16;
+  --primary: #8ab62a;
+  --primary-foreground: #16140f;
+  --muted-foreground: #9e977f;
+  --secondary: #2a2720;
+  --border: #3a362d;
+  --accent-foreground: #e8efc9;
+  --radius: 14px;
+
+  --panel-bg: var(--card);
+  --panel-border: var(--border);
+  --panel-shadow: 0 8px 30px -6px rgba(0, 0, 0, 0.45),
+    0 1px 3px rgba(0, 0, 0, 0.2);
+  --panel-highlight: rgba(255, 250, 235, 0.05);
+
+  --user-text: rgba(236, 231, 214, 0.7);
+  --turn-gap: 10px;
+}
+
+html.light {
+  --panel-shadow: 0 8px 30px -6px rgba(22, 20, 15, 0.15),
+    0 1px 3px rgba(22, 20, 15, 0.08);
+  --panel-highlight: rgba(255, 255, 255, 0.5);
+
+  --user-text: rgba(22, 20, 15, 0.62);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+}
+
+body {
+  font-family: "DM Sans", system-ui, -apple-system, sans-serif;
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---- Scrollbar ---- */
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---- Panel shell — glass surface ---- */
+
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  overflow: hidden;
+  box-shadow: var(--panel-shadow);
+}
+
+/* Expand down: panel is BELOW the pill bar. */
+.panel.expand-down {
+  border-top: none;
+  border-radius: 0 0 14px 14px;
+  transform-origin: top center;
+  animation: panel-enter-down 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Expand up: panel is ABOVE the pill bar. */
+.panel.expand-up {
+  border-bottom: none;
+  border-radius: 14px 14px 0 0;
+  transform-origin: bottom center;
+  animation: panel-enter-up 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes panel-enter-down {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes panel-enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Inner highlight strip along the outer edge (rounded side) for depth */
+.panel.expand-up::before {
+  content: "";
+  position: absolute;
+  inset: 0 1px auto 1px;
+  height: 1px;
+  background: var(--panel-highlight);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ---- Header: status + close button ---- */
+
+.header {
+  display: flex;
+  align-items: center;
+  padding: 10px 10px 10px 14px;
+  flex-shrink: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.pulse {
+  animation: agent-pulse 1.4s ease-in-out infinite;
+}
+
+.close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 120ms, color 120ms;
+}
+.close-btn:hover {
+  background: color-mix(in srgb, var(--border) 60%, transparent);
+  color: var(--foreground);
+}
+.close-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ---- Messages ---- */
+
+.messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 14px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--turn-gap);
+}
+
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: agent-rise 180ms ease;
+}
+
+.turn-role {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.turn-role.user {
+  color: var(--primary);
+}
+
+/* Action buttons below assistant messages */
+.msg-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 4px;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.turn:hover .msg-actions {
+  opacity: 1;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  padding: 0;
+  transition: background 120ms, color 120ms;
+}
+.action-btn:hover {
+  background: color-mix(in srgb, var(--border) 50%, transparent);
+  color: var(--foreground);
+}
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.action-btn svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.turn-text {
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-word;
+  color: var(--foreground);
+}
+
+.turn.user .turn-text {
+  color: var(--user-text);
+}
+
+/* ---- Empty state ---- */
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 24px;
+  text-align: center;
+}
+
+.empty-title {
+  font-family: "Instrument Serif", serif;
+  font-size: 24px;
+  font-style: italic;
+  color: var(--primary);
+  line-height: 1;
+}
+
+.empty-hint {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+
+/* ---- Typing indicator ---- */
+
+.typing {
+  display: inline-flex;
+  gap: 3px;
+  padding: 2px 0;
+}
+
+.typing span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+  animation: agent-typing 1.2s ease-in-out infinite;
+}
+.typing span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.typing span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+/* ---- Markdown (react-markdown output) ---- */
+
+.markdown p {
+  margin: 0 0 4px;
+}
+.markdown p:last-child {
+  margin-bottom: 0;
+}
+.markdown strong {
+  font-weight: 600;
+}
+.markdown em {
+  font-style: italic;
+}
+.markdown code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--secondary) 70%, transparent);
+}
+.markdown pre {
+  margin: 4px 0;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--secondary) 70%, transparent);
+  overflow-x: auto;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.markdown pre code {
+  padding: 0;
+  background: none;
+}
+.markdown ul,
+.markdown ol {
+  margin: 3px 0;
+  padding-left: 18px;
+}
+.markdown li {
+  margin-bottom: 1px;
+}
+.markdown a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.markdown blockquote {
+  margin: 4px 0;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--border);
+  color: var(--muted-foreground);
+}
+.markdown img {
+  max-width: 100%;
+  border-radius: 7px;
+  margin: 4px 0;
+}
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  margin: 4px 0;
+}
+.markdown th,
+.markdown td {
+  border: 1px solid var(--border);
+  padding: 4px 7px;
+  text-align: left;
+}
+.markdown th {
+  font-weight: 600;
+  background: color-mix(in srgb, var(--secondary) 60%, transparent);
+}
+
+/* ---- Animations ---- */
+
+@keyframes agent-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+@keyframes agent-typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+@keyframes agent-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---- Tool call cards ---- */
+
+.tool-calls {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 3px 0 5px;
+}
+
+.tool-call-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ---- MCP UI widget ---- */
+
+.widget-frame {
+  border: 1px solid color-mix(in srgb, var(--primary) 25%, var(--border));
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--card);
+  box-shadow: 0 2px 8px -4px rgba(0, 0, 0, 0.25);
+}
+
+.widget-frame iframe {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  transition: height 180ms ease;
+}
+
+.widget-fallback {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.widget-fallback-btn {
+  flex: 1 1 auto;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  background: var(--primary);
+  color: var(--primary-foreground, #0d1108);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+.widget-fallback-btn:hover {
+  filter: brightness(1.08);
+}
+
+.tool-card {
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--secondary) 40%, transparent);
+  overflow: hidden;
+  animation: agent-rise 140ms ease;
+  border-left: 2px solid var(--border);
+}
+
+.tool-card.tool-error {
+  border-left-color: #dd6e4e;
+}
+
+.tool-card.tool-running {
+  border-left-color: var(--primary);
+}
+
+.tool-card-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  background: none;
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+}
+
+.tool-card-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  opacity: 0.7;
+}
+
+.tool-card-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.tool-card-name {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  flex: 1;
+  color: var(--muted-foreground);
+}
+
+.tool-card.tool-running .tool-card-name {
+  color: var(--foreground);
+}
+
+.tool-card-chevron {
+  font-size: 8px;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.tool-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: none;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 120ms, color 120ms;
+}
+.tool-card:hover .tool-copy-btn {
+  opacity: 0.6;
+}
+.tool-copy-btn:hover {
+  opacity: 1 !important;
+  color: var(--foreground);
+}
+.tool-copy-btn svg {
+  width: 11px;
+  height: 11px;
+}
+
+.tool-card-spinner {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: tool-spin 700ms linear infinite;
+  flex-shrink: 0;
+}
+
+.tool-card-running-hint {
+  color: color-mix(in srgb, var(--primary) 80%, var(--muted-foreground));
+  font-style: italic;
+}
+
+.tool-card-summary {
+  padding: 0 8px 4px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  color: var(--muted-foreground);
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-card-detail {
+  padding: 2px 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-card-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tool-card-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-foreground);
+  opacity: 0.6;
+}
+
+.tool-card-pre {
+  margin: 0;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--secondary) 60%, transparent);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9.5px;
+  line-height: 1.4;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 100px;
+  overflow-y: auto;
+  color: var(--muted-foreground);
+}
+
+/* ---- Ghost cursor guidance overlay ---- */
+
+.guidance-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  overflow: hidden;
+}
+
+.guidance-ring-container {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.guidance-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  border-radius: 999px;
+  border: 2px solid #7C3AED;
+  animation: guidance-ring-expand 900ms ease-out both;
+}
+
+.guidance-ring-delayed {
+  animation-delay: 0.25s;
+}
+
+.guidance-cursor {
+  position: absolute;
+  transform: translate(-2px, -2px);
+  transition: left 480ms cubic-bezier(0.22, 1, 0.36, 1),
+    top 480ms cubic-bezier(0.22, 1, 0.36, 1);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+  animation: guidance-bob 1.6s ease-in-out infinite;
+}
+
+.guidance-caption-wrap {
+  position: absolute;
+  max-width: 220px;
+}
+
+.guidance-caption-animate {
+  animation: guidance-pop 220ms ease-out both;
+}
+
+.guidance-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(17, 17, 20, 0.92);
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  white-space: normal;
+}
+
+.guidance-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #7C3AED;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px #7C3AED;
+}
+
+.guidance-text {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.guidance-literal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(17, 17, 20, 0.82);
+  color: white;
+}
+
+.guidance-literal-kind {
+  opacity: 0.6;
+  font-size: 10px;
+}
+
+.guidance-literal-value {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+}
+
+@keyframes guidance-ring-expand {
+  0% { transform: scale(0.5); opacity: 0.9; }
+  100% { transform: scale(3.6); opacity: 0; }
+}
+
+@keyframes guidance-pop {
+  0% { opacity: 0; transform: translateY(4px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes guidance-bob {
+  0%, 100% { transform: translate(-2px, -2px) translateY(0); }
+  50% { transform: translate(-2px, -2px) translateY(-2px); }
+}
+
+@keyframes tool-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Reduced motion ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dot.pulse,
+  .typing span,
+  .turn,
+  .guidance-cursor,
+  .guidance-ring,
+  .guidance-caption-animate,
+  .tool-card-spinner {
+    animation: none;
+  }
+  .guidance-cursor {
+    transition: none;
+  }
+}
+

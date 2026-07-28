@@ -51,6 +51,16 @@ const api = {
     ipcRenderer.invoke("open:external", url),
   cloudPromptSignIn: (): Promise<boolean> =>
     ipcRenderer.invoke("cloud:prompt-sign-in"),
+  // Whether the re-auth dialog asked to start sign-in; clears the flag on read.
+  consumePendingCloudSignIn: (): Promise<boolean> =>
+    ipcRenderer.invoke("cloud:consume-pending-sign-in"),
+  // Fired when the re-auth dialog's "Sign in again" is chosen while the
+  // dashboard is already open, so it can start the device flow without a reload.
+  onCloudStartSignIn: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("cloud:start-sign-in", handler);
+    return () => ipcRenderer.removeListener("cloud:start-sign-in", handler);
+  },
   cloudPromptUpgrade: (): Promise<boolean> =>
     ipcRenderer.invoke("cloud:prompt-upgrade"),
   onHotkeyDown: (callback: () => void): (() => void) => {
@@ -271,6 +281,45 @@ const api = {
     ): void => callback(state);
     ipcRenderer.on("mic:activity-changed", handler);
     return () => ipcRenderer.removeListener("mic:activity-changed", handler);
+  },
+
+  // --- Pill panel ---
+  configurePillPanel: (
+    slug: string,
+    panelId: string,
+    entry: string,
+    expand: { width: number; height: number },
+    tokens?: Record<string, string>,
+  ): Promise<void> =>
+    ipcRenderer.invoke(
+      "pill-panel:configure",
+      slug,
+      panelId,
+      entry,
+      expand,
+      tokens,
+    ),
+  expandPillPanel: (
+    pillSide?: "center" | "right",
+  ): Promise<{ expanded: true; direction: "up" | "down" } | false> =>
+    ipcRenderer.invoke("pill-panel:expand", pillSide),
+  collapsePillPanel: (): Promise<boolean> =>
+    ipcRenderer.invoke("pill-panel:collapse"),
+  onPillPanelCollapsed: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("pill-panel:collapsed", handler);
+    return () => ipcRenderer.removeListener("pill-panel:collapsed", handler);
+  },
+  sendPillState: (state: string): void =>
+    ipcRenderer.send("pill-panel:state-change", state),
+  sendTranscriptToPanel: (text: string): void =>
+    ipcRenderer.send("pill-panel:transcript", text),
+  sendStreamEventToPanel: (event: { type: string; text?: string }): void =>
+    ipcRenderer.send("pill-panel:stream", event),
+  onPillBadge: (callback: (text: string | null) => void): (() => void) => {
+    const handler = (_: unknown, text: string | null): void => callback(text);
+    ipcRenderer.on("pill:set-badge", handler);
+    return () => ipcRenderer.removeListener("pill:set-badge", handler);
   },
 
   // --- Plugins ---

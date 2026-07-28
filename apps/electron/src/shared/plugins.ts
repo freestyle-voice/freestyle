@@ -1,4 +1,4 @@
-import type { PluginUIPage } from "freestyle-voice";
+import type { PluginPillPanel, PluginUIPage } from "freestyle-voice";
 
 /** Serialized plugin info sent from main to the renderer (no absolute paths). */
 export interface PluginInfo {
@@ -21,6 +21,7 @@ export interface PluginInfo {
   /** Raw README markdown shipped with the plugin, when present. */
   readme?: string;
   pages: PluginUIPage[];
+  pill?: PluginPillPanel;
 }
 
 /** A catalog entry the user can install from the Browse tab. */

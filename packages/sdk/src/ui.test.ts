@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parsePillPanel,
   parsePluginPages,
   parsePluginSettingsFields,
   pluginSlug,
@@ -132,5 +133,73 @@ describe("parsePluginSettingsFields", () => {
       },
     });
     expect(fields.map((f) => f.key)).toEqual(["a"]);
+  });
+});
+
+describe("parsePillPanel", () => {
+  it("returns undefined for missing/invalid manifests", () => {
+    expect(parsePillPanel(undefined)).toBeUndefined();
+    expect(parsePillPanel(null)).toBeUndefined();
+    expect(parsePillPanel({})).toBeUndefined();
+    expect(parsePillPanel({ contributes: {} })).toBeUndefined();
+    expect(parsePillPanel({ contributes: { pill: "nope" } })).toBeUndefined();
+  });
+
+  it("parses a valid pill panel with explicit dimensions", () => {
+    expect(
+      parsePillPanel({
+        contributes: {
+          pill: {
+            id: "panel",
+            title: "Panel",
+            entry: "dist/pill/index.html",
+            expand: { width: 380, height: 480 },
+          },
+        },
+      }),
+    ).toEqual({
+      id: "panel",
+      title: "Panel",
+      entry: "dist/pill/index.html",
+      expand: { width: 380, height: 480 },
+    });
+  });
+
+  it("drops panels missing required fields", () => {
+    const base = { entry: "x", expand: { width: 300, height: 300 } };
+    expect(
+      parsePillPanel({ contributes: { pill: { ...base, title: "T" } } }),
+    ).toBeUndefined();
+    expect(
+      parsePillPanel({ contributes: { pill: { ...base, id: "a" } } }),
+    ).toBeUndefined();
+    expect(
+      parsePillPanel({
+        contributes: { pill: { id: "a", title: "T" } },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("defaults and clamps expand dimensions", () => {
+    // Missing expand → defaults.
+    expect(
+      parsePillPanel({
+        contributes: { pill: { id: "a", title: "T", entry: "x" } },
+      })?.expand,
+    ).toEqual({ width: 400, height: 500 });
+
+    // Below the 200px minimum → clamped.
+    expect(
+      parsePillPanel({
+        contributes: {
+          pill: {
+            id: "a",
+            title: "T",
+            entry: "x",
+            expand: { width: 10, height: 10 },
+          },
+        },
+      })?.expand,
+    ).toEqual({ width: 200, height: 200 });
   });
 });

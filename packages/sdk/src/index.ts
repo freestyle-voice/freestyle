@@ -16,6 +16,7 @@ export {
   type HookApi,
   PipelineControl,
   type PipelineControlState,
+  type PluginStreamEvent,
 } from "./hook-api.js";
 export type {
   AfterCleanupInput,
@@ -45,6 +46,7 @@ export {
 } from "./loader.js";
 export { sortPlugins } from "./order.js";
 export { OutputMode } from "./output.js";
+export type { PillEvent, PillPanelBridge, PillState } from "./pill.js";
 export type {
   Enforce,
   Plugin,
@@ -63,8 +65,10 @@ export { type TextTransformer, transform } from "./transform.js";
 export {
   type PluginContributes,
   type PluginManifest,
+  type PluginPillPanel,
   type PluginSettingField,
   type PluginUIPage,
+  parsePillPanel,
   parsePluginDisplayName,
   parsePluginIcon,
   parsePluginPages,

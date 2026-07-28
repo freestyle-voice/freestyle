@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveLocalPackage } from "./loader.js";
+import { discoverLocalPlugins, resolveLocalPackage } from "./loader.js";
 import { pluginSlug } from "./ui.js";
 
 let dir: string;
@@ -57,5 +57,47 @@ describe("resolveLocalPackage", () => {
       main: "dist/index.js",
     });
     expect(resolveLocalPackage(dir, "plugin-z")).toBeNull();
+  });
+});
+
+describe("discoverLocalPlugins", () => {
+  it("returns [] for a missing directory", () => {
+    expect(discoverLocalPlugins(path.join(dir, "nope"))).toEqual([]);
+  });
+
+  it("discovers loose module files, skipping .d.ts and dotfiles", () => {
+    fs.writeFileSync(path.join(dir, "a.js"), "export default 1;");
+    fs.writeFileSync(path.join(dir, "b.mjs"), "export default 1;");
+    fs.writeFileSync(path.join(dir, "types.d.ts"), "export {};");
+    fs.writeFileSync(path.join(dir, ".hidden.js"), "export default 1;");
+
+    expect(discoverLocalPlugins(dir)).toEqual([
+      path.join(dir, "a.js"),
+      path.join(dir, "b.mjs"),
+    ]);
+  });
+
+  it("discovers package folders via their main entry (dev-link layout)", () => {
+    const pkgDir = writePackage("freestyle-voice-plugin-agent-dev", {
+      name: "@freestyle-voice/plugin-agent-dev",
+      main: "dist/index.js",
+    });
+    fs.mkdirSync(path.join(pkgDir, "dist"));
+    fs.writeFileSync(
+      path.join(pkgDir, "dist", "index.js"),
+      "export default () => ({ name: 'agent' });",
+    );
+
+    expect(discoverLocalPlugins(dir)).toEqual([
+      path.join(pkgDir, "dist", "index.js"),
+    ]);
+  });
+
+  it("skips package folders whose main entry is missing", () => {
+    writePackage("broken-plugin", {
+      name: "broken-plugin",
+      main: "dist/index.js",
+    });
+    expect(discoverLocalPlugins(dir)).toEqual([]);
   });
 });

@@ -75,4 +75,10 @@ Most people manage these in **Settings → Plugins**.
 
 A plugin that ships a UI page (via `contributes.pages` in its manifest) appears automatically as an item in the app's sidebar, under the built-in sections. Enabling or disabling the plugin adds or removes its nav entry.
 
+## Pill panels
+
+A plugin can also attach an **expandable panel to the floating pill** — the small always-on-top widget that appears during dictation — via `contributes.pill`. This is a general extension point: any plugin can build a rich, live experience that lives right next to the pill (an agent chat, a running transcript, a command palette, and so on) instead of a page buried in the sidebar.
+
+The panel is a normal HTML/React page, hosted in a sandboxed WebContentsView and served the same way as sidebar pages (`/api/plugins/<slug>/ui/*`), so the same sandboxing rules apply. Inside the pill, `window.freestyle.pill` lets the panel read the pill's state, subscribe to lifecycle events, and expand/collapse itself. Only one plugin can own the pill panel at a time. The panel's logic still runs in your server hooks — typically an `afterTranscribe` that consumes the utterance and hands it to the panel. See the [pill panels section of the SDK reference](/sdk-reference#pill-panels) for the full API, and the [Voice Agent](/plugins/voice-agent) plugin for a worked example.
+
 Next: [build your first plugin](/first-plugin).

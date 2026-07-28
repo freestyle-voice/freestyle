@@ -3,6 +3,7 @@ import {
   type HookApi,
   type PipelineControlState,
   type PipelineStage,
+  type PluginStreamEvent,
   createHookApi as sdkCreateHookApi,
 } from "freestyle-voice";
 import { plugins } from "./index.js";
@@ -20,9 +21,11 @@ import { buildPluginLlm } from "./llm.js";
  * request; failures (no key, unsupported provider) degrade to `llm: undefined`
  * rather than failing the whole request.
  */
-export async function createHookApi(): Promise<HookApi> {
+export async function createHookApi(
+  emitStream?: (event: PluginStreamEvent) => void,
+): Promise<HookApi> {
   const llm = await buildPluginLlm();
-  return sdkCreateHookApi({ llm });
+  return sdkCreateHookApi({ llm, ...(emitStream ? { emitStream } : {}) });
 }
 
 /**

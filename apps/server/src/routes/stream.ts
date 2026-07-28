@@ -15,7 +15,10 @@ import {
   parseAppContext,
   plugins,
 } from "../lib/plugins/index.js";
-import { createHookApi } from "../lib/plugins/pipeline.js";
+import {
+  createHookApi,
+  dispositionFromControl,
+} from "../lib/plugins/pipeline.js";
 import {
   applyFinalRewrites,
   getCleanupAppAssignments,
@@ -280,6 +283,12 @@ const stream = new Hono().get(
       // meaningful when cleanup actually runs, so a skip drops them too.
       let systemFragments: string[] | undefined;
       let pluginSkipsCleanup = false;
+      // An afterTranscribe plugin (e.g. the agent's "Hey Freestyle" trigger)
+      // must see the raw transcript. Freestyle Cloud's combined cleanup never
+      // exposes it, so when such a plugin is loaded we make the cloud return
+      // raw STT and run cleanup locally instead — mirroring the batch
+      // /transcribe route (see `pluginNeedsRawTranscript` there).
+      const pluginNeedsRawTranscript = plugins().has("afterTranscribe");
       if (
         voice.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
         isLlmCleanupEnabled() &&
@@ -307,7 +316,10 @@ const stream = new Hono().get(
       const cleanup =
         voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
           ? {
-              skipPostProcess: !isLlmCleanupEnabled() || pluginSkipsCleanup,
+              skipPostProcess:
+                !isLlmCleanupEnabled() ||
+                pluginSkipsCleanup ||
+                pluginNeedsRawTranscript,
               ...getEffectiveCleanupTones(),
               appAssignments: getCleanupAppAssignments(),
               ...(systemFragments ? { systemFragments } : {}),
@@ -345,7 +357,12 @@ const stream = new Hono().get(
             // One HookApi per dictation, threaded through every stage so a
             // plugin's consume()/abort() in afterTranscribe is visible to
             // cleanup + final rewrites (matching the batch /transcribe route).
-            const api = await createHookApi();
+            // The streaming path has a live socket, so give hooks an
+            // `emitStream` sink that forwards agent/tool deltas to the client
+            // as `stream:*` messages during the turn (before `final`).
+            const api = await createHookApi((event) => {
+              if (!closed) ws.send(JSON.stringify({ type: "stream", event }));
+            });
             // Use commitTime (when the user stopped speaking) to measure only
             // finalization + cleanup latency, not the entire recording session.
             const durationMs =
@@ -362,7 +379,19 @@ const stream = new Hono().get(
             // skipped it (both set `skipPostProcess` on connect). When the
             // cloud returned raw text, treat it like the cleanup-off branch so
             // `afterTranscribe`/`Transcribed` still fire on the real transcript.
-            if (voice.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
+            // When an afterTranscribe plugin needs the raw transcript we asked
+            // the cloud to skip combined cleanup (skipPostProcess above), so it
+            // returns raw STT. Route that through the shared local
+            // afterTranscribe + postProcess path below so the raw wake phrase is
+            // visible to the plugin and cleanup still runs locally.
+            const cloudRawForPlugin =
+              pluginNeedsRawTranscript &&
+              isLlmCleanupEnabled() &&
+              !pluginSkipsCleanup;
+            if (
+              voice.provider === FREESTYLE_CLOUD_PROVIDER_ID &&
+              !cloudRawForPlugin
+            ) {
               const cloudHandledPostProcess =
                 isLlmCleanupEnabled() && !pluginSkipsCleanup;
               const cloudText = rawText?.trim() || "";
@@ -469,7 +498,13 @@ const stream = new Hono().get(
                 });
               }
               if (!closed) {
-                ws.send(JSON.stringify({ type: "final", text: finalText }));
+                ws.send(
+                  JSON.stringify({
+                    type: "final",
+                    text: finalText,
+                    disposition: dispositionFromControl(api.control.state),
+                  }),
+                );
               }
               if (!suppressed) {
                 const historyRawText = upstreamRaw || cloudText;
@@ -514,7 +549,7 @@ const stream = new Hono().get(
             // A plugin may suppress the dictation explicitly (consume/abort) or
             // implicitly by emptying the transcript — either skips cleanup.
             if (api.control.state !== "running" || !rawText?.trim()) {
-              ws.send(JSON.stringify({ type: "final", text: "" }));
+              if (!closed) ws.send(JSON.stringify({ type: "final", text: "" }));
               return;
             }
 
@@ -589,7 +624,13 @@ const stream = new Hono().get(
                 }
                 const deliverText = suppressed ? "" : pp.cleaned;
                 if (!closed) {
-                  ws.send(JSON.stringify({ type: "final", text: deliverText }));
+                  ws.send(
+                    JSON.stringify({
+                      type: "final",
+                      text: deliverText,
+                      disposition: dispositionFromControl(api.control.state),
+                    }),
+                  );
                 }
                 if (!suppressed) {
                   try {

@@ -9,7 +9,9 @@ import {
 } from "@freestyle-voice/validations";
 import {
   defaultLocalPluginsDir,
+  type PluginPillPanel,
   type PluginUIPage,
+  parsePillPanel,
   parsePluginDisplayName,
   parsePluginIcon,
   parsePluginPages,
@@ -35,6 +37,7 @@ export interface DiscoveredPlugin {
   missing?: boolean;
   readme?: string;
   pages: PluginUIPage[];
+  pill?: PluginPillPanel;
 }
 
 /**
@@ -196,6 +199,7 @@ function readManifest(
   const name = typeof pkg.name === "string" ? pkg.name : path.basename(dir);
   const displayName = parsePluginDisplayName(pkg.freestyle);
   const icon = parsePluginIcon(pkg.freestyle);
+  const pill = parsePillPanel(pkg.freestyle);
   const readme = readReadme(dir);
   return {
     name,
@@ -211,6 +215,7 @@ function readManifest(
     ...(typeof pkg.author === "string" ? { author: pkg.author } : {}),
     ...(displayName ? { displayName } : {}),
     ...(icon ? { icon } : {}),
+    ...(pill ? { pill } : {}),
     ...(readme ? { readme } : {}),
   };
 }

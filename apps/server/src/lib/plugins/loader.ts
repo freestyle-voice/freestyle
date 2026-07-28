@@ -1,3 +1,4 @@
+import path from "node:path";
 import { createAppLogger } from "@freestyle-voice/utils";
 import {
   parseDisabledPlugins,
@@ -9,6 +10,7 @@ import {
   defaultLocalPluginsDir,
   loadPlugins,
   type PluginRegistry,
+  pluginSlug,
 } from "freestyle-voice";
 import { readSetting } from "../db.js";
 import { captureException } from "../posthog.js";
@@ -34,10 +36,23 @@ export async function loadServerPlugins(
     .filter((entry) => !disabled.has(entry.specifier));
   const localDir = defaultLocalPluginsDir();
 
+  // Disabled specifiers are package names; local-dir plugins are laid out by
+  // their slug (`<localDir>/<slug>/…` or `<localDir>/<slug>.js`). Compare on the
+  // slug so a disabled dev-linked plugin's hooks stay off.
+  const disabledSlugs = new Set([...disabled].map((s) => pluginSlug(s)));
+  const isLocalDisabled = (entryPath: string): boolean => {
+    if (!localDir) return false;
+    const rel = path.relative(localDir, entryPath);
+    const first = rel.split(path.sep)[0] ?? "";
+    const slug = first.replace(/\.(ts|js|mjs)$/, "");
+    return disabledSlugs.has(slug);
+  };
+
   return loadPlugins({
     entries,
     builtin,
     ...(localDir ? { localDir } : {}),
+    isLocalDisabled,
     buildContext: buildPluginContext,
     logger: log,
     onError: reportHookFailure,

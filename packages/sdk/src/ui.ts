@@ -49,10 +49,31 @@ export type PluginSettingField =
       default?: string;
     };
 
+/**
+ * A pill panel contribution. A plugin may declare at most one pill panel in its
+ * `package.json` under `freestyle.contributes.pill`; the host renders it in a
+ * sandboxed {@link WebContentsView} attached to the floating pill window.
+ * Only one plugin can own the pill panel at a time.
+ */
+export interface PluginPillPanel {
+  /** Stable, plugin-unique id (used in the panel route). */
+  id: string;
+  /** Display title, shown in the panel header. */
+  title: string;
+  /**
+   * Path to the panel's HTML entry, relative to the plugin package root
+   * (e.g. `"dist/pill/index.html"`).
+   */
+  entry: string;
+  /** Expanded panel dimensions (px). */
+  expand: { width: number; height: number };
+}
+
 /** The `freestyle.contributes` block of a plugin's `package.json`. */
 export interface PluginContributes {
   pages?: PluginUIPage[];
   settings?: PluginSettingField[];
+  pill?: PluginPillPanel;
 }
 
 /** The `freestyle` block of a plugin's `package.json`. */
@@ -242,4 +263,36 @@ export function parsePluginDisplayName(
   return typeof displayName === "string" && displayName.trim()
     ? displayName.trim()
     : undefined;
+}
+
+/**
+ * Parse and validate the `freestyle` field's `contributes.pill` into a
+ * normalized {@link PluginPillPanel}, or `undefined` when absent/malformed.
+ * Tolerant of bad input, mirroring {@link parsePluginPages}.
+ */
+export function parsePillPanel(
+  freestyleField: unknown,
+): PluginPillPanel | undefined {
+  if (!isRecord(freestyleField)) return undefined;
+  const contributes = freestyleField.contributes;
+  if (!isRecord(contributes)) return undefined;
+  const pill = contributes.pill;
+  if (!isRecord(pill)) return undefined;
+
+  const { id, title, entry, expand } = pill;
+  if (typeof id !== "string" || !id) return undefined;
+  if (typeof title !== "string" || !title) return undefined;
+  if (typeof entry !== "string" || !entry) return undefined;
+
+  let expandDims: { width: number; height: number } = {
+    width: 400,
+    height: 500,
+  };
+  if (isRecord(expand)) {
+    const w = typeof expand.width === "number" ? expand.width : 400;
+    const h = typeof expand.height === "number" ? expand.height : 500;
+    expandDims = { width: Math.max(200, w), height: Math.max(200, h) };
+  }
+
+  return { id, title, entry, expand: expandDims };
 }

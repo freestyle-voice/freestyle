@@ -57,6 +57,14 @@ declare class FreestyleSharedStoreModule extends NativeModule<FreestyleSharedSto
   setPendingTranscript(text: string): void;
   /** Remove every shared key (used on sign-out). */
   clear(): void;
+
+  /**
+   * Unix epoch (seconds) of the last time the keyboard extension stamped its
+   * handshake into the App Group, or 0 if it never has. Non-zero proves the
+   * keyboard is enabled and has Full Access (only such an extension can write
+   * to the shared container).
+   */
+  keyboardLastActive(): number;
 }
 
 // Loads the native module object from the JSI.

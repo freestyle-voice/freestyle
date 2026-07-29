@@ -126,6 +126,10 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         hasDictationKey = true
+        // Stamp the installation handshake. This write only succeeds with Full
+        // Access, so the app reads it back as proof the keyboard is enabled and
+        // has Full Access granted (see `FreestyleDictationBridge`).
+        bridge.markKeyboardActive()
         buildLayout()
         applyColors()
     }

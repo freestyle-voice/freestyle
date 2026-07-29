@@ -71,3 +71,12 @@ export function setPendingTranscript(text: string): void {
 export function clearSharedStore(): void {
   FreestyleSharedStoreModule.clear();
 }
+
+/**
+ * Unix epoch (seconds) of the last keyboard-extension handshake, or 0 if it has
+ * never run with Full Access. Non-zero proves the keyboard is enabled + has
+ * Full Access.
+ */
+export function keyboardLastActive(): number {
+  return FreestyleSharedStoreModule.keyboardLastActive();
+}

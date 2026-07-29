@@ -19,6 +19,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { openBillingPortal, startProCheckout } from "@/lib/cloud/subscription";
 import { fetchCloudUsage } from "@/lib/cloud/usage";
+import { formatNumber } from "@/lib/format";
 import { initialsFor } from "@/lib/initials";
 
 export default function ProfileScreen() {
@@ -171,7 +172,7 @@ export default function ProfileScreen() {
             <View style={styles.inlineRow}>
               <ThemedText themeColor="mutedForeground" style={styles.rowLabel}>
                 {usage
-                  ? `${usage.remaining} / ${usage.limit} words left this week`
+                  ? `${formatNumber(usage.remaining)} / ${formatNumber(usage.limit)} words left this week`
                   : "—"}
               </ThemedText>
               {usage ? (

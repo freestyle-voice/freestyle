@@ -42,6 +42,7 @@ import {
   refreshApiBase,
 } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
+import { formatNumber } from "@renderer/lib/format";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
@@ -1375,10 +1376,10 @@ function UsageSummary({
         <>
           <div className="mt-3 mb-3 flex items-baseline gap-1.5">
             <span className="serif-italic text-foreground text-[34px] leading-none">
-              {balance.remaining.toLocaleString()}
+              {formatNumber(balance.remaining)}
             </span>
             <span className="text-muted-foreground text-[11px] font-medium">
-              / {balance.limit.toLocaleString()} words remaining
+              / {formatNumber(balance.limit)} words remaining
             </span>
           </div>
           <Progress value={usagePercent(balance)} className="h-1.5" />

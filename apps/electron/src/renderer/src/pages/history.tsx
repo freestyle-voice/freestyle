@@ -30,6 +30,7 @@ import {
   usePersistentState,
 } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
+import { formatNumber } from "@renderer/lib/format";
 import { type DiffSegment, diffWords } from "@renderer/lib/history-diff";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
@@ -1021,16 +1022,16 @@ function StatsTab({
           span2
           inline
           accent
-          n={String(avgWpm)}
+          n={formatNumber(avgWpm)}
           l={t("today.wpmLabel")}
           sub={timeLabel}
         />
         <StatCard
-          n={(stats?.total_words ?? 0).toLocaleString()}
+          n={formatNumber(stats?.total_words ?? 0)}
           l={t("today.wordsLabel")}
         />
         <StatCard
-          n={(stats?.total_fixes ?? 0).toLocaleString()}
+          n={formatNumber(stats?.total_fixes ?? 0)}
           l={t("today.fixesLabel")}
         />
       </div>

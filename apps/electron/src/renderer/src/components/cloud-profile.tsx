@@ -11,6 +11,7 @@ import { Progress } from "@renderer/components/ui/progress";
 import { useUpgradeModal } from "@renderer/components/upgrade-modal";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { formatNumber } from "@renderer/lib/format";
+import { LINKS } from "@renderer/lib/links";
 import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
 import { cn } from "@renderer/lib/utils";
 import {

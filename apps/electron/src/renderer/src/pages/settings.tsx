@@ -86,6 +86,7 @@ import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
 } from "../../../shared/audio-playback";
+import { getDefaultCommandHotkey } from "../../../shared/commands";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 import {
   normalizePillCancelMode,
@@ -150,6 +151,10 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.defaultHotkey ?? getDefaultHotkey(),
   );
   const [hotkeyMode, setHotkeyMode] = useState<"hold" | "toggle">("hold");
+  const [commandsEnabled, setCommandsEnabled] = useState(true);
+  const [commandHotkey, setCommandHotkey] = useState(
+    window.api?.defaultCommandHotkey ?? getDefaultCommandHotkey(),
+  );
   const [language, setLanguage] = useState("auto");
   const [outputMode, setOutputMode] = useState("paste");
   const [pillPosition, setPillPosition] = useState("bottom-center");
@@ -327,6 +332,30 @@ export default function SettingsPage(): React.JSX.Element {
       .catch(() => {});
   }, []);
 
+  const handleCommandsToggle = useCallback((enabled: boolean) => {
+    setCommandsEnabled(enabled);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.commandsEnabled },
+        json: { value: String(enabled) },
+      })
+      .then(() => window.api?.reloadCommandHotkey())
+      .catch(() => {});
+  }, []);
+
+  // The commands listener re-reads its accelerator from the server rather than
+  // being handed one, so the reload has to wait for the write to land.
+  const handleCommandHotkeyRecorded = useCallback((accelerator: string) => {
+    setCommandHotkey(accelerator);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.commandHotkey },
+        json: { value: accelerator },
+      })
+      .then(() => window.api?.reloadCommandHotkey())
+      .catch(() => {});
+  }, []);
+
   const {
     state: recorderState,
     liveModifiers,
@@ -337,6 +366,16 @@ export default function SettingsPage(): React.JSX.Element {
     startRecording: startHotkeyRecording,
     cancelRecording: cancelHotkeyRecording,
   } = useHotkeyRecorder(handleHotkeyRecorded);
+
+  const {
+    state: commandRecorderState,
+    liveModifiers: commandLiveModifiers,
+    capturedCombo: commandCapturedCombo,
+    canSaveRecording: commandCanSave,
+    needsModifierOrMouseButton: commandNeedsModifier,
+    startRecording: startCommandHotkeyRecording,
+    cancelRecording: cancelCommandHotkeyRecording,
+  } = useHotkeyRecorder(handleCommandHotkeyRecorded, { target: "command" });
 
   const queryClient = useQueryClient();
 
@@ -356,6 +395,9 @@ export default function SettingsPage(): React.JSX.Element {
       setSelectedDevice(s[SETTINGS_KEYS.micDeviceId]);
     if (s[SETTINGS_KEYS.hotkey]) setHotkey(s[SETTINGS_KEYS.hotkey]);
     if (s[SETTINGS_KEYS.hotkeyMode] === "toggle") setHotkeyMode("toggle");
+    if (s[SETTINGS_KEYS.commandHotkey])
+      setCommandHotkey(s[SETTINGS_KEYS.commandHotkey]);
+    setCommandsEnabled(s[SETTINGS_KEYS.commandsEnabled] !== "false");
     if (s[SETTINGS_KEYS.language]) setLanguage(s[SETTINGS_KEYS.language]);
     if (s[SETTINGS_KEYS.outputMode]) setOutputMode(s[SETTINGS_KEYS.outputMode]);
     setPillCancel(normalizePillCancelMode(s[SETTINGS_KEYS.pillCancelButton]));
@@ -670,6 +712,15 @@ export default function SettingsPage(): React.JSX.Element {
   // Build display keys for current recorder state
   const liveKeys = liveModifiers.map(keyDisplayLabel);
   const draftKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : liveKeys;
+  const commandLiveKeys = commandLiveModifiers.map(keyDisplayLabel);
+  const commandDraftKeys = commandCapturedCombo
+    ? comboDisplayKeys(commandCapturedCombo)
+    : commandLiveKeys;
+  const commandCaptureHint = commandNeedsModifier
+    ? "Add a modifier or side mouse button · Esc to cancel"
+    : commandCanSave
+      ? "Release to save · Esc to cancel"
+      : "Press a modifier or side mouse button... · Esc to cancel";
   const captureHint = needsModifierOrMouseButton
     ? "Add a modifier or side mouse button · Esc to cancel"
     : canSaveRecording
@@ -899,6 +950,70 @@ export default function SettingsPage(): React.JSX.Element {
                   ]}
                 />
               </Row>
+
+              <Row
+                label={t("settings.recording.commands")}
+                desc={t("settings.recording.commandsDesc")}
+              >
+                <Switch
+                  checked={commandsEnabled}
+                  onCheckedChange={handleCommandsToggle}
+                />
+              </Row>
+
+              {commandsEnabled && (
+                <Row
+                  label={t("settings.recording.commandsHotkey")}
+                  desc={
+                    commandHotkey === hotkey
+                      ? t("settings.recording.commandsConflict")
+                      : t("settings.recording.commandsHotkeyDesc")
+                  }
+                >
+                  {commandRecorderState === "idle" ? (
+                    <Button
+                      variant="outline"
+                      onClick={startCommandHotkeyRecording}
+                      className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
+                    >
+                      <Keyboard className="text-muted-foreground size-4 shrink-0" />
+                      <KeyComboDisplay
+                        keys={formatAcceleratorKeys(commandHotkey)}
+                      />
+                      <span className="text-muted-foreground ml-1 text-xs">
+                        {t("common.change")}
+                      </span>
+                    </Button>
+                  ) : (
+                    <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
+                      <Keyboard className="text-primary h-4 w-4 shrink-0" />
+                      {commandDraftKeys.length > 0 ? (
+                        <>
+                          <KeyComboDisplay
+                            keys={commandDraftKeys}
+                            variant="dim"
+                          />
+                          <span className="text-muted-foreground text-xs">
+                            {commandCaptureHint}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground animate-pulse text-sm">
+                          {commandCaptureHint}
+                        </span>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={cancelCommandHotkeyRecording}
+                        className="ml-1"
+                      >
+                        {t("common.cancel")}
+                      </Button>
+                    </div>
+                  )}
+                </Row>
+              )}
 
               <Row
                 label={t("settings.recording.microphone")}

@@ -163,7 +163,12 @@
       "outputModeClipboard": "Copy to clipboard",
       "sound": "Sound feedback",
       "soundDesc": "Soft chimes at the start and end of recording.",
-      "needsModifier": "Hotkeys need a modifier or side mouse button"
+      "needsModifier": "Hotkeys need a modifier or side mouse button",
+      "commands": "Commands",
+      "commandsDesc": "Select text in any app, then hold the commands hotkey and say what to change.",
+      "commandsHotkey": "Commands hotkey",
+      "commandsHotkeyDesc": "Hold it and say what to change, or tap it for the quick routes.",
+      "commandsConflict": "This is already your dictation hotkey. Pick a different combination."
     },
     "display": {
       "theme": "Theme",

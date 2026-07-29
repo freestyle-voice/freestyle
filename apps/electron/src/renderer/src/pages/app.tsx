@@ -1,3 +1,4 @@
+import { COMMAND_PRESETS } from "@freestyle-voice/validations";
 import { capture } from "@renderer/lib/analytics";
 import {
   apiFetch,
@@ -18,6 +19,10 @@ import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
 } from "../../../shared/audio-playback";
+import {
+  COMMAND_HOLD_THRESHOLD_MS,
+  COMMAND_IDLE_MS,
+} from "../../../shared/commands";
 import {
   normalizePillCancelMode,
   type PillCancelMode,
@@ -253,6 +258,14 @@ const PILL_CORE_WIDTH = 96;
 /** The expanded card, in the space `window.api.setPillExpanded` opens up. */
 const PILL_CARD_WIDTH = 300;
 /**
+ * How long a warning stays up before dismissing itself. The command warning
+ * is a dead end — nothing to do but read it — so it leaves quickly. The
+ * dictation failure card can carry a Retry, and a button that vanishes while
+ * you are deciding is worse than one that lingers.
+ */
+const COMMAND_WARNING_MS = 4500;
+const FAILURE_CARD_MS = 9000;
+/**
  * The cancel button lives at the left end of the capsule, and its space is
  * only taken while it's on screen. Opening it widens its slot to CANCEL_SLOT
  * (the disc plus a gap) and narrows the waveform's viewport by exactly
@@ -348,6 +361,45 @@ interface QueueEntry {
   promise: Promise<TranscribeResult>;
 }
 
+// ---------------------------------------------------------------------------
+// Commands
+// ---------------------------------------------------------------------------
+
+/**
+ * Where a command run has got to.
+ *
+ * The two ways in share a single hotkey and therefore a single opening state:
+ * the moment it goes down we don't yet know whether this is a tap (show the
+ * list) or a hold (record an instruction), so `capturing` optimistically does
+ * both — the card is up and the mic is running — and the key going up decides
+ * which of the two the user meant.
+ */
+type CommandPhase = "capturing" | "picking" | "listening" | "running" | "error";
+
+interface CommandSession {
+  phase: CommandPhase;
+  /** The captured selection; null until the copy comes back. */
+  selection: string | null;
+  /** What is being applied, shown while `running`. */
+  label?: string;
+  title?: string;
+  body?: string;
+}
+
+/** A promise that something else resolves. Used to await the selection. */
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
 export default function AppPage(): React.JSX.Element {
   const [state, setState] = useState<PillState>("idle");
   const stateRef = useRef<PillState>("idle");
@@ -377,6 +429,34 @@ export default function AppPage(): React.JSX.Element {
   const lastRecordingDurationRef = useRef(0);
 
   const [pendingCount, setPendingCount] = useState(0);
+
+  // ---- Commands ----
+  const [command, setCommandState] = useState<CommandSession | null>(null);
+  const commandRef = useRef<CommandSession | null>(null);
+  const setCommand = useCallback((next: CommandSession | null) => {
+    commandRef.current = next;
+    setCommandState(next);
+  }, []);
+  /** Patch the live session, ignoring the call if it has since been torn down. */
+  const patchCommand = useCallback((patch: Partial<CommandSession>) => {
+    const current = commandRef.current;
+    if (!current) return;
+    const next = { ...current, ...patch };
+    commandRef.current = next;
+    setCommandState(next);
+  }, []);
+  const commandDownAtRef = useRef(0);
+  /** Resolved by the `command:selection` IPC, awaited by whatever runs. */
+  const commandSelectionRef = useRef<Deferred<string | null> | null>(null);
+  const commandIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  /** Guards against a second run being kicked off from the same session. */
+  const commandRunningRef = useRef(false);
+  /** Flips the card from "capturing" to "listening" once a press is a hold. */
+  const commandHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
@@ -889,7 +969,12 @@ export default function AppPage(): React.JSX.Element {
   // geometry rewritten, so grab them as the SVG mounts and let the draw loop
   // iterate a plain array instead of querying the DOM 60 times a second.
   const captureBarLines = useCallback((svg: SVGSVGElement | null) => {
-    barLinesRef.current = svg ? Array.from(svg.querySelectorAll("line")) : [];
+    // Only ever *set* on attach, never cleared on detach. The waveform moves
+    // between two surfaces — the capsule and the command card — and a detach
+    // that ran after the new element's attach would blank this and leave the
+    // visible row frozen. Holding a detached element instead is harmless: the
+    // draw loop writes attributes nobody renders until the next attach lands.
+    if (svg) barLinesRef.current = Array.from(svg.querySelectorAll("line"));
   }, []);
 
   // One frame: work out what the bars should be aiming at, ease them toward
@@ -1142,6 +1227,23 @@ export default function AppPage(): React.JSX.Element {
     startBarAnimation,
   ]);
 
+  /**
+   * Draw the bars once at their resting height.
+   *
+   * The draw loop is what normally puts them there, so stopping it leaves the
+   * row frozen at whatever the last frame happened to be. That doesn't matter
+   * where the capsule is on its way out, but the command card keeps the
+   * waveform on screen after the mic has gone — a row stuck mid-syllable under
+   * "hold the hotkey and say what you want" claims something that isn't true.
+   */
+  const restBars = useCallback(() => {
+    for (const line of barLinesRef.current) {
+      line.setAttribute("y1", String((SVG_HEIGHT + BAR_WIDTH) / 2));
+      line.setAttribute("y2", String((SVG_HEIGHT - BAR_WIDTH) / 2));
+      line.style.opacity = "1";
+    }
+  }, []);
+
   const stopVisualization = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = 0;
@@ -1165,7 +1267,14 @@ export default function AppPage(): React.JSX.Element {
   }, []);
 
   // ---- Hide pill ----
-  const hidePill = useCallback(() => {
+  /**
+   * Put every scrap of dictation state back to rest, without touching the pill
+   * window itself. Split out of `hidePill` for the one caller that needs the
+   * window left standing: the commands chord taking over a dictation that the
+   * shared home key started a few milliseconds earlier, where the pill is
+   * about to be reused for the command card.
+   */
+  const resetDictation = useCallback(() => {
     setPillNotice(null);
     setCanRetry(false);
     setPillState("idle");
@@ -1187,8 +1296,12 @@ export default function AppPage(): React.JSX.Element {
     cancelOpenRef.current = cancelTargetRef.current;
     lastCancelWriteRef.current = -1;
     stopVisualization();
-    window.api.hidePill();
   }, [setPillNotice, stopVisualization, setPillState]);
+
+  const hidePill = useCallback(() => {
+    resetDictation();
+    window.api.hidePill();
+  }, [resetDictation]);
 
   const resumeTranscribingOrHide = useCallback(() => {
     if (isTranscriptionIdle()) {
@@ -1615,6 +1728,365 @@ export default function AppPage(): React.JSX.Element {
     hidePill();
   }, [hidePill, restoreSystemAudioSafely]);
 
+  // ---- Commands ----
+  // A command is not a dictation: it never enters the transcription queue,
+  // never reaches the plugin output pipeline, and its result replaces a
+  // selection rather than being inserted at a cursor. What it does share is the
+  // pill — the surface, the waveform, and the mic behind it.
+
+  const clearCommandHoldTimer = useCallback(() => {
+    if (commandHoldTimerRef.current) {
+      clearTimeout(commandHoldTimerRef.current);
+      commandHoldTimerRef.current = null;
+    }
+  }, []);
+
+  const clearCommandIdleTimer = useCallback(() => {
+    if (commandIdleTimerRef.current) {
+      clearTimeout(commandIdleTimerRef.current);
+      commandIdleTimerRef.current = null;
+    }
+  }, []);
+
+  /** Tear the session down. `hide` is false only when an error card stays up. */
+  const endCommand = useCallback(
+    (options: { hide?: boolean } = {}) => {
+      clearCommandHoldTimer();
+      clearCommandIdleTimer();
+      commandRunningRef.current = false;
+      // Resolve any pending await so a run blocked on the selection unwinds
+      // instead of hanging on a session that no longer exists.
+      commandSelectionRef.current?.resolve(null);
+      commandSelectionRef.current = null;
+      recorderRef.current.cancel();
+      recorderRef.current.releaseStream();
+      setCommand(null);
+      stopVisualization();
+      if (options.hide !== false) window.api?.hidePill();
+    },
+    [
+      clearCommandHoldTimer,
+      clearCommandIdleTimer,
+      setCommand,
+      stopVisualization,
+    ],
+  );
+
+  /**
+   * Show a failure and leave the card up. Unlike the phases above this one
+   * outlives the keypress: it is the only state the user has to answer, so it
+   * waits for Escape, the Dismiss button, or another press of the hotkey.
+   */
+  const failCommand = useCallback(
+    (title: string, body: string) => {
+      clearCommandHoldTimer();
+      clearCommandIdleTimer();
+      commandRunningRef.current = false;
+      recorderRef.current.cancel();
+      recorderRef.current.releaseStream();
+      stopVisualization();
+      setCommand({ phase: "error", selection: null, title, body });
+    },
+    [
+      clearCommandHoldTimer,
+      clearCommandIdleTimer,
+      setCommand,
+      stopVisualization,
+    ],
+  );
+
+  /**
+   * Send the edited text back to the app the selection came from.
+   *
+   * The paste is the commit point: main hides the pill from inside it, so the
+   * card is gone by the time the text lands and the user never sees the pill
+   * sitting over their own document mid-replace.
+   */
+  const deliverCommandResult = useCallback(
+    async (text: string) => {
+      const pasted = await window.api.pasteCommandResult(text);
+      if (!pasted) {
+        failCommand(
+          "Couldn't replace the text",
+          "The edit is on your clipboard — paste it yourself.",
+        );
+        return;
+      }
+      endCommand({ hide: false });
+    },
+    [endCommand, failCommand],
+  );
+
+  /**
+   * Run one command over the captured selection.
+   *
+   * Waits on the selection rather than requiring it: the copy is still in
+   * flight for the first ~100ms of every session, which is well inside the
+   * time it takes to tap a number key.
+   */
+  /**
+   * The selection, once the copy has answered — or null, having already put
+   * the refusal on screen.
+   *
+   * Every path into a command goes through here, because a command without a
+   * selection has no subject: there is nothing to edit, nothing to paste over,
+   * and nothing worth spending a transcription or a model call on. Waiting
+   * rather than requiring is deliberate — the copy is still in flight for the
+   * first fraction of a second of every session.
+   */
+  const requireSelection = useCallback(async (): Promise<string | null> => {
+    const selection = await (commandSelectionRef.current?.promise ??
+      Promise.resolve(commandRef.current?.selection ?? null));
+    if (!commandRef.current) return null;
+    if (!selection) {
+      failCommand(
+        "Nothing selected",
+        "Highlight some text in any app first, then press the hotkey.",
+      );
+      return null;
+    }
+    return selection;
+  }, [failCommand]);
+
+  const runCommand = useCallback(
+    async (options: {
+      commandId?: string;
+      instruction?: string;
+      label: string;
+    }) => {
+      if (commandRunningRef.current) return;
+      commandRunningRef.current = true;
+      clearCommandIdleTimer();
+      patchCommand({ phase: "running", label: options.label });
+      startBarAnimation("speaking");
+
+      const selection = await requireSelection();
+      if (!selection) return;
+
+      try {
+        const res = await apiFetch("/api/command", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: selection,
+            commandId: options.commandId,
+            instruction: options.instruction,
+          }),
+        });
+        if (!commandRef.current) return;
+
+        if (!res.ok) {
+          const body = (await res.json().catch(() => null)) as {
+            error?: string;
+            detail?: string;
+          } | null;
+          // Cloud auth and usage limits have their own interactive prompts in
+          // the main process; the card would only be a worse version of them.
+          if (res.status === 401 && body?.error === "cloud_auth_required") {
+            endCommand();
+            void window.api.cloudPromptSignIn();
+            return;
+          }
+          if (res.status === 429 && body?.error === "usage_exceeded") {
+            endCommand();
+            void window.api.cloudPromptUpgrade();
+            return;
+          }
+          failCommand(
+            "Command failed",
+            body?.detail || `The model couldn't run that (${res.status}).`,
+          );
+          return;
+        }
+
+        const data = (await res.json()) as { text?: string };
+        const edited = (data.text ?? "").trim();
+        if (!commandRef.current) return;
+        if (!edited) {
+          failCommand("Command failed", "The model returned nothing.");
+          return;
+        }
+        await deliverCommandResult(edited);
+      } catch (err) {
+        if (!commandRef.current) return;
+        failCommand(
+          "Command failed",
+          err instanceof Error ? err.message : "Something went wrong.",
+        );
+      }
+    },
+    [
+      clearCommandIdleTimer,
+      deliverCommandResult,
+      endCommand,
+      failCommand,
+      patchCommand,
+      requireSelection,
+      startBarAnimation,
+    ],
+  );
+
+  /**
+   * Transcribe the held instruction, then run it.
+   *
+   * This goes through the one-shot REST path rather than the streaming session
+   * the dictation flow uses. An instruction is a second or two of speech whose
+   * text is never shown to anyone — partials buy nothing, and the streaming
+   * session belongs to dictation, which may well have one in flight.
+   */
+  const runSpokenCommand = useCallback(async () => {
+    const durationMs = Math.round(performance.now() - commandDownAtRef.current);
+    patchCommand({ phase: "running", label: "Listening…" });
+    startBarAnimation("speaking");
+
+    // The selection is the subject of the command, so a missing one ends the
+    // run here — before the recording is transcribed, let alone sent to a
+    // model. Nothing is edited without something highlighted to edit.
+    const selected = await requireSelection();
+    if (!selected) return;
+
+    let wav: Blob | null = null;
+    try {
+      wav = recorderRef.current.isRecording()
+        ? await recorderRef.current.stop()
+        : null;
+    } catch {
+      wav = null;
+    }
+    recorderRef.current.releaseStream();
+    if (!commandRef.current) return;
+    if (!wav) {
+      failCommand("Didn't catch that", "Hold the hotkey and say what to do.");
+      return;
+    }
+
+    let instruction = "";
+    try {
+      const res = await apiFetch("/api/transcribe", {
+        method: "POST",
+        body: wav,
+        headers: {
+          "Content-Type": "audio/wav",
+          "x-audio-duration-ms": String(durationMs),
+          // Cleanup is tuned to turn speech into prose the user will read.
+          // This text is a machine instruction that nobody ever sees, so the
+          // raw transcript is both cheaper and closer to what was said.
+          "x-skip-post-process": "true",
+        },
+      });
+      if (!commandRef.current) return;
+      if (res.ok) {
+        const data = (await res.json()) as { raw?: string; cleaned?: string };
+        instruction = (data.raw || data.cleaned || "").trim();
+      }
+    } catch {
+      instruction = "";
+    }
+
+    if (!commandRef.current) return;
+    if (!instruction) {
+      failCommand(
+        "Didn't catch that",
+        "Nothing came through — hold the hotkey and say what to do.",
+      );
+      return;
+    }
+    await runCommand({ instruction, label: instruction });
+  }, [
+    failCommand,
+    patchCommand,
+    requireSelection,
+    runCommand,
+    startBarAnimation,
+  ]);
+
+  /** Arm the card's idle dismissal (a card opened but never answered). */
+  const armCommandIdleTimer = useCallback(() => {
+    clearCommandIdleTimer();
+    commandIdleTimerRef.current = setTimeout(() => {
+      commandIdleTimerRef.current = null;
+      if (commandRef.current?.phase === "picking") endCommand();
+    }, COMMAND_IDLE_MS);
+  }, [clearCommandIdleTimer, endCommand]);
+
+  const beginCommand = useCallback(() => {
+    // A dictation owns the pill while it is up. Rather than fight over it,
+    // commands stand down — the user can press again a moment later.
+    if (stateRef.current !== "idle" || pillActiveRef.current) return;
+    // A second press while an error card is up means "try again", so tear the
+    // old session down first rather than merging into it.
+    if (commandRef.current) endCommand({ hide: false });
+
+    commandDownAtRef.current = performance.now();
+    commandSelectionRef.current = deferred<string | null>();
+    setCommand({ phase: "capturing", selection: null });
+
+    // Once the press has outlived the tap threshold it can only be a hold, so
+    // the card commits to that reading rather than waiting for the release —
+    // the user is already talking by then and should be able to see it.
+    clearCommandHoldTimer();
+    commandHoldTimerRef.current = setTimeout(() => {
+      commandHoldTimerRef.current = null;
+      if (commandRef.current?.phase === "capturing") {
+        patchCommand({ phase: "listening" });
+      }
+    }, COMMAND_HOLD_THRESHOLD_MS);
+
+    // The mic starts now, before we know this is a hold: a recording that only
+    // began once the threshold had passed would clip the first syllable off
+    // every spoken command.
+    void recorderRef.current
+      .start()
+      .then((stream) => {
+        if (!commandRef.current) {
+          recorderRef.current.cancel();
+          recorderRef.current.releaseStream();
+          return;
+        }
+        startListening(stream);
+      })
+      .catch(() => {
+        // No mic is survivable — the preset list doesn't need one. Show the
+        // idle bars so the card doesn't look broken, and let the footer's own
+        // copy be the only thing that mentions speaking.
+        if (commandRef.current) startBarAnimation("connecting");
+      });
+  }, [
+    clearCommandHoldTimer,
+    endCommand,
+    patchCommand,
+    setCommand,
+    startBarAnimation,
+    startListening,
+  ]);
+
+  const finishCommandPress = useCallback(() => {
+    clearCommandHoldTimer();
+    const session = commandRef.current;
+    if (!session) return;
+    if (session.phase !== "capturing" && session.phase !== "listening") return;
+
+    const heldMs = performance.now() - commandDownAtRef.current;
+    if (heldMs < COMMAND_HOLD_THRESHOLD_MS) {
+      // A tap. Throw the fragment of audio away and hand over to the list.
+      recorderRef.current.cancel();
+      recorderRef.current.releaseStream();
+      stopVisualization();
+      restBars();
+      patchCommand({ phase: "picking" });
+      armCommandIdleTimer();
+      return;
+    }
+    void runSpokenCommand();
+  }, [
+    armCommandIdleTimer,
+    clearCommandHoldTimer,
+    patchCommand,
+    restBars,
+    runSpokenCommand,
+    stopVisualization,
+  ]);
+
   // ---- Preferences ----
   const applyPillPosition = useCallback((pos: string | null | undefined) => {
     const isTop =
@@ -1731,6 +2203,10 @@ export default function AppPage(): React.JSX.Element {
   // ---- Hotkey handlers ----
   useEffect(() => {
     const removeDown = window.api.onHotkeyDown(() => {
+      // Dictation is the primary use of this pill; a command card sitting in
+      // front of it (most likely one the user has already read and moved on
+      // from) gets out of the way rather than blocking the press.
+      if (commandRef.current) endCommand({ hide: false });
       // hidePill() clears pillActiveRef before React re-renders idle state.
       if (!pillActiveRef.current) {
         stateRef.current = "idle";
@@ -1776,6 +2252,12 @@ export default function AppPage(): React.JSX.Element {
       }
     });
     const removeCancel = window.api.onPillCancel(() => {
+      // Escape reaches whichever surface is up. A command owns the pill only
+      // when there is no dictation, so there is never a question of which.
+      if (commandRef.current) {
+        endCommand();
+        return;
+      }
       if (stateRef.current !== "idle") cancelRecording();
     });
     return () => {
@@ -1787,10 +2269,86 @@ export default function AppPage(): React.JSX.Element {
     startRecording,
     commitRecording,
     cancelRecording,
+    endCommand,
     hidePill,
     isTranscriptionIdle,
     setPillNotice,
   ]);
+
+  // ---- Command hotkey handlers ----
+  useEffect(() => {
+    const removeDown = window.api.onCommandDown(beginCommand);
+    const removeUp = window.api.onCommandUp(finishCommandPress);
+    const removeSelection = window.api.onCommandSelection((text) => {
+      if (!commandRef.current) return;
+      commandSelectionRef.current?.resolve(text);
+      if (text === null) {
+        failCommand(
+          "Nothing selected",
+          "Select some text in any app, then press the commands hotkey.",
+        );
+        return;
+      }
+      patchCommand({ selection: text });
+    });
+    // A route shortcut: the chord plus a digit. It answers the question the
+    // microphone was open to ask, so the recording is dropped on the spot.
+    // The selection may still be in flight — the copy waits for the chord to
+    // be released — and `runCommand` waits for it, which is why pressing a
+    // digit mid-hold works without the card having to say anything.
+    const removeRoute = window.api.onCommandRoute((index) => {
+      const preset = COMMAND_PRESETS[index];
+      const phase = commandRef.current?.phase;
+      if (!preset || !phase || phase === "running" || phase === "error") return;
+      recorderRef.current.cancel();
+      recorderRef.current.releaseStream();
+      void runCommand({ commandId: preset.id, label: preset.label });
+    });
+
+    // A dictation began on the shared home key and this chord is taking over.
+    const removeSupersede = window.api.onCommandSupersede(() => {
+      if (stateRef.current === "idle" && !pillActiveRef.current) return;
+      recorderRef.current.cancel();
+      recorderRef.current.releaseStream();
+      void restoreSystemAudioSafely();
+      streamerRef.current?.cancel();
+      window.api?.sendRecordingCancelled();
+      resetDictation();
+    });
+    return () => {
+      removeDown();
+      removeUp();
+      removeSelection();
+      removeRoute();
+      removeSupersede();
+    };
+  }, [
+    beginCommand,
+    failCommand,
+    finishCommandPress,
+    patchCommand,
+    resetDictation,
+    restoreSystemAudioSafely,
+    runCommand,
+  ]);
+
+  // ---- Warnings see themselves out ----
+  // A warning has said everything it has to say the moment it is read. Leaving
+  // it up turns the pill into something the user has to go and clear, on top
+  // of whatever they were doing — so both cards time out. The command warning
+  // carries no action and goes sooner; the dictation failure can offer a Retry,
+  // so it waits long enough for that to be a real choice.
+  useEffect(() => {
+    if (command?.phase !== "error") return;
+    const timer = setTimeout(() => endCommand(), COMMAND_WARNING_MS);
+    return () => clearTimeout(timer);
+  }, [command?.phase, endCommand]);
+
+  useEffect(() => {
+    if (state !== "error") return;
+    const timer = setTimeout(hidePill, FAILURE_CARD_MS);
+    return () => clearTimeout(timer);
+  }, [state, hidePill]);
 
   // ---- Cleanup on unmount ----
   const mountedRef = useRef(true);
@@ -1819,7 +2377,11 @@ export default function AppPage(): React.JSX.Element {
   // sits over whatever the user is actually doing, so it only ever earns a
   // glyph, and the words behind it are in the tooltip and to screen readers.
   const isFreestyleCloud = providerCategoryRef.current === "freestyle_cloud";
-  const showCard = state === "error";
+  const showErrorCard = state === "error";
+  // A command replaces the capsule outright: its own card carries the waveform,
+  // so there is nothing left for the capsule to say while one is up.
+  const showCommandCard = command !== null;
+  const showCard = showErrorCard || showCommandCard;
 
   // What that mark means. Errors are the card's job, so a "working" notice
   // here is a spinner and a stalled one is the alert mark.
@@ -1881,21 +2443,33 @@ export default function AppPage(): React.JSX.Element {
   const status = statusContentRef.current;
 
   const cardContentRef = useRef({ title: "", body: "", canRetry: false });
-  if (showCard) {
+  if (showErrorCard) {
     cardContentRef.current = { title: cardTitle, body: cardBody, canRetry };
   }
   const card = cardContentRef.current;
 
-  const accessibleStatus = showCard
-    ? `${cardTitle}. ${cardBody}`
-    : (statusLabel ??
-      (state === "initializing"
-        ? "Preparing microphone"
-        : state === "recording"
-          ? "Listening"
-          : state === "transcribing"
-            ? "Transcribing"
-            : ""));
+  const commandStatus = !command
+    ? null
+    : command.phase === "error"
+      ? `${command.title}. ${command.body}`
+      : command.phase === "running"
+        ? `Applying ${command.label ?? "command"}`
+        : command.phase === "listening" || command.phase === "capturing"
+          ? "Listening for a command"
+          : "Pick a command, or hold the hotkey and say what you want";
+
+  const accessibleStatus = commandStatus
+    ? commandStatus
+    : showErrorCard
+      ? `${cardTitle}. ${cardBody}`
+      : (statusLabel ??
+        (state === "initializing"
+          ? "Preparing microphone"
+          : state === "recording"
+            ? "Listening"
+            : state === "transcribing"
+              ? "Transcribing"
+              : ""));
 
   // ---- Room for the card ----
   // The capsule, status mark and all, fits the pill window as it is; only the
@@ -1910,7 +2484,7 @@ export default function AppPage(): React.JSX.Element {
       const timer = setTimeout(() => window.api?.setPillExpanded(false), 300);
       return () => clearTimeout(timer);
     }
-    window.api?.setPillExpanded(true);
+    window.api?.setPillExpanded(true, showCommandCard ? "command" : "card");
     // Two frames: one for the resize to land, one for the browser to lay the
     // card out at its start values so the transition has something to run
     // from. Setting both in the same frame would jump straight to the end.
@@ -1926,18 +2500,20 @@ export default function AppPage(): React.JSX.Element {
       cancelAnimationFrame(outer);
       cancelAnimationFrame(inner);
     };
-  }, [showCard]);
+  }, [showCard, showCommandCard]);
 
   const cardOpen = showCard && roomReady;
+  const errorCardOpen = showErrorCard && roomReady;
 
-  // The card can sit there for as long as the user takes to answer it, and
-  // the waveform underneath is neither visible nor meaningful by then — park
-  // the draw loop once the capsule has finished fading out.
+  // The failure card can sit there for as long as the user takes to answer it,
+  // and the waveform underneath is neither visible nor meaningful by then —
+  // park the draw loop once the capsule has finished fading out. The command
+  // card is the opposite case: the bars move *into* it, so leave them running.
   useEffect(() => {
-    if (!showCard) return;
+    if (!showErrorCard || showCommandCard) return;
     const timer = setTimeout(stopVisualization, 260);
     return () => clearTimeout(timer);
-  }, [showCard, stopVisualization]);
+  }, [showErrorCard, showCommandCard, stopVisualization]);
 
   // Grow the card out of the capsule it replaces, not out of thin air.
   const transformOrigin = `${pillSide === "right" ? "right" : "center"} ${
@@ -1997,6 +2573,65 @@ export default function AppPage(): React.JSX.Element {
     pillAlign === "start" ? "items-start" : "items-end"
   } ${pillSide === "right" ? "justify-end pr-3" : "justify-center"}`;
 
+  // Surfaces rise off the edge they are anchored to, so the motion always
+  // reads as coming from the screen edge rather than from an arbitrary
+  // direction: negative (downward) when the pill lives at the top.
+  const riseBy = (distance: number): React.CSSProperties =>
+    ({
+      "--pill-rise": `${pillAlign === "start" ? -distance : distance}px`,
+    }) as React.CSSProperties;
+
+  // The card surface both the failure and the command card are cut from.
+  //
+  // Note what is deliberately *not* here: `WebkitAppRegion`. Both cards stay
+  // mounted while hidden so they have something to animate out of, and a
+  // draggable region is carved out of the window by the compositor from the
+  // element geometry alone — `pointer-events: none` and `opacity: 0` do not
+  // exempt it. A hidden card is laid out directly over the capsule, so
+  // declaring the region here made it swallow every mouse event the pill
+  // should have seen: no hover to reveal the cancel button, and no click
+  // landing on it. Each card claims the region only while it is really up.
+  const cardSurfaceStyle: React.CSSProperties = {
+    // The card travels a little further than the capsule, being bigger.
+    ...riseBy(14),
+    width: PILL_CARD_WIDTH,
+    borderRadius: 20,
+    background: SURFACE,
+    border: SURFACE_BORDER,
+    backdropFilter: BLUR,
+    WebkitBackdropFilter: BLUR,
+    boxShadow: "0 8px 28px rgba(0, 0, 0, 0.3)",
+    transformOrigin,
+    marginBottom: pillAlign === "end" ? 8 : 0,
+    marginTop: pillAlign === "start" ? 8 : 0,
+    cursor: "grab",
+  } as React.CSSProperties;
+
+  // ---- Command card content ----
+  // Latched for the same reason the failure card's is: the session is cleared
+  // the instant a command lands, and re-rendering an empty card would blank it
+  // a beat before it has finished animating away.
+  const commandViewRef = useRef<CommandSession | null>(null);
+  if (command) commandViewRef.current = command;
+  const commandView = commandViewRef.current;
+  const commandOpen = showCommandCard && roomReady;
+
+  // "Busy" covers every phase in which the list is no longer the thing to
+  // look at — the user is either mid-sentence or waiting on the model.
+  // The card's headline. It is the microphone's line, so it says what the
+  // microphone is doing — and once a command is running, what it is running,
+  // since by then the instruction is the only thing worth reading.
+  const commandLead =
+    commandView?.phase === "running"
+      ? (commandView.label ?? "Working…")
+      : commandView?.phase === "picking"
+        ? // The one state where the key is *not* down: the press was a tap, so
+          // there is no microphone running and nothing to say into. This is
+          // the only place the card mentions holding, and it does so without
+          // naming the accelerator — the user just pressed it.
+          "Hold to say what to change"
+        : "Say what you want to change";
+
   return (
     <div className="relative h-screen w-screen select-none overflow-hidden">
       <style>
@@ -2008,19 +2643,126 @@ export default function AppPage(): React.JSX.Element {
              a crossfade of two equals. */
           .pill-layer { pointer-events: none; }
 
+          /* The summon.
+             A surface arrives by rising off the screen edge it is anchored to,
+             coming up to size with a little overshoot and resolving out of a
+             soft blur — three cheap things that together read as the pill
+             being conjured rather than switched on. --pill-rise carries the
+             direction, so a top-anchored pill drops in and a bottom-anchored
+             one lifts.
+
+             Leaving retraces it: back toward the edge, back into the blur,
+             but over a shorter distance and a shorter time and with no
+             overshoot. Something on its way out shouldn't ask for the
+             attention that something arriving does — the exit should be over
+             before you have finished looking away from it. */
           .pill-surface {
             opacity: 0;
-            transform: scale(0.96);
-            transition: opacity 140ms ease, transform 140ms cubic-bezier(0.4, 0, 1, 1);
+            transform: scale(0.93)
+              translateY(calc(var(--pill-rise, 10px) * 0.55));
+            filter: blur(3px);
+            transition: opacity 130ms ease,
+              transform 170ms cubic-bezier(0.36, 0, 0.66, -0.2),
+              filter 130ms ease;
             pointer-events: none;
           }
           .pill-surface[data-show="true"] {
             opacity: 1;
             transform: none;
-            transition: opacity 200ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+            filter: blur(0);
+            /* An overshoot curve on transform only. Opacity and blur land
+               sooner, so the surface is already readable while it is still
+               settling — the motion is felt more than watched. */
+            transition: opacity 180ms ease,
+              transform 380ms cubic-bezier(0.22, 1.12, 0.36, 1),
+              filter 220ms ease;
             pointer-events: auto;
           }
-          .pill-card[data-show="false"] { transform: scale(0.94) translateY(4px); }
+          /* Contents follow the surface in, a beat behind and staggered, so
+             the card assembles rather than appearing whole. Small distances
+             only: this should register as depth, not as a sequence. */
+          .pill-rise {
+            opacity: 0;
+            transform: translateY(5px);
+            transition: opacity 160ms ease, transform 160ms ease;
+          }
+          .pill-surface[data-show="true"] .pill-rise {
+            opacity: 1;
+            transform: none;
+            transition: opacity 240ms ease,
+              transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+          }
+          .pill-surface[data-show="true"] .pill-rise-1 { transition-delay: 50ms; }
+          .pill-surface[data-show="true"] .pill-rise-2 { transition-delay: 95ms; }
+
+          /* ---- Command card ---- */
+
+          /* A column whose order follows the anchored edge, so the waveform
+             always ends up against the edge that stays still while the window
+             grows — which is what lets the bars hold their position on screen
+             as the capsule becomes the box. */
+          .pill-command-body {
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+          }
+          .pill-command-body[data-anchor="start"] {
+            flex-direction: column-reverse;
+          }
+
+          /* The bars keep the capsule's own width and height. Only the room
+             around them changes. */
+          .pill-command-wave {
+            display: flex;
+            justify-content: center;
+            height: ${SVG_HEIGHT}px;
+          }
+
+          .pill-command-lead {
+            font-size: 12.5px;
+            font-weight: 500;
+            line-height: 1.25;
+            text-align: center;
+            color: rgba(245, 241, 228, 0.92);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+
+          /* The route legend. Quiet enough to sit under the line that
+             matters, and it collapses to nothing once a command is running so
+             the card shrinks to just the work in progress. */
+          .pill-command-routes {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            font-size: 11px;
+            line-height: 1;
+            color: rgba(245, 241, 228, 0.42);
+            transition: opacity 160ms ease;
+          }
+          .pill-command-routes[data-hidden="true"] { opacity: 0; }
+          .pill-command-route {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+          }
+          /* The digit is drawn as the key it is, so the legend reads as
+             something to press rather than something to click. */
+          .pill-command-route-key {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            border-radius: 4px;
+            background: rgba(245, 241, 228, 0.11);
+            color: rgba(245, 241, 228, 0.62);
+            font-size: 9px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+          }
 
           /* The status mark's slot, opening from the capsule's right end the
              same way the cancel slot opens from its left. */
@@ -2094,8 +2836,21 @@ export default function AppPage(): React.JSX.Element {
           }
 
           @media (prefers-reduced-motion: reduce) {
+            /* Keep the fade, drop the travel, the overshoot and the blur —
+               those are the parts that provoke. */
+            .pill-surface,
+            .pill-surface[data-show="true"] {
+              transform: none !important;
+              filter: none !important;
+            }
+            .pill-rise,
+            .pill-surface[data-show="true"] .pill-rise {
+              transform: none !important;
+              transition-delay: 0ms !important;
+            }
             .pill-surface,
             .pill-surface[data-show="true"],
+            .pill-rise,
             .pill-status,
             .pill-status-mark,
             .pill-cancel,
@@ -2108,7 +2863,7 @@ export default function AppPage(): React.JSX.Element {
         `}
       </style>
 
-      {state !== "idle" && (
+      {(state !== "idle" || showCommandCard) && (
         <>
           <span className="sr-only" role="status" aria-live="polite">
             {accessibleStatus}
@@ -2129,6 +2884,7 @@ export default function AppPage(): React.JSX.Element {
               onMouseLeave={handlePillLeave}
               style={{
                 ...pillInnerStyle,
+                ...riseBy(10),
                 transformOrigin,
                 marginBottom: pillAlign === "end" ? 8 : 0,
                 marginTop: pillAlign === "start" ? 8 : 0,
@@ -2199,7 +2955,7 @@ export default function AppPage(): React.JSX.Element {
                   </button>
                 </span>
 
-                {waveform}
+                {!showCommandCard && waveform}
               </span>
 
               {/* Status, outside the core: the capsule grows to the right by
@@ -2299,27 +3055,15 @@ export default function AppPage(): React.JSX.Element {
           </div>
 
           {/* ---- Failure card ---- */}
-          <div className={layerClass} aria-hidden={!cardOpen}>
+          <div className={layerClass} aria-hidden={!errorCardOpen}>
             <div
               className="pill-surface pill-card"
-              data-show={cardOpen}
-              style={
-                {
-                  width: PILL_CARD_WIDTH,
-                  padding: "13px 15px 12px",
-                  borderRadius: 20,
-                  background: SURFACE,
-                  border: SURFACE_BORDER,
-                  backdropFilter: BLUR,
-                  WebkitBackdropFilter: BLUR,
-                  boxShadow: "0 8px 28px rgba(0, 0, 0, 0.3)",
-                  transformOrigin,
-                  marginBottom: pillAlign === "end" ? 8 : 0,
-                  marginTop: pillAlign === "start" ? 8 : 0,
-                  cursor: "grab",
-                  WebkitAppRegion: "drag",
-                } as React.CSSProperties
-              }
+              data-show={errorCardOpen}
+              style={{
+                ...cardSurfaceStyle,
+                padding: "13px 15px 12px",
+                ...(errorCardOpen ? { WebkitAppRegion: "drag" } : {}),
+              }}
             >
               <div className="flex items-start" style={{ gap: 10 }}>
                 <span
@@ -2405,6 +3149,140 @@ export default function AppPage(): React.JSX.Element {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* ---- Command card ---- */}
+          {/* Same surface and the same place on screen as the failure card, so
+              the two read as one object the pill can turn into rather than as
+              two unrelated popups. */}
+          <div className={layerClass} aria-hidden={!commandOpen}>
+            <div
+              className="pill-surface pill-card"
+              data-show={commandOpen}
+              style={{
+                ...cardSurfaceStyle,
+                // The anchored edge gets the capsule's inset — (PILL_HEIGHT -
+                // SVG_HEIGHT) / 2 — so the waveform lands exactly where it sat
+                // a moment ago. The far edge is free to be roomier.
+                padding:
+                  pillAlign === "start"
+                    ? `${(PILL_HEIGHT - SVG_HEIGHT) / 2}px 14px 13px`
+                    : `13px 14px ${(PILL_HEIGHT - SVG_HEIGHT) / 2}px`,
+                ...(commandOpen ? { WebkitAppRegion: "drag" } : {}),
+              }}
+            >
+              {commandView?.phase === "error" ? (
+                <>
+                  <div className="flex items-start" style={{ gap: 10 }}>
+                    <span
+                      className="inline-flex items-center justify-center"
+                      style={{
+                        width: 20,
+                        height: 20,
+                        marginTop: 1,
+                        borderRadius: "50%",
+                        background: "rgba(224, 128, 95, 0.16)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 12 12"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M6 3.1v3.3"
+                          stroke={ALERT}
+                          strokeWidth={1.6}
+                          strokeLinecap="round"
+                        />
+                        <circle cx="6" cy="8.7" r="0.85" fill={ALERT} />
+                      </svg>
+                    </span>
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          lineHeight: 1.2,
+                          color: INK,
+                        }}
+                      >
+                        {commandView.title}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 3,
+                          fontSize: 11.5,
+                          lineHeight: 1.35,
+                          color: "rgba(245, 241, 228, 0.58)",
+                          display: "-webkit-box",
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {commandView.body}
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    className="flex items-center justify-end"
+                    style={
+                      {
+                        marginTop: 11,
+                        WebkitAppRegion: "no-drag",
+                      } as React.CSSProperties
+                    }
+                  >
+                    <button
+                      type="button"
+                      className="pill-action pill-action-ghost"
+                      onClick={() => endCommand()}
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="pill-command-body" data-anchor={pillAlign}>
+                  {/* The routes, as a legend rather than controls: these are
+                      keys you press on the chord you are already holding, so
+                      what the card owes you is the number, not a target to
+                      click. It hides once a command is under way — by then it
+                      is answering a question nobody is asking any more. */}
+                  <div
+                    className="pill-command-routes pill-rise pill-rise-2"
+                    data-hidden={commandView?.phase === "running"}
+                    aria-hidden="true"
+                  >
+                    {COMMAND_PRESETS.map((preset, index) => (
+                      <span className="pill-command-route" key={preset.id}>
+                        <span className="pill-command-route-key">
+                          {index + 1}
+                        </span>
+                        {preset.label}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="pill-command-lead pill-rise pill-rise-1">
+                    {commandLead}
+                  </div>
+
+                  {/* The waveform, at the size and the spot it occupies in the
+                      capsule — the box grows around it rather than replacing
+                      it, so the bars never jump when the card takes over. Only
+                      ever mounted here while a command is up: a second copy in
+                      the tree would take the ref the draw loop writes through,
+                      and the visible row would sit still. */}
+                  <div className="pill-command-wave">
+                    {showCommandCard && waveform}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </>

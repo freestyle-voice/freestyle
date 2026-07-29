@@ -20,7 +20,7 @@
 
 import { createAppLogger } from "@freestyle-voice/utils";
 import type { MemberPreferencesInput } from "@freestyle-voice/validations";
-import { readSetting, writeSetting } from "./db.js";
+import { writeSetting } from "./db.js";
 import {
   FreestyleCloudRequestError,
   getCloudPreferences,
@@ -152,9 +152,4 @@ export async function pushSettingToCloud(
       `Preferences push skipped for ${key}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-}
-
-/** Read the current locally-stored value for a synced field (for debugging). */
-export function readSyncedSetting(key: string): string | undefined {
-  return SYNCED_SETTING_KEYS.has(key) ? readSetting(key) : undefined;
 }

@@ -1,4 +1,8 @@
-import type { SuggestedLanguage } from "@freestyle-voice/validations";
+import type {
+  IndustryToneDefaults,
+  SuggestedLanguage,
+} from "@freestyle-voice/validations";
+import { orderBySuggestedLanguages as orderLanguages } from "@freestyle-voice/validations";
 import { useQuery } from "@tanstack/react-query";
 import { getClient } from "./api";
 import { ONE_HOUR } from "./query";
@@ -6,7 +10,7 @@ import { ONE_HOUR } from "./query";
 interface CloudConfig {
   suggestedLanguages: SuggestedLanguage[];
   industryVocabulary: string[];
-  industryToneDefaults: Record<string, string> | null;
+  industryToneDefaults: IndustryToneDefaults | null;
 }
 
 /**
@@ -32,36 +36,13 @@ export function useCloudConfig(enabled: boolean, industry?: string) {
 }
 
 /**
- * Order a list of language options so the cloud-suggested languages (for the
- * user's region) come first, preserving each group's relative order. Falls back
- * to the input order when there are no suggestions. `auto` (or any pinned
- * leading option) is expected to already be first in `options` and is left in
- * place.
+ * Order desktop language options (`{ value }`-shaped) by the cloud's
+ * region-based suggestions, keeping `"auto"` pinned first. Thin wrapper over the
+ * shared {@link orderLanguages} helper so the ranking matches the mobile picker.
  */
 export function orderBySuggestedLanguages<T extends { value: string }>(
   options: T[],
   suggested: SuggestedLanguage[] | undefined,
-  pinnedFirst: string[] = ["auto"],
 ): T[] {
-  if (!suggested?.length) return options;
-
-  const suggestedRank = new Map<string, number>();
-  suggested.forEach((l, i) => {
-    suggestedRank.set(l.code, i);
-  });
-
-  const pinned = options.filter((o) => pinnedFirst.includes(o.value));
-  const rest = options.filter((o) => !pinnedFirst.includes(o.value));
-
-  const withRank = rest.map((o, i) => ({ o, i }));
-  withRank.sort((a, b) => {
-    const ra = suggestedRank.get(a.o.value);
-    const rb = suggestedRank.get(b.o.value);
-    if (ra !== undefined && rb !== undefined) return ra - rb;
-    if (ra !== undefined) return -1;
-    if (rb !== undefined) return 1;
-    return a.i - b.i; // stable: keep original order for non-suggested
-  });
-
-  return [...pinned, ...withRank.map((x) => x.o)];
+  return orderLanguages(options, suggested, (o) => o.value);
 }

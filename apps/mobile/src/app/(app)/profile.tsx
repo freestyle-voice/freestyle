@@ -400,9 +400,11 @@ function ProfileDetailsCard() {
     setSaved(false);
     try {
       const updated = await updateProfileFields({
-        industry,
-        jobTitle: jobTitle.trim() || undefined,
-        company: company.trim() || undefined,
+        // Send `null` (not `undefined`) to clear a field — `undefined` is
+        // dropped by JSON serialization, which the server reads as "unchanged".
+        industry: industry ?? null,
+        jobTitle: jobTitle.trim() || null,
+        company: company.trim() || null,
       });
       queryClient.setQueryData(["cloud-profile-fields"], updated);
       setSaved(true);

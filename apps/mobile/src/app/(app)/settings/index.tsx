@@ -52,10 +52,6 @@ export default function SettingsScreen() {
     staleTime: 6 * 60 * 60 * 1000,
     retry: 1,
   });
-  const suggestedCodes = useMemo(
-    () => cloudConfig?.suggestedLanguages.map((l) => l.code),
-    [cloudConfig?.suggestedLanguages],
-  );
 
   const languageName = useMemo(
     () =>
@@ -120,7 +116,7 @@ export default function SettingsScreen() {
         selected={settings.language}
         onSelect={setLanguage}
         onClose={() => setLanguageOpen(false)}
-        suggestedCodes={suggestedCodes}
+        suggestedLanguages={cloudConfig?.suggestedLanguages}
       />
     </SettingsScreenScaffold>
   );

@@ -226,9 +226,11 @@ function ProfileDetailsCard({
     setSaved(false);
     try {
       await updateProfile.mutateAsync({
-        industry,
-        jobTitle: jobTitle.trim() || undefined,
-        company: company.trim() || undefined,
+        // Send `null` (not `undefined`) to clear a field — `undefined` is
+        // dropped by JSON serialization, which the server reads as "unchanged".
+        industry: industry ?? null,
+        jobTitle: jobTitle.trim() || null,
+        company: company.trim() || null,
       });
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2000);

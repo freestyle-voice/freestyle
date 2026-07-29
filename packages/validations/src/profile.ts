@@ -55,11 +55,14 @@ export const INDUSTRY_LABELS: Record<Industry, string> = {
  * Profile fields editable by the user. Geo fields (country, region, timezone)
  * are auto-detected server-side and returned by the cloud but never sent by the
  * client, so they are not part of the writable input schema.
+ *
+ * Each field is `.nullish()`: omit a key to leave it untouched, or send `null`
+ * (or an empty string, normalized server-side) to explicitly clear it.
  */
 export const profileSchema = z.object({
-  industry: industrySchema.optional(),
-  jobTitle: z.string().trim().max(120).optional(),
-  company: z.string().trim().max(120).optional(),
+  industry: industrySchema.nullish(),
+  jobTitle: z.string().trim().max(120).nullish(),
+  company: z.string().trim().max(120).nullish(),
 });
 
 export type ProfileInput = z.infer<typeof profileSchema>;

@@ -6,6 +6,8 @@
  * options clear of the home indicator.
  */
 
+import type { SuggestedLanguage } from "@freestyle-voice/validations";
+import { orderBySuggestedLanguages } from "@freestyle-voice/validations";
 import { Check } from "lucide-react-native";
 import { useMemo } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -22,11 +24,11 @@ interface LanguageSheetProps {
   onSelect: (code: LanguageCode) => void;
   onClose: () => void;
   /**
-   * Cloud-suggested language codes for the user's region (from `/v2/config`).
-   * When present, matching languages are surfaced first (after "auto"),
-   * preserving the original order otherwise.
+   * Cloud-suggested languages for the user's region (from `/v2/config`). When
+   * present, matching languages are surfaced first (after "auto"), preserving
+   * the original order otherwise.
    */
-  suggestedCodes?: string[];
+  suggestedLanguages?: SuggestedLanguage[];
 }
 
 export function LanguageSheet({
@@ -34,30 +36,17 @@ export function LanguageSheet({
   selected,
   onSelect,
   onClose,
-  suggestedCodes,
+  suggestedLanguages,
 }: LanguageSheetProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
 
-  const languages = useMemo(() => {
-    if (!suggestedCodes?.length) return LANGUAGES;
-    const rank = new Map(suggestedCodes.map((code, i) => [code, i]));
-    // "auto" is pinned first; everything else sorts by suggested rank, then by
-    // the original list order (stable) for non-suggested languages.
-    return [...LANGUAGES]
-      .map((lang, i) => ({ lang, i }))
-      .sort((a, b) => {
-        if (a.lang.code === "auto") return -1;
-        if (b.lang.code === "auto") return 1;
-        const ra = rank.get(a.lang.code);
-        const rb = rank.get(b.lang.code);
-        if (ra !== undefined && rb !== undefined) return ra - rb;
-        if (ra !== undefined) return -1;
-        if (rb !== undefined) return 1;
-        return a.i - b.i;
-      })
-      .map((x) => x.lang);
-  }, [suggestedCodes]);
+  // Order by region suggestions (shared with the desktop picker); "auto" pinned.
+  const languages = useMemo(
+    () =>
+      orderBySuggestedLanguages(LANGUAGES, suggestedLanguages, (l) => l.code),
+    [suggestedLanguages],
+  );
 
   return (
     <Modal

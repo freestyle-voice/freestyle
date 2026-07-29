@@ -37,3 +37,10 @@ export const unlinkAccountSchema = z.object({
 });
 
 export type UnlinkAccountInput = z.infer<typeof unlinkAccountSchema>;
+
+// Set the signed-in user's active organization.
+export const setActiveOrgSchema = z.object({
+  organizationId: z.string().min(1, "organizationId required"),
+});
+
+export type SetActiveOrgInput = z.infer<typeof setActiveOrgSchema>;

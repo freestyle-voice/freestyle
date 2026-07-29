@@ -1,7 +1,7 @@
 import { createAppLogger } from "@freestyle-voice/utils";
+import { setActiveOrgSchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { z } from "zod/v3";
 import { formatError } from "../lib/format-error.js";
 import {
   getCloudActiveOrganization,
@@ -11,10 +11,6 @@ import {
 import { getSessionToken } from "../lib/sessions.js";
 
 const log = createAppLogger("org");
-
-const setActiveOrgSchema = z.object({
-  organizationId: z.string().min(1, "organizationId required"),
-});
 
 const org = new Hono()
   /** List all organizations the signed-in user belongs to. */

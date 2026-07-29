@@ -126,6 +126,11 @@ export function useListOrganizations(enabled: boolean) {
   });
 }
 
+/** An organization the signed-in user belongs to (from the org list). */
+type Organization = NonNullable<
+  ReturnType<typeof useListOrganizations>["data"]
+>[number];
+
 /** The user's active organization from Freestyle Cloud. */
 export function useActiveOrganization(enabled: boolean) {
   return useQuery({
@@ -164,10 +169,11 @@ export function useSetActiveOrganization() {
 
       const previous = queryClient.getQueryData(ACTIVE_ORG_QUERY_KEY);
 
-      // Optimistically swap the active org from the cached org list.
-      const orgs = queryClient.getQueryData(ORGS_QUERY_KEY) as
-        | { id: string; name: string; slug: string }[]
-        | undefined;
+      // Optimistically swap the active org from the cached org list. The list
+      // rows are a subset of the full active-org shape (no `members`), which is
+      // fine for the sidebar (reads only `name`); `onSettled` refetches the
+      // authoritative full object.
+      const orgs = queryClient.getQueryData<Organization[]>(ORGS_QUERY_KEY);
       const next = orgs?.find((o) => o.id === organizationId);
       if (next) {
         queryClient.setQueryData(ACTIVE_ORG_QUERY_KEY, next);

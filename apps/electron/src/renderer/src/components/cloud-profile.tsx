@@ -242,7 +242,11 @@ export function CloudProfileButton(): React.JSX.Element {
           Help
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onSelect={() => void signOut()}>
+        <DropdownMenuItem
+          variant="destructive"
+          onSelect={() => void signOut()}
+          className="rounded-t-none"
+        >
           <LogOut />
           Sign out
         </DropdownMenuItem>

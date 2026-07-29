@@ -7,12 +7,12 @@ import { ThemedView } from "@/components/themed-view";
 import { useTheme } from "@/hooks/use-theme";
 
 /**
- * Deep-link landing route for `freestyle://billing` — the return URL used by
- * both `startProCheckout` and `openBillingPortal` (see `@/lib/cloud/subscription`).
- * `WebBrowser.openAuthSessionAsync` should already close the in-app browser and
- * hand control back on its own, but if the OS routes the deep link here instead
- * (e.g. the browser was dismissed manually), this screen resolves it cleanly:
- * refresh the cached usage/plan and bounce back to Profile. Belt-and-suspenders.
+ * Deep-link landing route for `freestyle://billing`.
+ *
+ * Native In-App Purchases return through StoreKit/Play callbacks (handled by
+ * `useProSubscription`), not a deep link, so this route is now only a defensive
+ * catch-all: if anything routes here (an old link, a store deep link), refresh
+ * the cached usage/plan and bounce back to Profile.
  */
 export default function BillingScreen() {
   const router = useRouter();

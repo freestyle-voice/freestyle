@@ -30,13 +30,13 @@
  */
 
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import { useCallback, useEffect, useRef } from "react";
 import { Alert, AppState } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
 import { authHeaders } from "@/lib/cloud/session";
 import { CloudStreamSession } from "@/lib/cloud/stream";
-import { startProCheckout } from "@/lib/cloud/subscription";
 import {
   applyDictionaryReplacements,
   useEntries,
@@ -213,7 +213,7 @@ export function useResidentDictation(
                 { text: "Not now", style: "cancel" },
                 {
                   text: "Upgrade",
-                  onPress: () => void startProCheckout(false),
+                  onPress: () => router.push("/(app)/profile"),
                 },
               ],
             );

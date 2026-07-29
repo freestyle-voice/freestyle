@@ -60,7 +60,16 @@
       "expo-asset",
       "expo-apple-authentication",
       "./plugins/withKeyboardExtension",
-      "./plugins/withPodResourceBundleSigning"
+      "./plugins/withPodResourceBundleSigning",
+      "expo-iap",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "2.0.21"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

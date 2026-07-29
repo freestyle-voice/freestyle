@@ -1,7 +1,13 @@
 import { useRouter } from "expo-router";
-import { Check, ClipboardCheck, Mic, Sparkles } from "lucide-react-native";
+import {
+  Check,
+  ClipboardCheck,
+  Keyboard,
+  Mic,
+  Sparkles,
+} from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
-import { Linking, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Linking, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
@@ -13,6 +19,10 @@ import {
   type MicPermission,
   requestMicPermission,
 } from "@/lib/audio/recorder";
+import {
+  type KeyboardStatus,
+  useKeyboardStatus,
+} from "@/lib/keyboard/use-keyboard-status";
 import { useOnboarding } from "@/lib/onboarding";
 import { LANGUAGES, type LanguageCode, useSettings } from "@/lib/settings";
 
@@ -33,6 +43,7 @@ export default function OnboardingScreen() {
 
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [micStatus, setMicStatus] = useState<MicPermission>("undetermined");
+  const { status: keyboardStatus } = useKeyboardStatus();
 
   useEffect(() => {
     void checkMicPermission().then(setMicStatus);
@@ -75,6 +86,7 @@ export default function OnboardingScreen() {
             <StepPermissions
               micStatus={micStatus}
               onGrantMic={grantMic}
+              keyboardStatus={keyboardStatus}
               theme={theme}
             />
           ) : step === 1 ? (
@@ -143,12 +155,15 @@ export default function OnboardingScreen() {
 function StepPermissions({
   micStatus,
   onGrantMic,
+  keyboardStatus,
   theme,
 }: {
   micStatus: MicPermission;
   onGrantMic: () => void;
+  keyboardStatus: KeyboardStatus;
   theme: ReturnType<typeof useTheme>;
 }) {
+  const keyboardReady = keyboardStatus === "ready";
   return (
     <View style={styles.stepContent}>
       <ThemedText type="display" style={styles.title}>
@@ -188,10 +203,40 @@ function StepPermissions({
         )}
       </Pressable>
 
-      {Platform.OS === "ios" ? (
-        <ThemedText themeColor="mutedForeground" style={styles.mutedLine}>
-          You can set up the voice keyboard later in Settings.
-        </ThemedText>
+      {/* Voice keyboard (iOS only). iOS gives no API to enable a keyboard, so we
+          deep-link to Settings and reflect the result live via the App Group
+          handshake. Optional here — the user can also finish this in Settings. */}
+      {keyboardStatus !== "unsupported" ? (
+        <Pressable
+          onPress={() => {
+            if (!keyboardReady) void Linking.openSettings();
+          }}
+          disabled={keyboardReady}
+          style={[
+            styles.micRow,
+            { borderColor: keyboardReady ? theme.primary : theme.border },
+          ]}
+        >
+          <Keyboard
+            color={keyboardReady ? theme.primary : theme.mutedForeground}
+            size={18}
+          />
+          <View style={styles.switchLabel}>
+            <ThemedText style={styles.rowLabel}>Voice keyboard</ThemedText>
+            <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
+              {keyboardReady
+                ? "Enabled with Full Access — dictate in any app."
+                : "Enable the Freestyle keyboard + Full Access in Settings."}
+            </ThemedText>
+          </View>
+          {keyboardReady ? (
+            <Check color={theme.primary} size={18} />
+          ) : (
+            <ThemedText type="eyebrow" themeColor="primary">
+              Set up
+            </ThemedText>
+          )}
+        </Pressable>
       ) : null}
     </View>
   );
@@ -292,7 +337,6 @@ const styles = StyleSheet.create({
   body: { flex: 1, justifyContent: "center" },
   stepContent: { gap: Spacing.four },
   title: { marginBottom: Spacing.one },
-  mutedLine: { fontSize: 13, lineHeight: 19 },
   micRow: {
     flexDirection: "row",
     alignItems: "center",

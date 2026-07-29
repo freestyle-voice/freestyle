@@ -11,9 +11,9 @@ import {
   type MicPermission,
   requestMicPermission,
 } from "@/lib/audio/recorder";
+import { useKeyboardStatus } from "@/lib/keyboard/use-keyboard-status";
 
 const STEPS = [
-  "Grant microphone access below (Freestyle records your voice when you dictate).",
   "Open Settings › General › Keyboard › Keyboards.",
   "Tap “Add New Keyboard…” and choose Freestyle.",
   "Tap Freestyle in the list, then enable “Allow Full Access”.",
@@ -23,6 +23,7 @@ const STEPS = [
 export default function KeyboardSetupScreen() {
   const theme = useTheme();
   const [micStatus, setMicStatus] = useState<MicPermission>("undetermined");
+  const { status: keyboardStatus, ready: keyboardReady } = useKeyboardStatus();
 
   useEffect(() => {
     void checkMicPermission().then(setMicStatus);
@@ -43,6 +44,40 @@ export default function KeyboardSetupScreen() {
       title="Voice keyboard"
       subtitle="Add the Freestyle keyboard once, then use it in any app. Tap the mic and Freestyle opens to capture your voice, then drops the transcript straight back into the field. Full Access lets the keyboard talk to Freestyle and insert your text."
     >
+      {/* Live status — flips to a confirmed state the moment the keyboard runs
+          with Full Access (detected via the shared App Group handshake). */}
+      {keyboardStatus !== "unsupported" ? (
+        <View
+          style={[
+            styles.statusBanner,
+            {
+              backgroundColor: keyboardReady ? theme.accent : theme.secondary,
+              borderColor: keyboardReady ? theme.primary : theme.border,
+            },
+          ]}
+        >
+          {keyboardReady ? (
+            <Check color={theme.primary} size={18} />
+          ) : (
+            <View
+              style={[styles.pendingDot, { backgroundColor: theme.border }]}
+            />
+          )}
+          <View style={styles.switchLabel}>
+            <ThemedText style={styles.rowLabel}>
+              {keyboardReady
+                ? "Freestyle keyboard is ready"
+                : "Keyboard not set up yet"}
+            </ThemedText>
+            <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
+              {keyboardReady
+                ? "Enabled with Full Access — dictate from any app."
+                : "Follow the steps below, then return here."}
+            </ThemedText>
+          </View>
+        </View>
+      ) : null}
+
       <Pressable
         onPress={grantMic}
         disabled={micStatus === "granted"}
@@ -75,33 +110,55 @@ export default function KeyboardSetupScreen() {
       <View style={styles.steps}>
         {STEPS.map((step, i) => (
           <View key={step} style={styles.step}>
-            <View style={[styles.badge, { backgroundColor: theme.accent }]}>
-              <ThemedText
-                style={[styles.badgeText, { color: theme.accentForeground }]}
-              >
-                {i + 1}
-              </ThemedText>
+            <View
+              style={[
+                styles.badge,
+                {
+                  backgroundColor: keyboardReady ? theme.primary : theme.accent,
+                },
+              ]}
+            >
+              {keyboardReady ? (
+                <Check color={theme.primaryForeground} size={14} />
+              ) : (
+                <ThemedText
+                  style={[styles.badgeText, { color: theme.accentForeground }]}
+                >
+                  {i + 1}
+                </ThemedText>
+              )}
             </View>
             <ThemedText style={styles.stepText}>{step}</ThemedText>
           </View>
         ))}
       </View>
 
-      <Pressable
-        onPress={() => void Linking.openSettings()}
-        style={[styles.cta, { backgroundColor: theme.primary }]}
-      >
-        <ThemedText
-          style={[styles.ctaText, { color: theme.primaryForeground }]}
+      {!keyboardReady ? (
+        <Pressable
+          onPress={() => void Linking.openSettings()}
+          style={[styles.cta, { backgroundColor: theme.primary }]}
         >
-          Open Settings
-        </ThemedText>
-      </Pressable>
+          <ThemedText
+            style={[styles.ctaText, { color: theme.primaryForeground }]}
+          >
+            Open Settings
+          </ThemedText>
+        </Pressable>
+      ) : null}
     </SettingsScreenScaffold>
   );
 }
 
 const styles = StyleSheet.create({
+  statusBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.xl,
+    padding: Spacing.three,
+  },
+  pendingDot: { width: 12, height: 12, borderRadius: Radius.full },
   micRow: {
     flexDirection: "row",
     alignItems: "center",

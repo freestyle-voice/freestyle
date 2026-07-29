@@ -11,7 +11,6 @@ import { Progress } from "@renderer/components/ui/progress";
 import { useUpgradeModal } from "@renderer/components/upgrade-modal";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { formatNumber } from "@renderer/lib/format";
-import { LINKS } from "@renderer/lib/links";
 import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
 import { cn } from "@renderer/lib/utils";
 import {
@@ -169,7 +168,7 @@ export function CloudProfileButton(): React.JSX.Element {
             type="button"
             aria-label="Manage profile"
             title="Manage profile"
-            onClick={() => void window.api.openExternal(LINKS.cloudProfile)}
+            onClick={() => navigate("/profile")}
             className="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring flex size-6 shrink-0 items-center justify-center rounded-[6px] transition-colors focus-visible:ring-1 focus-visible:outline-none"
           >
             <Settings className="size-3.5" />

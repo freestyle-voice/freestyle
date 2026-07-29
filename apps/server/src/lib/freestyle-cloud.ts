@@ -570,6 +570,89 @@ export async function createBillingPortalSession(
   return { url };
 }
 
+// ---------------------------------------------------------------------------
+// Profile (name + linked social accounts, via the cloud's Better Auth endpoints)
+// ---------------------------------------------------------------------------
+
+const PROFILE_REQUEST_TIMEOUT_MS = 15_000;
+
+/** A social provider the cloud supports linking against. */
+export type SocialProvider = "github" | "google" | "apple";
+
+/** A social account already linked to the signed-in user. */
+export interface LinkedAccount {
+  providerId: string;
+}
+
+/**
+ * Update the signed-in user's display name via Better Auth's `update-user`
+ * endpoint. The cloud only accepts `name`/`image` here; `email` changes are
+ * rejected upstream.
+ */
+export async function updateCloudUserName(
+  token: string,
+  name: string,
+): Promise<void> {
+  await cloudJson<{ status?: boolean }>("/auth/update-user", token, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+    signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+  });
+}
+
+/**
+ * List the social accounts linked to the signed-in user. The cloud returns
+ * richer rows; we surface only `providerId`, which is all the UI needs.
+ */
+export async function listCloudAccounts(
+  token: string,
+): Promise<LinkedAccount[]> {
+  const rows = await cloudJson<{ providerId?: string }[]>(
+    "/auth/list-accounts",
+    token,
+    {
+      method: "GET",
+      signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+    },
+  );
+  return rows
+    .filter(
+      (r): r is { providerId: string } => typeof r.providerId === "string",
+    )
+    .map((r) => ({ providerId: r.providerId }));
+}
+
+/**
+ * Begin linking a social account. `disableRedirect` makes the cloud return the
+ * provider's OAuth URL instead of a 302 so the desktop can open it in the
+ * system browser; the browser lands back on `callbackURL` once consent
+ * completes and the app refetches the linked accounts.
+ */
+export async function linkCloudSocial(
+  token: string,
+  opts: { provider: SocialProvider; callbackURL: string },
+): Promise<{ url: string }> {
+  const { url } = await cloudJson<{ url?: string; redirect?: boolean }>(
+    "/auth/link-social",
+    token,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: opts.provider,
+        callbackURL: opts.callbackURL,
+        disableRedirect: true,
+      }),
+      signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+    },
+  );
+  if (typeof url !== "string" || !url) {
+    throw new Error("Freestyle Cloud link response did not include a URL");
+  }
+  return { url };
+}
+
 /** Upper bound for the best-effort connection prewarm. */
 const CLOUD_PREWARM_TIMEOUT_MS = 5_000;
 

@@ -36,6 +36,7 @@ const PluginDetailPage = lazy(
 );
 const PluginPage = lazy(() => import("@renderer/pages/plugins/plugin-page"));
 const PluginsPage = lazy(() => import("@renderer/pages/plugins/plugins"));
+const ProfilePage = lazy(() => import("@renderer/pages/profile"));
 const SettingsPage = lazy(() => import("@renderer/pages/settings"));
 const TonePage = lazy(() => import("@renderer/pages/tone"));
 const VocabularyPage = lazy(() => import("@renderer/pages/vocabulary"));
@@ -136,6 +137,10 @@ function mount(): void {
                                 element={<Navigate to="/today" replace />}
                               />
                               <Route path="/help" element={<HelpPage />} />
+                              <Route
+                                path="/profile"
+                                element={<ProfilePage />}
+                              />
                               <Route
                                 path="/plugins"
                                 element={<PluginsPage />}

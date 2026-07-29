@@ -1,23 +1,38 @@
-import { deviceTokenSchema } from "@freestyle-voice/validations";
+import {
+  deviceTokenSchema,
+  linkSocialSchema,
+  updateProfileSchema,
+} from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import {
   DeviceFlowError,
   fetchCloudUser,
   freestyleCloudUrl,
+  linkCloudSocial,
+  listCloudAccounts,
   pollDeviceToken,
   requestDeviceCode,
   signOutCloud,
+  updateCloudUserName,
 } from "../lib/freestyle-cloud.js";
 import { applyFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js";
 import { capture, identifyCloudUser } from "../lib/posthog.js";
 import {
   getSession,
+  getSessionToken,
   getSessionUser,
   invalidateSession,
   setSession,
 } from "../lib/sessions.js";
 import { isTrustedRendererOrigin } from "../lib/trusted-origin.js";
+
+/**
+ * Where the browser lands after an OAuth account-link completes. Mirrors the
+ * billing flow: a static marketing page, since the desktop can't be redirected
+ * back into itself — the app refetches linked accounts when it regains focus.
+ */
+const LINK_CALLBACK_URL = "https://freestylevoice.com/profile";
 
 const auth = new Hono()
   .use("*", async (c, next) => {
@@ -79,6 +94,62 @@ const auth = new Hono()
     }
     invalidateSession();
     return c.json({ ok: true });
+  })
+  // Social accounts linked to the signed-in user, for the profile page.
+  .get("/accounts", async (c) => {
+    const token = getSessionToken();
+    if (!token) {
+      return c.json({ error: "Not signed in to Freestyle Cloud" }, 401);
+    }
+    try {
+      const accounts = await listCloudAccounts(token);
+      return c.json({ accounts });
+    } catch {
+      return c.json({ error: "Failed to load connected accounts" }, 502);
+    }
+  })
+  // Update the display name, then mirror it into the local session so the
+  // sidebar/profile reflect the change without waiting for a status refresh.
+  .post("/profile", zValidator("json", updateProfileSchema), async (c) => {
+    const session = getSession();
+    if (!session) {
+      return c.json({ error: "Not signed in to Freestyle Cloud" }, 401);
+    }
+    const { name } = c.req.valid("json");
+    try {
+      await updateCloudUserName(session.token, name);
+    } catch {
+      return c.json({ error: "Failed to update profile" }, 502);
+    }
+    const user = { ...session.user, name };
+    setSession({
+      token: session.token,
+      refreshToken: session.refreshToken ?? null,
+      expiresAt: session.expiresAt ?? null,
+      issuedAt: session.issuedAt ?? null,
+      user,
+      host: session.host,
+    });
+    identifyCloudUser(user);
+    return c.json({ user });
+  })
+  // Begin linking a social account: returns the provider's OAuth URL for the
+  // renderer to open in the system browser.
+  .post("/link-social", zValidator("json", linkSocialSchema), async (c) => {
+    const token = getSessionToken();
+    if (!token) {
+      return c.json({ error: "Not signed in to Freestyle Cloud" }, 401);
+    }
+    const { provider } = c.req.valid("json");
+    try {
+      const { url } = await linkCloudSocial(token, {
+        provider,
+        callbackURL: LINK_CALLBACK_URL,
+      });
+      return c.json({ url });
+    } catch {
+      return c.json({ error: "Failed to start account linking" }, 502);
+    }
   });
 
 export default auth;

@@ -1,22 +1,30 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { LogOut, Sparkles } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { Check, LogOut, Sparkles } from "lucide-react-native";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
   Pressable,
   StyleSheet,
+  TextInput,
   View,
 } from "react-native";
 
+import { AppleIcon, GitHubIcon, GoogleIcon } from "@/components/provider-icons";
 import { Card, SettingsScreenScaffold } from "@/components/settings-ui";
 import { Skeleton } from "@/components/skeleton";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
+import {
+  linkProvider,
+  listLinkedProviders,
+  type SocialProvider,
+  updateName,
+} from "@/lib/cloud/profile";
 import { openBillingPortal, startProCheckout } from "@/lib/cloud/subscription";
 import { fetchCloudUsage } from "@/lib/cloud/usage";
 import { formatNumber } from "@/lib/format";
@@ -117,6 +125,12 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Card>
+
+      {/* Personal information */}
+      {signedIn ? <NameCard currentName={user?.name ?? ""} /> : null}
+
+      {/* Connected accounts */}
+      {signedIn ? <ConnectedAccountsCard /> : null}
 
       {/* Plan */}
       <Card>
@@ -238,6 +252,173 @@ export default function ProfileScreen() {
   );
 }
 
+const PROVIDER_META: {
+  id: SocialProvider;
+  label: string;
+  Icon: typeof GitHubIcon;
+}[] = [
+  { id: "github", label: "GitHub", Icon: GitHubIcon },
+  { id: "google", label: "Google", Icon: GoogleIcon },
+  { id: "apple", label: "Apple", Icon: AppleIcon },
+];
+
+/** Editable display-name card. */
+function NameCard({ currentName }: { currentName: string }) {
+  const theme = useTheme();
+  const [name, setName] = useState(currentName);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setName(currentName);
+  }, [currentName]);
+
+  const trimmed = name.trim();
+  const dirty = trimmed !== currentName.trim();
+  const canSave = dirty && trimmed.length > 0 && !saving;
+
+  const onSave = useCallback(async () => {
+    if (!canSave) return;
+    setSaving(true);
+    setSaved(false);
+    const { error } = await updateName(trimmed);
+    setSaving(false);
+    if (error) {
+      Alert.alert("Couldn't update name", error);
+      return;
+    }
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }, [canSave, trimmed]);
+
+  return (
+    <Card>
+      <ThemedText type="eyebrow" themeColor="mutedForeground">
+        NAME
+      </ThemedText>
+      <TextInput
+        value={name}
+        onChangeText={setName}
+        placeholder="Your name"
+        placeholderTextColor={theme.mutedForeground}
+        maxLength={120}
+        returnKeyType="done"
+        onSubmitEditing={() => void onSave()}
+        style={[
+          styles.input,
+          { borderColor: theme.border, color: theme.foreground },
+        ]}
+      />
+      <Pressable
+        onPress={() => void onSave()}
+        disabled={!canSave}
+        style={({ pressed }) => [
+          styles.primaryButton,
+          { backgroundColor: theme.primary },
+          pressed && canSave ? { opacity: 0.9 } : null,
+          !canSave ? styles.buttonDisabled : null,
+        ]}
+      >
+        {saving ? (
+          <ActivityIndicator color={theme.primaryForeground} />
+        ) : (
+          <>
+            {saved ? <Check color={theme.primaryForeground} size={16} /> : null}
+            <ThemedText
+              style={[
+                styles.primaryButtonText,
+                { color: theme.primaryForeground },
+              ]}
+            >
+              {saved ? "Saved" : "Save changes"}
+            </ThemedText>
+          </>
+        )}
+      </Pressable>
+    </Card>
+  );
+}
+
+/** Social-account linking card. */
+function ConnectedAccountsCard() {
+  const theme = useTheme();
+  const queryClient = useQueryClient();
+  const [linking, setLinking] = useState<SocialProvider | null>(null);
+
+  const { data: linked, isLoading } = useQuery({
+    queryKey: ["cloud-accounts"],
+    queryFn: listLinkedProviders,
+    retry: 1,
+  });
+
+  const onLink = useCallback(
+    async (provider: SocialProvider) => {
+      setLinking(provider);
+      const { error } = await linkProvider(provider);
+      setLinking(null);
+      if (error) {
+        Alert.alert("Couldn't connect", error);
+        return;
+      }
+      void queryClient.invalidateQueries({ queryKey: ["cloud-accounts"] });
+    },
+    [queryClient],
+  );
+
+  return (
+    <Card>
+      <ThemedText type="eyebrow" themeColor="mutedForeground">
+        CONNECTED ACCOUNTS
+      </ThemedText>
+      {isLoading ? (
+        <Skeleton width={160} height={20} />
+      ) : (
+        PROVIDER_META.map(({ id, label, Icon }) => {
+          const isConnected = linked?.includes(id) ?? false;
+          return (
+            <View
+              key={id}
+              style={[styles.providerRow, { borderColor: theme.border }]}
+            >
+              <Icon size={20} color={theme.foreground} />
+              <ThemedText style={styles.providerLabel}>{label}</ThemedText>
+              {isConnected ? (
+                <ThemedText
+                  themeColor="mutedForeground"
+                  style={styles.connectedLabel}
+                >
+                  Connected
+                </ThemedText>
+              ) : (
+                <Pressable
+                  onPress={() => void onLink(id)}
+                  disabled={linking !== null}
+                  style={({ pressed }) => [
+                    styles.connectButton,
+                    { borderColor: theme.border },
+                    pressed && linking === null
+                      ? { backgroundColor: theme.secondary }
+                      : null,
+                    linking !== null ? styles.buttonDisabled : null,
+                  ]}
+                >
+                  {linking === id ? (
+                    <ActivityIndicator color={theme.foreground} size="small" />
+                  ) : (
+                    <ThemedText style={styles.connectButtonText}>
+                      Connect
+                    </ThemedText>
+                  )}
+                </Pressable>
+              )}
+            </View>
+          );
+        })
+      )}
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
   accountHeader: {
     flexDirection: "row",
@@ -299,6 +480,37 @@ const styles = StyleSheet.create({
   },
   outlineButtonText: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   buttonDisabled: { opacity: 0.6 },
+  input: {
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two + 2,
+    fontFamily: Fonts.sans,
+    fontSize: 15,
+    marginTop: Spacing.two,
+  },
+  providerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+    marginTop: Spacing.two,
+  },
+  providerLabel: { fontFamily: Fonts.sansMedium, fontSize: 15 },
+  connectedLabel: { marginLeft: "auto", fontSize: 14 },
+  connectButton: {
+    marginLeft: "auto",
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    minWidth: 84,
+    alignItems: "center",
+  },
+  connectButtonText: { fontFamily: Fonts.sansMedium, fontSize: 14 },
   signOutCard: {
     flexDirection: "row",
     alignItems: "center",

@@ -27,6 +27,10 @@ import {
   DEFAULT_PERSONAL_TONE,
   DEFAULT_WORK_TONE,
 } from "./cleanup-tones";
+import {
+  fetchCloudPreferences,
+  pushCloudPreferences,
+} from "./cloud/preferences";
 import { getPref, setPref } from "./storage";
 
 export const LANGUAGES = [
@@ -94,6 +98,73 @@ interface SettingsContextValue {
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
 
+/**
+ * Which `DictationSettings` fields sync to the cloud, and the cloud preference
+ * field each maps to. `language` and `cleanup` are local-only concerns
+ * (`cleanup` is an app toggle; `language` maps to the cloud `language` field).
+ */
+const CLOUD_FIELD_MAP: {
+  [K in keyof DictationSettings]?:
+    | "intensity"
+    | "customPrompt"
+    | "personalTone"
+    | "workTone"
+    | "emailTone"
+    | "overallTone"
+    | "language";
+} = {
+  intensity: "intensity",
+  customPrompt: "customPrompt",
+  personalTone: "personalTone",
+  workTone: "workTone",
+  emailTone: "emailTone",
+  overallTone: "overallTone",
+  language: "language",
+};
+
+/**
+ * Fetch the cloud preferences snapshot and mirror it into AsyncStorage,
+ * returning the patch to merge into local state. Returns null when signed out /
+ * offline / no snapshot, so the caller keeps the local settings as-is. Never
+ * throws.
+ */
+async function hydrateSettingsFromCloud(): Promise<Partial<DictationSettings> | null> {
+  let remote: Awaited<ReturnType<typeof fetchCloudPreferences>>;
+  try {
+    remote = await fetchCloudPreferences();
+  } catch {
+    return null; // signed out / offline / no org — keep local settings.
+  }
+
+  const next: Partial<DictationSettings> = {};
+  const writes: Promise<void>[] = [];
+  const apply = <K extends keyof DictationSettings>(
+    field: K,
+    storageKey: string,
+    value: DictationSettings[K] | null | undefined,
+  ): void => {
+    if (value === undefined || value === null) return;
+    next[field] = value;
+    writes.push(setPref(storageKey, String(value)));
+  };
+
+  apply("intensity", INTENSITY_KEY, remote.intensity ?? undefined);
+  apply("customPrompt", CUSTOM_PROMPT_KEY, remote.customPrompt ?? undefined);
+  apply("personalTone", PERSONAL_TONE_KEY, remote.personalTone ?? undefined);
+  apply("workTone", WORK_TONE_KEY, remote.workTone ?? undefined);
+  apply("emailTone", EMAIL_TONE_KEY, remote.emailTone ?? undefined);
+  apply("overallTone", OVERALL_TONE_KEY, remote.overallTone ?? undefined);
+  apply(
+    "language",
+    LANGUAGE_KEY,
+    (remote.language as LanguageCode) ?? undefined,
+  );
+
+  if (Object.keys(next).length === 0) return null;
+  await Promise.all(writes).catch(() => {});
+  return next;
+}
+
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<DictationSettings>(DEFAULTS);
   const [ready, setReady] = useState(false);
@@ -132,6 +203,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           (overallTone as CleanupOverallTone) ?? DEFAULTS.overallTone,
       });
       setReady(true);
+
+      // Seed from the cloud snapshot when signed in (cross-device sync). The
+      // cloud is the cross-device seed; a value present upstream overwrites the
+      // local one and is mirrored back into AsyncStorage. No-op / swallowed
+      // when signed out or offline.
+      const patch = await hydrateSettingsFromCloud();
+      if (patch) setSettings((s) => ({ ...s, ...patch }));
     })();
   }, []);
 
@@ -143,6 +221,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     ) => {
       setSettings((s) => ({ ...s, [field]: value }));
       void setPref(storageKey, String(value));
+
+      // Mirror the change to the cloud (fire-and-forget; swallowed on failure
+      // so a sync error never affects the local write).
+      const cloudField = CLOUD_FIELD_MAP[field];
+      if (cloudField) {
+        void pushCloudPreferences({ [cloudField]: value }).catch(() => {});
+      }
     },
     [],
   );

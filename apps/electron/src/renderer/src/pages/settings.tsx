@@ -48,6 +48,10 @@ import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import { SETTINGS_QUERY_KEY, settingsQueryOptions } from "@renderer/lib/query";
 import {
+  orderBySuggestedLanguages,
+  useCloudConfig,
+} from "@renderer/lib/use-cloud-config";
+import {
   type CloudUsageBalance,
   usagePercent,
   useCloudUsage,
@@ -144,6 +148,8 @@ function normalizePillPos(pos: string): string {
 export default function SettingsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
+  const { user } = useCloudAuth();
+  const { data: cloudConfig } = useCloudConfig(!!user);
   const [devices, setDevices] = useState<AudioDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [hotkey, setHotkey] = useState(
@@ -187,19 +193,24 @@ export default function SettingsPage(): React.JSX.Element {
   );
 
   const languageOptions = useMemo(
-    () => [
-      {
-        value: "auto",
-        label:
-          t("settings.recording.transcriptionLanguages.auto") || "Auto-detect",
-      },
-      ...LANGUAGES.map((l) => ({
-        value: l.id,
-        label:
-          t(`settings.recording.transcriptionLanguages.${l.id}`) || l.label,
-      })),
-    ],
-    [t],
+    () =>
+      orderBySuggestedLanguages(
+        [
+          {
+            value: "auto",
+            label:
+              t("settings.recording.transcriptionLanguages.auto") ||
+              "Auto-detect",
+          },
+          ...LANGUAGES.map((l) => ({
+            value: l.id,
+            label:
+              t(`settings.recording.transcriptionLanguages.${l.id}`) || l.label,
+          })),
+        ],
+        cloudConfig?.suggestedLanguages,
+      ),
+    [t, cloudConfig?.suggestedLanguages],
   );
 
   const retentionOptions = useMemo(

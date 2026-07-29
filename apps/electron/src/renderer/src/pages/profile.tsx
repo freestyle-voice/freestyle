@@ -1,3 +1,8 @@
+import {
+  INDUSTRY_LABELS,
+  type Industry,
+  industrySchema,
+} from "@freestyle-voice/validations";
 import { Button } from "@renderer/components/ui/button";
 import {
   Card,
@@ -9,14 +14,23 @@ import {
 } from "@renderer/components/ui/card";
 import { Input } from "@renderer/components/ui/input";
 import { Label } from "@renderer/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@renderer/components/ui/select";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import {
   type SocialProvider,
   useLinkedAccounts,
   useLinkSocial,
+  useProfileFields,
   useRefreshAccountsOnFocus,
   useUnlinkSocial,
   useUpdateName,
+  useUpdateProfileFields,
 } from "@renderer/lib/use-profile";
 import { PageHeader, PageShell } from "@renderer/pages/models/page-chrome";
 import { Check, Loader2 } from "lucide-react";
@@ -89,6 +103,9 @@ export default function ProfilePage(): React.JSX.Element {
 
         {/* Edit name */}
         <NameCard currentName={user.name ?? ""} />
+
+        {/* Professional details */}
+        <ProfileDetailsCard enabled={!!user} />
 
         {/* Connected accounts */}
         <ConnectedAccountsCard enabled={!!user} />
@@ -164,6 +181,153 @@ function NameCard({ currentName }: { currentName: string }): React.JSX.Element {
           onClick={() => void onSave()}
         >
           {updateName.isPending ? <Loader2 className="animate-spin" /> : null}
+          Save changes
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+
+/** Base UI Select can't use "" as a value; use a sentinel for "not set". */
+const NO_INDUSTRY = "__none__";
+
+function ProfileDetailsCard({
+  enabled,
+}: {
+  enabled: boolean;
+}): React.JSX.Element {
+  const { data: profile } = useProfileFields(enabled);
+  const updateProfile = useUpdateProfileFields();
+  const [saved, setSaved] = useState(false);
+
+  const [industry, setIndustry] = useState<Industry | undefined>(undefined);
+  const [jobTitle, setJobTitle] = useState("");
+  const [company, setCompany] = useState("");
+
+  // Seed local form state whenever the fetched profile changes.
+  useEffect(() => {
+    if (!profile) return;
+    const parsed = industrySchema.safeParse(profile.industry);
+    setIndustry(parsed.success ? parsed.data : undefined);
+    setJobTitle(profile.jobTitle ?? "");
+    setCompany(profile.company ?? "");
+  }, [profile]);
+
+  const savedIndustry = industrySchema.safeParse(profile?.industry).success
+    ? (profile?.industry as Industry)
+    : undefined;
+  const dirty =
+    industry !== savedIndustry ||
+    jobTitle.trim() !== (profile?.jobTitle ?? "") ||
+    company.trim() !== (profile?.company ?? "");
+
+  const onSave = async (): Promise<void> => {
+    if (!dirty) return;
+    setSaved(false);
+    try {
+      await updateProfile.mutateAsync({
+        industry,
+        jobTitle: jobTitle.trim() || undefined,
+        company: company.trim() || undefined,
+      });
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // Error surfaced inline below.
+    }
+  };
+
+  const detectedLocation = [profile?.region, profile?.country]
+    .filter(Boolean)
+    .join(", ");
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Professional Details</CardTitle>
+        <CardDescription>
+          Tell us about your work so Freestyle can tailor suggestions.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="max-w-sm space-y-1.5">
+          <Label htmlFor="profile-industry">Industry</Label>
+          <Select
+            value={industry ?? NO_INDUSTRY}
+            onValueChange={(value) =>
+              setIndustry(
+                value === NO_INDUSTRY ? undefined : (value as Industry),
+              )
+            }
+          >
+            <SelectTrigger id="profile-industry" className="w-full">
+              <SelectValue placeholder="Select your industry" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_INDUSTRY}>Not specified</SelectItem>
+              {industrySchema.options.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {INDUSTRY_LABELS[value]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="max-w-sm space-y-1.5">
+          <Label htmlFor="profile-job-title">Job title</Label>
+          <Input
+            id="profile-job-title"
+            value={jobTitle}
+            placeholder="e.g. Product Manager"
+            maxLength={120}
+            onChange={(e) => setJobTitle(e.target.value)}
+          />
+        </div>
+        <div className="max-w-sm space-y-1.5">
+          <Label htmlFor="profile-company">Company</Label>
+          <Input
+            id="profile-company"
+            value={company}
+            placeholder="e.g. Acme Inc."
+            maxLength={120}
+            onChange={(e) => setCompany(e.target.value)}
+          />
+        </div>
+        {detectedLocation ? (
+          <div className="max-w-sm space-y-0.5">
+            <p className="text-sm font-medium">Detected location</p>
+            <p className="text-muted-foreground text-[13px]">
+              {detectedLocation}
+              {profile?.timezone ? ` · ${profile.timezone}` : ""}
+            </p>
+            <p className="text-muted-foreground text-[12px]">
+              Auto-detected and refreshed each time you save.
+            </p>
+          </div>
+        ) : null}
+        {updateProfile.isError ? (
+          <p className="text-destructive text-[12px]">
+            {updateProfile.error instanceof Error
+              ? updateProfile.error.message
+              : "Failed to update profile"}
+          </p>
+        ) : null}
+      </CardContent>
+      <CardFooter className="justify-end gap-2">
+        {saved ? (
+          <span className="text-muted-foreground flex items-center gap-1 text-[12px]">
+            <Check className="size-3.5" />
+            Saved
+          </span>
+        ) : null}
+        <Button
+          size="sm"
+          disabled={!dirty || updateProfile.isPending}
+          onClick={() => void onSave()}
+        >
+          {updateProfile.isPending ? (
+            <Loader2 className="animate-spin" />
+          ) : null}
           Save changes
         </Button>
       </CardFooter>

@@ -1,3 +1,8 @@
+import {
+  INDUSTRY_LABELS,
+  type Industry,
+  industrySchema,
+} from "@freestyle-voice/validations";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { Building2, Check, LogOut, Sparkles } from "lucide-react-native";
@@ -11,9 +16,12 @@ import {
   TextInput,
   View,
 } from "react-native";
-
 import { AppleIcon, GitHubIcon, GoogleIcon } from "@/components/provider-icons";
-import { Card, SettingsScreenScaffold } from "@/components/settings-ui";
+import {
+  Card,
+  OptionCard,
+  SettingsScreenScaffold,
+} from "@/components/settings-ui";
 import { Skeleton } from "@/components/skeleton";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
@@ -25,11 +33,13 @@ import {
   setActiveOrganization,
 } from "@/lib/cloud/org";
 import {
+  getProfileFields,
   linkProvider,
   listLinkedProviders,
   type SocialProvider,
   unlinkProvider,
   updateName,
+  updateProfileFields,
 } from "@/lib/cloud/profile";
 import { openBillingPortal, startProCheckout } from "@/lib/cloud/subscription";
 import { fetchCloudUsage } from "@/lib/cloud/usage";
@@ -134,6 +144,9 @@ export default function ProfileScreen() {
 
       {/* Personal information */}
       {signedIn ? <NameCard currentName={user?.name ?? ""} /> : null}
+
+      {/* Professional details */}
+      {signedIn ? <ProfileDetailsCard /> : null}
 
       {/* Connected accounts */}
       {signedIn ? <ConnectedAccountsCard /> : null}
@@ -318,6 +331,169 @@ function NameCard({ currentName }: { currentName: string }) {
           { borderColor: theme.border, color: theme.foreground },
         ]}
       />
+      <Pressable
+        onPress={() => void onSave()}
+        disabled={!canSave}
+        style={({ pressed }) => [
+          styles.primaryButton,
+          { backgroundColor: theme.primary },
+          pressed && canSave ? { opacity: 0.9 } : null,
+          !canSave ? styles.buttonDisabled : null,
+        ]}
+      >
+        {saving ? (
+          <ActivityIndicator color={theme.primaryForeground} />
+        ) : (
+          <>
+            {saved ? <Check color={theme.primaryForeground} size={16} /> : null}
+            <ThemedText
+              style={[
+                styles.primaryButtonText,
+                { color: theme.primaryForeground },
+              ]}
+            >
+              {saved ? "Saved" : "Save changes"}
+            </ThemedText>
+          </>
+        )}
+      </Pressable>
+    </Card>
+  );
+}
+
+/** Professional details: industry, job title, company + detected location. */
+function ProfileDetailsCard() {
+  const theme = useTheme();
+  const queryClient = useQueryClient();
+  const [industry, setIndustry] = useState<Industry | undefined>(undefined);
+  const [jobTitle, setJobTitle] = useState("");
+  const [company, setCompany] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const { data: profile, isLoading } = useQuery({
+    queryKey: ["cloud-profile-fields"],
+    queryFn: getProfileFields,
+    retry: 1,
+  });
+
+  useEffect(() => {
+    if (!profile) return;
+    const parsed = industrySchema.safeParse(profile.industry);
+    setIndustry(parsed.success ? parsed.data : undefined);
+    setJobTitle(profile.jobTitle ?? "");
+    setCompany(profile.company ?? "");
+  }, [profile]);
+
+  const savedIndustry = industrySchema.safeParse(profile?.industry).success
+    ? (profile?.industry as Industry)
+    : undefined;
+  const dirty =
+    industry !== savedIndustry ||
+    jobTitle.trim() !== (profile?.jobTitle ?? "") ||
+    company.trim() !== (profile?.company ?? "");
+  const canSave = dirty && !saving;
+
+  const onSave = useCallback(async () => {
+    if (!canSave) return;
+    setSaving(true);
+    setSaved(false);
+    try {
+      const updated = await updateProfileFields({
+        industry,
+        jobTitle: jobTitle.trim() || undefined,
+        company: company.trim() || undefined,
+      });
+      queryClient.setQueryData(["cloud-profile-fields"], updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      Alert.alert(
+        "Couldn't update profile",
+        e instanceof Error ? e.message : "Try again.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [canSave, industry, jobTitle, company, queryClient]);
+
+  const detectedLocation = [profile?.region, profile?.country]
+    .filter(Boolean)
+    .join(", ");
+
+  if (isLoading) {
+    return (
+      <Card>
+        <ThemedText type="eyebrow" themeColor="mutedForeground">
+          PROFESSIONAL DETAILS
+        </ThemedText>
+        <Skeleton width={180} height={20} />
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <ThemedText type="eyebrow" themeColor="mutedForeground">
+        INDUSTRY
+      </ThemedText>
+      {industrySchema.options.map((value) => (
+        <OptionCard
+          key={value}
+          label={INDUSTRY_LABELS[value]}
+          selected={industry === value}
+          onPress={() => setIndustry(industry === value ? undefined : value)}
+        />
+      ))}
+
+      <ThemedText
+        type="eyebrow"
+        themeColor="mutedForeground"
+        style={styles.detailsLabel}
+      >
+        JOB TITLE
+      </ThemedText>
+      <TextInput
+        value={jobTitle}
+        onChangeText={setJobTitle}
+        placeholder="e.g. Product Manager"
+        placeholderTextColor={theme.mutedForeground}
+        maxLength={120}
+        style={[
+          styles.input,
+          { borderColor: theme.border, color: theme.foreground },
+        ]}
+      />
+
+      <ThemedText
+        type="eyebrow"
+        themeColor="mutedForeground"
+        style={styles.detailsLabel}
+      >
+        COMPANY
+      </ThemedText>
+      <TextInput
+        value={company}
+        onChangeText={setCompany}
+        placeholder="e.g. Acme Inc."
+        placeholderTextColor={theme.mutedForeground}
+        maxLength={120}
+        style={[
+          styles.input,
+          { borderColor: theme.border, color: theme.foreground },
+        ]}
+      />
+
+      {detectedLocation ? (
+        <ThemedText
+          themeColor="mutedForeground"
+          style={styles.detectedLocation}
+        >
+          Detected location: {detectedLocation}
+          {profile?.timezone ? ` · ${profile.timezone}` : ""}
+        </ThemedText>
+      ) : null}
+
       <Pressable
         onPress={() => void onSave()}
         disabled={!canSave}
@@ -662,6 +838,12 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.sans,
     fontSize: 15,
     marginTop: Spacing.two,
+  },
+  detailsLabel: { marginTop: Spacing.four },
+  detectedLocation: {
+    fontFamily: Fonts.sans,
+    fontSize: 13,
+    marginTop: Spacing.three,
   },
   providerRow: {
     flexDirection: "row",

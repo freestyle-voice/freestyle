@@ -7,6 +7,7 @@
  */
 
 import { Check } from "lucide-react-native";
+import { useMemo } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -20,6 +21,12 @@ interface LanguageSheetProps {
   selected: LanguageCode;
   onSelect: (code: LanguageCode) => void;
   onClose: () => void;
+  /**
+   * Cloud-suggested language codes for the user's region (from `/v2/config`).
+   * When present, matching languages are surfaced first (after "auto"),
+   * preserving the original order otherwise.
+   */
+  suggestedCodes?: string[];
 }
 
 export function LanguageSheet({
@@ -27,9 +34,30 @@ export function LanguageSheet({
   selected,
   onSelect,
   onClose,
+  suggestedCodes,
 }: LanguageSheetProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+
+  const languages = useMemo(() => {
+    if (!suggestedCodes?.length) return LANGUAGES;
+    const rank = new Map(suggestedCodes.map((code, i) => [code, i]));
+    // "auto" is pinned first; everything else sorts by suggested rank, then by
+    // the original list order (stable) for non-suggested languages.
+    return [...LANGUAGES]
+      .map((lang, i) => ({ lang, i }))
+      .sort((a, b) => {
+        if (a.lang.code === "auto") return -1;
+        if (b.lang.code === "auto") return 1;
+        const ra = rank.get(a.lang.code);
+        const rb = rank.get(b.lang.code);
+        if (ra !== undefined && rb !== undefined) return ra - rb;
+        if (ra !== undefined) return -1;
+        if (rb !== undefined) return 1;
+        return a.i - b.i;
+      })
+      .map((x) => x.lang);
+  }, [suggestedCodes]);
 
   return (
     <Modal
@@ -66,7 +94,7 @@ export function LanguageSheet({
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         >
-          {LANGUAGES.map((lang) => {
+          {languages.map((lang) => {
             const active = lang.code === selected;
             return (
               <Pressable

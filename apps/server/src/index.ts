@@ -26,6 +26,7 @@ import {
   plugins,
 } from "./lib/plugins/index.js";
 import { captureException, shutdownPosthog } from "./lib/posthog.js";
+import { pullCloudPreferences } from "./lib/preferences-sync.js";
 import {
   startSessionKeepAlive,
   stopSessionKeepAlive,
@@ -212,6 +213,10 @@ export async function startServer(
   // and tone blocks are in memory before the first dictation. Fire-and-forget:
   // it never throws and falls back to the bundled copy when offline.
   void refreshCleanupPromptConfig();
+
+  // Seed local cleanup preferences from the cloud on launch when already signed
+  // in (cross-device sync). No-op when signed out; never throws.
+  void pullCloudPreferences();
 
   // Load plugins (built-in + user) before serving. The app dispatches plugin
   // middleware from the live registry per request, so later runtime reloads

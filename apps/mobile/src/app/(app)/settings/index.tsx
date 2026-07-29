@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import type { LucideIcon } from "lucide-react-native";
 import {
@@ -19,7 +20,9 @@ import {
 } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
+import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
+import { fetchCloudConfig } from "@/lib/cloud/cloud-config";
 import { type ColorModePreference, useColorMode } from "@/lib/color-mode";
 import { LANGUAGES, useSettings } from "@/lib/settings";
 
@@ -37,8 +40,22 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { settings, setLanguage } = useSettings();
+  const { signedIn } = useAuth();
   const { preference, setPreference } = useColorMode();
   const [languageOpen, setLanguageOpen] = useState(false);
+
+  // Region-based suggested languages from the cloud, to order the picker.
+  const { data: cloudConfig } = useQuery({
+    queryKey: ["cloud-config"],
+    queryFn: () => fetchCloudConfig(),
+    enabled: signedIn,
+    staleTime: 6 * 60 * 60 * 1000,
+    retry: 1,
+  });
+  const suggestedCodes = useMemo(
+    () => cloudConfig?.suggestedLanguages.map((l) => l.code),
+    [cloudConfig?.suggestedLanguages],
+  );
 
   const languageName = useMemo(
     () =>
@@ -103,6 +120,7 @@ export default function SettingsScreen() {
         selected={settings.language}
         onSelect={setLanguage}
         onClose={() => setLanguageOpen(false)}
+        suggestedCodes={suggestedCodes}
       />
     </SettingsScreenScaffold>
   );

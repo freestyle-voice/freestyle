@@ -4,6 +4,11 @@ import type {
   CleanupOverallTone,
   CleanupPersonalTone,
   CleanupWorkTone,
+  CloudConfigResponse,
+  CloudMemberPreferences,
+  CloudProfile,
+  MemberPreferencesInput,
+  ProfileInput,
 } from "@freestyle-voice/validations";
 import { createAuthClient } from "better-auth/client";
 import { deviceAuthorizationClient } from "better-auth/client/plugins";
@@ -238,6 +243,27 @@ export function freestyleCloudUrl(): string {
 /** WebSocket URL for the cloud streaming endpoint (`/v2/stream`). */
 export function freestyleCloudStreamWsUrl(): string {
   return `${freestyleCloudUrl().replace(/^http/, "ws")}/v2/stream`;
+}
+
+/**
+ * Fetch the public `GET /v2/config` payload: cleanup prompt config plus
+ * region-based suggested languages and (optional) industry-based vocabulary /
+ * tone defaults. Unauthenticated and CDN-cacheable. Pass `industry` to receive
+ * industry suggestions; language ordering is derived from the caller's IP geo
+ * by the cloud.
+ */
+export async function fetchCloudConfig(
+  industry?: string | null,
+): Promise<CloudConfigResponse> {
+  const url = new URL(`${freestyleCloudUrl()}/v2/config`);
+  if (industry) url.searchParams.set("industry", industry);
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new FreestyleCloudRequestError(res.status, `config fetch failed`);
+  }
+  return (await res.json()) as CloudConfigResponse;
 }
 
 function createCloudAuthClient() {
@@ -667,6 +693,73 @@ export async function unlinkCloudAccount(
     body: JSON.stringify({ providerId }),
     signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Profile fields (industry / job title / company) + auto-detected geo
+// ---------------------------------------------------------------------------
+
+/** Fetch the signed-in user's profile fields and detected geo. */
+export async function getCloudProfile(token: string): Promise<CloudProfile> {
+  return cloudJson<CloudProfile>("/profile", token, {
+    method: "GET",
+    signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+  });
+}
+
+/**
+ * Update the signed-in user's profile fields. Geo (country/region/timezone) is
+ * auto-detected server-side from the request and never sent from here.
+ */
+export async function updateCloudProfile(
+  token: string,
+  data: ProfileInput,
+): Promise<void> {
+  await cloudJson<{ success?: boolean }>("/profile", token, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(data),
+    signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Cloud-synced cleanup preferences (member-scoped)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch the signed-in member's cloud-synced cleanup preferences. Returns an
+ * empty object when nothing has been synced yet (or when the user has no active
+ * organization — the cloud replies 400, surfaced as a request error the caller
+ * swallows).
+ */
+export async function getCloudPreferences(
+  token: string,
+): Promise<CloudMemberPreferences> {
+  return cloudJson<CloudMemberPreferences>("/preferences", token, {
+    method: "GET",
+    signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+  });
+}
+
+/**
+ * Push a partial preferences patch to the cloud. Only the fields present in
+ * `data` are written; the nested `vocabulary` object is deep-merged upstream.
+ */
+export async function putCloudPreferences(
+  token: string,
+  data: MemberPreferencesInput,
+): Promise<{ syncedAt?: string }> {
+  return cloudJson<{ success?: boolean; syncedAt?: string }>(
+    "/preferences",
+    token,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(data),
+      signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import {
   deviceTokenSchema,
   linkSocialSchema,
+  profileSchema,
   unlinkAccountSchema,
   updateProfileSchema,
 } from "@freestyle-voice/validations";
@@ -10,16 +11,19 @@ import {
   DeviceFlowError,
   fetchCloudUser,
   freestyleCloudUrl,
+  getCloudProfile,
   linkCloudSocial,
   listCloudAccounts,
   pollDeviceToken,
   requestDeviceCode,
   signOutCloud,
   unlinkCloudAccount,
+  updateCloudProfile,
   updateCloudUserName,
 } from "../lib/freestyle-cloud.js";
 import { applyFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js";
 import { capture, identifyCloudUser } from "../lib/posthog.js";
+import { pullCloudPreferences } from "../lib/preferences-sync.js";
 import {
   getSession,
   getSessionToken,
@@ -68,6 +72,9 @@ const auth = new Hono()
       });
       applyFreestyleCloudDefaults();
       identifyCloudUser(user);
+      // Seed local cleanup preferences from the cloud snapshot (cross-device
+      // sync). Fire-and-forget — sign-in must not block on it.
+      void pullCloudPreferences();
       capture("freestyle_default_applied_on_signin", {
         voice: true,
         cleanup: true,
@@ -134,6 +141,34 @@ const auth = new Hono()
     });
     identifyCloudUser(user);
     return c.json({ user });
+  })
+  // Profile fields (industry / job title / company) + read-only detected geo.
+  .get("/profile-fields", async (c) => {
+    const token = getSessionToken();
+    if (!token) {
+      return c.json({ error: "Not signed in to Freestyle Cloud" }, 401);
+    }
+    try {
+      const profile = await getCloudProfile(token);
+      return c.json({ profile });
+    } catch {
+      return c.json({ error: "Failed to load profile" }, 502);
+    }
+  })
+  .put("/profile-fields", zValidator("json", profileSchema), async (c) => {
+    const token = getSessionToken();
+    if (!token) {
+      return c.json({ error: "Not signed in to Freestyle Cloud" }, 401);
+    }
+    try {
+      await updateCloudProfile(token, c.req.valid("json"));
+      // Return the fresh row (now with server-detected geo) so the UI can show
+      // the detected location without a second round-trip.
+      const profile = await getCloudProfile(token);
+      return c.json({ profile });
+    } catch {
+      return c.json({ error: "Failed to update profile" }, 502);
+    }
   })
   // Begin linking a social account: returns the provider's OAuth URL for the
   // renderer to open in the system browser.

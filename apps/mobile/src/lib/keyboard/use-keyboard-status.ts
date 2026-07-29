@@ -4,13 +4,23 @@
  * iOS gives apps no API to enable a custom keyboard or grant it Full Access —
  * the user must do both in Settings. But we *can* detect the end result: the
  * keyboard extension stamps a handshake into the shared App Group each time it
- * loads, and that write only succeeds when the extension has Full Access. So a
- * recent (or ever-present) handshake is honest proof the keyboard is enabled
- * and has Full Access.
+ * loads, and that write only succeeds when the extension has Full Access. So an
+ * ever-present handshake is proof the keyboard was, at least once, enabled and
+ * granted Full Access.
+ *
+ * Deliberate tradeoff — the signal is "sticky", not freshness-checked: the
+ * timestamp is only written (on keyboard load) and never expires. Once it's
+ * non-zero we report `"ready"` from then on, so *revoking* Full Access later is
+ * not detected (iOS gives no revocation callback). We can't use a TTL either:
+ * the value only updates when the keyboard is actually loaded, so a real but
+ * simply-unused keyboard would false-negative and nag a correctly-configured
+ * user. Reporting a stale "ready" is the lesser evil, and the keyboard's own
+ * runtime paths surface the true state if Full Access is actually missing.
  *
  * The status is re-read whenever the app returns to the foreground (the user
- * flips the switch in Settings and comes back) and on a slow poll while the
- * screen is mounted, so the guided setup UI updates itself.
+ * flips the switch in Settings and comes back) and on a slow poll while a
+ * consumer is mounted, so the guided setup UI updates itself the moment the
+ * handshake first appears.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -39,8 +49,6 @@ export interface KeyboardStatusResult {
   status: KeyboardStatus;
   /** True once the keyboard is enabled and has Full Access. */
   ready: boolean;
-  /** Force a re-read (e.g. after returning from Settings). */
-  refresh: () => void;
 }
 
 export function useKeyboardStatus(): KeyboardStatusResult {
@@ -65,5 +73,5 @@ export function useKeyboardStatus(): KeyboardStatusResult {
     };
   }, [refresh]);
 
-  return { status, ready: status === "ready", refresh };
+  return { status, ready: status === "ready" };
 }

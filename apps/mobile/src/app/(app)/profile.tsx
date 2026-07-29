@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { Check, LogOut, Sparkles } from "lucide-react-native";
+import { Building2, Check, LogOut, Sparkles } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -20,9 +20,15 @@ import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import {
+  getActiveOrganization,
+  listOrganizations,
+  setActiveOrganization,
+} from "@/lib/cloud/org";
+import {
   linkProvider,
   listLinkedProviders,
   type SocialProvider,
+  unlinkProvider,
   updateName,
 } from "@/lib/cloud/profile";
 import { openBillingPortal, startProCheckout } from "@/lib/cloud/subscription";
@@ -131,6 +137,9 @@ export default function ProfileScreen() {
 
       {/* Connected accounts */}
       {signedIn ? <ConnectedAccountsCard /> : null}
+
+      {/* Organization */}
+      {signedIn ? <OrganizationCard /> : null}
 
       {/* Plan */}
       <Card>
@@ -344,12 +353,15 @@ function ConnectedAccountsCard() {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const [linking, setLinking] = useState<SocialProvider | null>(null);
+  const [unlinking, setUnlinking] = useState<SocialProvider | null>(null);
 
   const { data: linked, isLoading } = useQuery({
     queryKey: ["cloud-accounts"],
     queryFn: listLinkedProviders,
     retry: 1,
   });
+
+  const connectedCount = linked?.length ?? 0;
 
   const onLink = useCallback(
     async (provider: SocialProvider) => {
@@ -365,6 +377,37 @@ function ConnectedAccountsCard() {
     [queryClient],
   );
 
+  const onUnlink = useCallback(
+    (provider: SocialProvider, label: string) => {
+      Alert.alert(
+        `Disconnect ${label}?`,
+        `You'll no longer be able to sign in with ${label}.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Disconnect",
+            style: "destructive",
+            onPress: async () => {
+              setUnlinking(provider);
+              const { error } = await unlinkProvider(provider);
+              setUnlinking(null);
+              if (error) {
+                Alert.alert("Couldn't disconnect", error);
+                return;
+              }
+              void queryClient.invalidateQueries({
+                queryKey: ["cloud-accounts"],
+              });
+            },
+          },
+        ],
+      );
+    },
+    [queryClient],
+  );
+
+  const busy = linking !== null || unlinking !== null;
+
   return (
     <Card>
       <ThemedText type="eyebrow" themeColor="mutedForeground">
@@ -375,6 +418,7 @@ function ConnectedAccountsCard() {
       ) : (
         PROVIDER_META.map(({ id, label, Icon }) => {
           const isConnected = linked?.includes(id) ?? false;
+          const isOnlyMethod = isConnected && connectedCount <= 1;
           return (
             <View
               key={id}
@@ -383,23 +427,42 @@ function ConnectedAccountsCard() {
               <Icon size={20} color={theme.foreground} />
               <ThemedText style={styles.providerLabel}>{label}</ThemedText>
               {isConnected ? (
-                <ThemedText
-                  themeColor="mutedForeground"
-                  style={styles.connectedLabel}
-                >
-                  Connected
-                </ThemedText>
-              ) : (
                 <Pressable
-                  onPress={() => void onLink(id)}
-                  disabled={linking !== null}
+                  onPress={() => onUnlink(id, label)}
+                  disabled={busy || isOnlyMethod}
                   style={({ pressed }) => [
                     styles.connectButton,
                     { borderColor: theme.border },
-                    pressed && linking === null
+                    pressed && !busy && !isOnlyMethod
                       ? { backgroundColor: theme.secondary }
                       : null,
-                    linking !== null ? styles.buttonDisabled : null,
+                    busy || isOnlyMethod ? styles.buttonDisabled : null,
+                  ]}
+                >
+                  {unlinking === id ? (
+                    <ActivityIndicator color={theme.foreground} size="small" />
+                  ) : (
+                    <ThemedText
+                      style={[
+                        styles.connectButtonText,
+                        { color: theme.mutedForeground },
+                      ]}
+                    >
+                      Disconnect
+                    </ThemedText>
+                  )}
+                </Pressable>
+              ) : (
+                <Pressable
+                  onPress={() => void onLink(id)}
+                  disabled={busy}
+                  style={({ pressed }) => [
+                    styles.connectButton,
+                    { borderColor: theme.border },
+                    pressed && !busy
+                      ? { backgroundColor: theme.secondary }
+                      : null,
+                    busy ? styles.buttonDisabled : null,
                   ]}
                 >
                   {linking === id ? (
@@ -414,6 +477,114 @@ function ConnectedAccountsCard() {
             </View>
           );
         })
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Active-organization card with an inline switcher. Every signed-in user has a
+ * default org set active by the cloud, so the active row always shows; the
+ * other orgs are only listed (tappable to switch) when the user belongs to
+ * more than one.
+ */
+function OrganizationCard() {
+  const theme = useTheme();
+  const queryClient = useQueryClient();
+  const [switching, setSwitching] = useState<string | null>(null);
+
+  const { data: orgs, isLoading: orgsLoading } = useQuery({
+    queryKey: ["cloud-orgs"],
+    queryFn: listOrganizations,
+    retry: 1,
+  });
+  const { data: activeOrg, isLoading: activeLoading } = useQuery({
+    queryKey: ["cloud-active-org"],
+    queryFn: getActiveOrganization,
+    retry: 1,
+  });
+
+  const onSwitch = useCallback(
+    async (organizationId: string) => {
+      if (organizationId === activeOrg?.id) return;
+      setSwitching(organizationId);
+      const { error } = await setActiveOrganization(organizationId);
+      setSwitching(null);
+      if (error) {
+        Alert.alert("Couldn't switch organization", error);
+        return;
+      }
+      void queryClient.invalidateQueries({ queryKey: ["cloud-active-org"] });
+    },
+    [activeOrg?.id, queryClient],
+  );
+
+  // Nothing to show until we know the user belongs to at least one org.
+  if (!orgsLoading && (orgs?.length ?? 0) === 0) return null;
+
+  const hasMultiple = (orgs?.length ?? 0) > 1;
+
+  return (
+    <Card>
+      <ThemedText type="eyebrow" themeColor="mutedForeground">
+        ORGANIZATION
+      </ThemedText>
+      {orgsLoading || activeLoading ? (
+        <Skeleton width={160} height={20} />
+      ) : hasMultiple ? (
+        orgs?.map((org) => {
+          const isActive = org.id === activeOrg?.id;
+          return (
+            <Pressable
+              key={org.id}
+              onPress={() => void onSwitch(org.id)}
+              disabled={switching !== null || isActive}
+              style={[
+                styles.orgRow,
+                {
+                  borderColor: isActive ? theme.primary : theme.border,
+                  backgroundColor: isActive ? theme.accent : "transparent",
+                },
+              ]}
+            >
+              <Building2
+                size={18}
+                color={isActive ? theme.accentForeground : theme.foreground}
+              />
+              <ThemedText
+                style={[
+                  styles.orgName,
+                  {
+                    color: isActive ? theme.accentForeground : theme.foreground,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {org.name}
+              </ThemedText>
+              {switching === org.id ? (
+                <ActivityIndicator
+                  color={theme.foreground}
+                  size="small"
+                  style={styles.orgTrailing}
+                />
+              ) : isActive ? (
+                <Check
+                  size={18}
+                  color={theme.accentForeground}
+                  style={styles.orgTrailing}
+                />
+              ) : null}
+            </Pressable>
+          );
+        })
+      ) : (
+        <View style={[styles.orgRow, { borderColor: theme.border }]}>
+          <Building2 size={18} color={theme.foreground} />
+          <ThemedText style={styles.orgName} numberOfLines={1}>
+            {activeOrg?.name ?? orgs?.[0]?.name ?? "—"}
+          </ThemedText>
+        </View>
       )}
     </Card>
   );
@@ -500,7 +671,6 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
   },
   providerLabel: { fontFamily: Fonts.sansMedium, fontSize: 15 },
-  connectedLabel: { marginLeft: "auto", fontSize: 14 },
   connectButton: {
     marginLeft: "auto",
     borderWidth: 1,
@@ -511,6 +681,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   connectButtonText: { fontFamily: Fonts.sansMedium, fontSize: 14 },
+  orgRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+    marginTop: Spacing.two,
+  },
+  orgName: { flex: 1, fontFamily: Fonts.sansMedium, fontSize: 15 },
+  orgTrailing: { marginLeft: "auto" },
   signOutCard: {
     flexDirection: "row",
     alignItems: "center",

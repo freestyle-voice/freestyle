@@ -28,6 +28,19 @@ export async function listLinkedProviders(): Promise<string[]> {
 }
 
 /**
+ * Unlink a social account from the signed-in user. Better Auth prevents
+ * unlinking the last remaining account by default (avoids lockout).
+ */
+export async function unlinkProvider(
+  provider: SocialProvider,
+): Promise<{ error?: string }> {
+  const { error } = await authClient.unlinkAccount({ providerId: provider });
+  return error
+    ? { error: error.message ?? "Failed to disconnect account" }
+    : {};
+}
+
+/**
  * Link a social account. iOS Apple uses the native sheet + ID-token flow (no
  * browser); everything else opens the in-app browser and resolves on the
  * deep-link callback, exactly like sign-in.

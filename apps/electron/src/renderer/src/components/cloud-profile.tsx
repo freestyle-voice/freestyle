@@ -67,7 +67,7 @@ export function UpgradeCtaCard(): React.JSX.Element | null {
 
 export function CloudProfileButton(): React.JSX.Element {
   const { user, loading, signingIn, signIn, signOut } = useCloudAuth();
-  const { isPro, openBillingPortal } = useCloudUsage(!!user);
+  const { isPro, balance, openBillingPortal } = useCloudUsage(!!user);
   const navigate = useNavigate();
 
   if (loading) {
@@ -135,7 +135,7 @@ export function CloudProfileButton(): React.JSX.Element {
               {user.name || user.email}
             </span>
             <span className="mt-0.5 flex items-center gap-1.5">
-              {isPro ? (
+              {balance == null ? null : isPro ? (
                 <Badge className="mono h-4 shrink-0 px-1.5 text-[9px] uppercase tracking-[0.12em]">
                   Pro
                 </Badge>
@@ -155,7 +155,10 @@ export function CloudProfileButton(): React.JSX.Element {
         sideOffset={6}
         className="w-[200px]"
       >
-        <div className="flex items-center gap-1.5 px-1.5 py-1">
+        <DropdownMenuItem
+          onSelect={() => navigate("/profile")}
+          className="flex items-center gap-1.5"
+        >
           <div className="min-w-0 flex-1">
             <div className="text-foreground truncate text-[13px] font-medium">
               {user.name || user.email}
@@ -164,16 +167,8 @@ export function CloudProfileButton(): React.JSX.Element {
               {user.email}
             </div>
           </div>
-          <button
-            type="button"
-            aria-label="Manage profile"
-            title="Manage profile"
-            onClick={() => navigate("/profile")}
-            className="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring flex size-6 shrink-0 items-center justify-center rounded-[6px] transition-colors focus-visible:ring-1 focus-visible:outline-none"
-          >
-            <Settings className="size-3.5" />
-          </button>
-        </div>
+          <Settings className="text-muted-foreground size-3.5 shrink-0" />
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {isPro ? (
           <>

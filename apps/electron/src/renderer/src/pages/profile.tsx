@@ -1,13 +1,6 @@
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@renderer/components/ui/card";
+import { Card, CardContent } from "@renderer/components/ui/card";
 import { Input } from "@renderer/components/ui/input";
 import { Label } from "@renderer/components/ui/label";
 import { useCloudAuth } from "@renderer/lib/auth-context";
@@ -19,7 +12,11 @@ import {
   useRefreshAccountsOnFocus,
   useUpdateName,
 } from "@renderer/lib/use-profile";
-import { PageHeader, PageShell } from "@renderer/pages/models/page-chrome";
+import {
+  Eyebrow,
+  PageHeader,
+  PageShell,
+} from "@renderer/pages/models/page-chrome";
 import { Check, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { IconType } from "react-icons";
@@ -48,7 +45,7 @@ function initialsFor(user: {
 
 export default function ProfilePage(): React.JSX.Element {
   const { user } = useCloudAuth();
-  const { isPro } = useCloudUsage(!!user);
+  const { isPro, balance } = useCloudUsage(!!user);
 
   if (!user) {
     return (
@@ -64,39 +61,54 @@ export default function ProfilePage(): React.JSX.Element {
   return (
     <PageShell>
       <PageHeader title="Profile" subtitle="Manage your account details." />
-      <div className="flex max-w-[560px] flex-col gap-6">
-        {/* Identity */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-4">
-              {user.image ? (
-                <img
-                  src={user.image}
-                  alt=""
-                  className="size-14 shrink-0 rounded-full object-cover"
-                />
-              ) : (
-                <div className="bg-muted text-muted-foreground flex size-14 shrink-0 items-center justify-center rounded-full text-xl font-medium">
-                  {initialsFor(user)}
-                </div>
-              )}
-              <div className="min-w-0">
-                <CardTitle className="truncate text-lg">
-                  {user.name || "User"}
-                </CardTitle>
-                <CardDescription className="truncate">
-                  {user.email}
-                </CardDescription>
-                <Badge variant="secondary" className="mt-1.5 capitalize">
+
+      <div className="max-w-[720px]">
+        {/* Identity header */}
+        <div className="mb-8 flex items-center gap-4">
+          {user.image ? (
+            <img
+              src={user.image}
+              alt=""
+              className="size-16 shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <div className="bg-muted text-muted-foreground flex size-16 shrink-0 items-center justify-center rounded-full text-xl font-medium">
+              {initialsFor(user)}
+            </div>
+          )}
+          <div className="min-w-0">
+            <div className="text-foreground flex items-center gap-2.5">
+              <span className="truncate text-lg font-medium">
+                {user.name || "User"}
+              </span>
+              {balance != null ? (
+                <Badge variant="secondary" className="shrink-0 capitalize">
                   {isPro ? "Pro" : "Free"}
                 </Badge>
-              </div>
+              ) : null}
             </div>
-          </CardHeader>
-        </Card>
+            <p className="text-muted-foreground mt-0.5 truncate text-[13px]">
+              {user.email}
+            </p>
+          </div>
+        </div>
 
-        <NameCard currentName={user.name ?? ""} />
-        <ConnectedAccountsCard enabled={!!user} />
+        {/* Content sections */}
+        <div className="flex flex-col gap-8">
+          <section>
+            <Eyebrow text="Personal information" accent />
+            <div className="mt-3">
+              <NameCard currentName={user.name ?? ""} />
+            </div>
+          </section>
+
+          <section>
+            <Eyebrow text="Connected accounts" accent />
+            <div className="mt-3">
+              <ConnectedAccountsCard enabled={!!user} />
+            </div>
+          </section>
+        </div>
       </div>
     </PageShell>
   );
@@ -107,7 +119,6 @@ function NameCard({ currentName }: { currentName: string }): React.JSX.Element {
   const [saved, setSaved] = useState(false);
   const updateName = useUpdateName();
 
-  // Re-seed when the underlying user name changes (e.g. after a refresh).
   useEffect(() => {
     setName(currentName);
   }, [currentName]);
@@ -130,49 +141,51 @@ function NameCard({ currentName }: { currentName: string }): React.JSX.Element {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Personal information</CardTitle>
-        <CardDescription>Update your display name.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex max-w-sm flex-col gap-1.5">
-          <Label htmlFor="profile-name">Name</Label>
-          <Input
-            id="profile-name"
-            value={name}
-            placeholder="Your name"
-            maxLength={120}
-            aria-invalid={invalid && dirty}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void onSave();
-            }}
-          />
-          {updateName.isError ? (
-            <p className="text-destructive text-[12px]">
-              {updateName.error instanceof Error
-                ? updateName.error.message
-                : "Failed to update profile"}
-            </p>
-          ) : null}
+      <CardContent className="pt-6">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="profile-name">Display name</Label>
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <Input
+                id="profile-name"
+                value={name}
+                placeholder="Your name"
+                maxLength={120}
+                aria-invalid={invalid && dirty}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void onSave();
+                }}
+              />
+              {updateName.isError ? (
+                <p className="text-destructive mt-1.5 text-[12px]">
+                  {updateName.error instanceof Error
+                    ? updateName.error.message
+                    : "Failed to update profile"}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2">
+              {saved ? (
+                <span className="text-muted-foreground flex items-center gap-1 text-[12px]">
+                  <Check className="size-3.5" />
+                  Saved
+                </span>
+              ) : null}
+              <Button
+                size="sm"
+                disabled={!dirty || invalid || updateName.isPending}
+                onClick={() => void onSave()}
+              >
+                {updateName.isPending ? (
+                  <Loader2 className="animate-spin" />
+                ) : null}
+                Save
+              </Button>
+            </div>
+          </div>
         </div>
       </CardContent>
-      <CardFooter className="justify-end gap-2">
-        {saved ? (
-          <span className="text-muted-foreground flex items-center gap-1 text-[12px]">
-            <Check className="size-3.5" />
-            Saved
-          </span>
-        ) : null}
-        <Button
-          size="sm"
-          disabled={!dirty || invalid || updateName.isPending}
-          onClick={() => void onSave()}
-        >
-          {updateName.isPending ? <Loader2 className="animate-spin" /> : null}
-          Save changes
-        </Button>
-      </CardFooter>
     </Card>
   );
 }
@@ -188,13 +201,7 @@ function ConnectedAccountsCard({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Connected accounts</CardTitle>
-        <CardDescription>
-          Manage the social accounts linked to your profile.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+      <CardContent className="pt-6">
         {isLoading ? (
           <div className="flex items-center justify-center py-4">
             <Loader2 className="text-muted-foreground size-5 animate-spin" />
@@ -211,7 +218,7 @@ function ConnectedAccountsCard({
                   key={provider.id}
                   className="border-border flex items-center gap-3 rounded-lg border p-3"
                 >
-                  <Icon className="size-5" />
+                  <Icon className="size-5 shrink-0" />
                   <span className="text-[13px] font-medium">
                     {provider.label}
                   </span>

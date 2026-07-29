@@ -10,6 +10,7 @@ import {
 import { Progress } from "@renderer/components/ui/progress";
 import { useUpgradeModal } from "@renderer/components/upgrade-modal";
 import { useCloudAuth } from "@renderer/lib/auth-context";
+import { LINKS } from "@renderer/lib/links";
 import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
 import { cn } from "@renderer/lib/utils";
 import {
@@ -130,21 +131,20 @@ export function CloudProfileButton(): React.JSX.Element {
             />
           ) : null}
           <span className="min-w-0 flex-1 text-left leading-tight">
-            <span className="flex items-center gap-1.5">
-              <span className="text-foreground min-w-0 truncate font-medium">
-                {user.name || user.email}
-              </span>
+            <span className="text-foreground block min-w-0 truncate font-medium">
+              {user.name || user.email}
+            </span>
+            <span className="mt-0.5 flex items-center gap-1.5">
               {isPro ? (
                 <Badge className="mono h-4 shrink-0 px-1.5 text-[9px] uppercase tracking-[0.12em]">
                   Pro
                 </Badge>
-              ) : null}
+              ) : (
+                <span className="text-muted-foreground min-w-0 truncate text-[11px]">
+                  Free plan
+                </span>
+              )}
             </span>
-            {user.name ? (
-              <span className="text-muted-foreground block truncate text-[11px]">
-                {user.email}
-              </span>
-            ) : null}
           </span>
           <ChevronsUpDown className="text-muted-foreground size-3.5 shrink-0" />
         </button>
@@ -155,13 +155,24 @@ export function CloudProfileButton(): React.JSX.Element {
         sideOffset={6}
         className="w-[200px]"
       >
-        <div className="px-1.5 py-1">
-          <div className="text-foreground truncate text-[13px] font-medium">
-            {user.name || user.email}
+        <div className="flex items-center gap-1.5 px-1.5 py-1">
+          <div className="min-w-0 flex-1">
+            <div className="text-foreground truncate text-[13px] font-medium">
+              {user.name || user.email}
+            </div>
+            <div className="text-muted-foreground truncate text-[11px]">
+              {user.email}
+            </div>
           </div>
-          <div className="text-muted-foreground truncate text-[11px]">
-            {user.email}
-          </div>
+          <button
+            type="button"
+            aria-label="Manage profile"
+            title="Manage profile"
+            onClick={() => void window.api.openExternal(LINKS.cloudProfile)}
+            className="text-muted-foreground hover:text-foreground hover:bg-card focus-visible:ring-ring flex size-6 shrink-0 items-center justify-center rounded-[6px] transition-colors focus-visible:ring-1 focus-visible:outline-none"
+          >
+            <Settings className="size-3.5" />
+          </button>
         </div>
         <DropdownMenuSeparator />
         {isPro ? (

@@ -4,4 +4,5 @@ export const LINKS = {
   discord: "https://discord.gg/Fmgt5yZCDu",
   contributing:
     "https://github.com/freestyle-voice/freestyle/blob/main/CONTRIBUTING.md",
+  cloudProfile: "https://freestylevoice.com/profile",
 } as const;

@@ -66,6 +66,30 @@ export function useLinkSocial() {
 }
 
 /**
+ * Unlink a social account from the signed-in user. Invalidates the
+ * linked-accounts query on success so the UI updates immediately.
+ */
+export function useUnlinkSocial() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (providerId: SocialProvider): Promise<void> => {
+      const res = await getClient().api.auth["unlink-account"].$post({
+        json: { providerId },
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(body?.error ?? "Failed to unlink account");
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY });
+    },
+  });
+}
+
+/**
  * Refetch linked accounts when the window regains focus — the OAuth link
  * completes in the external browser, so we can't observe it directly.
  */
@@ -79,4 +103,87 @@ export function useRefreshAccountsOnFocus(enabled: boolean): void {
     window.addEventListener("focus", invalidate);
     return () => window.removeEventListener("focus", invalidate);
   }, [enabled, queryClient]);
+}
+
+// ---------------------------------------------------------------------------
+// Organizations
+// ---------------------------------------------------------------------------
+
+const ORGS_QUERY_KEY = ["cloud-orgs"] as const;
+const ACTIVE_ORG_QUERY_KEY = ["cloud-active-org"] as const;
+
+/** List all organizations the signed-in user belongs to. */
+export function useListOrganizations(enabled: boolean) {
+  return useQuery({
+    queryKey: ORGS_QUERY_KEY,
+    enabled,
+    queryFn: async () => {
+      const res = await getClient().api.org.list.$get();
+      if (!res.ok) throw new Error("Failed to list organizations");
+      const { organizations } = await res.json();
+      return organizations;
+    },
+  });
+}
+
+/** The user's active organization from Freestyle Cloud. */
+export function useActiveOrganization(enabled: boolean) {
+  return useQuery({
+    queryKey: ACTIVE_ORG_QUERY_KEY,
+    enabled,
+    queryFn: async () => {
+      const res = await getClient().api.org.active.$get();
+      if (!res.ok) throw new Error("Failed to load active organization");
+      const { organization } = await res.json();
+      return organization;
+    },
+  });
+}
+
+/**
+ * Switch the user's active organization. Optimistically updates the active-org
+ * cache so the UI reflects the change instantly, then refetches to confirm.
+ */
+export function useSetActiveOrganization() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (organizationId: string): Promise<void> => {
+      const res = await getClient().api.org["set-active"].$post({
+        json: { organizationId },
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(body?.error ?? "Failed to switch organization");
+      }
+    },
+    onMutate: async (organizationId) => {
+      // Cancel in-flight fetches so they don't overwrite the optimistic update.
+      await queryClient.cancelQueries({ queryKey: ACTIVE_ORG_QUERY_KEY });
+
+      const previous = queryClient.getQueryData(ACTIVE_ORG_QUERY_KEY);
+
+      // Optimistically swap the active org from the cached org list.
+      const orgs = queryClient.getQueryData(ORGS_QUERY_KEY) as
+        | { id: string; name: string; slug: string }[]
+        | undefined;
+      const next = orgs?.find((o) => o.id === organizationId);
+      if (next) {
+        queryClient.setQueryData(ACTIVE_ORG_QUERY_KEY, next);
+      }
+
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      // Roll back on failure.
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(ACTIVE_ORG_QUERY_KEY, context.previous);
+      }
+    },
+    onSettled: () => {
+      // Always refetch to get the authoritative state.
+      void queryClient.invalidateQueries({ queryKey: ACTIVE_ORG_QUERY_KEY });
+    },
+  });
 }

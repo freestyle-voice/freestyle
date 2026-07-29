@@ -5,6 +5,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@renderer/components/ui/dropdown-menu";
 import { Progress } from "@renderer/components/ui/progress";
@@ -12,8 +15,15 @@ import { useUpgradeModal } from "@renderer/components/upgrade-modal";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { formatNumber } from "@renderer/lib/format";
 import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
+import {
+  useActiveOrganization,
+  useListOrganizations,
+  useSetActiveOrganization,
+} from "@renderer/lib/use-profile";
 import { cn } from "@renderer/lib/utils";
 import {
+  Building2,
+  Check,
   ChevronsUpDown,
   CircleHelp,
   Cloud,
@@ -68,7 +78,12 @@ export function UpgradeCtaCard(): React.JSX.Element | null {
 export function CloudProfileButton(): React.JSX.Element {
   const { user, loading, signingIn, signIn, signOut } = useCloudAuth();
   const { isPro, balance, openBillingPortal } = useCloudUsage(!!user);
+  const { data: activeOrg } = useActiveOrganization(!!user);
+  const { data: orgs } = useListOrganizations(!!user);
+  const setActiveOrg = useSetActiveOrganization();
   const navigate = useNavigate();
+
+  const hasMultipleOrgs = orgs && orgs.length > 1;
 
   if (loading) {
     return (
@@ -135,6 +150,11 @@ export function CloudProfileButton(): React.JSX.Element {
               {user.name || user.email}
             </span>
             <span className="mt-0.5 flex items-center gap-1.5">
+              {activeOrg ? (
+                <span className="text-muted-foreground min-w-0 truncate text-[11px]">
+                  {activeOrg.name}
+                </span>
+              ) : null}
               {balance == null ? null : isPro ? (
                 <Badge className="mono h-4 shrink-0 px-1.5 text-[9px] uppercase tracking-[0.12em]">
                   Pro
@@ -157,7 +177,7 @@ export function CloudProfileButton(): React.JSX.Element {
       >
         <DropdownMenuItem
           onSelect={() => navigate("/profile")}
-          className="flex items-center gap-1.5"
+          className="flex items-center gap-1.5 rounded-b-none"
         >
           <div className="min-w-0 flex-1">
             <div className="text-foreground truncate text-[13px] font-medium">
@@ -170,6 +190,40 @@ export function CloudProfileButton(): React.JSX.Element {
           <Settings className="text-muted-foreground size-3.5 shrink-0" />
         </DropdownMenuItem>
         <DropdownMenuSeparator />
+        {hasMultipleOrgs ? (
+          <>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Building2 />
+                Switch organization
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {orgs.map((org) => {
+                  const isActive = org.id === activeOrg?.id;
+                  return (
+                    <DropdownMenuItem
+                      key={org.id}
+                      disabled={setActiveOrg.isPending}
+                      onSelect={() => {
+                        if (!isActive) {
+                          setActiveOrg.mutate(org.id);
+                        }
+                      }}
+                    >
+                      <span className="min-w-0 flex-1 truncate">
+                        {org.name}
+                      </span>
+                      {isActive ? (
+                        <Check className="text-primary ml-auto size-3.5 shrink-0" />
+                      ) : null}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         {isPro ? (
           <>
             <DropdownMenuItem onSelect={() => void openBillingPortal()}>

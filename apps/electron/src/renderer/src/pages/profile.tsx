@@ -1,22 +1,24 @@
-import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
-import { Card, CardContent } from "@renderer/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@renderer/components/ui/card";
 import { Input } from "@renderer/components/ui/input";
 import { Label } from "@renderer/components/ui/label";
 import { useCloudAuth } from "@renderer/lib/auth-context";
-import { useCloudUsage } from "@renderer/lib/use-cloud-usage";
 import {
   type SocialProvider,
   useLinkedAccounts,
   useLinkSocial,
   useRefreshAccountsOnFocus,
+  useUnlinkSocial,
   useUpdateName,
 } from "@renderer/lib/use-profile";
-import {
-  Eyebrow,
-  PageHeader,
-  PageShell,
-} from "@renderer/pages/models/page-chrome";
+import { PageHeader, PageShell } from "@renderer/pages/models/page-chrome";
 import { Check, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { IconType } from "react-icons";
@@ -45,7 +47,6 @@ function initialsFor(user: {
 
 export default function ProfilePage(): React.JSX.Element {
   const { user } = useCloudAuth();
-  const { isPro, balance } = useCloudUsage(!!user);
 
   if (!user) {
     return (
@@ -62,53 +63,35 @@ export default function ProfilePage(): React.JSX.Element {
     <PageShell>
       <PageHeader title="Profile" subtitle="Manage your account details." />
 
-      <div className="max-w-[720px]">
-        {/* Identity header */}
-        <div className="mb-8 flex items-center gap-4">
-          {user.image ? (
-            <img
-              src={user.image}
-              alt=""
-              className="size-16 shrink-0 rounded-full object-cover"
-            />
-          ) : (
-            <div className="bg-muted text-muted-foreground flex size-16 shrink-0 items-center justify-center rounded-full text-xl font-medium">
-              {initialsFor(user)}
+      <div className="mx-auto max-w-2xl space-y-6">
+        {/* User info */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-4">
+              {user.image ? (
+                <img
+                  src={user.image}
+                  alt=""
+                  className="size-16 shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <div className="bg-muted text-muted-foreground flex size-16 shrink-0 items-center justify-center rounded-full text-xl font-medium">
+                  {initialsFor(user)}
+                </div>
+              )}
+              <div>
+                <CardTitle>{user.name || "User"}</CardTitle>
+                <CardDescription>{user.email}</CardDescription>
+              </div>
             </div>
-          )}
-          <div className="min-w-0">
-            <div className="text-foreground flex items-center gap-2.5">
-              <span className="truncate text-lg font-medium">
-                {user.name || "User"}
-              </span>
-              {balance != null ? (
-                <Badge variant="secondary" className="shrink-0 capitalize">
-                  {isPro ? "Pro" : "Free"}
-                </Badge>
-              ) : null}
-            </div>
-            <p className="text-muted-foreground mt-0.5 truncate text-[13px]">
-              {user.email}
-            </p>
-          </div>
-        </div>
+          </CardHeader>
+        </Card>
 
-        {/* Content sections */}
-        <div className="flex flex-col gap-8">
-          <section>
-            <Eyebrow text="Personal information" accent />
-            <div className="mt-3">
-              <NameCard currentName={user.name ?? ""} />
-            </div>
-          </section>
+        {/* Edit name */}
+        <NameCard currentName={user.name ?? ""} />
 
-          <section>
-            <Eyebrow text="Connected accounts" accent />
-            <div className="mt-3">
-              <ConnectedAccountsCard enabled={!!user} />
-            </div>
-          </section>
-        </div>
+        {/* Connected accounts */}
+        <ConnectedAccountsCard enabled={!!user} />
       </div>
     </PageShell>
   );
@@ -141,51 +124,49 @@ function NameCard({ currentName }: { currentName: string }): React.JSX.Element {
 
   return (
     <Card>
-      <CardContent className="pt-6">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="profile-name">Display name</Label>
-          <div className="flex items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <Input
-                id="profile-name"
-                value={name}
-                placeholder="Your name"
-                maxLength={120}
-                aria-invalid={invalid && dirty}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void onSave();
-                }}
-              />
-              {updateName.isError ? (
-                <p className="text-destructive mt-1.5 text-[12px]">
-                  {updateName.error instanceof Error
-                    ? updateName.error.message
-                    : "Failed to update profile"}
-                </p>
-              ) : null}
-            </div>
-            <div className="flex items-center gap-2">
-              {saved ? (
-                <span className="text-muted-foreground flex items-center gap-1 text-[12px]">
-                  <Check className="size-3.5" />
-                  Saved
-                </span>
-              ) : null}
-              <Button
-                size="sm"
-                disabled={!dirty || invalid || updateName.isPending}
-                onClick={() => void onSave()}
-              >
-                {updateName.isPending ? (
-                  <Loader2 className="animate-spin" />
-                ) : null}
-                Save
-              </Button>
-            </div>
-          </div>
+      <CardHeader>
+        <CardTitle>Personal Information</CardTitle>
+        <CardDescription>Update your display name.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="max-w-sm space-y-1.5">
+          <Label htmlFor="profile-name">Name</Label>
+          <Input
+            id="profile-name"
+            value={name}
+            placeholder="Your name"
+            maxLength={120}
+            aria-invalid={invalid && dirty}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void onSave();
+            }}
+          />
+          {updateName.isError ? (
+            <p className="text-destructive text-[12px]">
+              {updateName.error instanceof Error
+                ? updateName.error.message
+                : "Failed to update profile"}
+            </p>
+          ) : null}
         </div>
       </CardContent>
+      <CardFooter className="justify-end gap-2">
+        {saved ? (
+          <span className="text-muted-foreground flex items-center gap-1 text-[12px]">
+            <Check className="size-3.5" />
+            Saved
+          </span>
+        ) : null}
+        <Button
+          size="sm"
+          disabled={!dirty || invalid || updateName.isPending}
+          onClick={() => void onSave()}
+        >
+          {updateName.isPending ? <Loader2 className="animate-spin" /> : null}
+          Save changes
+        </Button>
+      </CardFooter>
     </Card>
   );
 }
@@ -197,35 +178,59 @@ function ConnectedAccountsCard({
 }): React.JSX.Element {
   const { data: linked, isLoading } = useLinkedAccounts(enabled);
   const linkSocial = useLinkSocial();
+  const unlinkSocial = useUnlinkSocial();
   useRefreshAccountsOnFocus(enabled);
+
+  const connectedCount = linked?.length ?? 0;
 
   return (
     <Card>
-      <CardContent className="pt-6">
+      <CardHeader>
+        <CardTitle>Connected Accounts</CardTitle>
+        <CardDescription>
+          Manage the social accounts linked to your profile.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
         {isLoading ? (
           <div className="flex items-center justify-center py-4">
             <Loader2 className="text-muted-foreground size-5 animate-spin" />
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="space-y-2">
             {PROVIDERS.map((provider) => {
               const Icon = provider.icon;
               const isConnected = linked?.includes(provider.id) ?? false;
               const isLinking =
                 linkSocial.isPending && linkSocial.variables === provider.id;
+              const isUnlinking =
+                unlinkSocial.isPending &&
+                unlinkSocial.variables === provider.id;
               return (
                 <div
                   key={provider.id}
-                  className="border-border flex items-center gap-3 rounded-lg border p-3"
+                  className="flex items-center gap-3 rounded-md border p-3"
                 >
                   <Icon className="size-5 shrink-0" />
-                  <span className="text-[13px] font-medium">
-                    {provider.label}
-                  </span>
+                  <span className="text-sm font-medium">{provider.label}</span>
                   {isConnected ? (
-                    <Badge variant="secondary" className="ml-auto">
-                      Connected
-                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ml-auto text-muted-foreground"
+                      disabled={unlinkSocial.isPending || connectedCount <= 1}
+                      title={
+                        connectedCount <= 1
+                          ? "Cannot disconnect your only sign-in method"
+                          : `Disconnect ${provider.label}`
+                      }
+                      onClick={() => unlinkSocial.mutate(provider.id)}
+                    >
+                      {isUnlinking ? (
+                        <Loader2 className="animate-spin" />
+                      ) : null}
+                      Disconnect
+                    </Button>
                   ) : (
                     <Button
                       variant="outline"

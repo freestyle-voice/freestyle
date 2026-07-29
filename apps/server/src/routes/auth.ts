@@ -1,6 +1,7 @@
 import {
   deviceTokenSchema,
   linkSocialSchema,
+  unlinkAccountSchema,
   updateProfileSchema,
 } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
@@ -14,6 +15,7 @@ import {
   pollDeviceToken,
   requestDeviceCode,
   signOutCloud,
+  unlinkCloudAccount,
   updateCloudUserName,
 } from "../lib/freestyle-cloud.js";
 import { applyFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js";
@@ -150,6 +152,24 @@ const auth = new Hono()
     } catch {
       return c.json({ error: "Failed to start account linking" }, 502);
     }
-  });
+  })
+  // Unlink a social account from the signed-in user.
+  .post(
+    "/unlink-account",
+    zValidator("json", unlinkAccountSchema),
+    async (c) => {
+      const token = getSessionToken();
+      if (!token) {
+        return c.json({ error: "Not signed in to Freestyle Cloud" }, 401);
+      }
+      const { providerId } = c.req.valid("json");
+      try {
+        await unlinkCloudAccount(token, providerId);
+        return c.json({ ok: true });
+      } catch {
+        return c.json({ error: "Failed to unlink account" }, 502);
+      }
+    },
+  );
 
 export default auth;

@@ -30,3 +30,10 @@ export const linkSocialSchema = z.object({
 });
 
 export type LinkSocialInput = z.infer<typeof linkSocialSchema>;
+
+// Unlink a social account from the signed-in user.
+export const unlinkAccountSchema = z.object({
+  providerId: socialProviderSchema,
+});
+
+export type UnlinkAccountInput = z.infer<typeof unlinkAccountSchema>;

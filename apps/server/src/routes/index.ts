@@ -15,6 +15,7 @@ import eventsRoute from "./events.js";
 import history from "./history.js";
 import mlxAsr from "./mlx-asr.js";
 import models from "./models.js";
+import org from "./org.js";
 import outputRoute from "./output.js";
 import pluginsRoute from "./plugins.js";
 import postProcessRoute from "./post-process-route.js";
@@ -73,6 +74,7 @@ const apiRouter = new Hono()
   .route("/events", eventsRoute)
   .route("/usage", usage)
   .route("/billing", billing)
+  .route("/org", org)
   .route("/plugins", pluginsRoute)
   .route("/whisper", whisper)
   .route("/mlx-asr", mlxAsr);

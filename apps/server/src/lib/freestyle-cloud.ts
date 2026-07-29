@@ -653,6 +653,118 @@ export async function linkCloudSocial(
   return { url };
 }
 
+/**
+ * Unlink a social account from the signed-in user. Better Auth prevents
+ * unlinking the last remaining account by default (avoids lockout).
+ */
+export async function unlinkCloudAccount(
+  token: string,
+  providerId: SocialProvider,
+): Promise<void> {
+  await cloudJson<{ status?: boolean }>("/auth/unlink-account", token, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ providerId }),
+    signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Organizations (via the cloud's Better Auth Organization plugin)
+// ---------------------------------------------------------------------------
+
+/** An organization the signed-in user belongs to. */
+export interface CloudOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  logo?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+/**
+ * List all organizations the signed-in user is a member of.
+ * Maps to `GET /auth/organization/list`.
+ */
+export async function listCloudOrganizations(
+  token: string,
+): Promise<CloudOrganization[]> {
+  return cloudJson<CloudOrganization[]>("/auth/organization/list", token, {
+    method: "GET",
+    signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+  });
+}
+
+/** The full organization details returned by `get-full-organization`. */
+export interface CloudFullOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  logo?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  members: {
+    id: string;
+    userId: string;
+    organizationId: string;
+    role: string;
+    createdAt: string;
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      image?: string | null;
+    };
+  }[];
+}
+
+/**
+ * Get the full details of the user's active organization (or a specific org
+ * by ID). Maps to `GET /auth/organization/get-full-organization`.
+ */
+export async function getCloudActiveOrganization(
+  token: string,
+  organizationId?: string,
+): Promise<CloudFullOrganization | null> {
+  const params = new URLSearchParams();
+  if (organizationId) params.set("organizationId", organizationId);
+  const query = params.toString();
+  const path = `/auth/organization/get-full-organization${query ? `?${query}` : ""}`;
+  try {
+    return await cloudJson<CloudFullOrganization>(path, token, {
+      method: "GET",
+      signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+    });
+  } catch (err) {
+    // If no active org is set, the cloud returns an error — return null.
+    if (
+      err instanceof FreestyleCloudRequestError &&
+      err.status >= 400 &&
+      err.status < 500
+    ) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Set the user's active organization on the cloud session.
+ * Maps to `POST /auth/organization/set-active`.
+ */
+export async function setCloudActiveOrganization(
+  token: string,
+  organizationId: string,
+): Promise<void> {
+  await cloudJson<{ id?: string }>("/auth/organization/set-active", token, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ organizationId }),
+    signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+  });
+}
+
 /** Upper bound for the best-effort connection prewarm. */
 const CLOUD_PREWARM_TIMEOUT_MS = 5_000;
 

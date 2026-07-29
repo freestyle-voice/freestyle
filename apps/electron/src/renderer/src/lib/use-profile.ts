@@ -148,6 +148,11 @@ export function useActiveOrganization(enabled: boolean) {
 /**
  * Switch the user's active organization. Optimistically updates the active-org
  * cache so the UI reflects the change instantly, then refetches to confirm.
+ *
+ * Plans are org-scoped on the cloud (the subscription's `referenceId` is the
+ * org id), so switching orgs can change the user's plan. We invalidate the
+ * usage query too so the Pro/Free badge and word balance re-resolve for the
+ * newly-active org instead of showing the previous org's plan.
  */
 export function useSetActiveOrganization() {
   const queryClient = useQueryClient();
@@ -188,8 +193,10 @@ export function useSetActiveOrganization() {
       }
     },
     onSettled: () => {
-      // Always refetch to get the authoritative state.
+      // Refetch the active org, and re-resolve usage/plan since it's scoped to
+      // the now-active org.
       void queryClient.invalidateQueries({ queryKey: ACTIVE_ORG_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: ["cloud-usage"] });
     },
   });
 }

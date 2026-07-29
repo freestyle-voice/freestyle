@@ -514,7 +514,10 @@ function OrganizationCard() {
         Alert.alert("Couldn't switch organization", error);
         return;
       }
+      // Plans are org-scoped on the cloud, so switching orgs can change the
+      // plan — refresh both the active org and usage so the PLAN card updates.
       void queryClient.invalidateQueries({ queryKey: ["cloud-active-org"] });
+      void queryClient.invalidateQueries({ queryKey: ["cloud-usage"] });
     },
     [activeOrg?.id, queryClient],
   );

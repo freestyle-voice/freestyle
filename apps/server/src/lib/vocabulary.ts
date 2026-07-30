@@ -77,3 +77,57 @@ export function getCloudVocabularyBias(): CloudVocabularyBias | undefined {
   const text = buildVocabularyNoteText(entries);
   return { terms: entries.map((e) => e.term), ...(text ? { text } : {}) };
 }
+
+/**
+ * Merge cloud-seeded vocabulary terms into the local `vocabulary` table.
+ *
+ * Additive and non-destructive: inserts terms not already present (unique on
+ * `term`, matched case-insensitively against existing rows) and never deletes
+ * local terms. Cloud-pulled terms carry no notes (the cloud shape is
+ * `{ terms, text }`), so `notes` is left `NULL` — notes are a local-only
+ * enrichment. Returns the number of newly inserted terms.
+ *
+ * Vocabulary sync is currently one-way (cloud → local): the cloud seeds an
+ * industry's terms into `member_preferences`, and this lands them locally where
+ * `getCloudVocabularyBias()` picks them up for each transcription request.
+ *
+ * Uses node:sqlite (`DatabaseSync`), which has no `.transaction()` helper, so
+ * the batch is wrapped in explicit BEGIN/COMMIT like the import route.
+ */
+export function mergeCloudVocabularyTerms(terms: string[]): number {
+  if (terms.length === 0) return 0;
+  const db = getDb();
+
+  const existing = new Set(
+    (db.prepare("SELECT term FROM vocabulary").all() as { term: string }[]).map(
+      (r) => r.term.trim().toLowerCase(),
+    ),
+  );
+  const insert = db.prepare(
+    "INSERT OR IGNORE INTO vocabulary (term, notes) VALUES (?, NULL)",
+  );
+
+  let inserted = 0;
+  db.exec("BEGIN");
+  try {
+    for (const raw of terms) {
+      const term = raw.trim();
+      if (!term || existing.has(term.toLowerCase())) continue;
+      const result = insert.run(term);
+      if (result.changes > 0) {
+        inserted++;
+        existing.add(term.toLowerCase());
+      }
+    }
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    log.error(`Failed to merge cloud vocabulary terms: ${err}`);
+    return 0;
+  }
+
+  if (inserted > 0) {
+    log.info(`Merged ${inserted} vocabulary term(s) from Freestyle Cloud`);
+  }
+  return inserted;
+}

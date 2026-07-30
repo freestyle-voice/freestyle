@@ -13,9 +13,12 @@
  *     settings key to a partial `PUT /preferences`. Fire-and-forget: any error
  *     is swallowed so a failed sync never disrupts the local write.
  *
- * Only the settings-table cleanup preferences are synced here. Vocabulary
- * (separate SQLite table + CRUD) and system fragments (computed per request,
- * never persisted) are intentionally out of scope for this bridge.
+ * Cleanup tones/intensity/appAssignments/language are mirrored into the local
+ * `settings` table (see FIELD_MAP). Vocabulary lives in a separate SQLite
+ * `vocabulary` table, so it is pulled separately via
+ * {@link mergeCloudVocabularyTerms} — additively (cloud → local, never deletes
+ * local terms). System fragments are computed per request and never persisted,
+ * so they remain out of scope for this bridge.
  */
 
 import { createAppLogger } from "@freestyle-voice/utils";
@@ -27,6 +30,7 @@ import {
   putCloudPreferences,
 } from "./freestyle-cloud.js";
 import { getSessionToken } from "./sessions.js";
+import { mergeCloudVocabularyTerms } from "./vocabulary.js";
 
 const log = createAppLogger("preferences-sync");
 
@@ -118,6 +122,17 @@ export async function pullCloudPreferences(): Promise<boolean> {
     writeSetting(field.settingKey, serialized);
     applied = true;
   }
+
+  // Vocabulary lives in its own SQLite `vocabulary` table (not `settings`), so
+  // it's handled outside FIELD_MAP. Merge cloud-seeded terms into the local
+  // table additively. Folding the result into `applied` matters:
+  // pullCloudPreferencesWithRetry() stops once a pull returns `true`, so a pull
+  // that seeds ONLY vocabulary (no tone changes) must still count as applied.
+  if (remote.vocabulary && Array.isArray(remote.vocabulary.terms)) {
+    const inserted = mergeCloudVocabularyTerms(remote.vocabulary.terms);
+    if (inserted > 0) applied = true;
+  }
+
   if (applied) log.info("Cleanup preferences pulled from Freestyle Cloud");
   return applied;
 }

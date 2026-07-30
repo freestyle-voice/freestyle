@@ -166,16 +166,19 @@ const auth = new Hono()
     try {
       const data = c.req.valid("json");
 
-      // Detect a first-time industry set (null -> value). Only fetch the prior
-      // profile when the client is actually setting an industry — otherwise
-      // this PUT can't be a first-time set and we skip the extra round-trip.
-      // On first-time set the cloud seeds tone/vocabulary defaults into
-      // member_preferences, so we re-pull afterwards to surface them locally
-      // without waiting for the next launch.
-      let isFirstTimeIndustry = false;
-      if (data.industry) {
+      // Detect ANY industry change (null->value or value->value). The cloud
+      // re-seeds tone/vocabulary defaults into member_preferences on every
+      // industry change, so re-pull whenever the industry actually differs from
+      // what was stored. Only fetch the prior profile when the client sent an
+      // industry — otherwise this PUT can't change it and we skip the round-trip.
+      let industryChanged = false;
+      if (data.industry !== undefined) {
         const before = await getCloudProfile(token).catch(() => null);
-        isFirstTimeIndustry = !before?.industry;
+        const prev = before?.industry ?? null;
+        const next = data.industry ?? null;
+        // Guard `next !== null`: clearing the industry doesn't reseed anything,
+        // so there's nothing to pull.
+        industryChanged = prev !== next && next !== null;
       }
 
       await updateCloudProfile(token, data);
@@ -185,8 +188,9 @@ const auth = new Hono()
 
       // The cloud seeds member_preferences asynchronously (fire-and-forget on
       // its side), so retry the pull briefly to catch the seed before we reply.
-      // Awaited so the renderer can invalidate its settings query on success.
-      if (isFirstTimeIndustry) {
+      // Awaited so the renderer can invalidate its settings/vocabulary queries
+      // on success.
+      if (industryChanged) {
         await pullCloudPreferencesWithRetry();
       }
 

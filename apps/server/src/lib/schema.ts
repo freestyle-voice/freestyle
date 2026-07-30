@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { countFixes } from "./fixes.js";
 
-const SCHEMA_VERSION = 16;
+const SCHEMA_VERSION = 17;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -458,6 +458,60 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     );
     for (const row of rows) {
       update.run(countFixes(row.raw_text, row.cleaned_text), row.id);
+    }
+  }
+
+  if (currentVersion < 17) {
+    // Rebuild sessions table: replace singleton id=1 row with host-keyed rows
+    // so dev (localhost:8787) and prod sessions can coexist without clobbering
+    // each other.
+    const hasOldSessions = !!(db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sessions'",
+      )
+      .get() as { name: string } | undefined);
+
+    if (hasOldSessions) {
+      db.exec(`
+        CREATE TABLE sessions_new (
+          host TEXT PRIMARY KEY NOT NULL,
+          token TEXT NOT NULL,
+          refresh_token TEXT,
+          expires_at INTEGER,
+          issued_at INTEGER,
+          user_id TEXT NOT NULL,
+          email TEXT NOT NULL,
+          name TEXT,
+          image TEXT,
+          updated_at INTEGER NOT NULL
+        )
+      `);
+      // Preserve the existing session row (if any) under its stored host.
+      db.exec(`
+        INSERT OR IGNORE INTO sessions_new
+          (host, token, refresh_token, expires_at, issued_at, user_id, email, name, image, updated_at)
+        SELECT
+          COALESCE(NULLIF(host, ''), 'https://service.freestylevoice.com'),
+          token, refresh_token, expires_at, issued_at, user_id, email, name, image, updated_at
+        FROM sessions
+      `);
+      db.exec("DROP TABLE sessions");
+      db.exec("ALTER TABLE sessions_new RENAME TO sessions");
+    } else {
+      db.exec(`
+        CREATE TABLE sessions (
+          host TEXT PRIMARY KEY NOT NULL,
+          token TEXT NOT NULL,
+          refresh_token TEXT,
+          expires_at INTEGER,
+          issued_at INTEGER,
+          user_id TEXT NOT NULL,
+          email TEXT NOT NULL,
+          name TEXT,
+          image TEXT,
+          updated_at INTEGER NOT NULL
+        )
+      `);
     }
   }
 

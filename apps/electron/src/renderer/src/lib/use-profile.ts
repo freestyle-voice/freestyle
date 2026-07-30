@@ -82,13 +82,16 @@ export function useUpdateProfileFields() {
         PROFILE_FIELDS_QUERY_KEY,
       );
       queryClient.setQueryData(PROFILE_FIELDS_QUERY_KEY, profile);
-      // On a first-time industry set the cloud seeds tone/vocabulary defaults
-      // into member_preferences; the local server re-pulls them into its
-      // `settings` table before this response returns (see the profile-fields
-      // route). Invalidate the settings query so the tone page re-reads the
-      // freshly-seeded values.
-      if (!previous?.industry && profile.industry) {
+      // The cloud re-seeds tone + vocabulary defaults into member_preferences on
+      // ANY industry change (not just a first-time set); the local server
+      // re-pulls them (settings table + vocabulary table) before this response
+      // returns (see the profile-fields route). Invalidate both caches so the
+      // tone and vocabulary pages re-read the freshly-seeded values.
+      const industryChanged =
+        (previous?.industry ?? null) !== (profile.industry ?? null);
+      if (industryChanged && profile.industry) {
         void queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
+        void queryClient.invalidateQueries({ queryKey: ["vocabulary"] });
       }
     },
   });

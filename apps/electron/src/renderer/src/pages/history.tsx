@@ -1382,12 +1382,13 @@ const FeedItem = memo(function FeedItem({
         <span className="bg-muted-foreground/50 h-[3px] w-[3px] shrink-0 rounded-full" />
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="text-primary min-w-0 flex-1 cursor-default truncate text-[10.5px] font-semibold">
+            <span className="text-primary min-w-0 max-w-fit cursor-default truncate text-[10.5px] font-semibold">
               {modelLabel}
             </span>
           </TooltipTrigger>
           <TooltipContent>{modelLabel}</TooltipContent>
         </Tooltip>
+        <div className="flex-1" />
         {/* Copy/delete sit before the duration so the actions don't leave a
             reserved blank at the far-right edge when not hovering. */}
         <div className="mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">

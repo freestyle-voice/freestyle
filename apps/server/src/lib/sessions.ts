@@ -1,4 +1,5 @@
 import { getDb } from "./db.js";
+import { freestyleCloudUrl } from "./freestyle-cloud.js";
 import { revertFreestyleCloudDefaults } from "./freestyle-cloud-defaults.js";
 import { resetCloudIdentity } from "./posthog.js";
 
@@ -47,7 +48,9 @@ function rowToSession(row: SessionRow): Session {
 }
 
 export function clearSession(): void {
-  getDb().prepare("DELETE FROM sessions WHERE id = 1").run();
+  getDb()
+    .prepare("DELETE FROM sessions WHERE host = ?")
+    .run(freestyleCloudUrl());
 }
 
 export function invalidateSession(): void {
@@ -59,9 +62,9 @@ export function invalidateSession(): void {
 export function getSession(): Session | null {
   const row = getDb()
     .prepare(
-      "SELECT token, refresh_token, expires_at, issued_at, user_id, email, name, image, host FROM sessions WHERE id = 1",
+      "SELECT token, refresh_token, expires_at, issued_at, user_id, email, name, image, host FROM sessions WHERE host = ?",
     )
-    .get() as SessionRow | undefined;
+    .get(freestyleCloudUrl()) as SessionRow | undefined;
   if (!row) return null;
   if (row.expires_at && Date.now() > row.expires_at) {
     invalidateSession();
@@ -85,9 +88,9 @@ export function touchSessionExpiry(expiresAt: number): void {
   const now = Date.now();
   getDb()
     .prepare(
-      "UPDATE sessions SET expires_at = ?, issued_at = ?, updated_at = ? WHERE id = 1",
+      "UPDATE sessions SET expires_at = ?, issued_at = ?, updated_at = ? WHERE host = ?",
     )
-    .run(expiresAt, now, now);
+    .run(expiresAt, now, now, freestyleCloudUrl());
 }
 
 export function getSessionUser(): CloudUser | null {
@@ -106,9 +109,9 @@ export function setSession(input: {
   getDb()
     .prepare(
       `INSERT INTO sessions
-        (id, token, refresh_token, expires_at, issued_at, user_id, email, name, image, host, updated_at)
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
+        (host, token, refresh_token, expires_at, issued_at, user_id, email, name, image, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(host) DO UPDATE SET
         token = excluded.token,
         refresh_token = excluded.refresh_token,
         expires_at = excluded.expires_at,
@@ -117,10 +120,10 @@ export function setSession(input: {
         email = excluded.email,
         name = excluded.name,
         image = excluded.image,
-        host = excluded.host,
         updated_at = excluded.updated_at`,
     )
     .run(
+      input.host,
       input.token,
       input.refreshToken ?? null,
       input.expiresAt ?? null,
@@ -129,7 +132,6 @@ export function setSession(input: {
       input.user.email,
       input.user.name ?? null,
       input.user.image ?? null,
-      input.host,
       now,
     );
 }

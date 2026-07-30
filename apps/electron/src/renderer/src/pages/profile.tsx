@@ -251,64 +251,66 @@ function ProfileDetailsCard({
           Tell us about your work so Freestyle can tailor suggestions.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="max-w-sm space-y-1.5">
-          <Label htmlFor="profile-industry">Industry</Label>
-          <Select
-            value={industry ?? NO_INDUSTRY}
-            onValueChange={(value) =>
-              setIndustry(
-                value === NO_INDUSTRY ? undefined : (value as Industry),
-              )
-            }
-          >
-            <SelectTrigger id="profile-industry" className="w-full">
-              <SelectValue placeholder="Select your industry" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_INDUSTRY}>Not specified</SelectItem>
-              {industrySchema.options.map((value) => (
-                <SelectItem key={value} value={value}>
-                  {INDUSTRY_LABELS[value]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="max-w-sm space-y-1.5">
-          <Label htmlFor="profile-job-title">Job title</Label>
-          <Input
-            id="profile-job-title"
-            value={jobTitle}
-            placeholder="e.g. Product Manager"
-            maxLength={120}
-            onChange={(e) => setJobTitle(e.target.value)}
-          />
-        </div>
-        <div className="max-w-sm space-y-1.5">
-          <Label htmlFor="profile-company">Company</Label>
-          <Input
-            id="profile-company"
-            value={company}
-            placeholder="e.g. Acme Inc."
-            maxLength={120}
-            onChange={(e) => setCompany(e.target.value)}
-          />
-        </div>
-        {detectedLocation ? (
-          <div className="max-w-sm space-y-0.5">
-            <p className="text-sm font-medium">Detected location</p>
-            <p className="text-muted-foreground text-[13px]">
-              {detectedLocation}
-              {profile?.timezone ? ` · ${profile.timezone}` : ""}
-            </p>
-            <p className="text-muted-foreground text-[12px]">
-              Auto-detected and refreshed each time you save.
-            </p>
+      <CardContent>
+        <div className="grid max-w-xl grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="profile-industry">Industry</Label>
+            <Select
+              value={industry ?? NO_INDUSTRY}
+              onValueChange={(value) =>
+                setIndustry(
+                  value === NO_INDUSTRY ? undefined : (value as Industry),
+                )
+              }
+            >
+              <SelectTrigger id="profile-industry" className="w-full">
+                <SelectValue placeholder="Select your industry" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_INDUSTRY}>Not specified</SelectItem>
+                {industrySchema.options.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {INDUSTRY_LABELS[value]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        ) : null}
+          <div className="space-y-1.5">
+            <Label htmlFor="profile-job-title">Job title</Label>
+            <Input
+              id="profile-job-title"
+              value={jobTitle}
+              placeholder="e.g. Product Manager"
+              maxLength={120}
+              onChange={(e) => setJobTitle(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="profile-company">Company</Label>
+            <Input
+              id="profile-company"
+              value={company}
+              placeholder="e.g. Acme Inc."
+              maxLength={120}
+              onChange={(e) => setCompany(e.target.value)}
+            />
+          </div>
+          {detectedLocation ? (
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Detected location</p>
+              <p className="text-muted-foreground text-[13px]">
+                {detectedLocation}
+                {profile?.timezone ? ` · ${profile.timezone}` : ""}
+              </p>
+              <p className="text-muted-foreground text-[12px]">
+                Auto-detected and refreshed each time you save.
+              </p>
+            </div>
+          ) : null}
+        </div>
         {updateProfile.isError ? (
-          <p className="text-destructive text-[12px]">
+          <p className="text-destructive mt-4 text-[12px]">
             {updateProfile.error instanceof Error
               ? updateProfile.error.message
               : "Failed to update profile"}

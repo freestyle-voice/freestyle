@@ -492,9 +492,14 @@ function presetPositionForDisplay(
   position: string,
 ): { x: number; y: number } {
   const { x: waX, y: waY, width, height } = display.workArea;
+  const bottomInset = Math.max(
+    0,
+    display.bounds.y + display.bounds.height - (waY + height),
+  );
+  const overlap = process.platform !== "darwin" && bottomInset > 0 ? 14 : -8;
   const centerX = waX + Math.round((width - APP_WIDTH) / 2);
   const rightX = waX + width - APP_WIDTH;
-  const bottomY = waY + height - APP_HEIGHT - 8;
+  const bottomY = waY + height - APP_HEIGHT + overlap;
 
   switch (position) {
     case "top-center":
@@ -594,6 +599,10 @@ function createAppWindow(): void {
 
   let moveTimeout: NodeJS.Timeout | null = null;
   let moveBurst = 0;
+  let userMoved = false;
+  mainWindow.on("will-move", () => {
+    userMoved = true;
+  });
   mainWindow.on("move", () => {
     if (!mainWindow) return;
     const [rawX, rawY] = mainWindow.getPosition();
@@ -645,8 +654,10 @@ function createAppWindow(): void {
     if (moveTimeout) clearTimeout(moveTimeout);
     moveTimeout = setTimeout(() => {
       const burst = moveBurst;
+      const dragged = userMoved;
       moveBurst = 0;
-      if (!mainWindow || burst < 3) return;
+      userMoved = false;
+      if (!mainWindow || (burst < 3 && !dragged)) return;
       const [fx, fy] = mainWindow.getPosition();
       writeSettings({
         pillPosition: "custom",

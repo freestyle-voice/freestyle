@@ -1,9 +1,11 @@
 import { IS_MAC } from "@renderer/lib/platform";
 import { useCallback, useEffect, useRef, useState } from "react";
-
-// ---------------------------------------------------------------------------
-// Platform detection
-// ---------------------------------------------------------------------------
+import type {
+  HotkeyBindingError,
+  HotkeyBindingKind,
+  HotkeyRecorderError,
+  SetHotkeyBindingResult,
+} from "../../../shared/hotkey-bindings";
 
 // ---------------------------------------------------------------------------
 // Key symbol maps
@@ -324,29 +326,59 @@ export function formatAccelerator(accel: string): string {
 // Hook -- uses main process IPC for recording (captures fn/globe key)
 // ---------------------------------------------------------------------------
 
-type RecorderState = "idle" | "recording";
+type RecorderState = "idle" | "recording" | "saving";
 const EMPTY_COMBO: HotkeyCombo = { modifiers: [], key: null };
+
+type HotkeySaveHandler = (
+  accelerator: string,
+  kind: HotkeyBindingKind,
+) => unknown;
+
+function isSaveResultPromise(
+  value: unknown,
+): value is Promise<SetHotkeyBindingResult> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "then" in value &&
+    typeof value.then === "function"
+  );
+}
 
 interface UseHotkeyRecorderReturn {
   state: RecorderState;
+  activeKind: HotkeyBindingKind | null;
+  errors: Partial<Record<HotkeyBindingKind, HotkeyRecorderFailure>>;
   liveModifiers: string[];
   capturedCombo: HotkeyCombo | null;
   canSaveRecording: boolean;
   needsModifierOrMouseButton: boolean;
   invalidReleaseNotice: boolean;
-  startRecording: () => void;
+  startRecording: (kind?: HotkeyBindingKind) => void;
   cancelRecording: () => void;
+  clearError: (kind: HotkeyBindingKind) => void;
+}
+
+export interface HotkeyRecorderFailure {
+  error: HotkeyBindingError | HotkeyRecorderError;
+  conflictingKind?: HotkeyBindingKind;
 }
 
 export function useHotkeyRecorder(
-  onRecord: (accelerator: string) => void,
+  onRecord: HotkeySaveHandler,
 ): UseHotkeyRecorderReturn {
   const [state, setState] = useState<RecorderState>("idle");
+  const [activeKind, setActiveKind] = useState<HotkeyBindingKind | null>(null);
+  const [errors, setErrors] = useState<
+    Partial<Record<HotkeyBindingKind, HotkeyRecorderFailure>>
+  >({});
   const [draftCombo, setDraftCombo] = useState<HotkeyCombo>(EMPTY_COMBO);
   const [invalidReleaseNotice, setInvalidReleaseNotice] = useState(false);
   const onRecordRef = useRef(onRecord);
   onRecordRef.current = onRecord;
   const recordingActiveRef = useRef(false);
+  const activeKindRef = useRef<HotkeyBindingKind | null>(null);
+  const completionInFlightRef = useRef(false);
   const draftComboRef = useRef<HotkeyCombo>(EMPTY_COMBO);
   const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Solo right-modifier latch: set when the draft is exactly one modifier
@@ -378,28 +410,64 @@ export function useHotkeyRecorder(
     }, 1800);
   }, [clearWarningTimer]);
 
-  const startRecording = useCallback(() => {
-    recordingActiveRef.current = true;
-    setState("recording");
-    draftComboRef.current = EMPTY_COMBO;
-    setDraftCombo(EMPTY_COMBO);
-    rightModifierLatchRef.current = null;
-    setInvalidReleaseNotice(false);
-    window.api?.startHotkeyRecording();
+  const clearError = useCallback((kind: HotkeyBindingKind) => {
+    setErrors((current) => {
+      if (!current[kind]) return current;
+      const next = { ...current };
+      delete next[kind];
+      return next;
+    });
   }, []);
+
+  const setError = useCallback(
+    (kind: HotkeyBindingKind, failure: HotkeyRecorderFailure) => {
+      setErrors((current) => ({ ...current, [kind]: failure }));
+    },
+    [],
+  );
+
+  const resetRecorderState = useCallback(
+    (options: { preserveInvalidReleaseNotice?: boolean } = {}) => {
+      recordingActiveRef.current = false;
+      activeKindRef.current = null;
+      completionInFlightRef.current = false;
+      setState("idle");
+      setActiveKind(null);
+      draftComboRef.current = EMPTY_COMBO;
+      setDraftCombo(EMPTY_COMBO);
+      rightModifierLatchRef.current = null;
+      if (!options.preserveInvalidReleaseNotice) {
+        setInvalidReleaseNotice(false);
+      }
+    },
+    [],
+  );
+
+  const startRecording = useCallback(
+    (kind: HotkeyBindingKind = "hold") => {
+      recordingActiveRef.current = true;
+      activeKindRef.current = kind;
+      completionInFlightRef.current = false;
+      setState("recording");
+      setActiveKind(kind);
+      clearError(kind);
+      draftComboRef.current = EMPTY_COMBO;
+      setDraftCombo(EMPTY_COMBO);
+      rightModifierLatchRef.current = null;
+      setInvalidReleaseNotice(false);
+      window.api?.startHotkeyRecording(kind);
+    },
+    [clearError],
+  );
 
   const cancelRecording = useCallback(() => {
     clearWarningTimer();
-    recordingActiveRef.current = false;
-    setState("idle");
-    draftComboRef.current = EMPTY_COMBO;
-    setDraftCombo(EMPTY_COMBO);
-    rightModifierLatchRef.current = null;
-    setInvalidReleaseNotice(false);
     window.api?.stopHotkeyRecording();
-  }, [clearWarningTimer]);
+    resetRecorderState();
+  }, [clearWarningTimer, resetRecorderState]);
 
-  const completeRecording = useCallback(() => {
+  const completeRecording = useCallback(async () => {
+    if (completionInFlightRef.current) return;
     const draft = draftComboRef.current;
     let accel = comboToAccelerator(draft);
     const latch = rightModifierLatchRef.current;
@@ -416,28 +484,48 @@ export function useHotkeyRecorder(
       if (draft.key || draft.modifiers.length > 0) {
         showInvalidReleaseNotice();
         window.api?.stopHotkeyRecording();
-        recordingActiveRef.current = false;
-        setState("idle");
-        draftComboRef.current = EMPTY_COMBO;
-        setDraftCombo(EMPTY_COMBO);
-        rightModifierLatchRef.current = null;
+        resetRecorderState({ preserveInvalidReleaseNotice: true });
       }
       return;
     }
 
-    clearWarningTimer();
-    if (accel) {
-      onRecordRef.current(accel);
-    }
-    // Re-register the global listener with the new accelerator (single IPC)
-    window.api?.stopHotkeyRecording(accel);
+    const kind = activeKindRef.current ?? "hold";
+    completionInFlightRef.current = true;
     recordingActiveRef.current = false;
-    setState("idle");
-    draftComboRef.current = EMPTY_COMBO;
-    setDraftCombo(EMPTY_COMBO);
-    rightModifierLatchRef.current = null;
-    setInvalidReleaseNotice(false);
-  }, [clearWarningTimer, showInvalidReleaseNotice]);
+    clearWarningTimer();
+    setState("saving");
+    window.api?.pauseHotkeyRecording();
+
+    try {
+      const save = onRecordRef.current(accel, kind);
+      if (isSaveResultPromise(save)) {
+        const result = await save;
+        if (!result.ok) {
+          setError(kind, {
+            error: result.error ?? "save_failed",
+            conflictingKind: result.conflictingKind,
+          });
+        } else {
+          clearError(kind);
+        }
+      } else {
+        // Compatibility for onboarding and other legacy synchronous callers.
+        window.api?.stopHotkeyRecording(accel);
+        clearError(kind);
+      }
+    } catch {
+      window.api?.stopHotkeyRecording();
+      setError(kind, { error: "save_failed" });
+    } finally {
+      resetRecorderState();
+    }
+  }, [
+    clearError,
+    clearWarningTimer,
+    resetRecorderState,
+    setError,
+    showInvalidReleaseNotice,
+  ]);
 
   const hasDraftCombo = useCallback(() => {
     return (
@@ -450,7 +538,9 @@ export function useHotkeyRecorder(
   useEffect(() => {
     if (state !== "recording" || !window.api) return;
 
-    const removeModifiers = window.api.onHotkeyRecordModifiers((modifiers) => {
+    const removeModifiers = window.api.onHotkeyRecordModifiers((payload) => {
+      if (payload.kind !== activeKindRef.current) return;
+      const modifiers = payload.modifiers;
       const rightToken =
         modifiers.length === 1 && RIGHT_MODIFIER_TO_GENERIC[modifiers[0]]
           ? modifiers[0]
@@ -474,23 +564,29 @@ export function useHotkeyRecorder(
       }));
     });
 
-    const removeCaptured = window.api.onHotkeyRecordCaptured((combo) => {
+    const removeCaptured = window.api.onHotkeyRecordCaptured((payload) => {
+      if (payload.kind !== activeKindRef.current) return;
       rightModifierLatchRef.current = null;
-      updateDraftCombo((current) => normalizeCapturedCombo(current, combo));
+      updateDraftCombo((current) =>
+        normalizeCapturedCombo(current, payload.combo),
+      );
     });
 
-    const removeReleased = window.api.onHotkeyRecordReleased(() => {
+    const removeReleased = window.api.onHotkeyRecordReleased((payload) => {
+      if (payload.kind !== activeKindRef.current) return;
       if (!hasDraftCombo()) return;
-      completeRecording();
+      void completeRecording();
     });
 
-    const removeCancel = window.api.onHotkeyRecordCancel(() => {
-      recordingActiveRef.current = false;
-      setState("idle");
-      draftComboRef.current = EMPTY_COMBO;
-      setDraftCombo(EMPTY_COMBO);
-      rightModifierLatchRef.current = null;
-      setInvalidReleaseNotice(false);
+    const removeCancel = window.api.onHotkeyRecordCancel((payload) => {
+      if (payload.kind !== activeKindRef.current) return;
+      resetRecorderState();
+    });
+
+    const removeError = window.api.onHotkeyRecordError((payload) => {
+      if (payload.kind !== activeKindRef.current) return;
+      setError(payload.kind, { error: payload.error });
+      resetRecorderState();
     });
 
     return () => {
@@ -498,8 +594,16 @@ export function useHotkeyRecorder(
       removeCaptured();
       removeReleased();
       removeCancel();
+      removeError();
     };
-  }, [state, completeRecording, hasDraftCombo, updateDraftCombo]);
+  }, [
+    state,
+    completeRecording,
+    hasDraftCombo,
+    resetRecorderState,
+    setError,
+    updateDraftCombo,
+  ]);
 
   useEffect(() => {
     if (state !== "recording" || !USE_DOM_CAPTURE) return;
@@ -555,7 +659,7 @@ export function useHotkeyRecorder(
 
       if (e.key === "Escape") return;
       if (!hasDraftCombo()) return;
-      completeRecording();
+      void completeRecording();
     };
 
     window.addEventListener("keydown", handleKeyDown, true);
@@ -576,6 +680,7 @@ export function useHotkeyRecorder(
   useEffect(() => {
     return () => {
       clearWarningTimer();
+      rightModifierLatchRef.current = null;
       if (recordingActiveRef.current) {
         recordingActiveRef.current = false;
         window.api?.stopHotkeyRecording();
@@ -585,6 +690,8 @@ export function useHotkeyRecorder(
 
   return {
     state,
+    activeKind,
+    errors,
     liveModifiers: draftCombo.modifiers,
     capturedCombo:
       draftCombo.modifiers.length > 0 || draftCombo.key ? draftCombo : null,
@@ -595,5 +702,6 @@ export function useHotkeyRecorder(
     invalidReleaseNotice,
     startRecording,
     cancelRecording,
+    clearError,
   };
 }

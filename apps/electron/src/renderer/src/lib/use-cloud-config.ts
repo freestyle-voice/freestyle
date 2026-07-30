@@ -1,7 +1,4 @@
-import type {
-  IndustryToneDefaults,
-  SuggestedLanguage,
-} from "@freestyle-voice/validations";
+import type { SuggestedLanguage } from "@freestyle-voice/validations";
 import { orderBySuggestedLanguages as orderLanguages } from "@freestyle-voice/validations";
 import { useQuery } from "@tanstack/react-query";
 import { getClient } from "./api";
@@ -9,26 +6,23 @@ import { ONE_HOUR } from "./query";
 
 interface CloudConfig {
   suggestedLanguages: SuggestedLanguage[];
-  industryVocabulary: string[];
-  industryToneDefaults: IndustryToneDefaults | null;
 }
 
 /**
  * The public cloud config (via the local server passthrough): region-based
- * suggested languages and optional industry vocabulary/tone defaults. Cached
+ * suggested languages. Industry defaults are now applied server-side at
+ * profile-update time and are no longer returned by this endpoint. Cached
  * for ~6h to match the cloud's CDN TTL. Best-effort — the UI falls back to its
  * static ordering when this is unavailable.
  */
-export function useCloudConfig(enabled: boolean, industry?: string) {
+export function useCloudConfig(enabled: boolean) {
   return useQuery({
-    queryKey: ["cloud-config", industry ?? ""] as const,
+    queryKey: ["cloud-config"] as const,
     enabled,
     staleTime: 6 * ONE_HOUR,
     retry: 1,
     queryFn: async (): Promise<CloudConfig> => {
-      const res = await getClient().api.config.cloud.$get({
-        query: industry ? { industry } : {},
-      });
+      const res = await getClient().api.config.cloud.$get();
       if (!res.ok) throw new Error("Failed to load cloud config");
       return (await res.json()) as CloudConfig;
     },

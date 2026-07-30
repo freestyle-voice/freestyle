@@ -407,6 +407,14 @@ function ProfileDetailsCard() {
         company: company.trim() || null,
       });
       queryClient.setQueryData(["cloud-profile-fields"], updated);
+      // When the user sets their industry for the first time, the cloud seeds
+      // tone/vocabulary defaults into member_preferences. Invalidate the
+      // preferences query so the seeded values are pulled in immediately.
+      if (!savedIndustry && industry) {
+        void queryClient.invalidateQueries({
+          queryKey: ["cloud-preferences"],
+        });
+      }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -417,7 +425,7 @@ function ProfileDetailsCard() {
     } finally {
       setSaving(false);
     }
-  }, [canSave, industry, jobTitle, company, queryClient]);
+  }, [canSave, industry, savedIndustry, jobTitle, company, queryClient]);
 
   const detectedLocation = [profile?.region, profile?.country]
     .filter(Boolean)

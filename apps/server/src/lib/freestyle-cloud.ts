@@ -247,16 +247,13 @@ export function freestyleCloudStreamWsUrl(): string {
 
 /**
  * Fetch the public `GET /v2/config` payload: cleanup prompt config plus
- * region-based suggested languages and (optional) industry-based vocabulary /
- * tone defaults. Unauthenticated and CDN-cacheable. Pass `industry` to receive
- * industry suggestions; language ordering is derived from the caller's IP geo
- * by the cloud.
+ * region-based suggested languages. Unauthenticated and CDN-cacheable.
+ * Language ordering is derived from the caller's IP geo by the cloud.
+ * Industry defaults are now applied server-side at profile-update time and
+ * are no longer returned by this endpoint.
  */
-export async function fetchCloudConfig(
-  industry?: string | null,
-): Promise<CloudConfigResponse> {
-  const url = new URL(`${freestyleCloudUrl()}/v2/config`);
-  if (industry) url.searchParams.set("industry", industry);
+export async function fetchCloudConfig(): Promise<CloudConfigResponse> {
+  const url = `${freestyleCloudUrl()}/v2/config`;
   const res = await fetch(url, {
     signal: AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
   });

@@ -77,7 +77,18 @@ export function useUpdateProfileFields() {
       return profile as CloudProfile;
     },
     onSuccess: (profile) => {
+      const previous = queryClient.getQueryData<CloudProfile>(
+        PROFILE_FIELDS_QUERY_KEY,
+      );
       queryClient.setQueryData(PROFILE_FIELDS_QUERY_KEY, profile);
+      // When the user sets their industry for the first time, the cloud seeds
+      // tone/vocabulary defaults into member_preferences. Invalidate the
+      // preferences query so the seeded values are pulled in immediately.
+      if (!previous?.industry && profile.industry) {
+        void queryClient.invalidateQueries({
+          queryKey: ["cloud-preferences"],
+        });
+      }
     },
   });
 }

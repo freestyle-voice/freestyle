@@ -9,7 +9,10 @@ import {
   FreestyleCloudUsageError,
 } from "../lib/freestyle-cloud.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
-import { getLanguageSetting } from "../lib/language.js";
+import {
+  getLanguageSetting,
+  getTranslateModeSetting,
+} from "../lib/language.js";
 import {
   FreestyleEventType,
   parseAppContext,
@@ -83,12 +86,14 @@ const stream = new Hono().get(
     function resolveStreamConfig(): {
       voice: { provider: string; model_id: string };
       language: string | undefined;
+      translate: boolean;
       bias: ReturnType<typeof resolveAsrVocabularyBias>;
       key: string;
     } | null {
       const voice = getDefaultModels().voice;
       if (!voice) return null;
       const language = getLanguageSetting();
+      const translate = getTranslateModeSetting();
       const bias = resolveAsrVocabularyBias(
         voice.provider,
         voice.model_id,
@@ -112,11 +117,13 @@ const stream = new Hono().get(
       return {
         voice,
         language,
+        translate,
         bias,
         key: JSON.stringify([
           voice.provider,
           voice.model_id,
           language ?? null,
+          translate,
           bias,
           cleanupFingerprint,
         ]),
@@ -320,6 +327,7 @@ const stream = new Hono().get(
         apiKey,
         model: voice.model_id,
         language: config.language,
+        translate: config.translate,
         bias: config.bias,
         appContext: effectiveAppContext(),
         cleanup,

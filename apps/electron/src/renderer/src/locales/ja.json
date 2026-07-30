@@ -113,7 +113,6 @@
       "microphoneDesc": "オーディオ入力デバイスを選択してください。",
       "microphoneDefault": "システムデフォルト",
       "language": "言語",
-      "languageDesc": "文字起こしモデルに認識させる言語のヒント。",
       "transcriptionLanguages": {
         "auto": "自動検出",
         "en": "英語",

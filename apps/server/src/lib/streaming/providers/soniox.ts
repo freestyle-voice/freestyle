@@ -15,10 +15,12 @@ import { stripProviderPrefix } from "../types.js";
 const SONIOX_WS_URL = "wss://stt-rt.soniox.com/transcribe-websocket";
 const COMMIT_TIMEOUT_MS = 8_000;
 const KEEPALIVE_INTERVAL_MS = 10_000;
+const FIN_TOKEN = "<fin>";
 
 interface SonioxToken {
   text?: string;
   is_final?: boolean;
+  translation_status?: "original" | "translation";
 }
 
 function renderTokens(
@@ -39,6 +41,7 @@ function buildSonioxSessionConfig(opts: {
   language?: string;
   bias?: TranscribeOptions["bias"];
   appContext?: string | null;
+  translateTo?: string;
 }): Record<string, unknown> {
   const config: Record<string, unknown> = {
     api_key: opts.apiKey,
@@ -49,7 +52,9 @@ function buildSonioxSessionConfig(opts: {
     enable_endpoint_detection: false,
   };
   const hints = languageHints(opts.language);
-  if (hints) {
+  if (opts.translateTo) {
+    config.translation = { type: "one_way", target_language: opts.translateTo };
+  } else if (hints) {
     config.language_hints = hints;
     config.language_hints_strict = true;
   }
@@ -136,11 +141,16 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
-    const { apiKey, model, language, bias, appContext, callbacks } = opts;
+    const { apiKey, model, language, translate, bias, appContext, callbacks } =
+      opts;
     const short = stripProviderPrefix(model);
+    const translateTo = translate && language ? language : undefined;
 
     const finalTokens: SonioxToken[] = [];
     let nonFinalTokens: SonioxToken[] = [];
+    const sourceFinalTokens: SonioxToken[] = [];
+    let sourceNonFinalTokens: SonioxToken[] = [];
+    let finSeen = false;
     let commitRequested = false;
     let finalDelivered = false;
     let finalizeSent = false;
@@ -171,6 +181,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
         language,
         bias,
         appContext,
+        translateTo,
       });
       ws.send(JSON.stringify(config));
       configured = true;
@@ -186,25 +197,41 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
       const text = renderTokens(finalTokens, nonFinalTokens).trim();
       finalTokens.length = 0;
       nonFinalTokens = [];
+      sourceFinalTokens.length = 0;
+      sourceNonFinalTokens = [];
+      finSeen = false;
       callbacks.onFinal(text);
     }
 
     function maybeDeliverAfterFinalize(): void {
       if (!commitRequested || !finalizeSent || finalDelivered) return;
+      if (translateTo && !finSeen) return;
       if (nonFinalTokens.length > 0) return;
       deliverFinal();
     }
 
     function handleTokens(tokens: SonioxToken[]): void {
       nonFinalTokens = [];
+      sourceNonFinalTokens = [];
       for (const token of tokens) {
         if (!token.text) continue;
+        if (token.text.includes(FIN_TOKEN)) finSeen = true;
+        if (translateTo && token.translation_status === "original") {
+          if (token.is_final) sourceFinalTokens.push(token);
+          else sourceNonFinalTokens.push(token);
+          continue;
+        }
         if (token.is_final) finalTokens.push(token);
         else nonFinalTokens.push(token);
       }
 
       if (!commitRequested) {
-        const partial = renderTokens(finalTokens, nonFinalTokens).trim();
+        const hasSource =
+          sourceFinalTokens.length > 0 || sourceNonFinalTokens.length > 0;
+        const partial =
+          translateTo && hasSource
+            ? renderTokens(sourceFinalTokens, sourceNonFinalTokens).trim()
+            : renderTokens(finalTokens, nonFinalTokens).trim();
         if (partial) callbacks.onPartial(partial);
       }
 
@@ -267,6 +294,9 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
         clearCommitTimeout();
         finalTokens.length = 0;
         nonFinalTokens = [];
+        sourceFinalTokens.length = 0;
+        sourceNonFinalTokens = [];
+        finSeen = false;
         commitRequested = false;
         finalDelivered = false;
         finalizeSent = false;
@@ -293,6 +323,9 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
         clearCommitTimeout();
         finalTokens.length = 0;
         nonFinalTokens = [];
+        sourceFinalTokens.length = 0;
+        sourceNonFinalTokens = [];
+        finSeen = false;
         commitRequested = false;
         finalDelivered = false;
         finalizeSent = false;

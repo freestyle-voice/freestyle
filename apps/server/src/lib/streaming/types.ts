@@ -92,6 +92,7 @@ export interface StreamingSessionOptions {
    * auto-detect, which each provider must translate to its own wire value.
    */
   language?: string;
+  translate?: boolean;
   /** ASR-only vocabulary bias for the first recognition pass. */
   bias?: AsrVocabularyBias | null;
   appContext?: string | null;

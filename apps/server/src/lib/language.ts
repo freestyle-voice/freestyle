@@ -46,3 +46,11 @@ export function getLanguageSetting(): string | undefined {
     .get() as { value: string } | undefined;
   return normalizeLanguageSetting(row?.value);
 }
+
+export function getTranslateModeSetting(): boolean {
+  if (!getLanguageSetting()) return false;
+  const row = getDb()
+    .prepare("SELECT value FROM settings WHERE key = 'translate_mode'")
+    .get() as { value: string } | undefined;
+  return row?.value === "true";
+}

@@ -151,6 +151,7 @@ export default function SettingsPage(): React.JSX.Element {
   );
   const [hotkeyMode, setHotkeyMode] = useState<"hold" | "toggle">("hold");
   const [language, setLanguage] = useState("auto");
+  const [translateMode, setTranslateMode] = useState(false);
   const [outputMode, setOutputMode] = useState("paste");
   const [pillPosition, setPillPosition] = useState("bottom-center");
   const [pillCancel, setPillCancel] = useState<PillCancelMode>("hover");
@@ -200,6 +201,11 @@ export default function SettingsPage(): React.JSX.Element {
       })),
     ],
     [t],
+  );
+
+  const languageLabel = useMemo(
+    () => languageOptions.find((o) => o.value === language)?.label ?? language,
+    [languageOptions, language],
   );
 
   const retentionOptions = useMemo(
@@ -357,6 +363,7 @@ export default function SettingsPage(): React.JSX.Element {
     if (s[SETTINGS_KEYS.hotkey]) setHotkey(s[SETTINGS_KEYS.hotkey]);
     if (s[SETTINGS_KEYS.hotkeyMode] === "toggle") setHotkeyMode("toggle");
     if (s[SETTINGS_KEYS.language]) setLanguage(s[SETTINGS_KEYS.language]);
+    if (s[SETTINGS_KEYS.translateMode] === "true") setTranslateMode(true);
     if (s[SETTINGS_KEYS.outputMode]) setOutputMode(s[SETTINGS_KEYS.outputMode]);
     setPillCancel(normalizePillCancelMode(s[SETTINGS_KEYS.pillCancelButton]));
     if (s[SETTINGS_KEYS.soundEnabled] === "false") setSoundEnabled(false);
@@ -504,15 +511,29 @@ export default function SettingsPage(): React.JSX.Element {
     [setTheme],
   );
 
-  const handleLanguageChange = useCallback((value: string) => {
-    setLanguage(value);
+  const persistTranslateMode = useCallback((value: boolean) => {
+    setTranslateMode(value);
     getClient()
       .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.language },
-        json: { value },
+        param: { key: SETTINGS_KEYS.translateMode },
+        json: { value: String(value) },
       })
       .catch(() => {});
   }, []);
+
+  const handleLanguageChange = useCallback(
+    (value: string) => {
+      setLanguage(value);
+      getClient()
+        .api.settings[":key"].$put({
+          param: { key: SETTINGS_KEYS.language },
+          json: { value },
+        })
+        .catch(() => {});
+      if (value === "auto" && translateMode) persistTranslateMode(false);
+    },
+    [translateMode, persistTranslateMode],
+  );
 
   const handleOutputModeChange = useCallback((value: string) => {
     setOutputMode(value);
@@ -934,24 +955,66 @@ export default function SettingsPage(): React.JSX.Element {
 
               <Row
                 label={t("settings.recording.language")}
-                desc={t("settings.recording.languageDesc")}
+                desc={
+                  language === "auto"
+                    ? t("settings.recording.languageDescAuto")
+                    : translateMode
+                      ? t("settings.recording.languageDescEnforced", {
+                          language: languageLabel,
+                        })
+                      : t("settings.recording.languageDescHint", {
+                          language: languageLabel,
+                        })
+                }
+                last
               >
-                <Select value={language} onValueChange={handleLanguageChange}>
-                  <SelectTrigger
-                    id="settings-language"
-                    className="w-full max-w-md"
-                  >
-                    <Languages className="text-muted-foreground size-4 shrink-0" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {languageOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex w-full max-w-md items-center gap-3">
+                  <Select value={language} onValueChange={handleLanguageChange}>
+                    <SelectTrigger
+                      id="settings-language"
+                      className="w-full min-w-0 flex-1"
+                    >
+                      <Languages className="text-muted-foreground size-4 shrink-0" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {languageOptions.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="w-[76px] shrink-0">
+                    {language === "auto" ? null : (
+                      <span
+                        data-testid="language-mode-label"
+                        className={cn(
+                          "text-[12.5px] leading-[1.5] whitespace-nowrap",
+                          translateMode
+                            ? "text-foreground font-medium"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {translateMode
+                          ? t("settings.recording.languageModeEnforced")
+                          : t("settings.recording.languageModeHint")}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </Row>
+
+              <Row
+                label={t("settings.recording.translateMode")}
+                desc={t("settings.recording.translateModeDesc")}
+              >
+                <Switch
+                  id="settings-translate-mode"
+                  checked={translateMode}
+                  disabled={language === "auto"}
+                  onCheckedChange={persistTranslateMode}
+                />
               </Row>
 
               <Row

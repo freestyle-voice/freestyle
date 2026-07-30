@@ -113,7 +113,6 @@
       "microphoneDesc": "Selecciona tu dispositivo de entrada de audio.",
       "microphoneDefault": "Predeterminado del sistema",
       "language": "Idioma",
-      "languageDesc": "Pista para el modelo de transcripción.",
       "transcriptionLanguages": {
         "auto": "Detección automática",
         "en": "Inglés",

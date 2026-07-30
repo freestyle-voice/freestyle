@@ -404,6 +404,8 @@ function setProgrammaticPosition(
   const ty = y - pillExpandOffset.dy;
   markProgrammaticTarget(tx, ty);
   win.setPosition(tx, ty);
+  const [ax, ay] = win.getPosition();
+  if (ax !== tx || ay !== ty) markProgrammaticTarget(ax, ay);
 }
 
 /** Which capsule edge stays pinned when the window grows around the pill. */
@@ -485,49 +487,24 @@ function getPillAlignmentForCustom(): "custom-top" | "custom-bottom" {
 
 // Computes a preset pill slot for a specific display. The pill is aligned
 // inside the window via CSS (justify-center or justify-end).
-//
-// Bottom positions normally sit slightly past the work-area edge so the pill
-// hugs the dock/taskbar. But that only looks right when a dock/taskbar
-// actually reserves space on this display: on a dockless monitor (common for
-// secondary/vertical displays) the work area reaches the physical edge, so
-// the same overlap pushes the pill off-screen and it clips against the
-// border. Detect the reserved bottom strip and only overlap when it exists;
-// otherwise leave a small gap above the edge.
 function presetPositionForDisplay(
   display: Display,
   position: string,
 ): { x: number; y: number } {
   const { x: waX, y: waY, width, height } = display.workArea;
-
-  const bottomInset = Math.max(
-    0,
-    display.bounds.y +
-      display.bounds.height -
-      (display.workArea.y + display.workArea.height),
-  );
-  // +14 nudges the pill into an existing dock strip; -8 leaves a gap above
-  // the physical edge on dockless displays.
-  const bottomOffset = bottomInset > 0 ? 14 : -8;
-  const topOverlap = 0;
+  const centerX = waX + Math.round((width - APP_WIDTH) / 2);
+  const rightX = waX + width - APP_WIDTH;
+  const bottomY = waY + height - APP_HEIGHT - 8;
 
   switch (position) {
     case "top-center":
-      return {
-        x: waX + Math.round((width - APP_WIDTH) / 2),
-        y: waY + topOverlap,
-      };
+      return { x: centerX, y: waY };
     case "top-right":
-      return { x: waX + width - APP_WIDTH, y: waY + topOverlap };
+      return { x: rightX, y: waY };
     case "bottom-right":
-      return {
-        x: waX + width - APP_WIDTH,
-        y: waY + height - APP_HEIGHT + bottomOffset,
-      };
+      return { x: rightX, y: bottomY };
     default:
-      return {
-        x: waX + Math.round((width - APP_WIDTH) / 2),
-        y: waY + height - APP_HEIGHT + bottomOffset,
-      };
+      return { x: centerX, y: bottomY };
   }
 }
 
@@ -616,6 +593,7 @@ function createAppWindow(): void {
   });
 
   let moveTimeout: NodeJS.Timeout | null = null;
+  let moveBurst = 0;
   mainWindow.on("move", () => {
     if (!mainWindow) return;
     const [rawX, rawY] = mainWindow.getPosition();
@@ -663,9 +641,12 @@ function createAppWindow(): void {
         return;
     }
 
+    moveBurst++;
     if (moveTimeout) clearTimeout(moveTimeout);
     moveTimeout = setTimeout(() => {
-      if (!mainWindow) return;
+      const burst = moveBurst;
+      moveBurst = 0;
+      if (!mainWindow || burst < 3) return;
       const [fx, fy] = mainWindow.getPosition();
       writeSettings({
         pillPosition: "custom",

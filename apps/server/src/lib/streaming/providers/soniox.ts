@@ -49,7 +49,10 @@ function buildSonioxSessionConfig(opts: {
     enable_endpoint_detection: false,
   };
   const hints = languageHints(opts.language);
-  if (hints) config.language_hints = hints;
+  if (hints) {
+    config.language_hints = hints;
+    config.language_hints_strict = true;
+  }
   const context: Record<string, unknown> = {
     ...sonioxContextFromBias(opts.bias),
   };

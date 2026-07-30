@@ -80,10 +80,13 @@ export const SYNCED_SETTING_KEYS: ReadonlySet<string> = new Set(
 /**
  * Seed the local `settings` table from the cloud snapshot. Called on launch and
  * right after sign-in. Never throws — a failed pull leaves local settings as-is.
+ *
+ * Returns `true` when at least one field was applied from the cloud snapshot,
+ * `false` otherwise (signed out, offline, no active org, or an empty snapshot).
  */
-export async function pullCloudPreferences(): Promise<void> {
+export async function pullCloudPreferences(): Promise<boolean> {
   const token = getSessionToken();
-  if (!token) return;
+  if (!token) return false;
 
   let remote: MemberPreferencesInput;
   try {
@@ -96,9 +99,10 @@ export async function pullCloudPreferences(): Promise<void> {
         `Preferences pull skipped: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    return;
+    return false;
   }
 
+  let applied = false;
   for (const field of FIELD_MAP) {
     const value = remote[field.cloudField];
     // `undefined` = not present in the cloud snapshot -> leave local as-is.
@@ -106,13 +110,41 @@ export async function pullCloudPreferences(): Promise<void> {
     if (value === undefined) continue;
     if (value === null) {
       writeSetting(field.settingKey, "");
+      applied = true;
       continue;
     }
     const serialized =
       field.kind === "json" ? JSON.stringify(value) : String(value);
     writeSetting(field.settingKey, serialized);
+    applied = true;
   }
-  log.info("Cleanup preferences pulled from Freestyle Cloud");
+  if (applied) log.info("Cleanup preferences pulled from Freestyle Cloud");
+  return applied;
+}
+
+/** Delay between preference-pull retries, in milliseconds. */
+const PULL_RETRY_DELAY_MS = 400;
+
+/**
+ * Pull cloud preferences, retrying a few times until something is applied.
+ *
+ * Used right after a first-time industry set: the cloud seeds the member's
+ * `member_preferences` row asynchronously (fire-and-forget, after its profile
+ * response returns), so an immediate pull can race the seed. We retry with a
+ * short backoff so the seeded tones/vocabulary land locally without the user
+ * waiting for the next launch. Stops as soon as a pull applies a value, or
+ * after `attempts` tries. Never throws.
+ */
+export async function pullCloudPreferencesWithRetry(
+  attempts = 3,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, PULL_RETRY_DELAY_MS));
+    }
+    if (await pullCloudPreferences()) return true;
+  }
+  return false;
 }
 
 /**

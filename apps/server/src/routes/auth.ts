@@ -23,7 +23,10 @@ import {
 } from "../lib/freestyle-cloud.js";
 import { applyFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js";
 import { capture, identifyCloudUser } from "../lib/posthog.js";
-import { pullCloudPreferences } from "../lib/preferences-sync.js";
+import {
+  pullCloudPreferences,
+  pullCloudPreferencesWithRetry,
+} from "../lib/preferences-sync.js";
 import {
   getSession,
   getSessionToken,
@@ -161,10 +164,32 @@ const auth = new Hono()
       return c.json({ error: "Not signed in to Freestyle Cloud" }, 401);
     }
     try {
-      await updateCloudProfile(token, c.req.valid("json"));
+      const data = c.req.valid("json");
+
+      // Detect a first-time industry set (null -> value). Only fetch the prior
+      // profile when the client is actually setting an industry — otherwise
+      // this PUT can't be a first-time set and we skip the extra round-trip.
+      // On first-time set the cloud seeds tone/vocabulary defaults into
+      // member_preferences, so we re-pull afterwards to surface them locally
+      // without waiting for the next launch.
+      let isFirstTimeIndustry = false;
+      if (data.industry) {
+        const before = await getCloudProfile(token).catch(() => null);
+        isFirstTimeIndustry = !before?.industry;
+      }
+
+      await updateCloudProfile(token, data);
       // Return the fresh row (now with server-detected geo) so the UI can show
       // the detected location without a second round-trip.
       const profile = await getCloudProfile(token);
+
+      // The cloud seeds member_preferences asynchronously (fire-and-forget on
+      // its side), so retry the pull briefly to catch the seed before we reply.
+      // Awaited so the renderer can invalidate its settings query on success.
+      if (isFirstTimeIndustry) {
+        await pullCloudPreferencesWithRetry();
+      }
+
       return c.json({ profile });
     } catch {
       return c.json({ error: "Failed to update profile" }, 502);

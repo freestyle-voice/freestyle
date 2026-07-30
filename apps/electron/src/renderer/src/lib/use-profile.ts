@@ -3,6 +3,7 @@ import { useCloudAuth } from "@renderer/lib/auth-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { getClient } from "./api";
+import { SETTINGS_QUERY_KEY } from "./query";
 
 /** Social providers the profile page can link against. */
 export const SOCIAL_PROVIDERS = ["github", "google", "apple"] as const;
@@ -81,13 +82,13 @@ export function useUpdateProfileFields() {
         PROFILE_FIELDS_QUERY_KEY,
       );
       queryClient.setQueryData(PROFILE_FIELDS_QUERY_KEY, profile);
-      // When the user sets their industry for the first time, the cloud seeds
-      // tone/vocabulary defaults into member_preferences. Invalidate the
-      // preferences query so the seeded values are pulled in immediately.
+      // On a first-time industry set the cloud seeds tone/vocabulary defaults
+      // into member_preferences; the local server re-pulls them into its
+      // `settings` table before this response returns (see the profile-fields
+      // route). Invalidate the settings query so the tone page re-reads the
+      // freshly-seeded values.
       if (!previous?.industry && profile.industry) {
-        void queryClient.invalidateQueries({
-          queryKey: ["cloud-preferences"],
-        });
+        void queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
       }
     },
   });

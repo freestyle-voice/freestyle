@@ -8,6 +8,10 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
+import {
+  LanguageCombobox,
+  useLanguageOptions,
+} from "@renderer/components/language-combobox";
 import { LanguageSelector } from "@renderer/components/language-selector";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
@@ -43,14 +47,10 @@ import {
 } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { formatNumber } from "@renderer/lib/format";
-import { LANGUAGES } from "@renderer/lib/languages";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import { SETTINGS_QUERY_KEY, settingsQueryOptions } from "@renderer/lib/query";
-import {
-  orderBySuggestedLanguages,
-  useCloudConfig,
-} from "@renderer/lib/use-cloud-config";
+import { useCloudConfig } from "@renderer/lib/use-cloud-config";
 import {
   type CloudUsageBalance,
   usagePercent,
@@ -66,7 +66,6 @@ import {
   FolderOpen,
   Info,
   Keyboard,
-  Languages,
   Loader2,
   Mic,
   Monitor,
@@ -192,26 +191,9 @@ export default function SettingsPage(): React.JSX.Element {
     [devices, t],
   );
 
-  const languageOptions = useMemo(
-    () =>
-      orderBySuggestedLanguages(
-        [
-          {
-            value: "auto",
-            label:
-              t("settings.recording.transcriptionLanguages.auto") ||
-              "Auto-detect",
-          },
-          ...LANGUAGES.map((l) => ({
-            value: l.id,
-            label:
-              t(`settings.recording.transcriptionLanguages.${l.id}`) || l.label,
-          })),
-        ],
-        cloudConfig?.suggestedLanguages,
-      ),
-    [t, cloudConfig?.suggestedLanguages],
-  );
+  // Full transcription-language set from the cloud (all Soniox languages,
+  // region-ordered), falling back to the bundled list when offline.
+  const languageOptions = useLanguageOptions(cloudConfig?.suggestedLanguages);
 
   const retentionOptions = useMemo(
     () => [
@@ -947,22 +929,12 @@ export default function SettingsPage(): React.JSX.Element {
                 label={t("settings.recording.language")}
                 desc={t("settings.recording.languageDesc")}
               >
-                <Select value={language} onValueChange={handleLanguageChange}>
-                  <SelectTrigger
-                    id="settings-language"
-                    className="w-full max-w-md"
-                  >
-                    <Languages className="text-muted-foreground size-4 shrink-0" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {languageOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <LanguageCombobox
+                  id="settings-language"
+                  value={language}
+                  onChange={handleLanguageChange}
+                  options={languageOptions}
+                />
               </Row>
 
               <Row

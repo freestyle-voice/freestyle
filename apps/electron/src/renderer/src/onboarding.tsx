@@ -3,6 +3,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
+import {
+  LanguagePickerDialog,
+  useLanguageOptions,
+} from "@renderer/components/language-combobox";
 import { ModelSetupPanel } from "@renderer/components/model-setup-panel";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { Button } from "@renderer/components/ui/button";
@@ -28,7 +32,7 @@ import {
 import { capture } from "@renderer/lib/analytics";
 import { getClient } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
-import { defaultLanguage, ONBOARDING_LANGUAGES } from "@renderer/lib/languages";
+import { defaultLanguage } from "@renderer/lib/languages";
 import {
   type AvailableModel,
   buildVoiceItems,
@@ -43,6 +47,7 @@ import {
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS, PLATFORM } from "@renderer/lib/platform";
 import { settingsQueryOptions } from "@renderer/lib/query";
+import { useCloudConfig } from "@renderer/lib/use-cloud-config";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -1237,6 +1242,26 @@ function LanguageStep({
   onContinue: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
+  const { user } = useCloudAuth();
+  const { data: cloudConfig } = useCloudConfig(!!user);
+  const options = useLanguageOptions(cloudConfig?.suggestedLanguages);
+  const [showAll, setShowAll] = useState(false);
+
+  // Show a handful of region-relevant languages as pills; the rest live behind
+  // "See all". "auto" gets its own pill below, so exclude it from the top set.
+  const PILL_COUNT = 12;
+  const pills = options.filter((l) => l.code !== "auto").slice(0, PILL_COUNT);
+
+  // The active language may be outside the top pills (picked via "See all"):
+  // surface it as an extra pill so the selection stays visible.
+  const selected = options.find((l) => l.code === language);
+  const selectedOutside =
+    selected &&
+    selected.code !== "auto" &&
+    !pills.some((l) => l.code === selected.code)
+      ? selected
+      : undefined;
+
   return (
     <div className="w-full max-w-[560px]">
       <h1 className="serif text-foreground m-0 mb-7 text-center text-[56px] leading-[0.95] font-normal tracking-[-0.025em]">
@@ -1247,17 +1272,6 @@ function LanguageStep({
       </h1>
 
       <div className="flex flex-wrap justify-center gap-2">
-        {ONBOARDING_LANGUAGES.map((l) => (
-          <Button
-            key={l.id}
-            variant={language === l.id ? "default" : "outline"}
-            size="sm"
-            onClick={() => onSelect(l.id)}
-            className="rounded-full px-4 text-[13.5px]"
-          >
-            {l.nativeLabel}
-          </Button>
-        ))}
         <Button
           variant={language === "auto" ? "default" : "outline"}
           size="sm"
@@ -1266,7 +1280,45 @@ function LanguageStep({
         >
           {t("onboarding.language.autoDetect")}
         </Button>
+        {pills.map((l) => (
+          <Button
+            key={l.code}
+            variant={language === l.code ? "default" : "outline"}
+            size="sm"
+            onClick={() => onSelect(l.code)}
+            className="rounded-full px-4 text-[13.5px]"
+          >
+            {l.label}
+          </Button>
+        ))}
+        {selectedOutside ? (
+          <Button
+            key={selectedOutside.code}
+            variant="default"
+            size="sm"
+            onClick={() => onSelect(selectedOutside.code)}
+            className="rounded-full px-4 text-[13.5px]"
+          >
+            {selectedOutside.label}
+          </Button>
+        ) : null}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowAll(true)}
+          className="rounded-full px-4 text-[13.5px]"
+        >
+          {t("onboarding.language.seeAll") || "See all"}
+        </Button>
       </div>
+
+      <LanguagePickerDialog
+        open={showAll}
+        onOpenChange={setShowAll}
+        value={language}
+        onChange={onSelect}
+        options={options}
+      />
 
       <ModelSetupPanel
         model={localModel}

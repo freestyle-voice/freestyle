@@ -15,7 +15,8 @@
     "download": "Download",
     "downloading": "Downloading...",
     "saving": "Saving…",
-    "restartAndUpdate": "Restart & Update"
+    "restartAndUpdate": "Restart & Update",
+    "noResults": "No results found"
   },
   "languageNames": {
     "en": "English",
@@ -52,7 +53,9 @@
     "language": {
       "titlePrefix": "What language do you ",
       "titleEmphasis": "speak?",
-      "autoDetect": "Auto-detect"
+      "autoDetect": "Auto-detect",
+      "seeAll": "See all",
+      "allLanguages": "All languages"
     },
     "modelSetup": {
       "title": "Download your private voice model",
@@ -134,6 +137,7 @@
       "microphoneDefault": "System default",
       "language": "Language",
       "languageDesc": "Hint for the transcription model.",
+      "languageSearchPlaceholder": "Search languages…",
       "transcriptionLanguages": {
         "auto": "Auto-detect",
         "en": "English",

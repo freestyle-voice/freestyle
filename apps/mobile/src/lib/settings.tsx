@@ -64,7 +64,12 @@ export const LANGUAGES = [
   { code: "ar", name: "Arabic" },
 ] as const;
 
-export type LanguageCode = (typeof LANGUAGES)[number]["code"];
+/**
+ * A transcription-language code. The picker offers the full cloud set (~66
+ * languages) when online, so this is a broad `string` rather than a union of
+ * the small bundled {@link LANGUAGES} fallback. `"auto"` means auto-detect.
+ */
+export type LanguageCode = string;
 
 const LANGUAGE_KEY = "language";
 const CLEANUP_KEY = "cleanup";

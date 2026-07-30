@@ -1,16 +1,30 @@
 /**
  * Bottom-sheet language picker. Replaces the platform-split wheel/list picker
  * with a single sheet that slides up from the bottom on both platforms —
- * a tap-to-dismiss backdrop, a drag handle, and a scrollable list of languages
- * with a checkmark on the active one. Extra bottom padding keeps the last
- * options clear of the home indicator.
+ * a tap-to-dismiss backdrop, a drag handle, a search field, and a scrollable
+ * list of languages with a checkmark on the active one. Extra bottom padding
+ * keeps the last options clear of the home indicator.
+ *
+ * Options come from the cloud `suggestedLanguages` (the full Soniox set,
+ * region-ordered) and fall back to the small bundled {@link LANGUAGES} list when
+ * offline / signed out.
  */
 
 import type { SuggestedLanguage } from "@freestyle-voice/validations";
-import { orderBySuggestedLanguages } from "@freestyle-voice/validations";
-import { Check } from "lucide-react-native";
-import { useMemo } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import {
+  filterLanguageOptions,
+  resolveLanguageOptions,
+} from "@freestyle-voice/validations";
+import { Check, Search } from "lucide-react-native";
+import { useMemo, useState } from "react";
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
@@ -25,11 +39,14 @@ interface LanguageSheetProps {
   onClose: () => void;
   /**
    * Cloud-suggested languages for the user's region (from `/v2/config`). When
-   * present, matching languages are surfaced first (after "auto"), preserving
-   * the original order otherwise.
+   * present, this is the full option set (region-ordered); otherwise the small
+   * bundled list is used.
    */
   suggestedLanguages?: SuggestedLanguage[];
 }
+
+/** Bundled fallback options in the shared `{ code, label }` shape. */
+const LOCAL_FALLBACK = LANGUAGES.map((l) => ({ code: l.code, label: l.name }));
 
 export function LanguageSheet({
   visible,
@@ -40,12 +57,17 @@ export function LanguageSheet({
 }: LanguageSheetProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const [query, setQuery] = useState("");
 
-  // Order by region suggestions (shared with the desktop picker); "auto" pinned.
+  // Full option set from the cloud (region-ordered); "auto" pinned first.
   const languages = useMemo(
-    () =>
-      orderBySuggestedLanguages(LANGUAGES, suggestedLanguages, (l) => l.code),
+    () => resolveLanguageOptions(suggestedLanguages, LOCAL_FALLBACK),
     [suggestedLanguages],
+  );
+
+  const filtered = useMemo(
+    () => filterLanguageOptions(languages, query),
+    [languages, query],
   );
 
   return (
@@ -78,43 +100,69 @@ export function LanguageSheet({
         <ThemedText type="title" style={styles.title}>
           Language
         </ThemedText>
+        <View
+          style={[
+            styles.searchRow,
+            { backgroundColor: theme.background, borderColor: theme.border },
+          ]}
+        >
+          <Search color={theme.mutedForeground} size={18} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search languages…"
+            placeholderTextColor={theme.mutedForeground}
+            autoCorrect={false}
+            autoCapitalize="none"
+            style={[styles.searchInput, { color: theme.foreground }]}
+          />
+        </View>
         <ScrollView
           style={styles.list}
           contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {languages.map((lang) => {
-            const active = lang.code === selected;
-            return (
-              <Pressable
-                key={lang.code}
-                onPress={() => {
-                  onSelect(lang.code);
-                  onClose();
-                }}
-                style={({ pressed }) => [
-                  styles.row,
-                  { borderBottomColor: theme.border },
-                  pressed && { opacity: 0.6 },
-                ]}
-              >
-                <ThemedText
-                  style={[
-                    styles.rowLabel,
-                    active && {
-                      color: theme.primary,
-                      fontFamily: Fonts.sansSemiBold,
-                    },
+          {filtered.length === 0 ? (
+            <ThemedText
+              style={[styles.empty, { color: theme.mutedForeground }]}
+            >
+              No languages found
+            </ThemedText>
+          ) : (
+            filtered.map((lang) => {
+              const active = lang.code === selected;
+              return (
+                <Pressable
+                  key={lang.code}
+                  onPress={() => {
+                    onSelect(lang.code);
+                    onClose();
+                  }}
+                  style={({ pressed }) => [
+                    styles.row,
+                    { borderBottomColor: theme.border },
+                    pressed && { opacity: 0.6 },
                   ]}
                 >
-                  {lang.name}
-                </ThemedText>
-                {active ? (
-                  <Check color={theme.primary} size={20} strokeWidth={2.5} />
-                ) : null}
-              </Pressable>
-            );
-          })}
+                  <ThemedText
+                    style={[
+                      styles.rowLabel,
+                      active && {
+                        color: theme.primary,
+                        fontFamily: Fonts.sansSemiBold,
+                      },
+                    ]}
+                  >
+                    {lang.label}
+                  </ThemedText>
+                  {active ? (
+                    <Check color={theme.primary} size={20} strokeWidth={2.5} />
+                  ) : null}
+                </Pressable>
+              );
+            })
+          )}
         </ScrollView>
       </View>
     </Modal>
@@ -150,8 +198,30 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.three,
   },
   title: { marginBottom: Spacing.two },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.three,
+    height: 40,
+    marginBottom: Spacing.two,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: Fonts.sans,
+    fontSize: 16,
+    padding: 0,
+  },
   list: { flexGrow: 0 },
   listContent: { paddingBottom: Spacing.two },
+  empty: {
+    fontFamily: Fonts.sans,
+    fontSize: 15,
+    textAlign: "center",
+    paddingVertical: Spacing.six,
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",

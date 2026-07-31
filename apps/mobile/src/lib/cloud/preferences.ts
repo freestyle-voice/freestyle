@@ -1,7 +1,7 @@
 /**
  * Cloud-synced cleanup preferences (member-scoped). The mobile app stores
  * preferences in AsyncStorage; these helpers mirror them to the cloud
- * `GET/PUT /preferences` endpoint so preferences follow the user across
+ * `GET/PUT /{org}/preferences` endpoint so preferences follow the user across
  * devices. Authenticated with the stored session cookie, like `usage.ts`.
  */
 
@@ -10,21 +10,25 @@ import type {
   MemberPreferencesInput,
 } from "@freestyle-voice/validations";
 import { cloudUrl } from "./config";
+import { resolveActiveOrgSlug } from "./org";
 import { authHeaders, CloudAuthError } from "./session";
 
 /** Fetch the signed-in member's cloud preferences (empty object if none). */
 export async function fetchCloudPreferences(): Promise<CloudMemberPreferences> {
   const headers = authHeaders();
   if (!headers) throw new CloudAuthError();
-  const res = await fetch(`${cloudUrl()}/preferences`, {
+  const orgSlug = await resolveActiveOrgSlug();
+  // No active org yet — treat as "nothing synced".
+  if (!orgSlug) return {};
+  const res = await fetch(`${cloudUrl()}/${orgSlug}/preferences`, {
     method: "GET",
     headers,
     credentials: "omit",
     signal: AbortSignal.timeout(15_000),
   });
   if (res.status === 401) throw new CloudAuthError();
-  // 400 = no active org yet; treat as "nothing synced".
-  if (res.status === 400) return {};
+  // 403/404 = no membership / unknown org; treat as "nothing synced".
+  if (res.status === 403 || res.status === 404) return {};
   if (!res.ok) throw new Error(`Failed to load preferences (${res.status})`);
   return (await res.json()) as CloudMemberPreferences;
 }
@@ -38,7 +42,9 @@ export async function pushCloudPreferences(
 ): Promise<void> {
   const headers = authHeaders();
   if (!headers) throw new CloudAuthError();
-  const res = await fetch(`${cloudUrl()}/preferences`, {
+  const orgSlug = await resolveActiveOrgSlug();
+  if (!orgSlug) return; // no active org — nothing to push to
+  const res = await fetch(`${cloudUrl()}/${orgSlug}/preferences`, {
     method: "PUT",
     headers: { ...headers, "content-type": "application/json" },
     body: JSON.stringify(data),

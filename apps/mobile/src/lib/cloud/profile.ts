@@ -11,6 +11,7 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import { Platform } from "react-native";
 import { authClient } from "./auth-client";
 import { cloudUrl } from "./config";
+import { resolveActiveOrgSlug } from "./org";
 import { authHeaders, CloudAuthError } from "./session";
 
 export type SocialProvider = "google" | "github" | "apple";
@@ -23,11 +24,16 @@ export async function updateName(name: string): Promise<{ error?: string }> {
   return error ? { error: error.message ?? "Failed to update profile" } : {};
 }
 
-/** Fetch the signed-in user's profile fields (industry/job title/company) + geo. */
+/**
+ * Fetch the signed-in member's profile fields (industry/company) + geo for the
+ * active organization. Returns an empty profile when there is no active org yet.
+ */
 export async function getProfileFields(): Promise<CloudProfile> {
   const headers = authHeaders();
   if (!headers) throw new CloudAuthError();
-  const res = await fetch(`${cloudUrl()}/profile`, {
+  const orgSlug = await resolveActiveOrgSlug();
+  if (!orgSlug) return {} as CloudProfile;
+  const res = await fetch(`${cloudUrl()}/${orgSlug}/profile`, {
     method: "GET",
     headers,
     credentials: "omit",
@@ -39,15 +45,18 @@ export async function getProfileFields(): Promise<CloudProfile> {
 }
 
 /**
- * Update the signed-in user's profile fields. Geo (country/region/timezone) is
- * auto-detected server-side and never sent from here.
+ * Update the signed-in member's profile fields for the active organization.
+ * Geo (country/region/timezone) is auto-detected server-side and never sent
+ * from here.
  */
 export async function updateProfileFields(
   data: ProfileInput,
 ): Promise<CloudProfile> {
   const headers = authHeaders();
   if (!headers) throw new CloudAuthError();
-  const res = await fetch(`${cloudUrl()}/profile`, {
+  const orgSlug = await resolveActiveOrgSlug();
+  if (!orgSlug) throw new Error("No active organization");
+  const res = await fetch(`${cloudUrl()}/${orgSlug}/profile`, {
     method: "PUT",
     headers: { ...headers, "content-type": "application/json" },
     body: JSON.stringify(data),

@@ -7,6 +7,7 @@
  */
 
 import { authClient } from "./auth-client";
+import { clearCachedOrgSlug } from "./org";
 
 export interface CloudUser {
   id: string;
@@ -38,5 +39,8 @@ export async function signOutCloud(): Promise<void> {
   } catch {
     // Sign-out is local-first: the expo client clears the stored session even
     // if the network call fails.
+  } finally {
+    // Drop the cached active-org slug so a subsequent sign-in resolves fresh.
+    clearCachedOrgSlug();
   }
 }

@@ -8,6 +8,7 @@ import {
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import {
+  clearCachedOrgSlug,
   DeviceFlowError,
   fetchCloudUser,
   freestyleCloudUrl,
@@ -16,6 +17,7 @@ import {
   listCloudAccounts,
   pollDeviceToken,
   requestDeviceCode,
+  resolveActiveOrgSlug,
   signOutCloud,
   unlinkCloudAccount,
   updateCloudProfile,
@@ -104,6 +106,7 @@ const auth = new Hono()
     if (session) {
       await signOutCloud(session.token).catch(() => {});
     }
+    clearCachedOrgSlug();
     invalidateSession();
     return c.json({ ok: true });
   })
@@ -145,14 +148,17 @@ const auth = new Hono()
     identifyCloudUser(user);
     return c.json({ user });
   })
-  // Profile fields (industry / job title / company) + read-only detected geo.
+  // Profile fields (industry / company) + read-only detected geo, scoped to the
+  // user's active organization.
   .get("/profile-fields", async (c) => {
     const token = getSessionToken();
     if (!token) {
       return c.json({ error: "Not signed in to Freestyle Cloud" }, 401);
     }
     try {
-      const profile = await getCloudProfile(token);
+      const orgSlug = await resolveActiveOrgSlug(token);
+      if (!orgSlug) return c.json({ profile: null });
+      const profile = await getCloudProfile(token, orgSlug);
       return c.json({ profile });
     } catch {
       return c.json({ error: "Failed to load profile" }, 502);
@@ -166,6 +172,13 @@ const auth = new Hono()
     try {
       const data = c.req.valid("json");
 
+      const orgSlug = await resolveActiveOrgSlug(token);
+      if (!orgSlug) {
+        // No active org yet (e.g. the post-signup window). Nothing to write to
+        // an org-scoped profile — surface as a soft failure the UI can retry.
+        return c.json({ error: "No active organization" }, 409);
+      }
+
       // Detect ANY industry change (null->value or value->value). The cloud
       // re-seeds tone/vocabulary defaults into member_preferences on every
       // industry change, so re-pull whenever the industry actually differs from
@@ -173,7 +186,7 @@ const auth = new Hono()
       // industry — otherwise this PUT can't change it and we skip the round-trip.
       let industryChanged = false;
       if (data.industry !== undefined) {
-        const before = await getCloudProfile(token).catch(() => null);
+        const before = await getCloudProfile(token, orgSlug).catch(() => null);
         const prev = before?.industry ?? null;
         const next = data.industry ?? null;
         // Guard `next !== null`: clearing the industry doesn't reseed anything,
@@ -181,10 +194,10 @@ const auth = new Hono()
         industryChanged = prev !== next && next !== null;
       }
 
-      await updateCloudProfile(token, data);
+      await updateCloudProfile(token, orgSlug, data);
       // Return the fresh row (now with server-detected geo) so the UI can show
       // the detected location without a second round-trip.
-      const profile = await getCloudProfile(token);
+      const profile = await getCloudProfile(token, orgSlug);
 
       // The cloud seeds member_preferences asynchronously (fire-and-forget on
       // its side), so retry the pull briefly to catch the seed before we reply.

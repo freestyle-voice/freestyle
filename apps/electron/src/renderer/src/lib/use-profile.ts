@@ -55,7 +55,9 @@ export function useProfileFields(enabled: boolean) {
       const res = await getClient().api.auth["profile-fields"].$get();
       if (!res.ok) throw new Error("Failed to load profile");
       const { profile } = await res.json();
-      return profile as CloudProfile;
+      // `profile` is null when the user has no active org yet (post-signup
+      // window); surface an empty profile so the form renders cleanly.
+      return (profile ?? {}) as CloudProfile;
     },
   });
 }

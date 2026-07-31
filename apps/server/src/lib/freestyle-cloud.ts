@@ -697,8 +697,11 @@ export async function unlinkCloudAccount(
 // ---------------------------------------------------------------------------
 
 /** Fetch the signed-in user's profile fields and detected geo. */
-export async function getCloudProfile(token: string): Promise<CloudProfile> {
-  return cloudJson<CloudProfile>("/profile", token, {
+export async function getCloudProfile(
+  token: string,
+  orgSlug: string,
+): Promise<CloudProfile> {
+  return cloudJson<CloudProfile>(`/${orgSlug}/profile`, token, {
     method: "GET",
     signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
   });
@@ -710,9 +713,10 @@ export async function getCloudProfile(token: string): Promise<CloudProfile> {
  */
 export async function updateCloudProfile(
   token: string,
+  orgSlug: string,
   data: ProfileInput,
 ): Promise<void> {
-  await cloudJson<{ success?: boolean }>("/profile", token, {
+  await cloudJson<{ success?: boolean }>(`/${orgSlug}/profile`, token, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(data),
@@ -732,8 +736,9 @@ export async function updateCloudProfile(
  */
 export async function getCloudPreferences(
   token: string,
+  orgSlug: string,
 ): Promise<CloudMemberPreferences> {
-  return cloudJson<CloudMemberPreferences>("/preferences", token, {
+  return cloudJson<CloudMemberPreferences>(`/${orgSlug}/preferences`, token, {
     method: "GET",
     signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
   });
@@ -745,10 +750,11 @@ export async function getCloudPreferences(
  */
 export async function putCloudPreferences(
   token: string,
+  orgSlug: string,
   data: MemberPreferencesInput,
 ): Promise<{ syncedAt?: string }> {
   return cloudJson<{ success?: boolean; syncedAt?: string }>(
-    "/preferences",
+    `/${orgSlug}/preferences`,
     token,
     {
       method: "PUT",
@@ -853,6 +859,36 @@ export async function setCloudActiveOrganization(
     body: JSON.stringify({ organizationId }),
     signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
   });
+}
+
+/**
+ * Cached active-organization slug, keyed by session token. Profile and
+ * preferences endpoints are org-scoped (`/{slug}/...`), so we resolve the
+ * active org's slug once per session and reuse it. Cleared on sign-out and
+ * whenever the active org changes.
+ */
+let cachedOrgSlug: { token: string; slug: string } | null = null;
+
+/** Drop the cached org slug (call on sign-out or after switching orgs). */
+export function clearCachedOrgSlug(): void {
+  cachedOrgSlug = null;
+}
+
+/**
+ * Resolve the slug of the signed-in user's active organization, needed to build
+ * the org-scoped `/{slug}/profile` and `/{slug}/preferences` paths. Memoized per
+ * token. Returns `null` when there is no active org (e.g. the post-signup window
+ * before the session picks one up), in which case callers should skip the
+ * org-scoped request.
+ */
+export async function resolveActiveOrgSlug(
+  token: string,
+): Promise<string | null> {
+  if (cachedOrgSlug && cachedOrgSlug.token === token) return cachedOrgSlug.slug;
+  const org = await getCloudActiveOrganization(token);
+  const slug = org?.slug ?? null;
+  if (slug) cachedOrgSlug = { token, slug };
+  return slug;
 }
 
 /** Upper bound for the best-effort connection prewarm. */

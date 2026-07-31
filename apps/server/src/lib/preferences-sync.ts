@@ -28,6 +28,7 @@ import {
   FreestyleCloudRequestError,
   getCloudPreferences,
   putCloudPreferences,
+  resolveActiveOrgSlug,
 } from "./freestyle-cloud.js";
 import { getSessionToken } from "./sessions.js";
 import { mergeCloudVocabularyTerms } from "./vocabulary.js";
@@ -94,7 +95,9 @@ export async function pullCloudPreferences(): Promise<boolean> {
 
   let remote: MemberPreferencesInput;
   try {
-    remote = await getCloudPreferences(token);
+    const orgSlug = await resolveActiveOrgSlug(token);
+    if (!orgSlug) return false; // no active org yet — nothing to pull
+    remote = await getCloudPreferences(token, orgSlug);
   } catch (err) {
     // 400 = user has no active org yet; anything else = transient/offline.
     // Either way, keep local settings and move on.
@@ -193,7 +196,9 @@ export async function pushSettingToCloud(
   }
 
   try {
-    await putCloudPreferences(token, patch);
+    const orgSlug = await resolveActiveOrgSlug(token);
+    if (!orgSlug) return; // no active org — nothing to push to
+    await putCloudPreferences(token, orgSlug, patch);
   } catch (err) {
     log.debug(
       `Preferences push skipped for ${key}: ${err instanceof Error ? err.message : String(err)}`,

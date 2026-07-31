@@ -25,15 +25,16 @@ export async function updateName(name: string): Promise<{ error?: string }> {
 }
 
 /**
- * Fetch the signed-in member's profile fields (industry/company) + geo for the
- * active organization. Returns an empty profile when there is no active org yet.
+ * Fetch the signed-in member's profile fields (industry/company/jobTitle) for
+ * the active organization. Returns an empty profile when there is no active org
+ * yet. Served by the cloud member preferences endpoint.
  */
 export async function getProfileFields(): Promise<CloudProfile> {
   const headers = authHeaders();
   if (!headers) throw new CloudAuthError();
   const orgSlug = await resolveActiveOrgSlug();
   if (!orgSlug) return {} as CloudProfile;
-  const res = await fetch(`${cloudUrl()}/${orgSlug}/profile`, {
+  const res = await fetch(`${cloudUrl()}/${orgSlug}/member/preferences`, {
     method: "GET",
     headers,
     credentials: "omit",
@@ -46,8 +47,7 @@ export async function getProfileFields(): Promise<CloudProfile> {
 
 /**
  * Update the signed-in member's profile fields for the active organization.
- * Geo (country/region/timezone) is auto-detected server-side and never sent
- * from here.
+ * When the industry changes the cloud re-seeds tone + vocabulary defaults.
  */
 export async function updateProfileFields(
   data: ProfileInput,
@@ -56,7 +56,7 @@ export async function updateProfileFields(
   if (!headers) throw new CloudAuthError();
   const orgSlug = await resolveActiveOrgSlug();
   if (!orgSlug) throw new Error("No active organization");
-  const res = await fetch(`${cloudUrl()}/${orgSlug}/profile`, {
+  const res = await fetch(`${cloudUrl()}/${orgSlug}/member/preferences`, {
     method: "PUT",
     headers: { ...headers, "content-type": "application/json" },
     body: JSON.stringify(data),

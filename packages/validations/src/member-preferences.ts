@@ -6,21 +6,32 @@ import {
   cleanupPersonalToneSchema,
   cleanupWorkToneSchema,
 } from "./cleanup-tones.js";
+import { industrySchema } from "./profile.js";
 import {
   cleanupCustomPromptSchema,
   cleanupIntensitySchema,
 } from "./settings.js";
 
 /**
- * Cloud-synced cleanup preferences for a member (user+org pair). Mirrors the
- * cloud repo's `@freestyle/validations` `memberPreferencesSchema`.
+ * Cloud-synced member preferences (user+org pair). Mirrors the cloud repo's
+ * `@freestyle/validations` `memberPreferencesSchema`.
  *
  * This is a PARTIAL patch shape: every field is optional so a client can push
  * only what changed, and `null` explicitly clears a field. Omitting a key
  * leaves the stored value untouched. The nested `vocabulary` object is
  * deep-merged server-side.
+ *
+ * Owns the full `member_preferences` row, including profile context
+ * (`industry`/`company`/`jobTitle`). Setting or changing `industry` re-seeds
+ * tone + vocabulary defaults unless `updatePreferences` is `false`.
  */
 export const memberPreferencesSchema = z.object({
+  industry: industrySchema.nullish(),
+  company: z.string().trim().max(120).nullish(),
+  jobTitle: z.string().trim().max(120).nullish(),
+  // Transient control flag (NOT persisted): when the industry changes and this
+  // is not explicitly `false`, the server re-seeds tone + vocabulary defaults.
+  updatePreferences: z.boolean().optional(),
   intensity: cleanupIntensitySchema.nullish(),
   customPrompt: cleanupCustomPromptSchema.nullish(),
   personalTone: cleanupPersonalToneSchema.nullish(),

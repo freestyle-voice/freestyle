@@ -65,5 +65,5 @@ export const profileSchema = z.object({
 
 export type ProfileInput = z.infer<typeof profileSchema>;
 
-/** Shape returned by the cloud `GET /{org}/profile`. */
+/** Shape returned by the cloud `GET /{org}/member/preferences` (profile subset). */
 export type CloudProfile = ProfileInput;

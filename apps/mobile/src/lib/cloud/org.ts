@@ -43,7 +43,7 @@ export function clearCachedOrgSlug(): void {
 
 /**
  * Resolve the slug of the signed-in user's active organization, needed to build
- * the org-scoped `/{slug}/profile` and `/{slug}/preferences` paths. Memoized.
+ * the org-scoped `/{slug}/member/*` paths (profile + preferences). Memoized.
  * Returns `null` when there is no active org, in which case callers should skip
  * the org-scoped request.
  */

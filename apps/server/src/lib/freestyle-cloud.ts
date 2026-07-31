@@ -693,35 +693,43 @@ export async function unlinkCloudAccount(
 }
 
 // ---------------------------------------------------------------------------
-// Profile fields (industry / job title / company) + auto-detected geo
+// Profile fields (industry / job title / company)
 // ---------------------------------------------------------------------------
+// These live on the member_preferences row and are served by the cloud's
+// member preferences endpoint. The profile-field subset (industry/company/
+// jobTitle) is a valid partial patch of that endpoint's schema.
 
-/** Fetch the signed-in user's profile fields and detected geo. */
+/** Fetch the signed-in member's profile fields. */
 export async function getCloudProfile(
   token: string,
   orgSlug: string,
 ): Promise<CloudProfile> {
-  return cloudJson<CloudProfile>(`/${orgSlug}/profile`, token, {
+  return cloudJson<CloudProfile>(`/${orgSlug}/member/preferences`, token, {
     method: "GET",
     signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
   });
 }
 
 /**
- * Update the signed-in user's profile fields. Geo (country/region/timezone) is
- * auto-detected server-side from the request and never sent from here.
+ * Update the signed-in member's profile fields. When the industry changes the
+ * cloud re-seeds tone + vocabulary defaults for the new industry (unless
+ * `updatePreferences: false` is sent).
  */
 export async function updateCloudProfile(
   token: string,
   orgSlug: string,
   data: ProfileInput,
 ): Promise<void> {
-  await cloudJson<{ success?: boolean }>(`/${orgSlug}/profile`, token, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(data),
-    signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
-  });
+  await cloudJson<{ success?: boolean }>(
+    `/${orgSlug}/member/preferences`,
+    token,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(data),
+      signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -738,10 +746,14 @@ export async function getCloudPreferences(
   token: string,
   orgSlug: string,
 ): Promise<CloudMemberPreferences> {
-  return cloudJson<CloudMemberPreferences>(`/${orgSlug}/preferences`, token, {
-    method: "GET",
-    signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
-  });
+  return cloudJson<CloudMemberPreferences>(
+    `/${orgSlug}/member/preferences`,
+    token,
+    {
+      method: "GET",
+      signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+    },
+  );
 }
 
 /**
@@ -754,7 +766,7 @@ export async function putCloudPreferences(
   data: MemberPreferencesInput,
 ): Promise<{ syncedAt?: string }> {
   return cloudJson<{ success?: boolean; syncedAt?: string }>(
-    `/${orgSlug}/preferences`,
+    `/${orgSlug}/member/preferences`,
     token,
     {
       method: "PUT",
@@ -876,7 +888,7 @@ export function clearCachedOrgSlug(): void {
 
 /**
  * Resolve the slug of the signed-in user's active organization, needed to build
- * the org-scoped `/{slug}/profile` and `/{slug}/preferences` paths. Memoized per
+ * the org-scoped `/{slug}/member/*` paths (profile + preferences). Memoized per
  * token. Returns `null` when there is no active org (e.g. the post-signup window
  * before the session picks one up), in which case callers should skip the
  * org-scoped request.

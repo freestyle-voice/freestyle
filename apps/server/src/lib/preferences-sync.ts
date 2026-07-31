@@ -2,7 +2,7 @@
  * Cloud sync for cleanup preferences (member-scoped).
  *
  * The desktop stores cleanup preferences in the local SQLite `settings` table.
- * This module bridges those local keys to the cloud `GET/PUT /preferences`
+ * This module bridges those local keys to the cloud `GET/PUT /{org}/member/preferences`
  * endpoint so a signed-in user's preferences follow them across devices:
  *
  *   - **pull on launch / sign-in** — {@link pullCloudPreferences} fetches the
@@ -10,7 +10,7 @@
  *     cross-device seed; a local change made while offline is overwritten on
  *     the next pull (last-write-wins by the cloud's `updatedAt`).
  *   - **push on change** — {@link pushSettingToCloud} maps a single changed
- *     settings key to a partial `PUT /preferences`. Fire-and-forget: any error
+ *     settings key to a partial `PUT /{org}/member/preferences`. Fire-and-forget: any error
  *     is swallowed so a failed sync never disrupts the local write.
  *
  * Cleanup tones/intensity/appAssignments/language are mirrored into the local

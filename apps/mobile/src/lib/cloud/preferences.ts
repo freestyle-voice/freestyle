@@ -1,7 +1,7 @@
 /**
  * Cloud-synced cleanup preferences (member-scoped). The mobile app stores
  * preferences in AsyncStorage; these helpers mirror them to the cloud
- * `GET/PUT /{org}/preferences` endpoint so preferences follow the user across
+ * `GET/PUT /{org}/member/preferences` endpoint so preferences follow the user across
  * devices. Authenticated with the stored session cookie, like `usage.ts`.
  */
 
@@ -20,7 +20,7 @@ export async function fetchCloudPreferences(): Promise<CloudMemberPreferences> {
   const orgSlug = await resolveActiveOrgSlug();
   // No active org yet — treat as "nothing synced".
   if (!orgSlug) return {};
-  const res = await fetch(`${cloudUrl()}/${orgSlug}/preferences`, {
+  const res = await fetch(`${cloudUrl()}/${orgSlug}/member/preferences`, {
     method: "GET",
     headers,
     credentials: "omit",
@@ -44,7 +44,7 @@ export async function pushCloudPreferences(
   if (!headers) throw new CloudAuthError();
   const orgSlug = await resolveActiveOrgSlug();
   if (!orgSlug) return; // no active org — nothing to push to
-  const res = await fetch(`${cloudUrl()}/${orgSlug}/preferences`, {
+  const res = await fetch(`${cloudUrl()}/${orgSlug}/member/preferences`, {
     method: "PUT",
     headers: { ...headers, "content-type": "application/json" },
     body: JSON.stringify(data),

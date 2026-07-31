@@ -6,6 +6,7 @@ import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   freestyleCloudUrl,
 } from "../freestyle-cloud.js";
+import { MINIMAX_PROVIDERS, minimaxCleanupProviderOptions } from "./minimax.js";
 
 /** The provider-options shape accepted by the cleanup `generateText` call. */
 type CleanupProviderOptions = NonNullable<PostProcessParams["providerOptions"]>;
@@ -99,6 +100,16 @@ const PROVIDERS: LlmProvider[] = [
       return createAnthropic({ apiKey }).chat(modelId);
     },
   },
+  ...MINIMAX_PROVIDERS.map(
+    ({ providerId, baseURL }): LlmProvider => ({
+      providerId,
+      createModel: async (modelId, apiKey) => {
+        const { createAnthropic } = await import("@ai-sdk/anthropic");
+        return createAnthropic({ authToken: apiKey, baseURL }).chat(modelId);
+      },
+      providerOptions: (modelId) => minimaxCleanupProviderOptions(modelId),
+    }),
+  ),
   {
     providerId: "google",
     createModel: async (modelId, apiKey) => {

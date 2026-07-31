@@ -1,3 +1,5 @@
+import { MINIMAX_PROVIDERS } from "./llm/minimax.js";
+
 /**
  * Per-provider API key validation using free, read-only endpoints.
  *
@@ -153,6 +155,26 @@ async function validateMistral(apiKey: string): Promise<ValidationResult> {
   return { valid: false, error: `Mistral returned HTTP ${res.status}.` };
 }
 
+async function validateMiniMax(
+  apiKey: string,
+  baseURL: string,
+): Promise<ValidationResult> {
+  const res = await fetch(`${baseURL}/v1/models`, {
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (res.ok) return { valid: true };
+  if (res.status === 401 || res.status === 403)
+    return {
+      valid: false,
+      error: "Invalid API key. Please check and try again.",
+    };
+  return { valid: false, error: `MiniMax returned HTTP ${res.status}.` };
+}
+
 async function validateOpenRouter(apiKey: string): Promise<ValidationResult> {
   const res = await fetch("https://openrouter.ai/api/v1/key", {
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -196,6 +218,12 @@ const LIVE_VALIDATORS: Record<
   anthropic: validateAnthropic,
   google: validateGoogle,
   mistral: validateMistral,
+  ...Object.fromEntries(
+    MINIMAX_PROVIDERS.map(({ providerId, baseURL }) => [
+      providerId,
+      (apiKey: string) => validateMiniMax(apiKey, baseURL),
+    ]),
+  ),
   openrouter: validateOpenRouter,
   vercel: validateVercel,
 };

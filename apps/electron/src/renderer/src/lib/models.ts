@@ -5,6 +5,13 @@ export interface AvailableModel {
   model_name: string;
   family?: string;
   type: "voice" | "llm";
+  cost_input?: number;
+  cost_output?: number;
+  cost_cache_read?: number;
+  cost_cache_write?: number | null;
+  context_window?: number;
+  input_modalities?: string[];
+  thinking?: string[];
   /** Surfaced in the default picker; non-curated models live behind "All models". */
   curated?: boolean;
   /**
@@ -103,6 +110,8 @@ export const LLM_PROVIDERS = [
   "google",
   "groq",
   "mistral",
+  "minimax",
+  "minimax-cn",
   "openrouter",
   "vercel",
   "local-llm",
@@ -117,6 +126,8 @@ export const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   elevenlabs: "ElevenLabs",
   soniox: "Soniox",
   mistral: "Mistral",
+  minimax: "MiniMax",
+  "minimax-cn": "MiniMax (China)",
   openrouter: "OpenRouter",
   vercel: "Vercel AI Gateway",
   "freestyle-cloud": "Freestyle Transcribe",
@@ -135,6 +146,10 @@ export const PROVIDER_KEY_URLS: Record<string, string> = {
   anthropic: "https://console.anthropic.com/settings/keys",
   google: "https://aistudio.google.com/apikey",
   mistral: "https://console.mistral.ai/api-keys",
+  minimax:
+    "https://platform.minimax.io/user-center/basic-information/interface-key",
+  "minimax-cn":
+    "https://platform.minimaxi.com/user-center/basic-information/interface-key",
   openrouter: "https://openrouter.ai/keys",
   vercel: "https://vercel.com/d?to=%2F%5Bteam%5D%2F~%2Fai-gateway%2Fapi-keys",
 };

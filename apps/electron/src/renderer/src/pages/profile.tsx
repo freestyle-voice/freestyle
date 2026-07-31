@@ -239,10 +239,6 @@ function ProfileDetailsCard({
     }
   };
 
-  const detectedLocation = [profile?.region, profile?.country]
-    .filter(Boolean)
-    .join(", ");
-
   return (
     <Card>
       <CardHeader>
@@ -296,18 +292,6 @@ function ProfileDetailsCard({
               onChange={(e) => setCompany(e.target.value)}
             />
           </div>
-          {detectedLocation ? (
-            <div className="space-y-0.5">
-              <p className="text-sm font-medium">Detected location</p>
-              <p className="text-muted-foreground text-[13px]">
-                {detectedLocation}
-                {profile?.timezone ? ` · ${profile.timezone}` : ""}
-              </p>
-              <p className="text-muted-foreground text-[12px]">
-                Auto-detected and refreshed each time you save.
-              </p>
-            </div>
-          ) : null}
         </div>
         {updateProfile.isError ? (
           <p className="text-destructive mt-4 text-[12px]">

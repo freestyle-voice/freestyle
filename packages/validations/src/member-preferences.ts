@@ -35,7 +35,6 @@ export const memberPreferencesSchema = z.object({
     })
     .nullish(),
   language: z.string().max(10).nullish(),
-  systemFragments: z.array(z.string()).nullish(),
 });
 
 export type MemberPreferencesInput = z.infer<typeof memberPreferencesSchema>;

@@ -427,10 +427,6 @@ function ProfileDetailsCard() {
     }
   }, [canSave, industry, savedIndustry, jobTitle, company, queryClient]);
 
-  const detectedLocation = [profile?.region, profile?.country]
-    .filter(Boolean)
-    .join(", ");
-
   if (isLoading) {
     return (
       <Card>
@@ -493,16 +489,6 @@ function ProfileDetailsCard() {
           { borderColor: theme.border, color: theme.foreground },
         ]}
       />
-
-      {detectedLocation ? (
-        <ThemedText
-          themeColor="mutedForeground"
-          style={styles.detectedLocation}
-        >
-          Detected location: {detectedLocation}
-          {profile?.timezone ? ` · ${profile.timezone}` : ""}
-        </ThemedText>
-      ) : null}
 
       <Pressable
         onPress={() => void onSave()}
@@ -850,11 +836,6 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
   },
   detailsLabel: { marginTop: Spacing.four },
-  detectedLocation: {
-    fontFamily: Fonts.sans,
-    fontSize: 13,
-    marginTop: Spacing.three,
-  },
   providerRow: {
     flexDirection: "row",
     alignItems: "center",

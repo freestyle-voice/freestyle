@@ -20,7 +20,7 @@ export const FREESTYLE_CLOUD_PROVIDER_ID = "freestyle-cloud";
 export const FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID = "freestyle-cloud/stt";
 export const FREESTYLE_CLOUD_CLEANUP_MODEL_ID = "freestyle-cloud/post-process";
 
-const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
+export const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 const CLIENT_ID = "freestyle-desktop";
 const DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
 

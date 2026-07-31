@@ -1,5 +1,5 @@
 import { getDb } from "./db.js";
-import { freestyleCloudUrl } from "./freestyle-cloud.js";
+import { DEFAULT_CLOUD_URL, freestyleCloudUrl } from "./freestyle-cloud.js";
 import { revertFreestyleCloudDefaults } from "./freestyle-cloud-defaults.js";
 import { resetCloudIdentity } from "./posthog.js";
 
@@ -106,12 +106,18 @@ export function setSession(input: {
   host: string;
 }): void {
   const now = Date.now();
+  // Keep the default/prod host row at id=1 so older released binaries — which
+  // query sessions by `WHERE id = 1` and `INSERT ... ON CONFLICT(id)` — keep
+  // working after this schema change. Non-default hosts (e.g. dev) get NULL,
+  // which SQLite allows to repeat under the UNIQUE(id) constraint.
+  const id = input.host === DEFAULT_CLOUD_URL ? 1 : null;
   getDb()
     .prepare(
       `INSERT INTO sessions
-        (host, token, refresh_token, expires_at, issued_at, user_id, email, name, image, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, host, token, refresh_token, expires_at, issued_at, user_id, email, name, image, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(host) DO UPDATE SET
+        id = excluded.id,
         token = excluded.token,
         refresh_token = excluded.refresh_token,
         expires_at = excluded.expires_at,
@@ -123,6 +129,7 @@ export function setSession(input: {
         updated_at = excluded.updated_at`,
     )
     .run(
+      id,
       input.host,
       input.token,
       input.refreshToken ?? null,

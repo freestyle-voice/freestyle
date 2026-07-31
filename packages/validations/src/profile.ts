@@ -61,6 +61,10 @@ export const profileSchema = z.object({
   industry: industrySchema.nullish(),
   jobTitle: z.string().trim().max(120).nullish(),
   company: z.string().trim().max(120).nullish(),
+  // Transient control flag (NOT persisted): when the industry changes and this
+  // is not explicitly `false`, the cloud re-seeds tone + vocabulary defaults
+  // for the new industry. Defaults to enabled.
+  updatePreferences: z.boolean().optional(),
 });
 
 export type ProfileInput = z.infer<typeof profileSchema>;

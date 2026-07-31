@@ -13,6 +13,7 @@ import {
   Image,
   Pressable,
   StyleSheet,
+  Switch,
   TextInput,
   View,
 } from "react-native";
@@ -368,6 +369,9 @@ function ProfileDetailsCard() {
   const [industry, setIndustry] = useState<Industry | undefined>(undefined);
   const [jobTitle, setJobTitle] = useState("");
   const [company, setCompany] = useState("");
+  // Re-seed tone + vocabulary defaults for the new industry (opt-out). Only
+  // surfaced while the industry is actually changing. Mirrors the dashboard.
+  const [updatePreferences, setUpdatePreferences] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -383,11 +387,16 @@ function ProfileDetailsCard() {
     setIndustry(parsed.success ? parsed.data : undefined);
     setJobTitle(profile.jobTitle ?? "");
     setCompany(profile.company ?? "");
+    setUpdatePreferences(true);
   }, [profile]);
 
   const savedIndustry = industrySchema.safeParse(profile?.industry).success
     ? (profile?.industry as Industry)
     : undefined;
+  // Show the re-seed toggle only when switching to a real industry (clearing it
+  // never reseeds).
+  const industryWillChange =
+    industry !== savedIndustry && industry !== undefined;
   const dirty =
     industry !== savedIndustry ||
     jobTitle.trim() !== (profile?.jobTitle ?? "") ||
@@ -405,12 +414,15 @@ function ProfileDetailsCard() {
         industry: industry ?? null,
         jobTitle: jobTitle.trim() || null,
         company: company.trim() || null,
+        // Only meaningful on an industry change; harmless otherwise.
+        updatePreferences,
       });
       queryClient.setQueryData(["cloud-profile-fields"], updated);
-      // When the user sets their industry for the first time, the cloud seeds
-      // tone/vocabulary defaults into member_preferences. Invalidate the
-      // preferences query so the seeded values are pulled in immediately.
-      if (!savedIndustry && industry) {
+      // The cloud re-seeds tone/vocabulary defaults into member_preferences on
+      // ANY industry change (unless opted out). Invalidate the preferences query
+      // so the seeded values are pulled in immediately.
+      const industryChanged = (savedIndustry ?? null) !== (industry ?? null);
+      if (industryChanged && industry && updatePreferences) {
         void queryClient.invalidateQueries({
           queryKey: ["cloud-preferences"],
         });
@@ -425,7 +437,15 @@ function ProfileDetailsCard() {
     } finally {
       setSaving(false);
     }
-  }, [canSave, industry, savedIndustry, jobTitle, company, queryClient]);
+  }, [
+    canSave,
+    industry,
+    savedIndustry,
+    jobTitle,
+    company,
+    updatePreferences,
+    queryClient,
+  ]);
 
   if (isLoading) {
     return (
@@ -451,6 +471,19 @@ function ProfileDetailsCard() {
           onPress={() => setIndustry(industry === value ? undefined : value)}
         />
       ))}
+
+      {industryWillChange ? (
+        <View style={[styles.reseedRow, { borderColor: theme.border }]}>
+          <ThemedText style={styles.reseedLabel}>
+            Update tone and vocabulary to match the new industry's defaults
+          </ThemedText>
+          <Switch
+            value={updatePreferences}
+            onValueChange={setUpdatePreferences}
+            trackColor={{ true: theme.primary, false: theme.secondary }}
+          />
+        </View>
+      ) : null}
 
       <ThemedText
         type="eyebrow"
@@ -836,6 +869,22 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
   },
   detailsLabel: { marginTop: Spacing.four },
+  reseedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+    marginTop: Spacing.two,
+  },
+  reseedLabel: {
+    flex: 1,
+    fontFamily: Fonts.sans,
+    fontSize: 14,
+    lineHeight: 19,
+  },
   providerRow: {
     flexDirection: "row",
     alignItems: "center",

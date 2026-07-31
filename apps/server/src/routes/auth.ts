@@ -179,13 +179,14 @@ const auth = new Hono()
         return c.json({ error: "No active organization" }, 409);
       }
 
-      // Detect ANY industry change (null->value or value->value). The cloud
-      // re-seeds tone/vocabulary defaults into member_preferences on every
-      // industry change, so re-pull whenever the industry actually differs from
-      // what was stored. Only fetch the prior profile when the client sent an
+      // Detect ANY industry change (null->value or value->value) that will
+      // trigger a cloud re-seed. The cloud re-seeds tone/vocabulary defaults
+      // into member_preferences on an industry change UNLESS the client opted
+      // out via `updatePreferences: false`, so only re-pull when a reseed is
+      // actually expected. Only fetch the prior profile when the client sent an
       // industry — otherwise this PUT can't change it and we skip the round-trip.
       let industryChanged = false;
-      if (data.industry !== undefined) {
+      if (data.industry !== undefined && data.updatePreferences !== false) {
         const before = await getCloudProfile(token, orgSlug).catch(() => null);
         const prev = before?.industry ?? null;
         const next = data.industry ?? null;

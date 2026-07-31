@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@renderer/components/ui/select";
+import { Switch } from "@renderer/components/ui/switch";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import {
   type SocialProvider,
@@ -203,6 +204,9 @@ function ProfileDetailsCard({
   const [industry, setIndustry] = useState<Industry | undefined>(undefined);
   const [jobTitle, setJobTitle] = useState("");
   const [company, setCompany] = useState("");
+  // When the industry changes, re-seed tone + vocabulary defaults for the new
+  // industry (opt-out). Only surfaced while the industry is actually changing.
+  const [updatePreferences, setUpdatePreferences] = useState(true);
 
   // Seed local form state whenever the fetched profile changes.
   useEffect(() => {
@@ -211,11 +215,16 @@ function ProfileDetailsCard({
     setIndustry(parsed.success ? parsed.data : undefined);
     setJobTitle(profile.jobTitle ?? "");
     setCompany(profile.company ?? "");
+    setUpdatePreferences(true);
   }, [profile]);
 
   const savedIndustry = industrySchema.safeParse(profile?.industry).success
     ? (profile?.industry as Industry)
     : undefined;
+  // Show the re-seed toggle only when the user is switching to a real industry
+  // (clearing it never reseeds). Mirrors the cloud dashboard's checkbox.
+  const industryWillChange =
+    industry !== savedIndustry && industry !== undefined;
   const dirty =
     industry !== savedIndustry ||
     jobTitle.trim() !== (profile?.jobTitle ?? "") ||
@@ -231,6 +240,8 @@ function ProfileDetailsCard({
         industry: industry ?? null,
         jobTitle: jobTitle.trim() || null,
         company: company.trim() || null,
+        // Only meaningful on an industry change; harmless otherwise.
+        updatePreferences,
       });
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2000);
@@ -248,7 +259,7 @@ function ProfileDetailsCard({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid max-w-xl grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="profile-industry">Industry</Label>
             <Select
@@ -293,6 +304,21 @@ function ProfileDetailsCard({
             />
           </div>
         </div>
+        {industryWillChange ? (
+          <label
+            htmlFor="profile-update-preferences"
+            className="mt-4 flex cursor-pointer items-center justify-between gap-4 rounded-lg border p-3"
+          >
+            <span className="text-sm leading-snug">
+              Update tone and vocabulary to match the new industry's defaults
+            </span>
+            <Switch
+              id="profile-update-preferences"
+              checked={updatePreferences}
+              onCheckedChange={setUpdatePreferences}
+            />
+          </label>
+        ) : null}
         {updateProfile.isError ? (
           <p className="text-destructive mt-4 text-[12px]">
             {updateProfile.error instanceof Error

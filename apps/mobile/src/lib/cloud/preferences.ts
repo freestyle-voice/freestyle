@@ -2,35 +2,38 @@
  * Cloud-synced cleanup preferences (member-scoped). The mobile app stores
  * preferences in AsyncStorage; these helpers mirror them to the cloud
  * `GET/PUT /{org}/member/preferences` endpoint so preferences follow the user across
- * devices. Authenticated with the stored session cookie, like `usage.ts`.
+ * devices. Authenticated with the stored session cookie via the shared cloud
+ * client, like `usage.ts`.
  */
 
 import type {
   CloudMemberPreferences,
   MemberPreferencesInput,
 } from "@freestyle-voice/validations";
-import { cloudUrl } from "./config";
+import { cloud } from "./client";
 import { resolveActiveOrgSlug } from "./org";
-import { authHeaders, CloudAuthError } from "./session";
+import { CloudRequestError } from "./session";
 
 /** Fetch the signed-in member's cloud preferences (empty object if none). */
 export async function fetchCloudPreferences(): Promise<CloudMemberPreferences> {
-  const headers = authHeaders();
-  if (!headers) throw new CloudAuthError();
   const orgSlug = await resolveActiveOrgSlug();
   // No active org yet — treat as "nothing synced".
   if (!orgSlug) return {};
-  const res = await fetch(`${cloudUrl()}/${orgSlug}/member/preferences`, {
-    method: "GET",
-    headers,
-    credentials: "omit",
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (res.status === 401) throw new CloudAuthError();
-  // 403/404 = no membership / unknown org; treat as "nothing synced".
-  if (res.status === 403 || res.status === 404) return {};
-  if (!res.ok) throw new Error(`Failed to load preferences (${res.status})`);
-  return (await res.json()) as CloudMemberPreferences;
+  try {
+    return await cloud.json<CloudMemberPreferences>(
+      `/${orgSlug}/member/preferences`,
+      { method: "GET" },
+    );
+  } catch (err) {
+    // 403/404 = no membership / unknown org; treat as "nothing synced".
+    if (
+      err instanceof CloudRequestError &&
+      (err.status === 403 || err.status === 404)
+    ) {
+      return {};
+    }
+    throw err;
+  }
 }
 
 /**
@@ -40,17 +43,12 @@ export async function fetchCloudPreferences(): Promise<CloudMemberPreferences> {
 export async function pushCloudPreferences(
   data: MemberPreferencesInput,
 ): Promise<void> {
-  const headers = authHeaders();
-  if (!headers) throw new CloudAuthError();
   const orgSlug = await resolveActiveOrgSlug();
   if (!orgSlug) return; // no active org — nothing to push to
-  const res = await fetch(`${cloudUrl()}/${orgSlug}/member/preferences`, {
+  // The cloud responds with `{ syncedAt? }`; json() also maps 401/!ok to the
+  // shared error taxonomy (previously a bare `throw new Error` on !res.ok).
+  await cloud.json<{ syncedAt?: string }>(`/${orgSlug}/member/preferences`, {
     method: "PUT",
-    headers: { ...headers, "content-type": "application/json" },
-    body: JSON.stringify(data),
-    credentials: "omit",
-    signal: AbortSignal.timeout(15_000),
+    json: data,
   });
-  if (res.status === 401) throw new CloudAuthError();
-  if (!res.ok) throw new Error(`Failed to sync preferences (${res.status})`);
 }

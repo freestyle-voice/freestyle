@@ -206,6 +206,9 @@ importers:
       '@expo-google-fonts/jetbrains-mono':
         specifier: ^0.4.1
         version: 0.4.1
+      '@freestyle-voice/utils':
+        specifier: workspace:*
+        version: link:../../packages/utils
       '@freestyle-voice/validations':
         specifier: workspace:*
         version: link:../../packages/validations
@@ -14394,9 +14397,7 @@ snapshots:
       metro-runtime: 0.84.4
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.86.0': {}
 

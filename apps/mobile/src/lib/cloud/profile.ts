@@ -10,9 +10,8 @@ import type { CloudProfile, ProfileInput } from "@freestyle-voice/validations";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { Platform } from "react-native";
 import { authClient } from "./auth-client";
-import { cloudUrl } from "./config";
+import { cloud } from "./client";
 import { resolveActiveOrgSlug } from "./org";
-import { authHeaders, CloudAuthError } from "./session";
 
 export type SocialProvider = "google" | "github" | "apple";
 
@@ -30,19 +29,12 @@ export async function updateName(name: string): Promise<{ error?: string }> {
  * yet. Served by the cloud member preferences endpoint.
  */
 export async function getProfileFields(): Promise<CloudProfile> {
-  const headers = authHeaders();
-  if (!headers) throw new CloudAuthError();
   const orgSlug = await resolveActiveOrgSlug();
   if (!orgSlug) return {} as CloudProfile;
-  const res = await fetch(`${cloudUrl()}/${orgSlug}/member/preferences`, {
+  // Auth + 401/!ok handling live in the shared cloud client.
+  return cloud.json<CloudProfile>(`/${orgSlug}/member/preferences`, {
     method: "GET",
-    headers,
-    credentials: "omit",
-    signal: AbortSignal.timeout(15_000),
   });
-  if (res.status === 401) throw new CloudAuthError();
-  if (!res.ok) throw new Error(`Failed to load profile (${res.status})`);
-  return (await res.json()) as CloudProfile;
 }
 
 /**
@@ -52,19 +44,13 @@ export async function getProfileFields(): Promise<CloudProfile> {
 export async function updateProfileFields(
   data: ProfileInput,
 ): Promise<CloudProfile> {
-  const headers = authHeaders();
-  if (!headers) throw new CloudAuthError();
   const orgSlug = await resolveActiveOrgSlug();
+  // Stricter than preferences: a profile update with no active org is an error.
   if (!orgSlug) throw new Error("No active organization");
-  const res = await fetch(`${cloudUrl()}/${orgSlug}/member/preferences`, {
+  await cloud.json(`/${orgSlug}/member/preferences`, {
     method: "PUT",
-    headers: { ...headers, "content-type": "application/json" },
-    body: JSON.stringify(data),
-    credentials: "omit",
-    signal: AbortSignal.timeout(15_000),
+    json: data,
   });
-  if (res.status === 401) throw new CloudAuthError();
-  if (!res.ok) throw new Error(`Failed to update profile (${res.status})`);
   return getProfileFields();
 }
 

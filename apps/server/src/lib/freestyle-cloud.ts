@@ -1,3 +1,13 @@
+// The shared client owns these error classes now. Import them under their
+// historical `FreestyleCloud*Error` names (used both internally and by the rest
+// of the desktop server) and re-export so downstream `instanceof` checks and
+// imports from this module keep working unchanged.
+import {
+  createCloudClient,
+  CloudAuthError as FreestyleCloudAuthError,
+  CloudRequestError as FreestyleCloudRequestError,
+  CloudUsageError as FreestyleCloudUsageError,
+} from "@freestyle-voice/utils";
 import type {
   CleanupAppAssignment,
   CleanupEmailTone,
@@ -11,6 +21,13 @@ import type {
   ProfileInput,
 } from "@freestyle-voice/validations";
 import { createAuthClient } from "better-auth/client";
+
+export {
+  FreestyleCloudAuthError,
+  FreestyleCloudRequestError,
+  FreestyleCloudUsageError,
+};
+
 import { deviceAuthorizationClient } from "better-auth/client/plugins";
 import type { CloudUser } from "./sessions.js";
 import { CLOUD_TRANSCRIBE_TIMEOUT_MS } from "./streaming/types.js";
@@ -35,13 +52,6 @@ const DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code";
  */
 export const SESSION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
-export class FreestyleCloudAuthError extends Error {
-  constructor(message = "Freestyle Cloud sign-in required") {
-    super(message);
-    this.name = "FreestyleCloudAuthError";
-  }
-}
-
 export class DeviceFlowError extends Error {
   constructor(
     readonly code: string,
@@ -58,31 +68,12 @@ export class DeviceFlowError extends Error {
  * callers can surface an actionable "limit reached" message instead of a 500,
  * and so it is never reported to error tracking as an app defect.
  */
-export class FreestyleCloudUsageError extends Error {
-  constructor(readonly resetsAt: string | null = null) {
-    super("Freestyle Cloud usage limit reached");
-    this.name = "FreestyleCloudUsageError";
-  }
-}
-
 /**
  * Thrown when Freestyle Cloud returns a non-OK response that isn't an auth
  * (401) or usage (429) failure. Carries the HTTP status so callers can tell an
  * upstream server fault (5xx) apart from a genuine app defect and avoid
  * reporting transient outages to error tracking.
  */
-export class FreestyleCloudRequestError extends Error {
-  constructor(
-    readonly status: number,
-    readonly detail = "",
-  ) {
-    super(
-      `Freestyle Cloud request failed (${status})${detail ? `: ${detail}` : ""}`,
-    );
-    this.name = "FreestyleCloudRequestError";
-  }
-}
-
 const TRANSIENT_NETWORK_CODES = new Set([
   "ECONNRESET",
   "ECONNREFUSED",
@@ -124,51 +115,6 @@ export function isTransientCloudError(err: unknown): boolean {
   }
   return false;
 }
-
-/**
- * Connection-level faults where the request never reached the server, so
- * retrying a non-idempotent POST is safe. This is deliberately narrower than
- * {@link TRANSIENT_NETWORK_CODES}: it excludes response-phase timeouts
- * (`UND_ERR_HEADERS_TIMEOUT`/`UND_ERR_BODY_TIMEOUT`) and generic aborts, where
- * the request may already be processing server-side and a retry could double
- * up (e.g. double-charge a transcribe).
- */
-const RETRIABLE_CONNECTION_CODES = new Set([
-  "ECONNRESET",
-  "ECONNREFUSED",
-  "ENOTFOUND",
-  "EAI_AGAIN",
-  "EPIPE",
-  "UND_ERR_CONNECT_TIMEOUT",
-  "UND_ERR_SOCKET",
-]);
-
-/**
- * True when a request threw before reaching the server on a reused connection.
- * The dominant case is a stale keep-alive socket: undici pools a connection
- * that an idle timeout or NAT/middlebox silently dropped, then the first write
- * on resume gets an RST — surfaced as `TypeError: fetch failed` with
- * `code === "ECONNRESET"` on the cause chain. Since the request never landed,
- * a single retry on a fresh socket recovers it safely.
- */
-function isRetriableConnectionError(err: unknown): boolean {
-  const seen = new Set<unknown>();
-  let current: unknown = err;
-  while (current && typeof current === "object" && !seen.has(current)) {
-    seen.add(current);
-    const code = (current as { code?: unknown }).code;
-    if (typeof code === "string" && RETRIABLE_CONNECTION_CODES.has(code)) {
-      return true;
-    }
-    current = (current as { cause?: unknown }).cause;
-  }
-  return false;
-}
-
-/** One extra attempt after the initial request (2 total). */
-const CLOUD_FETCH_ATTEMPTS = 2;
-/** Brief pause before retrying so we don't tight-loop on a refused connection. */
-const CLOUD_RETRY_DELAY_MS = 150;
 
 export interface DeviceCodeResult {
   device_code: string;
@@ -331,57 +277,33 @@ export async function signOutCloud(token: string): Promise<void> {
   });
 }
 
-async function cloudJson<T>(
+/**
+ * Shared cloud client for the desktop server: the base URL comes from the env
+ * resolver and the default per-attempt timeout matches the transcribe budget.
+ * The bearer token is supplied per-call (see {@link cloudJson}), so this client
+ * carries no auth of its own.
+ */
+const cloudClient = createCloudClient({
+  getBaseUrl: freestyleCloudUrl,
+  getAuthHeaders: () => null,
+  defaultTimeoutMs: CLOUD_TRANSCRIBE_TIMEOUT_MS,
+});
+
+/**
+ * Issue an authenticated JSON request to Freestyle Cloud. Thin wrapper over the
+ * shared client that injects the per-call bearer token; retry, timeout, and the
+ * 401/429/!ok error taxonomy all live in `@freestyle-voice/utils`. Kept as a
+ * `(path, token, init)` helper so the ~16 `cloud*` call sites are unchanged.
+ */
+function cloudJson<T>(
   path: string,
   token: string,
-  init: RequestInit,
+  init: RequestInit = {},
 ): Promise<T> {
-  const url = `${freestyleCloudUrl()}${path}`;
-  let res: Response | undefined;
-  for (let attempt = 0; attempt < CLOUD_FETCH_ATTEMPTS; attempt++) {
-    try {
-      res = await fetch(url, {
-        ...init,
-        headers: {
-          ...(init.headers ?? {}),
-          authorization: `Bearer ${token}`,
-        },
-        // A fresh per-attempt timeout when the caller didn't supply a signal,
-        // so a retry isn't handicapped by the first attempt's elapsed clock.
-        signal: init.signal ?? AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
-      });
-      break;
-    } catch (err) {
-      // Retry once on a stale-socket reset (request never reached the server).
-      // Anything else — including response-phase timeouts — propagates as-is.
-      if (
-        attempt === CLOUD_FETCH_ATTEMPTS - 1 ||
-        !isRetriableConnectionError(err)
-      ) {
-        throw err;
-      }
-      await new Promise((r) => setTimeout(r, CLOUD_RETRY_DELAY_MS));
-    }
-  }
-  // Unreachable: the loop either assigns `res` or throws on the final attempt.
-  if (!res) throw new Error("Freestyle Cloud request produced no response");
-  if (res.status === 401) throw new FreestyleCloudAuthError();
-  if (res.status === 429) {
-    const resetsAt = await res
-      .json()
-      .then((b) =>
-        b && typeof (b as { resetsAt?: unknown }).resetsAt === "string"
-          ? (b as { resetsAt: string }).resetsAt
-          : null,
-      )
-      .catch(() => null);
-    throw new FreestyleCloudUsageError(resetsAt);
-  }
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new FreestyleCloudRequestError(res.status, detail);
-  }
-  return (await res.json()) as T;
+  return cloudClient.json<T>(path, {
+    ...init,
+    headers: { ...(init.headers ?? {}), authorization: `Bearer ${token}` },
+  });
 }
 
 /**

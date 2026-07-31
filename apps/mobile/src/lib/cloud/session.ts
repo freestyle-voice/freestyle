@@ -6,6 +6,11 @@
  * the stored cookie through {@link authHeaders}.
  */
 
+import {
+  CloudAuthError,
+  CloudRequestError,
+  CloudUsageError,
+} from "@freestyle-voice/utils";
 import { authClient } from "./auth-client";
 import { clearCachedOrgSlug } from "./org";
 
@@ -16,12 +21,10 @@ export interface CloudUser {
   image?: string | null;
 }
 
-export class CloudAuthError extends Error {
-  constructor(message = "Freestyle Cloud sign-in required") {
-    super(message);
-    this.name = "CloudAuthError";
-  }
-}
+// The shared client owns the cloud error taxonomy now. Re-export from here so
+// existing imports (`import { CloudAuthError } from "./session"`) keep working
+// and gain `CloudRequestError`/`CloudUsageError` (429 + non-2xx handling).
+export { CloudAuthError, CloudRequestError, CloudUsageError };
 
 /**
  * Headers that carry the better-auth session cookie for authenticated

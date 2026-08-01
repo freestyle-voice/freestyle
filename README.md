@@ -14,17 +14,16 @@
   <a href="https://discord.gg/Fmgt5yZCDu"><img src="https://img.shields.io/badge/Discord-Join%20Server-5865F2.svg?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
-Freestyle is the dictation app that converts your voice into text. Hold down a hotkey, talk, and clean text will appear wherever your cursor is. Speak 4X faster than you type. 
+Freestyle is the AI writing assistant that lives in your cursor. You press a hotkey, speak your mind, and Freestyle transcribes what you say into polished text pasted at your cursor. Write 4X faster than typing. 
 
-Freestyle is free, open source, and local-first. Run a local model and your dictations never leave your device, or bring your own API key when you'd rather use a cloud provider.
+With Remix, highlight a paragraph, describe the change you want (ex. "make this sound more formal"), and Freestyle rewrites it in place. It can also write from scratch, researching the web first when it needs facts you don't have.
 
 ### Features
 
-- **Voice dictation** — hold the hotkey, speak, release to paste at your cursor in milliseconds.
-- **Choose your model provider** — OpenAI, Groq, Anthropic, Google, Deepgram, ElevenLabs. Bring your own API key. 
-- **Transcription cleaning** — grammar and punctuation cleanup via post-processing. No more "um, oh, but".
-- **Dictionary** — custom phrase replacements applied after transcription. (ex. `"type script"` → `TypeScript`).
-- **Contextual correction** — reformat your text based on where you're typing. Automatically format emails into email format.
+- **Transcription** — hold the hotkey, speak, release to paste what you said as text in your cursor. Includes AI polish to fix grammar & punctuation, remove filler words. 
+- **Remix** — Highlight text and say what you want changed. "Tighten this," "make it less formal," "turn this into three bullets," "reply to this saying I can't make Thursday." Remix rewrites in place, streaming into your cursor. With nothing highlighted, it writes from scratch and it can search the web and images first, so it brings in facts and sources you don't have yet.
+- **Real-time translation** — Speak one language, get it translated in another, paste it at your cursor. With support for over 20 languages in any direction.
+- **Works everywhere you type** — Google Docs, Slack, VS Code, Gmail, your phone keyboard. No plugins, no extensions, no per-app integrations. Freestyle can write anywhere you can write.
 
 <p align="center">
   <img src="media/home-page-demo.png" alt="Freestyle" width="800" />

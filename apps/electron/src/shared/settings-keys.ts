@@ -26,6 +26,7 @@ export const SETTINGS_KEYS = {
   pillCancelButton: "pill_cancel_button",
   soundEnabled: "sound_enabled",
   theme: "theme",
+  translateMode: "translate_mode",
 } as const;
 
 export type SettingsKey = (typeof SETTINGS_KEYS)[keyof typeof SETTINGS_KEYS];

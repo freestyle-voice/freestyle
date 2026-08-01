@@ -87,7 +87,7 @@
     },
     "sections": {
       "application": "Applicazione",
-      "recording": "Registrazione",
+      "recording": "Trascrizione",
       "display": "Display",
       "permissions": "Autorizzazioni",
       "data": "Dati"
@@ -113,7 +113,6 @@
       "microphoneDesc": "Seleziona il tuo dispositivo di input audio.",
       "microphoneDefault": "Predefinito di sistema",
       "language": "Lingua",
-      "languageDesc": "Suggerimento per il modello di trascrizione.",
       "transcriptionLanguages": {
         "auto": "Rilevamento automatico",
         "en": "Inglese",

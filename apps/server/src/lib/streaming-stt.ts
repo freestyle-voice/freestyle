@@ -34,6 +34,7 @@ export function openStreamingSession(opts: {
   apiKey: string;
   model: string;
   language?: string;
+  translate?: boolean;
   bias?: AsrVocabularyBias | null;
   appContext?: string | null;
   cleanup?: StreamCleanupPreferences;
@@ -44,6 +45,7 @@ export function openStreamingSession(opts: {
     apiKey,
     model,
     language,
+    translate,
     bias,
     appContext,
     cleanup,
@@ -67,6 +69,7 @@ export function openStreamingSession(opts: {
     apiKey,
     model,
     language,
+    translate,
     bias,
     appContext,
     cleanup,

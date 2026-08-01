@@ -75,8 +75,16 @@ export class FreestyleCloudTranscriptionProvider
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
-    const { apiKey, model, language, cleanup, callbacks, bias, appContext } =
-      opts;
+    const {
+      apiKey,
+      model,
+      language,
+      translate,
+      cleanup,
+      callbacks,
+      bias,
+      appContext,
+    } = opts;
 
     if (!apiKey) {
       throw new FreestyleCloudAuthError();
@@ -102,6 +110,7 @@ export class FreestyleCloudTranscriptionProvider
     const buildStartMessage = () => ({
       type: "start" as const,
       language: language || undefined,
+      ...(translate && language ? { translate: true } : {}),
       skipPostProcess: cleanup?.skipPostProcess ?? false,
       ...(vocabulary ? { vocabulary } : {}),
       ...(currentContext ? { context: currentContext } : {}),

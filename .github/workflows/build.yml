@@ -400,6 +400,11 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
+      - name: Run macOS permission flow E2E tests
+        working-directory: apps/electron
+        timeout-minutes: 5
+        run: pnpm run test:e2e tests/permission-flow.test.ts
+
       - name: Verify native binaries in package
         working-directory: apps/electron
         run: node scripts/verify-native-binaries.mjs

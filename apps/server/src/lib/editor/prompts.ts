@@ -162,7 +162,7 @@ export function buildRewritePrompt(
   );
 
   return {
-    system: baseSystem + languageBlock + destinationBlock,
+    system: baseSystem + destinationBlock + languageBlock,
     prompt: `${getCleanupPromptConfig().transcriptEditUserPrompt}${destinationUserPromptBlock}\n\n<transcript>\n${inputText}\n</transcript>`,
   };
 }

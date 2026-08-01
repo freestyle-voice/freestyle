@@ -1,4 +1,22 @@
 # Changelog
+## 0.6.2
+
+### New Features ✨
+
+- (mobile) Live voice-keyboard setup detection by @MathurAditya724 in [#518](https://github.com/freestyle-voice/freestyle/pull/518)
+- Create the ability to translate on the fly by @matteo8p in [#523](https://github.com/freestyle-voice/freestyle/pull/523)
+- More robust language enforcement by @matteo8p in [#522](https://github.com/freestyle-voice/freestyle/pull/522)
+- In-app profile editing (name + connected accounts) by @MathurAditya724 in [#515](https://github.com/freestyle-voice/freestyle/pull/515)
+- Locale-aware number formatting for usage stats by @MathurAditya724 in [#513](https://github.com/freestyle-voice/freestyle/pull/513)
+- Voice pill redesign by @tigerisaac in [#509](https://github.com/freestyle-voice/freestyle/pull/509)
+- Refine sidebar profile tile and add profile shortcut by @MathurAditya724 in [#514](https://github.com/freestyle-voice/freestyle/pull/514)
+
+### Bug Fixes 🐛
+
+- (electron) Improve permission handling for dictation startup by @GatikTulsiani07 in [#516](https://github.com/freestyle-voice/freestyle/pull/516)
+- Fix a widget position going to custom whenever you are switching to a different monitor by @matteo8p in [#521](https://github.com/freestyle-voice/freestyle/pull/521)
+- Preserve right-side modifier-only hotkeys (RightCommand etc.) by @symphonix84 in [#449](https://github.com/freestyle-voice/freestyle/pull/449)
+
 ## 0.6.1
 
 ### New Features ✨

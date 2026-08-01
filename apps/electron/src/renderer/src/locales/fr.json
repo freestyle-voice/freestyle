@@ -87,7 +87,7 @@
     },
     "sections": {
       "application": "Application",
-      "recording": "Enregistrement",
+      "recording": "Transcription",
       "display": "Affichage",
       "permissions": "Permissions",
       "data": "Données"
@@ -113,7 +113,6 @@
       "microphoneDesc": "Sélectionnez votre périphérique d'entrée audio.",
       "microphoneDefault": "Par défaut du système",
       "language": "Langue",
-      "languageDesc": "Indication pour le modèle de transcription.",
       "transcriptionLanguages": {
         "auto": "Détection automatique",
         "en": "Anglais",

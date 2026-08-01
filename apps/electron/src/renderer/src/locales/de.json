@@ -87,7 +87,7 @@
     },
     "sections": {
       "application": "Anwendung",
-      "recording": "Aufnahme",
+      "recording": "Transkription",
       "display": "Anzeige",
       "permissions": "Berechtigungen",
       "data": "Daten"
@@ -113,7 +113,6 @@
       "microphoneDesc": "Wählen Sie Ihr Audioeingabegerät.",
       "microphoneDefault": "Systemstandard",
       "language": "Sprache",
-      "languageDesc": "Hinweis für das Transkriptionsmodell.",
       "transcriptionLanguages": {
         "auto": "Automatisch erkennen",
         "en": "Englisch",

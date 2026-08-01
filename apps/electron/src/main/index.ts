@@ -74,6 +74,7 @@ import {
   protocol,
   screen,
   shell,
+  systemPreferences,
   Tray,
 } from "electron";
 import { autoUpdater } from "electron-updater";
@@ -100,6 +101,13 @@ import {
   startLinuxPasteHelper,
   stopLinuxPasteHelper,
 } from "./paste";
+import {
+  type DictationPermission,
+  missingDictationPermission,
+  resolveAccessibilityPermission,
+  type StartupPermissionWarning,
+  startupPermissionWarning,
+} from "./permission-checks";
 import {
   FreestyleEventType,
   OutputMode,
@@ -302,12 +310,9 @@ let settingsWindow: BrowserWindow | null = null;
 let settingsWindowCreating: Promise<void> | null = null;
 let tray: Tray | null = null;
 let keyListener: NativeKeyListener | null = null;
-// Latching flag: set only once the native key listener has started
-// successfully, which requires Accessibility permission and therefore
-// proves it is granted. NOT set on the globalShortcut fallback, which
-// needs no permission and would otherwise produce a false positive. The
-// flag persists even when keyListener is temporarily torn down for hotkey
-// recording.
+// Latching flag: records that the native key listener started successfully.
+// It persists while the listener is temporarily torn down for hotkey recording,
+// but is never used to override the current macOS Accessibility trust result.
 let accessibilityConfirmed = false;
 let hotkeyPressed = false;
 let currentHotkeyAccel: string | null = null;
@@ -404,6 +409,8 @@ function setProgrammaticPosition(
   const ty = y - pillExpandOffset.dy;
   markProgrammaticTarget(tx, ty);
   win.setPosition(tx, ty);
+  const [ax, ay] = win.getPosition();
+  if (ax !== tx || ay !== ty) markProgrammaticTarget(ax, ay);
 }
 
 /** Which capsule edge stays pinned when the window grows around the pill. */
@@ -485,49 +492,29 @@ function getPillAlignmentForCustom(): "custom-top" | "custom-bottom" {
 
 // Computes a preset pill slot for a specific display. The pill is aligned
 // inside the window via CSS (justify-center or justify-end).
-//
-// Bottom positions normally sit slightly past the work-area edge so the pill
-// hugs the dock/taskbar. But that only looks right when a dock/taskbar
-// actually reserves space on this display: on a dockless monitor (common for
-// secondary/vertical displays) the work area reaches the physical edge, so
-// the same overlap pushes the pill off-screen and it clips against the
-// border. Detect the reserved bottom strip and only overlap when it exists;
-// otherwise leave a small gap above the edge.
 function presetPositionForDisplay(
   display: Display,
   position: string,
 ): { x: number; y: number } {
   const { x: waX, y: waY, width, height } = display.workArea;
-
   const bottomInset = Math.max(
     0,
-    display.bounds.y +
-      display.bounds.height -
-      (display.workArea.y + display.workArea.height),
+    display.bounds.y + display.bounds.height - (waY + height),
   );
-  // +14 nudges the pill into an existing dock strip; -8 leaves a gap above
-  // the physical edge on dockless displays.
-  const bottomOffset = bottomInset > 0 ? 14 : -8;
-  const topOverlap = 0;
+  const overlap = process.platform !== "darwin" && bottomInset > 0 ? 14 : -8;
+  const centerX = waX + Math.round((width - APP_WIDTH) / 2);
+  const rightX = waX + width - APP_WIDTH;
+  const bottomY = waY + height - APP_HEIGHT + overlap;
 
   switch (position) {
     case "top-center":
-      return {
-        x: waX + Math.round((width - APP_WIDTH) / 2),
-        y: waY + topOverlap,
-      };
+      return { x: centerX, y: waY };
     case "top-right":
-      return { x: waX + width - APP_WIDTH, y: waY + topOverlap };
+      return { x: rightX, y: waY };
     case "bottom-right":
-      return {
-        x: waX + width - APP_WIDTH,
-        y: waY + height - APP_HEIGHT + bottomOffset,
-      };
+      return { x: rightX, y: bottomY };
     default:
-      return {
-        x: waX + Math.round((width - APP_WIDTH) / 2),
-        y: waY + height - APP_HEIGHT + bottomOffset,
-      };
+      return { x: centerX, y: bottomY };
   }
 }
 
@@ -616,6 +603,11 @@ function createAppWindow(): void {
   });
 
   let moveTimeout: NodeJS.Timeout | null = null;
+  let moveBurst = 0;
+  let userMoved = false;
+  mainWindow.on("will-move", () => {
+    userMoved = true;
+  });
   mainWindow.on("move", () => {
     if (!mainWindow) return;
     const [rawX, rawY] = mainWindow.getPosition();
@@ -663,9 +655,14 @@ function createAppWindow(): void {
         return;
     }
 
+    moveBurst++;
     if (moveTimeout) clearTimeout(moveTimeout);
     moveTimeout = setTimeout(() => {
-      if (!mainWindow) return;
+      const burst = moveBurst;
+      const dragged = userMoved;
+      moveBurst = 0;
+      userMoved = false;
+      if (!mainWindow || (burst < 3 && !dragged)) return;
       const [fx, fy] = mainWindow.getPosition();
       writeSettings({
         pillPosition: "custom",
@@ -715,14 +712,9 @@ async function buildSettingsWindow(initialPath?: string): Promise<void> {
   // is an async server call; doing it first means there's no await gap between
   // assigning `settingsWindow` and using it, so a close (or a concurrent open)
   // during the probe can't null-deref or show a half-loaded window.
-  let onboardingDone = readSettings().onboardingComplete === true;
-  // Also consider onboarding done if the server reports any configured models
-  // (existing users who never went through onboarding). Read through the API
-  // rather than opening the SQLite file, so a configured remote server counts.
-  if (!onboardingDone && (await getConfiguredModelCount()) > 0) {
-    onboardingDone = true;
-  }
-  const startPath = !onboardingDone ? "/onboarding" : (initialPath ?? "/today");
+  const startPath = (await isOnboardingActive())
+    ? "/onboarding"
+    : (initialPath ?? "/today");
 
   settingsWindow = new BrowserWindow({
     width: 1152,
@@ -1383,6 +1375,16 @@ async function getConfiguredModelCount(): Promise<number> {
 }
 
 /**
+ * Matches the route decision in buildSettingsWindow. Existing users who have
+ * configured models are treated as onboarded even if the lightweight setting
+ * predates onboardingComplete.
+ */
+async function isOnboardingActive(): Promise<boolean> {
+  if (readSettings().onboardingComplete === true) return false;
+  return (await getConfiguredModelCount()) === 0;
+}
+
+/**
  * Probe `/api/health` at `baseUrl` and confirm it's actually a Freestyle server
  * (not some other service that happens to hold the port). Returns false on any
  * network error or non-matching identity.
@@ -1543,6 +1545,107 @@ function showSettingsWindow(path?: string): void {
   }
   settingsWindow.show();
   settingsWindow.focus();
+}
+
+const ACCESSIBILITY_SETTINGS_URL =
+  "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility";
+const MICROPHONE_SETTINGS_URL =
+  "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Microphone";
+
+function hasCurrentAccessibilityPermission(): boolean {
+  if (process.platform !== "darwin") return true;
+  const state = resolveAccessibilityPermission(
+    process.platform,
+    systemPreferences.isTrustedAccessibilityClient(false),
+    accessibilityConfirmed,
+  );
+  if (accessibilityConfirmed && !state.accessibilityConfirmed) {
+    hotkeyLog.warn("macOS Accessibility permission is no longer available.");
+  }
+  accessibilityConfirmed = state.accessibilityConfirmed;
+  return state.granted;
+}
+
+function getMissingDictationPermission(): DictationPermission | null {
+  const microphoneStatus = getCurrentMicrophonePermission();
+  return missingDictationPermission(
+    process.platform,
+    hasCurrentAccessibilityPermission(),
+    microphoneStatus,
+  );
+}
+
+function getCurrentMicrophonePermission(): string {
+  return process.platform === "darwin" || process.platform === "win32"
+    ? systemPreferences.getMediaAccessStatus("microphone")
+    : "unknown";
+}
+
+function openAccessibilitySettings(): void {
+  if (process.platform !== "darwin") return;
+  // Passing true adds Freestyle to the Accessibility list and shows the native
+  // prompt; macOS still requires the user to enable the toggle themselves.
+  systemPreferences.isTrustedAccessibilityClient(true);
+  void shell.openExternal(ACCESSIBILITY_SETTINGS_URL);
+}
+
+function openMicrophoneSettings(): void {
+  if (process.platform === "darwin") {
+    void shell.openExternal(MICROPHONE_SETTINGS_URL);
+  } else if (process.platform === "win32") {
+    void shell.openExternal("ms-settings:privacy-microphone");
+  }
+}
+
+let permissionDialogPromise: Promise<void> | null = null;
+
+function showRequiredPermissionDialog(
+  permission: StartupPermissionWarning,
+): Promise<void> {
+  if (permissionDialogPromise) return permissionDialogPromise;
+
+  const accessibility = permission === "accessibility";
+  const both = permission === "accessibility-and-microphone";
+  permissionDialogPromise = dialog
+    .showMessageBox({
+      type: "error",
+      title: both
+        ? "Permissions Required"
+        : accessibility
+          ? "Accessibility Permission Required"
+          : "Microphone Permission Required",
+      message: both
+        ? "Accessibility and Microphone permissions are required before dictation can work."
+        : accessibility
+          ? "Accessibility permission is required for dictation and text insertion."
+          : "Microphone access is required to record dictation.",
+      detail: both
+        ? "Enable Freestyle in System Settings > Privacy & Security under Accessibility and Microphone."
+        : accessibility
+          ? "Enable Freestyle in System Settings > Privacy & Security > Accessibility."
+          : process.platform === "darwin"
+            ? "Enable Freestyle in System Settings > Privacy & Security > Microphone."
+            : "Enable microphone access for Freestyle in Windows Settings.",
+      buttons: both
+        ? ["Open Accessibility Settings", "Open Microphone Settings", "Not Now"]
+        : ["Open System Settings", "Cancel"],
+      defaultId: 0,
+      cancelId: both ? 2 : 1,
+    })
+    .then(({ response }) => {
+      if (both) {
+        if (response === 0) openAccessibilitySettings();
+        if (response === 1) openMicrophoneSettings();
+      } else if (response === 0 && accessibility) {
+        openAccessibilitySettings();
+      } else if (response === 0) {
+        openMicrophoneSettings();
+      }
+    })
+    .finally(() => {
+      permissionDialogPromise = null;
+    });
+  return permissionDialogPromise;
 }
 
 function isRunningFromReadOnlyLocation(): boolean {
@@ -2055,56 +2158,38 @@ app.whenReady().then(async () => {
       return "unknown";
     }
     // macOS and Windows both report the real privacy-settings state here.
-    const { systemPreferences } = await import("electron");
     return systemPreferences.getMediaAccessStatus("microphone");
   });
 
   ipcMain.handle("permissions:request-mic", async () => {
     if (process.platform === "darwin") {
-      const { systemPreferences } = await import("electron");
       const granted = await systemPreferences.askForMediaAccess("microphone");
       return granted ? "granted" : "denied";
     }
     if (process.platform === "win32") {
       // Windows has no programmatic prompt; report the privacy-settings
       // state so the UI can send the user to Settings when it's denied.
-      const { systemPreferences } = await import("electron");
       return systemPreferences.getMediaAccessStatus("microphone");
     }
     return "unknown"; // Linux: renderer probes getUserMedia instead
   });
 
   ipcMain.handle("permissions:check-accessibility", async () => {
-    if (process.platform === "darwin") {
-      const { systemPreferences } = await import("electron");
-      const trusted = systemPreferences.isTrustedAccessibilityClient(false);
-      return trusted || accessibilityConfirmed;
-    }
-    return true;
+    return hasCurrentAccessibilityPermission();
   });
 
-  ipcMain.on("permissions:open-accessibility", async () => {
-    if (process.platform === "darwin") {
-      // Passing `true` pops the native "would like to control this computer"
-      // prompt and adds Freestyle to the Accessibility list automatically, so
-      // the user only has to flip the toggle (macOS never lets us flip it).
-      const { systemPreferences } = await import("electron");
-      systemPreferences.isTrustedAccessibilityClient(true);
-      shell.openExternal(
-        "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility",
-      );
-    }
+  ipcMain.on("permissions:open-accessibility", () => {
+    openAccessibilitySettings();
   });
 
   ipcMain.on("permissions:open-mic-settings", () => {
-    if (process.platform === "darwin") {
-      shell.openExternal(
-        "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Microphone",
-      );
-    } else if (process.platform === "win32") {
-      shell.openExternal("ms-settings:privacy-microphone");
-    }
+    openMicrophoneSettings();
   });
+
+  if (process.env.FREESTYLE_E2E === "1") {
+    ipcMain.on("e2e:trigger-hotkey-down", handleNativeHotkeyDown);
+    ipcMain.on("e2e:trigger-hotkey-up", handleNativeHotkeyUp);
+  }
 
   // IPC: Linux system setup (input-group access for the hotkey listener and
   // the xdotool/wtype paste fallback). Returns null on other platforms.
@@ -2237,6 +2322,20 @@ app.whenReady().then(async () => {
   createTray();
 
   createAppWindow();
+
+  // Onboarding already has dedicated permission cards. Existing users instead
+  // get one actionable warning once a user-facing window can be shown.
+  void isOnboardingActive().then((onboardingActive) => {
+    const warning = startupPermissionWarning(
+      process.platform,
+      onboardingActive,
+      hasCurrentAccessibilityPermission(),
+      getCurrentMicrophonePermission(),
+    );
+    if (warning) {
+      void showRequiredPermissionDialog(warning);
+    }
+  });
 
   // Clamp the pill to valid display bounds when monitors change.
   const repositionPillForDisplayChange = (): void => {
@@ -2629,6 +2728,13 @@ function hotkeyModeFromSettings(
 }
 
 function sendHotkeyDown(): void {
+  const missingPermission = getMissingDictationPermission();
+  if (missingPermission) {
+    hotkeyPressed = false;
+    clearHotkeyStuckWatchdog();
+    void showRequiredPermissionDialog(missingPermission);
+    return;
+  }
   showPill();
   relayServerEvent({ type: FreestyleEventType.RecordingStarted });
   if (pillReadyPromise) {

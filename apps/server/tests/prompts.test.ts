@@ -8,7 +8,7 @@ import {
 
 describe("buildLanguageBlock", () => {
   it("keeps the source language for auto-detect instead of translating", () => {
-    for (const value of ["auto", undefined]) {
+    for (const value of [[], ["auto"], undefined]) {
       const block = buildLanguageBlock(value);
       expect(block).toContain(
         "return the final edited text in the same language and script",
@@ -17,23 +17,46 @@ describe("buildLanguageBlock", () => {
     }
   });
 
-  it("adds a same-language constraint for known languages", () => {
-    expect(buildLanguageBlock("es")).toContain(
+  it("adds a same-language constraint for a single known language", () => {
+    expect(buildLanguageBlock(["es"])).toContain(
       "Return the final edited text in the same language and script.",
     );
-    expect(buildLanguageBlock("es")).toContain("Do not translate");
+    expect(buildLanguageBlock(["es"])).toContain("Do not translate");
   });
 
   it("adds a Chinese punctuation hint for Chinese locales", () => {
-    expect(buildLanguageBlock("zh-Hans")).toContain(
+    expect(buildLanguageBlock(["zh-Hans"])).toContain(
       "Use standard Chinese punctuation.",
+    );
+  });
+
+  it("adds the Chinese punctuation hint when Chinese is one of several", () => {
+    expect(buildLanguageBlock(["en", "zh"])).toContain(
+      "Use standard Chinese punctuation.",
+    );
+  });
+
+  it("lists every language for a multi-language selection", () => {
+    const block = buildLanguageBlock(["es", "en"]);
+    expect(block).toContain("may be in any of these languages");
+    expect(block).toContain("Spanish");
+    expect(block).toContain("English");
+    expect(block).toContain("preserve each span in the language spoken");
+    expect(block).toContain("Do not translate between them");
+  });
+
+  it("ignores the auto sentinel mixed into a real selection", () => {
+    // "auto" is filtered out; a lone real code falls to the single-language path.
+    const block = buildLanguageBlock(["auto", "es"]);
+    expect(block).toContain(
+      "Return the final edited text in the same language and script.",
     );
   });
 });
 
 describe("buildRewritePrompt", () => {
-  it("embeds the language block when a language is provided", () => {
-    const prompt = buildRewritePrompt("hola", { language: "es" });
+  it("embeds the language block when languages are provided", () => {
+    const prompt = buildRewritePrompt("hola", { languages: ["es"] });
     expect(prompt.system).toContain("Language constraint:");
     expect(prompt.system).toContain("Do not translate");
   });
@@ -62,7 +85,7 @@ describe("buildRewritePrompt", () => {
     const prompt = buildRewritePrompt("hi", {
       intensity: "custom",
       customPrompt: "Just uppercase everything.",
-      language: "es",
+      languages: ["es"],
     });
     expect(prompt.system.startsWith("Just uppercase everything.")).toBe(true);
     // Dynamic blocks still get appended for custom prompts.

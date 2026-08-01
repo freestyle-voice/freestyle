@@ -2,14 +2,16 @@ import {
   HISTORY_RETENTION_DAYS_MAX,
   type NetworkSettingsForm,
   networkSettingsFormSchema,
+  normalizeLanguageList,
   parseRetentionDays,
+  parseStoredLanguageList,
   serverUrlSchema,
 } from "@freestyle-voice/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import {
-  LanguageCombobox,
+  LanguageMultiSelect,
   useLanguageOptions,
 } from "@renderer/components/language-combobox";
 import { LanguageSelector } from "@renderer/components/language-selector";
@@ -147,6 +149,19 @@ function normalizePillPos(pos: string): string {
   return pos.startsWith("custom") ? "custom" : pos;
 }
 
+/**
+ * Resolve the transcription-language list from a loaded settings map. Reads the
+ * canonical `languages` JSON array, falling back to the legacy singular
+ * `language` key for users who chose a language before the multi-language
+ * migration so an existing choice is never dropped.
+ */
+function parseLanguagesSetting(s: Record<string, string>): string[] {
+  return parseStoredLanguageList(
+    s[SETTINGS_KEYS.languages],
+    s[SETTINGS_KEYS.language],
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -162,7 +177,7 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.defaultHotkey ?? getDefaultHotkey(),
   );
   const [hotkeyMode, setHotkeyMode] = useState<"hold" | "toggle">("hold");
-  const [language, setLanguage] = useState("auto");
+  const [languages, setLanguages] = useState<string[]>([]);
   const [translateMode, setTranslateMode] = useState(false);
   const [outputMode, setOutputMode] = useState("paste");
   const [pillPosition, setPillPosition] = useState("bottom-center");
@@ -203,9 +218,16 @@ export default function SettingsPage(): React.JSX.Element {
   // region-ordered), falling back to the bundled list when offline.
   const languageOptions = useLanguageOptions(cloudConfig?.suggestedLanguages);
 
+  // Translate mode enforces a single output language, so it only applies when
+  // exactly one language is selected. Its label is that language's name.
+  const singleLanguage = languages.length === 1 ? languages[0] : undefined;
   const languageLabel = useMemo(
-    () => languageOptions.find((o) => o.code === language)?.label ?? language,
-    [languageOptions, language],
+    () =>
+      singleLanguage
+        ? (languageOptions.find((o) => o.code === singleLanguage)?.label ??
+          singleLanguage)
+        : "",
+    [languageOptions, singleLanguage],
   );
 
   const retentionOptions = useMemo(
@@ -362,7 +384,7 @@ export default function SettingsPage(): React.JSX.Element {
       setSelectedDevice(s[SETTINGS_KEYS.micDeviceId]);
     if (s[SETTINGS_KEYS.hotkey]) setHotkey(s[SETTINGS_KEYS.hotkey]);
     if (s[SETTINGS_KEYS.hotkeyMode] === "toggle") setHotkeyMode("toggle");
-    if (s[SETTINGS_KEYS.language]) setLanguage(s[SETTINGS_KEYS.language]);
+    setLanguages(parseLanguagesSetting(s));
     if (s[SETTINGS_KEYS.translateMode] === "true") setTranslateMode(true);
     if (s[SETTINGS_KEYS.outputMode]) setOutputMode(s[SETTINGS_KEYS.outputMode]);
     setPillCancel(normalizePillCancelMode(s[SETTINGS_KEYS.pillCancelButton]));
@@ -521,16 +543,18 @@ export default function SettingsPage(): React.JSX.Element {
       .catch(() => {});
   }, []);
 
-  const handleLanguageChange = useCallback(
-    (value: string) => {
-      setLanguage(value);
+  const handleLanguagesChange = useCallback(
+    (next: string[]) => {
+      const normalized = normalizeLanguageList(next);
+      setLanguages(normalized);
       getClient()
         .api.settings[":key"].$put({
-          param: { key: SETTINGS_KEYS.language },
-          json: { value },
+          param: { key: SETTINGS_KEYS.languages },
+          json: { value: JSON.stringify(normalized) },
         })
         .catch(() => {});
-      if (value === "auto" && translateMode) persistTranslateMode(false);
+      // Translate mode requires exactly one language; disable it otherwise.
+      if (normalized.length !== 1 && translateMode) persistTranslateMode(false);
     },
     [translateMode, persistTranslateMode],
   );
@@ -956,43 +980,26 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.recording.language")}
                 desc={
-                  language === "auto"
+                  languages.length === 0
                     ? t("settings.recording.languageDescAuto")
-                    : translateMode
-                      ? t("settings.recording.languageDescEnforced", {
-                          language: languageLabel,
-                        })
-                      : t("settings.recording.languageDescHint", {
-                          language: languageLabel,
-                        })
+                    : languages.length > 1
+                      ? t("settings.recording.languageDescMulti")
+                      : translateMode
+                        ? t("settings.recording.languageDescEnforced", {
+                            language: languageLabel,
+                          })
+                        : t("settings.recording.languageDescHint", {
+                            language: languageLabel,
+                          })
                 }
               >
-                <div className="flex w-full max-w-md items-center gap-3">
-                  <LanguageCombobox
-                    id="settings-language"
-                    value={language}
-                    onChange={handleLanguageChange}
-                    options={languageOptions}
-                    className="w-full min-w-0 flex-1"
-                  />
-                  <div className="w-[76px] shrink-0">
-                    {language === "auto" ? null : (
-                      <span
-                        data-testid="language-mode-label"
-                        className={cn(
-                          "text-[12.5px] leading-[1.5] whitespace-nowrap",
-                          translateMode
-                            ? "text-foreground font-medium"
-                            : "text-muted-foreground",
-                        )}
-                      >
-                        {translateMode
-                          ? t("settings.recording.languageModeEnforced")
-                          : t("settings.recording.languageModeHint")}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                <LanguageMultiSelect
+                  id="settings-language"
+                  values={languages}
+                  onChange={handleLanguagesChange}
+                  options={languageOptions}
+                  className="w-full max-w-md"
+                />
               </Row>
 
               <Row
@@ -1001,8 +1008,8 @@ export default function SettingsPage(): React.JSX.Element {
               >
                 <Switch
                   id="settings-translate-mode"
-                  checked={translateMode}
-                  disabled={language === "auto"}
+                  checked={translateMode && languages.length === 1}
+                  disabled={languages.length !== 1}
                   onCheckedChange={persistTranslateMode}
                 />
               </Row>

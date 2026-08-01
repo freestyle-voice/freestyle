@@ -1,9 +1,11 @@
 /**
- * Bottom-sheet language picker. Replaces the platform-split wheel/list picker
- * with a single sheet that slides up from the bottom on both platforms —
- * a tap-to-dismiss backdrop, a drag handle, a search field, and a scrollable
- * list of languages with a checkmark on the active one. Extra bottom padding
- * keeps the last options clear of the home indicator.
+ * Bottom-sheet multi-language picker. Slides up from the bottom on both
+ * platforms — a tap-to-dismiss backdrop, a drag handle, a search field, and a
+ * scrollable list of languages with a checkmark on each selected one. Tapping a
+ * row toggles it (the sheet stays open so several can be chosen). The number of
+ * languages is capped at {@link MAX_LANGUAGES}; once reached, unselected rows are
+ * disabled. Extra bottom padding keeps the last options clear of the home
+ * indicator.
  *
  * Options come from the cloud `suggestedLanguages` (the full Soniox set,
  * region-ordered) and fall back to the small bundled {@link LANGUAGES} list when
@@ -13,6 +15,7 @@
 import type { SuggestedLanguage } from "@freestyle-voice/validations";
 import {
   filterLanguageOptions,
+  MAX_LANGUAGES,
   resolveLanguageOptions,
 } from "@freestyle-voice/validations";
 import { Check, Search } from "lucide-react-native";
@@ -30,12 +33,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { LANGUAGES, type LanguageCode } from "@/lib/settings";
+import { LANGUAGES } from "@/lib/settings";
 
 interface LanguageSheetProps {
   visible: boolean;
-  selected: LanguageCode;
-  onSelect: (code: LanguageCode) => void;
+  /** Currently selected ISO codes (never includes "auto"). */
+  selected: string[];
+  /** Toggle a language on/off. The sheet stays open. */
+  onToggle: (code: string) => void;
   onClose: () => void;
   /**
    * Cloud-suggested languages for the user's region (from `/v2/config`). When
@@ -51,7 +56,7 @@ const LOCAL_FALLBACK = LANGUAGES.map((l) => ({ code: l.code, label: l.name }));
 export function LanguageSheet({
   visible,
   selected,
-  onSelect,
+  onToggle,
   onClose,
   suggestedLanguages,
 }: LanguageSheetProps) {
@@ -59,9 +64,13 @@ export function LanguageSheet({
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
 
-  // Full option set from the cloud (region-ordered); "auto" pinned first.
+  // Full option set from the cloud (region-ordered). "auto" is a picker-only
+  // sentinel that has no place in a multi-select list, so it's excluded.
   const languages = useMemo(
-    () => resolveLanguageOptions(suggestedLanguages, LOCAL_FALLBACK),
+    () =>
+      resolveLanguageOptions(suggestedLanguages, LOCAL_FALLBACK).filter(
+        (l) => l.code !== "auto",
+      ),
     [suggestedLanguages],
   );
 
@@ -69,6 +78,9 @@ export function LanguageSheet({
     () => filterLanguageOptions(languages, query),
     [languages, query],
   );
+
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const atCap = selected.length >= MAX_LANGUAGES;
 
   return (
     <Modal
@@ -97,9 +109,21 @@ export function LanguageSheet({
         ]}
       >
         <View style={[styles.handle, { backgroundColor: theme.border }]} />
-        <ThemedText type="title" style={styles.title}>
-          Language
-        </ThemedText>
+        <View style={styles.titleRow}>
+          <ThemedText type="title" style={styles.title}>
+            Languages
+          </ThemedText>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Done selecting languages"
+            hitSlop={8}
+          >
+            <ThemedText style={[styles.done, { color: theme.primary }]}>
+              Done
+            </ThemedText>
+          </Pressable>
+        </View>
         <View
           style={[
             styles.searchRow,
@@ -117,6 +141,11 @@ export function LanguageSheet({
             style={[styles.searchInput, { color: theme.foreground }]}
           />
         </View>
+        {atCap ? (
+          <ThemedText style={[styles.hint, { color: theme.mutedForeground }]}>
+            {`Up to ${MAX_LANGUAGES} languages.`}
+          </ThemedText>
+        ) : null}
         <ScrollView
           style={styles.list}
           contentContainerStyle={styles.listContent}
@@ -131,18 +160,18 @@ export function LanguageSheet({
             </ThemedText>
           ) : (
             filtered.map((lang) => {
-              const active = lang.code === selected;
+              const active = selectedSet.has(lang.code);
+              const disabled = !active && atCap;
               return (
                 <Pressable
                   key={lang.code}
-                  onPress={() => {
-                    onSelect(lang.code);
-                    onClose();
-                  }}
+                  disabled={disabled}
+                  onPress={() => onToggle(lang.code)}
                   style={({ pressed }) => [
                     styles.row,
                     { borderBottomColor: theme.border },
-                    pressed && { opacity: 0.6 },
+                    disabled && { opacity: 0.4 },
+                    pressed && !disabled && { opacity: 0.6 },
                   ]}
                 >
                   <ThemedText
@@ -198,6 +227,21 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.three,
   },
   title: { marginBottom: Spacing.two },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  done: {
+    fontFamily: Fonts.sansSemiBold,
+    fontSize: 16,
+    marginBottom: Spacing.two,
+  },
+  hint: {
+    fontFamily: Fonts.sans,
+    fontSize: 13,
+    marginBottom: Spacing.two,
+  },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",

@@ -57,8 +57,8 @@ export interface StreamCallbacks {
 export interface StreamSessionOptions {
   /** better-auth session cookie header value (from `authClient.getCookie()`). */
   cookie: string;
-  /** Normalized ISO-639-1 hint; omit for auto-detect. */
-  language?: string;
+  /** Normalized ISO-639-1 hints; empty/omitted for auto-detect. */
+  languages?: string[];
   /** ASR recognition-bias terms (the user's vocabulary). */
   vocabulary?: string[];
   cleanup: StreamCleanupPreferences;
@@ -112,10 +112,11 @@ export class CloudStreamSession {
   }
 
   private buildStartMessage() {
-    const { language, vocabulary, cleanup } = this.opts;
+    const { languages, vocabulary, cleanup } = this.opts;
     return {
       type: "start" as const,
-      language: language || undefined,
+      // Canonical multi-language field; omit for auto-detect.
+      ...(languages && languages.length > 0 ? { languages } : {}),
       // Recognition-bias terms; the cloud passes these to the ASR as context.
       vocabulary: vocabulary?.length ? { terms: vocabulary } : undefined,
       skipPostProcess: cleanup.skipPostProcess,

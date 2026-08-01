@@ -96,7 +96,9 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
-    const { apiKey, model, language, bias, callbacks } = opts;
+    const { apiKey, model, languages, bias, callbacks } = opts;
+    // ElevenLabs takes a single language code — use the primary.
+    const language = languages?.[0];
 
     let accumulatedText = "";
     let partialText = "";

@@ -12,7 +12,10 @@ export const SETTINGS_KEYS = {
   hotkeyMode: "hotkey_mode",
   historyPaused: "history_paused",
   historyRetentionDays: "history_retention_days",
+  // Legacy singular language key. Kept for one-time migration reads only;
+  // the canonical setting is now `languages` (a JSON array of ISO codes).
   language: "language",
+  languages: "languages",
   llmCleanup: "llm_cleanup",
   localLlmApiKey: "local_llm_api_key",
   localLlmUrl: "local_llm_url",

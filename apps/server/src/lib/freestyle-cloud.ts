@@ -353,7 +353,8 @@ export async function transcribeWithFreestyleCloud(
   opts: {
     token: string;
     audio: Uint8Array;
-    language?: string;
+    /** Preferred spoken languages (ISO codes); empty/omitted = auto-detect. */
+    languages?: string[];
     appContext?: string | null;
     mode: "raw" | "combined";
     intensity?: string;
@@ -371,7 +372,11 @@ export async function transcribeWithFreestyleCloud(
   // sent only in "combined" mode; "raw" asks the cloud to skip post-processing.
   const form = new FormData();
   form.append("audio", new Blob([audio], { type: "audio/wav" }), "audio.wav");
-  if (opts.language) form.append("language", opts.language);
+  // The multipart transcribe endpoint expects `languages` as a JSON-encoded
+  // string array (form fields are strings). Omit it entirely for auto-detect.
+  if (opts.languages?.length) {
+    form.append("languages", JSON.stringify(opts.languages));
+  }
   if (opts.appContext) form.append("appContext", opts.appContext);
   // Vocabulary bias applies to the recognizer regardless of cleanup mode.
   if (opts.vocabulary?.terms.length) {
@@ -395,7 +400,8 @@ export async function postProcessWithFreestyleCloud(
     token: string;
     text: string;
     appContext?: string | null;
-    language?: string;
+    /** Preferred spoken languages (ISO codes); empty/omitted = auto-detect. */
+    languages?: string[];
     intensity?: string;
     customPrompt?: string | null;
     /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
@@ -415,7 +421,8 @@ export async function postProcessWithFreestyleCloud(
     body: JSON.stringify({
       text: opts.text,
       appContext: opts.appContext ?? null,
-      language: opts.language,
+      // JSON body: `languages` is a real array. Omit for auto-detect.
+      languages: opts.languages?.length ? opts.languages : undefined,
       intensity: opts.intensity,
       customPrompt: opts.customPrompt || undefined,
       personalTone: opts.personalTone,

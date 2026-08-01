@@ -33,7 +33,7 @@ export function openStreamingSession(opts: {
   providerId: string;
   apiKey: string;
   model: string;
-  language?: string;
+  languages?: string[];
   translate?: boolean;
   bias?: AsrVocabularyBias | null;
   appContext?: string | null;
@@ -44,7 +44,7 @@ export function openStreamingSession(opts: {
     providerId,
     apiKey,
     model,
-    language,
+    languages,
     translate,
     bias,
     appContext,
@@ -68,7 +68,7 @@ export function openStreamingSession(opts: {
   return provider.openStreamingSession({
     apiKey,
     model,
-    language,
+    languages,
     translate,
     bias,
     appContext,

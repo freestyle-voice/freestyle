@@ -72,7 +72,7 @@ export type PostProcessSource =
 
 export interface PostProcessOptions {
   source?: PostProcessSource;
-  language?: string;
+  languages?: string[];
   /** Return handoff/llm timing breakdown for pipeline logs. */
   includeTimings?: boolean;
   /**
@@ -313,7 +313,7 @@ export async function postProcess(
             token,
             text: normalizedRawText,
             appContext: effectiveAppContext,
-            language: options.language,
+            languages: options.languages,
             intensity,
             customPrompt,
             personalTone,
@@ -380,7 +380,7 @@ export async function postProcess(
         cleanedText = normalizedRawText;
       } else {
         const { system, prompt } = buildRewritePrompt(normalizedRawText, {
-          language: options.language,
+          languages: options.languages,
           intensity,
           customPrompt,
           destination: promptHook.destination ?? resolvedDestination,

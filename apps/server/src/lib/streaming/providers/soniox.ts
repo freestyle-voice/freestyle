@@ -1,3 +1,4 @@
+import { normalizeLanguageList } from "@freestyle-voice/validations";
 import WebSocket from "ws";
 import {
   sonioxContextFromBias,
@@ -30,15 +31,17 @@ function renderTokens(
   return [...finalTokens, ...nonFinalTokens].map((t) => t.text ?? "").join("");
 }
 
-function languageHints(language: string | undefined): string[] | undefined {
-  if (!language || language === "auto") return undefined;
-  return [language];
+function languageHints(
+  languages: readonly string[] | undefined,
+): string[] | undefined {
+  const hints = normalizeLanguageList(languages);
+  return hints.length > 0 ? hints : undefined;
 }
 
 function buildSonioxSessionConfig(opts: {
   apiKey: string;
   model: string;
-  language?: string;
+  languages?: string[];
   bias?: TranscribeOptions["bias"];
   appContext?: string | null;
   translateTo?: string;
@@ -51,7 +54,7 @@ function buildSonioxSessionConfig(opts: {
     num_channels: 1,
     enable_endpoint_detection: false,
   };
-  const hints = languageHints(opts.language);
+  const hints = languageHints(opts.languages);
   if (opts.translateTo) {
     config.translation = { type: "one_way", target_language: opts.translateTo };
   } else if (hints) {
@@ -76,7 +79,10 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
       let closed = false;
 
       const ws = new WebSocket(SONIOX_WS_URL);
-      const config = buildSonioxSessionConfig(opts);
+      const config = buildSonioxSessionConfig({
+        ...opts,
+        languages: opts.language ? [opts.language] : undefined,
+      });
 
       const finish = (text: string) => {
         if (closed) return;
@@ -141,10 +147,12 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
-    const { apiKey, model, language, translate, bias, appContext, callbacks } =
+    const { apiKey, model, languages, translate, bias, appContext, callbacks } =
       opts;
     const short = stripProviderPrefix(model);
-    const translateTo = translate && language ? language : undefined;
+    // Translate targets a single language; only valid when exactly one is set.
+    const translateTo =
+      translate && languages?.length === 1 ? languages[0] : undefined;
 
     const finalTokens: SonioxToken[] = [];
     let nonFinalTokens: SonioxToken[] = [];
@@ -178,7 +186,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
       const config = buildSonioxSessionConfig({
         apiKey,
         model,
-        language,
+        languages,
         bias,
         appContext,
         translateTo,

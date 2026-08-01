@@ -1,19 +1,29 @@
+import { normalizeLanguageList } from "@freestyle-voice/validations";
 import { describe, expect, it } from "vitest";
-import { normalizeLanguageSetting } from "../src/lib/language.js";
 import { resolveMlxLanguage } from "../src/lib/mlx-asr/language.js";
 import { aiSdkProviderOptions } from "../src/lib/streaming/utils.js";
 
-describe("normalizeLanguageSetting", () => {
-  it("passes ISO codes through", () => {
-    expect(normalizeLanguageSetting("en")).toBe("en");
-    expect(normalizeLanguageSetting("uk")).toBe("uk");
+describe("normalizeLanguageList", () => {
+  it("passes ISO codes through (lowercased, trimmed)", () => {
+    expect(normalizeLanguageList(["en", "UK"])).toEqual(["en", "uk"]);
+    expect(normalizeLanguageList([" es "])).toEqual(["es"]);
   });
 
-  it("normalizes auto, empty, and missing values to undefined", () => {
-    expect(normalizeLanguageSetting("auto")).toBeUndefined();
-    expect(normalizeLanguageSetting("")).toBeUndefined();
-    expect(normalizeLanguageSetting(null)).toBeUndefined();
-    expect(normalizeLanguageSetting(undefined)).toBeUndefined();
+  it("drops auto, empty, and dedupes (order-preserving)", () => {
+    expect(normalizeLanguageList(["auto", "en", "", "EN"])).toEqual(["en"]);
+    expect(normalizeLanguageList([])).toEqual([]);
+    expect(normalizeLanguageList(null)).toEqual([]);
+    expect(normalizeLanguageList(undefined)).toEqual([]);
+  });
+
+  it("caps the list at five languages", () => {
+    expect(normalizeLanguageList(["a", "b", "c", "d", "e", "f", "g"])).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+    ]);
   });
 });
 

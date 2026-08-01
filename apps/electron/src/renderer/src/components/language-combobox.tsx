@@ -14,6 +14,7 @@ import type { SuggestedLanguage } from "@freestyle-voice/validations";
 import {
   filterLanguageOptions,
   type LanguageChoice,
+  MAX_LANGUAGES,
   resolveLanguageOptions,
 } from "@freestyle-voice/validations";
 import { Button } from "@renderer/components/ui/button";
@@ -31,7 +32,7 @@ import {
 } from "@renderer/components/ui/popover";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { cn } from "@renderer/lib/utils";
-import { Check, Languages, Search } from "lucide-react";
+import { Check, Languages, Plus, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -69,12 +70,13 @@ export function useLanguageOptions(
 /** The scrollable, filterable list of language rows shared by both surfaces. */
 function LanguageList({
   options,
-  value,
+  selectedCodes,
   onSelect,
   autoFocus,
 }: {
   options: LanguageChoice[];
-  value: string;
+  /** Codes shown as selected (checked). */
+  selectedCodes: readonly string[];
   onSelect: (code: string) => void;
   autoFocus?: boolean;
 }): React.JSX.Element {
@@ -85,6 +87,8 @@ function LanguageList({
     () => filterLanguageOptions(options, query),
     [options, query],
   );
+
+  const selectedSet = useMemo(() => new Set(selectedCodes), [selectedCodes]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -116,7 +120,7 @@ function LanguageList({
           </p>
         ) : (
           filtered.map((lang) => {
-            const active = lang.code === value;
+            const active = selectedSet.has(lang.code);
             return (
               <button
                 key={lang.code}
@@ -140,71 +144,30 @@ function LanguageList({
   );
 }
 
-/** Select-like trigger + popover with a searchable language list (settings). */
-export function LanguageCombobox({
-  value,
-  onChange,
-  options,
-  id,
-  className,
-}: {
-  value: string;
-  onChange: (code: string) => void;
-  options: LanguageChoice[];
-  id?: string;
-  className?: string;
-}): React.JSX.Element {
-  const [open, setOpen] = useState(false);
-  const selected = options.find((o) => o.code === value);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          id={id}
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className={cn("w-full max-w-md justify-start font-normal", className)}
-        >
-          <Languages className="text-muted-foreground size-4 shrink-0" />
-          <span className="truncate">{selected?.label ?? value}</span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        className="w-(--radix-popover-trigger-width) max-w-md p-2"
-      >
-        <LanguageList
-          options={options}
-          value={value}
-          autoFocus
-          onSelect={(code) => {
-            onChange(code);
-            setOpen(false);
-          }}
-        />
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/** Modal "See all languages" dialog with a searchable list (onboarding). */
-export function LanguagePickerDialog({
+/**
+ * Modal "See all languages" dialog in multi-select mode (onboarding). Toggling
+ * a row adds/removes it; the dialog stays open so several can be picked. Capped
+ * at {@link MAX_LANGUAGES}.
+ */
+export function LanguageMultiPickerDialog({
   open,
   onOpenChange,
-  value,
-  onChange,
+  values,
+  onToggle,
   options,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  value: string;
-  onChange: (code: string) => void;
+  values: string[];
+  onToggle: (code: string) => void;
   options: LanguageChoice[];
 }): React.JSX.Element {
   const { t } = useTranslation();
+  const atCap = values.length >= MAX_LANGUAGES;
+  const pickable = useMemo(
+    () => options.filter((o) => o.code !== "auto"),
+    [options],
+  );
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
@@ -214,15 +177,135 @@ export function LanguagePickerDialog({
           </DialogTitle>
         </DialogHeader>
         <LanguageList
-          options={options}
-          value={value}
+          options={pickable}
+          selectedCodes={values}
           autoFocus
           onSelect={(code) => {
-            onChange(code);
-            onOpenChange(false);
+            // Block adding beyond the cap; always allow removing.
+            if (!values.includes(code) && atCap) return;
+            onToggle(code);
           }}
         />
+        {atCap ? (
+          <p className="text-muted-foreground px-1 text-xs">
+            {t("settings.recording.languageMax", { count: MAX_LANGUAGES }) ||
+              `Up to ${MAX_LANGUAGES} languages.`}
+          </p>
+        ) : null}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Removable-pill multi-language selector (settings + onboarding).
+ *
+ * Renders each selected language as a pill with a remove (×) affordance, plus
+ * an "add" button that opens a searchable popover to toggle languages on/off.
+ * An empty selection means auto-detect and shows a hint pill. The number of
+ * languages is capped at {@link MAX_LANGUAGES} (cloud parity); once reached, the
+ * add button is disabled.
+ */
+export function LanguageMultiSelect({
+  values,
+  onChange,
+  options,
+  id,
+  className,
+}: {
+  /** Selected ISO codes (never includes the "auto" sentinel). */
+  values: string[];
+  onChange: (codes: string[]) => void;
+  options: LanguageChoice[];
+  id?: string;
+  className?: string;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+
+  const labelFor = (code: string): string =>
+    options.find((o) => o.code === code)?.label ?? code;
+
+  // "auto" is only a picker affordance, not a stored value.
+  const pickable = useMemo(
+    () => options.filter((o) => o.code !== "auto"),
+    [options],
+  );
+
+  const atCap = values.length >= MAX_LANGUAGES;
+
+  // The picker list excludes "auto", so `toggle` only ever sees real codes.
+  const toggle = (code: string): void => {
+    if (values.includes(code)) {
+      onChange(values.filter((c) => c !== code));
+    } else if (!atCap) {
+      onChange([...values, code]);
+    }
+  };
+
+  const remove = (code: string): void => {
+    onChange(values.filter((c) => c !== code));
+  };
+
+  return (
+    <div id={id} className={cn("flex flex-wrap items-center gap-2", className)}>
+      {values.length === 0 ? (
+        <span className="text-muted-foreground bg-muted/40 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm">
+          <Languages className="size-3.5 shrink-0" />
+          {t("settings.recording.languageAutoPill") || "Auto-detect"}
+        </span>
+      ) : (
+        values.map((code) => (
+          <span
+            key={code}
+            className="bg-secondary text-secondary-foreground inline-flex items-center gap-1 rounded-full py-1 pr-1 pl-3 text-sm"
+          >
+            {labelFor(code)}
+            <button
+              type="button"
+              onClick={() => remove(code)}
+              aria-label={
+                t("settings.recording.languageRemove", {
+                  language: labelFor(code),
+                }) || `Remove ${labelFor(code)}`
+              }
+              className="hover:bg-background/60 focus-visible:ring-ring inline-flex size-5 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
+            >
+              <X className="size-3.5" />
+            </button>
+          </span>
+        ))
+      )}
+
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={atCap}
+            className="h-7 gap-1 rounded-full px-3"
+            aria-label={t("settings.recording.languageAdd") || "Add language"}
+          >
+            <Plus className="size-3.5" />
+            {t("settings.recording.languageAdd") || "Add language"}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-72 p-2">
+          <LanguageList
+            options={pickable}
+            selectedCodes={values}
+            autoFocus
+            onSelect={toggle}
+          />
+          {atCap ? (
+            <p className="text-muted-foreground px-2 pt-2 text-xs">
+              {t("settings.recording.languageMax", { count: MAX_LANGUAGES }) ||
+                `Up to ${MAX_LANGUAGES} languages.`}
+            </p>
+          ) : null}
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 }

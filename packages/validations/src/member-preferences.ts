@@ -6,6 +6,7 @@ import {
   cleanupPersonalToneSchema,
   cleanupWorkToneSchema,
 } from "./cleanup-tones.js";
+import { languageListSchema } from "./cloud-config.js";
 import { industrySchema } from "./profile.js";
 import {
   cleanupCustomPromptSchema,
@@ -45,7 +46,10 @@ export const memberPreferencesSchema = z.object({
       text: z.string().trim().max(2000).optional(),
     })
     .nullish(),
-  language: z.string().max(10).nullish(),
+  // Preferred spoken languages (ISO codes). An array so a multilingual user can
+  // list every language they speak; `[]`/`null` clears the field (auto-detect).
+  // Replace-semantics on the cloud (not merged).
+  languages: languageListSchema.nullish(),
 });
 
 export type MemberPreferencesInput = z.infer<typeof memberPreferencesSchema>;

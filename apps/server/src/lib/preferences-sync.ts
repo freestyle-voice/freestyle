@@ -84,7 +84,9 @@ const FIELD_MAP: FieldMap[] = [
     cloudField: "appAssignments",
     kind: "json",
   },
-  { settingKey: "language", cloudField: "language", kind: "string" },
+  // Transcription languages: a JSON array of ISO codes. The cloud replaces the
+  // array wholesale on push and returns it as-is on pull.
+  { settingKey: "languages", cloudField: "languages", kind: "json" },
 ];
 
 /** The local settings keys that participate in cloud preference sync. */

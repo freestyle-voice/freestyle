@@ -5,6 +5,10 @@
  */
 
 import type { CloudMemberPreferences } from "@freestyle-voice/validations";
+import {
+  normalizeLanguageList,
+  parseStoredLanguageList,
+} from "@freestyle-voice/validations";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
@@ -64,14 +68,10 @@ export const LANGUAGES = [
   { code: "ar", name: "Arabic" },
 ] as const;
 
-/**
- * A transcription-language code. The picker offers the full cloud set (~66
- * languages) when online, so this is a broad `string` rather than a union of
- * the small bundled {@link LANGUAGES} fallback. `"auto"` means auto-detect.
- */
-export type LanguageCode = string;
-
-const LANGUAGE_KEY = "language";
+// Canonical multi-language key (JSON array of ISO codes). `language` is the
+// legacy singular key, read once for back-compat migration.
+const LANGUAGES_KEY = "languages";
+const LEGACY_LANGUAGE_KEY = "language";
 const CLEANUP_KEY = "cleanup";
 const INTENSITY_KEY = "cleanup_intensity";
 const CUSTOM_PROMPT_KEY = "cleanup_custom_prompt";
@@ -81,7 +81,8 @@ const EMAIL_TONE_KEY = "cleanup_email_tone";
 const OVERALL_TONE_KEY = "cleanup_overall_tone";
 
 export interface DictationSettings {
-  language: LanguageCode;
+  /** Preferred spoken languages (ISO codes); `[]` means auto-detect. */
+  languages: string[];
   cleanup: boolean;
   intensity: CleanupIntensity;
   customPrompt: string;
@@ -92,7 +93,7 @@ export interface DictationSettings {
 }
 
 const DEFAULTS: DictationSettings = {
-  language: "auto",
+  languages: [],
   cleanup: true,
   intensity: DEFAULT_INTENSITY,
   customPrompt: "",
@@ -105,7 +106,7 @@ const DEFAULTS: DictationSettings = {
 interface SettingsContextValue {
   settings: DictationSettings;
   ready: boolean;
-  setLanguage: (language: LanguageCode) => void;
+  setLanguages: (languages: string[]) => void;
   setCleanup: (cleanup: boolean) => void;
   setIntensity: (intensity: CleanupIntensity) => void;
   setCustomPrompt: (prompt: string) => void;
@@ -118,10 +119,10 @@ interface SettingsContextValue {
 const SettingsContext = createContext<SettingsContextValue | null>(null);
 
 /**
- * The `DictationSettings` fields owned by the cloud (synced + industry-seeded),
- * and the `CloudMemberPreferences` field each maps to. `cleanup` is a
- * device-only app toggle and is intentionally absent. `language` maps to the
- * cloud `language` field.
+ * The scalar `DictationSettings` fields owned by the cloud (synced +
+ * industry-seeded), and the `CloudMemberPreferences` field each maps to.
+ * `cleanup` is a device-only app toggle and is intentionally absent.
+ * `languages` (an array) is synced separately since it needs JSON handling.
  */
 const CLOUD_FIELD_MAP: {
   [K in keyof DictationSettings]?:
@@ -130,8 +131,7 @@ const CLOUD_FIELD_MAP: {
     | "personalTone"
     | "workTone"
     | "emailTone"
-    | "overallTone"
-    | "language";
+    | "overallTone";
 } = {
   intensity: "intensity",
   customPrompt: "customPrompt",
@@ -139,10 +139,9 @@ const CLOUD_FIELD_MAP: {
   workTone: "workTone",
   emailTone: "emailTone",
   overallTone: "overallTone",
-  language: "language",
 };
 
-/** The AsyncStorage key backing each cloud-owned field. */
+/** The AsyncStorage key backing each scalar cloud-owned field. */
 const CLOUD_FIELD_STORAGE_KEY: Record<
   NonNullable<(typeof CLOUD_FIELD_MAP)[keyof typeof CLOUD_FIELD_MAP]>,
   string
@@ -153,7 +152,6 @@ const CLOUD_FIELD_STORAGE_KEY: Record<
   workTone: WORK_TONE_KEY,
   emailTone: EMAIL_TONE_KEY,
   overallTone: OVERALL_TONE_KEY,
-  language: LANGUAGE_KEY,
 };
 
 /**
@@ -180,7 +178,11 @@ function applyCloudPreferences(
   overlay("workTone", remote.workTone ?? undefined);
   overlay("emailTone", remote.emailTone ?? undefined);
   overlay("overallTone", remote.overallTone ?? undefined);
-  overlay("language", (remote.language as LanguageCode) ?? undefined);
+  // The cloud is authoritative for languages once present (including an
+  // explicit empty array = auto-detect).
+  if (remote.languages !== undefined && remote.languages !== null) {
+    next.languages = normalizeLanguageList(remote.languages);
+  }
 
   return next;
 }
@@ -198,7 +200,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       const [
-        lang,
+        languagesRaw,
+        legacyLang,
         cleanup,
         intensity,
         customPrompt,
@@ -207,7 +210,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         emailTone,
         overallTone,
       ] = await Promise.all([
-        getPref(LANGUAGE_KEY),
+        getPref(LANGUAGES_KEY),
+        getPref(LEGACY_LANGUAGE_KEY),
         getPref(CLEANUP_KEY),
         getPref(INTENSITY_KEY),
         getPref(CUSTOM_PROMPT_KEY),
@@ -217,7 +221,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         getPref(OVERALL_TONE_KEY),
       ]);
       setLocal({
-        language: (lang as LanguageCode) ?? DEFAULTS.language,
+        languages: parseStoredLanguageList(languagesRaw, legacyLang),
         cleanup: cleanup == null ? DEFAULTS.cleanup : cleanup === "true",
         intensity: (intensity as CleanupIntensity) ?? DEFAULTS.intensity,
         customPrompt: customPrompt ?? DEFAULTS.customPrompt,
@@ -255,6 +259,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       if (value === undefined || value === null) continue;
       void setPref(CLOUD_FIELD_STORAGE_KEY[cloudField], String(value));
     }
+    // Languages is an array — mirror it as JSON (present, incl. empty, wins).
+    if (cloud.languages !== undefined && cloud.languages !== null) {
+      void setPref(
+        LANGUAGES_KEY,
+        JSON.stringify(normalizeLanguageList(cloud.languages)),
+      );
+    }
   }, [cloud]);
 
   // The effective settings: local device state with the cloud's authoritative
@@ -290,11 +301,27 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [queryClient],
   );
 
+  // Languages need JSON storage + an array cloud payload, so they get their own
+  // setter rather than going through the scalar `persist`.
+  const setLanguages = useCallback(
+    (next: string[]) => {
+      const normalized = normalizeLanguageList(next);
+      setLocal((s) => ({ ...s, languages: normalized }));
+      void setPref(LANGUAGES_KEY, JSON.stringify(normalized));
+      queryClient.setQueryData<CloudMemberPreferences>(
+        CLOUD_PREFERENCES_QUERY_KEY,
+        (prev) => ({ ...(prev ?? {}), languages: normalized }),
+      );
+      void pushCloudPreferences({ languages: normalized }).catch(() => {});
+    },
+    [queryClient],
+  );
+
   const value = useMemo<SettingsContextValue>(
     () => ({
       settings,
       ready,
-      setLanguage: (language) => persist(LANGUAGE_KEY, "language", language),
+      setLanguages,
       setCleanup: (cleanup) => persist(CLEANUP_KEY, "cleanup", cleanup),
       setIntensity: (intensity) =>
         persist(INTENSITY_KEY, "intensity", intensity),
@@ -306,7 +333,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setEmailTone: (tone) => persist(EMAIL_TONE_KEY, "emailTone", tone),
       setOverallTone: (tone) => persist(OVERALL_TONE_KEY, "overallTone", tone),
     }),
-    [settings, ready, persist],
+    [settings, ready, persist, setLanguages],
   );
 
   return (
@@ -325,9 +352,12 @@ export function useSettings(): SettingsContextValue {
   return ctx;
 }
 
-/** Convert an app language code to the cloud's hint (drops "auto"). */
-export function languageHint(code: LanguageCode): string | undefined {
-  return code === "auto" ? undefined : code;
+/**
+ * The transcription-language hints to send to the cloud (already normalized,
+ * never includes "auto"). An empty array means auto-detect.
+ */
+export function languageHints(languages: string[]): string[] {
+  return normalizeLanguageList(languages);
 }
 
 /**

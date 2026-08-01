@@ -16,7 +16,7 @@
 
 Freestyle is the AI writing assistant that lives in your cursor. You press a hotkey, speak your mind, and Freestyle transcribes what you say into polished text pasted at your cursor. Write 4X faster than typing. 
 
-With Remix, highlight a paragraph, describe the change you want (ex. "make this sound more formal"), and Freestyle rewrites it in place. It can also write from scratch, researching the web first when it needs facts you don't have.
+With Remix writing assistant, highlight a paragraph, describe the change you want (ex. "make this sound more formal"), and Freestyle rewrites it in place. It can also write from scratch, researching the web first when it needs facts you don't have.
 
 ### Features
 
@@ -37,6 +37,8 @@ With Remix, highlight a paragraph, describe the change you want (ex. "make this 
 | macOS (Intel) | [`.dmg`](https://github.com/freestyle-voice/freestyle/releases/latest) |
 | Windows | [`.exe`](https://github.com/freestyle-voice/freestyle/releases/latest) |
 | Linux | [`.AppImage`](https://github.com/freestyle-voice/freestyle/releases/latest) / [`.deb`](https://github.com/freestyle-voice/freestyle/releases/latest) |
+
+Mobile support on iOS and Android is coming soon. 
 
 ## Contributing
 

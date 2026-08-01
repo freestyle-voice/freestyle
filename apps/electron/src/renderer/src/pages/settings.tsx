@@ -57,7 +57,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   Cloud,
-  Download,
   ExternalLink,
   FolderOpen,
   Info,
@@ -170,10 +169,6 @@ export default function SettingsPage(): React.JSX.Element {
   const [customRetentionDays, setCustomRetentionDays] = useState("90");
   const [audioPlaybackMode, setAudioPlaybackMode] =
     useState<AudioPlaybackMode>("off");
-  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
-  const [updateDownloaded, setUpdateDownloaded] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [updateError, setUpdateError] = useState<string | null>(null);
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
@@ -421,7 +416,7 @@ export default function SettingsPage(): React.JSX.Element {
     })();
   }, []);
 
-  // Load window/IPC-backed settings and subscribe to auto-updater events.
+  // Load window/IPC-backed settings.
   // (Server-persisted settings are seeded from the batch query above.)
   useEffect(() => {
     window.api
@@ -446,36 +441,6 @@ export default function SettingsPage(): React.JSX.Element {
       .then((v) => setShowOnLaunch(v))
       .catch(() => {});
 
-    // Auto-updater events
-    const removeAvail = window.api?.onUpdateAvailable((info) => {
-      setUpdateAvailable(info.version);
-    });
-    const removeDownloading = window.api?.onUpdateDownloading(() => {
-      setDownloading(true);
-      setUpdateError(null);
-    });
-    const removeDownloaded = window.api?.onUpdateDownloaded(() => {
-      setUpdateDownloaded(true);
-      setDownloading(false);
-    });
-    const removeError = window.api?.onUpdateError((info) => {
-      setDownloading(false);
-      setUpdateError(info.message);
-    });
-    window.api
-      ?.checkForUpdate()
-      .then((result) => {
-        if (result) {
-          setUpdateAvailable(result.version);
-          if (result.downloadState === "downloading") {
-            setDownloading(true);
-          } else if (result.downloadState === "downloaded") {
-            setUpdateDownloaded(true);
-          }
-        }
-      })
-      .catch(() => {});
-
     // Pill position live changes
     const removePillPos = window.api?.onPillPositionChanged((pos) => {
       setPillPosition(normalizePillPos(pos));
@@ -484,10 +449,6 @@ export default function SettingsPage(): React.JSX.Element {
     checkPermissions();
 
     return () => {
-      removeAvail?.();
-      removeDownloading?.();
-      removeDownloaded?.();
-      removeError?.();
       removePillPos?.();
       if (micPollRef.current) clearInterval(micPollRef.current);
       if (accessibilityPollRef.current)
@@ -742,48 +703,6 @@ export default function SettingsPage(): React.JSX.Element {
               <span>. </span>
             </h1>
           </div>
-
-          {updateAvailable && (
-            <div className="border-primary/30 bg-primary/5 mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <Download className="text-primary h-4 w-4" />
-                <span className="min-w-0 text-sm">
-                  {updateDownloaded
-                    ? t("settings.updateReady", { version: updateAvailable })
-                    : t("settings.updateAvailable", {
-                        version: updateAvailable,
-                      })}
-                </span>
-              </div>
-              {updateDownloaded ? (
-                <button
-                  type="button"
-                  onClick={() => window.api?.installUpdate()}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium"
-                >
-                  {t("common.restartAndUpdate")}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDownloading(true);
-                    setUpdateError(null);
-                    window.api?.downloadUpdate();
-                  }}
-                  disabled={downloading}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 text-xs font-medium disabled:opacity-50"
-                >
-                  {downloading ? t("common.downloading") : t("common.download")}
-                </button>
-              )}
-              {updateError && (
-                <span className="text-destructive w-full text-xs">
-                  {updateError}
-                </span>
-              )}
-            </div>
-          )}
         </div>
 
         <SettingsSidebar active={activeSection} onSelect={selectSection} />

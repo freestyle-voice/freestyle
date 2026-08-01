@@ -20,10 +20,10 @@ import {
 } from "../lib/freestyle-cloud.js";
 import { applyFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js";
 import { capture, identifyCloudUser } from "../lib/posthog.js";
+import { validateSession } from "../lib/session-validate.js";
 import {
   getSession,
   getSessionToken,
-  getSessionUser,
   invalidateSession,
   setSession,
 } from "../lib/sessions.js";
@@ -43,9 +43,9 @@ const auth = new Hono()
     }
     return next();
   })
-  .get("/status", (c) => {
-    const user = getSessionUser();
-    return c.json({ authenticated: !!user, user });
+  .get("/status", async (c) => {
+    const { user, verified } = await validateSession();
+    return c.json({ authenticated: !!user, user, verified });
   })
   .post("/device/code", async (c) => {
     const code = await requestDeviceCode();

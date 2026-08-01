@@ -90,10 +90,6 @@ export function touchSessionExpiry(expiresAt: number): void {
     .run(expiresAt, now, now);
 }
 
-export function getSessionUser(): CloudUser | null {
-  return getSession()?.user ?? null;
-}
-
 export function setSession(input: {
   token: string;
   refreshToken?: string | null;

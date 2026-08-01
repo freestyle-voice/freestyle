@@ -34,10 +34,10 @@ import { writeSetting } from "./db.js";
 import {
   FreestyleCloudRequestError,
   getCloudPreferences,
-  putCloudPreferences,
   resolveActiveOrgSlug,
 } from "./freestyle-cloud.js";
 import { getSessionToken } from "./sessions.js";
+import { enqueueOutbox } from "./sync-outbox.js";
 import {
   loadVocabularyTerms,
   mirrorCloudVocabularyTerms,
@@ -186,18 +186,15 @@ export async function pullCloudPreferencesWithRetry(
 
 /**
  * Push a single changed settings key to the cloud as a partial patch. No-op for
- * keys that are not synced or when signed out. Fire-and-forget: errors are
- * swallowed so a failed sync never disrupts the local write.
+ * keys that are not synced or when signed out. Enqueues the patch in the durable
+ * outbox (which flushes immediately and retries on failure), so a sync that
+ * fails while offline is delivered later rather than lost.
  */
-export async function pushSettingToCloud(
-  key: string,
-  value: string,
-): Promise<void> {
+export function pushSettingToCloud(key: string, value: string): void {
   const field = FIELD_MAP.find((f) => f.settingKey === key);
   if (!field) return;
 
-  const token = getSessionToken();
-  if (!token) return;
+  if (!getSessionToken()) return;
 
   const patch: MemberPreferencesInput = {};
   if (field.kind === "json") {
@@ -214,15 +211,7 @@ export async function pushSettingToCloud(
       value === "" ? null : value;
   }
 
-  try {
-    const orgSlug = await resolveActiveOrgSlug(token);
-    if (!orgSlug) return; // no active org — nothing to push to
-    await putCloudPreferences(token, orgSlug, patch);
-  } catch (err) {
-    log.debug(
-      `Preferences push skipped for ${key}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
+  enqueueOutbox(field.cloudField, patch);
 }
 
 /**
@@ -236,34 +225,22 @@ const VOCABULARY_PUSH_DEBOUNCE_MS = 500;
 let vocabularyPushTimer: ReturnType<typeof setTimeout> | undefined;
 
 /**
- * Immediately push the full local vocabulary term list to the cloud. The cloud
- * REPLACES its stored `terms` array (it merges the incoming array wholesale, not
- * additively), so this is what makes local deletes and edits propagate up.
- * Fire-and-forget: no-op when signed out / no active org, errors swallowed so a
- * failed sync never disrupts the local write.
+ * Enqueue the full local vocabulary term list for durable delivery to the cloud.
+ * The cloud REPLACES its stored `terms` array wholesale, so sending the current
+ * snapshot is what makes local deletes and edits propagate up. No-op when signed
+ * out. Reads the canonical local list at flush time so the newest snapshot wins.
  */
-async function flushVocabularyToCloud(): Promise<void> {
-  const token = getSessionToken();
-  if (!token) return;
-
-  // Snapshot the canonical local list at flush time.
+function flushVocabularyToCloud(): void {
+  if (!getSessionToken()) return;
   const terms = loadVocabularyTerms();
-
-  try {
-    const orgSlug = await resolveActiveOrgSlug(token);
-    if (!orgSlug) return; // no active org — nothing to push to
-    await putCloudPreferences(token, orgSlug, { vocabulary: { terms } });
-  } catch (err) {
-    log.debug(
-      `Vocabulary push skipped: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
+  enqueueOutbox("vocabulary", { vocabulary: { terms } });
 }
 
 /**
- * Schedule a debounced push of the local vocabulary to the cloud. Called from
+ * Schedule a debounced enqueue of the local vocabulary to the cloud. Called from
  * the vocabulary CRUD routes after any mutation (add / update / delete /
- * import). Coalesces bursts into a single trailing-edge PUT. Fire-and-forget.
+ * import). The debounce coalesces a burst of edits in memory; the outbox then
+ * makes delivery durable (and retries on failure). Fire-and-forget.
  */
 export function pushVocabularyToCloud(): void {
   // No point scheduling work we'll immediately drop.
@@ -272,7 +249,7 @@ export function pushVocabularyToCloud(): void {
   if (vocabularyPushTimer) clearTimeout(vocabularyPushTimer);
   vocabularyPushTimer = setTimeout(() => {
     vocabularyPushTimer = undefined;
-    void flushVocabularyToCloud();
+    flushVocabularyToCloud();
   }, VOCABULARY_PUSH_DEBOUNCE_MS);
   // Don't keep the process alive just for a pending sync.
   vocabularyPushTimer.unref?.();

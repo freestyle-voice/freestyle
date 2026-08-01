@@ -36,6 +36,7 @@ import {
   invalidateSession,
   setSession,
 } from "../lib/sessions.js";
+import { clearOutbox, drainOutbox } from "../lib/sync-outbox.js";
 import { isTrustedRendererOrigin } from "../lib/trusted-origin.js";
 
 /**
@@ -80,6 +81,9 @@ const auth = new Hono()
       // Seed local cleanup preferences from the cloud snapshot (cross-device
       // sync). Fire-and-forget — sign-in must not block on it.
       void pullCloudPreferences();
+      // Flush any preference syncs queued while signed out / offline now that a
+      // valid session exists. Fire-and-forget.
+      void drainOutbox();
       capture("freestyle_default_applied_on_signin", {
         voice: true,
         cleanup: true,
@@ -108,6 +112,9 @@ const auth = new Hono()
     }
     clearCachedOrgSlug();
     invalidateSession();
+    // Discard any preference syncs queued under this account so they aren't
+    // delivered to a different account that signs in next.
+    clearOutbox();
     return c.json({ ok: true });
   })
   // Social accounts linked to the signed-in user, for the profile page.

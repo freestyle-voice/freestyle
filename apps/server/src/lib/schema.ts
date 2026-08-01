@@ -7,7 +7,7 @@ import { countFixes } from "./fixes.js";
 // and would otherwise perturb test module-mock ordering.
 const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 
-const SCHEMA_VERSION = 17;
+const SCHEMA_VERSION = 18;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -531,6 +531,24 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         )
       `);
     }
+  }
+
+  if (currentVersion < 18) {
+    // Durable outbox for cloud preference syncs. Each cloud field has at most
+    // one pending row (PRIMARY KEY): since the cloud replaces a field wholesale
+    // on PUT, only the newest value per field needs to be sent, so a burst of
+    // offline edits collapses to a single row. `payload` is the JSON partial
+    // PUT patch; `next_attempt_at` gates retry backoff.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS sync_outbox (
+        cloud_field     TEXT PRIMARY KEY,
+        payload         TEXT NOT NULL,
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')),
+        attempts        INTEGER NOT NULL DEFAULT 0,
+        last_error      TEXT
+      )
+    `);
   }
 
   // Upsert schema version

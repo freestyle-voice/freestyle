@@ -9,6 +9,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { capture } from "../lib/posthog.js";
+import { pushVocabularyToCloud } from "../lib/preferences-sync.js";
 import type { VocabularyRow } from "../lib/vocabulary.js";
 
 const ALLOWED_ORDER_COLUMNS = new Set(["created_at", "updated_at", "term"]);
@@ -109,6 +110,9 @@ const vocabulary = new Hono()
 
       capture("vocabulary term added", { has_notes: notes !== null });
 
+      // Mirror the change up to the cloud (debounced, fire-and-forget).
+      pushVocabularyToCloud();
+
       return c.json(
         {
           id: result.lastInsertRowid,
@@ -143,6 +147,9 @@ const vocabulary = new Hono()
         `UPDATE vocabulary SET term = ?, notes = ?, updated_at = datetime('now') WHERE id = ?`,
       ).run(newTerm, newNotes, id);
 
+      // Mirror the change up to the cloud (debounced, fire-and-forget).
+      pushVocabularyToCloud();
+
       return c.json({ id, term: newTerm, notes: newNotes });
     } catch {
       return c.json(
@@ -156,6 +163,12 @@ const vocabulary = new Hono()
     const id = Number(c.req.param("id"));
     db.prepare("DELETE FROM vocabulary WHERE id = ?").run(id);
     capture("vocabulary term deleted", {});
+
+    // Mirror the delete up to the cloud (debounced, fire-and-forget). The cloud
+    // replaces its term array wholesale, so the delete propagates and won't be
+    // re-seeded on the next pull.
+    pushVocabularyToCloud();
+
     return c.json({ ok: true });
   })
   .post("/import", zValidator("json", importVocabularySchema), async (c) => {
@@ -190,6 +203,9 @@ const vocabulary = new Hono()
     }
 
     capture("vocabulary terms imported", { imported, skipped });
+
+    // Mirror the imported terms up to the cloud (debounced, fire-and-forget).
+    if (imported > 0) pushVocabularyToCloud();
 
     return c.json({ imported, skipped });
   });

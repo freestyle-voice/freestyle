@@ -15,10 +15,17 @@
  *
  * Cleanup tones/intensity/appAssignments/language are mirrored into the local
  * `settings` table (see FIELD_MAP). Vocabulary lives in a separate SQLite
- * `vocabulary` table, so it is pulled separately via
- * {@link mergeCloudVocabularyTerms} — additively (cloud → local, never deletes
- * local terms). System fragments are computed per request and never persisted,
- * so they remain out of scope for this bridge.
+ * `vocabulary` table, so it syncs separately but two-way:
+ *
+ *   - **pull** — {@link mirrorCloudVocabularyTerms} makes the local table an
+ *     exact mirror of the cloud's canonical term set (adds + deletes), while
+ *     preserving local-only notes on surviving terms.
+ *   - **push** — {@link pushVocabularyToCloud} sends the full local term list up
+ *     (debounced). The cloud replaces its stored `terms` array wholesale, so a
+ *     local delete propagates and won't be re-seeded on the next pull.
+ *
+ * System fragments are computed per request and never persisted, so they remain
+ * out of scope for this bridge.
  */
 
 import { createAppLogger } from "@freestyle-voice/utils";
@@ -31,7 +38,10 @@ import {
   resolveActiveOrgSlug,
 } from "./freestyle-cloud.js";
 import { getSessionToken } from "./sessions.js";
-import { mergeCloudVocabularyTerms } from "./vocabulary.js";
+import {
+  loadVocabularyTerms,
+  mirrorCloudVocabularyTerms,
+} from "./vocabulary.js";
 
 const log = createAppLogger("preferences-sync");
 
@@ -127,13 +137,20 @@ export async function pullCloudPreferences(): Promise<boolean> {
   }
 
   // Vocabulary lives in its own SQLite `vocabulary` table (not `settings`), so
-  // it's handled outside FIELD_MAP. Merge cloud-seeded terms into the local
-  // table additively. Folding the result into `applied` matters:
-  // pullCloudPreferencesWithRetry() stops once a pull returns `true`, so a pull
-  // that seeds ONLY vocabulary (no tone changes) must still count as applied.
+  // it's handled outside FIELD_MAP. Mirror the cloud's canonical term set into
+  // the local table (adds + deletes), preserving local-only notes. Folding the
+  // result into `applied` matters: pullCloudPreferencesWithRetry() stops once a
+  // pull returns `true`, so a pull that changes ONLY vocabulary (no tone
+  // changes) must still count as applied.
+  //
+  // Only mirror when the cloud snapshot actually carries a `vocabulary` object.
+  // `undefined` means "nothing synced yet" — mirroring an absent set would wipe
+  // all local terms, so we skip it and leave the local table untouched. An
+  // explicit empty `terms: []` DOES mirror (the user cleared their list on
+  // another device).
   if (remote.vocabulary && Array.isArray(remote.vocabulary.terms)) {
-    const inserted = mergeCloudVocabularyTerms(remote.vocabulary.terms);
-    if (inserted > 0) applied = true;
+    const changed = mirrorCloudVocabularyTerms(remote.vocabulary.terms);
+    if (changed > 0) applied = true;
   }
 
   if (applied) log.info("Cleanup preferences pulled from Freestyle Cloud");
@@ -204,4 +221,57 @@ export async function pushSettingToCloud(
       `Preferences push skipped for ${key}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+/**
+ * Debounce window for vocabulary pushes. A local edit rarely comes alone — an
+ * import inserts many rows and the UI can fire several add/edit/delete calls in
+ * quick succession — so we coalesce them into a single PUT that carries the
+ * latest full list. Reading the current list at flush time (not enqueue time)
+ * means the newest snapshot always wins.
+ */
+const VOCABULARY_PUSH_DEBOUNCE_MS = 500;
+let vocabularyPushTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Immediately push the full local vocabulary term list to the cloud. The cloud
+ * REPLACES its stored `terms` array (it merges the incoming array wholesale, not
+ * additively), so this is what makes local deletes and edits propagate up.
+ * Fire-and-forget: no-op when signed out / no active org, errors swallowed so a
+ * failed sync never disrupts the local write.
+ */
+async function flushVocabularyToCloud(): Promise<void> {
+  const token = getSessionToken();
+  if (!token) return;
+
+  // Snapshot the canonical local list at flush time.
+  const terms = loadVocabularyTerms();
+
+  try {
+    const orgSlug = await resolveActiveOrgSlug(token);
+    if (!orgSlug) return; // no active org — nothing to push to
+    await putCloudPreferences(token, orgSlug, { vocabulary: { terms } });
+  } catch (err) {
+    log.debug(
+      `Vocabulary push skipped: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+/**
+ * Schedule a debounced push of the local vocabulary to the cloud. Called from
+ * the vocabulary CRUD routes after any mutation (add / update / delete /
+ * import). Coalesces bursts into a single trailing-edge PUT. Fire-and-forget.
+ */
+export function pushVocabularyToCloud(): void {
+  // No point scheduling work we'll immediately drop.
+  if (!getSessionToken()) return;
+
+  if (vocabularyPushTimer) clearTimeout(vocabularyPushTimer);
+  vocabularyPushTimer = setTimeout(() => {
+    vocabularyPushTimer = undefined;
+    void flushVocabularyToCloud();
+  }, VOCABULARY_PUSH_DEBOUNCE_MS);
+  // Don't keep the process alive just for a pending sync.
+  vocabularyPushTimer.unref?.();
 }

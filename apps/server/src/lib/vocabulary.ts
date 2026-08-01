@@ -79,55 +79,74 @@ export function getCloudVocabularyBias(): CloudVocabularyBias | undefined {
 }
 
 /**
- * Merge cloud-seeded vocabulary terms into the local `vocabulary` table.
+ * Mirror the local `vocabulary` table to the cloud's canonical term set.
  *
- * Additive and non-destructive: inserts terms not already present (unique on
- * `term`, matched case-insensitively against existing rows) and never deletes
- * local terms. Cloud-pulled terms carry no notes (the cloud shape is
- * `{ terms, text }`), so `notes` is left `NULL` — notes are a local-only
- * enrichment. Returns the number of newly inserted terms.
+ * The cloud is authoritative for vocabulary: the desktop pushes its full term
+ * list up on every local edit (see `pushVocabularyToCloud`), and the cloud
+ * replaces its stored `terms` array wholesale. So on pull we make the local
+ * table an exact mirror of the cloud set:
  *
- * Vocabulary sync is currently one-way (cloud → local): the cloud seeds an
- * industry's terms into `member_preferences`, and this lands them locally where
- * `getCloudVocabularyBias()` picks them up for each transcription request.
+ *   - **insert** cloud terms not already present locally (case-insensitive),
+ *   - **delete** local terms the cloud no longer has,
+ *   - **preserve notes** on surviving terms — cloud terms carry no notes (the
+ *     cloud shape is `{ terms, text }`), so notes are a local-only enrichment
+ *     that must never be clobbered by a pull.
+ *
+ * Returns the number of local rows changed (inserted + deleted) so callers can
+ * treat a pull that only touched vocabulary as "applied".
  *
  * Uses node:sqlite (`DatabaseSync`), which has no `.transaction()` helper, so
  * the batch is wrapped in explicit BEGIN/COMMIT like the import route.
  */
-export function mergeCloudVocabularyTerms(terms: string[]): number {
-  if (terms.length === 0) return 0;
+export function mirrorCloudVocabularyTerms(terms: string[]): number {
   const db = getDb();
 
-  const existing = new Set(
-    (db.prepare("SELECT term FROM vocabulary").all() as { term: string }[]).map(
-      (r) => r.term.trim().toLowerCase(),
-    ),
-  );
+  // Canonical cloud set, keyed case-insensitively (the cloud dedupes the same
+  // way, so a case-only difference is not a distinct term).
+  const cloudByKey = new Map<string, string>();
+  for (const raw of terms) {
+    const term = raw.trim();
+    if (!term) continue;
+    const key = term.toLowerCase();
+    if (!cloudByKey.has(key)) cloudByKey.set(key, term);
+  }
+
+  const localRows = db.prepare("SELECT id, term FROM vocabulary").all() as {
+    id: number;
+    term: string;
+  }[];
+  const localKeys = new Set(localRows.map((r) => r.term.trim().toLowerCase()));
+
   const insert = db.prepare(
     "INSERT OR IGNORE INTO vocabulary (term, notes) VALUES (?, NULL)",
   );
+  const remove = db.prepare("DELETE FROM vocabulary WHERE id = ?");
 
-  let inserted = 0;
+  let changed = 0;
   db.exec("BEGIN");
   try {
-    for (const raw of terms) {
-      const term = raw.trim();
-      if (!term || existing.has(term.toLowerCase())) continue;
-      const result = insert.run(term);
-      if (result.changes > 0) {
-        inserted++;
-        existing.add(term.toLowerCase());
+    // Delete local terms the cloud no longer has.
+    for (const row of localRows) {
+      if (!cloudByKey.has(row.term.trim().toLowerCase())) {
+        const result = remove.run(row.id);
+        if (result.changes > 0) changed++;
       }
+    }
+    // Insert cloud terms missing locally (notes left NULL — local enrichment).
+    for (const [key, term] of cloudByKey) {
+      if (localKeys.has(key)) continue;
+      const result = insert.run(term);
+      if (result.changes > 0) changed++;
     }
     db.exec("COMMIT");
   } catch (err) {
     db.exec("ROLLBACK");
-    log.error(`Failed to merge cloud vocabulary terms: ${err}`);
+    log.error(`Failed to mirror cloud vocabulary terms: ${err}`);
     return 0;
   }
 
-  if (inserted > 0) {
-    log.info(`Merged ${inserted} vocabulary term(s) from Freestyle Cloud`);
+  if (changed > 0) {
+    log.info(`Mirrored vocabulary from Freestyle Cloud (${changed} row(s))`);
   }
-  return inserted;
+  return changed;
 }

@@ -17,13 +17,9 @@ import type { MicState } from "@/components/mic-button";
 import { authHeaders } from "@/lib/cloud/session";
 import { CloudStreamSession } from "@/lib/cloud/stream";
 import { startProCheckout } from "@/lib/cloud/subscription";
-import {
-  applyDictionaryReplacements,
-  useEntries,
-  vocabularyTerms,
-} from "@/lib/entries";
+import { applyDictionaryReplacements, useEntries } from "@/lib/entries";
 import { useHistory } from "@/lib/history";
-import { languageHints, tonesForCloud, useSettings } from "@/lib/settings";
+import { useSettings } from "@/lib/settings";
 import {
   checkMicPermission,
   requestMicPermission,
@@ -66,7 +62,7 @@ export function useDictation({
   autoStart = false,
 }: UseDictationOptions): Dictation {
   const { settings } = useSettings();
-  const { vocabulary, dictionary } = useEntries();
+  const { dictionary } = useEntries();
   const { addHistory } = useHistory();
 
   const [micState, setMicState] = useState<MicState>("idle");
@@ -146,14 +142,7 @@ export function useDictation({
 
     sessionRef.current = new CloudStreamSession({
       cookie: headers.Cookie,
-      languages: languageHints(settings.languages),
-      vocabulary: vocabularyTerms(vocabulary),
-      cleanup: {
-        skipPostProcess: !settings.cleanup,
-        intensity: settings.intensity,
-        customPrompt: settings.customPrompt || undefined,
-        ...tonesForCloud(settings),
-      },
+      cleanup: { skipPostProcess: !settings.cleanup },
       callbacks: {
         onReady: () => {},
         onPartial: (t) => setPartial(t),
@@ -213,7 +202,7 @@ export function useDictation({
       teardownSession();
       Alert.alert("Recording failed", "Could not start the microphone.");
     }
-  }, [recorder, settings, vocabulary, dictionary, teardownSession, signedIn]);
+  }, [recorder, settings, dictionary, teardownSession, signedIn]);
 
   const finishRecording = useCallback(() => {
     if (!recordingRef.current) return;

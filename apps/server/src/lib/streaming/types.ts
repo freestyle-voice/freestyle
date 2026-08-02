@@ -1,10 +1,3 @@
-import type {
-  CleanupAppAssignment,
-  CleanupEmailTone,
-  CleanupOverallTone,
-  CleanupPersonalTone,
-  CleanupWorkTone,
-} from "@freestyle-voice/validations";
 import type { AsrVocabularyBias } from "../vocabulary-bias.js";
 
 export interface StreamCallbacks {
@@ -58,28 +51,19 @@ export interface TranscribeResult {
  * Cleanup preferences forwarded to providers that post-process server-side
  * (currently only freestyle-cloud). Local/BYOK providers ignore these — the
  * desktop runs its own `postProcess()` for those.
+ *
+ * The cloud reads the user's synced cleanup config (intensity, custom prompt,
+ * tones, app assignments) from the member_preferences row, so only
+ * request-scoped control values travel here.
  */
 export interface StreamCleanupPreferences {
   /** When true, the provider should return the raw transcript with no LLM cleanup. */
   skipPostProcess: boolean;
-  /** Cleanup intensity preset (only meaningful when `skipPostProcess` is false). */
-  intensity?: string;
-  /** Custom cleanup prompt (only used when intensity is "custom"). */
-  customPrompt?: string;
-  /** Preferred tone when the destination reads like a personal message. */
-  personalTone?: CleanupPersonalTone;
-  /** Preferred tone when the destination reads like work correspondence. */
-  workTone?: CleanupWorkTone;
-  /** Preferred tone when the destination looks like email. */
-  emailTone?: CleanupEmailTone;
-  /** Preferred tone for destinations that do not match a specific category. */
-  overallTone?: CleanupOverallTone;
-  /** Per-app/site destination overrides that steer server-side tone routing. */
-  appAssignments?: CleanupAppAssignment[];
   /**
    * Plugin-contributed system-prompt fragments (from `beforeCleanup` hook).
    * The cloud appends these to the assembled system prompt so plugin
    * instructions (e.g. emoji insertion) are honored in cloud-side cleanup.
+   * Never synced, so they must travel inline.
    */
   systemFragments?: string[];
 }

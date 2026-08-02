@@ -26,7 +26,6 @@ import {
   type CleanupIntensity,
   type CleanupOverallTone,
   type CleanupPersonalTone,
-  type CleanupTones,
   type CleanupWorkTone,
   DEFAULT_EMAIL_TONE,
   DEFAULT_INTENSITY,
@@ -350,25 +349,4 @@ export function useSettings(): SettingsContextValue {
     throw new Error("useSettings must be used within a SettingsProvider");
   }
   return ctx;
-}
-
-/**
- * The transcription-language hints to send to the cloud (already normalized,
- * never includes "auto"). An empty array means auto-detect.
- */
-export function languageHints(languages: string[]): string[] {
-  return normalizeLanguageList(languages);
-}
-
-/**
- * The full tone set to send to the cloud, straight from the user's dials. Any
- * dial left "off" tells the cloud to leave that destination untouched.
- */
-export function tonesForCloud(settings: DictationSettings): CleanupTones {
-  return {
-    personalTone: settings.personalTone,
-    workTone: settings.workTone,
-    emailTone: settings.emailTone,
-    overallTone: settings.overallTone,
-  };
 }

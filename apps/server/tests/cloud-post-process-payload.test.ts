@@ -4,10 +4,11 @@ import { postProcessWithFreestyleCloud } from "../src/lib/freestyle-cloud.js";
 /**
  * Regression guard for the Mode 2 (local voice + Freestyle Cloud cleanup) path.
  *
- * The cloud `/v2/post-process` schema validates `customPrompt` as
- * `z.string().optional()`, which rejects an explicit `null` with a 400. When no
- * custom prompt is configured (the default low/medium/high intensities), the
- * body must omit `customPrompt` entirely rather than send `null`.
+ * The cloud reads the user's synced cleanup preferences (intensity, custom
+ * prompt, tones, app assignments, languages) from the member_preferences row
+ * and assembles the prompt server-side, so the desktop no longer forwards those
+ * saved defaults. The `/v2/post-process` body must carry only the text to clean
+ * plus request-scoped context (`appContext`, plugin `systemFragments`).
  */
 describe("postProcessWithFreestyleCloud payload", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -32,38 +33,53 @@ describe("postProcessWithFreestyleCloud payload", () => {
     return JSON.parse(init.body as string) as Record<string, unknown>;
   }
 
-  it("omits customPrompt when none is set (never sends null)", async () => {
+  it("sends only text + appContext by default (no synced preference fields)", async () => {
     await postProcessWithFreestyleCloud({
       token: "t",
       text: "hello world",
-      intensity: "medium",
-      customPrompt: undefined,
+      appContext: null,
     });
 
     const body = sentBody();
-    expect(body).not.toHaveProperty("customPrompt");
-    expect(body.customPrompt).toBeUndefined();
+    expect(body.text).toBe("hello world");
+    expect(body.appContext).toBeNull();
+    // The synced cleanup preferences are read from member_preferences on the
+    // cloud, so they must never appear in the request body.
+    for (const field of [
+      "intensity",
+      "customPrompt",
+      "personalTone",
+      "workTone",
+      "emailTone",
+      "overallTone",
+      "appAssignments",
+      "languages",
+    ]) {
+      expect(body).not.toHaveProperty(field);
+    }
+    expect(body).not.toHaveProperty("systemFragments");
   });
 
-  it("omits customPrompt when passed null", async () => {
+  it("forwards plugin systemFragments when present", async () => {
     await postProcessWithFreestyleCloud({
       token: "t",
       text: "hello world",
-      intensity: "low",
-      customPrompt: null,
+      appContext: "Slack",
+      systemFragments: ["Add emoji."],
     });
 
-    expect(sentBody()).not.toHaveProperty("customPrompt");
+    const body = sentBody();
+    expect(body.systemFragments).toEqual(["Add emoji."]);
+    expect(body.appContext).toBe("Slack");
   });
 
-  it("forwards a real custom prompt when provided", async () => {
+  it("omits systemFragments when empty", async () => {
     await postProcessWithFreestyleCloud({
       token: "t",
       text: "hello world",
-      intensity: "custom",
-      customPrompt: "Rewrite as a formal email.",
+      systemFragments: [],
     });
 
-    expect(sentBody().customPrompt).toBe("Rewrite as a formal email.");
+    expect(sentBody()).not.toHaveProperty("systemFragments");
   });
 });

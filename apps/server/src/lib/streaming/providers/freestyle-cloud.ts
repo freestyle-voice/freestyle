@@ -5,8 +5,6 @@ import {
   freestyleCloudStreamWsUrl,
   transcribeWithFreestyleCloud,
 } from "../../freestyle-cloud.js";
-import { getCloudVocabularyBias } from "../../vocabulary.js";
-import { sonioxContextFromBias } from "../transcribe-bias.js";
 import type {
   StreamingSessionOptions,
   StreamSession,
@@ -55,12 +53,15 @@ export class FreestyleCloudTranscriptionProvider
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
     if (!opts.apiKey) throw new FreestyleCloudAuthError();
 
+    // The cloud reads the user's synced vocabulary from the member_preferences
+    // row, so we no longer send the saved bias here. `opts.language` is
+    // forwarded as-is: it carries a per-request plugin language override when
+    // present, and is otherwise redundant with the synced language list.
     const data = await transcribeWithFreestyleCloud({
       token: opts.apiKey,
       audio: opts.audio,
-      languages: opts.language ? [opts.language] : undefined,
+      ...(opts.language ? { languages: [opts.language] } : {}),
       mode: "raw",
-      vocabulary: getCloudVocabularyBias(),
     });
     return {
       text: data.raw || "",
@@ -75,16 +76,7 @@ export class FreestyleCloudTranscriptionProvider
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
-    const {
-      apiKey,
-      model,
-      languages,
-      translate,
-      cleanup,
-      callbacks,
-      bias,
-      appContext,
-    } = opts;
+    const { apiKey, model, translate, cleanup, callbacks, appContext } = opts;
 
     if (!apiKey) {
       throw new FreestyleCloudAuthError();
@@ -97,39 +89,24 @@ export class FreestyleCloudTranscriptionProvider
       },
     });
 
-    // Vocabulary bias for the Soniox upstream. The cloud DO transcribes via
-    // Soniox, so we forward the same `context` object (custom terms + optional
-    // background text) that the local BYOK Soniox provider sends directly.
-    const vocabulary = sonioxContextFromBias(bias);
-
-    // The DO applies cleanup preferences on `start`. Mirror the batch
-    // `/v2/transcribe` payload: send `skipPostProcess` plus intensity, custom
-    // prompt, and destination-aware tones so the cloud cleans (or skips) and
-    // bills exactly like batch. `appAssignments` travels as a real array over
-    // the JSON WebSocket message.
+    // The cloud DO reads the user's synced preferences (languages, vocabulary,
+    // intensity, custom prompt, tones, app assignments) from the
+    // member_preferences row at handshake time and applies them to both the
+    // Soniox recognizer and the cleanup prompt. So the `start` message no
+    // longer carries those saved defaults — it sends only request-scoped
+    // control values: `translate` (a local setting, not synced), the
+    // per-session `skipPostProcess` flag, plugin `systemFragments` (never
+    // synced), and the live `appContext`. `translate` is guarded server-side
+    // against the resolved (synced) language list, so it's safe to send
+    // whenever the local translate setting is on even though we omit
+    // `languages` here.
     const buildStartMessage = () => ({
       type: "start" as const,
-      // Canonical multi-language field. Omit entirely for auto-detect. The
-      // cloud biases Soniox toward all listed languages via `language_hints`.
-      ...(languages && languages.length > 0 ? { languages } : {}),
-      // Translate only applies when exactly one language is the target.
-      ...(translate && languages?.length === 1 ? { translate: true } : {}),
+      ...(translate ? { translate: true } : {}),
       skipPostProcess: cleanup?.skipPostProcess ?? false,
-      ...(vocabulary ? { vocabulary } : {}),
       ...(currentContext ? { context: currentContext } : {}),
-      ...(cleanup && !cleanup.skipPostProcess
-        ? {
-            intensity: cleanup.intensity,
-            customPrompt: cleanup.customPrompt,
-            personalTone: cleanup.personalTone,
-            workTone: cleanup.workTone,
-            emailTone: cleanup.emailTone,
-            overallTone: cleanup.overallTone,
-            appAssignments: cleanup.appAssignments,
-            ...(cleanup.systemFragments && cleanup.systemFragments.length > 0
-              ? { systemFragments: cleanup.systemFragments }
-              : {}),
-          }
+      ...(cleanup?.systemFragments && cleanup.systemFragments.length > 0
+        ? { systemFragments: cleanup.systemFragments }
         : {}),
     });
 

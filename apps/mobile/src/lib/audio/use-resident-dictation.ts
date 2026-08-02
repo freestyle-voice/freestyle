@@ -37,13 +37,9 @@ import { useSharedValue } from "react-native-reanimated";
 import { authHeaders } from "@/lib/cloud/session";
 import { CloudStreamSession } from "@/lib/cloud/stream";
 import { startProCheckout } from "@/lib/cloud/subscription";
-import {
-  applyDictionaryReplacements,
-  useEntries,
-  vocabularyTerms,
-} from "@/lib/entries";
+import { applyDictionaryReplacements, useEntries } from "@/lib/entries";
 import { useHistory } from "@/lib/history";
-import { languageHints, tonesForCloud, useSettings } from "@/lib/settings";
+import { useSettings } from "@/lib/settings";
 import {
   checkMicPermission,
   requestMicPermission,
@@ -95,7 +91,7 @@ export function useResidentDictation(
   callbacks: ResidentDictationCallbacks,
 ): ResidentDictation {
   const { settings } = useSettings();
-  const { vocabulary, dictionary } = useEntries();
+  const { dictionary } = useEntries();
   const { addHistory } = useHistory();
 
   const level = useSharedValue(0);
@@ -121,10 +117,6 @@ export function useResidentDictation(
   const settingsRef = useRef(settings);
   useEffect(() => {
     settingsRef.current = settings;
-  });
-  const vocabularyRef = useRef(vocabulary);
-  useEffect(() => {
-    vocabularyRef.current = vocabulary;
   });
   const dictionaryRef = useRef(dictionary);
   useEffect(() => {
@@ -156,14 +148,7 @@ export function useResidentDictation(
     const s = settingsRef.current;
     return new CloudStreamSession({
       cookie: headers.Cookie,
-      languages: languageHints(s.languages),
-      vocabulary: vocabularyTerms(vocabularyRef.current),
-      cleanup: {
-        skipPostProcess: !s.cleanup,
-        intensity: s.intensity,
-        customPrompt: s.customPrompt || undefined,
-        ...tonesForCloud(s),
-      },
+      cleanup: { skipPostProcess: !s.cleanup },
       callbacks: {
         onReady: () => {},
         onPartial: (t) => {

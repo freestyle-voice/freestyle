@@ -25,25 +25,9 @@ type RNWebSocketCtor = new (
   options: { headers: Record<string, string> },
 ) => WebSocket;
 
-import type {
-  CleanupEmailTone,
-  CleanupOverallTone,
-  CleanupPersonalTone,
-  CleanupWorkTone,
-} from "../cleanup-tones";
-
 export interface StreamCleanupPreferences {
   /** When true the cloud returns the raw transcript with no LLM cleanup. */
   skipPostProcess: boolean;
-  /** Cleanup intensity preset (ignored when `skipPostProcess`). */
-  intensity?: string;
-  /** Custom cleanup prompt (only meaningful when intensity is "custom"). */
-  customPrompt?: string;
-  /** Destination-aware tones the cloud applies during post-processing. */
-  personalTone?: CleanupPersonalTone;
-  workTone?: CleanupWorkTone;
-  emailTone?: CleanupEmailTone;
-  overallTone?: CleanupOverallTone;
 }
 
 export interface StreamCallbacks {
@@ -57,10 +41,6 @@ export interface StreamCallbacks {
 export interface StreamSessionOptions {
   /** better-auth session cookie header value (from `authClient.getCookie()`). */
   cookie: string;
-  /** Normalized ISO-639-1 hints; empty/omitted for auto-detect. */
-  languages?: string[];
-  /** ASR recognition-bias terms (the user's vocabulary). */
-  vocabulary?: string[];
   cleanup: StreamCleanupPreferences;
   callbacks: StreamCallbacks;
 }
@@ -112,27 +92,16 @@ export class CloudStreamSession {
   }
 
   private buildStartMessage() {
-    const { languages, vocabulary, cleanup } = this.opts;
+    // The cloud DO reads the user's synced preferences (languages, vocabulary,
+    // intensity, custom prompt, tones) from the member_preferences row at
+    // handshake time and applies them to both the Soniox recognizer and the
+    // cleanup prompt — the mobile app syncs those via `pushCloudPreferences`.
+    // So the `start` message no longer carries those saved defaults; it sends
+    // only the per-session `skipPostProcess` control flag (the device-only
+    // cleanup toggle, which is not synced).
     return {
       type: "start" as const,
-      // Canonical multi-language field; omit for auto-detect.
-      ...(languages && languages.length > 0 ? { languages } : {}),
-      // Recognition-bias terms; the cloud passes these to the ASR as context.
-      vocabulary: vocabulary?.length ? { terms: vocabulary } : undefined,
-      skipPostProcess: cleanup.skipPostProcess,
-      // Send the full cleanup/tone payload so streaming post-processing behaves
-      // like the desktop and batch paths. Omitted entirely when the user has
-      // cleanup turned off (skipPostProcess), where the cloud returns raw text.
-      ...(cleanup.skipPostProcess
-        ? {}
-        : {
-            intensity: cleanup.intensity,
-            customPrompt: cleanup.customPrompt,
-            personalTone: cleanup.personalTone,
-            workTone: cleanup.workTone,
-            emailTone: cleanup.emailTone,
-            overallTone: cleanup.overallTone,
-          }),
+      skipPostProcess: this.opts.cleanup.skipPostProcess,
     };
   }
 

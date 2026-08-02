@@ -31,7 +31,6 @@ import {
 import {
   applyFinalRewrites,
   getCleanupAppAssignments,
-  getEffectiveCleanupTones,
   postProcess,
   prewarmPostProcess,
   resolveAppContextForCleanup,
@@ -43,7 +42,6 @@ import { CloudAuthError } from "../lib/streaming/providers/freestyle-cloud.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
 import { getApiKeyForProvider } from "../lib/streaming-stt.js";
-import { getCloudVocabularyBias } from "../lib/vocabulary.js";
 import {
   buildAsrVocabularyBias,
   resolveAsrVocabularyBias,
@@ -271,21 +269,32 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     }
 
     try {
-      // A `beforeTranscribe` plugin can override the ASR vocabulary bias; honor
-      // it on the cloud path too (else fall back to the user's DB vocabulary),
-      // so the override behaves the same regardless of provider.
-      const vocabulary = beforeTranscribeOutput.bias
+      // The cloud reads the user's synced cleanup preferences (intensity,
+      // custom prompt, tones, app assignments, languages, vocabulary) from the
+      // member_preferences row — kept in step via preferences-sync. So we no
+      // longer forward those saved defaults here; the cloud resolves them
+      // server-side (`payload ?? stored ?? default`). We only forward values
+      // that are per-request and therefore never synced:
+      //   - `languages` when a `beforeTranscribe` plugin overrode it for this
+      //     one dictation (else omit → cloud uses the synced language list),
+      //   - `vocabulary` when a `beforeTranscribe` plugin overrode the ASR bias
+      //     for this one dictation (else omit → cloud uses the synced terms),
+      //   - `appContext` and `systemFragments`, which are request-scoped.
+      const languageOverrideForCloud = languageOverride
+        ? [languageOverride]
+        : undefined;
+      const vocabularyOverride = beforeTranscribeOutput.bias
         ? { terms: beforeTranscribeOutput.bias }
-        : getCloudVocabularyBias();
+        : undefined;
       const result = await transcribeWithFreestyleCloud({
         token: apiKey,
         audio: audioData,
-        languages: effectiveLanguages,
         appContext,
         mode: useCombined ? "combined" : "raw",
-        vocabulary,
-        ...(useCombined ? getEffectiveCleanupTones() : {}),
-        appAssignments: getCleanupAppAssignments(),
+        ...(languageOverrideForCloud
+          ? { languages: languageOverrideForCloud }
+          : {}),
+        ...(vocabularyOverride ? { vocabulary: vocabularyOverride } : {}),
         ...(useCombined && systemFragments.length > 0
           ? { systemFragments }
           : {}),

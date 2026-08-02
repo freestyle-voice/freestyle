@@ -9,11 +9,6 @@ import {
   CloudUsageError as FreestyleCloudUsageError,
 } from "@freestyle-voice/utils";
 import type {
-  CleanupAppAssignment,
-  CleanupEmailTone,
-  CleanupOverallTone,
-  CleanupPersonalTone,
-  CleanupWorkTone,
   CloudConfigResponse,
   CloudMemberPreferences,
   CloudProfile,
@@ -306,86 +301,55 @@ function cloudJson<T>(
   });
 }
 
-/**
- * Destination-aware tone preferences forwarded to Freestyle Cloud in the v2
- * payload. The cloud resolves the destination (from `appContext` +
- * `appAssignments`) and applies the matching tone when assembling the cleanup
- * prompt server-side — the desktop no longer needs to pre-compute a
- * destination for the cloud path.
- */
-export interface CloudCleanupTones {
-  personalTone?: CleanupPersonalTone;
-  workTone?: CleanupWorkTone;
-  emailTone?: CleanupEmailTone;
-  overallTone?: CleanupOverallTone;
-  appAssignments?: CleanupAppAssignment[];
-}
-
-/**
- * Append cleanup preference fields (intensity, custom prompt, tones, and
- * per-app assignments) to a multipart form. Form values are strings, so
- * `appAssignments` is JSON-encoded to match the `/v2/transcribe` contract.
- */
-function appendCleanupFormFields(
-  form: FormData,
-  prefs: {
-    intensity?: string;
-    customPrompt?: string | null;
-    /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
-    systemFragments?: string[];
-  } & CloudCleanupTones,
-): void {
-  if (prefs.intensity) form.append("intensity", prefs.intensity);
-  if (prefs.customPrompt) form.append("customPrompt", prefs.customPrompt);
-  if (prefs.personalTone) form.append("personalTone", prefs.personalTone);
-  if (prefs.workTone) form.append("workTone", prefs.workTone);
-  if (prefs.emailTone) form.append("emailTone", prefs.emailTone);
-  if (prefs.overallTone) form.append("overallTone", prefs.overallTone);
-  if (prefs.appAssignments && prefs.appAssignments.length > 0) {
-    form.append("appAssignments", JSON.stringify(prefs.appAssignments));
-  }
-  if (prefs.systemFragments && prefs.systemFragments.length > 0) {
-    form.append("systemFragments", JSON.stringify(prefs.systemFragments));
-  }
-}
-
-export async function transcribeWithFreestyleCloud(
-  opts: {
-    token: string;
-    audio: Uint8Array;
-    /** Preferred spoken languages (ISO codes); empty/omitted = auto-detect. */
-    languages?: string[];
-    appContext?: string | null;
-    mode: "raw" | "combined";
-    intensity?: string;
-    customPrompt?: string | null;
-    /** Custom-vocabulary bias to steer recognition (independent of cleanup). */
-    vocabulary?: CloudVocabularyBias;
-    /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
-    systemFragments?: string[];
-  } & CloudCleanupTones,
-): Promise<CloudTranscribeResult> {
+export async function transcribeWithFreestyleCloud(opts: {
+  token: string;
+  audio: Uint8Array;
+  /**
+   * Per-request language override (ISO codes). Only sent when a
+   * `beforeTranscribe` plugin overrode the language for this dictation;
+   * otherwise omitted so the cloud uses the user's synced language list.
+   */
+  languages?: string[];
+  appContext?: string | null;
+  mode: "raw" | "combined";
+  /**
+   * Per-request custom-vocabulary bias override. Only sent when a
+   * `beforeTranscribe` plugin overrode the ASR bias for this dictation;
+   * otherwise omitted so the cloud uses the user's synced vocabulary.
+   */
+  vocabulary?: CloudVocabularyBias;
+  /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
+  systemFragments?: string[];
+}): Promise<CloudTranscribeResult> {
   const audio = opts.audio as Uint8Array<ArrayBuffer>;
 
-  // v2 carries the audio plus every cleanup preference in a single multipart
-  // payload — the cloud no longer reads saved preferences. Cleanup fields are
-  // sent only in "combined" mode; "raw" asks the cloud to skip post-processing.
+  // The cloud reads the user's synced cleanup preferences (intensity, custom
+  // prompt, tones, app assignments, languages, vocabulary) from the
+  // member_preferences row, so this payload no longer carries those saved
+  // defaults. We forward only request-scoped values: the audio, per-request
+  // language / vocabulary overrides, `appContext`, plugin `systemFragments`,
+  // and `skipPostProcess` for the raw ("skip cleanup") mode.
   const form = new FormData();
   form.append("audio", new Blob([audio], { type: "audio/wav" }), "audio.wav");
   // The multipart transcribe endpoint expects `languages` as a JSON-encoded
-  // string array (form fields are strings). Omit it entirely for auto-detect.
+  // string array (form fields are strings). Omit it entirely to defer to the
+  // cloud's synced language list.
   if (opts.languages?.length) {
     form.append("languages", JSON.stringify(opts.languages));
   }
   if (opts.appContext) form.append("appContext", opts.appContext);
-  // Vocabulary bias applies to the recognizer regardless of cleanup mode.
+  // Vocabulary bias applies to the recognizer regardless of cleanup mode. Only
+  // a per-request plugin override is sent; the saved list is read from the
+  // synced preferences.
   if (opts.vocabulary?.terms.length) {
     form.append("vocabulary", JSON.stringify(opts.vocabulary));
   }
   if (opts.mode === "raw") {
     form.append("skipPostProcess", "true");
-  } else {
-    appendCleanupFormFields(form, opts);
+  } else if (opts.systemFragments && opts.systemFragments.length > 0) {
+    // `systemFragments` are plugin-derived and never synced, so they must
+    // travel inline even though the tone/intensity preferences do not.
+    form.append("systemFragments", JSON.stringify(opts.systemFragments));
   }
 
   return cloudJson<CloudTranscribeResult>("/v2/transcribe", opts.token, {
@@ -395,41 +359,27 @@ export async function transcribeWithFreestyleCloud(
   });
 }
 
-export async function postProcessWithFreestyleCloud(
-  opts: {
-    token: string;
-    text: string;
-    appContext?: string | null;
-    /** Preferred spoken languages (ISO codes); empty/omitted = auto-detect. */
-    languages?: string[];
-    intensity?: string;
-    customPrompt?: string | null;
-    /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
-    systemFragments?: string[];
-  } & CloudCleanupTones,
-): Promise<{
+export async function postProcessWithFreestyleCloud(opts: {
+  token: string;
+  text: string;
+  appContext?: string | null;
+  /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
+  systemFragments?: string[];
+}): Promise<{
   cleaned: string;
   usage?: { inputTokens?: number; outputTokens?: number };
 }> {
-  // The JSON body carries `appAssignments` as a real array (unlike the
-  // multipart transcribe path, which JSON-encodes it). `customPrompt` is
-  // omitted (not sent as null) when absent: the cloud schema validates it as
-  // `z.string().optional()`, which rejects an explicit null with a 400.
+  // The cloud reads the user's synced cleanup preferences (intensity, custom
+  // prompt, tones, app assignments, languages) from the member_preferences row
+  // and assembles the prompt server-side, so this body carries only the text
+  // to clean plus request-scoped context: `appContext` and plugin-derived
+  // `systemFragments` (never synced).
   return cloudJson("/v2/post-process", opts.token, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       text: opts.text,
       appContext: opts.appContext ?? null,
-      // JSON body: `languages` is a real array. Omit for auto-detect.
-      languages: opts.languages?.length ? opts.languages : undefined,
-      intensity: opts.intensity,
-      customPrompt: opts.customPrompt || undefined,
-      personalTone: opts.personalTone,
-      workTone: opts.workTone,
-      emailTone: opts.emailTone,
-      overallTone: opts.overallTone,
-      appAssignments: opts.appAssignments,
       ...(opts.systemFragments && opts.systemFragments.length > 0
         ? { systemFragments: opts.systemFragments }
         : {}),

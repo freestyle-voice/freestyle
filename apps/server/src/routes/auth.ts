@@ -29,6 +29,7 @@ import {
   pullCloudPreferences,
   pullCloudPreferencesWithRetry,
   resetPreferencesBackfill,
+  resetSyncedPreferencesForAccount,
 } from "../lib/preferences-sync.js";
 import { validateSession } from "../lib/session-validate.js";
 import {
@@ -79,6 +80,11 @@ const auth = new Hono()
       });
       applyFreestyleCloudDefaults();
       identifyCloudUser(user);
+      // If a DIFFERENT account previously synced on this device, scrub its
+      // synced preferences + vocabulary first so this account seeds cleanly and
+      // the backfill can't push the prior account's leftovers up (cross-account
+      // leak). Synchronous + before the pull so the pull sees a clean baseline.
+      resetSyncedPreferencesForAccount(user.id);
       // Seed local cleanup preferences from the cloud snapshot (cross-device
       // sync). Fire-and-forget — sign-in must not block on it.
       void pullCloudPreferences();

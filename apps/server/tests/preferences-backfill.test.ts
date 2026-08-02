@@ -24,11 +24,14 @@ vi.mock("../src/lib/freestyle-cloud.js", async (importOriginal) => {
   };
 });
 
-const { pullCloudPreferences, resetPreferencesBackfill } = await import(
-  "../src/lib/preferences-sync.js"
-);
+const {
+  pullCloudPreferences,
+  resetPreferencesBackfill,
+  resetSyncedPreferencesForAccount,
+} = await import("../src/lib/preferences-sync.js");
 
 const BACKFILLED_KEY = "cloud_prefs_backfilled";
+const SYNCED_ACCOUNT_KEY = "cloud_synced_account_id";
 
 function signIn(): void {
   setSession({
@@ -154,5 +157,62 @@ describe("one-time cloud preference backfill", () => {
     expect(getCloudPreferences).not.toHaveBeenCalled();
     expect(outboxByField()).toEqual({});
     expect(readSetting(BACKFILLED_KEY)).toBeUndefined();
+  });
+});
+
+describe("account-change scrub", () => {
+  function seedLocalPrefs(): void {
+    writeSetting("cleanup_intensity", "high");
+    writeSetting("languages", JSON.stringify(["en", "hi"]));
+    insertVocab("Kubernetes");
+    // Pretend the backfill already ran for the prior account.
+    writeSetting(BACKFILLED_KEY, "1");
+  }
+
+  function localVocabCount(): number {
+    const row = getDb()
+      .prepare("SELECT COUNT(*) AS n FROM vocabulary")
+      .get() as { n: number };
+    return row.n;
+  }
+
+  it("clears the prior account's synced prefs + vocabulary when a different account signs in", () => {
+    seedLocalPrefs();
+    resetSyncedPreferencesForAccount("user_1");
+
+    // A different account takes over the device.
+    resetSyncedPreferencesForAccount("user_2");
+
+    expect(readSetting("cleanup_intensity")).toBeUndefined();
+    expect(readSetting("languages")).toBeUndefined();
+    expect(localVocabCount()).toBe(0);
+    // Backfill is re-armed so it re-evaluates against the clean local state.
+    expect(readSetting(BACKFILLED_KEY)).toBe("");
+    expect(readSetting(SYNCED_ACCOUNT_KEY)).toBe("user_2");
+  });
+
+  it("keeps local state when the same account signs in again", () => {
+    seedLocalPrefs();
+    resetSyncedPreferencesForAccount("user_1");
+
+    resetSyncedPreferencesForAccount("user_1");
+
+    expect(readSetting("cleanup_intensity")).toBe("high");
+    expect(localVocabCount()).toBe(1);
+    // Untouched — the same account's backfill flag is preserved.
+    expect(readSetting(BACKFILLED_KEY)).toBe("1");
+  });
+
+  it("keeps pre-sign-in local prefs on a first-ever sign-in (no prior owner)", () => {
+    seedLocalPrefs();
+    // No CLOUD_SYNCED_ACCOUNT_KEY set yet — first account to sync on this device.
+    getDb().prepare("DELETE FROM settings WHERE key = ?").run(BACKFILLED_KEY);
+
+    resetSyncedPreferencesForAccount("user_1");
+
+    // Local prefs survive so they can seed the new account's cloud.
+    expect(readSetting("cleanup_intensity")).toBe("high");
+    expect(localVocabCount()).toBe(1);
+    expect(readSetting(SYNCED_ACCOUNT_KEY)).toBe("user_1");
   });
 });

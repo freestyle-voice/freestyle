@@ -30,7 +30,7 @@
 
 import { createAppLogger } from "@freestyle-voice/utils";
 import type { MemberPreferencesInput } from "@freestyle-voice/validations";
-import { readSetting, writeSetting } from "./db.js";
+import { deleteSetting, readSetting, writeSetting } from "./db.js";
 import {
   FreestyleCloudRequestError,
   getCloudPreferences,
@@ -39,6 +39,7 @@ import {
 import { getSessionToken } from "./sessions.js";
 import { enqueueOutbox } from "./sync-outbox.js";
 import {
+  clearVocabulary,
   loadVocabularyTerms,
   mirrorCloudVocabularyTerms,
 } from "./vocabulary.js";
@@ -254,6 +255,44 @@ export function resetPreferencesBackfill(): void {
   } catch {
     // Non-fatal — see doc comment.
   }
+}
+
+/**
+ * Local record of which cloud account last seeded the local synced preferences.
+ * The `settings`/`vocabulary` tables are device-global (not account-scoped), so
+ * this lets a sign-in detect when a DIFFERENT account is taking over the device.
+ */
+const CLOUD_SYNCED_ACCOUNT_KEY = "cloud_synced_account_id";
+
+/**
+ * Scrub the previous account's synced preferences when a different account signs
+ * in on this device, then record the new owner.
+ *
+ * The synced settings keys and the vocabulary table are device-global. Without
+ * this, account B signing in after account A would keep A's tones/languages/
+ * vocabulary for any field B's cloud snapshot doesn't carry — and, worse, the
+ * one-time backfill would then push A's leftover local values UP into B's cloud
+ * account (a cross-account data leak). Clearing the local synced state before
+ * the sign-in pull means B seeds cleanly from B's own cloud snapshot and the
+ * backfill finds nothing stale to push.
+ *
+ * Called on sign-in (see the device-token route), BEFORE {@link pullCloudPreferences}.
+ * Only scrubs on an actual account CHANGE — the same account re-signing in keeps
+ * its local state (so its offline edits still backfill), and a first-ever sign-in
+ * (no previous owner) keeps the user's pre-sign-in local prefs so they seed the
+ * new cloud account.
+ */
+export function resetSyncedPreferencesForAccount(accountId: string): void {
+  const previous = readSetting(CLOUD_SYNCED_ACCOUNT_KEY);
+  if (previous && previous !== accountId) {
+    for (const field of FIELD_MAP) deleteSetting(field.settingKey);
+    clearVocabulary();
+    // Re-arm the backfill so it re-evaluates against the (now empty) local state
+    // for the new account rather than staying "done" from the previous one.
+    writeSetting(CLOUD_PREFS_BACKFILLED_KEY, "");
+    log.info("Cleared previous account's synced preferences on account change");
+  }
+  writeSetting(CLOUD_SYNCED_ACCOUNT_KEY, accountId);
 }
 
 /** Delay between preference-pull retries, in milliseconds. */

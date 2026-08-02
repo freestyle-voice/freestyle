@@ -117,6 +117,19 @@ export function deleteVocabularyByIds(ids: number[]): number {
   return deleted;
 }
 
+/**
+ * Delete every local vocabulary row. Used when a different account signs in on
+ * this device so the new account never inherits the previous one's terms (which
+ * would also get pushed up to the new account's cloud by the backfill).
+ */
+export function clearVocabulary(): void {
+  try {
+    getDb().prepare("DELETE FROM vocabulary").run();
+  } catch (err) {
+    log.error(`Failed to clear vocabulary: ${err}`);
+  }
+}
+
 const NOTE_TEXT_MAX_CHARS = 2000;
 
 export function buildVocabularyNoteText(

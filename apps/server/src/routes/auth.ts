@@ -25,11 +25,11 @@ import {
 } from "../lib/freestyle-cloud.js";
 import { applyFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js";
 import { capture, identifyCloudUser } from "../lib/posthog.js";
-import { validateSession } from "../lib/session-validate.js";
 import {
   pullCloudPreferences,
   pullCloudPreferencesWithRetry,
 } from "../lib/preferences-sync.js";
+import { validateSession } from "../lib/session-validate.js";
 import {
   getSession,
   getSessionToken,

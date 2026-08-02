@@ -3085,12 +3085,33 @@ function cleanupBeforeQuit(): void {
 
 app.on("before-quit", (event) => {
   if (isUpdaterQuitting) {
-    cleanupBeforeQuit();
+    try {
+      cleanupBeforeQuit();
+    } catch (err) {
+      log.warn(
+        `cleanup before updater quit failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
     return;
   }
   if (isQuitting) return;
   isQuitting = true;
   event.preventDefault();
-  cleanupBeforeQuit();
-  app.exit(0);
+  // We preventDefault above, so `app.exit(0)` is the only thing that ends the
+  // process. Keep it in a `finally` — if any cleanup step throws (a native
+  // listener already torn down, a dead child process), the app would otherwise
+  // stay alive forever with no windows, which is what a hung quit looks like.
+  try {
+    cleanupBeforeQuit();
+  } catch (err) {
+    log.warn(
+      `cleanup before quit failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  } finally {
+    app.exit(0);
+  }
 });

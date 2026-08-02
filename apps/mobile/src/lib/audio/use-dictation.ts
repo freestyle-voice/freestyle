@@ -14,6 +14,11 @@ import { Alert } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
 import type { MicState } from "@/components/mic-button";
+import {
+  playStartChime,
+  playSuccessChime,
+  setSoundFeedbackEnabled,
+} from "@/lib/audio/chimes";
 import { authHeaders } from "@/lib/cloud/session";
 import { CloudStreamSession } from "@/lib/cloud/stream";
 import { startProCheckout } from "@/lib/cloud/subscription";
@@ -65,6 +70,12 @@ export function useDictation({
   const { dictionary } = useEntries();
   const { addHistory } = useHistory();
 
+  // Keep the module-level chime gate in sync with the Settings toggle so play
+  // helpers don't need to read React state on every call.
+  useEffect(() => {
+    setSoundFeedbackEnabled(settings.soundFeedback);
+  }, [settings.soundFeedback]);
+
   const [micState, setMicState] = useState<MicState>("idle");
   const [partial, setPartial] = useState("");
   // Mic level as a shared value so the mic button + waveform animate on the UI
@@ -97,6 +108,12 @@ export function useDictation({
   const addHistoryRef = useRef(addHistory);
   useEffect(() => {
     addHistoryRef.current = addHistory;
+  });
+  // Keep the latest translate/cleanup flags so opening a session doesn't
+  // rebuild beginRecording on every settings tweak.
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
   });
 
   const recorder = useRecorder({
@@ -138,11 +155,17 @@ export function useDictation({
     setPartial("");
     onStartRef.current?.();
     setMicState("recording");
+    // Chime before the mic session opens so recording mode doesn't mute it.
+    void playStartChime();
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+    const s = settingsRef.current;
     sessionRef.current = new CloudStreamSession({
       cookie: headers.Cookie,
-      cleanup: { skipPostProcess: !settings.cleanup },
+      cleanup: {
+        skipPostProcess: !s.cleanup,
+        translate: s.translate,
+      },
       callbacks: {
         onReady: () => {},
         onPartial: (t) => setPartial(t),
@@ -159,6 +182,7 @@ export function useDictation({
             addHistoryRef.current(text, committedDurationRef.current);
             onFinalRef.current(text);
           }
+          void playSuccessChime();
           void Haptics.notificationAsync(
             Haptics.NotificationFeedbackType.Success,
           );
@@ -202,7 +226,7 @@ export function useDictation({
       teardownSession();
       Alert.alert("Recording failed", "Could not start the microphone.");
     }
-  }, [recorder, settings, dictionary, teardownSession, signedIn]);
+  }, [recorder, dictionary, teardownSession, signedIn]);
 
   const finishRecording = useCallback(() => {
     if (!recordingRef.current) return;

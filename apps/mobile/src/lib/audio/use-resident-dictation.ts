@@ -34,6 +34,11 @@ import { useCallback, useEffect, useRef } from "react";
 import { Alert, AppState } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
+import {
+  playStartChime,
+  playSuccessChime,
+  setSoundFeedbackEnabled,
+} from "@/lib/audio/chimes";
 import { authHeaders } from "@/lib/cloud/session";
 import { CloudStreamSession } from "@/lib/cloud/stream";
 import { startProCheckout } from "@/lib/cloud/subscription";
@@ -96,6 +101,11 @@ export function useResidentDictation(
 
   const level = useSharedValue(0);
 
+  // Keep the module-level chime gate in sync with Settings.
+  useEffect(() => {
+    setSoundFeedbackEnabled(settings.soundFeedback);
+  }, [settings.soundFeedback]);
+
   // The warm cloud session for the *current* phrase (null while armed-idle).
   const sessionRef = useRef<CloudStreamSession | null>(null);
   // True once the mic stream is running (survives across phrases).
@@ -148,7 +158,10 @@ export function useResidentDictation(
     const s = settingsRef.current;
     return new CloudStreamSession({
       cookie: headers.Cookie,
-      cleanup: { skipPostProcess: !s.cleanup },
+      cleanup: {
+        skipPostProcess: !s.cleanup,
+        translate: s.translate,
+      },
       callbacks: {
         onReady: () => {},
         onPartial: (t) => {
@@ -172,6 +185,7 @@ export function useResidentDictation(
             // us on; expose the text via onFinal.
             stateRef.current = streamOnRef.current ? "armed" : "idle";
             cbRef.current.onFinal?.(text);
+            void playSuccessChime();
             void Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
             );
@@ -230,6 +244,7 @@ export function useResidentDictation(
     captureStartedAt.current = Date.now();
     stateRef.current = "capturing";
     cbRef.current.onCaptureStart?.();
+    void playStartChime();
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }, [openSession]);
 

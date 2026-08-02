@@ -199,21 +199,26 @@ export function OptionCard({
   hint,
   selected,
   onPress,
+  disabled = false,
 }: {
   label: string;
   hint?: string;
   selected: boolean;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   const theme = useTheme();
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
+      accessibilityState={{ selected, disabled }}
       style={[
         styles.option,
         {
           borderColor: selected ? theme.primary : theme.border,
           backgroundColor: selected ? theme.accent : "transparent",
+          opacity: disabled ? 0.45 : 1,
         },
       ]}
     >

@@ -28,6 +28,13 @@ type RNWebSocketCtor = new (
 export interface StreamCleanupPreferences {
   /** When true the cloud returns the raw transcript with no LLM cleanup. */
   skipPostProcess: boolean;
+  /**
+   * When true, ask the cloud to translate into the user's single selected
+   * language. The Durable Object guards this against the synced language list
+   * (only applies when exactly one language is set), so it's safe to send
+   * whenever the local toggle is on.
+   */
+  translate?: boolean;
 }
 
 export interface StreamCallbacks {
@@ -96,12 +103,13 @@ export class CloudStreamSession {
     // intensity, custom prompt, tones) from the member_preferences row at
     // handshake time and applies them to both the Soniox recognizer and the
     // cleanup prompt — the mobile app syncs those via `pushCloudPreferences`.
-    // So the `start` message no longer carries those saved defaults; it sends
-    // only the per-session `skipPostProcess` control flag (the device-only
-    // cleanup toggle, which is not synced).
+    // So the `start` message only carries per-session control flags:
+    // `skipPostProcess` (device-only cleanup toggle) and `translate` (device-
+    // only; the DO ignores it unless exactly one language is selected).
     return {
       type: "start" as const,
       skipPostProcess: this.opts.cleanup.skipPostProcess,
+      ...(this.opts.cleanup.translate ? { translate: true } : {}),
     };
   }
 

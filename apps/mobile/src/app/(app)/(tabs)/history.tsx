@@ -8,7 +8,11 @@ import { Card, TabScreenScaffold } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { type HistoryEntry, useHistory } from "@/lib/history";
+import {
+  deriveHistoryStats,
+  type HistoryEntry,
+  useHistory,
+} from "@/lib/history";
 
 /** "Today" / "Yesterday" / "Mon, Jul 21" bucket for an entry timestamp. */
 function dateGroup(ts: number): string {
@@ -42,11 +46,27 @@ function formatSeconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+/** Compact duration: "12s", "3.4m", "1.2h". */
+function formatDuration(ms: number): string {
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)}m`;
+  return `${(ms / 3_600_000).toFixed(1)}h`;
+}
+
+/** Compact integer: 1250 → "1.3k". */
+function formatCount(n: number): string {
+  if (n < 1000) return String(n);
+  return `${(n / 1000).toFixed(1)}k`;
+}
+
 export default function HistoryScreen() {
   const theme = useTheme();
-  const { history, removeHistory, clearHistory } = useHistory();
+  const { history, pauseHistory, removeHistory, clearHistory } = useHistory();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+
+  const stats = useMemo(() => deriveHistoryStats(history), [history]);
+  const maxDayWords = Math.max(1, ...stats.last7Days);
 
   // Case-insensitive substring match on the transcript text. The full list is
   // already in memory (max 500), so filtering client-side is instant.
@@ -105,6 +125,61 @@ export default function HistoryScreen() {
       }
     >
       {history.length > 0 ? (
+        <Card>
+          <View style={styles.statsRow}>
+            <StatCell
+              label="Dictations"
+              value={formatCount(stats.totalSessions)}
+            />
+            <StatCell label="Words" value={formatCount(stats.totalWords)} />
+            <StatCell
+              label="Spoken"
+              value={formatDuration(stats.totalDurationMs)}
+            />
+            <StatCell
+              label="This week"
+              value={formatCount(stats.weekWords)}
+              hint={`${stats.weekSessions} dictations`}
+            />
+          </View>
+          <View style={styles.activityRow}>
+            {stats.last7Days.map((words, i) => {
+              const height = Math.max(
+                3,
+                Math.round((words / maxDayWords) * 28),
+              );
+              return (
+                <View key={i} style={styles.activityBarWrap}>
+                  <View
+                    style={[
+                      styles.activityBar,
+                      {
+                        height,
+                        backgroundColor:
+                          words > 0 ? theme.primary : theme.border,
+                      },
+                    ]}
+                  />
+                </View>
+              );
+            })}
+          </View>
+          <ThemedText themeColor="mutedForeground" style={styles.activityHint}>
+            Last 7 days · words spoken
+          </ThemedText>
+        </Card>
+      ) : null}
+
+      {pauseHistory ? (
+        <Card>
+          <ThemedText themeColor="mutedForeground" style={styles.pauseNotice}>
+            History is paused. New dictations won't be saved until you turn
+            saving back on in Settings.
+          </ThemedText>
+        </Card>
+      ) : null}
+
+      {history.length > 0 ? (
         <View style={[styles.searchBar, { borderColor: theme.border }]}>
           <Search color={theme.mutedForeground} size={16} />
           <TextInput
@@ -135,7 +210,9 @@ export default function HistoryScreen() {
           <View style={styles.empty}>
             <Clock color={theme.mutedForeground} size={22} />
             <ThemedText themeColor="mutedForeground" style={styles.emptyText}>
-              No dictations yet. What you speak will show up here.
+              {pauseHistory
+                ? "History is paused and empty. Turn saving back on in Settings to start collecting dictations."
+                : "No dictations yet. What you speak will show up here."}
             </ThemedText>
           </View>
         </Card>
@@ -217,7 +294,74 @@ export default function HistoryScreen() {
   );
 }
 
+function StatCell({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <View style={styles.statCell}>
+      <ThemedText style={styles.statValue}>{value}</ThemedText>
+      <ThemedText themeColor="mutedForeground" style={styles.statLabel}>
+        {label}
+      </ThemedText>
+      {hint ? (
+        <ThemedText themeColor="mutedForeground" style={styles.statHint}>
+          {hint}
+        </ThemedText>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: Spacing.two,
+  },
+  statCell: { flex: 1, gap: 2 },
+  statValue: {
+    fontFamily: Fonts.sansMedium,
+    fontSize: 18,
+    letterSpacing: -0.3,
+  },
+  statLabel: {
+    fontFamily: Fonts.mono,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  statHint: { fontSize: 11, marginTop: 1 },
+  activityRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 4,
+    height: 32,
+    marginTop: Spacing.one,
+  },
+  activityBarWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  activityBar: {
+    width: "70%",
+    borderRadius: Radius.full,
+    minHeight: 3,
+  },
+  activityHint: {
+    fontSize: 11,
+    marginTop: -Spacing.one,
+  },
+  pauseNotice: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",

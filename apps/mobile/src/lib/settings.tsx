@@ -81,11 +81,23 @@ const PERSONAL_TONE_KEY = "cleanup_personal_tone";
 const WORK_TONE_KEY = "cleanup_work_tone";
 const EMAIL_TONE_KEY = "cleanup_email_tone";
 const OVERALL_TONE_KEY = "cleanup_overall_tone";
+// Device-only (not cloud-synced): translate is a per-session stream flag, and
+// sound feedback is a local UX preference.
+const TRANSLATE_KEY = "translate";
+const SOUND_FEEDBACK_KEY = "sound_feedback";
 
 export interface DictationSettings {
   /** Preferred spoken languages (ISO codes); `[]` means auto-detect. */
   languages: string[];
   cleanup: boolean;
+  /**
+   * Force translation into the single selected language. Only meaningful when
+   * exactly one language is selected — the cloud ignores it otherwise.
+   * Device-only; not synced.
+   */
+  translate: boolean;
+  /** Play start/success chimes alongside haptics. Device-only; not synced. */
+  soundFeedback: boolean;
   intensity: CleanupIntensity;
   customPrompt: string;
   personalTone: CleanupPersonalTone;
@@ -97,6 +109,8 @@ export interface DictationSettings {
 const DEFAULTS: DictationSettings = {
   languages: [],
   cleanup: true,
+  translate: false,
+  soundFeedback: true,
   intensity: DEFAULT_INTENSITY,
   customPrompt: "",
   personalTone: DEFAULT_PERSONAL_TONE,
@@ -110,6 +124,8 @@ interface SettingsContextValue {
   ready: boolean;
   setLanguages: (languages: string[]) => void;
   setCleanup: (cleanup: boolean) => void;
+  setTranslate: (translate: boolean) => void;
+  setSoundFeedback: (enabled: boolean) => void;
   setIntensity: (intensity: CleanupIntensity) => void;
   setCustomPrompt: (prompt: string) => void;
   setPersonalTone: (tone: CleanupPersonalTone) => void;
@@ -205,6 +221,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         languagesRaw,
         legacyLang,
         cleanup,
+        translate,
+        soundFeedback,
         intensity,
         customPrompt,
         personalTone,
@@ -215,6 +233,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         getPref(LANGUAGES_KEY),
         getPref(LEGACY_LANGUAGE_KEY),
         getPref(CLEANUP_KEY),
+        getPref(TRANSLATE_KEY),
+        getPref(SOUND_FEEDBACK_KEY),
         getPref(INTENSITY_KEY),
         getPref(CUSTOM_PROMPT_KEY),
         getPref(PERSONAL_TONE_KEY),
@@ -225,6 +245,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setLocal({
         languages: parseStoredLanguageList(languagesRaw, legacyLang),
         cleanup: cleanup == null ? DEFAULTS.cleanup : cleanup === "true",
+        translate:
+          translate == null ? DEFAULTS.translate : translate === "true",
+        soundFeedback:
+          soundFeedback == null
+            ? DEFAULTS.soundFeedback
+            : soundFeedback === "true",
         intensity: (intensity as CleanupIntensity) ?? DEFAULTS.intensity,
         customPrompt: customPrompt ?? DEFAULTS.customPrompt,
         personalTone:
@@ -374,6 +400,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       ready,
       setLanguages,
       setCleanup: (cleanup) => persist(CLEANUP_KEY, "cleanup", cleanup),
+      // Device-only: persist locally without pushing to the cloud.
+      setTranslate: (translate) =>
+        persist(TRANSLATE_KEY, "translate", translate),
+      setSoundFeedback: (enabled) =>
+        persist(SOUND_FEEDBACK_KEY, "soundFeedback", enabled),
       setIntensity: (intensity) =>
         persist(INTENSITY_KEY, "intensity", intensity),
       setCustomPrompt: (prompt) =>

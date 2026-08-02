@@ -37,6 +37,7 @@ export default function AppLayout() {
                 <Stack.Screen name="settings" />
                 <Stack.Screen name="profile" />
                 <Stack.Screen name="keyboard-setup" />
+                <Stack.Screen name="help" />
                 <Stack.Screen name="billing" />
               </Stack>
               <KeyboardDictationStrip />

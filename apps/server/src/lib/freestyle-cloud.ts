@@ -209,6 +209,46 @@ export async function fetchCloudConfig(): Promise<CloudConfigResponse> {
   return (await res.json()) as CloudConfigResponse;
 }
 
+/**
+ * Currency-aware Pro pricing from the public `GET /v2/pricing` endpoint.
+ * The cloud picks INR for India (via Cloudflare `cf.country`) and USD
+ * otherwise; amounts come from Stripe multi-currency Price objects.
+ * Unauthenticated and CDN-cacheable — display-only.
+ */
+export interface CloudPricing {
+  currency: "usd" | "inr";
+  /** Pro monthly plan billed monthly. */
+  monthly: {
+    /** Amount in the currency's smallest unit (e.g. cents / paise). */
+    amount: number;
+    /** Pre-formatted display string, e.g. "$12" or "₹999". */
+    display: string;
+  };
+  /** Pro annual plan, expressed as the effective per-month price. */
+  annual: {
+    /** Per-month amount in the currency's smallest unit (annual total / 12). */
+    amount: number;
+    display: string;
+  };
+}
+
+/**
+ * Fetch the public geo-aware pricing payload. Unauthenticated. Currency is
+ * derived from the caller's IP geo by the cloud (India → INR, else USD), so
+ * the desktop's real egress IP is what matters — no `?country=` forwarding
+ * is needed (unlike the Vercel-hosted marketing site).
+ */
+export async function fetchCloudPricing(): Promise<CloudPricing> {
+  const url = `${freestyleCloudUrl()}/v2/pricing`;
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new FreestyleCloudRequestError(res.status, `pricing fetch failed`);
+  }
+  return (await res.json()) as CloudPricing;
+}
+
 function createCloudAuthClient() {
   return createAuthClient({
     baseURL: `${freestyleCloudUrl()}/auth`,

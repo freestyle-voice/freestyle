@@ -19,6 +19,7 @@ import org from "./org.js";
 import outputRoute from "./output.js";
 import pluginsRoute from "./plugins.js";
 import postProcessRoute from "./post-process-route.js";
+import pricing from "./pricing.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
 import transcribe, { transcribePreWarmRoute } from "./transcribe.js";
@@ -74,6 +75,7 @@ const apiRouter = new Hono()
   .route("/events", eventsRoute)
   .route("/usage", usage)
   .route("/billing", billing)
+  .route("/pricing", pricing)
   .route("/org", org)
   .route("/plugins", pluginsRoute)
   .route("/whisper", whisper)

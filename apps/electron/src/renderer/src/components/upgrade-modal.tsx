@@ -13,6 +13,7 @@ import {
   type CheckoutStatus,
   useCloudUsage,
 } from "@renderer/lib/use-cloud-usage";
+import { usePricing } from "@renderer/lib/use-pricing";
 import { cn } from "@renderer/lib/utils";
 import { Check, CircleCheck, Loader2, Mail } from "lucide-react";
 import {
@@ -80,7 +81,7 @@ export function UpgradeModalProvider({
 }
 
 // ---------------------------------------------------------------------------
-// Pricing content (mirrors freestylevoice.com/pricing)
+// Pricing content (mirrors freestylevoice.com/pricing; currency from cloud)
 // ---------------------------------------------------------------------------
 
 const FREE_FEATURES = [
@@ -208,6 +209,8 @@ export function PricingPlans({
 }: PricingPlansProps): React.JSX.Element {
   const { user, signingIn, signIn } = useCloudAuth();
   const [period, setPeriod] = useState<BillingPeriod>("annual");
+  const pricing = usePricing();
+  const isInr = pricing.currency === "inr";
   const checkoutBusy =
     checkoutStatus === "launching" || checkoutStatus === "pending";
 
@@ -248,7 +251,11 @@ export function PricingPlans({
 
       <div className="grid gap-3 sm:grid-cols-3">
         <PlanCard>
-          <PlanHeader name="Free" price="$0" priceNote="forever" />
+          <PlanHeader
+            name="Free"
+            price={isInr ? "₹0" : "$0"}
+            priceNote="forever"
+          />
           <FeatureList features={FREE_FEATURES} />
           {!isPro ? (
             <Button
@@ -265,7 +272,11 @@ export function PricingPlans({
         <PlanCard featured>
           <PlanHeader
             name="Pro"
-            price={period === "annual" ? "$9" : "$12"}
+            price={
+              period === "annual"
+                ? pricing.annual.display
+                : pricing.monthly.display
+            }
             priceNote={
               period === "annual" ? "/ month, billed annually" : "/ month"
             }
@@ -345,7 +356,7 @@ export function PricingPlans({
         <PlanCard>
           <PlanHeader
             name="Enterprise"
-            price="from $20"
+            price={isInr ? `from ${pricing.monthly.display}` : "from $20"}
             priceNote="/ user / month"
           />
           <FeatureList

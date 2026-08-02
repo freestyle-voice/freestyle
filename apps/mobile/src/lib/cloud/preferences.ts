@@ -52,3 +52,33 @@ export async function pushCloudPreferences(
     json: data,
   });
 }
+
+/**
+ * The cloud's canonical vocabulary term list, or `undefined` when the snapshot
+ * carries no `vocabulary` object at all.
+ *
+ * The distinction matters for the two-way mirror: `undefined` means "nothing
+ * synced yet" and MUST leave the local list untouched (a first launch / signed-
+ * out state must never wipe local terms), whereas an explicit empty array means
+ * the user cleared their list on another device and the delete should mirror
+ * down. `fetchCloudPreferences` already maps "no membership / no org" to `{}`,
+ * so those cases surface here as `undefined` too.
+ */
+export async function fetchCloudVocabularyTerms(): Promise<
+  string[] | undefined
+> {
+  const prefs = await fetchCloudPreferences();
+  const vocab = prefs.vocabulary;
+  if (!vocab || !Array.isArray(vocab.terms)) return undefined;
+  return vocab.terms;
+}
+
+/**
+ * Replace the cloud's stored vocabulary term list with `terms`. The cloud
+ * overwrites its `terms` array wholesale, so sending the full local list is what
+ * propagates local adds AND deletes. No-op when signed out / no active org
+ * (handled by `pushCloudPreferences`).
+ */
+export async function pushCloudVocabularyTerms(terms: string[]): Promise<void> {
+  await pushCloudPreferences({ vocabulary: { terms } });
+}

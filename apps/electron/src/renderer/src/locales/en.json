@@ -356,7 +356,13 @@
     "noResults": "nothing matches \"{{search}}\".",
     "noTerms": "no terms — add one to start.",
     "failedToSave": "Failed to save entry.",
-    "importFailed": "Import failed — file must be valid JSON."
+    "importFailed": "Import failed — file must be valid JSON.",
+    "select": "Select",
+    "selectAll": "Select all",
+    "cancelSelection": "Cancel",
+    "selectedCount": "{{count}} selected",
+    "deleteSelected": "Delete selected",
+    "deleteSelectedFailed": "Failed to delete selected terms."
   },
   "tone": {
     "title": "Tone",

@@ -33,6 +33,7 @@ import {
   useUpdateName,
   useUpdateProfileFields,
 } from "@renderer/lib/use-profile";
+import { cn } from "@renderer/lib/utils";
 import { PageHeader, PageShell } from "@renderer/pages/models/page-chrome";
 import { Check, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -349,6 +350,49 @@ function ProfileDetailsCard({
   );
 }
 
+function SkeletonBlock({
+  className,
+}: {
+  className?: string;
+}): React.JSX.Element {
+  return (
+    <div
+      className={cn(
+        "bg-muted/60 relative overflow-hidden rounded-md",
+        "before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.4s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent",
+        className,
+      )}
+    />
+  );
+}
+
+/**
+ * Loading placeholder for the connected-accounts list. Mirrors the real row
+ * layout (icon + label + trailing action) one row per provider, so the card
+ * doesn't jump in size or shift its contents when the data resolves.
+ */
+function ConnectedAccountsSkeleton(): React.JSX.Element {
+  return (
+    <div
+      className="space-y-2"
+      role="status"
+      aria-label="Loading connected accounts"
+    >
+      <style>{`@keyframes shimmer { 100% { transform: translateX(100%); } }`}</style>
+      {PROVIDERS.map((provider) => (
+        <div
+          key={provider.id}
+          className="flex items-center gap-3 rounded-md border p-3"
+        >
+          <SkeletonBlock className="size-5 shrink-0 rounded" />
+          <SkeletonBlock className="h-4 w-20" />
+          <SkeletonBlock className="ml-auto h-8 w-24 shrink-0 rounded-md" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ConnectedAccountsCard({
   enabled,
 }: {
@@ -371,9 +415,7 @@ function ConnectedAccountsCard({
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex items-center justify-center py-4">
-            <Loader2 className="text-muted-foreground size-5 animate-spin" />
-          </div>
+          <ConnectedAccountsSkeleton />
         ) : (
           <div className="space-y-2">
             {PROVIDERS.map((provider) => {

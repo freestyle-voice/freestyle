@@ -4,6 +4,7 @@ import {
   importVocabularySchema,
   querySchema,
   updateVocabularySchema,
+  vocabularyActionSchema,
 } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
@@ -208,6 +209,83 @@ const vocabulary = new Hono()
     if (imported > 0) pushVocabularyToCloud();
 
     return c.json({ imported, skipped });
+  })
+  .post("/actions", zValidator("json", vocabularyActionSchema), (c) => {
+    const db = getDb();
+    const body = c.req.valid("json");
+
+    switch (body.action) {
+      case "bulk-delete": {
+        // Dedupe so a repeated id doesn't skew the reported count.
+        const ids = [...new Set(body.ids)];
+        let deleted = 0;
+        const remove = db.prepare("DELETE FROM vocabulary WHERE id = ?");
+        // node:sqlite has no `.transaction()` helper, so batch in BEGIN/COMMIT
+        // (matches the import route).
+        db.exec("BEGIN");
+        try {
+          for (const id of ids) {
+            const result = remove.run(id);
+            if (result.changes > 0) deleted++;
+          }
+          db.exec("COMMIT");
+        } catch (err) {
+          db.exec("ROLLBACK");
+          throw err;
+        }
+
+        if (deleted > 0) {
+          capture("vocabulary terms deleted", { count: deleted });
+          // One cloud push for the whole batch — the cloud replaces its term
+          // array wholesale, so every delete propagates in a single PUT.
+          pushVocabularyToCloud();
+        }
+
+        return c.json({ deleted });
+      }
+
+      case "import": {
+        let imported = 0;
+        let skipped = 0;
+        const insertStmt = db.prepare(
+          "INSERT OR IGNORE INTO vocabulary (term, notes) VALUES (?, ?)",
+        );
+
+        db.exec("BEGIN");
+        try {
+          for (const entry of body.entries) {
+            const term = entry.term.trim();
+            if (!term) {
+              skipped++;
+              continue;
+            }
+            const result = insertStmt.run(term, entry.notes?.trim() || null);
+            if (result.changes > 0) {
+              imported++;
+            } else {
+              skipped++;
+            }
+          }
+          db.exec("COMMIT");
+        } catch (err) {
+          db.exec("ROLLBACK");
+          throw err;
+        }
+
+        capture("vocabulary terms imported", { imported, skipped });
+        if (imported > 0) pushVocabularyToCloud();
+
+        return c.json({ imported, skipped });
+      }
+
+      case "export": {
+        const rows = db
+          .prepare("SELECT term, notes FROM vocabulary ORDER BY term ASC")
+          .all() as { term: string; notes: string | null }[];
+        // Only "json" is supported today (the schema enum enforces this).
+        return c.json(rows);
+      }
+    }
   });
 
 export default vocabulary;

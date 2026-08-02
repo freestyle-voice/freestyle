@@ -30,7 +30,7 @@
 
 import { createAppLogger } from "@freestyle-voice/utils";
 import type { MemberPreferencesInput } from "@freestyle-voice/validations";
-import { writeSetting } from "./db.js";
+import { readSetting, writeSetting } from "./db.js";
 import {
   FreestyleCloudRequestError,
   getCloudPreferences,
@@ -155,8 +155,105 @@ export async function pullCloudPreferences(): Promise<boolean> {
     if (changed > 0) applied = true;
   }
 
+  // One-time: seed the cloud with any synced field it's still missing from the
+  // local settings. Uses the snapshot we just fetched (consistent view, no
+  // extra request) and is guarded so it runs once per account per device.
+  backfillMissingCloudPreferences(remote);
+
   if (applied) log.info("Cleanup preferences pulled from Freestyle Cloud");
   return applied;
+}
+
+/**
+ * Local flag marking that the one-time preference backfill has run for the
+ * current account on this device. Written directly to the `settings` table (so
+ * it never triggers a cloud push) and cleared on sign-out via
+ * {@link resetPreferencesBackfill} so a different account signing in on the same
+ * device backfills its own snapshot.
+ */
+const CLOUD_PREFS_BACKFILLED_KEY = "cloud_prefs_backfilled";
+
+/**
+ * One-time backfill of the cloud `member_preferences` row from local settings.
+ *
+ * Pre-cloud-sync clients never pushed their EXISTING local preferences up — a
+ * value only syncs when it later changes (see {@link pushSettingToCloud}). Now
+ * that clients no longer send cleanup preferences inline with each request (the
+ * cloud reads them from `member_preferences`), any field the cloud is missing
+ * would silently fall back to the built-in default. This closes that gap: the
+ * first time we successfully read the cloud snapshot, for every synced field the
+ * snapshot doesn't carry (`undefined`) but that IS set locally, enqueue a patch
+ * to seed it upstream.
+ *
+ *   - Only fields ABSENT upstream are pushed — a value the cloud already has (an
+ *     explicit value OR a `null` clear) wins, since the pull just applied it to
+ *     local; we never clobber it.
+ *   - Empty JSON arrays (`languages`/`appAssignments`) are skipped — an empty
+ *     selection is indistinguishable from "unset" and seeds nothing useful.
+ *   - Runs once per account per device (guarded by a persisted flag). The flag
+ *     is set after the first snapshot read regardless of whether anything was
+ *     pushed, so steady-state launches don't re-diff.
+ *   - Fire-and-forget via the durable outbox — a failed/offline push is retried
+ *     and never disrupts anything.
+ *
+ * `remote` is the snapshot the surrounding pull just applied, so the diff is
+ * against exactly what the cloud returned.
+ */
+function backfillMissingCloudPreferences(remote: MemberPreferencesInput): void {
+  if (readSetting(CLOUD_PREFS_BACKFILLED_KEY) === "1") return;
+  if (!getSessionToken()) return;
+
+  for (const field of FIELD_MAP) {
+    // Cloud already has this field — don't overwrite what the pull just applied.
+    if (remote[field.cloudField] !== undefined) continue;
+    const local = readSetting(field.settingKey);
+    if (local == null || local === "") continue; // nothing local to seed
+
+    let value: unknown;
+    if (field.kind === "json") {
+      try {
+        value = JSON.parse(local);
+      } catch {
+        continue; // malformed local JSON — skip rather than push garbage
+      }
+      if (Array.isArray(value) && value.length === 0) continue;
+    } else {
+      value = local;
+    }
+
+    // Enqueue under the same key `pushSettingToCloud` uses so a later change to
+    // this field supersedes the backfill row (the outbox upserts by cloudField).
+    const patch: MemberPreferencesInput = {};
+    (patch as Record<string, unknown>)[field.cloudField] = value;
+    enqueueOutbox(field.cloudField, patch);
+  }
+
+  // Vocabulary lives outside FIELD_MAP. The cloud carries a `vocabulary` object
+  // only once terms have been synced; when it's absent and we have local terms,
+  // seed them. (When the cloud DOES carry vocabulary, the pull already mirrored
+  // it — nothing to backfill.)
+  if (!remote.vocabulary || !Array.isArray(remote.vocabulary.terms)) {
+    const terms = loadVocabularyTerms();
+    if (terms.length > 0)
+      enqueueOutbox("vocabulary", { vocabulary: { terms } });
+  }
+
+  // Mark done even if nothing was pushed — we've reconciled against a real
+  // snapshot, so there's no reason to diff again on every launch.
+  writeSetting(CLOUD_PREFS_BACKFILLED_KEY, "1");
+}
+
+/**
+ * Reset the one-time backfill flag. Called on sign-out so the next account to
+ * sign in on this device runs its own backfill against its own cloud snapshot.
+ * Best-effort — a failed reset only means the next account skips the backfill.
+ */
+export function resetPreferencesBackfill(): void {
+  try {
+    writeSetting(CLOUD_PREFS_BACKFILLED_KEY, "");
+  } catch {
+    // Non-fatal — see doc comment.
+  }
 }
 
 /** Delay between preference-pull retries, in milliseconds. */

@@ -28,6 +28,7 @@ import { capture, identifyCloudUser } from "../lib/posthog.js";
 import {
   pullCloudPreferences,
   pullCloudPreferencesWithRetry,
+  resetPreferencesBackfill,
 } from "../lib/preferences-sync.js";
 import { validateSession } from "../lib/session-validate.js";
 import {
@@ -115,6 +116,9 @@ const auth = new Hono()
     // Discard any preference syncs queued under this account so they aren't
     // delivered to a different account that signs in next.
     clearOutbox();
+    // Re-arm the one-time preference backfill so the next account to sign in on
+    // this device seeds the cloud from its own snapshot.
+    resetPreferencesBackfill();
     return c.json({ ok: true });
   })
   // Social accounts linked to the signed-in user, for the profile page.

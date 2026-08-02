@@ -4,7 +4,10 @@
  * settings sub-page reads and writes the same source of truth.
  */
 
-import type { CloudMemberPreferences } from "@freestyle-voice/validations";
+import type {
+  CloudMemberPreferences,
+  MemberPreferencesInput,
+} from "@freestyle-voice/validations";
 import {
   normalizeLanguageList,
   parseStoredLanguageList,
@@ -266,6 +269,55 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       );
     }
   }, [cloud]);
+
+  // One-time-ish backfill: seed the cloud with any synced field it's still
+  // missing but that the user has stored locally. Pre-cloud-sync installs never
+  // pushed their EXISTING local preferences up (a value only syncs when it later
+  // changes), so without this a cloud-missing field would make the streaming DO
+  // fall back to a built-in default now that the app no longer sends preferences
+  // inline. Only fields the cloud LACKS are pushed (a value it already has —
+  // including an explicit `null` clear — wins); the cache is patched optimistically
+  // so this won't re-fire, and a failed push simply retries on the next resolve.
+  useEffect(() => {
+    if (!signedIn || !cloud) return;
+    (async () => {
+      const patch: MemberPreferencesInput = {};
+
+      for (const cloudField of Object.values(CLOUD_FIELD_MAP)) {
+        if (!cloudField) continue;
+        // Cloud already carries this field — don't clobber the authoritative value.
+        if (cloud[cloudField] !== undefined && cloud[cloudField] !== null)
+          continue;
+        const stored = await getPref(CLOUD_FIELD_STORAGE_KEY[cloudField]);
+        if (stored == null || stored === "") continue;
+        (patch as Record<string, unknown>)[cloudField] = stored;
+      }
+
+      // Languages is a JSON array with its own storage key. Seed it only when
+      // the cloud has nothing and the user actually has a stored selection.
+      if (cloud.languages === undefined || cloud.languages === null) {
+        const [raw, legacy] = await Promise.all([
+          getPref(LANGUAGES_KEY),
+          getPref(LEGACY_LANGUAGE_KEY),
+        ]);
+        const langs = normalizeLanguageList(
+          parseStoredLanguageList(raw, legacy),
+        );
+        if (langs.length > 0) patch.languages = langs;
+      }
+
+      if (Object.keys(patch).length === 0) return;
+
+      // Reflect the seed in the cache so the overlay + this effect converge
+      // without waiting for a refetch (the effect re-runs, finds nothing
+      // missing, and stops).
+      queryClient.setQueryData<CloudMemberPreferences>(
+        CLOUD_PREFERENCES_QUERY_KEY,
+        (prev) => ({ ...(prev ?? {}), ...patch }),
+      );
+      void pushCloudPreferences(patch).catch(() => {});
+    })();
+  }, [signedIn, cloud, queryClient]);
 
   // The effective settings: local device state with the cloud's authoritative
   // fields overlaid. Recomputes only when local or cloud changes.

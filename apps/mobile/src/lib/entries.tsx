@@ -145,7 +145,18 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const cloudTerms = await fetchCloudVocabularyTerms();
-        if (cancelled || cloudTerms === undefined) return;
+        if (cancelled) return;
+        if (cloudTerms === undefined) {
+          // Cloud carries no vocabulary yet. Seed it from the local terms so ASR
+          // biasing keeps working now that the app no longer sends vocabulary
+          // inline on `start`. Idempotent: once the cloud has terms this branch
+          // stops firing; a failed push retries on the next sign-in / mount.
+          const localTerms = vocabularyTerms(vocabRef.current);
+          if (localTerms.length > 0) {
+            void pushCloudVocabularyTerms(localTerms).catch(() => {});
+          }
+          return;
+        }
         const mirrored = mirrorCloudTerms(vocabRef.current, cloudTerms);
         // Reference-equal when nothing changed — skip the redundant write.
         if (mirrored !== vocabRef.current) {

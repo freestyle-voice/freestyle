@@ -2,6 +2,7 @@ export * from "./api-keys.js";
 export * from "./auth.js";
 export * from "./cleanup-presets.js";
 export * from "./cleanup-tones.js";
+export * from "./commands.js";
 export * from "./diagnostics.js";
 export * from "./dictionary.js";
 export * from "./export.js";

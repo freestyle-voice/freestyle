@@ -4,6 +4,7 @@ import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
 } from "../shared/audio-playback";
+import { getDefaultCommandHotkey } from "../shared/commands";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { OpenAppCandidate } from "../shared/open-apps";
 import {
@@ -19,6 +20,7 @@ const api = {
   platform: process.platform as string,
   isE2E: process.env.FREESTYLE_E2E === "1",
   defaultHotkey: getDefaultHotkey(),
+  defaultCommandHotkey: getDefaultCommandHotkey(),
   pasteText: (text: string, appContext?: string | null): Promise<void> =>
     ipcRenderer.invoke("paste:text", text, appContext ?? null),
   copyText: (text: string, appContext?: string | null): Promise<void> =>
@@ -35,8 +37,8 @@ const api = {
   hidePill: (): void => ipcRenderer.send("pill:hide"),
   // Ask the pill window to grow around the capsule (or shrink back) so the
   // expanded status card has somewhere to render.
-  setPillExpanded: (expanded: boolean): void =>
-    ipcRenderer.send("pill:set-expanded", expanded),
+  setPillExpanded: (expanded: boolean, expansion?: "card" | "command"): void =>
+    ipcRenderer.send("pill:set-expanded", expanded, expansion),
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),
   getServerPort: (): Promise<number> => ipcRenderer.invoke("server:port"),
@@ -71,6 +73,47 @@ const api = {
     ipcRenderer.on("hotkey:up", handler);
     return () => ipcRenderer.removeListener("hotkey:up", handler);
   },
+  // --- Commands ---
+  reloadCommandHotkey: (): void => ipcRenderer.send("command-hotkey:reload"),
+  /** Replace the user's selection with the command's result. */
+  pasteCommandResult: (text: string): Promise<boolean> =>
+    ipcRenderer.invoke("command:paste", text),
+  onCommandDown: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("command:down", handler);
+    return () => ipcRenderer.removeListener("command:down", handler);
+  },
+  onCommandUp: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("command:up", handler);
+    return () => ipcRenderer.removeListener("command:up", handler);
+  },
+  /** The captured selection, or null when nothing was selected. */
+  onCommandSelection: (
+    callback: (text: string | null) => void,
+  ): (() => void) => {
+    const handler = (_: unknown, payload: { text: string | null }): void =>
+      callback(payload?.text ?? null);
+    ipcRenderer.on("command:selection", handler);
+    return () => ipcRenderer.removeListener("command:selection", handler);
+  },
+  /** A route shortcut (chord + digit) fired; zero-based index. */
+  onCommandRoute: (callback: (index: number) => void): (() => void) => {
+    const handler = (_: unknown, index: number): void => callback(index);
+    ipcRenderer.on("command:route", handler);
+    return () => ipcRenderer.removeListener("command:route", handler);
+  },
+  /**
+   * A dictation started on the shared home key and the commands chord is
+   * taking over. Drop the recording but leave the pill window alone — the
+   * command card is about to use it.
+   */
+  onCommandSupersede: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("command:supersede", handler);
+    return () => ipcRenderer.removeListener("command:supersede", handler);
+  },
+
   onPillCancel: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("pill:cancel", handler);

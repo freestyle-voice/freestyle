@@ -82,6 +82,7 @@ import { hc } from "hono/client";
 import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
+import { getDefaultCommandHotkey } from "../shared/commands";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { OpenAppCandidate } from "../shared/open-apps";
 import { normalizePillCancelMode } from "../shared/pill-cancel";
@@ -96,6 +97,7 @@ import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
 import { MicListener } from "./mic-listener";
 import {
+  copySelectionFromFocusedApp,
   isWaylandSession,
   pasteIntoFocusedApp,
   startLinuxPasteHelper,
@@ -198,6 +200,25 @@ const APP_HEIGHT = 60;
  */
 const PILL_CARD_WIDTH = 340;
 const PILL_CARD_HEIGHT = 144;
+/**
+ * The command card carries the same width as the failure card, so both read as
+ * the same object in the same place on screen. It is a little taller only
+ * because it stacks three short rows — the microphone line, the selection it
+ * is about to edit, and the route strip — where the failure card stacks two.
+ */
+const PILL_COMMAND_HEIGHT = 128;
+
+type PillExpansion = "card" | "command";
+
+function pillExpansionSize(expansion: PillExpansion): {
+  width: number;
+  height: number;
+} {
+  return {
+    width: PILL_CARD_WIDTH,
+    height: expansion === "command" ? PILL_COMMAND_HEIGHT : PILL_CARD_HEIGHT,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // settings.json helpers — single source for read/write of the lightweight
@@ -319,6 +340,31 @@ let currentHotkeyAccel: string | null = null;
 let hotkeyActivationMode: "hold" | "toggle" = "hold";
 let micListener: MicListener | null = null;
 let hotkeyRecorder: HotkeyRecorder | null = null;
+/**
+ * The commands hotkey runs on its own listener process rather than sharing
+ * dictation's. The native binaries take one accelerator and suppress that
+ * chord; teaching them a second would mean changing three platforms' native
+ * code, where a second instance costs one small process and no new protocol.
+ */
+let commandKeyListener: NativeKeyListener | null = null;
+let commandPressed = false;
+let commandsEnabled = true;
+/**
+ * The accelerator the user configured, as opposed to the one currently
+ * listening: they differ while commands are off, or parked because the
+ * dictation hotkey took the same chord. Kept so re-registering (after the
+ * dictation hotkey moves, or hotkey recording ends) can restore the user's
+ * choice rather than the default.
+ */
+let commandHotkeyPreference: string | undefined;
+/** The accelerator actually being listened for, or null when commands are off. */
+let currentCommandAccel: string | null = null;
+/**
+ * False until the server's settings have been read once. Guards the
+ * re-registration hook in `registerHotkey` from spawning a listener off
+ * defaults before we know whether commands are even switched on.
+ */
+let commandsInitialized = false;
 const audioPlaybackController = new AudioPlaybackController();
 
 function stopHotkeyRecorderProcess(): void {
@@ -399,6 +445,8 @@ function markProgrammaticTarget(x: number, y: number): void {
  * the expand started, even if the anchor preference changed in between.
  */
 let pillExpandOffset = { dx: 0, dy: 0 };
+/** Which expanded size `pillExpandOffset` was computed for. */
+let pillExpansion: PillExpansion = "card";
 
 function setProgrammaticPosition(
   win: BrowserWindow,
@@ -433,29 +481,45 @@ function getPillAnchor(): { side: "center" | "right"; edge: "top" | "bottom" } {
  * edge fixed on screen. The renderer drives this: it asks for the room a beat
  * before it animates the card in, and gives it back once the card is gone.
  */
-function setPillExpanded(expanded: boolean): void {
+function setPillExpanded(
+  expanded: boolean,
+  expansion: PillExpansion = "card",
+): void {
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
   const isExpanded = pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0;
-  if (expanded === isExpanded) return;
+  // Both a collapse-when-collapsed and a re-expand at the size already in
+  // effect are no-ops; a *change* of size while expanded is not, and has to
+  // re-run so the anchored edge stays put across the resize.
+  if (expanded === isExpanded && (!expanded || expansion === pillExpansion)) {
+    return;
+  }
+  if (expanded) pillExpansion = expansion;
 
+  const previousOffset = pillExpandOffset;
   const [x, y] = win.getPosition();
   let target: { x: number; y: number; width: number; height: number };
 
   if (expanded) {
     const { side, edge } = getPillAnchor();
+    const { width, height } = pillExpansionSize(expansion);
     pillExpandOffset = {
       dx:
         side === "right"
-          ? PILL_CARD_WIDTH - APP_WIDTH
-          : Math.round((PILL_CARD_WIDTH - APP_WIDTH) / 2),
-      dy: edge === "top" ? 0 : PILL_CARD_HEIGHT - APP_HEIGHT,
+          ? width - APP_WIDTH
+          : Math.round((width - APP_WIDTH) / 2),
+      dy: edge === "top" ? 0 : height - APP_HEIGHT,
     };
+    // The offset above is measured from the *collapsed* slot, but `x`/`y` are
+    // wherever the window is right now — which, when growing from one card
+    // size to another, is already offset. Rebase onto the slot first.
+    const slotX = x + previousOffset.dx;
+    const slotY = y + previousOffset.dy;
     target = {
-      x: x - pillExpandOffset.dx,
-      y: y - pillExpandOffset.dy,
-      width: PILL_CARD_WIDTH,
-      height: PILL_CARD_HEIGHT,
+      x: slotX - pillExpandOffset.dx,
+      y: slotY - pillExpandOffset.dy,
+      width,
+      height,
     };
   } else {
     target = {
@@ -863,7 +927,6 @@ function showPill(): void {
     setProgrammaticPosition(mainWindow, x, y);
     mainWindow.showInactive();
   }
-
   registerPillEscape();
 }
 
@@ -1252,6 +1315,8 @@ function hidePill(): void {
   // holding the dictation key.
   hotkeyPressed = false;
   clearHotkeyStuckWatchdog();
+  commandPressed = false;
+  setCommandRouteKeys(false);
   // Unregister Escape shortcut when pill is hidden
   try {
     globalShortcut.unregister("Escape");
@@ -2010,9 +2075,15 @@ app.whenReady().then(async () => {
   });
 
   // IPC: the renderer needs (or no longer needs) room for the status card.
-  ipcMain.on("pill:set-expanded", (_event, expanded: boolean) => {
-    setPillExpanded(expanded === true);
-  });
+  ipcMain.on(
+    "pill:set-expanded",
+    (_event, expanded: boolean, expansion?: unknown) => {
+      setPillExpanded(
+        expanded === true,
+        expansion === "command" ? "command" : "card",
+      );
+    },
+  );
 
   // IPC: fan out per-frame audio levels from the pill to other windows
   // (e.g. the Today tutorial demo) so they can render a live waveform.
@@ -2208,6 +2279,13 @@ app.whenReady().then(async () => {
 
   // IPC: hotkey recording — global native listener + renderer DOM on macOS
   ipcMain.on("hotkey-record:start", () => {
+    // The commands listener would otherwise fire on whatever chord the user
+    // presses while recording a new one.
+    if (commandKeyListener) {
+      commandKeyListener.stop();
+      commandKeyListener = null;
+      commandPressed = false;
+    }
     // Pause the active hotkey listener so it doesn't fire during recording
     if (keyListener) {
       keyListener.stop();
@@ -2625,6 +2703,11 @@ app.whenReady().then(async () => {
       ? normalizeAccelerator(configured)
       : DEFAULT_HOTKEY;
     if (accel !== currentHotkeyAccel) scheduleHotkeyRegistration(configured);
+    // Commands wait for the server rather than registering a default eagerly:
+    // unlike dictation there is no cost to a press in the first second going
+    // nowhere, and registering before we know whether the user turned commands
+    // off would spawn a listener process only to kill it again.
+    applyCommandSettings(settings);
   });
 
   // Start microphone activity monitoring
@@ -2660,9 +2743,52 @@ app.whenReady().then(async () => {
     clearHotkeyStuckWatchdog();
     scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
   });
+
+  // Commands: the settings UI writes the setting, then tells us to re-read it.
+  ipcMain.on("command-hotkey:reload", () => {
+    void getServerSettings().then((settings) => {
+      if (!settings) return;
+      applyCommandSettings(settings);
+    });
+  });
+
+  // Commands paste over a selection rather than appending at a cursor, so this
+  // deliberately does not go through `deliverOutput`: no trailing space, and no
+  // plugin output pipeline (see the /api/command route on why).
+  ipcMain.handle("command:paste", async (_event, text: string) => {
+    if (typeof text !== "string" || !text.trim()) return false;
+    try {
+      await pasteIntoFocusedApp(
+        text,
+        async () => {
+          hidePill();
+          await wait(0);
+        },
+        { trailingSpace: false },
+      );
+      return true;
+    } catch (err) {
+      notifyPasteFailed();
+      hotkeyLog.error(`Command paste failed: ${err}`);
+      return false;
+    }
+  });
 });
 
+/** Apply the commands enable flag + accelerator from a settings snapshot. */
+function applyCommandSettings(settings: Record<string, string>): void {
+  // Absent means on: commands ship enabled, and a server that has never been
+  // told otherwise shouldn't read as "the user switched this off".
+  commandsEnabled = settings[SETTINGS_KEYS.commandsEnabled] !== "false";
+  commandsInitialized = true;
+  const configured = settings[SETTINGS_KEYS.commandHotkey];
+  scheduleCommandHotkeyRegistration(
+    configured && isValidAccelerator(configured) ? configured : undefined,
+  );
+}
+
 const DEFAULT_HOTKEY = getDefaultHotkey();
+const DEFAULT_COMMAND_HOTKEY = getDefaultCommandHotkey();
 const HOTKEY_MODIFIER_PARTS = new Set([
   "alt",
   "option",
@@ -2760,6 +2886,241 @@ function sendHotkeyUp(): void {
   }
   mainWindow?.webContents.send("hotkey:up");
   settingsWindow?.webContents.send("hotkey:up");
+}
+
+// ---------------------------------------------------------------------------
+// Commands
+// ---------------------------------------------------------------------------
+
+/**
+ * Send to the pill, deferring until it exists. Command IPC is bursty at the
+ * moment the window is first created — down, then the selection, then possibly
+ * up — and all of it must arrive in order and none of it may be dropped.
+ */
+function sendToPill(channel: string, payload?: unknown): void {
+  if (pillReadyPromise) {
+    void pillReadyPromise.then(() => {
+      mainWindow?.webContents.send(channel, payload);
+    });
+    return;
+  }
+  mainWindow?.webContents.send(channel, payload);
+}
+
+/**
+ * Whether the selection can be read while the hotkey is still held down.
+ *
+ * Reading it means injecting the focused app's own Copy — a synthetic Cmd/
+ * Ctrl+C. Explicitly-set modifier flags override whatever the user is
+ * physically holding, so a chord of modifiers is no obstacle. A chord
+ * containing the letter C is: the real C key is already down, and the injected
+ * one collides with it, so the app sees nothing and the copy silently fails.
+ *
+ * Neither default contains C. For a chord that does, the copy waits for the
+ * release instead — later, but correct, which is the right way round.
+ */
+function canCopySelectionWhileHeld(): boolean {
+  const parts = currentCommandAccel?.split("+") ?? [];
+  return !parts.some((part) => part.trim().toLowerCase() === "c");
+}
+
+/** Set while a press has already gone to fetch the selection. */
+let commandSelectionRequested = false;
+
+/**
+ * Go and read the selection, then hand it to the pill. Safe to call twice for
+ * one press — the second call is a no-op.
+ */
+function captureCommandSelection(): void {
+  if (commandSelectionRequested) return;
+  commandSelectionRequested = true;
+
+  void copySelectionFromFocusedApp()
+    .then((text) => {
+      sendToPill("command:selection", { text });
+    })
+    .catch((err) => {
+      hotkeyLog.warn(`Selection capture failed: ${err}`);
+      sendToPill("command:selection", { text: null });
+    });
+}
+
+/** The commands hotkey went down: put the pill up straight away. */
+function handleCommandHotkeyDown(): void {
+  if (commandPressed) return;
+  commandPressed = true;
+
+  // On macOS the two hotkeys deliberately share a home key — Fn dictates,
+  // Fn+Control edits — and the listeners watching them are separate processes
+  // that cannot see each other. Press the chord a shade too slowly and the
+  // dictation one has already fired on the solo Fn, so by the time Control
+  // lands there is a recording in progress that the user never asked for.
+  //
+  // The chord is the more specific of the two and therefore the one that was
+  // meant: cancel the dictation it interrupted. Nothing is lost — it is a few
+  // tens of milliseconds of audio from someone who was reaching for a
+  // different key.
+  // Its own channel rather than the ordinary cancel, which would tell the
+  // renderer to hide a pill this very function is about to show again — and
+  // the hide would land second and win.
+  if (hotkeyPressed) {
+    hotkeyPressed = false;
+    clearHotkeyStuckWatchdog();
+    sendToPill("command:supersede");
+  }
+
+  setCommandRouteKeys(true);
+  commandSelectionRequested = false;
+  showPill();
+  sendToPill("command:down");
+
+  // Read the selection now, not on release. Whether there is anything to edit
+  // is the first thing the user needs to know — telling them only after they
+  // have held the key down and said a whole sentence is telling them too late.
+  if (canCopySelectionWhileHeld()) captureCommandSelection();
+}
+
+/**
+ * The hotkey came up. Tell the pill, and read the selection if the press
+ * itself couldn't (a chord containing C — see `canCopySelectionWhileHeld`).
+ */
+function handleCommandHotkeyUp(): void {
+  if (!commandPressed) return;
+  commandPressed = false;
+  sendToPill("command:up");
+  captureCommandSelection();
+}
+
+/**
+ * The route shortcuts: the commands chord plus a digit.
+ *
+ * The chord is already under the user's fingers, so a number finishes it —
+ * hold, press 2, done, without ever reaching the microphone. They stay claimed
+ * for as long as the card is up rather than only while the key is down, so a
+ * tapped-open card can still be answered with a digit; the card's own idle
+ * timeout is what bounds how long they are taken from the rest of the system.
+ *
+ * The modifiers have to be spelled out because a bare digit would not match
+ * the event the OS actually delivers — Control is physically down. Fn is not
+ * expressible as an Electron accelerator and does not modify the number row,
+ * so it is simply absent here.
+ */
+const COMMAND_ROUTE_MODIFIER =
+  process.platform === "darwin" ? "Control" : "Control+Alt";
+const COMMAND_ROUTE_DIGITS = ["1", "2", "3"];
+let commandRouteKeysHeld = false;
+
+function setCommandRouteKeys(open: boolean): void {
+  if (open === commandRouteKeysHeld) return;
+  commandRouteKeysHeld = open;
+
+  for (const [index, digit] of COMMAND_ROUTE_DIGITS.entries()) {
+    const accel = `${COMMAND_ROUTE_MODIFIER}+${digit}`;
+    if (!open) {
+      try {
+        globalShortcut.unregister(accel);
+      } catch {}
+      continue;
+    }
+    try {
+      const claimed = globalShortcut.register(accel, () => {
+        if (mainWindow?.isVisible()) {
+          mainWindow.webContents.send("command:route", index);
+        }
+      });
+      // A route whose chord the OS or another app already owns simply has no
+      // shortcut. Saying so out loud beats a key that silently does nothing.
+      if (!claimed) {
+        hotkeyLog.warn(`Route shortcut "${accel}" is already taken.`);
+      }
+    } catch (err) {
+      hotkeyLog.warn(`Could not claim "${accel}" for a command route: ${err}`);
+    }
+  }
+}
+
+function scheduleCommandHotkeyRegistration(hotkey?: string): void {
+  void registerCommandHotkey(hotkey).catch((err) => {
+    hotkeyLog.error(
+      `Command hotkey registration failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
+}
+
+/**
+ * Bring the commands listener up on `hotkey`, or take it down when commands
+ * are switched off.
+ *
+ * There is deliberately no `globalShortcut` fallback here, unlike dictation's.
+ * That fallback exists to keep dictation working in toggle mode where the
+ * native listener can't run, and it is worth the degraded behaviour because
+ * dictation is the product. Commands are not: a hotkey that can't tell a tap
+ * from a hold can't offer the voice half at all, and silently shipping half
+ * the feature is worse than the feature being absent on that machine.
+ */
+async function registerCommandHotkey(hotkey?: string): Promise<void> {
+  if (commandKeyListener) {
+    commandKeyListener.stop();
+    commandKeyListener = null;
+  }
+  commandPressed = false;
+
+  if (!commandsEnabled) {
+    currentCommandAccel = null;
+    return;
+  }
+
+  commandHotkeyPreference = hotkey ?? commandHotkeyPreference;
+  const configured = hotkey ?? commandHotkeyPreference;
+  const normalized =
+    configured && isValidAccelerator(configured)
+      ? normalizeAccelerator(configured)
+      : null;
+  const accel = normalized ?? DEFAULT_COMMAND_HOTKEY;
+
+  // One key can't mean two things. Dictation wins — it is the feature the user
+  // reaches for dozens of times a day — and commands stay off until the clash
+  // is resolved in Settings.
+  if (currentHotkeyAccel && accel === currentHotkeyAccel) {
+    hotkeyLog.warn(
+      `Commands hotkey "${accel}" is already the dictation hotkey; commands disabled.`,
+    );
+    return;
+  }
+
+  currentCommandAccel = accel;
+
+  const listener = new NativeKeyListener({
+    hotkey: accel,
+    onKeyDown: handleCommandHotkeyDown,
+    onKeyUp: handleCommandHotkeyUp,
+    onError: (error) => {
+      hotkeyLog.error(`Command key listener error: ${error}`);
+    },
+    onReady: () => {
+      hotkeyLog.debug(`Command key listener ready for "${accel}"`);
+    },
+    onPermanentFailure: () => {
+      if (commandKeyListener !== listener) return;
+      hotkeyLog.error("Command key listener permanently failed; commands off.");
+      listener.stop();
+      commandKeyListener = null;
+    },
+  });
+  commandKeyListener = listener;
+
+  const started = await listener.start();
+  if (commandKeyListener !== listener) {
+    listener.stop();
+    return;
+  }
+  if (!started) {
+    hotkeyLog.warn(
+      `Command key listener unavailable for "${accel}"; commands are off.`,
+    );
+    listener.stop();
+    commandKeyListener = null;
+  }
 }
 
 const HOTKEY_STUCK_TIMEOUT_MS = 5 * 60 * 1000;
@@ -2985,6 +3346,9 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     if (started) {
       accessibilityConfirmed = true;
       hotkeyDegradedNotified = false;
+      // The dictation hotkey just moved, which can free a chord commands were
+      // parked on — or take the one they were using. Re-resolve either way.
+      if (commandsInitialized) scheduleCommandHotkeyRegistration();
     } else {
       hotkeyLog.warn(
         "Native key listener unavailable, falling back to Electron globalShortcut (toggle mode).",
@@ -3031,6 +3395,10 @@ app.on("will-quit", () => {
   if (keyListener) {
     keyListener.stop();
     keyListener = null;
+  }
+  if (commandKeyListener) {
+    commandKeyListener.stop();
+    commandKeyListener = null;
   }
   if (micListener) {
     micListener.stop();

@@ -181,7 +181,7 @@ export const REMIX_CLIENT_TOOLS = {
   },
   set_clipboard: {
     description:
-      "Put text on the user's clipboard (really — it replaces what they had). Returns { ok }. Follow with paste in the same turn to write it into the document, or use it alone to hand the user something without touching their document — then tell them it's on their clipboard.",
+      "Put text on the user's clipboard (really — it replaces what they had). Returns { ok }. Almost always followed by paste in the same turn — Remix's job is writing into the user's document. Use it WITHOUT paste only when the user explicitly asked for clipboard-only ('copy it', 'don't paste') — then tell them it's on their clipboard.",
     inputSchema: z.object({
       text: z
         .string()

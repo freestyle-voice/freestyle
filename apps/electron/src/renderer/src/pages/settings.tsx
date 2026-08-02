@@ -86,12 +86,12 @@ import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
 } from "../../../shared/audio-playback";
-import { getDefaultCommandHotkey } from "../../../shared/commands";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 import {
   normalizePillCancelMode,
   type PillCancelMode,
 } from "../../../shared/pill-cancel";
+import { getDefaultRemixHotkey } from "../../../shared/remix";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
 // ---------------------------------------------------------------------------
@@ -158,9 +158,10 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.defaultHotkey ?? getDefaultHotkey(),
   );
   const [hotkeyMode, setHotkeyMode] = useState<"hold" | "toggle">("hold");
-  const [commandsEnabled, setCommandsEnabled] = useState(true);
-  const [commandHotkey, setCommandHotkey] = useState(
-    window.api?.defaultCommandHotkey ?? getDefaultCommandHotkey(),
+  const [remixEnabled, setRemixEnabled] = useState(true);
+  const [remixBarEnabled, setRemixBarEnabled] = useState(true);
+  const [remixHotkey, setRemixHotkey] = useState(
+    window.api?.defaultRemixHotkey ?? getDefaultRemixHotkey(),
   );
   const [language, setLanguage] = useState("auto");
   const [translateMode, setTranslateMode] = useState(false);
@@ -345,27 +346,38 @@ export default function SettingsPage(): React.JSX.Element {
       .catch(() => {});
   }, []);
 
-  const handleCommandsToggle = useCallback((enabled: boolean) => {
-    setCommandsEnabled(enabled);
+  const handleRemixToggle = useCallback((enabled: boolean) => {
+    setRemixEnabled(enabled);
     getClient()
       .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.commandsEnabled },
+        param: { key: SETTINGS_KEYS.remixEnabled },
         json: { value: String(enabled) },
       })
-      .then(() => window.api?.reloadCommandHotkey())
+      .then(() => window.api?.reloadRemixHotkey())
       .catch(() => {});
   }, []);
 
-  // The commands listener re-reads its accelerator from the server rather than
-  // being handed one, so the reload has to wait for the write to land.
-  const handleCommandHotkeyRecorded = useCallback((accelerator: string) => {
-    setCommandHotkey(accelerator);
+  const handleRemixBarToggle = useCallback((enabled: boolean) => {
+    setRemixBarEnabled(enabled);
     getClient()
       .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.commandHotkey },
+        param: { key: SETTINGS_KEYS.remixBarEnabled },
+        json: { value: String(enabled) },
+      })
+      .then(() => window.api?.reloadRemixHotkey())
+      .catch(() => {});
+  }, []);
+
+  // The remix listener re-reads its accelerator from the server rather than
+  // being handed one, so the reload has to wait for the write to land.
+  const handleRemixHotkeyRecorded = useCallback((accelerator: string) => {
+    setRemixHotkey(accelerator);
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.remixHotkey },
         json: { value: accelerator },
       })
-      .then(() => window.api?.reloadCommandHotkey())
+      .then(() => window.api?.reloadRemixHotkey())
       .catch(() => {});
   }, []);
 
@@ -381,14 +393,14 @@ export default function SettingsPage(): React.JSX.Element {
   } = useHotkeyRecorder(handleHotkeyRecorded);
 
   const {
-    state: commandRecorderState,
-    liveModifiers: commandLiveModifiers,
-    capturedCombo: commandCapturedCombo,
-    canSaveRecording: commandCanSave,
-    needsModifierOrMouseButton: commandNeedsModifier,
-    startRecording: startCommandHotkeyRecording,
-    cancelRecording: cancelCommandHotkeyRecording,
-  } = useHotkeyRecorder(handleCommandHotkeyRecorded, { target: "command" });
+    state: remixRecorderState,
+    liveModifiers: remixLiveModifiers,
+    capturedCombo: remixCapturedCombo,
+    canSaveRecording: remixCanSave,
+    needsModifierOrMouseButton: remixNeedsModifier,
+    startRecording: startRemixHotkeyRecording,
+    cancelRecording: cancelRemixHotkeyRecording,
+  } = useHotkeyRecorder(handleRemixHotkeyRecorded, { target: "remix" });
 
   const queryClient = useQueryClient();
 
@@ -408,9 +420,10 @@ export default function SettingsPage(): React.JSX.Element {
       setSelectedDevice(s[SETTINGS_KEYS.micDeviceId]);
     if (s[SETTINGS_KEYS.hotkey]) setHotkey(s[SETTINGS_KEYS.hotkey]);
     if (s[SETTINGS_KEYS.hotkeyMode] === "toggle") setHotkeyMode("toggle");
-    if (s[SETTINGS_KEYS.commandHotkey])
-      setCommandHotkey(s[SETTINGS_KEYS.commandHotkey]);
-    setCommandsEnabled(s[SETTINGS_KEYS.commandsEnabled] !== "false");
+    if (s[SETTINGS_KEYS.remixHotkey])
+      setRemixHotkey(s[SETTINGS_KEYS.remixHotkey]);
+    setRemixEnabled(s[SETTINGS_KEYS.remixEnabled] !== "false");
+    setRemixBarEnabled(s[SETTINGS_KEYS.remixBarEnabled] !== "false");
     if (s[SETTINGS_KEYS.language]) setLanguage(s[SETTINGS_KEYS.language]);
     if (s[SETTINGS_KEYS.translateMode] === "true") setTranslateMode(true);
     if (s[SETTINGS_KEYS.outputMode]) setOutputMode(s[SETTINGS_KEYS.outputMode]);
@@ -740,13 +753,13 @@ export default function SettingsPage(): React.JSX.Element {
   // Build display keys for current recorder state
   const liveKeys = liveModifiers.map(keyDisplayLabel);
   const draftKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : liveKeys;
-  const commandLiveKeys = commandLiveModifiers.map(keyDisplayLabel);
-  const commandDraftKeys = commandCapturedCombo
-    ? comboDisplayKeys(commandCapturedCombo)
-    : commandLiveKeys;
-  const commandCaptureHint = commandNeedsModifier
+  const remixLiveKeys = remixLiveModifiers.map(keyDisplayLabel);
+  const remixDraftKeys = remixCapturedCombo
+    ? comboDisplayKeys(remixCapturedCombo)
+    : remixLiveKeys;
+  const remixCaptureHint = remixNeedsModifier
     ? "Add a modifier or side mouse button · Esc to cancel"
-    : commandCanSave
+    : remixCanSave
       ? "Release to save · Esc to cancel"
       : "Press a modifier or side mouse button... · Esc to cancel";
   const captureHint = needsModifierOrMouseButton
@@ -980,33 +993,45 @@ export default function SettingsPage(): React.JSX.Element {
               </Row>
 
               <Row
-                label={t("settings.recording.commands")}
-                desc={t("settings.recording.commandsDesc")}
+                label={t("settings.recording.remix")}
+                desc={t("settings.recording.remixDesc")}
               >
                 <Switch
-                  checked={commandsEnabled}
-                  onCheckedChange={handleCommandsToggle}
+                  checked={remixEnabled}
+                  onCheckedChange={handleRemixToggle}
                 />
               </Row>
 
-              {commandsEnabled && (
+              {remixEnabled && (
                 <Row
-                  label={t("settings.recording.commandsHotkey")}
+                  label={t("settings.recording.remixBar")}
+                  desc={t("settings.recording.remixBarDesc")}
+                >
+                  <Switch
+                    checked={remixBarEnabled}
+                    onCheckedChange={handleRemixBarToggle}
+                  />
+                </Row>
+              )}
+
+              {remixEnabled && (
+                <Row
+                  label={t("settings.recording.remixHotkey")}
                   desc={
-                    commandHotkey === hotkey
-                      ? t("settings.recording.commandsConflict")
-                      : t("settings.recording.commandsHotkeyDesc")
+                    remixHotkey === hotkey
+                      ? t("settings.recording.remixConflict")
+                      : t("settings.recording.remixHotkeyDesc")
                   }
                 >
-                  {commandRecorderState === "idle" ? (
+                  {remixRecorderState === "idle" ? (
                     <Button
                       variant="outline"
-                      onClick={startCommandHotkeyRecording}
+                      onClick={startRemixHotkeyRecording}
                       className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
                     >
                       <Keyboard className="text-muted-foreground size-4 shrink-0" />
                       <KeyComboDisplay
-                        keys={formatAcceleratorKeys(commandHotkey)}
+                        keys={formatAcceleratorKeys(remixHotkey)}
                       />
                       <span className="text-muted-foreground ml-1 text-xs">
                         {t("common.change")}
@@ -1015,25 +1040,25 @@ export default function SettingsPage(): React.JSX.Element {
                   ) : (
                     <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
                       <Keyboard className="text-primary h-4 w-4 shrink-0" />
-                      {commandDraftKeys.length > 0 ? (
+                      {remixDraftKeys.length > 0 ? (
                         <>
                           <KeyComboDisplay
-                            keys={commandDraftKeys}
+                            keys={remixDraftKeys}
                             variant="dim"
                           />
                           <span className="text-muted-foreground text-xs">
-                            {commandCaptureHint}
+                            {remixCaptureHint}
                           </span>
                         </>
                       ) : (
                         <span className="text-muted-foreground animate-pulse text-sm">
-                          {commandCaptureHint}
+                          {remixCaptureHint}
                         </span>
                       )}
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={cancelCommandHotkeyRecording}
+                        onClick={cancelRemixHotkeyRecording}
                         className="ml-1"
                       >
                         {t("common.cancel")}

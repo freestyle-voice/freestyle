@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { countFixes } from "./fixes.js";
 
-const SCHEMA_VERSION = 16;
+const SCHEMA_VERSION = 17;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -459,6 +459,61 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     for (const row of rows) {
       update.run(countFixes(row.raw_text, row.cleaned_text), row.id);
     }
+  }
+
+  if (currentVersion < 17) {
+    // Remix: chat threads (UIMessage JSON verbatim — the AI SDK owns the
+    // shape) and one row per write into the user's document, which powers
+    // Revert and the history view. The cloud stores none of this.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS remix_threads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_active_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS remix_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        thread_id INTEGER NOT NULL REFERENCES remix_threads(id) ON DELETE CASCADE,
+        message_id TEXT NOT NULL,
+        ui_message TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(thread_id, message_id)
+      )
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS remix_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        thread_id INTEGER REFERENCES remix_threads(id) ON DELETE SET NULL,
+        lane TEXT NOT NULL CHECK(lane IN ('transform','agent')),
+        instruction TEXT NOT NULL,
+        before_text TEXT,
+        after_text TEXT NOT NULL,
+        app_name TEXT,
+        llm_provider TEXT,
+        llm_model TEXT,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    // The feature shipped briefly under "commands"; carry those settings over
+    // so nobody loses a configured hotkey to the rename.
+    db.exec(`
+      INSERT INTO settings (key, value, updated_at)
+        SELECT 'remix_hotkey', value, datetime('now') FROM settings WHERE key = 'command_hotkey'
+        ON CONFLICT(key) DO NOTHING
+    `);
+    db.exec(`
+      INSERT INTO settings (key, value, updated_at)
+        SELECT 'remix_enabled', value, datetime('now') FROM settings WHERE key = 'commands_enabled'
+        ON CONFLICT(key) DO NOTHING
+    `);
+    db.exec(
+      "DELETE FROM settings WHERE key IN ('command_hotkey', 'commands_enabled')",
+    );
   }
 
   // Upsert schema version

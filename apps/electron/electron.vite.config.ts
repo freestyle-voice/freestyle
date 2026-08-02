@@ -74,6 +74,7 @@ export default defineConfig({
         input: {
           index: resolve("src/renderer/index.html"),
           pill: resolve("src/renderer/pill.html"),
+          bar: resolve("src/renderer/bar.html"),
         },
         plugins: analyze ? [mkVisualizer("renderer")] : [],
       },

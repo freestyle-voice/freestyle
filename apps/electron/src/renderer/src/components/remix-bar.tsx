@@ -1,0 +1,90 @@
+import type React from "react";
+import { useCallback, useRef, useState } from "react";
+import { createRoot } from "react-dom/client";
+
+/**
+ * The persistent Remix bar: a sliver at the bottom of the screen that opens
+ * the Remix chat when hovered. It lives in its own tiny always-on-top window
+ * (main hides it whenever the pill itself is up).
+ *
+ * The dwell delay is what separates "reached for Remix" from "moved the mouse
+ * to the dock" — an instant trigger would make the bottom edge of the screen
+ * a tripwire.
+ */
+const HOVER_DWELL_MS = 350;
+
+function RemixBar(): React.JSX.Element {
+  const [hot, setHot] = useState(false);
+  const dwellRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const open = useCallback(() => {
+    if (dwellRef.current) {
+      clearTimeout(dwellRef.current);
+      dwellRef.current = null;
+    }
+    window.api?.remixBarHover();
+  }, []);
+
+  const handleEnter = useCallback(() => {
+    setHot(true);
+    if (dwellRef.current) clearTimeout(dwellRef.current);
+    dwellRef.current = setTimeout(open, HOVER_DWELL_MS);
+  }, [open]);
+
+  const handleLeave = useCallback(() => {
+    setHot(false);
+    if (dwellRef.current) {
+      clearTimeout(dwellRef.current);
+      dwellRef.current = null;
+    }
+  }, []);
+
+  return (
+    <button
+      type="button"
+      className="bar-hit"
+      data-hot={hot}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+      onClick={open}
+      aria-label="Open Freestyle Remix"
+      tabIndex={-1}
+    >
+      <style>{`
+        html, body, #root { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+        .bar-hit {
+          width: 100%;
+          height: 100%;
+          margin: 0;
+          border: none;
+          background: transparent;
+          display: flex;
+          align-items: flex-end;
+          justify-content: center;
+          padding: 0 0 3px;
+          cursor: pointer;
+          -webkit-user-select: none;
+          user-select: none;
+          outline: none;
+        }
+        .bar-strip {
+          width: 72px;
+          height: 5px;
+          border-radius: 999px;
+          background: rgba(245, 241, 228, 0.28);
+          box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+          transition: width 160ms ease, height 160ms ease, background 160ms ease;
+        }
+        .bar-hit[data-hot="true"] .bar-strip {
+          width: 96px;
+          height: 7px;
+          background: rgba(245, 241, 228, 0.55);
+        }
+      `}</style>
+      <div className="bar-strip" />
+    </button>
+  );
+}
+
+const container = document.getElementById("root");
+if (container) createRoot(container).render(<RemixBar />);

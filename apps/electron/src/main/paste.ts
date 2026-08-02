@@ -518,8 +518,19 @@ function restoreClipboard(
  * — so the wait below is generous, and the caller phrases the failure as the
  * far more likely of the two ("select some text first").
  */
-export function copySelectionFromFocusedApp(): Promise<string | null> {
-  const run = (): Promise<string | null> => doCopySelection();
+export interface CopySelectionOptions {
+  /**
+   * Per-attempt waits for the injected Copy to land. The default is tuned for
+   * a hand-sized selection; a whole-document copy (Select All in a rich
+   * editor building an HTML payload) deserves a far longer budget.
+   */
+  timeoutsMs?: readonly number[];
+}
+
+export function copySelectionFromFocusedApp(
+  options?: CopySelectionOptions,
+): Promise<string | null> {
+  const run = (): Promise<string | null> => doCopySelection(options);
   const result = pasteChain.then(run, run);
   pasteChain = result.then(
     () => undefined,
@@ -610,17 +621,20 @@ async function attemptCopy(
   return null;
 }
 
-async function doCopySelection(): Promise<string | null> {
+async function doCopySelection(
+  options?: CopySelectionOptions,
+): Promise<string | null> {
   const prior = snapshotClipboard();
   // A sentinel rather than an empty clipboard: some apps and clipboard
   // managers repopulate an emptied clipboard, and comparing against the
   // previous text alone would miss a selection whose text happens to equal
   // what was already on it.
-  const sentinel = `freestyle-command-${Date.now()}`;
+  const sentinel = `freestyle-remix-${Date.now()}`;
   clipboard.writeText(sentinel);
 
   let selection: string | null = null;
-  for (const [attempt, timeoutMs] of COPY_ATTEMPT_TIMEOUTS_MS.entries()) {
+  const timeouts = options?.timeoutsMs ?? COPY_ATTEMPT_TIMEOUTS_MS;
+  for (const [attempt, timeoutMs] of timeouts.entries()) {
     if (attempt > 0) {
       await new Promise((r) => setTimeout(r, COPY_RETRY_GAP_MS));
     }
@@ -710,4 +724,38 @@ async function doPasteIntoFocusedApp(
       restoreClipboard(prior, text);
     }
   }
+}
+
+/**
+ * Paste whatever is on the clipboard right now (text, image, anything) —
+ * injection only, no clipboard writes and no restore. The primitive behind
+ * the agent's `paste` tool: the agent manages clipboard contents itself via
+ * set_clipboard / set_clipboard_image.
+ */
+export function pasteClipboardIntoFocusedApp(): Promise<void> {
+  const run = (): Promise<void> => doPasteClipboard();
+  const result = pasteChain.then(run, run);
+  pasteChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+async function doPasteClipboard(): Promise<void> {
+  let method: PasteMethod = "legacy";
+  switch (process.platform) {
+    case "darwin":
+      method = await pasteMac();
+      break;
+    case "win32":
+      method = await pasteWindows();
+      break;
+    default: {
+      const isTerminal = await isLinuxTerminalFocused();
+      method = await pasteLinux(isTerminal);
+      break;
+    }
+  }
+  await new Promise((r) => setTimeout(r, pasteSettleMs(method)));
 }

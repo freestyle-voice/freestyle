@@ -90,6 +90,11 @@ function compileMacOS() {
       src: "macos-media-control.swift",
       frameworks: ["AppKit", "Foundation"],
     },
+    {
+      name: "macos-ax",
+      src: "macos-ax.swift",
+      frameworks: ["ApplicationServices", "Foundation"],
+    },
   ];
 
   for (const bin of binaries) {

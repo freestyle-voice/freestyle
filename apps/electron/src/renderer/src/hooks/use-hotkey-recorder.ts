@@ -342,10 +342,10 @@ export interface UseHotkeyRecorderOptions {
    * Which hotkey is being recorded. Both use the same native recorder, but
    * only "dictation" hands the captured accelerator back to
    * `stopHotkeyRecording`, which is what re-registers the dictation listener.
-   * The commands listener is re-registered from its own setting instead, so
+   * The remix listener is re-registered from its own setting instead, so
    * recording one must not overwrite the other.
    */
-  target?: "dictation" | "command";
+  target?: "dictation" | "remix";
 }
 
 export function useHotkeyRecorder(
@@ -444,11 +444,11 @@ export function useHotkeyRecorder(
       onRecordRef.current(accel);
     }
     // Re-register the global listener with the new accelerator (single IPC).
-    // The commands key only stops the recorder here: main re-reads that one
+    // The remix key only stops the recorder here: main re-reads that one
     // from settings, so re-registering is `onRecord`'s job — it is the only
     // caller that knows when the write has actually landed.
     window.api?.stopHotkeyRecording(
-      targetRef.current === "command" ? undefined : accel,
+      targetRef.current === "remix" ? undefined : accel,
     );
     recordingActiveRef.current = false;
     setState("idle");

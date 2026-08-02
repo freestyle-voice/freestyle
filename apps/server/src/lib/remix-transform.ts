@@ -3,14 +3,11 @@ import {
   stripWrappingQuotes,
 } from "@freestyle-voice/stt";
 import { createAppLogger } from "@freestyle-voice/utils";
-import { findCommandPreset } from "@freestyle-voice/validations";
+import { findRemixPreset } from "@freestyle-voice/validations";
 import { generateText } from "ai";
 import { isCleanupModelSupported } from "../routes/models.js";
-import {
-  buildCommandPrompt,
-  buildCommandSystem,
-} from "./editor/command-prompts.js";
 import { ensureCleanupPromptConfigFresh } from "./editor/prompt-config.js";
+import { buildRemixPrompt, buildRemixSystem } from "./editor/remix-prompts.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,
@@ -22,24 +19,24 @@ import { capture, captureException } from "./posthog.js";
 import { createChatModel, getDefaultModels } from "./providers.js";
 import { getSessionToken } from "./sessions.js";
 
-const log = createAppLogger("commands");
+const log = createAppLogger("remix");
 
-/** A command run failed in a way the pill should show the user. */
-export class CommandError extends Error {
+/** A remix run failed in a way the pill should show the user. */
+export class RemixTransformError extends Error {
   constructor(
     message: string,
     /** Distinguishes "you need to set something up" from "it broke". */
     readonly kind: "no-model" | "unsupported-model" | "failed" = "failed",
   ) {
     super(message);
-    this.name = "CommandError";
+    this.name = "RemixTransformError";
   }
 }
 
-export interface RunCommandOptions {
+export interface RunRemixTransformOptions {
   text: string;
   /** A preset id, when the user picked one off the list. */
-  commandId?: string;
+  remixId?: string;
   /** What the user said, when they didn't. */
   instruction?: string;
   language?: string;
@@ -50,11 +47,11 @@ export interface RunCommandOptions {
  * both are present (the id can only come from the pill's own list, so it is
  * the more trustworthy of the two), and an unknown id falls back to the spoken
  * text rather than failing — a client shipping a preset this server doesn't
- * know about is a version skew, not a reason to lose the user's command.
+ * know about is a version skew, not a reason to lose the user's remix.
  */
-function resolveInstruction(options: RunCommandOptions): string | null {
-  if (options.commandId) {
-    const preset = findCommandPreset(options.commandId);
+function resolveInstruction(options: RunRemixTransformOptions): string | null {
+  if (options.remixId) {
+    const preset = findRemixPreset(options.remixId);
     if (preset) return preset.instruction;
   }
   const spoken = options.instruction?.trim();
@@ -62,24 +59,26 @@ function resolveInstruction(options: RunCommandOptions): string | null {
 }
 
 /**
- * Run one command over a text selection and return the replacement text.
+ * Run one remix over a text selection and return the replacement text.
  *
  * Unlike dictation cleanup, this never falls back to returning the input
  * unchanged: the caller pastes the result straight over the user's selection,
- * and a silent no-op there is indistinguishable from a command that decided
+ * and a silent no-op there is indistinguishable from a remix that decided
  * nothing needed changing. Failures throw so the pill can say so.
  */
-export async function runCommand(options: RunCommandOptions): Promise<string> {
+export async function runRemixTransform(
+  options: RunRemixTransformOptions,
+): Promise<string> {
   void ensureCleanupPromptConfigFresh();
 
   const instruction = resolveInstruction(options);
   if (!instruction) {
-    throw new CommandError("No command was given", "failed");
+    throw new RemixTransformError("No remix was given", "failed");
   }
 
   const llm = getDefaultModels().llm;
   if (!llm) {
-    throw new CommandError(
+    throw new RemixTransformError(
       "No AI model is set up yet. Pick one in Settings > Models.",
       "no-model",
     );
@@ -91,8 +90,8 @@ export async function runCommand(options: RunCommandOptions): Promise<string> {
   if (llm.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
     // Freestyle Cloud assembles prompts server-side and owns the user half, but
     // its "custom" intensity takes the system prompt verbatim — which is
-    // exactly the shape `buildCommandSystem` is written for. Every tone is
-    // pinned off so no cleanup register block is layered on top of the command.
+    // exactly the shape `buildRemixSystem` is written for. Every tone is
+    // pinned off so no cleanup register block is layered on top of the remix.
     const token = getSessionToken();
     if (!token) throw new FreestyleCloudAuthError();
     const result = await postProcessWithFreestyleCloud({
@@ -101,7 +100,7 @@ export async function runCommand(options: RunCommandOptions): Promise<string> {
       appContext: null,
       language: options.language,
       intensity: "custom",
-      customPrompt: buildCommandSystem({
+      customPrompt: buildRemixSystem({
         instruction,
         language: options.language,
       }),
@@ -114,12 +113,12 @@ export async function runCommand(options: RunCommandOptions): Promise<string> {
     text = result.cleaned;
   } else {
     if (!(await isCleanupModelSupported(llm.provider, llm.model_id))) {
-      throw new CommandError(
-        `${llm.model_id} can't run commands. Pick a different model in Settings > Models.`,
+      throw new RemixTransformError(
+        `${llm.model_id} can't run remix. Pick a different model in Settings > Models.`,
         "unsupported-model",
       );
     }
-    const { system, prompt } = buildCommandPrompt(options.text, {
+    const { system, prompt } = buildRemixPrompt(options.text, {
       instruction,
       language: options.language,
     });
@@ -150,12 +149,12 @@ export async function runCommand(options: RunCommandOptions): Promise<string> {
   text = stripWrappingQuotes(text);
 
   if (!text.trim()) {
-    throw new CommandError("The model returned nothing", "failed");
+    throw new RemixTransformError("The model returned nothing", "failed");
   }
 
-  capture("command completed", {
-    command_id: options.commandId ?? "voice",
-    spoken: !options.commandId,
+  capture("remix completed", {
+    remix_id: options.remixId ?? "voice",
+    spoken: !options.remixId,
     provider: llm.provider,
     model: llm.model_id,
     duration_ms: Date.now() - started,
@@ -167,8 +166,11 @@ export async function runCommand(options: RunCommandOptions): Promise<string> {
 }
 
 /** Shared failure bookkeeping for the route's catch-all. */
-export function reportCommandFailure(err: unknown, commandId?: string): void {
+export function reportRemixTransformFailure(
+  err: unknown,
+  remixId?: string,
+): void {
   if (!isTransientCloudError(err)) captureException(err);
-  capture("command failed", { command_id: commandId ?? "voice" });
-  log.error(`Command failed: ${err}`);
+  capture("remix failed", { remix_id: remixId ?? "voice" });
+  log.error(`Remix failed: ${err}`);
 }

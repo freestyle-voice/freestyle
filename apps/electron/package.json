@@ -29,6 +29,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@ai-sdk/react": "^3.0.44",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@freestyle-voice/server": "workspace:*",
@@ -37,6 +38,7 @@
     "@hono/node-server": "^2.0.4",
     "@hookform/resolvers": "^5.4.0",
     "@tanstack/react-query": "^5.101.2",
+    "ai": "^6.0.191",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "diff": "^8.0.4",

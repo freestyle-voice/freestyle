@@ -61,7 +61,11 @@ if !AXIsProcessTrusted() {
     exit(2)
 }
 
-let requested = CommandLine.arguments.dropFirst().first?.lowercased() ?? "v"
+let arguments = Array(CommandLine.arguments.dropFirst())
+let requested = arguments.first?.lowercased() ?? "v"
+// An optional trailing "shift" widens the chord (Cmd+Shift+<key>) — used for
+// redo (Cmd+Shift+Z). No other modifiers are supported by design.
+let withShift = arguments.dropFirst().first?.lowercased() == "shift"
 guard requested.count == 1, let character = requested.first, character.isLetter else {
     FileHandle.standardError.write("expected a single letter, got \"\(requested)\"\n".data(using: .utf8)!)
     exit(1)
@@ -77,8 +81,9 @@ guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: chordKey, keyD
     exit(1)
 }
 
-keyDown.flags = .maskCommand
-keyUp.flags = .maskCommand
+let chordFlags: CGEventFlags = withShift ? [.maskCommand, .maskShift] : .maskCommand
+keyDown.flags = chordFlags
+keyUp.flags = chordFlags
 
 // Tag these synthetic events so our own key listener can recognize and ignore
 // them. Without this, the listener sees the Cmd+V flag mask on the injected V

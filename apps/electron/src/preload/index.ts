@@ -4,7 +4,6 @@ import type {
   ActiveAudioPlaybackMode,
   AudioPlaybackMode,
 } from "../shared/audio-playback";
-import { getDefaultCommandHotkey } from "../shared/commands";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { OpenAppCandidate } from "../shared/open-apps";
 import {
@@ -12,6 +11,16 @@ import {
   type PillCancelMode,
 } from "../shared/pill-cancel";
 import type { PluginViewBounds } from "../shared/plugins";
+import {
+  getDefaultRemixHotkey,
+  type RemixContextResult,
+  type RemixCopyResult,
+  type RemixPrimitiveResult,
+  type RemixReadDocumentResult,
+  type RemixRecapturePayload,
+  type RemixSelectionPayload,
+  type RemixSelectResult,
+} from "../shared/remix";
 
 // Custom APIs for renderer
 const api = {
@@ -20,7 +29,7 @@ const api = {
   platform: process.platform as string,
   isE2E: process.env.FREESTYLE_E2E === "1",
   defaultHotkey: getDefaultHotkey(),
-  defaultCommandHotkey: getDefaultCommandHotkey(),
+  defaultRemixHotkey: getDefaultRemixHotkey(),
   pasteText: (text: string, appContext?: string | null): Promise<void> =>
     ipcRenderer.invoke("paste:text", text, appContext ?? null),
   copyText: (text: string, appContext?: string | null): Promise<void> =>
@@ -37,8 +46,10 @@ const api = {
   hidePill: (): void => ipcRenderer.send("pill:hide"),
   // Ask the pill window to grow around the capsule (or shrink back) so the
   // expanded status card has somewhere to render.
-  setPillExpanded: (expanded: boolean, expansion?: "card" | "command"): void =>
-    ipcRenderer.send("pill:set-expanded", expanded, expansion),
+  setPillExpanded: (
+    expanded: boolean,
+    expansion?: "card" | "remix" | "remix-chat",
+  ): void => ipcRenderer.send("pill:set-expanded", expanded, expansion),
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),
   getServerPort: (): Promise<number> => ipcRenderer.invoke("server:port"),
@@ -73,45 +84,105 @@ const api = {
     ipcRenderer.on("hotkey:up", handler);
     return () => ipcRenderer.removeListener("hotkey:up", handler);
   },
-  // --- Commands ---
-  reloadCommandHotkey: (): void => ipcRenderer.send("command-hotkey:reload"),
-  /** Replace the user's selection with the command's result. */
-  pasteCommandResult: (text: string): Promise<boolean> =>
-    ipcRenderer.invoke("command:paste", text),
-  onCommandDown: (callback: () => void): (() => void) => {
+  // --- Remix ---
+  reloadRemixHotkey: (): void => ipcRenderer.send("remix-hotkey:reload"),
+  /** Replace the user's selection with the remix's result. */
+  pasteRemixResult: (text: string): Promise<boolean> =>
+    ipcRenderer.invoke("remix:paste", text),
+  onRemixDown: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
-    ipcRenderer.on("command:down", handler);
-    return () => ipcRenderer.removeListener("command:down", handler);
+    ipcRenderer.on("remix:down", handler);
+    return () => ipcRenderer.removeListener("remix:down", handler);
   },
-  onCommandUp: (callback: () => void): (() => void) => {
+  onRemixUp: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
-    ipcRenderer.on("command:up", handler);
-    return () => ipcRenderer.removeListener("command:up", handler);
+    ipcRenderer.on("remix:up", handler);
+    return () => ipcRenderer.removeListener("remix:up", handler);
   },
-  /** The captured selection, or null when nothing was selected. */
-  onCommandSelection: (
-    callback: (text: string | null) => void,
+  /** The captured selection plus the anchor it was captured in. */
+  onRemixSelection: (
+    callback: (payload: RemixSelectionPayload) => void,
   ): (() => void) => {
-    const handler = (_: unknown, payload: { text: string | null }): void =>
-      callback(payload?.text ?? null);
-    ipcRenderer.on("command:selection", handler);
-    return () => ipcRenderer.removeListener("command:selection", handler);
+    const handler = (_: unknown, payload: RemixSelectionPayload): void =>
+      callback(
+        payload ?? {
+          text: null,
+          appName: null,
+          windowTitle: null,
+          capturedAt: Date.now(),
+        },
+      );
+    ipcRenderer.on("remix:selection", handler);
+    return () => ipcRenderer.removeListener("remix:selection", handler);
+  },
+  /** Re-read the selection + frontmost app (fast-lane preset refresh). */
+  remixRecapture: (): Promise<RemixRecapturePayload> =>
+    ipcRenderer.invoke("remix:recapture"),
+  // --- Remix primitives (the agent's tools; workflow lives in its prompt) ---
+  remixGetContext: (): Promise<RemixContextResult> =>
+    ipcRenderer.invoke("remix:get-context"),
+  remixReadDocument: (): Promise<RemixReadDocumentResult> =>
+    ipcRenderer.invoke("remix:read-document"),
+  remixSelectAll: (): Promise<RemixPrimitiveResult> =>
+    ipcRenderer.invoke("remix:select-all"),
+  remixSelectText: (
+    text: string,
+    occurrence?: number,
+  ): Promise<RemixSelectResult> =>
+    ipcRenderer.invoke("remix:select-text", text, occurrence),
+  remixCollapseSelection: (): Promise<RemixPrimitiveResult> =>
+    ipcRenderer.invoke("remix:collapse-selection"),
+  remixCopy: (): Promise<RemixCopyResult> => ipcRenderer.invoke("remix:copy"),
+  remixSetClipboard: (text: string): Promise<RemixPrimitiveResult> =>
+    ipcRenderer.invoke("remix:set-clipboard", text),
+  remixSetClipboardImage: (url: string): Promise<RemixPrimitiveResult> =>
+    ipcRenderer.invoke("remix:set-clipboard-image", url),
+  remixPasteClipboard: (): Promise<RemixPrimitiveResult> =>
+    ipcRenderer.invoke("remix:paste-clipboard"),
+  remixUndo: (): Promise<RemixPrimitiveResult> =>
+    ipcRenderer.invoke("remix:undo"),
+  remixRedo: (): Promise<RemixPrimitiveResult> =>
+    ipcRenderer.invoke("remix:redo"),
+  remixPressKey: (key: string, times?: number): Promise<RemixPrimitiveResult> =>
+    ipcRenderer.invoke("remix:press-key", key, times),
+  remixGetClipboard: (): Promise<RemixCopyResult> =>
+    ipcRenderer.invoke("remix:get-clipboard"),
+  /** Fast-lane replace for the preset chips; clipboard preserved. */
+  remixPasteText: (text: string): Promise<RemixPrimitiveResult> =>
+    ipcRenderer.invoke("remix:paste-text", text),
+  /** The chat card's input needs the keyboard; focusability follows it. */
+  setRemixChatFocus: (focus: boolean): void =>
+    ipcRenderer.send("remix:set-chat-focus", focus),
+  /**
+   * Release (or re-claim) the digit route shortcuts. The chat card holds no
+   * routes, so keeping Control+1..3 claimed for its whole lifetime would take
+   * them from the rest of the system.
+   */
+  setRemixRouteKeys: (open: boolean): void =>
+    ipcRenderer.send("remix:set-route-keys", open),
+  /** The persistent bar was hovered; main opens the chat. */
+  remixBarHover: (): void => ipcRenderer.send("remix:bar-hover"),
+  /** Main wants the chat card open (bar hover) — no instruction attached. */
+  onRemixOpenChat: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("remix:open-chat", handler);
+    return () => ipcRenderer.removeListener("remix:open-chat", handler);
   },
   /** A route shortcut (chord + digit) fired; zero-based index. */
-  onCommandRoute: (callback: (index: number) => void): (() => void) => {
+  onRemixRoute: (callback: (index: number) => void): (() => void) => {
     const handler = (_: unknown, index: number): void => callback(index);
-    ipcRenderer.on("command:route", handler);
-    return () => ipcRenderer.removeListener("command:route", handler);
+    ipcRenderer.on("remix:route", handler);
+    return () => ipcRenderer.removeListener("remix:route", handler);
   },
   /**
-   * A dictation started on the shared home key and the commands chord is
+   * A dictation started on the shared home key and the remix chord is
    * taking over. Drop the recording but leave the pill window alone — the
-   * command card is about to use it.
+   * remix card is about to use it.
    */
-  onCommandSupersede: (callback: () => void): (() => void) => {
+  onRemixSupersede: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
-    ipcRenderer.on("command:supersede", handler);
-    return () => ipcRenderer.removeListener("command:supersede", handler);
+    ipcRenderer.on("remix:supersede", handler);
+    return () => ipcRenderer.removeListener("remix:supersede", handler);
   },
 
   onPillCancel: (callback: () => void): (() => void) => {

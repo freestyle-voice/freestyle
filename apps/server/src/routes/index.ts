@@ -9,7 +9,6 @@ import { capture, captureException, getDeviceId } from "../lib/posthog.js";
 import apiKeys from "./api-keys.js";
 import auth from "./auth.js";
 import billing from "./billing.js";
-import commandRoute from "./command.js";
 import configRoute from "./config.js";
 import dictionary from "./dictionary.js";
 import eventsRoute from "./events.js";
@@ -20,6 +19,7 @@ import org from "./org.js";
 import outputRoute from "./output.js";
 import pluginsRoute from "./plugins.js";
 import postProcessRoute from "./post-process-route.js";
+import remixRoute from "./remix/index.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
 import transcribe, { transcribePreWarmRoute } from "./transcribe.js";
@@ -71,7 +71,7 @@ const apiRouter = new Hono()
   .route("/dictionary", dictionary)
   .route("/vocabulary", vocabulary)
   .route("/post-process", postProcessRoute)
-  .route("/command", commandRoute)
+  .route("/remix", remixRoute)
   .route("/output", outputRoute)
   .route("/events", eventsRoute)
   .route("/usage", usage)

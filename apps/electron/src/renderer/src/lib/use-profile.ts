@@ -254,6 +254,16 @@ export function useSetActiveOrganization() {
       // the now-active org.
       void queryClient.invalidateQueries({ queryKey: ACTIVE_ORG_QUERY_KEY });
       void queryClient.invalidateQueries({ queryKey: ["cloud-usage"] });
+      // Preferences (cleanup tones/languages), vocabulary, and profile fields
+      // are per-org too. The server re-pulled the new org's snapshot into the
+      // local settings/vocabulary tables before this response returned (see the
+      // org set-active route), so re-read them here to update every settings
+      // page instead of showing the previous org's values.
+      void queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: ["vocabulary"] });
+      void queryClient.invalidateQueries({
+        queryKey: PROFILE_FIELDS_QUERY_KEY,
+      });
     },
   });
 }

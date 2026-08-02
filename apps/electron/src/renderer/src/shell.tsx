@@ -340,12 +340,7 @@ export default function AppShell(): React.JSX.Element {
           </a>
         </div>
 
-        <UpdateBanner
-          className={cn(
-            "mt-14 w-[calc(100%-3rem)] max-w-2xl self-center",
-            onPluginPage && "hidden",
-          )}
-        />
+        <UpdateBanner className="relative z-50 mt-14 w-[calc(100%-3rem)] max-w-2xl self-center" />
 
         <main
           className="flex min-h-0 flex-1 flex-col overflow-hidden"

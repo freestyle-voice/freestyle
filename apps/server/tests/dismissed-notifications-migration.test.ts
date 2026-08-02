@@ -9,17 +9,17 @@ afterEach(() => {
   db = null;
 });
 
-describe("sync_outbox migration (v18)", () => {
-  it("creates the sync_outbox table when upgrading an existing DB", () => {
+describe("dismissed_notifications migration (v19)", () => {
+  it("creates the dismissed_notifications table when upgrading an existing DB", () => {
     db = new DatabaseSync(":memory:");
-    // Minimal pre-v18 DB: just the version marker + settings table. The v18
+    // Minimal pre-v19 DB: just the version marker + settings table. The v19
     // migration only adds a new table, so no prior tables are required.
     db.exec(`
       CREATE TABLE schema_version (
         id INTEGER PRIMARY KEY CHECK(id = 1),
         version INTEGER NOT NULL
       );
-      INSERT INTO schema_version (id, version) VALUES (1, 17);
+      INSERT INTO schema_version (id, version) VALUES (1, 18);
 
       CREATE TABLE settings (
         key TEXT PRIMARY KEY,
@@ -33,7 +33,7 @@ describe("sync_outbox migration (v18)", () => {
     // Table exists.
     const table = db
       .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_outbox'",
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'dismissed_notifications'",
       )
       .get();
     expect(table).toBeDefined();
@@ -44,22 +44,21 @@ describe("sync_outbox migration (v18)", () => {
       .get() as { version: number };
     expect(version.version).toBe(19);
 
-    // The expected columns are present and usable.
+    // The expected columns are present and usable. Idempotent insert.
+    db.prepare(`INSERT INTO dismissed_notifications (key) VALUES (?)`).run(
+      "profile_info_prompt",
+    );
     db.prepare(
-      `INSERT INTO sync_outbox (cloud_field, payload) VALUES (?, ?)`,
-    ).run("languages", '{"languages":["en"]}');
+      `INSERT INTO dismissed_notifications (key) VALUES (?)
+       ON CONFLICT(key) DO NOTHING`,
+    ).run("profile_info_prompt");
+
     const stored = db
       .prepare(
-        "SELECT cloud_field, payload, attempts, next_attempt_at FROM sync_outbox",
+        "SELECT key, dismissed_at FROM dismissed_notifications WHERE key = ?",
       )
-      .get() as {
-      cloud_field: string;
-      payload: string;
-      attempts: number;
-      next_attempt_at: string;
-    };
-    expect(stored.cloud_field).toBe("languages");
-    expect(stored.attempts).toBe(0);
-    expect(stored.next_attempt_at).toBeTruthy();
+      .get("profile_info_prompt") as { key: string; dismissed_at: string };
+    expect(stored.key).toBe("profile_info_prompt");
+    expect(stored.dismissed_at).toBeTruthy();
   });
 });

@@ -52,6 +52,7 @@ const TIMEOUT_PREFIXES = [
   "/api/settings",
   "/api/keys",
   "/api/dictionary",
+  "/api/dismissed-notifications",
   "/api/vocabulary",
   "/api/history",
   "/api/models",

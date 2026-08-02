@@ -3,6 +3,7 @@ import { useEffect } from "react";
 
 import { KeyboardDictationStrip } from "@/components/keyboard-dictation-strip";
 import { useAuth } from "@/hooks/use-auth";
+import { DismissiblesProvider } from "@/lib/dismissibles";
 import { EntriesProvider } from "@/lib/entries";
 import { HistoryProvider } from "@/lib/history";
 import { KeyboardDictationProvider } from "@/lib/keyboard/keyboard-dictation-provider";
@@ -29,18 +30,20 @@ export default function AppLayout() {
       <EntriesProvider>
         <HistoryProvider>
           <OnboardingProvider>
-            <KeyboardDictationProvider>
-              <OnboardingGate />
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen name="onboarding" />
-                <Stack.Screen name="settings" />
-                <Stack.Screen name="profile" />
-                <Stack.Screen name="keyboard-setup" />
-                <Stack.Screen name="billing" />
-              </Stack>
-              <KeyboardDictationStrip />
-            </KeyboardDictationProvider>
+            <DismissiblesProvider>
+              <KeyboardDictationProvider>
+                <OnboardingGate />
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen name="onboarding" />
+                  <Stack.Screen name="settings" />
+                  <Stack.Screen name="profile" />
+                  <Stack.Screen name="keyboard-setup" />
+                  <Stack.Screen name="billing" />
+                </Stack>
+                <KeyboardDictationStrip />
+              </KeyboardDictationProvider>
+            </DismissiblesProvider>
           </OnboardingProvider>
         </HistoryProvider>
       </EntriesProvider>

@@ -43,7 +43,7 @@ Return only the edited text. No preamble, no commentary, no surrounding quotes, 
 export interface RemixPromptOptions {
   /** The preset's instruction, or the freeform one the user spoke. */
   instruction: string;
-  language?: string;
+  languages?: string[];
 }
 
 /**
@@ -57,7 +57,7 @@ export interface RemixPromptOptions {
  * prompt, so anything the remix needs to say has to be sayable from here.
  */
 export function buildRemixSystem(options: RemixPromptOptions): string {
-  return `${REMIX_SYSTEM_PROMPT}${buildLanguageBlock(options.language)}
+  return `${REMIX_SYSTEM_PROMPT}${buildLanguageBlock(options.languages)}
 
 The instruction for this edit is:
 ${options.instruction.trim()}`;

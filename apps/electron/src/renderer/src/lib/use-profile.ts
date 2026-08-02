@@ -1,7 +1,9 @@
+import type { CloudProfile, ProfileInput } from "@freestyle-voice/validations";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { getClient } from "./api";
+import { SETTINGS_QUERY_KEY } from "./query";
 
 /** Social providers the profile page can link against. */
 export const SOCIAL_PROVIDERS = ["github", "google", "apple"] as const;
@@ -38,6 +40,61 @@ export function useUpdateName() {
       // The server updated the local session; pull the fresh user so the
       // sidebar tile reflects the new name immediately.
       await refresh();
+    },
+  });
+}
+
+const PROFILE_FIELDS_QUERY_KEY = ["cloud-profile-fields"] as const;
+
+/** The user's profile fields (industry / job title / company) + detected geo. */
+export function useProfileFields(enabled: boolean) {
+  return useQuery({
+    queryKey: PROFILE_FIELDS_QUERY_KEY,
+    enabled,
+    queryFn: async (): Promise<CloudProfile> => {
+      const res = await getClient().api.auth["profile-fields"].$get();
+      if (!res.ok) throw new Error("Failed to load profile");
+      const { profile } = await res.json();
+      // `profile` is null when the user has no active org yet (post-signup
+      // window); surface an empty profile so the form renders cleanly.
+      return (profile ?? {}) as CloudProfile;
+    },
+  });
+}
+
+/** Update the profile fields; refreshes the cached profile (with fresh geo). */
+export function useUpdateProfileFields() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: ProfileInput): Promise<CloudProfile> => {
+      const res = await getClient().api.auth["profile-fields"].$put({
+        json: data,
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(body?.error ?? "Failed to update profile");
+      }
+      const { profile } = await res.json();
+      return profile as CloudProfile;
+    },
+    onSuccess: (profile) => {
+      const previous = queryClient.getQueryData<CloudProfile>(
+        PROFILE_FIELDS_QUERY_KEY,
+      );
+      queryClient.setQueryData(PROFILE_FIELDS_QUERY_KEY, profile);
+      // The cloud re-seeds tone + vocabulary defaults into member_preferences on
+      // ANY industry change (not just a first-time set); the local server
+      // re-pulls them (settings table + vocabulary table) before this response
+      // returns (see the profile-fields route). Invalidate both caches so the
+      // tone and vocabulary pages re-read the freshly-seeded values.
+      const industryChanged =
+        (previous?.industry ?? null) !== (profile.industry ?? null);
+      if (industryChanged && profile.industry) {
+        void queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
+        void queryClient.invalidateQueries({ queryKey: ["vocabulary"] });
+      }
     },
   });
 }

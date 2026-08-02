@@ -12,7 +12,10 @@ import { authMiddleware, setAuthToken } from "./lib/auth.js";
 import { refreshCleanupPromptConfig } from "./lib/editor/prompt-config.js";
 import { formatError } from "./lib/format-error.js";
 import { isTransientCloudError } from "./lib/freestyle-cloud.js";
-import { startHistoryRetentionSweep } from "./lib/history-store.js";
+import {
+  startHistoryRetentionSweep,
+  stopHistoryRetentionSweep,
+} from "./lib/history-store.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "./lib/mlx-asr/reconcile.js";
 import {
   activateManagedMlxRuntimeForAppVersion,
@@ -26,10 +29,16 @@ import {
   plugins,
 } from "./lib/plugins/index.js";
 import { captureException, shutdownPosthog } from "./lib/posthog.js";
+import { pullCloudPreferences } from "./lib/preferences-sync.js";
 import {
   startSessionKeepAlive,
   stopSessionKeepAlive,
 } from "./lib/session-keepalive.js";
+import {
+  drainOutbox,
+  startOutboxDrain,
+  stopOutboxDrain,
+} from "./lib/sync-outbox.js";
 import { trustedOriginMiddleware } from "./lib/trusted-origin.js";
 import routes from "./routes";
 
@@ -53,6 +62,8 @@ const TIMEOUT_PREFIXES = [
 
 async function shutdownServer(): Promise<void> {
   stopSessionKeepAlive();
+  stopHistoryRetentionSweep();
+  stopOutboxDrain();
   await disposeServerPlugins().catch(() => {});
   await shutdownPosthog();
 }
@@ -213,6 +224,14 @@ export async function startServer(
   // it never throws and falls back to the bundled copy when offline.
   void refreshCleanupPromptConfig();
 
+  // Seed local cleanup preferences from the cloud on launch when already signed
+  // in (cross-device sync). No-op when signed out; never throws.
+  void pullCloudPreferences();
+
+  // Flush any preference syncs that were queued while offline in a previous
+  // run. No-op when signed out / nothing pending; never throws.
+  void drainOutbox();
+
   // Load plugins (built-in + user) before serving. The app dispatches plugin
   // middleware from the live registry per request, so later runtime reloads
   // (enable/disable/install) take effect without reconstructing the app.
@@ -221,6 +240,10 @@ export async function startServer(
   const app = createApp();
 
   startHistoryRetentionSweep();
+
+  // Retry any preference syncs that fail (offline / server down); rows persist
+  // across restarts, so a change made offline eventually reaches the cloud.
+  startOutboxDrain();
 
   // Keep the Freestyle Cloud session alive by sliding its expiry before the
   // local token lapses (the cloud issues no refresh token). Fire-and-forget.

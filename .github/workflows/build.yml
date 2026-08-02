@@ -253,8 +253,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # `turbo typecheck` builds upstream workspace deps first (`^build`), so the
+      # `@freestyle-voice/validations` type declarations exist before tsc runs.
       - name: Typecheck mobile
-        run: pnpm --filter @freestyle-voice/mobile run typecheck
+        run: pnpm turbo typecheck --filter=@freestyle-voice/mobile
 
       # Validates that config plugins (Sentry, keyboard extension, pod signing)
       # generate valid native projects. --no-install skips CocoaPods/Gradle so

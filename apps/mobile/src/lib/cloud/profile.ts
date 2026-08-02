@@ -6,10 +6,12 @@
  * {@link useAuth}'s sign-in.
  */
 
+import type { CloudProfile, ProfileInput } from "@freestyle-voice/validations";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { Platform } from "react-native";
-
 import { authClient } from "./auth-client";
+import { cloud } from "./client";
+import { resolveActiveOrgSlug } from "./org";
 
 export type SocialProvider = "google" | "github" | "apple";
 
@@ -19,6 +21,37 @@ export const SOCIAL_PROVIDERS: SocialProvider[] = ["github", "google", "apple"];
 export async function updateName(name: string): Promise<{ error?: string }> {
   const { error } = await authClient.updateUser({ name: name.trim() });
   return error ? { error: error.message ?? "Failed to update profile" } : {};
+}
+
+/**
+ * Fetch the signed-in member's profile fields (industry/company/jobTitle) for
+ * the active organization. Returns an empty profile when there is no active org
+ * yet. Served by the cloud member preferences endpoint.
+ */
+export async function getProfileFields(): Promise<CloudProfile> {
+  const orgSlug = await resolveActiveOrgSlug();
+  if (!orgSlug) return {} as CloudProfile;
+  // Auth + 401/!ok handling live in the shared cloud client.
+  return cloud.json<CloudProfile>(`/${orgSlug}/member/preferences`, {
+    method: "GET",
+  });
+}
+
+/**
+ * Update the signed-in member's profile fields for the active organization.
+ * When the industry changes the cloud re-seeds tone + vocabulary defaults.
+ */
+export async function updateProfileFields(
+  data: ProfileInput,
+): Promise<CloudProfile> {
+  const orgSlug = await resolveActiveOrgSlug();
+  // Stricter than preferences: a profile update with no active org is an error.
+  if (!orgSlug) throw new Error("No active organization");
+  await cloud.json(`/${orgSlug}/member/preferences`, {
+    method: "PUT",
+    json: data,
+  });
+  return getProfileFields();
 }
 
 /** The provider ids currently linked to the signed-in user. */

@@ -5,7 +5,7 @@ import {
   FreestyleCloudAuthError,
   FreestyleCloudUsageError,
 } from "../../lib/freestyle-cloud.js";
-import { getLanguageSetting } from "../../lib/language.js";
+import { getLanguagesSetting } from "../../lib/language.js";
 import { recordRemixRun } from "../../lib/remix-store.js";
 import {
   RemixTransformError,
@@ -34,7 +34,7 @@ const remixRoute = new Hono().post(
         text: body.text,
         remixId: body.remixId,
         instruction: body.instruction,
-        language: body.language ?? getLanguageSetting(),
+        languages: body.language ? [body.language] : getLanguagesSetting(),
       });
       let runId: number | null = null;
       try {

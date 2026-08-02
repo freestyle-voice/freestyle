@@ -5,9 +5,9 @@
  * latest config served by Freestyle Cloud.
  *
  * The strings below are the offline fallback. On startup (and every ~6 hours)
- * `refreshCleanupPromptConfig()` fetches `GET /v2/prompts/cleanup?v=<appVersion>`
- * and swaps in the cloud copy so prompt improvements reach users without an app
- * release. The resolution order for every read is:
+ * `refreshCleanupPromptConfig()` fetches `GET /v2/config` and swaps in the cloud
+ * copy (from its `prompts` field) so prompt improvements reach users without an
+ * app release. The resolution order for every read is:
  *
  *   fresh cloud (< 6h) -> stale cloud (fetch failed) -> bundled fallback
  *
@@ -389,11 +389,6 @@ function isValidConfig(value: unknown): value is CleanupPromptConfig {
   return true;
 }
 
-/** App version used to select version-specific content on the cloud. */
-function appVersion(): string {
-  return process.env.FREESTYLE_APP_VERSION || "latest";
-}
-
 /**
  * Fetch the latest cleanup-prompt config from Freestyle Cloud and adopt it.
  * Deduped so concurrent callers share one request. On any failure (offline,
@@ -405,7 +400,11 @@ export function refreshCleanupPromptConfig(): Promise<void> {
 
   refreshPromise = (async () => {
     try {
-      const url = `${freestyleCloudUrl()}/v2/prompts/cleanup?v=${encodeURIComponent(appVersion())}`;
+      // `/v2/config` is the superset endpoint: it returns the cleanup prompt
+      // config under `prompts`, plus region/industry suggestions we ignore
+      // here (those are consumed by the preferences/profile paths). We keep the
+      // 6h TTL + stale-on-error + bundled fallback contract unchanged.
+      const url = `${freestyleCloudUrl()}/v2/config`;
       const res = await fetch(url, {
         signal: AbortSignal.timeout(CONFIG_FETCH_TIMEOUT_MS),
       });
@@ -413,14 +412,15 @@ export function refreshCleanupPromptConfig(): Promise<void> {
         log.warn(`Cleanup prompt config fetch failed: HTTP ${res.status}`);
         return;
       }
-      const body: unknown = await res.json();
-      if (!isValidConfig(body)) {
+      const body = (await res.json()) as { prompts?: unknown };
+      const prompts = body?.prompts;
+      if (!isValidConfig(prompts)) {
         log.warn(
           "Cleanup prompt config fetch returned an unexpected shape; keeping current config",
         );
         return;
       }
-      cloudConfig = body;
+      cloudConfig = prompts;
       cloudConfigFetchedAt = Date.now();
       log.info("Cleanup prompt config refreshed from Freestyle Cloud");
     } catch (err) {

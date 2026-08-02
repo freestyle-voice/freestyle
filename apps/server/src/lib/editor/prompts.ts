@@ -19,22 +19,46 @@ function normalizeLanguageCode(language: string): string {
   return language.trim().toLowerCase().replace(/_/g, "-");
 }
 
-export function buildLanguageBlock(language: string | undefined): string {
+function languageDescriptor(language: string): string {
   const config = getCleanupPromptConfig();
-  if (!language?.trim()) return config.autoLanguageConstraint;
-
   const normalized = normalizeLanguageCode(language);
-  if (normalized === "auto") return config.autoLanguageConstraint;
-
   const baseCode = normalized.split("-")[0] ?? normalized;
   const label =
     config.languageLabels[normalized] ?? config.languageLabels[baseCode];
-  const descriptor = label ? label : `language code "${language}"`;
-  const punctuationHint = normalized.startsWith("zh")
+  return label ? label : `language code "${language}"`;
+}
+
+/**
+ * Build the cleanup prompt's language-constraint block from the user's language
+ * list. Mirrors the cloud's 0 / 1 / many handling so multi-language dictations
+ * preserve code-switching:
+ *   - 0 languages  -> auto-detect constraint,
+ *   - 1 language   -> enforce that single language + script,
+ *   - many         -> allow any of them, preserving each span's language.
+ */
+export function buildLanguageBlock(
+  languages: readonly string[] | undefined,
+): string {
+  const config = getCleanupPromptConfig();
+  const codes = (languages ?? [])
+    .map((l) => l.trim())
+    .filter((l) => l && normalizeLanguageCode(l) !== "auto");
+
+  if (codes.length === 0) return config.autoLanguageConstraint;
+
+  const descriptors = codes.map(languageDescriptor);
+  const punctuationHint = codes.some((c) =>
+    normalizeLanguageCode(c).startsWith("zh"),
+  )
     ? " Use standard Chinese punctuation."
     : "";
 
-  return `\n\nLanguage constraint: the transcript language is ${descriptor}. Return the final edited text in the same language and script. Do not translate to English or another language. If the transcript mixes languages, preserve each span in the language spoken.${punctuationHint}`;
+  if (codes.length === 1) {
+    return `\n\nLanguage constraint: the transcript language is ${descriptors[0]}. Return the final edited text in the same language and script. Do not translate to English or another language. If the transcript mixes languages, preserve each span in the language spoken.${punctuationHint}`;
+  }
+
+  const list = descriptors.join(", ");
+  return `\n\nLanguage constraint: the transcript may be in any of these languages: ${list}. Return the final edited text in whichever of these languages and scripts is spoken. Do not translate between them or into any other language. If the transcript mixes languages, preserve each span in the language spoken.${punctuationHint}`;
 }
 
 function buildDestinationToneBlock(options: {
@@ -130,7 +154,7 @@ export function resolveBaseCleanupPrompt(
 export function buildRewritePrompt(
   inputText: string,
   options?: {
-    language?: string;
+    languages?: string[];
     intensity?: CleanupIntensity;
     customPrompt?: string;
     destination?: CleanupToneDestination;
@@ -141,7 +165,7 @@ export function buildRewritePrompt(
     overallTone?: CleanupOverallTone;
   },
 ): { system: string; prompt: string } {
-  const languageBlock = buildLanguageBlock(options?.language);
+  const languageBlock = buildLanguageBlock(options?.languages);
   const destinationBlock = buildDestinationToneBlock({
     destination: options?.destination ?? "overall",
     personalTone: options?.personalTone,

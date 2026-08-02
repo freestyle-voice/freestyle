@@ -4,6 +4,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { formatError } from "../lib/format-error.js";
 import {
+  clearCachedOrgSlug,
   getCloudActiveOrganization,
   listCloudOrganizations,
   setCloudActiveOrganization,
@@ -54,6 +55,9 @@ const org = new Hono()
     const { organizationId } = c.req.valid("json");
     try {
       await setCloudActiveOrganization(token, organizationId);
+      // The active org changed — drop the cached slug so the next profile/
+      // preferences request resolves the new org's slug.
+      clearCachedOrgSlug();
       return c.json({ ok: true });
     } catch (err) {
       log.warn(`failed to set active organization: ${formatError(err)}`);

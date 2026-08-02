@@ -58,7 +58,7 @@ export class FreestyleCloudTranscriptionProvider
     const data = await transcribeWithFreestyleCloud({
       token: opts.apiKey,
       audio: opts.audio,
-      language: opts.language,
+      languages: opts.language ? [opts.language] : undefined,
       mode: "raw",
       vocabulary: getCloudVocabularyBias(),
     });
@@ -78,7 +78,7 @@ export class FreestyleCloudTranscriptionProvider
     const {
       apiKey,
       model,
-      language,
+      languages,
       translate,
       cleanup,
       callbacks,
@@ -109,8 +109,11 @@ export class FreestyleCloudTranscriptionProvider
     // the JSON WebSocket message.
     const buildStartMessage = () => ({
       type: "start" as const,
-      language: language || undefined,
-      ...(translate && language ? { translate: true } : {}),
+      // Canonical multi-language field. Omit entirely for auto-detect. The
+      // cloud biases Soniox toward all listed languages via `language_hints`.
+      ...(languages && languages.length > 0 ? { languages } : {}),
+      // Translate only applies when exactly one language is the target.
+      ...(translate && languages?.length === 1 ? { translate: true } : {}),
       skipPostProcess: cleanup?.skipPostProcess ?? false,
       ...(vocabulary ? { vocabulary } : {}),
       ...(currentContext ? { context: currentContext } : {}),

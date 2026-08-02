@@ -30,6 +30,10 @@ import {
   PROXY_URL_SETTING,
 } from "../lib/network.js";
 import { capture } from "../lib/posthog.js";
+import {
+  pushSettingToCloud,
+  SYNCED_SETTING_KEYS,
+} from "../lib/preferences-sync.js";
 import { applyWhisperRetentionPolicy } from "../lib/whisper/server.js";
 
 const settings = new Hono()
@@ -168,6 +172,13 @@ const settings = new Hono()
       `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
     ).run(key, String(body.value));
+
+    // Mirror synced cleanup preferences up to Freestyle Cloud via the durable
+    // outbox (enqueues + flushes immediately, retries on failure), so a failed
+    // sync never affects the local write or the response.
+    if (SYNCED_SETTING_KEYS.has(key)) {
+      pushSettingToCloud(key, String(body.value));
+    }
 
     if (key === "mlx_asr_keep_alive_minutes") {
       applyMlxAsrRetentionPolicy();

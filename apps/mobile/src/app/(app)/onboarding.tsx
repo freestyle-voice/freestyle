@@ -1,3 +1,9 @@
+import {
+  MAX_LANGUAGES,
+  normalizeLanguageList,
+  resolveLanguageOptions,
+} from "@freestyle-voice/validations";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import {
   Check,
@@ -6,10 +12,11 @@ import {
   Mic,
   Sparkles,
 } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Linking, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { LanguageSheet } from "@/components/language-sheet";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
@@ -19,12 +26,13 @@ import {
   type MicPermission,
   requestMicPermission,
 } from "@/lib/audio/recorder";
+import { fetchCloudConfig } from "@/lib/cloud/cloud-config";
 import {
   type KeyboardStatus,
   useKeyboardStatus,
 } from "@/lib/keyboard/use-keyboard-status";
 import { useOnboarding } from "@/lib/onboarding";
-import { LANGUAGES, type LanguageCode, useSettings } from "@/lib/settings";
+import { LANGUAGES, useSettings } from "@/lib/settings";
 
 const TUTORIAL_STEPS = [
   { Icon: Mic, text: "Hold or tap the mic to start recording." },
@@ -39,7 +47,7 @@ export default function OnboardingScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { finish } = useOnboarding();
-  const { settings, setLanguage } = useSettings();
+  const { settings, setLanguages } = useSettings();
 
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [micStatus, setMicStatus] = useState<MicPermission>("undetermined");
@@ -91,8 +99,8 @@ export default function OnboardingScreen() {
             />
           ) : step === 1 ? (
             <StepLanguage
-              selected={settings.language}
-              onSelect={setLanguage}
+              selected={settings.languages}
+              onChange={setLanguages}
               theme={theme}
             />
           ) : (
@@ -244,17 +252,89 @@ function StepPermissions({
 
 function StepLanguage({
   selected,
-  onSelect,
+  onChange,
   theme,
 }: {
-  selected: LanguageCode;
-  onSelect: (code: LanguageCode) => void;
+  selected: string[];
+  onChange: (codes: string[]) => void;
   theme: ReturnType<typeof useTheme>;
 }) {
+  const [showAll, setShowAll] = useState(false);
+
+  // Public config — works pre-sign-in — for region-based language ordering.
+  const { data: cloudConfig } = useQuery({
+    queryKey: ["cloud-config"],
+    queryFn: () => fetchCloudConfig(),
+    staleTime: 6 * 60 * 60 * 1000,
+    retry: 1,
+  });
+
+  const options = useMemo(
+    () =>
+      resolveLanguageOptions(
+        cloudConfig?.suggestedLanguages,
+        LANGUAGES.map((l) => ({ code: l.code, label: l.name })),
+      ),
+    [cloudConfig?.suggestedLanguages],
+  );
+
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const atCap = selected.length >= MAX_LANGUAGES;
+
+  const toggle = (code: string) => {
+    onChange(
+      selected.includes(code)
+        ? selected.filter((c) => c !== code)
+        : normalizeLanguageList([...selected, code]),
+    );
+  };
+
+  // A handful of region-relevant languages as pills ("auto" gets its own).
+  const PILL_COUNT = 12;
+  const pills = options.filter((l) => l.code !== "auto").slice(0, PILL_COUNT);
+
+  // Keep selected languages visible even if picked from "See all".
+  const selectedOutside = selected
+    .filter((code) => !pills.some((l) => l.code === code))
+    .map((code) => options.find((l) => l.code === code))
+    .filter((l): l is (typeof options)[number] => Boolean(l));
+
+  const renderPill = (
+    code: string,
+    label: string,
+    opts?: { auto?: boolean },
+  ) => {
+    const active = opts?.auto ? selected.length === 0 : selectedSet.has(code);
+    const disabled = !active && !opts?.auto && atCap;
+    return (
+      <Pressable
+        key={code}
+        disabled={disabled}
+        onPress={() => (opts?.auto ? onChange([]) : toggle(code))}
+        style={[
+          styles.pill,
+          active
+            ? { backgroundColor: theme.primary }
+            : { borderWidth: 1, borderColor: theme.border },
+          disabled && { opacity: 0.4 },
+        ]}
+      >
+        <ThemedText
+          style={[
+            styles.pillText,
+            { color: active ? theme.primaryForeground : theme.foreground },
+          ]}
+        >
+          {label}
+        </ThemedText>
+      </Pressable>
+    );
+  };
+
   return (
     <View style={styles.stepContent}>
       <ThemedText type="display" style={styles.title}>
-        What language do you{" "}
+        What languages do you{" "}
         <ThemedText type="displayItalic" themeColor="primary">
           speak
         </ThemedText>
@@ -262,33 +342,26 @@ function StepLanguage({
       </ThemedText>
 
       <View style={styles.pillGrid}>
-        {LANGUAGES.map((lang) => {
-          const active = lang.code === selected;
-          return (
-            <Pressable
-              key={lang.code}
-              onPress={() => onSelect(lang.code)}
-              style={[
-                styles.pill,
-                active
-                  ? { backgroundColor: theme.primary }
-                  : { borderWidth: 1, borderColor: theme.border },
-              ]}
-            >
-              <ThemedText
-                style={[
-                  styles.pillText,
-                  {
-                    color: active ? theme.primaryForeground : theme.foreground,
-                  },
-                ]}
-              >
-                {lang.name}
-              </ThemedText>
-            </Pressable>
-          );
-        })}
+        {renderPill("auto", "Auto detect", { auto: true })}
+        {pills.map((l) => renderPill(l.code, l.label))}
+        {selectedOutside.map((l) => renderPill(l.code, l.label))}
+        <Pressable
+          onPress={() => setShowAll(true)}
+          style={[styles.pill, { borderWidth: 1, borderColor: theme.border }]}
+        >
+          <ThemedText style={[styles.pillText, { color: theme.foreground }]}>
+            See all
+          </ThemedText>
+        </Pressable>
       </View>
+
+      <LanguageSheet
+        visible={showAll}
+        selected={selected}
+        onToggle={toggle}
+        onClose={() => setShowAll(false)}
+        suggestedLanguages={cloudConfig?.suggestedLanguages}
+      />
     </View>
   );
 }

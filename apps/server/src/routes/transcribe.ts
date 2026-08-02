@@ -13,7 +13,7 @@ import {
   transcribeWithFreestyleCloud,
 } from "../lib/freestyle-cloud.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
-import { getLanguageSetting } from "../lib/language.js";
+import { getLanguagesSetting } from "../lib/language.js";
 import { MLX_ASR_PROVIDER_ID } from "../lib/mlx-asr/constants.js";
 import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
 import { canRunMlxAsr, startMlxInBackground } from "../lib/mlx-asr/server.js";
@@ -135,7 +135,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
   let rawText: string;
   let transcribeDurationInSeconds: number | undefined;
-  const language = getLanguageSetting();
+  const languages = getLanguagesSetting();
   const api = await createHookApi();
 
   // Plugin hook: preprocess the recorded audio, or override which provider,
@@ -161,6 +161,12 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   const voiceProvider = beforeTranscribeOutput.providerId;
   const voiceModel = beforeTranscribeOutput.modelId;
   const languageOverride = beforeTranscribeOutput.language;
+  // A plugin may override the language for this one dictation. It's a single
+  // code, so it takes precedence as the sole language; otherwise use the user's
+  // full language list. `languages[0]` is the primary for single-language
+  // providers (batch Whisper, BYOK).
+  const effectiveLanguages = languageOverride ? [languageOverride] : languages;
+  const primaryLanguage = effectiveLanguages[0];
 
   // A plugin consumed/aborted the dictation in a server hook: return blank
   // output so any client suppresses delivery, carry the disposition/reason,
@@ -274,7 +280,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       const result = await transcribeWithFreestyleCloud({
         token: apiKey,
         audio: audioData,
-        language: languageOverride ?? language,
+        languages: effectiveLanguages,
         appContext,
         mode: useCombined ? "combined" : "raw",
         vocabulary,
@@ -414,9 +420,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         audio: audioData,
         model: voiceModel,
         apiKey,
-        ...((languageOverride ?? language)
-          ? { language: languageOverride ?? language }
-          : {}),
+        ...(primaryLanguage ? { language: primaryLanguage } : {}),
         bias,
         appContext,
       });
@@ -525,7 +529,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   let pp: Awaited<ReturnType<typeof postProcess>>;
   try {
     pp = await postProcess(rawText, appContext, {
-      language,
+      languages: effectiveLanguages,
       source: "batch",
       api,
     });

@@ -36,7 +36,9 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
-    const { apiKey, model, language, bias, callbacks } = opts;
+    const { apiKey, model, languages, bias, callbacks } = opts;
+    // Deepgram takes a single language code (or "multi") — use the primary.
+    const language = languages?.[0];
 
     let accumulatedText = "";
     let partialText = "";

@@ -99,6 +99,7 @@ final class KeyboardViewController: UIInputViewController {
     private var deleteRepeatCount = 0
 
     private var micHost: UIHostingController<MicControl>?
+    private let statusScroll = UIScrollView()
     private let statusLabel = UILabel()
     private var hintLabel: UILabel?
     private let meterTrack = UIView()
@@ -170,14 +171,21 @@ final class KeyboardViewController: UIInputViewController {
         heightConstraint.isActive = true
 
         // --- Status label (top area) — live dictation status, briefly reused
-        // for the "inserted" confirmation.
+        // for the "inserted" confirmation. Wrapped in a scroll view so a long
+        // streaming transcript wraps and auto-scrolls instead of truncating.
         statusLabel.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
         statusLabel.textAlignment = .center
-        statusLabel.numberOfLines = 2
+        statusLabel.numberOfLines = 0
         statusLabel.text = ""
-        statusLabel.isHidden = true
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(statusLabel)
+
+        statusScroll.isHidden = true
+        statusScroll.showsVerticalScrollIndicator = false
+        statusScroll.showsHorizontalScrollIndicator = false
+        statusScroll.alwaysBounceVertical = false
+        statusScroll.translatesAutoresizingMaskIntoConstraints = false
+        statusScroll.addSubview(statusLabel)
+        view.addSubview(statusScroll)
 
         // --- Mic control (center, prominent). Depending on session state it
         // either deep-links (SwiftUI `Link`, to arm the session) or toggles
@@ -285,11 +293,22 @@ final class KeyboardViewController: UIInputViewController {
         let micSize: CGFloat = 64
 
         NSLayoutConstraint.activate([
-            // Status label — centered near the top.
-            statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            statusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 16),
-            statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -16),
-            statusLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
+            // Status scroll — spans the top width, fixed to ~2 lines tall so a
+            // long streaming transcript scrolls rather than pushing into the
+            // mic. Its frame height is explicit because with layout guides the
+            // scroll frame is decoupled from its content size.
+            statusScroll.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            statusScroll.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            statusScroll.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
+            statusScroll.heightAnchor.constraint(equalToConstant: 30),
+
+            // Status label — pinned to the scroll's content, width locked to the
+            // frame so text wraps horizontally and grows/scrolls vertically.
+            statusLabel.topAnchor.constraint(equalTo: statusScroll.contentLayoutGuide.topAnchor),
+            statusLabel.bottomAnchor.constraint(equalTo: statusScroll.contentLayoutGuide.bottomAnchor),
+            statusLabel.leadingAnchor.constraint(equalTo: statusScroll.contentLayoutGuide.leadingAnchor),
+            statusLabel.trailingAnchor.constraint(equalTo: statusScroll.contentLayoutGuide.trailingAnchor),
+            statusLabel.widthAnchor.constraint(equalTo: statusScroll.frameLayoutGuide.widthAnchor),
 
             // Mic — centered in the upper 2/3 of the keyboard area.
             mic.view.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -519,7 +538,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func setStatus(_ text: String, mono: Bool) {
-        statusLabel.isHidden = false
+        statusScroll.isHidden = false
         statusLabel.font = mono
             ? .monospacedSystemFont(ofSize: 11, weight: .medium)
             : .systemFont(ofSize: 13, weight: .regular)
@@ -532,10 +551,25 @@ final class KeyboardViewController: UIInputViewController {
             statusLabel.attributedText = nil
             statusLabel.text = text
         }
+        // Keep the tail of a growing streaming transcript in view.
+        scrollStatusToBottom()
+    }
+
+    /// Scroll the status view to its bottom so the newest streamed text stays
+    /// visible. Deferred so layout has resolved the new content size first.
+    private func scrollStatusToBottom() {
+        statusScroll.layoutIfNeeded()
+        let overflow = statusScroll.contentSize.height - statusScroll.bounds.height
+        guard overflow > 0 else {
+            statusScroll.contentOffset = .zero
+            return
+        }
+        statusScroll.contentOffset = CGPoint(x: 0, y: overflow)
     }
 
     private func clearStatus() {
-        statusLabel.isHidden = true
+        statusScroll.isHidden = true
+        statusScroll.contentOffset = .zero
         statusLabel.attributedText = nil
         statusLabel.text = ""
     }

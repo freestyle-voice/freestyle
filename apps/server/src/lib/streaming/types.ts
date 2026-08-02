@@ -88,10 +88,12 @@ export interface StreamingSessionOptions {
   apiKey: string;
   model: string;
   /**
-   * Normalized ISO-639-1 language hint (never "auto"); undefined means
+   * Normalized ISO-639-1 language hints (never "auto"); empty/undefined means
    * auto-detect, which each provider must translate to its own wire value.
+   * Providers that accept multiple hints (e.g. Soniox `language_hints`) use the
+   * whole list; single-language providers use the first (primary) code.
    */
-  language?: string;
+  languages?: string[];
   translate?: boolean;
   /** ASR-only vocabulary bias for the first recognition pass. */
   bias?: AsrVocabularyBias | null;

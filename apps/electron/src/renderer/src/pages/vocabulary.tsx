@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  ListChecks,
   Pencil,
   Plus,
   Search,
@@ -65,6 +66,76 @@ export default function VocabularyPage(): React.JSX.Element {
     () => queryClient.invalidateQueries({ queryKey: ["vocabulary"] }),
     [queryClient],
   );
+
+  // Multi-select state. Selection is scoped to the current page of results —
+  // clearing it whenever the page or search changes avoids acting on rows the
+  // user can no longer see (the list is server-paginated).
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
+  const clearSelection = useCallback(() => {
+    setSelecting(false);
+    setSelectedIds(new Set());
+    setBulkError(null);
+  }, []);
+
+  // Reset selection when the visible page changes (page nav or a new search),
+  // since selection is scoped to the rows currently on screen.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on page/search change
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setBulkError(null);
+  }, [page, search]);
+
+  const toggleSelected = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const allOnPageSelected =
+    entries.length > 0 && entries.every((e) => selectedIds.has(e.id));
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((prev) => {
+      const everySelected =
+        entries.length > 0 && entries.every((e) => prev.has(e.id));
+      if (everySelected) {
+        const next = new Set(prev);
+        for (const e of entries) next.delete(e.id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const e of entries) next.add(e.id);
+      return next;
+    });
+  }, [entries]);
+
+  const deleteSelected = useCallback(async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    setBulkError(null);
+    try {
+      const res = await getClient().api.vocabulary.actions.$post({
+        json: { action: "bulk-delete", ids },
+      });
+      if (!res.ok) {
+        setBulkError(t("vocabulary.deleteSelectedFailed"));
+        return;
+      }
+      // If the whole page was cleared and it wasn't the first page, step back
+      // so the user doesn't land on an empty page.
+      if (ids.length >= entries.length && page > 0) setPage(page - 1);
+      else void invalidate();
+      clearSelection();
+    } catch {
+      setBulkError(t("vocabulary.deleteSelectedFailed"));
+    }
+  }, [selectedIds, entries.length, page, invalidate, clearSelection, t]);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -264,6 +335,24 @@ export default function VocabularyPage(): React.JSX.Element {
                 </span>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2.5">
+                {entries.length > 0 &&
+                  (selecting ? (
+                    <ToolbarButton
+                      onClick={clearSelection}
+                      title={t("vocabulary.cancelSelection")}
+                    >
+                      <X data-icon="inline-start" />
+                      {t("vocabulary.cancelSelection")}
+                    </ToolbarButton>
+                  ) : (
+                    <ToolbarButton
+                      onClick={() => setSelecting(true)}
+                      title={t("vocabulary.select")}
+                    >
+                      <ListChecks data-icon="inline-start" />
+                      {t("vocabulary.select")}
+                    </ToolbarButton>
+                  ))}
                 <ToolbarButton
                   onClick={exportJson}
                   title={t("vocabulary.exportTitle")}
@@ -370,17 +459,55 @@ export default function VocabularyPage(): React.JSX.Element {
             {entries.length === 0 ? (
               <NoSearchResults search={search} />
             ) : (
-              <div className="border-border bg-card overflow-hidden rounded-[12px] border">
-                {entries.map((entry, i) => (
-                  <EntryRow
-                    key={entry.id}
-                    entry={entry}
-                    isLast={i === entries.length - 1}
-                    onEdit={startEdit}
-                    onDelete={deleteEntry}
-                  />
-                ))}
-              </div>
+              <>
+                {selecting && (
+                  <div className="border-border bg-accent/40 mb-2.5 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2">
+                    <div className="flex items-center gap-3">
+                      <label className="text-foreground flex cursor-pointer select-none items-center gap-2 text-[13px]">
+                        <input
+                          type="checkbox"
+                          checked={allOnPageSelected}
+                          onChange={toggleSelectAll}
+                          className="accent-primary h-3.5 w-3.5 cursor-pointer"
+                        />
+                        {t("vocabulary.selectAll")}
+                      </label>
+                      <span className="mono text-muted-foreground text-[11px]">
+                        {t("vocabulary.selectedCount", {
+                          count: selectedIds.size,
+                        })}
+                      </span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={deleteSelected}
+                      disabled={selectedIds.size === 0}
+                      className="hover:text-destructive shrink-0"
+                    >
+                      <Trash2 data-icon="inline-start" />
+                      {t("vocabulary.deleteSelected")}
+                    </Button>
+                  </div>
+                )}
+                {bulkError && (
+                  <p className="text-destructive mb-2 text-xs">{bulkError}</p>
+                )}
+                <div className="border-border bg-card overflow-hidden rounded-[12px] border">
+                  {entries.map((entry, i) => (
+                    <EntryRow
+                      key={entry.id}
+                      entry={entry}
+                      isLast={i === entries.length - 1}
+                      selecting={selecting}
+                      selected={selectedIds.has(entry.id)}
+                      onToggleSelect={toggleSelected}
+                      onEdit={startEdit}
+                      onDelete={deleteEntry}
+                    />
+                  ))}
+                </div>
+              </>
             )}
 
             {total > 0 && (
@@ -494,11 +621,17 @@ function FormField({
 const EntryRow = memo(function EntryRow({
   entry,
   isLast,
+  selecting,
+  selected,
+  onToggleSelect,
   onEdit,
   onDelete,
 }: {
   entry: VocabularyEntry;
   isLast: boolean;
+  selecting: boolean;
+  selected: boolean;
+  onToggleSelect: (id: number) => void;
   onEdit: (entry: VocabularyEntry) => void;
   onDelete: (id: number) => void;
 }): React.JSX.Element {
@@ -506,14 +639,26 @@ const EntryRow = memo(function EntryRow({
     <div
       className={cn(
         "vocabulary-entry-row group grid items-center gap-3.5 px-5 py-3.5",
+        selected && "bg-accent/40",
         !isLast && "border-border/60 border-b",
       )}
     >
-      <span
-        className="mono text-foreground border-border bg-background min-w-0 justify-self-start truncate rounded-md border px-2 py-[3px] text-[12.5px] font-medium"
-        title={entry.term}
-      >
-        {entry.term}
+      <span className="flex min-w-0 items-center gap-2.5 justify-self-start">
+        {selecting && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect(entry.id)}
+            aria-label={`Select ${entry.term}`}
+            className="accent-primary h-3.5 w-3.5 shrink-0 cursor-pointer"
+          />
+        )}
+        <span
+          className="mono text-foreground border-border bg-background min-w-0 truncate rounded-md border px-2 py-[3px] text-[12.5px] font-medium"
+          title={entry.term}
+        >
+          {entry.term}
+        </span>
       </span>
       <span className="text-secondary-foreground min-w-0 line-clamp-2 text-[13px] leading-[1.4]">
         {entry.notes || "—"}

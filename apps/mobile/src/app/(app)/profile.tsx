@@ -1,3 +1,8 @@
+import {
+  INDUSTRY_LABELS,
+  type Industry,
+  industrySchema,
+} from "@freestyle-voice/validations";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { Building2, Check, LogOut, Sparkles } from "lucide-react-native";
@@ -8,12 +13,16 @@ import {
   Image,
   Pressable,
   StyleSheet,
+  Switch,
   TextInput,
   View,
 } from "react-native";
-
 import { AppleIcon, GitHubIcon, GoogleIcon } from "@/components/provider-icons";
-import { Card, SettingsScreenScaffold } from "@/components/settings-ui";
+import {
+  Card,
+  OptionCard,
+  SettingsScreenScaffold,
+} from "@/components/settings-ui";
 import { Skeleton } from "@/components/skeleton";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
@@ -25,11 +34,13 @@ import {
   setActiveOrganization,
 } from "@/lib/cloud/org";
 import {
+  getProfileFields,
   linkProvider,
   listLinkedProviders,
   type SocialProvider,
   unlinkProvider,
   updateName,
+  updateProfileFields,
 } from "@/lib/cloud/profile";
 import { openBillingPortal, startProCheckout } from "@/lib/cloud/subscription";
 import { fetchCloudUsage } from "@/lib/cloud/usage";
@@ -134,6 +145,9 @@ export default function ProfileScreen() {
 
       {/* Personal information */}
       {signedIn ? <NameCard currentName={user?.name ?? ""} /> : null}
+
+      {/* Professional details */}
+      {signedIn ? <ProfileDetailsCard /> : null}
 
       {/* Connected accounts */}
       {signedIn ? <ConnectedAccountsCard /> : null}
@@ -318,6 +332,197 @@ function NameCard({ currentName }: { currentName: string }) {
           { borderColor: theme.border, color: theme.foreground },
         ]}
       />
+      <Pressable
+        onPress={() => void onSave()}
+        disabled={!canSave}
+        style={({ pressed }) => [
+          styles.primaryButton,
+          { backgroundColor: theme.primary },
+          pressed && canSave ? { opacity: 0.9 } : null,
+          !canSave ? styles.buttonDisabled : null,
+        ]}
+      >
+        {saving ? (
+          <ActivityIndicator color={theme.primaryForeground} />
+        ) : (
+          <>
+            {saved ? <Check color={theme.primaryForeground} size={16} /> : null}
+            <ThemedText
+              style={[
+                styles.primaryButtonText,
+                { color: theme.primaryForeground },
+              ]}
+            >
+              {saved ? "Saved" : "Save changes"}
+            </ThemedText>
+          </>
+        )}
+      </Pressable>
+    </Card>
+  );
+}
+
+/** Professional details: industry, job title, company + detected location. */
+function ProfileDetailsCard() {
+  const theme = useTheme();
+  const queryClient = useQueryClient();
+  const [industry, setIndustry] = useState<Industry | undefined>(undefined);
+  const [jobTitle, setJobTitle] = useState("");
+  const [company, setCompany] = useState("");
+  // Re-seed tone + vocabulary defaults for the new industry (opt-out). Only
+  // surfaced while the industry is actually changing. Mirrors the dashboard.
+  const [updatePreferences, setUpdatePreferences] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const { data: profile, isLoading } = useQuery({
+    queryKey: ["cloud-profile-fields"],
+    queryFn: getProfileFields,
+    retry: 1,
+  });
+
+  useEffect(() => {
+    if (!profile) return;
+    const parsed = industrySchema.safeParse(profile.industry);
+    setIndustry(parsed.success ? parsed.data : undefined);
+    setJobTitle(profile.jobTitle ?? "");
+    setCompany(profile.company ?? "");
+    setUpdatePreferences(true);
+  }, [profile]);
+
+  const savedIndustry = industrySchema.safeParse(profile?.industry).success
+    ? (profile?.industry as Industry)
+    : undefined;
+  // Show the re-seed toggle only when switching to a real industry (clearing it
+  // never reseeds).
+  const industryWillChange =
+    industry !== savedIndustry && industry !== undefined;
+  const dirty =
+    industry !== savedIndustry ||
+    jobTitle.trim() !== (profile?.jobTitle ?? "") ||
+    company.trim() !== (profile?.company ?? "");
+  const canSave = dirty && !saving;
+
+  const onSave = useCallback(async () => {
+    if (!canSave) return;
+    setSaving(true);
+    setSaved(false);
+    try {
+      const updated = await updateProfileFields({
+        // Send `null` (not `undefined`) to clear a field — `undefined` is
+        // dropped by JSON serialization, which the server reads as "unchanged".
+        industry: industry ?? null,
+        jobTitle: jobTitle.trim() || null,
+        company: company.trim() || null,
+        // Only meaningful on an industry change; harmless otherwise.
+        updatePreferences,
+      });
+      queryClient.setQueryData(["cloud-profile-fields"], updated);
+      // The cloud re-seeds tone/vocabulary defaults into member_preferences on
+      // ANY industry change (unless opted out). Invalidate the preferences query
+      // so the seeded values are pulled in immediately.
+      const industryChanged = (savedIndustry ?? null) !== (industry ?? null);
+      if (industryChanged && industry && updatePreferences) {
+        void queryClient.invalidateQueries({
+          queryKey: ["cloud-preferences"],
+        });
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      Alert.alert(
+        "Couldn't update profile",
+        e instanceof Error ? e.message : "Try again.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    canSave,
+    industry,
+    savedIndustry,
+    jobTitle,
+    company,
+    updatePreferences,
+    queryClient,
+  ]);
+
+  if (isLoading) {
+    return (
+      <Card>
+        <ThemedText type="eyebrow" themeColor="mutedForeground">
+          PROFESSIONAL DETAILS
+        </ThemedText>
+        <Skeleton width={180} height={20} />
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <ThemedText type="eyebrow" themeColor="mutedForeground">
+        INDUSTRY
+      </ThemedText>
+      {industrySchema.options.map((value) => (
+        <OptionCard
+          key={value}
+          label={INDUSTRY_LABELS[value]}
+          selected={industry === value}
+          onPress={() => setIndustry(industry === value ? undefined : value)}
+        />
+      ))}
+
+      {industryWillChange ? (
+        <View style={[styles.reseedRow, { borderColor: theme.border }]}>
+          <ThemedText style={styles.reseedLabel}>
+            Update tone and vocabulary to match the new industry's defaults
+          </ThemedText>
+          <Switch
+            value={updatePreferences}
+            onValueChange={setUpdatePreferences}
+            trackColor={{ true: theme.primary, false: theme.secondary }}
+          />
+        </View>
+      ) : null}
+
+      <ThemedText
+        type="eyebrow"
+        themeColor="mutedForeground"
+        style={styles.detailsLabel}
+      >
+        JOB TITLE
+      </ThemedText>
+      <TextInput
+        value={jobTitle}
+        onChangeText={setJobTitle}
+        placeholder="e.g. Product Manager"
+        placeholderTextColor={theme.mutedForeground}
+        maxLength={120}
+        style={[
+          styles.input,
+          { borderColor: theme.border, color: theme.foreground },
+        ]}
+      />
+
+      <ThemedText
+        type="eyebrow"
+        themeColor="mutedForeground"
+        style={styles.detailsLabel}
+      >
+        COMPANY
+      </ThemedText>
+      <TextInput
+        value={company}
+        onChangeText={setCompany}
+        placeholder="e.g. Acme Inc."
+        placeholderTextColor={theme.mutedForeground}
+        maxLength={120}
+        style={[
+          styles.input,
+          { borderColor: theme.border, color: theme.foreground },
+        ]}
+      />
+
       <Pressable
         onPress={() => void onSave()}
         disabled={!canSave}
@@ -662,6 +867,23 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.sans,
     fontSize: 15,
     marginTop: Spacing.two,
+  },
+  detailsLabel: { marginTop: Spacing.four },
+  reseedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+    marginTop: Spacing.two,
+  },
+  reseedLabel: {
+    flex: 1,
+    fontFamily: Fonts.sans,
+    fontSize: 14,
+    lineHeight: 19,
   },
   providerRow: {
     flexDirection: "row",

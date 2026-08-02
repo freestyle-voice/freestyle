@@ -65,7 +65,8 @@ export class MlxLocalTranscriptionProvider implements TranscriptionProvider {
     const modelId = stripProviderPrefix(opts.model);
     return new MlxLocalSessionTransport({
       modelId,
-      language: resolveMlxLanguage(modelId, opts.language),
+      // MLX takes a single language code — use the primary.
+      language: resolveMlxLanguage(modelId, opts.languages?.[0]),
       context: opts.bias?.kind === "prompt" ? opts.bias.text : undefined,
       callbacks: opts.callbacks,
     });

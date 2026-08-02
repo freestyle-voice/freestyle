@@ -59,6 +59,38 @@ describe("Freestyle Cloud auth sessions", () => {
 
     expect(getSession()).toBeNull();
   });
+
+  it("isolates sessions by host (dev vs prod)", async () => {
+    const cloud = await import("../src/lib/freestyle-cloud.js");
+
+    // Sign in to the default (prod) host.
+    setSession({
+      token: "prod-token",
+      user: { id: "user_1", email: "prod@example.com" },
+      host: "https://service.freestylevoice.com",
+    });
+
+    // Switch to a dev host.
+    vi.mocked(cloud.freestyleCloudUrl).mockReturnValue("http://localhost:8787");
+    setSession({
+      token: "dev-token",
+      user: { id: "user_2", email: "dev@example.com" },
+      host: "http://localhost:8787",
+    });
+
+    // Dev session is active.
+    expect(getSession()?.token).toBe("dev-token");
+
+    // Clearing dev session does not affect prod.
+    clearSession();
+    expect(getSession()).toBeNull();
+
+    // Switch back to prod — session still intact.
+    vi.mocked(cloud.freestyleCloudUrl).mockReturnValue(
+      "https://service.freestylevoice.com",
+    );
+    expect(getSession()?.token).toBe("prod-token");
+  });
 });
 
 describe("/api/auth", () => {

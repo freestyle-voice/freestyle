@@ -38,6 +38,10 @@
     "test": {
       "dependsOn": ["^build"],
       "cache": false
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "cache": false
     }
   }
 }

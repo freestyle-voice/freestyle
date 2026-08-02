@@ -8,6 +8,8 @@
     "@expo-google-fonts/dm-sans": "^0.4.2",
     "@expo-google-fonts/instrument-serif": "^0.4.1",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
+    "@freestyle-voice/validations": "workspace:*",
+    "@freestyle-voice/utils": "workspace:*",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@sentry/cli": "^2.58.4",
     "@sentry/react-native": "~7.11.0",

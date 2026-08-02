@@ -311,7 +311,7 @@ export default function AppShell(): React.JSX.Element {
         <div className="h-3" />
       </aside>
 
-      <div className="glass-content relative flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="glass-content relative z-0 flex min-h-0 min-w-0 flex-1 flex-col">
         <div
           className={cn(
             "glass-topbar absolute top-0 right-0 z-40 flex items-center gap-1.5 rounded-bl-[14px] border-b border-l px-3 py-2",

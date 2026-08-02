@@ -10,7 +10,7 @@ import {
 } from "../lib/freestyle-cloud.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import {
-  getLanguageSetting,
+  getLanguagesSetting,
   getTranslateModeSetting,
 } from "../lib/language.js";
 import {
@@ -85,14 +85,14 @@ const stream = new Hono().get(
     /** Resolve the settings a session transport depends on, plus a compare key. */
     function resolveStreamConfig(): {
       voice: { provider: string; model_id: string };
-      language: string | undefined;
+      languages: string[];
       translate: boolean;
       bias: ReturnType<typeof resolveAsrVocabularyBias>;
       key: string;
     } | null {
       const voice = getDefaultModels().voice;
       if (!voice) return null;
-      const language = getLanguageSetting();
+      const languages = getLanguagesSetting();
       const translate = getTranslateModeSetting();
       const bias = resolveAsrVocabularyBias(
         voice.provider,
@@ -116,13 +116,13 @@ const stream = new Hono().get(
           : null;
       return {
         voice,
-        language,
+        languages,
         translate,
         bias,
         key: JSON.stringify([
           voice.provider,
           voice.model_id,
-          language ?? null,
+          languages,
           translate,
           bias,
           cleanupFingerprint,
@@ -334,7 +334,7 @@ const stream = new Hono().get(
         providerId: voice.provider,
         apiKey,
         model: voice.model_id,
-        language: config.language,
+        languages: config.languages,
         translate: config.translate,
         bias: config.bias,
         appContext: effectiveAppContext(),
@@ -545,7 +545,7 @@ const stream = new Hono().get(
               commitTime > 0 ? Date.now() - commitTime : durationMs;
 
             const cleanup = postProcess(rawText, effectiveAppContext(), {
-              language: config.language,
+              languages: config.languages,
               source: useFastHandoff
                 ? "streaming_handoff"
                 : canStream

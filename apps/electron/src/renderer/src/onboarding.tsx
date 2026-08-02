@@ -1,8 +1,16 @@
-import { apiKeySchema } from "@freestyle-voice/validations";
+import {
+  apiKeySchema,
+  MAX_LANGUAGES,
+  normalizeLanguageList,
+} from "@freestyle-voice/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
+import {
+  LanguageMultiPickerDialog,
+  useLanguageOptions,
+} from "@renderer/components/language-combobox";
 import { ModelSetupPanel } from "@renderer/components/model-setup-panel";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { Button } from "@renderer/components/ui/button";
@@ -28,7 +36,7 @@ import {
 import { capture } from "@renderer/lib/analytics";
 import { getClient } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
-import { defaultLanguage, ONBOARDING_LANGUAGES } from "@renderer/lib/languages";
+import { defaultLanguage } from "@renderer/lib/languages";
 import {
   type AvailableModel,
   buildVoiceItems,
@@ -43,6 +51,7 @@ import {
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS, PLATFORM } from "@renderer/lib/platform";
 import { settingsQueryOptions } from "@renderer/lib/query";
+import { useCloudConfig } from "@renderer/lib/use-cloud-config";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -59,7 +68,7 @@ import {
   Shield,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -131,7 +140,11 @@ export default function OnboardingPage(): React.JSX.Element {
   >(null);
   const [selectedMlxDefId, setSelectedMlxDefId] = useState<string | null>(null);
   const [apiKeys, setApiKeys] = useState<Set<string>>(new Set());
-  const [language, setLanguage] = useState<string>(defaultLanguage);
+  const [languages, setLanguages] = useState<string[]>(() => {
+    // Seed from the OS language when it's a real code; "auto" starts empty.
+    const guess = defaultLanguage();
+    return guess === "auto" ? [] : [guess];
+  });
   const autoPicked = useRef(false);
   const warmed = useRef(false);
   // Tracks the most recent explicit local pick so cloud users who briefly
@@ -625,24 +638,35 @@ export default function OnboardingPage(): React.JSX.Element {
     }
   }, [chosenStatus, chosenModelId]);
 
-  // Persist the language choice (the transcribe path reads it per request).
-  const persistLanguage = useCallback((value: string) => {
+  // Persist the language list (the transcribe path reads it per request).
+  const persistLanguages = useCallback((next: string[]) => {
     getClient()
       .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.language },
-        json: { value },
+        param: { key: SETTINGS_KEYS.languages },
+        json: { value: JSON.stringify(next) },
       })
       .catch(() => {});
   }, []);
 
-  const saveLanguage = useCallback(
-    (value: string) => {
-      setLanguage(value);
-      capture("onboarding_language_changed", { language: value });
-      persistLanguage(value);
+  const toggleLanguage = useCallback(
+    (code: string) => {
+      setLanguages((prev) => {
+        const next = prev.includes(code)
+          ? prev.filter((c) => c !== code)
+          : normalizeLanguageList([...prev, code]);
+        capture("onboarding_language_changed", { languages: next });
+        persistLanguages(next);
+        return next;
+      });
     },
-    [persistLanguage],
+    [persistLanguages],
   );
+
+  const clearLanguages = useCallback(() => {
+    setLanguages([]);
+    capture("onboarding_language_changed", { languages: [] });
+    persistLanguages([]);
+  }, [persistLanguages]);
 
   // Validate + persist a freshly entered cloud key. Returns true when stored
   // so the selector can commit and close.
@@ -770,8 +794,9 @@ export default function OnboardingPage(): React.JSX.Element {
 
         {step === "language" && (
           <LanguageStep
-            language={language}
-            onSelect={saveLanguage}
+            languages={languages}
+            onToggle={toggleLanguage}
+            onClear={clearLanguages}
             localModel={showLocalSetupPanel ? localSetupModel : undefined}
             onDownloadLocal={startLocalDownload}
             onRetryLocal={retryLocalDownload}
@@ -780,9 +805,9 @@ export default function OnboardingPage(): React.JSX.Element {
               setStep("permissions");
             }}
             onContinue={() => {
-              // Persist even when the pre-selected locale was never clicked.
-              persistLanguage(language);
-              capture("onboarding_language_completed", { language });
+              // Persist even when the pre-selected locale was never toggled.
+              persistLanguages(languages);
+              capture("onboarding_language_completed", { languages });
               setStep("tutorial");
             }}
           />
@@ -1220,16 +1245,18 @@ function CloudTermsFooter(): React.JSX.Element {
 // Step 3 — Language (the model sets itself up in the background)
 // ---------------------------------------------------------------------------
 function LanguageStep({
-  language,
-  onSelect,
+  languages,
+  onToggle,
+  onClear,
   localModel,
   onDownloadLocal,
   onRetryLocal,
   onBack,
   onContinue,
 }: {
-  language: string;
-  onSelect: (id: string) => void;
+  languages: string[];
+  onToggle: (id: string) => void;
+  onClear: () => void;
   localModel: VoiceItem | undefined;
   onDownloadLocal: () => void;
   onRetryLocal: () => void;
@@ -1237,6 +1264,33 @@ function LanguageStep({
   onContinue: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
+  const { user } = useCloudAuth();
+  const { data: cloudConfig } = useCloudConfig(!!user);
+  const options = useLanguageOptions(cloudConfig?.suggestedLanguages);
+  const [showAll, setShowAll] = useState(false);
+
+  const selectedSet = useMemo(() => new Set(languages), [languages]);
+  const atCap = languages.length >= MAX_LANGUAGES;
+
+  // Show a handful of region-relevant languages as pills; the rest live behind
+  // "See all". "auto" gets its own pill below, so exclude it from the top set.
+  const PILL_COUNT = 12;
+  const pills = useMemo(
+    () => options.filter((l) => l.code !== "auto").slice(0, PILL_COUNT),
+    [options],
+  );
+
+  // Selected languages picked via "See all" may fall outside the top pills;
+  // surface them as extra pills so every selection stays visible.
+  const selectedOutside = useMemo(
+    () =>
+      languages
+        .filter((code) => !pills.some((l) => l.code === code))
+        .map((code) => options.find((l) => l.code === code))
+        .filter((l): l is (typeof options)[number] => Boolean(l)),
+    [languages, pills, options],
+  );
+
   return (
     <div className="w-full max-w-[560px]">
       <h1 className="serif text-foreground m-0 mb-7 text-center text-[56px] leading-[0.95] font-normal tracking-[-0.025em]">
@@ -1247,26 +1301,57 @@ function LanguageStep({
       </h1>
 
       <div className="flex flex-wrap justify-center gap-2">
-        {ONBOARDING_LANGUAGES.map((l) => (
-          <Button
-            key={l.id}
-            variant={language === l.id ? "default" : "outline"}
-            size="sm"
-            onClick={() => onSelect(l.id)}
-            className="rounded-full px-4 text-[13.5px]"
-          >
-            {l.nativeLabel}
-          </Button>
-        ))}
         <Button
-          variant={language === "auto" ? "default" : "outline"}
+          variant={languages.length === 0 ? "default" : "outline"}
           size="sm"
-          onClick={() => onSelect("auto")}
+          onClick={onClear}
           className="rounded-full px-4 text-[13.5px]"
         >
           {t("onboarding.language.autoDetect")}
         </Button>
+        {pills.map((l) => {
+          const active = selectedSet.has(l.code);
+          return (
+            <Button
+              key={l.code}
+              variant={active ? "default" : "outline"}
+              size="sm"
+              disabled={!active && atCap}
+              onClick={() => onToggle(l.code)}
+              className="rounded-full px-4 text-[13.5px]"
+            >
+              {l.label}
+            </Button>
+          );
+        })}
+        {selectedOutside.map((l) => (
+          <Button
+            key={l.code}
+            variant="default"
+            size="sm"
+            onClick={() => onToggle(l.code)}
+            className="rounded-full px-4 text-[13.5px]"
+          >
+            {l.label}
+          </Button>
+        ))}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowAll(true)}
+          className="rounded-full px-4 text-[13.5px]"
+        >
+          {t("onboarding.language.seeAll") || "See all"}
+        </Button>
       </div>
+
+      <LanguageMultiPickerDialog
+        open={showAll}
+        onOpenChange={setShowAll}
+        values={languages}
+        onToggle={onToggle}
+        options={options}
+      />
 
       <ModelSetupPanel
         model={localModel}

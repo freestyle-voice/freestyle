@@ -23,7 +23,7 @@ import {
   vocabularyTerms,
 } from "@/lib/entries";
 import { useHistory } from "@/lib/history";
-import { languageHint, tonesForCloud, useSettings } from "@/lib/settings";
+import { languageHints, tonesForCloud, useSettings } from "@/lib/settings";
 import {
   checkMicPermission,
   requestMicPermission,
@@ -146,7 +146,7 @@ export function useDictation({
 
     sessionRef.current = new CloudStreamSession({
       cookie: headers.Cookie,
-      language: languageHint(settings.language),
+      languages: languageHints(settings.languages),
       vocabulary: vocabularyTerms(vocabulary),
       cleanup: {
         skipPostProcess: !settings.cleanup,

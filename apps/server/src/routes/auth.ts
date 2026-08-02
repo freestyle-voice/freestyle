@@ -1,25 +1,34 @@
 import {
   deviceTokenSchema,
   linkSocialSchema,
+  profileSchema,
   unlinkAccountSchema,
   updateProfileSchema,
 } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import {
+  clearCachedOrgSlug,
   DeviceFlowError,
   fetchCloudUser,
   freestyleCloudUrl,
+  getCloudProfile,
   linkCloudSocial,
   listCloudAccounts,
   pollDeviceToken,
   requestDeviceCode,
+  resolveActiveOrgSlug,
   signOutCloud,
   unlinkCloudAccount,
+  updateCloudProfile,
   updateCloudUserName,
 } from "../lib/freestyle-cloud.js";
 import { applyFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js";
 import { capture, identifyCloudUser } from "../lib/posthog.js";
+import {
+  pullCloudPreferences,
+  pullCloudPreferencesWithRetry,
+} from "../lib/preferences-sync.js";
 import { validateSession } from "../lib/session-validate.js";
 import {
   getSession,
@@ -27,6 +36,7 @@ import {
   invalidateSession,
   setSession,
 } from "../lib/sessions.js";
+import { clearOutbox, drainOutbox } from "../lib/sync-outbox.js";
 import { isTrustedRendererOrigin } from "../lib/trusted-origin.js";
 
 /**
@@ -68,6 +78,12 @@ const auth = new Hono()
       });
       applyFreestyleCloudDefaults();
       identifyCloudUser(user);
+      // Seed local cleanup preferences from the cloud snapshot (cross-device
+      // sync). Fire-and-forget — sign-in must not block on it.
+      void pullCloudPreferences();
+      // Flush any preference syncs queued while signed out / offline now that a
+      // valid session exists. Fire-and-forget.
+      void drainOutbox();
       capture("freestyle_default_applied_on_signin", {
         voice: true,
         cleanup: true,
@@ -94,7 +110,11 @@ const auth = new Hono()
     if (session) {
       await signOutCloud(session.token).catch(() => {});
     }
+    clearCachedOrgSlug();
     invalidateSession();
+    // Discard any preference syncs queued under this account so they aren't
+    // delivered to a different account that signs in next.
+    clearOutbox();
     return c.json({ ok: true });
   })
   // Social accounts linked to the signed-in user, for the profile page.
@@ -134,6 +154,71 @@ const auth = new Hono()
     });
     identifyCloudUser(user);
     return c.json({ user });
+  })
+  // Profile fields (industry / company) + read-only detected geo, scoped to the
+  // user's active organization.
+  .get("/profile-fields", async (c) => {
+    const token = getSessionToken();
+    if (!token) {
+      return c.json({ error: "Not signed in to Freestyle Cloud" }, 401);
+    }
+    try {
+      const orgSlug = await resolveActiveOrgSlug(token);
+      if (!orgSlug) return c.json({ profile: null });
+      const profile = await getCloudProfile(token, orgSlug);
+      return c.json({ profile });
+    } catch {
+      return c.json({ error: "Failed to load profile" }, 502);
+    }
+  })
+  .put("/profile-fields", zValidator("json", profileSchema), async (c) => {
+    const token = getSessionToken();
+    if (!token) {
+      return c.json({ error: "Not signed in to Freestyle Cloud" }, 401);
+    }
+    try {
+      const data = c.req.valid("json");
+
+      const orgSlug = await resolveActiveOrgSlug(token);
+      if (!orgSlug) {
+        // No active org yet (e.g. the post-signup window). Nothing to write to
+        // an org-scoped profile — surface as a soft failure the UI can retry.
+        return c.json({ error: "No active organization" }, 409);
+      }
+
+      // Detect ANY industry change (null->value or value->value) that will
+      // trigger a cloud re-seed. The cloud re-seeds tone/vocabulary defaults
+      // into member_preferences on an industry change UNLESS the client opted
+      // out via `updatePreferences: false`, so only re-pull when a reseed is
+      // actually expected. Only fetch the prior profile when the client sent an
+      // industry — otherwise this PUT can't change it and we skip the round-trip.
+      let industryChanged = false;
+      if (data.industry !== undefined && data.updatePreferences !== false) {
+        const before = await getCloudProfile(token, orgSlug).catch(() => null);
+        const prev = before?.industry ?? null;
+        const next = data.industry ?? null;
+        // Guard `next !== null`: clearing the industry doesn't reseed anything,
+        // so there's nothing to pull.
+        industryChanged = prev !== next && next !== null;
+      }
+
+      await updateCloudProfile(token, orgSlug, data);
+      // Return the fresh row (now with server-detected geo) so the UI can show
+      // the detected location without a second round-trip.
+      const profile = await getCloudProfile(token, orgSlug);
+
+      // The cloud seeds member_preferences asynchronously (fire-and-forget on
+      // its side), so retry the pull briefly to catch the seed before we reply.
+      // Awaited so the renderer can invalidate its settings/vocabulary queries
+      // on success.
+      if (industryChanged) {
+        await pullCloudPreferencesWithRetry();
+      }
+
+      return c.json({ profile });
+    } catch {
+      return c.json({ error: "Failed to update profile" }, 502);
+    }
   })
   // Begin linking a social account: returns the provider's OAuth URL for the
   // renderer to open in the system browser.

@@ -1,5 +1,5 @@
-import { BookOpen, Pencil, Plus, Trash2 } from "lucide-react-native";
-import { useState } from "react";
+import { BookOpen, Check, Pencil, Plus, Trash2 } from "lucide-react-native";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import {
@@ -19,11 +19,17 @@ import {
 
 export default function VocabularyScreen() {
   const theme = useTheme();
-  const { vocabulary, addVocab, updateVocab, removeVocab } = useEntries();
+  const { vocabulary, addVocab, updateVocab, removeVocab, removeVocabMany } =
+    useEntries();
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [term, setTerm] = useState("");
   const [notes, setNotes] = useState("");
+
+  // Multi-select state. `selecting` toggles the mode; `selected` holds the
+  // chosen entry ids. Editing and selecting are mutually exclusive.
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const editing = editingId !== null;
 
@@ -56,12 +62,100 @@ export default function VocabularyScreen() {
     cancel();
   };
 
+  const exitSelect = () => {
+    setSelecting(false);
+    setSelected(new Set());
+  };
+
+  // Never leave the UI stranded in select mode with nothing to act on. If the
+  // list empties (last delete, or a background cloud mirror), drop out of select
+  // mode; otherwise prune selected ids that no longer exist so the count stays
+  // truthful. Runs only when the set of entry ids actually changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on entry ids
+  useEffect(() => {
+    if (!selecting) return;
+    if (vocabulary.length === 0) {
+      exitSelect();
+      return;
+    }
+    setSelected((prev) => {
+      const live = new Set(vocabulary.map((e) => e.id));
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (live.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [vocabulary, selecting]);
+
+  const toggleSelected = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const deleteSelected = () => {
+    if (selected.size === 0) return;
+    removeVocabMany([...selected]);
+    exitSelect();
+  };
+
+  // The header action toggles select mode. Hidden while editing or when the
+  // list is empty (nothing to select).
+  const headerAction =
+    !editing && vocabulary.length > 0 ? (
+      <Pressable
+        onPress={selecting ? exitSelect : () => setSelecting(true)}
+        hitSlop={8}
+        style={styles.headerBtn}
+      >
+        <ThemedText style={[styles.headerBtnText, { color: theme.primary }]}>
+          {selecting ? "Cancel" : "Select"}
+        </ThemedText>
+      </Pressable>
+    ) : undefined;
+
   return (
     <TabScreenScaffold
       title="Vocabulary"
       subtitle="Names, jargon, and phrases Freestyle should recognize. These bias speech recognition so tricky words come out right."
+      action={headerAction}
     >
-      {editing ? (
+      {selecting ? (
+        <View
+          style={[
+            styles.selectBar,
+            { borderColor: theme.border, backgroundColor: theme.card },
+          ]}
+        >
+          <ThemedText style={styles.selectCount}>
+            {selected.size} selected
+          </ThemedText>
+          <Pressable
+            onPress={deleteSelected}
+            disabled={selected.size === 0}
+            style={[
+              styles.deleteSelectedBtn,
+              {
+                borderColor: theme.destructive,
+                opacity: selected.size === 0 ? 0.4 : 1,
+              },
+            ]}
+          >
+            <Trash2 color={theme.destructive} size={16} />
+            <ThemedText
+              style={[styles.deleteSelectedText, { color: theme.destructive }]}
+            >
+              Delete
+            </ThemedText>
+          </Pressable>
+        </View>
+      ) : editing ? (
         <Card>
           <SectionTitle
             icon={BookOpen}
@@ -154,45 +248,76 @@ export default function VocabularyScreen() {
 
       {vocabulary.length > 0 ? (
         <Card style={styles.listCard}>
-          {vocabulary.map((entry, i) => (
-            <View key={entry.id}>
-              {i > 0 ? (
-                <View
-                  style={[styles.divider, { backgroundColor: theme.border }]}
-                />
-              ) : null}
-              <View style={styles.entryRow}>
-                <View style={styles.entryText}>
-                  <ThemedText style={styles.entryTerm} numberOfLines={1}>
-                    {entry.term}
-                  </ThemedText>
-                  {entry.notes ? (
-                    <ThemedText
-                      themeColor="mutedForeground"
-                      style={styles.entryNotes}
-                      numberOfLines={2}
+          {vocabulary.map((entry, i) => {
+            const isSelected = selected.has(entry.id);
+            return (
+              <View key={entry.id}>
+                {i > 0 ? (
+                  <View
+                    style={[styles.divider, { backgroundColor: theme.border }]}
+                  />
+                ) : null}
+                <Pressable
+                  onPress={
+                    selecting ? () => toggleSelected(entry.id) : undefined
+                  }
+                  style={styles.entryRow}
+                >
+                  {selecting ? (
+                    <View
+                      style={[
+                        styles.checkbox,
+                        {
+                          borderColor: isSelected
+                            ? theme.primary
+                            : theme.border,
+                          backgroundColor: isSelected
+                            ? theme.primary
+                            : "transparent",
+                        },
+                      ]}
                     >
-                      {entry.notes}
-                    </ThemedText>
+                      {isSelected ? (
+                        <Check color={theme.primaryForeground} size={13} />
+                      ) : null}
+                    </View>
                   ) : null}
-                </View>
-                <Pressable
-                  onPress={() => startEdit(entry)}
-                  hitSlop={8}
-                  style={styles.iconBtn}
-                >
-                  <Pencil color={theme.mutedForeground} size={17} />
-                </Pressable>
-                <Pressable
-                  onPress={() => removeVocab(entry.id)}
-                  hitSlop={8}
-                  style={styles.iconBtn}
-                >
-                  <Trash2 color={theme.destructive} size={17} />
+                  <View style={styles.entryText}>
+                    <ThemedText style={styles.entryTerm} numberOfLines={1}>
+                      {entry.term}
+                    </ThemedText>
+                    {entry.notes ? (
+                      <ThemedText
+                        themeColor="mutedForeground"
+                        style={styles.entryNotes}
+                        numberOfLines={2}
+                      >
+                        {entry.notes}
+                      </ThemedText>
+                    ) : null}
+                  </View>
+                  {selecting ? null : (
+                    <>
+                      <Pressable
+                        onPress={() => startEdit(entry)}
+                        hitSlop={8}
+                        style={styles.iconBtn}
+                      >
+                        <Pencil color={theme.mutedForeground} size={17} />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => removeVocab(entry.id)}
+                        hitSlop={8}
+                        style={styles.iconBtn}
+                      >
+                        <Trash2 color={theme.destructive} size={17} />
+                      </Pressable>
+                    </>
+                  )}
                 </Pressable>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </Card>
       ) : null}
     </TabScreenScaffold>
@@ -268,4 +393,35 @@ const styles = StyleSheet.create({
   entryTerm: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   entryNotes: { fontSize: 13, marginTop: 2 },
   iconBtn: { padding: 4 },
+  headerBtn: { paddingHorizontal: Spacing.two, paddingVertical: 4 },
+  headerBtnText: { fontFamily: Fonts.sansSemiBold, fontSize: 15 },
+  selectBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderRadius: Radius.xl,
+    paddingLeft: Spacing.four,
+    paddingRight: Spacing.two,
+    paddingVertical: Spacing.two,
+  },
+  selectCount: { fontFamily: Fonts.sansMedium, fontSize: 14 },
+  deleteSelectedBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two - 2,
+    height: 36,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+  },
+  deleteSelectedText: { fontFamily: Fonts.sansSemiBold, fontSize: 14 },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: Radius.sm,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

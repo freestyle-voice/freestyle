@@ -39,7 +39,7 @@ export interface RunRemixTransformOptions {
   remixId?: string;
   /** What the user said, when they didn't. */
   instruction?: string;
-  language?: string;
+  languages?: string[];
 }
 
 /**
@@ -98,11 +98,11 @@ export async function runRemixTransform(
       token,
       text: options.text,
       appContext: null,
-      language: options.language,
+      languages: options.languages,
       intensity: "custom",
       customPrompt: buildRemixSystem({
         instruction,
-        language: options.language,
+        languages: options.languages,
       }),
       personalTone: "off",
       workTone: "off",
@@ -120,7 +120,7 @@ export async function runRemixTransform(
     }
     const { system, prompt } = buildRemixPrompt(options.text, {
       instruction,
-      language: options.language,
+      languages: options.languages,
     });
     // Called directly rather than through the shared cleanup helper: that one
     // sanitizes transcript artifacts (collapsing a duplicated trailing

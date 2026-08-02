@@ -15,7 +15,8 @@
     "download": "Download",
     "downloading": "Downloading...",
     "saving": "Saving…",
-    "restartAndUpdate": "Restart & Update"
+    "restartAndUpdate": "Restart & Update",
+    "noResults": "No results found"
   },
   "languageNames": {
     "en": "English",
@@ -52,7 +53,9 @@
     "language": {
       "titlePrefix": "What language do you ",
       "titleEmphasis": "speak?",
-      "autoDetect": "Auto-detect"
+      "autoDetect": "Auto-detect",
+      "seeAll": "See all",
+      "allLanguages": "All languages"
     },
     "modelSetup": {
       "title": "Download your private voice model",
@@ -133,9 +136,15 @@
       "microphoneDesc": "Select your audio input device.",
       "microphoneDefault": "System default",
       "language": "Language",
+      "languageSearchPlaceholder": "Search languages…",
       "languageDescAuto": "Detected automatically for each dictation.",
       "languageDescHint": "Tuned for {{language}}. Speak another language and you get that one.",
       "languageDescEnforced": "Always written in {{language}}, whatever you speak.",
+      "languageDescMulti": "Tuned for the languages you selected. Speak any of them and they're kept as spoken.",
+      "languageAutoPill": "Auto-detect",
+      "languageAdd": "Add language",
+      "languageRemove": "Remove {{language}}",
+      "languageMax": "Up to {{count}} languages.",
       "languageModeHint": "Hint",
       "languageModeEnforced": "Enforced",
       "translateMode": "Translate mode",
@@ -354,7 +363,13 @@
     "noResults": "nothing matches \"{{search}}\".",
     "noTerms": "no terms — add one to start.",
     "failedToSave": "Failed to save entry.",
-    "importFailed": "Import failed — file must be valid JSON."
+    "importFailed": "Import failed — file must be valid JSON.",
+    "select": "Select",
+    "selectAll": "Select all",
+    "cancelSelection": "Cancel",
+    "selectedCount": "{{count}} selected",
+    "deleteSelected": "Delete selected",
+    "deleteSelectedFailed": "Failed to delete selected terms."
   },
   "tone": {
     "title": "Tone",

@@ -29,6 +29,31 @@ export async function getActiveOrganization() {
   return data ?? null;
 }
 
+/**
+ * Cached active-organization slug. Profile and preferences endpoints are
+ * org-scoped (`/{slug}/...`), so we resolve the active org's slug once and
+ * reuse it. Cleared whenever the active org changes.
+ */
+let cachedOrgSlug: string | null = null;
+
+/** Drop the cached org slug (call after switching orgs or signing out). */
+export function clearCachedOrgSlug(): void {
+  cachedOrgSlug = null;
+}
+
+/**
+ * Resolve the slug of the signed-in user's active organization, needed to build
+ * the org-scoped `/{slug}/member/*` paths (profile + preferences). Memoized.
+ * Returns `null` when there is no active org, in which case callers should skip
+ * the org-scoped request.
+ */
+export async function resolveActiveOrgSlug(): Promise<string | null> {
+  if (cachedOrgSlug) return cachedOrgSlug;
+  const org = await getActiveOrganization();
+  cachedOrgSlug = org?.slug ?? null;
+  return cachedOrgSlug;
+}
+
 /** Switch the user's active organization. */
 export async function setActiveOrganization(
   organizationId: string,
@@ -36,6 +61,7 @@ export async function setActiveOrganization(
   const { error } = await authClient.organization.setActive({
     organizationId,
   });
+  if (!error) clearCachedOrgSlug();
   return error
     ? { error: error.message ?? "Failed to switch organization" }
     : {};

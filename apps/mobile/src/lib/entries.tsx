@@ -85,6 +85,10 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
   const vocabRef = useRef<VocabEntry[]>([]);
   vocabRef.current = vocabulary;
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Read at flush time so the unmount flush (which fires after sign-out tears
+  // the tree down) doesn't push under a session that no longer exists.
+  const signedInRef = useRef(signedIn);
+  signedInRef.current = signedIn;
 
   useEffect(() => {
     (async () => {
@@ -99,6 +103,7 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const flushVocabPush = useCallback(() => {
+    if (!signedInRef.current) return;
     // Send the full local list — the cloud replaces its `terms` wholesale, so
     // this propagates both adds and deletes. Errors are swallowed (offline /
     // signed out) so a sync failure never disrupts the local write.

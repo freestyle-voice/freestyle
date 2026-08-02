@@ -1,5 +1,5 @@
 import { BookOpen, Check, Pencil, Plus, Trash2 } from "lucide-react-native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import {
@@ -66,6 +66,29 @@ export default function VocabularyScreen() {
     setSelecting(false);
     setSelected(new Set());
   };
+
+  // Never leave the UI stranded in select mode with nothing to act on. If the
+  // list empties (last delete, or a background cloud mirror), drop out of select
+  // mode; otherwise prune selected ids that no longer exist so the count stays
+  // truthful. Runs only when the set of entry ids actually changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on entry ids
+  useEffect(() => {
+    if (!selecting) return;
+    if (vocabulary.length === 0) {
+      exitSelect();
+      return;
+    }
+    setSelected((prev) => {
+      const live = new Set(vocabulary.map((e) => e.id));
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (live.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [vocabulary, selecting]);
 
   const toggleSelected = (id: string) => {
     setSelected((prev) => {

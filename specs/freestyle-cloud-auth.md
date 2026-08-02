@@ -57,7 +57,12 @@ The Freestyle server stores the active Freestyle Cloud session in SQLite table `
 
 ### 4.3 Server auth status
 Add:
-- `GET /api/auth/status` → `{ authenticated, user }`.
+- `GET /api/auth/status` → `{ authenticated, user, verified }`. The status
+  read validates the cached token against the cloud (`get-session`), throttled
+  to one round-trip per minute (`lib/session-validate.ts`): a cloud `401`
+  drops the session immediately; an unreachable cloud falls back to the cached
+  user with `verified: false` so offline use keeps working. This prevents the
+  UI from presenting a revoked/expired session as signed-in.
 - `POST /api/auth/sign-out` → revoke best-effort, clear `sessions`, reset analytics identity, and revert Freestyle Cloud voice default if needed.
 - `apps/server/src/lib/sessions.ts`: `getSessionToken()` / `getSessionUser()` / `setSession()` / `clearSession()`.
 
@@ -71,8 +76,8 @@ Add:
 - **Renderer auth context**: call `/api/auth/status`, `/api/auth/device/code`, `/api/auth/device/token`, and `/api/auth/sign-out` through the configured Freestyle server.
 - **Account section** in Settings: signed-out → "Sign in to Freestyle Cloud"; signed-in → name/email/avatar + "Sign out".
 - **Sign-in pending state**: after `cloudSignIn()` opens the browser, show "Waiting for approval in your browser… (code: ABCD-1234)" with a cancel.
-- **Onboarding**: optional `"cloud"` step offering sign-in (skippable — local transcription works without it).
-- **Gate at point of use**: selecting **Freestyle Cloud** in the voice picker while signed out starts sign-in first; a `cloud_auth_required`/`CloudAuthError` at transcribe time surfaces a "Sign in to use Freestyle Cloud" prompt rather than a silent failure.
+- **Onboarding**: `"cloud"` step requiring sign-in (skippable in dev builds only).
+- **Login gate** *(superseded "gate at point of use")*: sign-in is now required. The dashboard/settings routes are wrapped in `LoginGate` (`components/login-gate.tsx`): once the server confirms there is no valid session, a full-screen login page replaces the app until sign-in succeeds. The auth context revalidates on window focus and every 5 minutes, so a session invalidated mid-flight (transcribe `401`, keep-alive detecting revocation) lands back on the login page instead of showing a stale signed-in profile. A `cloud_auth_required` error at transcribe time (batch **and** streaming paths carry the code) still surfaces the native sign-in prompt from the pill flow.
 
 ### 4.6 Sign-out
 Server calls `POST ${CLOUD_URL}/auth/sign-out` best-effort with the stored bearer token, clears `sessions`, and resets local Freestyle Cloud defaults/identity.

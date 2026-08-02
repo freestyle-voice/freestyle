@@ -3,7 +3,7 @@ import "./fonts.css";
 
 import { CloudSignInModal } from "@renderer/components/cloud-signin-modal";
 import { ErrorBoundary } from "@renderer/components/error-boundary";
-import { SessionExpiredModal } from "@renderer/components/session-expired-modal";
+import { LoginGate } from "@renderer/components/login-gate";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import { UpgradeModalProvider } from "@renderer/components/upgrade-modal";
 import i18n, { initI18n } from "@renderer/i18n";
@@ -87,7 +87,6 @@ function mount(): void {
                   <CloudAuthProvider>
                     <UpgradeModalProvider>
                       <CloudSignInModal />
-                      <SessionExpiredModal />
                       <Suspense fallback={<RouteFallback />}>
                         <Routes>
                           <Route
@@ -99,7 +98,13 @@ function mount(): void {
                             element={<OnboardingPage />}
                           />
 
-                          <Route element={<AppShell />}>
+                          <Route
+                            element={
+                              <LoginGate>
+                                <AppShell />
+                              </LoginGate>
+                            }
+                          >
                             <Route path="/today" element={<HistoryPage />} />
                             <Route element={<PagePad />}>
                               <Route

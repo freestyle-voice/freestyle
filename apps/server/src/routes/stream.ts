@@ -252,10 +252,18 @@ const stream = new Hono().get(
       const apiKey = getApiKeyForProvider(voice.provider);
       if (!apiKey) {
         ws.send(
-          JSON.stringify({
-            type: "error",
-            message: `No API key for ${voice.provider}`,
-          }),
+          JSON.stringify(
+            voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
+              ? {
+                  type: "error",
+                  code: "cloud_auth_required",
+                  message: "Sign in to Freestyle Transcribe",
+                }
+              : {
+                  type: "error",
+                  message: `No API key for ${voice.provider}`,
+                },
+          ),
         );
         ws.close();
         return;

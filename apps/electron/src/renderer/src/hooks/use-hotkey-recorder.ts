@@ -248,14 +248,13 @@ export interface RightModifierUpdateEvent {
   explicitLeft?: boolean;
 }
 
-/** Maps DOM `KeyboardEvent.code` to the side-specific token it represents (macOS only). */
+/** Maps DOM `KeyboardEvent.code` to the side-specific token it represents. */
 function domRightModifierToken(e: KeyboardEvent): string | null {
-  if (!IS_MAC) return null;
   switch (e.code) {
     case "MetaRight":
-      return "RightCommand";
+      return IS_MAC ? "RightCommand" : "RightSuper";
     case "AltRight":
-      return "RightOption";
+      return IS_MAC ? "RightOption" : "RightAlt";
     case "ControlRight":
       return "RightControl";
     case "ShiftRight":

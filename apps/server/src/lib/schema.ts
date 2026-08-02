@@ -552,10 +552,10 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
   }
 
   if (currentVersion < 19) {
-    // Device-local dismissals for in-app dialogs/banners (changelogs, feature
-    // prompts, profile nudges). Presence of a key means the corresponding UI
-    // has been dismissed and should not be shown again. Not synced to cloud —
-    // dismissals are per-device.
+    // Dismissals for in-app dialogs/banners (changelogs, feature prompts,
+    // profile nudges). Presence of a key means the corresponding UI has been
+    // dismissed and should not be shown again. Not synced to Freestyle Cloud —
+    // stored alongside settings in this server's SQLite DB.
     db.exec(`
       CREATE TABLE IF NOT EXISTS dismissed_notifications (
         key          TEXT PRIMARY KEY,

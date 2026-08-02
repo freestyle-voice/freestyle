@@ -3,9 +3,10 @@ import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 
 /**
- * Device-local dismissals for in-app dialogs/banners (changelogs, feature
- * prompts, profile nudges). Presence of a key means the corresponding UI has
- * been dismissed. Not synced to cloud — dismissals are per-device.
+ * Dismissals for in-app dialogs/banners (changelogs, feature prompts, profile
+ * nudges). Presence of a key means the corresponding UI has been dismissed.
+ * Not synced to Freestyle Cloud — stored in the local (or configured remote)
+ * server's SQLite DB, the same place settings/vocabulary live.
  */
 const dismissedNotifications = new Hono()
   .get("/", (c) => {

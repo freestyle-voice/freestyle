@@ -6,8 +6,12 @@
  * Not cloud-synced — dismissals are per-device (same treatment as
  * `onboarding_complete`). Exposes a `ready` gate so consumers don't flash a
  * dialog before the stored list has hydrated.
+ *
+ * Keys must match {@link notificationKeySchema}; invalid / empty keys are
+ * no-ops so a typo can't poison the store.
  */
 
+import { notificationKeySchema } from "@freestyle-voice/validations";
 import {
   createContext,
   type ReactNode,
@@ -33,49 +37,63 @@ const DismissiblesContext = createContext<DismissiblesContextValue | null>(
   null,
 );
 
+function isValidKey(key: string): boolean {
+  return notificationKeySchema.safeParse(key).success;
+}
+
 export function DismissiblesProvider({ children }: { children: ReactNode }) {
   const [keys, setKeys] = useState<Set<string>>(() => new Set());
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       const stored = await getJsonPref<string[]>(STORAGE_KEY, []);
+      if (cancelled) return;
       setKeys(
-        new Set(stored.filter((k) => typeof k === "string" && k.length > 0)),
+        new Set(
+          stored.filter(
+            (k): k is string => typeof k === "string" && isValidKey(k),
+          ),
+        ),
       );
       setReady(true);
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const persist = useCallback((next: Set<string>) => {
-    void setJsonPref(STORAGE_KEY, [...next]);
+  // Persist after hydrate. Kept outside setState updaters so Strict Mode /
+  // concurrent double-invokes can't write AsyncStorage for a discarded state.
+  useEffect(() => {
+    if (!ready) return;
+    void setJsonPref(STORAGE_KEY, [...keys]);
+  }, [keys, ready]);
+
+  const dismiss = useCallback((key: string) => {
+    const parsed = notificationKeySchema.safeParse(key);
+    if (!parsed.success) return;
+
+    setKeys((prev) => {
+      if (prev.has(parsed.data)) return prev;
+      const next = new Set(prev);
+      next.add(parsed.data);
+      return next;
+    });
   }, []);
 
-  const dismiss = useCallback(
-    (key: string) => {
-      setKeys((prev) => {
-        if (prev.has(key)) return prev;
-        const next = new Set(prev);
-        next.add(key);
-        persist(next);
-        return next;
-      });
-    },
-    [persist],
-  );
+  const reset = useCallback((key: string) => {
+    const parsed = notificationKeySchema.safeParse(key);
+    if (!parsed.success) return;
 
-  const reset = useCallback(
-    (key: string) => {
-      setKeys((prev) => {
-        if (!prev.has(key)) return prev;
-        const next = new Set(prev);
-        next.delete(key);
-        persist(next);
-        return next;
-      });
-    },
-    [persist],
-  );
+    setKeys((prev) => {
+      if (!prev.has(parsed.data)) return prev;
+      const next = new Set(prev);
+      next.delete(parsed.data);
+      return next;
+    });
+  }, []);
 
   const value = useMemo(
     () => ({ ready, dismissedKeys: keys, dismiss, reset }),

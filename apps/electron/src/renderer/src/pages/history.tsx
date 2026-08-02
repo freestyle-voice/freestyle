@@ -1,6 +1,7 @@
 import {
   DEFAULT_HISTORY_FILTERS,
   type HistoryFiltersSetting,
+  KNOWN_NOTIFICATION_KEYS,
   parseHistoryFilters,
 } from "@freestyle-voice/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
@@ -25,6 +26,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@renderer/components/ui/tooltip";
+import { useDismissible } from "@renderer/hooks/use-dismissible";
 import {
   usePersistentJsonState,
   usePersistentState,
@@ -184,20 +186,36 @@ export default function HistoryPage(): React.JSX.Element {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   // The intro hero (dictation tutorial) can be dismissed with its X and
-  // brought back from the filter dialog's Tutorial toggle. Persisted in
-  // localStorage so the choice survives navigation and app restarts.
-  const [heroDismissed, setHeroDismissed] = usePersistentState<"0" | "1">(
-    "today.heroDismissed",
-    "0",
-    (v): v is "0" | "1" => v === "0" || v === "1",
-  );
-  const dismissHero = useCallback(
-    () => setHeroDismissed("1"),
-    [setHeroDismissed],
-  );
+  // brought back from the filter dialog's Tutorial toggle. Persisted via the
+  // shared dismissed-notifications store (SQLite) so the choice survives
+  // navigation and app restarts.
+  const {
+    dismissed: heroDismissed,
+    dismiss: dismissHero,
+    reset: resetHero,
+    ready: heroReady,
+  } = useDismissible(KNOWN_NOTIFICATION_KEYS.TODAY_TUTORIAL_HERO);
+
+  // One-time migration from the previous localStorage flag so users who
+  // already dismissed the hero don't see it flash back after this change.
+  useEffect(() => {
+    if (!heroReady || heroDismissed) return;
+    try {
+      const legacy = localStorage.getItem("today.heroDismissed");
+      if (legacy !== "1") return;
+      localStorage.removeItem("today.heroDismissed");
+      dismissHero();
+    } catch {
+      // localStorage unavailable — nothing to migrate.
+    }
+  }, [heroReady, heroDismissed, dismissHero]);
+
   const setShowTutorial = useCallback(
-    (value: boolean) => setHeroDismissed(value ? "0" : "1"),
-    [setHeroDismissed],
+    (value: boolean) => {
+      if (value) resetHero();
+      else dismissHero();
+    },
+    [dismissHero, resetHero],
   );
 
   // Stats sidebar visibility and width. Open by default, collapsible, and
@@ -518,7 +536,7 @@ export default function HistoryPage(): React.JSX.Element {
 
   const isGenuineEmpty = stats?.unfiltered_total_sessions === 0;
 
-  const hero = heroDismissed === "0" && !isGenuineEmpty && (
+  const hero = heroReady && !heroDismissed && !isGenuineEmpty && (
     <div className="relative mb-7">
       <button
         type="button"
@@ -669,7 +687,7 @@ export default function HistoryPage(): React.JSX.Element {
       diffMode={diffMode}
       showAiEdits={showAiEdits}
       nerdMode={nerdMode}
-      showTutorial={heroDismissed === "0"}
+      showTutorial={heroReady && !heroDismissed}
       onSelectRange={selectDateRange}
       onDiffModeChange={setDiffMode}
       onShowAiEditsChange={setShowAiEdits}

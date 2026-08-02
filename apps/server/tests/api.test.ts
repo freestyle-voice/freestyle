@@ -263,6 +263,20 @@ describe("Dismissed notifications", () => {
     expect(put.status).toBe(400);
   });
 
+  it("PUT rejects an empty key", async () => {
+    const put = await req("/api/dismissed-notifications/%20", {
+      method: "PUT",
+    });
+    expect(put.status).toBe(400);
+  });
+
+  it("DELETE rejects an invalid key", async () => {
+    const del = await req("/api/dismissed-notifications/NOT%20VALID", {
+      method: "DELETE",
+    });
+    expect(del.status).toBe(400);
+  });
+
   it("DELETE resets a dismissal", async () => {
     await req("/api/dismissed-notifications/profile_info_prompt", {
       method: "PUT",

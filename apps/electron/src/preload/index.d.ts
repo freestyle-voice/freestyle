@@ -14,6 +14,7 @@ declare global {
       platform: string;
       isE2E: boolean;
       defaultHotkey: string;
+      defaultCommandHotkey: string;
       pasteText: (text: string, appContext?: string | null) => Promise<void>;
       copyText: (text: string, appContext?: string | null) => Promise<void>;
       prepareSystemAudio: (mode: ActiveAudioPlaybackMode) => Promise<void>;
@@ -23,7 +24,10 @@ declare global {
       reloadHotkey: () => void;
       setHotkeyMode: (mode: "hold" | "toggle") => void;
       hidePill: () => void;
-      setPillExpanded: (expanded: boolean) => void;
+      setPillExpanded: (
+        expanded: boolean,
+        expansion?: "card" | "command",
+      ) => void;
       showErrorDialog: (title: string, message: string) => Promise<void>;
       getServerPort: () => Promise<number>;
       getServerUrl: () => Promise<string>;
@@ -38,6 +42,15 @@ declare global {
       onHotkeyDown: (callback: () => void) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;
       onPillCancel: (callback: () => void) => () => void;
+      reloadCommandHotkey: () => void;
+      pasteCommandResult: (text: string) => Promise<boolean>;
+      onCommandDown: (callback: () => void) => () => void;
+      onCommandUp: (callback: () => void) => () => void;
+      onCommandSelection: (
+        callback: (text: string | null) => void,
+      ) => () => void;
+      onCommandRoute: (callback: (index: number) => void) => () => void;
+      onCommandSupersede: (callback: () => void) => () => void;
       checkMicPermission: () => Promise<string>;
       requestMicPermission: () => Promise<string>;
       checkAccessibilityPermission: () => Promise<boolean>;

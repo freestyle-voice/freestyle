@@ -256,6 +256,23 @@ describe("Dismissed notifications", () => {
     expect(await get.json()).toEqual(["changelog.1.0.0"]);
   });
 
+  it("GET sorts valid keys and ignores corrupt rows", async () => {
+    const db = getDb();
+    const insert = db.prepare(
+      "INSERT INTO dismissed_notifications (key) VALUES (?)",
+    );
+    insert.run("today.tutorial_hero");
+    insert.run("profile_info_prompt");
+    insert.run("INVALID KEY");
+    insert.run(" padded_key ");
+
+    const get = await req("/api/dismissed-notifications");
+    expect(await get.json()).toEqual([
+      "profile_info_prompt",
+      "today.tutorial_hero",
+    ]);
+  });
+
   it("PUT rejects an invalid key", async () => {
     const put = await req("/api/dismissed-notifications/BAD KEY!", {
       method: "PUT",

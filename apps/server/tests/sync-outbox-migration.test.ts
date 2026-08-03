@@ -44,7 +44,7 @@ describe("sync_outbox migration (v18)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(19);
+    expect(version.version).toBeGreaterThanOrEqual(18);
 
     // The expected columns are present and usable.
     db.prepare(

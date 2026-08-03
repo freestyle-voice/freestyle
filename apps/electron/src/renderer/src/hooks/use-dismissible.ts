@@ -1,4 +1,7 @@
-import { notificationKeySchema } from "@freestyle-voice/validations";
+import {
+  type DismissibleNotificationState,
+  notificationKeySchema,
+} from "@freestyle-voice/validations";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { getClient } from "../lib/api";
@@ -7,15 +10,45 @@ import {
   dismissedNotificationsQueryOptions,
 } from "../lib/query";
 
-export interface UseDismissibleResult {
-  /** True once the dismissed-keys list has loaded (or a prior cache exists). */
-  ready: boolean;
-  /** Whether this key has been dismissed on this device. */
-  dismissed: boolean;
-  /** Permanently dismiss — records the key so the UI won't show again. */
-  dismiss: () => void;
-  /** Undo a dismissal — removes the key so the UI can show again. */
-  reset: () => void;
+type WriteResponse = { ok: boolean; status: number };
+
+// Serialize writes per notification key across every hook instance. Without a
+// queue, a rapid dismiss → reset can reach the server as DELETE → PUT and leave
+// SQLite disagreeing with the latest optimistic UI state.
+const writeQueues = new Map<string, Promise<void>>();
+const writeGenerations = new Map<string, number>();
+
+function beginWrite(key: string): number {
+  const generation = (writeGenerations.get(key) ?? 0) + 1;
+  writeGenerations.set(key, generation);
+  return generation;
+}
+
+function enqueueWrite(
+  key: string,
+  generation: number,
+  request: () => Promise<WriteResponse>,
+  rollback: () => void,
+): void {
+  const previous = writeQueues.get(key) ?? Promise.resolve();
+  const current = previous.then(async () => {
+    try {
+      const response = await request();
+      if (!response.ok) throw new Error(`Write failed (${response.status})`);
+    } catch {
+      // A newer action owns the UI now and will run next in this same queue.
+      // Only the latest operation may revert its optimistic change.
+      if (writeGenerations.get(key) === generation) rollback();
+    }
+  });
+  writeQueues.set(key, current);
+  void current.finally(() => {
+    if (writeQueues.get(key) !== current) return;
+    writeQueues.delete(key);
+    if (writeGenerations.get(key) === generation) {
+      writeGenerations.delete(key);
+    }
+  });
 }
 
 /**
@@ -24,9 +57,10 @@ export interface UseDismissibleResult {
  * /api/dismissed-notifications` via a shared React Query cache so every
  * consumer of the same (or different) key shares one fetch.
  *
- * Presence of `key` in the list means dismissed. Writes are optimistic; a
- * non-OK response rolls the cache back (or invalidates if we have no
- * snapshot). Invalid / empty keys are no-ops.
+ * Presence of `key` in the list means dismissed. Writes are optimistic and
+ * mutation-safe: an in-flight list fetch is cancelled first, and a failed
+ * write reverts only its own key (never an unrelated concurrent mutation).
+ * Invalid / empty keys are no-ops.
  *
  * Storage follows the configured Freestyle server — the same SQLite DB as
  * settings/vocabulary. On a remote server that means dismissals are shared
@@ -39,93 +73,94 @@ export interface UseDismissibleResult {
  * return <Banner onClose={dismiss} />;
  * ```
  */
-export function useDismissible(key: string): UseDismissibleResult {
+export function useDismissible(key: string): DismissibleNotificationState {
   const queryClient = useQueryClient();
-  const { data, isPending, isError } = useQuery(
-    dismissedNotificationsQueryOptions(),
-  );
+  const { data } = useQuery(dismissedNotificationsQueryOptions());
 
-  // Fail closed on a first-fetch error (no cached data): don't flash a
-  // previously-dismissed banner while the loopback is unreachable.
-  const dismissed =
-    (data ?? []).includes(key) || (isError && data === undefined);
-  // Ready once we have a definitive answer — success, cached data under
-  // error, or a hard error we fail-closed on above.
-  const ready = !isPending;
+  const dismissed = (data ?? []).includes(key);
+  // An error without cached data is not a definitive answer. Consumers keep
+  // their UI hidden until a successful fetch (or a prior cache) exists.
+  const ready = data !== undefined;
 
   const dismiss = useCallback(() => {
     const parsed = notificationKeySchema.safeParse(key);
     if (!parsed.success) return;
 
+    const generation = beginWrite(parsed.data);
+    // Cancellation is initiated before the synchronous optimistic patch, so
+    // the initial GET cannot overwrite it. `revert: false` keeps our patch
+    // when cancellation settles.
+    void queryClient.cancelQueries(
+      { queryKey: DISMISSED_NOTIFICATIONS_QUERY_KEY },
+      { revert: false },
+    );
     const previous = queryClient.getQueryData<string[]>(
       DISMISSED_NOTIFICATIONS_QUERY_KEY,
     );
+    const wasDismissed = previous?.includes(parsed.data) ?? false;
     queryClient.setQueryData<string[]>(
       DISMISSED_NOTIFICATIONS_QUERY_KEY,
-      (prev) =>
-        prev?.includes(parsed.data) ? prev : [...(prev ?? []), parsed.data],
+      (current) =>
+        current?.includes(parsed.data)
+          ? current
+          : [...(current ?? []), parsed.data],
     );
 
-    void getClient()
-      .api["dismissed-notifications"][":key"].$put({
-        param: { key: parsed.data },
-      })
-      .then((res) => {
-        if (res.ok) return;
-        if (previous !== undefined) {
-          queryClient.setQueryData(DISMISSED_NOTIFICATIONS_QUERY_KEY, previous);
-        } else {
-          void queryClient.invalidateQueries({
-            queryKey: DISMISSED_NOTIFICATIONS_QUERY_KEY,
-          });
+    enqueueWrite(
+      parsed.data,
+      generation,
+      () =>
+        getClient().api["dismissed-notifications"][":key"].$put({
+          param: { key: parsed.data },
+        }),
+      () => {
+        if (!wasDismissed) {
+          queryClient.setQueryData<string[]>(
+            DISMISSED_NOTIFICATIONS_QUERY_KEY,
+            (current) => (current ?? []).filter((item) => item !== parsed.data),
+          );
         }
-      })
-      .catch(() => {
-        if (previous !== undefined) {
-          queryClient.setQueryData(DISMISSED_NOTIFICATIONS_QUERY_KEY, previous);
-        } else {
-          void queryClient.invalidateQueries({
-            queryKey: DISMISSED_NOTIFICATIONS_QUERY_KEY,
-          });
-        }
-      });
+      },
+    );
   }, [key, queryClient]);
 
   const reset = useCallback(() => {
     const parsed = notificationKeySchema.safeParse(key);
     if (!parsed.success) return;
 
+    const generation = beginWrite(parsed.data);
+    void queryClient.cancelQueries(
+      { queryKey: DISMISSED_NOTIFICATIONS_QUERY_KEY },
+      { revert: false },
+    );
     const previous = queryClient.getQueryData<string[]>(
       DISMISSED_NOTIFICATIONS_QUERY_KEY,
     );
+    const wasDismissed = previous?.includes(parsed.data) ?? false;
     queryClient.setQueryData<string[]>(
       DISMISSED_NOTIFICATIONS_QUERY_KEY,
-      (prev) => (prev ?? []).filter((k) => k !== parsed.data),
+      (current) => (current ?? []).filter((item) => item !== parsed.data),
     );
 
-    void getClient()
-      .api["dismissed-notifications"][":key"].$delete({
-        param: { key: parsed.data },
-      })
-      .then((res) => {
-        if (res.ok) return;
-        if (previous !== undefined) {
-          queryClient.setQueryData(DISMISSED_NOTIFICATIONS_QUERY_KEY, previous);
-        } else {
-          void queryClient.invalidateQueries({
-            queryKey: DISMISSED_NOTIFICATIONS_QUERY_KEY,
-          });
+    enqueueWrite(
+      parsed.data,
+      generation,
+      () =>
+        getClient().api["dismissed-notifications"][":key"].$delete({
+          param: { key: parsed.data },
+        }),
+      () => {
+        if (wasDismissed) {
+          queryClient.setQueryData<string[]>(
+            DISMISSED_NOTIFICATIONS_QUERY_KEY,
+            (current) =>
+              current?.includes(parsed.data)
+                ? current
+                : [...(current ?? []), parsed.data],
+          );
         }
-      })
-      .catch(() => {
-        if (previous !== undefined) {
-          queryClient.setQueryData(DISMISSED_NOTIFICATIONS_QUERY_KEY, previous);
-        } else {
-          void queryClient.invalidateQueries({
-            queryKey: DISMISSED_NOTIFICATIONS_QUERY_KEY,
-          });
-        }
-      });
+      },
+    );
   }, [key, queryClient]);
 
   return { ready, dismissed, dismiss, reset };

@@ -14,7 +14,15 @@ const dismissedNotifications = new Hono()
     const rows = db
       .prepare("SELECT key FROM dismissed_notifications ORDER BY key ASC")
       .all() as { key: string }[];
-    return c.json(rows.map((row) => row.key));
+    return c.json(
+      rows.flatMap((row) => {
+        const parsed = notificationKeySchema.safeParse(row.key);
+        // Rows written by this route are already canonical. Do not normalize a
+        // corrupt/manual row here: returning a key different from the stored
+        // primary key would make it impossible for DELETE to remove that row.
+        return parsed.success && parsed.data === row.key ? [row.key] : [];
+      }),
+    );
   })
   .put("/:key", (c) => {
     const key = c.req.param("key");

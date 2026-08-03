@@ -185,30 +185,55 @@ export default function HistoryPage(): React.JSX.Element {
   // The filter dialog is transient UI, not persisted state.
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // The intro hero (dictation tutorial) can be dismissed with its X and
-  // brought back from the filter dialog's Tutorial toggle. Persisted via the
-  // shared dismissed-notifications store (SQLite) so the choice survives
-  // navigation and app restarts.
+  // Keep the legacy localStorage flag as a synchronous compatibility mirror:
+  // it prevents a flash for users who dismissed the hero before the SQLite
+  // store existed and preserves their choice if the migration PUT fails.
+  const [legacyHeroDismissed, setLegacyHeroDismissed] = usePersistentState<
+    "0" | "1"
+  >(
+    "today.heroDismissed",
+    "0",
+    (value): value is "0" | "1" => value === "0" || value === "1",
+  );
   const {
-    dismissed: heroDismissed,
-    dismiss: dismissHero,
-    reset: resetHero,
+    dismissed: storedHeroDismissed,
+    dismiss: persistHeroDismissal,
+    reset: resetStoredHeroDismissal,
     ready: heroReady,
   } = useDismissible(KNOWN_NOTIFICATION_KEYS.TODAY_TUTORIAL_HERO);
+  const heroDismissed = storedHeroDismissed || legacyHeroDismissed === "1";
+  const migrationAttemptedRef = useRef(false);
 
-  // One-time migration from the previous localStorage flag so users who
-  // already dismissed the hero don't see it flash back after this change.
+  // Best-effort one-time migration per mount. The legacy mirror is deliberately
+  // retained until the user explicitly resets the tutorial; if this PUT fails,
+  // the old dismissal still survives and migration retries next app launch.
   useEffect(() => {
-    if (!heroReady || heroDismissed) return;
-    try {
-      const legacy = localStorage.getItem("today.heroDismissed");
-      if (legacy !== "1") return;
-      localStorage.removeItem("today.heroDismissed");
-      dismissHero();
-    } catch {
-      // localStorage unavailable — nothing to migrate.
+    if (
+      !heroReady ||
+      storedHeroDismissed ||
+      legacyHeroDismissed !== "1" ||
+      migrationAttemptedRef.current
+    ) {
+      return;
     }
-  }, [heroReady, heroDismissed, dismissHero]);
+    migrationAttemptedRef.current = true;
+    persistHeroDismissal();
+  }, [
+    heroReady,
+    storedHeroDismissed,
+    legacyHeroDismissed,
+    persistHeroDismissal,
+  ]);
+
+  const dismissHero = useCallback(() => {
+    setLegacyHeroDismissed("1");
+    persistHeroDismissal();
+  }, [persistHeroDismissal, setLegacyHeroDismissed]);
+
+  const resetHero = useCallback(() => {
+    setLegacyHeroDismissed("0");
+    resetStoredHeroDismissal();
+  }, [resetStoredHeroDismissal, setLegacyHeroDismissed]);
 
   const setShowTutorial = useCallback(
     (value: boolean) => {

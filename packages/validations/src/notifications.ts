@@ -15,6 +15,18 @@ export const notificationKeySchema = z
 
 export type NotificationKey = z.infer<typeof notificationKeySchema>;
 
+/** Cross-platform return contract for `useDismissible(key)`. */
+export interface DismissibleNotificationState {
+  /** True once the persisted dismissal state has hydrated. */
+  ready: boolean;
+  /** Whether this key has been dismissed in the current store. */
+  dismissed: boolean;
+  /** Record the key so its notification is not shown again. */
+  dismiss: () => void;
+  /** Remove the key so its notification may be shown again. */
+  reset: () => void;
+}
+
 /**
  * Registry of concrete dialog/banner keys shared by desktop and mobile.
  * Object keys are UPPER_SNAKE constants; values are the persisted lowercase

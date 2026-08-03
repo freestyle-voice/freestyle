@@ -11,7 +11,10 @@
  * no-ops so a typo can't poison the store.
  */
 
-import { notificationKeySchema } from "@freestyle-voice/validations";
+import {
+  type DismissibleNotificationState,
+  notificationKeySchema,
+} from "@freestyle-voice/validations";
 import {
   createContext,
   type ReactNode,
@@ -48,16 +51,21 @@ export function DismissiblesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const stored = await getJsonPref<string[]>(STORAGE_KEY, []);
-      if (cancelled) return;
-      setKeys(
-        new Set(
-          stored.filter(
-            (k): k is string => typeof k === "string" && isValidKey(k),
+      try {
+        const stored = await getJsonPref<string[]>(STORAGE_KEY, []);
+        if (cancelled) return;
+        setKeys(
+          new Set(
+            stored.filter(
+              (k): k is string => typeof k === "string" && isValidKey(k),
+            ),
           ),
-        ),
-      );
-      setReady(true);
+        );
+      } catch {
+        // Storage can be unavailable; degrade to an empty in-memory store.
+      } finally {
+        if (!cancelled) setReady(true);
+      }
     })();
     return () => {
       cancelled = true;
@@ -68,32 +76,42 @@ export function DismissiblesProvider({ children }: { children: ReactNode }) {
   // concurrent double-invokes can't write AsyncStorage for a discarded state.
   useEffect(() => {
     if (!ready) return;
-    void setJsonPref(STORAGE_KEY, [...keys]);
+    void setJsonPref(STORAGE_KEY, [...keys]).catch(() => {});
   }, [keys, ready]);
 
-  const dismiss = useCallback((key: string) => {
-    const parsed = notificationKeySchema.safeParse(key);
-    if (!parsed.success) return;
+  const dismiss = useCallback(
+    (key: string) => {
+      // Consumers should already gate on `ready`; enforcing it here prevents
+      // an early action from being overwritten by the hydration result.
+      if (!ready) return;
+      const parsed = notificationKeySchema.safeParse(key);
+      if (!parsed.success) return;
 
-    setKeys((prev) => {
-      if (prev.has(parsed.data)) return prev;
-      const next = new Set(prev);
-      next.add(parsed.data);
-      return next;
-    });
-  }, []);
+      setKeys((prev) => {
+        if (prev.has(parsed.data)) return prev;
+        const next = new Set(prev);
+        next.add(parsed.data);
+        return next;
+      });
+    },
+    [ready],
+  );
 
-  const reset = useCallback((key: string) => {
-    const parsed = notificationKeySchema.safeParse(key);
-    if (!parsed.success) return;
+  const reset = useCallback(
+    (key: string) => {
+      if (!ready) return;
+      const parsed = notificationKeySchema.safeParse(key);
+      if (!parsed.success) return;
 
-    setKeys((prev) => {
-      if (!prev.has(parsed.data)) return prev;
-      const next = new Set(prev);
-      next.delete(parsed.data);
-      return next;
-    });
-  }, []);
+      setKeys((prev) => {
+        if (!prev.has(parsed.data)) return prev;
+        const next = new Set(prev);
+        next.delete(parsed.data);
+        return next;
+      });
+    },
+    [ready],
+  );
 
   const value = useMemo(
     () => ({ ready, dismissedKeys: keys, dismiss, reset }),
@@ -107,17 +125,6 @@ export function DismissiblesProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export interface UseDismissibleResult {
-  /** True once AsyncStorage has hydrated. */
-  ready: boolean;
-  /** Whether this key has been dismissed on this device. */
-  dismissed: boolean;
-  /** Permanently dismiss — records the key so the UI won't show again. */
-  dismiss: () => void;
-  /** Undo a dismissal — removes the key so the UI can show again. */
-  reset: () => void;
-}
-
 /**
  * Per-key view over the shared dismissibles store.
  *
@@ -128,7 +135,7 @@ export interface UseDismissibleResult {
  * return <Banner onClose={dismiss} />;
  * ```
  */
-export function useDismissible(key: string): UseDismissibleResult {
+export function useDismissible(key: string): DismissibleNotificationState {
   const ctx = useContext(DismissiblesContext);
   if (!ctx) {
     throw new Error(

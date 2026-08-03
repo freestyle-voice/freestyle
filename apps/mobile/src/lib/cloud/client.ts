@@ -1,6 +1,6 @@
 /**
  * Shared Freestyle Cloud HTTP client, configured for mobile. Wraps the
- * runtime-agnostic client from `@freestyle-voice/utils` with the mobile
+ * runtime-agnostic client from `@freestyle-voice/utils/cloud` with the mobile
  * specifics: base URL from expo-constants (`cloudUrl`), cookie-based auth
  * (`authHeaders`), and `credentials: "omit"`.
  *
@@ -9,7 +9,7 @@
  * no longer repeat that boilerplate per file.
  */
 
-import { createCloudClient } from "@freestyle-voice/utils";
+import { createCloudClient } from "@freestyle-voice/utils/cloud";
 import { cloudUrl } from "./config";
 import { authHeaders } from "./session";
 

@@ -85,5 +85,11 @@ export async function runRemixAgentLocally(
     },
   });
 
-  return result.toUIMessageStreamResponse();
+  // Surface the provider's real failure text instead of the SDK's masked
+  // "An error occurred." — everything here stays on the user's machine, and
+  // the pill is the only place a stream error can be read.
+  return result.toUIMessageStreamResponse({
+    onError: (error) =>
+      error instanceof Error ? error.message : String(error),
+  });
 }

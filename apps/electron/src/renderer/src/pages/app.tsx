@@ -311,6 +311,15 @@ const ALERT = "#E0805F";
  */
 const BAR_COLOR = "#FFFFFF";
 
+/**
+ * The Freestyle wave mark (assets/mark-light.svg, thinned to every second
+ * point — indistinguishable at icon size). Inlined rather than <img>'d so it
+ * takes `currentColor` and sits in cream on the dark pill instead of the
+ * asset's green.
+ */
+const FREESTYLE_MARK_POINTS =
+  "8.00,50.00 9.20,49.89 10.40,49.57 11.60,49.06 12.80,48.44 14.00,47.75 15.20,47.08 16.40,46.50 17.60,46.10 18.80,45.95 20.00,46.09 21.20,46.57 22.40,47.40 23.60,48.55 24.80,50.00 26.00,51.67 27.20,53.47 28.40,55.30 29.60,57.04 30.80,58.56 32.00,59.75 33.20,60.50 34.40,60.72 35.60,60.36 36.80,59.38 38.00,57.79 39.20,55.64 40.40,53.00 41.60,50.00 42.80,46.77 44.00,43.49 45.20,40.34 46.40,37.49 47.60,35.13 48.80,33.43 50.00,32.50 51.20,32.45 52.40,33.33 53.60,35.15 54.80,37.84 56.00,41.32 57.20,45.44 58.40,50.00 59.60,54.78 60.80,59.55 62.00,64.03 63.20,67.98 64.40,71.17 65.60,73.40 66.80,74.50 68.00,74.37 69.20,72.97 70.40,70.33 71.60,66.52 72.80,61.71 74.00,56.12 75.20,50.00 76.40,43.66 77.60,37.42 78.80,31.61 80.00,26.55 81.20,22.52 82.40,19.78 83.60,18.50 84.80,18.80 86.00,20.72 87.20,24.20 88.40,29.11 89.60,35.25 90.80,42.32 92.00,50.00";
+
 const pillInnerStyle: React.CSSProperties = {
   height: PILL_HEIGHT,
   borderRadius: PILL_HEIGHT / 2,
@@ -383,6 +392,8 @@ interface RemixSession {
   selection: string | null;
   /** What is being applied, shown while `running`. */
   label?: string;
+  /** The live transcript streaming in while the user speaks. */
+  transcript?: string;
   title?: string;
   body?: string;
   /** A spoken or typed instruction the chat card sends on open. */
@@ -463,6 +474,18 @@ export default function AppPage(): React.JSX.Element {
   const remixRunningRef = useRef(false);
   /** Flips the card from "capturing" to "listening" once a press is a hold. */
   const remixHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Remix's own streaming session, separate from dictation's singleton: the
+   * two flows never run at once, but the dictation streamer's callbacks are
+   * wired to the dictation pipeline and must stay that way. This one exists
+   * to put live partials on the remix card — and its final, when the
+   * transport supports one, saves the REST round trip on release.
+   */
+  const remixStreamerRef = useRef<Streamer | null>(null);
+  /** Whether the remix streamer's provider supports commit → final. */
+  const remixTransportRef = useRef(false);
+  /** Resolved by the remix streamer's onFinal, awaited on hotkey release. */
+  const remixFinalRef = useRef<Deferred<string> | null>(null);
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
@@ -1731,6 +1754,39 @@ export default function AppPage(): React.JSX.Element {
   }, []);
 
   /** Tear the session down. `hide` is false only when an error card stays up. */
+  // Lazy singleton, like the dictation streamer: constructed on the first
+  // spoken remix, then reused — the WebSocket stays warm between sessions.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: singleton
+  const getRemixStreamer = useCallback((): Streamer => {
+    if (!remixStreamerRef.current) {
+      remixStreamerRef.current = new Streamer(getApiBase(), getServerToken(), {
+        onConfig: (config) => {
+          remixTransportRef.current = config.sessionTransport;
+        },
+        onReady: () => {},
+        onPartial: (text) => {
+          if (remixRef.current && text) patchRemix({ transcript: text });
+        },
+        onFinal: (text) => {
+          // Keep the card's transcript on the final wording while the agent
+          // spins up — the partials stop at commit.
+          if (remixRef.current && text.trim()) {
+            patchRemix({ transcript: text });
+          }
+          remixFinalRef.current?.resolve(text);
+          remixFinalRef.current = null;
+        },
+        onError: () => {
+          // The recorder's WAV via REST is the transcription of record when
+          // streaming misbehaves — a streaming error just means no live text.
+          remixFinalRef.current?.resolve("");
+          remixFinalRef.current = null;
+        },
+      });
+    }
+    return remixStreamerRef.current;
+  }, []);
+
   const endRemix = useCallback(
     (options: { hide?: boolean } = {}) => {
       clearRemixHoldTimer();
@@ -1739,8 +1795,11 @@ export default function AppPage(): React.JSX.Element {
       // instead of hanging on a session that no longer exists.
       remixSelectionRef.current?.resolve(null);
       remixSelectionRef.current = null;
+      remixFinalRef.current?.resolve("");
+      remixFinalRef.current = null;
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
+      remixStreamerRef.current?.cancel();
       setRemix(null);
       stopVisualization();
       if (options.hide !== false) window.api?.hidePill();
@@ -1759,6 +1818,7 @@ export default function AppPage(): React.JSX.Element {
       remixRunningRef.current = false;
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
+      remixStreamerRef.current?.cancel();
       stopVisualization();
       setRemix({ phase: "error", selection: null, title, body });
     },
@@ -1931,8 +1991,26 @@ export default function AppPage(): React.JSX.Element {
    */
   const runSpokenRemix = useCallback(async () => {
     const durationMs = Math.round(performance.now() - remixDownAtRef.current);
-    patchRemix({ phase: "running", label: "Listening…" });
+    patchRemix({ phase: "running", label: "Transcribing…" });
     startBarAnimation("speaking");
+
+    // Commit the streaming session right on release — the provider finalizes
+    // fastest from a commit that lands while its context is hot, and when it
+    // answers, the REST round trip below is skipped entirely. The recorder's
+    // WAV stays the transcription of record whenever streaming has nothing.
+    const streamer = remixStreamerRef.current;
+    let finalPromise: Promise<string> | null = null;
+    if (streamer?.isConnected() && remixTransportRef.current) {
+      const final = deferred<string>();
+      remixFinalRef.current = final;
+      streamer.commit();
+      finalPromise = Promise.race([
+        final.promise,
+        new Promise<string>((resolve) => setTimeout(() => resolve(""), 8000)),
+      ]);
+    } else {
+      streamer?.cancel();
+    }
 
     // Wait for the capture to land — the chat card needs the anchor even
     // when the selection itself comes back empty.
@@ -1949,32 +2027,36 @@ export default function AppPage(): React.JSX.Element {
     }
     recorderRef.current.releaseStream();
     if (!remixRef.current) return;
-    if (!wav) {
-      failRemix("Didn't catch that", "Hold the hotkey and say what to do.");
-      return;
-    }
 
     let instruction = "";
-    try {
-      const res = await apiFetch("/api/transcribe", {
-        method: "POST",
-        body: wav,
-        headers: {
-          "Content-Type": "audio/wav",
-          "x-audio-duration-ms": String(durationMs),
-          // Cleanup is tuned to turn speech into prose the user will read.
-          // This text is a machine instruction that nobody ever sees, so the
-          // raw transcript is both cheaper and closer to what was said.
-          "x-skip-post-process": "true",
-        },
-      });
+    if (finalPromise) {
+      instruction = (await finalPromise).trim();
+      remixFinalRef.current = null;
       if (!remixRef.current) return;
-      if (res.ok) {
-        const data = (await res.json()) as { raw?: string; cleaned?: string };
-        instruction = (data.raw || data.cleaned || "").trim();
+    }
+
+    if (!instruction && wav) {
+      try {
+        const res = await apiFetch("/api/transcribe", {
+          method: "POST",
+          body: wav,
+          headers: {
+            "Content-Type": "audio/wav",
+            "x-audio-duration-ms": String(durationMs),
+            // Cleanup is tuned to turn speech into prose the user will read.
+            // This text is a machine instruction that nobody ever sees, so the
+            // raw transcript is both cheaper and closer to what was said.
+            "x-skip-post-process": "true",
+          },
+        });
+        if (!remixRef.current) return;
+        if (res.ok) {
+          const data = (await res.json()) as { raw?: string; cleaned?: string };
+          instruction = (data.raw || data.cleaned || "").trim();
+        }
+      } catch {
+        instruction = "";
       }
-    } catch {
-      instruction = "";
     }
 
     if (!remixRef.current) return;
@@ -2027,6 +2109,10 @@ export default function AppPage(): React.JSX.Element {
           return;
         }
         startListening(stream);
+        // The same stream feeds the streamer, which puts live partials on
+        // the card as the user speaks. Failure here is invisible — the
+        // recorder's WAV via REST remains the transcription of record.
+        void getRemixStreamer().startCapture(stream);
       })
       .catch(() => {
         // No mic is survivable — the preset list doesn't need one. Show the
@@ -2037,6 +2123,7 @@ export default function AppPage(): React.JSX.Element {
   }, [
     clearRemixHoldTimer,
     endRemix,
+    getRemixStreamer,
     patchRemix,
     setRemix,
     startBarAnimation,
@@ -2053,6 +2140,7 @@ export default function AppPage(): React.JSX.Element {
     if (heldMs < REMIX_HOLD_THRESHOLD_MS) {
       // A tap. Throw the fragment of audio away and open the chat card — the
       // ChatGPT-style input, with the presets as chips inside it.
+      remixStreamerRef.current?.cancel();
       openRemixChat(null);
       return;
     }
@@ -2357,6 +2445,8 @@ export default function AppPage(): React.JSX.Element {
           recorderRef.current.destroy();
           streamerRef.current?.destroy();
           streamerRef.current = null;
+          remixStreamerRef.current?.destroy();
+          remixStreamerRef.current = null;
         }
       }, 0);
     };
@@ -2639,15 +2729,14 @@ export default function AppPage(): React.JSX.Element {
   const remixView = remixViewRef.current;
   const remixOpen = showRemixCard && roomReady;
 
-  // "Busy" covers every phase in which the list is no longer the thing to
-  // look at — the user is either mid-sentence or waiting on the model.
-  // The card's headline. It is the microphone's line, so it says what the
-  // microphone is doing — and once a remix is running, what it is running,
-  // since by then the instruction is the only thing worth reading.
-  const remixLead =
+  // The transcript line: live partials while the user speaks, the final
+  // wording while the run spins up, and a quiet placeholder before the first
+  // word lands. A preset run has no transcript, so its label fills in.
+  const remixTranscript = remixView?.transcript?.trim() ?? "";
+  const remixHint =
     remixView?.phase === "running"
       ? (remixView.label ?? "Working…")
-      : "Say what you want to change";
+      : "Listening…";
 
   return (
     <div className="relative h-screen w-screen select-none overflow-hidden">
@@ -2750,51 +2839,39 @@ export default function AppPage(): React.JSX.Element {
             height: ${SVG_HEIGHT}px;
           }
 
-          .pill-remix-lead {
-            font-size: 12.5px;
-            font-weight: 500;
-            line-height: 1.25;
-            text-align: center;
-            color: rgba(245, 241, 228, 0.92);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-
-          /* The route legend. Quiet enough to sit under the line that
-             matters, and it collapses to nothing once a remix is running so
-             the card shrinks to just the work in progress. */
-          .pill-remix-routes {
+          /* The wordmark row: the wave mark and the name, centered. */
+          .pill-remix-brand {
             display: flex;
-            justify-content: center;
-            gap: 12px;
-            font-size: 11px;
-            line-height: 1;
-            color: rgba(245, 241, 228, 0.42);
-            transition: opacity 160ms ease;
-          }
-          .pill-remix-routes[data-hidden="true"] { opacity: 0; }
-          .pill-remix-route {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            white-space: nowrap;
-          }
-          /* The digit is drawn as the key it is, so the legend reads as
-             something to press rather than something to click. */
-          .pill-remix-route-key {
-            display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 14px;
-            height: 14px;
-            border-radius: 4px;
-            background: rgba(245, 241, 228, 0.11);
-            color: rgba(245, 241, 228, 0.62);
-            font-size: 9px;
+            gap: 6px;
+            font-size: 12.5px;
             font-weight: 600;
-            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.01em;
+            color: rgba(245, 241, 228, 0.92);
           }
+          .pill-remix-brand svg { color: rgba(245, 241, 228, 0.85); }
+
+          /* The live transcript. A single clipped line whose newest words
+             stay in view: while the text fits, the auto margin holds it to
+             the left edge; once it outgrows the card the margin collapses
+             and flex-end keeps the tail — the words being spoken now — in
+             view, ticker-style. The placeholder centers instead. */
+          .pill-remix-transcript {
+            display: flex;
+            justify-content: flex-end;
+            overflow: hidden;
+            min-height: 16px;
+            font-size: 11.5px;
+            line-height: 1.35;
+            color: rgba(245, 241, 228, 0.72);
+          }
+          .pill-remix-transcript span { white-space: nowrap; margin-right: auto; }
+          .pill-remix-transcript[data-empty="true"] {
+            justify-content: center;
+            color: rgba(245, 241, 228, 0.42);
+          }
+          .pill-remix-transcript[data-empty="true"] span { margin-right: 0; }
 
           /* The status mark's slot, opening from the capsule's right end the
              same way the cancel slot opens from its left. */
@@ -3322,28 +3399,40 @@ export default function AppPage(): React.JSX.Element {
                 </>
               ) : (
                 <div className="pill-remix-body" data-anchor={pillAlign}>
-                  {/* The routes, as a legend rather than controls: these are
-                      keys you press on the chord you are already holding, so
-                      what the card owes you is the number, not a target to
-                      click. It hides once a remix is under way — by then it
-                      is answering a question nobody is asking any more. */}
+                  {/* The wordmark: the card announces what it is, not what to
+                      do — the waveform and the transcript filling in below
+                      already say "speak". */}
                   <div
-                    className="pill-remix-routes pill-rise pill-rise-2"
-                    data-hidden={remixView?.phase === "running"}
+                    className="pill-remix-brand pill-rise pill-rise-1"
                     aria-hidden="true"
                   >
-                    {REMIX_PRESETS.map((preset, index) => (
-                      <span className="pill-remix-route" key={preset.id}>
-                        <span className="pill-remix-route-key">
-                          {index + 1}
-                        </span>
-                        {preset.label}
-                      </span>
-                    ))}
+                    <svg
+                      width={15}
+                      height={15}
+                      viewBox="0 0 100 100"
+                      aria-hidden="true"
+                    >
+                      <polyline
+                        points={FREESTYLE_MARK_POINTS}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={10}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    <span>Remix</span>
                   </div>
 
-                  <div className="pill-remix-lead pill-rise pill-rise-1">
-                    {remixLead}
+                  {/* The live transcript, streaming in as the user speaks.
+                      One line, newest words kept in view; the placeholder
+                      holds the line's height so the card doesn't jump when
+                      the first partial lands. */}
+                  <div
+                    className="pill-remix-transcript pill-rise pill-rise-2"
+                    data-empty={!remixTranscript}
+                  >
+                    <span>{remixTranscript || remixHint}</span>
                   </div>
 
                   {/* The waveform, at the size and the spot it occupies in the

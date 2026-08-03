@@ -405,15 +405,30 @@ export async function postProcessWithFreestyleCloud(opts: {
   appContext?: string | null;
   /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
   systemFragments?: string[];
+  /**
+   * Per-request cleanup overrides. The cloud reads the user's synced
+   * preferences from member_preferences and lets the payload win per-field,
+   * so dictation sends none of these — its preferences ARE the synced ones.
+   * Remix's fast lane is the exception: it replaces the whole prompt per
+   * request (`intensity: "custom"` + `customPrompt`, tones pinned off) and
+   * must not inherit whatever cleanup register the user dictates with.
+   */
+  languages?: string[];
+  intensity?: string;
+  customPrompt?: string;
+  personalTone?: string;
+  workTone?: string;
+  emailTone?: string;
+  overallTone?: string;
+  appAssignments?: unknown[];
 }): Promise<{
   cleaned: string;
   usage?: { inputTokens?: number; outputTokens?: number };
 }> {
-  // The cloud reads the user's synced cleanup preferences (intensity, custom
-  // prompt, tones, app assignments, languages) from the member_preferences row
-  // and assembles the prompt server-side, so this body carries only the text
-  // to clean plus request-scoped context: `appContext` and plugin-derived
-  // `systemFragments` (never synced).
+  // The cloud assembles the prompt server-side from the synced preferences,
+  // so the common body carries only the text plus request-scoped context
+  // (`appContext`, plugin-derived `systemFragments`). Override fields ride
+  // along only when a caller sets them.
   return cloudJson("/v2/post-process", opts.token, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -423,6 +438,14 @@ export async function postProcessWithFreestyleCloud(opts: {
       ...(opts.systemFragments && opts.systemFragments.length > 0
         ? { systemFragments: opts.systemFragments }
         : {}),
+      ...(opts.languages ? { languages: opts.languages } : {}),
+      ...(opts.intensity ? { intensity: opts.intensity } : {}),
+      ...(opts.customPrompt ? { customPrompt: opts.customPrompt } : {}),
+      ...(opts.personalTone ? { personalTone: opts.personalTone } : {}),
+      ...(opts.workTone ? { workTone: opts.workTone } : {}),
+      ...(opts.emailTone ? { emailTone: opts.emailTone } : {}),
+      ...(opts.overallTone ? { overallTone: opts.overallTone } : {}),
+      ...(opts.appAssignments ? { appAssignments: opts.appAssignments } : {}),
     }),
   });
 }

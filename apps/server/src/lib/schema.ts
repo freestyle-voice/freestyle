@@ -7,10 +7,11 @@ import { countFixes } from "./fixes.js";
 // and would otherwise perturb test module-mock ordering.
 const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 
-// v17/v18 are main's (host-keyed sessions, sync outbox); v19 is Remix. The
-// Remix migration briefly shipped on the prototype branch as v17 — the v19
-// block carries a repair pass for databases stamped by that version.
-const SCHEMA_VERSION = 19;
+// v17/v18 are main's (host-keyed sessions, sync outbox). v19 shipped twice —
+// as dismissed_notifications on main and as the Remix tables on the prototype
+// branch — so v20 is a single idempotent block that reconciles both lineages
+// (and repairs sessions for databases the prototype stamped early).
+const SCHEMA_VERSION = 20;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -563,17 +564,26 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     `);
   }
 
-  if (currentVersion < 19) {
-    // Repair pass: Remix prototype builds stamped the DB v17 with the block
-    // below BEFORE main's v17 (host-keyed sessions) existed, so that rebuild
-    // was skipped. Detect the old singleton shape and apply it now; the rest
-    // of this block is idempotent for those databases.
+  if (currentVersion < 20) {
+    // v19 exists in two lineages, which is why this block replaces a v19
+    // rather than sitting after one: main stamped 19 after adding
+    // dismissed_notifications (no Remix tables), while Remix prototype
+    // builds stamped 19 with the Remix tables (no dismissed_notifications —
+    // and, where the sessions repair mis-fired, still-singleton sessions).
+    // Every step is idempotent, so a database lands identical here no matter
+    // which lineage stamped it.
+
+    // Host-keyed sessions repair, for databases the prototype stamped past
+    // main's v17 without the rebuild. The old singleton table already
+    // carried a plain `host` column, so its presence is no signal — what
+    // the rebuild changes is `host` becoming the primary key.
     const sessionsCols = db.prepare("PRAGMA table_info(sessions)").all() as {
       name: string;
+      pk: number;
     }[];
     if (
       sessionsCols.length > 0 &&
-      !sessionsCols.some((col) => col.name === "host")
+      !sessionsCols.some((col) => col.name === "host" && col.pk > 0)
     ) {
       applyHostKeyedSessions(db);
     }

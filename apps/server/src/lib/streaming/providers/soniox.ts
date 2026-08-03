@@ -1,5 +1,6 @@
 import { normalizeLanguageList } from "@freestyle-voice/validations";
 import WebSocket from "ws";
+import { createPendingAudio } from "../pending-audio.js";
 import {
   sonioxContextFromBias,
   sonioxGeneralFromAppContext,
@@ -17,7 +18,6 @@ const SONIOX_WS_URL = "wss://stt-rt.soniox.com/transcribe-websocket";
 const COMMIT_TIMEOUT_MS = 8_000;
 const KEEPALIVE_INTERVAL_MS = 10_000;
 const FIN_TOKEN = "<fin>";
-const MAX_PENDING_CHUNKS = 1024;
 
 interface SonioxToken {
   text?: string;
@@ -166,7 +166,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
     let commitTimeout: ReturnType<typeof setTimeout> | null = null;
     let keepAlive: ReturnType<typeof setInterval> | null = null;
     let configured = false;
-    let pendingChunks: ArrayBuffer[] = [];
+    const pending = createPendingAudio();
 
     const ws = new WebSocket(SONIOX_WS_URL);
 
@@ -195,13 +195,6 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
       });
       ws.send(JSON.stringify(config));
       configured = true;
-    }
-
-    function flushPendingChunks(): void {
-      for (const chunk of pendingChunks) {
-        ws.send(Buffer.from(chunk));
-      }
-      pendingChunks = [];
     }
 
     function sendFinalize(): void {
@@ -264,7 +257,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
 
     ws.on("open", () => {
       sendConfig();
-      flushPendingChunks();
+      pending.flush((chunk) => ws.send(Buffer.from(chunk)));
       if (commitRequested) {
         sendFinalize();
       }
@@ -319,18 +312,16 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
     return {
       sendAudio(chunk: ArrayBuffer): void {
         if (finalizeSent || finalDelivered) return;
-        if (ws.readyState === WebSocket.CONNECTING) {
-          if (pendingChunks.length < MAX_PENDING_CHUNKS) {
-            pendingChunks.push(chunk);
-          }
+        if (ws.readyState === WebSocket.CONNECTING || !configured) {
+          pending.hold(chunk);
           return;
         }
-        if (ws.readyState !== WebSocket.OPEN || !configured) return;
+        if (ws.readyState !== WebSocket.OPEN) return;
         ws.send(Buffer.from(chunk));
       },
       reset(): void {
         clearCommitTimeout();
-        pendingChunks = [];
+        pending.clear();
         finalTokens.length = 0;
         nonFinalTokens = [];
         sourceFinalTokens.length = 0;
@@ -356,7 +347,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
       },
       cancel(): void {
         clearCommitTimeout();
-        pendingChunks = [];
+        pending.clear();
         finalTokens.length = 0;
         nonFinalTokens = [];
         sourceFinalTokens.length = 0;

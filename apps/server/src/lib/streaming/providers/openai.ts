@@ -4,6 +4,7 @@ import { sanitizeSttBaseUrl } from "@freestyle-voice/validations";
 import WebSocket from "ws";
 import { readSetting } from "../../db.js";
 import { createPcmUpsampler } from "../pcm.js";
+import { createPendingAudio } from "../pending-audio.js";
 import type {
   StreamingSessionOptions,
   StreamSession,
@@ -71,11 +72,22 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
       REALTIME_SAMPLE_RATE,
     );
 
+    const pending = createPendingAudio();
     const ws = new WebSocket(REALTIME_URL, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
       },
     });
+
+    /** One frame on the wire — shared so held and live audio encode alike. */
+    function sendAudioFrame(chunk: ArrayBuffer): void {
+      ws.send(
+        JSON.stringify({
+          type: "input_audio_buffer.append",
+          audio: Buffer.from(upsample(chunk)).toString("base64"),
+        }),
+      );
+    }
 
     ws.on("open", () => {
       const transcription: Record<string, unknown> = { model: short };
@@ -113,6 +125,10 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
         case "session.updated":
           if (!configured) {
             configured = true;
+            // Only now will OpenAI accept audio for this session, so the
+            // buffered start of the dictation goes out here rather than at
+            // `open` — before any live audio, and in order.
+            pending.flush(sendAudioFrame);
             callbacks.onReady(short);
           }
           return;
@@ -149,14 +165,12 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
 
     return {
       sendAudio(chunk: ArrayBuffer): void {
+        if (ws.readyState === WebSocket.CONNECTING || !configured) {
+          pending.hold(chunk);
+          return;
+        }
         if (ws.readyState !== WebSocket.OPEN) return;
-        const b64 = Buffer.from(upsample(chunk)).toString("base64");
-        ws.send(
-          JSON.stringify({
-            type: "input_audio_buffer.append",
-            audio: b64,
-          }),
-        );
+        sendAudioFrame(chunk);
       },
       commit(): void {
         finalDelivered = false;
@@ -172,6 +186,7 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
         }, COMMIT_TIMEOUT_MS);
       },
       reset(): void {
+        pending.clear();
         clearCommitTimeout();
         partialText = "";
         finalDelivered = false;
@@ -180,6 +195,7 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
         }
       },
       cancel(): void {
+        pending.clear();
         clearCommitTimeout();
         partialText = "";
         finalDelivered = false;

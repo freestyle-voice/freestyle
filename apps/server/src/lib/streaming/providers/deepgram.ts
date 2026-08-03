@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { createPendingAudio } from "../pending-audio.js";
 import { mergeFinalSegment, previewText } from "../segments.js";
 import {
   appendDeepgramBiasToParams,
@@ -79,6 +80,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
     const ws = new WebSocket(`${DEEPGRAM_LISTEN_URL}?${params}`, {
       headers: { Authorization: `Token ${apiKey}` },
     });
+    const pending = createPendingAudio();
 
     function deliverFinal(): void {
       if (finalDelivered) return;
@@ -92,6 +94,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
     }
 
     ws.on("open", () => {
+      pending.flush((chunk) => ws.send(chunk));
       keepAlive = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "KeepAlive" }));
@@ -146,10 +149,15 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
 
     return {
       sendAudio(chunk: ArrayBuffer): void {
+        if (ws.readyState === WebSocket.CONNECTING) {
+          pending.hold(chunk);
+          return;
+        }
         if (ws.readyState !== WebSocket.OPEN) return;
         ws.send(chunk);
       },
       reset(): void {
+        pending.clear();
         clearCommitTimeout();
         accumulatedText = "";
         partialText = "";
@@ -173,6 +181,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
         // CloseStream — that closes the socket server-side and makes the route
         // reconnect. Just drop the in-flight transcript and leave the socket
         // open for the next recording. close() is used for real teardown.
+        pending.clear();
         clearCommitTimeout();
         accumulatedText = "";
         partialText = "";

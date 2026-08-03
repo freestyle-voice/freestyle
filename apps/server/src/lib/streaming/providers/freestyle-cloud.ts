@@ -5,6 +5,7 @@ import {
   freestyleCloudStreamWsUrl,
   transcribeWithFreestyleCloud,
 } from "../../freestyle-cloud.js";
+import { createPendingAudio } from "../pending-audio.js";
 import type {
   StreamingSessionOptions,
   StreamSession,
@@ -112,6 +113,7 @@ export class FreestyleCloudTranscriptionProvider
 
     let configured = false;
     let closed = false;
+    const pending = createPendingAudio();
     // Track context and audio duration so we can forward them with commit.
     // The stream route updates these via context messages and the commit payload.
     let currentContext: string | null = appContext ?? null;
@@ -121,6 +123,7 @@ export class FreestyleCloudTranscriptionProvider
       configured = true;
       // Send a start message to the DO to open the upstream Soniox session.
       ws.send(JSON.stringify(buildStartMessage()));
+      pending.flush((chunk) => ws.send(Buffer.from(chunk)));
     });
 
     ws.on("message", (raw) => {
@@ -169,7 +172,11 @@ export class FreestyleCloudTranscriptionProvider
 
     return {
       sendAudio(chunk: ArrayBuffer): void {
-        if (ws.readyState !== WebSocket.OPEN || !configured) return;
+        if (ws.readyState === WebSocket.CONNECTING || !configured) {
+          pending.hold(chunk);
+          return;
+        }
+        if (ws.readyState !== WebSocket.OPEN) return;
         ws.send(Buffer.from(chunk));
       },
 
@@ -178,6 +185,8 @@ export class FreestyleCloudTranscriptionProvider
         // which will close the old upstream and open a fresh one.
         currentAudioDurationMs = 0;
         currentContext = null;
+        // Held audio belongs to the recording that just ended.
+        pending.clear();
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify(buildStartMessage()));
         }
@@ -208,6 +217,7 @@ export class FreestyleCloudTranscriptionProvider
       },
 
       cancel(): void {
+        pending.clear();
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "cancel" }));
         }

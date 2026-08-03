@@ -11,7 +11,7 @@ import { createRoot } from "react-dom/client";
  * to the dock" — an instant trigger would make the bottom edge of the screen
  * a tripwire.
  */
-const HOVER_DWELL_MS = 350;
+const HOVER_DWELL_MS = 150;
 
 function RemixBar(): React.JSX.Element {
   const [hot, setHot] = useState(false);
@@ -73,7 +73,9 @@ function RemixBar(): React.JSX.Element {
           border-radius: 999px;
           background: rgba(245, 241, 228, 0.28);
           box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
-          transition: width 160ms ease, height 160ms ease, background 160ms ease;
+          transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+            height 220ms cubic-bezier(0.22, 1, 0.36, 1),
+            background 220ms ease;
         }
         .bar-hit[data-hot="true"] .bar-strip {
           width: 96px;

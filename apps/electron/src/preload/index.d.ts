@@ -35,7 +35,7 @@ declare global {
       hidePill: () => void;
       setPillExpanded: (
         expanded: boolean,
-        expansion?: "card" | "remix" | "remix-chat",
+        expansion?: "card" | "remix" | "remix-chat" | "remix-mini",
       ) => void;
       showErrorDialog: (title: string, message: string) => Promise<void>;
       getServerPort: () => Promise<number>;

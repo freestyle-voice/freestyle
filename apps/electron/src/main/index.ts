@@ -220,10 +220,16 @@ const PILL_REMIX_HEIGHT = 128;
  * scrollable thread plus a text input. Tall enough to read a conversation,
  * still small enough to sit over a corner of the screen.
  */
-const PILL_CHAT_WIDTH = 340;
-const PILL_CHAT_HEIGHT = 420;
+const PILL_CHAT_WIDTH = 440;
+const PILL_CHAT_HEIGHT = 600;
+/**
+ * The minimized chat: a one-line strip that shows what the agent is doing
+ * while it works. Hovering it grows the window to the full chat size.
+ */
+const PILL_CHAT_MINI_WIDTH = 360;
+const PILL_CHAT_MINI_HEIGHT = 68;
 
-type PillExpansion = "card" | "remix" | "remix-chat";
+type PillExpansion = "card" | "remix" | "remix-chat" | "remix-mini";
 
 function pillExpansionSize(expansion: PillExpansion): {
   width: number;
@@ -231,6 +237,9 @@ function pillExpansionSize(expansion: PillExpansion): {
 } {
   if (expansion === "remix-chat") {
     return { width: PILL_CHAT_WIDTH, height: PILL_CHAT_HEIGHT };
+  }
+  if (expansion === "remix-mini") {
+    return { width: PILL_CHAT_MINI_WIDTH, height: PILL_CHAT_MINI_HEIGHT };
   }
   return {
     width: PILL_CARD_WIDTH,
@@ -2162,7 +2171,9 @@ app.whenReady().then(async () => {
     (_event, expanded: boolean, expansion?: unknown) => {
       setPillExpanded(
         expanded === true,
-        expansion === "remix" || expansion === "remix-chat"
+        expansion === "remix" ||
+          expansion === "remix-chat" ||
+          expansion === "remix-mini"
           ? expansion
           : "card",
       );

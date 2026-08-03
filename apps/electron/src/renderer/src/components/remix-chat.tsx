@@ -3,20 +3,29 @@ import { REMIX_PRESETS, type RemixPreset } from "@freestyle-voice/validations";
 import { apiFetch } from "@renderer/lib/api";
 import {
   DefaultChatTransport,
+  type DynamicToolUIPart,
   getToolOrDynamicToolName,
   isTextUIPart,
   isToolOrDynamicToolUIPart,
   lastAssistantMessageIsCompleteWithToolCalls,
+  type ToolUIPart,
   type UIMessage,
 } from "ai";
 import type React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { RemixSelectionPayload } from "../../../shared/remix";
 
 /**
  * The agent-lane chat card. Lives inside the pill's card surface; the thread
  * itself lives in the local server's SQLite (the cloud stores nothing), so
  * closing the card loses nothing — the next message rejoins the thread.
+ *
+ * The card has two faces. Minimized, it is a one-line strip that narrates the
+ * most recent thing the agent did — voice runs live here, doing their work
+ * without opening a window. Hovering the strip grows it into the full
+ * conversation; the pointer leaving the conversation shrinks it back.
  */
 
 const INK = "rgba(245, 241, 228, 0.92)";
@@ -34,12 +43,23 @@ export interface RemixChatProps {
   context: RemixSelectionPayload;
   /** A spoken or typed instruction to send as soon as the thread is ready. */
   initialInstruction: string | null;
+  /** Collapsed to the one-line activity strip. */
+  minimized: boolean;
+  onExpand: () => void;
+  onMinimize: () => void;
   onClose: () => void;
 }
 
 export function RemixChat(props: RemixChatProps): React.JSX.Element {
   const [thread, setThread] = useState<ThreadState | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
+  // Held as state, not read from props, so "New" can clear it: the thread
+  // component remounts per thread, and a remount that still saw the opening
+  // instruction would send it again — into the thread that was supposed to
+  // be empty.
+  const [initialInstruction, setInitialInstruction] = useState(
+    props.initialInstruction,
+  );
 
   // The chat input needs the keyboard, and the pill window is focusable:false
   // by design — focusability follows the card exactly.
@@ -64,7 +84,18 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
     };
   }, []);
 
+  // A failure strip nobody hovers closes itself like the idle strip does —
+  // the corner goes back to the bar instead of holding an error nobody read.
+  useEffect(() => {
+    if (!loadFailed || !props.minimized) return;
+    const timer = setTimeout(props.onClose, MINI_IDLE_DISMISS_MS);
+    return () => clearTimeout(timer);
+  }, [loadFailed, props.minimized, props.onClose]);
+
   const startNewThread = useCallback(() => {
+    // A new thread starts from nothing: no carried-over instruction, no
+    // in-flight run (the New button stops the stream before calling this).
+    setInitialInstruction(null);
     setThread(null);
     apiFetch("/api/remix/thread/new", { method: "POST" })
       .then(async (res) => {
@@ -75,15 +106,23 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
   }, []);
 
   if (loadFailed) {
+    if (props.minimized) {
+      return <MiniStrip text="Remix couldn't open" onEnter={props.onExpand} />;
+    }
     return (
-      <div style={{ padding: 14, fontSize: 12, color: INK_DIM }}>
+      <div style={{ padding: 14, fontSize: 12.5, color: INK_DIM }}>
+        <style>{REMIX_CHAT_CSS}</style>
         Couldn't open Remix. Is the Freestyle server running?
       </div>
     );
   }
   if (!thread) {
+    if (props.minimized) {
+      return <MiniStrip text="Opening Remix…" busy onEnter={props.onExpand} />;
+    }
     return (
-      <div style={{ padding: 14, fontSize: 12, color: INK_FAINT }}>
+      <div style={{ padding: 14, fontSize: 12.5, color: INK_FAINT }}>
+        <style>{REMIX_CHAT_CSS}</style>
         Opening Remix…
       </div>
     );
@@ -93,10 +132,43 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
       key={thread.threadId}
       thread={thread}
       context={props.context}
-      initialInstruction={props.initialInstruction}
+      initialInstruction={initialInstruction}
+      minimized={props.minimized}
+      onExpand={props.onExpand}
+      onMinimize={props.onMinimize}
       onClose={props.onClose}
       onNewThread={startNewThread}
     />
+  );
+}
+
+/** The one-line face, shared by the thread and the pre-thread states. */
+function MiniStrip(props: {
+  text: string;
+  busy?: boolean;
+  failed?: boolean;
+  onEnter?: () => void;
+}): React.JSX.Element {
+  return (
+    // Hover is a shortcut, not the only way in: the strip expands from the
+    // hotkey and the bar too, so a pointer-only affordance here excludes
+    // nobody.
+    // biome-ignore lint/a11y/noStaticElementInteractions: see above
+    <div
+      className="remix-chat"
+      data-testid="remix-chat-mini"
+      onMouseEnter={props.onEnter}
+    >
+      <style>{REMIX_CHAT_CSS}</style>
+      <div className="remix-mini">
+        <span
+          className="remix-mini-dot"
+          data-busy={props.busy === true}
+          data-failed={props.failed === true}
+        />
+        <span className="remix-mini-text">{props.text}</span>
+      </div>
+    </div>
   );
 }
 
@@ -104,6 +176,9 @@ interface RemixThreadProps {
   thread: ThreadState;
   context: RemixSelectionPayload;
   initialInstruction: string | null;
+  minimized: boolean;
+  onExpand: () => void;
+  onMinimize: () => void;
   onClose: () => void;
   onNewThread: () => void;
 }
@@ -123,28 +198,30 @@ const QUICK_ACTIONS = [
   { label: "Try again", text: "Try that again — take a different approach." },
 ] as const;
 
+/** How long the pointer can be gone before the conversation folds back up. */
+const MINIMIZE_GRACE_MS = 380;
+
+/**
+ * How long the idle strip lingers un-hovered before the whole session closes
+ * and the corner goes back to the bar. Long enough to read the result line,
+ * short enough that the strip never becomes furniture.
+ */
+const MINI_IDLE_DISMISS_MS = 7000;
+
 function RemixThread(props: RemixThreadProps): React.JSX.Element {
-  const { thread } = props;
+  const { thread, minimized, onExpand, onMinimize, onClose } = props;
   const [input, setInput] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [actions, setActions] = useState<ActionRow[]>([]);
   const actionSeqRef = useRef(0);
-  // The context chip can hide the selection from the agent without losing it.
-  const [includeSelection, setIncludeSelection] = useState(true);
-  const includeSelectionRef = useRef(true);
-  includeSelectionRef.current = includeSelection;
-  // Same for the clipboard preview.
-  const [includeClipboard, setIncludeClipboard] = useState(true);
-  const includeClipboardRef = useRef(true);
-  includeClipboardRef.current = includeClipboard;
 
   // The context the next request rides on. Starts as the hotkey capture and
   // follows the prop when a capture lands after the card is already open (bar
   // hover, late selection copy); typed follow-ups re-capture so the agent
   // sees the document as it is now.
   const contextRef = useRef<RemixSelectionPayload>(props.context);
-  // Mirrored into state so the context chips track every refresh, not just
-  // the capture that opened the card.
+  // Mirrored into state so the empty-state copy and the preset guard track
+  // every refresh, not just the capture that opened the card.
   const [liveContext, setLiveContext] = useState<RemixSelectionPayload>(
     props.context,
   );
@@ -185,17 +262,11 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           body: {
             messages,
             context: {
-              selection: includeSelectionRef.current
-                ? contextRef.current.text
-                : null,
+              selection: contextRef.current.text,
               appName: contextRef.current.appName,
               windowTitle: contextRef.current.windowTitle,
-              clipboard: includeClipboardRef.current
-                ? (contextRef.current.clipboard ?? null)
-                : null,
-              clipboardLength: includeClipboardRef.current
-                ? (contextRef.current.clipboardLength ?? 0)
-                : 0,
+              clipboard: contextRef.current.clipboard ?? null,
+              clipboardLength: contextRef.current.clipboardLength ?? 0,
               capturedAt: contextRef.current.capturedAt,
             },
           },
@@ -350,11 +421,59 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     }
   }, [props.initialInstruction, sendMessage]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll to the newest content whenever the thread grows or streaming starts
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll to the newest content whenever the thread grows, streaming starts, or the strip expands
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, busy]);
+  }, [messages, busy, minimized]);
+
+  // ---- Minimize on leave, expand on hover ----
+  // Leave detection listens at the document level for the pointer exiting
+  // the window (`mouseout` with no relatedTarget) rather than for mouseleave
+  // on the card: rows appear and disappear under the cursor while the agent
+  // works, and element-level leave events get lost across those reflows. The
+  // grace timer separates "left the card" from "grazed its edge", and a
+  // half-typed draft pins the card open — folding it up would take the
+  // keyboard away mid-thought.
+  const minimizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearMinimizeTimer = useCallback(() => {
+    if (minimizeTimerRef.current) {
+      clearTimeout(minimizeTimerRef.current);
+      minimizeTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => clearMinimizeTimer, [clearMinimizeTimer]);
+  const handleMouseEnter = useCallback(() => {
+    clearMinimizeTimer();
+    if (minimized) onExpand();
+  }, [clearMinimizeTimer, minimized, onExpand]);
+  useEffect(() => {
+    if (minimized) return;
+    const handleOut = (event: MouseEvent): void => {
+      if (event.relatedTarget) return;
+      if (inputRef.current?.value.trim()) return;
+      clearMinimizeTimer();
+      minimizeTimerRef.current = setTimeout(() => {
+        minimizeTimerRef.current = null;
+        onMinimize();
+      }, MINIMIZE_GRACE_MS);
+    };
+    const handleOver = (): void => clearMinimizeTimer();
+    document.addEventListener("mouseout", handleOut);
+    document.addEventListener("mouseover", handleOver);
+    return () => {
+      document.removeEventListener("mouseout", handleOut);
+      document.removeEventListener("mouseover", handleOver);
+    };
+  }, [minimized, onMinimize, clearMinimizeTimer]);
+
+  // The strip doesn't outstay its welcome: once the run has settled, a few
+  // seconds without a hover and it hands the corner back to the bar.
+  useEffect(() => {
+    if (!minimized || busy) return;
+    const timer = setTimeout(onClose, MINI_IDLE_DISMISS_MS);
+    return () => clearTimeout(timer);
+  }, [minimized, busy, onClose]);
 
   /**
    * Re-read the live highlight so EVERY user-initiated request carries the
@@ -403,6 +522,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     const text = input.trim();
     if (!text || busy) return;
     setInput("");
+    const el = inputRef.current;
+    if (el) el.style.height = "auto";
     void sendText(text);
   }, [busy, input, sendText]);
 
@@ -474,8 +595,42 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     [actions, busy, refreshContext],
   );
 
+  if (minimized) {
+    return (
+      // Hover is a shortcut, not the only way in: the strip expands from the
+      // hotkey and the bar too, so a pointer-only affordance here excludes
+      // nobody.
+      // biome-ignore lint/a11y/noStaticElementInteractions: see above
+      <div
+        className="remix-chat"
+        data-testid="remix-chat-mini"
+        onMouseEnter={handleMouseEnter}
+      >
+        <style>{REMIX_CHAT_CSS}</style>
+        <div className="remix-mini">
+          <span
+            className="remix-mini-dot"
+            data-busy={busy}
+            data-failed={notice !== null}
+          />
+          <span className="remix-mini-text">
+            {notice ?? latestActivity(messages, busy)}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="remix-chat" data-testid="remix-chat">
+    // The handler only cancels the minimize choreography — every control
+    // inside is a real button or input with its own keyboard path, and Esc
+    // closes the card outright.
+    // biome-ignore lint/a11y/noStaticElementInteractions: see above
+    <div
+      className="remix-chat"
+      data-testid="remix-chat"
+      onMouseEnter={handleMouseEnter}
+    >
       <style>{REMIX_CHAT_CSS}</style>
 
       <div className="remix-chat-head">
@@ -489,7 +644,12 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           <button
             type="button"
             className="remix-chat-ghost"
-            onClick={props.onNewThread}
+            onClick={() => {
+              // A new thread means a clean slate: whatever the agent was in
+              // the middle of dies with the old one.
+              stop();
+              props.onNewThread();
+            }}
             title="Start a new thread"
           >
             New
@@ -497,62 +657,15 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           <button
             type="button"
             className="remix-chat-ghost"
-            onClick={props.onClose}
+            onClick={() => {
+              stop();
+              onClose();
+            }}
             title="Close (Esc)"
           >
             Close
           </button>
         </span>
-      </div>
-
-      {/* What the agent can see this turn — the transparency surface. The
-          selection chip is a toggle: click it and the selection stays local. */}
-      <div className="remix-chat-context">
-        {liveContext.appName && (
-          <span
-            className="remix-chat-chip"
-            title={liveContext.windowTitle ?? undefined}
-          >
-            {liveContext.appName}
-          </span>
-        )}
-        {liveContext.text ? (
-          <button
-            type="button"
-            className="remix-chat-chip remix-chat-chip-toggle"
-            data-off={!includeSelection}
-            onClick={() => setIncludeSelection((v) => !v)}
-            title={
-              includeSelection
-                ? "The agent can see your selection. Click to hide it."
-                : "Hidden from the agent. Click to share it."
-            }
-          >
-            Selection · {liveContext.text.length.toLocaleString()} chars
-            {includeSelection ? "" : " · hidden"}
-          </button>
-        ) : (
-          <span className="remix-chat-chip" data-dim="true">
-            No selection
-          </span>
-        )}
-        {liveContext.clipboard ? (
-          <button
-            type="button"
-            className="remix-chat-chip remix-chat-chip-toggle"
-            data-off={!includeClipboard}
-            onClick={() => setIncludeClipboard((v) => !v)}
-            title={
-              includeClipboard
-                ? "The agent can see a preview of your clipboard. Click to hide it."
-                : "Hidden from the agent. Click to share it."
-            }
-          >
-            Clipboard · {(liveContext.clipboardLength ?? 0).toLocaleString()}{" "}
-            chars
-            {includeClipboard ? "" : " · hidden"}
-          </button>
-        ) : null}
       </div>
 
       {thread.resumed && messages.length > 0 && (
@@ -570,7 +683,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         {actions.map((action) => (
           <div
             key={action.id}
-            className="remix-chat-tool"
+            className="remix-chat-action"
             data-failed={action.status === "failed"}
           >
             {action.status === "running"
@@ -596,7 +709,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             <button
               key={preset.id}
               type="button"
-              className="remix-chat-chip remix-chat-chip-action"
+              className="remix-chat-chip"
               onClick={() => void runPreset(preset)}
             >
               {preset.label}
@@ -609,7 +722,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             <button
               key={action.label}
               type="button"
-              className="remix-chat-chip remix-chat-chip-action"
+              className="remix-chat-chip"
               onClick={() => void sendText(action.text)}
             >
               {action.label}
@@ -624,8 +737,13 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           className="remix-chat-input"
           rows={1}
           value={input}
-          placeholder={busy ? "Working…" : "Ask Remix…"}
-          onChange={(e) => setInput(e.target.value)}
+          placeholder={busy ? "Working…" : "Message Remix…"}
+          onChange={(e) => {
+            setInput(e.target.value);
+            const el = e.currentTarget;
+            el.style.height = "auto";
+            el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -633,7 +751,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             }
             if (e.key === "Escape") {
               e.preventDefault();
-              props.onClose();
+              stop();
+              onClose();
             }
           }}
         />
@@ -642,8 +761,12 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             type="button"
             className="remix-chat-send"
             onClick={() => stop()}
+            aria-label="Stop"
+            title="Stop"
           >
-            Stop
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <rect x="1.5" y="1.5" width="9" height="9" rx="2" />
+            </svg>
           </button>
         ) : (
           <button
@@ -651,8 +774,19 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             className="remix-chat-send"
             disabled={!input.trim()}
             onClick={() => void submit()}
+            aria-label="Send"
+            title="Send"
           >
-            Send
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M8 12.8V3.6M4.1 7.4 8 3.5l3.9 3.9"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
         )}
       </div>
@@ -699,6 +833,38 @@ const TOOL_LABELS: Record<string, { doing: string; done: string }> = {
   image_search: { doing: "Searching images…", done: "Searched images" },
 };
 
+/**
+ * The strip's single line: the most recent thing worth narrating, scanning
+ * the newest message backwards — a tool call in flight, a tool call landed,
+ * or the latest streamed text.
+ */
+function latestActivity(messages: UIMessage[], busy: boolean): string {
+  for (let m = messages.length - 1; m >= 0; m--) {
+    const message = messages[m];
+    for (let i = message.parts.length - 1; i >= 0; i--) {
+      const part = message.parts[i];
+      if (isToolOrDynamicToolUIPart(part)) {
+        const name = getToolOrDynamicToolName(part);
+        const labels = TOOL_LABELS[name] ?? {
+          doing: `Running ${name}…`,
+          done: `Ran ${name}`,
+        };
+        const finished =
+          part.state === "output-available" || part.state === "output-error";
+        return finished && !busy ? labels.done : labels.doing;
+      }
+      if (isTextUIPart(part) && part.text.trim()) {
+        const line = part.text.trim().split("\n")[0] ?? "";
+        // The user's own words aren't news to them — while the agent is
+        // getting started they read better as what it is chewing on.
+        if (message.role === "user") return busy ? "Thinking…" : `“${line}”`;
+        return line;
+      }
+    }
+  }
+  return busy ? "Thinking…" : "Freestyle Remix";
+}
+
 function MessageRow({ message }: { message: UIMessage }): React.JSX.Element {
   if (message.role === "user") {
     const text = message.parts
@@ -713,36 +879,125 @@ function MessageRow({ message }: { message: UIMessage }): React.JSX.Element {
         if (isTextUIPart(part)) {
           return part.text.trim() ? (
             // eslint-disable-next-line react/no-array-index-key
-            <div key={index} className="remix-chat-text">
-              {part.text}
-            </div>
+            <Markdown key={index} text={part.text} />
           ) : null;
         }
         if (isToolOrDynamicToolUIPart(part)) {
-          const name = getToolOrDynamicToolName(part);
-          const labels = TOOL_LABELS[name] ?? {
-            doing: `Running ${name}…`,
-            done: name,
-          };
-          const finished =
-            part.state === "output-available" || part.state === "output-error";
-          const output =
-            part.state === "output-available" &&
-            typeof part.output === "object" &&
-            part.output !== null
-              ? (part.output as { ok?: boolean })
-              : null;
-          const failed = part.state === "output-error" || output?.ok === false;
-          return (
-            // eslint-disable-next-line react/no-array-index-key
-            <div key={index} className="remix-chat-tool" data-failed={failed}>
-              {finished ? labels.done : labels.doing}
-              {failed ? " — didn't work" : ""}
-            </div>
-          );
+          return <ToolRow key={part.toolCallId} part={part} />;
         }
         return null;
       })}
+    </div>
+  );
+}
+
+const Markdown = memo(function Markdown({
+  text,
+}: {
+  text: string;
+}): React.JSX.Element {
+  return (
+    <div className="remix-md">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          // Chat links open in the real browser (the window's open handler
+          // routes target=_blank there) instead of navigating the pill.
+          a: ({ children, href }) => (
+            <a href={href} target="_blank" rel="noreferrer">
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
+});
+
+/** Render a tool payload for the expanded row. */
+function pretty(value: unknown): string {
+  if (value === undefined || value === null) return "—";
+  try {
+    const text =
+      typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    return text.length > 2400 ? `${text.slice(0, 2400)}…` : text;
+  } catch {
+    return String(value);
+  }
+}
+
+/**
+ * A tool call in the thread: one quiet line, expandable to the raw input and
+ * output for anyone who wants to see exactly what the agent did.
+ */
+function ToolRow({
+  part,
+}: {
+  part: ToolUIPart | DynamicToolUIPart;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const name = getToolOrDynamicToolName(part);
+  const labels = TOOL_LABELS[name] ?? {
+    doing: `Running ${name}…`,
+    done: name,
+  };
+  const finished =
+    part.state === "output-available" || part.state === "output-error";
+  const output =
+    part.state === "output-available" &&
+    typeof part.output === "object" &&
+    part.output !== null
+      ? (part.output as { ok?: boolean })
+      : null;
+  const failed = part.state === "output-error" || output?.ok === false;
+  return (
+    <div className="remix-chat-tool" data-failed={failed}>
+      <button
+        type="button"
+        className="remix-chat-tool-head"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <svg
+          className="remix-chat-tool-chevron"
+          data-open={open}
+          width="8"
+          height="8"
+          viewBox="0 0 8 8"
+          aria-hidden="true"
+        >
+          <path
+            d="M2.5 1.5 5.5 4 2.5 6.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="remix-chat-tool-label">
+          {finished ? labels.done : labels.doing}
+          {failed ? " — didn't work" : ""}
+        </span>
+      </button>
+      {open && (
+        <div className="remix-chat-tool-body">
+          <div className="remix-chat-tool-key">Input</div>
+          <pre className="remix-chat-tool-pre">{pretty(part.input)}</pre>
+          {finished && (
+            <>
+              <div className="remix-chat-tool-key">Output</div>
+              <pre className="remix-chat-tool-pre">
+                {pretty(
+                  part.state === "output-error" ? part.errorText : part.output,
+                )}
+              </pre>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -753,19 +1008,58 @@ const REMIX_CHAT_CSS = `
     flex-direction: column;
     height: 100%;
     min-height: 0;
-    font-size: 12px;
+    font-size: 12.5px;
     color: ${INK};
   }
+
+  /* ---- The minimized strip ---- */
+  .remix-mini {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    height: 100%;
+    padding: 0 16px;
+  }
+  .remix-mini-dot {
+    flex-shrink: 0;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: rgba(245, 241, 228, 0.45);
+  }
+  .remix-mini-dot[data-busy="true"] {
+    background: #F5F1E4;
+    animation: remix-mini-pulse 1.1s ease-in-out infinite;
+  }
+  .remix-mini-dot[data-failed="true"] { background: rgba(224, 128, 95, 0.9); }
+  @keyframes remix-mini-pulse {
+    0%, 100% { opacity: 0.35; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+  .remix-mini-text {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: ${INK_DIM};
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ---- The full conversation ---- */
+  /* No drag region here: Electron routes pointer events over a drag region
+     to the window manager, so a cursor leaving the card across a draggable
+     header would never fire the leave events the minimize choreography
+     depends on. */
   .remix-chat-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 2px 2px 8px;
-    -webkit-app-region: drag;
+    padding: 2px 2px 10px;
   }
-  .remix-chat-title { font-weight: 600; font-size: 12.5px; }
+  .remix-chat-title { font-weight: 600; font-size: 13px; }
   .remix-chat-app { color: ${INK_FAINT}; font-weight: 400; }
-  .remix-chat-actions { display: flex; gap: 6px; -webkit-app-region: no-drag; }
+  .remix-chat-actions { display: flex; gap: 6px; }
   .remix-chat-ghost {
     border: none;
     background: rgba(245, 241, 228, 0.09);
@@ -781,44 +1075,28 @@ const REMIX_CHAT_CSS = `
     color: ${INK_FAINT};
     padding: 0 2px 6px;
   }
-  .remix-chat-context {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    padding: 0 2px 7px;
-  }
   .remix-chat-chip {
     display: inline-flex;
     align-items: center;
     border: 1px solid rgba(245, 241, 228, 0.13);
-    background: rgba(245, 241, 228, 0.05);
-    color: ${INK_DIM};
-    font-size: 10.5px;
+    background: rgba(245, 241, 228, 0.07);
+    color: ${INK};
+    font-size: 11px;
     line-height: 1;
-    padding: 4px 8px;
+    padding: 5px 10px;
     border-radius: 999px;
     max-width: 180px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  .remix-chat-chip[data-dim="true"] { color: ${INK_FAINT}; }
-  .remix-chat-chip-toggle { cursor: pointer; }
-  .remix-chat-chip-toggle[data-off="true"] {
-    color: ${INK_FAINT};
-    border-style: dashed;
-  }
-  .remix-chat-chip-action {
     cursor: pointer;
-    color: ${INK};
-    background: rgba(245, 241, 228, 0.09);
   }
-  .remix-chat-chip-action:hover { background: rgba(245, 241, 228, 0.16); }
+  .remix-chat-chip:hover { background: rgba(245, 241, 228, 0.15); }
   .remix-chat-quick {
     display: flex;
     flex-wrap: wrap;
     gap: 5px;
-    padding: 7px 2px 0;
+    padding: 8px 2px 0;
   }
   .remix-chat-scroll {
     flex: 1;
@@ -826,35 +1104,87 @@ const REMIX_CHAT_CSS = `
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
     padding: 2px;
   }
-  .remix-chat-empty { color: ${INK_FAINT}; padding-top: 8px; line-height: 1.4; }
+  .remix-chat-empty { color: ${INK_FAINT}; padding-top: 8px; line-height: 1.45; }
   .remix-chat-user {
     align-self: flex-end;
     max-width: 85%;
     background: rgba(245, 241, 228, 0.13);
-    border-radius: 12px 12px 3px 12px;
-    padding: 6px 10px;
-    line-height: 1.4;
+    border-radius: 14px 14px 4px 14px;
+    padding: 7px 11px;
+    line-height: 1.45;
     white-space: pre-wrap;
     word-break: break-word;
   }
   .remix-chat-assistant {
     align-self: flex-start;
-    max-width: 92%;
+    max-width: 94%;
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 6px;
   }
-  .remix-chat-text { line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+
+  /* ---- Tool rows ---- */
   .remix-chat-tool {
+    border-left: 2px solid rgba(245, 241, 228, 0.18);
+    padding-left: 7px;
+  }
+  .remix-chat-tool[data-failed="true"] { border-left-color: rgba(224, 128, 95, 0.55); }
+  .remix-chat-tool-head {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    background: none;
+    padding: 0;
+    font-size: 11px;
+    color: ${INK_FAINT};
+    cursor: pointer;
+    text-align: left;
+  }
+  .remix-chat-tool-head:hover { color: ${INK_DIM}; }
+  .remix-chat-tool[data-failed="true"] .remix-chat-tool-head {
+    color: rgba(224, 128, 95, 0.85);
+  }
+  .remix-chat-tool-chevron {
+    flex-shrink: 0;
+    transition: transform 140ms ease;
+  }
+  .remix-chat-tool-chevron[data-open="true"] { transform: rotate(90deg); }
+  .remix-chat-tool-body { padding: 5px 0 2px; }
+  .remix-chat-tool-key {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: ${INK_FAINT};
+    padding: 3px 0 2px;
+  }
+  .remix-chat-tool-pre {
+    margin: 0;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(245, 241, 228, 0.08);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+    line-height: 1.45;
+    color: ${INK_DIM};
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 140px;
+    overflow-y: auto;
+  }
+
+  .remix-chat-action {
     font-size: 11px;
     color: ${INK_FAINT};
     border-left: 2px solid rgba(245, 241, 228, 0.18);
     padding-left: 7px;
   }
-  .remix-chat-tool[data-failed="true"] { color: rgba(224, 128, 95, 0.85); }
+  .remix-chat-action[data-failed="true"] { color: rgba(224, 128, 95, 0.85); }
   .remix-chat-busy { color: ${INK_FAINT}; font-size: 11px; }
   .remix-chat-notice {
     font-size: 11px;
@@ -862,37 +1192,116 @@ const REMIX_CHAT_CSS = `
     padding: 6px 2px 0;
     line-height: 1.35;
   }
+
+  /* ---- Markdown ---- */
+  .remix-md { line-height: 1.5; word-break: break-word; }
+  .remix-md > *:first-child { margin-top: 0; }
+  .remix-md > *:last-child { margin-bottom: 0; }
+  .remix-md p { margin: 0 0 8px; }
+  .remix-md h1, .remix-md h2, .remix-md h3, .remix-md h4 {
+    margin: 12px 0 6px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: ${INK};
+  }
+  .remix-md h1 { font-size: 14.5px; }
+  .remix-md h2 { font-size: 13.5px; }
+  .remix-md h3, .remix-md h4 { font-size: 12.5px; }
+  .remix-md ul, .remix-md ol { margin: 0 0 8px; padding-left: 18px; }
+  .remix-md li { margin: 2px 0; }
+  .remix-md li > ul, .remix-md li > ol { margin-bottom: 0; }
+  .remix-md a { color: #9CC2E8; text-decoration: underline; text-underline-offset: 2px; }
+  .remix-md a:hover { color: #BAD6F2; }
+  .remix-md strong { font-weight: 600; color: ${INK}; }
+  .remix-md em { font-style: italic; }
+  .remix-md code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    background: rgba(245, 241, 228, 0.1);
+    border-radius: 4px;
+    padding: 1px 4px;
+  }
+  .remix-md pre {
+    margin: 0 0 8px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(245, 241, 228, 0.08);
+    overflow-x: auto;
+  }
+  .remix-md pre code {
+    background: none;
+    padding: 0;
+    font-size: 10.5px;
+    line-height: 1.5;
+  }
+  .remix-md blockquote {
+    margin: 0 0 8px;
+    padding-left: 9px;
+    border-left: 2px solid rgba(245, 241, 228, 0.22);
+    color: ${INK_DIM};
+  }
+  .remix-md hr {
+    border: none;
+    border-top: 1px solid rgba(245, 241, 228, 0.14);
+    margin: 10px 0;
+  }
+  .remix-md table {
+    border-collapse: collapse;
+    margin: 0 0 8px;
+    font-size: 11.5px;
+  }
+  .remix-md th, .remix-md td {
+    border: 1px solid rgba(245, 241, 228, 0.16);
+    padding: 4px 8px;
+    text-align: left;
+  }
+  .remix-md th { background: rgba(245, 241, 228, 0.06); font-weight: 600; }
+
+  /* ---- Composer ---- */
   .remix-chat-composer {
     display: flex;
     align-items: flex-end;
-    gap: 7px;
-    padding-top: 9px;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 8px 8px 8px 13px;
+    border: 1px solid rgba(245, 241, 228, 0.16);
+    background: rgba(245, 241, 228, 0.05);
+    border-radius: 14px;
+    transition: border-color 140ms ease;
   }
+  .remix-chat-composer:focus-within { border-color: rgba(245, 241, 228, 0.34); }
   .remix-chat-input {
     flex: 1;
     resize: none;
-    border: 1px solid rgba(245, 241, 228, 0.14);
-    background: rgba(245, 241, 228, 0.06);
+    border: none;
+    background: transparent;
     color: ${INK};
-    border-radius: 10px;
-    padding: 7px 10px;
-    font-size: 12px;
-    line-height: 1.35;
+    font-size: 12.5px;
+    line-height: 1.45;
     font-family: inherit;
     outline: none;
-    max-height: 72px;
+    padding: 5px 0;
+    min-height: 20px;
+    max-height: 120px;
   }
-  .remix-chat-input:focus { border-color: rgba(245, 241, 228, 0.3); }
   .remix-chat-input::placeholder { color: ${INK_FAINT}; }
   .remix-chat-send {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: none;
-    border-radius: 9px;
+    border-radius: 999px;
     background: rgba(245, 241, 228, 0.92);
     color: rgba(24, 22, 18, 0.95);
-    font-size: 11.5px;
-    font-weight: 600;
-    padding: 7px 11px;
     cursor: pointer;
+    transition: opacity 140ms ease, transform 140ms ease;
   }
-  .remix-chat-send:disabled { opacity: 0.35; cursor: default; }
+  .remix-chat-send svg rect { fill: currentColor; }
+  .remix-chat-send:disabled { opacity: 0.3; cursor: default; }
+  .remix-chat-send:not(:disabled):hover { transform: scale(1.06); }
+  .remix-chat-send:not(:disabled):active { transform: scale(0.95); }
 `;

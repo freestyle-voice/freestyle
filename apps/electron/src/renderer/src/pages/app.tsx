@@ -387,6 +387,12 @@ interface RemixSession {
   body?: string;
   /** A spoken or typed instruction the chat card sends on open. */
   initialInstruction?: string | null;
+  /**
+   * The chat collapsed to its one-line activity strip. Voice runs start here
+   * — the user asked for something to happen, not for a chat window — and
+   * hovering the strip is what opens the full conversation.
+   */
+  minimized?: boolean;
 }
 
 /** A promise that something else resolves. Used to await the selection. */
@@ -1895,14 +1901,18 @@ export default function AppPage(): React.JSX.Element {
    * route digits — because the card is now a conversation, not a prompt.
    */
   const openRemixChat = useCallback(
-    (instruction: string | null) => {
+    (instruction: string | null, options: { minimized?: boolean } = {}) => {
       clearRemixHoldTimer();
       remixRunningRef.current = false;
       recorderRef.current.cancel();
       recorderRef.current.releaseStream();
       stopVisualization();
       window.api?.setRemixRouteKeys(false);
-      patchRemix({ phase: "chat", initialInstruction: instruction });
+      patchRemix({
+        phase: "chat",
+        initialInstruction: instruction,
+        minimized: options.minimized === true,
+      });
     },
     [clearRemixHoldTimer, patchRemix, stopVisualization],
   );
@@ -1975,7 +1985,10 @@ export default function AppPage(): React.JSX.Element {
       );
       return;
     }
-    openRemixChat(instruction);
+    // A spoken run opens minimized: the user asked for something to be done,
+    // not for a window. The strip narrates the run; hovering it opens the
+    // full conversation.
+    openRemixChat(instruction, { minimized: true });
   }, [failRemix, openRemixChat, patchRemix, startBarAnimation]);
 
   /** Arm the card's idle dismissal (a card opened but never answered). */
@@ -2274,11 +2287,16 @@ export default function AppPage(): React.JSX.Element {
     const removeOpenChat = window.api.onRemixOpenChat(() => {
       if (stateRef.current !== "idle" || pillActiveRef.current) return;
       if (remixRef.current) {
-        patchRemix({ phase: "chat" });
+        patchRemix({ phase: "chat", minimized: false });
         return;
       }
       remixSelectionRef.current = deferred<string | null>();
-      setRemix({ phase: "chat", selection: null, initialInstruction: null });
+      setRemix({
+        phase: "chat",
+        selection: null,
+        initialInstruction: null,
+        minimized: false,
+      });
     });
 
     // A dictation began on the shared home key and this chord is taking over.
@@ -2359,6 +2377,7 @@ export default function AppPage(): React.JSX.Element {
   // so there is nothing left for the capsule to say while one is up.
   const showRemixCard = remix !== null;
   const showRemixChat = remix?.phase === "chat";
+  const remixChatMini = showRemixChat && remix?.minimized === true;
   const showCard = showErrorCard || showRemixCard;
 
   // What that mark means. Errors are the card's job, so a "working" notice
@@ -2458,16 +2477,36 @@ export default function AppPage(): React.JSX.Element {
   // `roomReady` is that handshake; giving the room back waits for the card to
   // finish leaving.
   const [roomReady, setRoomReady] = useState(false);
+  const lastExpansionRef = useRef<string | null>(null);
   useEffect(() => {
     if (!showCard) {
       setRoomReady(false);
+      lastExpansionRef.current = null;
       const timer = setTimeout(() => window.api?.setPillExpanded(false), 300);
       return () => clearTimeout(timer);
     }
-    window.api?.setPillExpanded(
-      true,
-      showRemixChat ? "remix-chat" : showRemixCard ? "remix" : "card",
-    );
+    const expansion = showRemixChat
+      ? remixChatMini
+        ? ("remix-mini" as const)
+        : ("remix-chat" as const)
+      : showRemixCard
+        ? ("remix" as const)
+        : ("card" as const);
+    // Growing, the window resizes first and the surface animates into the new
+    // room. Shrinking chat → strip is the one move where that order clips the
+    // morph mid-flight, so there the window waits for the surface instead.
+    const shrinkingToMini =
+      expansion === "remix-mini" && lastExpansionRef.current === "remix-chat";
+    lastExpansionRef.current = expansion;
+    let shrinkTimer: ReturnType<typeof setTimeout> | null = null;
+    if (shrinkingToMini) {
+      shrinkTimer = setTimeout(
+        () => window.api?.setPillExpanded(true, "remix-mini"),
+        280,
+      );
+    } else {
+      window.api?.setPillExpanded(true, expansion);
+    }
     // Two frames: one for the resize to land, one for the browser to lay the
     // card out at its start values so the transition has something to run
     // from. Setting both in the same frame would jump straight to the end.
@@ -2480,10 +2519,11 @@ export default function AppPage(): React.JSX.Element {
       inner = requestAnimationFrame(() => setRoomReady(true));
     });
     return () => {
+      if (shrinkTimer) clearTimeout(shrinkTimer);
       cancelAnimationFrame(outer);
       cancelAnimationFrame(inner);
     };
-  }, [showCard, showRemixCard, showRemixChat]);
+  }, [showCard, showRemixCard, showRemixChat, remixChatMini]);
 
   const cardOpen = showCard && roomReady;
   const errorCardOpen = showErrorCard && roomReady;
@@ -2671,6 +2711,21 @@ export default function AppPage(): React.JSX.Element {
           }
           .pill-surface[data-show="true"] .pill-rise-1 { transition-delay: 50ms; }
           .pill-surface[data-show="true"] .pill-rise-2 { transition-delay: 95ms; }
+
+          /* The chat surface morphs between the one-line strip and the full
+             card, so size and shape join the transition — hover-expand should
+             read as the strip growing into the conversation, not as one
+             surface being swapped for another. */
+          .pill-chat-morph,
+          .pill-chat-morph[data-show="true"] {
+            transition: opacity 180ms ease,
+              transform 380ms cubic-bezier(0.22, 1.12, 0.36, 1),
+              filter 220ms ease,
+              width 260ms cubic-bezier(0.22, 1, 0.36, 1),
+              height 260ms cubic-bezier(0.22, 1, 0.36, 1),
+              border-radius 260ms cubic-bezier(0.22, 1, 0.36, 1),
+              padding 260ms cubic-bezier(0.22, 1, 0.36, 1);
+          }
 
           /* ---- Remix card ---- */
 
@@ -3135,18 +3190,35 @@ export default function AppPage(): React.JSX.Element {
               two unrelated popups. */}
           <div className={layerClass} aria-hidden={!remixOpen}>
             <div
-              className="pill-surface pill-card"
+              className={`pill-surface pill-card${
+                remixView?.phase === "chat" ? " pill-chat-morph" : ""
+              }`}
               data-show={remixOpen}
               style={{
                 ...cardSurfaceStyle,
                 // The anchored edge gets the capsule's inset — (PILL_HEIGHT -
                 // SVG_HEIGHT) / 2 — so the waveform lands exactly where it sat
                 // a moment ago. The far edge is free to be roomier. The chat
-                // card is its own object: taller, evenly padded, and dragged
-                // by its header rather than its whole surface (it holds an
-                // input and a scroll area).
+                // card is its own object: it is either the one-line activity
+                // strip (a capsule) or the full conversation (a tall card
+                // dragged by its header — it holds an input and a scroll
+                // area), and it morphs between the two under the pointer.
                 ...(remixView?.phase === "chat"
-                  ? { height: 384, padding: "11px 13px 12px" }
+                  ? remixView.minimized
+                    ? {
+                        width: 320,
+                        height: 44,
+                        borderRadius: 999,
+                        padding: 0,
+                        overflow: "hidden",
+                      }
+                    : {
+                        width: 408,
+                        height: 560,
+                        borderRadius: 18,
+                        padding: "12px 14px 13px",
+                        overflow: "hidden",
+                      }
                   : {
                       padding:
                         pillAlign === "start"
@@ -3169,6 +3241,9 @@ export default function AppPage(): React.JSX.Element {
                     }
                   }
                   initialInstruction={remixView.initialInstruction ?? null}
+                  minimized={remixView.minimized === true}
+                  onExpand={() => patchRemix({ minimized: false })}
+                  onMinimize={() => patchRemix({ minimized: true })}
                   onClose={() => endRemix()}
                 />
               ) : remixView?.phase === "error" ? (

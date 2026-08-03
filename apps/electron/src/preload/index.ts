@@ -48,7 +48,7 @@ const api = {
   // expanded status card has somewhere to render.
   setPillExpanded: (
     expanded: boolean,
-    expansion?: "card" | "remix" | "remix-chat",
+    expansion?: "card" | "remix" | "remix-chat" | "remix-mini",
   ): void => ipcRenderer.send("pill:set-expanded", expanded, expansion),
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),

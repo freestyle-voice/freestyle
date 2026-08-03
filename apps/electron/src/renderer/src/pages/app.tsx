@@ -299,9 +299,7 @@ const STATUS_SLOT = STATUS_SIZE + STATUS_GAP;
 /**
  * The pill floats over arbitrary application windows, so it commits to a
  * single dark treatment in both themes rather than following the app theme —
- * a light pill reads as a blown-out blob over dark editors. Near-opaque:
- * content behind the surface competes with the chat text, so the blur only
- * softens the last few percent instead of making the surface glassy.
+ * a light pill reads as a blown-out blob over dark editors.
  */
 const SURFACE = "rgba(22, 20, 15, 0.98)";
 const SURFACE_BORDER = "1px solid rgba(255, 255, 255, 0.10)";
@@ -388,7 +386,6 @@ interface RemixSession {
   selection: string | null;
   /** What is being applied, shown while `running`. */
   label?: string;
-  /** The live transcript streaming in while the user speaks. */
   transcript?: string;
   title?: string;
   body?: string;
@@ -470,17 +467,8 @@ export default function AppPage(): React.JSX.Element {
   const remixRunningRef = useRef(false);
   /** Flips the card from "capturing" to "listening" once a press is a hold. */
   const remixHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /**
-   * Remix's own streaming session, separate from dictation's singleton: the
-   * two flows never run at once, but the dictation streamer's callbacks are
-   * wired to the dictation pipeline and must stay that way. This one exists
-   * to put live partials on the remix card — and its final, when the
-   * transport supports one, saves the REST round trip on release.
-   */
   const remixStreamerRef = useRef<Streamer | null>(null);
-  /** Whether the remix streamer's provider supports commit → final. */
   const remixTransportRef = useRef(false);
-  /** Resolved by the remix streamer's onFinal, awaited on hotkey release. */
   const remixFinalRef = useRef<Deferred<string> | null>(null);
 
   const recorderRef = useRef(new Recorder());
@@ -1750,8 +1738,6 @@ export default function AppPage(): React.JSX.Element {
   }, []);
 
   /** Tear the session down. `hide` is false only when an error card stays up. */
-  // Lazy singleton, like the dictation streamer: constructed on the first
-  // spoken remix, then reused — the WebSocket stays warm between sessions.
   // biome-ignore lint/correctness/useExhaustiveDependencies: singleton
   const getRemixStreamer = useCallback((): Streamer => {
     if (!remixStreamerRef.current) {
@@ -1764,8 +1750,6 @@ export default function AppPage(): React.JSX.Element {
           if (remixRef.current && text) patchRemix({ transcript: text });
         },
         onFinal: (text) => {
-          // Keep the card's transcript on the final wording while the agent
-          // spins up — the partials stop at commit.
           if (remixRef.current && text.trim()) {
             patchRemix({ transcript: text });
           }
@@ -1773,8 +1757,6 @@ export default function AppPage(): React.JSX.Element {
           remixFinalRef.current = null;
         },
         onError: () => {
-          // The recorder's WAV via REST is the transcription of record when
-          // streaming misbehaves — a streaming error just means no live text.
           remixFinalRef.current?.resolve("");
           remixFinalRef.current = null;
         },
@@ -1990,10 +1972,6 @@ export default function AppPage(): React.JSX.Element {
     patchRemix({ phase: "running", label: "Transcribing…" });
     startBarAnimation("speaking");
 
-    // Commit the streaming session right on release — the provider finalizes
-    // fastest from a commit that lands while its context is hot, and when it
-    // answers, the REST round trip below is skipped entirely. The recorder's
-    // WAV stays the transcription of record whenever streaming has nothing.
     const streamer = remixStreamerRef.current;
     let finalPromise: Promise<string> | null = null;
     if (streamer?.isConnected() && remixTransportRef.current) {
@@ -2039,9 +2017,6 @@ export default function AppPage(): React.JSX.Element {
           headers: {
             "Content-Type": "audio/wav",
             "x-audio-duration-ms": String(durationMs),
-            // Cleanup is tuned to turn speech into prose the user will read.
-            // This text is a machine instruction that nobody ever sees, so the
-            // raw transcript is both cheaper and closer to what was said.
             "x-skip-post-process": "true",
           },
         });
@@ -2105,9 +2080,6 @@ export default function AppPage(): React.JSX.Element {
           return;
         }
         startListening(stream);
-        // The same stream feeds the streamer, which puts live partials on
-        // the card as the user speaks. Failure here is invisible — the
-        // recorder's WAV via REST remains the transcription of record.
         void getRemixStreamer().startCapture(stream);
       })
       .catch(() => {
@@ -2586,8 +2558,6 @@ export default function AppPage(): React.JSX.Element {
     lastExpansionRef.current = expansion;
     let shrinkTimer: ReturnType<typeof setTimeout> | null = null;
     if (shrinkingToMini) {
-      // A hair past the surface's 320ms size transition, so the window
-      // never clips the tail of the shrink.
       shrinkTimer = setTimeout(
         () => window.api?.setPillExpanded(true, "remix-mini"),
         340,
@@ -2727,9 +2697,6 @@ export default function AppPage(): React.JSX.Element {
   const remixView = remixViewRef.current;
   const remixOpen = showRemixCard && roomReady;
 
-  // The transcript line: live partials while the user speaks, the final
-  // wording while the run spins up, and a quiet placeholder before the first
-  // word lands. A preset run has no transcript, so its label fills in.
   const remixTranscript = remixView?.transcript?.trim() ?? "";
   const remixHint =
     remixView?.phase === "running"
@@ -2802,10 +2769,7 @@ export default function AppPage(): React.JSX.Element {
           /* The chat surface morphs between the one-line strip and the full
              card, so size and shape join the transition — hover-expand should
              read as the strip growing into the conversation, not as one
-             surface being swapped for another. Only the box animates: both
-             faces are fixed-size layers pinned to the anchored corner inside
-             it (see RemixChat), so the growing surface reveals settled
-             content instead of reflowing it mid-flight. */
+             surface being swapped for another. */
           .pill-chat-morph,
           .pill-chat-morph[data-show="true"] {
             transition: opacity 180ms ease,
@@ -2839,7 +2803,6 @@ export default function AppPage(): React.JSX.Element {
             height: ${SVG_HEIGHT}px;
           }
 
-          /* The wordmark row: the wave mark and the name, centered. */
           .pill-remix-brand {
             display: flex;
             align-items: center;
@@ -2852,10 +2815,6 @@ export default function AppPage(): React.JSX.Element {
           }
           .pill-remix-brand svg { color: rgba(245, 241, 228, 0.85); }
 
-          /* The live transcript. It wraps like written text — up to three
-             lines — and the newest words stay in view: the column is bottom-
-             justified, so once the text outgrows the box the oldest lines
-             slide off the top. The placeholder centers instead. */
           .pill-remix-transcript {
             display: flex;
             flex-direction: column;
@@ -3407,9 +3366,6 @@ export default function AppPage(): React.JSX.Element {
                 </>
               ) : (
                 <div className="pill-remix-body" data-anchor={pillAlign}>
-                  {/* The wordmark: the card announces what it is, not what to
-                      do — the waveform and the transcript filling in below
-                      already say "speak". */}
                   <div
                     className="pill-remix-brand pill-rise pill-rise-1"
                     aria-hidden="true"
@@ -3418,10 +3374,6 @@ export default function AppPage(): React.JSX.Element {
                     <span>Remix</span>
                   </div>
 
-                  {/* The live transcript, streaming in as the user speaks.
-                      One line, newest words kept in view; the placeholder
-                      holds the line's height so the card doesn't jump when
-                      the first partial lands. */}
                   <div
                     className="pill-remix-transcript pill-rise pill-rise-2"
                     data-empty={!remixTranscript}

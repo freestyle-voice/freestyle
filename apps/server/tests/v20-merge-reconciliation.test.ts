@@ -9,7 +9,6 @@ afterEach(() => {
   db = null;
 });
 
-/** The pre-host-keyed sessions table, as real v19-stamped databases have it. */
 const SINGLETON_SESSIONS = `
   CREATE TABLE sessions (
     id INTEGER PRIMARY KEY CHECK(id = 1),
@@ -54,13 +53,6 @@ function hostIsPrimaryKey(database: DatabaseSync): boolean {
   return cols.some((col) => col.name === "host" && col.pk > 0);
 }
 
-/**
- * v19 shipped twice — dismissed_notifications on main, the Remix tables on
- * the prototype branch — so a database stamped 19 can be missing either
- * half, and prototype-stamped ones can also carry the old singleton
- * sessions table (whose plain `host` column defeated a presence-based
- * repair check). v20 reconciles all of it.
- */
 describe("v20 merge reconciliation", () => {
   it("repairs a prototype-lineage DB: singleton sessions, no dismissed_notifications", () => {
     db = new DatabaseSync(":memory:");
@@ -79,7 +71,6 @@ describe("v20 merge reconciliation", () => {
 
     initSchema(db);
 
-    // Sessions were rebuilt host-keyed and the signed-in row survived.
     expect(hostIsPrimaryKey(db!)).toBe(true);
     const session = db
       .prepare("SELECT id, email FROM sessions WHERE host = ?")
@@ -88,13 +79,10 @@ describe("v20 merge reconciliation", () => {
       email: string;
     };
     expect(session.email).toBe("user@example.com");
-    // The default host keeps id=1 so old binaries still find it.
     expect(session.id).toBe(1);
 
-    // Main's half arrived.
     expect(hasTable(db!, "dismissed_notifications")).toBe(true);
 
-    // The host-keyed upsert the session layer performs works now.
     db.prepare(
       `INSERT INTO sessions (host, token, user_id, email, updated_at)
        VALUES (?, ?, ?, ?, ?)
@@ -130,7 +118,6 @@ describe("v20 merge reconciliation", () => {
     for (const table of ["remix_threads", "remix_messages", "remix_runs"]) {
       expect(hasTable(db!, table)).toBe(true);
     }
-    // The already-correct sessions table was left alone.
     expect(hostIsPrimaryKey(db!)).toBe(true);
   });
 
@@ -160,8 +147,6 @@ describe("v20 merge reconciliation", () => {
       ).version;
     expect(version()).toBeGreaterThanOrEqual(20);
 
-    // Running again changes nothing: the repaired sessions table (and its
-    // row) survives, and the creates are all IF NOT EXISTS.
     initSchema(db);
     expect(hasTable(db!, "remix_threads")).toBe(true);
     expect(hasTable(db!, "dismissed_notifications")).toBe(true);

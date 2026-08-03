@@ -67,9 +67,6 @@ function RemixBar(): React.JSX.Element {
           user-select: none;
           outline: none;
         }
-        /* The same dark surface as the pill and the chat card, so the strip
-           reads as a sliver of the thing it opens. The cream border is what
-           keeps it visible over dark app windows. */
         .bar-strip {
           width: 72px;
           height: 6px;

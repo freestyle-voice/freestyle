@@ -33,16 +33,9 @@ const INK = "rgba(245, 241, 228, 0.92)";
 const INK_DIM = "rgba(245, 241, 228, 0.58)";
 const INK_FAINT = "rgba(245, 241, 228, 0.42)";
 
-/**
- * The two sizes the chat surface morphs between. The surface (in app.tsx)
- * animates the box; both faces render at these fixed sizes inside it, pinned
- * to the anchored corner, so the morph reveals settled content instead of
- * reflowing it.
- */
 export const REMIX_CHAT_SURFACE = { width: 408, height: 560 } as const;
 export const REMIX_CHAT_STRIP = { width: 320, height: 44 } as const;
 
-/** Which corner of the surface holds still while the box grows. */
 export interface RemixChatAnchor {
   v: "top" | "bottom";
   h: "right" | "center";
@@ -76,7 +69,6 @@ export interface RemixChatProps {
   initialInstruction: string | null;
   /** Collapsed to the one-line activity strip. */
   minimized: boolean;
-  /** The surface corner that holds still while the strip and card trade places. */
   anchor: RemixChatAnchor;
   onExpand: () => void;
   onMinimize: () => void;
@@ -624,14 +616,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   );
 
   return (
-    // Both faces stay mounted, pinned to the corner the surface grows from,
-    // and only cross-fade — the surface (app.tsx) animates the box, so the
-    // morph reveals settled content instead of reflowing it mid-flight.
-    //
-    // The hover handler only cancels the minimize choreography — every
-    // control inside is a real button or input with its own keyboard path,
-    // and Esc closes the card outright.
-    // biome-ignore lint/a11y/noStaticElementInteractions: see above
+    // biome-ignore lint/a11y/noStaticElementInteractions: hover only cancels the minimize timer; every control inside has its own keyboard path and Esc closes the card
     <div
       className="remix-chat"
       data-minimized={minimized}
@@ -675,8 +660,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
               type="button"
               className="remix-chat-ghost"
               onClick={() => {
-                // A new thread means a clean slate: whatever the agent was in
-                // the middle of dies with the old one.
                 stop();
                 props.onNewThread();
               }}
@@ -744,8 +727,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
 
         {notice && <div className="remix-chat-notice">{notice}</div>}
 
-        {/* Preset chips, only before the conversation starts and only when
-          there is a selection to transform. */}
         {!busy && messages.length === 0 && liveContext.text ? (
           <div className="remix-chat-quick">
             {REMIX_PRESETS.map((preset) => (
@@ -1052,10 +1033,6 @@ const REMIX_CHAT_CSS = `
     color: ${INK};
   }
 
-  /* The two faces cross-fade while the surface morphs around them: the
-     outgoing face is gone in a blink, the incoming one waits a beat so the
-     box leads the motion and the content arrives into room that already
-     exists. */
   .remix-chat-face-strip {
     opacity: 0;
     pointer-events: none;

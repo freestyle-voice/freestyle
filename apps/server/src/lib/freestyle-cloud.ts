@@ -405,14 +405,6 @@ export async function postProcessWithFreestyleCloud(opts: {
   appContext?: string | null;
   /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
   systemFragments?: string[];
-  /**
-   * Per-request cleanup overrides. The cloud reads the user's synced
-   * preferences from member_preferences and lets the payload win per-field,
-   * so dictation sends none of these — its preferences ARE the synced ones.
-   * Remix's fast lane is the exception: it replaces the whole prompt per
-   * request (`intensity: "custom"` + `customPrompt`, tones pinned off) and
-   * must not inherit whatever cleanup register the user dictates with.
-   */
   languages?: string[];
   intensity?: string;
   customPrompt?: string;
@@ -425,10 +417,6 @@ export async function postProcessWithFreestyleCloud(opts: {
   cleaned: string;
   usage?: { inputTokens?: number; outputTokens?: number };
 }> {
-  // The cloud assembles the prompt server-side from the synced preferences,
-  // so the common body carries only the text plus request-scoped context
-  // (`appContext`, plugin-derived `systemFragments`). Override fields ride
-  // along only when a caller sets them.
   return cloudJson("/v2/post-process", opts.token, {
     method: "POST",
     headers: { "content-type": "application/json" },

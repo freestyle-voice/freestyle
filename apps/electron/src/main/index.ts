@@ -1285,10 +1285,20 @@ async function deliverOutput(
 
   try {
     if (mode === OutputMode.Paste) {
-      await pasteIntoFocusedApp(text, async () => {
-        hidePill();
-        await wait(0);
-      });
+      // The pill deliberately stays up through the paste. It used to be hidden
+      // here, immediately before the synthetic keystroke, which made the
+      // renderer's delivered animation unobservable: by the time `pasteText`
+      // resolved and the capsule began closing into its confirmation mark,
+      // the window it was drawing into had been gone for hundreds of ms.
+      //
+      // Nothing about the paste needs the window down. The pill is created
+      // `focusable: false` (plus a non-activating `panel` on macOS), so it is
+      // never the focused window and the keystroke goes to the same app either
+      // way. Hiding is the renderer's job now — it owns the end of the
+      // session, and calls `pill:hide` when its exit finishes. Both callers of
+      // this function are renderer-driven, so there is always something on the
+      // other side to do it.
+      await pasteIntoFocusedApp(text);
     } else {
       clipboard.writeText(text);
     }

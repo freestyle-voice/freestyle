@@ -152,7 +152,93 @@ type PillNotice =
   | "unavailable"
   | null;
 
-type BarMode = "connecting" | "listening" | "speaking";
+/**
+ * What the row is drawing.
+ *
+ * There is deliberately no "connecting" mode. The bars only ever show real
+ * audio: while the mic is opening they sit at rest, and the first thing that
+ * moves them is a sample. A generated ripple in that window reads as "I can
+ * hear you, quietly" at the one moment nothing is being heard at all.
+ *
+ * "settling" is the beat between the two: your last syllable easing down to
+ * rest before the machine's sweep starts, so commit is a hand-off rather than
+ * a jump cut.
+ */
+type BarMode = "listening" | "settling" | "speaking";
+
+/**
+ * How a session ended, and therefore which way the pill leaves. Three endings
+ * that were previously one instant `window.hide()`:
+ *
+ * - "delivered": the text landed. The row closes, a check draws out of it, and
+ *   the capsule contracts to a disc around the mark. The only exit allowed to
+ *   take its time — all of it runs after the paste, so it costs nothing.
+ * - "cancelled": nothing was earned, so nothing is confirmed. Half the
+ *   entrance, and deliberately dismissive.
+ * - "quiet": nothing was said (a sub-threshold press, an empty result). Same
+ *   gesture as cancelled, faster, without the drop.
+ */
+type PillExit = "delivered" | "delivered-out" | "cancelled" | "quiet";
+
+/** Easing of the settle phase — slower than the meter, symmetric. */
+const SETTLE_EASE = 0.24;
+/** How long the row takes to come to rest before the sweep starts. */
+const SETTLE_MS = 180;
+/** Stillness between your voice ending and the machine starting. */
+const HANDOVER_BEAT_MS = 120;
+
+/**
+ * The delivered mark, and the length of its path — the dash offset it is drawn
+ * from. Hard-coded rather than measured with `getTotalLength()` so the first
+ * paint is already in the undrawn state; the path is fixed, so the two can't
+ * drift. (Its two segments are ~3.8 and ~7.9 units long.)
+ */
+const CHECK_SIZE = 16;
+const CHECK_PATH_LENGTH = 11.7;
+
+/**
+ * The delivered sequence. Two rules shaped these numbers:
+ *
+ * The *closing* is not the point — the mark is. Getting the row out of the way
+ * is business, so it moves briskly; the check is the thing the user is meant to
+ * read, so it is drawn and then simply **held**. An earlier cut had the mark
+ * complete at 300ms and start leaving at 320, which is a confirmation you can
+ * miss by blinking.
+ *
+ * And nothing here animates a layout property. The capsule used to contract to
+ * a 30px disc around the check, which meant transitioning `width` — a full
+ * layout pass every frame, on a renderer that may still be cold on the first
+ * dictation of the session. It read as sluggish and janked exactly where the
+ * design wanted to feel most precise. The capsule now holds its shape and
+ * leaves on transform and opacity alone.
+ */
+const CLOSE_STEP_MS = 18;
+const CLOSE_DUR_MS = 110;
+const CHECK_AT_MS = 90;
+const CHECK_DRAW_MS = 150;
+/** Fully drawn at ~240ms, then this long at rest before it goes. */
+const CHECK_HOLD_MS = 320;
+const CHECK_LEAVE_AT_MS = CHECK_AT_MS + CHECK_DRAW_MS + CHECK_HOLD_MS;
+const CHECK_LEAVE_MS = 110;
+const DELIVERED_TOTAL_MS = CHECK_LEAVE_AT_MS + CHECK_LEAVE_MS;
+const CANCELLED_MS = 140;
+const QUIET_MS = 120;
+
+/** Entrance: one frame at rest, then the capsule rises into place. */
+const ENTER_MS = 260;
+/** Bars arrive right-to-left — the direction samples travel through the row. */
+const ENTER_BAR_STEP_MS = 12;
+const ENTER_BAR_DUR_MS = 180;
+
+/**
+ * How long the level may sit under the noise floor before the row admits it
+ * isn't hearing anything. Long enough to sit through a pause for breath.
+ */
+const SILENCE_MS = 1600;
+/** Per-frame easing of the flatline's draw/retract. */
+const FLAT_EASE = 0.14;
+/** Past this, the status slot opens with an elapsed readout. */
+const ELAPSED_AFTER_MS = 60_000;
 
 // ---------------------------------------------------------------------------
 // Sound
@@ -297,6 +383,13 @@ const ALERT = "#E0805F";
  */
 const BAR_COLOR = "#FFFFFF";
 
+/**
+ * The capsule floats over arbitrary content with only a hairline to separate
+ * it, which is not enough over a busy background — it dissolves into whatever
+ * is behind it. Soft and low: this is separation, not a raised card.
+ */
+const PILL_SHADOW = "0 2px 10px rgba(0, 0, 0, 0.22)";
+
 const pillInnerStyle: React.CSSProperties = {
   height: PILL_HEIGHT,
   borderRadius: PILL_HEIGHT / 2,
@@ -304,8 +397,14 @@ const pillInnerStyle: React.CSSProperties = {
   border: SURFACE_BORDER,
   backdropFilter: BLUR,
   WebkitBackdropFilter: BLUR,
+  boxShadow: PILL_SHADOW,
   cursor: "grab",
   WebkitAppRegion: "drag",
+  // The delivered mark is an overlay on the capsule, so the capsule has to be
+  // its containing block. `backdrop-filter` already makes one, but relying on
+  // that would mean the mark silently flies to the window corner the day
+  // somebody drops the blur.
+  position: "relative",
 } as React.CSSProperties;
 
 interface TranscribeResult {
@@ -402,6 +501,32 @@ export default function AppPage(): React.JSX.Element {
   const lastCancelWriteRef = useRef(-1);
   const cancelSlotRef = useRef<HTMLSpanElement>(null);
   const waveClipRef = useRef<HTMLSpanElement>(null);
+  const capsuleRef = useRef<HTMLDivElement>(null);
+  const checkRef = useRef<HTMLSpanElement>(null);
+  const checkPathRef = useRef<SVGPathElement>(null);
+  const flatlineRef = useRef<SVGLineElement>(null);
+  /**
+   * Silence tracking. `silentSinceRef` is the timestamp the level last went
+   * *above* the noise floor; `flat` is the 0..1 amount of the flatline, eased
+   * in the draw loop so it draws and retracts rather than snapping.
+   */
+  const silentSinceRef = useRef(0);
+  const flatAmountRef = useRef(0);
+  const flatTargetRef = useRef(0);
+  /** Mirrors `flatTargetRef` into React only when it crosses, for the live region. */
+  const [micSilent, setMicSilent] = useState(false);
+  const micSilentRef = useRef(false);
+  const [elapsedLabel, setElapsedLabel] = useState<string | null>(null);
+  const [exiting, setExiting] = useState<PillExit | null>(null);
+  const exitTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  /**
+   * Mirrors `exiting` for the same-tick guard in `dismissPill`. The state
+   * hasn't re-rendered yet when the second caller arrives, and there are
+   * genuinely two: the success path asks for "delivered", then `drainQueue`'s
+   * own `finally` — which cannot know a delivery just happened — asks for
+   * "quiet" a moment later. First ending wins; it is the specific one.
+   */
+  const exitingRef = useRef<PillExit | null>(null);
   const hoveredRef = useRef(false);
   const cancelModeRef = useRef<PillCancelMode>("hover");
   /**
@@ -530,7 +655,7 @@ export default function AppPage(): React.JSX.Element {
           // result; a new recording is starting — keep the pill visible.
           return;
         } else {
-          hidePill();
+          dismissPill("quiet");
         }
         return;
       }
@@ -590,6 +715,10 @@ export default function AppPage(): React.JSX.Element {
         return;
       }
 
+      // Whether anything actually reached the user. A plugin that suppressed
+      // the output did not deliver it, and must not be answered with a check.
+      let delivered = false;
+
       try {
         const requestedMode =
           _outputMode === "clipboard" ? "clipboard" : "paste";
@@ -639,11 +768,22 @@ export default function AppPage(): React.JSX.Element {
         }
 
         if (shouldDeliver && deliverText.trim()) {
-          if (deliverMode === "clipboard") {
-            await window.api.copyText(deliverText, appContextRef.current);
-          } else {
-            await window.api.pasteText(deliverText, appContextRef.current);
-          }
+          const delivery =
+            deliverMode === "clipboard"
+              ? window.api.copyText(deliverText, appContextRef.current)
+              : window.api.pasteText(deliverText, appContextRef.current);
+
+          // Start the confirmation on dispatch, not on completion. The text is
+          // in the document within a frame or two of the keystroke, but
+          // `pasteText` doesn't resolve until the main process has waited out
+          // its paste-settle delay — 300ms, and up to 600ms on the legacy
+          // backends. Awaiting that first left the transcribing sweep running
+          // over a document that already had the dictation in it, and the
+          // close only began once the pill had visibly nothing left to do.
+          delivered = true;
+          dismissPill("delivered");
+
+          await delivery;
         }
       } catch (err) {
         console.error("[pill] paste/copy failed:", err);
@@ -665,12 +805,15 @@ export default function AppPage(): React.JSX.Element {
         provider_category: providerCategory,
       });
 
+      // Already started above on the delivering path; this covers the rest —
+      // a suppressed or empty output still has to put the pill away, just
+      // without claiming anything was delivered.
       if (
         !recordingActiveRef.current &&
         queueRef.current.length === 0 &&
         pillActiveRef.current
       ) {
-        hidePill();
+        dismissPill(delivered ? "delivered" : "quiet");
       }
     } finally {
       drainingRef.current = false;
@@ -684,7 +827,7 @@ export default function AppPage(): React.JSX.Element {
         !recordingActiveRef.current &&
         isTranscriptionIdle()
       ) {
-        hidePill();
+        dismissPill("quiet");
       }
     }
   }, []);
@@ -809,7 +952,6 @@ export default function AppPage(): React.JSX.Element {
           // stays up until `onReady` says the session is live again, so the
           // mark doesn't blink off and on in the middle of one recovery.
         },
-        onPartial: () => {},
         onFinal: (text) => {
           setPillNotice(null);
           const resolver = streamResolverRef.current;
@@ -888,8 +1030,12 @@ export default function AppPage(): React.JSX.Element {
   // The bar elements are created once per mount and only ever have their
   // geometry rewritten, so grab them as the SVG mounts and let the draw loop
   // iterate a plain array instead of querying the DOM 60 times a second.
+  // Scoped to the bar group: the flatline shares this SVG and must never be
+  // mistaken for a level bar.
   const captureBarLines = useCallback((svg: SVGSVGElement | null) => {
-    barLinesRef.current = svg ? Array.from(svg.querySelectorAll("line")) : [];
+    barLinesRef.current = svg
+      ? Array.from(svg.querySelectorAll<SVGLineElement>("[data-bars] line"))
+      : [];
   }, []);
 
   // One frame: work out what the bars should be aiming at, ease them toward
@@ -907,14 +1053,13 @@ export default function AppPage(): React.JSX.Element {
     let rise = RISE;
     let fall = FALL;
 
-    if (mode === "connecting") {
-      // A slow, low-amplitude breath travelling along the row: the pill is
-      // awake but has nothing to show yet. Deliberately understated so the
-      // jump to real audio levels reads as the pill "catching" your voice.
-      const t = (now - modeStartRef.current) / 1000;
-      for (let i = 0; i < BARS; i++) {
-        targets[i] = 0.06 + 0.07 * (1 + Math.sin(t * 3.2 - i * 0.42));
-      }
+    if (mode === "settling") {
+      // The hand-off. Every bar eases from wherever your voice left it down to
+      // rest — symmetrically, and slower than the live meter — so the last
+      // syllable is set down instead of deleted. Targets are already zero; the
+      // only thing this branch does is own the easing rate.
+      rise = SETTLE_EASE;
+      fall = SETTLE_EASE;
     } else if (mode === "speaking") {
       // Transcribing: a single soft bump sweeping left to right on a loop,
       // with a pause between passes. Reads as progress rather than as audio.
@@ -988,6 +1133,27 @@ export default function AppPage(): React.JSX.Element {
       // becomes a peak once it hands off and joins the history.
       targets[BARS - 1] = barHeightFor(voiceLevel, sample.jitter);
 
+      // ---- Is the mic actually delivering anything? ----
+      // A wrong input device or a hardware mute button renders identically to
+      // a quiet room — a row of resting dots — and today you only find out
+      // from a "No audio captured" dialog after speaking a paragraph. Gated on
+      // the analyser existing, so the getUserMedia window (no audio yet, by
+      // definition) can't trip it.
+      if (voiceLevel > BAR_NOISE_FLOOR) {
+        silentSinceRef.current = now;
+        flatTargetRef.current = 0;
+      } else if (
+        silentSinceRef.current > 0 &&
+        now - silentSinceRef.current > SILENCE_MS
+      ) {
+        flatTargetRef.current = 1;
+      }
+      const wantsSilent = flatTargetRef.current === 1;
+      if (wantsSilent !== micSilentRef.current) {
+        micSilentRef.current = wantsSilent;
+        setMicSilent(wantsSilent);
+      }
+
       // The dashboard's own visualisation is calibrated against the original
       // linear scale, so the level broadcast over IPC stays on it.
       if (now - lastIpcTimeRef.current >= 100) {
@@ -1006,6 +1172,24 @@ export default function AppPage(): React.JSX.Element {
       (cancelTargetRef.current - cancelOpenRef.current) * CANCEL_EASE;
     cancelOpenRef.current = open;
 
+    // The flatline eases on the same clock as everything else, so it draws
+    // outward from the centre and retracts the moment a real sample lands.
+    const flat =
+      flatAmountRef.current +
+      (flatTargetRef.current - flatAmountRef.current) * FLAT_EASE;
+    flatAmountRef.current = flat;
+    const flatline = flatlineRef.current;
+    if (flatline) {
+      if (flat > 0.002) {
+        const half = (SVG_WIDTH / 2 - 2) * flat;
+        flatline.setAttribute("opacity", String(flat * 0.5));
+        flatline.setAttribute("x1", String(SVG_WIDTH / 2 - half));
+        flatline.setAttribute("x2", String(SVG_WIDTH / 2 + half));
+      } else {
+        flatline.setAttribute("opacity", "0");
+      }
+    }
+
     const lines = barLinesRef.current;
     for (let i = 0; i < lines.length; i++) {
       const val = bars[i] ?? 0;
@@ -1020,8 +1204,11 @@ export default function AppPage(): React.JSX.Element {
       // oldest bars fade as the cancel button takes their space, so they
       // dissolve rather than being sliced by the viewport edge closing over
       // them.
-      line.style.opacity =
-        i < CANCEL_HIDDEN_BARS && open > 0 ? String(1 - open) : "1";
+      // The one structural exception is the oldest bars fading as the cancel
+      // button takes their space; the second is the row dimming while it has
+      // nothing to report, so the flatline is what reads instead of the dots.
+      const structural = i < CANCEL_HIDDEN_BARS && open > 0 ? 1 - open : 1;
+      line.style.opacity = String(structural * (1 - 0.55 * flat));
     }
 
     // Writing these lays out the capsule, so only do it while the value is
@@ -1058,6 +1245,16 @@ export default function AppPage(): React.JSX.Element {
       // style write against the fresh elements.
       cancelOpenRef.current = cancelTargetRef.current;
       lastCancelWriteRef.current = -1;
+      // Silence is only ever asserted about a live analyser, so every mode
+      // change clears it — including the switch to "speaking", where a
+      // lingering flatline would be about audio that is no longer being read.
+      silentSinceRef.current = mode === "listening" ? performance.now() : 0;
+      flatTargetRef.current = 0;
+      if (mode !== "listening") flatAmountRef.current = 0;
+      if (micSilentRef.current) {
+        micSilentRef.current = false;
+        setMicSilent(false);
+      }
       sampleRef.current = {
         lastSampleAt: performance.now(),
         peak: 0,
@@ -1142,7 +1339,29 @@ export default function AppPage(): React.JSX.Element {
     startBarAnimation,
   ]);
 
+  /**
+   * Commit's hand-off: the row comes to rest, holds still for a beat, and only
+   * then does the machine's sweep start. Without the pause the two waveforms
+   * cross-fade into each other and the moment your voice becomes text — the
+   * pivot the whole product is about — reads as a glitch.
+   */
+  const handoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startHandover = useCallback(() => {
+    startBarAnimation("settling");
+    if (handoverTimerRef.current) clearTimeout(handoverTimerRef.current);
+    handoverTimerRef.current = setTimeout(() => {
+      handoverTimerRef.current = null;
+      // Only take the row if nothing else has claimed it in the meantime (a
+      // re-record, a failure, a dismissal).
+      if (barModeRef.current === "settling") startBarAnimation("speaking");
+    }, SETTLE_MS + HANDOVER_BEAT_MS);
+  }, [startBarAnimation]);
+
   const stopVisualization = useCallback(() => {
+    if (handoverTimerRef.current) {
+      clearTimeout(handoverTimerRef.current);
+      handoverTimerRef.current = null;
+    }
     cancelAnimationFrame(rafRef.current);
     rafRef.current = 0;
     barModeRef.current = null;
@@ -1162,6 +1381,10 @@ export default function AppPage(): React.JSX.Element {
       peak: 0,
       jitter: { scale: 1, trim: 0 },
     };
+    silentSinceRef.current = 0;
+    flatAmountRef.current = 0;
+    flatTargetRef.current = 0;
+    micSilentRef.current = false;
   }, []);
 
   // ---- Hide pill ----
@@ -1186,20 +1409,107 @@ export default function AppPage(): React.JSX.Element {
     cancelTargetRef.current = cancelModeRef.current === "always" ? 1 : 0;
     cancelOpenRef.current = cancelTargetRef.current;
     lastCancelWriteRef.current = -1;
+    setElapsedLabel(null);
+    setMicSilent(false);
+    setExiting(null);
+    exitingRef.current = null;
+    // So the next session's `initializing` frames can't read a stale clock.
+    startTimeRef.current = 0;
+    for (const timer of exitTimersRef.current) clearTimeout(timer);
+    exitTimersRef.current = [];
     stopVisualization();
     window.api.hidePill();
   }, [setPillNotice, stopVisualization, setPillState]);
 
+  /**
+   * The pill leaving, with the ending it earned. `hidePill` stays the
+   * immediate teardown for the cases where something else is taking over the
+   * screen (a sign-in prompt, an upgrade dialog, an error modal) — animating
+   * out from under a modal that is already opening is just latency.
+   *
+   * Every timer is tracked so a new session starting mid-exit cancels it
+   * cleanly rather than hiding the window out from under the new pill.
+   */
+  const dismissPill = useCallback(
+    (kind: PillExit) => {
+      if (!pillActiveRef.current || exitingRef.current) return;
+      exitingRef.current = kind;
+      // Recording is over the moment the exit starts, whatever else is still
+      // unwinding — otherwise a hotkey press during the exit sees a live
+      // session and tries to commit into it.
+      recordingActiveRef.current = false;
+      wantsMicRef.current = false;
+      setExiting(kind);
+
+      const after = (delay: number, fn: () => void): void => {
+        exitTimersRef.current.push(setTimeout(fn, delay));
+      };
+
+      if (kind !== "delivered") {
+        after(kind === "cancelled" ? CANCELLED_MS : QUIET_MS, hidePill);
+        return;
+      }
+
+      // ---- Delivered ----
+      // The row closes from the outside in. Every bar collapses *in place*:
+      // scaling the group instead would slide ten round-capped strokes into
+      // each other and the caps clump together well before they merge.
+      //
+      // The draw loop is parked first — it rewrites bar geometry every frame,
+      // and would fight the CSS transitions all the way down.
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+      barModeRef.current = null;
+
+      const lines = barLinesRef.current;
+      for (let i = 0; i < lines.length; i++) {
+        const rank = (BARS - 1) / 2 - Math.abs(i - (BARS - 1) / 2);
+        const delay = Math.round(rank * CLOSE_STEP_MS);
+        lines[i].style.transformOrigin = "50% 50%";
+        lines[i].style.transition =
+          `transform ${CLOSE_DUR_MS}ms cubic-bezier(0.4, 0, 1, 1) ${delay}ms,` +
+          ` opacity ${Math.round(CLOSE_DUR_MS * 0.8)}ms ease ${delay}ms`;
+        lines[i].style.transform = "scaleY(0)";
+        lines[i].style.opacity = "0";
+      }
+      if (flatlineRef.current) flatlineRef.current.setAttribute("opacity", "0");
+
+      after(CHECK_AT_MS, () => {
+        // The check draws out of the centre the row just closed on, in the
+        // same white as the bars — the meter resolving, not an icon fading in
+        // over it. It starts while the innermost pair is still collapsing,
+        // which is what binds the two gestures into one.
+        const check = checkRef.current;
+        const path = checkPathRef.current;
+        if (check) {
+          check.style.transition = "opacity 80ms ease";
+          check.style.opacity = "1";
+        }
+        if (path) {
+          path.style.transition = `stroke-dashoffset ${CHECK_DRAW_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+          path.style.strokeDashoffset = "0";
+        }
+      });
+
+      after(CHECK_LEAVE_AT_MS, () => {
+        exitingRef.current = "delivered-out";
+        setExiting("delivered-out");
+      });
+      after(DELIVERED_TOTAL_MS, hidePill);
+    },
+    [hidePill],
+  );
+
   const resumeTranscribingOrHide = useCallback(() => {
     if (isTranscriptionIdle()) {
-      hidePill();
+      dismissPill("quiet");
     } else {
       setPillState("transcribing");
       startBarAnimation("speaking");
       void drainQueue();
     }
   }, [
-    hidePill,
+    dismissPill,
     setPillState,
     startBarAnimation,
     drainQueue,
@@ -1264,8 +1574,12 @@ export default function AppPage(): React.JSX.Element {
           });
       });
 
+      // "initializing" is internal bookkeeping for the hotkey-release path; it
+      // has no look of its own. The pill arrives already recording, and the row
+      // waits at rest until the analyser hands it a real sample — which
+      // `startListening` does, without restarting the mode.
       setPillState("initializing");
-      startBarAnimation("connecting");
+      startBarAnimation("listening");
 
       // Play the start cue immediately, before ducking lowers the system
       // volume — otherwise the tone is attenuated to DUCKED_VOLUME and is
@@ -1313,7 +1627,7 @@ export default function AppPage(): React.JSX.Element {
           if (forReRecord) {
             resumeTranscribingOrHide();
           } else {
-            hidePill();
+            dismissPill("quiet");
           }
           return;
         }
@@ -1341,6 +1655,7 @@ export default function AppPage(): React.JSX.Element {
       startBarAnimation,
       startListening,
       hidePill,
+      dismissPill,
       getStreamer,
       setPillNotice,
       setPillState,
@@ -1390,7 +1705,7 @@ export default function AppPage(): React.JSX.Element {
 
     window.api?.sendRecordingCommitted();
     setPillState("transcribing");
-    startBarAnimation("speaking");
+    startHandover();
 
     // Streaming session transport path: the streamer already has the audio —
     // commit it over the WebSocket and wait for the server's final message.
@@ -1595,7 +1910,7 @@ export default function AppPage(): React.JSX.Element {
   }, [
     hidePill,
     drainQueue,
-    startBarAnimation,
+    startHandover,
     setPillState,
     resumeTranscribingOrHide,
     isTranscriptionIdle,
@@ -1612,8 +1927,8 @@ export default function AppPage(): React.JSX.Element {
     void restoreSystemAudioSafely();
     streamerRef.current?.cancel();
     window.api?.sendRecordingCancelled();
-    hidePill();
-  }, [hidePill, restoreSystemAudioSafely]);
+    dismissPill("cancelled");
+  }, [dismissPill, restoreSystemAudioSafely]);
 
   // ---- Preferences ----
   const applyPillPosition = useCallback((pos: string | null | undefined) => {
@@ -1746,7 +2061,7 @@ export default function AppPage(): React.JSX.Element {
         void startRecording(false);
       } else if (s === "transcribing" && !wantsMicRef.current) {
         if (isTranscriptionIdle()) {
-          hidePill();
+          dismissPill("quiet");
           return;
         }
         // A pending streaming commit owns the single WebSocket + PCM buffer,
@@ -1772,7 +2087,7 @@ export default function AppPage(): React.JSX.Element {
         !wantsMicRef.current &&
         isTranscriptionIdle()
       ) {
-        hidePill();
+        dismissPill("quiet");
       }
     });
     const removeCancel = window.api.onPillCancel(() => {
@@ -1787,7 +2102,7 @@ export default function AppPage(): React.JSX.Element {
     startRecording,
     commitRecording,
     cancelRecording,
-    hidePill,
+    dismissPill,
     isTranscriptionIdle,
     setPillNotice,
   ]);
@@ -1820,6 +2135,95 @@ export default function AppPage(): React.JSX.Element {
   // glyph, and the words behind it are in the tooltip and to screen readers.
   const isFreestyleCloud = providerCategoryRef.current === "freestyle_cloud";
   const showCard = state === "error";
+  const active = state !== "idle";
+
+  // ---- Arrival ----
+  // The capsule's enter transition was authored but never ran: the subtree
+  // mounts with its final state already applied, and a CSS transition doesn't
+  // fire on first paint. Hold the resting state for one committed frame, then
+  // release — the same two-frame handshake the card uses for `roomReady`.
+  //
+  // No window-level fade is needed: the pill window is `transparent: true`, so
+  // it shows nothing at all until this paints.
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setEntered(false);
+      return;
+    }
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [active]);
+
+  // The bars arrive right-to-left — the direction samples travel through the
+  // row — from a flat row of nothing to the resting dots. Written straight to
+  // the elements, because the draw loop owns their geometry and React must not
+  // start re-rendering ten <line>s a frame to express this.
+  useEffect(() => {
+    const lines = barLinesRef.current;
+    if (!active || lines.length === 0) return;
+    for (let i = 0; i < lines.length; i++) {
+      lines[i].style.transformOrigin = "50% 50%";
+      lines[i].style.transition = "none";
+      lines[i].style.transform = "scaleY(0)";
+      lines[i].style.opacity = "0";
+    }
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        for (let i = 0; i < lines.length; i++) {
+          const delay = (lines.length - 1 - i) * ENTER_BAR_STEP_MS;
+          lines[i].style.transition =
+            `transform ${ENTER_BAR_DUR_MS}ms cubic-bezier(0.22, 1, 0.36, 1) ${delay}ms,` +
+            ` opacity ${ENTER_BAR_DUR_MS - 40}ms ease ${delay}ms`;
+          lines[i].style.transform = "scaleY(1)";
+          lines[i].style.opacity = "1";
+        }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [active]);
+
+  // ---- Elapsed ----
+  // Nothing is said about duration until a dictation is genuinely long, and
+  // then it uses the status slot that already exists for growing the capsule
+  // by exactly one mark — the waveform doesn't move.
+  //
+  // Gated on "recording" alone, and never on `initializing`: the clock only
+  // starts when the mic is actually open, so during initialization
+  // `startTimeRef` still holds 0 (first session) or the previous session's
+  // start. Reading it then measures the age of the epoch — which is how the
+  // very first press of a fresh process ended up opening the slot on a
+  // 29-million-minute readout.
+  useEffect(() => {
+    if (state !== "recording" || startTimeRef.current === 0) {
+      setElapsedLabel(null);
+      return;
+    }
+    const tick = (): void => {
+      const ms = Date.now() - startTimeRef.current;
+      if (ms < ELAPSED_AFTER_MS) {
+        setElapsedLabel(null);
+        return;
+      }
+      const secs = Math.floor(ms / 1000);
+      setElapsedLabel(
+        `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`,
+      );
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [state]);
 
   // What that mark means. Errors are the card's job, so a "working" notice
   // here is a spinner and a stalled one is the alert mark.
@@ -1844,10 +2248,15 @@ export default function AppPage(): React.JSX.Element {
     pillNotice === "limit";
 
   // Only worth showing when more than one dictation is stacked up; a single
-  // in-flight transcription is already implied by the sweeping waveform.
-  const statusCount =
-    pendingCount > 1 && !statusLabel ? String(pendingCount) : null;
-  const wantsStatus = !showCard && !!(statusLabel || statusCount);
+  // in-flight transcription is already implied by the sweeping waveform. A
+  // queue outranks the clock — a backlog is the more actionable fact, and the
+  // slot holds one mark.
+  const statusCount = statusLabel
+    ? null
+    : pendingCount > 1
+      ? String(pendingCount)
+      : elapsedLabel;
+  const wantsStatus = !showCard && !exiting && !!(statusLabel || statusCount);
 
   const cardTitle =
     pillNotice === "sign-in"
@@ -1886,16 +2295,23 @@ export default function AppPage(): React.JSX.Element {
   }
   const card = cardContentRef.current;
 
+  // The silence notice is the one thing the capsule can't say in a glyph, so
+  // it outranks the generic "Listening" here — this live region is the only
+  // place a screen reader learns the mic has gone quiet.
   const accessibleStatus = showCard
     ? `${cardTitle}. ${cardBody}`
-    : (statusLabel ??
-      (state === "initializing"
-        ? "Preparing microphone"
-        : state === "recording"
-          ? "Listening"
-          : state === "transcribing"
-            ? "Transcribing"
-            : ""));
+    : exiting === "delivered" || exiting === "delivered-out"
+      ? "Dictation delivered"
+      : (statusLabel ??
+        (micSilent
+          ? "No audio from your microphone"
+          : state === "initializing"
+            ? "Preparing microphone"
+            : state === "recording"
+              ? "Listening"
+              : state === "transcribing"
+                ? "Transcribing"
+                : ""));
 
   // ---- Room for the card ----
   // The capsule, status mark and all, fits the pill window as it is; only the
@@ -1975,20 +2391,36 @@ export default function AppPage(): React.JSX.Element {
         }
         aria-hidden="true"
       >
-        {BAR_X_POSITIONS.map((x) => {
-          return (
-            <line
-              key={x}
-              x1={x}
-              y1={SVG_HEIGHT / 2 + BAR_WIDTH / 2}
-              x2={x}
-              y2={SVG_HEIGHT / 2 - BAR_WIDTH / 2}
-              stroke={BAR_COLOR}
-              strokeWidth={BAR_WIDTH}
-              strokeLinecap="round"
-            />
-          );
-        })}
+        {/* Drawn under the bars: while the mic is delivering nothing, this
+            draws outward from the centre as the dots dim, so the row reads as
+            a flatline rather than as a quiet room. */}
+        <line
+          ref={flatlineRef}
+          x1={SVG_WIDTH / 2}
+          y1={SVG_HEIGHT / 2}
+          x2={SVG_WIDTH / 2}
+          y2={SVG_HEIGHT / 2}
+          stroke={BAR_COLOR}
+          strokeWidth={1}
+          strokeLinecap="round"
+          opacity={0}
+        />
+        <g data-bars="">
+          {BAR_X_POSITIONS.map((x) => {
+            return (
+              <line
+                key={x}
+                x1={x}
+                y1={SVG_HEIGHT / 2 + BAR_WIDTH / 2}
+                x2={x}
+                y2={SVG_HEIGHT / 2 - BAR_WIDTH / 2}
+                stroke={BAR_COLOR}
+                strokeWidth={BAR_WIDTH}
+                strokeLinecap="round"
+              />
+            );
+          })}
+        </g>
       </svg>
     </span>
   );
@@ -2017,10 +2449,89 @@ export default function AppPage(): React.JSX.Element {
           .pill-surface[data-show="true"] {
             opacity: 1;
             transform: none;
-            transition: opacity 200ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+            transition: opacity ${ENTER_MS - 100}ms ease,
+                        transform ${ENTER_MS}ms cubic-bezier(0.22, 1, 0.36, 1);
             pointer-events: auto;
           }
-          .pill-card[data-show="false"] { transform: scale(0.94) translateY(4px); }
+
+          /* The capsule arrives from the edge it is anchored to, so it reads as
+             coming from off-screen rather than from nowhere in particular.
+             --enter-dy is +6px when the pill sits at the bottom, -6px at the
+             top. */
+          .pill-capsule { transform: scale(0.88) translateY(var(--enter-dy, 6px)); }
+
+          /* ---- Endings ----
+             Three of them, and they are not the same gesture. Delivered has
+             something to say and is allowed ~430ms to say it (all of it after
+             the text has landed). Cancelled and quiet earned no confirmation,
+             so they get half the entrance and leave downward. */
+          .pill-capsule[data-exit="cancelled"],
+          .pill-capsule[data-exit="quiet"] {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity ${CANCELLED_MS}ms ease,
+                        transform ${CANCELLED_MS}ms cubic-bezier(0.4, 0, 1, 1);
+          }
+          .pill-capsule[data-exit="cancelled"] { transform: scale(0.7) translateY(4px); }
+          .pill-capsule[data-exit="quiet"] {
+            transform: scale(0.76);
+            transition-duration: ${QUIET_MS}ms;
+          }
+          /* Delivered holds its ground while the row closes and the mark draws;
+             only the last beat takes it away. */
+          .pill-capsule[data-exit="delivered-out"] {
+            opacity: 0;
+            transform: scale(0.94);
+            pointer-events: none;
+            transition: opacity ${CHECK_LEAVE_MS}ms ease,
+                        transform ${CHECK_LEAVE_MS}ms cubic-bezier(0.4, 0, 1, 1);
+          }
+
+          /* The capsule is draggable and, until now, gave no sign of it. */
+          @media (hover: hover) and (pointer: fine) {
+            .pill-capsule[data-show="true"]:not([data-exit]):hover {
+              transform: translateY(-1px);
+              border-color: rgba(255, 255, 255, 0.16);
+              box-shadow: 0 5px 16px rgba(0, 0, 0, 0.26);
+              transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1),
+                          border-color 140ms ease,
+                          box-shadow 140ms ease;
+            }
+          }
+
+          /* The delivered mark. Drawn, not faded in — and in the same white as
+             the bars, because it is the meter resolving rather than an icon
+             arriving on top of it. */
+          .pill-check {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+          }
+
+          /* The card grows out of the capsule's own footprint: it starts at the
+             capsule's true ratio (96/300 wide, 30/92 tall) with a
+             proportionally larger corner, so the radius looks constant while
+             the object inflates. Transform and radius only — no width/height
+             animation. */
+          .pill-card {
+            border-radius: 20px;
+            transition: opacity 140ms ease,
+                        transform 140ms cubic-bezier(0.4, 0, 1, 1),
+                        border-radius 140ms ease;
+          }
+          .pill-card[data-show="false"] {
+            transform: scale(0.32, 0.34);
+            border-radius: 60px;
+          }
+          .pill-card[data-show="true"] {
+            transition: opacity 180ms ease,
+                        transform 300ms cubic-bezier(0.22, 1, 0.36, 1),
+                        border-radius 300ms cubic-bezier(0.22, 1, 0.36, 1);
+          }
 
           /* The status mark's slot, opening from the capsule's right end the
              same way the cancel slot opens from its left. */
@@ -2096,11 +2607,18 @@ export default function AppPage(): React.JSX.Element {
           @media (prefers-reduced-motion: reduce) {
             .pill-surface,
             .pill-surface[data-show="true"],
+            .pill-capsule[data-exit],
+            .pill-card,
+            .pill-card[data-show="true"],
             .pill-status,
             .pill-status-mark,
             .pill-cancel,
             .pill-action { transition-duration: 1ms !important; }
-            .pill-card[data-show="false"] { transform: none; }
+            .pill-card[data-show="false"] { transform: none; border-radius: 20px; }
+            .pill-capsule { transform: none; }
+            /* The check still draws — it is the confirmation, not decoration —
+               but instantly, and it is held rather than animated away. */
+            .pill-check { transition: none !important; }
             /* A spinner that doesn't turn says nothing, so slow it rather
                than stopping it. */
             .pill-spinner { animation-duration: 2.4s; }
@@ -2123,16 +2641,22 @@ export default function AppPage(): React.JSX.Element {
                 pointer-only. */}
             {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}
             <div
-              className="pill-surface inline-flex items-center"
-              data-show={!showCard}
+              ref={capsuleRef}
+              className="pill-surface pill-capsule inline-flex items-center"
+              data-show={!showCard && entered}
+              data-exit={exiting ?? undefined}
               onMouseEnter={handlePillEnter}
               onMouseLeave={handlePillLeave}
-              style={{
-                ...pillInnerStyle,
-                transformOrigin,
-                marginBottom: pillAlign === "end" ? 8 : 0,
-                marginTop: pillAlign === "start" ? 8 : 0,
-              }}
+              style={
+                {
+                  ...pillInnerStyle,
+                  transformOrigin,
+                  marginBottom: pillAlign === "end" ? 8 : 0,
+                  marginTop: pillAlign === "start" ? 8 : 0,
+                  // Arrive from the edge the pill is anchored to.
+                  "--enter-dy": pillAlign === "start" ? "-6px" : "6px",
+                } as React.CSSProperties
+              }
             >
               {/* The fixed core: the cancel slot's width is driven by the draw
                   loop, from zero (closed) to CANCEL_SLOT — the disc plus the
@@ -2200,6 +2724,33 @@ export default function AppPage(): React.JSX.Element {
                 </span>
 
                 {waveform}
+              </span>
+
+              {/* The delivered mark, centred on the capsule rather than inside
+                  the waveform's clip: it takes the place the row occupied, at
+                  the row's own centre, and is not subject to the clip that
+                  hides retiring samples. */}
+              <span ref={checkRef} className="pill-check" aria-hidden="true">
+                <svg
+                  width={CHECK_SIZE}
+                  height={CHECK_SIZE}
+                  viewBox="0 0 16 16"
+                  aria-hidden="true"
+                >
+                  <path
+                    ref={checkPathRef}
+                    d="M4.1 8.5 6.8 11.2 11.9 5.2"
+                    fill="none"
+                    stroke={BAR_COLOR}
+                    strokeWidth={1.9}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{
+                      strokeDasharray: CHECK_PATH_LENGTH,
+                      strokeDashoffset: CHECK_PATH_LENGTH,
+                    }}
+                  />
+                </svg>
               </span>
 
               {/* Status, outside the core: the capsule grows to the right by
@@ -2302,12 +2853,14 @@ export default function AppPage(): React.JSX.Element {
           <div className={layerClass} aria-hidden={!cardOpen}>
             <div
               className="pill-surface pill-card"
-              data-show={cardOpen}
+              data-show={cardOpen && !exiting}
               style={
                 {
                   width: PILL_CARD_WIDTH,
                   padding: "13px 15px 12px",
-                  borderRadius: 20,
+                  // The corner radius is animated (see `.pill-card`), so it
+                  // has to live in the stylesheet — an inline value would
+                  // outrank the rule and freeze it at the open size.
                   background: SURFACE,
                   border: SURFACE_BORDER,
                   backdropFilter: BLUR,
@@ -2391,7 +2944,7 @@ export default function AppPage(): React.JSX.Element {
                 <button
                   type="button"
                   className="pill-action pill-action-ghost"
-                  onClick={hidePill}
+                  onClick={() => dismissPill("cancelled")}
                 >
                   Dismiss
                 </button>

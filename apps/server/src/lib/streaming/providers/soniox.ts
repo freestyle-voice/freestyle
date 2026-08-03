@@ -224,6 +224,14 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
       if (!commitRequested || !finalizeSent || finalDelivered) return;
       if (translateTo && !finSeen) return;
       if (nonFinalTokens.length > 0) return;
+      // "No tokens left pending" is only a reason to deliver early if some
+      // have actually arrived. Nothing at all means Soniox has not finished
+      // decoding yet — which is the normal state for a short dictation, where
+      // the whole recording is flushed and finalized in one go the moment the
+      // session opens (see the `open` handler). Delivering here would return
+      // an empty transcript for exactly those takes. Genuine silence is
+      // settled by Soniox's own `finished` message, or by the commit timeout.
+      if (finalTokens.length === 0) return;
       deliverFinal();
     }
 

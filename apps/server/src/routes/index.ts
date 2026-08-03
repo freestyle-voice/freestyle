@@ -11,6 +11,7 @@ import auth from "./auth.js";
 import billing from "./billing.js";
 import configRoute from "./config.js";
 import dictionary from "./dictionary.js";
+import dismissedNotifications from "./dismissed-notifications.js";
 import eventsRoute from "./events.js";
 import history from "./history.js";
 import mlxAsr from "./mlx-asr.js";
@@ -19,6 +20,7 @@ import org from "./org.js";
 import outputRoute from "./output.js";
 import pluginsRoute from "./plugins.js";
 import postProcessRoute from "./post-process-route.js";
+import pricing from "./pricing.js";
 import remixRoute from "./remix/index.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
@@ -69,6 +71,7 @@ const apiRouter = new Hono()
   .route("/transcribe", transcribePreWarmRoute)
   .route("/history", history)
   .route("/dictionary", dictionary)
+  .route("/dismissed-notifications", dismissedNotifications)
   .route("/vocabulary", vocabulary)
   .route("/post-process", postProcessRoute)
   .route("/remix", remixRoute)
@@ -76,6 +79,7 @@ const apiRouter = new Hono()
   .route("/events", eventsRoute)
   .route("/usage", usage)
   .route("/billing", billing)
+  .route("/pricing", pricing)
   .route("/org", org)
   .route("/plugins", pluginsRoute)
   .route("/whisper", whisper)

@@ -630,6 +630,16 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     db.exec(
       "DELETE FROM settings WHERE key IN ('command_hotkey', 'commands_enabled')",
     );
+    // Dismissals for in-app dialogs/banners (changelogs, feature prompts,
+    // profile nudges). Presence of a key means the corresponding UI has been
+    // dismissed and should not be shown again. Not synced to Freestyle Cloud —
+    // stored alongside settings in this server's SQLite DB.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS dismissed_notifications (
+        key          TEXT PRIMARY KEY,
+        dismissed_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
   }
 
   // Upsert schema version

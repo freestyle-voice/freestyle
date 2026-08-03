@@ -1,30 +1,48 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
+import { useFocusEffect } from "expo-router";
 import { Clock, Search, SearchX, Trash2, X } from "lucide-react-native";
 import { useCallback, useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { Card, TabScreenScaffold } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import { type HistoryEntry, useHistory } from "@/lib/history";
+import {
+  deriveHistoryStats,
+  type HistoryEntry,
+  useHistory,
+} from "@/lib/history";
+import { confirmClearHistory } from "@/lib/history-alerts";
 
-/** "Today" / "Yesterday" / "Mon, Jul 21" bucket for an entry timestamp. */
-function dateGroup(ts: number): string {
+interface DateGroup {
+  key: string;
+  label: string;
+}
+
+/** Stable key + "Today" / "Yesterday" / localized date label. */
+function dateGroup(ts: number, nowTs: number): DateGroup {
   const d = new Date(ts);
-  const now = new Date();
+  const now = new Date(nowTs);
   const startOf = (x: Date) =>
     new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const dayMs = 86_400_000;
   const diff = Math.round((startOf(now) - startOf(d)) / dayMs);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Yesterday";
-  return d.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  if (diff === 0) return { key, label: "Today" };
+  if (diff === 1) return { key, label: "Yesterday" };
+  return {
+    key,
+    label: d.toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      ...(d.getFullYear() !== now.getFullYear()
+        ? { year: "numeric" as const }
+        : {}),
+    }),
+  };
 }
 
 /** Wall-clock time like "2:34 pm". */
@@ -42,11 +60,34 @@ function formatSeconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+/** Compact duration: "12s", "3.4m", "1.2h". */
+function formatDuration(ms: number): string {
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)}m`;
+  return `${(ms / 3_600_000).toFixed(1)}h`;
+}
+
+/** Compact integer: 1250 → "1.3k". */
+function formatCount(n: number): string {
+  if (n < 1000) return String(n);
+  return `${(n / 1000).toFixed(1)}k`;
+}
+
 export default function HistoryScreen() {
   const theme = useTheme();
-  const { history, removeHistory, clearHistory } = useHistory();
+  const { history, pauseHistory, removeHistory, clearHistory } = useHistory();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [now, setNow] = useState(Date.now);
+
+  useFocusEffect(
+    useCallback(() => {
+      setNow(Date.now());
+    }, []),
+  );
+
+  const stats = useMemo(() => deriveHistoryStats(history, now), [history, now]);
+  const maxDayWords = Math.max(1, ...stats.last7Days);
 
   // Case-insensitive substring match on the transcript text. The full list is
   // already in memory (max 500), so filtering client-side is instant.
@@ -58,15 +99,15 @@ export default function HistoryScreen() {
 
   // Group the (already newest-first) list into ordered date buckets.
   const groups = useMemo(() => {
-    const out: { label: string; entries: HistoryEntry[] }[] = [];
+    const out: { key: string; label: string; entries: HistoryEntry[] }[] = [];
     for (const entry of filtered) {
-      const label = dateGroup(entry.createdAt);
+      const group = dateGroup(entry.createdAt, now);
       const last = out[out.length - 1];
-      if (last && last.label === label) last.entries.push(entry);
-      else out.push({ label, entries: [entry] });
+      if (last && last.key === group.key) last.entries.push(entry);
+      else out.push({ ...group, entries: [entry] });
     }
     return out;
-  }, [filtered]);
+  }, [filtered, now]);
 
   const copy = useCallback(async (entry: HistoryEntry) => {
     await Clipboard.setStringAsync(entry.text);
@@ -75,17 +116,6 @@ export default function HistoryScreen() {
     setTimeout(() => setCopiedId(null), 1500);
   }, []);
 
-  const confirmClear = useCallback(() => {
-    Alert.alert(
-      "Clear history?",
-      "This permanently removes every saved dictation on this device.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Clear all", style: "destructive", onPress: clearHistory },
-      ],
-    );
-  }, [clearHistory]);
-
   return (
     <TabScreenScaffold
       title="History"
@@ -93,7 +123,7 @@ export default function HistoryScreen() {
       action={
         history.length > 0 ? (
           <Pressable
-            onPress={confirmClear}
+            onPress={() => confirmClearHistory(clearHistory)}
             hitSlop={10}
             accessibilityRole="button"
             accessibilityLabel="Clear history"
@@ -104,6 +134,61 @@ export default function HistoryScreen() {
         ) : null
       }
     >
+      {history.length > 0 ? (
+        <Card>
+          <View style={styles.statsRow}>
+            <StatCell
+              label="Dictations"
+              value={formatCount(stats.totalSessions)}
+            />
+            <StatCell label="Words" value={formatCount(stats.totalWords)} />
+            <StatCell
+              label="Spoken"
+              value={formatDuration(stats.totalDurationMs)}
+            />
+            <StatCell
+              label="Last 7 days"
+              value={formatCount(stats.last7Words)}
+              hint={`${stats.last7Sessions} dictations`}
+            />
+          </View>
+          <View style={styles.activityRow}>
+            {stats.last7Days.map((words, i) => {
+              const height = Math.max(
+                3,
+                Math.round((words / maxDayWords) * 28),
+              );
+              return (
+                <View key={i} style={styles.activityBarWrap}>
+                  <View
+                    style={[
+                      styles.activityBar,
+                      {
+                        height,
+                        backgroundColor:
+                          words > 0 ? theme.primary : theme.border,
+                      },
+                    ]}
+                  />
+                </View>
+              );
+            })}
+          </View>
+          <ThemedText themeColor="mutedForeground" style={styles.activityHint}>
+            Last 7 days · words spoken
+          </ThemedText>
+        </Card>
+      ) : null}
+
+      {pauseHistory ? (
+        <Card>
+          <ThemedText themeColor="mutedForeground" style={styles.pauseNotice}>
+            History is paused. New dictations won't be saved until you turn
+            saving back on in Settings.
+          </ThemedText>
+        </Card>
+      ) : null}
+
       {history.length > 0 ? (
         <View style={[styles.searchBar, { borderColor: theme.border }]}>
           <Search color={theme.mutedForeground} size={16} />
@@ -135,7 +220,9 @@ export default function HistoryScreen() {
           <View style={styles.empty}>
             <Clock color={theme.mutedForeground} size={22} />
             <ThemedText themeColor="mutedForeground" style={styles.emptyText}>
-              No dictations yet. What you speak will show up here.
+              {pauseHistory
+                ? "History is paused and empty. Turn saving back on in Settings to start collecting dictations."
+                : "No dictations yet. What you speak will show up here."}
             </ThemedText>
           </View>
         </Card>
@@ -150,7 +237,7 @@ export default function HistoryScreen() {
         </Card>
       ) : (
         groups.map((group) => (
-          <View key={group.label} style={styles.group}>
+          <View key={group.key} style={styles.group}>
             <ThemedText type="eyebrow" themeColor="mutedForeground">
               {group.label}
             </ThemedText>
@@ -217,7 +304,74 @@ export default function HistoryScreen() {
   );
 }
 
+function StatCell({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <View style={styles.statCell}>
+      <ThemedText style={styles.statValue}>{value}</ThemedText>
+      <ThemedText themeColor="mutedForeground" style={styles.statLabel}>
+        {label}
+      </ThemedText>
+      {hint ? (
+        <ThemedText themeColor="mutedForeground" style={styles.statHint}>
+          {hint}
+        </ThemedText>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: Spacing.two,
+  },
+  statCell: { flex: 1, gap: 2 },
+  statValue: {
+    fontFamily: Fonts.sansMedium,
+    fontSize: 18,
+    letterSpacing: -0.3,
+  },
+  statLabel: {
+    fontFamily: Fonts.mono,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  statHint: { fontSize: 11, marginTop: 1 },
+  activityRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 4,
+    height: 32,
+    marginTop: Spacing.one,
+  },
+  activityBarWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  activityBar: {
+    width: "70%",
+    borderRadius: Radius.full,
+    minHeight: 3,
+  },
+  activityHint: {
+    fontSize: 11,
+    marginTop: -Spacing.one,
+  },
+  pauseNotice: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",

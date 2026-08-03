@@ -9,7 +9,9 @@ import {
   listCloudOrganizations,
   setCloudActiveOrganization,
 } from "../lib/freestyle-cloud.js";
+import { pullCloudPreferences } from "../lib/preferences-sync.js";
 import { getSessionToken } from "../lib/sessions.js";
+import { clearOutbox } from "../lib/sync-outbox.js";
 
 const log = createAppLogger("org");
 
@@ -55,9 +57,16 @@ const org = new Hono()
     const { organizationId } = c.req.valid("json");
     try {
       await setCloudActiveOrganization(token, organizationId);
-      // The active org changed — drop the cached slug so the next profile/
-      // preferences request resolves the new org's slug.
+      // Member preferences (cleanup tones, languages, vocabulary) are per-org,
+      // so everything scoped to the previous org is now stale:
+      //   - drop the cached slug so subsequent requests resolve the new org's,
       clearCachedOrgSlug();
+      //   - clear the outbox so patches queued for the previous org can't be
+      //     delivered to the new one (rows are keyed by field, not org),
+      clearOutbox();
+      //   - reload the new org's snapshot into the local settings/vocabulary
+      //     tables so the app reflects the switch immediately (like sign-in).
+      await pullCloudPreferences();
       return c.json({ ok: true });
     } catch (err) {
       log.warn(`failed to set active organization: ${formatError(err)}`);

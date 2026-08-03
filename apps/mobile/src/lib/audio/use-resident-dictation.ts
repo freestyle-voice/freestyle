@@ -34,16 +34,13 @@ import { useCallback, useEffect, useRef } from "react";
 import { Alert, AppState } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
+import { useChimes } from "@/lib/audio/chimes";
 import { authHeaders } from "@/lib/cloud/session";
 import { CloudStreamSession } from "@/lib/cloud/stream";
 import { startProCheckout } from "@/lib/cloud/subscription";
-import {
-  applyDictionaryReplacements,
-  useEntries,
-  vocabularyTerms,
-} from "@/lib/entries";
+import { applyDictionaryReplacements, useEntries } from "@/lib/entries";
 import { useHistory } from "@/lib/history";
-import { languageHints, tonesForCloud, useSettings } from "@/lib/settings";
+import { useSettings } from "@/lib/settings";
 import {
   checkMicPermission,
   requestMicPermission,
@@ -75,6 +72,8 @@ export interface ResidentDictationCallbacks {
 }
 
 export interface ResidentDictation {
+  /** Settings/history hydration is complete; commands can be consumed. */
+  ready: boolean;
   /** Mic input level [0,1] as a reanimated shared value (waveform/meter). */
   level: ReturnType<typeof useSharedValue<number>>;
   /** Acquire the mic and hold it warm. Optionally begin the first phrase. */
@@ -89,14 +88,23 @@ export interface ResidentDictation {
   disarm: () => void;
 }
 
-type Internal = "idle" | "arming" | "armed" | "capturing" | "finalizing";
+type Internal =
+  | "idle"
+  | "arming"
+  | "armed"
+  | "cueing"
+  | "capturing"
+  | "finalizing";
 
 export function useResidentDictation(
   callbacks: ResidentDictationCallbacks,
 ): ResidentDictation {
-  const { settings } = useSettings();
-  const { vocabulary, dictionary } = useEntries();
-  const { addHistory } = useHistory();
+  const { settings, ready: settingsReady } = useSettings();
+  const { dictionary } = useEntries();
+  const { addHistory, ready: historyReady } = useHistory();
+  const { playStartChime, playSuccessChime } = useChimes(
+    settings.soundFeedback,
+  );
 
   const level = useSharedValue(0);
 
@@ -106,6 +114,10 @@ export function useResidentDictation(
   const streamOnRef = useRef(false);
   // Internal state machine, kept in a ref so callbacks read it synchronously.
   const stateRef = useRef<Internal>("idle");
+  // Distinguish overlapping native arm attempts (arm → disarm → arm) and share
+  // one in-flight native `start()` call across them.
+  const armGenerationRef = useRef(0);
+  const recorderStartRef = useRef<Promise<void> | null>(null);
   const captureStartedAt = useRef(0);
   const capturedMsRef = useRef(0);
 
@@ -121,10 +133,6 @@ export function useResidentDictation(
   const settingsRef = useRef(settings);
   useEffect(() => {
     settingsRef.current = settings;
-  });
-  const vocabularyRef = useRef(vocabulary);
-  useEffect(() => {
-    vocabularyRef.current = vocabulary;
   });
   const dictionaryRef = useRef(dictionary);
   useEffect(() => {
@@ -156,13 +164,10 @@ export function useResidentDictation(
     const s = settingsRef.current;
     return new CloudStreamSession({
       cookie: headers.Cookie,
-      languages: languageHints(s.languages),
-      vocabulary: vocabularyTerms(vocabularyRef.current),
+      languages: s.languages,
       cleanup: {
         skipPostProcess: !s.cleanup,
-        intensity: s.intensity,
-        customPrompt: s.customPrompt || undefined,
-        ...tonesForCloud(s),
+        translate: s.translate,
       },
       callbacks: {
         onReady: () => {},
@@ -187,6 +192,7 @@ export function useResidentDictation(
             // us on; expose the text via onFinal.
             stateRef.current = streamOnRef.current ? "armed" : "idle";
             cbRef.current.onFinal?.(text);
+            void playSuccessChime();
             void Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
             );
@@ -223,30 +229,46 @@ export function useResidentDictation(
           );
         },
         onClose: () => {
-          // Socket dropped mid-finalize: don't strand the caller in finalizing.
-          if (stateRef.current === "finalizing") {
+          // Explicit closes detach this handler in CloudStreamSession, so this
+          // is an unexpected remote close. Recover to the warm armed state.
+          if (
+            stateRef.current === "capturing" ||
+            stateRef.current === "finalizing"
+          ) {
+            sessionRef.current = null;
             stateRef.current = streamOnRef.current ? "armed" : "idle";
-            if (stateRef.current === "armed") cbRef.current.onArmed?.();
+            cbRef.current.onError?.(
+              "Connection lost. Tap the mic to try again.",
+              streamOnRef.current,
+            );
           }
         },
       },
     });
-  }, [closeSession]);
+  }, [closeSession, playSuccessChime]);
 
   const beginCapture = useCallback(() => {
     if (!streamOnRef.current) return;
     if (stateRef.current !== "armed") return;
-    const session = openSession();
-    if (!session) {
-      cbRef.current.onError?.("Not signed in.", true);
-      return;
-    }
-    sessionRef.current = session;
-    captureStartedAt.current = Date.now();
-    stateRef.current = "capturing";
-    cbRef.current.onCaptureStart?.();
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  }, [openSession]);
+    stateRef.current = "cueing";
+    void (async () => {
+      // The recorder is already warm; keep dropping frames until this resolves
+      // so the start cue never reaches STT.
+      await playStartChime();
+      if (!streamOnRef.current || stateRef.current !== "cueing") return;
+      const session = openSession();
+      if (!session) {
+        stateRef.current = "armed";
+        cbRef.current.onError?.("Not signed in.", true);
+        return;
+      }
+      sessionRef.current = session;
+      captureStartedAt.current = Date.now();
+      stateRef.current = "capturing";
+      cbRef.current.onCaptureStart?.();
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    })();
+  }, [openSession, playStartChime]);
 
   const arm = useCallback(
     async (options?: { beginImmediately?: boolean }) => {
@@ -261,13 +283,22 @@ export function useResidentDictation(
         cbRef.current.onError?.("Not signed in.", false);
         return;
       }
+      if (!settingsReady || !historyReady) {
+        cbRef.current.onError?.(
+          "Freestyle is still loading. Try again.",
+          false,
+        );
+        return;
+      }
 
+      const generation = ++armGenerationRef.current;
       stateRef.current = "arming";
 
       const perm =
         (await checkMicPermission()) === "granted"
           ? "granted"
           : await requestMicPermission();
+      if (generation !== armGenerationRef.current) return;
       if (perm !== "granted") {
         stateRef.current = "idle";
         cbRef.current.onError?.("Microphone access is off.", false);
@@ -280,14 +311,42 @@ export function useResidentDictation(
         await waitForActive();
       }
       // A disarm may have raced in while we awaited.
-      if (stateRef.current !== "arming") return;
+      if (
+        generation !== armGenerationRef.current ||
+        stateRef.current !== "arming"
+      )
+        return;
 
+      const startPromise = recorderStartRef.current ?? recorder.start();
+      recorderStartRef.current = startPromise;
       try {
-        await recorder.start();
+        await startPromise;
       } catch {
+        if (recorderStartRef.current === startPromise) {
+          recorderStartRef.current = null;
+        }
+        if (generation !== armGenerationRef.current) return;
         stateRef.current = "idle";
         cbRef.current.onError?.("Couldn't start the microphone.", false);
         return;
+      }
+      // An older generation can resolve while a newer arm waits on the same
+      // native start. Let the newest generation claim it; only stop when no
+      // replacement arm is active.
+      if (
+        generation !== armGenerationRef.current ||
+        stateRef.current !== "arming"
+      ) {
+        if (stateRef.current !== "arming") {
+          if (recorderStartRef.current === startPromise) {
+            recorderStartRef.current = null;
+          }
+          recorder.stop();
+        }
+        return;
+      }
+      if (recorderStartRef.current === startPromise) {
+        recorderStartRef.current = null;
       }
 
       streamOnRef.current = true;
@@ -296,7 +355,7 @@ export function useResidentDictation(
 
       if (options?.beginImmediately) beginCapture();
     },
-    [recorder, beginCapture],
+    [recorder, beginCapture, settingsReady, historyReady],
   );
 
   const commit = useCallback(() => {
@@ -318,7 +377,8 @@ export function useResidentDictation(
   }, [closeSession, level]);
 
   const cancel = useCallback(() => {
-    if (stateRef.current !== "capturing") return;
+    if (stateRef.current !== "capturing" && stateRef.current !== "cueing")
+      return;
     closeSession();
     stateRef.current = streamOnRef.current ? "armed" : "idle";
     level.value = 0;
@@ -326,6 +386,28 @@ export function useResidentDictation(
   }, [closeSession, level]);
 
   const disarm = useCallback(() => {
+    armGenerationRef.current += 1;
+    const disarmGeneration = armGenerationRef.current;
+    const pendingStart = recorderStartRef.current;
+    if (pendingStart) {
+      void pendingStart
+        .then(() => {
+          if (
+            armGenerationRef.current === disarmGeneration &&
+            stateRef.current === "idle"
+          ) {
+            recorder.stop();
+            if (recorderStartRef.current === pendingStart) {
+              recorderStartRef.current = null;
+            }
+          }
+        })
+        .catch(() => {
+          if (recorderStartRef.current === pendingStart) {
+            recorderStartRef.current = null;
+          }
+        });
+    }
     closeSession();
     if (streamOnRef.current) recorder.stop();
     streamOnRef.current = false;
@@ -337,7 +419,15 @@ export function useResidentDictation(
   // Always release the mic on unmount so we never leave the indicator lit.
   useEffect(() => disarm, [disarm]);
 
-  return { level, arm, beginCapture, commit, cancel, disarm };
+  return {
+    ready: settingsReady && historyReady,
+    level,
+    arm,
+    beginCapture,
+    commit,
+    cancel,
+    disarm,
+  };
 }
 
 /**

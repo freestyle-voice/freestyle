@@ -28,6 +28,8 @@ import { capture, identifyCloudUser } from "../lib/posthog.js";
 import {
   pullCloudPreferences,
   pullCloudPreferencesWithRetry,
+  resetPreferencesBackfill,
+  resetSyncedPreferencesForAccount,
 } from "../lib/preferences-sync.js";
 import { validateSession } from "../lib/session-validate.js";
 import {
@@ -78,6 +80,11 @@ const auth = new Hono()
       });
       applyFreestyleCloudDefaults();
       identifyCloudUser(user);
+      // If a DIFFERENT account previously synced on this device, scrub its
+      // synced preferences + vocabulary first so this account seeds cleanly and
+      // the backfill can't push the prior account's leftovers up (cross-account
+      // leak). Synchronous + before the pull so the pull sees a clean baseline.
+      resetSyncedPreferencesForAccount(user.id);
       // Seed local cleanup preferences from the cloud snapshot (cross-device
       // sync). Fire-and-forget — sign-in must not block on it.
       void pullCloudPreferences();
@@ -115,6 +122,9 @@ const auth = new Hono()
     // Discard any preference syncs queued under this account so they aren't
     // delivered to a different account that signs in next.
     clearOutbox();
+    // Re-arm the one-time preference backfill so the next account to sign in on
+    // this device seeds the cloud from its own snapshot.
+    resetPreferencesBackfill();
     return c.json({ ok: true });
   })
   // Social accounts linked to the signed-in user, for the profile page.

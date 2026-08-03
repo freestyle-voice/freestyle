@@ -13,13 +13,35 @@
     "build": "pkgroll --minify"
   },
   "exports": {
-    "import": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
-    "require": {
-      "types": "./dist/index.d.cts",
-      "default": "./dist/index.cjs"
+    "./cloud": {
+      "import": {
+        "types": "./dist/cloud.d.ts",
+        "default": "./dist/cloud.js"
+      },
+      "require": {
+        "types": "./dist/cloud.d.cts",
+        "default": "./dist/cloud.cjs"
+      }
+    },
+    "./logger": {
+      "import": {
+        "types": "./dist/logger.d.ts",
+        "default": "./dist/logger.js"
+      },
+      "require": {
+        "types": "./dist/logger.d.cts",
+        "default": "./dist/logger.cjs"
+      }
     }
   },
   "peerDependencies": {

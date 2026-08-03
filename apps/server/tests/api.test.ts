@@ -215,6 +215,104 @@ describe("Settings", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Dismissed notifications CRUD
+// ---------------------------------------------------------------------------
+
+describe("Dismissed notifications", () => {
+  beforeEach(() => {
+    getDb().exec("DELETE FROM dismissed_notifications");
+  });
+
+  it("GET /api/dismissed-notifications returns empty list initially", async () => {
+    const res = await req("/api/dismissed-notifications");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+  });
+
+  it("PUT dismisses a key and GET lists it", async () => {
+    const put = await req("/api/dismissed-notifications/profile_info_prompt", {
+      method: "PUT",
+    });
+    expect(put.status).toBe(200);
+    expect(await put.json()).toEqual({
+      key: "profile_info_prompt",
+      dismissed: true,
+    });
+
+    const get = await req("/api/dismissed-notifications");
+    expect(await get.json()).toEqual(["profile_info_prompt"]);
+  });
+
+  it("PUT is idempotent for an already-dismissed key", async () => {
+    await req("/api/dismissed-notifications/changelog.1.0.0", {
+      method: "PUT",
+    });
+    const put = await req("/api/dismissed-notifications/changelog.1.0.0", {
+      method: "PUT",
+    });
+    expect(put.status).toBe(200);
+
+    const get = await req("/api/dismissed-notifications");
+    expect(await get.json()).toEqual(["changelog.1.0.0"]);
+  });
+
+  it("GET sorts valid keys and ignores corrupt rows", async () => {
+    const db = getDb();
+    const insert = db.prepare(
+      "INSERT INTO dismissed_notifications (key) VALUES (?)",
+    );
+    insert.run("today.tutorial_hero");
+    insert.run("profile_info_prompt");
+    insert.run("INVALID KEY");
+    insert.run(" padded_key ");
+
+    const get = await req("/api/dismissed-notifications");
+    expect(await get.json()).toEqual([
+      "profile_info_prompt",
+      "today.tutorial_hero",
+    ]);
+  });
+
+  it("PUT rejects an invalid key", async () => {
+    const put = await req("/api/dismissed-notifications/BAD KEY!", {
+      method: "PUT",
+    });
+    expect(put.status).toBe(400);
+  });
+
+  it("PUT rejects an empty key", async () => {
+    const put = await req("/api/dismissed-notifications/%20", {
+      method: "PUT",
+    });
+    expect(put.status).toBe(400);
+  });
+
+  it("DELETE rejects an invalid key", async () => {
+    const del = await req("/api/dismissed-notifications/NOT%20VALID", {
+      method: "DELETE",
+    });
+    expect(del.status).toBe(400);
+  });
+
+  it("DELETE resets a dismissal", async () => {
+    await req("/api/dismissed-notifications/profile_info_prompt", {
+      method: "PUT",
+    });
+    const del = await req("/api/dismissed-notifications/profile_info_prompt", {
+      method: "DELETE",
+    });
+    expect(del.status).toBe(200);
+    expect(await del.json()).toEqual({
+      key: "profile_info_prompt",
+      dismissed: false,
+    });
+
+    const get = await req("/api/dismissed-notifications");
+    expect(await get.json()).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Dictionary CRUD
 // ---------------------------------------------------------------------------
 

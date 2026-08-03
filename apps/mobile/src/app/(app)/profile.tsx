@@ -723,6 +723,14 @@ function OrganizationCard() {
       // plan — refresh both the active org and usage so the PLAN card updates.
       void queryClient.invalidateQueries({ queryKey: ["cloud-active-org"] });
       void queryClient.invalidateQueries({ queryKey: ["cloud-usage"] });
+      // Member preferences (cleanup tones/languages) and profile fields are
+      // per-org — reload the new org's snapshot so the settings/profile screens
+      // reflect the switch instead of the previous org's cached values.
+      // Vocabulary reloads via the active-org change in `EntriesProvider`.
+      void queryClient.invalidateQueries({ queryKey: ["cloud-preferences"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["cloud-profile-fields"],
+      });
     },
     [activeOrg?.id, queryClient],
   );

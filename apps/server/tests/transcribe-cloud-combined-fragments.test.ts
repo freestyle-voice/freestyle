@@ -14,7 +14,15 @@ import { getDb, writeSetting } from "../src/lib/db.js";
 const FREESTYLE_CLOUD_PROVIDER_ID = "freestyle-cloud";
 
 const cloudTranscribeSpy = vi.fn(
-  async (opts: { mode?: string; systemFragments?: string[] }) => ({
+  async (opts: {
+    mode?: string;
+    systemFragments?: string[];
+    intensity?: string;
+    personalTone?: string;
+    appAssignments?: unknown;
+    languages?: string[];
+    vocabulary?: unknown;
+  }) => ({
     raw: "raw cloud text",
     cleaned: opts.mode === "combined" ? "cleaned cloud text" : "raw cloud text",
     usage: { inputTokens: 1, outputTokens: 1 },
@@ -88,7 +96,15 @@ function transcribe(): Promise<Response> {
   });
 }
 
-function lastCallOpts(): { mode?: string; systemFragments?: string[] } {
+function lastCallOpts(): {
+  mode?: string;
+  systemFragments?: string[];
+  intensity?: string;
+  personalTone?: string;
+  appAssignments?: unknown;
+  languages?: string[];
+  vocabulary?: unknown;
+} {
   const calls = cloudTranscribeSpy.mock.calls;
   return calls[calls.length - 1][0];
 }
@@ -121,6 +137,14 @@ describe("POST /api/transcribe — combined cloud + beforeCleanup", () => {
     const opts = lastCallOpts();
     expect(opts.mode).toBe("combined");
     expect(opts.systemFragments).toEqual(["Add emoji."]);
+    // The cloud reads the user's synced cleanup preferences (tones, intensity,
+    // app assignments, languages, vocabulary) from member_preferences, so the
+    // combined request must NOT carry those saved defaults.
+    expect(opts.intensity).toBeUndefined();
+    expect(opts.personalTone).toBeUndefined();
+    expect(opts.appAssignments).toBeUndefined();
+    expect(opts.languages).toBeUndefined();
+    expect(opts.vocabulary).toBeUndefined();
     // Combined mode does its cleanup remotely — never touches local postProcess.
     expect(postProcessSpy).not.toHaveBeenCalled();
   });

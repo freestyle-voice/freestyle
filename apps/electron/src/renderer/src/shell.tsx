@@ -5,6 +5,7 @@ import {
   UpgradeCtaCard,
 } from "@renderer/components/cloud-profile";
 import { Badge } from "@renderer/components/ui/badge";
+import { UpdateBanner } from "@renderer/components/update-banner";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { LINKS } from "@renderer/lib/links";
 import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform";
@@ -338,6 +339,8 @@ export default function AppShell(): React.JSX.Element {
             <SiDiscord className="h-3.5 w-3.5" />
           </a>
         </div>
+
+        <UpdateBanner className="relative z-50 mt-14 w-[calc(100%-3rem)] max-w-2xl self-center" />
 
         <main
           className="flex min-h-0 flex-1 flex-col overflow-hidden"

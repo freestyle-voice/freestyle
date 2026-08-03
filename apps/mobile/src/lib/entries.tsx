@@ -10,6 +10,7 @@
  *     to the cloud (same as desktop: the cloud text comes back, then we rewrite).
  */
 
+import { useQuery } from "@tanstack/react-query";
 import {
   createContext,
   type ReactNode,
@@ -22,6 +23,7 @@ import {
 } from "react";
 
 import { useAuth } from "@/hooks/use-auth";
+import { getActiveOrganization } from "./cloud/org";
 import {
   fetchCloudVocabularyTerms,
   pushCloudVocabularyTerms,
@@ -76,6 +78,16 @@ const VOCAB_PUSH_DEBOUNCE_MS = 600;
 
 export function EntriesProvider({ children }: { children: ReactNode }) {
   const { signedIn } = useAuth();
+  // The active org id. Vocabulary is per-org (stored under the org's
+  // `member_preferences`), so switching orgs must re-pull it. This shares the
+  // profile screen's query key, which the switcher invalidates — the id then
+  // re-resolves here and drives the pull effect below.
+  const { data: activeOrg } = useQuery({
+    queryKey: ["cloud-active-org"],
+    queryFn: getActiveOrganization,
+    enabled: signedIn,
+  });
+  const activeOrgId = activeOrg?.id;
   const [vocabulary, setVocabulary] = useState<VocabEntry[]>([]);
   const [dictionary, setDictionary] = useState<DictionaryEntry[]>([]);
   const [ready, setReady] = useState(false);
@@ -135,17 +147,34 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
     void setJsonPref(DICTIONARY_KEY, next);
   }, []);
 
-  // Pull the cloud's canonical vocabulary and mirror it locally on mount and
-  // whenever the user signs in. Only runs once local state has loaded so the
-  // mirror diffs against the real list (not the empty initial state). A cloud
-  // snapshot with no `vocabulary` object (undefined) leaves local untouched.
+  // Pull the cloud's canonical vocabulary and mirror it locally on mount, when
+  // the user signs in, and when the active org changes (vocabulary is per-org).
+  // Only runs once local state has loaded so the mirror diffs against the real
+  // list (not the empty initial state). A cloud snapshot with no `vocabulary`
+  // object (undefined) leaves local untouched.
+  //
+  // `activeOrgId` is an intentional dependency: the body never reads it, but a
+  // change means the active org switched, so the per-org vocabulary must be
+  // re-pulled and re-mirrored.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeOrgId is a deliberate re-pull trigger
   useEffect(() => {
     if (!ready || !signedIn) return;
     let cancelled = false;
     (async () => {
       try {
         const cloudTerms = await fetchCloudVocabularyTerms();
-        if (cancelled || cloudTerms === undefined) return;
+        if (cancelled) return;
+        if (cloudTerms === undefined) {
+          // Cloud carries no vocabulary yet. Seed it from the local terms so ASR
+          // biasing keeps working now that the app no longer sends vocabulary
+          // inline on `start`. Idempotent: once the cloud has terms this branch
+          // stops firing; a failed push retries on the next sign-in / mount.
+          const localTerms = vocabularyTerms(vocabRef.current);
+          if (localTerms.length > 0) {
+            void pushCloudVocabularyTerms(localTerms).catch(() => {});
+          }
+          return;
+        }
         const mirrored = mirrorCloudTerms(vocabRef.current, cloudTerms);
         // Reference-equal when nothing changed — skip the redundant write.
         if (mirrored !== vocabRef.current) {
@@ -158,7 +187,7 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [ready, signedIn, persistVocab]);
+  }, [ready, signedIn, activeOrgId, persistVocab]);
 
   // Flush any pending push on unmount so a debounced edit isn't lost.
   useEffect(() => {

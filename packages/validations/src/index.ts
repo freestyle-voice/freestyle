@@ -9,6 +9,7 @@ export * from "./export.js";
 export * from "./local-llm.js";
 export * from "./member-preferences.js";
 export * from "./models.js";
+export * from "./notifications.js";
 export * from "./openai-stt.js";
 export * from "./plugins.js";
 export * from "./post-process.js";

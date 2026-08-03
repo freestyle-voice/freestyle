@@ -4,7 +4,10 @@
  * settings sub-page reads and writes the same source of truth.
  */
 
-import type { CloudMemberPreferences } from "@freestyle-voice/validations";
+import type {
+  CloudMemberPreferences,
+  MemberPreferencesInput,
+} from "@freestyle-voice/validations";
 import {
   normalizeLanguageList,
   parseStoredLanguageList,
@@ -26,7 +29,6 @@ import {
   type CleanupIntensity,
   type CleanupOverallTone,
   type CleanupPersonalTone,
-  type CleanupTones,
   type CleanupWorkTone,
   DEFAULT_EMAIL_TONE,
   DEFAULT_INTENSITY,
@@ -79,11 +81,23 @@ const PERSONAL_TONE_KEY = "cleanup_personal_tone";
 const WORK_TONE_KEY = "cleanup_work_tone";
 const EMAIL_TONE_KEY = "cleanup_email_tone";
 const OVERALL_TONE_KEY = "cleanup_overall_tone";
+// Device-only (not cloud-synced): translate is a per-session stream flag, and
+// sound feedback is a local UX preference.
+const TRANSLATE_KEY = "translate";
+const SOUND_FEEDBACK_KEY = "sound_feedback";
 
 export interface DictationSettings {
   /** Preferred spoken languages (ISO codes); `[]` means auto-detect. */
   languages: string[];
   cleanup: boolean;
+  /**
+   * Force translation into the single selected language. Only meaningful when
+   * exactly one language is selected — the cloud ignores it otherwise.
+   * Device-only; not synced.
+   */
+  translate: boolean;
+  /** Play start/success chimes alongside haptics. Device-only; not synced. */
+  soundFeedback: boolean;
   intensity: CleanupIntensity;
   customPrompt: string;
   personalTone: CleanupPersonalTone;
@@ -95,6 +109,8 @@ export interface DictationSettings {
 const DEFAULTS: DictationSettings = {
   languages: [],
   cleanup: true,
+  translate: false,
+  soundFeedback: true,
   intensity: DEFAULT_INTENSITY,
   customPrompt: "",
   personalTone: DEFAULT_PERSONAL_TONE,
@@ -108,6 +124,8 @@ interface SettingsContextValue {
   ready: boolean;
   setLanguages: (languages: string[]) => void;
   setCleanup: (cleanup: boolean) => void;
+  setTranslate: (translate: boolean) => void;
+  setSoundFeedback: (enabled: boolean) => void;
   setIntensity: (intensity: CleanupIntensity) => void;
   setCustomPrompt: (prompt: string) => void;
   setPersonalTone: (tone: CleanupPersonalTone) => void;
@@ -203,6 +221,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         languagesRaw,
         legacyLang,
         cleanup,
+        translate,
+        soundFeedback,
         intensity,
         customPrompt,
         personalTone,
@@ -213,6 +233,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         getPref(LANGUAGES_KEY),
         getPref(LEGACY_LANGUAGE_KEY),
         getPref(CLEANUP_KEY),
+        getPref(TRANSLATE_KEY),
+        getPref(SOUND_FEEDBACK_KEY),
         getPref(INTENSITY_KEY),
         getPref(CUSTOM_PROMPT_KEY),
         getPref(PERSONAL_TONE_KEY),
@@ -223,6 +245,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setLocal({
         languages: parseStoredLanguageList(languagesRaw, legacyLang),
         cleanup: cleanup == null ? DEFAULTS.cleanup : cleanup === "true",
+        translate:
+          translate == null ? DEFAULTS.translate : translate === "true",
+        soundFeedback:
+          soundFeedback == null
+            ? DEFAULTS.soundFeedback
+            : soundFeedback === "true",
         intensity: (intensity as CleanupIntensity) ?? DEFAULTS.intensity,
         customPrompt: customPrompt ?? DEFAULTS.customPrompt,
         personalTone:
@@ -268,12 +296,70 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [cloud]);
 
+  // One-time-ish backfill: seed the cloud with any synced field it's still
+  // missing but that the user has stored locally. Pre-cloud-sync installs never
+  // pushed their EXISTING local preferences up (a value only syncs when it later
+  // changes), so without this a cloud-missing field would make the streaming DO
+  // fall back to a built-in default now that the app no longer sends preferences
+  // inline. Only fields the cloud LACKS are pushed (a value it already has —
+  // including an explicit `null` clear — wins); the cache is patched optimistically
+  // so this won't re-fire, and a failed push simply retries on the next resolve.
+  useEffect(() => {
+    if (!signedIn || !cloud) return;
+    (async () => {
+      const patch: MemberPreferencesInput = {};
+
+      for (const cloudField of Object.values(CLOUD_FIELD_MAP)) {
+        if (!cloudField) continue;
+        // Cloud already carries this field — don't clobber the authoritative value.
+        if (cloud[cloudField] !== undefined && cloud[cloudField] !== null)
+          continue;
+        const stored = await getPref(CLOUD_FIELD_STORAGE_KEY[cloudField]);
+        if (stored == null || stored === "") continue;
+        (patch as Record<string, unknown>)[cloudField] = stored;
+      }
+
+      // Languages is a JSON array with its own storage key. Seed it only when
+      // the cloud has nothing and the user actually has a stored selection.
+      if (cloud.languages === undefined || cloud.languages === null) {
+        const [raw, legacy] = await Promise.all([
+          getPref(LANGUAGES_KEY),
+          getPref(LEGACY_LANGUAGE_KEY),
+        ]);
+        const langs = normalizeLanguageList(
+          parseStoredLanguageList(raw, legacy),
+        );
+        if (langs.length > 0) patch.languages = langs;
+      }
+
+      if (Object.keys(patch).length === 0) return;
+
+      // Reflect the seed in the cache so the overlay + this effect converge
+      // without waiting for a refetch (the effect re-runs, finds nothing
+      // missing, and stops).
+      queryClient.setQueryData<CloudMemberPreferences>(
+        CLOUD_PREFERENCES_QUERY_KEY,
+        (prev) => ({ ...(prev ?? {}), ...patch }),
+      );
+      void pushCloudPreferences(patch).catch(() => {});
+    })();
+  }, [signedIn, cloud, queryClient]);
+
   // The effective settings: local device state with the cloud's authoritative
   // fields overlaid. Recomputes only when local or cloud changes.
   const settings = useMemo<DictationSettings>(
     () => (cloud ? applyCloudPreferences(local, cloud) : local),
     [local, cloud],
   );
+
+  // A cloud language update can also move the effective selection into
+  // auto/multi-language mode. Clear a now-invalid local translate choice so it
+  // cannot silently reactivate when the selection later returns to one item.
+  useEffect(() => {
+    if (!ready || settings.languages.length === 1 || !local.translate) return;
+    setLocal((current) => ({ ...current, translate: false }));
+    void setPref(TRANSLATE_KEY, "false");
+  }, [ready, settings.languages.length, local.translate]);
 
   const persist = useCallback(
     <K extends keyof DictationSettings>(
@@ -306,8 +392,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const setLanguages = useCallback(
     (next: string[]) => {
       const normalized = normalizeLanguageList(next);
-      setLocal((s) => ({ ...s, languages: normalized }));
+      setLocal((s) => ({
+        ...s,
+        languages: normalized,
+        // Translate has no valid target in auto/multi-language mode. Clear the
+        // persisted choice rather than silently re-enabling it later.
+        ...(normalized.length === 1 ? {} : { translate: false }),
+      }));
       void setPref(LANGUAGES_KEY, JSON.stringify(normalized));
+      if (normalized.length !== 1) {
+        void setPref(TRANSLATE_KEY, "false");
+      }
       queryClient.setQueryData<CloudMemberPreferences>(
         CLOUD_PREFERENCES_QUERY_KEY,
         (prev) => ({ ...(prev ?? {}), languages: normalized }),
@@ -323,6 +418,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       ready,
       setLanguages,
       setCleanup: (cleanup) => persist(CLEANUP_KEY, "cleanup", cleanup),
+      // Device-only: persist locally without pushing to the cloud.
+      setTranslate: (translate) =>
+        persist(TRANSLATE_KEY, "translate", translate),
+      setSoundFeedback: (enabled) =>
+        persist(SOUND_FEEDBACK_KEY, "soundFeedback", enabled),
       setIntensity: (intensity) =>
         persist(INTENSITY_KEY, "intensity", intensity),
       setCustomPrompt: (prompt) =>
@@ -350,25 +450,4 @@ export function useSettings(): SettingsContextValue {
     throw new Error("useSettings must be used within a SettingsProvider");
   }
   return ctx;
-}
-
-/**
- * The transcription-language hints to send to the cloud (already normalized,
- * never includes "auto"). An empty array means auto-detect.
- */
-export function languageHints(languages: string[]): string[] {
-  return normalizeLanguageList(languages);
-}
-
-/**
- * The full tone set to send to the cloud, straight from the user's dials. Any
- * dial left "off" tells the cloud to leave that destination untouched.
- */
-export function tonesForCloud(settings: DictationSettings): CleanupTones {
-  return {
-    personalTone: settings.personalTone,
-    workTone: settings.workTone,
-    emailTone: settings.emailTone,
-    overallTone: settings.overallTone,
-  };
 }

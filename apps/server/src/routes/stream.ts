@@ -99,13 +99,14 @@ const stream = new Hono().get(
         voice.model_id,
         true,
       );
-      // Freestyle Cloud post-processes server-side, so its cleanup preferences
-      // are part of the session transport config: if they change mid-session we
-      // must reconnect (a kept-warm upstream captured the old prefs at connect
-      // time and only re-sends them via `reset()`). Folding them into the
-      // compare key makes `sameConfig` false on any change, forcing a fresh
-      // connection. Non-cloud providers don't send cleanup upstream, so this
-      // stays null for them.
+      // Freestyle Cloud post-processes server-side and reads the user's synced
+      // cleanup preferences from the member_preferences row at connect time. We
+      // no longer send those prefs inline, but a kept-warm upstream captured
+      // them (server-side) when it connected, so a local change still requires a
+      // fresh connection for the cloud to re-read the updated row. Folding the
+      // current preference values into the compare key makes `sameConfig` false
+      // on any change, forcing that reconnect. Non-cloud providers don't
+      // post-process upstream, so this stays null for them.
       const cleanupFingerprint =
         voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
           ? JSON.stringify([
@@ -319,12 +320,16 @@ const stream = new Hono().get(
         }
       }
 
+      // The cloud DO reads the user's synced cleanup preferences (intensity,
+      // custom prompt, tones, app assignments) from the member_preferences row
+      // and assembles the prompt server-side, so we no longer forward those
+      // saved defaults. Only request-scoped values travel on the `start`
+      // message: `skipPostProcess` (a per-session control flag) and plugin
+      // `systemFragments` (never synced).
       const cleanup =
         voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
           ? {
               skipPostProcess: !isLlmCleanupEnabled() || pluginSkipsCleanup,
-              ...getEffectiveCleanupTones(),
-              appAssignments: getCleanupAppAssignments(),
               ...(systemFragments ? { systemFragments } : {}),
             }
           : undefined;

@@ -313,14 +313,6 @@ export async function postProcess(
             token,
             text: normalizedRawText,
             appContext: effectiveAppContext,
-            languages: options.languages,
-            intensity,
-            customPrompt,
-            personalTone,
-            workTone,
-            emailTone,
-            overallTone,
-            appAssignments: getCleanupAppAssignments(),
             ...(promptHook.system.length > 0
               ? { systemFragments: promptHook.system }
               : {}),

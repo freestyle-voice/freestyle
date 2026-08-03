@@ -1,5 +1,10 @@
 import { REMIX_PRESETS } from "@freestyle-voice/validations";
-import { RemixChat } from "@renderer/components/remix-chat";
+import { FreestyleMark } from "@renderer/components/freestyle-mark";
+import {
+  REMIX_CHAT_STRIP,
+  REMIX_CHAT_SURFACE,
+  RemixChat,
+} from "@renderer/components/remix-chat";
 import { capture } from "@renderer/lib/analytics";
 import {
   apiFetch,
@@ -294,13 +299,13 @@ const STATUS_SLOT = STATUS_SIZE + STATUS_GAP;
 /**
  * The pill floats over arbitrary application windows, so it commits to a
  * single dark treatment in both themes rather than following the app theme —
- * a light pill reads as a blown-out blob over dark editors. The tint is the
- * brand's dark surface, translucent over a blur so it picks up a hint of
- * whatever is behind it.
+ * a light pill reads as a blown-out blob over dark editors. Near-opaque:
+ * content behind the surface competes with the chat text, so the blur only
+ * softens the last few percent instead of making the surface glassy.
  */
-const SURFACE = "rgba(22, 20, 15, 0.92)";
+const SURFACE = "rgba(22, 20, 15, 0.98)";
 const SURFACE_BORDER = "1px solid rgba(255, 255, 255, 0.10)";
-const BLUR = "blur(20px) saturate(180%)";
+const BLUR = "blur(20px) saturate(120%)";
 /** Cream ink, and the terracotta the palette reserves for failures. */
 const INK = "#F5F1E4";
 const ALERT = "#E0805F";
@@ -310,15 +315,6 @@ const ALERT = "#E0805F";
  * dimmed to encode it.
  */
 const BAR_COLOR = "#FFFFFF";
-
-/**
- * The Freestyle wave mark (assets/mark-light.svg, thinned to every second
- * point — indistinguishable at icon size). Inlined rather than <img>'d so it
- * takes `currentColor` and sits in cream on the dark pill instead of the
- * asset's green.
- */
-const FREESTYLE_MARK_POINTS =
-  "8.00,50.00 9.20,49.89 10.40,49.57 11.60,49.06 12.80,48.44 14.00,47.75 15.20,47.08 16.40,46.50 17.60,46.10 18.80,45.95 20.00,46.09 21.20,46.57 22.40,47.40 23.60,48.55 24.80,50.00 26.00,51.67 27.20,53.47 28.40,55.30 29.60,57.04 30.80,58.56 32.00,59.75 33.20,60.50 34.40,60.72 35.60,60.36 36.80,59.38 38.00,57.79 39.20,55.64 40.40,53.00 41.60,50.00 42.80,46.77 44.00,43.49 45.20,40.34 46.40,37.49 47.60,35.13 48.80,33.43 50.00,32.50 51.20,32.45 52.40,33.33 53.60,35.15 54.80,37.84 56.00,41.32 57.20,45.44 58.40,50.00 59.60,54.78 60.80,59.55 62.00,64.03 63.20,67.98 64.40,71.17 65.60,73.40 66.80,74.50 68.00,74.37 69.20,72.97 70.40,70.33 71.60,66.52 72.80,61.71 74.00,56.12 75.20,50.00 76.40,43.66 77.60,37.42 78.80,31.61 80.00,26.55 81.20,22.52 82.40,19.78 83.60,18.50 84.80,18.80 86.00,20.72 87.20,24.20 88.40,29.11 89.60,35.25 90.80,42.32 92.00,50.00";
 
 const pillInnerStyle: React.CSSProperties = {
   height: PILL_HEIGHT,
@@ -2590,9 +2586,11 @@ export default function AppPage(): React.JSX.Element {
     lastExpansionRef.current = expansion;
     let shrinkTimer: ReturnType<typeof setTimeout> | null = null;
     if (shrinkingToMini) {
+      // A hair past the surface's 320ms size transition, so the window
+      // never clips the tail of the shrink.
       shrinkTimer = setTimeout(
         () => window.api?.setPillExpanded(true, "remix-mini"),
-        280,
+        340,
       );
     } else {
       window.api?.setPillExpanded(true, expansion);
@@ -2804,16 +2802,18 @@ export default function AppPage(): React.JSX.Element {
           /* The chat surface morphs between the one-line strip and the full
              card, so size and shape join the transition — hover-expand should
              read as the strip growing into the conversation, not as one
-             surface being swapped for another. */
+             surface being swapped for another. Only the box animates: both
+             faces are fixed-size layers pinned to the anchored corner inside
+             it (see RemixChat), so the growing surface reveals settled
+             content instead of reflowing it mid-flight. */
           .pill-chat-morph,
           .pill-chat-morph[data-show="true"] {
             transition: opacity 180ms ease,
               transform 380ms cubic-bezier(0.22, 1.12, 0.36, 1),
               filter 220ms ease,
-              width 260ms cubic-bezier(0.22, 1, 0.36, 1),
-              height 260ms cubic-bezier(0.22, 1, 0.36, 1),
-              border-radius 260ms cubic-bezier(0.22, 1, 0.36, 1),
-              padding 260ms cubic-bezier(0.22, 1, 0.36, 1);
+              width 320ms cubic-bezier(0.3, 0.9, 0.3, 1),
+              height 320ms cubic-bezier(0.3, 0.9, 0.3, 1),
+              border-radius 320ms cubic-bezier(0.3, 0.9, 0.3, 1);
           }
 
           /* ---- Remix card ---- */
@@ -2852,26 +2852,30 @@ export default function AppPage(): React.JSX.Element {
           }
           .pill-remix-brand svg { color: rgba(245, 241, 228, 0.85); }
 
-          /* The live transcript. A single clipped line whose newest words
-             stay in view: while the text fits, the auto margin holds it to
-             the left edge; once it outgrows the card the margin collapses
-             and flex-end keeps the tail — the words being spoken now — in
-             view, ticker-style. The placeholder centers instead. */
+          /* The live transcript. It wraps like written text — up to three
+             lines — and the newest words stay in view: the column is bottom-
+             justified, so once the text outgrows the box the oldest lines
+             slide off the top. The placeholder centers instead. */
           .pill-remix-transcript {
             display: flex;
+            flex-direction: column;
             justify-content: flex-end;
             overflow: hidden;
             min-height: 16px;
+            max-height: 47px;
             font-size: 11.5px;
             line-height: 1.35;
             color: rgba(245, 241, 228, 0.72);
           }
-          .pill-remix-transcript span { white-space: nowrap; margin-right: auto; }
+          .pill-remix-transcript span {
+            white-space: normal;
+            overflow-wrap: break-word;
+          }
           .pill-remix-transcript[data-empty="true"] {
             justify-content: center;
+            align-items: center;
             color: rgba(245, 241, 228, 0.42);
           }
-          .pill-remix-transcript[data-empty="true"] span { margin-right: 0; }
 
           /* The status mark's slot, opening from the capsule's right end the
              same way the cancel slot opens from its left. */
@@ -3283,17 +3287,17 @@ export default function AppPage(): React.JSX.Element {
                 ...(remixView?.phase === "chat"
                   ? remixView.minimized
                     ? {
-                        width: 320,
-                        height: 44,
+                        width: REMIX_CHAT_STRIP.width,
+                        height: REMIX_CHAT_STRIP.height,
                         borderRadius: 999,
                         padding: 0,
                         overflow: "hidden",
                       }
                     : {
-                        width: 408,
-                        height: 560,
+                        width: REMIX_CHAT_SURFACE.width,
+                        height: REMIX_CHAT_SURFACE.height,
                         borderRadius: 18,
-                        padding: "12px 14px 13px",
+                        padding: 0,
                         overflow: "hidden",
                       }
                   : {
@@ -3319,6 +3323,10 @@ export default function AppPage(): React.JSX.Element {
                   }
                   initialInstruction={remixView.initialInstruction ?? null}
                   minimized={remixView.minimized === true}
+                  anchor={{
+                    v: pillAlign === "start" ? "top" : "bottom",
+                    h: pillSide === "right" ? "right" : "center",
+                  }}
                   onExpand={() => patchRemix({ minimized: false })}
                   onMinimize={() => patchRemix({ minimized: true })}
                   onClose={() => endRemix()}
@@ -3406,21 +3414,7 @@ export default function AppPage(): React.JSX.Element {
                     className="pill-remix-brand pill-rise pill-rise-1"
                     aria-hidden="true"
                   >
-                    <svg
-                      width={15}
-                      height={15}
-                      viewBox="0 0 100 100"
-                      aria-hidden="true"
-                    >
-                      <polyline
-                        points={FREESTYLE_MARK_POINTS}
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={10}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
+                    <FreestyleMark size={15} />
                     <span>Remix</span>
                   </div>
 

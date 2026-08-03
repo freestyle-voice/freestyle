@@ -16,6 +16,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { RemixSelectionPayload } from "../../../shared/remix";
+import { FreestyleMark } from "./freestyle-mark";
 
 /**
  * The agent-lane chat card. Lives inside the pill's card surface; the thread
@@ -32,6 +33,36 @@ const INK = "rgba(245, 241, 228, 0.92)";
 const INK_DIM = "rgba(245, 241, 228, 0.58)";
 const INK_FAINT = "rgba(245, 241, 228, 0.42)";
 
+/**
+ * The two sizes the chat surface morphs between. The surface (in app.tsx)
+ * animates the box; both faces render at these fixed sizes inside it, pinned
+ * to the anchored corner, so the morph reveals settled content instead of
+ * reflowing it.
+ */
+export const REMIX_CHAT_SURFACE = { width: 408, height: 560 } as const;
+export const REMIX_CHAT_STRIP = { width: 320, height: 44 } as const;
+
+/** Which corner of the surface holds still while the box grows. */
+export interface RemixChatAnchor {
+  v: "top" | "bottom";
+  h: "right" | "center";
+}
+
+function anchoredLayerStyle(
+  anchor: RemixChatAnchor,
+  size: { width: number; height: number },
+): React.CSSProperties {
+  return {
+    position: "absolute",
+    width: size.width,
+    height: size.height,
+    ...(anchor.v === "top" ? { top: 0 } : { bottom: 0 }),
+    ...(anchor.h === "right"
+      ? { right: 0 }
+      : { left: "50%", transform: "translateX(-50%)" }),
+  };
+}
+
 interface ThreadState {
   threadId: number;
   resumed: boolean;
@@ -45,6 +76,8 @@ export interface RemixChatProps {
   initialInstruction: string | null;
   /** Collapsed to the one-line activity strip. */
   minimized: boolean;
+  /** The surface corner that holds still while the strip and card trade places. */
+  anchor: RemixChatAnchor;
   onExpand: () => void;
   onMinimize: () => void;
   onClose: () => void;
@@ -134,6 +167,7 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
       context={props.context}
       initialInstruction={initialInstruction}
       minimized={props.minimized}
+      anchor={props.anchor}
       onExpand={props.onExpand}
       onMinimize={props.onMinimize}
       onClose={props.onClose}
@@ -177,6 +211,7 @@ interface RemixThreadProps {
   context: RemixSelectionPayload;
   initialInstruction: string | null;
   minimized: boolean;
+  anchor: RemixChatAnchor;
   onExpand: () => void;
   onMinimize: () => void;
   onClose: () => void;
@@ -191,13 +226,6 @@ interface ActionRow {
   detail?: string;
 }
 
-/** Canned follow-ups — most iteration is one of a handful of moves. */
-const QUICK_ACTIONS = [
-  { label: "Shorter", text: "Make it shorter." },
-  { label: "More formal", text: "Make it more formal." },
-  { label: "Try again", text: "Try that again — take a different approach." },
-] as const;
-
 /** How long the pointer can be gone before the conversation folds back up. */
 const MINIMIZE_GRACE_MS = 380;
 
@@ -209,7 +237,7 @@ const MINIMIZE_GRACE_MS = 380;
 const MINI_IDLE_DISMISS_MS = 7000;
 
 function RemixThread(props: RemixThreadProps): React.JSX.Element {
-  const { thread, minimized, onExpand, onMinimize, onClose } = props;
+  const { thread, minimized, anchor, onExpand, onMinimize, onClose } = props;
   const [input, setInput] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [actions, setActions] = useState<ActionRow[]>([]);
@@ -595,18 +623,28 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     [actions, busy, refreshContext],
   );
 
-  if (minimized) {
-    return (
-      // Hover is a shortcut, not the only way in: the strip expands from the
-      // hotkey and the bar too, so a pointer-only affordance here excludes
-      // nobody.
-      // biome-ignore lint/a11y/noStaticElementInteractions: see above
+  return (
+    // Both faces stay mounted, pinned to the corner the surface grows from,
+    // and only cross-fade — the surface (app.tsx) animates the box, so the
+    // morph reveals settled content instead of reflowing it mid-flight.
+    //
+    // The hover handler only cancels the minimize choreography — every
+    // control inside is a real button or input with its own keyboard path,
+    // and Esc closes the card outright.
+    // biome-ignore lint/a11y/noStaticElementInteractions: see above
+    <div
+      className="remix-chat"
+      data-minimized={minimized}
+      data-testid={minimized ? "remix-chat-mini" : "remix-chat"}
+      onMouseEnter={handleMouseEnter}
+    >
+      <style>{REMIX_CHAT_CSS}</style>
+
       <div
-        className="remix-chat"
-        data-testid="remix-chat-mini"
-        onMouseEnter={handleMouseEnter}
+        className="remix-chat-face remix-chat-face-strip"
+        style={anchoredLayerStyle(anchor, REMIX_CHAT_STRIP)}
+        aria-hidden={!minimized}
       >
-        <style>{REMIX_CHAT_CSS}</style>
         <div className="remix-mini">
           <span
             className="remix-mini-dot"
@@ -618,177 +656,180 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           </span>
         </div>
       </div>
-    );
-  }
 
-  return (
-    // The handler only cancels the minimize choreography — every control
-    // inside is a real button or input with its own keyboard path, and Esc
-    // closes the card outright.
-    // biome-ignore lint/a11y/noStaticElementInteractions: see above
-    <div
-      className="remix-chat"
-      data-testid="remix-chat"
-      onMouseEnter={handleMouseEnter}
-    >
-      <style>{REMIX_CHAT_CSS}</style>
-
-      <div className="remix-chat-head">
-        <span className="remix-chat-title">
-          Remix
-          {props.context.appName ? (
-            <span className="remix-chat-app"> · {props.context.appName}</span>
-          ) : null}
-        </span>
-        <span className="remix-chat-actions">
-          <button
-            type="button"
-            className="remix-chat-ghost"
-            onClick={() => {
-              // A new thread means a clean slate: whatever the agent was in
-              // the middle of dies with the old one.
-              stop();
-              props.onNewThread();
-            }}
-            title="Start a new thread"
-          >
-            New
-          </button>
-          <button
-            type="button"
-            className="remix-chat-ghost"
-            onClick={() => {
-              stop();
-              onClose();
-            }}
-            title="Close (Esc)"
-          >
-            Close
-          </button>
-        </span>
-      </div>
-
-      {thread.resumed && messages.length > 0 && (
-        <div className="remix-chat-resumed">Continuing your last thread</div>
-      )}
-
-      <div className="remix-chat-scroll" ref={scrollRef}>
-        {messages.length === 0 && actions.length === 0 && !busy && (
-          <div className="remix-chat-empty">
-            {liveContext.text
-              ? "Say or type what to do with your selection, or pick a preset below."
-              : "Nothing selected — ask me to write, research, or answer."}
-          </div>
-        )}
-        {actions.map((action) => (
-          <div
-            key={action.id}
-            className="remix-chat-action"
-            data-failed={action.status === "failed"}
-          >
-            {action.status === "running"
-              ? `${action.label}…`
-              : action.status === "done"
-                ? `${action.label} — replaced your text`
-                : `${action.label} failed — ${action.detail ?? ""}`}
-          </div>
-        ))}
-        {messages.map((message) => (
-          <MessageRow key={message.id} message={message} />
-        ))}
-        {busy && <div className="remix-chat-busy">Working…</div>}
-      </div>
-
-      {notice && <div className="remix-chat-notice">{notice}</div>}
-
-      {/* One chip row: presets while there is a selection to transform and
-          no conversation yet; canned follow-ups once there is one. */}
-      {!busy && messages.length === 0 && liveContext.text ? (
-        <div className="remix-chat-quick">
-          {REMIX_PRESETS.map((preset) => (
+      <div
+        className="remix-chat-face remix-chat-face-full"
+        style={anchoredLayerStyle(anchor, REMIX_CHAT_SURFACE)}
+        aria-hidden={minimized}
+      >
+        <div className="remix-chat-head">
+          <span className="remix-chat-title">
+            <FreestyleMark size={14} />
+            <span>Remix</span>
+            {props.context.appName ? (
+              <span className="remix-chat-app"> · {props.context.appName}</span>
+            ) : null}
+          </span>
+          <span className="remix-chat-actions">
             <button
-              key={preset.id}
               type="button"
-              className="remix-chat-chip"
-              onClick={() => void runPreset(preset)}
+              className="remix-chat-ghost"
+              onClick={() => {
+                // A new thread means a clean slate: whatever the agent was in
+                // the middle of dies with the old one.
+                stop();
+                props.onNewThread();
+              }}
+              title="Start a new thread"
             >
-              {preset.label}
+              New thread
             </button>
-          ))}
-        </div>
-      ) : !busy && messages.length > 0 ? (
-        <div className="remix-chat-quick">
-          {QUICK_ACTIONS.map((action) => (
             <button
-              key={action.label}
               type="button"
-              className="remix-chat-chip"
-              onClick={() => void sendText(action.text)}
+              className="remix-chat-x"
+              onClick={() => {
+                stop();
+                onClose();
+              }}
+              aria-label="Close"
+              title="Close (Esc)"
             >
-              {action.label}
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 10 10"
+                aria-hidden="true"
+              >
+                <path
+                  d="M2 2l6 6M8 2l-6 6"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
             </button>
-          ))}
+          </span>
         </div>
-      ) : null}
 
-      <div className="remix-chat-composer">
-        <textarea
-          ref={inputRef}
-          className="remix-chat-input"
-          rows={1}
-          value={input}
-          placeholder={busy ? "Working…" : "Message Remix…"}
-          onChange={(e) => {
-            setInput(e.target.value);
-            const el = e.currentTarget;
-            el.style.height = "auto";
-            el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void submit();
-            }
-            if (e.key === "Escape") {
-              e.preventDefault();
-              stop();
-              onClose();
-            }
-          }}
-        />
-        {busy ? (
-          <button
-            type="button"
-            className="remix-chat-send"
-            onClick={() => stop()}
-            aria-label="Stop"
-            title="Stop"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-              <rect x="1.5" y="1.5" width="9" height="9" rx="2" />
-            </svg>
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="remix-chat-send"
-            disabled={!input.trim()}
-            onClick={() => void submit()}
-            aria-label="Send"
-            title="Send"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
-              <path
-                d="M8 12.8V3.6M4.1 7.4 8 3.5l3.9 3.9"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
+        {thread.resumed && messages.length > 0 && (
+          <div className="remix-chat-resumed">Continuing your last thread</div>
         )}
+
+        <div className="remix-chat-scroll" ref={scrollRef}>
+          {messages.length === 0 && actions.length === 0 && !busy && (
+            <div className="remix-chat-empty">
+              {liveContext.text
+                ? "Say or type what to do with your selection, or pick a preset below."
+                : "Nothing selected — ask me to write, research, or answer."}
+            </div>
+          )}
+          {actions.map((action) => (
+            <div
+              key={action.id}
+              className="remix-chat-action"
+              data-failed={action.status === "failed"}
+            >
+              {action.status === "running"
+                ? `${action.label}…`
+                : action.status === "done"
+                  ? `${action.label} — replaced your text`
+                  : `${action.label} failed — ${action.detail ?? ""}`}
+            </div>
+          ))}
+          {messages.map((message) => (
+            <MessageRow key={message.id} message={message} />
+          ))}
+          {busy && <div className="remix-chat-busy">Working…</div>}
+        </div>
+
+        {notice && <div className="remix-chat-notice">{notice}</div>}
+
+        {/* Preset chips, only before the conversation starts and only when
+          there is a selection to transform. */}
+        {!busy && messages.length === 0 && liveContext.text ? (
+          <div className="remix-chat-quick">
+            {REMIX_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className="remix-chat-chip"
+                onClick={() => void runPreset(preset)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="remix-chat-composer">
+          <textarea
+            ref={inputRef}
+            className="remix-chat-input"
+            rows={1}
+            value={input}
+            placeholder={busy ? "Working…" : "Message Remix…"}
+            onChange={(e) => {
+              setInput(e.target.value);
+              const el = e.currentTarget;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void submit();
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                stop();
+                onClose();
+              }
+            }}
+          />
+          {busy ? (
+            <button
+              type="button"
+              className="remix-chat-send"
+              onClick={() => stop()}
+              aria-label="Stop"
+              title="Stop"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                aria-hidden="true"
+              >
+                <rect x="1.5" y="1.5" width="9" height="9" rx="2" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="remix-chat-send"
+              disabled={!input.trim()}
+              onClick={() => void submit()}
+              aria-label="Send"
+              title="Send"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                aria-hidden="true"
+              >
+                <path
+                  d="M8 12.8V3.6M4.1 7.4 8 3.5l3.9 3.9"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1004,12 +1045,39 @@ function ToolRow({
 
 const REMIX_CHAT_CSS = `
   .remix-chat {
-    display: flex;
-    flex-direction: column;
+    position: relative;
+    width: 100%;
     height: 100%;
-    min-height: 0;
     font-size: 12.5px;
     color: ${INK};
+  }
+
+  /* The two faces cross-fade while the surface morphs around them: the
+     outgoing face is gone in a blink, the incoming one waits a beat so the
+     box leads the motion and the content arrives into room that already
+     exists. */
+  .remix-chat-face-strip {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 110ms ease;
+  }
+  .remix-chat[data-minimized="true"] .remix-chat-face-strip {
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity 200ms ease 140ms;
+  }
+  .remix-chat-face-full {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 12px 14px 13px;
+    opacity: 1;
+    transition: opacity 220ms ease 90ms;
+  }
+  .remix-chat[data-minimized="true"] .remix-chat-face-full {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 110ms ease;
   }
 
   /* ---- The minimized strip ---- */
@@ -1057,9 +1125,37 @@ const REMIX_CHAT_CSS = `
     justify-content: space-between;
     padding: 2px 2px 10px;
   }
-  .remix-chat-title { font-weight: 600; font-size: 13px; }
-  .remix-chat-app { color: ${INK_FAINT}; font-weight: 400; }
-  .remix-chat-actions { display: flex; gap: 6px; }
+  .remix-chat-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .remix-chat-title svg { flex-shrink: 0; color: rgba(245, 241, 228, 0.85); }
+  .remix-chat-app {
+    color: ${INK_FAINT};
+    font-weight: 400;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .remix-chat-actions { display: flex; align-items: center; gap: 6px; }
+  .remix-chat-x {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 7px;
+    background: rgba(245, 241, 228, 0.09);
+    color: ${INK_DIM};
+    cursor: pointer;
+  }
+  .remix-chat-x:hover { background: rgba(245, 241, 228, 0.16); color: ${INK}; }
   .remix-chat-ghost {
     border: none;
     background: rgba(245, 241, 228, 0.09);

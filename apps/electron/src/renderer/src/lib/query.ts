@@ -60,6 +60,32 @@ export function configQueryOptions() {
 }
 
 /**
+ * Shared query key for dismissed notification keys
+ * (`GET /api/dismissed-notifications`). One key so every `useDismissible`
+ * consumer shares a single cached list.
+ */
+export const DISMISSED_NOTIFICATIONS_QUERY_KEY = [
+  "dismissed-notifications",
+] as const;
+
+/**
+ * Query options for the device-local dismissed-notification key list. Use with
+ * `useQuery`:
+ *
+ *   const { data } = useQuery(dismissedNotificationsQueryOptions());
+ */
+export function dismissedNotificationsQueryOptions() {
+  return {
+    queryKey: DISMISSED_NOTIFICATIONS_QUERY_KEY,
+    queryFn: async (): Promise<string[]> => {
+      const res = await getClient().api["dismissed-notifications"].$get();
+      if (!res.ok) throw new Error("Failed to load dismissed notifications");
+      return (await res.json()) as string[];
+    },
+  };
+}
+
+/**
  * Shared QueryClient factory for the renderer. Defaults suit a desktop SPA:
  * - `refetchOnWindowFocus: false` — the user switches apps constantly; focus
  *   refetches would be noisy. Freshness is driven by explicit invalidation

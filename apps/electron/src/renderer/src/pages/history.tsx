@@ -1,6 +1,7 @@
 import {
   DEFAULT_HISTORY_FILTERS,
   type HistoryFiltersSetting,
+  KNOWN_NOTIFICATION_KEYS,
   parseHistoryFilters,
 } from "@freestyle-voice/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
@@ -25,6 +26,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@renderer/components/ui/tooltip";
+import { useDismissible } from "@renderer/hooks/use-dismissible";
 import {
   usePersistentJsonState,
   usePersistentState,
@@ -183,21 +185,62 @@ export default function HistoryPage(): React.JSX.Element {
   // The filter dialog is transient UI, not persisted state.
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // The intro hero (dictation tutorial) can be dismissed with its X and
-  // brought back from the filter dialog's Tutorial toggle. Persisted in
-  // localStorage so the choice survives navigation and app restarts.
-  const [heroDismissed, setHeroDismissed] = usePersistentState<"0" | "1">(
+  // Keep the legacy localStorage flag as a synchronous compatibility mirror:
+  // it prevents a flash for users who dismissed the hero before the SQLite
+  // store existed and preserves their choice if the migration PUT fails.
+  const [legacyHeroDismissed, setLegacyHeroDismissed] = usePersistentState<
+    "0" | "1"
+  >(
     "today.heroDismissed",
     "0",
-    (v): v is "0" | "1" => v === "0" || v === "1",
+    (value): value is "0" | "1" => value === "0" || value === "1",
   );
-  const dismissHero = useCallback(
-    () => setHeroDismissed("1"),
-    [setHeroDismissed],
-  );
+  const {
+    dismissed: storedHeroDismissed,
+    dismiss: persistHeroDismissal,
+    reset: resetStoredHeroDismissal,
+    ready: heroReady,
+  } = useDismissible(KNOWN_NOTIFICATION_KEYS.TODAY_TUTORIAL_HERO);
+  const heroDismissed = storedHeroDismissed || legacyHeroDismissed === "1";
+  const migrationAttemptedRef = useRef(false);
+
+  // Best-effort one-time migration per mount. The legacy mirror is deliberately
+  // retained until the user explicitly resets the tutorial; if this PUT fails,
+  // the old dismissal still survives and migration retries next app launch.
+  useEffect(() => {
+    if (
+      !heroReady ||
+      storedHeroDismissed ||
+      legacyHeroDismissed !== "1" ||
+      migrationAttemptedRef.current
+    ) {
+      return;
+    }
+    migrationAttemptedRef.current = true;
+    persistHeroDismissal();
+  }, [
+    heroReady,
+    storedHeroDismissed,
+    legacyHeroDismissed,
+    persistHeroDismissal,
+  ]);
+
+  const dismissHero = useCallback(() => {
+    setLegacyHeroDismissed("1");
+    persistHeroDismissal();
+  }, [persistHeroDismissal, setLegacyHeroDismissed]);
+
+  const resetHero = useCallback(() => {
+    setLegacyHeroDismissed("0");
+    resetStoredHeroDismissal();
+  }, [resetStoredHeroDismissal, setLegacyHeroDismissed]);
+
   const setShowTutorial = useCallback(
-    (value: boolean) => setHeroDismissed(value ? "0" : "1"),
-    [setHeroDismissed],
+    (value: boolean) => {
+      if (value) resetHero();
+      else dismissHero();
+    },
+    [dismissHero, resetHero],
   );
 
   // Stats sidebar visibility and width. Open by default, collapsible, and
@@ -518,7 +561,7 @@ export default function HistoryPage(): React.JSX.Element {
 
   const isGenuineEmpty = stats?.unfiltered_total_sessions === 0;
 
-  const hero = heroDismissed === "0" && !isGenuineEmpty && (
+  const hero = heroReady && !heroDismissed && !isGenuineEmpty && (
     <div className="relative mb-7">
       <button
         type="button"
@@ -669,7 +712,7 @@ export default function HistoryPage(): React.JSX.Element {
       diffMode={diffMode}
       showAiEdits={showAiEdits}
       nerdMode={nerdMode}
-      showTutorial={heroDismissed === "0"}
+      showTutorial={heroReady && !heroDismissed}
       onSelectRange={selectDateRange}
       onDiffModeChange={setDiffMode}
       onShowAiEditsChange={setShowAiEdits}

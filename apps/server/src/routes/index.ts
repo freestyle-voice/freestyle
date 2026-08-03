@@ -11,6 +11,7 @@ import auth from "./auth.js";
 import billing from "./billing.js";
 import configRoute from "./config.js";
 import dictionary from "./dictionary.js";
+import dismissedNotifications from "./dismissed-notifications.js";
 import eventsRoute from "./events.js";
 import history from "./history.js";
 import mlxAsr from "./mlx-asr.js";
@@ -69,6 +70,7 @@ const apiRouter = new Hono()
   .route("/transcribe", transcribePreWarmRoute)
   .route("/history", history)
   .route("/dictionary", dictionary)
+  .route("/dismissed-notifications", dismissedNotifications)
   .route("/vocabulary", vocabulary)
   .route("/post-process", postProcessRoute)
   .route("/output", outputRoute)

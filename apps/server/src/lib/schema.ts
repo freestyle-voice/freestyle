@@ -7,7 +7,7 @@ import { countFixes } from "./fixes.js";
 // and would otherwise perturb test module-mock ordering.
 const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 
-const SCHEMA_VERSION = 18;
+const SCHEMA_VERSION = 19;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -547,6 +547,19 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')),
         attempts        INTEGER NOT NULL DEFAULT 0,
         last_error      TEXT
+      )
+    `);
+  }
+
+  if (currentVersion < 19) {
+    // Dismissals for in-app dialogs/banners (changelogs, feature prompts,
+    // profile nudges). Presence of a key means the corresponding UI has been
+    // dismissed and should not be shown again. Not synced to Freestyle Cloud —
+    // stored alongside settings in this server's SQLite DB.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS dismissed_notifications (
+        key          TEXT PRIMARY KEY,
+        dismissed_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
   }

@@ -14,6 +14,8 @@ describe("sync_outbox migration (v18)", () => {
     db = new DatabaseSync(":memory:");
     // Minimal pre-v18 DB: just the version marker + settings table. The v18
     // migration only adds a new table, so no prior tables are required.
+    // initSchema then runs every subsequent migration through SCHEMA_VERSION,
+    // so the final version asserted below is the current schema head.
     db.exec(`
       CREATE TABLE schema_version (
         id INTEGER PRIMARY KEY CHECK(id = 1),
@@ -42,7 +44,7 @@ describe("sync_outbox migration (v18)", () => {
     const version = db
       .prepare("SELECT version FROM schema_version WHERE id = 1")
       .get() as { version: number };
-    expect(version.version).toBe(18);
+    expect(version.version).toBeGreaterThanOrEqual(18);
 
     // The expected columns are present and usable.
     db.prepare(

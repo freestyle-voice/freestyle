@@ -192,6 +192,15 @@ export function useKeyboardDictationBridge(
       if (Date.now() - command.updatedAt * 1000 > COMMAND_MAX_AGE_MS) {
         return;
       }
+      // Keep cold-start commands in the shared channel until device-local
+      // settings and privacy controls finish hydrating. The polling effect
+      // retries it as soon as `session.ready` changes.
+      if (
+        !session.ready &&
+        (command.kind === "start" || command.kind === "beginCapture")
+      ) {
+        return;
+      }
       lastHandledTokenRef.current = command.token;
       clearCommand();
 
@@ -248,6 +257,7 @@ export function useKeyboardDictationBridge(
 
   // --- On-screen mic tap (status strip): mirror a keyboard mic tap.
   const toggle = useCallback(() => {
+    if (!session.ready) return;
     switch (phaseRef.current) {
       case "idle":
       case "failed":

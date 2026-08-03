@@ -118,18 +118,34 @@ export function useDictation({
       level.value = v;
     },
   });
+  const recorderRef = useRef(recorder);
+  useEffect(() => {
+    recorderRef.current = recorder;
+  });
 
   const teardownSession = useCallback(() => {
     sessionRef.current?.close();
     sessionRef.current = null;
   }, []);
 
-  useEffect(() => teardownSession, [teardownSession]);
+  useEffect(
+    () => () => {
+      releaseDuringStartRef.current = true;
+      recordingRef.current = false;
+      startingRef.current = false;
+      try {
+        recorderRef.current.stop();
+      } catch {}
+      teardownSession();
+    },
+    [teardownSession],
+  );
 
   const beginRecording = useCallback(async () => {
     if (
       recordingRef.current ||
       startingRef.current ||
+      sessionRef.current ||
       !signedIn ||
       !settingsReady ||
       !historyReady
@@ -164,14 +180,6 @@ export function useDictation({
       startingRef.current = false;
       return;
     }
-    recordingRef.current = true;
-    startingRef.current = false;
-    startedAt.current = Date.now();
-    setPartial("");
-    onStartRef.current?.();
-    setMicState("recording");
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
     const s = settingsRef.current;
     sessionRef.current = new CloudStreamSession({
       cookie: headers.Cookie,
@@ -202,6 +210,10 @@ export function useDictation({
           );
         },
         onError: (message, code) => {
+          recordingRef.current = false;
+          startingRef.current = false;
+          recorder.stop();
+          level.value = 0;
           setMicState("idle");
           teardownSession();
           if (code === "usage_exceeded") {
@@ -224,15 +236,41 @@ export function useDictation({
           );
         },
         onClose: () => {
-          // If the socket drops while we're still waiting on the final
-          // transcript, don't leave the UI stuck in "finalizing".
-          setMicState((s) => (s === "finalizing" ? "idle" : s));
+          // Explicit closes detach this handler in CloudStreamSession, so this
+          // is an unexpected remote close. Release the mic in every active
+          // phase rather than leaving recording/finalizing stuck.
+          sessionRef.current = null;
+          recordingRef.current = false;
+          startingRef.current = false;
+          recorder.stop();
+          level.value = 0;
+          setMicState("idle");
+          Alert.alert(
+            "Connection lost",
+            "The transcription connection closed. Please try again.",
+          );
         },
       },
     });
 
     try {
       await recorder.start();
+      // A hold may have been released (or the socket may have closed) while
+      // native mic startup was pending. Stop the just-opened stream rather than
+      // allowing an orphaned recording to continue.
+      if (releaseDuringStartRef.current || !sessionRef.current) {
+        recorder.stop();
+        teardownSession();
+        startingRef.current = false;
+        return;
+      }
+      recordingRef.current = true;
+      startingRef.current = false;
+      startedAt.current = Date.now();
+      setPartial("");
+      onStartRef.current?.();
+      setMicState("recording");
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } catch {
       recordingRef.current = false;
       startingRef.current = false;
@@ -249,6 +287,7 @@ export function useDictation({
     historyReady,
     playStartChime,
     playSuccessChime,
+    level,
   ]);
 
   const finishRecording = useCallback(() => {
@@ -275,6 +314,10 @@ export function useDictation({
     // interaction → stop.
     if (recordingRef.current) {
       finishRecording();
+      return;
+    }
+    if (startingRef.current) {
+      releaseDuringStartRef.current = true;
       return;
     }
     releaseDuringStartRef.current = false;

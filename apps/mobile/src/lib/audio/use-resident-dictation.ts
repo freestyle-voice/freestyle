@@ -72,6 +72,8 @@ export interface ResidentDictationCallbacks {
 }
 
 export interface ResidentDictation {
+  /** Settings/history hydration is complete; commands can be consumed. */
+  ready: boolean;
   /** Mic input level [0,1] as a reanimated shared value (waveform/meter). */
   level: ReturnType<typeof useSharedValue<number>>;
   /** Acquire the mic and hold it warm. Optionally begin the first phrase. */
@@ -112,6 +114,10 @@ export function useResidentDictation(
   const streamOnRef = useRef(false);
   // Internal state machine, kept in a ref so callbacks read it synchronously.
   const stateRef = useRef<Internal>("idle");
+  // Distinguish overlapping native arm attempts (arm → disarm → arm) and share
+  // one in-flight native `start()` call across them.
+  const armGenerationRef = useRef(0);
+  const recorderStartRef = useRef<Promise<void> | null>(null);
   const captureStartedAt = useRef(0);
   const capturedMsRef = useRef(0);
 
@@ -223,10 +229,18 @@ export function useResidentDictation(
           );
         },
         onClose: () => {
-          // Socket dropped mid-finalize: don't strand the caller in finalizing.
-          if (stateRef.current === "finalizing") {
+          // Explicit closes detach this handler in CloudStreamSession, so this
+          // is an unexpected remote close. Recover to the warm armed state.
+          if (
+            stateRef.current === "capturing" ||
+            stateRef.current === "finalizing"
+          ) {
+            sessionRef.current = null;
             stateRef.current = streamOnRef.current ? "armed" : "idle";
-            if (stateRef.current === "armed") cbRef.current.onArmed?.();
+            cbRef.current.onError?.(
+              "Connection lost. Tap the mic to try again.",
+              streamOnRef.current,
+            );
           }
         },
       },
@@ -277,12 +291,14 @@ export function useResidentDictation(
         return;
       }
 
+      const generation = ++armGenerationRef.current;
       stateRef.current = "arming";
 
       const perm =
         (await checkMicPermission()) === "granted"
           ? "granted"
           : await requestMicPermission();
+      if (generation !== armGenerationRef.current) return;
       if (perm !== "granted") {
         stateRef.current = "idle";
         cbRef.current.onError?.("Microphone access is off.", false);
@@ -295,14 +311,42 @@ export function useResidentDictation(
         await waitForActive();
       }
       // A disarm may have raced in while we awaited.
-      if (stateRef.current !== "arming") return;
+      if (
+        generation !== armGenerationRef.current ||
+        stateRef.current !== "arming"
+      )
+        return;
 
+      const startPromise = recorderStartRef.current ?? recorder.start();
+      recorderStartRef.current = startPromise;
       try {
-        await recorder.start();
+        await startPromise;
       } catch {
+        if (recorderStartRef.current === startPromise) {
+          recorderStartRef.current = null;
+        }
+        if (generation !== armGenerationRef.current) return;
         stateRef.current = "idle";
         cbRef.current.onError?.("Couldn't start the microphone.", false);
         return;
+      }
+      // An older generation can resolve while a newer arm waits on the same
+      // native start. Let the newest generation claim it; only stop when no
+      // replacement arm is active.
+      if (
+        generation !== armGenerationRef.current ||
+        stateRef.current !== "arming"
+      ) {
+        if (stateRef.current !== "arming") {
+          if (recorderStartRef.current === startPromise) {
+            recorderStartRef.current = null;
+          }
+          recorder.stop();
+        }
+        return;
+      }
+      if (recorderStartRef.current === startPromise) {
+        recorderStartRef.current = null;
       }
 
       streamOnRef.current = true;
@@ -342,6 +386,28 @@ export function useResidentDictation(
   }, [closeSession, level]);
 
   const disarm = useCallback(() => {
+    armGenerationRef.current += 1;
+    const disarmGeneration = armGenerationRef.current;
+    const pendingStart = recorderStartRef.current;
+    if (pendingStart) {
+      void pendingStart
+        .then(() => {
+          if (
+            armGenerationRef.current === disarmGeneration &&
+            stateRef.current === "idle"
+          ) {
+            recorder.stop();
+            if (recorderStartRef.current === pendingStart) {
+              recorderStartRef.current = null;
+            }
+          }
+        })
+        .catch(() => {
+          if (recorderStartRef.current === pendingStart) {
+            recorderStartRef.current = null;
+          }
+        });
+    }
     closeSession();
     if (streamOnRef.current) recorder.stop();
     streamOnRef.current = false;
@@ -353,7 +419,15 @@ export function useResidentDictation(
   // Always release the mic on unmount so we never leave the indicator lit.
   useEffect(() => disarm, [disarm]);
 
-  return { level, arm, beginCapture, commit, cancel, disarm };
+  return {
+    ready: settingsReady && historyReady,
+    level,
+    arm,
+    beginCapture,
+    commit,
+    cancel,
+    disarm,
+  };
 }
 
 /**

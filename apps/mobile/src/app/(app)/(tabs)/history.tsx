@@ -1,8 +1,9 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
+import { useFocusEffect } from "expo-router";
 import { Clock, Search, SearchX, Trash2, X } from "lucide-react-native";
 import { useCallback, useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { Card, TabScreenScaffold } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
@@ -13,22 +14,35 @@ import {
   type HistoryEntry,
   useHistory,
 } from "@/lib/history";
+import { confirmClearHistory } from "@/lib/history-alerts";
 
-/** "Today" / "Yesterday" / "Mon, Jul 21" bucket for an entry timestamp. */
-function dateGroup(ts: number): string {
+interface DateGroup {
+  key: string;
+  label: string;
+}
+
+/** Stable key + "Today" / "Yesterday" / localized date label. */
+function dateGroup(ts: number, nowTs: number): DateGroup {
   const d = new Date(ts);
-  const now = new Date();
+  const now = new Date(nowTs);
   const startOf = (x: Date) =>
     new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const dayMs = 86_400_000;
   const diff = Math.round((startOf(now) - startOf(d)) / dayMs);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Yesterday";
-  return d.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  if (diff === 0) return { key, label: "Today" };
+  if (diff === 1) return { key, label: "Yesterday" };
+  return {
+    key,
+    label: d.toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      ...(d.getFullYear() !== now.getFullYear()
+        ? { year: "numeric" as const }
+        : {}),
+    }),
+  };
 }
 
 /** Wall-clock time like "2:34 pm". */
@@ -64,8 +78,15 @@ export default function HistoryScreen() {
   const { history, pauseHistory, removeHistory, clearHistory } = useHistory();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [now, setNow] = useState(Date.now);
 
-  const stats = useMemo(() => deriveHistoryStats(history), [history]);
+  useFocusEffect(
+    useCallback(() => {
+      setNow(Date.now());
+    }, []),
+  );
+
+  const stats = useMemo(() => deriveHistoryStats(history, now), [history, now]);
   const maxDayWords = Math.max(1, ...stats.last7Days);
 
   // Case-insensitive substring match on the transcript text. The full list is
@@ -78,15 +99,15 @@ export default function HistoryScreen() {
 
   // Group the (already newest-first) list into ordered date buckets.
   const groups = useMemo(() => {
-    const out: { label: string; entries: HistoryEntry[] }[] = [];
+    const out: { key: string; label: string; entries: HistoryEntry[] }[] = [];
     for (const entry of filtered) {
-      const label = dateGroup(entry.createdAt);
+      const group = dateGroup(entry.createdAt, now);
       const last = out[out.length - 1];
-      if (last && last.label === label) last.entries.push(entry);
-      else out.push({ label, entries: [entry] });
+      if (last && last.key === group.key) last.entries.push(entry);
+      else out.push({ ...group, entries: [entry] });
     }
     return out;
-  }, [filtered]);
+  }, [filtered, now]);
 
   const copy = useCallback(async (entry: HistoryEntry) => {
     await Clipboard.setStringAsync(entry.text);
@@ -95,17 +116,6 @@ export default function HistoryScreen() {
     setTimeout(() => setCopiedId(null), 1500);
   }, []);
 
-  const confirmClear = useCallback(() => {
-    Alert.alert(
-      "Clear history?",
-      "This permanently removes every saved dictation on this device.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Clear all", style: "destructive", onPress: clearHistory },
-      ],
-    );
-  }, [clearHistory]);
-
   return (
     <TabScreenScaffold
       title="History"
@@ -113,7 +123,7 @@ export default function HistoryScreen() {
       action={
         history.length > 0 ? (
           <Pressable
-            onPress={confirmClear}
+            onPress={() => confirmClearHistory(clearHistory)}
             hitSlop={10}
             accessibilityRole="button"
             accessibilityLabel="Clear history"
@@ -137,9 +147,9 @@ export default function HistoryScreen() {
               value={formatDuration(stats.totalDurationMs)}
             />
             <StatCell
-              label="This week"
-              value={formatCount(stats.weekWords)}
-              hint={`${stats.weekSessions} dictations`}
+              label="Last 7 days"
+              value={formatCount(stats.last7Words)}
+              hint={`${stats.last7Sessions} dictations`}
             />
           </View>
           <View style={styles.activityRow}>
@@ -227,7 +237,7 @@ export default function HistoryScreen() {
         </Card>
       ) : (
         groups.map((group) => (
-          <View key={group.label} style={styles.group}>
+          <View key={group.key} style={styles.group}>
             <ThemedText type="eyebrow" themeColor="mutedForeground">
               {group.label}
             </ThemedText>

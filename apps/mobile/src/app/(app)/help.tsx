@@ -1,5 +1,4 @@
 import Constants from "expo-constants";
-import type { LucideIcon } from "lucide-react-native";
 import {
   Bug,
   ChevronRight,
@@ -12,6 +11,7 @@ import { Linking, Pressable, StyleSheet, View } from "react-native";
 import {
   Card,
   SectionTitle,
+  SettingsNavRow,
   SettingsScreenScaffold,
 } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
@@ -31,24 +31,27 @@ export default function HelpScreen() {
       subtitle="Report a bug, ask the community, or contribute to Freestyle."
     >
       <Card style={styles.navCard}>
-        <HelpRow
+        <SettingsNavRow
           icon={Bug}
           label="Report an issue"
           value="Open a GitHub issue"
           onPress={() => void Linking.openURL(LINKS.newIssue)}
+          accessibilityRole="link"
         />
-        <HelpRow
+        <SettingsNavRow
           icon={MessageCircle}
           label="Ask the community"
           value="Join the Discord"
           onPress={() => void Linking.openURL(LINKS.discord)}
+          accessibilityRole="link"
         />
-        <HelpRow
+        <SettingsNavRow
           icon={HeartHandshake}
           label="Contribute"
           value="Read the contributing guide"
           onPress={() => void Linking.openURL(LINKS.contributing)}
           last
+          accessibilityRole="link"
         />
       </Card>
 
@@ -82,58 +85,10 @@ export default function HelpScreen() {
   );
 }
 
-function HelpRow({
-  icon: Icon,
-  label,
-  value,
-  onPress,
-  last = false,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  onPress: () => void;
-  last?: boolean;
-}) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.navRow,
-        !last && {
-          borderBottomWidth: StyleSheet.hairlineWidth,
-          borderBottomColor: theme.border,
-        },
-        pressed && { opacity: 0.6 },
-      ]}
-      accessibilityRole="link"
-      accessibilityLabel={label}
-    >
-      <Icon color={theme.mutedForeground} size={20} />
-      <View style={styles.navRowContent}>
-        <ThemedText style={styles.navRowLabel}>{label}</ThemedText>
-        <ThemedText themeColor="mutedForeground" style={styles.navRowValue}>
-          {value}
-        </ThemedText>
-      </View>
-      <ChevronRight color={theme.mutedForeground} size={18} />
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   navCard: { gap: 0, paddingVertical: Spacing.one },
-  navRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.three,
-    paddingVertical: Spacing.three - 2,
-  },
-  navRowContent: { flex: 1 },
-  navRowLabel: { fontFamily: Fonts.sansMedium, fontSize: 15 },
-  navRowValue: { fontSize: 13, marginTop: 1 },
   aboutRow: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",

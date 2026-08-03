@@ -48,6 +48,12 @@ export interface StreamCallbacks {
 export interface StreamSessionOptions {
   /** better-auth session cookie header value (from `authClient.getCookie()`). */
   cookie: string;
+  /**
+   * Current normalized language selection. Sent with the per-session start so
+   * translate cannot target a stale cloud preference while its sync is still
+   * in flight.
+   */
+  languages?: string[];
   cleanup: StreamCleanupPreferences;
   callbacks: StreamCallbacks;
 }
@@ -108,8 +114,13 @@ export class CloudStreamSession {
     // only; the DO ignores it unless exactly one language is selected).
     return {
       type: "start" as const,
+      ...(this.opts.languages && this.opts.languages.length > 0
+        ? { languages: this.opts.languages }
+        : {}),
       skipPostProcess: this.opts.cleanup.skipPostProcess,
-      ...(this.opts.cleanup.translate ? { translate: true } : {}),
+      ...(this.opts.cleanup.translate && this.opts.languages?.length === 1
+        ? { translate: true }
+        : {}),
     };
   }
 
@@ -120,6 +131,7 @@ export class CloudStreamSession {
   }
 
   private handleMessage(raw: unknown): void {
+    if (this.closed) return;
     if (typeof raw !== "string") return;
     let msg: ServerMessage;
     try {
@@ -193,6 +205,10 @@ export class CloudStreamSession {
   /** Tear down the WebSocket, ending the session without a final transcript. */
   close(): void {
     this.closed = true;
+    this.ws.onmessage = null;
+    this.ws.onerror = null;
+    this.ws.onclose = null;
+    this.pending.length = 0;
     if (this.ws.readyState <= WebSocket.OPEN) this.ws.close();
   }
 }

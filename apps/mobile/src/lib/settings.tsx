@@ -352,6 +352,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [local, cloud],
   );
 
+  // A cloud language update can also move the effective selection into
+  // auto/multi-language mode. Clear a now-invalid local translate choice so it
+  // cannot silently reactivate when the selection later returns to one item.
+  useEffect(() => {
+    if (!ready || settings.languages.length === 1 || !local.translate) return;
+    setLocal((current) => ({ ...current, translate: false }));
+    void setPref(TRANSLATE_KEY, "false");
+  }, [ready, settings.languages.length, local.translate]);
+
   const persist = useCallback(
     <K extends keyof DictationSettings>(
       storageKey: string,
@@ -383,8 +392,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const setLanguages = useCallback(
     (next: string[]) => {
       const normalized = normalizeLanguageList(next);
-      setLocal((s) => ({ ...s, languages: normalized }));
+      setLocal((s) => ({
+        ...s,
+        languages: normalized,
+        // Translate has no valid target in auto/multi-language mode. Clear the
+        // persisted choice rather than silently re-enabling it later.
+        ...(normalized.length === 1 ? {} : { translate: false }),
+      }));
       void setPref(LANGUAGES_KEY, JSON.stringify(normalized));
+      if (normalized.length !== 1) {
+        void setPref(TRANSLATE_KEY, "false");
+      }
       queryClient.setQueryData<CloudMemberPreferences>(
         CLOUD_PREFERENCES_QUERY_KEY,
         (prev) => ({ ...(prev ?? {}), languages: normalized }),

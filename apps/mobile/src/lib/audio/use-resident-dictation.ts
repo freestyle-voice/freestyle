@@ -34,11 +34,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { Alert, AppState } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
-import {
-  playStartChime,
-  playSuccessChime,
-  setSoundFeedbackEnabled,
-} from "@/lib/audio/chimes";
+import { useChimes } from "@/lib/audio/chimes";
 import { authHeaders } from "@/lib/cloud/session";
 import { CloudStreamSession } from "@/lib/cloud/stream";
 import { startProCheckout } from "@/lib/cloud/subscription";
@@ -90,21 +86,25 @@ export interface ResidentDictation {
   disarm: () => void;
 }
 
-type Internal = "idle" | "arming" | "armed" | "capturing" | "finalizing";
+type Internal =
+  | "idle"
+  | "arming"
+  | "armed"
+  | "cueing"
+  | "capturing"
+  | "finalizing";
 
 export function useResidentDictation(
   callbacks: ResidentDictationCallbacks,
 ): ResidentDictation {
-  const { settings } = useSettings();
+  const { settings, ready: settingsReady } = useSettings();
   const { dictionary } = useEntries();
-  const { addHistory } = useHistory();
+  const { addHistory, ready: historyReady } = useHistory();
+  const { playStartChime, playSuccessChime } = useChimes(
+    settings.soundFeedback,
+  );
 
   const level = useSharedValue(0);
-
-  // Keep the module-level chime gate in sync with Settings.
-  useEffect(() => {
-    setSoundFeedbackEnabled(settings.soundFeedback);
-  }, [settings.soundFeedback]);
 
   // The warm cloud session for the *current* phrase (null while armed-idle).
   const sessionRef = useRef<CloudStreamSession | null>(null);
@@ -158,6 +158,7 @@ export function useResidentDictation(
     const s = settingsRef.current;
     return new CloudStreamSession({
       cookie: headers.Cookie,
+      languages: s.languages,
       cleanup: {
         skipPostProcess: !s.cleanup,
         translate: s.translate,
@@ -230,23 +231,30 @@ export function useResidentDictation(
         },
       },
     });
-  }, [closeSession]);
+  }, [closeSession, playSuccessChime]);
 
   const beginCapture = useCallback(() => {
     if (!streamOnRef.current) return;
     if (stateRef.current !== "armed") return;
-    const session = openSession();
-    if (!session) {
-      cbRef.current.onError?.("Not signed in.", true);
-      return;
-    }
-    sessionRef.current = session;
-    captureStartedAt.current = Date.now();
-    stateRef.current = "capturing";
-    cbRef.current.onCaptureStart?.();
-    void playStartChime();
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  }, [openSession]);
+    stateRef.current = "cueing";
+    void (async () => {
+      // The recorder is already warm; keep dropping frames until this resolves
+      // so the start cue never reaches STT.
+      await playStartChime();
+      if (!streamOnRef.current || stateRef.current !== "cueing") return;
+      const session = openSession();
+      if (!session) {
+        stateRef.current = "armed";
+        cbRef.current.onError?.("Not signed in.", true);
+        return;
+      }
+      sessionRef.current = session;
+      captureStartedAt.current = Date.now();
+      stateRef.current = "capturing";
+      cbRef.current.onCaptureStart?.();
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    })();
+  }, [openSession, playStartChime]);
 
   const arm = useCallback(
     async (options?: { beginImmediately?: boolean }) => {
@@ -259,6 +267,13 @@ export function useResidentDictation(
       }
       if (!authHeaders()) {
         cbRef.current.onError?.("Not signed in.", false);
+        return;
+      }
+      if (!settingsReady || !historyReady) {
+        cbRef.current.onError?.(
+          "Freestyle is still loading. Try again.",
+          false,
+        );
         return;
       }
 
@@ -296,7 +311,7 @@ export function useResidentDictation(
 
       if (options?.beginImmediately) beginCapture();
     },
-    [recorder, beginCapture],
+    [recorder, beginCapture, settingsReady, historyReady],
   );
 
   const commit = useCallback(() => {
@@ -318,7 +333,8 @@ export function useResidentDictation(
   }, [closeSession, level]);
 
   const cancel = useCallback(() => {
-    if (stateRef.current !== "capturing") return;
+    if (stateRef.current !== "capturing" && stateRef.current !== "cueing")
+      return;
     closeSession();
     stateRef.current = streamOnRef.current ? "armed" : "idle";
     level.value = 0;

@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import type { LucideIcon } from "lucide-react-native";
 import {
-  ChevronRight,
   CircleQuestionMark,
   Globe,
   Keyboard,
@@ -21,6 +20,7 @@ import {
   Card,
   OptionCard,
   SectionTitle,
+  SettingsNavRow,
   SettingsScreenScaffold,
 } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
@@ -30,6 +30,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { fetchCloudConfig } from "@/lib/cloud/cloud-config";
 import { type ColorModePreference, useColorMode } from "@/lib/color-mode";
 import { type HistoryRetentionDays, useHistory } from "@/lib/history";
+import { confirmClearHistory } from "@/lib/history-alerts";
 import { useSettings } from "@/lib/settings";
 
 const APPEARANCE: {
@@ -60,6 +61,7 @@ export default function SettingsScreen() {
     setHistoryRetentionDays,
     clearHistory,
     history,
+    ready: historyReady,
   } = useHistory();
   const { signedIn } = useAuth();
   const { preference, setPreference } = useColorMode();
@@ -75,13 +77,37 @@ export default function SettingsScreen() {
 
   const translateAvailable = settings.languages.length === 1;
 
-  const confirmClear = () => {
+  const selectRetention = (days: HistoryRetentionDays) => {
+    if (days === historyRetentionDays) return;
+    const currentDays =
+      historyRetentionDays === "never"
+        ? Number.POSITIVE_INFINITY
+        : historyRetentionDays;
+    const nextDays = days === "never" ? Number.POSITIVE_INFINITY : days;
+    if (nextDays >= currentDays || days === "never") {
+      setHistoryRetentionDays(days);
+      return;
+    }
+    const cutoff = Date.now() - days * 86_400_000;
+    const deletionCount = history.filter(
+      (entry) => entry.createdAt < cutoff,
+    ).length;
+    if (deletionCount === 0) {
+      setHistoryRetentionDays(days);
+      return;
+    }
     Alert.alert(
-      "Clear history?",
-      "This permanently removes every saved dictation on this device.",
+      `Delete history older than ${days} days?`,
+      `This will permanently remove ${deletionCount} ${
+        deletionCount === 1 ? "dictation" : "dictations"
+      } from this device.`,
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Clear all", style: "destructive", onPress: clearHistory },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => setHistoryRetentionDays(days),
+        },
       ],
     );
   };
@@ -136,13 +162,13 @@ export default function SettingsScreen() {
       </Card>
 
       <Card style={styles.navCard}>
-        <NavRow
+        <SettingsNavRow
           icon={Keyboard}
           label="Voice keyboard"
           value="Dictate in any app"
           onPress={() => router.push("/(app)/keyboard-setup")}
         />
-        <NavRow
+        <SettingsNavRow
           icon={CircleQuestionMark}
           label="Help"
           value="Issues, Discord, contribute"
@@ -194,12 +220,14 @@ export default function SettingsScreen() {
           label="Save dictations"
           hint="New transcripts are kept in History."
           selected={!pauseHistory}
+          disabled={!historyReady}
           onPress={() => setPauseHistory(false)}
         />
         <OptionCard
           label="Pause history"
           hint="Keep existing entries; don't save new ones."
           selected={pauseHistory}
+          disabled={!historyReady}
           onPress={() => setPauseHistory(true)}
         />
 
@@ -214,12 +242,17 @@ export default function SettingsScreen() {
             return (
               <Pressable
                 key={String(opt.value)}
-                onPress={() => setHistoryRetentionDays(opt.value)}
-                accessibilityRole="button"
+                onPress={() => selectRetention(opt.value)}
+                disabled={!historyReady}
+                accessibilityRole="radio"
                 accessibilityLabel={opt.label}
-                accessibilityState={active ? { selected: true } : {}}
+                accessibilityState={{
+                  selected: active,
+                  disabled: !historyReady,
+                }}
                 style={[
                   styles.toggleItem,
+                  { opacity: historyReady ? 1 : 0.45 },
                   active && {
                     backgroundColor: theme.card,
                     borderColor: theme.border,
@@ -242,7 +275,7 @@ export default function SettingsScreen() {
         </View>
 
         <Pressable
-          onPress={confirmClear}
+          onPress={() => confirmClearHistory(clearHistory)}
           disabled={history.length === 0}
           style={({ pressed }) => [
             styles.clearRow,
@@ -266,44 +299,6 @@ export default function SettingsScreen() {
         </Pressable>
       </Card>
     </SettingsScreenScaffold>
-  );
-}
-
-function NavRow({
-  icon: Icon,
-  label,
-  value,
-  onPress,
-  last = false,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  onPress: () => void;
-  last?: boolean;
-}) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.navRow,
-        !last && {
-          borderBottomWidth: StyleSheet.hairlineWidth,
-          borderBottomColor: theme.border,
-        },
-        pressed && { opacity: 0.6 },
-      ]}
-    >
-      <Icon color={theme.mutedForeground} size={20} />
-      <View style={styles.navRowContent}>
-        <ThemedText style={styles.navRowLabel}>{label}</ThemedText>
-        <ThemedText themeColor="mutedForeground" style={styles.navRowValue}>
-          {value}
-        </ThemedText>
-      </View>
-      <ChevronRight color={theme.mutedForeground} size={18} />
-    </Pressable>
   );
 }
 
@@ -342,21 +337,13 @@ const styles = StyleSheet.create({
   clearLabel: { fontFamily: Fonts.sansMedium, fontSize: 15, flex: 1 },
   clearCount: { fontSize: 12 },
   navCard: { gap: 0, paddingVertical: Spacing.one },
-  navRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.three,
-    paddingVertical: Spacing.three - 2,
-  },
-  navRowContent: { flex: 1 },
-  navRowLabel: { fontFamily: Fonts.sansMedium, fontSize: 15 },
-  navRowValue: { fontSize: 13, marginTop: 1 },
   toggleTrack: {
     flexDirection: "row",
     borderRadius: Radius.lg,
     padding: 3,
   },
   toggleItem: {
+    minHeight: 44,
     flex: 1,
     alignItems: "center",
     justifyContent: "center",

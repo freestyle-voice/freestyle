@@ -44,6 +44,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
     let accumulatedText = "";
     let partialText = "";
     let commitRequested = false;
+    let finalizeSent = false;
     let finalDelivered = false;
     let commitTimeout: ReturnType<typeof setTimeout> | null = null;
     let keepAlive: ReturnType<typeof setInterval> | null = null;
@@ -86,6 +87,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       if (finalDelivered) return;
       finalDelivered = true;
       commitRequested = false;
+      finalizeSent = false;
       clearCommitTimeout();
       const text = (accumulatedText || partialText).trim();
       accumulatedText = "";
@@ -93,8 +95,17 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       callbacks.onFinal(text);
     }
 
+    function sendFinalize(): void {
+      if (finalizeSent || ws.readyState !== WebSocket.OPEN) return;
+      finalizeSent = true;
+      ws.send(JSON.stringify({ type: "Finalize" }));
+    }
+
     ws.on("open", () => {
       pending.flush((chunk) => ws.send(chunk));
+      if (commitRequested) {
+        sendFinalize();
+      }
       keepAlive = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "KeepAlive" }));
@@ -162,19 +173,21 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
         accumulatedText = "";
         partialText = "";
         commitRequested = false;
+        finalizeSent = false;
         finalDelivered = false;
       },
       commit(): void {
         commitRequested = true;
         clearCommitTimeout();
+        commitTimeout = setTimeout(() => {
+          deliverFinal();
+        }, COMMIT_TIMEOUT_MS);
+        if (ws.readyState === WebSocket.CONNECTING) return;
         if (ws.readyState !== WebSocket.OPEN) {
           deliverFinal();
           return;
         }
-        ws.send(JSON.stringify({ type: "Finalize" }));
-        commitTimeout = setTimeout(() => {
-          deliverFinal();
-        }, COMMIT_TIMEOUT_MS);
+        sendFinalize();
       },
       cancel(): void {
         // Deepgram is kept warm across recordings, so a cancel must NOT send
@@ -186,6 +199,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
         accumulatedText = "";
         partialText = "";
         commitRequested = false;
+        finalizeSent = false;
         finalDelivered = false;
       },
       close(): void {

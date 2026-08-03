@@ -16,7 +16,7 @@
 const MAX_PENDING_CHUNKS = 1024;
 
 export interface PendingAudio {
-  /** Hold a chunk until the socket is ready. Ignored once the cap is hit. */
+  /** Hold a chunk until the socket is ready, evicting the oldest at the cap. */
   hold(chunk: ArrayBuffer): void;
   /** Send everything held, oldest first, and empty the buffer. */
   flush(send: (chunk: ArrayBuffer) => void): void;
@@ -29,7 +29,7 @@ export function createPendingAudio(): PendingAudio {
 
   return {
     hold(chunk: ArrayBuffer): void {
-      if (chunks.length >= MAX_PENDING_CHUNKS) return;
+      if (chunks.length >= MAX_PENDING_CHUNKS) chunks.shift();
       chunks.push(chunk);
     },
     flush(send: (chunk: ArrayBuffer) => void): void {

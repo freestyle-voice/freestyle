@@ -49,6 +49,8 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
     const short = stripProviderPrefix(model);
     let partialText = "";
     let configured = false;
+    let commitRequested = false;
+    let commitSent = false;
     let finalDelivered = false;
     let commitTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -62,6 +64,8 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
     function deliverFinal(text: string): void {
       if (finalDelivered) return;
       finalDelivered = true;
+      commitRequested = false;
+      commitSent = false;
       clearCommitTimeout();
       partialText = "";
       callbacks.onFinal(text.trim());
@@ -87,6 +91,19 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
           audio: Buffer.from(upsample(chunk)).toString("base64"),
         }),
       );
+    }
+
+    function sendCommit(): void {
+      if (
+        commitSent ||
+        !commitRequested ||
+        ws.readyState !== WebSocket.OPEN ||
+        !configured
+      ) {
+        return;
+      }
+      commitSent = true;
+      ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
     }
 
     ws.on("open", () => {
@@ -129,6 +146,7 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
             // buffered start of the dictation goes out here rather than at
             // `open` — before any live audio, and in order.
             pending.flush(sendAudioFrame);
+            sendCommit();
             callbacks.onReady(short);
           }
           return;
@@ -174,21 +192,26 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
       },
       commit(): void {
         finalDelivered = false;
-        if (ws.readyState !== WebSocket.OPEN) {
-          deliverFinal(partialText);
-          return;
-        }
-        ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+        commitRequested = true;
         // Don't hang the recording if "completed" never arrives.
         clearCommitTimeout();
         commitTimeout = setTimeout(() => {
           deliverFinal(partialText);
         }, COMMIT_TIMEOUT_MS);
+        if (ws.readyState === WebSocket.CONNECTING) return;
+        if (ws.readyState !== WebSocket.OPEN) {
+          deliverFinal(partialText);
+          return;
+        }
+        if (!configured) return;
+        sendCommit();
       },
       reset(): void {
         pending.clear();
         clearCommitTimeout();
         partialText = "";
+        commitRequested = false;
+        commitSent = false;
         finalDelivered = false;
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
@@ -198,6 +221,8 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
         pending.clear();
         clearCommitTimeout();
         partialText = "";
+        commitRequested = false;
+        commitSent = false;
         finalDelivered = false;
         if (ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify({ type: "input_audio_buffer.clear" }));

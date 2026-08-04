@@ -127,6 +127,13 @@ import {
 import { initPluginUiHost, invalidatePluginViews } from "./plugins/ui-host";
 import { isRemixTargetAllowed } from "./remix-target";
 
+// Test isolation: E2E/probe runs in the unpackaged dev binary would otherwise
+// share the real "Electron" userData (settings.json included) with a running
+// dev instance. Must be set before anything reads app.getPath("userData").
+if (process.env.FREESTYLE_USER_DATA) {
+  app.setPath("userData", process.env.FREESTYLE_USER_DATA);
+}
+
 const log = createAppLogger("electron");
 const hotkeyLog = createAppLogger("hotkey");
 const hotkeyRecorderLog = createAppLogger("hotkey-recorder");
@@ -225,10 +232,16 @@ const PILL_CHAT_WIDTH = 440;
 const PILL_CHAT_HEIGHT = 600;
 /**
  * The minimized chat: a one-line strip that shows what the agent is doing
- * while it works. Hovering it grows the window to the full chat size.
+ * while it works. Hovering it grows the window to the full chat size. Once a
+ * run settles, the strip grows to fit the agent's final message — the
+ * renderer measures and reports the height it needs, capped here.
  */
 const PILL_CHAT_MINI_WIDTH = 360;
 const PILL_CHAT_MINI_HEIGHT = 68;
+const PILL_CHAT_MINI_MAX_HEIGHT = 340;
+
+/** The strip height currently requested by the renderer (default one-line). */
+let pillMiniHeight = PILL_CHAT_MINI_HEIGHT;
 
 type PillExpansion = "card" | "remix" | "remix-chat" | "remix-mini";
 
@@ -240,7 +253,7 @@ function pillExpansionSize(expansion: PillExpansion): {
     return { width: PILL_CHAT_WIDTH, height: PILL_CHAT_HEIGHT };
   }
   if (expansion === "remix-mini") {
-    return { width: PILL_CHAT_MINI_WIDTH, height: PILL_CHAT_MINI_HEIGHT };
+    return { width: PILL_CHAT_MINI_WIDTH, height: pillMiniHeight };
   }
   return {
     width: PILL_CARD_WIDTH,
@@ -531,9 +544,14 @@ function setPillExpanded(
   const isExpanded = pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0;
   // Both a collapse-when-collapsed and a re-expand at the size already in
   // effect are no-ops; a *change* of size while expanded is not, and has to
-  // re-run so the anchored edge stays put across the resize.
-  if (expanded === isExpanded && (!expanded || expansion === pillExpansion)) {
-    return;
+  // re-run so the anchored edge stays put across the resize. Size is compared
+  // too: the same expansion can change height (the strip growing around the
+  // agent's final message).
+  if (expanded === isExpanded && !expanded) return;
+  if (expanded && isExpanded && expansion === pillExpansion) {
+    const size = pillExpansionSize(expansion);
+    const bounds = win.getBounds();
+    if (bounds.width === size.width && bounds.height === size.height) return;
   }
   if (expanded) pillExpansion = expansion;
 
@@ -1415,6 +1433,7 @@ function hidePill(): void {
   hotkeyPressed = false;
   clearHotkeyStuckWatchdog();
   remixPressed = false;
+  pillMiniHeight = PILL_CHAT_MINI_HEIGHT;
   setRemixRouteKeys(false);
   // The chat card may have made the pill focusable so its input could be
   // typed into; a hidden pill must never hold that.
@@ -2192,6 +2211,25 @@ app.whenReady().then(async () => {
       );
     },
   );
+
+  // IPC: the minimized remix strip measured its content (the agent's final
+  // message) and wants the window sized to fit. Applied live when the strip
+  // is up; otherwise it just becomes the size of the next remix-mini expand.
+  ipcMain.on("pill:set-mini-height", (_event, height: unknown) => {
+    if (typeof height !== "number" || !Number.isFinite(height)) return;
+    const clamped = Math.round(
+      Math.min(
+        Math.max(height, PILL_CHAT_MINI_HEIGHT),
+        PILL_CHAT_MINI_MAX_HEIGHT,
+      ),
+    );
+    if (clamped === pillMiniHeight) return;
+    pillMiniHeight = clamped;
+    const isExpanded = pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0;
+    if (isExpanded && pillExpansion === "remix-mini") {
+      setPillExpanded(true, "remix-mini");
+    }
+  });
 
   // IPC: fan out per-frame audio levels from the pill to other windows
   // (e.g. the Today tutorial demo) so they can render a live waveform.

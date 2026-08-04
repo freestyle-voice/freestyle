@@ -344,7 +344,9 @@ const ALERT = "#E0805F";
  */
 const BAR_COLOR = "#FFFFFF";
 
-const PILL_SHADOW = "0 2px 10px rgba(0, 0, 0, 0.22)";
+// No drop shadow: the capsule and cards sit flush on whatever is behind
+// them, separated by their hairline border alone.
+const PILL_SHADOW = "none";
 
 const pillInnerStyle: React.CSSProperties = {
   height: PILL_HEIGHT,
@@ -2014,6 +2016,10 @@ export default function AppPage(): React.JSX.Element {
     }) => {
       if (remixRunningRef.current) return;
       remixRunningRef.current = true;
+      capture("remix_message_sent", {
+        source: "preset",
+        preset: options.remixId ?? null,
+      });
       patchRemix({ phase: "running", label: options.label });
       startBarAnimation("speaking");
 
@@ -2589,6 +2595,16 @@ export default function AppPage(): React.JSX.Element {
   const showCard = showErrorCard || showRemixCard;
   const active = state !== "idle" || showRemixCard;
 
+  // The minimized chat strip's current height: the one-line default while the
+  // agent narrates, grown by RemixChat to fit the final message once a run
+  // settles. The surface below sizes the strip from this.
+  const [remixMiniHeight, setRemixMiniHeight] = useState<number>(
+    REMIX_CHAT_STRIP.height,
+  );
+  useEffect(() => {
+    if (!showRemixChat) setRemixMiniHeight(REMIX_CHAT_STRIP.height);
+  }, [showRemixChat]);
+
   // Hold the initial hidden state for one frame so the enter transition runs.
   const [entered, setEntered] = useState(false);
   useEffect(() => {
@@ -2886,7 +2902,6 @@ export default function AppPage(): React.JSX.Element {
     border: SURFACE_BORDER,
     backdropFilter: BLUR,
     WebkitBackdropFilter: BLUR,
-    boxShadow: "0 8px 28px rgba(0, 0, 0, 0.3)",
     transformOrigin,
     marginBottom: pillAlign === "end" ? 8 : 0,
     marginTop: pillAlign === "start" ? 8 : 0,
@@ -3092,10 +3107,8 @@ export default function AppPage(): React.JSX.Element {
             .pill-capsule[data-show="true"]:not([data-exit]):hover {
               transform: translateY(-1px);
               border-color: rgba(255, 255, 255, 0.16);
-              box-shadow: 0 5px 16px rgba(0, 0, 0, 0.26);
               transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1),
-                          border-color 140ms ease,
-                          box-shadow 140ms ease;
+                          border-color 140ms ease;
             }
           }
 
@@ -3587,8 +3600,11 @@ export default function AppPage(): React.JSX.Element {
                   ? remixView.minimized
                     ? {
                         width: REMIX_CHAT_STRIP.width,
-                        height: REMIX_CHAT_STRIP.height,
-                        borderRadius: 999,
+                        height: remixMiniHeight,
+                        // A grown strip is a card, not a capsule — a 999px
+                        // radius on a tall box reads as a lozenge.
+                        borderRadius:
+                          remixMiniHeight > REMIX_CHAT_STRIP.height ? 18 : 999,
                         padding: 0,
                         overflow: "hidden",
                       }
@@ -3629,6 +3645,7 @@ export default function AppPage(): React.JSX.Element {
                   onExpand={() => patchRemix({ minimized: false })}
                   onMinimize={() => patchRemix({ minimized: true })}
                   onClose={() => endRemix()}
+                  onMiniHeightChange={setRemixMiniHeight}
                 />
               ) : remixView?.phase === "error" ? (
                 <>

@@ -1,5 +1,6 @@
 import { useChat } from "@ai-sdk/react";
 import { REMIX_PRESETS, type RemixPreset } from "@freestyle-voice/validations";
+import { capture } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 import {
   DefaultChatTransport,
@@ -12,7 +13,15 @@ import {
   type UIMessage,
 } from "ai";
 import type React from "react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { RemixSelectionPayload } from "../../../shared/remix";
@@ -73,6 +82,9 @@ export interface RemixChatProps {
   onExpand: () => void;
   onMinimize: () => void;
   onClose: () => void;
+  /** The strip layer's current height — the settled strip grows around the
+   * agent's final message, and the host surface has to grow with it. */
+  onMiniHeightChange?: (height: number) => void;
 }
 
 export function RemixChat(props: RemixChatProps): React.JSX.Element {
@@ -164,6 +176,7 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
       onMinimize={props.onMinimize}
       onClose={props.onClose}
       onNewThread={startNewThread}
+      onMiniHeightChange={props.onMiniHeightChange}
     />
   );
 }
@@ -208,6 +221,7 @@ interface RemixThreadProps {
   onMinimize: () => void;
   onClose: () => void;
   onNewThread: () => void;
+  onMiniHeightChange?: (height: number) => void;
 }
 
 /** A fast-lane preset run, shown inline in the thread like a tool row. */
@@ -227,6 +241,13 @@ const MINIMIZE_GRACE_MS = 380;
  * short enough that the strip never becomes furniture.
  */
 const MINI_IDLE_DISMISS_MS = 7000;
+
+// The settled strip shows the agent's final message in full. The strip layer
+// grows around it, and the window grows around the layer (main clamps the
+// window; past the cap the message scrolls inside the strip).
+const MINI_STRIP_PAD = 24; // .remix-mini[data-full] vertical padding
+const MINI_WINDOW_CHROME = 24; // window height minus strip layer height
+const MINI_STRIP_MAX = 316; // main's 340 window cap minus the chrome
 
 function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const { thread, minimized, anchor, onExpand, onMinimize, onClose } = props;
@@ -438,8 +459,36 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     if (instruction) {
       lastInstructionRef.current = instruction;
       void sendMessage({ text: instruction });
+      capture("remix_message_sent", { source: "dictated" });
     }
   }, [props.initialInstruction, sendMessage]);
+
+  // Analytics: one `remix_tool_used` per tool call, observed from the stream
+  // so server tools (web_search, image_search) count the same way as client
+  // primitives (copy, paste, …). The seen-set seeds from the restored thread
+  // so reloaded history never recounts; tool names only, never content.
+  const seenToolCallsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    let seen = seenToolCallsRef.current;
+    if (!seen) {
+      seen = new Set<string>();
+      for (const message of thread.messages) {
+        for (const part of message.parts) {
+          if (isToolOrDynamicToolUIPart(part)) seen.add(part.toolCallId);
+        }
+      }
+      seenToolCallsRef.current = seen;
+    }
+    for (const message of messages) {
+      if (message.role !== "assistant") continue;
+      for (const part of message.parts) {
+        if (!isToolOrDynamicToolUIPart(part)) continue;
+        if (seen.has(part.toolCallId)) continue;
+        seen.add(part.toolCallId);
+        capture("remix_tool_used", { tool: getToolOrDynamicToolName(part) });
+      }
+    }
+  }, [messages, thread.messages]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll to the newest content whenever the thread grows, streaming starts, or the strip expands
   useEffect(() => {
@@ -487,13 +536,80 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     };
   }, [minimized, onMinimize, clearMinimizeTimer]);
 
-  // The strip doesn't outstay its welcome: once the run has settled, a few
-  // seconds without a hover and it hands the corner back to the bar.
+  // Once the run settles, the strip stops narrating and shows the agent's
+  // final message in full. The window has to grow around it: measure the
+  // rendered message, grow the strip layer to fit, and ask main for the
+  // matching window height (clamped there); past the cap the message
+  // scrolls inside the strip.
+  const miniMessageRef = useRef<HTMLDivElement | null>(null);
+  const [miniContentHeight, setMiniContentHeight] = useState<number | null>(
+    null,
+  );
+  const finalText = useMemo(() => {
+    if (busy) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message.role !== "assistant") continue;
+      const text = message.parts
+        .filter(isTextUIPart)
+        .map((part) => part.text)
+        .join("")
+        .trim();
+      return text || null;
+    }
+    return null;
+  }, [messages, busy]);
+  const showFullFinal =
+    minimized && !busy && notice === null && finalText !== null;
+  const miniStripHeight = showFullFinal
+    ? Math.min(
+        Math.max(
+          miniContentHeight ?? REMIX_CHAT_STRIP.height,
+          REMIX_CHAT_STRIP.height,
+        ),
+        MINI_STRIP_MAX,
+      )
+    : REMIX_CHAT_STRIP.height;
+
+  // The host surface (the pill card wrapping this component) sizes the strip
+  // itself, so it has to follow the growth or it clips the message.
+  const onMiniHeightChangeRef = useRef(props.onMiniHeightChange);
+  onMiniHeightChangeRef.current = props.onMiniHeightChange;
+  useEffect(() => {
+    onMiniHeightChangeRef.current?.(miniStripHeight);
+  }, [miniStripHeight]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: finalText re-runs the measurement when a new final message lands in the same settled state
+  useLayoutEffect(() => {
+    if (!minimized) return;
+    if (!showFullFinal) {
+      // Back to the one-line strip (main clamps up to the default height).
+      setMiniContentHeight(null);
+      window.api?.setPillMiniHeight(0);
+      return;
+    }
+    const el = miniMessageRef.current;
+    if (!el) return;
+    const content = el.scrollHeight + MINI_STRIP_PAD;
+    setMiniContentHeight(content);
+    const strip = Math.min(
+      Math.max(content, REMIX_CHAT_STRIP.height),
+      MINI_STRIP_MAX,
+    );
+    window.api?.setPillMiniHeight(strip + MINI_WINDOW_CHROME);
+  }, [minimized, showFullFinal, finalText]);
+
+  // The strip doesn't outstay its welcome: once the run has settled, a while
+  // without a hover and it hands the corner back to the bar. A full final
+  // message gets reading time proportional to its length before that.
   useEffect(() => {
     if (!minimized || busy) return;
-    const timer = setTimeout(onClose, MINI_IDLE_DISMISS_MS);
+    const dismissMs = showFullFinal
+      ? Math.min(30_000, MINI_IDLE_DISMISS_MS + (finalText?.length ?? 0) * 30)
+      : MINI_IDLE_DISMISS_MS;
+    const timer = setTimeout(onClose, dismissMs);
     return () => clearTimeout(timer);
-  }, [minimized, busy, onClose]);
+  }, [minimized, busy, onClose, showFullFinal, finalText]);
 
   /**
    * Re-read the live highlight so EVERY user-initiated request carries the
@@ -545,6 +661,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     const el = inputRef.current;
     if (el) el.style.height = "auto";
     void sendText(text);
+    capture("remix_message_sent", { source: "typed" });
   }, [busy, input, sendText]);
 
   /**
@@ -562,6 +679,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         return;
       }
       if (actions.some((a) => a.status === "running")) return;
+      capture("remix_message_sent", { source: "preset", preset: preset.id });
       const id = ++actionSeqRef.current;
       setActions((rows) => [
         ...rows,
@@ -627,18 +745,27 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
 
       <div
         className="remix-chat-face remix-chat-face-strip"
-        style={anchoredLayerStyle(anchor, REMIX_CHAT_STRIP)}
+        style={anchoredLayerStyle(anchor, {
+          width: REMIX_CHAT_STRIP.width,
+          height: miniStripHeight,
+        })}
         aria-hidden={!minimized}
       >
-        <div className="remix-mini">
+        <div className="remix-mini" data-full={showFullFinal}>
           <span
             className="remix-mini-dot"
             data-busy={busy}
             data-failed={notice !== null}
           />
-          <span className="remix-mini-text">
-            {notice ?? latestActivity(messages, busy)}
-          </span>
+          {showFullFinal ? (
+            <div className="remix-mini-message" ref={miniMessageRef}>
+              <Markdown text={finalText ?? ""} />
+            </div>
+          ) : (
+            <span className="remix-mini-text">
+              {notice ?? latestActivity(messages, busy)}
+            </span>
+          )}
         </div>
       </div>
 
@@ -1081,6 +1208,21 @@ const REMIX_CHAT_CSS = `
     0%, 100% { opacity: 0.35; transform: scale(0.8); }
     50% { opacity: 1; transform: scale(1); }
   }
+  .remix-mini[data-full="true"] {
+    align-items: flex-start;
+    height: 100%;
+    padding: 12px 16px;
+  }
+  .remix-mini[data-full="true"] .remix-mini-dot { margin-top: 5px; }
+  .remix-mini-message {
+    flex: 1;
+    min-width: 0;
+    max-height: ${MINI_STRIP_MAX - MINI_STRIP_PAD}px;
+    overflow-y: auto;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: ${INK_DIM};
+  }
   .remix-mini-text {
     flex: 1;
     min-width: 0;
@@ -1179,6 +1321,22 @@ const REMIX_CHAT_CSS = `
     flex-direction: column;
     gap: 10px;
     padding: 2px;
+  }
+  /* Scrollbars on the ink surface: thin, cream-tinted, no track — the
+     default light scrollbar reads as a bright stripe against the dark card. */
+  .remix-chat ::-webkit-scrollbar { width: 9px; height: 9px; }
+  .remix-chat ::-webkit-scrollbar-track { background: transparent; }
+  .remix-chat ::-webkit-scrollbar-corner { background: transparent; }
+  .remix-chat ::-webkit-scrollbar-thumb {
+    background: rgba(245, 241, 228, 0.16);
+    border-radius: 99px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+  .remix-chat ::-webkit-scrollbar-thumb:hover {
+    background: rgba(245, 241, 228, 0.28);
+    border: 3px solid transparent;
+    background-clip: padding-box;
   }
   .remix-chat-empty { color: ${INK_FAINT}; padding-top: 8px; line-height: 1.45; }
   .remix-chat-user {

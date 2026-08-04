@@ -50,6 +50,9 @@ const api = {
     expanded: boolean,
     expansion?: "card" | "remix" | "remix-chat" | "remix-mini",
   ): void => ipcRenderer.send("pill:set-expanded", expanded, expansion),
+  /** Fit the minimized remix strip to its content (clamped in main). */
+  setPillMiniHeight: (height: number): void =>
+    ipcRenderer.send("pill:set-mini-height", height),
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),
   getServerPort: (): Promise<number> => ipcRenderer.invoke("server:port"),

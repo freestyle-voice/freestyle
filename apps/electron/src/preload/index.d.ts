@@ -37,6 +37,7 @@ declare global {
         expanded: boolean,
         expansion?: "card" | "remix" | "remix-chat" | "remix-mini",
       ) => void;
+      setPillMiniHeight: (height: number) => void;
       showErrorDialog: (title: string, message: string) => Promise<void>;
       getServerPort: () => Promise<number>;
       getServerUrl: () => Promise<string>;

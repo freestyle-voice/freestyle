@@ -73,7 +73,6 @@ function RemixBar(): React.JSX.Element {
           border-radius: 999px;
           background: rgba(22, 20, 15, 0.98);
           border: 1px solid rgba(245, 241, 228, 0.35);
-          box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
           transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1),
             height 220ms cubic-bezier(0.22, 1, 0.36, 1),
             border-color 220ms ease;

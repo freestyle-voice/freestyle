@@ -8,6 +8,12 @@ import {
   FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID,
 } from "../lib/freestyle-cloud.js";
 import {
+  getMiniMaxModelMetadata,
+  isMiniMaxProviderId,
+  MINIMAX_MODELS,
+  MINIMAX_PROVIDERS,
+} from "../lib/llm/minimax.js";
+import {
   LEGACY_MLX_ASR_MODELS,
   MLX_ASR_MODELS,
   MLX_ASR_PROVIDER_ID,
@@ -33,6 +39,11 @@ interface AvailableModel {
   type: "voice" | "llm";
   cost_input?: number;
   cost_output?: number;
+  cost_cache_read?: number;
+  cost_cache_write?: number | null;
+  context_window?: number;
+  input_modalities?: string[];
+  thinking?: string[];
   /** Surfaced in the default picker; non-curated models live behind "All models". */
   curated?: boolean;
   /**
@@ -201,6 +212,7 @@ const SUPPORTED_LLM_PROVIDERS = new Set([
   "google",
   "groq",
   "mistral",
+  ...MINIMAX_PROVIDERS.map((provider) => provider.providerId),
   ...Object.keys(LLM_GATEWAYS),
 ]);
 
@@ -216,6 +228,9 @@ const CURATED_LLM_IDS = new Set([
   "anthropic/claude-haiku-4-5",
   "google/gemini-2.5-flash",
   "mistral/mistral-small-latest",
+  ...MINIMAX_PROVIDERS.flatMap((provider) =>
+    MINIMAX_MODELS.map((model) => `${provider.providerId}/${model.modelId}`),
+  ),
 ]);
 
 const BUILTIN_LLM_MODELS: AvailableModel[] = [
@@ -237,6 +252,24 @@ const BUILTIN_LLM_MODELS: AvailableModel[] = [
     type: "llm",
     curated: true,
   },
+  ...MINIMAX_PROVIDERS.flatMap((provider) =>
+    MINIMAX_MODELS.map((model) => ({
+      provider_id: provider.providerId,
+      provider_name: provider.providerName,
+      model_id: model.modelId,
+      model_name: model.modelId,
+      family: "minimax",
+      type: "llm" as const,
+      cost_input: model.pricing.input,
+      cost_output: model.pricing.output,
+      cost_cache_read: model.pricing.cacheRead,
+      cost_cache_write: model.pricing.cacheWrite,
+      context_window: model.contextWindow,
+      input_modalities: [...model.inputModalities],
+      thinking: [...model.thinking],
+      curated: true,
+    })),
+  ),
 ];
 
 // In-memory cache for models.dev data
@@ -269,6 +302,14 @@ export async function getModelCost(
   providerId: string,
   modelId: string,
 ): Promise<{ input: number; output: number } | null> {
+  const minimaxModel = getMiniMaxModelMetadata(providerId, modelId);
+  if (minimaxModel) {
+    return {
+      input: minimaxModel.pricing.input / 1_000_000,
+      output: minimaxModel.pricing.output / 1_000_000,
+    };
+  }
+
   try {
     const registry = await fetchModelsFromRegistry();
 
@@ -294,6 +335,7 @@ export async function isCleanupModelSupported(
   providerId: string,
   modelId: string,
 ): Promise<boolean> {
+  if (getMiniMaxModelMetadata(providerId, modelId)) return true;
   if (providerId === "local-llm") return true;
   if (providerId in LLM_GATEWAYS) return true;
   if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return true;
@@ -364,6 +406,8 @@ const models = new Hono()
         if (!provider.models) continue;
 
         for (const [, model] of Object.entries(provider.models)) {
+          const minimaxModel = getMiniMaxModelMetadata(providerId, model.id);
+          if (isMiniMaxProviderId(providerId) && !minimaxModel) continue;
           if (model.status === DEPRECATED_STATUS) continue;
 
           const inputMods = model.modalities?.input ?? [];
@@ -379,8 +423,15 @@ const models = new Hono()
               model_name: model.name,
               family: model.family ?? "",
               type: "llm",
-              cost_input: model.cost?.input,
-              cost_output: model.cost?.output,
+              cost_input: minimaxModel?.pricing.input ?? model.cost?.input,
+              cost_output: minimaxModel?.pricing.output ?? model.cost?.output,
+              cost_cache_read: minimaxModel?.pricing.cacheRead,
+              cost_cache_write: minimaxModel?.pricing.cacheWrite,
+              context_window: minimaxModel?.contextWindow,
+              input_modalities: minimaxModel
+                ? [...minimaxModel.inputModalities]
+                : inputMods,
+              thinking: minimaxModel ? [...minimaxModel.thinking] : undefined,
               curated: CURATED_LLM_IDS.has(`${providerId}/${model.id}`),
               gateway: LLM_GATEWAYS[providerId],
             });

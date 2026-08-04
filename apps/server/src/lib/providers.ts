@@ -8,6 +8,8 @@ const LOCAL_PROVIDERS = new Set(["local-llm"]);
 const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
   "openai",
   "anthropic",
+  "minimax",
+  "minimax-cn",
   "google",
   "mistral",
   "openrouter",

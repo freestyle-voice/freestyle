@@ -198,6 +198,53 @@ test("dashboard renders content", async () => {
   expect(bodyText.length).toBeGreaterThan(0);
 });
 
+test("onboarding flow reaches the draft and remix steps and completes", async () => {
+  test.skip(
+    !dashboardPage.url().includes("/onboarding"),
+    "onboarding is not active in this run",
+  );
+  const page = dashboardPage;
+
+  // Cloud step — E2E takes the skip affordance.
+  await page.getByRole("button", { name: "Skip for now (dev)" }).click();
+
+  // Permissions step — E2E bypasses the OS grants.
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // Language step.
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // Draft step — the Gmail mockup. Typing into the body enables Continue.
+  await page.getByText("New Message").waitFor({ state: "visible" });
+  const continueButton = page.getByRole("button", { name: "Continue" });
+  await expect(continueButton).toBeDisabled();
+  const body = page.locator('[role="textbox"]');
+  await body.click();
+  await body.fill("Happy birthday Sam — cake on Friday.");
+  await expect(continueButton).toBeEnabled();
+  await continueButton.click();
+
+  // Remix step — renders the non-interactive scripted variant under E2E.
+  await page
+    .getByText("Remix needs an assistant model", { exact: false })
+    .waitFor({ state: "visible", timeout: 15_000 });
+
+  await page.getByRole("button", { name: "Start using Freestyle" }).click();
+  await page.waitForURL(/\/today/, { timeout: 15_000 });
+
+  // Practice-target mode must be off once onboarding is done.
+  const practiceTarget = await page.evaluate(() =>
+    (
+      window as unknown as {
+        electron: {
+          ipcRenderer: { invoke: (channel: string) => Promise<boolean> };
+        };
+      }
+    ).electron.ipcRenderer.invoke("e2e:remix-practice-target"),
+  );
+  expect(practiceTarget).toBe(false);
+});
+
 test("sidebar navigation is rendered", async () => {
   const url = dashboardPage.url();
   if (url.includes("/onboarding")) {

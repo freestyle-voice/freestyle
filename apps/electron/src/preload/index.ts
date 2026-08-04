@@ -162,6 +162,16 @@ const api = {
     ipcRenderer.send("remix:set-route-keys", open),
   /** The persistent bar was hovered; main opens the chat. */
   remixBarHover: (): void => ipcRenderer.send("remix:bar-hover"),
+  /** Onboarding practice: allow Remix to target our own window while true. */
+  setRemixPracticeTarget: (active: boolean): void =>
+    ipcRenderer.send("remix:set-practice-target", active),
+  /** Remix delivered text into the practice draft (paste succeeded). */
+  onRemixPracticeDelivered: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("remix:practice-delivered", handler);
+    return () =>
+      ipcRenderer.removeListener("remix:practice-delivered", handler);
+  },
   /** Main wants the chat card open (bar hover) — no instruction attached. */
   onRemixOpenChat: (callback: () => void): (() => void) => {
     const handler = (): void => callback();

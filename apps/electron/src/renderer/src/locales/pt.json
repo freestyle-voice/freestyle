@@ -75,6 +75,43 @@
       "saveKey": "Salvar e usar {{provider}}",
       "keyPlaceholder": "Cole sua chave secreta — ex: sk-...",
       "backToModels": "Voltar para os modelos"
+    },
+    "draft": {
+      "statusReady": "Pronto",
+      "statusListening": "Ouvindo…",
+      "statusLanded": "Chegou ao rascunho",
+      "skip": "Pular por enquanto",
+      "newMessage": "Nova mensagem",
+      "toLabel": "Para",
+      "recipientName": "Sam Rivera",
+      "recipientEmail": "sam.rivera@example.com",
+      "subject": "Feliz aniversário",
+      "send": "Enviar",
+      "bodyAria": "Corpo do e-mail",
+      "title": "Escreva com a sua voz",
+      "instructionPrefix": "Clique no e-mail, segure",
+      "instructionSuffix": "e diga, palavra por palavra:",
+      "sayText": "Feliz aniversário, Sam — levo bolo na sexta."
+    },
+    "remix": {
+      "statusReady": "Pronto",
+      "statusListening": "Ouvindo…",
+      "statusWorking": "Remixando…",
+      "statusRemixed": "Remixado.",
+      "doneNote": "O rascunho se reescreveu na hora. Tente outra instrução — ou conclua quando quiser.",
+      "extraCaption": "Este leva alguns segundos.",
+      "extraDone": "Uma curiosidade e uma foto, direto no rascunho. Conclua quando quiser.",
+      "fallbackNote": "O Remix precisa de um modelo assistente — adicione um nos Ajustes quando quiser.",
+      "sampleDraft": "Feliz aniversário, Sam. Espero que seu dia seja ótimo — levo bolo na sexta.",
+      "sampleSignoff": "Mal posso esperar para comemorar com você.\n\nCom carinho,\n{{name}}",
+      "fallbackName": "Alex",
+      "title": "Agora remixe",
+      "highlightNote": "Seu rascunho já está destacado — deixe-o destacado e não clique no e-mail.",
+      "instructionPrefix": "Segure",
+      "instructionSuffix": "e diga, palavra por palavra:",
+      "sayText": "Deixe mais caloroso e assine como {{name}}.",
+      "extraLead": "Mais um truque — com o texto ainda destacado:",
+      "extraSay": "Adicione uma curiosidade sobre bolos de aniversário, e uma foto de um."
     }
   },
   "settings": {

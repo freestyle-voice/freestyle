@@ -4,6 +4,7 @@ import {
   normalizeLanguageList,
 } from "@freestyle-voice/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
+import demoVideo from "@renderer/assets/homer-odysseus-demo.mp4";
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
@@ -119,7 +120,6 @@ export default function OnboardingPage(): React.JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>("cloud");
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const {
     user: cloudUser,
@@ -236,10 +236,6 @@ export default function OnboardingPage(): React.JSX.Element {
     const value = settingsData?.[SETTINGS_KEYS.hotkey];
     if (value) setHotkey(value);
   }, [settingsData]);
-
-  useEffect(() => {
-    return window.api?.onFullscreenChanged(setIsFullscreen);
-  }, []);
 
   // Analytics: entry + per-step views (drives the drop-off funnel).
   const started = useRef(false);
@@ -749,132 +745,128 @@ export default function OnboardingPage(): React.JSX.Element {
 
   return (
     <div className="glass-window-shell glass-content flex h-screen flex-col">
-      {!isFullscreen && (
-        <div
-          className="h-9 shrink-0"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        />
-      )}
-
       <div
-        className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-auto px-6 py-8"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-      >
-        {step === "permissions" && (
-          <PermissionsStep
-            micStatus={micStatus}
-            accessibilityStatus={accessibilityStatus}
-            linuxSetup={linuxSetup}
-            onRequestMic={requestMic}
-            onOpenMicSettings={openMicSettings}
-            onOpenAccessibility={openAccessibility}
-            onRecheckLinuxSetup={recheckLinuxSetup}
-            onBack={() => {
-              capture("onboarding_permissions_back_clicked");
-              setStep("cloud");
-            }}
-            onContinue={() => {
-              capture("onboarding_permissions_completed");
-              setStep("language");
-            }}
-          />
-        )}
+        className="h-9 shrink-0"
+        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      />
 
-        {step === "cloud" && (
-          <CloudStep
-            user={cloudUser}
-            signingIn={cloudSigningIn}
-            error={cloudError}
-            onSignIn={() => {
-              capture("onboarding_cloud_signin_clicked");
-              void cloudSignIn().then((u) => {
-                if (u) capture("onboarding_cloud_signin_succeeded");
-              });
-            }}
-            onContinue={() => {
-              capture("onboarding_cloud_step_completed", {
-                signed_in: true,
-                skipped: false,
-              });
-              setStep("permissions");
-            }}
-            onSkip={() => {
-              capture("onboarding_cloud_step_completed", {
-                signed_in: false,
-                skipped: true,
-              });
-              setStep("permissions");
-            }}
-          />
-        )}
+      {step === "cloud" ? (
+        <CloudStep
+          user={cloudUser}
+          signingIn={cloudSigningIn}
+          error={cloudError}
+          onSignIn={() => {
+            capture("onboarding_cloud_signin_clicked");
+            void cloudSignIn().then((u) => {
+              if (u) capture("onboarding_cloud_signin_succeeded");
+            });
+          }}
+          onContinue={() => {
+            capture("onboarding_cloud_step_completed", {
+              signed_in: true,
+              skipped: false,
+            });
+            setStep("permissions");
+          }}
+          onSkip={() => {
+            capture("onboarding_cloud_step_completed", {
+              signed_in: false,
+              skipped: true,
+            });
+            setStep("permissions");
+          }}
+        />
+      ) : (
+        <div
+          className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-auto px-6 py-8"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          {step === "permissions" && (
+            <PermissionsStep
+              micStatus={micStatus}
+              accessibilityStatus={accessibilityStatus}
+              linuxSetup={linuxSetup}
+              onRequestMic={requestMic}
+              onOpenMicSettings={openMicSettings}
+              onOpenAccessibility={openAccessibility}
+              onRecheckLinuxSetup={recheckLinuxSetup}
+              onBack={() => {
+                capture("onboarding_permissions_back_clicked");
+                setStep("cloud");
+              }}
+              onContinue={() => {
+                capture("onboarding_permissions_completed");
+                setStep("language");
+              }}
+            />
+          )}
 
-        {step === "language" && (
-          <LanguageStep
-            languages={languages}
-            onToggle={toggleLanguage}
-            onClear={clearLanguages}
-            localModel={showLocalSetupPanel ? localSetupModel : undefined}
-            onDownloadLocal={startLocalDownload}
-            onRetryLocal={retryLocalDownload}
-            onBack={() => {
-              capture("onboarding_language_back_clicked");
-              setStep("permissions");
-            }}
-            onContinue={() => {
-              // Persist even when the pre-selected locale was never toggled.
-              persistLanguages(languages);
-              capture("onboarding_language_completed", { languages });
-              setStep("draft");
-            }}
-          />
-        )}
+          {step === "language" && (
+            <LanguageStep
+              languages={languages}
+              onToggle={toggleLanguage}
+              onClear={clearLanguages}
+              localModel={showLocalSetupPanel ? localSetupModel : undefined}
+              onDownloadLocal={startLocalDownload}
+              onRetryLocal={retryLocalDownload}
+              onBack={() => {
+                capture("onboarding_language_back_clicked");
+                setStep("permissions");
+              }}
+              onContinue={() => {
+                // Persist even when the pre-selected locale was never toggled.
+                persistLanguages(languages);
+                capture("onboarding_language_completed", { languages });
+                setStep("draft");
+              }}
+            />
+          )}
 
-        {step === "draft" && (
-          <DraftStep
-            hotkey={hotkey}
-            recorderState={recorderState}
-            draftKeys={draftKeys}
-            captureHint={captureHint}
-            modelReady={chosenReady}
-            localModel={showLocalSetupPanel ? localSetupModel : undefined}
-            onDownloadLocal={startLocalDownload}
-            onRetryLocal={retryLocalDownload}
-            canContinue={!mustHaveLocalReady || !!window.api?.isE2E}
-            continueBlockedReason={
-              mustHaveLocalReady
-                ? localSetupActive
-                  ? "downloading"
-                  : "notReady"
-                : null
-            }
-            body={draftBody}
-            onBodyChange={setDraftBody}
-            onDraftDictated={onDraftDictated}
-            onStartRecording={() => {
-              capture("onboarding_hotkey_change_started");
-              startHotkeyRecording();
-            }}
-            onCancelRecording={cancelHotkeyRecording}
-            onDictation={() => capture("onboarding_dictation_tried")}
-            onBack={() => {
-              capture("onboarding_tutorial_back_clicked");
-              setStep("language");
-            }}
-            onContinue={() => setStep("remix")}
-          />
-        )}
+          {step === "draft" && (
+            <DraftStep
+              hotkey={hotkey}
+              recorderState={recorderState}
+              draftKeys={draftKeys}
+              captureHint={captureHint}
+              modelReady={chosenReady}
+              localModel={showLocalSetupPanel ? localSetupModel : undefined}
+              onDownloadLocal={startLocalDownload}
+              onRetryLocal={retryLocalDownload}
+              canContinue={!mustHaveLocalReady || !!window.api?.isE2E}
+              continueBlockedReason={
+                mustHaveLocalReady
+                  ? localSetupActive
+                    ? "downloading"
+                    : "notReady"
+                  : null
+              }
+              body={draftBody}
+              onBodyChange={setDraftBody}
+              onDraftDictated={onDraftDictated}
+              onStartRecording={() => {
+                capture("onboarding_hotkey_change_started");
+                startHotkeyRecording();
+              }}
+              onCancelRecording={cancelHotkeyRecording}
+              onDictation={() => capture("onboarding_dictation_tried")}
+              onBack={() => {
+                capture("onboarding_tutorial_back_clicked");
+                setStep("language");
+              }}
+              onContinue={() => setStep("remix")}
+            />
+          )}
 
-        {step === "remix" && (
-          <RemixStep
-            body={draftBody}
-            onBodyChange={setDraftBody}
-            onBack={() => setStep("draft")}
-            onFinish={finishSetup}
-          />
-        )}
-      </div>
-
-      {step === "cloud" && <CloudTermsFooter />}
+          {step === "remix" && (
+            <RemixStep
+              body={draftBody}
+              onBodyChange={setDraftBody}
+              onBack={() => setStep("draft")}
+              onFinish={finishSetup}
+            />
+          )}
+        </div>
+      )}
 
       {showSelector && (
         <ModelSelectorOverlay
@@ -1147,127 +1139,167 @@ function CloudStep({
   onSkip: () => void;
 }): React.JSX.Element {
   return (
-    <div className="flex w-full max-w-[420px] flex-col items-center text-center">
-      <img
-        src={markLight}
-        alt="Freestyle"
-        className="block h-14 w-14 dark:hidden"
-      />
-      <img
-        src={markDark}
-        alt="Freestyle"
-        className="hidden h-14 w-14 dark:block"
-      />
+    <div
+      className="flex min-h-0 flex-1"
+      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+    >
+      {/* Left — sign in */}
+      <div className="flex w-[44%] shrink-0 flex-col overflow-y-auto px-12 min-[1280px]:px-[72px]">
+        <div className="flex w-full max-w-[400px] flex-1 flex-col justify-center py-8">
+          <img
+            src={markLight}
+            alt="Freestyle"
+            className="block h-11 w-11 dark:hidden"
+          />
+          <img
+            src={markDark}
+            alt="Freestyle"
+            className="hidden h-11 w-11 dark:block"
+          />
 
-      <h1 className="serif text-foreground mt-6 mb-0 text-[44px] leading-[1.0] font-normal tracking-[-0.025em]">
-        <span>Welcome to </span>
-        <span className="serif-italic text-primary">Freestyle</span>
-      </h1>
+          <h1 className="serif text-foreground mt-9 mb-0 text-[52px] leading-[1.0] font-normal tracking-[-0.025em]">
+            <span>Welcome to </span>
+            <span className="serif-italic text-primary">Freestyle</span>
+          </h1>
 
-      {user ? (
-        <div className="border-border bg-card mt-6 flex w-full items-center gap-3 rounded-[12px] border p-4 text-left">
-          {user.image ? (
-            <img
-              src={user.image}
-              alt=""
-              className="size-9 shrink-0 rounded-full object-cover"
-            />
-          ) : (
-            <div className="bg-accent border-primary/20 flex size-9 shrink-0 items-center justify-center rounded-full border">
-              <Check className="text-accent-foreground size-4" />
-            </div>
-          )}
-          <div className="min-w-0 flex-1 leading-tight">
-            <div className="text-foreground truncate text-[14px] font-medium">
-              {user.name || user.email}
-            </div>
-            <div className="text-muted-foreground truncate text-[12px]">
-              {user.name ? `Signed in · ${user.email}` : "Signed in"}
-            </div>
-          </div>
-          <Check className="text-accent-foreground size-4 shrink-0" />
-        </div>
-      ) : (
-        <>
-          <p className="text-muted-foreground mt-3 max-w-[340px] text-[14px] leading-relaxed">
-            Do work 4X faster with voice. Sign in to get started.
+          <p className="text-muted-foreground mt-4 max-w-[330px] text-[15px] leading-[1.55]">
+            Write with intelligence at your cursor
           </p>
 
-          <button
-            type="button"
-            onClick={onSignIn}
-            disabled={signingIn}
-            className="mt-7 flex w-full items-center justify-center gap-2.5 rounded-[11px] bg-primary px-5 py-3 text-[14px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-60"
-          >
-            {signingIn ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Opening browser…
-              </>
-            ) : (
-              <>
-                Sign in via browser
-                <ExternalLink className="size-4 opacity-70" />
-              </>
+          {user ? (
+            <>
+              <div className="border-border bg-card mt-9 flex w-full items-center gap-3 rounded-[12px] border p-4 text-left">
+                {user.image ? (
+                  <img
+                    src={user.image}
+                    alt=""
+                    className="size-9 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="bg-accent border-primary/20 flex size-9 shrink-0 items-center justify-center rounded-full border">
+                    <Check className="text-accent-foreground size-4" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1 leading-tight">
+                  <div className="text-foreground truncate text-[14px] font-medium">
+                    {user.name || user.email}
+                  </div>
+                  <div className="text-muted-foreground truncate text-[12px]">
+                    {user.name ? `Signed in · ${user.email}` : "Signed in"}
+                  </div>
+                </div>
+                <Check className="text-accent-foreground size-4 shrink-0" />
+              </div>
+              <Button
+                variant="ink"
+                onClick={onContinue}
+                className="mt-5 w-full"
+              >
+                Continue
+                <ArrowRight data-icon="inline-end" />
+              </Button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={onSignIn}
+              disabled={signingIn}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 mt-9 flex w-full items-center justify-center gap-2.5 rounded-[11px] px-5 py-3.5 text-[14.5px] font-medium transition-colors disabled:pointer-events-none disabled:opacity-60"
+            >
+              {signingIn ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Opening browser…
+                </>
+              ) : (
+                <>
+                  Sign in via browser
+                  <ExternalLink className="size-4 opacity-70" />
+                </>
+              )}
+            </button>
+          )}
+
+          {error && (
+            <p className="text-destructive mt-3 text-[12px] leading-snug">
+              {error}
+            </p>
+          )}
+
+          <p className="text-muted-foreground mt-5 max-w-[330px] text-[11px] leading-[1.7]">
+            By continuing, you agree to our{" "}
+            <a
+              href="https://freestylevoice.com/terms"
+              target="_blank"
+              rel="noreferrer"
+              className="text-foreground underline underline-offset-2"
+            >
+              Terms of Service
+            </a>{" "}
+            and{" "}
+            <a
+              href="https://freestylevoice.com/privacy"
+              target="_blank"
+              rel="noreferrer"
+              className="text-foreground underline underline-offset-2"
+            >
+              Privacy Policy
+            </a>
+            .
+          </p>
+
+          {!user &&
+            // Skipping sign-in is a local-development/E2E affordance only — in
+            // production the browser sign-in is the sole way past this step.
+            (import.meta.env.DEV || window.api?.isE2E) && (
+              <div className="mt-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onSkip}
+                  disabled={signingIn}
+                  className="text-muted-foreground -ml-2 h-auto px-2 py-1 text-[12px]"
+                >
+                  Skip for now (dev)
+                </Button>
+              </div>
             )}
-          </button>
-        </>
-      )}
+        </div>
+      </div>
 
-      {error && (
-        <p className="text-destructive mt-3 text-[12px] leading-snug">
-          {error}
-        </p>
-      )}
-
-      {user ? (
-        <Button variant="ink" onClick={onContinue} className="mt-6 w-full">
-          Continue
-          <ArrowRight data-icon="inline-end" />
-        </Button>
-      ) : (
-        // Skipping sign-in is a local-development/E2E affordance only — in
-        // production the browser sign-in is the sole way past this step.
-        (import.meta.env.DEV || window.api?.isE2E) && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onSkip}
-            disabled={signingIn}
-            className="text-muted-foreground mt-2 h-auto px-2 py-1 text-[12px]"
-          >
-            Skip for now (dev)
-          </Button>
-        )
-      )}
+      {/* Right — the product demo on an ink panel. Fixed dark values by
+          design: it reads as a depiction, the same in both themes. */}
+      <div className="relative flex min-w-0 flex-1 flex-col items-center justify-center overflow-hidden bg-[#16140F] px-14 pt-14 pb-12">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(90% 70% at 70% 20%, rgba(138,182,42,0.10), transparent 60%)",
+          }}
+        />
+        <div className="relative w-full max-w-[648px] rounded-[14px] border border-[#3A362D] bg-[#1E1C16] p-2 shadow-[0_30px_70px_-30px_rgba(0,0,0,0.7)]">
+          <video
+            src={demoVideo}
+            autoPlay
+            loop
+            muted
+            playsInline
+            aria-label="Freestyle Remix editing an Odyssey essay in a document by voice"
+            className="block w-full rounded-[8px]"
+          />
+        </div>
+        <div className="relative mt-[22px] flex items-center gap-2.5 text-[12.5px] text-[#9E977F]">
+          <span>"Add a paragraph about Odysseus and the Sirens"</span>
+        </div>
+        <div className="absolute bottom-[22px] left-1/2 flex -translate-x-1/2 gap-[7px]">
+          <span className="h-[5px] w-[18px] rounded-full bg-[#8AB62A]" />
+          <span className="h-[5px] w-[5px] rounded-full bg-[#3A362D]" />
+          <span className="h-[5px] w-[5px] rounded-full bg-[#3A362D]" />
+          <span className="h-[5px] w-[5px] rounded-full bg-[#3A362D]" />
+        </div>
+      </div>
     </div>
-  );
-}
-
-function CloudTermsFooter(): React.JSX.Element {
-  return (
-    <p className="text-muted-foreground shrink-0 px-6 pb-8 text-center text-[11px] leading-[1.7]">
-      By continuing, you agree to our{" "}
-      <a
-        href="https://freestylevoice.com/terms"
-        target="_blank"
-        rel="noreferrer"
-        className="text-foreground underline underline-offset-2"
-      >
-        Terms of Service
-      </a>
-      <br />
-      and{" "}
-      <a
-        href="https://freestylevoice.com/privacy"
-        target="_blank"
-        rel="noreferrer"
-        className="text-foreground underline underline-offset-2"
-      >
-        Privacy Policy
-      </a>
-      .
-    </p>
   );
 }
 

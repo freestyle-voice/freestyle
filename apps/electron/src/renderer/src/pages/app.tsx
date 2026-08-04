@@ -3040,9 +3040,13 @@ export default function AppPage(): React.JSX.Element {
     const outer = requestAnimationFrame(() => {
       inner = requestAnimationFrame(() => setChatMiniVisual(false));
     });
+    // rAF only fires while the compositor produces frames; a throttled or
+    // occluded window would otherwise never finish the morph.
+    const fallback = window.setTimeout(() => setChatMiniVisual(false), 120);
     return () => {
       cancelAnimationFrame(outer);
       cancelAnimationFrame(inner);
+      clearTimeout(fallback);
     };
   }, [viewIsChat, showRemixChat, remixChatMini]);
 

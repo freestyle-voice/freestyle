@@ -743,6 +743,10 @@ function createAppWindow(): void {
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
+      // The pill is a transparent always-on-top overlay; Chromium's occlusion
+      // tracker misreads it (notably under Xvfb) and stops producing frames,
+      // freezing rAF-driven morphs mid-animation. Keep its renderer ticking.
+      backgroundThrottling: false,
     },
   });
 
@@ -3679,6 +3683,9 @@ function createRemixBarWindow(): void {
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
+      // Same transparent-overlay caveat as the pill window: occlusion
+      // misdetection would freeze its animations.
+      backgroundThrottling: false,
     },
   });
   win.setAlwaysOnTop(true, "screen-saver");

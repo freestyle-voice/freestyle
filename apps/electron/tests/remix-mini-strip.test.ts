@@ -122,13 +122,13 @@ test("settled remix strip grows around the final message", async () => {
   await pillPage!.waitForLoadState("domcontentloaded");
   await new Promise((r) => setTimeout(r, 2500));
 
-  // Open the chat card (the bar-hover path) and make the window visible so
-  // the renderer paints for the screenshot.
+  // Open the chat card (the bar-hover path). The window stays hidden: bounds
+  // and DOM assertions don't need it painted, and an on-screen window could
+  // catch the machine's real cursor — a stray hover re-expands the strip.
   await app!.evaluate(({ BrowserWindow }) => {
     const pill = BrowserWindow.getAllWindows().find((w) =>
       w.webContents.getURL().includes("pill"),
     );
-    pill?.showInactive();
     pill?.webContents.send("remix:open-chat");
   });
   await new Promise((r) => setTimeout(r, 1500));

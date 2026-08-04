@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createElevenLabs } from "@ai-sdk/elevenlabs";
 import WebSocket from "ws";
+import { createPendingAudio } from "../pending-audio.js";
 import { mergeFinalSegment } from "../segments.js";
 import {
   appendElevenLabsBiasToParams,
@@ -103,9 +104,10 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
     let accumulatedText = "";
     let partialText = "";
     let ws: WebSocket | null = null;
-    const pendingChunks: ArrayBuffer[] = [];
+    const pending = createPendingAudio();
     let autoCommitTimer: ReturnType<typeof setInterval> | null = null;
     let userCommitPending = false;
+    let userCommitSent = false;
     let finalDelivered = false;
     let commitTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -121,6 +123,7 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
     function deliverUserFinal(): void {
       if (!userCommitPending || finalDelivered) return;
       userCommitPending = false;
+      userCommitSent = false;
       finalDelivered = true;
       clearCommitTimeout();
       stopAutoCommit();
@@ -146,6 +149,12 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
       }
     }
 
+    function sendUserCommit(): void {
+      if (userCommitSent || !ws || ws.readyState !== WebSocket.OPEN) return;
+      userCommitSent = true;
+      ws.send(audioChunkMessage("", true));
+    }
+
     getSingleUseToken(apiKey)
       .then((token) => {
         const params = new URLSearchParams({
@@ -162,12 +171,14 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
         ws = new WebSocket(`${ELEVENLABS_STT_URL}?${params}`);
 
         ws.on("open", () => {
-          for (const chunk of pendingChunks) {
-            ws!.send(
+          pending.flush((chunk) =>
+            ws?.send(
               audioChunkMessage(Buffer.from(chunk).toString("base64"), false),
-            );
+            ),
+          );
+          if (userCommitPending) {
+            sendUserCommit();
           }
-          pendingChunks.length = 0;
           startAutoCommit();
           callbacks.onReady(short);
         });
@@ -263,7 +274,7 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
     return {
       sendAudio(chunk: ArrayBuffer): void {
         if (!ws || ws.readyState !== WebSocket.OPEN) {
-          pendingChunks.push(chunk);
+          pending.hold(chunk);
           return;
         }
         ws.send(
@@ -272,9 +283,11 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
       },
       reset(): void {
         clearCommitTimeout();
+        pending.clear();
         accumulatedText = "";
         partialText = "";
         userCommitPending = false;
+        userCommitSent = false;
         finalDelivered = false;
         if (ws && ws.readyState === WebSocket.OPEN) {
           startAutoCommit();
@@ -286,15 +299,15 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
         stopAutoCommit();
         clearCommitTimeout();
 
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-          deliverUserFinal();
-          return;
-        }
-
-        ws.send(audioChunkMessage("", true));
         commitTimeout = setTimeout(() => {
           deliverUserFinal();
         }, USER_COMMIT_TIMEOUT_MS);
+        if (!ws || ws.readyState === WebSocket.CONNECTING) return;
+        if (ws.readyState !== WebSocket.OPEN) {
+          deliverUserFinal();
+          return;
+        }
+        sendUserCommit();
       },
       cancel(): void {
         // ElevenLabs is kept warm across recordings, so a cancel must not close
@@ -302,8 +315,9 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
         // Drop the in-flight transcript and re-arm auto-commit for reuse, like
         // reset(); close() is used for real teardown.
         clearCommitTimeout();
-        pendingChunks.length = 0;
+        pending.clear();
         userCommitPending = false;
+        userCommitSent = false;
         finalDelivered = false;
         accumulatedText = "";
         partialText = "";
@@ -316,8 +330,9 @@ export class ElevenLabsTranscriptionProvider implements TranscriptionProvider {
       close(): void {
         clearCommitTimeout();
         stopAutoCommit();
-        pendingChunks.length = 0;
+        pending.clear();
         userCommitPending = false;
+        userCommitSent = false;
         finalDelivered = false;
         if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
       },

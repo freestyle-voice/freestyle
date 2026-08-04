@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { createPendingAudio } from "../pending-audio.js";
 import { mergeFinalSegment, previewText } from "../segments.js";
 import {
   appendDeepgramBiasToParams,
@@ -43,6 +44,7 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
     let accumulatedText = "";
     let partialText = "";
     let commitRequested = false;
+    let finalizeSent = false;
     let finalDelivered = false;
     let commitTimeout: ReturnType<typeof setTimeout> | null = null;
     let keepAlive: ReturnType<typeof setInterval> | null = null;
@@ -79,11 +81,13 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
     const ws = new WebSocket(`${DEEPGRAM_LISTEN_URL}?${params}`, {
       headers: { Authorization: `Token ${apiKey}` },
     });
+    const pending = createPendingAudio();
 
     function deliverFinal(): void {
       if (finalDelivered) return;
       finalDelivered = true;
       commitRequested = false;
+      finalizeSent = false;
       clearCommitTimeout();
       const text = (accumulatedText || partialText).trim();
       accumulatedText = "";
@@ -91,7 +95,17 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
       callbacks.onFinal(text);
     }
 
+    function sendFinalize(): void {
+      if (finalizeSent || ws.readyState !== WebSocket.OPEN) return;
+      finalizeSent = true;
+      ws.send(JSON.stringify({ type: "Finalize" }));
+    }
+
     ws.on("open", () => {
+      pending.flush((chunk) => ws.send(chunk));
+      if (commitRequested) {
+        sendFinalize();
+      }
       keepAlive = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "KeepAlive" }));
@@ -146,37 +160,46 @@ export class DeepgramTranscriptionProvider implements TranscriptionProvider {
 
     return {
       sendAudio(chunk: ArrayBuffer): void {
+        if (ws.readyState === WebSocket.CONNECTING) {
+          pending.hold(chunk);
+          return;
+        }
         if (ws.readyState !== WebSocket.OPEN) return;
         ws.send(chunk);
       },
       reset(): void {
+        pending.clear();
         clearCommitTimeout();
         accumulatedText = "";
         partialText = "";
         commitRequested = false;
+        finalizeSent = false;
         finalDelivered = false;
       },
       commit(): void {
         commitRequested = true;
         clearCommitTimeout();
+        commitTimeout = setTimeout(() => {
+          deliverFinal();
+        }, COMMIT_TIMEOUT_MS);
+        if (ws.readyState === WebSocket.CONNECTING) return;
         if (ws.readyState !== WebSocket.OPEN) {
           deliverFinal();
           return;
         }
-        ws.send(JSON.stringify({ type: "Finalize" }));
-        commitTimeout = setTimeout(() => {
-          deliverFinal();
-        }, COMMIT_TIMEOUT_MS);
+        sendFinalize();
       },
       cancel(): void {
         // Deepgram is kept warm across recordings, so a cancel must NOT send
         // CloseStream — that closes the socket server-side and makes the route
         // reconnect. Just drop the in-flight transcript and leave the socket
         // open for the next recording. close() is used for real teardown.
+        pending.clear();
         clearCommitTimeout();
         accumulatedText = "";
         partialText = "";
         commitRequested = false;
+        finalizeSent = false;
         finalDelivered = false;
       },
       close(): void {

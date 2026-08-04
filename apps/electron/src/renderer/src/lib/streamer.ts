@@ -4,8 +4,9 @@
  * A single Streamer instance stays alive across recording sessions.
  * The renderer↔server WebSocket remains open, while the server may keep
  * the upstream STT provider warm or reopen it per recording depending on
- * provider behavior. Some providers stream live partials; others use the
- * same session transport for a single final transcript on commit.
+ * provider behavior. Live partials are received and dropped — the pill
+ * never shows in-progress text — so what a session yields is a single final
+ * transcript on commit.
  * Recording sessions are delimited by startCapture / commit / cancel
  * rather than rebuilding the whole client pipeline.
  */
@@ -24,11 +25,11 @@ export type StreamerConnectionState =
   | "disconnected";
 
 export interface StreamerCallbacks {
-  onPartial: (text: string) => void;
   onFinal: (text: string) => void;
-  onCleaned?: (text: string) => void;
   onError: (message: string, code?: string) => void;
   onReady: () => void;
+  /** Live partial transcript. Only the remix card consumes this today. */
+  onPartial?: (text: string) => void;
   onConnectionState?: (state: StreamerConnectionState) => void;
   onConfig: (config: {
     streaming: boolean;
@@ -362,13 +363,10 @@ export class Streamer {
           this.callbacks.onReady();
           break;
         case "partial":
-          this.callbacks.onPartial(msg.text ?? "");
+          this.callbacks.onPartial?.(msg.text ?? "");
           break;
         case "final":
           this.callbacks.onFinal(msg.text ?? "");
-          break;
-        case "cleaned":
-          this.callbacks.onCleaned?.(msg.text ?? "");
           break;
         case "error":
           this.callbacks.onError(msg.message ?? "Unknown error", msg.code);

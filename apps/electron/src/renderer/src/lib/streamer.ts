@@ -26,7 +26,6 @@ export type StreamerConnectionState =
 
 export interface StreamerCallbacks {
   onFinal: (text: string) => void;
-  onCleaned?: (text: string) => void;
   onError: (message: string, code?: string) => void;
   onReady: () => void;
   onConnectionState?: (state: StreamerConnectionState) => void;
@@ -361,16 +360,10 @@ export class Streamer {
           this.flushPendingChunks();
           this.callbacks.onReady();
           break;
-        // Live partials are deliberately not surfaced anywhere in the UI —
-        // the waveform is the feedback while you speak. The message is
-        // acknowledged and dropped rather than dispatched.
         case "partial":
           break;
         case "final":
           this.callbacks.onFinal(msg.text ?? "");
-          break;
-        case "cleaned":
-          this.callbacks.onCleaned?.(msg.text ?? "");
           break;
         case "error":
           this.callbacks.onError(msg.message ?? "Unknown error", msg.code);

@@ -6,7 +6,6 @@ import { createAppLogger } from "@freestyle-voice/utils";
 import { findRemixPreset } from "@freestyle-voice/validations";
 import { generateText } from "ai";
 import { isCleanupModelSupported } from "../routes/models.js";
-import { ensureCleanupPromptConfigFresh } from "./editor/prompt-config.js";
 import { buildRemixPrompt, buildRemixSystem } from "./editor/remix-prompts.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
@@ -42,6 +41,12 @@ export interface RunRemixTransformOptions {
   languages?: string[];
 }
 
+export interface RemixTransformResult {
+  text: string;
+  instruction: string;
+  usage?: { inputTokens?: number; outputTokens?: number };
+}
+
 /**
  * Resolve the edit to perform. A preset id wins over a spoken instruction when
  * both are present (the id can only come from the pill's own list, so it is
@@ -68,9 +73,7 @@ function resolveInstruction(options: RunRemixTransformOptions): string | null {
  */
 export async function runRemixTransform(
   options: RunRemixTransformOptions,
-): Promise<string> {
-  void ensureCleanupPromptConfigFresh();
-
+): Promise<RemixTransformResult> {
   const instruction = resolveInstruction(options);
   if (!instruction) {
     throw new RemixTransformError("No remix was given", "failed");
@@ -86,6 +89,7 @@ export async function runRemixTransform(
 
   const started = Date.now();
   let text: string;
+  let usage: RemixTransformResult["usage"];
 
   if (llm.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
     // Freestyle Cloud assembles prompts server-side and owns the user half, but
@@ -111,6 +115,7 @@ export async function runRemixTransform(
       appAssignments: [],
     });
     text = result.cleaned;
+    usage = result.usage;
   } else {
     if (!(await isCleanupModelSupported(llm.provider, llm.model_id))) {
       throw new RemixTransformError(
@@ -142,6 +147,10 @@ export async function runRemixTransform(
       ...(providerOptions ? { providerOptions } : {}),
     });
     text = result.text;
+    usage = {
+      inputTokens: result.usage.inputTokens,
+      outputTokens: result.usage.outputTokens,
+    };
   }
 
   // Models like to hand back a rewrite in quotes even when told not to. The
@@ -162,7 +171,7 @@ export async function runRemixTransform(
     output_chars: text.length,
   });
 
-  return text;
+  return { text, instruction, usage };
 }
 
 /** Shared failure bookkeeping for the route's catch-all. */

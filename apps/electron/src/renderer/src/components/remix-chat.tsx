@@ -101,17 +101,28 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
   // The chat input needs the keyboard, and the pill window is focusable:false
   // by design — focusability follows the card exactly.
   useEffect(() => {
-    window.api?.setRemixChatFocus(true);
+    window.api?.setRemixChatFocus(!props.minimized);
     return () => window.api?.setRemixChatFocus(false);
-  }, []);
+  }, [props.minimized]);
 
   useEffect(() => {
     let cancelled = false;
     apiFetch("/api/remix/thread")
       .then(async (res) => {
         if (!res.ok) throw new Error(`thread fetch ${res.status}`);
-        const data = (await res.json()) as ThreadState;
-        if (!cancelled) setThread(data);
+        const data = (await res.json()) as ThreadState & {
+          threadId: number | null;
+        };
+        if (data.threadId !== null) {
+          if (!cancelled) setThread(data as ThreadState);
+          return;
+        }
+        const created = await apiFetch("/api/remix/thread/new", {
+          method: "POST",
+        });
+        if (!created.ok) throw new Error(`thread new ${created.status}`);
+        const fresh = (await created.json()) as ThreadState;
+        if (!cancelled) setThread(fresh);
       })
       .catch(() => {
         if (!cancelled) setLoadFailed(true);
@@ -129,11 +140,18 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
     return () => clearTimeout(timer);
   }, [loadFailed, props.minimized, props.onClose]);
 
+  useEffect(() => {
+    if (props.initialInstruction) {
+      setInitialInstruction(props.initialInstruction);
+    }
+  }, [props.initialInstruction]);
+
   const startNewThread = useCallback(() => {
     // A new thread starts from nothing: no carried-over instruction, no
     // in-flight run (the New button stops the stream before calling this).
     setInitialInstruction(null);
     setThread(null);
+    setLoadFailed(false);
     apiFetch("/api/remix/thread/new", { method: "POST" })
       .then(async (res) => {
         if (!res.ok) throw new Error(`thread new ${res.status}`);
@@ -349,10 +367,12 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       });
 
       const result = await runTool();
-      console.log(
-        `[remix] ${name}(${JSON.stringify(toolCall.input)?.slice(0, 400) ?? ""}) →`,
-        JSON.stringify(result).slice(0, 400),
-      );
+      if (import.meta.env.DEV) {
+        console.log(
+          `[remix] ${name}(${JSON.stringify(toolCall.input)?.slice(0, 400) ?? ""}) →`,
+          JSON.stringify(result).slice(0, 400),
+        );
+      }
       return result;
 
       async function runTool(): Promise<Record<string, unknown>> {
@@ -452,18 +472,36 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
 
   const busy = status === "submitted" || status === "streaming";
 
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (busy) {
+      setSettled(false);
+      return;
+    }
+    const timer = setTimeout(() => setSettled(true), 450);
+    return () => clearTimeout(timer);
+  }, [busy]);
+
+  const stopRef = useRef(stop);
+  stopRef.current = stop;
+  useEffect(
+    () => () => {
+      void stopRef.current();
+    },
+    [],
+  );
+
   // The spoken instruction that opened the card, sent exactly once — the ref
   // is the guard, so re-renders (and dependency changes) can't re-send it.
   const sentInitialRef = useRef(false);
   useEffect(() => {
     if (sentInitialRef.current) return;
-    sentInitialRef.current = true;
     const instruction = props.initialInstruction?.trim();
-    if (instruction) {
-      lastInstructionRef.current = instruction;
-      void sendMessage({ text: instruction });
-      capture("remix_message_sent", { source: "dictated" });
-    }
+    if (!instruction) return;
+    sentInitialRef.current = true;
+    lastInstructionRef.current = instruction;
+    void sendMessage({ text: instruction });
+    capture("remix_message_sent", { source: "dictated" });
   }, [props.initialInstruction, sendMessage]);
 
   // Analytics: one `remix_tool_used` per tool call, observed from the stream
@@ -493,10 +531,17 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     }
   }, [messages, thread.messages]);
 
+  const scrollPinnedRef = useRef(true);
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    scrollPinnedRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+  }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll to the newest content whenever the thread grows, streaming starts, or the strip expands
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && scrollPinnedRef.current) el.scrollTop = el.scrollHeight;
   }, [messages, busy, minimized]);
 
   // ---- Minimize on leave, expand on hover ----
@@ -521,23 +566,39 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   }, [clearMinimizeTimer, minimized, onExpand]);
   useEffect(() => {
     if (minimized) return;
+    const handleOver = (): void => {
+      clearMinimizeTimer();
+      document.removeEventListener("mouseover", handleOver);
+    };
     const handleOut = (event: MouseEvent): void => {
       if (event.relatedTarget) return;
       if (inputRef.current?.value.trim()) return;
       clearMinimizeTimer();
       minimizeTimerRef.current = setTimeout(() => {
         minimizeTimerRef.current = null;
+        document.removeEventListener("mouseover", handleOver);
         onMinimize();
       }, MINIMIZE_GRACE_MS);
+      document.addEventListener("mouseover", handleOver);
     };
-    const handleOver = (): void => clearMinimizeTimer();
     document.addEventListener("mouseout", handleOut);
-    document.addEventListener("mouseover", handleOver);
     return () => {
       document.removeEventListener("mouseout", handleOut);
       document.removeEventListener("mouseover", handleOver);
     };
   }, [minimized, onMinimize, clearMinimizeTimer]);
+
+  useEffect(() => {
+    if (minimized) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      stopRef.current();
+      onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [minimized, onClose]);
 
   // Once the run settles, the strip stops narrating and shows the agent's
   // final message in full. The window has to grow around it: measure the
@@ -563,7 +624,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     return null;
   }, [messages, busy]);
   const showFullFinal =
-    minimized && !busy && notice === null && finalText !== null;
+    minimized && settled && notice === null && finalText !== null;
   const miniStripHeight = showFullFinal
     ? Math.min(
         Math.max(
@@ -606,10 +667,10 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   // without a hover and it hands the corner back to the bar. Hovering keeps
   // it (and expands into the full thread, where the message stays readable).
   useEffect(() => {
-    if (!minimized || busy) return;
+    if (!minimized || !settled) return;
     const timer = setTimeout(onClose, MINI_SETTLED_DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [minimized, busy, onClose]);
+  }, [minimized, settled, onClose]);
 
   /**
    * Re-read the live highlight so EVERY user-initiated request carries the
@@ -660,7 +721,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     setInput("");
     const el = inputRef.current;
     if (el) el.style.height = "auto";
-    void sendText(text);
+    sendText(text);
     capture("remix_message_sent", { source: "typed" });
   }, [busy, input, sendText]);
 
@@ -669,68 +730,79 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
    * of the selection, delivered through the same anchored paste as the agent's
    * tools, drawn as an inline action row rather than a thread turn.
    */
+  const presetRunningRef = useRef(false);
+  const runPresetTransform = useCallback(async (preset: RemixPreset) => {
+    const selection = contextRef.current.text;
+    if (!selection) return;
+    capture("remix_message_sent", { source: "preset", preset: preset.id });
+    const id = ++actionSeqRef.current;
+    setActions((rows) => [
+      ...rows,
+      { id, label: preset.label, status: "running" },
+    ]);
+    const settle = (patch: Partial<ActionRow>): void =>
+      setActions((rows) =>
+        rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+      );
+    try {
+      const res = await apiFetch("/api/remix/transform", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: selection,
+          remixId: preset.id,
+          appName: contextRef.current.appName,
+        }),
+      });
+      if (res.status === 401) {
+        void window.api?.cloudPromptSignIn();
+        throw new Error("Sign in to Freestyle Cloud first.");
+      }
+      if (res.status === 429) {
+        void window.api?.cloudPromptUpgrade();
+        throw new Error("You've hit this week's free limit.");
+      }
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          detail?: string;
+        } | null;
+        throw new Error(body?.detail || `Remix failed (${res.status}).`);
+      }
+      const data = (await res.json()) as { text?: string };
+      const edited = (data.text ?? "").trim();
+      if (!edited) throw new Error("The model returned nothing.");
+      const delivered = await window.api.remixPasteText(edited);
+      if (!delivered.ok) {
+        throw new Error("Couldn't replace it — nothing was changed.");
+      }
+      // The selection in the document is now the edited text.
+      contextRef.current = { ...contextRef.current, text: edited };
+      settle({ status: "done" });
+    } catch (err) {
+      settle({
+        status: "failed",
+        detail: err instanceof Error ? err.message : "Something went wrong.",
+      });
+    }
+  }, []);
+
   const runPreset = useCallback(
     async (preset: RemixPreset) => {
-      if (busy) return;
-      await refreshContext();
-      const selection = contextRef.current.text;
-      if (!selection) {
-        setNotice("Nothing is highlighted — select some text first.");
-        return;
-      }
-      if (actions.some((a) => a.status === "running")) return;
-      capture("remix_message_sent", { source: "preset", preset: preset.id });
-      const id = ++actionSeqRef.current;
-      setActions((rows) => [
-        ...rows,
-        { id, label: preset.label, status: "running" },
-      ]);
-      const settle = (patch: Partial<ActionRow>): void =>
-        setActions((rows) =>
-          rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
-        );
+      if (busy || presetRunningRef.current) return;
+      presetRunningRef.current = true;
       try {
-        const res = await apiFetch("/api/remix/transform", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: selection,
-            remixId: preset.id,
-            appName: contextRef.current.appName,
-          }),
-        });
-        if (res.status === 401) {
-          void window.api?.cloudPromptSignIn();
-          throw new Error("Sign in to Freestyle Cloud first.");
+        await refreshContext();
+        const selection = contextRef.current.text;
+        if (!selection) {
+          setNotice("Nothing is highlighted — select some text first.");
+          return;
         }
-        if (res.status === 429) {
-          void window.api?.cloudPromptUpgrade();
-          throw new Error("You've hit this week's free limit.");
-        }
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as {
-            detail?: string;
-          } | null;
-          throw new Error(body?.detail || `Remix failed (${res.status}).`);
-        }
-        const data = (await res.json()) as { text?: string };
-        const edited = (data.text ?? "").trim();
-        if (!edited) throw new Error("The model returned nothing.");
-        const delivered = await window.api.remixPasteText(edited);
-        if (!delivered.ok) {
-          throw new Error("Couldn't replace it — nothing was changed.");
-        }
-        // The selection in the document is now the edited text.
-        contextRef.current = { ...contextRef.current, text: edited };
-        settle({ status: "done" });
-      } catch (err) {
-        settle({
-          status: "failed",
-          detail: err instanceof Error ? err.message : "Something went wrong.",
-        });
+        await runPresetTransform(preset);
+      } finally {
+        presetRunningRef.current = false;
       }
     },
-    [actions, busy, refreshContext],
+    [busy, refreshContext, runPresetTransform],
   );
 
   return (
@@ -754,7 +826,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         <div className="remix-mini" data-full={showFullFinal}>
           <span
             className="remix-mini-dot"
-            data-busy={busy}
+            data-busy={busy || !settled}
             data-failed={notice !== null}
           />
           {showFullFinal ? (
@@ -763,7 +835,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             </div>
           ) : (
             <span className="remix-mini-text">
-              {notice ?? latestActivity(messages, busy)}
+              {notice ?? latestActivity(messages, busy || !settled)}
             </span>
           )}
         </div>
@@ -825,7 +897,11 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           <div className="remix-chat-resumed">Continuing your last thread</div>
         )}
 
-        <div className="remix-chat-scroll" ref={scrollRef}>
+        <div
+          className="remix-chat-scroll"
+          ref={scrollRef}
+          onScroll={handleScroll}
+        >
           {messages.length === 0 && actions.length === 0 && !busy && (
             <div className="remix-chat-empty">
               {liveContext.text
@@ -849,10 +925,18 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           {messages.map((message) => (
             <MessageRow key={message.id} message={message} />
           ))}
-          {busy && <div className="remix-chat-busy">Working…</div>}
+          {busy && (
+            <div className="remix-chat-busy" role="status" aria-live="polite">
+              Working…
+            </div>
+          )}
         </div>
 
-        {notice && <div className="remix-chat-notice">{notice}</div>}
+        {notice && (
+          <div className="remix-chat-notice" role="status" aria-live="polite">
+            {notice}
+          </div>
+        )}
 
         {!busy && messages.length === 0 && liveContext.text ? (
           <div className="remix-chat-quick">
@@ -875,6 +959,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             className="remix-chat-input"
             rows={1}
             value={input}
+            aria-label="Message Remix"
             placeholder={busy ? "Working…" : "Message Remix…"}
             onChange={(e) => {
               setInput(e.target.value);
@@ -885,12 +970,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                void submit();
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                stop();
-                onClose();
+                submit();
               }
             }}
           />
@@ -916,7 +996,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
               type="button"
               className="remix-chat-send"
               disabled={!input.trim()}
-              onClick={() => void submit()}
+              onClick={submit}
               aria-label="Send"
               title="Send"
             >
@@ -1014,7 +1094,11 @@ function latestActivity(messages: UIMessage[], busy: boolean): string {
   return busy ? "Thinking…" : "Freestyle Remix";
 }
 
-function MessageRow({ message }: { message: UIMessage }): React.JSX.Element {
+const MessageRow = memo(function MessageRow({
+  message,
+}: {
+  message: UIMessage;
+}): React.JSX.Element {
   if (message.role === "user") {
     const text = message.parts
       .filter(isTextUIPart)
@@ -1038,7 +1122,7 @@ function MessageRow({ message }: { message: UIMessage }): React.JSX.Element {
       })}
     </div>
   );
-}
+});
 
 const Markdown = memo(function Markdown({
   text,
@@ -1163,12 +1247,14 @@ const REMIX_CHAT_CSS = `
   .remix-chat-face-strip {
     opacity: 0;
     pointer-events: none;
-    transition: opacity 110ms ease;
+    visibility: hidden;
+    transition: opacity 110ms ease, visibility 0s 110ms;
   }
   .remix-chat[data-minimized="true"] .remix-chat-face-strip {
     opacity: 1;
     pointer-events: auto;
-    transition: opacity 200ms ease 140ms;
+    visibility: visible;
+    transition: opacity 200ms ease 60ms, visibility 0s;
   }
   .remix-chat-face-full {
     display: flex;
@@ -1176,12 +1262,14 @@ const REMIX_CHAT_CSS = `
     min-height: 0;
     padding: 12px 14px 13px;
     opacity: 1;
-    transition: opacity 220ms ease 90ms;
+    visibility: visible;
+    transition: opacity 220ms ease 60ms, visibility 0s;
   }
   .remix-chat[data-minimized="true"] .remix-chat-face-full {
     opacity: 0;
     pointer-events: none;
-    transition: opacity 110ms ease;
+    visibility: hidden;
+    transition: opacity 110ms ease, visibility 0s 110ms;
   }
 
   /* ---- The minimized strip ---- */

@@ -20,6 +20,8 @@
  *     Posts a bare key press (no modifiers) by virtual keycode — e.g. 124 for
  *     Right Arrow, used to collapse a Select-All without Apple Events. Events
  *     carry the Freestyle synthetic marker so the key listener ignores them.
+ *   macos-ax secure
+ *     Prints "1" when a password field holds Secure Event Input, else "0".
  *
  * Exit codes:
  *   0 - success
@@ -29,6 +31,7 @@
  */
 
 import ApplicationServices
+import Carbon.HIToolbox
 import Foundation
 
 func jsonString(_ s: String) -> String {
@@ -76,6 +79,9 @@ let args = CommandLine.arguments.dropFirst()
 let command = args.first ?? "read"
 
 switch command {
+case "secure":
+    print(IsSecureEventInputEnabled() ? "1" : "0")
+
 case "read":
     let focused = focusedElement()
     var valueRef: CFTypeRef?

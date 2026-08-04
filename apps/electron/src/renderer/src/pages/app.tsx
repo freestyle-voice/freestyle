@@ -18,7 +18,7 @@ import {
   applyNeedsAppContextForCleanup,
   refreshNeedsAppContextForCleanup,
 } from "@renderer/lib/cleanup-app-context";
-import { Recorder } from "@renderer/lib/recorder";
+import { Recorder, RecorderSupersededError } from "@renderer/lib/recorder";
 import { Streamer, type StreamerConnectionState } from "@renderer/lib/streamer";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -415,6 +415,7 @@ interface QueueEntry {
 type RemixPhase = "capturing" | "listening" | "running" | "chat" | "error";
 
 interface RemixSession {
+  id: number;
   phase: RemixPhase;
   /** The captured selection; null until the copy comes back. */
   selection: string | null;
@@ -493,6 +494,8 @@ export default function AppPage(): React.JSX.Element {
     setRemixState(next);
   }, []);
   const remixDownAtRef = useRef(0);
+  const remixSeqRef = useRef(0);
+  const remixMicGenRef = useRef<number | null>(null);
   /** Resolved by the `remix:selection` IPC, awaited by whatever runs. */
   const remixSelectionRef = useRef<Deferred<string | null> | null>(null);
   /** The full capture — selection plus the anchor the edit belongs to. */
@@ -1549,13 +1552,16 @@ export default function AppPage(): React.JSX.Element {
         // When session transport is active the streamer handles audio capture
         // directly — we only need the raw mic stream for the analyser. When
         // it's not (batch path), start the MediaRecorder so we get a WAV.
-        const stream = recordingSessionUsesTransportRef.current
-          ? await recorderRef.current.acquireStream()
-          : await recorderRef.current.start();
+        const rec = recorderRef.current;
+        const acquirePromise = recordingSessionUsesTransportRef.current
+          ? rec.acquireStream()
+          : rec.start();
+        const micGen = rec.generation();
+        const stream = await acquirePromise;
 
         if (!wantsMicRef.current) {
-          recorderRef.current.cancel();
-          recorderRef.current.releaseStream();
+          rec.cancel(micGen);
+          rec.releaseStream(micGen);
           void restoreSystemAudioSafely();
           streamerRef.current?.cancel();
           if (forReRecord) {
@@ -1566,8 +1572,8 @@ export default function AppPage(): React.JSX.Element {
         if (pendingCommitRef.current) {
           pendingCommitRef.current = false;
           wantsMicRef.current = false;
-          recorderRef.current.cancel();
-          recorderRef.current.releaseStream();
+          rec.cancel(micGen);
+          rec.releaseStream(micGen);
           void restoreSystemAudioSafely();
           streamerRef.current?.cancel();
           if (forReRecord) {
@@ -1587,6 +1593,7 @@ export default function AppPage(): React.JSX.Element {
           await getStreamer().startCapture(stream);
         } catch {}
       } catch (err) {
+        if (err instanceof RecorderSupersededError) return;
         pendingCommitRef.current = false;
         recorderRef.current.releaseStream();
         void restoreSystemAudioSafely();
@@ -1919,6 +1926,7 @@ export default function AppPage(): React.JSX.Element {
 
   const endRemix = useCallback(
     (options: { hide?: boolean } = {}) => {
+      if (!remixRef.current) return;
       clearRemixHoldTimer();
       remixRunningRef.current = false;
       // Resolve any pending await so a run blocked on the selection unwinds
@@ -1927,9 +1935,14 @@ export default function AppPage(): React.JSX.Element {
       remixSelectionRef.current = null;
       remixFinalRef.current?.resolve("");
       remixFinalRef.current = null;
-      recorderRef.current.cancel();
-      recorderRef.current.releaseStream();
+      remixContextRef.current = null;
+      if (remixMicGenRef.current !== null) {
+        recorderRef.current.cancel(remixMicGenRef.current);
+        recorderRef.current.releaseStream(remixMicGenRef.current);
+        remixMicGenRef.current = null;
+      }
       remixStreamerRef.current?.cancel();
+      window.api?.setRemixRouteKeys(false);
       setRemix(null);
       stopVisualization();
       if (options.hide !== false) window.api?.hidePill();
@@ -1937,20 +1950,43 @@ export default function AppPage(): React.JSX.Element {
     [clearRemixHoldTimer, setRemix, stopVisualization],
   );
 
+  const closeRemix = useCallback(() => endRemix(), [endRemix]);
+  const expandRemixChat = useCallback(() => {
+    if (remixRef.current?.minimized !== false) {
+      patchRemix({ minimized: false });
+    }
+  }, [patchRemix]);
+  const minimizeRemixChat = useCallback(() => {
+    if (remixRef.current && remixRef.current.minimized !== true) {
+      patchRemix({ minimized: true });
+    }
+  }, [patchRemix]);
+
   /**
    * Show a failure and leave the card up. Unlike the phases above this one
-   * outlives the keypress: it is the only state the user has to answer, so it
-   * waits for Escape, the Dismiss button, or another press of the hotkey.
+   * outlives the keypress: it waits for Escape, the Dismiss button, another
+   * press of the hotkey — or the REMIX_WARNING_MS timeout, whichever lands
+   * first.
    */
   const failRemix = useCallback(
     (title: string, body: string) => {
       clearRemixHoldTimer();
       remixRunningRef.current = false;
-      recorderRef.current.cancel();
-      recorderRef.current.releaseStream();
+      if (remixMicGenRef.current !== null) {
+        recorderRef.current.cancel(remixMicGenRef.current);
+        recorderRef.current.releaseStream(remixMicGenRef.current);
+        remixMicGenRef.current = null;
+      }
       remixStreamerRef.current?.cancel();
+      window.api?.setRemixRouteKeys(false);
       stopVisualization();
-      setRemix({ phase: "error", selection: null, title, body });
+      setRemix({
+        id: remixRef.current?.id ?? ++remixSeqRef.current,
+        phase: "error",
+        selection: null,
+        title,
+        body,
+      });
     },
     [clearRemixHoldTimer, setRemix, stopVisualization],
   );
@@ -1964,7 +2000,9 @@ export default function AppPage(): React.JSX.Element {
    */
   const deliverRemixResult = useCallback(
     async (text: string) => {
+      const sessionId = remixRef.current?.id;
       const pasted = await window.api.pasteRemixResult(text);
+      if (remixRef.current?.id !== sessionId) return;
       if (!pasted) {
         failRemix(
           "Couldn't replace the text",
@@ -1994,19 +2032,22 @@ export default function AppPage(): React.JSX.Element {
    * rather than requiring is deliberate — the copy is still in flight for the
    * first fraction of a second of every session.
    */
-  const requireSelection = useCallback(async (): Promise<string | null> => {
-    const selection = await (remixSelectionRef.current?.promise ??
-      Promise.resolve(remixRef.current?.selection ?? null));
-    if (!remixRef.current) return null;
-    if (!selection) {
-      failRemix(
-        "Nothing selected",
-        "Highlight some text in any app first, then press the hotkey.",
-      );
-      return null;
-    }
-    return selection;
-  }, [failRemix]);
+  const requireSelection = useCallback(
+    async (sessionId: number): Promise<string | null> => {
+      const selection = await (remixSelectionRef.current?.promise ??
+        Promise.resolve(remixRef.current?.selection ?? null));
+      if (remixRef.current?.id !== sessionId) return null;
+      if (!selection) {
+        failRemix(
+          "Nothing selected",
+          "Highlight some text in any app first, then press the hotkey.",
+        );
+        return null;
+      }
+      return selection;
+    },
+    [failRemix],
+  );
 
   const runRemix = useCallback(
     async (options: {
@@ -2015,6 +2056,8 @@ export default function AppPage(): React.JSX.Element {
       label: string;
     }) => {
       if (remixRunningRef.current) return;
+      const session = remixRef.current;
+      if (!session) return;
       remixRunningRef.current = true;
       capture("remix_message_sent", {
         source: "preset",
@@ -2023,7 +2066,7 @@ export default function AppPage(): React.JSX.Element {
       patchRemix({ phase: "running", label: options.label });
       startBarAnimation("speaking");
 
-      const selection = await requireSelection();
+      const selection = await requireSelection(session.id);
       if (!selection) return;
 
       try {
@@ -2037,7 +2080,7 @@ export default function AppPage(): React.JSX.Element {
             appName: remixContextRef.current?.appName ?? null,
           }),
         });
-        if (!remixRef.current) return;
+        if (remixRef.current?.id !== session.id) return;
 
         if (!res.ok) {
           const body = (await res.json().catch(() => null)) as {
@@ -2065,14 +2108,14 @@ export default function AppPage(): React.JSX.Element {
 
         const data = (await res.json()) as { text?: string };
         const edited = (data.text ?? "").trim();
-        if (!remixRef.current) return;
+        if (remixRef.current?.id !== session.id) return;
         if (!edited) {
           failRemix("Remix failed", "The model returned nothing.");
           return;
         }
         await deliverRemixResult(edited);
       } catch (err) {
-        if (!remixRef.current) return;
+        if (remixRef.current?.id !== session.id) return;
         failRemix(
           "Remix failed",
           err instanceof Error ? err.message : "Something went wrong.",
@@ -2098,8 +2141,11 @@ export default function AppPage(): React.JSX.Element {
     (instruction: string | null, options: { minimized?: boolean } = {}) => {
       clearRemixHoldTimer();
       remixRunningRef.current = false;
-      recorderRef.current.cancel();
-      recorderRef.current.releaseStream();
+      if (remixMicGenRef.current !== null) {
+        recorderRef.current.cancel(remixMicGenRef.current);
+        recorderRef.current.releaseStream(remixMicGenRef.current);
+        remixMicGenRef.current = null;
+      }
       stopVisualization();
       window.api?.setRemixRouteKeys(false);
       patchRemix({
@@ -2124,6 +2170,9 @@ export default function AppPage(): React.JSX.Element {
    * uses the clipboard.
    */
   const runSpokenRemix = useCallback(async () => {
+    const session = remixRef.current;
+    if (!session) return;
+    const micGen = remixMicGenRef.current;
     const durationMs = Math.round(performance.now() - remixDownAtRef.current);
     patchRemix({ phase: "running", label: "Transcribing…" });
     startBarAnimation("speaking");
@@ -2133,8 +2182,9 @@ export default function AppPage(): React.JSX.Element {
 
     const streamer = remixStreamerRef.current;
     let finalPromise: Promise<string> | null = null;
+    let final: Deferred<string> | null = null;
     if (streamer?.isConnected() && remixTransportRef.current) {
-      const final = deferred<string>();
+      final = deferred<string>();
       remixFinalRef.current = final;
       streamer.commit();
       finalPromise = Promise.race([
@@ -2148,24 +2198,24 @@ export default function AppPage(): React.JSX.Element {
     // Wait for the capture to land — the chat card needs the anchor even
     // when the selection itself comes back empty.
     await (remixSelectionRef.current?.promise ?? Promise.resolve(null));
-    if (!remixRef.current) return;
+    if (remixRef.current?.id !== session.id) return;
 
     let wav: Blob | null = null;
     try {
       wav = recorderRef.current.isRecording()
-        ? await recorderRef.current.stop()
+        ? await recorderRef.current.stop(micGen ?? undefined)
         : null;
     } catch {
       wav = null;
     }
-    recorderRef.current.releaseStream();
-    if (!remixRef.current) return;
+    recorderRef.current.releaseStream(micGen ?? undefined);
+    if (remixRef.current?.id !== session.id) return;
 
     let instruction = "";
     if (finalPromise) {
       instruction = (await finalPromise).trim();
-      remixFinalRef.current = null;
-      if (!remixRef.current) return;
+      if (remixFinalRef.current === final) remixFinalRef.current = null;
+      if (remixRef.current?.id !== session.id) return;
     }
 
     if (!instruction && wav) {
@@ -2179,7 +2229,7 @@ export default function AppPage(): React.JSX.Element {
             "x-skip-post-process": "true",
           },
         });
-        if (!remixRef.current) return;
+        if (remixRef.current?.id !== session.id) return;
         if (res.ok) {
           const data = (await res.json()) as { raw?: string; cleaned?: string };
           instruction = (data.raw || data.cleaned || "").trim();
@@ -2189,7 +2239,7 @@ export default function AppPage(): React.JSX.Element {
       }
     }
 
-    if (!remixRef.current) return;
+    if (remixRef.current?.id !== session.id) return;
     if (!instruction) {
       failRemix(
         "Didn't catch that",
@@ -2203,18 +2253,24 @@ export default function AppPage(): React.JSX.Element {
     openRemixChat(instruction, { minimized: true });
   }, [failRemix, openRemixChat, patchRemix, startBarAnimation]);
 
-  /** Arm the card's idle dismissal (a card opened but never answered). */
   const beginRemix = useCallback(() => {
     // A dictation owns the pill while it is up. Rather than fight over it,
-    // remix stand down — the user can press again a moment later.
-    if (stateRef.current !== "idle" || pillActiveRef.current) return;
+    // remix stands down — the user can press again a moment later.
+    if (stateRef.current !== "idle" || pillActiveRef.current) {
+      window.api?.setRemixRouteKeys(false);
+      return;
+    }
     // A second press while an error card is up means "try again", so tear the
     // old session down first rather than merging into it.
     if (remixRef.current) endRemix({ hide: false });
 
     remixDownAtRef.current = performance.now();
     remixSelectionRef.current = deferred<string | null>();
-    setRemix({ phase: "capturing", selection: null });
+    setRemix({
+      id: ++remixSeqRef.current,
+      phase: "capturing",
+      selection: null,
+    });
 
     // Once the press has outlived the tap threshold it can only be a hold, so
     // the card commits to that reading rather than waiting for the release —
@@ -2233,18 +2289,30 @@ export default function AppPage(): React.JSX.Element {
     // The mic starts now, before we know this is a hold: a recording that only
     // began once the threshold had passed would clip the first syllable off
     // every spoken remix.
-    void recorderRef.current
-      .start()
+    const rec = recorderRef.current;
+    const startPromise = rec.start();
+    const micGen = rec.generation();
+    remixMicGenRef.current = micGen;
+    void startPromise
       .then((stream) => {
-        if (!remixRef.current) {
-          recorderRef.current.cancel();
-          recorderRef.current.releaseStream();
+        const session = remixRef.current;
+        const owned =
+          session &&
+          remixMicGenRef.current === micGen &&
+          micGen === rec.generation();
+        if (!owned) {
+          rec.cancel(micGen);
+          rec.releaseStream(micGen);
+          if (remixMicGenRef.current === micGen) remixMicGenRef.current = null;
           return;
         }
-        startListening(stream);
-        void getRemixStreamer().startCapture(stream);
+        if (session.phase === "capturing" || session.phase === "listening") {
+          startListening(stream);
+          void getRemixStreamer().startCapture(stream);
+        }
       })
-      .catch(() => {
+      .catch((err) => {
+        if (err instanceof RecorderSupersededError) return;
         // No mic is survivable — the preset list doesn't need one. Show the
         // idle bars so the card doesn't look broken, and let the footer's own
         // copy be the only thing that mentions speaking.
@@ -2361,6 +2429,9 @@ export default function AppPage(): React.JSX.Element {
         streamerRef.current = null;
         supportsSessionTransportRef.current = false;
         getStreamer();
+        remixStreamerRef.current?.destroy();
+        remixStreamerRef.current = null;
+        remixTransportRef.current = false;
       });
     });
     return () => {
@@ -2495,8 +2566,11 @@ export default function AppPage(): React.JSX.Element {
       ) {
         return;
       }
-      recorderRef.current.cancel();
-      recorderRef.current.releaseStream();
+      if (remixMicGenRef.current !== null) {
+        recorderRef.current.cancel(remixMicGenRef.current);
+        recorderRef.current.releaseStream(remixMicGenRef.current);
+        remixMicGenRef.current = null;
+      }
       void runRemix({ remixId: preset.id, label: preset.label });
     });
 
@@ -2510,6 +2584,7 @@ export default function AppPage(): React.JSX.Element {
       }
       remixSelectionRef.current = deferred<string | null>();
       setRemix({
+        id: ++remixSeqRef.current,
         phase: "chat",
         selection: null,
         initialInstruction: null,
@@ -2741,6 +2816,7 @@ export default function AppPage(): React.JSX.Element {
   // finish leaving.
   const [roomReady, setRoomReady] = useState(false);
   const lastExpansionRef = useRef<string | null>(null);
+  const chatSurfaceRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!showCard) {
       setRoomReady(false);
@@ -2762,11 +2838,26 @@ export default function AppPage(): React.JSX.Element {
       expansion === "remix-mini" && lastExpansionRef.current === "remix-chat";
     lastExpansionRef.current = expansion;
     let shrinkTimer: ReturnType<typeof setTimeout> | null = null;
+    let surfaceEl: HTMLDivElement | null = null;
+    let onShrinkEnd: ((e: TransitionEvent) => void) | null = null;
     if (shrinkingToMini) {
-      shrinkTimer = setTimeout(
-        () => window.api?.setPillExpanded(true, "remix-mini"),
-        340,
-      );
+      let done = false;
+      const finish = (): void => {
+        if (done) return;
+        done = true;
+        window.api?.setPillExpanded(true, "remix-mini");
+      };
+      surfaceEl = chatSurfaceRef.current;
+      onShrinkEnd = (e: TransitionEvent): void => {
+        if (
+          e.target === surfaceEl &&
+          (e.propertyName === "height" || e.propertyName === "width")
+        ) {
+          finish();
+        }
+      };
+      surfaceEl?.addEventListener("transitionend", onShrinkEnd);
+      shrinkTimer = setTimeout(finish, 700);
     } else {
       window.api?.setPillExpanded(true, expansion);
     }
@@ -2783,6 +2874,9 @@ export default function AppPage(): React.JSX.Element {
     });
     return () => {
       if (shrinkTimer) clearTimeout(shrinkTimer);
+      if (surfaceEl && onShrinkEnd) {
+        surfaceEl.removeEventListener("transitionend", onShrinkEnd);
+      }
       cancelAnimationFrame(outer);
       cancelAnimationFrame(inner);
     };
@@ -2918,10 +3012,39 @@ export default function AppPage(): React.JSX.Element {
   // Latched for the same reason the failure card's is: the session is cleared
   // the instant a remix lands, and re-rendering an empty card would blank it
   // a beat before it has finished animating away.
-  const remixViewRef = useRef<RemixSession | null>(null);
-  if (remix) remixViewRef.current = remix;
-  const remixView = remixViewRef.current;
+  const [remixView, setRemixView] = useState<RemixSession | null>(null);
+  if (remix && remix !== remixView) setRemixView(remix);
+  useEffect(() => {
+    if (remix || !remixView) return;
+    const timer = setTimeout(() => setRemixView(null), 320);
+    return () => clearTimeout(timer);
+  }, [remix, remixView]);
   const remixOpen = showRemixCard && roomReady;
+
+  const viewIsChat = remixView?.phase === "chat";
+  const [chatMiniVisual, setChatMiniVisual] = useState(true);
+  const chatWasLiveRef = useRef(false);
+  useEffect(() => {
+    const wasLive = chatWasLiveRef.current;
+    chatWasLiveRef.current = showRemixChat;
+    if (!viewIsChat) {
+      setChatMiniVisual(true);
+      return;
+    }
+    if (!showRemixChat) return;
+    if (!wasLive || remixChatMini) {
+      setChatMiniVisual(remixChatMini);
+      return;
+    }
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setChatMiniVisual(false));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [viewIsChat, showRemixChat, remixChatMini]);
 
   const remixTranscript = remixView?.transcript?.trim() ?? "";
   const remixHint =
@@ -2996,8 +3119,8 @@ export default function AppPage(): React.JSX.Element {
              card, so size and shape join the transition — hover-expand should
              read as the strip growing into the conversation, not as one
              surface being swapped for another. */
-          .pill-chat-morph,
-          .pill-chat-morph[data-show="true"] {
+          .pill-card.pill-chat-morph,
+          .pill-card.pill-chat-morph[data-show="true"] {
             transition: opacity 180ms ease,
               transform 380ms cubic-bezier(0.22, 1.12, 0.36, 1),
               filter 220ms ease,
@@ -3589,6 +3712,7 @@ export default function AppPage(): React.JSX.Element {
               two unrelated popups. */}
           <div className={layerClass} aria-hidden={!remixOpen}>
             <div
+              ref={chatSurfaceRef}
               className={`pill-surface pill-card${
                 remixView?.phase === "chat" ? " pill-chat-morph" : ""
               }`}
@@ -3603,7 +3727,7 @@ export default function AppPage(): React.JSX.Element {
                 // dragged by its header — it holds an input and a scroll
                 // area), and it morphs between the two under the pointer.
                 ...(remixView?.phase === "chat"
-                  ? remixView.minimized
+                  ? chatMiniVisual
                     ? {
                         width: REMIX_CHAT_STRIP.width,
                         height: remixMiniHeight,
@@ -3643,14 +3767,14 @@ export default function AppPage(): React.JSX.Element {
                     }
                   }
                   initialInstruction={remixView.initialInstruction ?? null}
-                  minimized={remixView.minimized === true}
+                  minimized={chatMiniVisual}
                   anchor={{
                     v: pillAlign === "start" ? "top" : "bottom",
                     h: pillSide === "right" ? "right" : "center",
                   }}
-                  onExpand={() => patchRemix({ minimized: false })}
-                  onMinimize={() => patchRemix({ minimized: true })}
-                  onClose={() => endRemix()}
+                  onExpand={expandRemixChat}
+                  onMinimize={minimizeRemixChat}
+                  onClose={closeRemix}
                   onMiniHeightChange={setRemixMiniHeight}
                 />
               ) : remixView?.phase === "error" ? (

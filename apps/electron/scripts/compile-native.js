@@ -93,7 +93,7 @@ function compileMacOS() {
     {
       name: "macos-ax",
       src: "macos-ax.swift",
-      frameworks: ["ApplicationServices", "Foundation"],
+      frameworks: ["ApplicationServices", "Carbon", "Foundation"],
     },
   ];
 

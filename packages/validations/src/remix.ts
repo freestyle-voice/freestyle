@@ -68,10 +68,11 @@ export const remixTransformSchema = z
     // of what the user picked.
     text: z
       .string()
+      .max(100_000)
       .refine((v) => v.trim().length > 0, "text field is required"),
     remixId: z.string().optional(),
-    instruction: z.string().optional(),
-    language: z.string().optional(),
+    instruction: z.string().max(4_000).optional(),
+    language: z.string().max(50).optional(),
     appName: z.string().max(200).nullish(),
   })
   .refine(
@@ -92,7 +93,7 @@ export const remixContextSchema = z.object({
   appName: z.string().max(200).nullable(),
   windowTitle: z.string().max(500).nullable(),
   /** ISO codes of the user's languages; the agent must not translate. */
-  languages: z.array(z.string()).optional(),
+  languages: z.array(z.string().max(50)).max(10).optional(),
   /** Preview of the user's clipboard text and its full length — "edit this"
    * with nothing highlighted usually means the clipboard. */
   clipboard: z.string().max(500).nullable().optional(),

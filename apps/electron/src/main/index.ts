@@ -599,6 +599,7 @@ function setPillExpanded(
   win.setResizable(true);
   win.setBounds(target);
   win.setResizable(false);
+  updatePillEscape();
 }
 
 // Returns the pill alignment token for a custom position, using the actual
@@ -997,6 +998,8 @@ function showPill(): void {
   // Already waiting for a freshly-created pill to finish loading.
   if (pillReadyPromise) return;
 
+  remixBarWindow?.hide();
+
   if (!mainWindow) {
     createAppWindow();
     // createAppWindow() synchronously assigns mainWindow, but TypeScript
@@ -1029,7 +1032,7 @@ function showPill(): void {
         setProgrammaticPosition(mainWindow, x, y);
         mainWindow.showInactive();
         updateRemixBar();
-        registerPillEscape();
+        updatePillEscape();
         resolve();
       });
     });
@@ -1042,16 +1045,25 @@ function showPill(): void {
     mainWindow.showInactive();
     updateRemixBar();
   }
-  registerPillEscape();
+  updatePillEscape();
 }
 
-function registerPillEscape(): void {
-  if (!globalShortcut.isRegistered("Escape")) {
-    globalShortcut.register("Escape", () => {
-      if (mainWindow?.isVisible()) {
-        mainWindow.webContents.send("pill:cancel");
-      }
-    });
+function updatePillEscape(): void {
+  const chatLike =
+    pillExpansion === "remix-chat" || pillExpansion === "remix-mini";
+  const isExpanded = pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0;
+  if (mainWindow?.isVisible() && !(chatLike && isExpanded)) {
+    if (!globalShortcut.isRegistered("Escape")) {
+      globalShortcut.register("Escape", () => {
+        if (mainWindow?.isVisible()) {
+          mainWindow.webContents.send("pill:cancel");
+        }
+      });
+    }
+  } else {
+    try {
+      globalShortcut.unregister("Escape");
+    } catch {}
   }
 }
 
@@ -1237,7 +1249,7 @@ async function getWindowsFrontmostApp(): Promise<string | null> {
     `;
     const result = await execAsync(
       "powershell",
-      ["-NoProfile", "-Remix", script],
+      ["-NoProfile", "-Command", script],
       3000,
     );
 
@@ -1265,7 +1277,7 @@ async function getWindowsOpenAppCandidates(): Promise<OpenAppCandidate[]> {
     `;
     const result = await execAsync(
       "powershell",
-      ["-NoProfile", "-Remix", script],
+      ["-NoProfile", "-Command", script],
       3000,
     );
 
@@ -1426,6 +1438,7 @@ async function getOpenAppCandidates(): Promise<OpenAppCandidate[]> {
 function hidePill(): void {
   if (mainWindow?.isVisible()) {
     mainWindow.hide();
+    lastPillHideAt = Date.now();
   }
   // The next session starts as a bare capsule, so give the extra room back
   // now — the renderer's own collapse only runs when it animates a card away.
@@ -1436,6 +1449,7 @@ function hidePill(): void {
   hotkeyPressed = false;
   clearHotkeyStuckWatchdog();
   remixPressed = false;
+  clearRemixStuckWatchdog();
   pillMiniHeight = PILL_CHAT_MINI_HEIGHT;
   setRemixRouteKeys(false);
   // The chat card may have made the pill focusable so its input could be
@@ -2911,6 +2925,11 @@ app.whenReady().then(async () => {
   // plugin output pipeline (see the /api/remix route on why).
   ipcMain.handle("remix:paste", async (_event, text: string) => {
     if (typeof text !== "string" || !text.trim()) return false;
+    if (await isSecureInputActive()) {
+      notifyPasteFailed();
+      hotkeyLog.warn("Remix paste refused: secure input is active.");
+      return false;
+    }
     try {
       await pasteIntoFocusedApp(
         text,
@@ -2937,6 +2956,9 @@ app.whenReady().then(async () => {
   // manage.
 
   ipcMain.handle("remix:get-context", async () => {
+    if (await isSecureInputActive()) {
+      return { ok: false, reason: "secure-input" };
+    }
     const pill = mainWindow;
     if (pill && !pill.isDestroyed() && pill.isFocused()) {
       pill.blur();
@@ -3223,7 +3245,9 @@ app.whenReady().then(async () => {
     );
     if (inDocument) {
       remixAnchor = { ...front, capturedAt: Date.now() };
-      const selection = await copySelectionFromFocusedApp().catch(() => null);
+      const selection = (await isSecureInputActive())
+        ? null
+        : await copySelectionFromFocusedApp().catch(() => null);
       hotkeyLog.info(
         `remix recapture: ${selection ? `${selection.length} chars` : "no selection"} in "${front.appName}"`,
       );
@@ -3278,10 +3302,10 @@ app.whenReady().then(async () => {
     const win = mainWindow;
     if (!win || win.isDestroyed()) return;
     if (focus === true) {
-      win.setFocusable(true);
+      if (!win.isFocusable()) win.setFocusable(true);
     } else {
-      win.blur();
-      win.setFocusable(false);
+      if (win.isFocused()) win.blur();
+      if (win.isFocusable()) win.setFocusable(false);
     }
   });
 });
@@ -3410,6 +3434,17 @@ async function runMacAxCaps(): Promise<{
   }
 }
 
+async function isSecureInputActive(): Promise<boolean> {
+  if (process.platform !== "darwin") return false;
+  const binary = getNativeBinaryPath("macos-ax");
+  if (!binary) return false;
+  try {
+    return (await execAsync(binary, ["secure"], 1000)) === "1";
+  } catch {
+    return false;
+  }
+}
+
 /** Post one bare key press (by keycode) through the native helper. */
 async function runMacAxKey(code: number): Promise<boolean> {
   if (process.platform !== "darwin") return false;
@@ -3511,6 +3546,10 @@ async function focusAnchorForInjection(): Promise<boolean> {
   ) {
     return false;
   }
+  if (await isSecureInputActive()) {
+    hotkeyLog.warn("Remix injection refused: secure input is active.");
+    return false;
+  }
   const pill = mainWindow;
   if (pill && !pill.isDestroyed() && pill.isFocused()) {
     pill.blur();
@@ -3605,6 +3644,10 @@ let remixBarFollowTimer: NodeJS.Timeout | null = null;
 const REMIX_BAR_WIDTH = 120;
 const REMIX_BAR_HEIGHT = 18;
 const REMIX_BAR_FOLLOW_MS = 3_000;
+const REMIX_BAR_REOPEN_COOLDOWN_MS = 700;
+const REMIX_BAR_RESHOW_DELAY_MS = 400;
+let lastPillHideAt = 0;
+let remixBarShowTimer: NodeJS.Timeout | null = null;
 
 function remixBarPosition(): { x: number; y: number } {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
@@ -3652,6 +3695,10 @@ function updateRemixBar(): void {
   const shouldShow =
     remixBarEnabled && !remixBarHeldForOnboarding && !mainWindow?.isVisible();
   if (!shouldShow) {
+    if (remixBarShowTimer) {
+      clearTimeout(remixBarShowTimer);
+      remixBarShowTimer = null;
+    }
     if (remixBarFollowTimer) {
       clearInterval(remixBarFollowTimer);
       remixBarFollowTimer = null;
@@ -3659,14 +3706,31 @@ function updateRemixBar(): void {
     remixBarWindow?.hide();
     return;
   }
+  const sinceHide = Date.now() - lastPillHideAt;
+  if (!remixBarWindow?.isVisible() && sinceHide < REMIX_BAR_RESHOW_DELAY_MS) {
+    if (!remixBarShowTimer) {
+      remixBarShowTimer = setTimeout(() => {
+        remixBarShowTimer = null;
+        updateRemixBar();
+      }, REMIX_BAR_RESHOW_DELAY_MS - sinceHide);
+    }
+    return;
+  }
   if (!remixBarWindow) createRemixBarWindow();
   const win = remixBarWindow;
   if (!win) return;
   const place = (): void => {
     if (!remixBarWindow || remixBarWindow.isDestroyed()) return;
+    if (
+      !remixBarEnabled ||
+      remixBarHeldForOnboarding ||
+      mainWindow?.isVisible()
+    )
+      return;
     const { x, y } = remixBarPosition();
-    remixBarWindow.setPosition(x, y);
-    remixBarWindow.showInactive();
+    const [bx, by] = remixBarWindow.getPosition();
+    if (bx !== x || by !== y) remixBarWindow.setPosition(x, y);
+    if (!remixBarWindow.isVisible()) remixBarWindow.showInactive();
   };
   if (win.webContents.isLoading()) {
     win.webContents.once("did-finish-load", place);
@@ -3690,6 +3754,7 @@ function updateRemixBar(): void {
 function handleRemixBarOpen(): void {
   if (!remixBarEnabled) return;
   if (mainWindow?.isVisible()) return;
+  if (Date.now() - lastPillHideAt < REMIX_BAR_REOPEN_COOLDOWN_MS) return;
   remixSelectionRequested = false;
   captureRemixSelection();
   showPill();
@@ -3861,7 +3926,11 @@ function captureRemixSelection(): void {
   // The selection copy and the frontmost lookup race in parallel; together
   // they are the session's anchor — the app the eventual edit belongs to.
   void Promise.allSettled([
-    copySelectionFromFocusedApp(),
+    isSecureInputActive().then((secure) =>
+      secure
+        ? Promise.reject(new Error("secure-input"))
+        : copySelectionFromFocusedApp(),
+    ),
     getFrontmostContext(),
   ]).then(([sel, front]) => {
     const context =
@@ -3905,6 +3974,7 @@ function handleRemixHotkeyDown(): void {
   }
 
   setRemixRouteKeys(true);
+  armRemixStuckWatchdog();
   remixSelectionRequested = false;
   showPill();
   sendToPill("remix:down");
@@ -3925,9 +3995,31 @@ function handleRemixHotkeyDown(): void {
 function handleRemixHotkeyUp(): void {
   if (!remixPressed) return;
   remixPressed = false;
+  clearRemixStuckWatchdog();
   sendToPill("remix:up");
   settingsWindow?.webContents.send("remix:up");
   captureRemixSelection();
+}
+
+let remixStuckTimer: NodeJS.Timeout | null = null;
+
+function clearRemixStuckWatchdog(): void {
+  if (remixStuckTimer) {
+    clearTimeout(remixStuckTimer);
+    remixStuckTimer = null;
+  }
+}
+
+function armRemixStuckWatchdog(): void {
+  clearRemixStuckWatchdog();
+  remixStuckTimer = setTimeout(() => {
+    remixStuckTimer = null;
+    if (!remixPressed) return;
+    hotkeyLog.warn(
+      "Remix hotkey saw no key-up for 5 minutes; forcing release.",
+    );
+    handleRemixHotkeyUp();
+  }, HOTKEY_STUCK_TIMEOUT_MS);
 }
 
 /**

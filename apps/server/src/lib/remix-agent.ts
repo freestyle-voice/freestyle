@@ -86,7 +86,11 @@ export async function runRemixAgentLocally(
   });
 
   return result.toUIMessageStreamResponse({
-    onError: (error) =>
-      error instanceof Error ? error.message : String(error),
+    onError: (error) => {
+      log.error(
+        `Remix agent (BYOK) failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return "Remix failed.";
+    },
   });
 }

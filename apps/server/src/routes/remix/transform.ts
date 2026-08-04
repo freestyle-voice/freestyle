@@ -30,7 +30,7 @@ const remixRoute = new Hono().post(
     const body = c.req.valid("json");
 
     try {
-      const text = await runRemixTransform({
+      const result = await runRemixTransform({
         text: body.text,
         remixId: body.remixId,
         instruction: body.instruction,
@@ -40,15 +40,17 @@ const remixRoute = new Hono().post(
       try {
         runId = recordRemixRun({
           lane: "transform",
-          instruction: body.instruction?.trim() || body.remixId || "edit",
+          instruction: result.instruction,
           beforeText: body.text,
-          afterText: text,
+          afterText: result.text,
           appName: body.appName ?? null,
+          inputTokens: result.usage?.inputTokens,
+          outputTokens: result.usage?.outputTokens,
         });
       } catch {
         // History is a convenience; the edit itself already succeeded.
       }
-      return c.json({ text, runId });
+      return c.json({ text: result.text, runId });
     } catch (err) {
       if (err instanceof FreestyleCloudAuthError) {
         invalidateSession();

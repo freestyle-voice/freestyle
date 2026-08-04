@@ -11,7 +11,7 @@ import { createRoot } from "react-dom/client";
  * to the dock" — an instant trigger would make the bottom edge of the screen
  * a tripwire.
  */
-const HOVER_DWELL_MS = 150;
+const HOVER_DWELL_MS = 300;
 
 function RemixBar(): React.JSX.Element {
   const [hot, setHot] = useState(false);

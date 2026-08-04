@@ -17,6 +17,9 @@ const recordSchema = z.object({
   appName: z.string().max(200).nullish(),
   llmProvider: z.string().max(100).nullish(),
   llmModel: z.string().max(200).nullish(),
+  inputTokens: z.number().int().min(0).optional(),
+  outputTokens: z.number().int().min(0).optional(),
+  costUsd: z.number().min(0).optional(),
 });
 
 const listQuerySchema = z.object({
@@ -44,6 +47,9 @@ const runsRoute = new Hono()
       appName: body.appName ?? null,
       llmProvider: body.llmProvider ?? null,
       llmModel: body.llmModel ?? null,
+      inputTokens: body.inputTokens,
+      outputTokens: body.outputTokens,
+      costUsd: body.costUsd,
     });
     return c.json({ id });
   })

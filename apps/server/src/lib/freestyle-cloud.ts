@@ -9,6 +9,12 @@ import {
   CloudUsageError as FreestyleCloudUsageError,
 } from "@freestyle-voice/utils";
 import type {
+  CleanupAppAssignment,
+  CleanupEmailTone,
+  CleanupIntensity,
+  CleanupOverallTone,
+  CleanupPersonalTone,
+  CleanupWorkTone,
   CloudConfigResponse,
   CloudMemberPreferences,
   CloudProfile,
@@ -406,35 +412,40 @@ export async function postProcessWithFreestyleCloud(opts: {
   /** Plugin-contributed system-prompt fragments (from `beforeCleanup` hook). */
   systemFragments?: string[];
   languages?: string[];
-  intensity?: string;
+  intensity?: CleanupIntensity;
   customPrompt?: string;
-  personalTone?: string;
-  workTone?: string;
-  emailTone?: string;
-  overallTone?: string;
-  appAssignments?: unknown[];
+  personalTone?: CleanupPersonalTone;
+  workTone?: CleanupWorkTone;
+  emailTone?: CleanupEmailTone;
+  overallTone?: CleanupOverallTone;
+  appAssignments?: CleanupAppAssignment[];
 }): Promise<{
   cleaned: string;
   usage?: { inputTokens?: number; outputTokens?: number };
 }> {
+  const payload: Record<string, unknown> = {
+    text: opts.text,
+    appContext: opts.appContext ?? null,
+  };
+  if (opts.systemFragments !== undefined && opts.systemFragments.length > 0) {
+    payload.systemFragments = opts.systemFragments;
+  }
+  if (opts.languages !== undefined) payload.languages = opts.languages;
+  if (opts.intensity !== undefined) payload.intensity = opts.intensity;
+  if (opts.customPrompt !== undefined) payload.customPrompt = opts.customPrompt;
+  if (opts.personalTone !== undefined) {
+    payload.personalTone = opts.personalTone;
+  }
+  if (opts.workTone !== undefined) payload.workTone = opts.workTone;
+  if (opts.emailTone !== undefined) payload.emailTone = opts.emailTone;
+  if (opts.overallTone !== undefined) payload.overallTone = opts.overallTone;
+  if (opts.appAssignments !== undefined) {
+    payload.appAssignments = opts.appAssignments;
+  }
   return cloudJson("/v2/post-process", opts.token, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      text: opts.text,
-      appContext: opts.appContext ?? null,
-      ...(opts.systemFragments && opts.systemFragments.length > 0
-        ? { systemFragments: opts.systemFragments }
-        : {}),
-      ...(opts.languages ? { languages: opts.languages } : {}),
-      ...(opts.intensity ? { intensity: opts.intensity } : {}),
-      ...(opts.customPrompt ? { customPrompt: opts.customPrompt } : {}),
-      ...(opts.personalTone ? { personalTone: opts.personalTone } : {}),
-      ...(opts.workTone ? { workTone: opts.workTone } : {}),
-      ...(opts.emailTone ? { emailTone: opts.emailTone } : {}),
-      ...(opts.overallTone ? { overallTone: opts.overallTone } : {}),
-      ...(opts.appAssignments ? { appAssignments: opts.appAssignments } : {}),
-    }),
+    body: JSON.stringify(payload),
   });
 }
 

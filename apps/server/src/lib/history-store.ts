@@ -2,6 +2,7 @@ import { parseRetentionDays } from "@freestyle-voice/validations";
 import { getDb, readSetting } from "./db.js";
 import { countFixes } from "./fixes.js";
 import { capture, captureException } from "./posthog.js";
+import { purgeExpiredRemixData } from "./remix-store.js";
 
 export const HISTORY_PAUSED_SETTING_KEY = "history_paused";
 export const HISTORY_RETENTION_SETTING_KEY = "history_retention_days";
@@ -61,6 +62,8 @@ export function startHistoryRetentionSweep(): void {
   const sweep = (): void => {
     try {
       purgeExpiredHistory();
+      const days = getHistoryRetentionDays();
+      if (days !== null) purgeExpiredRemixData(days);
     } catch (err) {
       captureException(err);
     }

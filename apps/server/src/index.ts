@@ -59,6 +59,8 @@ const TIMEOUT_PREFIXES = [
   "/api/plugins",
   "/api/usage",
   "/api/org",
+  "/api/remix/thread",
+  "/api/remix/runs",
 ];
 
 async function shutdownServer(): Promise<void> {

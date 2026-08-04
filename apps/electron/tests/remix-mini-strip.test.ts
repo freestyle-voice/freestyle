@@ -182,3 +182,66 @@ test("settled remix strip grows around the final message", async () => {
   console.log("after dismiss:", JSON.stringify(dismissed));
   expect(dismissed?.width).toBe(160);
 });
+
+test("hovering the strip grows the window first, then the surface", async () => {
+  test.setTimeout(60_000);
+  let pillPage: Page | undefined;
+  for (let i = 0; i < 40 && !pillPage; i++) {
+    pillPage = app!.windows().find((w) => w.url().includes("pill"));
+    if (!pillPage) await new Promise((r) => setTimeout(r, 250));
+  }
+  expect(pillPage, "pill window").toBeTruthy();
+
+  const bounds = () =>
+    app!.evaluate(({ BrowserWindow }) => {
+      const pill = BrowserWindow.getAllWindows().find((w) =>
+        w.webContents.getURL().includes("pill"),
+      );
+      return pill?.getBounds();
+    });
+
+  await app!.evaluate(({ BrowserWindow }) => {
+    const pill = BrowserWindow.getAllWindows().find((w) =>
+      w.webContents.getURL().includes("pill"),
+    );
+    pill?.webContents.send("remix:open-chat");
+  });
+  await new Promise((r) => setTimeout(r, 1500));
+  expect((await bounds())?.height).toBe(600);
+
+  await pillPage!.evaluate(() => {
+    document.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+  });
+  await new Promise((r) => setTimeout(r, 1300));
+  expect((await bounds())?.width).toBe(360);
+
+  // Hover the strip: the window must be back at full chat size promptly...
+  await pillPage!.evaluate(() => {
+    const strip = document.querySelector('[data-testid="remix-chat-mini"]');
+    strip?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+  });
+  await new Promise((r) => setTimeout(r, 300));
+  const grown = await bounds();
+  console.log("after hover:", JSON.stringify(grown));
+  expect(grown?.width).toBe(440);
+  expect(grown?.height).toBe(600);
+
+  // ...and the surface must follow it to full size (the delayed morph ran).
+  await new Promise((r) => setTimeout(r, 600));
+  const surface = await pillPage!.evaluate(() => {
+    const el = document.querySelector(".pill-chat-morph");
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return { width: Math.round(rect.width), height: Math.round(rect.height) };
+  });
+  console.log("surface after morph:", JSON.stringify(surface));
+  expect(surface?.width).toBe(408);
+  expect(surface?.height).toBe(560);
+
+  // Leave everything closed for any test that follows.
+  await pillPage!.evaluate(() => {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+  });
+});

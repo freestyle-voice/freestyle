@@ -20,9 +20,9 @@ let serverPort: number;
 const DEFAULT_PORT = 4649;
 
 /**
- * Wait for a window whose URL does NOT contain "pill" — that's the
- * dashboard / onboarding window. The pill window loads pill.html and
- * may appear first.
+ * Wait for a window whose URL is neither the pill nor the remix bar —
+ * that's the dashboard / onboarding window. The pill (pill.html) and the
+ * remix bar (bar.html) are auxiliary windows and may appear first.
  */
 async function waitForDashboardWindow(
   electronApp: ElectronApplication,
@@ -33,7 +33,11 @@ async function waitForDashboardWindow(
   while (Date.now() < deadline) {
     for (const win of electronApp.windows()) {
       const url = win.url();
-      if (!url.includes("pill") && url.length > 0) {
+      if (
+        !url.includes("pill") &&
+        !url.includes("bar.html") &&
+        url.length > 0
+      ) {
         await win.waitForLoadState("domcontentloaded");
         return win;
       }
@@ -99,12 +103,16 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
+  if (!app) return;
+  const proc = app.process();
+  const killTimer = setTimeout(() => proc.kill("SIGKILL"), 10_000);
   try {
-    if (app) {
-      await app.close();
-    }
+    await app.close();
   } catch (error) {
     console.warn("Error closing app:", error);
+    proc.kill("SIGKILL");
+  } finally {
+    clearTimeout(killTimer);
   }
 });
 

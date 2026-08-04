@@ -267,7 +267,8 @@
     "clearDates": "Cancella",
     "openStats": "Mostra statistiche",
     "closeStats": "Nascondi statistiche",
-    "resizeStats": "Ridimensiona il pannello"
+    "resizeStats": "Ridimensiona il pannello",
+    "changeHotkey": "Cambia scorciatoia"
   },
   "dictionary": {
     "title": "Scorciatoie",
@@ -559,7 +560,59 @@
       "models": "Modelli",
       "plugins": "Plugin",
       "settings": "Impostazioni",
-      "help": "Aiuto"
+      "help": "Aiuto",
+      "remix": "Remix"
+    }
+  },
+  "remixPage": {
+    "stats": {
+      "remixes": "remix eseguiti",
+      "apps": "app remixate",
+      "lastRemix": "ultimo remix",
+      "firstHint": "Tieni premuti i tasti su un testo per eseguire il primo.",
+      "heading": "Utilizzo"
+    },
+    "hotkey": {
+      "change": "Cambia scorciatoia"
+    },
+    "tips": {
+      "heading": "Da sapere",
+      "highlight": "Evidenzia una frase per remixare solo quella parte — senza selezione, Remix legge tutto il campo.",
+      "tap": "Tocca la scorciatoia (invece di tenerla premuta) per le route rapide (Control+1–3).",
+      "followUp": "Non è perfetto? Scrivi una correzione nella scheda chat — il filo resta."
+    },
+    "examples": {
+      "groups": {
+        "everyday": "Scrittura quotidiana",
+        "work": "Lavoro e studio",
+        "web": "Con il web — Freestyle Cloud"
+      },
+      "quotes": {
+        "email": "Rendila più calorosa e lunga la metà — sembro un avvocato.",
+        "tone": "L'ho scritto arrabbiato. Rendilo fermo ma educato.",
+        "social": "Rendilo più incisivo e portalo sotto i 280 caratteri.",
+        "format": "Trasforma questi punti elenco in un paragrafo per il report.",
+        "translate": "Passala in inglese, ma lascia i miei saluti in italiano.",
+        "notes": "Trasforma questi appunti disordinati in un elenco pulito, raggruppato per tema.",
+        "commit": "Riscrivi questo messaggio di commit perché spieghi il perché, non il cosa.",
+        "espresso": "Aggiungi una curiosità sull'espresso, e una foto di un pour-over.",
+        "mla": "Converti le citazioni di questo saggio nel formato MLA.",
+        "legal": "Riscrivi questa clausola del contratto in un linguaggio chiaro che un cliente possa capire.",
+        "medical": "Verifica queste affermazioni su WebMD e segnala ciò che non torna."
+      }
+    },
+    "demo": {
+      "statusReady": "Pronto",
+      "statusListening": "In ascolto…",
+      "statusDone": "Riscritto sul posto"
+    },
+    "how": {
+      "heading": "Come si usa",
+      "step1": "Evidenzia con il cursore il testo da modificare.",
+      "step2Prefix": "Tieni premuto",
+      "step2Suffix": "e di' la modifica ad alta voce.",
+      "step3": "Remix lo riscrive sul posto. Annulla lo ripristina se cambi idea.",
+      "more": "Niente di evidenziato? Remix legge tutto il campo in cui ti trovi. Può anche cercare sul web fatti e fonti, e incollare immagini direttamente nella bozza."
     }
   }
 }

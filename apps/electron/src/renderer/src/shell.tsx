@@ -28,6 +28,7 @@ import {
   FileText,
   Puzzle,
   Settings,
+  Wand2,
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -56,9 +57,15 @@ const STATIC_NAV: {
 }[] = [
   { to: "/today", icon: BookOpen, shortcut: "1", labelKey: "shell.nav.today" },
   {
+    to: "/remix",
+    icon: Wand2,
+    shortcut: "2",
+    labelKey: "shell.nav.remix",
+  },
+  {
     to: "/settings/vocabulary",
     icon: Book,
-    shortcut: "2",
+    shortcut: "3",
     labelKey: "shell.nav.vocabulary",
   },
   {

@@ -350,7 +350,8 @@
     "clearDates": "Clear",
     "openStats": "Show stats",
     "closeStats": "Hide stats",
-    "resizeStats": "Resize stats panel"
+    "resizeStats": "Resize stats panel",
+    "changeHotkey": "Change hotkey"
   },
   "dictionary": {
     "title": "Shortcuts",
@@ -670,7 +671,8 @@
       "models": "Models",
       "plugins": "Plugins",
       "settings": "Settings",
-      "help": "Help"
+      "help": "Help",
+      "remix": "Remix"
     }
   },
   "plugins": {
@@ -705,6 +707,57 @@
     },
     "browse": {
       "error": "Couldn't load the plugin catalog. Check your connection and try again."
+    }
+  },
+  "remixPage": {
+    "stats": {
+      "remixes": "remixes run",
+      "apps": "apps remixed in",
+      "lastRemix": "last remix",
+      "firstHint": "Hold the keys over any text to run your first.",
+      "heading": "Usage"
+    },
+    "hotkey": {
+      "change": "Change hotkey"
+    },
+    "tips": {
+      "heading": "Good to know",
+      "highlight": "Highlight a sentence first to remix just that part — with nothing selected, Remix reads the whole field.",
+      "tap": "Tap the hotkey instead of holding it for one-tap quick routes (Control+1–3).",
+      "followUp": "Not quite right? Type a follow-up in the chat card — it keeps the thread."
+    },
+    "examples": {
+      "groups": {
+        "everyday": "Everyday writing",
+        "work": "Work & school",
+        "web": "With the web — Freestyle Cloud"
+      },
+      "quotes": {
+        "email": "Make this warmer and half as long — I sound like a lawyer.",
+        "tone": "I wrote this angry. Make it firm but polite.",
+        "social": "Punch this up and get it under 280 characters.",
+        "format": "Turn these bullet points into a paragraph for the report.",
+        "translate": "Turn this into Spanish, but keep my sign-off in English.",
+        "notes": "Turn these messy notes into a tidy bullet list, grouped by topic.",
+        "commit": "Rewrite this commit message to explain why, not what.",
+        "espresso": "Add a fun fact about espresso, and a picture of a pour-over.",
+        "mla": "Convert this essay's citations to MLA format.",
+        "legal": "Rewrite this contract clause in plain English a client can understand.",
+        "medical": "Fact-check this against WebMD and flag anything that's off."
+      }
+    },
+    "demo": {
+      "statusReady": "Ready",
+      "statusListening": "Listening…",
+      "statusDone": "Rewritten in place"
+    },
+    "how": {
+      "heading": "How to use it",
+      "step1": "Highlight the text you want to change with your cursor.",
+      "step2Prefix": "Hold",
+      "step2Suffix": "and say the change out loud.",
+      "step3": "Remix rewrites it in place. Undo brings it back if you change your mind.",
+      "more": "No highlight? Remix reads the whole field you're in. It can also search the web for facts and sources, and paste images straight into your draft."
     }
   }
 }

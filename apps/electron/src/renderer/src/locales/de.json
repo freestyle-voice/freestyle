@@ -267,7 +267,8 @@
     "clearDates": "Löschen",
     "openStats": "Statistiken anzeigen",
     "closeStats": "Statistiken ausblenden",
-    "resizeStats": "Statistikleiste anpassen"
+    "resizeStats": "Statistikleiste anpassen",
+    "changeHotkey": "Tastenkombination ändern"
   },
   "dictionary": {
     "title": "Kurzbefehle",
@@ -560,7 +561,59 @@
       "models": "Modelle",
       "plugins": "Plugins",
       "settings": "Einstellungen",
-      "help": "Hilfe"
+      "help": "Hilfe",
+      "remix": "Remix"
+    }
+  },
+  "remixPage": {
+    "stats": {
+      "remixes": "Remixe ausgeführt",
+      "apps": "Apps remixt",
+      "lastRemix": "letzter Remix",
+      "firstHint": "Halten Sie die Tasten über einem Text, um Ihren ersten zu starten.",
+      "heading": "Nutzung"
+    },
+    "hotkey": {
+      "change": "Tastenkombination ändern"
+    },
+    "tips": {
+      "heading": "Gut zu wissen",
+      "highlight": "Markieren Sie einen Satz, um nur diesen Teil zu remixen — ohne Auswahl liest Remix das ganze Feld.",
+      "tap": "Tippen Sie die Tastenkombination kurz an (statt zu halten) für die Schnellrouten (Strg+1–3).",
+      "followUp": "Nicht ganz richtig? Tippen Sie eine Rückfrage in die Chat-Karte — der Verlauf bleibt erhalten."
+    },
+    "examples": {
+      "groups": {
+        "everyday": "Alltagstexte",
+        "work": "Arbeit & Studium",
+        "web": "Mit dem Web — Freestyle Cloud"
+      },
+      "quotes": {
+        "email": "Mach das wärmer und halb so lang — ich klinge wie ein Anwalt.",
+        "tone": "Ich habe das wütend geschrieben. Mach es bestimmt, aber höflich.",
+        "social": "Mach das knackiger und bring es unter 280 Zeichen.",
+        "format": "Mach aus diesen Stichpunkten einen Absatz für den Bericht.",
+        "translate": "Übersetze das ins Spanische, aber lass meine Grußformel auf Englisch.",
+        "notes": "Mach aus diesen chaotischen Notizen eine saubere Liste, nach Themen gruppiert.",
+        "commit": "Schreibe diese Commit-Nachricht so um, dass sie das Warum erklärt, nicht das Was.",
+        "espresso": "Füge einen Fakt über Espresso hinzu, und ein Bild eines Pour-over.",
+        "mla": "Wandle die Zitate in diesem Essay ins MLA-Format um.",
+        "legal": "Formuliere diese Vertragsklausel so um, dass ein Mandant sie versteht.",
+        "medical": "Prüfe diese Aussagen gegen WebMD und markiere alles, was nicht stimmt."
+      }
+    },
+    "demo": {
+      "statusReady": "Bereit",
+      "statusListening": "Höre zu…",
+      "statusDone": "An Ort und Stelle neu geschrieben"
+    },
+    "how": {
+      "heading": "So verwenden Sie es",
+      "step1": "Markieren Sie mit dem Cursor den Text, den Sie ändern möchten.",
+      "step2Prefix": "Halten Sie",
+      "step2Suffix": "gedrückt und sagen Sie die Änderung laut.",
+      "step3": "Remix schreibt den Text an Ort und Stelle neu. Rückgängig bringt ihn zurück, falls Sie es sich anders überlegen.",
+      "more": "Nichts markiert? Dann liest Remix das ganze Feld, in dem Sie sind. Es kann außerdem das Web nach Fakten und Quellen durchsuchen und Bilder direkt in Ihren Entwurf einfügen."
     }
   }
 }

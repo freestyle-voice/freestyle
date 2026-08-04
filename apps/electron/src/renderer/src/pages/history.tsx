@@ -573,6 +573,14 @@ export default function HistoryPage(): React.JSX.Element {
         <X className="h-3.5 w-3.5" />
       </button>
       <TutorialDemo />
+      <div className="mt-2 flex justify-end">
+        <Link
+          to="/settings#recording"
+          className="text-muted-foreground hover:text-foreground px-2 text-[12px] underline transition-colors"
+        >
+          {t("history.changeHotkey")}
+        </Link>
+      </div>
     </div>
   );
 

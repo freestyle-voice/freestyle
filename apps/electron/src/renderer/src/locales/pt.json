@@ -267,7 +267,8 @@
     "clearDates": "Limpar",
     "openStats": "Mostrar estatísticas",
     "closeStats": "Ocultar estatísticas",
-    "resizeStats": "Redimensionar o painel"
+    "resizeStats": "Redimensionar o painel",
+    "changeHotkey": "Mudar atalho"
   },
   "dictionary": {
     "title": "Atalhos",
@@ -559,7 +560,59 @@
       "models": "Modelos",
       "plugins": "Plugins",
       "settings": "Configurações",
-      "help": "Ajuda"
+      "help": "Ajuda",
+      "remix": "Remix"
+    }
+  },
+  "remixPage": {
+    "stats": {
+      "remixes": "remixes executados",
+      "apps": "apps remixados",
+      "lastRemix": "último remix",
+      "firstHint": "Segure as teclas sobre um texto para executar o primeiro.",
+      "heading": "Uso"
+    },
+    "hotkey": {
+      "change": "Mudar atalho"
+    },
+    "tips": {
+      "heading": "Bom saber",
+      "highlight": "Destaque uma frase para remixar só aquela parte — sem seleção, o Remix lê o campo inteiro.",
+      "tap": "Toque no atalho (em vez de segurar) para as rotas rápidas (Control+1–3).",
+      "followUp": "Não ficou certo? Digite um ajuste no cartão de chat — ele mantém o fio."
+    },
+    "examples": {
+      "groups": {
+        "everyday": "Escrita do dia a dia",
+        "work": "Trabalho e estudos",
+        "web": "Com a web — Freestyle Cloud"
+      },
+      "quotes": {
+        "email": "Deixe mais caloroso e com metade do tamanho — pareço um advogado.",
+        "tone": "Escrevi isto com raiva. Deixe firme, mas educado.",
+        "social": "Dê mais impacto e deixe com menos de 280 caracteres.",
+        "format": "Transforme estes tópicos em um parágrafo para o relatório.",
+        "translate": "Passe para o inglês, mas mantenha minha despedida em português.",
+        "notes": "Transforme estas notas bagunçadas em uma lista organizada, agrupada por tema.",
+        "commit": "Reescreva esta mensagem de commit para explicar o porquê, não o quê.",
+        "espresso": "Adicione uma curiosidade sobre espresso, e uma foto de um pour-over.",
+        "mla": "Converta as citações deste ensaio para o formato MLA.",
+        "legal": "Reescreva esta cláusula do contrato em linguagem simples que um cliente entenda.",
+        "medical": "Confira estas afirmações no WebMD e sinalize o que estiver errado."
+      }
+    },
+    "demo": {
+      "statusReady": "Pronto",
+      "statusListening": "Ouvindo…",
+      "statusDone": "Reescrito no lugar"
+    },
+    "how": {
+      "heading": "Como usar",
+      "step1": "Destaque com o cursor o texto que quer mudar.",
+      "step2Prefix": "Segure",
+      "step2Suffix": "e diga a mudança em voz alta.",
+      "step3": "O Remix reescreve no lugar. Desfazer recupera se você mudar de ideia.",
+      "more": "Nada destacado? O Remix lê todo o campo em que você está. Ele também pode pesquisar fatos e fontes na web, e colar imagens direto no seu rascunho."
     }
   }
 }

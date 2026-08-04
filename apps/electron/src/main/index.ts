@@ -3867,11 +3867,9 @@ function handleRemixHotkeyDown(): void {
   remixSelectionRequested = false;
   showPill();
   sendToPill("remix:down");
-  // Mirror the key events to the onboarding renderer so its keycaps animate,
-  // the same way hotkey:down/up already reach both windows.
-  if (remixPracticeTarget) {
-    settingsWindow?.webContents.send("remix:down");
-  }
+  // Mirror the key events to the dashboard (onboarding keycaps, the Remix
+  // page's demo), the same way hotkey:down/up already reach both windows.
+  settingsWindow?.webContents.send("remix:down");
 
   // Read the selection now, not on release. Whether there is anything to edit
   // is the first thing the user needs to know — telling them only after they
@@ -3887,9 +3885,7 @@ function handleRemixHotkeyUp(): void {
   if (!remixPressed) return;
   remixPressed = false;
   sendToPill("remix:up");
-  if (remixPracticeTarget) {
-    settingsWindow?.webContents.send("remix:up");
-  }
+  settingsWindow?.webContents.send("remix:up");
   captureRemixSelection();
 }
 

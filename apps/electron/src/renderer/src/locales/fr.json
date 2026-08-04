@@ -267,7 +267,8 @@
     "clearDates": "Effacer",
     "openStats": "Afficher les statistiques",
     "closeStats": "Masquer les statistiques",
-    "resizeStats": "Redimensionner le panneau"
+    "resizeStats": "Redimensionner le panneau",
+    "changeHotkey": "Changer le raccourci"
   },
   "dictionary": {
     "title": "Raccourcis",
@@ -560,7 +561,59 @@
       "models": "Modèles",
       "plugins": "Extensions",
       "settings": "Réglages",
-      "help": "Aide"
+      "help": "Aide",
+      "remix": "Remix"
+    }
+  },
+  "remixPage": {
+    "stats": {
+      "remixes": "remix exécutés",
+      "apps": "apps remixées",
+      "lastRemix": "dernier remix",
+      "firstHint": "Maintenez les touches sur un texte pour lancer le premier.",
+      "heading": "Utilisation"
+    },
+    "hotkey": {
+      "change": "Changer le raccourci"
+    },
+    "tips": {
+      "heading": "Bon à savoir",
+      "highlight": "Surlignez une phrase pour ne remixer que cette partie — sans sélection, Remix lit tout le champ.",
+      "tap": "Tapez le raccourci (au lieu de le maintenir) pour les routes rapides (Contrôle+1–3).",
+      "followUp": "Pas tout à fait ça ? Tapez une précision dans la carte de chat — le fil est conservé."
+    },
+    "examples": {
+      "groups": {
+        "everyday": "Écriture du quotidien",
+        "work": "Travail et études",
+        "web": "Avec le web — Freestyle Cloud"
+      },
+      "quotes": {
+        "email": "Rends-le plus chaleureux et deux fois plus court — on dirait un avocat.",
+        "tone": "J'ai écrit ça énervé. Rends-le ferme mais poli.",
+        "social": "Donne-lui du punch et fais-le tenir en 280 caractères.",
+        "format": "Transforme ces puces en un paragraphe pour le rapport.",
+        "translate": "Passe-le en anglais, mais garde ma signature en français.",
+        "notes": "Transforme ces notes en vrac en une liste propre, groupée par sujet.",
+        "commit": "Réécris ce message de commit pour expliquer le pourquoi, pas le quoi.",
+        "espresso": "Ajoute une anecdote sur l'espresso, et une photo d'un pour-over.",
+        "mla": "Convertis les citations de cette dissertation au format MLA.",
+        "legal": "Réécris cette clause de contrat en langage clair, compréhensible par un client.",
+        "medical": "Vérifie ces affirmations sur WebMD et signale ce qui cloche."
+      }
+    },
+    "demo": {
+      "statusReady": "Prêt",
+      "statusListening": "À l'écoute…",
+      "statusDone": "Réécrit sur place"
+    },
+    "how": {
+      "heading": "Comment l'utiliser",
+      "step1": "Surlignez avec le curseur le texte à modifier.",
+      "step2Prefix": "Maintenez",
+      "step2Suffix": "et dites le changement à voix haute.",
+      "step3": "Remix le réécrit sur place. Annuler le restaure si vous changez d'avis.",
+      "more": "Rien de surligné ? Remix lit tout le champ où vous êtes. Il peut aussi chercher des faits et des sources sur le web, et coller des images directement dans votre brouillon."
     }
   }
 }

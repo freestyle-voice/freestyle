@@ -45,6 +45,26 @@ interface LaunchedApp {
   eventsPath: string;
 }
 
+async function closePermissionApp(app: ElectronApplication): Promise<void> {
+  const childProcess = app.process();
+  if (childProcess.exitCode !== null || childProcess.signalCode !== null)
+    return;
+
+  // This fixture validates startup permissions, not production shutdown.
+  // Avoid app.close(), which runs native cleanup that intermittently wedges
+  // macOS CI and leaves Playwright waiting through two 60-second timeouts.
+  const exited = new Promise<void>((resolve) => {
+    childProcess.once("exit", () => resolve());
+  });
+  childProcess.kill("SIGKILL");
+  await Promise.race([
+    exited,
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, 5_000);
+    }),
+  ]);
+}
+
 async function waitForDashboard(app: ElectronApplication): Promise<Page> {
   await app.firstWindow();
   await expect
@@ -176,7 +196,7 @@ test("startup warns once and opens Accessibility settings when requested", async
       ),
     ).toBe(true);
   } finally {
-    await launched.app.close();
+    await closePermissionApp(launched.app);
   }
 });
 
@@ -189,7 +209,7 @@ test("startup does not warn when Accessibility permission is granted", async () 
     await waitForStartupPermissionChecks(launched.eventsPath);
     expect(permissionDialogs(launched.eventsPath)).toHaveLength(0);
   } finally {
-    await launched.app.close();
+    await closePermissionApp(launched.app);
   }
 });
 
@@ -204,7 +224,7 @@ test("onboarding does not receive a duplicate startup warning", async () => {
     await waitForStartupPermissionChecks(launched.eventsPath);
     expect(permissionDialogs(launched.eventsPath)).toHaveLength(0);
   } finally {
-    await launched.app.close();
+    await closePermissionApp(launched.app);
   }
 });
 
@@ -238,7 +258,7 @@ test("startup warns for denied Microphone and opens its privacy settings", async
     expect(events.some((event) => event.type === "pipeline-event")).toBe(false);
     expect(events.some((event) => event.type === "mic-requested")).toBe(false);
   } finally {
-    await launched.app.close();
+    await closePermissionApp(launched.app);
   }
 });
 
@@ -257,7 +277,7 @@ test("startup warns when Microphone permission is restricted", async () => {
       "Microphone Permission Required",
     );
   } finally {
-    await launched.app.close();
+    await closePermissionApp(launched.app);
   }
 });
 
@@ -272,7 +292,7 @@ for (const microphone of ["granted", "not-determined"] as const) {
       await waitForStartupPermissionChecks(launched.eventsPath);
       expect(permissionDialogs(launched.eventsPath)).toHaveLength(0);
     } finally {
-      await launched.app.close();
+      await closePermissionApp(launched.app);
     }
   });
 }
@@ -309,7 +329,7 @@ test("startup combines missing Accessibility and Microphone into one warning", a
     expect(events.some((event) => event.type === "pipeline-event")).toBe(false);
     expect(events.some((event) => event.type === "mic-requested")).toBe(false);
   } finally {
-    await launched.app.close();
+    await closePermissionApp(launched.app);
   }
 });
 
@@ -351,7 +371,7 @@ test("denied Accessibility blocks dictation before RecordingStarted", async () =
       ),
     ).toBe(false);
   } finally {
-    await launched.app.close();
+    await closePermissionApp(launched.app);
   }
 });
 
@@ -383,7 +403,7 @@ test("denied Microphone blocks dictation before RecordingStarted", async () => {
       ),
     ).toBe(false);
   } finally {
-    await launched.app.close();
+    await closePermissionApp(launched.app);
   }
 });
 
@@ -423,6 +443,6 @@ test("granted permissions allow the existing dictation flow", async () => {
       )
       .toBe(true);
   } finally {
-    await launched.app.close();
+    await closePermissionApp(launched.app);
   }
 });

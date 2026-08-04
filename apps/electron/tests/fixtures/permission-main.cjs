@@ -4,14 +4,6 @@ const electron = require("electron");
 const eventsPath = process.env.FREESTYLE_E2E_PERMISSION_EVENTS;
 const userDataDir = process.env.FREESTYLE_E2E_USER_DATA_DIR;
 
-// These tests exercise permission startup behavior, not production shutdown.
-// Skip the main process's native cleanup when Playwright asks Electron to
-// close: a wedged native listener can otherwise keep the worker alive until
-// both the test and worker-teardown timeouts expire.
-electron.app.once("before-quit", () => {
-  electron.app.exit(0);
-});
-
 if (userDataDir) {
   mkdirSync(userDataDir, { recursive: true });
   electron.app.setPath("userData", userDataDir);

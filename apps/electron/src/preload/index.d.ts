@@ -35,9 +35,12 @@ declare global {
       hidePill: () => void;
       setPillExpanded: (
         expanded: boolean,
-        expansion?: "card" | "remix" | "remix-chat" | "remix-mini",
+        expansion?: "card" | "remix-chat",
       ) => void;
-      setPillMiniHeight: (height: number) => void;
+      setPillHotRect: (
+        rect: { x: number; y: number; width: number; height: number } | null,
+      ) => void;
+      onPillHotEnter: (callback: () => void) => () => void;
       showErrorDialog: (title: string, message: string) => Promise<void>;
       getServerPort: () => Promise<number>;
       getServerUrl: () => Promise<string>;

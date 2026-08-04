@@ -110,6 +110,14 @@ test.afterAll(async () => {
   await new Promise((r) => fakeServer.close(r));
 });
 
+// The remix session holds the full chat-sized window (440x600) for its whole
+// life: chat, strip, and every morph between them are DOM animation inside
+// room that already exists, and the window only resizes while nothing is
+// visible. Window bounds are therefore constant during a session, and the
+// morphs are asserted through the surface's style targets — the *state* of
+// the animation, which holds even on CI runners whose compositor never
+// produces frames (Xvfb), where animated rects sit frozen mid-flight.
+
 test("settled remix strip grows around the final message", async () => {
   test.setTimeout(60_000);
   // Find the pill window.
@@ -122,9 +130,7 @@ test("settled remix strip grows around the final message", async () => {
   await pillPage!.waitForLoadState("domcontentloaded");
   await new Promise((r) => setTimeout(r, 2500));
 
-  // Open the chat card (the bar-hover path). The window stays hidden: bounds
-  // and DOM assertions don't need it painted, and an on-screen window could
-  // catch the machine's real cursor — a stray hover re-expands the strip.
+  // Open the chat card (the bar-hover path).
   await app!.evaluate(({ BrowserWindow }) => {
     const pill = BrowserWindow.getAllWindows().find((w) =>
       w.webContents.getURL().includes("pill"),
@@ -140,12 +146,13 @@ test("settled remix strip grows around the final message", async () => {
     return pill?.getBounds();
   });
   console.log("after open-chat:", JSON.stringify(expanded));
+  expect(expanded?.width).toBe(440);
   expect(expanded?.height).toBe(600);
 
-  // The pointer "leaves the window": the card minimizes after its grace
-  // period (380ms) and the window shrinks to the strip after another 340ms.
-  // The settled strip self-dismisses 3s after minimizing, so everything below
-  // reads promptly inside that window.
+  // The pointer "leaves the window": the card minimizes to the strip after
+  // its grace period (380ms). The window keeps the held room — only the DOM
+  // surface changes. The settled strip self-dismisses 3s after minimizing,
+  // so everything below reads promptly inside that window.
   await pillPage!.evaluate(() => {
     document.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
   });
@@ -158,16 +165,24 @@ test("settled remix strip grows around the final message", async () => {
   );
   console.log("strip message:", JSON.stringify(stripText));
 
-  const mini = await app!.evaluate(({ BrowserWindow }) => {
+  const held = await app!.evaluate(({ BrowserWindow }) => {
     const pill = BrowserWindow.getAllWindows().find((w) =>
       w.webContents.getURL().includes("pill"),
     );
     return pill?.getBounds();
   });
-  console.log("after minimize:", JSON.stringify(mini));
+  console.log("after minimize:", JSON.stringify(held));
+  expect(held?.width).toBe(440);
+  expect(held?.height).toBe(600);
 
-  expect(mini?.width).toBe(360);
-  expect(mini!.height).toBeGreaterThan(68);
+  // The strip itself is the surface, sized around the final message.
+  const strip = await pillPage!.evaluate(() => {
+    const el = document.querySelector(".pill-chat-morph") as HTMLElement | null;
+    return el ? { width: el.style.width, height: el.style.height } : null;
+  });
+  console.log("strip surface:", JSON.stringify(strip));
+  expect(strip?.width).toBe("320px");
+  expect(Number.parseInt(strip?.height ?? "0", 10)).toBeGreaterThan(44);
   expect(stripText).toContain("one Cmd+Z away");
 
   // The settled strip hands the corner back on its own — the session closes
@@ -183,7 +198,7 @@ test("settled remix strip grows around the final message", async () => {
   expect(dismissed?.width).toBe(160);
 });
 
-test("hovering the strip grows the window first, then the surface", async () => {
+test("hovering the strip morphs the chat surface open in place", async () => {
   test.setTimeout(60_000);
   let pillPage: Page | undefined;
   for (let i = 0; i < 40 && !pillPage; i++) {
@@ -213,9 +228,18 @@ test("hovering the strip grows the window first, then the surface", async () => 
     document.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
   });
   await new Promise((r) => setTimeout(r, 1300));
-  expect((await bounds())?.width).toBe(360);
+  // Held room: minimizing swaps the surface, never the window.
+  const mini = await bounds();
+  expect(mini?.width).toBe(440);
+  expect(mini?.height).toBe(600);
+  const hasStrip = await pillPage!.evaluate(
+    () => document.querySelector('[data-testid="remix-chat-mini"]') !== null,
+  );
+  expect(hasStrip).toBe(true);
 
-  // Hover the strip: the window must be back at full chat size promptly...
+  // Hover the strip: the surface morphs to the full conversation while the
+  // window sits still. The style targets flip promptly (the morph itself is
+  // a 320ms transition inside them).
   await pillPage!.evaluate(() => {
     const strip = document.querySelector('[data-testid="remix-chat-mini"]');
     strip?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
@@ -226,17 +250,17 @@ test("hovering the strip grows the window first, then the surface", async () => 
   expect(grown?.width).toBe(440);
   expect(grown?.height).toBe(600);
 
-  // ...and the surface must follow it to full size (the delayed morph ran).
-  await new Promise((r) => setTimeout(r, 600));
   const surface = await pillPage!.evaluate(() => {
-    const el = document.querySelector(".pill-chat-morph");
-    if (!el) return null;
-    const rect = el.getBoundingClientRect();
-    return { width: Math.round(rect.width), height: Math.round(rect.height) };
+    const el = document.querySelector(".pill-chat-morph") as HTMLElement | null;
+    return el ? { width: el.style.width, height: el.style.height } : null;
   });
-  console.log("surface after morph:", JSON.stringify(surface));
-  expect(surface?.width).toBe(408);
-  expect(surface?.height).toBe(560);
+  console.log("surface target after hover:", JSON.stringify(surface));
+  expect(surface?.width).toBe("408px");
+  expect(surface?.height).toBe("560px");
+  const hasFullChat = await pillPage!.evaluate(
+    () => document.querySelector('[data-testid="remix-chat"]') !== null,
+  );
+  expect(hasFullChat).toBe(true);
 
   // Leave everything closed for any test that follows.
   await pillPage!.evaluate(() => {

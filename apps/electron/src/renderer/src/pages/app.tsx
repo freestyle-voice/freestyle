@@ -2815,72 +2815,41 @@ export default function AppPage(): React.JSX.Element {
   // `roomReady` is that handshake; giving the room back waits for the card to
   // finish leaving.
   const [roomReady, setRoomReady] = useState(false);
-  const lastExpansionRef = useRef<string | null>(null);
   const chatSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const cardSurfaceRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!showCard) {
       setRoomReady(false);
-      lastExpansionRef.current = null;
       const timer = setTimeout(() => window.api?.setPillExpanded(false), 300);
       return () => clearTimeout(timer);
     }
-    const expansion = showRemixChat
-      ? remixChatMini
-        ? ("remix-mini" as const)
-        : ("remix-chat" as const)
-      : showRemixCard
-        ? ("remix" as const)
-        : ("card" as const);
-    // Growing, the window resizes first and the surface animates into the new
-    // room. Shrinking chat → strip is the one move where that order clips the
-    // morph mid-flight, so there the window waits for the surface instead.
-    const shrinkingToMini =
-      expansion === "remix-mini" && lastExpansionRef.current === "remix-chat";
-    lastExpansionRef.current = expansion;
-    let shrinkTimer: ReturnType<typeof setTimeout> | null = null;
-    let surfaceEl: HTMLDivElement | null = null;
-    let onShrinkEnd: ((e: TransitionEvent) => void) | null = null;
-    if (shrinkingToMini) {
-      let done = false;
-      const finish = (): void => {
-        if (done) return;
-        done = true;
-        window.api?.setPillExpanded(true, "remix-mini");
-      };
-      surfaceEl = chatSurfaceRef.current;
-      onShrinkEnd = (e: TransitionEvent): void => {
-        if (
-          e.target === surfaceEl &&
-          (e.propertyName === "height" || e.propertyName === "width")
-        ) {
-          finish();
-        }
-      };
-      surfaceEl?.addEventListener("transitionend", onShrinkEnd);
-      shrinkTimer = setTimeout(finish, 700);
-    } else {
-      window.api?.setPillExpanded(true, expansion);
-    }
+    // A remix session takes the full chat-sized room for its whole life and
+    // gives it back only once everything has animated away. Resizing the
+    // window mid-session (card to chat, chat to strip) paints at least one
+    // stale compositor frame at the new origin — a visible blink — so every
+    // in-session size change is DOM animation inside room that already
+    // exists, and the two resizes that remain happen while the surfaces are
+    // invisible.
+    window.api?.setPillExpanded(true, showRemixCard ? "remix-chat" : "card");
     // Two frames: one for the resize to land, one for the browser to lay the
     // card out at its start values so the transition has something to run
     // from. Setting both in the same frame would jump straight to the end.
     //
     // Both ids are held, because a dismiss (or an unmount) landing in the
     // ~16ms between them would otherwise leave the inner frame uncancelled
-    // and still writing state.
+    // and still writing state. The timer backstops a throttled window whose
+    // rAF callbacks never fire.
     let inner = 0;
     const outer = requestAnimationFrame(() => {
       inner = requestAnimationFrame(() => setRoomReady(true));
     });
+    const fallback = window.setTimeout(() => setRoomReady(true), 120);
     return () => {
-      if (shrinkTimer) clearTimeout(shrinkTimer);
-      if (surfaceEl && onShrinkEnd) {
-        surfaceEl.removeEventListener("transitionend", onShrinkEnd);
-      }
       cancelAnimationFrame(outer);
       cancelAnimationFrame(inner);
+      clearTimeout(fallback);
     };
-  }, [showCard, showRemixCard, showRemixChat, remixChatMini]);
+  }, [showCard, showRemixCard]);
 
   const cardOpen = showCard && roomReady;
   const errorCardOpen = showErrorCard && roomReady;
@@ -3022,6 +2991,30 @@ export default function AppPage(): React.JSX.Element {
   const remixOpen = showRemixCard && roomReady;
 
   const viewIsChat = remixView?.phase === "chat";
+
+  // The dictation card and the chat are separate surface layers, each
+  // latching the last content it showed: a phase flip animates the old
+  // surface out underneath the new one rising — a handover, never an
+  // instant restyle of one box.
+  const [cardView, setCardView] = useState<RemixSession | null>(null);
+  const liveCardView =
+    remixView && remixView.phase !== "chat" ? remixView : null;
+  if (liveCardView && liveCardView !== cardView) setCardView(liveCardView);
+  useEffect(() => {
+    if (liveCardView || !cardView) return;
+    const timer = setTimeout(() => setCardView(null), 320);
+    return () => clearTimeout(timer);
+  }, [liveCardView, cardView]);
+
+  const [chatView, setChatView] = useState<RemixSession | null>(null);
+  const liveChatView = remixView?.phase === "chat" ? remixView : null;
+  if (liveChatView && liveChatView !== chatView) setChatView(liveChatView);
+  useEffect(() => {
+    if (liveChatView || !chatView) return;
+    const timer = setTimeout(() => setChatView(null), 320);
+    return () => clearTimeout(timer);
+  }, [liveChatView, chatView]);
+
   const [chatMiniVisual, setChatMiniVisual] = useState(true);
   const chatWasLiveRef = useRef(false);
   useEffect(() => {
@@ -3050,11 +3043,61 @@ export default function AppPage(): React.JSX.Element {
     };
   }, [viewIsChat, showRemixChat, remixChatMini]);
 
-  const remixTranscript = remixView?.transcript?.trim() ?? "";
+  const remixTranscript = cardView?.transcript?.trim() ?? "";
   const remixHint =
-    remixView?.phase === "running"
-      ? (remixView.label ?? "Working…")
+    cardView?.phase === "running"
+      ? (cardView.label ?? "Working…")
       : "Listening…";
+
+  // ---- Hot-rect pass-through ----
+  // The held remix room is mostly empty when only the strip or the dictation
+  // card is showing; report the surface the pointer can land on, and main
+  // keeps the rest of the window click-through. The fully open chat owns the
+  // whole window, matching the old chat-sized window exactly.
+  const chatFullyOpen = remixOpen && viewIsChat && !chatMiniVisual;
+  const reportHotRectRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (!showRemixCard) return;
+    if (chatFullyOpen) {
+      reportHotRectRef.current = () => {};
+      window.api?.setPillHotRect?.(null);
+      return;
+    }
+    const el = viewIsChat ? chatSurfaceRef.current : cardSurfaceRef.current;
+    if (!el) return;
+    const report = (): void => {
+      const rect = el.getBoundingClientRect();
+      // A little forgiveness around the edges so a pointer aiming for the
+      // surface doesn't fall through just short of it.
+      window.api?.setPillHotRect?.({
+        x: Math.floor(rect.x) - 8,
+        y: Math.floor(rect.y) - 8,
+        width: Math.ceil(rect.width) + 16,
+        height: Math.ceil(rect.height) + 16,
+      });
+    };
+    reportHotRectRef.current = report;
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [showRemixCard, chatFullyOpen, viewIsChat]);
+
+  // The pointer arriving flips the window interactive (forwarded events on
+  // macOS/Windows, the main-process cursor poll everywhere); leaving hands
+  // the empty room back to whatever is underneath.
+  const disarmHotRect = useCallback(
+    () => window.api?.setPillHotRect?.(null),
+    [],
+  );
+  const rearmHotRect = useCallback(() => reportHotRectRef.current(), []);
+  useEffect(() => {
+    return window.api?.onPillHotEnter?.(() => {
+      if (remixRef.current?.phase === "chat" && remixRef.current.minimized) {
+        expandRemixChat();
+      }
+    });
+  }, [expandRemixChat]);
 
   return (
     <div className="relative h-screen w-screen select-none overflow-hidden">
@@ -3713,75 +3756,31 @@ export default function AppPage(): React.JSX.Element {
           {/* ---- Remix card ---- */}
           {/* Same surface and the same place on screen as the failure card, so
               the two read as one object the pill can turn into rather than as
-              two unrelated popups. */}
-          <div className={layerClass} aria-hidden={!remixOpen}>
+              two unrelated popups. The dictation card and the chat are
+              separate layers: a phase flip animates one out while the other
+              rises, and each holds its last content while it leaves. */}
+          <div className={layerClass} aria-hidden={!(remixOpen && !viewIsChat)}>
             <div
-              ref={chatSurfaceRef}
-              className={`pill-surface pill-card${
-                remixView?.phase === "chat" ? " pill-chat-morph" : ""
-              }`}
-              data-show={remixOpen}
+              ref={cardSurfaceRef}
+              className="pill-surface pill-card"
+              data-show={remixOpen && !viewIsChat}
+              onMouseEnter={disarmHotRect}
+              onMouseLeave={rearmHotRect}
               style={{
                 ...cardSurfaceStyle,
                 // The anchored edge gets the capsule's inset — (PILL_HEIGHT -
                 // SVG_HEIGHT) / 2 — so the waveform lands exactly where it sat
-                // a moment ago. The far edge is free to be roomier. The chat
-                // card is its own object: it is either the one-line activity
-                // strip (a capsule) or the full conversation (a tall card
-                // dragged by its header — it holds an input and a scroll
-                // area), and it morphs between the two under the pointer.
-                ...(remixView?.phase === "chat"
-                  ? chatMiniVisual
-                    ? {
-                        width: REMIX_CHAT_STRIP.width,
-                        height: remixMiniHeight,
-                        // A grown strip is a card, not a capsule — a 999px
-                        // radius on a tall box reads as a lozenge.
-                        borderRadius:
-                          remixMiniHeight > REMIX_CHAT_STRIP.height ? 18 : 999,
-                        padding: 0,
-                        overflow: "hidden",
-                      }
-                    : {
-                        width: REMIX_CHAT_SURFACE.width,
-                        height: REMIX_CHAT_SURFACE.height,
-                        borderRadius: 18,
-                        padding: 0,
-                        overflow: "hidden",
-                      }
-                  : {
-                      padding:
-                        pillAlign === "start"
-                          ? `${(PILL_HEIGHT - SVG_HEIGHT) / 2}px 14px 13px`
-                          : `13px 14px ${(PILL_HEIGHT - SVG_HEIGHT) / 2}px`,
-                    }),
-                ...(remixOpen && remixView?.phase !== "chat"
+                // a moment ago. The far edge is free to be roomier.
+                padding:
+                  pillAlign === "start"
+                    ? `${(PILL_HEIGHT - SVG_HEIGHT) / 2}px 14px 13px`
+                    : `13px 14px ${(PILL_HEIGHT - SVG_HEIGHT) / 2}px`,
+                ...(remixOpen && !viewIsChat
                   ? { WebkitAppRegion: "drag" }
                   : {}),
               }}
             >
-              {remixView?.phase === "chat" ? (
-                <RemixChat
-                  context={
-                    remixContextRef.current ?? {
-                      text: remixView.selection,
-                      appName: null,
-                      windowTitle: null,
-                      capturedAt: Date.now(),
-                    }
-                  }
-                  initialInstruction={remixView.initialInstruction ?? null}
-                  minimized={chatMiniVisual}
-                  anchor={{
-                    v: pillAlign === "start" ? "top" : "bottom",
-                    h: pillSide === "right" ? "right" : "center",
-                  }}
-                  onExpand={expandRemixChat}
-                  onMinimize={minimizeRemixChat}
-                  onClose={closeRemix}
-                  onMiniHeightChange={setRemixMiniHeight}
-                />
-              ) : remixView?.phase === "error" ? (
+              {cardView?.phase === "error" ? (
                 <>
                   <div className="flex items-start" style={{ gap: 10 }}>
                     <span
@@ -3819,7 +3818,7 @@ export default function AppPage(): React.JSX.Element {
                           color: INK,
                         }}
                       >
-                        {remixView.title}
+                        {cardView.title}
                       </div>
                       <div
                         style={{
@@ -3833,7 +3832,7 @@ export default function AppPage(): React.JSX.Element {
                           overflow: "hidden",
                         }}
                       >
-                        {remixView.body}
+                        {cardView.body}
                       </div>
                     </div>
                   </div>
@@ -3882,6 +3881,66 @@ export default function AppPage(): React.JSX.Element {
                     {showRemixCard && waveform}
                   </div>
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* ---- Remix chat ---- */}
+          {/* Its own object: either the one-line activity strip (a capsule)
+              or the full conversation (a tall card holding an input and a
+              scroll area), morphing between the two under the pointer —
+              always inside room the window already holds, so the morph is
+              never clipped or resized mid-flight. */}
+          <div className={layerClass} aria-hidden={!(remixOpen && viewIsChat)}>
+            <div
+              ref={chatSurfaceRef}
+              className="pill-surface pill-card pill-chat-morph"
+              data-show={remixOpen && viewIsChat}
+              onMouseEnter={disarmHotRect}
+              onMouseLeave={rearmHotRect}
+              style={{
+                ...cardSurfaceStyle,
+                ...(chatMiniVisual
+                  ? {
+                      width: REMIX_CHAT_STRIP.width,
+                      height: remixMiniHeight,
+                      // A grown strip is a card, not a capsule — a 999px
+                      // radius on a tall box reads as a lozenge.
+                      borderRadius:
+                        remixMiniHeight > REMIX_CHAT_STRIP.height ? 18 : 999,
+                      padding: 0,
+                      overflow: "hidden",
+                    }
+                  : {
+                      width: REMIX_CHAT_SURFACE.width,
+                      height: REMIX_CHAT_SURFACE.height,
+                      borderRadius: 18,
+                      padding: 0,
+                      overflow: "hidden",
+                    }),
+              }}
+            >
+              {chatView && (
+                <RemixChat
+                  context={
+                    remixContextRef.current ?? {
+                      text: chatView.selection,
+                      appName: null,
+                      windowTitle: null,
+                      capturedAt: Date.now(),
+                    }
+                  }
+                  initialInstruction={chatView.initialInstruction ?? null}
+                  minimized={chatMiniVisual}
+                  anchor={{
+                    v: pillAlign === "start" ? "top" : "bottom",
+                    h: pillSide === "right" ? "right" : "center",
+                  }}
+                  onExpand={expandRemixChat}
+                  onMinimize={minimizeRemixChat}
+                  onClose={closeRemix}
+                  onMiniHeightChange={setRemixMiniHeight}
+                />
               )}
             </div>
           </div>

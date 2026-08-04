@@ -267,7 +267,6 @@ const MINI_SETTLED_DISMISS_MS = 3000;
 // grows around it, and the window grows around the layer (main clamps the
 // window; past the cap the message scrolls inside the strip).
 const MINI_STRIP_PAD = 24; // .remix-mini[data-full] vertical padding
-const MINI_WINDOW_CHROME = 24; // window height minus strip layer height
 const MINI_STRIP_MAX = 316; // main's 340 window cap minus the chrome
 
 function RemixThread(props: RemixThreadProps): React.JSX.Element {
@@ -647,20 +646,13 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   useLayoutEffect(() => {
     if (!minimized) return;
     if (!showFullFinal) {
-      // Back to the one-line strip (main clamps up to the default height).
+      // Back to the one-line strip.
       setMiniContentHeight(null);
-      window.api?.setPillMiniHeight(0);
       return;
     }
     const el = miniMessageRef.current;
     if (!el) return;
-    const content = el.scrollHeight + MINI_STRIP_PAD;
-    setMiniContentHeight(content);
-    const strip = Math.min(
-      Math.max(content, REMIX_CHAT_STRIP.height),
-      MINI_STRIP_MAX,
-    );
-    window.api?.setPillMiniHeight(strip + MINI_WINDOW_CHROME);
+    setMiniContentHeight(el.scrollHeight + MINI_STRIP_PAD);
   }, [minimized, showFullFinal, finalText]);
 
   // The strip doesn't outstay its welcome: once the run has settled, a beat

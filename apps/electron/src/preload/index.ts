@@ -48,11 +48,18 @@ const api = {
   // expanded status card has somewhere to render.
   setPillExpanded: (
     expanded: boolean,
-    expansion?: "card" | "remix" | "remix-chat" | "remix-mini",
+    expansion?: "card" | "remix-chat",
   ): void => ipcRenderer.send("pill:set-expanded", expanded, expansion),
-  /** Fit the minimized remix strip to its content (clamped in main). */
-  setPillMiniHeight: (height: number): void =>
-    ipcRenderer.send("pill:set-mini-height", height),
+  // The held remix room shows only a small surface — keep the window
+  // click-through outside this rect (null restores full interactivity).
+  setPillHotRect: (
+    rect: { x: number; y: number; width: number; height: number } | null,
+  ): void => ipcRenderer.send("pill:set-hot-rect", rect),
+  onPillHotEnter: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("pill:hot-enter", handler);
+    return () => ipcRenderer.removeListener("pill:hot-enter", handler);
+  },
   showErrorDialog: (title: string, message: string): Promise<void> =>
     ipcRenderer.invoke("dialog:show-error", title, message),
   getServerPort: (): Promise<number> => ipcRenderer.invoke("server:port"),

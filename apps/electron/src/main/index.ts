@@ -217,33 +217,19 @@ const APP_HEIGHT = 60;
 const PILL_CARD_WIDTH = 340;
 const PILL_CARD_HEIGHT = 144;
 /**
- * The remix card carries the same width as the failure card, so both read as
- * the same object in the same place on screen. It is a little taller only
- * because it stacks three short rows — the microphone line, the selection it
- * is about to edit, and the route strip — where the failure card stacks two.
- */
-const PILL_REMIX_HEIGHT = 128;
-/**
- * The chat card is a different object from the glanceable cards above: a
- * scrollable thread plus a text input. Tall enough to read a conversation,
- * still small enough to sit over a corner of the screen.
+ * The room a remix session lives in, held for the session's whole life. The
+ * remix surfaces (the dictation card, the chat thread, the minimized strip)
+ * morph into each other in the renderer, and a `setBounds` mid-morph paints
+ * at least one stale compositor frame at the new origin — a visible blink.
+ * So the window takes all the room it could ever need up front and only
+ * gives it back once nothing is showing; every in-session size change is
+ * pure DOM animation. The empty area is kept from eating clicks by the
+ * hot-rect pass-through below.
  */
 const PILL_CHAT_WIDTH = 440;
 const PILL_CHAT_HEIGHT = 600;
-/**
- * The minimized chat: a one-line strip that shows what the agent is doing
- * while it works. Hovering it grows the window to the full chat size. Once a
- * run settles, the strip grows to fit the agent's final message — the
- * renderer measures and reports the height it needs, capped here.
- */
-const PILL_CHAT_MINI_WIDTH = 360;
-const PILL_CHAT_MINI_HEIGHT = 68;
-const PILL_CHAT_MINI_MAX_HEIGHT = 340;
 
-/** The strip height currently requested by the renderer (default one-line). */
-let pillMiniHeight = PILL_CHAT_MINI_HEIGHT;
-
-type PillExpansion = "card" | "remix" | "remix-chat" | "remix-mini";
+type PillExpansion = "card" | "remix-chat";
 
 function pillExpansionSize(expansion: PillExpansion): {
   width: number;
@@ -252,13 +238,62 @@ function pillExpansionSize(expansion: PillExpansion): {
   if (expansion === "remix-chat") {
     return { width: PILL_CHAT_WIDTH, height: PILL_CHAT_HEIGHT };
   }
-  if (expansion === "remix-mini") {
-    return { width: PILL_CHAT_MINI_WIDTH, height: pillMiniHeight };
+  return { width: PILL_CARD_WIDTH, height: PILL_CARD_HEIGHT };
+}
+
+// ---------------------------------------------------------------------------
+// Hot-rect pass-through — while the held remix room shows only a small
+// surface (the minimized strip, or the dictation card), the rest of the
+// window must not block clicks to whatever is underneath. The renderer
+// reports the surface's rect; the window goes click-through and the cursor
+// is polled against that rect. When the pointer arrives, the window turns
+// interactive again and the renderer is told, so a hover can expand the
+// strip. Forwarded mouse events cover hover styling on the platforms that
+// support them; the poll is what flips interactivity everywhere.
+// ---------------------------------------------------------------------------
+
+type PillHotRect = { x: number; y: number; width: number; height: number };
+let pillHotRect: PillHotRect | null = null;
+let pillHotPollTimer: NodeJS.Timeout | null = null;
+
+function stopPillHotPoll(): void {
+  if (pillHotPollTimer) {
+    clearInterval(pillHotPollTimer);
+    pillHotPollTimer = null;
   }
-  return {
-    width: PILL_CARD_WIDTH,
-    height: expansion === "remix" ? PILL_REMIX_HEIGHT : PILL_CARD_HEIGHT,
-  };
+}
+
+function setPillHotRect(rect: PillHotRect | null): void {
+  // Tests drive the surfaces with synthetic DOM events; the machine's real
+  // cursor must not be able to flip interactivity under them.
+  if (process.env.FREESTYLE_E2E === "1") return;
+  pillHotRect = rect;
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+  if (!rect) {
+    stopPillHotPoll();
+    win.setIgnoreMouseEvents(false);
+    return;
+  }
+  win.setIgnoreMouseEvents(true, { forward: process.platform !== "linux" });
+  if (pillHotPollTimer) return;
+  pillHotPollTimer = setInterval(() => {
+    const w = mainWindow;
+    const hot = pillHotRect;
+    if (!w || w.isDestroyed() || !hot || !w.isVisible()) return;
+    const bounds = w.getBounds();
+    const cursor = screen.getCursorScreenPoint();
+    const inside =
+      cursor.x >= bounds.x + hot.x &&
+      cursor.x <= bounds.x + hot.x + hot.width &&
+      cursor.y >= bounds.y + hot.y &&
+      cursor.y <= bounds.y + hot.y + hot.height;
+    if (!inside) return;
+    pillHotRect = null;
+    stopPillHotPoll();
+    w.setIgnoreMouseEvents(false);
+    w.webContents.send("pill:hot-enter");
+  }, 120);
 }
 
 // ---------------------------------------------------------------------------
@@ -591,6 +626,8 @@ function setPillExpanded(
       height: APP_HEIGHT,
     };
     pillExpandOffset = { dx: 0, dy: 0 };
+    // The collapsed capsule is a plain interactive window again.
+    setPillHotRect(null);
   }
 
   markProgrammaticTarget(target.x, target.y);
@@ -1053,8 +1090,7 @@ function showPill(): void {
 }
 
 function updatePillEscape(): void {
-  const chatLike =
-    pillExpansion === "remix-chat" || pillExpansion === "remix-mini";
+  const chatLike = pillExpansion === "remix-chat";
   const isExpanded = pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0;
   if (mainWindow?.isVisible() && !(chatLike && isExpanded)) {
     if (!globalShortcut.isRegistered("Escape")) {
@@ -1454,7 +1490,6 @@ function hidePill(): void {
   clearHotkeyStuckWatchdog();
   remixPressed = false;
   clearRemixStuckWatchdog();
-  pillMiniHeight = PILL_CHAT_MINI_HEIGHT;
   setRemixRouteKeys(false);
   // The chat card may have made the pill focusable so its input could be
   // typed into; a hidden pill must never hold that.
@@ -2224,32 +2259,30 @@ app.whenReady().then(async () => {
     (_event, expanded: boolean, expansion?: unknown) => {
       setPillExpanded(
         expanded === true,
-        expansion === "remix" ||
-          expansion === "remix-chat" ||
-          expansion === "remix-mini"
-          ? expansion
-          : "card",
+        expansion === "remix-chat" ? expansion : "card",
       );
     },
   );
 
-  // IPC: the minimized remix strip measured its content (the agent's final
-  // message) and wants the window sized to fit. Applied live when the strip
-  // is up; otherwise it just becomes the size of the next remix-mini expand.
-  ipcMain.on("pill:set-mini-height", (_event, height: unknown) => {
-    if (typeof height !== "number" || !Number.isFinite(height)) return;
-    const clamped = Math.round(
-      Math.min(
-        Math.max(height, PILL_CHAT_MINI_HEIGHT),
-        PILL_CHAT_MINI_MAX_HEIGHT,
-      ),
-    );
-    if (clamped === pillMiniHeight) return;
-    pillMiniHeight = clamped;
-    const isExpanded = pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0;
-    if (isExpanded && pillExpansion === "remix-mini") {
-      setPillExpanded(true, "remix-mini");
+  // IPC: the held remix room shows only a small surface right now — go
+  // click-through everywhere except that rect (null = fully interactive).
+  ipcMain.on("pill:set-hot-rect", (_event, rect: unknown) => {
+    if (rect === null) {
+      setPillHotRect(null);
+      return;
     }
+    if (typeof rect !== "object" || rect === null) return;
+    const { x, y, width, height } = rect as Record<string, unknown>;
+    if (
+      typeof x !== "number" ||
+      typeof y !== "number" ||
+      typeof width !== "number" ||
+      typeof height !== "number" ||
+      ![x, y, width, height].every(Number.isFinite)
+    ) {
+      return;
+    }
+    setPillHotRect({ x, y, width, height });
   });
 
   // IPC: fan out per-frame audio levels from the pill to other windows

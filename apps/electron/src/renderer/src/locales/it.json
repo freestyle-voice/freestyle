@@ -127,7 +127,8 @@
       "recording": "Trascrizione",
       "display": "Display",
       "permissions": "Autorizzazioni",
-      "data": "Dati"
+      "data": "Dati",
+      "remix": "Remix"
     },
     "application": {
       "autoUpdate": "Aggiornamenti automatici",
@@ -210,6 +211,13 @@
       "historyDesc": "Elimina permanentemente tutte le sessioni salvate.",
       "clearHistory": "Cancella cronologia",
       "clearHistoryConfirm": "Cancellare tutta la cronologia? Questo eliminerà definitivamente ogni sessione."
+    },
+    "remix": {
+      "hotkey": "Scorciatoia Remix",
+      "hotkeyDesc": "Tienila premuta e di' cosa cambiare, oppure toccala per le route rapide.",
+      "conflict": "Questa è già la tua scorciatoia di dettatura. Scegli un'altra combinazione.",
+      "bar": "Barra Remix",
+      "barDesc": "Mostra una piccola barra in fondo allo schermo. Passaci sopra per aprire Remix."
     }
   },
   "today": {

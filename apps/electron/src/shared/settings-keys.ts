@@ -8,7 +8,6 @@ export const SETTINGS_KEYS = {
   cleanupPersonalTone: "cleanup_personal_tone",
   cleanupWorkTone: "cleanup_work_tone",
   remixHotkey: "remix_hotkey",
-  remixEnabled: "remix_enabled",
   remixBarEnabled: "remix_bar_enabled",
   freestyleCloudPanelExpanded: "freestyle_cloud_panel_expanded",
   hotkey: "hotkey",

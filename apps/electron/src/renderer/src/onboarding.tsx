@@ -1936,9 +1936,8 @@ function RemixStep({
   const llmDefault = (configuredQuery.data ?? []).find(
     (m) => m.type === "llm" && m.is_default === 1,
   );
-  const remixOn = settingsData?.[SETTINGS_KEYS.remixEnabled] !== "false";
   const ready = settingsFetched && configuredQuery.isFetched;
-  const interactive = ready && !!llmDefault && remixOn && !window.api?.isE2E;
+  const interactive = ready && !!llmDefault && !window.api?.isE2E;
   // Server tools (web/image search) exist only behind the cloud proxy; the
   // BYOK loop declares client tools only.
   const searchCapable = llmDefault?.provider === FREESTYLE_CLOUD_PROVIDER_ID;

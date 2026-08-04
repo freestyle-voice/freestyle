@@ -116,6 +116,7 @@ const audioPlaybackOptions = [
 
 const settingsSectionIds = [
   "recording",
+  "remix",
   "application",
   "display",
   "permissions",
@@ -177,7 +178,6 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.defaultHotkey ?? getDefaultHotkey(),
   );
   const [hotkeyMode, setHotkeyMode] = useState<"hold" | "toggle">("hold");
-  const [remixEnabled, setRemixEnabled] = useState(true);
   const [remixBarEnabled, setRemixBarEnabled] = useState(true);
   const [remixHotkey, setRemixHotkey] = useState(
     window.api?.defaultRemixHotkey ?? getDefaultRemixHotkey(),
@@ -356,17 +356,6 @@ export default function SettingsPage(): React.JSX.Element {
       .catch(() => {});
   }, []);
 
-  const handleRemixToggle = useCallback((enabled: boolean) => {
-    setRemixEnabled(enabled);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.remixEnabled },
-        json: { value: String(enabled) },
-      })
-      .then(() => window.api?.reloadRemixHotkey())
-      .catch(() => {});
-  }, []);
-
   const handleRemixBarToggle = useCallback((enabled: boolean) => {
     setRemixBarEnabled(enabled);
     getClient()
@@ -432,7 +421,6 @@ export default function SettingsPage(): React.JSX.Element {
     if (s[SETTINGS_KEYS.hotkeyMode] === "toggle") setHotkeyMode("toggle");
     if (s[SETTINGS_KEYS.remixHotkey])
       setRemixHotkey(s[SETTINGS_KEYS.remixHotkey]);
-    setRemixEnabled(s[SETTINGS_KEYS.remixEnabled] !== "false");
     setRemixBarEnabled(s[SETTINGS_KEYS.remixBarEnabled] !== "false");
     setLanguages(parseLanguagesSetting(s));
     if (s[SETTINGS_KEYS.translateMode] === "true") setTranslateMode(true);
@@ -929,82 +917,6 @@ export default function SettingsPage(): React.JSX.Element {
               </Row>
 
               <Row
-                label={t("settings.recording.remix")}
-                desc={t("settings.recording.remixDesc")}
-              >
-                <Switch
-                  checked={remixEnabled}
-                  onCheckedChange={handleRemixToggle}
-                />
-              </Row>
-
-              {remixEnabled && (
-                <Row
-                  label={t("settings.recording.remixBar")}
-                  desc={t("settings.recording.remixBarDesc")}
-                >
-                  <Switch
-                    checked={remixBarEnabled}
-                    onCheckedChange={handleRemixBarToggle}
-                  />
-                </Row>
-              )}
-
-              {remixEnabled && (
-                <Row
-                  label={t("settings.recording.remixHotkey")}
-                  desc={
-                    remixHotkey === hotkey
-                      ? t("settings.recording.remixConflict")
-                      : t("settings.recording.remixHotkeyDesc")
-                  }
-                >
-                  {remixRecorderState === "idle" ? (
-                    <Button
-                      variant="outline"
-                      onClick={startRemixHotkeyRecording}
-                      className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
-                    >
-                      <Keyboard className="text-muted-foreground size-4 shrink-0" />
-                      <KeyComboDisplay
-                        keys={formatAcceleratorKeys(remixHotkey)}
-                      />
-                      <span className="text-muted-foreground ml-1 text-xs">
-                        {t("common.change")}
-                      </span>
-                    </Button>
-                  ) : (
-                    <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
-                      <Keyboard className="text-primary h-4 w-4 shrink-0" />
-                      {remixDraftKeys.length > 0 ? (
-                        <>
-                          <KeyComboDisplay
-                            keys={remixDraftKeys}
-                            variant="dim"
-                          />
-                          <span className="text-muted-foreground text-xs">
-                            {remixCaptureHint}
-                          </span>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground animate-pulse text-sm">
-                          {remixCaptureHint}
-                        </span>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={cancelRemixHotkeyRecording}
-                        className="ml-1"
-                      >
-                        {t("common.cancel")}
-                      </Button>
-                    </div>
-                  )}
-                </Row>
-              )}
-
-              <Row
                 label={t("settings.recording.microphone")}
                 desc={t("settings.recording.microphoneDesc")}
               >
@@ -1130,6 +1042,70 @@ export default function SettingsPage(): React.JSX.Element {
                   />
                 </Row>
               ) : null}
+            </SettingsPanel>
+          )}
+
+          {activeSection === "remix" && (
+            <SettingsPanel>
+              <Row
+                label={t("settings.remix.hotkey")}
+                desc={
+                  remixHotkey === hotkey
+                    ? t("settings.remix.conflict")
+                    : t("settings.remix.hotkeyDesc")
+                }
+              >
+                {remixRecorderState === "idle" ? (
+                  <Button
+                    variant="outline"
+                    onClick={startRemixHotkeyRecording}
+                    className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
+                  >
+                    <Keyboard className="text-muted-foreground size-4 shrink-0" />
+                    <KeyComboDisplay
+                      keys={formatAcceleratorKeys(remixHotkey)}
+                    />
+                    <span className="text-muted-foreground ml-1 text-xs">
+                      {t("common.change")}
+                    </span>
+                  </Button>
+                ) : (
+                  <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
+                    <Keyboard className="text-primary h-4 w-4 shrink-0" />
+                    {remixDraftKeys.length > 0 ? (
+                      <>
+                        <KeyComboDisplay keys={remixDraftKeys} variant="dim" />
+                        <span className="text-muted-foreground text-xs">
+                          {remixCaptureHint}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground animate-pulse text-sm">
+                        {remixCaptureHint}
+                      </span>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={cancelRemixHotkeyRecording}
+                      className="ml-1"
+                    >
+                      {t("common.cancel")}
+                    </Button>
+                  </div>
+                )}
+              </Row>
+
+              <Row
+                label={t("settings.remix.bar")}
+                desc={t("settings.remix.barDesc")}
+                last
+              >
+                <Switch
+                  checked={remixBarEnabled}
+                  onCheckedChange={handleRemixBarToggle}
+                />
+              </Row>
             </SettingsPanel>
           )}
 

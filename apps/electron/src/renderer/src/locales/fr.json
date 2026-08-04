@@ -127,7 +127,8 @@
       "recording": "Transcription",
       "display": "Affichage",
       "permissions": "Permissions",
-      "data": "Données"
+      "data": "Données",
+      "remix": "Remix"
     },
     "application": {
       "autoUpdate": "Mises à jour automatiques",
@@ -210,6 +211,13 @@
       "historyDesc": "Supprime définitivement toutes les sessions enregistrées — cette action est irréversible.",
       "clearHistory": "Effacer l'historique",
       "clearHistoryConfirm": "Effacer tout l'historique des transcriptions ? Cela supprime définitivement toutes les sessions enregistrées."
+    },
+    "remix": {
+      "hotkey": "Raccourci Remix",
+      "hotkeyDesc": "Maintenez-le et dites quoi changer, ou tapez-le pour les routes rapides.",
+      "conflict": "C'est déjà votre raccourci de dictée. Choisissez une autre combinaison.",
+      "bar": "Barre Remix",
+      "barDesc": "Affiche une petite barre en bas de l'écran. Survolez-la pour ouvrir Remix."
     }
   },
   "today": {

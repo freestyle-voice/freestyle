@@ -127,7 +127,8 @@
       "recording": "Transcripción",
       "display": "Pantalla",
       "permissions": "Permisos",
-      "data": "Datos"
+      "data": "Datos",
+      "remix": "Remix"
     },
     "application": {
       "autoUpdate": "Actualizaciones automáticas",
@@ -210,6 +211,13 @@
       "historyDesc": "Elimina permanentemente todas las sesiones guardadas — esto no se puede deshacer.",
       "clearHistory": "Borrar historial",
       "clearHistoryConfirm": "¿Borrar todo el historial de transcripciones? Esto elimina permanentemente todas las sesiones guardadas."
+    },
+    "remix": {
+      "hotkey": "Atajo de Remix",
+      "hotkeyDesc": "Mantenlo pulsado y di qué cambiar, o tócalo para las rutas rápidas.",
+      "conflict": "Este ya es tu atajo de dictado. Elige otra combinación.",
+      "bar": "Barra de Remix",
+      "barDesc": "Mantén una pequeña barra en la parte inferior de la pantalla. Pasa el cursor para abrir Remix."
     }
   },
   "today": {

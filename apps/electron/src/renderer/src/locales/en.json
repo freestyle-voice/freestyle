@@ -148,7 +148,8 @@
       "permissions": "Permissions",
       "data": "Data",
       "billing": "Usage and Billing",
-      "network": "Network"
+      "network": "Network",
+      "remix": "Remix"
     },
     "application": {
       "autoUpdate": "Automatic updates",
@@ -215,14 +216,7 @@
       "outputModeClipboard": "Copy to clipboard",
       "sound": "Sound feedback",
       "soundDesc": "Soft chimes at the start and end of recording.",
-      "needsModifier": "Hotkeys need a modifier or side mouse button",
-      "remix": "Remix",
-      "remixDesc": "Highlight text in any app, then hold the Remix hotkey and say what to change — or tap it to open the chat.",
-      "remixHotkey": "Remix hotkey",
-      "remixHotkeyDesc": "Hold it and say what to change, or tap it for the quick routes.",
-      "remixConflict": "This is already your dictation hotkey. Pick a different combination.",
-      "remixBar": "Remix bar",
-      "remixBarDesc": "Keep a small bar at the bottom of your screen. Hover it to open Remix."
+      "needsModifier": "Hotkeys need a modifier or side mouse button"
     },
     "display": {
       "theme": "Theme",
@@ -291,6 +285,13 @@
       "statusOk": "Connected",
       "statusUnreachable": "Couldn't reach that server",
       "statusUnauthorized": "Invalid or missing access token"
+    },
+    "remix": {
+      "hotkey": "Remix hotkey",
+      "hotkeyDesc": "Hold it and say what to change, or tap it for the quick routes.",
+      "conflict": "This is already your dictation hotkey. Pick a different combination.",
+      "bar": "Remix bar",
+      "barDesc": "Keep a small bar at the bottom of your screen. Hover it to open Remix."
     }
   },
   "today": {

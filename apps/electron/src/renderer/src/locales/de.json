@@ -127,7 +127,8 @@
       "recording": "Transkription",
       "display": "Anzeige",
       "permissions": "Berechtigungen",
-      "data": "Daten"
+      "data": "Daten",
+      "remix": "Remix"
     },
     "application": {
       "autoUpdate": "Automatische Updates",
@@ -210,6 +211,13 @@
       "historyDesc": "Alle gespeicherten Sitzungen dauerhaft löschen — dies kann nicht rückgängig gemacht werden.",
       "clearHistory": "Verlauf löschen",
       "clearHistoryConfirm": "Gesamten Transkriptionsverlauf löschen? Alle gespeicherten Sitzungen werden dauerhaft gelöscht."
+    },
+    "remix": {
+      "hotkey": "Remix-Tastenkombination",
+      "hotkeyDesc": "Halten Sie sie gedrückt und sagen Sie, was geändert werden soll — oder tippen Sie kurz für die Schnellrouten.",
+      "conflict": "Das ist bereits Ihre Diktat-Tastenkombination. Wählen Sie eine andere Kombination.",
+      "bar": "Remix-Leiste",
+      "barDesc": "Zeigt eine kleine Leiste am unteren Bildschirmrand. Fahren Sie darüber, um Remix zu öffnen."
     }
   },
   "today": {

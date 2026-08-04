@@ -376,7 +376,6 @@ let hotkeyRecorder: HotkeyRecorder | null = null;
  */
 let remixKeyListener: NativeKeyListener | null = null;
 let remixPressed = false;
-let remixEnabled = true;
 /**
  * The accelerator the user configured, as opposed to the one currently
  * listening: they differ while remix are off, or parked because the
@@ -3610,10 +3609,7 @@ function createRemixBarWindow(): void {
 /** Reconcile the bar with reality: shown iff enabled and the pill is down. */
 function updateRemixBar(): void {
   const shouldShow =
-    remixBarEnabled &&
-    remixEnabled &&
-    !remixBarHeldForOnboarding &&
-    !mainWindow?.isVisible();
+    remixBarEnabled && !remixBarHeldForOnboarding && !mainWindow?.isVisible();
   if (!shouldShow) {
     if (remixBarFollowTimer) {
       clearInterval(remixBarFollowTimer);
@@ -3651,7 +3647,7 @@ function updateRemixBar(): void {
 
 /** The bar was hovered (or clicked): open the Remix chat where the user is. */
 function handleRemixBarOpen(): void {
-  if (!remixBarEnabled || !remixEnabled) return;
+  if (!remixBarEnabled) return;
   if (mainWindow?.isVisible()) return;
   remixSelectionRequested = false;
   captureRemixSelection();
@@ -3660,11 +3656,10 @@ function handleRemixBarOpen(): void {
   updateRemixBar();
 }
 
-/** Apply the remix enable flag + accelerator from a settings snapshot. */
+/** Apply the remix bar flag + accelerator from a settings snapshot. */
 function applyRemixSettings(settings: Record<string, string>): void {
-  // Absent means on: remix ship enabled, and a server that has never been
-  // told otherwise shouldn't read as "the user switched this off".
-  remixEnabled = settings[SETTINGS_KEYS.remixEnabled] !== "false";
+  // Absent means on: a server that has never been told otherwise shouldn't
+  // read as "the user switched this off".
   remixBarEnabled = settings[SETTINGS_KEYS.remixBarEnabled] !== "false";
   remixInitialized = true;
   updateRemixBar();
@@ -3955,8 +3950,7 @@ function scheduleRemixHotkeyRegistration(hotkey?: string): void {
 }
 
 /**
- * Bring the remix listener up on `hotkey`, or take it down when remix
- * are switched off.
+ * Bring the remix listener up on `hotkey`.
  *
  * There is deliberately no `globalShortcut` fallback here, unlike dictation's.
  * That fallback exists to keep dictation working in toggle mode where the
@@ -3971,11 +3965,6 @@ async function registerRemixHotkey(hotkey?: string): Promise<void> {
     remixKeyListener = null;
   }
   remixPressed = false;
-
-  if (!remixEnabled) {
-    currentRemixAccel = null;
-    return;
-  }
 
   remixHotkeyPreference = hotkey ?? remixHotkeyPreference;
   const configured = hotkey ?? remixHotkeyPreference;

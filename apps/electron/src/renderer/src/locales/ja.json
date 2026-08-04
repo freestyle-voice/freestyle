@@ -75,6 +75,43 @@
       "saveKey": "保存して {{provider}} を使用",
       "keyPlaceholder": "シークレットキーを貼り付け（例: sk-…）",
       "backToModels": "モデル一覧に戻る"
+    },
+    "draft": {
+      "statusReady": "準備完了",
+      "statusListening": "聞き取り中…",
+      "statusLanded": "下書きに入力されました",
+      "skip": "今はスキップ",
+      "newMessage": "新規メッセージ",
+      "toLabel": "宛先",
+      "recipientName": "Sam Rivera",
+      "recipientEmail": "sam.rivera@example.com",
+      "subject": "お誕生日おめでとう",
+      "send": "送信",
+      "bodyAria": "メール本文",
+      "title": "声で書こう",
+      "instructionPrefix": "メール本文をクリックし、",
+      "instructionSuffix": "を押しながら、次のとおりに言ってみましょう:",
+      "sayText": "Samさん、お誕生日おめでとう。金曜日にケーキを持っていきます。"
+    },
+    "remix": {
+      "statusReady": "準備完了",
+      "statusListening": "聞き取り中…",
+      "statusWorking": "リミックス中…",
+      "statusRemixed": "リミックス完了。",
+      "doneNote": "下書きがその場で書き直されました。別の指示を試すか、完了しましょう。",
+      "extraCaption": "これには数秒かかります。",
+      "extraDone": "豆知識と写真が下書きに追加されました。準備ができたら完了しましょう。",
+      "fallbackNote": "Remixにはアシスタントモデルが必要です — 準備ができたら設定から追加してください。",
+      "sampleDraft": "Samさん、お誕生日おめでとう。素敵な一日になりますように — 金曜日にケーキを持っていきますね。",
+      "sampleSignoff": "今週お祝いできるのを楽しみにしています。\n\n{{name}}",
+      "fallbackName": "アレックス",
+      "title": "次はリミックス",
+      "highlightNote": "下書きはすでに選択されています — そのままにして、メール内をクリックしないでください。",
+      "instructionPrefix": "",
+      "instructionSuffix": "を押しながら、次のとおりに言ってみましょう:",
+      "sayText": "もっと温かい文面にして、最後に{{name}}の名前で締めて",
+      "extraLead": "もうひとつ — テキストが選択されたまま:",
+      "extraSay": "誕生日ケーキの豆知識と、その写真を追加して"
     }
   },
   "settings": {

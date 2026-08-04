@@ -75,6 +75,43 @@
       "saveKey": "Speichern und {{provider}} verwenden",
       "keyPlaceholder": "Geheimschlüssel einfügen — z.B. sk-…",
       "backToModels": "Zurück zu den Modellen"
+    },
+    "draft": {
+      "statusReady": "Bereit",
+      "statusListening": "Höre zu…",
+      "statusLanded": "Im Entwurf gelandet",
+      "skip": "Vorerst überspringen",
+      "newMessage": "Neue Nachricht",
+      "toLabel": "An",
+      "recipientName": "Sam Rivera",
+      "recipientEmail": "sam.rivera@example.com",
+      "subject": "Alles Gute zum Geburtstag",
+      "send": "Senden",
+      "bodyAria": "E-Mail-Text",
+      "title": "Schreiben Sie mit Ihrer Stimme",
+      "instructionPrefix": "Klicken Sie in die E-Mail, halten Sie",
+      "instructionSuffix": "gedrückt und sagen Sie Wort für Wort:",
+      "sayText": "Alles Gute zum Geburtstag, Sam — ich bringe am Freitag Kuchen mit."
+    },
+    "remix": {
+      "statusReady": "Bereit",
+      "statusListening": "Höre zu…",
+      "statusWorking": "Remix läuft…",
+      "statusRemixed": "Geremixt.",
+      "doneNote": "Der Entwurf wurde direkt neu geschrieben. Probieren Sie eine weitere Anweisung — oder schließen Sie ab.",
+      "extraCaption": "Das dauert ein paar Sekunden.",
+      "extraDone": "Ein Fakt und ein Foto, direkt im Entwurf. Schließen Sie ab, wann immer Sie bereit sind.",
+      "fallbackNote": "Remix braucht ein Assistenzmodell — fügen Sie eines in den Einstellungen hinzu, sobald Sie bereit sind.",
+      "sampleDraft": "Alles Gute zum Geburtstag, Sam. Ich hoffe, dein Tag wird schön — ich bringe am Freitag Kuchen mit.",
+      "sampleSignoff": "Schön, dass wir dich diese Woche feiern können.\n\nHerzliche Grüße\n{{name}}",
+      "fallbackName": "Alex",
+      "title": "Jetzt remixen",
+      "highlightNote": "Ihr Entwurf ist bereits markiert — lassen Sie ihn markiert und klicken Sie nicht in die E-Mail.",
+      "instructionPrefix": "Halten Sie",
+      "instructionSuffix": "gedrückt und sagen Sie Wort für Wort:",
+      "sayText": "Mach sie wärmer und unterschreibe mit {{name}}.",
+      "extraLead": "Noch ein Trick — solange der Text markiert ist:",
+      "extraSay": "Füge einen lustigen Fakt über Geburtstagskuchen hinzu, und ein Bild davon."
     }
   },
   "settings": {

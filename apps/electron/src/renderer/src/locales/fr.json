@@ -75,6 +75,43 @@
       "saveKey": "Enregistrer et utiliser {{provider}}",
       "keyPlaceholder": "Collez votre clé secrète — ex. sk-…",
       "backToModels": "Retour aux modèles"
+    },
+    "draft": {
+      "statusReady": "Prêt",
+      "statusListening": "À l'écoute…",
+      "statusLanded": "Arrivé dans le brouillon",
+      "skip": "Passer pour l'instant",
+      "newMessage": "Nouveau message",
+      "toLabel": "À",
+      "recipientName": "Sam Rivera",
+      "recipientEmail": "sam.rivera@example.com",
+      "subject": "Joyeux anniversaire",
+      "send": "Envoyer",
+      "bodyAria": "Corps du message",
+      "title": "Écrivez avec votre voix",
+      "instructionPrefix": "Cliquez dans l'e-mail, maintenez",
+      "instructionSuffix": "et dites, mot pour mot :",
+      "sayText": "Joyeux anniversaire Sam — j'apporte un gâteau vendredi."
+    },
+    "remix": {
+      "statusReady": "Prêt",
+      "statusListening": "À l'écoute…",
+      "statusWorking": "Remix en cours…",
+      "statusRemixed": "Remixé.",
+      "doneNote": "Le brouillon s'est réécrit sur place. Essayez une autre instruction — ou terminez.",
+      "extraCaption": "Cela prend quelques secondes.",
+      "extraDone": "Une anecdote et une photo, directement dans le brouillon. Terminez quand vous voulez.",
+      "fallbackNote": "Remix a besoin d'un modèle assistant — ajoutez-en un dans les Réglages quand vous serez prêt.",
+      "sampleDraft": "Joyeux anniversaire, Sam. J'espère que ta journée sera belle — j'apporte un gâteau vendredi.",
+      "sampleSignoff": "Hâte de te fêter cette semaine.\n\nChaleureusement,\n{{name}}",
+      "fallbackName": "Alex",
+      "title": "Maintenant, remixez-le",
+      "highlightNote": "Votre brouillon est déjà surligné — laissez-le surligné et ne cliquez pas dans l'e-mail.",
+      "instructionPrefix": "Maintenez",
+      "instructionSuffix": "et dites, mot pour mot :",
+      "sayText": "Rends-le plus chaleureux et signe {{name}}.",
+      "extraLead": "Encore une astuce — pendant que le texte est surligné :",
+      "extraSay": "Ajoute une anecdote sur les gâteaux d'anniversaire, et une photo."
     }
   },
   "settings": {

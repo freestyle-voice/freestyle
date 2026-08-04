@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
+import { Keycap, StepWord, Wave } from "./onboarding/coach-strip";
 import { Textarea } from "./ui/textarea";
 
 // ---------------------------------------------------------------------------
@@ -174,7 +175,7 @@ export function TutorialDemo({
                     +
                   </span>
                 )}
-                <FnKey pressed={pressed} label={tok} />
+                <Keycap pressed={pressed} label={tok} />
               </span>
             ))}
           </span>{" "}
@@ -255,164 +256,5 @@ export function TutorialDemo({
       {/* CSS for the pulsing status dot */}
       <style>{`@keyframes tdot { 0%,100% { transform: scale(1); opacity: 1 } 50% { transform: scale(1.4); opacity: 0.5 } }`}</style>
     </div>
-  );
-}
-
-function StepWord({
-  active,
-  children,
-}: {
-  active: boolean;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <span
-      className={cn(
-        "serif-italic transition-colors duration-200",
-        active ? "text-primary" : "text-muted-foreground",
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// FnKey — keycap that depresses on `pressed`.
-// ---------------------------------------------------------------------------
-function FnKey({
-  pressed,
-  label,
-}: {
-  pressed: boolean;
-  label: string;
-}): React.JSX.Element {
-  const size = 38;
-  return (
-    <span
-      className={cn(
-        "mono inline-flex items-center justify-center align-middle font-semibold transition-all duration-150",
-        pressed ? "text-accent-foreground" : "text-foreground",
-      )}
-      style={{
-        height: size * 0.95,
-        minWidth: size * 1.05,
-        padding: "0 8px",
-        borderRadius: size * 0.18,
-        background: pressed ? "var(--accent)" : "var(--card)",
-        border: `1.5px solid ${pressed ? "var(--primary)" : "var(--border)"}`,
-        borderBottomWidth: pressed ? 1.5 : Math.max(2, size * 0.075),
-        fontSize: size * 0.4,
-        letterSpacing: "0.04em",
-        transform: pressed ? `translateY(${size * 0.04}px)` : "translateY(0)",
-        boxShadow: pressed
-          ? `inset 0 -1px 0 rgba(20,12,4,0.06), 0 0 0 6px var(--accent)`
-          : `0 1px 0 var(--border), 0 2px 2px -1px rgba(20,12,4,0.06)`,
-        transitionTimingFunction: "cubic-bezier(0.3, 0.7, 0.4, 1)",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Wave — SVG polyline. While `pressed`, redraws on requestAnimationFrame
-// using a sine-envelope × harmonics formula; otherwise renders a flat line.
-// `getLiveLevel` returns the latest real mic amplitude (0..1) when the real
-// hotkey is being held, or null when the demo is running its scripted loop.
-// ---------------------------------------------------------------------------
-function Wave({
-  pressed,
-  getLiveLevel,
-}: {
-  pressed: boolean;
-  getLiveLevel: () => number | null;
-}): React.JSX.Element {
-  const W = 520;
-  const H = 60;
-  const polyRef = useRef<SVGPolylineElement>(null);
-  // Smoothed amplitude so the wave doesn't twitch on noisy frames.
-  const smoothedAmpRef = useRef(0);
-
-  useEffect(() => {
-    const node = polyRef.current;
-    if (!node) return;
-
-    if (!pressed) {
-      // Flat resting line — set once, no animation loop.
-      smoothedAmpRef.current = 0;
-      const N = 60;
-      const pts: string[] = [];
-      for (let i = 0; i <= N; i++) {
-        const x = (i / N) * W;
-        pts.push(`${x.toFixed(1)},${(H / 2).toFixed(1)}`);
-      }
-      node.setAttribute("points", pts.join(" "));
-      return;
-    }
-
-    let rafId = 0;
-    const start = performance.now();
-    const draw = () => {
-      const t = (performance.now() - start) / 1000;
-      const N = 90;
-      // Pick amplitude source: real mic level (when real hotkey is held)
-      // or the scripted loudness envelope. Live level gets gain + smoothing
-      // so quiet voices still draw a visible wave and the wave doesn't
-      // pop on transients.
-      const liveLevel = getLiveLevel();
-      let amp: number;
-      if (liveLevel !== null) {
-        const target = Math.min(1, liveLevel * 1.6);
-        smoothedAmpRef.current += (target - smoothedAmpRef.current) * 0.35;
-        amp = smoothedAmpRef.current;
-      } else {
-        amp =
-          (0.6 + 0.4 * Math.sin(t * 1.3)) * (0.7 + 0.3 * Math.sin(t * 2.4 + 1));
-      }
-      const pts: string[] = [];
-      for (let i = 0; i <= N; i++) {
-        const tt = i / N;
-        const x = tt * W;
-        // tapered envelope so the wave fades at both ends
-        const envelope = Math.sin(Math.PI * tt);
-        const a = H * 0.42 * amp * envelope;
-        const y =
-          H / 2 +
-          a * Math.sin(tt * 9 * Math.PI + t * 5.2) * 0.7 +
-          a * Math.sin(tt * 17 * Math.PI - t * 3.1) * 0.25;
-        pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
-      }
-      // Direct DOM write avoids one React re-render per frame.
-      node.setAttribute("points", pts.join(" "));
-      rafId = requestAnimationFrame(draw);
-    };
-    rafId = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(rafId);
-  }, [pressed, getLiveLevel]);
-
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      width="100%"
-      height={H}
-      preserveAspectRatio="none"
-      className="block"
-      role="img"
-      aria-label="Voice waveform"
-    >
-      <polyline
-        ref={polyRef}
-        fill="none"
-        stroke={
-          pressed ? "var(--accent-foreground)" : "var(--muted-foreground)"
-        }
-        strokeWidth={pressed ? 2 : 1.3}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        style={{ transition: "stroke 0.2s ease, stroke-width 0.2s ease" }}
-      />
-    </svg>
   );
 }

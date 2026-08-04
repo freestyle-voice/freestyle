@@ -84,6 +84,8 @@ declare global {
       setRemixChatFocus: (focus: boolean) => void;
       setRemixRouteKeys: (open: boolean) => void;
       remixBarHover: () => void;
+      setRemixPracticeTarget: (active: boolean) => void;
+      onRemixPracticeDelivered: (callback: () => void) => () => void;
       onRemixOpenChat: (callback: () => void) => () => void;
       checkMicPermission: () => Promise<string>;
       requestMicPermission: () => Promise<string>;

@@ -125,6 +125,7 @@ import {
   relayEvent,
 } from "./plugins/index";
 import { initPluginUiHost, invalidatePluginViews } from "./plugins/ui-host";
+import { isRemixTargetAllowed } from "./remix-target";
 
 const log = createAppLogger("electron");
 const hotkeyLog = createAppLogger("hotkey");
@@ -392,6 +393,13 @@ let currentRemixAccel: string | null = null;
  * defaults before we know whether remix are even switched on.
  */
 let remixInitialized = false;
+/**
+ * True while the onboarding remix step is live: the self-exclusion that
+ * normally keeps Remix out of Freestyle's own windows is suspended so the
+ * agent can drive the practice draft. Flipped only by the dashboard window;
+ * cleared defensively on onboarding completion, window close, and navigation.
+ */
+let remixPracticeTarget = false;
 const audioPlaybackController = new AudioPlaybackController();
 
 function stopHotkeyRecorderProcess(): void {
@@ -897,7 +905,14 @@ async function buildSettingsWindow(initialPath?: string): Promise<void> {
       stopHotkeyRecorderProcess();
       scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
     }
+    remixPracticeTarget = false;
     settingsWindow = null;
+  });
+
+  // Backstop: a full-page navigation tears the onboarding renderer down
+  // without running its unmount cleanup.
+  settingsWindow.webContents.on("did-navigate", () => {
+    remixPracticeTarget = false;
   });
 
   settingsWindow.on("enter-full-screen", () => {
@@ -1466,6 +1481,8 @@ async function deliverOutput(
 
 function resetOnboarding(): void {
   writeSettings({ onboardingComplete: false });
+  remixBarHeldForOnboarding = true;
+  updateRemixBar();
   showSettingsWindow("/onboarding");
 }
 
@@ -2367,6 +2384,9 @@ app.whenReady().then(async () => {
 
   ipcMain.on("onboarding:set-complete", () => {
     writeSettings({ onboardingComplete: true });
+    remixPracticeTarget = false;
+    remixBarHeldForOnboarding = false;
+    updateRemixBar();
   });
 
   // IPC: hotkey recording — global native listener + renderer DOM on macOS
@@ -2496,6 +2516,8 @@ app.whenReady().then(async () => {
   // Onboarding already has dedicated permission cards. Existing users instead
   // get one actionable warning once a user-facing window can be shown.
   void isOnboardingActive().then((onboardingActive) => {
+    remixBarHeldForOnboarding = onboardingActive;
+    updateRemixBar();
     const warning = startupPermissionWarning(
       process.platform,
       onboardingActive,
@@ -2882,7 +2904,7 @@ app.whenReady().then(async () => {
     }
     const front = await getFrontmostContext();
     const ours = getFreestyleAppExclusions();
-    if (!front.appName || ours.has(front.appName.trim().toLowerCase())) {
+    if (!isRemixTargetAllowed(front.appName, ours, remixPracticeTarget)) {
       return { ok: false, reason: "document-not-in-front" };
     }
     remixAnchor = { ...front, capturedAt: Date.now() };
@@ -3002,6 +3024,9 @@ app.whenReady().then(async () => {
     );
     try {
       await pasteClipboardIntoFocusedApp();
+      if (remixPracticeTarget) {
+        settingsWindow?.webContents.send("remix:practice-delivered");
+      }
       return { ok: true };
     } catch (err) {
       hotkeyLog.error(`Remix paste failed: ${err}`);
@@ -3124,6 +3149,9 @@ app.whenReady().then(async () => {
     }
     try {
       await pasteIntoFocusedApp(text, undefined, { trailingSpace: false });
+      if (remixPracticeTarget) {
+        settingsWindow?.webContents.send("remix:practice-delivered");
+      }
       return { ok: true };
     } catch (err) {
       hotkeyLog.error(`Remix paste-text failed: ${err}`);
@@ -3148,8 +3176,11 @@ app.whenReady().then(async () => {
     }
     const front = await getFrontmostContext();
     const ours = getFreestyleAppExclusions();
-    const inDocument =
-      !!front.appName && !ours.has(front.appName.trim().toLowerCase());
+    const inDocument = isRemixTargetAllowed(
+      front.appName,
+      ours,
+      remixPracticeTarget,
+    );
     if (inDocument) {
       remixAnchor = { ...front, capturedAt: Date.now() };
       const selection = await copySelectionFromFocusedApp().catch(() => null);
@@ -3174,6 +3205,18 @@ app.whenReady().then(async () => {
       stale: true,
     };
   });
+
+  // Onboarding's remix practice: while active, our own window is a legal
+  // Remix target. Only the dashboard window may flip this.
+  ipcMain.on("remix:set-practice-target", (event, active: unknown) => {
+    if (event.sender !== settingsWindow?.webContents) return;
+    remixPracticeTarget = active === true;
+    hotkeyLog.info(`remix practice target: ${remixPracticeTarget}`);
+  });
+
+  if (process.env.FREESTYLE_E2E === "1") {
+    ipcMain.handle("e2e:remix-practice-target", () => remixPracticeTarget);
+  }
 
   // The chat card holds no digit routes; it gives Control+1..3 back to the
   // rest of the system for as long as it is up.
@@ -3435,7 +3478,13 @@ async function focusAnchorForInjection(): Promise<boolean> {
   }
   let front = await getFrontmostContext();
   const ours = getFreestyleAppExclusions();
-  if (front.appName && ours.has(front.appName.trim().toLowerCase())) {
+  // In practice mode our own window IS the target, so re-activating the
+  // anchor app ("Freestyle" via osascript) is skipped — it is at best a
+  // no-op and at worst raises the wrong window.
+  if (
+    front.appName &&
+    !isRemixTargetAllowed(front.appName, ours, remixPracticeTarget)
+  ) {
     await activateAnchorApp(anchor.appName);
     front = await getFrontmostContext();
   }
@@ -3507,6 +3556,11 @@ async function activateAnchorApp(appName: string): Promise<void> {
 
 let remixBarWindow: BrowserWindow | null = null;
 let remixBarEnabled = true;
+// The bar is noise during onboarding. Seeded synchronously from the light
+// settings file, then corrected by the startup isOnboardingActive() probe
+// (existing users may predate the onboardingComplete flag), and cleared on
+// onboarding:set-complete.
+let remixBarHeldForOnboarding = readSettings().onboardingComplete !== true;
 let remixBarFollowTimer: NodeJS.Timeout | null = null;
 const REMIX_BAR_WIDTH = 120;
 const REMIX_BAR_HEIGHT = 18;
@@ -3556,7 +3610,10 @@ function createRemixBarWindow(): void {
 /** Reconcile the bar with reality: shown iff enabled and the pill is down. */
 function updateRemixBar(): void {
   const shouldShow =
-    remixBarEnabled && remixEnabled && !mainWindow?.isVisible();
+    remixBarEnabled &&
+    remixEnabled &&
+    !remixBarHeldForOnboarding &&
+    !mainWindow?.isVisible();
   if (!shouldShow) {
     if (remixBarFollowTimer) {
       clearInterval(remixBarFollowTimer);
@@ -3815,6 +3872,11 @@ function handleRemixHotkeyDown(): void {
   remixSelectionRequested = false;
   showPill();
   sendToPill("remix:down");
+  // Mirror the key events to the onboarding renderer so its keycaps animate,
+  // the same way hotkey:down/up already reach both windows.
+  if (remixPracticeTarget) {
+    settingsWindow?.webContents.send("remix:down");
+  }
 
   // Read the selection now, not on release. Whether there is anything to edit
   // is the first thing the user needs to know — telling them only after they
@@ -3830,6 +3892,9 @@ function handleRemixHotkeyUp(): void {
   if (!remixPressed) return;
   remixPressed = false;
   sendToPill("remix:up");
+  if (remixPracticeTarget) {
+    settingsWindow?.webContents.send("remix:up");
+  }
   captureRemixSelection();
 }
 

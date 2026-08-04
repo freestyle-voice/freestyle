@@ -2127,6 +2127,9 @@ export default function AppPage(): React.JSX.Element {
     const durationMs = Math.round(performance.now() - remixDownAtRef.current);
     patchRemix({ phase: "running", label: "Transcribing…" });
     startBarAnimation("speaking");
+    // The dictation stop cue, at the same moment: the held instruction has
+    // been committed. Remix never ducks system audio, so no restore first.
+    void playTone("stop");
 
     const streamer = remixStreamerRef.current;
     let finalPromise: Promise<string> | null = null;
@@ -2221,6 +2224,9 @@ export default function AppPage(): React.JSX.Element {
       remixHoldTimerRef.current = null;
       if (remixRef.current?.phase === "capturing") {
         patchRemix({ phase: "listening" });
+        // The same audio cue dictation gives on recording start — played at
+        // the hold threshold so a tap (which opens the chat) stays silent.
+        void playTone("start");
       }
     }, REMIX_HOLD_THRESHOLD_MS);
 

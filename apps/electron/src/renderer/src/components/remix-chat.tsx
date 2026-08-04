@@ -242,6 +242,9 @@ const MINIMIZE_GRACE_MS = 380;
  */
 const MINI_IDLE_DISMISS_MS = 7000;
 
+/** How long the settled strip (final message included) lingers un-hovered. */
+const MINI_SETTLED_DISMISS_MS = 3000;
+
 // The settled strip shows the agent's final message in full. The strip layer
 // grows around it, and the window grows around the layer (main clamps the
 // window; past the cap the message scrolls inside the strip).
@@ -599,17 +602,14 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     window.api?.setPillMiniHeight(strip + MINI_WINDOW_CHROME);
   }, [minimized, showFullFinal, finalText]);
 
-  // The strip doesn't outstay its welcome: once the run has settled, a while
-  // without a hover and it hands the corner back to the bar. A full final
-  // message gets reading time proportional to its length before that.
+  // The strip doesn't outstay its welcome: once the run has settled, a beat
+  // without a hover and it hands the corner back to the bar. Hovering keeps
+  // it (and expands into the full thread, where the message stays readable).
   useEffect(() => {
     if (!minimized || busy) return;
-    const dismissMs = showFullFinal
-      ? Math.min(30_000, MINI_IDLE_DISMISS_MS + (finalText?.length ?? 0) * 30)
-      : MINI_IDLE_DISMISS_MS;
-    const timer = setTimeout(onClose, dismissMs);
+    const timer = setTimeout(onClose, MINI_SETTLED_DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [minimized, busy, onClose, showFullFinal, finalText]);
+  }, [minimized, busy, onClose]);
 
   /**
    * Re-read the live highlight so EVERY user-initiated request carries the

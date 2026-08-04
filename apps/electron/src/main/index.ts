@@ -427,6 +427,9 @@ protocol.registerSchemesAsPrivileged([
       secure: true,
       supportFetchAPI: true,
       corsEnabled: true,
+      // Without this, Chromium's media stack refuses to play <video>/<audio>
+      // served from the scheme (the sign-in demo video, for one).
+      stream: true,
     },
   },
 ]);

@@ -143,27 +143,20 @@ test("settled remix strip grows around the final message", async () => {
   expect(expanded?.height).toBe(600);
 
   // The pointer "leaves the window": the card minimizes after its grace
-  // period, the settled thread shows the final message, the strip grows.
+  // period (380ms) and the window shrinks to the strip after another 340ms.
+  // The settled strip self-dismisses 3s after minimizing, so everything below
+  // reads promptly inside that window.
   await pillPage!.evaluate(() => {
     document.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
   });
-  await new Promise((r) => setTimeout(r, 2500));
+  await new Promise((r) => setTimeout(r, 1300));
 
-  const domState = await pillPage!.evaluate(() => {
-    const chat = document.querySelector(".remix-chat");
-    return {
-      minimized: chat?.getAttribute("data-minimized") ?? "no .remix-chat",
-      hasMessage: !!document.querySelector(".remix-mini-message"),
-      miniText:
-        (document.querySelector(".remix-mini-text") as HTMLElement | null)
-          ?.innerText ?? null,
-      stripStyle:
-        (
-          document.querySelector(".remix-chat-face-strip") as HTMLElement | null
-        )?.getAttribute("style") ?? null,
-    };
-  });
-  console.log("dom state:", JSON.stringify(domState));
+  const stripText = await pillPage!.evaluate(
+    () =>
+      (document.querySelector(".remix-mini-message") as HTMLElement | null)
+        ?.innerText ?? null,
+  );
+  console.log("strip message:", JSON.stringify(stripText));
 
   const mini = await app!.evaluate(({ BrowserWindow }) => {
     const pill = BrowserWindow.getAllWindows().find((w) =>
@@ -175,12 +168,17 @@ test("settled remix strip grows around the final message", async () => {
 
   expect(mini?.width).toBe(360);
   expect(mini!.height).toBeGreaterThan(68);
-
-  const stripText = await pillPage!.evaluate(
-    () =>
-      (document.querySelector(".remix-mini-message") as HTMLElement | null)
-        ?.innerText ?? null,
-  );
-  console.log("strip message:", JSON.stringify(stripText));
   expect(stripText).toContain("one Cmd+Z away");
+
+  // The settled strip hands the corner back on its own — the session closes
+  // and the window returns to the collapsed pill slot.
+  await new Promise((r) => setTimeout(r, 3200));
+  const dismissed = await app!.evaluate(({ BrowserWindow }) => {
+    const pill = BrowserWindow.getAllWindows().find((w) =>
+      w.webContents.getURL().includes("pill"),
+    );
+    return pill?.getBounds();
+  });
+  console.log("after dismiss:", JSON.stringify(dismissed));
+  expect(dismissed?.width).toBe(160);
 });

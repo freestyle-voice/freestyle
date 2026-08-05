@@ -228,9 +228,10 @@ function describeAge(capturedAt: number): string {
  * only advertise tools that exist in the loop it's steering, or the model
  * wastes a step calling a tool that resolves to "unknown tool".
  *
- * - Freestyle Cloud registers the search tools → `{ hasWebSearch: true }`,
- *   reproducing the historical prompt byte-for-byte.
- * - BYOK runs client tools only → `{ hasWebSearch: false }`.
+ * - Freestyle Cloud registers the search tools when EXA is configured →
+ *   `{ hasWebSearch: true }`, reproducing the historical prompt byte-for-byte.
+ * - BYOK (and cloud without EXA) runs client tools only →
+ *   `{ hasWebSearch: false }`.
  */
 export interface RemixAgentCapabilities {
   hasWebSearch: boolean;

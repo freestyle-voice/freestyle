@@ -330,6 +330,9 @@ export function MessageScroller({
     if (!content || !viewport) return;
 
     scheduleRailSync();
+    // characterData + subtree fires on every streamed token; scheduleRailSync
+    // re-reads all messages' textContent. rAF-coalesced and fine at chat
+    // message counts — revisit if threads grow long while streaming.
     const mutationObserver =
       typeof MutationObserver === "undefined"
         ? null

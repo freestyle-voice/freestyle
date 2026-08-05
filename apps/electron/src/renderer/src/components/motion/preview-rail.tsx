@@ -60,6 +60,12 @@ function DefaultPreview({ item }: { item: PreviewRailItem }) {
   );
 }
 
+/**
+ * Uses `m.*` (not `motion.*`) and so must render inside a `LazyMotion` provider.
+ * Today its only consumer is `MessageScroller`, rendered under remix-chat's
+ * `<LazyMotion features={domMax} strict>`. Any direct use elsewhere must supply
+ * that provider or `strict` mode will throw at runtime.
+ */
 export function PreviewRail({
   items,
   label = "Section navigation",

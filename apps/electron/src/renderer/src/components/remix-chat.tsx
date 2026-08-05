@@ -1,5 +1,12 @@
 import { useChat } from "@ai-sdk/react";
 import { REMIX_PRESETS, type RemixPreset } from "@freestyle-voice/validations";
+import { AgentActivity } from "@renderer/components/agents/agent-activity";
+import type { AgentActivityItem } from "@renderer/components/agents/agent-activity/types";
+import { AgentDisclosure } from "@renderer/components/agents/agent-disclosure";
+import { ThinkingShimmer } from "@renderer/components/agents/loading-states/thinking-shimmer";
+import { MessageScroller } from "@renderer/components/agents/message-scroller";
+import { PromptInput } from "@renderer/components/agents/prompt-input";
+import { StreamingResponse } from "@renderer/components/agents/streaming-response";
 import { capture } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 import {
@@ -12,6 +19,7 @@ import {
   type ToolUIPart,
   type UIMessage,
 } from "ai";
+import { domMax, LazyMotion } from "motion/react";
 import type React from "react";
 import {
   memo,
@@ -26,6 +34,11 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { RemixSelectionPayload } from "../../../shared/remix";
 import { FreestyleMark } from "./freestyle-mark";
+import {
+  REMIX_CHAT_STRIP,
+  REMIX_CHAT_SURFACE,
+  type RemixChatAnchor,
+} from "./remix-chat-surface";
 
 /**
  * The agent-lane chat card. Lives inside the pill's card surface; the thread
@@ -38,17 +51,26 @@ import { FreestyleMark } from "./freestyle-mark";
  * conversation; the pointer leaving the conversation shrinks it back.
  */
 
+/**
+ * The three ink tiers, set by measurement rather than by eye. On this surface
+ * (near-black over an arbitrary window) 58%/42% cream measure 5.5:1 and
+ * 3.75:1 — the faint tier was below the 4.5:1 floor while carrying the app
+ * name, the resumed line, every tool label and the composer's placeholder.
+ * 70%/52% clear 4.5:1 over both a light and a dark backdrop and still read as
+ * three distinct steps. Anything below DIM is decoration (rules, borders,
+ * empty marks) and never carries text.
+ */
 const INK = "rgba(245, 241, 228, 0.92)";
-const INK_DIM = "rgba(245, 241, 228, 0.58)";
-const INK_FAINT = "rgba(245, 241, 228, 0.42)";
+const INK_DIM = "rgba(245, 241, 228, 0.70)";
+const INK_FAINT = "rgba(245, 241, 228, 0.52)";
+/** The palette's olive, at the brightness the dark theme uses. */
+const OLIVE = "#8AB62A";
 
-export const REMIX_CHAT_SURFACE = { width: 408, height: 560 } as const;
-export const REMIX_CHAT_STRIP = { width: 320, height: 44 } as const;
-
-export interface RemixChatAnchor {
-  v: "top" | "bottom";
-  h: "right" | "center";
-}
+export {
+  REMIX_CHAT_STRIP,
+  REMIX_CHAT_SURFACE,
+  type RemixChatAnchor,
+} from "./remix-chat-surface";
 
 function anchoredLayerStyle(
   anchor: RemixChatAnchor,
@@ -78,13 +100,15 @@ export interface RemixChatProps {
   initialInstruction: string | null;
   /** Collapsed to the one-line activity strip. */
   minimized: boolean;
+  /** The strip layer's current height — the settled strip grows around the
+      agent's final message, and the host surface has to follow. */
+  onMiniHeightChange?: (height: number) => void;
   anchor: RemixChatAnchor;
   onExpand: () => void;
   onMinimize: () => void;
   onClose: () => void;
   /** The strip layer's current height — the settled strip grows around the
    * agent's final message, and the host surface has to grow with it. */
-  onMiniHeightChange?: (height: number) => void;
 }
 
 export function RemixChat(props: RemixChatProps): React.JSX.Element {
@@ -212,12 +236,12 @@ function MiniStrip(props: {
     // nobody.
     // biome-ignore lint/a11y/noStaticElementInteractions: see above
     <div
-      className="remix-chat"
+      className="remix-chat dark"
       data-testid="remix-chat-mini"
       onMouseEnter={props.onEnter}
     >
       <style>{REMIX_CHAT_CSS}</style>
-      <div className="remix-mini">
+      <div className="remix-mini" role="status" aria-live="polite">
         <span
           className="remix-mini-dot"
           data-busy={props.busy === true}
@@ -262,12 +286,12 @@ const MINI_IDLE_DISMISS_MS = 7000;
 
 /** How long the settled strip (final message included) lingers un-hovered. */
 const MINI_SETTLED_DISMISS_MS = 3000;
+const MINI_STRIP_PAD = 24; // .remix-mini[data-full] vertical padding
+const MINI_STRIP_MAX = 316; // main's 340 window cap minus the chrome
 
 // The settled strip shows the agent's final message in full. The strip layer
 // grows around it, and the window grows around the layer (main clamps the
 // window; past the cap the message scrolls inside the strip).
-const MINI_STRIP_PAD = 24; // .remix-mini[data-full] vertical padding
-const MINI_STRIP_MAX = 316; // main's 340 window cap minus the chrome
 
 function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const { thread, minimized, anchor, onExpand, onMinimize, onClose } = props;
@@ -292,7 +316,13 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   }, [props.context]);
   const lastInstructionRef = useRef<string>("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  /**
+   * The live draft, mirrored into a ref. The minimize choreography runs from a
+   * document-level listener and has to know whether anything is half-typed
+   * without re-subscribing on every keystroke; PromptInput owns the textarea
+   * itself, so there is no element to read the value off.
+   */
+  const draftRef = useRef<string>("");
 
   const transport = useMemo(
     () =>
@@ -530,18 +560,9 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     }
   }, [messages, thread.messages]);
 
-  const scrollPinnedRef = useRef(true);
-  const handleScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    scrollPinnedRef.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-  }, []);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll to the newest content whenever the thread grows, streaming starts, or the strip expands
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el && scrollPinnedRef.current) el.scrollTop = el.scrollHeight;
-  }, [messages, busy, minimized]);
+  // Following the newest output — and stopping when the reader scrolls up to
+  // read — is MessageScroller's job now; it does the same thing this used to
+  // do by hand, with the viewport transform that keeps streamed text crisp.
 
   // ---- Minimize on leave, expand on hover ----
   // Leave detection listens at the document level for the pointer exiting
@@ -571,7 +592,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     };
     const handleOut = (event: MouseEvent): void => {
       if (event.relatedTarget) return;
-      if (inputRef.current?.value.trim()) return;
+      if (draftRef.current.trim()) return;
       clearMinimizeTimer();
       minimizeTimerRef.current = setTimeout(() => {
         minimizeTimerRef.current = null;
@@ -599,6 +620,14 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     return () => document.removeEventListener("keydown", onKey);
   }, [minimized, onClose]);
 
+  /**
+   * The island holds one line, always. It used to grow to show the agent's
+   * final message in full, which meant measuring the rendered markdown and
+   * asking main to grow the window around it — but the island's job is to say
+   * what is happening while you keep working, and a block of prose expanding
+   * over your document is the opposite of that. The full answer is one hover
+   * away in the card.
+   */
   // Once the run settles, the strip stops narrating and shows the agent's
   // final message in full. The window has to grow around it: measure the
   // rendered message, grow the strip layer to fit, and ask main for the
@@ -707,15 +736,21 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     [clearError, sendMessage],
   );
 
-  const submit = useCallback(() => {
-    const text = input.trim();
-    if (!text || busy) return;
-    setInput("");
-    const el = inputRef.current;
-    if (el) el.style.height = "auto";
-    sendText(text);
-    capture("remix_message_sent", { source: "typed" });
-  }, [busy, input, sendText]);
+  const setDraft = useCallback((value: string) => {
+    draftRef.current = value;
+    setInput(value);
+  }, []);
+
+  const submit = useCallback(
+    (value?: string) => {
+      const text = (value ?? input).trim();
+      if (!text || busy) return;
+      setDraft("");
+      void sendText(text);
+      capture("remix_message_sent", { source: "typed" });
+    },
+    [busy, input, sendText, setDraft],
+  );
 
   /**
    * A preset chip: the fast lane, inside the chat surface. One-shot transform
@@ -797,223 +832,225 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     [busy, refreshContext, runPresetTransform],
   );
 
+  const presetActions = useMemo(
+    () =>
+      REMIX_PRESETS.map((preset) => ({
+        value: preset.id,
+        label: preset.label,
+        description: PRESET_BLURBS[preset.id],
+      })),
+    [],
+  );
+
+  const onPresetAction = useCallback(
+    (id: string) => {
+      const preset = REMIX_PRESETS.find((p) => p.id === id);
+      if (preset) void runPreset(preset);
+    },
+    [runPreset],
+  );
+
   return (
+    // The `dark` class is what lets the beUI components sit on this surface:
+    // they consume the app's semantic tokens, and Remix floats over the user's
+    // editor rather than over the app, so it commits to the dark palette in
+    // both themes instead of following the theme provider.
+    //
     // biome-ignore lint/a11y/noStaticElementInteractions: hover only cancels the minimize timer; every control inside has its own keyboard path and Esc closes the card
     <div
-      className="remix-chat"
+      className="remix-chat dark"
       data-minimized={minimized}
       data-testid={minimized ? "remix-chat-mini" : "remix-chat"}
       onMouseEnter={handleMouseEnter}
     >
       <style>{REMIX_CHAT_CSS}</style>
-
-      <div
-        className="remix-chat-face remix-chat-face-strip"
-        style={anchoredLayerStyle(anchor, {
-          width: REMIX_CHAT_STRIP.width,
-          height: miniStripHeight,
-        })}
-        aria-hidden={!minimized}
-      >
-        <div className="remix-mini" data-full={showFullFinal}>
-          <span
-            className="remix-mini-dot"
-            data-busy={busy || !settled}
-            data-failed={notice !== null}
-          />
-          {showFullFinal ? (
-            <div className="remix-mini-message" ref={miniMessageRef}>
-              <Markdown text={finalText ?? ""} />
-            </div>
-          ) : (
-            <span className="remix-mini-text">
-              {notice ?? latestActivity(messages, busy || !settled)}
-            </span>
-          )}
+      {/* domMax, not domAnimation: AgentActivity and PromptInput use
+          `layout="position"` and `AnimatePresence mode="popLayout"`, both of
+          which need layout projection and would silently do nothing on the
+          smaller set. `strict` keeps the vendored components honest — it
+          throws if one reaches for a full `motion.*` component instead of the
+          tree-shakeable `m.*` one. The whole module is code-split at the
+          `app.tsx` boundary, so none of this reaches the dictation path. */}
+      <LazyMotion features={domMax} strict>
+        <div
+          className="remix-chat-face remix-chat-face-strip"
+          style={anchoredLayerStyle(anchor, {
+            width: REMIX_CHAT_STRIP.width,
+            height: miniStripHeight,
+          })}
+          aria-hidden={!minimized}
+        >
+          <div className="remix-mini" data-full={showFullFinal}>
+            <span
+              className="remix-mini-dot"
+              data-busy={busy || !settled}
+              data-failed={notice !== null}
+            />
+            {showFullFinal ? (
+              <div className="remix-mini-message" ref={miniMessageRef}>
+                <Markdown text={finalText ?? ""} />
+              </div>
+            ) : busy || !settled ? (
+              // beUI's loading treatment: the label shimmers while the agent
+              // is still working, so the strip reads as live without a spinner
+              // competing with the user's document.
+              <ThinkingShimmer className="remix-mini-line">
+                {notice ?? latestActivity(messages, true)}
+              </ThinkingShimmer>
+            ) : (
+              <span className="remix-mini-line remix-mini-text">
+                {notice ?? latestActivity(messages, false)}
+              </span>
+            )}
+          </div>
         </div>
-      </div>
-
-      <div
-        className="remix-chat-face remix-chat-face-full"
-        style={anchoredLayerStyle(anchor, REMIX_CHAT_SURFACE)}
-        aria-hidden={minimized}
-      >
-        <div className="remix-chat-head">
-          <span className="remix-chat-title">
-            <FreestyleMark size={14} />
-            <span>Remix</span>
-            {props.context.appName ? (
-              <span className="remix-chat-app"> · {props.context.appName}</span>
-            ) : null}
-          </span>
-          <span className="remix-chat-actions">
-            <button
-              type="button"
-              className="remix-chat-ghost"
-              onClick={() => {
-                stop();
-                props.onNewThread();
-              }}
-              title="Start a new thread"
-            >
-              New thread
-            </button>
-            <button
-              type="button"
-              className="remix-chat-x"
-              onClick={() => {
-                stop();
-                onClose();
-              }}
-              aria-label="Close"
-              title="Close (Esc)"
-            >
-              <svg
-                width="10"
-                height="10"
-                viewBox="0 0 10 10"
-                aria-hidden="true"
-              >
-                <path
-                  d="M2 2l6 6M8 2l-6 6"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
-          </span>
-        </div>
-
-        {thread.resumed && messages.length > 0 && (
-          <div className="remix-chat-resumed">Continuing your last thread</div>
-        )}
 
         <div
-          className="remix-chat-scroll"
-          ref={scrollRef}
-          onScroll={handleScroll}
+          className="remix-chat-face remix-chat-face-full"
+          style={anchoredLayerStyle(anchor, REMIX_CHAT_SURFACE)}
+          aria-hidden={minimized}
         >
-          {messages.length === 0 && actions.length === 0 && !busy && (
-            <div className="remix-chat-empty">
-              {liveContext.text
-                ? "Say or type what to do with your selection, or pick a preset below."
-                : "Nothing selected — ask me to write, research, or answer."}
-            </div>
-          )}
-          {actions.map((action) => (
-            <div
-              key={action.id}
-              className="remix-chat-action"
-              data-failed={action.status === "failed"}
-            >
-              {action.status === "running"
-                ? `${action.label}…`
-                : action.status === "done"
-                  ? `${action.label} — replaced your text`
-                  : `${action.label} failed — ${action.detail ?? ""}`}
-            </div>
-          ))}
-          {messages.map((message) => (
-            <MessageRow key={message.id} message={message} />
-          ))}
-          {busy && (
-            <div className="remix-chat-busy" role="status" aria-live="polite">
-              Working…
-            </div>
-          )}
-        </div>
-
-        {notice && (
-          <div className="remix-chat-notice" role="status" aria-live="polite">
-            {notice}
-          </div>
-        )}
-
-        {!busy && messages.length === 0 && liveContext.text ? (
-          <div className="remix-chat-quick">
-            {REMIX_PRESETS.map((preset) => (
+          <div className="remix-chat-head">
+            <span className="remix-chat-title">
+              <FreestyleMark size={15} />
+              <span className="remix-chat-wordmark">Remix</span>
+              {props.context.appName ? (
+                <span className="remix-chat-app">{props.context.appName}</span>
+              ) : null}
+            </span>
+            <span className="remix-chat-actions">
               <button
-                key={preset.id}
                 type="button"
-                className="remix-chat-chip"
-                onClick={() => void runPreset(preset)}
+                className="remix-chat-icon"
+                onClick={() => {
+                  stop();
+                  props.onNewThread();
+                }}
+                aria-label="Start a new thread"
+                title="Start a new thread"
               >
-                {preset.label}
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 14 14"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M7 2.5v9M2.5 7h9"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
               </button>
-            ))}
+              <button
+                type="button"
+                className="remix-chat-icon"
+                onClick={() => {
+                  stop();
+                  onClose();
+                }}
+                aria-label="Close"
+                title="Close (Esc)"
+              >
+                <svg
+                  width="11"
+                  height="11"
+                  viewBox="0 0 10 10"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M2 2l6 6M8 2l-6 6"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </span>
           </div>
-        ) : null}
 
-        <div className="remix-chat-composer">
-          <textarea
-            ref={inputRef}
-            className="remix-chat-input"
-            rows={1}
+          {thread.resumed && messages.length > 0 && (
+            <div className="remix-chat-resumed">
+              Continuing your last thread
+            </div>
+          )}
+
+          <MessageScroller
+            className="remix-chat-scroll"
+            viewportRef={scrollRef}
+            busy={busy}
+            label="Remix conversation"
+            contentClassName="remix-chat-thread"
+          >
+            {messages.length === 0 && actions.length === 0 && !busy && (
+              <div className="remix-chat-empty">
+                {liveContext.text
+                  ? "Say or type what to do with your selection."
+                  : "Nothing selected — ask me to write, research, or answer."}
+              </div>
+            )}
+            {actions.map((action) => (
+              <div
+                key={action.id}
+                className="remix-chat-action"
+                data-failed={action.status === "failed"}
+              >
+                {action.status === "running"
+                  ? `${action.label}…`
+                  : action.status === "done"
+                    ? `${action.label} — replaced your text`
+                    : `${action.label} failed — ${action.detail ?? ""}`}
+              </div>
+            ))}
+            {messages.map((message) => (
+              <MessageRow key={message.id} message={message} busy={busy} />
+            ))}
+          </MessageScroller>
+
+          {notice && (
+            <div className="remix-chat-notice" role="alert">
+              {notice}
+            </div>
+          )}
+
+          <PromptInput
+            className="remix-chat-prompt"
             value={input}
+            onValueChange={setDraft}
             aria-label="Message Remix"
             placeholder={busy ? "Working…" : "Message Remix…"}
-            onChange={(e) => {
-              setInput(e.target.value);
-              const el = e.currentTarget;
-              el.style.height = "auto";
-              el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-            }}
+            actions={liveContext.text ? presetActions : []}
+            onAction={onPresetAction}
+            onSubmit={(value) => submit(value)}
+            loading={busy}
+            onStop={() => stop()}
+            minRows={1}
+            maxRows={5}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === "Escape") {
                 e.preventDefault();
-                submit();
+                stop();
+                onClose();
               }
             }}
           />
-          {busy ? (
-            <button
-              type="button"
-              className="remix-chat-send"
-              onClick={() => stop()}
-              aria-label="Stop"
-              title="Stop"
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 12 12"
-                aria-hidden="true"
-              >
-                <rect x="1.5" y="1.5" width="9" height="9" rx="2" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="remix-chat-send"
-              disabled={!input.trim()}
-              onClick={submit}
-              aria-label="Send"
-              title="Send"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 16 16"
-                aria-hidden="true"
-              >
-                <path
-                  d="M8 12.8V3.6M4.1 7.4 8 3.5l3.9 3.9"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-          )}
         </div>
-      </div>
+      </LazyMotion>
     </div>
   );
 }
+
+/**
+ * What each preset actually does, for the composer's action menu. The chips
+ * used to sit above the composer in the empty state only; as menu items they
+ * are reachable from every state, and there is room to say what they do.
+ */
+const PRESET_BLURBS: Record<string, string> = {
+  fix: "Correct mistakes, leave the voice alone",
+  formal: "Raise the register, keep the position",
+  markdown: "Format the structure it already has",
+};
 
 const TOOL_LABELS: Record<string, { doing: string; done: string }> = {
   get_context: {
@@ -1086,10 +1123,21 @@ function latestActivity(messages: UIMessage[], busy: boolean): string {
   return busy ? "Thinking…" : "Freestyle Remix";
 }
 
+/**
+ * One assistant turn, laid out as a record rather than a chat log: the tool
+ * calls collapse into a single activity line once the run settles, and the
+ * prose that follows carries the actions you would otherwise have to ask for.
+ *
+ * Runs of consecutive tool parts are grouped, so a turn that reads three
+ * things, writes, then explains itself shows one activity block and one
+ * answer instead of five stacked rows saying almost the same thing.
+ */
 const MessageRow = memo(function MessageRow({
   message,
+  busy,
 }: {
   message: UIMessage;
+  busy: boolean;
 }): React.JSX.Element {
   if (message.role === "user") {
     const text = message.parts
@@ -1098,23 +1146,222 @@ const MessageRow = memo(function MessageRow({
       .join("");
     return <div className="remix-chat-user">{text}</div>;
   }
+
+  const blocks: Array<
+    | { kind: "tools"; parts: Array<ToolUIPart | DynamicToolUIPart> }
+    | { kind: "text"; text: string; index: number }
+  > = [];
+  message.parts.forEach((part, index) => {
+    if (isToolOrDynamicToolUIPart(part)) {
+      const last = blocks[blocks.length - 1];
+      if (last?.kind === "tools") last.parts.push(part);
+      else blocks.push({ kind: "tools", parts: [part] });
+    } else if (isTextUIPart(part) && part.text.trim()) {
+      blocks.push({ kind: "text", text: part.text, index });
+    }
+  });
+
+  // Only the turn's last text block is still streaming; earlier ones settled
+  // the moment the next block started.
+  const lastTextIndex = blocks.reduce(
+    (acc, block, i) => (block.kind === "text" ? i : acc),
+    -1,
+  );
+
   return (
     <div className="remix-chat-assistant">
-      {message.parts.map((part, index) => {
-        if (isTextUIPart(part)) {
-          return part.text.trim() ? (
-            // eslint-disable-next-line react/no-array-index-key
-            <Markdown key={index} text={part.text} />
-          ) : null;
-        }
-        if (isToolOrDynamicToolUIPart(part)) {
-          return <ToolRow key={part.toolCallId} part={part} />;
-        }
-        return null;
-      })}
+      {blocks.map((block, i) =>
+        block.kind === "tools" ? (
+          <ToolActivity
+            key={block.parts[0].toolCallId}
+            parts={block.parts}
+            busy={busy}
+          />
+        ) : (
+          <AssistantText
+            key={`text-${block.index}`}
+            text={block.text}
+            busy={busy && i === lastTextIndex}
+          />
+        ),
+      )}
     </div>
   );
 });
+
+/** The agent's prose. The actions belong to the agent, not to a button row. */
+function AssistantText({
+  text,
+  busy,
+}: {
+  text: string;
+  busy: boolean;
+}): React.JSX.Element {
+  return (
+    <StreamingResponse
+      status={busy ? "streaming" : "complete"}
+      announce={false}
+      className="remix-chat-response"
+      showActions={false}
+    >
+      <Markdown text={text} />
+    </StreamingResponse>
+  );
+}
+
+/** Render a tool payload for the expanded row. */
+function pretty(value: unknown): string {
+  if (value === undefined || value === null) return "—";
+  try {
+    const text =
+      typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    return text.length > 2400 ? `${text.slice(0, 2400)}…` : text;
+  } catch {
+    return String(value);
+  }
+}
+
+/**
+ * One row inside the activity block: the sentence, and — for anyone who wants
+ * to know exactly what the agent did — the call's raw input and output. The
+ * summary is for reading; this is for debugging, so it stays one click away
+ * rather than being folded into prose.
+ */
+function ToolStepLabel({
+  part,
+  label,
+}: {
+  part: ToolUIPart | DynamicToolUIPart;
+  label: string;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const finished =
+    part.state === "output-available" || part.state === "output-error";
+  return (
+    <span className="remix-chat-step">
+      <button
+        type="button"
+        className="remix-chat-step-head"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="remix-chat-step-label">{label}</span>
+        <svg
+          className="remix-chat-step-chevron"
+          data-open={open}
+          width="8"
+          height="8"
+          viewBox="0 0 8 8"
+          aria-hidden="true"
+        >
+          <path
+            d="M2.5 1.5 5.5 4 2.5 6.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      <AgentDisclosure open={open}>
+        {/* Spans, not <pre>/<div>: AgentActivity renders a row's label inside
+            a <span>, and flow content nested in phrasing content is invalid.
+            `.remix-chat-step-pre` carries the block layout and the pre-wrap
+            whitespace instead. */}
+        <span className="remix-chat-step-body">
+          <span className="remix-chat-step-key">Input</span>
+          <span className="remix-chat-step-pre">{pretty(part.input)}</span>
+          {finished && (
+            <>
+              <span className="remix-chat-step-key">Output</span>
+              <span className="remix-chat-step-pre">
+                {pretty(
+                  part.state === "output-error" ? part.errorText : part.output,
+                )}
+              </span>
+            </>
+          )}
+        </span>
+      </AgentDisclosure>
+    </span>
+  );
+}
+
+/**
+ * A run of tool calls as one activity block. While the run is live it stays
+ * open and narrates what is happening; once it settles it folds to a single
+ * "Ran 3 tools" line that opens again on demand — and each row inside opens
+ * further, onto the raw call.
+ */
+function ToolActivity({
+  parts,
+  busy,
+}: {
+  parts: Array<ToolUIPart | DynamicToolUIPart>;
+  busy: boolean;
+}): React.JSX.Element {
+  const items: AgentActivityItem[] = parts.map((part) => {
+    const name = getToolOrDynamicToolName(part);
+    const labels = TOOL_LABELS[name] ?? {
+      doing: `Running ${name}…`,
+      done: `Ran ${name}`,
+    };
+    const finished =
+      part.state === "output-available" || part.state === "output-error";
+    const output =
+      part.state === "output-available" &&
+      typeof part.output === "object" &&
+      part.output !== null
+        ? (part.output as { ok?: boolean })
+        : null;
+    const failed = part.state === "output-error" || output?.ok === false;
+    return {
+      id: part.toolCallId,
+      type: "step",
+      label: (
+        <ToolStepLabel
+          part={part}
+          label={failed ? `${labels.done} — didn't work` : labels.done}
+        />
+      ),
+      status: finished ? "complete" : "active",
+      meta: finished ? undefined : "…",
+    };
+  });
+
+  const inFlight = parts.find(
+    (part) =>
+      part.state !== "output-available" && part.state !== "output-error",
+  );
+
+  /**
+   * Step rows read as sentences ("Read your selection"), which is what we
+   * want in the list — but a step-typed block summarises itself as "Thought
+   * for 4s", and these are things done to the document, not thinking. The
+   * explicit summary says what actually happened; the live label narrates the
+   * tool that is running rather than a generic "Working through it".
+   */
+  const summary = `Ran ${parts.length} ${parts.length === 1 ? "tool" : "tools"}`;
+  const activeLabel = inFlight
+    ? (TOOL_LABELS[getToolOrDynamicToolName(inFlight)]?.doing ??
+      `Running ${getToolOrDynamicToolName(inFlight)}…`)
+    : undefined;
+
+  return (
+    <AgentActivity
+      className="remix-chat-activity"
+      items={items}
+      contentType="step"
+      // The default 208px viewport is sized for one-line rows; these open onto
+      // raw payloads, and this panel is 560px tall.
+      maxHeight={280}
+      summary={summary}
+      activeLabel={activeLabel}
+      status={inFlight && busy ? "working" : "complete"}
+    />
+  );
+}
 
 const Markdown = memo(function Markdown({
   text,
@@ -1141,92 +1388,6 @@ const Markdown = memo(function Markdown({
   );
 });
 
-/** Render a tool payload for the expanded row. */
-function pretty(value: unknown): string {
-  if (value === undefined || value === null) return "—";
-  try {
-    const text =
-      typeof value === "string" ? value : JSON.stringify(value, null, 2);
-    return text.length > 2400 ? `${text.slice(0, 2400)}…` : text;
-  } catch {
-    return String(value);
-  }
-}
-
-/**
- * A tool call in the thread: one quiet line, expandable to the raw input and
- * output for anyone who wants to see exactly what the agent did.
- */
-function ToolRow({
-  part,
-}: {
-  part: ToolUIPart | DynamicToolUIPart;
-}): React.JSX.Element {
-  const [open, setOpen] = useState(false);
-  const name = getToolOrDynamicToolName(part);
-  const labels = TOOL_LABELS[name] ?? {
-    doing: `Running ${name}…`,
-    done: name,
-  };
-  const finished =
-    part.state === "output-available" || part.state === "output-error";
-  const output =
-    part.state === "output-available" &&
-    typeof part.output === "object" &&
-    part.output !== null
-      ? (part.output as { ok?: boolean })
-      : null;
-  const failed = part.state === "output-error" || output?.ok === false;
-  return (
-    <div className="remix-chat-tool" data-failed={failed}>
-      <button
-        type="button"
-        className="remix-chat-tool-head"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <svg
-          className="remix-chat-tool-chevron"
-          data-open={open}
-          width="8"
-          height="8"
-          viewBox="0 0 8 8"
-          aria-hidden="true"
-        >
-          <path
-            d="M2.5 1.5 5.5 4 2.5 6.5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <span className="remix-chat-tool-label">
-          {finished ? labels.done : labels.doing}
-          {failed ? " — didn't work" : ""}
-        </span>
-      </button>
-      {open && (
-        <div className="remix-chat-tool-body">
-          <div className="remix-chat-tool-key">Input</div>
-          <pre className="remix-chat-tool-pre">{pretty(part.input)}</pre>
-          {finished && (
-            <>
-              <div className="remix-chat-tool-key">Output</div>
-              <pre className="remix-chat-tool-pre">
-                {pretty(
-                  part.state === "output-error" ? part.errorText : part.output,
-                )}
-              </pre>
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 const REMIX_CHAT_CSS = `
   .remix-chat {
     position: relative;
@@ -1252,7 +1413,6 @@ const REMIX_CHAT_CSS = `
     display: flex;
     flex-direction: column;
     min-height: 0;
-    padding: 12px 14px 13px;
     opacity: 1;
     visibility: visible;
     transition: opacity 220ms ease 60ms, visibility 0s;
@@ -1264,20 +1424,24 @@ const REMIX_CHAT_CSS = `
     transition: opacity 110ms ease, visibility 0s 110ms;
   }
 
-  /* ---- The minimized strip ---- */
+  /* ---- The minimized strip ----
+     Sized to one short line rather than to a fixed 320px, and inset a little
+     tighter on the mark side: a small round dot reads as further in than a
+     straight edge does, so matching the two numerically leaves it looking
+     low-left. */
   .remix-mini {
     display: flex;
     align-items: center;
     gap: 9px;
     height: 100%;
-    padding: 0 16px;
+    padding: 0 16px 0 13px;
   }
   .remix-mini-dot {
     flex-shrink: 0;
     width: 7px;
     height: 7px;
     border-radius: 999px;
-    background: rgba(245, 241, 228, 0.45);
+    background: ${OLIVE};
   }
   .remix-mini-dot[data-busy="true"] {
     background: #F5F1E4;
@@ -1303,15 +1467,19 @@ const REMIX_CHAT_CSS = `
     line-height: 1.5;
     color: ${INK_DIM};
   }
-  .remix-mini-text {
+  /* Layout only. The shimmering face paints its own colour through
+     background-clip:text, and a colour declared here would sit on top of the
+     gradient and hide it — so the cream lives on .remix-mini-text, which the
+     settled face adds and the shimmering one does not. */
+  .remix-mini-line {
     flex: 1;
     min-width: 0;
     font-size: 12px;
-    color: ${INK_DIM};
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .remix-mini-text { color: ${INK_DIM}; }
 
   /* ---- The full conversation ---- */
   /* No drag region here: Electron routes pointer events over a drag region
@@ -1322,85 +1490,76 @@ const REMIX_CHAT_CSS = `
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 2px 2px 10px;
+    gap: 10px;
+    padding: 14px 16px 11px;
   }
   .remix-chat-title {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 9px;
     min-width: 0;
-    font-weight: 600;
-    font-size: 13px;
   }
-  .remix-chat-title svg { flex-shrink: 0; color: rgba(245, 241, 228, 0.85); }
+  .remix-chat-title svg { flex-shrink: 0; color: ${OLIVE}; }
+  .remix-chat-wordmark {
+    font-family: "Instrument Serif", Georgia, serif;
+    font-size: 20px;
+    line-height: 1;
+    color: ${INK};
+  }
   .remix-chat-app {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
     color: ${INK_FAINT};
-    font-weight: 400;
+    border: 1px solid rgba(245, 241, 228, 0.13);
+    border-radius: 5px;
+    padding: 3px 6px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .remix-chat-actions { display: flex; align-items: center; gap: 6px; }
-  .remix-chat-x {
-    width: 22px;
-    height: 22px;
+  .remix-chat-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  .remix-chat-icon {
+    width: 26px;
+    height: 26px;
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     border: none;
     border-radius: 7px;
-    background: rgba(245, 241, 228, 0.09);
-    color: ${INK_DIM};
-    cursor: pointer;
-  }
-  .remix-chat-x:hover { background: rgba(245, 241, 228, 0.16); color: ${INK}; }
-  .remix-chat-ghost {
-    border: none;
-    background: rgba(245, 241, 228, 0.09);
-    color: ${INK_DIM};
-    font-size: 10.5px;
-    padding: 3px 8px;
-    border-radius: 7px;
-    cursor: pointer;
-  }
-  .remix-chat-ghost:hover { background: rgba(245, 241, 228, 0.16); color: ${INK}; }
-  .remix-chat-resumed {
-    font-size: 10.5px;
+    background: none;
     color: ${INK_FAINT};
-    padding: 0 2px 6px;
-  }
-  .remix-chat-chip {
-    display: inline-flex;
-    align-items: center;
-    border: 1px solid rgba(245, 241, 228, 0.13);
-    background: rgba(245, 241, 228, 0.07);
-    color: ${INK};
-    font-size: 11px;
-    line-height: 1;
-    padding: 5px 10px;
-    border-radius: 999px;
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     cursor: pointer;
+    transition: background 140ms ease, color 140ms ease;
   }
-  .remix-chat-chip:hover { background: rgba(245, 241, 228, 0.15); }
-  .remix-chat-quick {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    padding: 8px 2px 0;
+  .remix-chat-icon:hover { background: rgba(245, 241, 228, 0.08); color: ${INK}; }
+  .remix-chat-resumed {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: ${INK_FAINT};
+    padding: 0 18px 6px;
   }
-  .remix-chat-scroll {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
+
+  /* ---- The thread ---- */
+  .remix-chat-scroll { flex: 1; min-height: 0; }
+  .remix-chat-thread {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 2px;
+    gap: 12px;
+    padding: 4px 18px 12px;
+    min-height: 100%;
+  }
+  /* A short thread rests on the composer instead of hanging off the header.
+     An auto-margin spacer does this without the flex-end scroll clipping. */
+  .remix-chat-thread::before { content: ""; margin-top: auto; }
+  .remix-chat-empty {
+    color: ${INK_FAINT};
+    line-height: 1.5;
+    font-size: 13px;
   }
   /* Scrollbars on the ink surface: thin, cream-tinted, no track — the
      default light scrollbar reads as a bright stripe against the dark card. */
@@ -1418,68 +1577,74 @@ const REMIX_CHAT_CSS = `
     border: 3px solid transparent;
     background-clip: padding-box;
   }
-  .remix-chat-empty { color: ${INK_FAINT}; padding-top: 8px; line-height: 1.45; }
   .remix-chat-user {
     align-self: flex-end;
-    max-width: 85%;
+    max-width: 88%;
     background: rgba(245, 241, 228, 0.13);
-    border-radius: 14px 14px 4px 14px;
-    padding: 7px 11px;
-    line-height: 1.45;
+    border-radius: 13px 13px 4px 13px;
+    padding: 8px 12px;
+    line-height: 1.5;
+    color: ${INK};
     white-space: pre-wrap;
     word-break: break-word;
   }
   .remix-chat-assistant {
-    align-self: flex-start;
-    max-width: 94%;
+    align-self: stretch;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 10px;
+    min-width: 0;
   }
+  .remix-chat-activity { font-size: 11.5px; }
+  .remix-chat-response { font-size: 13px; }
 
-  /* ---- Tool rows ---- */
-  .remix-chat-tool {
-    border-left: 2px solid rgba(245, 241, 228, 0.18);
-    padding-left: 7px;
-  }
-  .remix-chat-tool[data-failed="true"] { border-left-color: rgba(224, 128, 95, 0.55); }
-  .remix-chat-tool-head {
-    display: inline-flex;
+  /* An activity row, opened onto the raw call. The sentence is the summary;
+     this is for checking what actually went over the wire. */
+  .remix-chat-step { display: block; min-width: 0; }
+  .remix-chat-step-head {
+    display: flex;
     align-items: center;
     gap: 6px;
+    width: 100%;
     border: none;
     background: none;
     padding: 0;
-    font-size: 11px;
-    color: ${INK_FAINT};
-    cursor: pointer;
+    color: inherit;
+    font: inherit;
     text-align: left;
+    cursor: pointer;
   }
-  .remix-chat-tool-head:hover { color: ${INK_DIM}; }
-  .remix-chat-tool[data-failed="true"] .remix-chat-tool-head {
-    color: rgba(224, 128, 95, 0.85);
+  .remix-chat-step-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .remix-chat-tool-chevron {
+  .remix-chat-step-chevron {
     flex-shrink: 0;
-    transition: transform 140ms ease;
+    opacity: 0.5;
+    transition: transform 140ms ease, opacity 140ms ease;
   }
-  .remix-chat-tool-chevron[data-open="true"] { transform: rotate(90deg); }
-  .remix-chat-tool-body { padding: 5px 0 2px; }
-  .remix-chat-tool-key {
-    font-size: 9.5px;
+  .remix-chat-step-head:hover .remix-chat-step-chevron { opacity: 1; }
+  .remix-chat-step-chevron[data-open="true"] { transform: rotate(90deg); opacity: 1; }
+  .remix-chat-step-body { display: block; padding: 5px 0 3px; }
+  .remix-chat-step-key {
+    display: block;
+    font-size: 9px;
     font-weight: 600;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: ${INK_FAINT};
     padding: 3px 0 2px;
   }
-  .remix-chat-tool-pre {
+  .remix-chat-step-pre {
+    display: block;
     margin: 0;
     padding: 6px 8px;
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.28);
     border: 1px solid rgba(245, 241, 228, 0.08);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     font-size: 10px;
     line-height: 1.45;
     color: ${INK_DIM};
@@ -1490,22 +1655,26 @@ const REMIX_CHAT_CSS = `
   }
 
   .remix-chat-action {
-    font-size: 11px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
     color: ${INK_FAINT};
-    border-left: 2px solid rgba(245, 241, 228, 0.18);
-    padding-left: 7px;
   }
-  .remix-chat-action[data-failed="true"] { color: rgba(224, 128, 95, 0.85); }
-  .remix-chat-busy { color: ${INK_FAINT}; font-size: 11px; }
+  .remix-chat-action[data-failed="true"] { color: rgba(224, 128, 95, 0.9); }
   .remix-chat-notice {
     font-size: 11px;
-    color: rgba(224, 128, 95, 0.9);
-    padding: 6px 2px 0;
+    color: rgba(224, 128, 95, 0.95);
+    padding: 6px 18px 0;
     line-height: 1.35;
   }
 
+  /* PromptInput's root carries \`w-full\`, so a plain margin would push it
+     12px past the panel's right edge. \`width: auto\` lets the margins size it. */
+  .remix-chat-prompt { width: auto; margin: 0 12px 12px; }
+
   /* ---- Markdown ---- */
-  .remix-md { line-height: 1.5; word-break: break-word; }
+  .remix-md { line-height: 1.6; word-break: break-word; }
   .remix-md > *:first-child { margin-top: 0; }
   .remix-md > *:last-child { margin-bottom: 0; }
   .remix-md p { margin: 0 0 8px; }
@@ -1521,12 +1690,14 @@ const REMIX_CHAT_CSS = `
   .remix-md ul, .remix-md ol { margin: 0 0 8px; padding-left: 18px; }
   .remix-md li { margin: 2px 0; }
   .remix-md li > ul, .remix-md li > ol { margin-bottom: 0; }
-  .remix-md a { color: #9CC2E8; text-decoration: underline; text-underline-offset: 2px; }
-  .remix-md a:hover { color: #BAD6F2; }
+  /* Olive, not the blue this panel used to reach for — that hue exists
+     nowhere else in Freestyle. */
+  .remix-md a { color: ${OLIVE}; text-decoration: underline; text-underline-offset: 2px; }
+  .remix-md a:hover { color: #A6D03F; }
   .remix-md strong { font-weight: 600; color: ${INK}; }
   .remix-md em { font-style: italic; }
   .remix-md code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
     font-size: 11px;
     background: rgba(245, 241, 228, 0.1);
     border-radius: 4px;
@@ -1540,16 +1711,11 @@ const REMIX_CHAT_CSS = `
     border: 1px solid rgba(245, 241, 228, 0.08);
     overflow-x: auto;
   }
-  .remix-md pre code {
-    background: none;
-    padding: 0;
-    font-size: 10.5px;
-    line-height: 1.5;
-  }
+  .remix-md pre code { background: none; padding: 0; font-size: 10.5px; line-height: 1.5; }
   .remix-md blockquote {
     margin: 0 0 8px;
-    padding-left: 9px;
-    border-left: 2px solid rgba(245, 241, 228, 0.22);
+    padding-left: 11px;
+    border-left: 1px solid rgba(245, 241, 228, 0.22);
     color: ${INK_DIM};
   }
   .remix-md hr {
@@ -1557,62 +1723,11 @@ const REMIX_CHAT_CSS = `
     border-top: 1px solid rgba(245, 241, 228, 0.14);
     margin: 10px 0;
   }
-  .remix-md table {
-    border-collapse: collapse;
-    margin: 0 0 8px;
-    font-size: 11.5px;
-  }
+  .remix-md table { border-collapse: collapse; margin: 0 0 8px; font-size: 11.5px; }
   .remix-md th, .remix-md td {
     border: 1px solid rgba(245, 241, 228, 0.16);
     padding: 4px 8px;
     text-align: left;
   }
   .remix-md th { background: rgba(245, 241, 228, 0.06); font-weight: 600; }
-
-  /* ---- Composer ---- */
-  .remix-chat-composer {
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-    margin-top: 10px;
-    padding: 8px 8px 8px 13px;
-    border: 1px solid rgba(245, 241, 228, 0.16);
-    background: rgba(245, 241, 228, 0.05);
-    border-radius: 14px;
-    transition: border-color 140ms ease;
-  }
-  .remix-chat-composer:focus-within { border-color: rgba(245, 241, 228, 0.34); }
-  .remix-chat-input {
-    flex: 1;
-    resize: none;
-    border: none;
-    background: transparent;
-    color: ${INK};
-    font-size: 12.5px;
-    line-height: 1.45;
-    font-family: inherit;
-    outline: none;
-    padding: 5px 0;
-    min-height: 20px;
-    max-height: 120px;
-  }
-  .remix-chat-input::placeholder { color: ${INK_FAINT}; }
-  .remix-chat-send {
-    width: 28px;
-    height: 28px;
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    border-radius: 999px;
-    background: rgba(245, 241, 228, 0.92);
-    color: rgba(24, 22, 18, 0.95);
-    cursor: pointer;
-    transition: opacity 140ms ease, transform 140ms ease;
-  }
-  .remix-chat-send svg rect { fill: currentColor; }
-  .remix-chat-send:disabled { opacity: 0.3; cursor: default; }
-  .remix-chat-send:not(:disabled):hover { transform: scale(1.06); }
-  .remix-chat-send:not(:disabled):active { transform: scale(0.95); }
 `;

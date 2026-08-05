@@ -3,8 +3,7 @@ import { FreestyleMark } from "@renderer/components/freestyle-mark";
 import {
   REMIX_CHAT_STRIP,
   REMIX_CHAT_SURFACE,
-  RemixChat,
-} from "@renderer/components/remix-chat";
+} from "@renderer/components/remix-chat-surface";
 import { capture } from "@renderer/lib/analytics";
 import {
   apiFetch,
@@ -20,7 +19,14 @@ import {
 } from "@renderer/lib/cleanup-app-context";
 import { Recorder, RecorderSupersededError } from "@renderer/lib/recorder";
 import { Streamer, type StreamerConnectionState } from "@renderer/lib/streamer";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
@@ -34,6 +40,22 @@ import {
   type RemixSelectionPayload,
 } from "../../../shared/remix";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
+
+/**
+ * Remix is loaded on first open, not at startup.
+ *
+ * This window's hot path is dictation — the capsule and its waveform are up on
+ * every utterance and run on a plain rAF loop. The chat brings the beUI agent
+ * components and Motion's layout-projection features with it (~385kB), none of
+ * which the waveform wants. Splitting here keeps that out of the chunk that has
+ * to parse before the first frame; the sizes it needs on every render come from
+ * `remix-chat-surface`, which stays statically imported.
+ */
+const RemixChat = lazy(() =>
+  import("@renderer/components/remix-chat").then((mod) => ({
+    default: mod.RemixChat,
+  })),
+);
 
 const BARS = 10;
 const RISE = 0.55;
@@ -3921,26 +3943,28 @@ export default function AppPage(): React.JSX.Element {
               }}
             >
               {chatView && (
-                <RemixChat
-                  context={
-                    remixContextRef.current ?? {
-                      text: chatView.selection,
-                      appName: null,
-                      windowTitle: null,
-                      capturedAt: Date.now(),
+                <Suspense fallback={null}>
+                  <RemixChat
+                    context={
+                      remixContextRef.current ?? {
+                        text: chatView.selection,
+                        appName: null,
+                        windowTitle: null,
+                        capturedAt: Date.now(),
+                      }
                     }
-                  }
-                  initialInstruction={chatView.initialInstruction ?? null}
-                  minimized={chatMiniVisual}
-                  anchor={{
-                    v: pillAlign === "start" ? "top" : "bottom",
-                    h: pillSide === "right" ? "right" : "center",
-                  }}
-                  onExpand={expandRemixChat}
-                  onMinimize={minimizeRemixChat}
-                  onClose={closeRemix}
-                  onMiniHeightChange={setRemixMiniHeight}
-                />
+                    initialInstruction={chatView.initialInstruction ?? null}
+                    minimized={chatMiniVisual}
+                    anchor={{
+                      v: pillAlign === "start" ? "top" : "bottom",
+                      h: pillSide === "right" ? "right" : "center",
+                    }}
+                    onExpand={expandRemixChat}
+                    onMinimize={minimizeRemixChat}
+                    onClose={closeRemix}
+                    onMiniHeightChange={setRemixMiniHeight}
+                  />
+                </Suspense>
               )}
             </div>
           </div>

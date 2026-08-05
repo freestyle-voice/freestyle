@@ -17,5 +17,8 @@
     "lib": "@renderer/lib",
     "hooks": "@renderer/hooks"
   },
-  "iconLibrary": "lucide"
+  "iconLibrary": "lucide",
+  "registries": {
+    "@beui": "https://beui.dev/r/{name}.json"
+  }
 }

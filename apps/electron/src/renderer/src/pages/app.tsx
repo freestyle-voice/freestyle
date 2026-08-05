@@ -15,6 +15,7 @@ import {
 } from "@renderer/lib/api";
 import {
   applyNeedsAppContextForCleanup,
+  getNeedsAppContextForCleanup,
   refreshNeedsAppContextForCleanup,
 } from "@renderer/lib/cleanup-app-context";
 import { Recorder, RecorderSupersededError } from "@renderer/lib/recorder";
@@ -1519,8 +1520,10 @@ export default function AppPage(): React.JSX.Element {
         getStreamer().setContext(null);
       } catch {}
 
-      void refreshNeedsAppContextForCleanup().then((needsAppContext) => {
-        if (!needsAppContext || !wantsMicRef.current) return;
+      // Whether cleanup routing needs the frontmost app is read from the cache
+      // primed at mount and kept fresh by the `cleanup-context-changed` IPC —
+      // no per-recording GET /api/settings on this hot path.
+      if (getNeedsAppContextForCleanup()) {
         void window.api
           ?.getFrontmostApp()
           .then((app) => {
@@ -1537,7 +1540,7 @@ export default function AppPage(): React.JSX.Element {
               getStreamer().setContext(null);
             } catch {}
           });
-      });
+      }
 
       // Keep initializing as bookkeeping; the waveform starts at rest.
       setPillState("initializing");
@@ -2432,6 +2435,12 @@ export default function AppPage(): React.JSX.Element {
         _audioPlaybackMode = normalizeAudioPlaybackMode(mode);
       },
     );
+    // A cleanup-relevant setting (llm_cleanup / a cleanup tone) changed in the
+    // dashboard. Refresh the cached routing decision once here so startRecording
+    // reads it synchronously instead of fetching /api/settings every press.
+    const removeCleanupContext = window.api?.onCleanupContextChanged(() => {
+      void refreshNeedsAppContextForCleanup();
+    });
     // The server target (URL/token) changed in Settings. Re-point this window's
     // API client and tear down the streamer so its next connection uses the new
     // server — no app restart needed. A fresh streamer is created immediately so
@@ -2453,6 +2462,7 @@ export default function AppPage(): React.JSX.Element {
       removeCancelMode?.();
       removeAudioDucking?.();
       removeAudioPlaybackMode?.();
+      removeCleanupContext?.();
       removeServerChanged?.();
     };
   }, [applyPillPosition, getStreamer]);

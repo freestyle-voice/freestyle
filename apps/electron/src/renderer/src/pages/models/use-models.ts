@@ -6,7 +6,12 @@ import type {
   WhisperStatus,
 } from "@renderer/lib/models";
 import { IS_MAC } from "@renderer/lib/platform";
-import { SETTINGS_QUERY_KEY, settingsQueryOptions } from "@renderer/lib/query";
+import {
+  AVAILABLE_MODELS_QUERY_KEY,
+  availableModelsQueryOptions,
+  SETTINGS_QUERY_KEY,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
@@ -28,7 +33,7 @@ export type { EndpointConnectState } from "./use-endpoint-connect";
 // Query keys for the models page. `["models", ...]` is a family so a single
 // invalidate refreshes both available + configured.
 const MODELS_KEYS = {
-  available: ["models", "available"] as const,
+  available: AVAILABLE_MODELS_QUERY_KEY,
   configured: ["models", "configured"] as const,
   keys: ["api-keys"] as const,
   settings: SETTINGS_QUERY_KEY,
@@ -133,14 +138,7 @@ export function useModels(): UseModels {
   // Server data (React Query)
   // -------------------------------------------------------------------------
 
-  const availableQuery = useQuery({
-    queryKey: MODELS_KEYS.available,
-    queryFn: async () => {
-      const res = await getClient().api.models.available.$get();
-      if (!res.ok) throw new Error("Failed to load available models");
-      return (await res.json()) as AvailableModel[];
-    },
-  });
+  const availableQuery = useQuery(availableModelsQueryOptions());
 
   const configuredQuery = useQuery({
     queryKey: MODELS_KEYS.configured,
@@ -542,6 +540,11 @@ export function useModels(): UseModels {
       .api.settings[":key"].$put({
         param: { key: SETTINGS_KEYS.llmCleanup },
         json: { value: String(next) },
+      })
+      .then(() => {
+        // Toggling cleanup changes whether the pill needs the frontmost app for
+        // routing — notify it to refresh its cached decision.
+        window.api?.sendCleanupContextChanged();
       })
       .catch((err) => console.error("Failed to save LLM cleanup:", err));
   }, []);

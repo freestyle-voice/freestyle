@@ -378,6 +378,18 @@ const api = {
         handler,
       );
   },
+  // Cleanup context — the dashboard notifies the pill when a cleanup-relevant
+  // setting (llm_cleanup or a cleanup tone) changes so the pill can refresh its
+  // cached "needs frontmost app for routing" decision instead of re-fetching
+  // /api/settings on every single recording start.
+  sendCleanupContextChanged: (): void =>
+    ipcRenderer.send("settings:cleanup-context-changed"),
+  onCleanupContextChanged: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("settings:cleanup-context-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("settings:cleanup-context-changed", handler);
+  },
   // Hotkey error notifications
   onHotkeyError: (
     callback: (error: { message: string }) => void,

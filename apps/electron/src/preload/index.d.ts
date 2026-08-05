@@ -167,6 +167,9 @@ declare global {
       onAudioPlaybackModeChanged: (
         callback: (mode: AudioPlaybackMode) => void,
       ) => () => void;
+      // Cleanup context changes (llm_cleanup / cleanup tones)
+      sendCleanupContextChanged: () => void;
+      onCleanupContextChanged: (callback: () => void) => () => void;
       // Hotkey error notifications
       onHotkeyError: (
         callback: (error: { message: string }) => void,

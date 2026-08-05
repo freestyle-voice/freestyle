@@ -11,6 +11,17 @@ import { getClient } from "./api";
 let cachedNeedsAppContext: boolean | null = null;
 
 /**
+ * Synchronously read the last-derived "should we capture the frontmost app for
+ * destination routing?" decision without touching the network. Returns `true`
+ * conservatively until the cache has been primed (from a settings snapshot at
+ * mount or a `cleanup-context-changed` refresh), so routing is never silently
+ * skipped on a cold cache.
+ */
+export function getNeedsAppContextForCleanup(): boolean {
+  return cachedNeedsAppContext ?? true;
+}
+
+/**
  * Derive (and cache) whether we should capture the frontmost app for
  * destination routing from an already-loaded settings snapshot. Lets callers
  * that have just fetched `/api/settings` avoid a second round-trip.

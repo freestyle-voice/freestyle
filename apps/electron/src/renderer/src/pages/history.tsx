@@ -35,6 +35,7 @@ import { getClient } from "@renderer/lib/api";
 import { formatNumber } from "@renderer/lib/format";
 import { type DiffSegment, diffWords } from "@renderer/lib/history-diff";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
+import { settingsQueryOptions } from "@renderer/lib/query";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   keepPreviousData,
@@ -442,17 +443,11 @@ export default function HistoryPage(): React.JSX.Element {
     : (historyData?.stats ?? null);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const { data: historyPausedData } = useQuery({
-    queryKey: ["setting", SETTINGS_KEYS.historyPaused],
-    queryFn: async () => {
-      const res = await getClient().api.settings[":key"].$get({
-        param: { key: SETTINGS_KEYS.historyPaused },
-      });
-      const data = res.ok ? await res.json() : null;
-      return data?.value === "true";
-    },
-  });
-  const historyPaused = historyPausedData ?? false;
+  // `history_paused` lives in the shared settings map — read it from the same
+  // cached ["settings-all"] query the settings pages use instead of a separate
+  // single-key round-trip.
+  const { data: settings } = useQuery(settingsQueryOptions());
+  const historyPaused = settings?.[SETTINGS_KEYS.historyPaused] === "true";
 
   // Per-day usage for the heatmap. Fixed lookback window on the server, so it
   // ignores the list filters; shares the "history" key prefix so a completed

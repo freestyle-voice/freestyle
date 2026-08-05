@@ -1,5 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { getClient } from "./api";
+import type { AvailableModel } from "./models";
 
 /** Common staleTime for cached queries (1 hour). */
 export const ONE_HOUR = 60 * 60 * 1000;
@@ -27,6 +28,30 @@ export function settingsQueryOptions() {
       const res = await getClient().api.settings.$get();
       if (!res.ok) throw new Error("Failed to load settings");
       return (await res.json()) as Record<string, string>;
+    },
+  };
+}
+
+/**
+ * Shared query key for the available-models catalog
+ * (`GET /api/models/available`). The catalog is effectively static within a
+ * session, so consumers share one cached fetch via this key rather than
+ * re-hitting the endpoint.
+ */
+export const AVAILABLE_MODELS_QUERY_KEY = ["models", "available"] as const;
+
+/**
+ * Query options for the available-models catalog. Use with `useQuery`, or read
+ * the shared cache from a handler via
+ * `queryClient.ensureQueryData(availableModelsQueryOptions())`.
+ */
+export function availableModelsQueryOptions() {
+  return {
+    queryKey: AVAILABLE_MODELS_QUERY_KEY,
+    queryFn: async (): Promise<AvailableModel[]> => {
+      const res = await getClient().api.models.available.$get();
+      if (!res.ok) throw new Error("Failed to load available models");
+      return (await res.json()) as AvailableModel[];
     },
   };
 }

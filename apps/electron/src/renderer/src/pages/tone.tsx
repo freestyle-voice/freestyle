@@ -40,8 +40,11 @@ import { Textarea } from "@renderer/components/ui/textarea";
 import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
-import type { AvailableModel } from "@renderer/lib/models";
-import { SETTINGS_QUERY_KEY, settingsQueryOptions } from "@renderer/lib/query";
+import {
+  availableModelsQueryOptions,
+  SETTINGS_QUERY_KEY,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
@@ -57,6 +60,17 @@ import {
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 import { Eyebrow, PageHeader, PageShell } from "./models/page-chrome";
 import type { ConfiguredModel } from "./models/types";
+
+// Settings that change whether the pill needs to capture the frontmost app for
+// cleanup destination routing. Saving any of these notifies the pill to refresh
+// its cached decision (see cleanup-app-context.ts).
+const CLEANUP_CONTEXT_KEYS: ReadonlySet<string> = new Set([
+  SETTINGS_KEYS.llmCleanup,
+  SETTINGS_KEYS.cleanupPersonalTone,
+  SETTINGS_KEYS.cleanupWorkTone,
+  SETTINGS_KEYS.cleanupEmailTone,
+  SETTINGS_KEYS.cleanupOverallTone,
+]);
 
 type ToneTab =
   | "cleanup"
@@ -330,6 +344,12 @@ export default function TonePage(): React.JSX.Element {
     if (!res.ok) {
       throw new Error(`Failed to save setting "${key}" (${res.status})`);
     }
+    // Let the pill refresh its cached "needs frontmost app for routing" decision
+    // when a cleanup-relevant setting changes, so it doesn't re-fetch settings
+    // on every recording start.
+    if (CLEANUP_CONTEXT_KEYS.has(key)) {
+      window.api?.sendCleanupContextChanged();
+    }
   }, []);
 
   // Turn cleanup on by wiring Freestyle Cloud as the cleanup model. Requires a
@@ -344,9 +364,11 @@ export default function TonePage(): React.JSX.Element {
       if (!authed) return;
 
       const client = getClient();
-      const availRes = await client.api.models.available.$get();
-      if (!availRes.ok) return;
-      const models = (await availRes.json()) as AvailableModel[];
+      // Reuse the shared ["models","available"] cache when it's fresh instead of
+      // a redundant network round-trip; ensureQueryData fetches only on a miss.
+      const models = await queryClient.ensureQueryData(
+        availableModelsQueryOptions(),
+      );
       const cloudLlm = models.find(
         (model) =>
           model.type === "llm" &&
@@ -381,7 +403,7 @@ export default function TonePage(): React.JSX.Element {
     } finally {
       setUsingCloud(false);
     }
-  }, [cloudAuth, reload, saveSetting, usingCloud]);
+  }, [cloudAuth, queryClient, reload, saveSetting, usingCloud]);
 
   const selectCleanupMode = useCallback(
     (next: CleanupCardValue) => {

@@ -637,16 +637,110 @@ function presetPositionForDisplay(
   }
 }
 
+/**
+ * Screen bounds (top-left origin, in screen coordinates) of the currently
+ * focused *external* application window, or null if it can't be determined.
+ *
+ * Used to anchor the pill to the display the user is actually typing on, which
+ * the cursor's display alone can't tell us: a keyboard-driven user often leaves
+ * the mouse resting on a different monitor. This is intentionally async/native
+ * (AppleScript / PowerShell), so it is never awaited on the pill-show hot path —
+ * the pill shows immediately on the cursor's display and re-anchors here if this
+ * resolves to a different one.
+ */
+async function getFocusedWindowBounds(): Promise<{
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} | null> {
+  try {
+    if (process.platform === "darwin") {
+      // `position`/`size` of the frontmost app's front window via Accessibility.
+      const out = await execAsync(
+        "osascript",
+        [
+          "-e",
+          'tell application "System Events" to tell (first application process whose frontmost is true) to get {position, size} of front window',
+        ],
+        1500,
+      );
+      // osascript returns e.g. "12, -340, 800, 600" (x, y, w, h).
+      const nums = out
+        .split(",")
+        .map((n) => Number.parseInt(n.trim(), 10))
+        .filter((n) => Number.isFinite(n));
+      if (nums.length < 4) return null;
+      const [x, y, width, height] = nums;
+      if (width <= 0 || height <= 0) return null;
+      return { x, y, width, height };
+    }
+
+    if (process.platform === "win32") {
+      const script = `
+        Add-Type @"
+          using System;
+          using System.Runtime.InteropServices;
+          public class Win32Rect {
+            [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+            [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+            [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
+          }
+"@
+        $hwnd = [Win32Rect]::GetForegroundWindow()
+        $r = New-Object Win32Rect+RECT
+        [Win32Rect]::GetWindowRect($hwnd, [ref]$r) | Out-Null
+        "$($r.Left),$($r.Top),$($r.Right),$($r.Bottom)"
+      `;
+      const out = await execAsync(
+        "powershell",
+        ["-NoProfile", "-Command", script],
+        2000,
+      );
+      const nums = out
+        .split(",")
+        .map((n) => Number.parseInt(n.trim(), 10))
+        .filter((n) => Number.isFinite(n));
+      if (nums.length < 4) return null;
+      const [left, top, right, bottom] = nums;
+      const width = right - left;
+      const height = bottom - top;
+      if (width <= 0 || height <= 0) return null;
+      return { x: left, y: top, width, height };
+    }
+
+    // Linux compositors vary too much for a reliable synchronous rect; the
+    // cursor's display is used as-is there.
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The Electron display the focused external window is on, or null if it can't
+ * be determined. Falls back to the cursor's display at call sites.
+ */
+async function getFocusedWindowDisplay(): Promise<Electron.Display | null> {
+  const bounds = await getFocusedWindowBounds();
+  if (!bounds) return null;
+  return screen.getDisplayMatching(bounds);
+}
+
 // Preset positions follow the display under the cursor so the pill appears
 // on whichever monitor the user is working on. Custom positions can be on
 // any display — they are saved as absolute screen coordinates and
 // bounds-checked on restore.
-function getAppWindowPosition(): { x: number; y: number } {
-  // Anchor preset positions to the display containing the cursor rather than
-  // the primary display, so multi-monitor users see the pill where they are.
-  const activeDisplay = screen.getDisplayNearestPoint(
-    screen.getCursorScreenPoint(),
-  );
+function getAppWindowPosition(preferredDisplay?: Electron.Display | null): {
+  x: number;
+  y: number;
+} {
+  // Anchor preset positions to the focused window's display when known,
+  // otherwise the display containing the cursor rather than the primary
+  // display, so multi-monitor users see the pill where they are working.
+  const activeDisplay =
+    preferredDisplay ??
+    screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
 
   // Read pill position preference
   const position = (readSettings().pillPosition as string) || "bottom-center";
@@ -1026,6 +1120,7 @@ function showPill(): void {
         mainWindow.showInactive();
         updateRemixBar();
         updatePillEscape();
+        anchorPillToFocusedDisplay();
         resolve();
       });
     });
@@ -1039,6 +1134,39 @@ function showPill(): void {
     updateRemixBar();
   }
   updatePillEscape();
+  anchorPillToFocusedDisplay();
+}
+
+/**
+ * Re-anchor the pill to the display the user is actually typing on once we can
+ * learn it from the focused window (an async native call). Shown immediately on
+ * the cursor's display; this quietly corrects the monitor when the mouse rests
+ * on a different one than the keyboard focus. No-op for custom (dragged)
+ * positions and while the pill is expanded, so it never fights a card
+ * animation or overrides a user-placed slot.
+ */
+function anchorPillToFocusedDisplay(): void {
+  const position = (readSettings().pillPosition as string) || "bottom-center";
+  if (position === "custom") return;
+
+  void getFocusedWindowDisplay().then((focusedDisplay) => {
+    if (!focusedDisplay || !mainWindow || mainWindow.isDestroyed()) return;
+    if (!mainWindow.isVisible()) return;
+    // Don't move the window out from under an in-progress card expansion.
+    if (pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0) return;
+
+    const [curX, curY] = mainWindow.getPosition();
+    const currentDisplay = screen.getDisplayMatching({
+      x: curX,
+      y: curY,
+      width: APP_WIDTH,
+      height: APP_HEIGHT,
+    });
+    if (currentDisplay.id === focusedDisplay.id) return;
+
+    const { x, y } = getAppWindowPosition(focusedDisplay);
+    setProgrammaticPosition(mainWindow, x, y);
+  });
 }
 
 function updatePillEscape(): void {
@@ -2197,6 +2325,13 @@ app.whenReady().then(async () => {
 
   ipcMain.on("settings:audio-playback-mode-changed", (_event, mode: string) => {
     mainWindow?.webContents.send("settings:audio-playback-mode-changed", mode);
+  });
+
+  // IPC: relay cleanup-context changes (llm_cleanup / cleanup tones) from the
+  // dashboard to the pill so it refreshes its cached routing decision instead
+  // of re-fetching /api/settings on every recording start.
+  ipcMain.on("settings:cleanup-context-changed", () => {
+    mainWindow?.webContents.send("settings:cleanup-context-changed");
   });
 
   // IPC: hide the pill window on request from renderer

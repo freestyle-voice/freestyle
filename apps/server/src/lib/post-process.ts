@@ -22,7 +22,7 @@ import {
 } from "@freestyle-voice/validations";
 import type { HookApi } from "freestyle-voice";
 import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
-import { getDb, readSetting } from "./db.js";
+import { getDb, readSetting, readSettings } from "./db.js";
 import { applyDictionaryReplacements } from "./dictionary-replacements.js";
 import { ensureCleanupPromptConfigFresh } from "./editor/prompt-config.js";
 import { buildRewritePrompt } from "./editor/prompts.js";
@@ -87,30 +87,6 @@ export function isLlmCleanupEnabled(): boolean {
   return readSetting("llm_cleanup") === "true";
 }
 
-export function getCleanupIntensity(): CleanupIntensity {
-  return parseCleanupIntensity(readSetting("cleanup_intensity"));
-}
-
-export function getCleanupCustomPrompt(): string | undefined {
-  return readSetting("cleanup_custom_prompt");
-}
-
-export function getCleanupPersonalTone(): CleanupPersonalTone {
-  return parseCleanupPersonalTone(readSetting("cleanup_personal_tone"));
-}
-
-export function getCleanupWorkTone(): CleanupWorkTone {
-  return parseCleanupWorkTone(readSetting("cleanup_work_tone"));
-}
-
-export function getCleanupEmailTone(): CleanupEmailTone {
-  return parseCleanupEmailTone(readSetting("cleanup_email_tone"));
-}
-
-export function getCleanupOverallTone(): CleanupOverallTone {
-  return parseCleanupOverallTone(readSetting("cleanup_overall_tone"));
-}
-
 export function getCleanupAppAssignments(): CleanupAppAssignment[] {
   return parseCleanupAppAssignments(readSetting("cleanup_app_assignments"));
 }
@@ -130,13 +106,24 @@ export interface EffectiveCleanupTones {
  * and Freestyle Cloud streaming).
  */
 export function getEffectiveCleanupTones(): EffectiveCleanupTones {
+  // Single batched read instead of six separate point-queries — this runs on
+  // the transcription/streaming hot path (both `/api/transcribe` and the
+  // streaming config-key build call it per dictation).
+  const s = readSettings([
+    "cleanup_intensity",
+    "cleanup_custom_prompt",
+    "cleanup_personal_tone",
+    "cleanup_work_tone",
+    "cleanup_email_tone",
+    "cleanup_overall_tone",
+  ]);
   return {
-    intensity: getCleanupIntensity(),
-    customPrompt: getCleanupCustomPrompt(),
-    personalTone: getCleanupPersonalTone(),
-    workTone: getCleanupWorkTone(),
-    emailTone: getCleanupEmailTone(),
-    overallTone: getCleanupOverallTone(),
+    intensity: parseCleanupIntensity(s.get("cleanup_intensity")),
+    customPrompt: s.get("cleanup_custom_prompt"),
+    personalTone: parseCleanupPersonalTone(s.get("cleanup_personal_tone")),
+    workTone: parseCleanupWorkTone(s.get("cleanup_work_tone")),
+    emailTone: parseCleanupEmailTone(s.get("cleanup_email_tone")),
+    overallTone: parseCleanupOverallTone(s.get("cleanup_overall_tone")),
   };
 }
 

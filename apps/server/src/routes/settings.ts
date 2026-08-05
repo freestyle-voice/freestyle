@@ -29,7 +29,7 @@ import {
   configureNetwork,
   PROXY_URL_SETTING,
 } from "../lib/network.js";
-import { capture } from "../lib/posthog.js";
+import { capture, invalidateTelemetrySetting } from "../lib/posthog.js";
 import {
   pushSettingToCloud,
   SYNCED_SETTING_KEYS,
@@ -197,6 +197,9 @@ const settings = new Hono()
 
     // Don't capture internal/system keys
     const skipKeys = new Set(["posthog_device_id", "telemetry_enabled"]);
+    if (key === "telemetry_enabled") {
+      invalidateTelemetrySetting();
+    }
     if (!skipKeys.has(key)) {
       capture("setting updated", { key });
     }
@@ -207,6 +210,9 @@ const settings = new Hono()
     const db = getDb();
     const key = c.req.param("key");
     db.prepare("DELETE FROM settings WHERE key = ?").run(key);
+    if (key === "telemetry_enabled") {
+      invalidateTelemetrySetting();
+    }
     // Deleting the proxy/CA key must also reset the global dispatcher, mirroring
     // the PUT path — otherwise a stale proxy/CA lingers until the next restart.
     if (key === PROXY_URL_SETTING || key === CA_CERT_PATH_SETTING) {

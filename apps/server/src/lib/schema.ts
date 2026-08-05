@@ -7,7 +7,7 @@ import { countFixes } from "./fixes.js";
 // and would otherwise perturb test module-mock ordering.
 const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 
-const SCHEMA_VERSION = 20;
+const SCHEMA_VERSION = 21;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -245,6 +245,12 @@ function applyHostKeyedSessions(db: DatabaseSync): void {
       )
     `);
   }
+}
+
+function tableExists(db: DatabaseSync, name: string): boolean {
+  return !!(db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(name) as { name: string } | undefined);
 }
 
 function applyMigrations(db: DatabaseSync, currentVersion: number): void {
@@ -634,6 +640,29 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         dismissed_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
+  }
+
+  if (currentVersion < 21) {
+    // Indexes for the transcription hot path and history/stats queries, which
+    // were previously full table scans + filesort:
+    //   - transcription_history(created_at): the list view orders by it, the
+    //     /daily and /stats endpoints range-scan it, and retention deletes
+    //     `WHERE created_at < ?`. Grows unbounded with dictation volume.
+    //   - model_configs(type, is_default): getDefaultModels() looks up the
+    //     default voice + llm model on every transcription.
+    // Guarded on table existence: some databases reach this migration stamped
+    // at an intermediate version without the base tables (e.g. prototype/merge
+    // lineages that skipped v1/v2), and CREATE INDEX on a missing table throws.
+    if (tableExists(db, "transcription_history")) {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_transcription_history_created_at ON transcription_history(created_at)",
+      );
+    }
+    if (tableExists(db, "model_configs")) {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_model_configs_type_default ON model_configs(type, is_default)",
+      );
+    }
   }
 
   // Upsert schema version

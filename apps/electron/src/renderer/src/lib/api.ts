@@ -9,6 +9,10 @@ let resolvedPort: number = DEFAULT_PORT;
 let serverUrl = "";
 // Optional bearer token for a configured server ("" = none).
 let serverToken = "";
+// Memoized Hono client, rebuilt only when the base URL or token changes.
+let _client: ReturnType<typeof hc<AppType>> | null = null;
+let _clientBase = "";
+let _clientToken = "";
 let initialized = false;
 // The in-flight init, shared so concurrent callers (e.g. the module-load
 // prefetch and the auth provider) don't each run a redundant refreshApiBase().
@@ -138,5 +142,15 @@ export async function refreshApiBase(): Promise<boolean> {
 }
 
 export function getClient() {
-  return hc<AppType>(getApiBase(), { headers: bearerAuthHeaders(serverToken) });
+  const base = getApiBase();
+  // Rebuild only when the resolved base URL or token actually changes (i.e.
+  // after `refreshApiBase()` picks up a `server:changed` broadcast). The Hono
+  // client is otherwise stable, so this avoids allocating a fresh one — and
+  // re-parsing headers — on every query/mutation call site.
+  if (!_client || _clientBase !== base || _clientToken !== serverToken) {
+    _client = hc<AppType>(base, { headers: bearerAuthHeaders(serverToken) });
+    _clientBase = base;
+    _clientToken = serverToken;
+  }
+  return _client;
 }

@@ -49,6 +49,7 @@ import {
 import { isServerBinaryAvailable } from "../lib/whisper/binary.js";
 import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
 import { startInBackground } from "../lib/whisper/server.js";
+import { prewarmModelCostRegistry } from "./models.js";
 
 const log = createAppLogger("transcribe");
 
@@ -642,6 +643,10 @@ export const transcribePreWarmRoute = new Hono().post("/pre-warm", (c) => {
     // provider; a no-op unless cleanup is enabled and the configured provider
     // supports prewarming (e.g. Groq).
     prewarmPostProcess();
+
+    // Warm the models.dev cost registry in the background so the per-dictation
+    // cost lookup hits a warm cache and never blocks the response.
+    prewarmModelCostRegistry();
 
     const defaults = getDefaultModels();
     const provider = defaults.voice?.provider;

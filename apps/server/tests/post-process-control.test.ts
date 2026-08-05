@@ -30,7 +30,7 @@ vi.mock("@freestyle-voice/stt", async (importOriginal) => {
 
 vi.mock("../src/routes/models.js", () => ({
   isCleanupModelSupported: () => Promise.resolve(true),
-  getModelCost: () => Promise.resolve(null),
+  getModelCostCached: () => null,
 }));
 
 const registry = { current: new PluginRegistry() };

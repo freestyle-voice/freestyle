@@ -243,9 +243,14 @@ const BUILTIN_LLM_MODELS: AvailableModel[] = [
 let modelsCache: { data: unknown; fetchedAt: number } | null = null;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
+/** True when the in-memory registry cache is present and unexpired. */
+function isRegistryCacheFresh(): boolean {
+  return !!modelsCache && Date.now() - modelsCache.fetchedAt < CACHE_TTL_MS;
+}
+
 async function fetchModelsFromRegistry(): Promise<Record<string, unknown>> {
-  if (modelsCache && Date.now() - modelsCache.fetchedAt < CACHE_TTL_MS) {
-    return modelsCache.data as Record<string, unknown>;
+  if (isRegistryCacheFresh()) {
+    return (modelsCache as { data: unknown }).data as Record<string, unknown>;
   }
 
   const res = await fetch("https://models.dev/api.json", {
@@ -260,31 +265,61 @@ async function fetchModelsFromRegistry(): Promise<Record<string, unknown>> {
 }
 
 /**
- * Look up per-token cost from models.dev registry.
- * Returns { inputCostPerToken, outputCostPerToken } or null if not found.
- * Costs in the registry are per-million tokens.
+ * Warm the models.dev registry cache in the background (fire-and-forget).
+ * Called from the transcribe pre-warm route while the user is still speaking so
+ * the per-dictation cost lookup ({@link getModelCostCached}) hits a warm cache
+ * and never blocks the response on a network round-trip. No-op when the cache
+ * is already fresh; swallows errors (cost is non-critical).
+ */
+export function prewarmModelCostRegistry(): void {
+  if (isRegistryCacheFresh()) return;
+  void fetchModelsFromRegistry().catch(() => {
+    // Best-effort — a failed warm just means the next cost lookup returns null.
+  });
+}
+
+/**
+ * Pull per-token cost for a model out of an already-fetched registry object.
+ * Costs in the registry are per-million tokens; returned values are per-token.
  * Provider is taken from the models.dev provider key, not parsed from model ID.
  */
-export async function getModelCost(
+function lookupCostInRegistry(
+  registry: Record<string, unknown>,
   providerId: string,
   modelId: string,
-): Promise<{ input: number; output: number } | null> {
+): { input: number; output: number } | null {
+  const provider = registry[providerId] as RegistryProvider | undefined;
+  if (!provider?.models) return null;
+
+  const shortId = modelId.startsWith(`${providerId}/`)
+    ? modelId.slice(providerId.length + 1)
+    : modelId;
+  const model = provider.models[modelId] ?? provider.models[shortId] ?? null;
+  if (!model?.cost) return null;
+
+  return {
+    input: (model.cost.input ?? 0) / 1_000_000,
+    output: (model.cost.output ?? 0) / 1_000_000,
+  };
+}
+
+/**
+ * Synchronous, cache-only cost lookup for the transcription hot path. Never
+ * triggers a network fetch: on a cold/expired cache it returns null (cost is
+ * recorded as 0) rather than stalling the user-facing response on a models.dev
+ * round-trip. Warm the cache ahead of time via {@link prewarmModelCostRegistry}.
+ */
+export function getModelCostCached(
+  providerId: string,
+  modelId: string,
+): { input: number; output: number } | null {
+  if (!isRegistryCacheFresh() || !modelsCache) return null;
   try {
-    const registry = await fetchModelsFromRegistry();
-
-    const provider = registry[providerId] as RegistryProvider | undefined;
-    if (!provider?.models) return null;
-
-    const shortId = modelId.startsWith(`${providerId}/`)
-      ? modelId.slice(providerId.length + 1)
-      : modelId;
-    const model = provider.models[modelId] ?? provider.models[shortId] ?? null;
-    if (!model?.cost) return null;
-
-    return {
-      input: (model.cost.input ?? 0) / 1_000_000,
-      output: (model.cost.output ?? 0) / 1_000_000,
-    };
+    return lookupCostInRegistry(
+      modelsCache.data as Record<string, unknown>,
+      providerId,
+      modelId,
+    );
   } catch {
     return null;
   }

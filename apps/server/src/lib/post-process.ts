@@ -21,7 +21,10 @@ import {
   parseCleanupWorkTone,
 } from "@freestyle-voice/validations";
 import type { HookApi } from "freestyle-voice";
-import { getModelCost, isCleanupModelSupported } from "../routes/models.js";
+import {
+  getModelCostCached,
+  isCleanupModelSupported,
+} from "../routes/models.js";
 import { getDb, readSetting, readSettings } from "./db.js";
 import { applyDictionaryReplacements } from "./dictionary-replacements.js";
 import { ensureCleanupPromptConfigFresh } from "./editor/prompt-config.js";
@@ -447,15 +450,14 @@ export async function postProcess(
   );
 
   if (inputTokens > 0 || outputTokens > 0) {
-    try {
-      if (llmProvider && llmModel) {
-        const pricing = await getModelCost(llmProvider, llmModel);
-        if (pricing) {
-          costUsd = inputTokens * pricing.input + outputTokens * pricing.output;
-        }
+    if (llmProvider && llmModel) {
+      // Cache-only lookup — never blocks the response on a models.dev fetch.
+      // The registry is warmed off the hot path by the transcribe pre-warm
+      // route; a cold-cache miss simply records cost 0.
+      const pricing = getModelCostCached(llmProvider, llmModel);
+      if (pricing) {
+        costUsd = inputTokens * pricing.input + outputTokens * pricing.output;
       }
-    } catch {
-      // ignore pricing errors
     }
   }
 

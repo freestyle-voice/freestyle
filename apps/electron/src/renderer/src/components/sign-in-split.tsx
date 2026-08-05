@@ -1,7 +1,29 @@
-import demoVideo from "@renderer/assets/homer-odysseus-demo.mp4";
+import companyRevenueVideo from "@renderer/assets/company-revenue.mp4";
+import factCheckVideo from "@renderer/assets/fact-check.mp4";
 import markDark from "@renderer/assets/mark-dark.svg";
 import markLight from "@renderer/assets/mark-light.svg";
+import softenToneVideo from "@renderer/assets/soften-up-tone.mp4";
 import { ExternalLink, Loader2 } from "lucide-react";
+import { useState } from "react";
+
+const DEMO_SLIDES = [
+  {
+    src: softenToneVideo,
+    caption: "“Make me sound friendlier”",
+    label: "Freestyle Remix rewriting an email draft in a friendlier tone",
+  },
+  {
+    src: companyRevenueVideo,
+    caption:
+      "“Can you tell me about this company's revenue from their financial statement?”",
+    label: "Freestyle Remix summarizing a financial statement by voice",
+  },
+  {
+    src: factCheckVideo,
+    caption: "“Fact check this paragraph against credible sources online”",
+    label: "Freestyle Remix fact-checking an essay against web sources",
+  },
+];
 
 // ---------------------------------------------------------------------------
 // The sign-in screen: sign-in column on the left, the product demo on an ink
@@ -25,6 +47,9 @@ export function SignInSplit({
   /** Optional extra content under the terms (e.g. the dev skip button). */
   footer?: React.ReactNode;
 }): React.JSX.Element {
+  const [slide, setSlide] = useState(0);
+  const active = DEMO_SLIDES[slide];
+
   return (
     <div
       className="flex min-h-0 flex-1"
@@ -100,23 +125,34 @@ export function SignInSplit({
         />
         <div className="relative w-full max-w-[648px] rounded-[14px] border border-[#3A362D] bg-[#1E1C16] p-2 shadow-[0_30px_70px_-30px_rgba(0,0,0,0.7)]">
           <video
-            src={demoVideo}
+            key={active.src}
+            src={active.src}
             autoPlay
-            loop
             muted
             playsInline
-            aria-label="Freestyle Remix editing an Odyssey essay in a document by voice"
+            onEnded={() => setSlide((s) => (s + 1) % DEMO_SLIDES.length)}
+            aria-label={active.label}
             className="block w-full rounded-[8px]"
           />
         </div>
-        <div className="relative mt-[22px] flex items-center gap-2.5 text-[12.5px] text-[#9E977F]">
-          <span>"Add a paragraph about Odysseus and the Sirens"</span>
+        <div className="relative mt-[22px] flex items-center gap-2.5 text-center text-[12.5px] text-[#9E977F]">
+          <span>{active.caption}</span>
         </div>
         <div className="absolute bottom-[22px] left-1/2 flex -translate-x-1/2 gap-[7px]">
-          <span className="h-[5px] w-[18px] rounded-full bg-[#8AB62A]" />
-          <span className="h-[5px] w-[5px] rounded-full bg-[#3A362D]" />
-          <span className="h-[5px] w-[5px] rounded-full bg-[#3A362D]" />
-          <span className="h-[5px] w-[5px] rounded-full bg-[#3A362D]" />
+          {DEMO_SLIDES.map((s, i) => (
+            <button
+              key={s.src}
+              type="button"
+              aria-label={`Show demo ${i + 1}`}
+              aria-current={i === slide}
+              onClick={() => setSlide(i)}
+              className={`h-[5px] rounded-full transition-all duration-300 ${
+                i === slide
+                  ? "w-[18px] bg-[#8AB62A]"
+                  : "w-[5px] bg-[#3A362D] hover:bg-[#57503F]"
+              }`}
+            />
+          ))}
         </div>
       </div>
     </div>

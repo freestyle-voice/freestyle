@@ -44,7 +44,7 @@ function LoginPage(): React.JSX.Element {
         subtitle={
           sessionExpired
             ? "Your session has expired. Sign in again to keep using Freestyle."
-            : "Write with intelligence at your cursor"
+            : "Intelligence at your cursor"
         }
         error={error}
       >

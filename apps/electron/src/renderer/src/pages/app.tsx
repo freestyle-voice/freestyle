@@ -3783,6 +3783,10 @@ export default function AppPage(): React.JSX.Element {
               separate layers: a phase flip animates one out while the other
               rises, and each holds its last content while it leaves. */}
           <div className={layerClass} aria-hidden={!(remixOpen && !viewIsChat)}>
+            {/* The card surface is a container, not a control — these handlers
+                only arm/disarm the window's hover hit-rect; every real action
+                inside is its own labeled <button>. */}
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}
             <div
               ref={cardSurfaceRef}
               className="pill-surface pill-card"
@@ -3915,6 +3919,9 @@ export default function AppPage(): React.JSX.Element {
               always inside room the window already holds, so the morph is
               never clipped or resized mid-flight. */}
           <div className={layerClass} aria-hidden={!(remixOpen && viewIsChat)}>
+            {/* Same as the card surface above: hover only arms/disarms the
+                window's hit-rect; the chat's controls are real buttons. */}
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}
             <div
               ref={chatSurfaceRef}
               className="pill-surface pill-card pill-chat-morph"

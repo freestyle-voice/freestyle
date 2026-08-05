@@ -1138,7 +1138,7 @@ function CloudStep({
   return (
     <SignInSplit
       titlePrefix="Welcome to "
-      subtitle="Write with intelligence at your cursor"
+      subtitle="Intelligence at your cursor"
       error={error}
       footer={
         !user &&

@@ -216,16 +216,7 @@ const APP_HEIGHT = 60;
  */
 const PILL_CARD_WIDTH = 340;
 const PILL_CARD_HEIGHT = 144;
-/**
- * The room a remix session lives in, held for the session's whole life. The
- * remix surfaces (the dictation card, the chat thread, the minimized strip)
- * morph into each other in the renderer, and a `setBounds` mid-morph paints
- * at least one stale compositor frame at the new origin — a visible blink.
- * So the window takes all the room it could ever need up front and only
- * gives it back once nothing is showing; every in-session size change is
- * pure DOM animation. The empty area is kept from eating clicks by the
- * hot-rect pass-through below.
- */
+/** Held for the whole remix session so mid-morph setBounds doesn't blink. */
 const PILL_CHAT_WIDTH = 440;
 const PILL_CHAT_HEIGHT = 600;
 
@@ -241,16 +232,7 @@ function pillExpansionSize(expansion: PillExpansion): {
   return { width: PILL_CARD_WIDTH, height: PILL_CARD_HEIGHT };
 }
 
-// ---------------------------------------------------------------------------
-// Hot-rect pass-through — while the held remix room shows only a small
-// surface (the minimized strip, or the dictation card), the rest of the
-// window must not block clicks to whatever is underneath. The renderer
-// reports the surface's rect; the window goes click-through and the cursor
-// is polled against that rect. When the pointer arrives, the window turns
-// interactive again and the renderer is told, so a hover can expand the
-// strip. Forwarded mouse events cover hover styling on the platforms that
-// support them; the poll is what flips interactivity everywhere.
-// ---------------------------------------------------------------------------
+// Hot-rect: click-through except the reported surface; poll flips interactivity.
 
 type PillHotRect = { x: number; y: number; width: number; height: number };
 let pillHotRect: PillHotRect | null = null;
@@ -416,36 +398,15 @@ let currentHotkeyAccel: string | null = null;
 let hotkeyActivationMode: "hold" | "toggle" = "hold";
 let micListener: MicListener | null = null;
 let hotkeyRecorder: HotkeyRecorder | null = null;
-/**
- * The remix hotkey runs on its own listener process rather than sharing
- * dictation's. The native binaries take one accelerator and suppress that
- * chord; teaching them a second would mean changing three platforms' native
- * code, where a second instance costs one small process and no new protocol.
- */
+/** Own listener process — native binaries only take one accelerator each. */
 let remixKeyListener: NativeKeyListener | null = null;
 let remixPressed = false;
-/**
- * The accelerator the user configured, as opposed to the one currently
- * listening: they differ while remix are off, or parked because the
- * dictation hotkey took the same chord. Kept so re-registering (after the
- * dictation hotkey moves, or hotkey recording ends) can restore the user's
- * choice rather than the default.
- */
+/** User-configured accel (may differ from what's listening while parked/off). */
 let remixHotkeyPreference: string | undefined;
-/** The accelerator actually being listened for, or null when remix are off. */
 let currentRemixAccel: string | null = null;
-/**
- * False until the server's settings have been read once. Guards the
- * re-registration hook in `registerHotkey` from spawning a listener off
- * defaults before we know whether remix are even switched on.
- */
+/** False until server settings are read once (don't spawn on defaults). */
 let remixInitialized = false;
-/**
- * True while the onboarding remix step is live: the self-exclusion that
- * normally keeps Remix out of Freestyle's own windows is suspended so the
- * agent can drive the practice draft. Flipped only by the dashboard window;
- * cleared defensively on onboarding completion, window close, and navigation.
- */
+/** Onboarding practice: allow Remix to target Freestyle's own window. */
 let remixPracticeTarget = false;
 const audioPlaybackController = new AudioPlaybackController();
 
@@ -580,11 +541,7 @@ function setPillExpanded(
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
   const isExpanded = pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0;
-  // Both a collapse-when-collapsed and a re-expand at the size already in
-  // effect are no-ops; a *change* of size while expanded is not, and has to
-  // re-run so the anchored edge stays put across the resize. Size is compared
-  // too: the same expansion can change height (the strip growing around the
-  // agent's final message).
+  // No-op if already collapsed/same size; re-run on size change to keep anchor.
   if (expanded === isExpanded && !expanded) return;
   if (expanded && isExpanded && expansion === pillExpansion) {
     const size = pillExpansionSize(expansion);
@@ -607,9 +564,7 @@ function setPillExpanded(
           : Math.round((width - APP_WIDTH) / 2),
       dy: edge === "top" ? 0 : height - APP_HEIGHT,
     };
-    // The offset above is measured from the *collapsed* slot, but `x`/`y` are
-    // wherever the window is right now — which, when growing from one card
-    // size to another, is already offset. Rebase onto the slot first.
+    // Offset is from the collapsed slot; rebase before applying (may already be expanded).
     const slotX = x + previousOffset.dx;
     const slotY = y + previousOffset.dy;
     target = {
@@ -885,10 +840,7 @@ function createAppWindow(): void {
 
   mainWindow.loadURL(getPillURL());
 
-  // Dev-only debugging for the Remix agent: the tool executor console.logs
-  // every tool call with its raw arguments and result. Mirror those lines
-  // into the main log (and so the terminal), and open the pill's devtools
-  // when explicitly asked for.
+  // Dev: mirror remix tool-executor console into the main log; optional pill DevTools.
   if (is.dev) {
     // Electron has shipped this event with both positional args and a
     // details object across versions; accept either shape.
@@ -1491,8 +1443,7 @@ function hidePill(): void {
   remixPressed = false;
   clearRemixStuckWatchdog();
   setRemixRouteKeys(false);
-  // The chat card may have made the pill focusable so its input could be
-  // typed into; a hidden pill must never hold that.
+  // Chat may have set focusable; clear it when hiding.
   try {
     mainWindow?.setFocusable(false);
   } catch {}
@@ -2264,8 +2215,7 @@ app.whenReady().then(async () => {
     },
   );
 
-  // IPC: the held remix room shows only a small surface right now — go
-  // click-through everywhere except that rect (null = fully interactive).
+  // null = fully interactive; otherwise click-through outside the rect.
   ipcMain.on("pill:set-hot-rect", (_event, rect: unknown) => {
     if (rect === null) {
       setPillHotRect(null);
@@ -2482,8 +2432,7 @@ app.whenReady().then(async () => {
 
   // IPC: hotkey recording — global native listener + renderer DOM on macOS
   ipcMain.on("hotkey-record:start", () => {
-    // The remix listener would otherwise fire on whatever chord the user
-    // presses while recording a new one.
+    // Park remix listener while recording a hotkey.
     if (remixKeyListener) {
       remixKeyListener.stop();
       remixKeyListener = null;
@@ -2908,10 +2857,7 @@ app.whenReady().then(async () => {
       ? normalizeAccelerator(configured)
       : DEFAULT_HOTKEY;
     if (accel !== currentHotkeyAccel) scheduleHotkeyRegistration(configured);
-    // Remix wait for the server rather than registering a default eagerly:
-    // unlike dictation there is no cost to a press in the first second going
-    // nowhere, and registering before we know whether the user turned remix
-    // off would spawn a listener process only to kill it again.
+    // Wait for server settings — don't spawn a listener just to tear it down.
     applyRemixSettings(settings);
   });
 
@@ -2957,9 +2903,7 @@ app.whenReady().then(async () => {
     });
   });
 
-  // Remix paste over a selection rather than appending at a cursor, so this
-  // deliberately does not go through `deliverOutput`: no trailing space, and no
-  // plugin output pipeline (see the /api/remix route on why).
+  // Paste over selection — not deliverOutput (no trailing space / plugin pipeline).
   ipcMain.handle("remix:paste", async (_event, text: string) => {
     if (typeof text !== "string" || !text.trim()) return false;
     if (await isSecureInputActive()) {
@@ -2984,13 +2928,7 @@ app.whenReady().then(async () => {
     }
   });
 
-  // ---- Remix primitives ----
-  // Each is one dumb action against the user's machine; the agent composes
-  // them per its system prompt, and edge cases are handled by tweaking that
-  // prompt rather than by machinery here. The one piece of invisible
-  // plumbing is the focus dance: injected keystrokes must physically reach
-  // the document, and OS key-window state isn't something a prompt can
-  // manage.
+  // Remix primitives — focus the document before injecting keystrokes.
 
   ipcMain.handle("remix:get-context", async () => {
     if (await isSecureInputActive()) {
@@ -3028,10 +2966,7 @@ app.whenReady().then(async () => {
     };
   });
 
-  // Non-destructive document read: one AX call, no keystrokes, and — the
-  // point — the user's highlight survives. Canvas editors return unsupported
-  // and the agent decides between selection-only work and the destructive
-  // select_all read.
+  // AX read keeps the highlight; canvas editors return unsupported.
   ipcMain.handle("remix:read-document", async () => {
     if (!(await focusAnchorForInjection())) {
       return { ok: false, reason: "document-not-in-front" };
@@ -3077,8 +3012,7 @@ app.whenReady().then(async () => {
     if (!(await focusAnchorForInjection())) {
       return { ok: false, reason: "document-not-in-front" };
     }
-    // Generous budget: after a select_all this is a whole-document copy, and
-    // rich editors are slow to produce it.
+    // Whole-document copy after select_all can be slow in rich editors.
     const text = await copySelectionFromFocusedApp({
       timeoutsMs: [600, 2_000],
     }).catch(() => null);
@@ -3116,8 +3050,7 @@ app.whenReady().then(async () => {
     if (!(await focusAnchorForInjection())) {
       return { ok: false, reason: "document-not-in-front" };
     }
-    // Length only, never content — but this one line separates "the model
-    // never loaded the clipboard" from "the injection failed" in the log.
+    // Log length only — distinguishes empty clipboard from inject failure.
     hotkeyLog.info(
       `remix paste: injecting (clipboard: ${clipboard.readText().length} chars)`,
     );
@@ -3152,10 +3085,7 @@ app.whenReady().then(async () => {
       if (!ax?.text || !ax.settable) {
         return { ok: false, reason: "unsupported" };
       }
-      // All match positions — selecting the wrong twin of a repeated phrase
-      // and pasting over it is the one way a well-behaved agent can corrupt
-      // the wrong text, so ambiguity is an error unless an occurrence is
-      // named explicitly.
+      // Ambiguous matches error unless occurrence is named — wrong twin corrupts text.
       const positions: number[] = [];
       for (
         let at = ax.text.indexOf(text);
@@ -3180,8 +3110,7 @@ app.whenReady().then(async () => {
     },
   );
 
-  // The app's own undo stack: Cmd+Z / Cmd+Shift+Z through the native chord
-  // binary (which resolves Z on non-QWERTY layouts), osascript as fallback.
+  // Undo/redo via native chord binary (non-QWERTY-safe); osascript fallback.
   ipcMain.handle("remix:undo", async () => {
     if (!(await focusAnchorForInjection())) {
       return { ok: false, reason: "document-not-in-front" };
@@ -3237,8 +3166,7 @@ app.whenReady().then(async () => {
     };
   });
 
-  // Fast-lane delivery for the preset chips (not an agent tool): replace the
-  // selection with a known string, the user's clipboard preserved.
+  // Preset chips: replace selection, preserve clipboard.
   ipcMain.handle("remix:paste-text", async (_event, text: unknown) => {
     if (typeof text !== "string" || !text.trim()) {
       return { ok: false, reason: "bad-text" };
@@ -3258,16 +3186,9 @@ app.whenReady().then(async () => {
     }
   });
 
-  // Fresh context for a typed follow-up: the document may have changed since
-  // the hotkey press, so the agent gets the state as it is now — but reading
-  // the selection means injecting a Copy, which is only safe when the user is
-  // actually in the document rather than in the pill.
+  // Re-read selection for typed follow-ups (document may have changed).
   ipcMain.handle("remix:recapture", async () => {
-    // Typing in the chat box makes the pill the KEY window while the document
-    // app stays frontmost (non-activating panel). An injected Copy goes to
-    // the key window — so yield the keyboard back to the document first, the
-    // same dance delivery does, or the copy reads our own empty input and
-    // wipes a perfectly good selection.
+    // Pill may be key window while typing — yield before Copy or we read our own input.
     const pill = mainWindow;
     if (pill && !pill.isDestroyed() && pill.isFocused()) {
       pill.blur();
@@ -3307,8 +3228,7 @@ app.whenReady().then(async () => {
     };
   });
 
-  // Onboarding's remix practice: while active, our own window is a legal
-  // Remix target. Only the dashboard window may flip this.
+  // Onboarding practice: allow targeting Freestyle's own window.
   ipcMain.on("remix:set-practice-target", (event, active: unknown) => {
     if (event.sender !== settingsWindow?.webContents) return;
     remixPracticeTarget = active === true;
@@ -3319,8 +3239,7 @@ app.whenReady().then(async () => {
     ipcMain.handle("e2e:remix-practice-target", () => remixPracticeTarget);
   }
 
-  // The chat card holds no digit routes; it gives Control+1..3 back to the
-  // rest of the system for as long as it is up.
+  // Chat card releases digit routes while open.
   ipcMain.on("remix:set-route-keys", (_event, open: unknown) => {
     setRemixRouteKeys(open === true);
   });
@@ -3330,11 +3249,7 @@ app.whenReady().then(async () => {
     handleRemixBarOpen();
   });
 
-  // The pill is focusable:false by design — it must never steal focus from
-  // the app being dictated into. The chat card is the one exception: while it
-  // is up the window is *allowed* to take focus, but only when the user
-  // clicks into it — opening the card never pulls the keyboard away from the
-  // document they were just writing in.
+  // Exception to focusable:false — allow focus only while the chat card is up.
   ipcMain.on("remix:set-chat-focus", (_event, focus: unknown) => {
     const win = mainWindow;
     if (!win || win.isDestroyed()) return;
@@ -3350,15 +3265,9 @@ app.whenReady().then(async () => {
 interface FrontmostContext {
   appName: string | null;
   windowTitle: string | null;
-  /** The active browser tab's URL, when the frontmost app is a browser. */
   url: string | null;
 }
 
-/**
- * The frontmost app + window context, parsed from the per-platform helpers.
- * Browsers report `{app, url, title}` (the active tab); everything else
- * reports `{app, windowTitle}` or a bare app name.
- */
 async function getFrontmostContext(): Promise<FrontmostContext> {
   try {
     let raw: string | null = null;
@@ -3386,11 +3295,7 @@ async function getFrontmostContext(): Promise<FrontmostContext> {
   }
 }
 
-/**
- * A capped look at the user's clipboard text, read AFTER selection capture
- * (which restores the clipboard it borrowed). "Edit this" with nothing
- * highlighted usually means the clipboard, so the agent gets a preview.
- */
+/** Clipboard preview after selection capture restores what Copy borrowed. */
 function clipboardPreviewFields(): {
   clipboard: string | null;
   clipboardLength: number;
@@ -3402,7 +3307,6 @@ function clipboardPreviewFields(): {
   };
 }
 
-/** Where the current remix session's edits belong. */
 let remixAnchor: {
   appName: string | null;
   windowTitle: string | null;
@@ -3410,18 +3314,9 @@ let remixAnchor: {
   capturedAt: number;
 } | null = null;
 
-/** How stale an anchor can be before delivery refuses to trust it. */
 const REMIX_ANCHOR_MAX_AGE_MS = 5 * 60 * 1000;
 
-// ---------------------------------------------------------------------------
-// Remix document access — reading the whole focused document and driving its
-// selection, which is what lets the agent act on "the fourth paragraph"
-// rather than only on what the user highlighted.
-//
-// Two tiers. Accessibility (AX): silent, precise, works in native text
-// fields. Keyboard: Select-All+Copy to read and find-and-select to place the
-// selection, for canvas editors (Google Docs) that expose nothing to AX.
-// ---------------------------------------------------------------------------
+// Remix document access: AX when available, keyboard fallback for canvas editors.
 
 interface AxReadResult {
   text: string;
@@ -3455,7 +3350,6 @@ async function runMacAxSelect(start: number, len: number): Promise<boolean> {
   }
 }
 
-/** Cheap capability probe: can the focused element's selection be placed? */
 async function runMacAxCaps(): Promise<{
   settable: boolean;
   length: number;
@@ -3482,7 +3376,6 @@ async function isSecureInputActive(): Promise<boolean> {
   }
 }
 
-/** Post one bare key press (by keycode) through the native helper. */
 async function runMacAxKey(code: number): Promise<boolean> {
   if (process.platform !== "darwin") return false;
   const binary = getNativeBinaryPath("macos-ax");
@@ -3495,11 +3388,7 @@ async function runMacAxKey(code: number): Promise<boolean> {
   }
 }
 
-/**
- * Inject Cmd+A through the native CGEvent binary — the same Accessibility
- * permission paste already holds, and no Apple Events, so no separate
- * Automation consent. osascript is the fallback, not the default.
- */
+/** Cmd+A via CGEvent binary (same AX permission as paste); osascript fallback. */
 async function sendSelectAllToFocusedApp(): Promise<boolean> {
   if (process.platform !== "darwin") return false;
   const binary = getNativeBinaryPath("macos-fast-paste");
@@ -3514,11 +3403,7 @@ async function sendSelectAllToFocusedApp(): Promise<boolean> {
   return runKeystrokeScript(['keystroke "a" using {command down}']);
 }
 
-/**
- * The bare keys press_key may inject, by macOS virtual keycode. A whitelist
- * by design: no modifier chords, so the blast radius of a confused agent is
- * exactly one ordinary keypress.
- */
+/** Whitelist of bare keycodes press_key may inject (no modifier chords). */
 const REMIX_PRESSABLE_KEYS: Record<string, number> = {
   enter: 36,
   tab: 48,
@@ -3533,7 +3418,6 @@ const REMIX_PRESSABLE_KEYS: Record<string, number> = {
   end: 119,
 };
 
-/** Cmd+<letter> (optionally +Shift) via the native chord binary. */
 async function sendChordToFocusedApp(
   letter: string,
   shift: boolean,
@@ -3553,7 +3437,6 @@ async function sendChordToFocusedApp(
   ]);
 }
 
-/** Run a short System Events keystroke script (macOS keyboard tier). */
 async function runKeystrokeScript(lines: string[]): Promise<boolean> {
   if (process.platform !== "darwin") return false;
   const script = [
@@ -3570,11 +3453,7 @@ async function runKeystrokeScript(lines: string[]): Promise<boolean> {
   }
 }
 
-/**
- * Yield the keyboard to the document before injecting anything: the chat
- * panel may hold key focus, and on other platforms the pill's app may be
- * active outright. Returns false when the document can't be brought back.
- */
+/** Yield key focus to the document before injecting; false if it can't. */
 async function focusAnchorForInjection(): Promise<boolean> {
   const anchor = remixAnchor;
   if (
@@ -3594,9 +3473,7 @@ async function focusAnchorForInjection(): Promise<boolean> {
   }
   let front = await getFrontmostContext();
   const ours = getFreestyleAppExclusions();
-  // In practice mode our own window IS the target, so re-activating the
-  // anchor app ("Freestyle" via osascript) is skipped — it is at best a
-  // no-op and at worst raises the wrong window.
+  // Practice mode: don't osascript-activate Freestyle (we're already there).
   if (
     front.appName &&
     !isRemixTargetAllowed(front.appName, ours, remixPracticeTarget)
@@ -3607,17 +3484,10 @@ async function focusAnchorForInjection(): Promise<boolean> {
   return front.appName === anchor.appName;
 }
 
-/**
- * Keyboard-tier selection: drive the app's own Find. Editors like Google
- * Docs leave the found text selected after Escape, which is exactly the
- * "move the cursor there and highlight it" the agent needs. Not verifiable
- * from out here — the caller reports the method so the agent stays honest.
- */
-/** Ceiling on a fetched image; past this it's a download, not an insert. */
+/** Keyboard-tier selection via the app's Find (canvas editors). */
 const REMIX_IMAGE_MAX_BYTES = 15 * 1024 * 1024;
 const REMIX_IMAGE_TIMEOUT_MS = 15_000;
 
-/** Download and decode an image the agent wants inserted, or null. */
 async function fetchRemixImage(
   url: string,
 ): Promise<Electron.NativeImage | null> {
@@ -3645,11 +3515,7 @@ async function fetchRemixImage(
   }
 }
 
-/**
- * Bring the anchored app back to the front (macOS only — elsewhere the
- * anchor check simply fails over to the clipboard). The settle wait gives
- * the app time to become key before the frontmost re-check.
- */
+/** Bring the anchored app frontmost (macOS); settle before re-check. */
 async function activateAnchorApp(appName: string): Promise<void> {
   if (process.platform !== "darwin") return;
   try {
@@ -3664,85 +3530,47 @@ async function activateAnchorApp(appName: string): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Remix bar — the persistent sliver at the bottom of the screen. Hovering it
-// opens the Remix chat; it hides whenever the pill itself is up, and follows
-// the display the cursor is on.
-// ---------------------------------------------------------------------------
+// Remix bar — bottom-edge sliver; hides while the pill is up.
 
 let remixBarWindow: BrowserWindow | null = null;
 let remixBarEnabled = true;
-// The bar is noise during onboarding. Seeded synchronously from the light
-// settings file, then corrected by the startup isOnboardingActive() probe
-// (existing users may predate the onboardingComplete flag), and cleared on
-// onboarding:set-complete.
+// Held during onboarding; seeded from settings, corrected by startup probe.
 let remixBarHeldForOnboarding = readSettings().onboardingComplete !== true;
 let remixBarFollowTimer: NodeJS.Timeout | null = null;
-/** The display the bar was last placed on, so the follow timer can tell a real
- *  move between monitors from the OS holding it off our computed position. */
+/** Last display we placed on (follow timer ignores OS Y drift). */
 let remixBarPlacedDisplay: number | null = null;
 const REMIX_BAR_WIDTH = 120;
 const REMIX_BAR_HEIGHT = 18;
 const REMIX_BAR_FOLLOW_MS = 3_000;
-/** How far the bar's window hangs past the work area, so the sliver it draws
- *  meets the screen edge. */
+/** Window hangs past work area so the drawn sliver meets the screen edge. */
 const REMIX_BAR_EDGE_OVERHANG = 6;
-/** One tick after a placement, for the OS to apply its own constraint so it
- *  can be measured. */
+/** Delay before measuring OS Dock constraint after placement. */
 const REMIX_BAR_CALIBRATE_MS = 48;
 const REMIX_BAR_REOPEN_COOLDOWN_MS = 700;
 const REMIX_BAR_RESHOW_DELAY_MS = 400;
 let lastPillHideAt = 0;
 let remixBarShowTimer: NodeJS.Timeout | null = null;
 
-/**
- * How far the OS moves the bar from where we ask for it, per display.
- *
- * macOS will not let this panel sit in the strip the Dock reserves: whatever
- * we ask for, it relocates the window on show so its bottom lands a fixed
- * distance above the work area (20pt, on the machine this was traced on).
- * Unaccounted for, that cost a visible hop on every appearance — and the
- * follow timer below, comparing the window's real position against the
- * computed one, moved it back every three seconds only for the OS to undo it
- * again, forever.
- *
- * The distance is a Dock detail, not a promise, so it is measured rather than
- * hard-coded, and kept per display: a second monitor can reserve a different
- * strip (or none), and the Dock can be resized or moved while the app runs.
- *
- * Stored as an offset from the unadjusted position rather than accumulated
- * from deltas, which makes `remixBarLearn` idempotent — two placements landing
- * close together measure the same answer instead of applying the correction
- * twice.
- */
+/** Per-display Y offset: macOS Dock relocates the panel off the work-area edge.
+ *  Measured (not hard-coded); absolute so remixBarLearn is idempotent. */
 const remixBarAdjust = new Map<number, number>();
 
-/** Where the bar goes before the OS has its say. */
 function remixBarBasePosition(): { x: number; y: number; displayId: number } {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const wa = display.workArea;
   return {
     x: wa.x + Math.round((wa.width - REMIX_BAR_WIDTH) / 2),
-    // The sliver sits against the very bottom of the work area; the window is
-    // taller than the sliver it draws, and the overhang is deliberate.
     y: wa.y + wa.height - REMIX_BAR_HEIGHT + REMIX_BAR_EDGE_OVERHANG,
     displayId: display.id,
   };
 }
 
-/** That, plus whatever this display's OS correction turned out to be. */
 function remixBarPosition(): { x: number; y: number; displayId: number } {
   const base = remixBarBasePosition();
   return { ...base, y: base.y + (remixBarAdjust.get(base.displayId) ?? 0) };
 }
 
-/**
- * Record where the bar actually ended up, as an offset from the unadjusted
- * position, so the next placement asks for somewhere the OS will accept.
- *
- * Absolute rather than cumulative: re-running this against an already-correct
- * placement measures the same offset and changes nothing.
- */
+/** Learn OS Y offset from unadjusted position (absolute, idempotent). */
 function remixBarLearn(): void {
   setTimeout(() => {
     const win = remixBarWindow;
@@ -3787,19 +3615,7 @@ function createRemixBarWindow(): void {
   remixBarWindow = win;
 }
 
-/** Reconcile the bar with reality: shown iff enabled and the pill is down. */
-/**
- * Show the bar on a display whose OS correction is not yet known.
- *
- * The constraint is only applied once the window is on screen, so it has to be
- * shown to be measured. That happens at zero opacity: the window goes up, the
- * OS moves it, the offset is learned and corrected, and only then does any of
- * it become visible.
- *
- * `remixBarCalibrating` guards re-entry, and the opacity is restored on every
- * exit including the early ones — a window left at zero opacity would be a bar
- * that never comes back.
- */
+/** First show at opacity 0, learn Dock offset, then become visible. */
 let remixBarCalibrating = false;
 
 function calibrateThenShow(bar: BrowserWindow, displayId: number): void {
@@ -3828,8 +3644,7 @@ function calibrateThenShow(bar: BrowserWindow, displayId: number): void {
       // Whatever happened above, the bar must not be left invisible.
       live.setOpacity(1);
     }
-    // Verify the corrected placement too, so a display whose constraint needs
-    // more than one pass still converges.
+    // Re-learn after correction in case the display needs another pass.
     remixBarLearn();
   }, REMIX_BAR_CALIBRATE_MS);
 }
@@ -3875,8 +3690,6 @@ function updateRemixBar(): void {
     bar.setBounds({ x, y, width: REMIX_BAR_WIDTH, height: REMIX_BAR_HEIGHT });
     remixBarPlacedDisplay = displayId;
 
-    // Already up, or this display's correction is already known: nothing to
-    // hide, and the position asked for is one the OS will accept.
     if (bar.isVisible() || remixBarAdjust.has(displayId)) {
       if (!bar.isVisible()) bar.showInactive();
       remixBarLearn();
@@ -3889,16 +3702,11 @@ function updateRemixBar(): void {
   } else {
     place();
   }
-  // The bar follows the cursor's display so it is always where the user is
-  // working, not pinned to the primary monitor.
   if (!remixBarFollowTimer) {
     remixBarFollowTimer = setInterval(() => {
       const bar = remixBarWindow;
       if (!bar || bar.isDestroyed() || !bar.isVisible()) return;
-      // Only when the cursor has actually moved to another display. Comparing
-      // against the computed position instead would never match — the OS holds
-      // the window a fixed distance off it — so the bar was shoved and sprung
-      // back on every tick.
+      // Compare display id, not Y — OS holds the window off the computed position.
       const { x, y, displayId } = remixBarPosition();
       if (displayId === remixBarPlacedDisplay) return;
       bar.setBounds({ x, y, width: REMIX_BAR_WIDTH, height: REMIX_BAR_HEIGHT });
@@ -3908,7 +3716,6 @@ function updateRemixBar(): void {
   }
 }
 
-/** The bar was hovered (or clicked): open the Remix chat where the user is. */
 function handleRemixBarOpen(): void {
   if (!remixBarEnabled) return;
   if (mainWindow?.isVisible()) return;
@@ -3920,10 +3727,8 @@ function handleRemixBarOpen(): void {
   updateRemixBar();
 }
 
-/** Apply the remix bar flag + accelerator from a settings snapshot. */
 function applyRemixSettings(settings: Record<string, string>): void {
-  // Absent means on: a server that has never been told otherwise shouldn't
-  // read as "the user switched this off".
+  // Absent means on.
   remixBarEnabled = settings[SETTINGS_KEYS.remixBarEnabled] !== "false";
   remixInitialized = true;
   updateRemixBar();
@@ -4034,15 +3839,7 @@ function sendHotkeyUp(): void {
   settingsWindow?.webContents.send("hotkey:up");
 }
 
-// ---------------------------------------------------------------------------
-// Remix
-// ---------------------------------------------------------------------------
-
-/**
- * Send to the pill, deferring until it exists. Remix IPC is bursty at the
- * moment the window is first created — down, then the selection, then possibly
- * up — and all of it must arrive in order and none of it may be dropped.
- */
+/** Send to the pill, deferring until it exists so bursty IPC stays ordered. */
 function sendToPill(channel: string, payload?: unknown): void {
   if (pillReadyPromise) {
     void pillReadyPromise.then(() => {
@@ -4053,36 +3850,18 @@ function sendToPill(channel: string, payload?: unknown): void {
   mainWindow?.webContents.send(channel, payload);
 }
 
-/**
- * Whether the selection can be read while the hotkey is still held down.
- *
- * Reading it means injecting the focused app's own Copy — a synthetic Cmd/
- * Ctrl+C. Explicitly-set modifier flags override whatever the user is
- * physically holding, so a chord of modifiers is no obstacle. A chord
- * containing the letter C is: the real C key is already down, and the injected
- * one collides with it, so the app sees nothing and the copy silently fails.
- *
- * Neither default contains C. For a chord that does, the copy waits for the
- * release instead — later, but correct, which is the right way round.
- */
+/** False if the remix chord includes C — injected Cmd/Ctrl+C collides with the held key. */
 function canCopySelectionWhileHeld(): boolean {
   const parts = currentRemixAccel?.split("+") ?? [];
   return !parts.some((part) => part.trim().toLowerCase() === "c");
 }
 
-/** Set while a press has already gone to fetch the selection. */
 let remixSelectionRequested = false;
 
-/**
- * Go and read the selection, then hand it to the pill. Safe to call twice for
- * one press — the second call is a no-op.
- */
 function captureRemixSelection(): void {
   if (remixSelectionRequested) return;
   remixSelectionRequested = true;
 
-  // The selection copy and the frontmost lookup race in parallel; together
-  // they are the session's anchor — the app the eventual edit belongs to.
   void Promise.allSettled([
     isSecureInputActive().then((secure) =>
       secure
@@ -4112,19 +3891,8 @@ function handleRemixHotkeyDown(): void {
   if (remixPressed) return;
   remixPressed = true;
 
-  // On macOS the two hotkeys deliberately share a home key — Fn dictates,
-  // Fn+Control edits — and the listeners watching them are separate processes
-  // that cannot see each other. Press the chord a shade too slowly and the
-  // dictation one has already fired on the solo Fn, so by the time Control
-  // lands there is a recording in progress that the user never asked for.
-  //
-  // The chord is the more specific of the two and therefore the one that was
-  // meant: cancel the dictation it interrupted. Nothing is lost — it is a few
-  // tens of milliseconds of audio from someone who was reaching for a
-  // different key.
-  // Its own channel rather than the ordinary cancel, which would tell the
-  // renderer to hide a pill this very function is about to show again — and
-  // the hide would land second and win.
+  // Fn+Control shares Fn with dictation; a slow press starts a rogue recording.
+  // Cancel on the remix channel — ordinary cancel would hide the pill we need.
   if (hotkeyPressed) {
     hotkeyPressed = false;
     clearHotkeyStuckWatchdog();
@@ -4136,20 +3904,13 @@ function handleRemixHotkeyDown(): void {
   remixSelectionRequested = false;
   showPill();
   sendToPill("remix:down");
-  // Mirror the key events to the dashboard (onboarding keycaps, the Remix
-  // page's demo), the same way hotkey:down/up already reach both windows.
+  // Mirror to dashboard (onboarding keycaps / Remix demo).
   settingsWindow?.webContents.send("remix:down");
 
-  // Read the selection now, not on release. Whether there is anything to edit
-  // is the first thing the user needs to know — telling them only after they
-  // have held the key down and said a whole sentence is telling them too late.
+  // Read selection on press so empty highlight is known before voice starts.
   if (canCopySelectionWhileHeld()) captureRemixSelection();
 }
 
-/**
- * The hotkey came up. Tell the pill, and read the selection if the press
- * itself couldn't (a chord containing C — see `canCopySelectionWhileHeld`).
- */
 function handleRemixHotkeyUp(): void {
   if (!remixPressed) return;
   remixPressed = false;
@@ -4180,20 +3941,8 @@ function armRemixStuckWatchdog(): void {
   }, HOTKEY_STUCK_TIMEOUT_MS);
 }
 
-/**
- * The route shortcuts: the remix chord plus a digit.
- *
- * The chord is already under the user's fingers, so a number finishes it —
- * hold, press 2, done, without ever reaching the microphone. They stay claimed
- * for as long as the card is up rather than only while the key is down, so a
- * tapped-open card can still be answered with a digit; the card's own idle
- * timeout is what bounds how long they are taken from the rest of the system.
- *
- * The modifiers have to be spelled out because a bare digit would not match
- * the event the OS actually delivers — Control is physically down. Fn is not
- * expressible as an Electron accelerator and does not modify the number row,
- * so it is simply absent here.
- */
+/** Remix chord + digit routes; claimed while the card is up. Spell modifiers
+ *  (Control is physically down); Fn isn't expressible as an accelerator. */
 const REMIX_ROUTE_MODIFIER =
   process.platform === "darwin" ? "Control" : "Control+Alt";
 const REMIX_ROUTE_DIGITS = ["1", "2", "3"];
@@ -4217,8 +3966,7 @@ function setRemixRouteKeys(open: boolean): void {
           mainWindow.webContents.send("remix:route", index);
         }
       });
-      // A route whose chord the OS or another app already owns simply has no
-      // shortcut. Saying so out loud beats a key that silently does nothing.
+      // Log when the OS already owns the chord.
       if (!claimed) {
         hotkeyLog.warn(`Route shortcut "${accel}" is already taken.`);
       }
@@ -4236,16 +3984,7 @@ function scheduleRemixHotkeyRegistration(hotkey?: string): void {
   });
 }
 
-/**
- * Bring the remix listener up on `hotkey`.
- *
- * There is deliberately no `globalShortcut` fallback here, unlike dictation's.
- * That fallback exists to keep dictation working in toggle mode where the
- * native listener can't run, and it is worth the degraded behaviour because
- * dictation is the product. Remix are not: a hotkey that can't tell a tap
- * from a hold can't offer the voice half at all, and silently shipping half
- * the feature is worse than the feature being absent on that machine.
- */
+/** Start the remix native listener. No globalShortcut fallback (needs hold/tap). */
 async function registerRemixHotkey(hotkey?: string): Promise<void> {
   if (remixKeyListener) {
     remixKeyListener.stop();
@@ -4261,9 +4000,7 @@ async function registerRemixHotkey(hotkey?: string): Promise<void> {
       : null;
   const accel = normalized ?? DEFAULT_REMIX_HOTKEY;
 
-  // One key can't mean two things. Dictation wins — it is the feature the user
-  // reaches for dozens of times a day — and remix stay off until the clash
-  // is resolved in Settings.
+  // Dictation wins on chord clash; remix stays off until Settings resolves it.
   if (currentHotkeyAccel && accel === currentHotkeyAccel) {
     hotkeyLog.warn(
       `Remix hotkey "${accel}" is already the dictation hotkey; remix disabled.`,
@@ -4529,8 +4266,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     if (started) {
       accessibilityConfirmed = true;
       hotkeyDegradedNotified = false;
-      // The dictation hotkey just moved, which can free a chord remix were
-      // parked on — or take the one they were using. Re-resolve either way.
+      // Dictation hotkey moved — re-resolve remix (may free or steal a chord).
       if (remixInitialized) scheduleRemixHotkeyRegistration();
     } else {
       hotkeyLog.warn(

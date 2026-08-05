@@ -40,28 +40,45 @@ function useCloudAuthState(): UseCloudAuth {
   const cancelledRef = useRef(false);
   const signInPromiseRef = useRef<Promise<CloudUser | null> | null>(null);
   const signInAttemptRef = useRef(0);
+  // Collapses concurrent status checks into one in-flight request. On a fresh
+  // window the mount retry-loop and the `focus` listener (fired the moment the
+  // just-shown window focuses) both call refreshInternal within the same tick —
+  // without this they'd hit /api/auth/status twice back-to-back.
+  const refreshInFlightRef = useRef<Promise<{
+    user: CloudUser | null;
+    reached: boolean;
+  }> | null>(null);
 
   const refreshInternal = useCallback(async (): Promise<{
     user: CloudUser | null;
     reached: boolean;
   }> => {
-    let reached = false;
-    const user = await getClient()
-      .api.auth.status.$get()
-      .then(async (res) => {
-        if (!res.ok) return null;
-        reached = true;
-        const data = await res.json();
-        return data.user ?? null;
-      })
-      .catch(() => null);
-    if (reached) {
-      if (!user && wasSignedInRef.current) setSessionExpired(true);
-      if (user) setSessionExpired(false);
-      wasSignedInRef.current = !!user;
-      setUser(user);
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const run = (async () => {
+      let reached = false;
+      const user = await getClient()
+        .api.auth.status.$get()
+        .then(async (res) => {
+          if (!res.ok) return null;
+          reached = true;
+          const data = await res.json();
+          return data.user ?? null;
+        })
+        .catch(() => null);
+      if (reached) {
+        if (!user && wasSignedInRef.current) setSessionExpired(true);
+        if (user) setSessionExpired(false);
+        wasSignedInRef.current = !!user;
+        setUser(user);
+      }
+      return { user, reached };
+    })();
+    refreshInFlightRef.current = run;
+    try {
+      return await run;
+    } finally {
+      refreshInFlightRef.current = null;
     }
-    return { user, reached };
   }, []);
 
   const refresh = useCallback(

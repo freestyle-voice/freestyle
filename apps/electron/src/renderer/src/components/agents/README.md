@@ -24,7 +24,12 @@ Check all three after every add — none of them fail loudly.
 2. **It writes self-referential imports.** `motion/text-shimmer.tsx` arrived
    importing `TEXT_SHIMMER_*` from itself rather than from
    `@renderer/lib/text-shimmer`. Typecheck catches it as TS2303/TS2459.
-3. **It pulls transitive components you did not ask for.** `tool-result` drags
+3. **It pulls transitive components you did not ask for.** `prompt-input` drags
+   in `motion/button/*`, `popover-morph`, `select` and `magnetic` (~1,290
+   lines, most of it serving a model picker this app never renders);
+   `streaming-response` drags in `citations` and `favicon`. Both were vendored,
+   found to be nearly all dead weight here, and removed — check what arrives
+   before keeping it. Likewise `tool-result` drags
    in `agent-code`, which drags in `shiki` — far too heavy for the pill window,
    and Remix's tool disclosure shows JSON, not source. That one was dropped
    deliberately; don't re-add it without a reason.

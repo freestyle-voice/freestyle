@@ -5,8 +5,6 @@ import type { AgentActivityItem } from "@renderer/components/agents/agent-activi
 import { AgentDisclosure } from "@renderer/components/agents/agent-disclosure";
 import { ThinkingShimmer } from "@renderer/components/agents/loading-states/thinking-shimmer";
 import { MessageScroller } from "@renderer/components/agents/message-scroller";
-import { PromptInput } from "@renderer/components/agents/prompt-input";
-import { StreamingResponse } from "@renderer/components/agents/streaming-response";
 import { capture } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 import {
@@ -316,13 +314,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   }, [props.context]);
   const lastInstructionRef = useRef<string>("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  /**
-   * The live draft, mirrored into a ref. The minimize choreography runs from a
-   * document-level listener and has to know whether anything is half-typed
-   * without re-subscribing on every keystroke; PromptInput owns the textarea
-   * itself, so there is no element to read the value off.
-   */
-  const draftRef = useRef<string>("");
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const transport = useMemo(
     () =>
@@ -501,6 +493,26 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
 
   const busy = status === "submitted" || status === "streaming";
 
+  /**
+   * Whether an activity block is already narrating a tool in flight. While one
+   * is, it says what is happening; the line below is for the stretch before
+   * the first tool call, when the panel would otherwise sit silent.
+   */
+  const narrating = useMemo(
+    () =>
+      messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.parts.some(
+            (part) =>
+              isToolOrDynamicToolUIPart(part) &&
+              part.state !== "output-available" &&
+              part.state !== "output-error",
+          ),
+      ),
+    [messages],
+  );
+
   const [settled, setSettled] = useState(false);
   useEffect(() => {
     if (busy) {
@@ -592,7 +604,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     };
     const handleOut = (event: MouseEvent): void => {
       if (event.relatedTarget) return;
-      if (draftRef.current.trim()) return;
+      if (inputRef.current?.value.trim()) return;
       clearMinimizeTimer();
       minimizeTimerRef.current = setTimeout(() => {
         minimizeTimerRef.current = null;
@@ -736,21 +748,15 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     [clearError, sendMessage],
   );
 
-  const setDraft = useCallback((value: string) => {
-    draftRef.current = value;
-    setInput(value);
-  }, []);
-
-  const submit = useCallback(
-    (value?: string) => {
-      const text = (value ?? input).trim();
-      if (!text || busy) return;
-      setDraft("");
-      void sendText(text);
-      capture("remix_message_sent", { source: "typed" });
-    },
-    [busy, input, sendText, setDraft],
-  );
+  const submit = useCallback(() => {
+    const text = input.trim();
+    if (!text || busy) return;
+    setInput("");
+    const el = inputRef.current;
+    if (el) el.style.height = "auto";
+    void sendText(text);
+    capture("remix_message_sent", { source: "typed" });
+  }, [busy, input, sendText]);
 
   /**
    * A preset chip: the fast lane, inside the chat surface. One-shot transform
@@ -830,24 +836,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       }
     },
     [busy, refreshContext, runPresetTransform],
-  );
-
-  const presetActions = useMemo(
-    () =>
-      REMIX_PRESETS.map((preset) => ({
-        value: preset.id,
-        label: preset.label,
-        description: PRESET_BLURBS[preset.id],
-      })),
-    [],
-  );
-
-  const onPresetAction = useCallback(
-    (id: string) => {
-      const preset = REMIX_PRESETS.find((p) => p.id === id);
-      if (preset) void runPreset(preset);
-    },
-    [runPreset],
   );
 
   return (
@@ -1006,6 +994,11 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             {messages.map((message) => (
               <MessageRow key={message.id} message={message} busy={busy} />
             ))}
+            {busy && !narrating && (
+              <ThinkingShimmer className="remix-chat-busy">
+                Thinking…
+              </ThinkingShimmer>
+            )}
           </MessageScroller>
 
           {notice && (
@@ -1014,43 +1007,91 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             </div>
           )}
 
-          <PromptInput
-            className="remix-chat-prompt"
-            value={input}
-            onValueChange={setDraft}
-            aria-label="Message Remix"
-            placeholder={busy ? "Working…" : "Message Remix…"}
-            actions={liveContext.text ? presetActions : []}
-            onAction={onPresetAction}
-            onSubmit={(value) => submit(value)}
-            loading={busy}
-            onStop={() => stop()}
-            minRows={1}
-            maxRows={5}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                stop();
-                onClose();
-              }
-            }}
-          />
+          {!busy && messages.length === 0 && liveContext.text ? (
+            <div className="remix-chat-quick">
+              {REMIX_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className="remix-chat-chip"
+                  onClick={() => void runPreset(preset)}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="remix-chat-composer">
+            <textarea
+              ref={inputRef}
+              className="remix-chat-input"
+              rows={1}
+              value={input}
+              aria-label="Message Remix"
+              placeholder={busy ? "Working…" : "Message Remix…"}
+              onChange={(e) => {
+                setInput(e.target.value);
+                const el = e.currentTarget;
+                el.style.height = "auto";
+                el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+            />
+            {busy ? (
+              <button
+                type="button"
+                className="remix-chat-send"
+                onClick={() => stop()}
+                aria-label="Stop"
+                title="Stop"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  aria-hidden="true"
+                >
+                  <rect x="1.5" y="1.5" width="9" height="9" rx="2" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="remix-chat-send"
+                disabled={!input.trim()}
+                onClick={submit}
+                aria-label="Send"
+                title="Send"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M8 12.8V3.6M4.1 7.4 8 3.5l3.9 3.9"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
       </LazyMotion>
     </div>
   );
 }
-
-/**
- * What each preset actually does, for the composer's action menu. The chips
- * used to sit above the composer in the empty state only; as menu items they
- * are reachable from every state, and there is room to say what they do.
- */
-const PRESET_BLURBS: Record<string, string> = {
-  fix: "Correct mistakes, leave the voice alone",
-  formal: "Raise the register, keep the position",
-  markdown: "Format the structure it already has",
-};
 
 const TOOL_LABELS: Record<string, { doing: string; done: string }> = {
   get_context: {
@@ -1161,16 +1202,9 @@ const MessageRow = memo(function MessageRow({
     }
   });
 
-  // Only the turn's last text block is still streaming; earlier ones settled
-  // the moment the next block started.
-  const lastTextIndex = blocks.reduce(
-    (acc, block, i) => (block.kind === "text" ? i : acc),
-    -1,
-  );
-
   return (
     <div className="remix-chat-assistant">
-      {blocks.map((block, i) =>
+      {blocks.map((block) =>
         block.kind === "tools" ? (
           <ToolActivity
             key={block.parts[0].toolCallId}
@@ -1178,11 +1212,7 @@ const MessageRow = memo(function MessageRow({
             busy={busy}
           />
         ) : (
-          <AssistantText
-            key={`text-${block.index}`}
-            text={block.text}
-            busy={busy && i === lastTextIndex}
-          />
+          <AssistantText key={`text-${block.index}`} text={block.text} />
         ),
       )}
     </div>
@@ -1190,22 +1220,11 @@ const MessageRow = memo(function MessageRow({
 });
 
 /** The agent's prose. The actions belong to the agent, not to a button row. */
-function AssistantText({
-  text,
-  busy,
-}: {
-  text: string;
-  busy: boolean;
-}): React.JSX.Element {
+function AssistantText({ text }: { text: string }): React.JSX.Element {
   return (
-    <StreamingResponse
-      status={busy ? "streaming" : "complete"}
-      announce={false}
-      className="remix-chat-response"
-      showActions={false}
-    >
+    <div className="remix-chat-response">
       <Markdown text={text} />
-    </StreamingResponse>
+    </div>
   );
 }
 
@@ -1669,9 +1688,81 @@ const REMIX_CHAT_CSS = `
     line-height: 1.35;
   }
 
-  /* PromptInput's root carries \`w-full\`, so a plain margin would push it
-     12px past the panel's right edge. \`width: auto\` lets the margins size it. */
-  .remix-chat-prompt { width: auto; margin: 0 12px 12px; }
+  /* The model thinking, before any tool has been called. Same treatment as
+     the strip narrates with, so the two read as one voice. */
+  .remix-chat-busy { font-size: 12px; }
+
+  /* ---- Presets and composer ---- */
+  .remix-chat-chip {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid rgba(245, 241, 228, 0.13);
+    background: rgba(245, 241, 228, 0.07);
+    color: ${INK};
+    font-size: 11px;
+    line-height: 1;
+    padding: 5px 10px;
+    border-radius: 999px;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .remix-chat-chip:hover { background: rgba(245, 241, 228, 0.15); }
+  .remix-chat-quick {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    /* main's card padded the whole face; here each section carries its own
+       inset, so these match the scroll area's 18px. */
+    padding: 4px 18px 0;
+  }
+  .remix-chat-composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin: 10px 14px 13px;
+    padding: 8px 8px 8px 13px;
+    border: 1px solid rgba(245, 241, 228, 0.16);
+    background: rgba(245, 241, 228, 0.05);
+    border-radius: 14px;
+    transition: border-color 140ms ease;
+  }
+  .remix-chat-composer:focus-within { border-color: rgba(245, 241, 228, 0.34); }
+  .remix-chat-input {
+    flex: 1;
+    resize: none;
+    border: none;
+    background: transparent;
+    color: ${INK};
+    font-size: 12.5px;
+    line-height: 1.45;
+    font-family: inherit;
+    outline: none;
+    padding: 5px 0;
+    min-height: 20px;
+    max-height: 120px;
+  }
+  .remix-chat-input::placeholder { color: ${INK_FAINT}; }
+  .remix-chat-send {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 999px;
+    background: rgba(245, 241, 228, 0.92);
+    color: rgba(24, 22, 18, 0.95);
+    cursor: pointer;
+    transition: opacity 140ms ease, transform 140ms ease;
+  }
+  .remix-chat-send svg rect { fill: currentColor; }
+  .remix-chat-send:disabled { opacity: 0.3; cursor: default; }
+  .remix-chat-send:not(:disabled):hover { transform: scale(1.06); }
+  .remix-chat-send:not(:disabled):active { transform: scale(0.95); }
 
   /* ---- Markdown ---- */
   .remix-md { line-height: 1.6; word-break: break-word; }

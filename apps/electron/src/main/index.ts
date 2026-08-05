@@ -3678,21 +3678,78 @@ let remixBarEnabled = true;
 // onboarding:set-complete.
 let remixBarHeldForOnboarding = readSettings().onboardingComplete !== true;
 let remixBarFollowTimer: NodeJS.Timeout | null = null;
+/** The display the bar was last placed on, so the follow timer can tell a real
+ *  move between monitors from the OS holding it off our computed position. */
+let remixBarPlacedDisplay: number | null = null;
 const REMIX_BAR_WIDTH = 120;
 const REMIX_BAR_HEIGHT = 18;
 const REMIX_BAR_FOLLOW_MS = 3_000;
+/** How far the bar's window hangs past the work area, so the sliver it draws
+ *  meets the screen edge. */
+const REMIX_BAR_EDGE_OVERHANG = 6;
+/** One tick after a placement, for the OS to apply its own constraint so it
+ *  can be measured. */
+const REMIX_BAR_CALIBRATE_MS = 48;
 const REMIX_BAR_REOPEN_COOLDOWN_MS = 700;
 const REMIX_BAR_RESHOW_DELAY_MS = 400;
 let lastPillHideAt = 0;
 let remixBarShowTimer: NodeJS.Timeout | null = null;
 
-function remixBarPosition(): { x: number; y: number } {
+/**
+ * How far the OS moves the bar from where we ask for it, per display.
+ *
+ * macOS will not let this panel sit in the strip the Dock reserves: whatever
+ * we ask for, it relocates the window on show so its bottom lands a fixed
+ * distance above the work area (20pt, on the machine this was traced on).
+ * Unaccounted for, that cost a visible hop on every appearance — and the
+ * follow timer below, comparing the window's real position against the
+ * computed one, moved it back every three seconds only for the OS to undo it
+ * again, forever.
+ *
+ * The distance is a Dock detail, not a promise, so it is measured rather than
+ * hard-coded, and kept per display: a second monitor can reserve a different
+ * strip (or none), and the Dock can be resized or moved while the app runs.
+ *
+ * Stored as an offset from the unadjusted position rather than accumulated
+ * from deltas, which makes `remixBarLearn` idempotent — two placements landing
+ * close together measure the same answer instead of applying the correction
+ * twice.
+ */
+const remixBarAdjust = new Map<number, number>();
+
+/** Where the bar goes before the OS has its say. */
+function remixBarBasePosition(): { x: number; y: number; displayId: number } {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const wa = display.workArea;
   return {
     x: wa.x + Math.round((wa.width - REMIX_BAR_WIDTH) / 2),
-    y: wa.y + wa.height - REMIX_BAR_HEIGHT + 6,
+    // The sliver sits against the very bottom of the work area; the window is
+    // taller than the sliver it draws, and the overhang is deliberate.
+    y: wa.y + wa.height - REMIX_BAR_HEIGHT + REMIX_BAR_EDGE_OVERHANG,
+    displayId: display.id,
   };
+}
+
+/** That, plus whatever this display's OS correction turned out to be. */
+function remixBarPosition(): { x: number; y: number; displayId: number } {
+  const base = remixBarBasePosition();
+  return { ...base, y: base.y + (remixBarAdjust.get(base.displayId) ?? 0) };
+}
+
+/**
+ * Record where the bar actually ended up, as an offset from the unadjusted
+ * position, so the next placement asks for somewhere the OS will accept.
+ *
+ * Absolute rather than cumulative: re-running this against an already-correct
+ * placement measures the same offset and changes nothing.
+ */
+function remixBarLearn(): void {
+  setTimeout(() => {
+    const win = remixBarWindow;
+    if (!win || win.isDestroyed() || !win.isVisible()) return;
+    const base = remixBarBasePosition();
+    remixBarAdjust.set(base.displayId, win.getBounds().y - base.y);
+  }, REMIX_BAR_CALIBRATE_MS);
 }
 
 function createRemixBarWindow(): void {
@@ -3731,6 +3788,52 @@ function createRemixBarWindow(): void {
 }
 
 /** Reconcile the bar with reality: shown iff enabled and the pill is down. */
+/**
+ * Show the bar on a display whose OS correction is not yet known.
+ *
+ * The constraint is only applied once the window is on screen, so it has to be
+ * shown to be measured. That happens at zero opacity: the window goes up, the
+ * OS moves it, the offset is learned and corrected, and only then does any of
+ * it become visible.
+ *
+ * `remixBarCalibrating` guards re-entry, and the opacity is restored on every
+ * exit including the early ones — a window left at zero opacity would be a bar
+ * that never comes back.
+ */
+let remixBarCalibrating = false;
+
+function calibrateThenShow(bar: BrowserWindow, displayId: number): void {
+  if (remixBarCalibrating) {
+    bar.showInactive();
+    return;
+  }
+  remixBarCalibrating = true;
+  bar.setOpacity(0);
+  bar.showInactive();
+  const base = remixBarBasePosition();
+  setTimeout(() => {
+    remixBarCalibrating = false;
+    const live = remixBarWindow;
+    if (!live || live.isDestroyed()) return;
+    try {
+      remixBarAdjust.set(displayId, live.getBounds().y - base.y);
+      const next = remixBarPosition();
+      live.setBounds({
+        x: next.x,
+        y: next.y,
+        width: REMIX_BAR_WIDTH,
+        height: REMIX_BAR_HEIGHT,
+      });
+    } finally {
+      // Whatever happened above, the bar must not be left invisible.
+      live.setOpacity(1);
+    }
+    // Verify the corrected placement too, so a display whose constraint needs
+    // more than one pass still converges.
+    remixBarLearn();
+  }, REMIX_BAR_CALIBRATE_MS);
+}
+
 function updateRemixBar(): void {
   const shouldShow =
     remixBarEnabled && !remixBarHeldForOnboarding && !mainWindow?.isVisible();
@@ -3760,17 +3863,26 @@ function updateRemixBar(): void {
   const win = remixBarWindow;
   if (!win) return;
   const place = (): void => {
-    if (!remixBarWindow || remixBarWindow.isDestroyed()) return;
+    const bar = remixBarWindow;
+    if (!bar || bar.isDestroyed()) return;
     if (
       !remixBarEnabled ||
       remixBarHeldForOnboarding ||
       mainWindow?.isVisible()
     )
       return;
-    const { x, y } = remixBarPosition();
-    const [bx, by] = remixBarWindow.getPosition();
-    if (bx !== x || by !== y) remixBarWindow.setPosition(x, y);
-    if (!remixBarWindow.isVisible()) remixBarWindow.showInactive();
+    const { x, y, displayId } = remixBarPosition();
+    bar.setBounds({ x, y, width: REMIX_BAR_WIDTH, height: REMIX_BAR_HEIGHT });
+    remixBarPlacedDisplay = displayId;
+
+    // Already up, or this display's correction is already known: nothing to
+    // hide, and the position asked for is one the OS will accept.
+    if (bar.isVisible() || remixBarAdjust.has(displayId)) {
+      if (!bar.isVisible()) bar.showInactive();
+      remixBarLearn();
+      return;
+    }
+    calibrateThenShow(bar, displayId);
   };
   if (win.webContents.isLoading()) {
     win.webContents.once("did-finish-load", place);
@@ -3783,9 +3895,15 @@ function updateRemixBar(): void {
     remixBarFollowTimer = setInterval(() => {
       const bar = remixBarWindow;
       if (!bar || bar.isDestroyed() || !bar.isVisible()) return;
-      const { x, y } = remixBarPosition();
-      const [bx, by] = bar.getPosition();
-      if (bx !== x || by !== y) bar.setPosition(x, y);
+      // Only when the cursor has actually moved to another display. Comparing
+      // against the computed position instead would never match — the OS holds
+      // the window a fixed distance off it — so the bar was shoved and sprung
+      // back on every tick.
+      const { x, y, displayId } = remixBarPosition();
+      if (displayId === remixBarPlacedDisplay) return;
+      bar.setBounds({ x, y, width: REMIX_BAR_WIDTH, height: REMIX_BAR_HEIGHT });
+      remixBarPlacedDisplay = displayId;
+      remixBarLearn();
     }, REMIX_BAR_FOLLOW_MS);
   }
 }

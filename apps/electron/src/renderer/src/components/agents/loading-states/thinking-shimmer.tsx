@@ -3,9 +3,7 @@ import { cn } from "@renderer/lib/utils";
 import type { ReactNode } from "react";
 
 export interface ThinkingShimmerProps {
-  /** Loading message shown to the user. */
   children?: ReactNode;
-  /** Seconds taken for one shimmer pass. */
   duration?: number;
   className?: string;
 }

@@ -38,30 +38,9 @@ import {
   type RemixChatAnchor,
 } from "./remix-chat-surface";
 
-/**
- * The agent-lane chat card. Lives inside the pill's card surface; the thread
- * itself lives in the local server's SQLite (the cloud stores nothing), so
- * closing the card loses nothing — the next message rejoins the thread.
- *
- * The card has two faces. Minimized, it is a one-line strip that narrates the
- * most recent thing the agent did — voice runs live here, doing their work
- * without opening a window. Hovering the strip grows it into the full
- * conversation; the pointer leaving the conversation shrinks it back.
- */
-
-/**
- * The three ink tiers, set by measurement rather than by eye. On this surface
- * (near-black over an arbitrary window) 58%/42% cream measure 5.5:1 and
- * 3.75:1 — the faint tier was below the 4.5:1 floor while carrying the app
- * name, the resumed line, every tool label and the composer's placeholder.
- * 70%/52% clear 4.5:1 over both a light and a dark backdrop and still read as
- * three distinct steps. Anything below DIM is decoration (rules, borders,
- * empty marks) and never carries text.
- */
 const INK = "rgba(245, 241, 228, 0.92)";
 const INK_DIM = "rgba(245, 241, 228, 0.70)";
 const INK_FAINT = "rgba(245, 241, 228, 0.52)";
-/** The palette's olive, at the brightness the dark theme uses. */
 const OLIVE = "#8AB62A";
 
 export {
@@ -92,36 +71,25 @@ interface ThreadState {
 }
 
 export interface RemixChatProps {
-  /** The capture from the hotkey press that opened this card. */
   context: RemixSelectionPayload;
-  /** A spoken or typed instruction to send as soon as the thread is ready. */
   initialInstruction: string | null;
-  /** Collapsed to the one-line activity strip. */
   minimized: boolean;
-  /** The strip layer's current height — the settled strip grows around the
-      agent's final message, and the host surface has to follow. */
   onMiniHeightChange?: (height: number) => void;
   anchor: RemixChatAnchor;
   onExpand: () => void;
   onMinimize: () => void;
   onClose: () => void;
-  /** The strip layer's current height — the settled strip grows around the
-   * agent's final message, and the host surface has to grow with it. */
 }
 
 export function RemixChat(props: RemixChatProps): React.JSX.Element {
   const [thread, setThread] = useState<ThreadState | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  // Held as state, not read from props, so "New" can clear it: the thread
-  // component remounts per thread, and a remount that still saw the opening
-  // instruction would send it again — into the thread that was supposed to
-  // be empty.
+  // State (not props) so "New" can clear it without a remount re-sending.
   const [initialInstruction, setInitialInstruction] = useState(
     props.initialInstruction,
   );
 
-  // The chat input needs the keyboard, and the pill window is focusable:false
-  // by design — focusability follows the card exactly.
+  // Pill is focusable:false; follow the card so the composer can take keyboard.
   useEffect(() => {
     window.api?.setRemixChatFocus(!props.minimized);
     return () => window.api?.setRemixChatFocus(false);
@@ -154,8 +122,6 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
     };
   }, []);
 
-  // A failure strip nobody hovers closes itself like the idle strip does —
-  // the corner goes back to the bar instead of holding an error nobody read.
   useEffect(() => {
     if (!loadFailed || !props.minimized) return;
     const timer = setTimeout(props.onClose, MINI_IDLE_DISMISS_MS);
@@ -169,8 +135,6 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
   }, [props.initialInstruction]);
 
   const startNewThread = useCallback(() => {
-    // A new thread starts from nothing: no carried-over instruction, no
-    // in-flight run (the New button stops the stream before calling this).
     setInitialInstruction(null);
     setThread(null);
     setLoadFailed(false);
@@ -221,7 +185,6 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
   );
 }
 
-/** The one-line face, shared by the thread and the pre-thread states. */
 function MiniStrip(props: {
   text: string;
   busy?: boolean;
@@ -229,10 +192,7 @@ function MiniStrip(props: {
   onEnter?: () => void;
 }): React.JSX.Element {
   return (
-    // Hover is a shortcut, not the only way in: the strip expands from the
-    // hotkey and the bar too, so a pointer-only affordance here excludes
-    // nobody.
-    // biome-ignore lint/a11y/noStaticElementInteractions: see above
+    // biome-ignore lint/a11y/noStaticElementInteractions: expand also via hotkey/bar
     <div
       className="remix-chat dark"
       data-testid="remix-chat-mini"
@@ -264,7 +224,6 @@ interface RemixThreadProps {
   onMiniHeightChange?: (height: number) => void;
 }
 
-/** A fast-lane preset run, shown inline in the thread like a tool row. */
 interface ActionRow {
   id: number;
   label: string;
@@ -272,24 +231,11 @@ interface ActionRow {
   detail?: string;
 }
 
-/** How long the pointer can be gone before the conversation folds back up. */
 const MINIMIZE_GRACE_MS = 380;
-
-/**
- * How long the idle strip lingers un-hovered before the whole session closes
- * and the corner goes back to the bar. Long enough to read the result line,
- * short enough that the strip never becomes furniture.
- */
 const MINI_IDLE_DISMISS_MS = 7000;
-
-/** How long the settled strip (final message included) lingers un-hovered. */
 const MINI_SETTLED_DISMISS_MS = 3000;
 const MINI_STRIP_PAD = 24; // .remix-mini[data-full] vertical padding
 const MINI_STRIP_MAX = 316; // main's 340 window cap minus the chrome
-
-// The settled strip shows the agent's final message in full. The strip layer
-// grows around it, and the window grows around the layer (main clamps the
-// window; past the cap the message scrolls inside the strip).
 
 function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const { thread, minimized, anchor, onExpand, onMinimize, onClose } = props;
@@ -298,13 +244,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const [actions, setActions] = useState<ActionRow[]>([]);
   const actionSeqRef = useRef(0);
 
-  // The context the next request rides on. Starts as the hotkey capture and
-  // follows the prop when a capture lands after the card is already open (bar
-  // hover, late selection copy); typed follow-ups re-capture so the agent
-  // sees the document as it is now.
   const contextRef = useRef<RemixSelectionPayload>(props.context);
-  // Mirrored into state so the empty-state copy and the preset guard track
-  // every refresh, not just the capture that opened the card.
   const [liveContext, setLiveContext] = useState<RemixSelectionPayload>(
     props.context,
   );
@@ -320,9 +260,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     () =>
       new DefaultChatTransport<UIMessage>({
         api: "/api/remix/agent",
-        // apiFetch resolves the server base URL and injects the local bearer
-        // token; 401/429 become the same interactive prompts the rest of the
-        // app uses instead of raw stream errors.
+
         fetch: (async (_input: unknown, init?: RequestInit) => {
           const res = await apiFetch("/api/remix/agent", init ?? {});
           if (res.status === 401) {
@@ -358,11 +296,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     [],
   );
 
-  /**
-   * The tool executor is a thin switch: one primitive, one IPC, result
-   * returned verbatim. No composites, no guardrails, no notes — the agent's
-   * system prompt owns the workflow and the error handling.
-   */
   const executeTool = useCallback(
     async (toolCall: {
       toolName: string;
@@ -375,11 +308,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         typeof input[key] === "string" ? (input[key] as string) : "";
       const num = (key: string): number | undefined =>
         typeof input[key] === "number" ? (input[key] as number) : undefined;
-      /**
-       * A missing/mistyped argument comes back as an informative failure that
-       * echoes what the model actually sent — so it can self-correct on the
-       * next step, and so the console shows the malformed call verbatim.
-       */
       const badArgs = (expected: string): Record<string, unknown> => ({
         ok: false,
         reason: "bad-args",
@@ -493,11 +421,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
 
   const busy = status === "submitted" || status === "streaming";
 
-  /**
-   * Whether an activity block is already narrating a tool in flight. While one
-   * is, it says what is happening; the line below is for the stretch before
-   * the first tool call, when the panel would otherwise sit silent.
-   */
   const narrating = useMemo(
     () =>
       messages.some(
@@ -532,8 +455,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     [],
   );
 
-  // The spoken instruction that opened the card, sent exactly once — the ref
-  // is the guard, so re-renders (and dependency changes) can't re-send it.
+  // Guard so the opening instruction is sent exactly once.
   const sentInitialRef = useRef(false);
   useEffect(() => {
     if (sentInitialRef.current) return;
@@ -545,10 +467,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     capture("remix_message_sent", { source: "dictated" });
   }, [props.initialInstruction, sendMessage]);
 
-  // Analytics: one `remix_tool_used` per tool call, observed from the stream
-  // so server tools (web_search, image_search) count the same way as client
-  // primitives (copy, paste, …). The seen-set seeds from the restored thread
-  // so reloaded history never recounts; tool names only, never content.
+  // Seed from restored thread so reloaded history never recounts tools.
   const seenToolCallsRef = useRef<Set<string> | null>(null);
   useEffect(() => {
     let seen = seenToolCallsRef.current;
@@ -572,18 +491,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     }
   }, [messages, thread.messages]);
 
-  // Following the newest output — and stopping when the reader scrolls up to
-  // read — is MessageScroller's job now; it does the same thing this used to
-  // do by hand, with the viewport transform that keeps streamed text crisp.
-
-  // ---- Minimize on leave, expand on hover ----
-  // Leave detection listens at the document level for the pointer exiting
-  // the window (`mouseout` with no relatedTarget) rather than for mouseleave
-  // on the card: rows appear and disappear under the cursor while the agent
-  // works, and element-level leave events get lost across those reflows. The
-  // grace timer separates "left the card" from "grazed its edge", and a
-  // half-typed draft pins the card open — folding it up would take the
-  // keyboard away mid-thought.
+  // Document-level mouseout: element leave is lost when rows reflow under the
+  // cursor. Grace timer distinguishes leave from edge graze; a draft pins open.
   const minimizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearMinimizeTimer = useCallback(() => {
     if (minimizeTimerRef.current) {
@@ -632,19 +541,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     return () => document.removeEventListener("keydown", onKey);
   }, [minimized, onClose]);
 
-  /**
-   * The island holds one line, always. It used to grow to show the agent's
-   * final message in full, which meant measuring the rendered markdown and
-   * asking main to grow the window around it — but the island's job is to say
-   * what is happening while you keep working, and a block of prose expanding
-   * over your document is the opposite of that. The full answer is one hover
-   * away in the card.
-   */
-  // Once the run settles, the strip stops narrating and shows the agent's
-  // final message in full. The window has to grow around it: measure the
-  // rendered message, grow the strip layer to fit, and ask main for the
-  // matching window height (clamped there); past the cap the message
-  // scrolls inside the strip.
   const miniMessageRef = useRef<HTMLDivElement | null>(null);
   const [miniContentHeight, setMiniContentHeight] = useState<number | null>(
     null,
@@ -675,8 +571,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       )
     : REMIX_CHAT_STRIP.height;
 
-  // The host surface (the pill card wrapping this component) sizes the strip
-  // itself, so it has to follow the growth or it clips the message.
   const onMiniHeightChangeRef = useRef(props.onMiniHeightChange);
   onMiniHeightChangeRef.current = props.onMiniHeightChange;
   useEffect(() => {
@@ -687,7 +581,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   useLayoutEffect(() => {
     if (!minimized) return;
     if (!showFullFinal) {
-      // Back to the one-line strip.
       setMiniContentHeight(null);
       return;
     }
@@ -696,29 +589,18 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     setMiniContentHeight(el.scrollHeight + MINI_STRIP_PAD);
   }, [minimized, showFullFinal, finalText]);
 
-  // The strip doesn't outstay its welcome: once the run has settled, a beat
-  // without a hover and it hands the corner back to the bar. Hovering keeps
-  // it (and expands into the full thread, where the message stays readable).
   useEffect(() => {
     if (!minimized || !settled) return;
     const timer = setTimeout(onClose, MINI_SETTLED_DISMISS_MS);
     return () => clearTimeout(timer);
   }, [minimized, settled, onClose]);
 
-  /**
-   * Re-read the live highlight so EVERY user-initiated request carries the
-   * selection as it is right now — typed messages, quick actions, and preset
-   * chips all pass through here before acting.
-   */
   const refreshContext = useCallback(async () => {
     try {
       const re = await window.api.remixRecapture();
       if (re && !re.stale) {
         contextRef.current = {
-          // A null read can mean "nothing highlighted" OR "the app answered
-          // too slowly" — keep the last known selection rather than wiping
-          // it; the verify-before-replace layer catches genuine staleness
-          // before anything is overwritten.
+          // Null can mean empty highlight or a slow reply — keep last known.
           text: re.selection ?? contextRef.current.text,
           appName: re.appName,
           windowTitle: re.windowTitle,
@@ -731,13 +613,10 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         setLiveContext(contextRef.current);
       }
     } catch {
-      // Stale context beats no message.
+      // Keep last context.
     }
   }, []);
 
-  // No structural refresh here: the agent owns freshness via get_context,
-  // per its system prompt. The snapshot in the request is labeled as
-  // summon-time state.
   const sendText = useCallback(
     (text: string) => {
       setNotice(null);
@@ -758,11 +637,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     capture("remix_message_sent", { source: "typed" });
   }, [busy, input, sendText]);
 
-  /**
-   * A preset chip: the fast lane, inside the chat surface. One-shot transform
-   * of the selection, delivered through the same anchored paste as the agent's
-   * tools, drawn as an inline action row rather than a thread turn.
-   */
   const presetRunningRef = useRef(false);
   const runPresetTransform = useCallback(async (preset: RemixPreset) => {
     const selection = contextRef.current.text;
@@ -808,7 +682,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       if (!delivered.ok) {
         throw new Error("Couldn't replace it — nothing was changed.");
       }
-      // The selection in the document is now the edited text.
+
       contextRef.current = { ...contextRef.current, text: edited };
       settle({ status: "done" });
     } catch (err) {
@@ -839,12 +713,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   );
 
   return (
-    // The `dark` class is what lets the beUI components sit on this surface:
-    // they consume the app's semantic tokens, and Remix floats over the user's
-    // editor rather than over the app, so it commits to the dark palette in
-    // both themes instead of following the theme provider.
-    //
-    // biome-ignore lint/a11y/noStaticElementInteractions: hover only cancels the minimize timer; every control inside has its own keyboard path and Esc closes the card
+    // biome-ignore lint/a11y/noStaticElementInteractions: hover cancels minimize; Esc closes
     <div
       className="remix-chat dark"
       data-minimized={minimized}
@@ -852,13 +721,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       onMouseEnter={handleMouseEnter}
     >
       <style>{REMIX_CHAT_CSS}</style>
-      {/* domMax, not domAnimation: AgentActivity and PromptInput use
-          `layout="position"` and `AnimatePresence mode="popLayout"`, both of
-          which need layout projection and would silently do nothing on the
-          smaller set. `strict` keeps the vendored components honest — it
-          throws if one reaches for a full `motion.*` component instead of the
-          tree-shakeable `m.*` one. The whole module is code-split at the
-          `app.tsx` boundary, so none of this reaches the dictation path. */}
+      {/* domMax for layout projection; strict requires m.* not motion.* */}
       <LazyMotion features={domMax} strict>
         <div
           className="remix-chat-face remix-chat-face-strip"
@@ -879,9 +742,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                 <Markdown text={finalText ?? ""} />
               </div>
             ) : busy || !settled ? (
-              // beUI's loading treatment: the label shimmers while the agent
-              // is still working, so the strip reads as live without a spinner
-              // competing with the user's document.
               <ThinkingShimmer className="remix-mini-line">
                 {notice ?? latestActivity(messages, true)}
               </ThinkingShimmer>
@@ -1132,11 +992,6 @@ const TOOL_LABELS: Record<string, { doing: string; done: string }> = {
   image_search: { doing: "Searching images…", done: "Searched images" },
 };
 
-/**
- * The strip's single line: the most recent thing worth narrating, scanning
- * the newest message backwards — a tool call in flight, a tool call landed,
- * or the latest streamed text.
- */
 function latestActivity(messages: UIMessage[], busy: boolean): string {
   for (let m = messages.length - 1; m >= 0; m--) {
     const message = messages[m];
@@ -1154,8 +1009,6 @@ function latestActivity(messages: UIMessage[], busy: boolean): string {
       }
       if (isTextUIPart(part) && part.text.trim()) {
         const line = part.text.trim().split("\n")[0] ?? "";
-        // The user's own words aren't news to them — while the agent is
-        // getting started they read better as what it is chewing on.
         if (message.role === "user") return busy ? "Thinking…" : `“${line}”`;
         return line;
       }
@@ -1164,15 +1017,6 @@ function latestActivity(messages: UIMessage[], busy: boolean): string {
   return busy ? "Thinking…" : "Freestyle Remix";
 }
 
-/**
- * One assistant turn, laid out as a record rather than a chat log: the tool
- * calls collapse into a single activity line once the run settles, and the
- * prose that follows carries the actions you would otherwise have to ask for.
- *
- * Runs of consecutive tool parts are grouped, so a turn that reads three
- * things, writes, then explains itself shows one activity block and one
- * answer instead of five stacked rows saying almost the same thing.
- */
 const MessageRow = memo(function MessageRow({
   message,
   busy,
@@ -1219,7 +1063,6 @@ const MessageRow = memo(function MessageRow({
   );
 });
 
-/** The agent's prose. The actions belong to the agent, not to a button row. */
 function AssistantText({ text }: { text: string }): React.JSX.Element {
   return (
     <div className="remix-chat-response">
@@ -1228,7 +1071,6 @@ function AssistantText({ text }: { text: string }): React.JSX.Element {
   );
 }
 
-/** Render a tool payload for the expanded row. */
 function pretty(value: unknown): string {
   if (value === undefined || value === null) return "—";
   try {
@@ -1240,12 +1082,6 @@ function pretty(value: unknown): string {
   }
 }
 
-/**
- * One row inside the activity block: the sentence, and — for anyone who wants
- * to know exactly what the agent did — the call's raw input and output. The
- * summary is for reading; this is for debugging, so it stays one click away
- * rather than being folded into prose.
- */
 function ToolStepLabel({
   part,
   label,
@@ -1284,10 +1120,7 @@ function ToolStepLabel({
         </svg>
       </button>
       <AgentDisclosure open={open}>
-        {/* Spans, not <pre>/<div>: AgentActivity renders a row's label inside
-            a <span>, and flow content nested in phrasing content is invalid.
-            `.remix-chat-step-pre` carries the block layout and the pre-wrap
-            whitespace instead. */}
+        {/* Spans: AgentActivity puts labels in a <span>; block tags would be invalid. */}
         <span className="remix-chat-step-body">
           <span className="remix-chat-step-key">Input</span>
           <span className="remix-chat-step-pre">{pretty(part.input)}</span>
@@ -1307,12 +1140,6 @@ function ToolStepLabel({
   );
 }
 
-/**
- * A run of tool calls as one activity block. While the run is live it stays
- * open and narrates what is happening; once it settles it folds to a single
- * "Ran 3 tools" line that opens again on demand — and each row inside opens
- * further, onto the raw call.
- */
 function ToolActivity({
   parts,
   busy,
@@ -1354,13 +1181,7 @@ function ToolActivity({
       part.state !== "output-available" && part.state !== "output-error",
   );
 
-  /**
-   * Step rows read as sentences ("Read your selection"), which is what we
-   * want in the list — but a step-typed block summarises itself as "Thought
-   * for 4s", and these are things done to the document, not thinking. The
-   * explicit summary says what actually happened; the live label narrates the
-   * tool that is running rather than a generic "Working through it".
-   */
+  // Override step summary ("Thought for Ns") — these are document tools.
   const summary = `Ran ${parts.length} ${parts.length === 1 ? "tool" : "tools"}`;
   const activeLabel = inFlight
     ? (TOOL_LABELS[getToolOrDynamicToolName(inFlight)]?.doing ??
@@ -1372,8 +1193,6 @@ function ToolActivity({
       className="remix-chat-activity"
       items={items}
       contentType="step"
-      // The default 208px viewport is sized for one-line rows; these open onto
-      // raw payloads, and this panel is 560px tall.
       maxHeight={280}
       summary={summary}
       activeLabel={activeLabel}
@@ -1392,8 +1211,6 @@ const Markdown = memo(function Markdown({
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // Chat links open in the real browser (the window's open handler
-          // routes target=_blank there) instead of navigating the pill.
           a: ({ children, href }) => (
             <a href={href} target="_blank" rel="noreferrer">
               {children}
@@ -1443,11 +1260,6 @@ const REMIX_CHAT_CSS = `
     transition: opacity 110ms ease, visibility 0s 110ms;
   }
 
-  /* ---- The minimized strip ----
-     Sized to one short line rather than to a fixed 320px, and inset a little
-     tighter on the mark side: a small round dot reads as further in than a
-     straight edge does, so matching the two numerically leaves it looking
-     low-left. */
   .remix-mini {
     display: flex;
     align-items: center;
@@ -1486,10 +1298,7 @@ const REMIX_CHAT_CSS = `
     line-height: 1.5;
     color: ${INK_DIM};
   }
-  /* Layout only. The shimmering face paints its own colour through
-     background-clip:text, and a colour declared here would sit on top of the
-     gradient and hide it — so the cream lives on .remix-mini-text, which the
-     settled face adds and the shimmering one does not. */
+  /* No color here — TextShimmer paints via background-clip; color would hide it. */
   .remix-mini-line {
     flex: 1;
     min-width: 0;
@@ -1500,11 +1309,7 @@ const REMIX_CHAT_CSS = `
   }
   .remix-mini-text { color: ${INK_DIM}; }
 
-  /* ---- The full conversation ---- */
-  /* No drag region here: Electron routes pointer events over a drag region
-     to the window manager, so a cursor leaving the card across a draggable
-     header would never fire the leave events the minimize choreography
-     depends on. */
+  /* No -webkit-app-region:drag — it would swallow leave events for minimize. */
   .remix-chat-head {
     display: flex;
     align-items: center;
@@ -1563,7 +1368,6 @@ const REMIX_CHAT_CSS = `
     padding: 0 18px 6px;
   }
 
-  /* ---- The thread ---- */
   .remix-chat-scroll { flex: 1; min-height: 0; }
   .remix-chat-thread {
     display: flex;
@@ -1572,16 +1376,12 @@ const REMIX_CHAT_CSS = `
     padding: 4px 18px 12px;
     min-height: 100%;
   }
-  /* A short thread rests on the composer instead of hanging off the header.
-     An auto-margin spacer does this without the flex-end scroll clipping. */
   .remix-chat-thread::before { content: ""; margin-top: auto; }
   .remix-chat-empty {
     color: ${INK_FAINT};
     line-height: 1.5;
     font-size: 13px;
   }
-  /* Scrollbars on the ink surface: thin, cream-tinted, no track — the
-     default light scrollbar reads as a bright stripe against the dark card. */
   .remix-chat ::-webkit-scrollbar { width: 9px; height: 9px; }
   .remix-chat ::-webkit-scrollbar-track { background: transparent; }
   .remix-chat ::-webkit-scrollbar-corner { background: transparent; }
@@ -1617,8 +1417,6 @@ const REMIX_CHAT_CSS = `
   .remix-chat-activity { font-size: 11.5px; }
   .remix-chat-response { font-size: 13px; }
 
-  /* An activity row, opened onto the raw call. The sentence is the summary;
-     this is for checking what actually went over the wire. */
   .remix-chat-step { display: block; min-width: 0; }
   .remix-chat-step-head {
     display: flex;
@@ -1688,11 +1486,8 @@ const REMIX_CHAT_CSS = `
     line-height: 1.35;
   }
 
-  /* The model thinking, before any tool has been called. Same treatment as
-     the strip narrates with, so the two read as one voice. */
   .remix-chat-busy { font-size: 12px; }
 
-  /* ---- Presets and composer ---- */
   .remix-chat-chip {
     display: inline-flex;
     align-items: center;
@@ -1714,8 +1509,6 @@ const REMIX_CHAT_CSS = `
     display: flex;
     flex-wrap: wrap;
     gap: 5px;
-    /* main's card padded the whole face; here each section carries its own
-       inset, so these match the scroll area's 18px. */
     padding: 4px 18px 0;
   }
   .remix-chat-composer {
@@ -1764,7 +1557,6 @@ const REMIX_CHAT_CSS = `
   .remix-chat-send:not(:disabled):hover { transform: scale(1.06); }
   .remix-chat-send:not(:disabled):active { transform: scale(0.95); }
 
-  /* ---- Markdown ---- */
   .remix-md { line-height: 1.6; word-break: break-word; }
   .remix-md > *:first-child { margin-top: 0; }
   .remix-md > *:last-child { margin-bottom: 0; }
@@ -1781,8 +1573,6 @@ const REMIX_CHAT_CSS = `
   .remix-md ul, .remix-md ol { margin: 0 0 8px; padding-left: 18px; }
   .remix-md li { margin: 2px 0; }
   .remix-md li > ul, .remix-md li > ol { margin-bottom: 0; }
-  /* Olive, not the blue this panel used to reach for — that hue exists
-     nowhere else in Freestyle. */
   .remix-md a { color: ${OLIVE}; text-decoration: underline; text-underline-offset: 2px; }
   .remix-md a:hover { color: #A6D03F; }
   .remix-md strong { font-weight: 600; color: ${INK}; }

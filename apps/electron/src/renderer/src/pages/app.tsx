@@ -41,16 +41,7 @@ import {
 } from "../../../shared/remix";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
-/**
- * Remix is loaded on first open, not at startup.
- *
- * This window's hot path is dictation — the capsule and its waveform are up on
- * every utterance and run on a plain rAF loop. The chat brings the beUI agent
- * components and Motion's layout-projection features with it (~385kB), none of
- * which the waveform wants. Splitting here keeps that out of the chunk that has
- * to parse before the first frame; the sizes it needs on every render come from
- * `remix-chat-surface`, which stays statically imported.
- */
+// Lazy: keep Motion/agent chat out of the dictation entry chunk.
 const RemixChat = lazy(() =>
   import("@renderer/components/remix-chat").then((mod) => ({
     default: mod.RemixChat,

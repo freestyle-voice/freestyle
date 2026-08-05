@@ -1,7 +1,5 @@
 "use client";
 
-// beui.dev/components/agents/agent-activity
-
 import { AgentDisclosure } from "@renderer/components/agents/agent-disclosure";
 import { ThinkingShimmer } from "@renderer/components/agents/loading-states/thinking-shimmer";
 import { EASE_OUT, SPRING_LAYOUT, SPRING_SWAP } from "@renderer/lib/ease";

@@ -18,13 +18,6 @@ import { Link } from "react-router";
 import { getDefaultRemixHotkey } from "../../../shared/remix";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
-// ---------------------------------------------------------------------------
-// Remix — an education page in the Transcriptions page's layout: the same
-// hold/speak/release demo hero, a how-it-works section, example instructions
-// as cards, and a fixed usage rail. Usage numbers come from the run log
-// (`/api/remix/runs`); the chat thread stays in the pill.
-// ---------------------------------------------------------------------------
-
 const RUNS_SAMPLE_LIMIT = 200;
 const RAIL_WIDTH = 300;
 
@@ -52,7 +45,7 @@ const EXAMPLE_GROUPS = [
   },
 ] as const;
 
-/** SQLite's datetime('now') is UTC without a zone marker. */
+// SQLite datetime('now') is UTC without a zone marker.
 function parseRunDate(createdAt: string): Date {
   return new Date(`${createdAt.replace(" ", "T")}Z`);
 }
@@ -199,12 +192,6 @@ export default function RemixPage(): React.JSX.Element {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// RemixDemo — the Transcriptions tab's tutorial hero, retargeted at the remix
-// hotkey: scripted idle→pressed→result loop, suspended while the real remix
-// chord is held (main mirrors remix:down/up to this window), live mic wave.
-// ---------------------------------------------------------------------------
 
 type DemoPhase = "idle" | "pressed" | "result";
 
@@ -409,7 +396,6 @@ function UsageStats({ runs }: { runs: RemixRunRow[] }): React.JSX.Element {
   );
 }
 
-/** Same card recipe as the Transcriptions page's stats rail. */
 function StatCard({
   n,
   l,
@@ -425,7 +411,6 @@ function StatCard({
   accent?: boolean;
   span2?: boolean;
   inline?: boolean;
-  /** Non-numeric value (a relative time): smaller type, same slot. */
   small?: boolean;
 }): React.JSX.Element {
   return (

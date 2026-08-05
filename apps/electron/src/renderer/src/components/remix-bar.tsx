@@ -2,15 +2,7 @@ import type React from "react";
 import { useCallback, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-/**
- * The persistent Remix bar: a sliver at the bottom of the screen that opens
- * the Remix chat when hovered. It lives in its own tiny always-on-top window
- * (main hides it whenever the pill itself is up).
- *
- * The dwell delay is what separates "reached for Remix" from "moved the mouse
- * to the dock" — an instant trigger would make the bottom edge of the screen
- * a tripwire.
- */
+// Dwell so the dock/bottom edge isn't a tripwire for accidental opens.
 const HOVER_DWELL_MS = 300;
 
 function RemixBar(): React.JSX.Element {

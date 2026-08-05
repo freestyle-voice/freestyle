@@ -4,12 +4,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/*
- * Vendored beUI components (agents/*, motion/*) reach for `scrollbar-hide` on
- * their own scrollers — the composer textarea most visibly. It ships as a
- * plugin utility they assume is present, and without it the class is a no-op,
- * so the textarea shows a scrollbar the design never accounted for.
- */
+/* Used by vendored agents/motion scrollers (composer textarea, etc.). */
 @utility scrollbar-hide {
   scrollbar-width: none;
   -ms-overflow-style: none;

@@ -762,9 +762,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             <span className="remix-chat-title">
               <FreestyleMark size={15} />
               <span className="remix-chat-wordmark">Remix</span>
-              {props.context.appName ? (
-                <span className="remix-chat-app">{props.context.appName}</span>
-              ) : null}
             </span>
             <span className="remix-chat-actions">
               <button
@@ -817,12 +814,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
               </button>
             </span>
           </div>
-
-          {thread.resumed && messages.length > 0 && (
-            <div className="remix-chat-resumed">
-              Continuing your last thread
-            </div>
-          )}
 
           <MessageScroller
             className="remix-chat-scroll"
@@ -1330,19 +1321,6 @@ const REMIX_CHAT_CSS = `
     line-height: 1;
     color: ${INK};
   }
-  .remix-chat-app {
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: 9px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: ${INK_FAINT};
-    border: 1px solid rgba(245, 241, 228, 0.13);
-    border-radius: 5px;
-    padding: 3px 6px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
   .remix-chat-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
   .remix-chat-icon {
     width: 26px;
@@ -1359,14 +1337,6 @@ const REMIX_CHAT_CSS = `
     transition: background 140ms ease, color 140ms ease;
   }
   .remix-chat-icon:hover { background: rgba(245, 241, 228, 0.08); color: ${INK}; }
-  .remix-chat-resumed {
-    font-family: "JetBrains Mono", ui-monospace, monospace;
-    font-size: 9px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: ${INK_FAINT};
-    padding: 0 18px 6px;
-  }
 
   .remix-chat-scroll { flex: 1; min-height: 0; }
   .remix-chat-thread {
@@ -1374,9 +1344,7 @@ const REMIX_CHAT_CSS = `
     flex-direction: column;
     gap: 12px;
     padding: 4px 18px 12px;
-    min-height: 100%;
   }
-  .remix-chat-thread::before { content: ""; margin-top: auto; }
   .remix-chat-empty {
     color: ${INK_FAINT};
     line-height: 1.5;

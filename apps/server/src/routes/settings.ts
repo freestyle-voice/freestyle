@@ -36,6 +36,18 @@ import {
 } from "../lib/preferences-sync.js";
 import { applyWhisperRetentionPolicy } from "../lib/whisper/server.js";
 
+/**
+ * Normalize an OpenAI-compatible base URL for the `/v1/models` probe.
+ *
+ * Strips any trailing slashes and a trailing OpenAI path segment so that a
+ * user who pastes a specific endpoint (e.g. `.../v1/audio/transcriptions`) or
+ * the versioned base (`.../v1`) still resolves to the true base. The probe
+ * then appends `/v1/models`.
+ */
+function normalizeOpenaiBaseUrl(input: string): string {
+  return input.replace(/\/+$/, "").replace(/\/v1(?:\/[^?#]*)?$/, "");
+}
+
 const settings = new Hono()
   .get("/", (c) => {
     const db = getDb();
@@ -225,7 +237,7 @@ const settings = new Hono()
     zValidator("json", localLlmConfigSchema),
     async (c) => {
       const body = c.req.valid("json");
-      const url = body.url.replace(/\/+$/, "").replace(/\/v1$/, "");
+      const url = normalizeOpenaiBaseUrl(body.url);
 
       try {
         const res = await fetch(`${url}/v1/models`, {
@@ -266,7 +278,7 @@ const settings = new Hono()
     zValidator("json", openaiSttConfigSchema),
     async (c) => {
       const body = c.req.valid("json");
-      const url = body.url.replace(/\/+$/, "").replace(/\/v1$/, "");
+      const url = normalizeOpenaiBaseUrl(body.url);
 
       try {
         const res = await fetch(`${url}/v1/models`, {

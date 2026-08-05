@@ -145,4 +145,39 @@ describe("POST /api/settings/openai-stt/test", () => {
     const res = await post({ url: "not-a-url" });
     expect(res.status).toBe(400);
   });
+
+  it("normalizes a pasted endpoint path down to the base URL", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ id: "whisper-1" }] }), {
+        status: 200,
+      }),
+    );
+
+    const res = await post({
+      url: "https://openrouter.ai/api/v1/audio/transcriptions",
+      api_key: "k",
+    });
+
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://openrouter.ai/api/v1/models",
+      expect.anything(),
+    );
+  });
+
+  it("normalizes a trailing /v1 base URL", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ data: [] }), { status: 200 }),
+      );
+
+    const res = await post({ url: "https://example.com/v1" });
+
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://example.com/v1/models",
+      expect.anything(),
+    );
+  });
 });

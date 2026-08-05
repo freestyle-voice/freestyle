@@ -456,7 +456,7 @@ export function ModelList({
           <Button
             variant="ghost"
             onClick={() => setShowAllLlm(true)}
-            className="border-border text-muted-foreground hover:text-foreground h-auto w-full justify-start rounded-none border-t px-5 py-3 text-left text-[12.5px] font-normal"
+            className="border-border text-muted-foreground hover:text-foreground h-auto w-full justify-start rounded-none px-5 py-3 text-left text-[12.5px] font-normal border-x-0 border-b-0"
           >
             Show all models ({hiddenCount} more) →
           </Button>

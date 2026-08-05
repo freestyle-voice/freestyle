@@ -123,7 +123,19 @@ async function runEndpointTest(
       return;
     }
     status.setConnected(false);
-    status.setError(`HTTP ${res.status}`);
+    // The test handlers return a descriptive `{ error }` body on failure
+    // (e.g. "Server returned 404: Not Found", timeout/connection messages).
+    // Surface that instead of a bare status code so the user can act on it.
+    let message = `HTTP ${res.status}`;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (typeof body?.error === "string" && body.error.trim()) {
+        message = body.error;
+      }
+    } catch {
+      // Body missing or unparseable — keep the HTTP <status> fallback.
+    }
+    status.setError(message);
   } catch (err) {
     status.setConnected(false);
     status.setError(err instanceof Error ? err.message : "Connection failed");

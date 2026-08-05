@@ -11,6 +11,15 @@ export interface ViewBounds {
 }
 
 /**
+ * Maximum number of plugin views kept alive in the cache at once. Each cached
+ * view is a live `WebContentsView` (its own renderer process + GPU surface), so
+ * an unbounded cache leaks a process per distinct plugin page ever visited.
+ * Beyond this many, the least-recently-shown view is evicted (destroyed); it
+ * simply reloads on the next visit.
+ */
+const MAX_CACHED_VIEWS = 6;
+
+/**
  * Hosts plugin UI pages in sandboxed {@link WebContentsView}s overlaid on the
  * dashboard window. The renderer reports the bounds of its placeholder; we size
  * the active view to match. Only one plugin page is visible at a time, but
@@ -76,6 +85,9 @@ export class PluginViewManager {
     // Re-attach from cache if available.
     const cached = this.views.get(key);
     if (cached) {
+      // Mark as most-recently-used by re-inserting at the end of the Map.
+      this.views.delete(key);
+      this.views.set(key, cached);
       if (this.activeKey !== key) {
         this.window.contentView.addChildView(cached);
         this.activeKey = key;
@@ -105,6 +117,7 @@ export class PluginViewManager {
     this.window.contentView.addChildView(view);
     this.activeKey = key;
     this.setBounds(bounds);
+    this.evictLeastRecentlyUsed();
     const url = `${this.getServerBaseUrl()}/api/plugins/${encodeURIComponent(
       slug,
     )}/ui/${entry.replace(/^\/+/, "")}`;
@@ -199,6 +212,25 @@ export class PluginViewManager {
     if (!view) return;
     if (this.window && !this.window.isDestroyed()) {
       this.window.contentView.removeChildView(view);
+    }
+  }
+
+  /**
+   * Evict least-recently-shown views (destroying their renderer processes)
+   * until the cache is within {@link MAX_CACHED_VIEWS}. The Map is ordered
+   * most-recently-used last (see {@link show}), so the oldest entries come
+   * first. The active view is never evicted, even if it's the oldest.
+   */
+  private evictLeastRecentlyUsed(): void {
+    if (this.views.size <= MAX_CACHED_VIEWS) return;
+    for (const [key, view] of this.views) {
+      if (this.views.size <= MAX_CACHED_VIEWS) break;
+      if (key === this.activeKey) continue;
+      if (this.window && !this.window.isDestroyed()) {
+        this.window.contentView.removeChildView(view);
+      }
+      view.webContents.close();
+      this.views.delete(key);
     }
   }
 

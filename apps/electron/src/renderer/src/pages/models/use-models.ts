@@ -7,9 +7,8 @@ import type {
 } from "@renderer/lib/models";
 import { IS_MAC } from "@renderer/lib/platform";
 import {
-  AVAILABLE_MODELS_QUERY_KEY,
   availableModelsQueryOptions,
-  SETTINGS_QUERY_KEY,
+  queryKeys,
   settingsQueryOptions,
 } from "@renderer/lib/query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -30,15 +29,17 @@ import {
 
 export type { EndpointConnectState } from "./use-endpoint-connect";
 
-// Query keys for the models page. `["models", ...]` is a family so a single
-// invalidate refreshes both available + configured.
+// Query keys for the models page, all sourced from the shared registry.
+// `queryKeys.models.all` (`["models"]`) is a family so a single invalidate
+// refreshes both available + configured.
 const MODELS_KEYS = {
-  available: AVAILABLE_MODELS_QUERY_KEY,
-  configured: ["models", "configured"] as const,
-  keys: ["api-keys"] as const,
-  settings: SETTINGS_QUERY_KEY,
-  whisper: ["whisper-status"] as const,
-  mlx: ["mlx-status"] as const,
+  all: queryKeys.models.all,
+  available: queryKeys.models.available,
+  configured: queryKeys.models.configured,
+  keys: queryKeys.apiKeys,
+  settings: queryKeys.settings,
+  whisper: queryKeys.whisperStatus,
+  mlx: queryKeys.mlxStatus,
 };
 
 // Stable empty fallbacks so derived useMemo deps don't change identity while a
@@ -261,7 +262,7 @@ export function useModels(): UseModels {
 
   const reload = useCallback(async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["models"] }),
+      queryClient.invalidateQueries({ queryKey: MODELS_KEYS.all }),
       queryClient.invalidateQueries({ queryKey: MODELS_KEYS.keys }),
       queryClient.invalidateQueries({ queryKey: MODELS_KEYS.settings }),
     ]);
@@ -319,7 +320,7 @@ export function useModels(): UseModels {
   const prevWhisperActive = useRef(false);
   useEffect(() => {
     if (prevWhisperActive.current && !whisperActive) {
-      void queryClient.invalidateQueries({ queryKey: ["models"] });
+      void queryClient.invalidateQueries({ queryKey: MODELS_KEYS.all });
     }
     prevWhisperActive.current = whisperActive;
   }, [whisperActive, queryClient]);
@@ -328,7 +329,7 @@ export function useModels(): UseModels {
   const prevMlxActive = useRef(false);
   useEffect(() => {
     if (prevMlxActive.current && !mlxActive) {
-      void queryClient.invalidateQueries({ queryKey: ["models"] });
+      void queryClient.invalidateQueries({ queryKey: MODELS_KEYS.all });
     }
     prevMlxActive.current = mlxActive;
   }, [mlxActive, queryClient]);

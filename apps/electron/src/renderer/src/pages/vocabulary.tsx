@@ -8,6 +8,7 @@ import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { getClient } from "@renderer/lib/api";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
+import { queryKeys } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -44,7 +45,7 @@ export default function VocabularyPage(): React.JSX.Element {
   const [search, setSearch] = useState("");
 
   const { data, isLoading: loading } = useQuery({
-    queryKey: ["vocabulary", page, search],
+    queryKey: queryKeys.vocabulary.list(page, search),
     queryFn: async () => {
       const q: Record<string, string> = {
         limit: String(PAGE_SIZE),
@@ -63,7 +64,7 @@ export default function VocabularyPage(): React.JSX.Element {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const invalidate = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: ["vocabulary"] }),
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.vocabulary.all }),
     [queryClient],
   );
 

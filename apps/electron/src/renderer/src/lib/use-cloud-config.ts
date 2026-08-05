@@ -2,7 +2,7 @@ import type { SuggestedLanguage } from "@freestyle-voice/validations";
 import { orderBySuggestedLanguages as orderLanguages } from "@freestyle-voice/validations";
 import { useQuery } from "@tanstack/react-query";
 import { getClient } from "./api";
-import { ONE_HOUR } from "./query";
+import { ONE_HOUR, queryKeys } from "./query";
 
 interface CloudConfig {
   suggestedLanguages: SuggestedLanguage[];
@@ -17,7 +17,7 @@ interface CloudConfig {
  */
 export function useCloudConfig(enabled: boolean) {
   return useQuery({
-    queryKey: ["cloud-config"] as const,
+    queryKey: queryKeys.cloud.config,
     enabled,
     staleTime: 6 * ONE_HOUR,
     retry: 1,

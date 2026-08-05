@@ -3,18 +3,16 @@ import { useCloudAuth } from "@renderer/lib/auth-context";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { getClient } from "./api";
-import { SETTINGS_QUERY_KEY } from "./query";
+import { queryKeys } from "./query";
 
 /** Social providers the profile page can link against. */
 export const SOCIAL_PROVIDERS = ["github", "google", "apple"] as const;
 export type SocialProvider = (typeof SOCIAL_PROVIDERS)[number];
 
-const ACCOUNTS_QUERY_KEY = ["cloud-accounts"] as const;
-
 /** The set of providers currently linked to the signed-in user. */
 export function useLinkedAccounts(enabled: boolean) {
   return useQuery({
-    queryKey: ACCOUNTS_QUERY_KEY,
+    queryKey: queryKeys.cloud.accounts,
     enabled,
     queryFn: async (): Promise<string[]> => {
       const res = await getClient().api.auth.accounts.$get();
@@ -44,12 +42,10 @@ export function useUpdateName() {
   });
 }
 
-const PROFILE_FIELDS_QUERY_KEY = ["cloud-profile-fields"] as const;
-
 /** The user's profile fields (industry / job title / company) + detected geo. */
 export function useProfileFields(enabled: boolean) {
   return useQuery({
-    queryKey: PROFILE_FIELDS_QUERY_KEY,
+    queryKey: queryKeys.cloud.profileFields,
     enabled,
     queryFn: async (): Promise<CloudProfile> => {
       const res = await getClient().api.auth["profile-fields"].$get();
@@ -81,9 +77,9 @@ export function useUpdateProfileFields() {
     },
     onSuccess: (profile) => {
       const previous = queryClient.getQueryData<CloudProfile>(
-        PROFILE_FIELDS_QUERY_KEY,
+        queryKeys.cloud.profileFields,
       );
-      queryClient.setQueryData(PROFILE_FIELDS_QUERY_KEY, profile);
+      queryClient.setQueryData(queryKeys.cloud.profileFields, profile);
       // The cloud re-seeds tone + vocabulary defaults into member_preferences on
       // ANY industry change (not just a first-time set); the local server
       // re-pulls them (settings table + vocabulary table) before this response
@@ -92,8 +88,10 @@ export function useUpdateProfileFields() {
       const industryChanged =
         (previous?.industry ?? null) !== (profile.industry ?? null);
       if (industryChanged && profile.industry) {
-        void queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
-        void queryClient.invalidateQueries({ queryKey: ["vocabulary"] });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.settings });
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.vocabulary.all,
+        });
       }
     },
   });
@@ -141,7 +139,9 @@ export function useUnlinkSocial() {
       }
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.cloud.accounts,
+      });
     },
   });
 }
@@ -155,7 +155,9 @@ export function useRefreshAccountsOnFocus(enabled: boolean): void {
   useEffect(() => {
     if (!enabled) return;
     const invalidate = (): void => {
-      void queryClient.invalidateQueries({ queryKey: ACCOUNTS_QUERY_KEY });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.cloud.accounts,
+      });
     };
     window.addEventListener("focus", invalidate);
     return () => window.removeEventListener("focus", invalidate);
@@ -166,13 +168,10 @@ export function useRefreshAccountsOnFocus(enabled: boolean): void {
 // Organizations
 // ---------------------------------------------------------------------------
 
-const ORGS_QUERY_KEY = ["cloud-orgs"] as const;
-const ACTIVE_ORG_QUERY_KEY = ["cloud-active-org"] as const;
-
 /** List all organizations the signed-in user belongs to. */
 export function useListOrganizations(enabled: boolean) {
   return useQuery({
-    queryKey: ORGS_QUERY_KEY,
+    queryKey: queryKeys.cloud.orgs,
     enabled,
     queryFn: async () => {
       const res = await getClient().api.org.list.$get();
@@ -191,7 +190,7 @@ type Organization = NonNullable<
 /** The user's active organization from Freestyle Cloud. */
 export function useActiveOrganization(enabled: boolean) {
   return useQuery({
-    queryKey: ACTIVE_ORG_QUERY_KEY,
+    queryKey: queryKeys.cloud.activeOrg,
     enabled,
     queryFn: async () => {
       const res = await getClient().api.org.active.$get();
@@ -227,18 +226,20 @@ export function useSetActiveOrganization() {
     },
     onMutate: async (organizationId) => {
       // Cancel in-flight fetches so they don't overwrite the optimistic update.
-      await queryClient.cancelQueries({ queryKey: ACTIVE_ORG_QUERY_KEY });
+      await queryClient.cancelQueries({ queryKey: queryKeys.cloud.activeOrg });
 
-      const previous = queryClient.getQueryData(ACTIVE_ORG_QUERY_KEY);
+      const previous = queryClient.getQueryData(queryKeys.cloud.activeOrg);
 
       // Optimistically swap the active org from the cached org list. The list
       // rows are a subset of the full active-org shape (no `members`), which is
       // fine for the sidebar (reads only `name`); `onSettled` refetches the
       // authoritative full object.
-      const orgs = queryClient.getQueryData<Organization[]>(ORGS_QUERY_KEY);
+      const orgs = queryClient.getQueryData<Organization[]>(
+        queryKeys.cloud.orgs,
+      );
       const next = orgs?.find((o) => o.id === organizationId);
       if (next) {
-        queryClient.setQueryData(ACTIVE_ORG_QUERY_KEY, next);
+        queryClient.setQueryData(queryKeys.cloud.activeOrg, next);
       }
 
       return { previous };
@@ -246,23 +247,27 @@ export function useSetActiveOrganization() {
     onError: (_err, _vars, context) => {
       // Roll back on failure.
       if (context?.previous !== undefined) {
-        queryClient.setQueryData(ACTIVE_ORG_QUERY_KEY, context.previous);
+        queryClient.setQueryData(queryKeys.cloud.activeOrg, context.previous);
       }
     },
     onSettled: () => {
       // Refetch the active org, and re-resolve usage/plan since it's scoped to
       // the now-active org.
-      void queryClient.invalidateQueries({ queryKey: ACTIVE_ORG_QUERY_KEY });
-      void queryClient.invalidateQueries({ queryKey: ["cloud-usage"] });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.cloud.activeOrg,
+      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.cloud.usage });
       // Preferences (cleanup tones/languages), vocabulary, and profile fields
       // are per-org too. The server re-pulled the new org's snapshot into the
       // local settings/vocabulary tables before this response returned (see the
       // org set-active route), so re-read them here to update every settings
       // page instead of showing the previous org's values.
-      void queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY });
-      void queryClient.invalidateQueries({ queryKey: ["vocabulary"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings });
       void queryClient.invalidateQueries({
-        queryKey: PROFILE_FIELDS_QUERY_KEY,
+        queryKey: queryKeys.vocabulary.all,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.cloud.profileFields,
       });
     },
   });

@@ -1,5 +1,6 @@
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { listPlugins } from "@renderer/lib/plugins-api";
+import { queryKeys } from "@renderer/lib/query";
 import type { PluginViewBounds } from "@shared/plugins";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef } from "react";
@@ -56,7 +57,7 @@ export default function PluginPage(): React.JSX.Element {
   // The server serves the page by its entry path; resolve it from the plugin
   // list (cached by the hub, refetched here on a direct navigation).
   const { data: plugins } = useQuery({
-    queryKey: ["plugins"],
+    queryKey: queryKeys.plugins,
     queryFn: () => listPlugins(),
   });
   const entry = plugins

@@ -18,6 +18,7 @@ import {
   setPluginEnabled,
   uninstallPlugin,
 } from "@renderer/lib/plugins-api";
+import { queryKeys } from "@renderer/lib/query";
 import type {
   PluginCatalogEntry,
   PluginInfo,
@@ -55,14 +56,14 @@ export default function PluginsPage(): React.JSX.Element {
   const queryClient = useQueryClient();
 
   const { data: plugins = [], isLoading: loading } = useQuery({
-    queryKey: ["plugins"],
+    queryKey: queryKeys.plugins,
     queryFn: () => listPlugins(),
     placeholderData: keepPreviousData,
   });
 
   const setPlugins = useCallback(
     (updated: PluginInfo[]) => {
-      queryClient.setQueryData(["plugins"], updated);
+      queryClient.setQueryData(queryKeys.plugins, updated);
     },
     [queryClient],
   );
@@ -237,7 +238,9 @@ function PluginCard({
     try {
       onChange(await installPlugin(plugin.specifier));
       // Invalidate the update-check cache so the badge disappears immediately.
-      void queryClient.invalidateQueries({ queryKey: ["plugin-updates"] });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.pluginUpdates.all,
+      });
     } catch {
       // Install errors surface via the server; no UI toast needed here.
     } finally {
@@ -382,7 +385,7 @@ function BrowseTab({
   const { t } = useTranslation();
 
   const { data: catalog, isError: error } = useQuery({
-    queryKey: ["plugin-catalog"],
+    queryKey: queryKeys.pluginCatalog,
     queryFn: () => getPluginCatalog(),
     placeholderData: keepPreviousData,
     retry: 1,

@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { CloudUser } from "../../../shared/cloud-user";
 import { getClient } from "./api";
+import { queryKeys } from "./query";
 
 export interface UseCloudAuth {
   user: CloudUser | null;
@@ -154,7 +155,7 @@ function useCloudAuthState(): UseCloudAuth {
         }
         const data = await tokenRes.json();
         if (attempt !== signInAttemptRef.current) return null;
-        queryClient.removeQueries({ queryKey: ["cloud-usage"] });
+        queryClient.removeQueries({ queryKey: queryKeys.cloud.usage });
         wasSignedInRef.current = true;
         setSessionExpired(false);
         setUser(data.user);
@@ -196,7 +197,7 @@ function useCloudAuthState(): UseCloudAuth {
     wasSignedInRef.current = false;
     setSessionExpired(false);
     setUser(null);
-    queryClient.removeQueries({ queryKey: ["cloud-usage"] });
+    queryClient.removeQueries({ queryKey: queryKeys.cloud.usage });
   }, [queryClient]);
 
   return {

@@ -35,7 +35,7 @@ import { getClient } from "@renderer/lib/api";
 import { formatNumber } from "@renderer/lib/format";
 import { type DiffSegment, diffWords } from "@renderer/lib/history-diff";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
-import { settingsQueryOptions } from "@renderer/lib/query";
+import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   keepPreviousData,
@@ -363,7 +363,7 @@ export default function HistoryPage(): React.JSX.Element {
   const queryClient = useQueryClient();
 
   const { data: historyData, isLoading: loading } = useQuery({
-    queryKey: ["history", page, search, startDate, endDate],
+    queryKey: queryKeys.history.list(page, search, startDate, endDate),
     queryFn: async () => {
       const q: Record<string, string> = {
         limit: String(PAGE_SIZE),
@@ -453,7 +453,7 @@ export default function HistoryPage(): React.JSX.Element {
   // ignores the list filters; shares the "history" key prefix so a completed
   // transcription invalidates it along with the feed.
   const { data: dailyData } = useQuery({
-    queryKey: ["history", "daily"],
+    queryKey: queryKeys.history.daily,
     queryFn: async () => {
       const res = await getClient().api.history.daily.$get();
       if (!res.ok) return [] as DayActivity[];
@@ -465,7 +465,7 @@ export default function HistoryPage(): React.JSX.Element {
   // Refetch when the pill reports a completed transcription.
   useEffect(() => {
     const remove = window.api?.onTranscriptionDone(() => {
-      void queryClient.invalidateQueries({ queryKey: ["history"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.history.all });
     });
     return () => remove?.();
   }, [queryClient]);
@@ -490,7 +490,7 @@ export default function HistoryPage(): React.JSX.Element {
   }, [searchShortcutEnabled]);
 
   const invalidate = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: ["history"] }),
+    () => queryClient.invalidateQueries({ queryKey: queryKeys.history.all }),
     [queryClient],
   );
 
@@ -547,9 +547,26 @@ export default function HistoryPage(): React.JSX.Element {
   }, [dailyData, hasDevSeedEntry]);
 
   if (loading) {
+    // Keep the real page frame (DragSpacer + scroll column) and show placeholder
+    // rows instead of a blank centered spinner, so the panel shows structure
+    // immediately while the first /api/history fetch resolves. Matches the main
+    // return's wrapper so there's no layout shift when content arrives.
     return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground text-sm">{t("history.loading")}</p>
+      <div className="flex h-full min-h-0 flex-col">
+        <DragSpacer />
+        <div
+          className="responsive-page-scroll flex-1 overflow-auto pt-5"
+          style={{ scrollbarWidth: "none" } as React.CSSProperties}
+        >
+          <div className="animate-pulse space-y-3" aria-hidden="true">
+            {["s1", "s2", "s3", "s4", "s5", "s6"].map((k) => (
+              <div
+                key={k}
+                className="border-border/50 bg-card/60 h-16 rounded-lg border"
+              />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }

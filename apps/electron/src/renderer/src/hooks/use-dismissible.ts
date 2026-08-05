@@ -5,10 +5,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { getClient } from "../lib/api";
-import {
-  DISMISSED_NOTIFICATIONS_QUERY_KEY,
-  dismissedNotificationsQueryOptions,
-} from "../lib/query";
+import { dismissedNotificationsQueryOptions, queryKeys } from "../lib/query";
 
 type WriteResponse = { ok: boolean; status: number };
 
@@ -91,15 +88,15 @@ export function useDismissible(key: string): DismissibleNotificationState {
     // the initial GET cannot overwrite it. `revert: false` keeps our patch
     // when cancellation settles.
     void queryClient.cancelQueries(
-      { queryKey: DISMISSED_NOTIFICATIONS_QUERY_KEY },
+      { queryKey: queryKeys.dismissedNotifications },
       { revert: false },
     );
     const previous = queryClient.getQueryData<string[]>(
-      DISMISSED_NOTIFICATIONS_QUERY_KEY,
+      queryKeys.dismissedNotifications,
     );
     const wasDismissed = previous?.includes(parsed.data) ?? false;
     queryClient.setQueryData<string[]>(
-      DISMISSED_NOTIFICATIONS_QUERY_KEY,
+      queryKeys.dismissedNotifications,
       (current) =>
         current?.includes(parsed.data)
           ? current
@@ -116,7 +113,7 @@ export function useDismissible(key: string): DismissibleNotificationState {
       () => {
         if (!wasDismissed) {
           queryClient.setQueryData<string[]>(
-            DISMISSED_NOTIFICATIONS_QUERY_KEY,
+            queryKeys.dismissedNotifications,
             (current) => (current ?? []).filter((item) => item !== parsed.data),
           );
         }
@@ -130,15 +127,15 @@ export function useDismissible(key: string): DismissibleNotificationState {
 
     const generation = beginWrite(parsed.data);
     void queryClient.cancelQueries(
-      { queryKey: DISMISSED_NOTIFICATIONS_QUERY_KEY },
+      { queryKey: queryKeys.dismissedNotifications },
       { revert: false },
     );
     const previous = queryClient.getQueryData<string[]>(
-      DISMISSED_NOTIFICATIONS_QUERY_KEY,
+      queryKeys.dismissedNotifications,
     );
     const wasDismissed = previous?.includes(parsed.data) ?? false;
     queryClient.setQueryData<string[]>(
-      DISMISSED_NOTIFICATIONS_QUERY_KEY,
+      queryKeys.dismissedNotifications,
       (current) => (current ?? []).filter((item) => item !== parsed.data),
     );
 
@@ -152,7 +149,7 @@ export function useDismissible(key: string): DismissibleNotificationState {
       () => {
         if (wasDismissed) {
           queryClient.setQueryData<string[]>(
-            DISMISSED_NOTIFICATIONS_QUERY_KEY,
+            queryKeys.dismissedNotifications,
             (current) =>
               current?.includes(parsed.data)
                 ? current

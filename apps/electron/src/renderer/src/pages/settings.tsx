@@ -51,7 +51,7 @@ import { useCloudAuth } from "@renderer/lib/auth-context";
 import { formatNumber } from "@renderer/lib/format";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
-import { SETTINGS_QUERY_KEY, settingsQueryOptions } from "@renderer/lib/query";
+import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { useCloudConfig } from "@renderer/lib/use-cloud-config";
 import {
   type CloudUsageBalance,
@@ -612,7 +612,7 @@ export default function SettingsPage(): React.JSX.Element {
       // Patch the shared settings cache so the sidebar (which reads the same
       // query) shows/hides the Models tab immediately, without a refetch.
       queryClient.setQueryData<Record<string, string>>(
-        SETTINGS_QUERY_KEY,
+        queryKeys.settings,
         (prev) => ({
           ...(prev ?? {}),
           [SETTINGS_KEYS.advancedMode]: String(enabled),
@@ -633,8 +633,7 @@ export default function SettingsPage(): React.JSX.Element {
       return;
     }
     await getClient().api.history.$delete();
-    void queryClient.invalidateQueries({ queryKey: ["history"] });
-    void queryClient.invalidateQueries({ queryKey: ["today-history"] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.history.all });
   }, [t, queryClient]);
 
   const handleSoundToggle = useCallback((enabled: boolean) => {
@@ -1580,7 +1579,7 @@ function NetworkPanel(): React.JSX.Element {
           lastCommitted.current[field] = value;
           // Keep the shared settings cache truthful without a refetch.
           queryClient.setQueryData<Record<string, string>>(
-            SETTINGS_QUERY_KEY,
+            queryKeys.settings,
             (prev) => ({ ...(prev ?? {}), [key]: value }),
           );
           flashSaved(field);

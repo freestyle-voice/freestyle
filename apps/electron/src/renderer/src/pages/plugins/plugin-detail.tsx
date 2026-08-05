@@ -18,6 +18,7 @@ import {
   setPluginEnabled,
   uninstallPlugin,
 } from "@renderer/lib/plugins-api";
+import { queryKeys } from "@renderer/lib/query";
 import type { PluginInfo, PluginUpdateResult } from "@shared/plugins";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Trash2 } from "lucide-react";
@@ -37,7 +38,7 @@ export default function PluginDetailPage(): React.JSX.Element {
   const queryClient = useQueryClient();
 
   const { data: allPlugins, isLoading: loading } = useQuery({
-    queryKey: ["plugins"],
+    queryKey: queryKeys.plugins,
     queryFn: () => listPlugins(),
   });
 
@@ -46,7 +47,7 @@ export default function PluginDetailPage(): React.JSX.Element {
   const toggle = async (enabled: boolean): Promise<void> => {
     if (!plugin) return;
     const all = await setPluginEnabled(plugin.specifier, enabled);
-    queryClient.setQueryData(["plugins"], all);
+    queryClient.setQueryData(queryKeys.plugins, all);
   };
 
   const { data: updatesMap } = usePluginUpdates(plugin ? [plugin] : []);
@@ -68,7 +69,7 @@ export default function PluginDetailPage(): React.JSX.Element {
             onToggle={toggle}
             onUninstall={async () => {
               const all = await uninstallPlugin(plugin.specifier);
-              queryClient.setQueryData(["plugins"], all);
+              queryClient.setQueryData(queryKeys.plugins, all);
               navigate("/plugins");
             }}
             update={update}
@@ -100,8 +101,10 @@ function Detail({
     setUpdating(true);
     try {
       const all = await installPlugin(plugin.specifier);
-      queryClient.setQueryData(["plugins"], all);
-      void queryClient.invalidateQueries({ queryKey: ["plugin-updates"] });
+      queryClient.setQueryData(queryKeys.plugins, all);
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.pluginUpdates.all,
+      });
     } catch {
       // Install errors surface via the server; no UI toast needed here.
     } finally {

@@ -42,7 +42,7 @@ import { getClient } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import {
   availableModelsQueryOptions,
-  SETTINGS_QUERY_KEY,
+  queryKeys,
   settingsQueryOptions,
 } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
@@ -269,7 +269,7 @@ export default function TonePage(): React.JSX.Element {
   const settingsQuery = useQuery(settingsQueryOptions());
 
   const configuredQuery = useQuery({
-    queryKey: ["models", "configured"],
+    queryKey: queryKeys.models.configured,
     queryFn: async () => {
       const res = await getClient().api.models.configured.$get();
       if (!res.ok) throw new Error("Failed to load configured models");
@@ -328,8 +328,10 @@ export default function TonePage(): React.JSX.Element {
   const reload = useCallback(
     () =>
       Promise.all([
-        queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY }),
-        queryClient.invalidateQueries({ queryKey: ["models", "configured"] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.settings }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.models.configured,
+        }),
       ]),
     [queryClient],
   );

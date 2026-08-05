@@ -53,7 +53,7 @@ import {
 } from "@renderer/lib/models";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS, PLATFORM } from "@renderer/lib/platform";
-import { settingsQueryOptions } from "@renderer/lib/query";
+import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { useCloudConfig } from "@renderer/lib/use-cloud-config";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -275,7 +275,7 @@ export default function OnboardingPage(): React.JSX.Element {
   // 500ms setInterval polling: it polls only while a download/verify is active
   // and stops automatically once everything settles.
   const whisperQuery = useQuery({
-    queryKey: ["whisper-status"],
+    queryKey: queryKeys.whisperStatus,
     queryFn: async () => {
       const res = await getClient().api.whisper.status.$get();
       if (!res.ok) throw new Error("Failed to load whisper status");
@@ -291,7 +291,7 @@ export default function OnboardingPage(): React.JSX.Element {
   });
 
   const mlxQuery = useQuery({
-    queryKey: ["mlx-status"],
+    queryKey: queryKeys.mlxStatus,
     enabled: IS_MAC,
     queryFn: async () => {
       const res = await getClient().api["mlx-asr"].status.$get();
@@ -485,7 +485,7 @@ export default function OnboardingPage(): React.JSX.Element {
       await getClient().api.whisper.models[":model"].download.$post({
         param: { model: modelId },
       });
-      void queryClient.invalidateQueries({ queryKey: ["whisper-status"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.whisperStatus });
     },
     [queryClient],
   );
@@ -495,7 +495,7 @@ export default function OnboardingPage(): React.JSX.Element {
       await getClient().api["mlx-asr"].models[":model"].download.$post({
         param: { model: modelId },
       });
-      void queryClient.invalidateQueries({ queryKey: ["mlx-status"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.mlxStatus });
     },
     [queryClient],
   );
@@ -893,7 +893,7 @@ export default function OnboardingPage(): React.JSX.Element {
                   .catch(() => null);
                 if (!res?.ok) return;
                 const data = (await res.json()) as MlxAsrStatus;
-                queryClient.setQueryData(["mlx-status"], data);
+                queryClient.setQueryData(queryKeys.mlxStatus, data);
                 if (data.canRun) void downloadMlxModel(defId);
               })();
             } else {
@@ -1843,7 +1843,7 @@ function RemixStep({
     settingsQueryOptions(),
   );
   const configuredQuery = useQuery({
-    queryKey: ["models", "configured"],
+    queryKey: queryKeys.models.configured,
     queryFn: async () => {
       const res = await getClient().api.models.configured.$get();
       if (!res.ok) throw new Error("Failed to load configured models");

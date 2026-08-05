@@ -10,7 +10,7 @@ import { useCloudAuth } from "@renderer/lib/auth-context";
 import { LINKS } from "@renderer/lib/links";
 import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform";
 import { listPlugins } from "@renderer/lib/plugins-api";
-import { settingsQueryOptions } from "@renderer/lib/query";
+import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import {
   pluginDisplayName,
@@ -202,7 +202,7 @@ export default function AppShell(): React.JSX.Element {
   const onPluginPage = /^\/plugins\/[^/]+\/[^/]+/.test(location.pathname);
 
   const { data: plugins = [] } = useQuery({
-    queryKey: ["plugins"],
+    queryKey: queryKeys.plugins,
     queryFn: () => listPlugins(),
   });
 

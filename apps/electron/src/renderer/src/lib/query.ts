@@ -5,12 +5,81 @@ import type { AvailableModel } from "./models";
 /** Common staleTime for cached queries (1 hour). */
 export const ONE_HOUR = 60 * 60 * 1000;
 
+/** Entry shape for the plugin-updates query key (name + installed version). */
+type PluginUpdateEntry = { name: string; currentVersion: string };
+
 /**
- * Shared query key for the full settings map (`GET /api/settings`). Every
- * consumer must use this exact key so React Query dedupes their fetches into a
- * single cached request — a stray key string would silently split the cache.
+ * Single source of truth for every React Query key in the renderer.
+ *
+ * Query keys must match exactly across producers (`useQuery`) and consumers
+ * (`invalidateQueries`/`setQueryData`) — a stray inline literal silently splits
+ * or misses the cache. Keeping them here prevents that drift. Conventions:
+ *   - `foo` — a static key tuple.
+ *   - `foo.all` — the family base; `invalidateQueries({ queryKey: foo.all })`
+ *     cascades to every key that starts with it (React Query prefix match).
+ *   - `foo.list(...)` — a parameterized key derived from a base.
+ * Always `as const` so tuples stay literally typed for `getQueryData<T>()`.
  */
-export const SETTINGS_QUERY_KEY = ["settings-all"] as const;
+export const queryKeys = {
+  /** Full persisted settings map (`GET /api/settings`). */
+  settings: ["settings-all"] as const,
+
+  models: {
+    /** Family base — invalidates available + configured together. */
+    all: ["models"] as const,
+    available: ["models", "available"] as const,
+    configured: ["models", "configured"] as const,
+  },
+  apiKeys: ["api-keys"] as const,
+  whisperStatus: ["whisper-status"] as const,
+  mlxStatus: ["mlx-status"] as const,
+
+  /** Experimental feature flags (`GET /api/config`). */
+  config: ["config"] as const,
+  /** Device-local dismissed-notification keys. */
+  dismissedNotifications: ["dismissed-notifications"] as const,
+
+  /** Installed plugins list (via `listPlugins`). */
+  plugins: ["plugins"] as const,
+  /** Remote plugin catalog. */
+  pluginCatalog: ["plugin-catalog"] as const,
+  pluginUpdates: {
+    all: ["plugin-updates"] as const,
+    list: (entries: PluginUpdateEntry[]) =>
+      ["plugin-updates", entries] as const,
+  },
+
+  history: {
+    all: ["history"] as const,
+    daily: ["history", "daily"] as const,
+    list: (page: number, search: string, startDate: string, endDate: string) =>
+      ["history", page, search, startDate, endDate] as const,
+  },
+
+  dictionary: {
+    all: ["dictionary"] as const,
+    list: (page: number, search: string) =>
+      ["dictionary", page, search] as const,
+  },
+  vocabulary: {
+    all: ["vocabulary"] as const,
+    list: (page: number, search: string) =>
+      ["vocabulary", page, search] as const,
+  },
+
+  /** Remix practice runs. */
+  remixRuns: ["remix", "runs"] as const,
+
+  cloud: {
+    usage: ["cloud-usage"] as const,
+    orgs: ["cloud-orgs"] as const,
+    activeOrg: ["cloud-active-org"] as const,
+    accounts: ["cloud-accounts"] as const,
+    profileFields: ["cloud-profile-fields"] as const,
+    config: ["cloud-config"] as const,
+    pricing: ["cloud-pricing"] as const,
+  },
+} as const;
 
 /**
  * Query options for the full persisted-settings map. Use with `useQuery`:
@@ -23,7 +92,7 @@ export const SETTINGS_QUERY_KEY = ["settings-all"] as const;
  */
 export function settingsQueryOptions() {
   return {
-    queryKey: SETTINGS_QUERY_KEY,
+    queryKey: queryKeys.settings,
     queryFn: async (): Promise<Record<string, string>> => {
       const res = await getClient().api.settings.$get();
       if (!res.ok) throw new Error("Failed to load settings");
@@ -33,21 +102,13 @@ export function settingsQueryOptions() {
 }
 
 /**
- * Shared query key for the available-models catalog
- * (`GET /api/models/available`). The catalog is effectively static within a
- * session, so consumers share one cached fetch via this key rather than
- * re-hitting the endpoint.
- */
-export const AVAILABLE_MODELS_QUERY_KEY = ["models", "available"] as const;
-
-/**
  * Query options for the available-models catalog. Use with `useQuery`, or read
  * the shared cache from a handler via
  * `queryClient.ensureQueryData(availableModelsQueryOptions())`.
  */
 export function availableModelsQueryOptions() {
   return {
-    queryKey: AVAILABLE_MODELS_QUERY_KEY,
+    queryKey: queryKeys.models.available,
     queryFn: async (): Promise<AvailableModel[]> => {
       const res = await getClient().api.models.available.$get();
       if (!res.ok) throw new Error("Failed to load available models");
@@ -55,12 +116,6 @@ export function availableModelsQueryOptions() {
     },
   };
 }
-
-/**
- * Shared query key for the experimental flags config (`GET /api/config`).
- * Same rationale as `SETTINGS_QUERY_KEY` — one key so consumers share a cache.
- */
-export const CONFIG_QUERY_KEY = ["config"] as const;
 
 export type FreestyleConfig = {
   version: number;
@@ -70,12 +125,12 @@ export type FreestyleConfig = {
 /**
  * Query options for `config.freestyle.json` (experimental feature flags). Keeps
  * the flags load on the same React Query cache as the rest of the settings page
- * instead of re-fetching on every visit. Invalidate `CONFIG_QUERY_KEY` after a
+ * instead of re-fetching on every visit. Invalidate `queryKeys.config` after a
  * flag mutation to refresh.
  */
 export function configQueryOptions() {
   return {
-    queryKey: CONFIG_QUERY_KEY,
+    queryKey: queryKeys.config,
     queryFn: async (): Promise<FreestyleConfig> => {
       const res = await getClient().api.config.$get();
       if (!res.ok) throw new Error("Failed to load config");
@@ -85,15 +140,6 @@ export function configQueryOptions() {
 }
 
 /**
- * Shared query key for dismissed notification keys
- * (`GET /api/dismissed-notifications`). One key so every `useDismissible`
- * consumer shares a single cached list.
- */
-export const DISMISSED_NOTIFICATIONS_QUERY_KEY = [
-  "dismissed-notifications",
-] as const;
-
-/**
  * Query options for the device-local dismissed-notification key list. Use with
  * `useQuery`:
  *
@@ -101,7 +147,7 @@ export const DISMISSED_NOTIFICATIONS_QUERY_KEY = [
  */
 export function dismissedNotificationsQueryOptions() {
   return {
-    queryKey: DISMISSED_NOTIFICATIONS_QUERY_KEY,
+    queryKey: queryKeys.dismissedNotifications,
     queryFn: async (): Promise<string[]> => {
       const res = await getClient().api["dismissed-notifications"].$get();
       if (!res.ok) throw new Error("Failed to load dismissed notifications");

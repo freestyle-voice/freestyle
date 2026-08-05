@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { getClient } from "./api";
-import { ONE_HOUR } from "./query";
+import { ONE_HOUR, queryKeys } from "./query";
 
 export interface CloudUsageBalance {
   remaining: number;
@@ -113,7 +113,7 @@ export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ["cloud-usage"],
+    queryKey: queryKeys.cloud.usage,
     queryFn: async () => {
       const res = await getClient().api.usage.$get();
       if (!res.ok) throw new Error(`Failed to fetch usage (${res.status})`);
@@ -131,7 +131,7 @@ export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
   useEffect(() => {
     if (!signedIn) return;
     const remove = window.api?.onTranscriptionDone(() => {
-      void queryClient.invalidateQueries({ queryKey: ["cloud-usage"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.cloud.usage });
     });
     return () => remove?.();
   }, [signedIn, queryClient]);

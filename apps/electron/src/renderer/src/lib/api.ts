@@ -10,6 +10,9 @@ let serverUrl = "";
 // Optional bearer token for a configured server ("" = none).
 let serverToken = "";
 let initialized = false;
+// The in-flight init, shared so concurrent callers (e.g. the module-load
+// prefetch and the auth provider) don't each run a redundant refreshApiBase().
+let initPromise: Promise<void> | null = null;
 
 /** Base URL of the locally-run server (used when no server URL is configured). */
 export function getLocalApiBase(): string {
@@ -54,8 +57,18 @@ export function apiFetch(
 
 export async function initApiBase(): Promise<void> {
   if (initialized) return;
-  await refreshApiBase();
-  initialized = true;
+  // Dedupe concurrent first-callers onto a single refreshApiBase() so startup
+  // doesn't fire the server-URL/token/health probe twice in the same tick.
+  if (!initPromise) {
+    initPromise = refreshApiBase()
+      .then(() => {
+        initialized = true;
+      })
+      .finally(() => {
+        initPromise = null;
+      });
+  }
+  await initPromise;
 }
 
 /**

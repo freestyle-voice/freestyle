@@ -8,7 +8,7 @@ import {
 import { formatAcceleratorKeys } from "@renderer/hooks/use-hotkey-recorder";
 import { getClient } from "@renderer/lib/api";
 import { formatNumber } from "@renderer/lib/format";
-import { settingsQueryOptions } from "@renderer/lib/query";
+import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Globe } from "lucide-react";
@@ -74,7 +74,7 @@ export default function RemixPage(): React.JSX.Element {
     getDefaultRemixHotkey();
 
   const runsQuery = useQuery({
-    queryKey: ["remix", "runs"],
+    queryKey: queryKeys.remixRuns,
     queryFn: async () => {
       const res = await getClient().api.remix.runs.$get({
         query: { limit: RUNS_SAMPLE_LIMIT },

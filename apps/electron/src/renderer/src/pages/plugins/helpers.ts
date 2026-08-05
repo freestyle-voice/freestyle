@@ -1,5 +1,5 @@
 import { checkPluginUpdates } from "@renderer/lib/plugins-api";
-import { ONE_HOUR } from "@renderer/lib/query";
+import { ONE_HOUR, queryKeys } from "@renderer/lib/query";
 import type { PluginInfo, PluginUpdateResult } from "@shared/plugins";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -102,7 +102,7 @@ export function usePluginUpdates(plugins: PluginInfo[]) {
   );
 
   return useQuery({
-    queryKey: ["plugin-updates", entries],
+    queryKey: queryKeys.pluginUpdates.list(entries),
     queryFn: async () => {
       if (entries.length === 0) return new Map<string, PluginUpdateResult>();
       const results = await checkPluginUpdates(entries);

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { getClient } from "./api";
-import { ONE_HOUR } from "./query";
+import { ONE_HOUR, queryKeys } from "./query";
 
 /**
  * Currency-aware Pro pricing from Freestyle Cloud's public `GET /v2/pricing`
@@ -42,7 +42,7 @@ export const FALLBACK_PRICING: CloudPricing = {
  */
 export function usePricing(): CloudPricing {
   const { data } = useQuery({
-    queryKey: ["cloud-pricing"] as const,
+    queryKey: queryKeys.cloud.pricing,
     staleTime: ONE_HOUR,
     retry: 1,
     placeholderData: FALLBACK_PRICING,

@@ -9,7 +9,12 @@ import { UpgradeModalProvider } from "@renderer/components/upgrade-modal";
 import i18n, { initI18n } from "@renderer/i18n";
 import { initApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider } from "@renderer/lib/auth-context";
-import { createQueryClient } from "@renderer/lib/query";
+import { listPlugins } from "@renderer/lib/plugins-api";
+import {
+  createQueryClient,
+  queryKeys,
+  settingsQueryOptions,
+} from "@renderer/lib/query";
 import {
   installGlobalErrorHandlers,
   reportError,
@@ -60,8 +65,21 @@ function PagePad(): React.JSX.Element {
 
 // Analytics is captured server-side (see apps/server/src/lib/posthog.ts);
 // the renderer ships no analytics SDK.
-initApiBase();
 installGlobalErrorHandlers();
+
+// Resolve the server base, then warm the auth-independent content queries. The
+// content subtree (AppShell + pages) only mounts once auth resolves, so its
+// queries would otherwise wait for GET /api/auth/status before even starting —
+// serializing the whole panel behind auth. Prefetching here races the auth
+// check, so settings + plugins are cached or in-flight by the time the subtree
+// mounts. Failures are swallowed — the real useQuery hooks retry on mount.
+void initApiBase().then(() => {
+  void queryClient.prefetchQuery(settingsQueryOptions());
+  void queryClient.prefetchQuery({
+    queryKey: queryKeys.plugins,
+    queryFn: () => listPlugins(),
+  });
+});
 
 // Opt into the translucent "glass" surfaces only on macOS, where the window is
 // transparent and backed by native vibrancy. On other platforms the window

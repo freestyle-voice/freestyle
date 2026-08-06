@@ -736,8 +736,10 @@
       "emptyTitle": "No conversations yet",
       "untitled": "Untitled conversation",
       "back": "All conversations",
+      "loadMore": "Load more",
       "roleYou": "You",
       "roleRemix": "Remix",
+      "toolRan": "Ran {{name}}",
       "messageCount_one": "{{count}} message",
       "messageCount_other": "{{count}} messages"
     },

@@ -11,9 +11,10 @@ import { formatAcceleratorKeys } from "@renderer/hooks/use-hotkey-recorder";
 import { getClient } from "@renderer/lib/api";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  Check,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -36,15 +37,55 @@ interface ThreadSummary {
   messageCount: number;
 }
 
+// A UIMessage part as stored by the server. Text parts carry `text`; tool
+// parts have a `type` of `tool-<name>` (or `dynamic-tool` with `toolName`).
 interface TranscriptPart {
   type?: string;
   text?: string;
+  toolName?: string;
+  state?: string;
 }
 
 interface TranscriptMessage {
   id: string;
   role: "user" | "assistant" | "system";
   parts: TranscriptPart[];
+}
+
+// Past-tense labels for the agent's tool steps, mirroring the pill's
+// TOOL_LABELS. History only ever shows finished turns, so "done" wording.
+const TOOL_DONE_LABELS: Record<string, string> = {
+  get_context: "Checked your screen",
+  read_document: "Read the document",
+  get_tones: "Read your tone preferences",
+  select_all: "Selected everything",
+  select_text: "Moved your selection",
+  collapse_selection: "Placed the cursor",
+  copy: "Read your selection",
+  set_clipboard: "Put text on your clipboard",
+  set_clipboard_image: "Put an image on your clipboard",
+  paste: "Pasted into your document",
+  undo: "Undid the last edit",
+  redo: "Redid the edit",
+  press_key: "Pressed a key",
+  get_clipboard: "Read your clipboard",
+  web_search: "Searched the web",
+  image_search: "Searched images",
+};
+
+const THREADS_PAGE_SIZE = 30;
+
+/** Resolve a tool part's name from its `type` (`tool-<name>`) or `toolName`. */
+function toolPartName(part: TranscriptPart): string | null {
+  if (part.toolName) return part.toolName;
+  if (typeof part.type === "string" && part.type.startsWith("tool-")) {
+    return part.type.slice("tool-".length);
+  }
+  return null;
+}
+
+function isToolPart(part: TranscriptPart): boolean {
+  return part.type === "dynamic-tool" || toolPartName(part) !== null;
 }
 
 // SQLite datetime('now') is UTC without a zone marker.
@@ -260,15 +301,20 @@ function HistoryList({
   onOpen: (threadId: number) => void;
 }): React.JSX.Element {
   const { t, i18n } = useTranslation();
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: queryKeys.remixThreads,
-    queryFn: async () => {
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
       const res = await getClient().api.remix.thread.list.$get({
-        query: { limit: 100 },
+        query: { limit: THREADS_PAGE_SIZE, offset: pageParam },
       });
       if (!res.ok) throw new Error("Failed to load remix history");
       return (await res.json()) as { threads: ThreadSummary[] };
     },
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.threads.length < THREADS_PAGE_SIZE
+        ? undefined
+        : allPages.length * THREADS_PAGE_SIZE,
   });
 
   if (query.isLoading) {
@@ -285,7 +331,7 @@ function HistoryList({
       </div>
     );
   }
-  const threads = query.data?.threads ?? [];
+  const threads = query.data?.pages.flatMap((page) => page.threads) ?? [];
   if (threads.length === 0) {
     return (
       <div className="border-border bg-card rounded-[14px] border border-dashed px-9 py-[56px] text-center">
@@ -326,6 +372,19 @@ function HistoryList({
           <ChevronRight className="text-muted-foreground/50 group-hover:text-muted-foreground h-4 w-4 flex-shrink-0 transition-colors" />
         </button>
       ))}
+
+      {query.hasNextPage && (
+        <button
+          type="button"
+          onClick={() => void query.fetchNextPage()}
+          disabled={query.isFetchingNextPage}
+          className="text-muted-foreground hover:bg-card hover:text-foreground mt-1 self-center rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-60"
+        >
+          {query.isFetchingNextPage
+            ? t("remixPage.history.loading")
+            : t("remixPage.history.loadMore")}
+        </button>
+      )}
     </div>
   );
 }
@@ -376,38 +435,93 @@ function ThreadTranscript({
         <div className="flex flex-col gap-4">
           {(query.data?.messages ?? [])
             .filter((message) => message.role !== "system")
-            .map((message) => {
-              const text = textFromParts(message.parts);
-              if (!text) return null;
-              const isUser = message.role === "user";
-              return (
-                <div
-                  key={message.id}
-                  className={cn(
-                    "flex flex-col gap-1",
-                    isUser ? "items-end" : "items-start",
-                  )}
-                >
-                  <span className="text-muted-foreground px-1 text-[10px] font-medium tracking-wide uppercase">
-                    {isUser
-                      ? t("remixPage.history.roleYou")
-                      : t("remixPage.history.roleRemix")}
-                  </span>
-                  <div
-                    className={cn(
-                      "max-w-[85%] rounded-[14px] px-3.5 py-2.5 text-[13.5px] leading-[1.5] whitespace-pre-wrap",
-                      isUser
-                        ? "bg-accent text-accent-foreground"
-                        : "border-border bg-card text-foreground border",
-                    )}
-                  >
-                    {text}
-                  </div>
-                </div>
-              );
-            })}
+            .map((message) => (
+              <TranscriptMessageRow key={message.id} message={message} />
+            ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * One turn in the read-only transcript. User turns render their text as a
+ * bubble. Assistant turns render text bubbles interleaved with the agent's
+ * tool steps (grouped runs of tool parts), so tool-only turns still show up.
+ */
+function TranscriptMessageRow({
+  message,
+}: {
+  message: TranscriptMessage;
+}): React.JSX.Element | null {
+  const { t } = useTranslation();
+  const isUser = message.role === "user";
+
+  if (isUser) {
+    const text = textFromParts(message.parts);
+    if (!text) return null;
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <span className="text-muted-foreground px-1 text-[10px] font-medium tracking-wide uppercase">
+          {t("remixPage.history.roleYou")}
+        </span>
+        <div className="bg-accent text-accent-foreground max-w-[85%] rounded-[14px] px-3.5 py-2.5 text-[13.5px] leading-[1.5] whitespace-pre-wrap">
+          {text}
+        </div>
+      </div>
+    );
+  }
+
+  // Assistant: walk parts in order, grouping consecutive tool steps.
+  const blocks: Array<
+    { kind: "text"; text: string } | { kind: "tools"; names: string[] }
+  > = [];
+  for (const part of message.parts) {
+    if (part.type === "text" && typeof part.text === "string") {
+      const text = part.text.trim();
+      if (text) blocks.push({ kind: "text", text });
+    } else if (isToolPart(part)) {
+      const name = toolPartName(part) ?? "";
+      const last = blocks[blocks.length - 1];
+      if (last?.kind === "tools") last.names.push(name);
+      else blocks.push({ kind: "tools", names: [name] });
+    }
+  }
+  if (blocks.length === 0) return null;
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <span className="text-muted-foreground px-1 text-[10px] font-medium tracking-wide uppercase">
+        {t("remixPage.history.roleRemix")}
+      </span>
+      <div className="flex w-full flex-col items-start gap-1.5">
+        {blocks.map((block, i) =>
+          block.kind === "text" ? (
+            <div
+              key={`t-${message.id}-${i}`}
+              className="border-border bg-card text-foreground max-w-[85%] rounded-[14px] border px-3.5 py-2.5 text-[13.5px] leading-[1.5] whitespace-pre-wrap"
+            >
+              {block.text}
+            </div>
+          ) : (
+            <div
+              key={`s-${message.id}-${i}`}
+              className="flex flex-col gap-1 py-0.5"
+            >
+              {block.names.map((name, j) => (
+                <div
+                  key={`${name}-${j}`}
+                  className="text-muted-foreground flex items-center gap-1.5 text-[11.5px]"
+                >
+                  <Check className="text-primary/70 h-3 w-3 flex-shrink-0" />
+                  {TOOL_DONE_LABELS[name] ??
+                    t("remixPage.history.toolRan", { name })}
+                </div>
+              ))}
+            </div>
+          ),
+        )}
+      </div>
     </div>
   );
 }

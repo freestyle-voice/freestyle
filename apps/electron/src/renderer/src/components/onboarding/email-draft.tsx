@@ -156,7 +156,7 @@ export function EmailDraft({
         aria-hidden="true"
         className="flex items-center gap-3 px-4 pt-1 pb-3.5"
       >
-        <span className="flex h-9 cursor-default items-center rounded-full bg-[#0b57d0] px-6 text-[14px] font-medium text-white">
+        <span className="flex h-9 cursor-default items-center rounded-full bg-[#dadce0] px-6 text-[14px] font-medium text-[#5f6368]">
           {t("onboarding.draft.send")}
         </span>
         <span className="flex items-center gap-3 text-[#5f6368]">

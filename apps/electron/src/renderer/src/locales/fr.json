@@ -180,6 +180,7 @@
       "outputModeClipboard": "Copier dans le presse-papiers",
       "sound": "Retour sonore",
       "soundDesc": "Carillons doux au début et à la fin de l'enregistrement.",
+      "conflict": "C'est déjà votre raccourci Remix. Choisissez une autre combinaison.",
       "needsModifier": "Les raccourcis nécessitent une touche modificatrice ou un bouton latéral de souris"
     },
     "display": {

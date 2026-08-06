@@ -35,6 +35,7 @@ import {
 import { Switch } from "@renderer/components/ui/switch";
 import { PricingPlans } from "@renderer/components/upgrade-modal";
 import {
+  acceleratorsEqual,
   comboDisplayKeys,
   formatAcceleratorKeys,
   keyDisplayLabel,
@@ -387,9 +388,12 @@ export default function SettingsPage(): React.JSX.Element {
     canSaveRecording,
     needsModifierOrMouseButton,
     invalidReleaseNotice,
+    blockedNotice,
     startRecording: startHotkeyRecording,
     cancelRecording: cancelHotkeyRecording,
-  } = useHotkeyRecorder(handleHotkeyRecorded);
+  } = useHotkeyRecorder(handleHotkeyRecorded, {
+    isBlocked: (accel) => acceleratorsEqual(accel, remixHotkey),
+  });
 
   const {
     state: remixRecorderState,
@@ -397,9 +401,13 @@ export default function SettingsPage(): React.JSX.Element {
     capturedCombo: remixCapturedCombo,
     canSaveRecording: remixCanSave,
     needsModifierOrMouseButton: remixNeedsModifier,
+    blockedNotice: remixBlockedNotice,
     startRecording: startRemixHotkeyRecording,
     cancelRecording: cancelRemixHotkeyRecording,
-  } = useHotkeyRecorder(handleRemixHotkeyRecorded, { target: "remix" });
+  } = useHotkeyRecorder(handleRemixHotkeyRecorded, {
+    target: "remix",
+    isBlocked: (accel) => acceleratorsEqual(accel, hotkey),
+  });
 
   const queryClient = useQueryClient();
 
@@ -851,9 +859,11 @@ export default function SettingsPage(): React.JSX.Element {
                         {t("common.change")}
                       </span>
                     </Button>
-                    {invalidReleaseNotice && (
+                    {(invalidReleaseNotice || blockedNotice) && (
                       <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                        {t("settings.recording.needsModifier")}
+                        {blockedNotice
+                          ? t("settings.recording.conflict")
+                          : t("settings.recording.needsModifier")}
                       </div>
                     )}
                   </div>
@@ -1055,19 +1065,26 @@ export default function SettingsPage(): React.JSX.Element {
                 }
               >
                 {remixRecorderState === "idle" ? (
-                  <Button
-                    variant="outline"
-                    onClick={startRemixHotkeyRecording}
-                    className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
-                  >
-                    <Keyboard className="text-muted-foreground size-4 shrink-0" />
-                    <KeyComboDisplay
-                      keys={formatAcceleratorKeys(remixHotkey)}
-                    />
-                    <span className="text-muted-foreground ml-1 text-xs">
-                      {t("common.change")}
-                    </span>
-                  </Button>
+                  <div className="relative inline-flex">
+                    <Button
+                      variant="outline"
+                      onClick={startRemixHotkeyRecording}
+                      className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
+                    >
+                      <Keyboard className="text-muted-foreground size-4 shrink-0" />
+                      <KeyComboDisplay
+                        keys={formatAcceleratorKeys(remixHotkey)}
+                      />
+                      <span className="text-muted-foreground ml-1 text-xs">
+                        {t("common.change")}
+                      </span>
+                    </Button>
+                    {remixBlockedNotice && (
+                      <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                        {t("settings.remix.conflict")}
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
                     <Keyboard className="text-primary h-4 w-4 shrink-0" />

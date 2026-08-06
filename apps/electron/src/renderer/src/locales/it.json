@@ -180,6 +180,7 @@
       "outputModeClipboard": "Copia negli appunti",
       "sound": "Feedback sonoro",
       "soundDesc": "Suoni leggeri all'inizio e alla fine della registrazione.",
+      "conflict": "Questa è già la tua scorciatoia Remix. Scegli un'altra combinazione.",
       "needsModifier": "Le scorciatoie necessitano di un tasto modificatore"
     },
     "display": {

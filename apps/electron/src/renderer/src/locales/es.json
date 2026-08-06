@@ -180,6 +180,7 @@
       "outputModeClipboard": "Copiar al portapapeles",
       "sound": "Retroalimentación de sonido",
       "soundDesc": "Campanillas suaves al inicio y al final de la grabación.",
+      "conflict": "Este ya es tu atajo de Remix. Elige otra combinación.",
       "needsModifier": "Los atajos necesitan una tecla modificadora o botón lateral del ratón"
     },
     "display": {

@@ -319,6 +319,13 @@ export function formatAccelerator(accel: string): string {
   return formatAcceleratorKeys(accel).join(" ");
 }
 
+/** Compare two accelerators after normalizing aliases and modifier order. */
+export function acceleratorsEqual(a: string, b: string): boolean {
+  const norm = (accel: string): string =>
+    comboToAccelerator(acceleratorToCombo(accel)) ?? accel;
+  return norm(a) === norm(b);
+}
+
 // ---------------------------------------------------------------------------
 // Hook -- uses main process IPC for recording (captures fn/globe key)
 // ---------------------------------------------------------------------------
@@ -333,6 +340,7 @@ interface UseHotkeyRecorderReturn {
   canSaveRecording: boolean;
   needsModifierOrMouseButton: boolean;
   invalidReleaseNotice: boolean;
+  blockedNotice: boolean;
   startRecording: () => void;
   cancelRecording: () => void;
 }
@@ -346,6 +354,12 @@ export interface UseHotkeyRecorderOptions {
    * recording one must not overwrite the other.
    */
   target?: "dictation" | "remix";
+  /**
+   * Rejects a completed combo (e.g. it's already the other feature's hotkey).
+   * A blocked combo is not handed to `onRecord`; the previously registered
+   * hotkey stays in place and `blockedNotice` flashes.
+   */
+  isBlocked?: (accelerator: string) => boolean;
 }
 
 export function useHotkeyRecorder(
@@ -355,9 +369,12 @@ export function useHotkeyRecorder(
   const target = options.target ?? "dictation";
   const targetRef = useRef(target);
   targetRef.current = target;
+  const isBlockedRef = useRef(options.isBlocked);
+  isBlockedRef.current = options.isBlocked;
   const [state, setState] = useState<RecorderState>("idle");
   const [draftCombo, setDraftCombo] = useState<HotkeyCombo>(EMPTY_COMBO);
   const [invalidReleaseNotice, setInvalidReleaseNotice] = useState(false);
+  const [blockedNotice, setBlockedNotice] = useState(false);
   const onRecordRef = useRef(onRecord);
   onRecordRef.current = onRecord;
   const recordingActiveRef = useRef(false);
@@ -392,6 +409,15 @@ export function useHotkeyRecorder(
     }, 1800);
   }, [clearWarningTimer]);
 
+  const showBlockedNotice = useCallback(() => {
+    clearWarningTimer();
+    setBlockedNotice(true);
+    warningTimerRef.current = setTimeout(() => {
+      setBlockedNotice(false);
+      warningTimerRef.current = null;
+    }, 1800);
+  }, [clearWarningTimer]);
+
   const startRecording = useCallback(() => {
     recordingActiveRef.current = true;
     setState("recording");
@@ -399,6 +425,7 @@ export function useHotkeyRecorder(
     setDraftCombo(EMPTY_COMBO);
     rightModifierLatchRef.current = null;
     setInvalidReleaseNotice(false);
+    setBlockedNotice(false);
     window.api?.startHotkeyRecording();
   }, []);
 
@@ -410,6 +437,7 @@ export function useHotkeyRecorder(
     setDraftCombo(EMPTY_COMBO);
     rightModifierLatchRef.current = null;
     setInvalidReleaseNotice(false);
+    setBlockedNotice(false);
     window.api?.stopHotkeyRecording();
   }, [clearWarningTimer]);
 
@@ -439,6 +467,19 @@ export function useHotkeyRecorder(
       return;
     }
 
+    if (isBlockedRef.current?.(accel)) {
+      // Stop without an accelerator: main re-registers the current hotkey,
+      // so the rejected combo never becomes the live listener.
+      showBlockedNotice();
+      window.api?.stopHotkeyRecording();
+      recordingActiveRef.current = false;
+      setState("idle");
+      draftComboRef.current = EMPTY_COMBO;
+      setDraftCombo(EMPTY_COMBO);
+      rightModifierLatchRef.current = null;
+      return;
+    }
+
     clearWarningTimer();
     if (accel) {
       onRecordRef.current(accel);
@@ -456,7 +497,7 @@ export function useHotkeyRecorder(
     setDraftCombo(EMPTY_COMBO);
     rightModifierLatchRef.current = null;
     setInvalidReleaseNotice(false);
-  }, [clearWarningTimer, showInvalidReleaseNotice]);
+  }, [clearWarningTimer, showInvalidReleaseNotice, showBlockedNotice]);
 
   const hasDraftCombo = useCallback(() => {
     return (
@@ -612,6 +653,7 @@ export function useHotkeyRecorder(
       draftCombo.key ? draftCombo : null,
     ),
     invalidReleaseNotice,
+    blockedNotice,
     startRecording,
     cancelRecording,
   };

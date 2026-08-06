@@ -180,6 +180,7 @@
       "outputModeClipboard": "Copiar para a área de transferência",
       "sound": "Feedback sonoro",
       "soundDesc": "Sons suaves no início e fim da gravação.",
+      "conflict": "Este já é o seu atalho do Remix. Escolha outra combinação.",
       "needsModifier": "Atalhos precisam de uma tecla modificadora"
     },
     "display": {

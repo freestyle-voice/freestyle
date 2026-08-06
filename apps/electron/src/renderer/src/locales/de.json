@@ -180,6 +180,7 @@
       "outputModeClipboard": "In Zwischenablage kopieren",
       "sound": "Klangfeedback",
       "soundDesc": "Sanfte Töne zu Beginn und Ende der Aufnahme.",
+      "conflict": "Das ist bereits Ihre Remix-Tastenkombination. Wählen Sie eine andere Kombination.",
       "needsModifier": "Tastenkombinationen benötigen eine Modifikatortaste oder Maustaste"
     },
     "display": {

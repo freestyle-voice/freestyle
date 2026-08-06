@@ -216,6 +216,7 @@
       "outputModeClipboard": "Copy to clipboard",
       "sound": "Sound feedback",
       "soundDesc": "Soft chimes at the start and end of recording.",
+      "conflict": "This is already your Remix hotkey. Pick a different combination.",
       "needsModifier": "Hotkeys need a modifier or side mouse button"
     },
     "display": {

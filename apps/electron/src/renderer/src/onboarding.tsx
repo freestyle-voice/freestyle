@@ -31,6 +31,7 @@ import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
 import { SegmentedControl } from "@renderer/components/ui/segmented-control";
 import { VoiceRow } from "@renderer/components/voice-row";
 import {
+  acceleratorsEqual,
   comboDisplayKeys,
   formatAcceleratorKeys,
   keyDisplayLabel,
@@ -85,6 +86,10 @@ type Step = "permissions" | "cloud" | "language" | "draft" | "remix";
 const DEFAULT_HOTKEY =
   (typeof window !== "undefined" && window.api?.defaultHotkey) ||
   getDefaultHotkey();
+
+const DEFAULT_REMIX_HOTKEY =
+  (typeof window !== "undefined" && window.api?.defaultRemixHotkey) ||
+  getDefaultRemixHotkey();
 
 // Linux system-setup state reported by the main process (input-group access
 // for the hotkey listener, xdotool/wtype for the paste fallback).
@@ -167,8 +172,10 @@ export default function OnboardingPage(): React.JSX.Element {
   });
   const [showKey, setShowKey] = useState(false);
 
-  // Hotkey recorder state (draft step)
+  // Hotkey recorder state (draft step); the remix hotkey lives here too so
+  // each step can refuse a combo already taken by the other.
   const [hotkey, setHotkey] = useState(DEFAULT_HOTKEY);
+  const [remixHotkey, setRemixHotkey] = useState(DEFAULT_REMIX_HOTKEY);
 
   // The practice email body, lifted so it survives the draft→remix step
   // transition (and Back).
@@ -191,23 +198,19 @@ export default function OnboardingPage(): React.JSX.Element {
       .catch(() => {});
   }, []);
 
-  const {
-    state: recorderState,
-    liveModifiers,
-    capturedCombo,
-    canSaveRecording,
-    needsModifierOrMouseButton,
-    startRecording: startHotkeyRecording,
-    cancelRecording: cancelHotkeyRecording,
-  } = useHotkeyRecorder(handleHotkeyRecorded);
-
-  const liveKeys = liveModifiers.map(keyDisplayLabel);
-  const draftKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : liveKeys;
-  const captureHint = needsModifierOrMouseButton
-    ? "Add a modifier or side mouse button · Esc to cancel"
-    : canSaveRecording
-      ? "Release to save · Esc to cancel"
-      : "Press a modifier or side mouse button… · Esc to cancel";
+  // Like Settings: main re-reads the remix accelerator from settings, so the
+  // listener reload has to wait for the write to land.
+  const handleRemixHotkeyRecorded = useCallback((accelerator: string) => {
+    setRemixHotkey(accelerator);
+    capture("onboarding_remix_hotkey_changed", { hotkey: accelerator });
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.remixHotkey },
+        json: { value: accelerator },
+      })
+      .then(() => window.api?.reloadRemixHotkey())
+      .catch(() => {});
+  }, []);
 
   // Load permissions
   useEffect(() => {
@@ -232,6 +235,8 @@ export default function OnboardingPage(): React.JSX.Element {
   useEffect(() => {
     const value = settingsData?.[SETTINGS_KEYS.hotkey];
     if (value) setHotkey(value);
+    const remixValue = settingsData?.[SETTINGS_KEYS.remixHotkey];
+    if (remixValue) setRemixHotkey(remixValue);
   }, [settingsData]);
 
   // Analytics: entry + per-step views (drives the drop-off funnel).
@@ -822,9 +827,8 @@ export default function OnboardingPage(): React.JSX.Element {
           {step === "draft" && (
             <DraftStep
               hotkey={hotkey}
-              recorderState={recorderState}
-              draftKeys={draftKeys}
-              captureHint={captureHint}
+              remixHotkey={remixHotkey}
+              onHotkeyRecorded={handleHotkeyRecorded}
               modelReady={chosenReady}
               localModel={showLocalSetupPanel ? localSetupModel : undefined}
               onDownloadLocal={startLocalDownload}
@@ -840,11 +844,6 @@ export default function OnboardingPage(): React.JSX.Element {
               body={draftBody}
               onBodyChange={setDraftBody}
               onDraftDictated={onDraftDictated}
-              onStartRecording={() => {
-                capture("onboarding_hotkey_change_started");
-                startHotkeyRecording();
-              }}
-              onCancelRecording={cancelHotkeyRecording}
               onDictation={() => capture("onboarding_dictation_tried")}
               onBack={() => {
                 capture("onboarding_tutorial_back_clicked");
@@ -858,6 +857,9 @@ export default function OnboardingPage(): React.JSX.Element {
             <RemixStep
               body={draftBody}
               onBodyChange={setDraftBody}
+              remixHotkey={remixHotkey}
+              dictationHotkey={hotkey}
+              onRemixHotkeyRecorded={handleRemixHotkeyRecorded}
               onBack={() => setStep("draft")}
               onFinish={finishSetup}
             />
@@ -1642,14 +1644,105 @@ function StepHeading({ title }: { title: string }): React.JSX.Element {
 }
 
 // ---------------------------------------------------------------------------
+// Hotkey rebind — a single minimal control, shared by the draft (dictation
+// hotkey) and remix (remix hotkey) steps.
+// ---------------------------------------------------------------------------
+function HotkeyRebindControl({
+  hotkey,
+  target,
+  conflictHotkey,
+  conflictNotice,
+  onRecorded,
+  onStartRecording,
+}: {
+  hotkey: string;
+  target: "dictation" | "remix";
+  /** The other feature's hotkey — recording it here is refused. */
+  conflictHotkey?: string;
+  conflictNotice?: string;
+  onRecorded: (accelerator: string) => void;
+  onStartRecording?: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const {
+    state: recorderState,
+    liveModifiers,
+    capturedCombo,
+    canSaveRecording,
+    needsModifierOrMouseButton,
+    blockedNotice,
+    startRecording,
+    cancelRecording,
+  } = useHotkeyRecorder(onRecorded, {
+    target,
+    isBlocked: conflictHotkey
+      ? (accel) => acceleratorsEqual(accel, conflictHotkey)
+      : undefined,
+  });
+
+  const liveKeys = liveModifiers.map(keyDisplayLabel);
+  const draftKeys = capturedCombo ? comboDisplayKeys(capturedCombo) : liveKeys;
+  const captureHint = needsModifierOrMouseButton
+    ? "Add a modifier or side mouse button · Esc to cancel"
+    : canSaveRecording
+      ? "Release to save · Esc to cancel"
+      : "Press a modifier or side mouse button… · Esc to cancel";
+
+  return (
+    <div className="mt-5 flex justify-start">
+      {recorderState === "idle" ? (
+        <div className="relative inline-flex">
+          <Button
+            variant="outline"
+            onClick={() => {
+              onStartRecording?.();
+              startRecording();
+            }}
+            className="bg-card hover:bg-secondary h-auto gap-3 rounded-[10px] px-3.5 py-2.5"
+          >
+            <Keyboard className="text-muted-foreground shrink-0" />
+            <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
+            <span className="text-muted-foreground ml-1 text-[12.5px]">
+              {t("common.change")}
+            </span>
+          </Button>
+          {blockedNotice && conflictNotice && (
+            <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] left-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+              {conflictNotice}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="border-primary bg-accent inline-flex items-center gap-3 rounded-[10px] border px-3.5 py-2.5">
+          <Keyboard className="text-accent-foreground h-4 w-4 shrink-0" />
+          {draftKeys.length > 0 ? (
+            <KeyComboDisplay keys={draftKeys} variant="dim" />
+          ) : null}
+          <span className="text-accent-foreground text-[12px]">
+            {captureHint}
+          </span>
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={cancelRecording}
+            className="ml-1"
+          >
+            {t("common.cancel")}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Step 4 — Dictate into the Gmail draft (replaces the old tutorial step:
 // same model setup + hotkey rebind, new practice surface).
 // ---------------------------------------------------------------------------
 function DraftStep({
   hotkey,
-  recorderState,
-  draftKeys,
-  captureHint,
+  remixHotkey,
+  onHotkeyRecorded,
   modelReady,
   localModel,
   onDownloadLocal,
@@ -1659,16 +1752,13 @@ function DraftStep({
   body,
   onBodyChange,
   onDraftDictated,
-  onStartRecording,
-  onCancelRecording,
   onDictation,
   onBack,
   onContinue,
 }: {
   hotkey: string;
-  recorderState: string;
-  draftKeys: string[];
-  captureHint: string;
+  remixHotkey: string;
+  onHotkeyRecorded: (accelerator: string) => void;
   modelReady: boolean;
   localModel: VoiceItem | undefined;
   onDownloadLocal: () => void;
@@ -1678,8 +1768,6 @@ function DraftStep({
   body: string;
   onBodyChange: (text: string) => void;
   onDraftDictated: () => void;
-  onStartRecording: () => void;
-  onCancelRecording: () => void;
   onDictation: () => void;
   onBack: () => void;
   onContinue: () => void;
@@ -1747,40 +1835,14 @@ function DraftStep({
         </div>
       </div>
 
-      {/* Hotkey rebind — a single minimal control */}
-      <div className="mt-5 flex justify-start">
-        {recorderState === "idle" ? (
-          <Button
-            variant="outline"
-            onClick={onStartRecording}
-            className="bg-card hover:bg-secondary h-auto gap-3 rounded-[10px] px-3.5 py-2.5"
-          >
-            <Keyboard className="text-muted-foreground shrink-0" />
-            <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
-            <span className="text-muted-foreground ml-1 text-[12.5px]">
-              {t("common.change")}
-            </span>
-          </Button>
-        ) : (
-          <div className="border-primary bg-accent inline-flex items-center gap-3 rounded-[10px] border px-3.5 py-2.5">
-            <Keyboard className="text-accent-foreground h-4 w-4 shrink-0" />
-            {draftKeys.length > 0 ? (
-              <KeyComboDisplay keys={draftKeys} variant="dim" />
-            ) : null}
-            <span className="text-accent-foreground text-[12px]">
-              {captureHint}
-            </span>
-            <Button
-              variant="outline"
-              size="xs"
-              onClick={onCancelRecording}
-              className="ml-1"
-            >
-              {t("common.cancel")}
-            </Button>
-          </div>
-        )}
-      </div>
+      <HotkeyRebindControl
+        hotkey={hotkey}
+        target="dictation"
+        conflictHotkey={remixHotkey}
+        conflictNotice={t("settings.recording.conflict")}
+        onRecorded={onHotkeyRecorded}
+        onStartRecording={() => capture("onboarding_hotkey_change_started")}
+      />
 
       <div className="mt-7 flex items-center justify-between">
         <Button variant="outline" onClick={onBack}>
@@ -1829,19 +1891,23 @@ const REMIX_IN_FLIGHT_GRACE_MS = 30_000;
 function RemixStep({
   body,
   onBodyChange,
+  remixHotkey,
+  dictationHotkey,
+  onRemixHotkeyRecorded,
   onBack,
   onFinish,
 }: {
   body: string;
   onBodyChange: (text: string) => void;
+  remixHotkey: string;
+  dictationHotkey: string;
+  onRemixHotkeyRecorded: (accelerator: string) => void;
   onBack: () => void;
   onFinish: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const { user: cloudUser } = useCloudAuth();
-  const { data: settingsData, isFetched: settingsFetched } = useQuery(
-    settingsQueryOptions(),
-  );
+  const { isFetched: settingsFetched } = useQuery(settingsQueryOptions());
   const configuredQuery = useQuery({
     queryKey: queryKeys.models.configured,
     queryFn: async () => {
@@ -1865,11 +1931,6 @@ function RemixStep({
   // Server tools (web/image search) exist only behind the cloud proxy; the
   // BYOK loop declares client tools only.
   const searchCapable = llmDefault?.provider === FREESTYLE_CLOUD_PROVIDER_ID;
-
-  const remixHotkey =
-    settingsData?.[SETTINGS_KEYS.remixHotkey] ||
-    window.api?.defaultRemixHotkey ||
-    getDefaultRemixHotkey();
 
   const [remixed, setRemixed] = useState(false);
   const [extraDone, setExtraDone] = useState(false);
@@ -2114,6 +2175,17 @@ function RemixStep({
           />
         </div>
       </div>
+
+      <HotkeyRebindControl
+        hotkey={remixHotkey}
+        target="remix"
+        conflictHotkey={dictationHotkey}
+        conflictNotice={t("settings.remix.conflict")}
+        onRecorded={onRemixHotkeyRecorded}
+        onStartRecording={() =>
+          capture("onboarding_remix_hotkey_change_started")
+        }
+      />
 
       <div className="mt-7 flex items-center justify-between">
         <Button variant="outline" onClick={onBack}>

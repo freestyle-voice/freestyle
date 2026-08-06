@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "../src/lib/db.js";
 import {
   getActiveThread,
+  getThread,
   getThreadMessages,
+  listThreads,
   MAX_THREAD_MESSAGES,
   purgeExpiredRemixData,
   recordRemixRun,
@@ -12,6 +14,18 @@ import {
 
 function message(id: string) {
   return { id, role: "user", parts: [{ type: "text", text: id }] };
+}
+
+function userMessage(id: string, text: string) {
+  return { id, role: "user", parts: [{ type: "text", text }] };
+}
+
+function assistantToolMessage(id: string, toolName: string) {
+  return {
+    id,
+    role: "assistant",
+    parts: [{ type: `tool-${toolName}`, toolName, state: "output-available" }],
+  };
 }
 
 function ageThread(threadId: number, days: number): void {
@@ -78,6 +92,94 @@ describe("saveThreadMessages", () => {
     expect(stored).toHaveLength(MAX_THREAD_MESSAGES);
     expect(stored[0].id).toBe("m10");
     expect(stored[stored.length - 1].id).toBe(`m${MAX_THREAD_MESSAGES + 9}`);
+  });
+});
+
+describe("listThreads", () => {
+  it("omits threads with no messages", () => {
+    startNewThread(); // empty, should not appear
+    const withMessages = startNewThread();
+    saveThreadMessages(withMessages.id, [userMessage("a", "Hello there")]);
+
+    const threads = listThreads(50, 0);
+    expect(threads).toHaveLength(1);
+    expect(threads[0].id).toBe(withMessages.id);
+    expect(threads[0].preview).toBe("Hello there");
+    expect(threads[0].messageCount).toBe(1);
+  });
+
+  it("orders by last_active_at descending", () => {
+    const older = startNewThread();
+    saveThreadMessages(older.id, [userMessage("a", "older")]);
+    ageThread(older.id, 2);
+
+    const newer = startNewThread();
+    saveThreadMessages(newer.id, [userMessage("b", "newer")]);
+
+    const threads = listThreads(50, 0);
+    expect(threads.map((t) => t.id)).toEqual([newer.id, older.id]);
+  });
+
+  it("truncates a long preview to 120 chars with an ellipsis", () => {
+    const thread = startNewThread();
+    const long = "x".repeat(200);
+    saveThreadMessages(thread.id, [userMessage("a", long)]);
+
+    const [summary] = listThreads(50, 0);
+    expect(summary.preview.endsWith("…")).toBe(true);
+    // 120 chars of content + the ellipsis character.
+    expect([...summary.preview]).toHaveLength(121);
+  });
+
+  it("derives the preview from the first user message only", () => {
+    const thread = startNewThread();
+    saveThreadMessages(thread.id, [
+      userMessage("a", "The instruction"),
+      assistantToolMessage("b", "paste"),
+    ]);
+
+    const [summary] = listThreads(50, 0);
+    expect(summary.preview).toBe("The instruction");
+    expect(summary.messageCount).toBe(2);
+  });
+
+  it("paginates with limit and offset", () => {
+    const ids: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const thread = startNewThread();
+      saveThreadMessages(thread.id, [userMessage(`m${i}`, `msg ${i}`)]);
+      ageThread(thread.id, 5 - i); // ensure a stable, distinct ordering
+      ids.push(thread.id);
+    }
+    // Newest-first ordering means the least-aged (i=4) comes first.
+    const ordered = [...ids].reverse();
+
+    const firstPage = listThreads(2, 0);
+    expect(firstPage.map((t) => t.id)).toEqual(ordered.slice(0, 2));
+
+    const secondPage = listThreads(2, 2);
+    expect(secondPage.map((t) => t.id)).toEqual(ordered.slice(2, 4));
+
+    const thirdPage = listThreads(2, 4);
+    expect(thirdPage.map((t) => t.id)).toEqual(ordered.slice(4, 5));
+  });
+});
+
+describe("getThread", () => {
+  it("returns null for a thread that does not exist", () => {
+    expect(getThread(9999)).toBeNull();
+  });
+
+  it("returns the thread and its messages", () => {
+    const thread = startNewThread();
+    saveThreadMessages(thread.id, [
+      userMessage("a", "hi"),
+      assistantToolMessage("b", "paste"),
+    ]);
+
+    const found = getThread(thread.id);
+    expect(found?.thread.id).toBe(thread.id);
+    expect(found?.messages.map((m) => m.id)).toEqual(["a", "b"]);
   });
 });
 

@@ -150,35 +150,27 @@ export interface RemixThreadSummary {
 
 const PREVIEW_MAX = 120;
 
-/** Pull the first user message's plain text out of a stored UIMessage row. */
-function threadPreview(threadId: number): string {
-  const rows = getDb()
-    .prepare(
-      "SELECT ui_message FROM remix_messages WHERE thread_id = ? ORDER BY id ASC",
-    )
-    .all(threadId) as { ui_message: string }[];
-  for (const row of rows) {
-    try {
-      const message = JSON.parse(row.ui_message) as {
-        role?: string;
-        parts?: { type?: string; text?: string }[];
-      };
-      if (message.role !== "user") continue;
-      const text = (message.parts ?? [])
-        .filter((part) => part.type === "text" && typeof part.text === "string")
-        .map((part) => part.text as string)
-        .join(" ")
-        .trim();
-      if (text) {
-        return text.length > PREVIEW_MAX
-          ? `${text.slice(0, PREVIEW_MAX).trimEnd()}…`
-          : text;
-      }
-    } catch {
-      // Skip a corrupt row; keep scanning for the first usable user message.
-    }
+/** The first user message's plain text from a stored UIMessage row, or "". */
+function previewFromUiMessage(uiMessage: string): string {
+  try {
+    const message = JSON.parse(uiMessage) as {
+      role?: string;
+      parts?: { type?: string; text?: string }[];
+    };
+    if (message.role !== "user") return "";
+    const text = (message.parts ?? [])
+      .filter((part) => part.type === "text" && typeof part.text === "string")
+      .map((part) => part.text as string)
+      .join(" ")
+      .trim();
+    if (!text) return "";
+    return text.length > PREVIEW_MAX
+      ? `${text.slice(0, PREVIEW_MAX).trimEnd()}…`
+      : text;
+  } catch {
+    // A corrupt row yields no preview, not an error.
+    return "";
   }
-  return "";
 }
 
 /**
@@ -186,6 +178,10 @@ function threadPreview(threadId: number): string {
  * omitted — they carry no title and nothing to resume. Each summary carries a
  * preview (the first user message) so the pill can render a readable title
  * without shipping every message.
+ *
+ * The preview is resolved in a single batched query (a correlated
+ * earliest-message lookup per listed thread) rather than a per-thread read,
+ * so listing N threads costs one query, not N+1.
  */
 export function listThreads(
   limit: number,
@@ -193,8 +189,15 @@ export function listThreads(
 ): RemixThreadSummary[] {
   const rows = getDb()
     .prepare(
-      `SELECT t.id, t.created_at, t.last_active_at,
-              COUNT(m.id) AS message_count
+      `SELECT t.id,
+              t.created_at,
+              t.last_active_at,
+              COUNT(m.id) AS message_count,
+              (SELECT em.ui_message
+                 FROM remix_messages em
+                WHERE em.thread_id = t.id
+                ORDER BY em.id ASC
+                LIMIT 1) AS first_message
          FROM remix_threads t
          JOIN remix_messages m ON m.thread_id = t.id
         GROUP BY t.id
@@ -207,12 +210,13 @@ export function listThreads(
     created_at: string;
     last_active_at: string;
     message_count: number;
+    first_message: string | null;
   }[];
   return rows.map((row) => ({
     id: row.id,
     createdAt: row.created_at,
     lastActiveAt: row.last_active_at,
-    preview: threadPreview(row.id),
+    preview: row.first_message ? previewFromUiMessage(row.first_message) : "",
     messageCount: row.message_count,
   }));
 }

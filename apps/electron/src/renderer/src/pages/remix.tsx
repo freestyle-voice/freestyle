@@ -43,7 +43,6 @@ interface TranscriptPart {
   type?: string;
   text?: string;
   toolName?: string;
-  state?: string;
 }
 
 interface TranscriptMessage {

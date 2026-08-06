@@ -38,6 +38,8 @@ export const KNOWN_NOTIFICATION_KEYS = {
   PROFILE_INFO_PROMPT: "profile_info_prompt",
   /** Today-page dictation tutorial hero (dismissible banner). */
   TODAY_TUTORIAL_HERO: "today.tutorial_hero",
+  /** Remix-page tutorial hero (dismissible banner). */
+  REMIX_TUTORIAL_HERO: "remix.tutorial_hero",
 } as const;
 
 export type KnownNotificationKey =

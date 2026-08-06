@@ -1,3 +1,4 @@
+import { KNOWN_NOTIFICATION_KEYS } from "@freestyle-voice/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { KeyComboDisplay } from "@renderer/components/key-combo";
 import {
@@ -5,26 +6,50 @@ import {
   StepWord,
   Wave,
 } from "@renderer/components/onboarding/coach-strip";
+import { useDismissible } from "@renderer/hooks/use-dismissible";
 import { formatAcceleratorKeys } from "@renderer/hooks/use-hotkey-recorder";
 import { getClient } from "@renderer/lib/api";
-import { formatNumber } from "@renderer/lib/format";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { Globe } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Globe,
+  MessageSquareText,
+  Settings,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { getDefaultRemixHotkey } from "../../../shared/remix";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
-const RUNS_SAMPLE_LIMIT = 200;
-const RAIL_WIDTH = 300;
-
-interface RemixRunRow {
+interface ThreadSummary {
   id: number;
-  app_name: string | null;
-  created_at: string;
+  createdAt: string;
+  lastActiveAt: string;
+  preview: string;
+  messageCount: number;
+}
+
+interface TranscriptPart {
+  type?: string;
+  text?: string;
+}
+
+interface TranscriptMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  parts: TranscriptPart[];
+}
+
+// SQLite datetime('now') is UTC without a zone marker.
+function parseSqliteDate(value: string): Date {
+  return new Date(`${value.replace(" ", "T")}Z`);
 }
 
 const EXAMPLE_GROUPS = [
@@ -45,25 +70,6 @@ const EXAMPLE_GROUPS = [
   },
 ] as const;
 
-// SQLite datetime('now') is UTC without a zone marker.
-function parseRunDate(createdAt: string): Date {
-  return new Date(`${createdAt.replace(" ", "T")}Z`);
-}
-
-function relativeTime(date: Date, locale: string): string {
-  const rtf = new Intl.RelativeTimeFormat(locale, {
-    numeric: "auto",
-    style: "narrow",
-  });
-  const seconds = Math.round((date.getTime() - Date.now()) / 1000);
-  const minutes = Math.round(seconds / 60);
-  const hours = Math.round(minutes / 60);
-  const days = Math.round(hours / 24);
-  if (Math.abs(minutes) < 60) return rtf.format(minutes, "minute");
-  if (Math.abs(hours) < 24) return rtf.format(hours, "hour");
-  return rtf.format(days, "day");
-}
-
 export default function RemixPage(): React.JSX.Element {
   const { t } = useTranslation();
 
@@ -73,124 +79,363 @@ export default function RemixPage(): React.JSX.Element {
     window.api?.defaultRemixHotkey ||
     getDefaultRemixHotkey();
 
-  const runsQuery = useQuery({
-    queryKey: queryKeys.remixRuns,
-    queryFn: async () => {
-      const res = await getClient().api.remix.runs.$get({
-        query: { limit: RUNS_SAMPLE_LIMIT },
-      });
-      if (!res.ok) throw new Error("Failed to load remix runs");
-      return (await res.json()) as { runs: RemixRunRow[] };
-    },
-  });
-  const runs = runsQuery.data?.runs ?? [];
+  const {
+    dismissed: heroDismissed,
+    dismiss: dismissHero,
+    ready: heroReady,
+  } = useDismissible(KNOWN_NOTIFICATION_KEYS.REMIX_TUTORIAL_HERO);
+
+  // View state: the guide ("home") or the conversation-history browser. A
+  // selected thread id opens its transcript within the history view.
+  const [showHistory, setShowHistory] = useState(false);
+  const [selectedThreadId, setSelectedThreadId] = useState<number | null>(null);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <DragSpacer />
       <div
-        className="grid min-h-0 flex-1"
-        style={{ gridTemplateColumns: `minmax(0,1fr) ${RAIL_WIDTH}px` }}
+        className="responsive-page-scroll min-h-0 flex-1 overflow-auto px-8 pt-5"
+        style={{ scrollbarWidth: "none" } as React.CSSProperties}
       >
-        <div
-          className="responsive-page-scroll min-w-0 overflow-auto pt-5 pr-5"
-          style={{ scrollbarWidth: "none" } as React.CSSProperties}
-        >
-          {/* Demo hero — same UI as the Transcriptions tab's tutorial */}
-          <RemixDemo hotkey={remixHotkey} />
-          <div className="mt-2 mb-7 flex justify-end">
-            <Link
-              to="/settings#remix"
-              className="text-muted-foreground hover:text-foreground px-2 text-[12px] underline transition-colors"
-            >
-              {t("remixPage.hotkey.change")}
-            </Link>
-          </div>
-
-          {/* How to use it — one unified panel */}
-          <div className="mb-7">
-            <div className="text-muted-foreground mb-3 text-[10px]">
-              {t("remixPage.how.heading")}
-            </div>
-            <div className="border-border bg-card rounded-[14px] border p-5">
-              <ol className="flex flex-col gap-3.5">
-                <HowStep index={1}>{t("remixPage.how.step1")}</HowStep>
-                <HowStep index={2}>
-                  {t("remixPage.how.step2Prefix")}{" "}
-                  <span className="mx-0.5 inline-block align-middle">
-                    <KeyComboDisplay
-                      keys={formatAcceleratorKeys(remixHotkey)}
-                    />
-                  </span>{" "}
-                  {t("remixPage.how.step2Suffix")}
-                </HowStep>
-                <HowStep index={3}>{t("remixPage.how.step3")}</HowStep>
-              </ol>
-              <p className="text-muted-foreground border-border mt-4 border-t pt-4 text-[13px] leading-[1.6]">
-                {t("remixPage.how.more")}
-              </p>
-            </div>
-          </div>
-
-          {/* Example instructions — one card per quote */}
-          {EXAMPLE_GROUPS.map((group) => (
-            <div key={group.id} className="mb-7">
-              <div className="mb-3 flex items-center gap-1.5">
-                <div className="text-muted-foreground text-[10px]">
-                  {t(`remixPage.examples.groups.${group.id}`)}
-                </div>
-                {group.web && (
-                  <Globe className="text-muted-foreground h-2.5 w-2.5" />
+        <div className="mx-auto w-full max-w-[760px]">
+          {/* Header: page title + history / settings actions. */}
+          <div className="border-border/60 mb-6 flex items-center justify-between gap-3 border-b pb-4">
+            <h1 className="serif text-foreground m-0 text-[26px] font-medium leading-none">
+              {showHistory
+                ? t("remixPage.history.title")
+                : t("remixPage.title")}
+            </h1>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedThreadId(null);
+                  setShowHistory((open) => !open);
+                }}
+                aria-pressed={showHistory}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors",
+                  showHistory
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-card hover:text-foreground",
                 )}
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {group.quotes.map((quote) => (
-                  <div
-                    key={quote}
-                    className="border-border bg-card rounded-[12px] border px-4 py-3.5"
-                  >
-                    <p className="text-foreground text-[14px] leading-[1.5]">
-                      "{t(`remixPage.examples.quotes.${quote}`)}"
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-
-          {/* Tips */}
-          <div className="mb-10">
-            <div className="text-muted-foreground mb-1 text-[10px]">
-              {t("remixPage.tips.heading")}
-            </div>
-            <div className="flex flex-col">
-              {(["highlight", "tap", "followUp"] as const).map((tip, i) => (
-                <p
-                  key={tip}
-                  className={cn(
-                    "text-muted-foreground py-2.5 text-[12.5px] leading-[1.55]",
-                    i > 0 && "border-border/60 border-t",
-                  )}
-                >
-                  {t(`remixPage.tips.${tip}`)}
-                </p>
-              ))}
+              >
+                {showHistory ? (
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                ) : (
+                  <Clock className="h-3.5 w-3.5" />
+                )}
+                {showHistory
+                  ? t("remixPage.history.exit")
+                  : t("remixPage.history.button")}
+              </button>
+              <Link
+                to="/settings#remix"
+                className="text-muted-foreground hover:bg-card hover:text-foreground inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors"
+              >
+                <Settings className="h-3.5 w-3.5" />
+                {t("remixPage.settings.button")}
+              </Link>
             </div>
           </div>
-        </div>
 
-        {/* Usage rail — mirrors the Transcriptions page's stats panel */}
-        <div className="border-border/70 relative min-h-0 border-l">
-          <aside className="flex h-full min-h-0 flex-col overflow-auto px-4 py-5 shadow-[-12px_0_28px_-28px_var(--glass-shadow)]">
-            <div className="text-muted-foreground mb-2.5 pt-2 text-[10px]">
-              {t("remixPage.stats.heading")}
-            </div>
-            <UsageStats runs={runs} />
-          </aside>
+          {showHistory ? (
+            selectedThreadId === null ? (
+              <HistoryList onOpen={setSelectedThreadId} />
+            ) : (
+              <ThreadTranscript
+                threadId={selectedThreadId}
+                onBack={() => setSelectedThreadId(null)}
+              />
+            )
+          ) : (
+            <>
+              {/* Demo hero — same UI as the Transcriptions tab's tutorial */}
+              {heroReady && !heroDismissed && (
+                <>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={dismissHero}
+                      aria-label={t("remixPage.dismiss")}
+                      title={t("remixPage.dismiss")}
+                      className="text-muted-foreground hover:bg-card hover:text-foreground absolute top-3 right-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                    <RemixDemo hotkey={remixHotkey} />
+                  </div>
+                  <div className="mt-2 mb-7 flex justify-end">
+                    <Link
+                      to="/settings#remix"
+                      className="text-muted-foreground hover:text-foreground px-2 text-[12px] underline transition-colors"
+                    >
+                      {t("remixPage.hotkey.change")}
+                    </Link>
+                  </div>
+                </>
+              )}
+
+              {/* How to use it — one unified panel */}
+              <div className="mb-7">
+                <div className="text-muted-foreground mb-3 text-[10px]">
+                  {t("remixPage.how.heading")}
+                </div>
+                <div className="border-border bg-card rounded-[14px] border p-5">
+                  <ol className="flex flex-col gap-3.5">
+                    <HowStep index={1}>{t("remixPage.how.step1")}</HowStep>
+                    <HowStep index={2}>
+                      {t("remixPage.how.step2Prefix")}{" "}
+                      <span className="mx-0.5 inline-block align-middle">
+                        <KeyComboDisplay
+                          keys={formatAcceleratorKeys(remixHotkey)}
+                        />
+                      </span>{" "}
+                      {t("remixPage.how.step2Suffix")}
+                    </HowStep>
+                    <HowStep index={3}>{t("remixPage.how.step3")}</HowStep>
+                  </ol>
+                  <p className="text-muted-foreground border-border mt-4 border-t pt-4 text-[13px] leading-[1.6]">
+                    {t("remixPage.how.more")}
+                  </p>
+                </div>
+              </div>
+
+              {/* Example instructions — one card per quote */}
+              {EXAMPLE_GROUPS.map((group) => (
+                <div key={group.id} className="mb-7">
+                  <div className="mb-3 flex items-center gap-1.5">
+                    <div className="text-muted-foreground text-[10px]">
+                      {t(`remixPage.examples.groups.${group.id}`)}
+                    </div>
+                    {group.web && (
+                      <Globe className="text-muted-foreground h-2.5 w-2.5" />
+                    )}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {group.quotes.map((quote) => (
+                      <div
+                        key={quote}
+                        className="border-border bg-card rounded-[12px] border px-4 py-3.5"
+                      >
+                        <p className="text-foreground text-[14px] leading-[1.5]">
+                          "{t(`remixPage.examples.quotes.${quote}`)}"
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {/* Tips */}
+              <div className="mb-10">
+                <div className="text-muted-foreground mb-1 text-[10px]">
+                  {t("remixPage.tips.heading")}
+                </div>
+                <div className="flex flex-col">
+                  {(["highlight", "tap", "followUp"] as const).map((tip, i) => (
+                    <p
+                      key={tip}
+                      className={cn(
+                        "text-muted-foreground py-2.5 text-[12.5px] leading-[1.55]",
+                        i > 0 && "border-border/60 border-t",
+                      )}
+                    >
+                      {t(`remixPage.tips.${tip}`)}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
   );
+}
+
+function HistoryList({
+  onOpen,
+}: {
+  onOpen: (threadId: number) => void;
+}): React.JSX.Element {
+  const { t, i18n } = useTranslation();
+  const query = useQuery({
+    queryKey: queryKeys.remixThreads,
+    queryFn: async () => {
+      const res = await getClient().api.remix.thread.list.$get({
+        query: { limit: 100 },
+      });
+      if (!res.ok) throw new Error("Failed to load remix history");
+      return (await res.json()) as { threads: ThreadSummary[] };
+    },
+  });
+
+  if (query.isLoading) {
+    return (
+      <div className="text-muted-foreground py-14 text-center text-[13px]">
+        {t("remixPage.history.loading")}
+      </div>
+    );
+  }
+  if (query.isError) {
+    return (
+      <div className="text-muted-foreground py-14 text-center text-[13px]">
+        {t("remixPage.history.error")}
+      </div>
+    );
+  }
+  const threads = query.data?.threads ?? [];
+  if (threads.length === 0) {
+    return (
+      <div className="border-border bg-card rounded-[14px] border border-dashed px-9 py-[56px] text-center">
+        <div className="bg-accent mx-auto mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl">
+          <MessageSquareText className="text-primary h-6 w-6" />
+        </div>
+        <p className="text-foreground m-0 text-[15px] font-medium">
+          {t("remixPage.history.emptyTitle")}
+        </p>
+        <p className="text-muted-foreground mx-auto mt-1.5 max-w-[380px] text-[13px] leading-[1.55]">
+          {t("remixPage.history.empty")}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-10 flex flex-col gap-2">
+      {threads.map((thread) => (
+        <button
+          key={thread.id}
+          type="button"
+          onClick={() => onOpen(thread.id)}
+          className="group border-border bg-card hover:border-border/80 hover:bg-accent/40 flex items-center gap-3 rounded-[12px] border px-4 py-3.5 text-left transition-colors"
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <span className="text-foreground line-clamp-2 text-[14px] leading-[1.45]">
+              {thread.preview || t("remixPage.history.untitled")}
+            </span>
+            <span className="text-muted-foreground text-[11px]">
+              {formatThreadTime(thread.lastActiveAt, i18n.language)}
+              {" · "}
+              {t("remixPage.history.messageCount", {
+                count: thread.messageCount,
+              })}
+            </span>
+          </div>
+          <ChevronRight className="text-muted-foreground/50 group-hover:text-muted-foreground h-4 w-4 flex-shrink-0 transition-colors" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ThreadTranscript({
+  threadId,
+  onBack,
+}: {
+  threadId: number;
+  onBack: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const query = useQuery({
+    queryKey: queryKeys.remixThread(threadId),
+    queryFn: async () => {
+      const res = await getClient().api.remix.thread[":id"].$get({
+        param: { id: String(threadId) },
+      });
+      if (!res.ok) throw new Error("Failed to load conversation");
+      return (await res.json()) as unknown as {
+        threadId: number;
+        resumed: boolean;
+        messages: TranscriptMessage[];
+      };
+    },
+  });
+
+  return (
+    <div className="mb-10">
+      <button
+        type="button"
+        onClick={onBack}
+        className="text-muted-foreground hover:text-foreground -ml-1 mb-5 inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[12px] font-medium transition-colors"
+      >
+        <ChevronLeft className="h-3.5 w-3.5" />
+        {t("remixPage.history.back")}
+      </button>
+
+      {query.isLoading ? (
+        <div className="text-muted-foreground py-14 text-center text-[13px]">
+          {t("remixPage.history.loading")}
+        </div>
+      ) : query.isError ? (
+        <div className="text-muted-foreground py-14 text-center text-[13px]">
+          {t("remixPage.history.error")}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {(query.data?.messages ?? [])
+            .filter((message) => message.role !== "system")
+            .map((message) => {
+              const text = textFromParts(message.parts);
+              if (!text) return null;
+              const isUser = message.role === "user";
+              return (
+                <div
+                  key={message.id}
+                  className={cn(
+                    "flex flex-col gap-1",
+                    isUser ? "items-end" : "items-start",
+                  )}
+                >
+                  <span className="text-muted-foreground px-1 text-[10px] font-medium tracking-wide uppercase">
+                    {isUser
+                      ? t("remixPage.history.roleYou")
+                      : t("remixPage.history.roleRemix")}
+                  </span>
+                  <div
+                    className={cn(
+                      "max-w-[85%] rounded-[14px] px-3.5 py-2.5 text-[13.5px] leading-[1.5] whitespace-pre-wrap",
+                      isUser
+                        ? "bg-accent text-accent-foreground"
+                        : "border-border bg-card text-foreground border",
+                    )}
+                  >
+                    {text}
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Join a UIMessage's text parts into plain text (tool parts are skipped). */
+function textFromParts(parts: TranscriptPart[]): string {
+  return parts
+    .filter((part) => part.type === "text" && typeof part.text === "string")
+    .map((part) => part.text as string)
+    .join("")
+    .trim();
+}
+
+function formatThreadTime(value: string, locale: string): string {
+  const date = parseSqliteDate(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const diffMs = Date.now() - date.getTime();
+  const min = Math.round(diffMs / 60_000);
+  const rtf = new Intl.RelativeTimeFormat(locale, {
+    numeric: "auto",
+    style: "narrow",
+  });
+  if (Math.abs(min) < 60) return rtf.format(-min, "minute");
+  const hr = Math.round(min / 60);
+  if (Math.abs(hr) < 24) return rtf.format(-hr, "hour");
+  const days = Math.round(hr / 24);
+  if (Math.abs(days) < 7) return rtf.format(-days, "day");
+  return date.toLocaleDateString(locale);
 }
 
 type DemoPhase = "idle" | "pressed" | "result";
@@ -362,99 +607,5 @@ function HowStep({
         {children}
       </span>
     </li>
-  );
-}
-
-function UsageStats({ runs }: { runs: RemixRunRow[] }): React.JSX.Element {
-  const { t, i18n } = useTranslation();
-  const runCount =
-    runs.length >= RUNS_SAMPLE_LIMIT
-      ? `${formatNumber(RUNS_SAMPLE_LIMIT)}+`
-      : formatNumber(runs.length);
-  const appCount = new Set(
-    runs.map((run) => run.app_name?.trim()).filter(Boolean),
-  ).size;
-  const lastRun = runs[0] ? parseRunDate(runs[0].created_at) : null;
-
-  return (
-    <div className="grid grid-cols-2 gap-2.5">
-      <StatCard
-        span2
-        inline
-        accent
-        n={runCount}
-        l={t("remixPage.stats.remixes")}
-        sub={runs.length === 0 ? t("remixPage.stats.firstHint") : undefined}
-      />
-      <StatCard n={formatNumber(appCount)} l={t("remixPage.stats.apps")} />
-      <StatCard
-        small
-        n={lastRun ? relativeTime(lastRun, i18n.language) : "—"}
-        l={t("remixPage.stats.lastRemix")}
-      />
-    </div>
-  );
-}
-
-function StatCard({
-  n,
-  l,
-  sub,
-  accent,
-  span2,
-  inline,
-  small,
-}: {
-  n: string;
-  l: string;
-  sub?: string;
-  accent?: boolean;
-  span2?: boolean;
-  inline?: boolean;
-  small?: boolean;
-}): React.JSX.Element {
-  return (
-    <div
-      className={cn(
-        "border-border/70 bg-card/35 rounded-lg border px-3.5 py-3",
-        span2 && "col-span-2",
-      )}
-    >
-      {inline ? (
-        <>
-          <div className="flex items-baseline gap-2">
-            <span
-              className={cn(
-                "serif-italic text-[30px] leading-none",
-                accent ? "text-primary" : "text-foreground",
-              )}
-            >
-              {n}
-            </span>
-            <span className="text-muted-foreground text-[9.5px]">{l}</span>
-          </div>
-          {sub && (
-            <div className="text-muted-foreground/70 mt-1.5 text-[9.5px]">
-              {sub}
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <div
-            className={cn(
-              "serif-italic leading-none",
-              small ? "pt-1.5 pb-[3px] text-[19px]" : "text-[30px]",
-              accent ? "text-primary" : "text-foreground",
-            )}
-          >
-            {n}
-          </div>
-          <div className="text-muted-foreground mt-2 text-[9.5px] leading-tight">
-            {l}
-          </div>
-        </>
-      )}
-    </div>
   );
 }

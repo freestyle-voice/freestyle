@@ -711,6 +711,7 @@
     }
   },
   "remixPage": {
+    "title": "Remix",
     "stats": {
       "remixes": "remixes run",
       "apps": "apps remixed in",
@@ -720,6 +721,25 @@
     },
     "hotkey": {
       "change": "Change hotkey"
+    },
+    "dismiss": "Dismiss",
+    "settings": {
+      "button": "Settings"
+    },
+    "history": {
+      "button": "History",
+      "exit": "Overview",
+      "title": "History",
+      "loading": "Loading conversations…",
+      "error": "Couldn't load your history.",
+      "empty": "Your past Remix conversations will show up here.",
+      "emptyTitle": "No conversations yet",
+      "untitled": "Untitled conversation",
+      "back": "All conversations",
+      "roleYou": "You",
+      "roleRemix": "Remix",
+      "messageCount_one": "{{count}} message",
+      "messageCount_other": "{{count}} messages"
     },
     "tips": {
       "heading": "Good to know",

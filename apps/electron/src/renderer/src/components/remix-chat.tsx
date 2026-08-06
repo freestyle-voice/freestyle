@@ -1,12 +1,20 @@
 import { useChat } from "@ai-sdk/react";
-import { REMIX_PRESETS, type RemixPreset } from "@freestyle-voice/validations";
+import {
+  parseCleanupEmailTone,
+  parseCleanupIntensity,
+  parseCleanupOverallTone,
+  parseCleanupPersonalTone,
+  parseCleanupWorkTone,
+  REMIX_PRESETS,
+  type RemixPreset,
+} from "@freestyle-voice/validations";
 import { AgentActivity } from "@renderer/components/agents/agent-activity";
 import type { AgentActivityItem } from "@renderer/components/agents/agent-activity/types";
 import { AgentDisclosure } from "@renderer/components/agents/agent-disclosure";
 import { ThinkingShimmer } from "@renderer/components/agents/loading-states/thinking-shimmer";
 import { MessageScroller } from "@renderer/components/agents/message-scroller";
 import { capture } from "@renderer/lib/analytics";
-import { apiFetch } from "@renderer/lib/api";
+import { apiFetch, getClient } from "@renderer/lib/api";
 import {
   DefaultChatTransport,
   type DynamicToolUIPart,
@@ -377,6 +385,29 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             };
           case "get_clipboard":
             return { ...(await window.api.remixGetClipboard()) };
+          case "get_tones": {
+            // Tone/cleanup prefs live in the local server's settings store
+            // (the same rows the Tone page writes). Read them straight from
+            // the API — this works on both the BYOK and Freestyle Cloud paths
+            // because the tool always executes here in the renderer.
+            try {
+              const res = await getClient().api.settings.$get();
+              if (!res.ok) return { ok: false, reason: "settings-unavailable" };
+              const s = (await res.json()) as Record<string, string>;
+              return {
+                ok: true,
+                cleanupEnabled: s.llm_cleanup === "true",
+                intensity: parseCleanupIntensity(s.cleanup_intensity),
+                customPrompt: s.cleanup_custom_prompt ?? "",
+                personalTone: parseCleanupPersonalTone(s.cleanup_personal_tone),
+                workTone: parseCleanupWorkTone(s.cleanup_work_tone),
+                emailTone: parseCleanupEmailTone(s.cleanup_email_tone),
+                overallTone: parseCleanupOverallTone(s.cleanup_overall_tone),
+              };
+            } catch {
+              return { ok: false, reason: "settings-unavailable" };
+            }
+          }
           default:
             return { ok: false, reason: `unknown tool: ${name}` };
         }

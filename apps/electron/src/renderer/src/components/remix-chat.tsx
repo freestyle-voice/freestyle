@@ -8,6 +8,12 @@ import { MessageScroller } from "@renderer/components/agents/message-scroller";
 import { capture } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 import {
+  choreoForFailure,
+  choreoForTool,
+  emoteScript,
+} from "@renderer/lib/jeb-choreo";
+import { JEB_SAY_MAX, type JebEmotion } from "@shared/jeb";
+import {
   DefaultChatTransport,
   type DynamicToolUIPart,
   getToolOrDynamicToolName,
@@ -60,7 +66,9 @@ function anchoredLayerStyle(
     ...(anchor.v === "top" ? { top: 0 } : { bottom: 0 }),
     ...(anchor.h === "right"
       ? { right: 0 }
-      : { left: "50%", transform: "translateX(-50%)" }),
+      : anchor.h === "left"
+        ? { left: 0 }
+        : { left: "50%", transform: "translateX(-50%)" }),
   };
 }
 
@@ -315,7 +323,22 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         received: JSON.stringify(toolCall.input)?.slice(0, 300) ?? "undefined",
       });
 
+      // Jeb performs every tool call. Sync scripts hold the OS action until
+      // his impact frame (bounded in main), so the paste lands on the swing;
+      // the rest are fire-and-forget decoration.
+      const choreo = choreoForTool(name);
+      if (choreo) {
+        capture("jeb_animation_played", { tool: name, sync: choreo.sync });
+        if (choreo.sync) {
+          await window.api.jebPlaySync(choreo.script);
+        } else {
+          window.api.jebPlay(choreo.script);
+        }
+      }
       const result = await runTool();
+      if (choreo && result.ok === false && typeof result.reason === "string") {
+        window.api.jebPlay(choreoForFailure(result.reason));
+      }
       if (import.meta.env.DEV) {
         console.log(
           `[remix] ${name}(${JSON.stringify(toolCall.input)?.slice(0, 400) ?? ""}) →`,
@@ -377,6 +400,22 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             };
           case "get_clipboard":
             return { ...(await window.api.remixGetClipboard()) };
+          case "jeb_say": {
+            const text = str("text").trim();
+            if (!text) return badArgs("{ text: string }");
+            window.api.jebSay(text.slice(0, JEB_SAY_MAX));
+            return { ok: true };
+          }
+          case "jeb_emote": {
+            const emotion = str("emotion") as JebEmotion;
+            if (!["proud", "confused", "alarmed", "sorry"].includes(emotion)) {
+              return badArgs(
+                '{ emotion: "proud" | "confused" | "alarmed" | "sorry" }',
+              );
+            }
+            window.api.jebPlay(emoteScript(emotion));
+            return { ok: true };
+          }
           default:
             return { ok: false, reason: `unknown tool: ${name}` };
         }
@@ -420,6 +459,14 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     });
 
   const busy = status === "submitted" || status === "streaming";
+
+  // Jeb sips his potion while the model streams.
+  useEffect(() => {
+    window.api.jebSetThinking(busy);
+    return () => {
+      if (busy) window.api.jebSetThinking(false);
+    };
+  }, [busy]);
 
   const narrating = useMemo(
     () =>

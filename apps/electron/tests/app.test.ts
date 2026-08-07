@@ -20,9 +20,9 @@ let serverPort: number;
 const DEFAULT_PORT = 4649;
 
 /**
- * Wait for a window whose URL is neither the pill nor the remix bar —
- * that's the dashboard / onboarding window. The pill (pill.html) and the
- * remix bar (bar.html) are auxiliary windows and may appear first.
+ * Wait for a window whose URL is not one of the overlay windows — that's the
+ * dashboard / onboarding window. The pill (pill.html), the remix bar
+ * (bar.html), and Jeb (jeb.html) are auxiliary windows and may appear first.
  */
 async function waitForDashboardWindow(
   electronApp: ElectronApplication,
@@ -36,6 +36,7 @@ async function waitForDashboardWindow(
       if (
         !url.includes("pill") &&
         !url.includes("bar.html") &&
+        !url.includes("jeb.html") &&
         url.length > 0
       ) {
         await win.waitForLoadState("domcontentloaded");

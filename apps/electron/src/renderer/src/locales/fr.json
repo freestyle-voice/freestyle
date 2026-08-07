@@ -218,7 +218,9 @@
       "hotkeyDesc": "Maintenez-le et dites quoi changer, ou tapez-le pour les routes rapides.",
       "conflict": "C'est déjà votre raccourci de dictée. Choisissez une autre combinaison.",
       "bar": "Barre Remix",
-      "barDesc": "Affiche une petite barre en bas de l'écran. Survolez-la pour ouvrir Remix."
+      "barDesc": "Affiche une petite barre en bas de l'écran. Survolez-la pour ouvrir Remix.",
+      "jeb": "Samurai Jeb",
+      "jebDesc": "Un samouraï en pixels qui vit dans le coin de votre écran et met en scène les actions de Remix. Remplace la barre Remix lorsqu'il est activé."
     }
   },
   "today": {

@@ -218,7 +218,9 @@
       "hotkeyDesc": "Segure e diga o que mudar, ou toque para as rotas rápidas.",
       "conflict": "Este já é o seu atalho de ditado. Escolha outra combinação.",
       "bar": "Barra do Remix",
-      "barDesc": "Mantém uma pequena barra na parte inferior da tela. Passe o mouse para abrir o Remix."
+      "barDesc": "Mantém uma pequena barra na parte inferior da tela. Passe o mouse para abrir o Remix.",
+      "jeb": "Samurai Jeb",
+      "jebDesc": "Um samurai de pixels que vive no canto da tela e encena o que o Remix faz. Substitui a barra do Remix enquanto ativado."
     }
   },
   "today": {

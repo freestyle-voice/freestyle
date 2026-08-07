@@ -7,5 +7,5 @@ export const REMIX_CHAT_STRIP = { width: 320, height: 44 } as const;
 
 export interface RemixChatAnchor {
   v: "top" | "bottom";
-  h: "right" | "center";
+  h: "right" | "center" | "left";
 }

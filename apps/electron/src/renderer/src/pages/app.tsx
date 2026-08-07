@@ -470,7 +470,9 @@ export default function AppPage(): React.JSX.Element {
     setState(next);
   }, []);
   const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
-  const [pillSide, setPillSide] = useState<"center" | "right">("center");
+  const [pillSide, setPillSide] = useState<"center" | "right" | "left">(
+    "center",
+  );
   const [cancelMode, setCancelMode] = useState<PillCancelMode>("hover");
   const [pillNotice, setPillNoticeState] = useState<PillNotice>(null);
   const pillNoticeRef = useRef<PillNotice>(null);
@@ -2366,7 +2368,13 @@ export default function AppPage(): React.JSX.Element {
     const isTop =
       pos === "top-center" || pos === "top-right" || pos === "custom-top";
     setPillAlign(isTop ? "start" : "end");
-    setPillSide(pos?.endsWith("right") ? "right" : "center");
+    setPillSide(
+      pos?.endsWith("right")
+        ? "right"
+        : pos?.endsWith("left")
+          ? "left"
+          : "center",
+    );
   }, []);
 
   useEffect(() => {
@@ -2888,7 +2896,7 @@ export default function AppPage(): React.JSX.Element {
   }, [showErrorCard, showRemixCard, stopVisualization]);
 
   // Grow the card out of the capsule it replaces, not out of thin air.
-  const transformOrigin = `${pillSide === "right" ? "right" : "center"} ${
+  const transformOrigin = `${pillSide === "right" ? "right" : pillSide === "left" ? "left" : "center"} ${
     pillAlign === "start" ? "top" : "bottom"
   }`;
 
@@ -2965,7 +2973,13 @@ export default function AppPage(): React.JSX.Element {
 
   const layerClass = `pill-layer absolute inset-0 flex ${
     pillAlign === "start" ? "items-start" : "items-end"
-  } ${pillSide === "right" ? "justify-end pr-3" : "justify-center"}`;
+  } ${
+    pillSide === "right"
+      ? "justify-end pr-3"
+      : pillSide === "left"
+        ? "justify-start pl-3"
+        : "justify-center"
+  }`;
 
   // Surfaces rise off the edge they are anchored to, so the motion always
   // reads as coming from the screen edge rather than from an arbitrary
@@ -3965,7 +3979,12 @@ export default function AppPage(): React.JSX.Element {
                     minimized={chatMiniVisual}
                     anchor={{
                       v: pillAlign === "start" ? "top" : "bottom",
-                      h: pillSide === "right" ? "right" : "center",
+                      h:
+                        pillSide === "right"
+                          ? "right"
+                          : pillSide === "left"
+                            ? "left"
+                            : "center",
                     }}
                     onExpand={expandRemixChat}
                     onMinimize={minimizeRemixChat}

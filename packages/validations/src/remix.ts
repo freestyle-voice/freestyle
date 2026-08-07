@@ -258,6 +258,28 @@ export const REMIX_CLIENT_TOOLS = {
       "Read the full text currently on the user's clipboard. Returns { ok, text, truncated }. The context snapshot and get_context already show a capped preview — call this when the clipboard is the subject of the task and you need all of it. When nothing is highlighted and the user says 'edit this' / 'fix it' with no visible target, what they copied is usually what they mean.",
     inputSchema: z.object({}),
   },
+  jeb_say: {
+    description:
+      "Show one short status line in Samurai Jeb's speech bubble (the character standing on the user's screen). Plain text, at most 80 characters: what you're doing or found — 'Pasting the fix.', 'Found 3 typos.'. Use sparingly, at most once or twice per task, and never to deliver content or answers — those belong in chat or the document. Returns { ok }.",
+    inputSchema: z.object({
+      text: z
+        .string()
+        .min(1)
+        .max(80)
+        .describe(
+          "The status line, plain text, at most 80 characters. No markdown.",
+        ),
+    }),
+  },
+  jeb_emote: {
+    description:
+      "Have Samurai Jeb act out a reaction: 'proud' after a success worth a flourish, 'confused' when you must ask the user something, 'alarmed' when something risky was stopped, 'sorry' right after your own mistake. Purely visual — nothing on the machine changes. At most one per task. Returns { ok }.",
+    inputSchema: z.object({
+      emotion: z
+        .enum(["proud", "confused", "alarmed", "sorry"])
+        .describe("The reaction to perform."),
+    }),
+  },
 } as const;
 
 export type RemixClientToolName = keyof typeof REMIX_CLIENT_TOOLS;

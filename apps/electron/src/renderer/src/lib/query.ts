@@ -70,6 +70,10 @@ export const queryKeys = {
   /** Remix practice runs. */
   remixRuns: ["remix", "runs"] as const,
 
+  /** Remix agent conversation history. */
+  remixThreads: ["remix", "threads"] as const,
+  remixThread: (id: number) => ["remix", "thread", id] as const,
+
   cloud: {
     usage: ["cloud-usage"] as const,
     orgs: ["cloud-orgs"] as const,

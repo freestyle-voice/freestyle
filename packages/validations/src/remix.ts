@@ -258,6 +258,11 @@ export const REMIX_CLIENT_TOOLS = {
       "Read the full text currently on the user's clipboard. Returns { ok, text, truncated }. The context snapshot and get_context already show a capped preview — call this when the clipboard is the subject of the task and you need all of it. When nothing is highlighted and the user says 'edit this' / 'fix it' with no visible target, what they copied is usually what they mean.",
     inputSchema: z.object({}),
   },
+  get_tones: {
+    description:
+      "Read the user's saved tone/cleanup preferences — the same settings they configure on the Tone page. Returns { ok, cleanupEnabled, intensity, customPrompt, personalTone, workTone, emailTone, overallTone }: cleanupEnabled is whether cleanup is on at all; intensity is the cleanup strength ('low' | 'medium' | 'high' | 'custom'); customPrompt is the user's own cleanup prompt (a string, only meaningful when intensity is 'custom', else empty); and personalTone/workTone/emailTone/overallTone are the per-destination tone choices (each an enum value, or 'off' when that destination has no tone set). Call this once when the user asks you to write or rewrite in 'their tone/style/voice', or when honouring their preferences would change the wording — then match the returned preferences. A destination set to 'off' means no preference for that surface; do not invent one. Failure: { ok: false, reason } means the preferences could not be read — proceed with your default judgement and don't retry.",
+    inputSchema: z.object({}),
+  },
 } as const;
 
 export type RemixClientToolName = keyof typeof REMIX_CLIENT_TOOLS;

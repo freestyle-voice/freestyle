@@ -1,4 +1,5 @@
 import { Button } from "@renderer/components/ui/button";
+import { Skeleton as SkeletonLine } from "@renderer/components/ui/skeleton";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import type { AvailableModel } from "@renderer/lib/models";
 import { settingsQueryOptions } from "@renderer/lib/query";
@@ -466,30 +467,9 @@ function AdvancedModeBanner({
   );
 }
 
-function SkeletonLine({
-  className,
-}: {
-  className?: string;
-}): React.JSX.Element {
-  return (
-    <div
-      className={cn(
-        "bg-muted/60 relative overflow-hidden rounded-full",
-        "before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.4s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent",
-        className,
-      )}
-    />
-  );
-}
-
 function ModelsLoadingSkeleton(): React.JSX.Element {
   return (
     <div className="space-y-6" role="status" aria-label="Loading models">
-      <style>{`
-        @keyframes shimmer {
-          100% { transform: translateX(100%); }
-        }
-      `}</style>
       <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
         {["voice", "cleanup"].map((key) => (
           <div

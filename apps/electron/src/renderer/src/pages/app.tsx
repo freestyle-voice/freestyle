@@ -315,11 +315,7 @@ const PILL_CARD_WIDTH = 300;
  * dictation failure card can carry a Retry, and a button that vanishes while
  * you are deciding is worse than one that lingers.
  */
-/**
- * How long the pill window stays up after a remix session is cleared, so the
- * card's own exit transition (the longest leg is 170ms) is on screen rather
- * than cut off by the window vanishing in the same frame.
- */
+/** Window lingers this long so the card's exit (170ms) is actually seen. */
 const REMIX_EXIT_MS = 190;
 
 const REMIX_WARNING_MS = 4500;
@@ -357,9 +353,7 @@ const STATUS_SLOT = STATUS_SIZE + STATUS_GAP;
 const SURFACE = "rgba(22, 20, 15, 0.98)";
 const SURFACE_BORDER = "1px solid rgba(255, 255, 255, 0.10)";
 const BLUR = "blur(20px) saturate(120%)";
-/** The card is a big surface standing over someone else's work for as long as
- * they need it, so it casts: a tight contact shadow to seat the edge, and a
- * wide ambient one for the lift. */
+/** The card stands over someone else's work, so it casts: contact + ambient. */
 const CARD_SHADOW = [
   "0 1px 2px rgba(0, 0, 0, 0.32)",
   "0 10px 24px -8px rgba(0, 0, 0, 0.46)",
@@ -464,10 +458,8 @@ interface RemixSession {
    */
   minimized?: boolean;
   /**
-   * The full conversation has been on screen in this session — either opened
-   * straight out of the bar, or hover-expanded from the strip. It decides what
-   * leaving the card means: dropping back to the strip is only useful for a
-   * session the user has not looked at yet.
+   * The conversation has been on screen. Decides what leaving means: falling
+   * back to the strip only helps a session the user hasn't looked at yet.
    */
   openedFull?: boolean;
 }
@@ -529,9 +521,8 @@ export default function AppPage(): React.JSX.Element {
   }, []);
   const setRemix = useCallback(
     (next: RemixSession | null) => {
-      // A session starting inside the exit window takes the pill back; the
-      // hide scheduled for the outgoing one would otherwise pull the window
-      // out from under it a moment later.
+      // A new session inside the exit window takes the pill back, or the
+      // outgoing hide pulls the window out from under it.
       if (next) clearRemixExitTimer();
       remixRef.current = next;
       setRemixState(next);
@@ -2001,9 +1992,8 @@ export default function AppPage(): React.JSX.Element {
       setRemix(null);
       stopVisualization();
       if (options.hide === false) return;
-      // The card animates itself out on `data-show="false"`; hiding the window
-      // in the same frame is what made the session vanish with no motion at
-      // all. Hold the window for the length of the transition instead.
+      // Hiding the window in the same frame as `data-show="false"` made the
+      // session vanish with no motion at all.
       clearRemixExitTimer();
       remixExitTimerRef.current = setTimeout(() => {
         remixExitTimerRef.current = null;
@@ -2022,11 +2012,8 @@ export default function AppPage(): React.JSX.Element {
   const minimizeRemixChat = useCallback(
     (options?: { busy?: boolean; hasContent?: boolean }) => {
       if (!remixRef.current) return;
-      // A run in flight, or a conversation that has already said something,
-      // collapses to the pill — that one line is how the user watches an
-      // answer land after walking away. A card with nothing in it has nothing
-      // to collapse *to*: it was opened out of the bar and never used, and
-      // folding it into an empty pill leaves a second thing to dismiss.
+      // A live or answered run collapses to the pill; an untouched card has
+      // nothing to collapse *to*, so it would just be a second dismissal.
       const worthKeeping = options?.busy || options?.hasContent;
       if (remixRef.current.openedFull && !worthKeeping) {
         endRemix();
@@ -2660,10 +2647,7 @@ export default function AppPage(): React.JSX.Element {
     // is already in flight (main kicked it off before sending this).
     const removeOpenChat = window.api.onRemixOpenChat(() => {
       if (stateRef.current !== "idle" || pillActiveRef.current) return;
-      // `openedFull` from the start: this entrance skips the strip entirely,
-      // so the conversation is already the thing on screen and the pointer
-      // leaving should end the session, not fold it into a strip the user
-      // never asked for.
+      // openedFull from the start: this entrance skips the strip entirely.
       if (remixRef.current) {
         patchRemix({ phase: "chat", minimized: false, openedFull: true });
         return;
@@ -2769,10 +2753,8 @@ export default function AppPage(): React.JSX.Element {
   const [remixMiniHeight, setRemixMiniHeight] = useState<number>(
     REMIX_CHAT_STRIP.height,
   );
-  // The full card's height, reported by RemixChat from its own content. The
-  // window's room is unchanged (still the 560 cap), so a shorter card just
-  // occupies less of a space already reserved — no window resize, and the
-  // morph transition already animates height.
+  // Reported by RemixChat from its own content. The window's room is
+  // unchanged, so a shorter card just uses less of a space already reserved.
   const [remixCardHeight, setRemixCardHeight] = useState<number>(
     REMIX_CHAT_MIN_HEIGHT,
   );
@@ -3066,9 +3048,8 @@ export default function AppPage(): React.JSX.Element {
     borderRadius: 20,
     background: SURFACE,
     border: SURFACE_BORDER,
-    // No backdrop-filter here, unlike the capsule: at SURFACE's 0.98 alpha the
-    // blur renders nothing, so the card paid for a compositing pass that showed
-    // zero pixels. What it lacked was depth.
+    // No backdrop-filter: at SURFACE's 0.98 alpha the blur renders nothing,
+    // so the card paid for a compositing pass showing zero pixels.
     boxShadow: CARD_SHADOW,
     transformOrigin,
     marginBottom: pillAlign === "end" ? 8 : 0,
@@ -3275,12 +3256,8 @@ export default function AppPage(): React.JSX.Element {
               border-radius ${MORPH_MS}ms ${EASE_MORPH_CSS};
           }
 
-          /* The chat card leaves the way it arrived, reversed. Without this it
-             inherited .pill-card[data-show="false"], which collapses toward the
-             capsule — but the chat card never came out of one, so folding into
-             one read as a different animation entirely. Shorter than the
-             entrance and with no overshoot: something on its way out shouldn't
-             ask to be watched. */
+          /* Retraces its own summon. Without this it inherited the dictation
+             card's exit and folded into a capsule it never came out of. */
           .pill-card.pill-chat-morph[data-show="false"] {
             transform: scale(0.93)
               translateY(calc(var(--pill-rise, 10px) * 0.55));
@@ -3555,7 +3532,10 @@ export default function AppPage(): React.JSX.Element {
         `}
       </style>
 
-      {(state !== "idle" || showRemixCard) && (
+      {/* `remixView` too: the session clears the frame a remix ends, and
+          mounting on the live one tore the surfaces out in that same frame, so
+          `data-show="false"` had nothing left to animate. */}
+      {(state !== "idle" || showRemixCard || remixView !== null) && (
         <>
           <span className="sr-only" role="status" aria-live="polite">
             {accessibleStatus}

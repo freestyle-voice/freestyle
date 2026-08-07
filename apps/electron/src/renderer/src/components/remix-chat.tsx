@@ -97,8 +97,7 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
     props.initialInstruction,
   );
 
-  // Surface sizes to this until natural-height measurement lands. The cap
-  // keeps the pill from jumping to an empty 560px.
+  // The cap keeps the pill from jumping to an empty 560px.
   useEffect(() => {
     props.onHeightChange?.(REMIX_CHAT_MAX_HEIGHT);
   }, [props.onHeightChange]);
@@ -199,26 +198,15 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
   );
 }
 
-/**
- * The box both marks are centred in, so the line of text beside them never
- * shifts when a run lands.
- */
+/** The box both marks share, so the text beside them never shifts. */
 const MINI_MARK = 22;
 
-/**
- * The settled check's ink, inset from that box: a solid disc reads heavier
- * than the orb's dotted sphere at the same diameter.
- */
+/** Inset in that box: a solid disc reads heavier than a dotted sphere. */
 const REST_MARK = 19;
 
 /**
- * The running orb, at its native scale.
- *
- * Not the 64 preset scaled down. Supersampling looks right in the backing
- * store and wrong on screen: the compositor resolves a CSS-scaled canvas with
- * bilinear filtering, and a field of sub-pixel dots run through that shimmers
- * — grainier than the coarse preset it was meant to fix. Canvas pixels map
- * 1:1 to device pixels here, which is the only arrangement that cannot alias.
+ * Native scale, not the 64 preset scaled down: a CSS-scaled canvas is resolved
+ * with bilinear filtering, and a field of sub-pixel dots through that shimmers.
  */
 function MiniOrb({ state }: { state: "composing" | "searching" }) {
   return (
@@ -235,9 +223,8 @@ const SWEEP_TOTAL_MS = SWEEP_ARC_MS + SWEEP_FLOOD_MS;
 const SWEEP_ARC_END = SWEEP_ARC_MS / SWEEP_TOTAL_MS;
 
 /**
- * @param active Whether the strip is the visible face. Both faces stay
- * mounted, so an ungated sweep burns behind `opacity: 0` and leaves a check
- * already drawn by the time the pill shows it.
+ * @param active Whether the strip is the visible face. Both stay mounted, so
+ * an ungated sweep burns behind `opacity: 0` and is spent before it is seen.
  */
 function RestMark({ failed, active }: { failed: boolean; active: boolean }) {
   const maskId = useId();
@@ -246,15 +233,9 @@ function RestMark({ failed, active }: { failed: boolean; active: boolean }) {
   const circumference = 2 * Math.PI * 6.1;
 
   /**
-   * The markup is the RESTING state — filled disc, spent arc — and the
-   * entrance is one `fill: "none"` timeline played over it.
-   *
-   * That direction is deliberate. Any fill mode that holds a keyframe leaves
-   * the mark showing the *opening* frame wherever the timeline cannot run: an
-   * occluded window freezes WAAPI at t=0, and the pill is occluded often. With
-   * no fill, a frozen or skipped animation degrades to the correct final look
-   * instead of an empty circle. Both legs ride one timeline for the same
-   * reason — a delayed second animation would strand the disc mid-sweep.
+   * The markup is the resting state and the entrance plays over it with
+   * `fill: "none"`, so a timeline that cannot run degrades to settled rather
+   * than to an empty circle. Both legs ride one timeline so neither strands.
    */
   useLayoutEffect(() => {
     const arc = arcRef.current;
@@ -266,9 +247,7 @@ function RestMark({ failed, active }: { failed: boolean; active: boolean }) {
       typeof window === "undefined" ||
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ===
         true ||
-      // An occluded window does not advance WAAPI, and an animation parked at
-      // its first frame would leave the mark drawn as an empty circle. Nobody
-      // is watching an entrance they cannot see, so skip straight to settled.
+      // Occluded windows don't advance WAAPI; skip straight to settled.
       document.hidden
     ) {
       return;
@@ -307,10 +286,8 @@ function RestMark({ failed, active }: { failed: boolean; active: boolean }) {
         transform: "scale(0.42)",
         opacity: 0,
         filter: "blur(1.4px)",
-        // Overshoots a few percent and settles back. A straight ease-out
-        // landed the colour like a light switch, with nowhere for the
-        // impact to go; the blur resolving alongside keeps the arc and the
-        // disc reading as one object rather than two swapping places.
+        // Overshoots and settles back; a straight ease-out landed the
+        // colour like a light switch, with nowhere for the impact to go.
         easing: "cubic-bezier(0.34, 1.16, 0.36, 1)",
       },
       {
@@ -637,15 +614,11 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const busy = status === "submitted" || status === "streaming";
   const busyRef = useRef(busy);
   busyRef.current = busy;
-  // Anything the user would want to read after walking away. Same ref
-  // treatment as `busy`, and for the same reason.
+  // Same ref treatment as `busy`, and for the same reason.
   const hasContentRef = useRef(false);
   hasContentRef.current = messages.length > 0;
 
-  /**
-   * Only the turn in progress can hold a live tool call. Scanning the whole
-   * thread let one non-terminal part pin the pill to "narrating" for good.
-   */
+  /** Scanning the whole thread let one stuck part pin this true for good. */
   const narrating = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const message = messages[i];
@@ -742,9 +715,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       minimizeTimerRef.current = setTimeout(() => {
         minimizeTimerRef.current = null;
         document.removeEventListener("mouseover", handleOver);
-        // Read through the ref, not the closure: a run that starts during the
-        // grace window has to count, and putting `busy` in this effect's deps
-        // would tear the listeners down and rebuild them on every token.
+        // Refs, not the closure: a run starting inside the grace window has
+        // to count, and `busy` in the deps would rebuild these every token.
         onMinimize({
           busy: busyRef.current,
           hasContent: hasContentRef.current,
@@ -776,10 +748,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     null,
   );
   /**
-   * The last unbroken run of text — the answer, without the narration that
-   * preceded the work, which the activity rows already cover. Anchored on the
-   * last run rather than "after the final tool" so a turn signing off with a
-   * delivery tool keeps its answer.
+   * The last unbroken run of text: the answer, without the narration before it.
+   * Not "after the final tool" — a turn can sign off with a delivery tool.
    */
   const finalText = useMemo(() => {
     if (busy) return null;
@@ -802,11 +772,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     }
     return null;
   }, [messages, busy]);
-  /**
-   * Not gated on `minimized`: the strip is only visible while minimized, and
-   * gating made the outgoing face restructure mid-exit — hovering to expand
-   * flashed the one-line form at strip height against the bottom edge.
-   */
+  /** Not gated on `minimized`, or the leaving face restructures mid-exit. */
   const showFullFinal = settled && notice === null && finalText !== null;
   const miniStripHeight = showFullFinal
     ? Math.min(
@@ -1212,8 +1178,8 @@ function latestActivity(messages: UIMessage[], busy: boolean): string {
         };
         const finished =
           part.state === "output-available" || part.state === "output-error";
-        // Keyed on the tool's state, not the run's: gating on `!busy` left a
-        // fast search reading "Searching the web…" for the rest of the turn.
+        // The tool's state, not the run's: `!busy` left a fast search
+        // reading "Searching the web…" for the rest of the turn.
         return finished ? labels.done : labels.doing;
       }
       if (isTextUIPart(part) && part.text.trim()) {
@@ -1449,10 +1415,9 @@ const REMIX_CHAT_CSS = `
     color: ${INK};
   }
 
-  /* One shape changing, not two surfaces swapping: the incoming face lands as
-     .pill-chat-morph finishes resizing the box (${MORPH_MS}ms). No visibility
-     — a stepped one cannot retarget, and expand is onMouseEnter, so a graze
-     could strand a face visible but unhittable. */
+  /* One shape changing, not two swapping: the incoming face lands as
+     .pill-chat-morph finishes resizing the box. No visibility — a stepped one
+     cannot retarget, so a graze could strand a face visible but unhittable. */
   .remix-chat-face-strip {
     opacity: 0;
     pointer-events: none;
@@ -1477,8 +1442,7 @@ const REMIX_CHAT_CSS = `
     transition: opacity 150ms ease;
   }
 
-  /* Padding is measured to the mark's box, not the ink inside it, so 12 left
-     against 16 right reads as even — the mark's own air makes up the rest. */
+  /* Measured to the mark's box, not its ink: 12 left reads even against 16. */
   .remix-mini {
     display: flex;
     align-items: center;
@@ -1486,9 +1450,8 @@ const REMIX_CHAT_CSS = `
     height: 100%;
     padding: 0 16px 0 12px;
   }
-  /* Opened by a landed answer. Top-aligned, because a paragraph beside a
-     centred mark reads as misaligned the moment it wraps. Vertical padding
-     sums to MINI_STRIP_PAD, which is what measures the grown pill. */
+  /* Top-aligned: a paragraph beside a centred mark reads as misaligned once
+     it wraps. Vertical padding sums to MINI_STRIP_PAD. */
   .remix-mini[data-full="true"] {
     align-items: flex-start;
     height: 100%;
@@ -1505,11 +1468,9 @@ const REMIX_CHAT_CSS = `
     color: ${INK_DIM};
   }
 
-  /* The box morphs over ${MORPH_MS}ms; without this the words inside swapped
-     in one frame, and it read as the card vanishing and a strip appearing.
-     Opens at 0.55, not 0: a throttled window parks an animation on its first
-     frame — no fill mode reaches a timeline stuck at t=0 — so that frame has
-     to stay legible. */
+  /* Without this the words swapped in one frame under a morphing box. Opens
+     at 0.55, not 0: a throttled window parks an animation on its first frame,
+     and no fill mode reaches a timeline stuck at t=0. */
   .remix-mini-message,
   .remix-mini-line {
     animation: remix-mini-content ${MORPH_MS - 60}ms ${EASE_MORPH_CSS};
@@ -1768,8 +1729,7 @@ const REMIX_CHAT_CSS = `
       background 160ms ease;
   }
   .remix-chat-send:disabled { opacity: 0.3; cursor: default; }
-  /* Press feedback only — a hover scale on the most-clicked control here is
-     decoration at a frequency tier that has no budget for it. */
+  /* Press feedback only; hover growth on the most-clicked control is noise. */
   .remix-chat-send:not(:disabled):active { transform: scale(0.94); }
   .remix-chat-send[data-busy="true"] { background: rgba(245, 241, 228, 0.55); }
   .remix-chat-send-glyph {
@@ -1858,8 +1818,7 @@ const REMIX_CHAT_CSS = `
   }
   .remix-md th { background: rgba(245, 241, 228, 0.06); font-weight: 600; }
 
-  /* app.tsx's block only names .pill-*, and this card is a separate <style>.
-     Keep the fades, drop the travel, scale and blur. */
+  /* app.tsx's block only names .pill-*; this card is a separate <style>. */
   @media (prefers-reduced-motion: reduce) {
     .remix-chat-icon:active,
     .remix-chat-chip:active,

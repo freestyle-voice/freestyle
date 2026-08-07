@@ -2,9 +2,8 @@
  * window without importing the chat (and its animation deps). */
 export const REMIX_CHAT_SURFACE = { width: 408, height: 560 } as const;
 
-/** The card grows with its content between these two. 560 stays the room the
- * window reserves, so growing never has to resize the window — the card just
- * occupies more of a space that is already there. */
+/** The card grows between these two inside room the window already holds, so
+ * growing never resizes the window. */
 export const REMIX_CHAT_MIN_HEIGHT = 132;
 export const REMIX_CHAT_MAX_HEIGHT = REMIX_CHAT_SURFACE.height;
 

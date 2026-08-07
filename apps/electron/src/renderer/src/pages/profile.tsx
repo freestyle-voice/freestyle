@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@renderer/components/ui/select";
+import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Switch } from "@renderer/components/ui/switch";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import {
@@ -33,7 +34,6 @@ import {
   useUpdateName,
   useUpdateProfileFields,
 } from "@renderer/lib/use-profile";
-import { cn } from "@renderer/lib/utils";
 import { PageHeader, PageShell } from "@renderer/pages/models/page-chrome";
 import { Check, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -198,7 +198,7 @@ function ProfileDetailsCard({
 }: {
   enabled: boolean;
 }): React.JSX.Element {
-  const { data: profile } = useProfileFields(enabled);
+  const { data: profile, isLoading } = useProfileFields(enabled);
   const updateProfile = useUpdateProfileFields();
   const [saved, setSaved] = useState(false);
 
@@ -260,73 +260,80 @@ function ProfileDetailsCard({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="profile-industry">Industry</Label>
-            <Select
-              value={industry ?? NO_INDUSTRY}
-              onValueChange={(value) =>
-                setIndustry(
-                  value === NO_INDUSTRY ? undefined : (value as Industry),
-                )
-              }
-            >
-              <SelectTrigger id="profile-industry" className="w-full">
-                <SelectValue placeholder="Select your industry" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_INDUSTRY}>Not specified</SelectItem>
-                {industrySchema.options.map((value) => (
-                  <SelectItem key={value} value={value}>
-                    {INDUSTRY_LABELS[value]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="profile-job-title">Job title</Label>
-            <Input
-              id="profile-job-title"
-              value={jobTitle}
-              placeholder="e.g. Product Manager"
-              maxLength={120}
-              onChange={(e) => setJobTitle(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="profile-company">Company</Label>
-            <Input
-              id="profile-company"
-              value={company}
-              placeholder="e.g. Acme Inc."
-              maxLength={120}
-              onChange={(e) => setCompany(e.target.value)}
-            />
-          </div>
-        </div>
-        {industryWillChange ? (
-          <label
-            htmlFor="profile-update-preferences"
-            className="mt-4 flex cursor-pointer items-center justify-between gap-4 rounded-lg border p-3"
-          >
-            <span className="text-sm leading-snug">
-              Update tone and vocabulary to match the new industry's defaults
-            </span>
-            <Switch
-              id="profile-update-preferences"
-              checked={updatePreferences}
-              onCheckedChange={setUpdatePreferences}
-            />
-          </label>
-        ) : null}
-        {updateProfile.isError ? (
-          <p className="text-destructive mt-4 text-[12px]">
-            {updateProfile.error instanceof Error
-              ? updateProfile.error.message
-              : "Failed to update profile"}
-          </p>
-        ) : null}
+        {isLoading ? (
+          <ProfileDetailsSkeleton />
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="profile-industry">Industry</Label>
+                <Select
+                  value={industry ?? NO_INDUSTRY}
+                  onValueChange={(value) =>
+                    setIndustry(
+                      value === NO_INDUSTRY ? undefined : (value as Industry),
+                    )
+                  }
+                >
+                  <SelectTrigger id="profile-industry" className="w-full">
+                    <SelectValue placeholder="Select your industry" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_INDUSTRY}>Not specified</SelectItem>
+                    {industrySchema.options.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {INDUSTRY_LABELS[value]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="profile-job-title">Job title</Label>
+                <Input
+                  id="profile-job-title"
+                  value={jobTitle}
+                  placeholder="e.g. Product Manager"
+                  maxLength={120}
+                  onChange={(e) => setJobTitle(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="profile-company">Company</Label>
+                <Input
+                  id="profile-company"
+                  value={company}
+                  placeholder="e.g. Acme Inc."
+                  maxLength={120}
+                  onChange={(e) => setCompany(e.target.value)}
+                />
+              </div>
+            </div>
+            {industryWillChange ? (
+              <label
+                htmlFor="profile-update-preferences"
+                className="mt-4 flex cursor-pointer items-center justify-between gap-4 rounded-lg border p-3"
+              >
+                <span className="text-sm leading-snug">
+                  Update tone and vocabulary to match the new industry's
+                  defaults
+                </span>
+                <Switch
+                  id="profile-update-preferences"
+                  checked={updatePreferences}
+                  onCheckedChange={setUpdatePreferences}
+                />
+              </label>
+            ) : null}
+            {updateProfile.isError ? (
+              <p className="text-destructive mt-4 text-[12px]">
+                {updateProfile.error instanceof Error
+                  ? updateProfile.error.message
+                  : "Failed to update profile"}
+              </p>
+            ) : null}
+          </>
+        )}
       </CardContent>
       <CardFooter className="justify-end gap-2">
         {saved ? (
@@ -337,7 +344,7 @@ function ProfileDetailsCard({
         ) : null}
         <Button
           size="sm"
-          disabled={!dirty || updateProfile.isPending}
+          disabled={isLoading || !dirty || updateProfile.isPending}
           onClick={() => void onSave()}
         >
           {updateProfile.isPending ? (
@@ -350,19 +357,25 @@ function ProfileDetailsCard({
   );
 }
 
-function SkeletonBlock({
-  className,
-}: {
-  className?: string;
-}): React.JSX.Element {
+/**
+ * Loading placeholder for the professional-details form. Mirrors the field
+ * layout (label + input, one control per grid cell) so the card keeps its
+ * height and the inputs don't flash empty before the profile resolves.
+ */
+function ProfileDetailsSkeleton(): React.JSX.Element {
   return (
     <div
-      className={cn(
-        "bg-muted/60 relative overflow-hidden rounded-md",
-        "before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.4s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent",
-        className,
-      )}
-    />
+      className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+      role="status"
+      aria-label="Loading professional details"
+    >
+      {["industry", "job-title", "company"].map((field) => (
+        <div key={field} className="space-y-1.5">
+          <Skeleton className="h-3.5 w-20 rounded-md" />
+          <Skeleton className="h-9 w-full rounded-md" />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -378,15 +391,14 @@ function ConnectedAccountsSkeleton(): React.JSX.Element {
       role="status"
       aria-label="Loading connected accounts"
     >
-      <style>{`@keyframes shimmer { 100% { transform: translateX(100%); } }`}</style>
       {PROVIDERS.map((provider) => (
         <div
           key={provider.id}
           className="flex items-center gap-3 rounded-md border p-3"
         >
-          <SkeletonBlock className="size-5 shrink-0 rounded" />
-          <SkeletonBlock className="h-4 w-20" />
-          <SkeletonBlock className="ml-auto h-8 w-24 shrink-0 rounded-md" />
+          <Skeleton className="size-5 shrink-0 rounded" />
+          <Skeleton className="h-4 w-20 rounded-md" />
+          <Skeleton className="ml-auto h-8 w-24 shrink-0 rounded-md" />
         </div>
       ))}
     </div>

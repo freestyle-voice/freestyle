@@ -635,6 +635,12 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     });
 
   const busy = status === "submitted" || status === "streaming";
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+  // Anything the user would want to read after walking away. Same ref
+  // treatment as `busy`, and for the same reason.
+  const hasContentRef = useRef(false);
+  hasContentRef.current = messages.length > 0;
 
   /**
    * Only the turn in progress can hold a live tool call. Scanning the whole
@@ -736,7 +742,13 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       minimizeTimerRef.current = setTimeout(() => {
         minimizeTimerRef.current = null;
         document.removeEventListener("mouseover", handleOver);
-        onMinimize();
+        // Read through the ref, not the closure: a run that starts during the
+        // grace window has to count, and putting `busy` in this effect's deps
+        // would tear the listeners down and rebuild them on every token.
+        onMinimize({
+          busy: busyRef.current,
+          hasContent: hasContentRef.current,
+        });
       }, MINIMIZE_GRACE_MS);
       document.addEventListener("mouseover", handleOver);
     };

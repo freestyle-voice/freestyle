@@ -62,3 +62,8 @@ test-results/
 .env.local
 .env.*.local
 !.env.example
+
+# Throwaway Remix card preview harness (see AGENTS.md)
+apps/electron/vite.remix-preview.config.ts
+apps/electron/src/renderer/remix-preview.html
+apps/electron/src/renderer/src/remix-preview.tsx

@@ -25,6 +25,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -32,9 +33,11 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ThinkingOrb } from "thinking-orbs";
 import type { RemixSelectionPayload } from "../../../shared/remix";
 import { FreestyleMark } from "./freestyle-mark";
 import {
+  REMIX_CHAT_MAX_HEIGHT,
   REMIX_CHAT_STRIP,
   REMIX_CHAT_SURFACE,
   type RemixChatAnchor,
@@ -77,9 +80,12 @@ export interface RemixChatProps {
   initialInstruction: string | null;
   minimized: boolean;
   onMiniHeightChange?: (height: number) => void;
+  /** Natural height of the full card so the surface can size to its thread. */
+  onHeightChange?: (height: number) => void;
   anchor: RemixChatAnchor;
   onExpand: () => void;
-  onMinimize: () => void;
+  /** Lets the owner keep a live or answered run on screen as the pill. */
+  onMinimize: (options?: { busy?: boolean; hasContent?: boolean }) => void;
   onClose: () => void;
 }
 
@@ -90,6 +96,12 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
   const [initialInstruction, setInitialInstruction] = useState(
     props.initialInstruction,
   );
+
+  // Surface sizes to this until natural-height measurement lands. The cap
+  // keeps the pill from jumping to an empty 560px.
+  useEffect(() => {
+    props.onHeightChange?.(REMIX_CHAT_MAX_HEIGHT);
+  }, [props.onHeightChange]);
 
   // Pill is focusable:false; follow the card so the composer can take keyboard.
   useEffect(() => {
@@ -187,6 +199,204 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
   );
 }
 
+/**
+ * The box both marks are centred in, so the line of text beside them never
+ * shifts when a run lands.
+ */
+const MINI_MARK = 22;
+
+/**
+ * The settled check's ink, inset from that box: a solid disc reads heavier
+ * than the orb's dotted sphere at the same diameter.
+ */
+const REST_MARK = 19;
+
+/**
+ * The running orb, at its native scale.
+ *
+ * Not the 64 preset scaled down. Supersampling looks right in the backing
+ * store and wrong on screen: the compositor resolves a CSS-scaled canvas with
+ * bilinear filtering, and a field of sub-pixel dots run through that shimmers
+ * — grainier than the coarse preset it was meant to fix. Canvas pixels map
+ * 1:1 to device pixels here, which is the only arrangement that cannot alias.
+ */
+function MiniOrb({ state }: { state: "composing" | "searching" }) {
+  return (
+    <span className="remix-mini-mark">
+      <ThinkingOrb state={state} size={20} theme="dark" />
+    </span>
+  );
+}
+
+/** Arc close, then colour flood. One timeline, so neither leg can strand. */
+const SWEEP_ARC_MS = 150;
+const SWEEP_FLOOD_MS = 300;
+const SWEEP_TOTAL_MS = SWEEP_ARC_MS + SWEEP_FLOOD_MS;
+const SWEEP_ARC_END = SWEEP_ARC_MS / SWEEP_TOTAL_MS;
+
+/**
+ * @param active Whether the strip is the visible face. Both faces stay
+ * mounted, so an ungated sweep burns behind `opacity: 0` and leaves a check
+ * already drawn by the time the pill shows it.
+ */
+function RestMark({ failed, active }: { failed: boolean; active: boolean }) {
+  const maskId = useId();
+  const arcRef = useRef<SVGCircleElement | null>(null);
+  const discRef = useRef<SVGRectElement | null>(null);
+  const circumference = 2 * Math.PI * 6.1;
+
+  /**
+   * The markup is the RESTING state — filled disc, spent arc — and the
+   * entrance is one `fill: "none"` timeline played over it.
+   *
+   * That direction is deliberate. Any fill mode that holds a keyframe leaves
+   * the mark showing the *opening* frame wherever the timeline cannot run: an
+   * occluded window freezes WAAPI at t=0, and the pill is occluded often. With
+   * no fill, a frozen or skipped animation degrades to the correct final look
+   * instead of an empty circle. Both legs ride one timeline for the same
+   * reason — a delayed second animation would strand the disc mid-sweep.
+   */
+  useLayoutEffect(() => {
+    const arc = arcRef.current;
+    const disc = discRef.current;
+    if (!arc || !disc) return;
+    // Nothing to play to: the strip is the hidden face right now.
+    if (!active) return;
+    if (
+      typeof window === "undefined" ||
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ===
+        true ||
+      // An occluded window does not advance WAAPI, and an animation parked at
+      // its first frame would leave the mark drawn as an empty circle. Nobody
+      // is watching an entrance they cannot see, so skip straight to settled.
+      document.hidden
+    ) {
+      return;
+    }
+    disc.style.transformOrigin = "8px 8px";
+    const options: KeyframeAnimationOptions = {
+      duration: SWEEP_TOTAL_MS,
+      fill: "none",
+    };
+    const arcFrames: Keyframe[] = [
+      {
+        offset: 0,
+        opacity: 1,
+        strokeDashoffset: `${circumference}`,
+        easing: EASE_OUT_CSS,
+      },
+      {
+        offset: SWEEP_ARC_END,
+        opacity: 1,
+        strokeDashoffset: "0",
+        easing: "ease-out",
+      },
+      { offset: SWEEP_ARC_END + 0.09, opacity: 0, strokeDashoffset: "0" },
+      { offset: 1, opacity: 0, strokeDashoffset: "0" },
+    ];
+    const discFrames: Keyframe[] = [
+      {
+        offset: 0,
+        transform: "scale(0.42)",
+        opacity: 0,
+        filter: "blur(1.4px)",
+        easing: "linear",
+      },
+      {
+        offset: SWEEP_ARC_END,
+        transform: "scale(0.42)",
+        opacity: 0,
+        filter: "blur(1.4px)",
+        // Overshoots a few percent and settles back. A straight ease-out
+        // landed the colour like a light switch, with nowhere for the
+        // impact to go; the blur resolving alongside keeps the arc and the
+        // disc reading as one object rather than two swapping places.
+        easing: "cubic-bezier(0.34, 1.16, 0.36, 1)",
+      },
+      {
+        offset: 0.75,
+        transform: "scale(1.055)",
+        opacity: 1,
+        filter: "blur(0px)",
+      },
+      { offset: 1, transform: "scale(1)", opacity: 1, filter: "blur(0px)" },
+    ];
+
+    // One frame of daylight: the same commit grows the pill, and starting into
+    // that window resize drops the arc leg.
+    let running: Animation[] = [];
+    const frame = requestAnimationFrame(() => {
+      running = [
+        arc.animate(arcFrames, options),
+        disc.animate(discFrames, options),
+      ];
+    });
+    // Without this a re-mount stacks a second copy on the first.
+    return () => {
+      cancelAnimationFrame(frame);
+      for (const animation of running) animation.cancel();
+    };
+  }, [circumference, active]);
+
+  const color = failed ? "rgba(224, 128, 95, 0.92)" : INK;
+  const glyph = failed ? (
+    <path
+      d="M 5.6 5.6 L 10.4 10.4 M 10.4 5.6 L 5.6 10.4"
+      stroke="#000"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      fill="none"
+    />
+  ) : (
+    <path
+      d="M 5.35 8.25 L 7.15 10.05 L 10.75 5.95"
+      stroke="#000"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    />
+  );
+
+  return (
+    <span className="remix-mini-mark">
+      <svg
+        width={REST_MARK}
+        height={REST_MARK}
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+      >
+        <mask id={maskId}>
+          <rect width="16" height="16" fill="#000" />
+          <circle cx="8" cy="8" r="6.9" fill="#fff" />
+          {glyph}
+        </mask>
+        <circle
+          ref={arcRef}
+          cx="8"
+          cy="8"
+          r="6.1"
+          fill="none"
+          stroke={color}
+          strokeWidth={1.5}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={0}
+          opacity={0}
+          transform="rotate(-90 8 8)"
+        />
+        <rect
+          ref={discRef}
+          width="16"
+          height="16"
+          fill={color}
+          mask={`url(#${maskId})`}
+        />
+      </svg>
+    </span>
+  );
+}
+
 function MiniStrip(props: {
   text: string;
   busy?: boolean;
@@ -202,12 +412,13 @@ function MiniStrip(props: {
     >
       <style>{REMIX_CHAT_CSS}</style>
       <div className="remix-mini" role="status" aria-live="polite">
-        <span
-          className="remix-mini-dot"
-          data-busy={props.busy === true}
-          data-failed={props.failed === true}
-        />
-        <span className="remix-mini-text">{props.text}</span>
+        {props.busy ? (
+          <MiniOrb state="composing" />
+        ) : (
+          /* MiniStrip only ever renders as the minimized face. */
+          <RestMark failed={props.failed === true} active />
+        )}
+        <span className="remix-mini-line remix-mini-text">{props.text}</span>
       </div>
     </div>
   );
@@ -220,7 +431,7 @@ interface RemixThreadProps {
   minimized: boolean;
   anchor: RemixChatAnchor;
   onExpand: () => void;
-  onMinimize: () => void;
+  onMinimize: (options?: { busy?: boolean; hasContent?: boolean }) => void;
   onClose: () => void;
   onNewThread: () => void;
   onMiniHeightChange?: (height: number) => void;
@@ -236,8 +447,10 @@ interface ActionRow {
 const MINIMIZE_GRACE_MS = 380;
 const MINI_IDLE_DISMISS_MS = 7000;
 const MINI_SETTLED_DISMISS_MS = 3000;
-const MINI_STRIP_PAD = 24; // .remix-mini[data-full] vertical padding
-const MINI_STRIP_MAX = 316; // main's 340 window cap minus the chrome
+/** Vertical padding of the expanded pill. */
+const MINI_STRIP_PAD = 24;
+/** Main's 340 window cap, minus the chrome. */
+const MINI_STRIP_MAX = 316;
 
 function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const { thread, minimized, anchor, onExpand, onMinimize, onClose } = props;
@@ -754,11 +967,14 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           aria-hidden={!minimized}
         >
           <div className="remix-mini" data-full={showFullFinal}>
-            <span
-              className="remix-mini-dot"
-              data-busy={busy || !settled}
-              data-failed={notice !== null}
-            />
+            {/* The orb only earns its canvas while something is actually
+                running; a settled pill is a line of text with a mark next to
+                it, and a resting orb would animate for no reason. */}
+            {busy || !settled ? (
+              <MiniOrb state={narrating ? "searching" : "composing"} />
+            ) : (
+              <RestMark failed={notice !== null} active={minimized} />
+            )}
             {showFullFinal ? (
               <div className="remix-mini-message" ref={miniMessageRef}>
                 <Markdown text={finalText ?? ""} />
@@ -840,8 +1056,17 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                     : `${action.label} failed — ${action.detail ?? ""}`}
               </div>
             ))}
-            {messages.map((message) => (
-              <MessageRow key={message.id} message={message} busy={busy} />
+            {messages.map((message, index) => (
+              <MessageRow
+                key={message.id}
+                message={message}
+                busy={busy}
+                streaming={
+                  busy &&
+                  index === messages.length - 1 &&
+                  message.role === "assistant"
+                }
+              />
             ))}
             {busy && !narrating && (
               <ThinkingShimmer className="remix-chat-busy">
@@ -992,9 +1217,12 @@ function latestActivity(messages: UIMessage[], busy: boolean): string {
 const MessageRow = memo(function MessageRow({
   message,
   busy,
+  streaming = false,
 }: {
   message: UIMessage;
   busy: boolean;
+  /** Growing assistant text — render plain until the stream settles. */
+  streaming?: boolean;
 }): React.JSX.Element {
   if (message.role === "user") {
     const text = message.parts
@@ -1028,17 +1256,31 @@ const MessageRow = memo(function MessageRow({
             busy={busy}
           />
         ) : (
-          <AssistantText key={`text-${block.index}`} text={block.text} />
+          <AssistantText
+            key={`text-${block.index}`}
+            text={block.text}
+            streaming={streaming}
+          />
         ),
       )}
     </div>
   );
 });
 
-function AssistantText({ text }: { text: string }): React.JSX.Element {
+function AssistantText({
+  text,
+  streaming = false,
+}: {
+  text: string;
+  streaming?: boolean;
+}): React.JSX.Element {
   return (
     <div className="remix-chat-response">
-      <Markdown text={text} />
+      {streaming ? (
+        <div className="remix-md remix-md-plain">{text}</div>
+      ) : (
+        <Markdown text={text} />
+      )}
     </div>
   );
 }
@@ -1223,35 +1465,24 @@ const REMIX_CHAT_CSS = `
     transition: opacity 150ms ease;
   }
 
+  /* Padding is measured to the mark's box, not the ink inside it, so 12 left
+     against 16 right reads as even — the mark's own air makes up the rest. */
   .remix-mini {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
     height: 100%;
-    padding: 0 16px 0 13px;
+    padding: 0 16px 0 12px;
   }
-  .remix-mini-dot {
-    flex-shrink: 0;
-    width: 7px;
-    height: 7px;
-    border-radius: 999px;
-    background: ${OLIVE};
-  }
-  .remix-mini-dot[data-busy="true"] {
-    background: #F5F1E4;
-    animation: remix-mini-pulse 1.1s ease-in-out infinite;
-  }
-  .remix-mini-dot[data-failed="true"] { background: rgba(224, 128, 95, 0.9); }
-  @keyframes remix-mini-pulse {
-    0%, 100% { opacity: 0.35; transform: scale(0.8); }
-    50% { opacity: 1; transform: scale(1); }
-  }
+  /* Opened by a landed answer. Top-aligned, because a paragraph beside a
+     centred mark reads as misaligned the moment it wraps. Vertical padding
+     sums to MINI_STRIP_PAD, which is what measures the grown pill. */
   .remix-mini[data-full="true"] {
     align-items: flex-start;
     height: 100%;
-    padding: 12px 16px;
+    padding: 12px 16px 12px 12px;
   }
-  .remix-mini[data-full="true"] .remix-mini-dot { margin-top: 5px; }
+  .remix-mini[data-full="true"] .remix-mini-mark { margin-top: -1px; }
   .remix-mini-message {
     flex: 1;
     min-width: 0;
@@ -1275,6 +1506,18 @@ const REMIX_CHAT_CSS = `
     from { opacity: 0.55; transform: translateY(-2px); }
     to { opacity: 1; transform: none; }
   }
+
+  /* One box for both states, so the text does not shift when a run lands. */
+  .remix-mini-mark {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: ${MINI_MARK}px;
+    height: ${MINI_MARK}px;
+    overflow: hidden;
+  }
+
   /* No color here — TextShimmer paints via background-clip; color would hide it. */
   .remix-mini-line {
     flex: 1;
@@ -1396,7 +1639,7 @@ const REMIX_CHAT_CSS = `
   .remix-chat-step-chevron {
     flex-shrink: 0;
     opacity: 0.5;
-    transition: transform 140ms ease, opacity 140ms ease;
+    transition: transform 140ms ${EASE_OUT_CSS}, opacity 140ms ease;
   }
   .remix-chat-step-head:hover .remix-chat-step-chevron { opacity: 1; }
   .remix-chat-step-chevron[data-open="true"] { transform: rotate(90deg); opacity: 1; }
@@ -1548,6 +1791,7 @@ const REMIX_CHAT_CSS = `
   }
 
   .remix-md { line-height: 1.6; word-break: break-word; }
+  .remix-md-plain { white-space: pre-wrap; }
   .remix-md > *:first-child { margin-top: 0; }
   .remix-md > *:last-child { margin-bottom: 0; }
   .remix-md p { margin: 0 0 8px; }

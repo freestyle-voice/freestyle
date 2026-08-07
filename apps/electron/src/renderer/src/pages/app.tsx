@@ -1,6 +1,7 @@
 import { REMIX_PRESETS } from "@freestyle-voice/validations";
 import { FreestyleMark } from "@renderer/components/freestyle-mark";
 import {
+  REMIX_CHAT_MIN_HEIGHT,
   REMIX_CHAT_STRIP,
   REMIX_CHAT_SURFACE,
 } from "@renderer/components/remix-chat-surface";
@@ -18,6 +19,7 @@ import {
   getNeedsAppContextForCleanup,
   refreshNeedsAppContextForCleanup,
 } from "@renderer/lib/cleanup-app-context";
+import { EASE_MORPH_CSS, MORPH_MS } from "@renderer/lib/ease";
 import { Recorder, RecorderSupersededError } from "@renderer/lib/recorder";
 import { Streamer, type StreamerConnectionState } from "@renderer/lib/streamer";
 import {
@@ -313,6 +315,9 @@ const PILL_CARD_WIDTH = 300;
  * dictation failure card can carry a Retry, and a button that vanishes while
  * you are deciding is worse than one that lingers.
  */
+/** Window lingers this long so the card's exit (170ms) is actually seen. */
+const REMIX_EXIT_MS = 190;
+
 const REMIX_WARNING_MS = 4500;
 const FAILURE_CARD_MS = 9000;
 /**
@@ -348,6 +353,12 @@ const STATUS_SLOT = STATUS_SIZE + STATUS_GAP;
 const SURFACE = "rgba(22, 20, 15, 0.98)";
 const SURFACE_BORDER = "1px solid rgba(255, 255, 255, 0.10)";
 const BLUR = "blur(20px) saturate(120%)";
+/** The card stands over someone else's work, so it casts: contact + ambient. */
+const CARD_SHADOW = [
+  "0 1px 2px rgba(0, 0, 0, 0.32)",
+  "0 10px 24px -8px rgba(0, 0, 0, 0.46)",
+  "0 30px 60px -24px rgba(0, 0, 0, 0.40)",
+].join(", ");
 /** Cream ink, and the terracotta the palette reserves for failures. */
 const INK = "#F5F1E4";
 const ALERT = "#E0805F";
@@ -446,6 +457,11 @@ interface RemixSession {
    * hovering the strip is what opens the full conversation.
    */
   minimized?: boolean;
+  /**
+   * The conversation has been on screen. Decides what leaving means: falling
+   * back to the strip only helps a session the user hasn't looked at yet.
+   */
+  openedFull?: boolean;
 }
 
 /** A promise that something else resolves. Used to await the selection. */
@@ -495,10 +511,24 @@ export default function AppPage(): React.JSX.Element {
   // ---- Remix ----
   const [remix, setRemixState] = useState<RemixSession | null>(null);
   const remixRef = useRef<RemixSession | null>(null);
-  const setRemix = useCallback((next: RemixSession | null) => {
-    remixRef.current = next;
-    setRemixState(next);
+  /** Pending window hide, held open while the card's exit transition runs. */
+  const remixExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearRemixExitTimer = useCallback(() => {
+    if (remixExitTimerRef.current) {
+      clearTimeout(remixExitTimerRef.current);
+      remixExitTimerRef.current = null;
+    }
   }, []);
+  const setRemix = useCallback(
+    (next: RemixSession | null) => {
+      // A new session inside the exit window takes the pill back, or the
+      // outgoing hide pulls the window out from under it.
+      if (next) clearRemixExitTimer();
+      remixRef.current = next;
+      setRemixState(next);
+    },
+    [clearRemixExitTimer],
+  );
   /** Patch the live session, ignoring the call if it has since been torn down. */
   const patchRemix = useCallback((patch: Partial<RemixSession>) => {
     const current = remixRef.current;
@@ -1961,22 +1991,38 @@ export default function AppPage(): React.JSX.Element {
       window.api?.setRemixRouteKeys(false);
       setRemix(null);
       stopVisualization();
-      if (options.hide !== false) window.api?.hidePill();
+      if (options.hide === false) return;
+      // Hiding the window in the same frame as `data-show="false"` made the
+      // session vanish with no motion at all.
+      clearRemixExitTimer();
+      remixExitTimerRef.current = setTimeout(() => {
+        remixExitTimerRef.current = null;
+        window.api?.hidePill();
+      }, REMIX_EXIT_MS);
     },
-    [clearRemixHoldTimer, setRemix, stopVisualization],
+    [clearRemixExitTimer, clearRemixHoldTimer, setRemix, stopVisualization],
   );
 
   const closeRemix = useCallback(() => endRemix(), [endRemix]);
   const expandRemixChat = useCallback(() => {
     if (remixRef.current?.minimized !== false) {
-      patchRemix({ minimized: false });
+      patchRemix({ minimized: false, openedFull: true });
     }
   }, [patchRemix]);
-  const minimizeRemixChat = useCallback(() => {
-    if (remixRef.current && remixRef.current.minimized !== true) {
-      patchRemix({ minimized: true });
-    }
-  }, [patchRemix]);
+  const minimizeRemixChat = useCallback(
+    (options?: { busy?: boolean; hasContent?: boolean }) => {
+      if (!remixRef.current) return;
+      // A live or answered run collapses to the pill; an untouched card has
+      // nothing to collapse *to*, so it would just be a second dismissal.
+      const worthKeeping = options?.busy || options?.hasContent;
+      if (remixRef.current.openedFull && !worthKeeping) {
+        endRemix();
+        return;
+      }
+      if (remixRef.current.minimized !== true) patchRemix({ minimized: true });
+    },
+    [endRemix, patchRemix],
+  );
 
   /**
    * Show a failure and leave the card up. Unlike the phases above this one
@@ -2601,8 +2647,9 @@ export default function AppPage(): React.JSX.Element {
     // is already in flight (main kicked it off before sending this).
     const removeOpenChat = window.api.onRemixOpenChat(() => {
       if (stateRef.current !== "idle" || pillActiveRef.current) return;
+      // openedFull from the start: this entrance skips the strip entirely.
       if (remixRef.current) {
-        patchRemix({ phase: "chat", minimized: false });
+        patchRemix({ phase: "chat", minimized: false, openedFull: true });
         return;
       }
       remixSelectionRef.current = deferred<string | null>();
@@ -2612,6 +2659,7 @@ export default function AppPage(): React.JSX.Element {
         selection: null,
         initialInstruction: null,
         minimized: false,
+        openedFull: true,
       });
     });
 
@@ -2705,8 +2753,16 @@ export default function AppPage(): React.JSX.Element {
   const [remixMiniHeight, setRemixMiniHeight] = useState<number>(
     REMIX_CHAT_STRIP.height,
   );
+  // Reported by RemixChat from its own content. The window's room is
+  // unchanged, so a shorter card just uses less of a space already reserved.
+  const [remixCardHeight, setRemixCardHeight] = useState<number>(
+    REMIX_CHAT_MIN_HEIGHT,
+  );
   useEffect(() => {
-    if (!showRemixChat) setRemixMiniHeight(REMIX_CHAT_STRIP.height);
+    if (!showRemixChat) {
+      setRemixMiniHeight(REMIX_CHAT_STRIP.height);
+      setRemixCardHeight(REMIX_CHAT_MIN_HEIGHT);
+    }
   }, [showRemixChat]);
 
   // Hold the initial hidden state for one frame so the enter transition runs.
@@ -2992,8 +3048,9 @@ export default function AppPage(): React.JSX.Element {
     borderRadius: 20,
     background: SURFACE,
     border: SURFACE_BORDER,
-    backdropFilter: BLUR,
-    WebkitBackdropFilter: BLUR,
+    // No backdrop-filter: at SURFACE's 0.98 alpha the blur renders nothing,
+    // so the card paid for a compositing pass showing zero pixels.
+    boxShadow: CARD_SHADOW,
     transformOrigin,
     marginBottom: pillAlign === "end" ? 8 : 0,
     marginTop: pillAlign === "start" ? 8 : 0,
@@ -3194,9 +3251,24 @@ export default function AppPage(): React.JSX.Element {
             transition: opacity 180ms ease,
               transform 380ms cubic-bezier(0.22, 1.12, 0.36, 1),
               filter 220ms ease,
-              width 320ms cubic-bezier(0.3, 0.9, 0.3, 1),
-              height 320ms cubic-bezier(0.3, 0.9, 0.3, 1),
-              border-radius 320ms cubic-bezier(0.3, 0.9, 0.3, 1);
+              width ${MORPH_MS}ms ${EASE_MORPH_CSS},
+              height ${MORPH_MS}ms ${EASE_MORPH_CSS},
+              border-radius ${MORPH_MS}ms ${EASE_MORPH_CSS};
+          }
+
+          /* Retraces its own summon. Without this it inherited the dictation
+             card's exit and folded into a capsule it never came out of. */
+          .pill-card.pill-chat-morph[data-show="false"] {
+            transform: scale(0.93)
+              translateY(calc(var(--pill-rise, 10px) * 0.55));
+            border-radius: 18px;
+            filter: blur(3px);
+            transition: opacity 130ms ease,
+              transform 170ms cubic-bezier(0.36, 0, 0.66, -0.2),
+              filter 130ms ease,
+              width 170ms cubic-bezier(0.36, 0, 0.66, -0.2),
+              height 170ms cubic-bezier(0.36, 0, 0.66, -0.2),
+              border-radius 170ms ease;
           }
 
           /* ---- Remix card ---- */
@@ -3460,7 +3532,10 @@ export default function AppPage(): React.JSX.Element {
         `}
       </style>
 
-      {(state !== "idle" || showRemixCard) && (
+      {/* `remixView` too: the session clears the frame a remix ends, and
+          mounting on the live one tore the surfaces out in that same frame, so
+          `data-show="false"` had nothing left to animate. */}
+      {(state !== "idle" || showRemixCard || remixView !== null) && (
         <>
           <span className="sr-only" role="status" aria-live="polite">
             {accessibleStatus}
@@ -3943,7 +4018,7 @@ export default function AppPage(): React.JSX.Element {
                     }
                   : {
                       width: REMIX_CHAT_SURFACE.width,
-                      height: REMIX_CHAT_SURFACE.height,
+                      height: remixCardHeight,
                       borderRadius: 18,
                       padding: 0,
                       overflow: "hidden",
@@ -3971,6 +4046,7 @@ export default function AppPage(): React.JSX.Element {
                     onMinimize={minimizeRemixChat}
                     onClose={closeRemix}
                     onMiniHeightChange={setRemixMiniHeight}
+                    onHeightChange={setRemixCardHeight}
                   />
                 </Suspense>
               )}

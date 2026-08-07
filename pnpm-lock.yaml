@@ -133,6 +133,9 @@ importers:
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
+      thinking-orbs:
+        specifier: ^0.2.0
+        version: 0.2.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
@@ -9849,6 +9852,12 @@ packages:
 
   thenify@3.3.1:
     resolution: {integrity: sha512-RVZSIV5IG10Hk3enotrhvz0T9em6cyHBLkH/YAZuKqd8hRkKhSfCGIcP2KUY0EPxndzANBmNllzWPwak+bheSw==}
+
+  thinking-orbs@0.2.0:
+    resolution: {integrity: sha512-CQux/YsLlB9nY60BDpZ/uW7knAvXg+U2T/gzrzuLRw8xlzfJPLXZxAg2tbbIBGp/nE2Kol1GfbMOJnoH+tcb/A==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
 
   throat@5.0.0:
     resolution: {integrity: sha512-fcwX4mndzpLQKBS1DVYhGAcYaYt7vsHNIvQV+WXMvnow5cgjPphq5CaayLaGsjRdSCKZFNGt7/GYAuXaNOiYCA==}
@@ -22025,6 +22034,11 @@ snapshots:
   thenify@3.3.1:
     dependencies:
       any-promise: 1.3.0
+
+  thinking-orbs@0.2.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6):
+    dependencies:
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
 
   throat@5.0.0: {}
 

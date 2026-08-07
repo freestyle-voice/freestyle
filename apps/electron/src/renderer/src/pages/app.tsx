@@ -18,6 +18,7 @@ import {
   getNeedsAppContextForCleanup,
   refreshNeedsAppContextForCleanup,
 } from "@renderer/lib/cleanup-app-context";
+import { EASE_MORPH_CSS, MORPH_MS } from "@renderer/lib/ease";
 import { Recorder, RecorderSupersededError } from "@renderer/lib/recorder";
 import { Streamer, type StreamerConnectionState } from "@renderer/lib/streamer";
 import {
@@ -3194,9 +3195,9 @@ export default function AppPage(): React.JSX.Element {
             transition: opacity 180ms ease,
               transform 380ms cubic-bezier(0.22, 1.12, 0.36, 1),
               filter 220ms ease,
-              width 320ms cubic-bezier(0.3, 0.9, 0.3, 1),
-              height 320ms cubic-bezier(0.3, 0.9, 0.3, 1),
-              border-radius 320ms cubic-bezier(0.3, 0.9, 0.3, 1);
+              width ${MORPH_MS}ms ${EASE_MORPH_CSS},
+              height ${MORPH_MS}ms ${EASE_MORPH_CSS},
+              border-radius ${MORPH_MS}ms ${EASE_MORPH_CSS};
           }
 
           /* ---- Remix card ---- */

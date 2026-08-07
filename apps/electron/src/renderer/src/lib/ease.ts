@@ -1,9 +1,14 @@
-export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
+export const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 export const EASE_IN_OUT = [0.77, 0, 0.175, 1] as const;
 export const EASE_DRAWER = [0.32, 0.72, 0, 1] as const;
 
 /** CSS string form of EASE_OUT for inline style transitions. */
-export const EASE_OUT_CSS = "cubic-bezier(0.16, 1, 0.3, 1)";
+export const EASE_OUT_CSS = "cubic-bezier(0.22, 1, 0.36, 1)";
+
+/** Shape changes — the pill growing into the card, and anything landing with
+ * it. Softer off the mark than EASE_OUT, so a resizing box doesn't snap. */
+export const EASE_MORPH_CSS = "cubic-bezier(0.3, 0.9, 0.3, 1)";
+export const MORPH_MS = 320;
 
 /** Press feedback on buttons and other tappable surfaces. */
 export const SPRING_PRESS = {

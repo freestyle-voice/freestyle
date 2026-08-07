@@ -1,3 +1,4 @@
+import { EASE_OUT_CSS } from "@renderer/lib/ease";
 import type React from "react";
 import { useCallback, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -65,8 +66,8 @@ function RemixBar(): React.JSX.Element {
           border-radius: 999px;
           background: rgba(22, 20, 15, 0.98);
           border: 1px solid rgba(245, 241, 228, 0.35);
-          transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1),
-            height 220ms cubic-bezier(0.22, 1, 0.36, 1),
+          transition: width 220ms ${EASE_OUT_CSS},
+            height 220ms ${EASE_OUT_CSS},
             border-color 220ms ease;
         }
         .bar-hit[data-hot="true"] .bar-strip {

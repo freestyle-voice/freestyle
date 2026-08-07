@@ -3878,8 +3878,8 @@ export default function AppPage(): React.JSX.Element {
                 aria-hidden="true"
                 style={{
                   position: "absolute",
-                  left: 10,
-                  bottom: 48,
+                  left: 30,
+                  bottom: 68,
                   pointerEvents: "none",
                 }}
               >
@@ -3911,7 +3911,8 @@ export default function AppPage(): React.JSX.Element {
                       boxShadow: "8px 8px 0 rgba(20, 18, 16, 0.8)",
                       backdropFilter: "none",
                       WebkitBackdropFilter: "none",
-                      marginBottom: pillAlign === "end" ? 96 : 0,
+                      marginBottom: pillAlign === "end" ? 116 : 0,
+                      marginLeft: 20,
                     }
                   : {}),
                 // The anchored edge gets the capsule's inset — (PILL_HEIGHT -
@@ -4060,8 +4061,8 @@ export default function AppPage(): React.JSX.Element {
                 aria-hidden="true"
                 style={{
                   position: "absolute",
-                  left: 10,
-                  bottom: 48,
+                  left: 30,
+                  bottom: 68,
                   pointerEvents: "none",
                 }}
               >
@@ -4095,7 +4096,8 @@ export default function AppPage(): React.JSX.Element {
                       boxShadow: "8px 8px 0 rgba(20, 18, 16, 0.8)",
                       backdropFilter: "none",
                       WebkitBackdropFilter: "none",
-                      marginBottom: pillAlign === "end" ? 96 : 0,
+                      marginBottom: pillAlign === "end" ? 116 : 0,
+                      marginLeft: 20,
                     }
                   : {}),
                 ...(chatMiniVisual

@@ -98,6 +98,15 @@ import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import { normalizeAccelerator } from "./hotkey-utils";
+import {
+  initJeb,
+  isJebEnabled,
+  jebGreet,
+  jebListening,
+  jebNotifyActivity,
+  setJebEnabled,
+  updateJeb,
+} from "./jeb";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
@@ -515,7 +524,12 @@ function setProgrammaticPosition(
 }
 
 /** Which capsule edge stays pinned when the window grows around the pill. */
-function getPillAnchor(): { side: "center" | "right"; edge: "top" | "bottom" } {
+function getPillAnchor(): {
+  side: "center" | "right" | "left";
+  edge: "top" | "bottom";
+} {
+  // Jeb's bubble: pinned at his corner, growing right and up.
+  if (isJebEnabled()) return { side: "left", edge: "bottom" };
   const position = (readSettings().pillPosition as string) || "bottom-center";
   if (position === "custom") {
     return {
@@ -524,7 +538,11 @@ function getPillAnchor(): { side: "center" | "right"; edge: "top" | "bottom" } {
     };
   }
   return {
-    side: position.endsWith("right") ? "right" : "center",
+    side: position.endsWith("right")
+      ? "right"
+      : position.endsWith("left")
+        ? "left"
+        : "center",
     edge: position.startsWith("top") ? "top" : "bottom",
   };
 }
@@ -561,7 +579,9 @@ function setPillExpanded(
       dx:
         side === "right"
           ? width - APP_WIDTH
-          : Math.round((width - APP_WIDTH) / 2),
+          : side === "left"
+            ? 0
+            : Math.round((width - APP_WIDTH) / 2),
       dy: edge === "top" ? 0 : height - APP_HEIGHT,
     };
     // Offset is from the collapsed slot; rebase before applying (may already be expanded).
@@ -632,10 +652,19 @@ function presetPositionForDisplay(
       return { x: rightX, y: waY };
     case "bottom-right":
       return { x: rightX, y: bottomY };
+    case "bottom-left":
+      // Jeb's slot: inset so the capsule/chat sits just right of the
+      // character in the corner, reading as his conversation bubble.
+      return { x: waX + JEB_PILL_CLEARANCE, y: bottomY };
     default:
       return { x: centerX, y: bottomY };
   }
 }
+
+/** The bubble sits DIRECTLY over Jeb — the surfaces are lifted ~96px above
+ *  the window bottom, clearing his ~72px body, so the panel's tail can drop
+ *  straight down onto his head instead of pointing at empty desktop. */
+const JEB_PILL_CLEARANCE = 0;
 
 /**
  * Screen bounds (top-left origin, in screen coordinates) of the currently
@@ -741,6 +770,13 @@ function getAppWindowPosition(preferredDisplay?: Electron.Display | null): {
   const activeDisplay =
     preferredDisplay ??
     screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+
+  // While Jeb is the ambient character, every pill surface lives beside him
+  // in the bottom-left corner — his conversation bubble — overriding the
+  // stored position preference.
+  if (isJebEnabled()) {
+    return presetPositionForDisplay(activeDisplay, "bottom-left");
+  }
 
   // Read pill position preference
   const position = (readSettings().pillPosition as string) || "bottom-center";
@@ -911,7 +947,12 @@ function createAppWindow(): void {
         },
       });
       const alignment = getPillAlignmentForCustom();
-      mainWindow.webContents.send("settings:pill-position-changed", alignment);
+      // The pill styles for the EFFECTIVE position (Jeb pins it left);
+      // the settings UI shows the stored preference.
+      mainWindow.webContents.send(
+        "settings:pill-position-changed",
+        isJebEnabled() ? effectivePillPosition() : alignment,
+      );
       settingsWindow?.webContents.send(
         "settings:pill-position-changed",
         alignment,
@@ -1121,6 +1162,10 @@ function showPill(): void {
         updateRemixBar();
         updatePillEscape();
         anchorPillToFocusedDisplay();
+        mainWindow.webContents.send(
+          "settings:pill-position-changed",
+          effectivePillPosition(),
+        );
         resolve();
       });
     });
@@ -1135,6 +1180,12 @@ function showPill(): void {
   }
   updatePillEscape();
   anchorPillToFocusedDisplay();
+  jebNotifyActivity();
+  // Push the effective position on every show: the renderer's mount-time
+  // read can race main's state, and a stale side renders the wrong chat
+  // (original vs Jeb) in the wrong place. Pushing makes it deterministic
+  // before any surface opens.
+  sendToPill("settings:pill-position-changed", effectivePillPosition());
 }
 
 /**
@@ -1167,6 +1218,17 @@ function anchorPillToFocusedDisplay(): void {
     const { x, y } = getAppWindowPosition(focusedDisplay);
     setProgrammaticPosition(mainWindow, x, y);
   });
+}
+
+/** The alignment token the renderer should style for, Jeb override included. */
+function effectivePillPosition(): string {
+  // Beside Jeb, whatever the stored preference says.
+  if (isJebEnabled()) return "bottom-left";
+  const pos = (readSettings().pillPosition as string) ?? "bottom-center";
+  // For a custom position, derive the correct top/bottom alignment token
+  // from the actual window position relative to its display.
+  if (pos === "custom") return getPillAlignmentForCustom();
+  return pos;
 }
 
 function updatePillEscape(): void {
@@ -1636,6 +1698,7 @@ function resetOnboarding(): void {
   writeSettings({ onboardingComplete: false });
   remixBarHeldForOnboarding = true;
   updateRemixBar();
+  updateJeb();
   showSettingsWindow("/onboarding");
 }
 
@@ -2563,6 +2626,7 @@ app.whenReady().then(async () => {
     remixPracticeTarget = false;
     remixBarHeldForOnboarding = false;
     updateRemixBar();
+    updateJeb();
   });
 
   // IPC: hotkey recording — global native listener + renderer DOM on macOS
@@ -2688,11 +2752,19 @@ app.whenReady().then(async () => {
 
   createAppWindow();
 
+  initJeb({
+    openChat: () => openRemixChatFromAmbient(),
+    getFocusedWindowBounds,
+    getCaretBounds: runMacAxBounds,
+    isHeldForOnboarding: () => remixBarHeldForOnboarding,
+  });
+
   // Onboarding already has dedicated permission cards. Existing users instead
   // get one actionable warning once a user-facing window can be shown.
   void isOnboardingActive().then((onboardingActive) => {
     remixBarHeldForOnboarding = onboardingActive;
     updateRemixBar();
+    updateJeb();
     const warning = startupPermissionWarning(
       process.platform,
       onboardingActive,
@@ -2712,7 +2784,13 @@ app.whenReady().then(async () => {
     setProgrammaticPosition(mainWindow, x, y);
     const after = (readSettings().pillPosition as string) ?? "bottom-center";
     if (before !== after) {
-      mainWindow.webContents.send("settings:pill-position-changed", after);
+      // Raw stored position for the settings UI; the pill styles for the
+      // EFFECTIVE position — broadcasting the raw value here used to stomp
+      // Jeb mode on every display-metrics blip (dock, spaces, new windows).
+      mainWindow.webContents.send(
+        "settings:pill-position-changed",
+        effectivePillPosition(),
+      );
       settingsWindow?.webContents.send("settings:pill-position-changed", after);
     }
   };
@@ -2945,13 +3023,7 @@ app.whenReady().then(async () => {
   });
 
   // -- Pill position setting --
-  ipcMain.handle("settings:pill-position", () => {
-    const pos = (readSettings().pillPosition as string) ?? "bottom-center";
-    // For a custom position, derive the correct top/bottom alignment token
-    // from the actual window position relative to its display.
-    if (pos === "custom") return getPillAlignmentForCustom();
-    return pos;
-  });
+  ipcMain.handle("settings:pill-position", () => effectivePillPosition());
 
   ipcMain.on("settings:set-pill-position", (_event, position: string) => {
     if (position === "custom") {
@@ -2964,10 +3036,14 @@ app.whenReady().then(async () => {
       const { x, y } = getAppWindowPosition();
       setProgrammaticPosition(mainWindow, x, y);
     }
-    // For custom, resolve the live alignment; for presets, send as-is.
+    // For custom, resolve the live alignment; for presets, send as-is. The
+    // pill always styles for the EFFECTIVE position (Jeb pins it left).
     const broadcast =
       position === "custom" ? getPillAlignmentForCustom() : position;
-    mainWindow?.webContents.send("settings:pill-position-changed", broadcast);
+    mainWindow?.webContents.send(
+      "settings:pill-position-changed",
+      isJebEnabled() ? effectivePillPosition() : broadcast,
+    );
     settingsWindow?.webContents.send(
       "settings:pill-position-changed",
       broadcast,
@@ -3500,6 +3576,41 @@ async function runMacAxCaps(): Promise<{
   }
 }
 
+/** Screen rect of the caret/selection via AX, for Jeb's precision landings. */
+async function runMacAxBounds(): Promise<{
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} | null> {
+  if (process.platform !== "darwin") return null;
+  // The chat composer is a non-activating panel: while the user types in it,
+  // the systemwide AX focused element is OUR text field, and its caret would
+  // send Jeb to the chat instead of the user's document. Any focused
+  // Freestyle window disqualifies the caret probe; the focused-window
+  // fallback (AppleScript frontmost app) still points at the document,
+  // because a panel never activates the app.
+  if (BrowserWindow.getFocusedWindow()) return null;
+  const binary = getNativeBinaryPath("macos-ax");
+  if (!binary) return null;
+  try {
+    // Kept tight: this sits on the paste trip's critical path — a slow AX
+    // answer should fall back to window bounds, not stall the swing.
+    // The pid guard covers key focus the JS check can't see.
+    const out = await execAsync(binary, ["bounds", String(process.pid)], 800);
+    const rect = JSON.parse(out) as {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+    if (rect.width < 0 || rect.height < 0) return null;
+    return rect;
+  } catch {
+    return null;
+  }
+}
+
 async function isSecureInputActive(): Promise<boolean> {
   if (process.platform !== "darwin") return false;
   const binary = getNativeBinaryPath("macos-ax");
@@ -3786,7 +3897,10 @@ function calibrateThenShow(bar: BrowserWindow, displayId: number): void {
 
 function updateRemixBar(): void {
   const shouldShow =
-    remixBarEnabled && !remixBarHeldForOnboarding && !mainWindow?.isVisible();
+    remixBarEnabled &&
+    !isJebEnabled() &&
+    !remixBarHeldForOnboarding &&
+    !mainWindow?.isVisible();
   if (!shouldShow) {
     if (remixBarShowTimer) {
       clearTimeout(remixBarShowTimer);
@@ -3853,6 +3967,11 @@ function updateRemixBar(): void {
 
 function handleRemixBarOpen(): void {
   if (!remixBarEnabled) return;
+  openRemixChatFromAmbient();
+}
+
+/** Shared open path for the ambient affordances (remix bar, Jeb hover). */
+function openRemixChatFromAmbient(): void {
   if (mainWindow?.isVisible()) return;
   if (Date.now() - lastPillHideAt < REMIX_BAR_REOPEN_COOLDOWN_MS) return;
   remixSelectionRequested = false;
@@ -3860,12 +3979,15 @@ function handleRemixBarOpen(): void {
   showPill();
   sendToPill("remix:open-chat");
   updateRemixBar();
+  jebGreet();
 }
 
 function applyRemixSettings(settings: Record<string, string>): void {
   // Absent means on.
   remixBarEnabled = settings[SETTINGS_KEYS.remixBarEnabled] !== "false";
   remixInitialized = true;
+  // Jeb replaces the bar as the ambient affordance when enabled.
+  setJebEnabled(settings[SETTINGS_KEYS.jebEnabled] !== "false");
   updateRemixBar();
   const configured = settings[SETTINGS_KEYS.remixHotkey];
   scheduleRemixHotkeyRegistration(
@@ -3948,6 +4070,8 @@ function sendHotkeyDown(): void {
     return;
   }
   showPill();
+  // With Jeb on the capsule is invisible — he holds the listening bubble.
+  jebListening(true);
   relayServerEvent({ type: FreestyleEventType.RecordingStarted });
   if (pillReadyPromise) {
     // The pill window is still loading — defer IPC until it can receive it.
@@ -3962,6 +4086,7 @@ function sendHotkeyDown(): void {
 }
 
 function sendHotkeyUp(): void {
+  jebListening(false);
   if (pillReadyPromise) {
     // Preserve IPC ordering: hotkey:up must arrive after hotkey:down.
     void pillReadyPromise.then(() => {

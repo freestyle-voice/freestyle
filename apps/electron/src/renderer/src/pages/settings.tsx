@@ -41,6 +41,7 @@ import {
   keyDisplayLabel,
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
+import { capture } from "@renderer/lib/analytics";
 import {
   checkServerAuth,
   checkServerHealth,
@@ -180,6 +181,7 @@ export default function SettingsPage(): React.JSX.Element {
   );
   const [hotkeyMode, setHotkeyMode] = useState<"hold" | "toggle">("hold");
   const [remixBarEnabled, setRemixBarEnabled] = useState(true);
+  const [jebEnabled, setJebEnabled] = useState(true);
   const [remixHotkey, setRemixHotkey] = useState(
     window.api?.defaultRemixHotkey ?? getDefaultRemixHotkey(),
   );
@@ -368,6 +370,18 @@ export default function SettingsPage(): React.JSX.Element {
       .catch(() => {});
   }, []);
 
+  const handleJebToggle = useCallback((enabled: boolean) => {
+    setJebEnabled(enabled);
+    if (!enabled) capture("jeb_disabled", {});
+    getClient()
+      .api.settings[":key"].$put({
+        param: { key: SETTINGS_KEYS.jebEnabled },
+        json: { value: String(enabled) },
+      })
+      .then(() => window.api?.reloadRemixHotkey())
+      .catch(() => {});
+  }, []);
+
   // The remix listener re-reads its accelerator from the server rather than
   // being handed one, so the reload has to wait for the write to land.
   const handleRemixHotkeyRecorded = useCallback((accelerator: string) => {
@@ -430,6 +444,7 @@ export default function SettingsPage(): React.JSX.Element {
     if (s[SETTINGS_KEYS.remixHotkey])
       setRemixHotkey(s[SETTINGS_KEYS.remixHotkey]);
     setRemixBarEnabled(s[SETTINGS_KEYS.remixBarEnabled] !== "false");
+    setJebEnabled(s[SETTINGS_KEYS.jebEnabled] !== "false");
     setLanguages(parseLanguagesSetting(s));
     if (s[SETTINGS_KEYS.translateMode] === "true") setTranslateMode(true);
     if (s[SETTINGS_KEYS.outputMode]) setOutputMode(s[SETTINGS_KEYS.outputMode]);
@@ -1115,11 +1130,21 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.remix.bar")}
                 desc={t("settings.remix.barDesc")}
-                last
               >
                 <Switch
                   checked={remixBarEnabled}
                   onCheckedChange={handleRemixBarToggle}
+                />
+              </Row>
+
+              <Row
+                label={t("settings.remix.jeb")}
+                desc={t("settings.remix.jebDesc")}
+                last
+              >
+                <Switch
+                  checked={jebEnabled}
+                  onCheckedChange={handleJebToggle}
                 />
               </Row>
             </SettingsPanel>

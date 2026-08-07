@@ -37,23 +37,20 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { RemixSelectionPayload } from "../../../shared/remix";
-import { FreestyleMark } from "./freestyle-mark";
 import {
+  JEB_CHAT_SURFACE,
   REMIX_CHAT_STRIP,
-  REMIX_CHAT_SURFACE,
   type RemixChatAnchor,
 } from "./remix-chat-surface";
 
-const INK = "rgba(245, 241, 228, 0.92)";
-const INK_DIM = "rgba(245, 241, 228, 0.70)";
-const INK_FAINT = "rgba(245, 241, 228, 0.52)";
-const OLIVE = "#8AB62A";
+// Manga panel palette: ink on screentone-white, one red accent.
+const INK = "#141210";
+const INK_DIM = "rgba(20, 18, 16, 0.64)";
+const INK_FAINT = "rgba(20, 18, 16, 0.42)";
+const ACCENT = "#C0392F";
 
-export {
-  REMIX_CHAT_STRIP,
-  REMIX_CHAT_SURFACE,
-  type RemixChatAnchor,
-} from "./remix-chat-surface";
+// The Jeb chat has its own (shorter) surface so the manga panel can float
+// above the character inside the same chat window.
 
 function anchoredLayerStyle(
   anchor: RemixChatAnchor,
@@ -78,7 +75,7 @@ interface ThreadState {
   messages: UIMessage[];
 }
 
-export interface RemixChatProps {
+export interface JebRemixChatProps {
   context: RemixSelectionPayload;
   initialInstruction: string | null;
   minimized: boolean;
@@ -89,7 +86,7 @@ export interface RemixChatProps {
   onClose: () => void;
 }
 
-export function RemixChat(props: RemixChatProps): React.JSX.Element {
+export function JebRemixChat(props: JebRemixChatProps): React.JSX.Element {
   const [thread, setThread] = useState<ThreadState | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   // State (not props) so "New" can clear it without a remount re-sending.
@@ -762,7 +759,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover cancels minimize; Esc closes
     <div
-      className="remix-chat dark"
+      className="remix-chat"
       data-minimized={minimized}
       data-testid={minimized ? "remix-chat-mini" : "remix-chat"}
       onMouseEnter={handleMouseEnter}
@@ -802,13 +799,15 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
 
         <div
           className="remix-chat-face remix-chat-face-full"
-          style={anchoredLayerStyle(anchor, REMIX_CHAT_SURFACE)}
+          style={anchoredLayerStyle(anchor, JEB_CHAT_SURFACE)}
           aria-hidden={minimized}
         >
           <div className="remix-chat-head">
             <span className="remix-chat-title">
-              <FreestyleMark size={15} />
-              <span className="remix-chat-wordmark">Remix</span>
+              <span className="remix-chat-wordmark">JEB</span>
+              <span className="remix-chat-stamp" aria-hidden="true">
+                斬
+              </span>
             </span>
             <span className="remix-chat-actions">
               <button
@@ -872,8 +871,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             {messages.length === 0 && actions.length === 0 && !busy && (
               <div className="remix-chat-empty">
                 {liveContext.text
-                  ? "Say or type what to do with your selection."
-                  : "Nothing selected — ask me to write, research, or answer."}
+                  ? "Say or type what Jeb should do with your selection."
+                  : "Nothing selected — ask Jeb to write, research, or answer."}
               </div>
             )}
             {actions.map((action) => (
@@ -921,13 +920,16 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           ) : null}
 
           <div className="remix-chat-composer">
+            <span className="remix-chat-prompt" aria-hidden="true">
+              ›
+            </span>
             <textarea
               ref={inputRef}
               className="remix-chat-input"
               rows={1}
               value={input}
-              aria-label="Message Remix"
-              placeholder={busy ? "Working…" : "Message Remix…"}
+              aria-label="Message Jeb"
+              placeholder={busy ? "Working…" : "Ask Jeb…"}
               onChange={(e) => {
                 setInput(e.target.value);
                 const el = e.currentTarget;
@@ -1178,6 +1180,19 @@ function ToolStepLabel({
   );
 }
 
+/** Manga impact words — drawn only when the sword actually landed. */
+const ACTION_WORDS: Record<string, string> = {
+  paste: "SLASH!",
+  select_all: "斬 ZAN!",
+  select_text: "PIN!",
+  copy: "FWIP!",
+  set_clipboard: "FWIP!",
+  set_clipboard_image: "FWIP!",
+  web_search: "SHING!",
+  image_search: "SHING!",
+  undo: "TCH!",
+};
+
 function ToolActivity({
   parts,
   busy,
@@ -1226,16 +1241,37 @@ function ToolActivity({
       `Running ${getToolOrDynamicToolName(inFlight)}…`)
     : undefined;
 
+  // One impact word per block, for the last landed tool that has one.
+  const impactWord = [...parts]
+    .reverse()
+    .map((part) => {
+      if (part.state !== "output-available") return null;
+      const output =
+        typeof part.output === "object" && part.output !== null
+          ? (part.output as { ok?: boolean })
+          : null;
+      if (output?.ok === false) return null;
+      return ACTION_WORDS[getToolOrDynamicToolName(part)] ?? null;
+    })
+    .find((word) => word !== null);
+
   return (
-    <AgentActivity
-      className="remix-chat-activity"
-      items={items}
-      contentType="step"
-      maxHeight={280}
-      summary={summary}
-      activeLabel={activeLabel}
-      status={inFlight && busy ? "working" : "complete"}
-    />
+    <>
+      <AgentActivity
+        className="remix-chat-activity"
+        items={items}
+        contentType="step"
+        maxHeight={280}
+        summary={summary}
+        activeLabel={activeLabel}
+        status={inFlight && busy ? "working" : "complete"}
+      />
+      {impactWord && !inFlight && (
+        <div className="remix-chat-slash" aria-hidden="true">
+          {impactWord}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1309,14 +1345,13 @@ const REMIX_CHAT_CSS = `
     flex-shrink: 0;
     width: 7px;
     height: 7px;
-    border-radius: 999px;
-    background: ${OLIVE};
+    background: ${ACCENT};
   }
   .remix-mini-dot[data-busy="true"] {
-    background: #F5F1E4;
+    background: ${INK};
     animation: remix-mini-pulse 1.1s ease-in-out infinite;
   }
-  .remix-mini-dot[data-failed="true"] { background: rgba(224, 128, 95, 0.9); }
+  .remix-mini-dot[data-failed="true"] { background: ${ACCENT}; }
   @keyframes remix-mini-pulse {
     0%, 100% { opacity: 0.35; transform: scale(0.8); }
     50% { opacity: 1; transform: scale(1); }
@@ -1361,12 +1396,19 @@ const REMIX_CHAT_CSS = `
     gap: 9px;
     min-width: 0;
   }
-  .remix-chat-title svg { flex-shrink: 0; color: ${OLIVE}; }
   .remix-chat-wordmark {
-    font-family: "Instrument Serif", Georgia, serif;
-    font-size: 20px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.24em;
     line-height: 1;
     color: ${INK};
+  }
+  .remix-chat-stamp {
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+    color: ${ACCENT};
   }
   .remix-chat-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
   .remix-chat-icon {
@@ -1383,7 +1425,7 @@ const REMIX_CHAT_CSS = `
     cursor: pointer;
     transition: background 140ms ease, color 140ms ease;
   }
-  .remix-chat-icon:hover { background: rgba(245, 241, 228, 0.08); color: ${INK}; }
+  .remix-chat-icon:hover { background: rgba(20, 18, 16, 0.08); color: ${INK}; }
 
   .remix-chat-scroll { flex: 1; min-height: 0; }
   .remix-chat-thread {
@@ -1401,24 +1443,24 @@ const REMIX_CHAT_CSS = `
   .remix-chat ::-webkit-scrollbar-track { background: transparent; }
   .remix-chat ::-webkit-scrollbar-corner { background: transparent; }
   .remix-chat ::-webkit-scrollbar-thumb {
-    background: rgba(245, 241, 228, 0.16);
-    border-radius: 99px;
+    background: rgba(20, 18, 16, 0.22);
     border: 3px solid transparent;
     background-clip: padding-box;
   }
   .remix-chat ::-webkit-scrollbar-thumb:hover {
-    background: rgba(245, 241, 228, 0.28);
+    background: rgba(20, 18, 16, 0.38);
     border: 3px solid transparent;
     background-clip: padding-box;
   }
+  /* You speak in hard black blocks with a printed offset shadow. */
   .remix-chat-user {
     align-self: flex-end;
-    max-width: 88%;
-    background: rgba(245, 241, 228, 0.13);
-    border-radius: 13px 13px 4px 13px;
-    padding: 8px 12px;
+    max-width: 84%;
+    background: ${INK};
+    color: #ffffff;
+    padding: 7px 10px;
     line-height: 1.5;
-    color: ${INK};
+    box-shadow: 4px 4px 0 rgba(20, 18, 16, 0.25);
     white-space: pre-wrap;
     word-break: break-word;
   }
@@ -1430,7 +1472,26 @@ const REMIX_CHAT_CSS = `
     min-width: 0;
   }
   .remix-chat-activity { font-size: 11.5px; }
-  .remix-chat-response { font-size: 13px; }
+  /* Jeb speaks in ink-bordered white bubbles with a printed shadow. */
+  .remix-chat-response {
+    font-size: 13px;
+    align-self: flex-start;
+    max-width: 92%;
+    background: #ffffff;
+    border: 2.5px solid ${INK};
+    padding: 8px 11px;
+    box-shadow: 3px 3px 0 rgba(20, 18, 16, 0.22);
+  }
+  /* Impact words: red, rotated, only when a sword actually landed. */
+  .remix-chat-slash {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: ${ACCENT};
+    transform: rotate(-2deg);
+    margin: 0 0 0 4px;
+  }
 
   .remix-chat-step { display: block; min-width: 0; }
   .remix-chat-step-head {
@@ -1473,9 +1534,8 @@ const REMIX_CHAT_CSS = `
     display: block;
     margin: 0;
     padding: 6px 8px;
-    border-radius: 8px;
-    background: rgba(0, 0, 0, 0.28);
-    border: 1px solid rgba(245, 241, 228, 0.08);
+    background: rgba(20, 18, 16, 0.05);
+    border: 1px solid rgba(20, 18, 16, 0.14);
     font-family: "JetBrains Mono", ui-monospace, monospace;
     font-size: 10px;
     line-height: 1.45;
@@ -1493,10 +1553,10 @@ const REMIX_CHAT_CSS = `
     text-transform: uppercase;
     color: ${INK_FAINT};
   }
-  .remix-chat-action[data-failed="true"] { color: rgba(224, 128, 95, 0.9); }
+  .remix-chat-action[data-failed="true"] { color: ${ACCENT}; }
   .remix-chat-notice {
     font-size: 11px;
-    color: rgba(224, 128, 95, 0.95);
+    color: ${ACCENT};
     padding: 6px 18px 0;
     line-height: 1.35;
   }
@@ -1506,20 +1566,23 @@ const REMIX_CHAT_CSS = `
   .remix-chat-chip {
     display: inline-flex;
     align-items: center;
-    border: 1px solid rgba(245, 241, 228, 0.13);
-    background: rgba(245, 241, 228, 0.07);
+    border: 2px solid ${INK};
+    background: #ffffff;
     color: ${INK};
-    font-size: 11px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     line-height: 1;
-    padding: 5px 10px;
-    border-radius: 999px;
+    padding: 6px 10px;
     max-width: 180px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     cursor: pointer;
   }
-  .remix-chat-chip:hover { background: rgba(245, 241, 228, 0.15); }
+  .remix-chat-chip:hover { background: ${INK}; color: #ffffff; }
   .remix-chat-quick {
     display: flex;
     flex-wrap: wrap;
@@ -1531,13 +1594,21 @@ const REMIX_CHAT_CSS = `
     align-items: flex-end;
     gap: 8px;
     margin: 10px 14px 13px;
-    padding: 8px 8px 8px 13px;
-    border: 1px solid rgba(245, 241, 228, 0.16);
-    background: rgba(245, 241, 228, 0.05);
-    border-radius: 14px;
-    transition: border-color 140ms ease;
+    padding: 7px 7px 7px 11px;
+    border: 2.5px solid ${INK};
+    background: #ffffff;
+    transition: box-shadow 140ms ease;
   }
-  .remix-chat-composer:focus-within { border-color: rgba(245, 241, 228, 0.34); }
+  .remix-chat-composer:focus-within { box-shadow: 3px 3px 0 rgba(20, 18, 16, 0.25); }
+  .remix-chat-prompt {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 13px;
+    font-weight: 800;
+    color: ${INK};
+    padding: 6px 0;
+    line-height: 1.45;
+    user-select: none;
+  }
   .remix-chat-input {
     flex: 1;
     resize: none;
@@ -1561,9 +1632,8 @@ const REMIX_CHAT_CSS = `
     align-items: center;
     justify-content: center;
     border: none;
-    border-radius: 999px;
-    background: rgba(245, 241, 228, 0.92);
-    color: rgba(24, 22, 18, 0.95);
+    background: ${INK};
+    color: #ffffff;
     cursor: pointer;
     transition: opacity 140ms ease, transform 140ms ease;
   }
@@ -1588,42 +1658,40 @@ const REMIX_CHAT_CSS = `
   .remix-md ul, .remix-md ol { margin: 0 0 8px; padding-left: 18px; }
   .remix-md li { margin: 2px 0; }
   .remix-md li > ul, .remix-md li > ol { margin-bottom: 0; }
-  .remix-md a { color: ${OLIVE}; text-decoration: underline; text-underline-offset: 2px; }
-  .remix-md a:hover { color: #A6D03F; }
+  .remix-md a { color: ${ACCENT}; text-decoration: underline; text-underline-offset: 2px; }
+  .remix-md a:hover { color: #96271F; }
   .remix-md strong { font-weight: 600; color: ${INK}; }
   .remix-md em { font-style: italic; }
   .remix-md code {
     font-family: "JetBrains Mono", ui-monospace, monospace;
     font-size: 11px;
-    background: rgba(245, 241, 228, 0.1);
-    border-radius: 4px;
+    background: rgba(20, 18, 16, 0.07);
     padding: 1px 4px;
   }
   .remix-md pre {
     margin: 0 0 8px;
     padding: 8px 10px;
-    border-radius: 10px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(245, 241, 228, 0.08);
+    background: rgba(20, 18, 16, 0.05);
+    border: 1px solid rgba(20, 18, 16, 0.16);
     overflow-x: auto;
   }
   .remix-md pre code { background: none; padding: 0; font-size: 10.5px; line-height: 1.5; }
   .remix-md blockquote {
     margin: 0 0 8px;
     padding-left: 11px;
-    border-left: 1px solid rgba(245, 241, 228, 0.22);
+    border-left: 2px solid rgba(20, 18, 16, 0.4);
     color: ${INK_DIM};
   }
   .remix-md hr {
     border: none;
-    border-top: 1px solid rgba(245, 241, 228, 0.14);
+    border-top: 2px solid rgba(20, 18, 16, 0.2);
     margin: 10px 0;
   }
   .remix-md table { border-collapse: collapse; margin: 0 0 8px; font-size: 11.5px; }
   .remix-md th, .remix-md td {
-    border: 1px solid rgba(245, 241, 228, 0.16);
+    border: 1.5px solid rgba(20, 18, 16, 0.4);
     padding: 4px 8px;
     text-align: left;
   }
-  .remix-md th { background: rgba(245, 241, 228, 0.06); font-weight: 600; }
+  .remix-md th { background: rgba(20, 18, 16, 0.06); font-weight: 600; }
 `;

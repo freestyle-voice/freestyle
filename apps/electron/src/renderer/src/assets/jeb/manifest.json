@@ -1,0 +1,152 @@
+{
+  "frameSize": 96,
+  "scale": 2,
+  "states": {
+    "air-attack": {
+      "sheet": "air-attack.png",
+      "frames": 6,
+      "fps": 14,
+      "loop": false,
+      "impactFrame": 3
+    },
+    "attack-1": {
+      "sheet": "attack-1.png",
+      "frames": 7,
+      "fps": 14,
+      "loop": false,
+      "impactFrame": 3
+    },
+    "attack-2": {
+      "sheet": "attack-2.png",
+      "frames": 7,
+      "fps": 14,
+      "loop": false,
+      "impactFrame": 4
+    },
+    "attack-3": {
+      "sheet": "attack-3.png",
+      "frames": 6,
+      "fps": 14,
+      "loop": false,
+      "impactFrame": 3
+    },
+    "climbing": {
+      "sheet": "climbing.png",
+      "frames": 8,
+      "fps": 10,
+      "loop": true
+    },
+    "dash": {
+      "sheet": "dash.png",
+      "frames": 8,
+      "fps": 16,
+      "loop": true
+    },
+    "death": {
+      "sheet": "death.png",
+      "frames": 9,
+      "fps": 10,
+      "loop": false,
+      "holdLast": true
+    },
+    "defend": {
+      "sheet": "defend.png",
+      "frames": 6,
+      "fps": 10,
+      "loop": false,
+      "holdLast": true
+    },
+    "healing-no-effect": {
+      "sheet": "healing-no-effect.png",
+      "frames": 15,
+      "fps": 10,
+      "loop": true
+    },
+    "healing": {
+      "sheet": "healing.png",
+      "frames": 15,
+      "fps": 10,
+      "loop": true
+    },
+    "hurt": {
+      "sheet": "hurt.png",
+      "frames": 4,
+      "fps": 10,
+      "loop": false
+    },
+    "idle": {
+      "sheet": "idle.png",
+      "frames": 10,
+      "fps": 8,
+      "loop": true
+    },
+    "jump-fall": {
+      "sheet": "jump-fall.png",
+      "frames": 3,
+      "fps": 10,
+      "loop": true
+    },
+    "jump-start": {
+      "sheet": "jump-start.png",
+      "frames": 3,
+      "fps": 14,
+      "loop": false
+    },
+    "jump-transition": {
+      "sheet": "jump-transition.png",
+      "frames": 3,
+      "fps": 14,
+      "loop": false
+    },
+    "jump": {
+      "sheet": "jump.png",
+      "frames": 3,
+      "fps": 10,
+      "loop": true
+    },
+    "run": {
+      "sheet": "run.png",
+      "frames": 16,
+      "fps": 14,
+      "loop": true
+    },
+    "special-attack": {
+      "sheet": "special-attack.png",
+      "frames": 14,
+      "fps": 14,
+      "loop": false,
+      "impactFrame": 9
+    },
+    "throw": {
+      "sheet": "throw.png",
+      "frames": 7,
+      "fps": 14,
+      "loop": false,
+      "impactFrame": 5
+    },
+    "walk": {
+      "sheet": "walk.png",
+      "frames": 12,
+      "fps": 10,
+      "loop": true
+    },
+    "wall-contact": {
+      "sheet": "wall-contact.png",
+      "frames": 3,
+      "fps": 12,
+      "loop": false
+    },
+    "wall-jump": {
+      "sheet": "wall-jump.png",
+      "frames": 3,
+      "fps": 14,
+      "loop": false
+    },
+    "wall-slide": {
+      "sheet": "wall-slide.png",
+      "frames": 3,
+      "fps": 10,
+      "loop": true
+    }
+  }
+}

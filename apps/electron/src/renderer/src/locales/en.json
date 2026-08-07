@@ -292,7 +292,9 @@
       "hotkeyDesc": "Hold it and say what to change, or tap it for the quick routes.",
       "conflict": "This is already your dictation hotkey. Pick a different combination.",
       "bar": "Remix bar",
-      "barDesc": "Keep a small bar at the bottom of your screen. Hover it to open Remix."
+      "barDesc": "Keep a small bar at the bottom of your screen. Hover it to open Remix.",
+      "jeb": "Samurai Jeb",
+      "jebDesc": "A pixel samurai who lives in the corner of your screen and acts out what Remix does. Replaces the Remix bar while enabled."
     }
   },
   "today": {

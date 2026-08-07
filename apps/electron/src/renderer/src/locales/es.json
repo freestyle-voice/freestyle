@@ -218,7 +218,9 @@
       "hotkeyDesc": "Mantenlo pulsado y di qué cambiar, o tócalo para las rutas rápidas.",
       "conflict": "Este ya es tu atajo de dictado. Elige otra combinación.",
       "bar": "Barra de Remix",
-      "barDesc": "Mantén una pequeña barra en la parte inferior de la pantalla. Pasa el cursor para abrir Remix."
+      "barDesc": "Mantén una pequeña barra en la parte inferior de la pantalla. Pasa el cursor para abrir Remix.",
+      "jeb": "Samurai Jeb",
+      "jebDesc": "Un samurái de píxeles que vive en la esquina de tu pantalla y representa lo que hace Remix. Sustituye la barra de Remix mientras está activado."
     }
   },
   "today": {

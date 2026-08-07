@@ -218,7 +218,9 @@
       "hotkeyDesc": "Halten Sie sie gedrückt und sagen Sie, was geändert werden soll — oder tippen Sie kurz für die Schnellrouten.",
       "conflict": "Das ist bereits Ihre Diktat-Tastenkombination. Wählen Sie eine andere Kombination.",
       "bar": "Remix-Leiste",
-      "barDesc": "Zeigt eine kleine Leiste am unteren Bildschirmrand. Fahren Sie darüber, um Remix zu öffnen."
+      "barDesc": "Zeigt eine kleine Leiste am unteren Bildschirmrand. Fahren Sie darüber, um Remix zu öffnen.",
+      "jeb": "Samurai Jeb",
+      "jebDesc": "Ein Pixel-Samurai, der in der Ecke deines Bildschirms lebt und die Aktionen von Remix darstellt. Ersetzt die Remix-Leiste, solange er aktiviert ist."
     }
   },
   "today": {

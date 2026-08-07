@@ -22,6 +22,12 @@
  *     carry the Freestyle synthetic marker so the key listener ignores them.
  *   macos-ax secure
  *     Prints "1" when a password field holds Secure Event Input, else "0".
+ *   macos-ax bounds [excludePid]
+ *     Prints JSON: {"x": n, "y": n, "width": n, "height": n} — the screen rect
+ *     of the focused element's selection/caret (top-left origin). Lets the
+ *     Jeb overlay land on the text cursor instead of a window edge. When the
+ *     focused element belongs to excludePid (the caller's own chat panel
+ *     holding key focus), exits 3 — that caret is not the user's document.
  *
  * Exit codes:
  *   0 - success
@@ -146,6 +152,39 @@ case "select":
     if err != .success {
         exit(3)
     }
+
+case "bounds":
+    let focused = focusedElement()
+    let rest = Array(args.dropFirst())
+    if rest.count == 1, let excludePid = Int32(rest[0]) {
+        var ownerPid: pid_t = 0
+        if AXUIElementGetPid(focused, &ownerPid) == .success, ownerPid == excludePid {
+            exit(3)
+        }
+    }
+    var rangeRef: CFTypeRef?
+    guard
+        AXUIElementCopyAttributeValue(
+            focused, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
+        let rangeAny = rangeRef, CFGetTypeID(rangeAny) == AXValueGetTypeID()
+    else {
+        exit(3)
+    }
+    var boundsRef: CFTypeRef?
+    let boundsErr = AXUIElementCopyParameterizedAttributeValue(
+        focused, kAXBoundsForRangeParameterizedAttribute as CFString, rangeAny, &boundsRef)
+    guard boundsErr == .success, let boundsAny = boundsRef,
+        CFGetTypeID(boundsAny) == AXValueGetTypeID()
+    else {
+        exit(3)
+    }
+    var rect = CGRect.zero
+    guard AXValueGetValue(boundsAny as! AXValue, .cgRect, &rect) else {
+        exit(3)
+    }
+    print(
+        "{\"x\": \(Int(rect.origin.x)), \"y\": \(Int(rect.origin.y)), \"width\": \(Int(rect.size.width)), \"height\": \(Int(rect.size.height))}"
+    )
 
 case "key":
     let rest = Array(args.dropFirst())

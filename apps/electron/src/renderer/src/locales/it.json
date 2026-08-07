@@ -218,7 +218,9 @@
       "hotkeyDesc": "Tienila premuta e di' cosa cambiare, oppure toccala per le route rapide.",
       "conflict": "Questa è già la tua scorciatoia di dettatura. Scegli un'altra combinazione.",
       "bar": "Barra Remix",
-      "barDesc": "Mostra una piccola barra in fondo allo schermo. Passaci sopra per aprire Remix."
+      "barDesc": "Mostra una piccola barra in fondo allo schermo. Passaci sopra per aprire Remix.",
+      "jeb": "Samurai Jeb",
+      "jebDesc": "Un samurai in pixel che vive nell'angolo dello schermo e mette in scena le azioni di Remix. Sostituisce la barra Remix quando è attivo."
     }
   },
   "today": {

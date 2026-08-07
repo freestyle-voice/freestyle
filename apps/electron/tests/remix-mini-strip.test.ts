@@ -256,7 +256,7 @@ test("hovering the strip morphs the chat surface open in place", async () => {
   });
   console.log("surface target after hover:", JSON.stringify(surface));
   expect(surface?.width).toBe("408px");
-  expect(surface?.height).toBe("560px");
+  expect(surface?.height).toBe("464px");
   const hasFullChat = await pillPage!.evaluate(
     () => document.querySelector('[data-testid="remix-chat"]') !== null,
   );

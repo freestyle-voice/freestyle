@@ -1,6 +1,7 @@
 import { REMIX_PRESETS } from "@freestyle-voice/validations";
 import { FreestyleMark } from "@renderer/components/freestyle-mark";
 import {
+  JEB_CHAT_SURFACE,
   REMIX_CHAT_STRIP,
   REMIX_CHAT_SURFACE,
 } from "@renderer/components/remix-chat-surface";
@@ -42,10 +43,17 @@ import {
 } from "../../../shared/remix";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
-// Lazy: keep Motion/agent chat out of the dictation entry chunk.
+// Lazy: keep Motion/agent chat out of the dictation entry chunk. The chat
+// exists twice: the original Freestyle Remix surface, and Jeb's manga fork —
+// pillSide === "left" (Jeb mode) picks which one mounts.
 const RemixChat = lazy(() =>
   import("@renderer/components/remix-chat").then((mod) => ({
     default: mod.RemixChat,
+  })),
+);
+const JebRemixChat = lazy(() =>
+  import("@renderer/components/remix-chat-jeb").then((mod) => ({
+    default: mod.JebRemixChat,
   })),
 );
 
@@ -470,7 +478,9 @@ export default function AppPage(): React.JSX.Element {
     setState(next);
   }, []);
   const [pillAlign, setPillAlign] = useState<"start" | "end">("end");
-  const [pillSide, setPillSide] = useState<"center" | "right">("center");
+  const [pillSide, setPillSide] = useState<"center" | "right" | "left">(
+    "center",
+  );
   const [cancelMode, setCancelMode] = useState<PillCancelMode>("hover");
   const [pillNotice, setPillNoticeState] = useState<PillNotice>(null);
   const pillNoticeRef = useRef<PillNotice>(null);
@@ -2366,7 +2376,13 @@ export default function AppPage(): React.JSX.Element {
     const isTop =
       pos === "top-center" || pos === "top-right" || pos === "custom-top";
     setPillAlign(isTop ? "start" : "end");
-    setPillSide(pos?.endsWith("right") ? "right" : "center");
+    setPillSide(
+      pos?.endsWith("right")
+        ? "right"
+        : pos?.endsWith("left")
+          ? "left"
+          : "center",
+    );
   }, []);
 
   useEffect(() => {
@@ -2411,10 +2427,26 @@ export default function AppPage(): React.JSX.Element {
     // fires before the first recording. Session-transport support is negotiated
     // per provider — non-streaming providers fall back to the batch path.
     getStreamer();
-    window.api
-      ?.getPillPosition()
-      .then(applyPillPosition)
-      .catch(() => {});
+    // On a fast boot this renderer can mount before main's whenReady block
+    // has registered the settings handlers — the invoke rejects and a
+    // swallowed rejection would leave the pill styled for the wrong side
+    // (and the wrong Remix chat variant) until the next broadcast. Retry
+    // briefly instead of failing silent.
+    let positionRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    const readPillPosition = (attempt: number): void => {
+      window.api
+        ?.getPillPosition()
+        .then(applyPillPosition)
+        .catch(() => {
+          if (attempt < 8) {
+            positionRetryTimer = setTimeout(
+              () => readPillPosition(attempt + 1),
+              250,
+            );
+          }
+        });
+    };
+    readPillPosition(0);
     // Prime the `beforeOutput` hook-presence cache so the very first dictation's
     // delivery already applies the correct fail-closed policy.
     void refreshBeforeOutputHookPresence();
@@ -2457,6 +2489,7 @@ export default function AppPage(): React.JSX.Element {
       });
     });
     return () => {
+      if (positionRetryTimer) clearTimeout(positionRetryTimer);
       removePillPos?.();
       removeOutputMode?.();
       removeCancelMode?.();
@@ -2888,7 +2921,7 @@ export default function AppPage(): React.JSX.Element {
   }, [showErrorCard, showRemixCard, stopVisualization]);
 
   // Grow the card out of the capsule it replaces, not out of thin air.
-  const transformOrigin = `${pillSide === "right" ? "right" : "center"} ${
+  const transformOrigin = `${pillSide === "right" ? "right" : pillSide === "left" ? "left" : "center"} ${
     pillAlign === "start" ? "top" : "bottom"
   }`;
 
@@ -2963,9 +2996,20 @@ export default function AppPage(): React.JSX.Element {
     </span>
   );
 
+  // Jeb mode: the pill lives beside the character and every Remix surface
+  // wears the manga skin; otherwise the original Freestyle Remix look.
+  const jebMode = pillSide === "left";
+  const ActiveRemixChat = jebMode ? JebRemixChat : RemixChat;
+
   const layerClass = `pill-layer absolute inset-0 flex ${
     pillAlign === "start" ? "items-start" : "items-end"
-  } ${pillSide === "right" ? "justify-end pr-3" : "justify-center"}`;
+  } ${
+    pillSide === "right"
+      ? "justify-end pr-3"
+      : pillSide === "left"
+        ? "justify-start pl-3"
+        : "justify-center"
+  }`;
 
   // Surfaces rise off the edge they are anchored to, so the motion always
   // reads as coming from the screen edge rather than from an arbitrary
@@ -3255,6 +3299,35 @@ export default function AppPage(): React.JSX.Element {
             color: rgba(245, 241, 228, 0.42);
           }
 
+          /* Manga (Jeb) skin for the remix dictation card: ink on
+             screentone-white; the shared waveform bars flip to ink via CSS,
+             which outranks their SVG stroke attribute only inside this card. */
+          .pill-card[data-manga="true"] .pill-remix-jeb {
+            font-family: "JetBrains Mono", ui-monospace, monospace;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.24em;
+            color: #141210;
+          }
+          .pill-card[data-manga="true"] .pill-remix-stamp {
+            font-size: 13px;
+            font-weight: 700;
+            color: #C0392F;
+          }
+          .pill-card[data-manga="true"] .pill-remix-transcript {
+            color: rgba(20, 18, 16, 0.72);
+          }
+          .pill-card[data-manga="true"] .pill-remix-transcript[data-empty="true"] {
+            color: rgba(20, 18, 16, 0.45);
+          }
+          .pill-card[data-manga="true"] [data-bars] line,
+          .pill-card[data-manga="true"] svg line {
+            stroke: #141210;
+          }
+          .pill-card[data-manga="true"] .pill-action-ghost {
+            color: rgba(20, 18, 16, 0.65);
+          }
+
           /* The capsule keeps its enter/exit motion on the shared .pill-surface
              summon above; .pill-capsule only carries the completion states
              (delivered / cancelled / quiet) and the hover lift, so it must not
@@ -3486,6 +3559,15 @@ export default function AppPage(): React.JSX.Element {
                 transformOrigin,
                 marginBottom: pillAlign === "end" ? 8 : 0,
                 marginTop: pillAlign === "start" ? 8 : 0,
+                // Beside Jeb the capsule never shows — he says "I'm
+                // listening…" instead; recording still runs underneath.
+                ...(jebMode
+                  ? {
+                      opacity: 0,
+                      visibility: "hidden" as const,
+                      pointerEvents: "none" as const,
+                    }
+                  : {}),
               }}
             >
               {/* The fixed core: the cancel slot's width is driven by the draw
@@ -3787,14 +3869,52 @@ export default function AppPage(): React.JSX.Element {
                 only arm/disarm the window's hover hit-rect; every real action
                 inside is its own labeled <button>. */}
             {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}
+            {/* Manga tail for the dictation card, dropping onto Jeb below. */}
+            {pillSide === "left" && remixOpen && !viewIsChat && (
+              <svg
+                width="62"
+                height="54"
+                viewBox="0 0 62 54"
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  left: 30,
+                  bottom: 68,
+                  pointerEvents: "none",
+                }}
+              >
+                <polygon
+                  points="5,3 56,3 16,51"
+                  fill="#ffffff"
+                  stroke="#141210"
+                  strokeWidth="3.5"
+                />
+              </svg>
+            )}
             <div
               ref={cardSurfaceRef}
               className="pill-surface pill-card"
               data-show={remixOpen && !viewIsChat}
+              data-manga={jebMode ? "true" : undefined}
               onMouseEnter={disarmHotRect}
               onMouseLeave={rearmHotRect}
               style={{
                 ...cardSurfaceStyle,
+                // Jeb mode only: the manga panel floating above the
+                // character; otherwise the original dark Remix card.
+                ...(jebMode
+                  ? {
+                      background:
+                        "radial-gradient(rgba(20,18,16,0.06) 1px, transparent 1.2px) 0 0 / 6px 6px, #ffffff",
+                      border: "3px solid #141210",
+                      borderRadius: 0,
+                      boxShadow: "8px 8px 0 rgba(20, 18, 16, 0.8)",
+                      backdropFilter: "none",
+                      WebkitBackdropFilter: "none",
+                      marginBottom: pillAlign === "end" ? 116 : 0,
+                      marginLeft: 20,
+                    }
+                  : {}),
                 // The anchored edge gets the capsule's inset — (PILL_HEIGHT -
                 // SVG_HEIGHT) / 2 — so the waveform lands exactly where it sat
                 // a moment ago. The far edge is free to be roomier.
@@ -3842,7 +3962,7 @@ export default function AppPage(): React.JSX.Element {
                           fontSize: 12.5,
                           fontWeight: 600,
                           lineHeight: 1.2,
-                          color: INK,
+                          color: jebMode ? "#141210" : INK,
                         }}
                       >
                         {cardView.title}
@@ -3852,7 +3972,9 @@ export default function AppPage(): React.JSX.Element {
                           marginTop: 3,
                           fontSize: 11.5,
                           lineHeight: 1.35,
-                          color: "rgba(245, 241, 228, 0.58)",
+                          color: jebMode
+                            ? "rgba(20, 18, 16, 0.62)"
+                            : "rgba(245, 241, 228, 0.58)",
                           display: "-webkit-box",
                           WebkitLineClamp: 3,
                           WebkitBoxOrient: "vertical",
@@ -3887,8 +4009,17 @@ export default function AppPage(): React.JSX.Element {
                     className="pill-remix-brand pill-rise pill-rise-1"
                     aria-hidden="true"
                   >
-                    <FreestyleMark size={15} />
-                    <span>Remix</span>
+                    {jebMode ? (
+                      <>
+                        <span className="pill-remix-jeb">JEB</span>
+                        <span className="pill-remix-stamp">斬</span>
+                      </>
+                    ) : (
+                      <>
+                        <FreestyleMark size={15} />
+                        <span>Remix</span>
+                      </>
+                    )}
                   </div>
 
                   <div
@@ -3919,6 +4050,30 @@ export default function AppPage(): React.JSX.Element {
               always inside room the window already holds, so the morph is
               never clipped or resized mid-flight. */}
           <div className={layerClass} aria-hidden={!(remixOpen && viewIsChat)}>
+            {/* The manga panel's tail, dropping onto Jeb's head below.
+                Rendered as a sibling because the surface clips its own
+                overflow; the top edge tucks under the panel's border. */}
+            {pillSide === "left" && remixOpen && viewIsChat && (
+              <svg
+                width="62"
+                height="54"
+                viewBox="0 0 62 54"
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  left: 30,
+                  bottom: 68,
+                  pointerEvents: "none",
+                }}
+              >
+                <polygon
+                  points="5,3 56,3 16,51"
+                  fill="#ffffff"
+                  stroke="#141210"
+                  strokeWidth="3.5"
+                />
+              </svg>
+            )}
             {/* Same as the card surface above: hover only arms/disarms the
                 window's hit-rect; the chat's controls are real buttons. */}
             {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}
@@ -3930,21 +4085,43 @@ export default function AppPage(): React.JSX.Element {
               onMouseLeave={rearmHotRect}
               style={{
                 ...cardSurfaceStyle,
+                // Jeb mode: Direction C manga panel — screentone-white, hard
+                // ink border, printed shadow, square corners, floated above
+                // the character. Otherwise: the original Remix card.
+                ...(jebMode
+                  ? {
+                      background:
+                        "radial-gradient(rgba(20,18,16,0.06) 1px, transparent 1.2px) 0 0 / 6px 6px, #ffffff",
+                      border: "3px solid #141210",
+                      boxShadow: "8px 8px 0 rgba(20, 18, 16, 0.8)",
+                      backdropFilter: "none",
+                      WebkitBackdropFilter: "none",
+                      marginBottom: pillAlign === "end" ? 116 : 0,
+                      marginLeft: 20,
+                    }
+                  : {}),
                 ...(chatMiniVisual
                   ? {
                       width: REMIX_CHAT_STRIP.width,
                       height: remixMiniHeight,
                       // A grown strip is a card, not a capsule — a 999px
                       // radius on a tall box reads as a lozenge.
-                      borderRadius:
-                        remixMiniHeight > REMIX_CHAT_STRIP.height ? 18 : 999,
+                      borderRadius: jebMode
+                        ? 0
+                        : remixMiniHeight > REMIX_CHAT_STRIP.height
+                          ? 18
+                          : 999,
                       padding: 0,
                       overflow: "hidden",
                     }
                   : {
-                      width: REMIX_CHAT_SURFACE.width,
-                      height: REMIX_CHAT_SURFACE.height,
-                      borderRadius: 18,
+                      width: jebMode
+                        ? JEB_CHAT_SURFACE.width
+                        : REMIX_CHAT_SURFACE.width,
+                      height: jebMode
+                        ? JEB_CHAT_SURFACE.height
+                        : REMIX_CHAT_SURFACE.height,
+                      borderRadius: jebMode ? 0 : 18,
                       padding: 0,
                       overflow: "hidden",
                     }),
@@ -3952,7 +4129,7 @@ export default function AppPage(): React.JSX.Element {
             >
               {chatView && (
                 <Suspense fallback={null}>
-                  <RemixChat
+                  <ActiveRemixChat
                     context={
                       remixContextRef.current ?? {
                         text: chatView.selection,
@@ -3965,7 +4142,12 @@ export default function AppPage(): React.JSX.Element {
                     minimized={chatMiniVisual}
                     anchor={{
                       v: pillAlign === "start" ? "top" : "bottom",
-                      h: pillSide === "right" ? "right" : "center",
+                      h:
+                        pillSide === "right"
+                          ? "right"
+                          : pillSide === "left"
+                            ? "left"
+                            : "center",
                     }}
                     onExpand={expandRemixChat}
                     onMinimize={minimizeRemixChat}

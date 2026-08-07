@@ -5,6 +5,7 @@ import type {
   AudioPlaybackMode,
 } from "../shared/audio-playback";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
+import type { JebScript, JebTravelEvent } from "../shared/jeb";
 import type { OpenAppCandidate } from "../shared/open-apps";
 import {
   normalizePillCancelMode,
@@ -172,6 +173,71 @@ const api = {
     ipcRenderer.send("remix:set-route-keys", open),
   /** The persistent bar was hovered; main opens the chat. */
   remixBarHover: (): void => ipcRenderer.send("remix:bar-hover"),
+  // --- Samurai Jeb (character overlay) ---
+  /** Fire-and-forget choreography — decorates an action without delaying it. */
+  jebPlay: (script: JebScript): void => ipcRenderer.send("jeb:play", script),
+  /** Resolves at the performance's impact frame (or the ceiling) — the caller
+   *  runs the OS action on resolve so the paste lands on the sword swing. */
+  jebPlaySync: (script: JebScript): Promise<boolean> =>
+    ipcRenderer.invoke("jeb:play-sync", script),
+  jebSay: (text: string): void => ipcRenderer.send("jeb:say", text),
+  jebSetThinking: (on: boolean): void => ipcRenderer.send("jeb:thinking", on),
+  // Jeb-window-only channels (sender-checked in main):
+  jebSetHotRect: (
+    rect: { x: number; y: number; width: number; height: number } | null,
+  ): void => ipcRenderer.send("jeb:set-hot-rect", rect),
+  jebHoverOpen: (): void => ipcRenderer.send("jeb:hover-open"),
+  jebImpact: (id: string): void => ipcRenderer.send("jeb:impact", id),
+  jebPerformDone: (id: string): void =>
+    ipcRenderer.send("jeb:perform-done", id),
+  onJebHotEnter: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("jeb:hot-enter", handler);
+    return () => ipcRenderer.removeListener("jeb:hot-enter", handler);
+  },
+  onJebWake: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("jeb:wake", handler);
+    return () => ipcRenderer.removeListener("jeb:wake", handler);
+  },
+  onJebTravel: (callback: (ev: JebTravelEvent) => void): (() => void) => {
+    const handler = (_: unknown, ev: JebTravelEvent): void => callback(ev);
+    ipcRenderer.on("jeb:travel", handler);
+    return () => ipcRenderer.removeListener("jeb:travel", handler);
+  },
+  onJebPerform: (
+    callback: (payload: {
+      id: string;
+      steps: JebScript["performance"];
+      say: string | null;
+    }) => void,
+  ): (() => void) => {
+    const handler = (
+      _: unknown,
+      payload: {
+        id: string;
+        steps: JebScript["performance"];
+        say: string | null;
+      },
+    ): void => callback(payload);
+    ipcRenderer.on("jeb:perform", handler);
+    return () => ipcRenderer.removeListener("jeb:perform", handler);
+  },
+  onJebSay: (callback: (text: string) => void): (() => void) => {
+    const handler = (_: unknown, text: string): void => callback(text);
+    ipcRenderer.on("jeb:say", handler);
+    return () => ipcRenderer.removeListener("jeb:say", handler);
+  },
+  onJebThinking: (callback: (on: boolean) => void): (() => void) => {
+    const handler = (_: unknown, on: boolean): void => callback(on);
+    ipcRenderer.on("jeb:thinking", handler);
+    return () => ipcRenderer.removeListener("jeb:thinking", handler);
+  },
+  onJebListen: (callback: (on: boolean) => void): (() => void) => {
+    const handler = (_: unknown, on: boolean): void => callback(on);
+    ipcRenderer.on("jeb:listen", handler);
+    return () => ipcRenderer.removeListener("jeb:listen", handler);
+  },
   /** Onboarding practice: allow Remix to target our own window while true. */
   setRemixPracticeTarget: (active: boolean): void =>
     ipcRenderer.send("remix:set-practice-target", active),

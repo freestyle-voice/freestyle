@@ -111,6 +111,7 @@ declare global {
       ) => () => void;
       onJebSay: (callback: (text: string) => void) => () => void;
       onJebThinking: (callback: (on: boolean) => void) => () => void;
+      onJebListen: (callback: (on: boolean) => void) => () => void;
       setRemixPracticeTarget: (active: boolean) => void;
       onRemixPracticeDelivered: (callback: () => void) => () => void;
       onRemixOpenChat: (callback: () => void) => () => void;

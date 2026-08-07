@@ -452,6 +452,7 @@ export function isJebEnabled(): boolean {
 }
 
 export function setJebEnabled(enabled: boolean): void {
+  jebDebug(`setJebEnabled(${enabled})`);
   jebEnabled = enabled;
   updateJeb();
 }
@@ -523,6 +524,8 @@ export function jebNotifyActivity(): void {
 let greetSeq = 0;
 
 /** The chat opened beside him — a small hop to attention. */
+// A silent hop — "I'm listening…" is reserved for jebListening(), when the
+// microphone is actually live. Saying it on a hover-open would be a lie.
 export function jebGreet(): void {
   greetSeq += 1;
   void runScript({
@@ -530,6 +533,12 @@ export function jebGreet(): void {
     performance: [{ state: "jump-start" }, { state: "defend", holdMs: 250 }],
     returnHome: false,
   });
+}
+
+/** Dictation replaces the pill capsule with Jeb holding a listening bubble. */
+export function jebListening(on: boolean): void {
+  if (!jebEnabled) return;
+  sendToJeb("jeb:listen", on);
 }
 
 export function initJeb(hostImpl: JebHost): void {

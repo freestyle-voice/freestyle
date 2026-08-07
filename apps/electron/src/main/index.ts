@@ -102,6 +102,7 @@ import {
   initJeb,
   isJebEnabled,
   jebGreet,
+  jebListening,
   jebNotifyActivity,
   setJebEnabled,
   updateJeb,
@@ -660,8 +661,10 @@ function presetPositionForDisplay(
   }
 }
 
-/** Horizontal room left for Jeb's body when the pill lives beside him. */
-const JEB_PILL_CLEARANCE = 56;
+/** The bubble sits DIRECTLY over Jeb — the surfaces are lifted ~96px above
+ *  the window bottom, clearing his ~72px body, so the panel's tail can drop
+ *  straight down onto his head instead of pointing at empty desktop. */
+const JEB_PILL_CLEARANCE = 0;
 
 /**
  * Screen bounds (top-left origin, in screen coordinates) of the currently
@@ -944,7 +947,12 @@ function createAppWindow(): void {
         },
       });
       const alignment = getPillAlignmentForCustom();
-      mainWindow.webContents.send("settings:pill-position-changed", alignment);
+      // The pill styles for the EFFECTIVE position (Jeb pins it left);
+      // the settings UI shows the stored preference.
+      mainWindow.webContents.send(
+        "settings:pill-position-changed",
+        isJebEnabled() ? effectivePillPosition() : alignment,
+      );
       settingsWindow?.webContents.send(
         "settings:pill-position-changed",
         alignment,
@@ -1154,6 +1162,10 @@ function showPill(): void {
         updateRemixBar();
         updatePillEscape();
         anchorPillToFocusedDisplay();
+        mainWindow.webContents.send(
+          "settings:pill-position-changed",
+          effectivePillPosition(),
+        );
         resolve();
       });
     });
@@ -1169,6 +1181,11 @@ function showPill(): void {
   updatePillEscape();
   anchorPillToFocusedDisplay();
   jebNotifyActivity();
+  // Push the effective position on every show: the renderer's mount-time
+  // read can race main's state, and a stale side renders the wrong chat
+  // (original vs Jeb) in the wrong place. Pushing makes it deterministic
+  // before any surface opens.
+  sendToPill("settings:pill-position-changed", effectivePillPosition());
 }
 
 /**
@@ -1201,6 +1218,17 @@ function anchorPillToFocusedDisplay(): void {
     const { x, y } = getAppWindowPosition(focusedDisplay);
     setProgrammaticPosition(mainWindow, x, y);
   });
+}
+
+/** The alignment token the renderer should style for, Jeb override included. */
+function effectivePillPosition(): string {
+  // Beside Jeb, whatever the stored preference says.
+  if (isJebEnabled()) return "bottom-left";
+  const pos = (readSettings().pillPosition as string) ?? "bottom-center";
+  // For a custom position, derive the correct top/bottom alignment token
+  // from the actual window position relative to its display.
+  if (pos === "custom") return getPillAlignmentForCustom();
+  return pos;
 }
 
 function updatePillEscape(): void {
@@ -2756,7 +2784,13 @@ app.whenReady().then(async () => {
     setProgrammaticPosition(mainWindow, x, y);
     const after = (readSettings().pillPosition as string) ?? "bottom-center";
     if (before !== after) {
-      mainWindow.webContents.send("settings:pill-position-changed", after);
+      // Raw stored position for the settings UI; the pill styles for the
+      // EFFECTIVE position — broadcasting the raw value here used to stomp
+      // Jeb mode on every display-metrics blip (dock, spaces, new windows).
+      mainWindow.webContents.send(
+        "settings:pill-position-changed",
+        effectivePillPosition(),
+      );
       settingsWindow?.webContents.send("settings:pill-position-changed", after);
     }
   };
@@ -2989,15 +3023,7 @@ app.whenReady().then(async () => {
   });
 
   // -- Pill position setting --
-  ipcMain.handle("settings:pill-position", () => {
-    // Beside Jeb, whatever the stored preference says.
-    if (isJebEnabled()) return "bottom-left";
-    const pos = (readSettings().pillPosition as string) ?? "bottom-center";
-    // For a custom position, derive the correct top/bottom alignment token
-    // from the actual window position relative to its display.
-    if (pos === "custom") return getPillAlignmentForCustom();
-    return pos;
-  });
+  ipcMain.handle("settings:pill-position", () => effectivePillPosition());
 
   ipcMain.on("settings:set-pill-position", (_event, position: string) => {
     if (position === "custom") {
@@ -3010,10 +3036,14 @@ app.whenReady().then(async () => {
       const { x, y } = getAppWindowPosition();
       setProgrammaticPosition(mainWindow, x, y);
     }
-    // For custom, resolve the live alignment; for presets, send as-is.
+    // For custom, resolve the live alignment; for presets, send as-is. The
+    // pill always styles for the EFFECTIVE position (Jeb pins it left).
     const broadcast =
       position === "custom" ? getPillAlignmentForCustom() : position;
-    mainWindow?.webContents.send("settings:pill-position-changed", broadcast);
+    mainWindow?.webContents.send(
+      "settings:pill-position-changed",
+      isJebEnabled() ? effectivePillPosition() : broadcast,
+    );
     settingsWindow?.webContents.send(
       "settings:pill-position-changed",
       broadcast,
@@ -4040,6 +4070,8 @@ function sendHotkeyDown(): void {
     return;
   }
   showPill();
+  // With Jeb on the capsule is invisible — he holds the listening bubble.
+  jebListening(true);
   relayServerEvent({ type: FreestyleEventType.RecordingStarted });
   if (pillReadyPromise) {
     // The pill window is still loading — defer IPC until it can receive it.
@@ -4054,6 +4086,7 @@ function sendHotkeyDown(): void {
 }
 
 function sendHotkeyUp(): void {
+  jebListening(false);
   if (pillReadyPromise) {
     // Preserve IPC ordering: hotkey:up must arrive after hotkey:down.
     void pillReadyPromise.then(() => {

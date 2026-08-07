@@ -233,6 +233,11 @@ const api = {
     ipcRenderer.on("jeb:thinking", handler);
     return () => ipcRenderer.removeListener("jeb:thinking", handler);
   },
+  onJebListen: (callback: (on: boolean) => void): (() => void) => {
+    const handler = (_: unknown, on: boolean): void => callback(on);
+    ipcRenderer.on("jeb:listen", handler);
+    return () => ipcRenderer.removeListener("jeb:listen", handler);
+  },
   /** Onboarding practice: allow Remix to target our own window while true. */
   setRemixPracticeTarget: (active: boolean): void =>
     ipcRenderer.send("remix:set-practice-target", active),

@@ -2,6 +2,10 @@
  * window without importing the chat (and its animation deps). */
 export const REMIX_CHAT_SURFACE = { width: 408, height: 560 } as const;
 
+/** The Jeb (manga) chat's surface: shorter, leaving room for the ~96px lift
+ * above the character inside the same 600px chat window. */
+export const JEB_CHAT_SURFACE = { width: 408, height: 464 } as const;
+
 /** Resting strip size; grows when a settled run shows the final message. */
 export const REMIX_CHAT_STRIP = { width: 320, height: 44 } as const;
 

@@ -448,6 +448,18 @@ function JebRoot(): React.JSX.Element {
     });
 
     const offWake = window.api.onJebWake(() => wake());
+
+    // Dictation: the capsule is invisible beside Jeb — he holds the bubble
+    // for the whole hold-to-talk, so it persists until the explicit off.
+    const offListen = window.api.onJebListen((on) => {
+      wake();
+      lastActivity = Date.now();
+      if (bubbleTimer) {
+        clearTimeout(bubbleTimer);
+        bubbleTimer = null;
+      }
+      setBubble(on ? "I'm listening…" : null);
+    });
     const offHotEnter = window.api.onJebHotEnter(() => {
       wake();
     });
@@ -481,6 +493,7 @@ function JebRoot(): React.JSX.Element {
       offSay();
       offThinking();
       offWake();
+      offListen();
       offHotEnter();
       if (microTimer) clearTimeout(microTimer);
       clearInterval(sleepTimer);
@@ -497,29 +510,38 @@ function JebRoot(): React.JSX.Element {
         html, body, #root { margin: 0; height: 100%; background: transparent; overflow: hidden; }
         .jeb-stage { position: relative; width: ${JEB_WINDOW_SIZE}px; height: ${JEB_WINDOW_SIZE}px; -webkit-user-select: none; user-select: none; }
         canvas { image-rendering: pixelated; }
+        /* Manga bubble: ink on white, hard shadow, notched corners. Hugs the
+           space right above his head — where the chat panel's tail lands. */
         .jeb-bubble {
           position: absolute;
           left: ${HOT_RECT.x + 6}px;
-          bottom: ${JEB_SPRITE_SIZE - 24}px;
-          max-width: ${JEB_WINDOW_SIZE - HOT_RECT.x - 14}px;
-          padding: 6px 10px;
-          border-radius: 8px;
-          background: rgba(22, 20, 15, 0.96);
-          border: 1px solid rgba(245, 241, 228, 0.4);
-          color: rgba(245, 241, 228, 0.95);
-          font: 12px/1.35 ui-monospace, "SF Mono", Menlo, monospace;
+          bottom: ${HOT_RECT.y - 34}px;
+          max-width: ${JEB_WINDOW_SIZE - HOT_RECT.x - 18}px;
+          padding: 6px 9px;
+          background: #ffffff;
+          border: 2.5px solid #141210;
+          color: #141210;
+          font: 700 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+          letter-spacing: 0.04em;
           text-align: center;
           pointer-events: none;
           white-space: pre-wrap;
+          box-shadow: 3px 3px 0 rgba(20, 18, 16, 0.3);
+          clip-path: polygon(
+            0 6px, 6px 6px, 6px 0,
+            calc(100% - 6px) 0, calc(100% - 6px) 6px, 100% 6px,
+            100% calc(100% - 6px), calc(100% - 6px) calc(100% - 6px),
+            calc(100% - 6px) 100%, 6px 100%, 6px calc(100% - 6px), 0 calc(100% - 6px)
+          );
         }
         .jeb-bubble::after {
           content: "";
           position: absolute;
-          left: 28px;
+          left: 12px;
           bottom: -5px;
           border-left: 5px solid transparent;
           border-right: 5px solid transparent;
-          border-top: 5px solid rgba(22, 20, 15, 0.96);
+          border-top: 5px solid #141210;
         }
       `}</style>
       <canvas

@@ -305,6 +305,21 @@ export function nextRightModifierLatch(
   return null;
 }
 
+/**
+ * Latch value implied by a captured combo from the native recorder.
+ *
+ * The Windows binary reports Right Alt/Ctrl/Shift/Super as `RECORD_KEY:` — a
+ * captured key — rather than as a modifiers update, so this is the only signal
+ * that identifies the side. `normalizeCapturedCombo` collapses the token to its
+ * generic modifier in the draft; the latch is what restores "RightAlt" on save.
+ * Only a solo press latches: with other modifiers already held this is a chord,
+ * which saves as the generic accelerator.
+ */
+export function latchFromCapturedCombo(captured: HotkeyCombo): string | null {
+  if (!captured.key || captured.modifiers.length > 0) return null;
+  return RIGHT_MODIFIER_TO_GENERIC[captured.key] ? captured.key : null;
+}
+
 export function comboDisplayKeys(combo: HotkeyCombo): string[] {
   const keys = combo.modifiers.map(keyDisplayLabel);
   if (combo.key) keys.push(keyDisplayLabel(combo.key));
@@ -535,7 +550,10 @@ export function useHotkeyRecorder(
     });
 
     const removeCaptured = window.api.onHotkeyRecordCaptured((combo) => {
-      rightModifierLatchRef.current = null;
+      // A captured side-specific modifier definitively identifies the side, so
+      // latch it rather than clearing. Any other captured key is a real key and
+      // clears the latch.
+      rightModifierLatchRef.current = latchFromCapturedCombo(combo);
       updateDraftCombo((current) => normalizeCapturedCombo(current, combo));
     });
 

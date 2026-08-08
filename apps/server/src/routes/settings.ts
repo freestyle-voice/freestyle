@@ -1,5 +1,8 @@
 import {
   caCertPathSettingSchema,
+  claudeAgentAuthSchema,
+  claudeAgentModelSchema,
+  claudeAgentOauthTokenSchema,
   cleanupAppAssignmentsSchema,
   cleanupCustomPromptSchema,
   cleanupEmailToneSchema,
@@ -14,6 +17,7 @@ import {
   openaiSttConfigSchema,
   pluginsSettingSchema,
   proxyUrlSettingSchema,
+  remixEngineSchema,
   settingValueSchema,
 } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
@@ -177,6 +181,26 @@ const settings = new Hono()
           },
           400,
         );
+      }
+    } else if (key === "remix_engine") {
+      const parsed = remixEngineSchema.safeParse(body.value);
+      if (!parsed.success) {
+        return c.json({ error: "Invalid remix engine" }, 400);
+      }
+    } else if (key === "claude_agent_auth") {
+      const parsed = claudeAgentAuthSchema.safeParse(body.value);
+      if (!parsed.success) {
+        return c.json({ error: "Invalid Claude agent auth mode" }, 400);
+      }
+    } else if (key === "claude_agent_model") {
+      const parsed = claudeAgentModelSchema.safeParse(body.value);
+      if (!parsed.success) {
+        return c.json({ error: "Invalid Claude agent model" }, 400);
+      }
+    } else if (key === "claude_agent_oauth_token") {
+      const parsed = claudeAgentOauthTokenSchema.safeParse(body.value);
+      if (!parsed.success) {
+        return c.json({ error: "Invalid Claude setup token" }, 400);
       }
     }
 

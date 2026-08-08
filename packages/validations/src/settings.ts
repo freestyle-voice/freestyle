@@ -159,3 +159,20 @@ export function parseHistoryFilters(
     return DEFAULT_HISTORY_FILTERS;
   }
 }
+
+export const remixEngineSchema = z.enum(["classic", "claude-agent"]);
+export type RemixEngine = z.infer<typeof remixEngineSchema>;
+export const DEFAULT_REMIX_ENGINE: RemixEngine = "classic";
+
+export const claudeAgentAuthSchema = z.enum([
+  "subscription",
+  "freestyle-cloud",
+]);
+export type ClaudeAgentAuth = z.infer<typeof claudeAgentAuthSchema>;
+export const DEFAULT_CLAUDE_AGENT_AUTH: ClaudeAgentAuth = "subscription";
+
+export const claudeAgentModelSchema = z.enum(["sonnet", "opus", "haiku"]);
+export type ClaudeAgentModel = z.infer<typeof claudeAgentModelSchema>;
+export const DEFAULT_CLAUDE_AGENT_MODEL: ClaudeAgentModel = "sonnet";
+
+export const claudeAgentOauthTokenSchema = z.string().trim().max(10_000);

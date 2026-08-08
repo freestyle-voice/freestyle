@@ -6,6 +6,10 @@ import { ONE_HOUR, queryKeys } from "./query";
 
 interface CloudConfig {
   suggestedLanguages: SuggestedLanguage[];
+  remixAgent?: {
+    subscriptionEnabled: boolean;
+    cloudProxyEnabled: boolean;
+  };
 }
 
 /**

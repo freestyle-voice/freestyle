@@ -11,6 +11,7 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  - "**/node_modules/@anthropic-ai/claude-agent-sdk/**"
 extraResources:
   - from: "resources/bin/${platform}-${arch}"
     to: "bin"

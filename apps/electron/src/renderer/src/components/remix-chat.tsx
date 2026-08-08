@@ -256,6 +256,17 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
+  const agentEngineRef = useRef(false);
+  useEffect(() => {
+    apiFetch("/api/settings/remix_engine")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((row) => {
+        agentEngineRef.current =
+          (row as { value?: string } | null)?.value === "claude-agent";
+      })
+      .catch(() => {});
+  }, []);
+
   const transport = useMemo(
     () =>
       new DefaultChatTransport<UIMessage>({
@@ -389,8 +400,11 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       id: `remix-thread-${thread.threadId}`,
       messages: thread.messages,
       transport,
-      sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+      sendAutomaticallyWhen: (options) =>
+        !agentEngineRef.current &&
+        lastAssistantMessageIsCompleteWithToolCalls(options),
       onToolCall: async ({ toolCall }) => {
+        if (agentEngineRef.current) return;
         const output = await executeTool(
           toolCall as unknown as {
             toolName: string;

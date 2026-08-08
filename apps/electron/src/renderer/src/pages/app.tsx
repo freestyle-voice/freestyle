@@ -492,6 +492,19 @@ export default function AppPage(): React.JSX.Element {
 
   const [pendingCount, setPendingCount] = useState(0);
 
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    void import("@renderer/lib/remix-agent-tools").then((mod) => {
+      if (cancelled) return;
+      stop = mod.startRemixAgentToolBridge();
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, []);
+
   // ---- Remix ----
   const [remix, setRemixState] = useState<RemixSession | null>(null);
   const remixRef = useRef<RemixSession | null>(null);

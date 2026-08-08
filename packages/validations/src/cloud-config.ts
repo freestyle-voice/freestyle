@@ -90,6 +90,10 @@ export type SuggestedLanguage = z.infer<typeof suggestedLanguageSchema>;
 export interface CloudConfigResponse {
   prompts: unknown;
   suggestedLanguages: SuggestedLanguage[];
+  remixAgent?: {
+    subscriptionEnabled: boolean;
+    cloudProxyEnabled: boolean;
+  };
 }
 
 /**

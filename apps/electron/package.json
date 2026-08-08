@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.44",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.224",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@freestyle-voice/server": "workspace:*",
@@ -39,6 +40,7 @@
     "@hookform/resolvers": "^5.4.0",
     "@tanstack/react-query": "^5.101.2",
     "ai": "^6.0.191",
+    "ai-sdk-provider-claude-code": "^3.5.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "diff": "^8.0.4",

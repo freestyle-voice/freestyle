@@ -39,7 +39,13 @@ export default defineConfig({
       externalizeDeps: false,
       sourcemap: analyze,
       rollupOptions: {
-        external: ["electron", "bufferutil", "utf-8-validate"],
+        external: [
+          "electron",
+          "bufferutil",
+          "utf-8-validate",
+          "@anthropic-ai/claude-agent-sdk",
+          "ai-sdk-provider-claude-code",
+        ],
         plugins: analyze ? [mkVisualizer("main")] : [],
       },
     },

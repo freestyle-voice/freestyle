@@ -28,6 +28,7 @@ const config = new Hono()
       const cloud = await fetchCloudConfig();
       return c.json({
         suggestedLanguages: cloud.suggestedLanguages,
+        remixAgent: cloud.remixAgent,
       });
     } catch {
       return c.json({ error: "Failed to load cloud config" }, 502);

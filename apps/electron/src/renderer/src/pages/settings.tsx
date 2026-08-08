@@ -42,6 +42,7 @@ import {
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
 import {
+  apiFetch,
   checkServerAuth,
   checkServerHealth,
   getClient,
@@ -1115,13 +1116,14 @@ export default function SettingsPage(): React.JSX.Element {
               <Row
                 label={t("settings.remix.bar")}
                 desc={t("settings.remix.barDesc")}
-                last
               >
                 <Switch
                   checked={remixBarEnabled}
                   onCheckedChange={handleRemixBarToggle}
                 />
               </Row>
+
+              <ClaudeAgentSettings />
             </SettingsPanel>
           )}
 
@@ -1955,6 +1957,358 @@ function ServerConnection(): React.JSX.Element {
         )}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Remix engine (Claude Agent SDK)
+// ---------------------------------------------------------------------------
+
+type ClaudeAgentStatus = {
+  ambientClaudeLogin: boolean;
+  oauthTokenConfigured: boolean;
+  cloudSignedIn: boolean;
+};
+
+type ClaudeAgentTestState =
+  | { kind: "idle" }
+  | { kind: "testing" }
+  | { kind: "ok" }
+  | { kind: "failed"; error: string };
+
+function ClaudeAgentSettings(): React.JSX.Element {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const settingsQuery = useQuery(settingsQueryOptions());
+  const cloudConfig = useCloudConfig(true);
+
+  const [engine, setEngine] = useState<"classic" | "claude-agent">("classic");
+  const [auth, setAuth] = useState<"subscription" | "freestyle-cloud">(
+    "subscription",
+  );
+  const [model, setModel] = useState<"sonnet" | "opus" | "haiku">("sonnet");
+  const [fullAccess, setFullAccess] = useState(false);
+  const [token, setToken] = useState("");
+  const [status, setStatus] = useState<ClaudeAgentStatus | null>(null);
+  const [testState, setTestState] = useState<ClaudeAgentTestState>({
+    kind: "idle",
+  });
+
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current) return;
+    const settings = settingsQuery.data;
+    if (!settings) return;
+    seeded.current = true;
+    if (settings[SETTINGS_KEYS.remixEngine] === "claude-agent") {
+      setEngine("claude-agent");
+    }
+    if (settings[SETTINGS_KEYS.claudeAgentAuth] === "freestyle-cloud") {
+      setAuth("freestyle-cloud");
+    }
+    const savedModel = settings[SETTINGS_KEYS.claudeAgentModel];
+    if (savedModel === "opus" || savedModel === "haiku") setModel(savedModel);
+    if (settings[SETTINGS_KEYS.claudeAgentFullAccess] === "true") {
+      setFullAccess(true);
+    }
+  }, [settingsQuery.data]);
+
+  const refreshStatus = useCallback(() => {
+    apiFetch("/api/remix/claude-agent/status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setStatus(data as ClaudeAgentStatus);
+      })
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    refreshStatus();
+  }, [refreshStatus]);
+
+  const putSetting = useCallback(
+    (key: string, value: string) => {
+      queryClient.setQueryData<Record<string, string>>(
+        queryKeys.settings,
+        (prev) => ({ ...(prev ?? {}), [key]: value }),
+      );
+      getClient()
+        .api.settings[":key"].$put({ param: { key }, json: { value } })
+        .catch(() => {});
+    },
+    [queryClient],
+  );
+
+  const remixAgentFlags = cloudConfig.data?.remixAgent;
+  const subscriptionKilled = remixAgentFlags?.subscriptionEnabled === false;
+
+  const handleEngineChange = useCallback(
+    (id: string) => {
+      const next = id === "claude-agent" ? "claude-agent" : "classic";
+      setEngine(next);
+      setTestState({ kind: "idle" });
+      putSetting(SETTINGS_KEYS.remixEngine, next);
+    },
+    [putSetting],
+  );
+
+  const handleAuthChange = useCallback(
+    (id: string) => {
+      const next =
+        id === "freestyle-cloud" ? "freestyle-cloud" : "subscription";
+      setAuth(next);
+      setTestState({ kind: "idle" });
+      putSetting(SETTINGS_KEYS.claudeAgentAuth, next);
+    },
+    [putSetting],
+  );
+
+  const handleModelChange = useCallback(
+    (id: string) => {
+      const next = id === "opus" || id === "haiku" ? id : "sonnet";
+      setModel(next);
+      putSetting(SETTINGS_KEYS.claudeAgentModel, next);
+    },
+    [putSetting],
+  );
+
+  const handleFullAccessToggle = useCallback(
+    (enabled: boolean) => {
+      setFullAccess(enabled);
+      putSetting(SETTINGS_KEYS.claudeAgentFullAccess, String(enabled));
+    },
+    [putSetting],
+  );
+
+  const handleSaveToken = useCallback(() => {
+    const trimmed = token.trim();
+    if (!trimmed) return;
+    putSetting(SETTINGS_KEYS.claudeAgentOauthToken, trimmed);
+    setToken("");
+    setTimeout(refreshStatus, 250);
+  }, [token, putSetting, refreshStatus]);
+
+  const handleClearToken = useCallback(() => {
+    getClient()
+      .api.settings[":key"].$delete({
+        param: { key: SETTINGS_KEYS.claudeAgentOauthToken },
+      })
+      .catch(() => {});
+    setTimeout(refreshStatus, 250);
+  }, [refreshStatus]);
+
+  const handleTest = useCallback(() => {
+    setTestState({ kind: "testing" });
+    apiFetch("/api/remix/claude-agent/test", { method: "POST" })
+      .then(async (res) => {
+        const body = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          error?: string;
+        } | null;
+        if (res.ok && body?.ok) setTestState({ kind: "ok" });
+        else {
+          setTestState({
+            kind: "failed",
+            error: body?.error ?? `Test failed (${res.status}).`,
+          });
+        }
+      })
+      .catch((err) => {
+        setTestState({
+          kind: "failed",
+          error: err instanceof Error ? err.message : "Test failed.",
+        });
+      });
+  }, []);
+
+  const subscriptionReady =
+    status?.oauthTokenConfigured || status?.ambientClaudeLogin;
+
+  return (
+    <>
+      <Row
+        label={t("settings.remix.engine")}
+        desc={t("settings.remix.engineDesc")}
+        last={engine === "classic"}
+      >
+        <Segment
+          options={[
+            { id: "classic", label: t("settings.remix.engineClassic") },
+            { id: "claude-agent", label: t("settings.remix.engineClaude") },
+          ]}
+          active={engine}
+          onSelect={handleEngineChange}
+        />
+      </Row>
+
+      {engine === "claude-agent" && (
+        <>
+          <Row
+            label={t("settings.remix.claudeAccount")}
+            desc={t("settings.remix.claudeAccountDesc")}
+          >
+            <div className="flex flex-col gap-3">
+              <Segment
+                options={[
+                  {
+                    id: "subscription",
+                    label: t("settings.remix.authSubscription"),
+                  },
+                  {
+                    id: "freestyle-cloud",
+                    label: t("settings.remix.authCloud"),
+                  },
+                ]}
+                active={auth}
+                onSelect={handleAuthChange}
+              />
+
+              {auth === "subscription" && subscriptionKilled && (
+                <p className="text-destructive text-xs">
+                  {t("settings.remix.subscriptionDisabled")}
+                </p>
+              )}
+
+              {auth === "subscription" && !subscriptionKilled && (
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex items-center gap-2 text-xs">
+                    {subscriptionReady ? (
+                      <>
+                        <Check className="text-primary size-3.5" />
+                        <span className="text-primary">
+                          {status?.oauthTokenConfigured
+                            ? t("settings.remix.claudeStatusToken")
+                            : t("settings.remix.claudeStatusLogin")}
+                        </span>
+                        {status?.oauthTokenConfigured && (
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            onClick={handleClearToken}
+                          >
+                            {t("settings.remix.clearToken")}
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        {t("settings.remix.claudeStatusNone")}
+                      </span>
+                    )}
+                  </div>
+
+                  {!subscriptionReady && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-muted-foreground text-xs">
+                        {t("settings.remix.claudeSetupHint")}
+                      </p>
+                      <code className="bg-muted text-foreground w-fit rounded-md px-2 py-1 font-mono text-xs select-all">
+                        claude setup-token
+                      </code>
+                      <div className="flex max-w-md items-center gap-2">
+                        <Input
+                          type="password"
+                          value={token}
+                          onChange={(e) => setToken(e.target.value)}
+                          placeholder={t("settings.remix.tokenPlaceholder")}
+                          className="h-8 text-xs"
+                        />
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={!token.trim()}
+                          onClick={handleSaveToken}
+                        >
+                          {t("settings.remix.saveToken")}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {auth === "freestyle-cloud" && (
+                <div className="flex items-center gap-2 text-xs">
+                  {status?.cloudSignedIn ? (
+                    <>
+                      <Check className="text-primary size-3.5" />
+                      <span className="text-primary">
+                        {t("settings.remix.cloudSignedInStatus")}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      {t("settings.remix.cloudSignedOutStatus")}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </Row>
+
+          <Row
+            label={t("settings.remix.model")}
+            desc={t("settings.remix.modelDesc")}
+          >
+            <Segment
+              options={[
+                { id: "sonnet", label: "Sonnet" },
+                { id: "opus", label: "Opus" },
+                { id: "haiku", label: "Haiku" },
+              ]}
+              active={model}
+              onSelect={handleModelChange}
+            />
+          </Row>
+
+          <Row
+            label={t("settings.remix.fullAccess")}
+            desc={t("settings.remix.fullAccessDesc")}
+          >
+            <Switch
+              checked={fullAccess}
+              onCheckedChange={handleFullAccessToggle}
+            />
+          </Row>
+
+          <Row
+            label={t("settings.remix.connection")}
+            desc={t("settings.remix.connectionDesc")}
+            last
+          >
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-fit"
+                disabled={testState.kind === "testing"}
+                onClick={handleTest}
+              >
+                {testState.kind === "testing" && (
+                  <Loader2
+                    className="size-3.5 animate-spin"
+                    data-icon="inline-start"
+                  />
+                )}
+                {testState.kind === "testing"
+                  ? t("settings.remix.testing")
+                  : t("settings.remix.test")}
+              </Button>
+              <div className="min-h-[16px] text-xs">
+                {testState.kind === "ok" && (
+                  <span className="text-primary inline-flex items-center gap-1.5">
+                    <Check className="size-3.5" />
+                    {t("settings.remix.testOk")}
+                  </span>
+                )}
+                {testState.kind === "failed" && (
+                  <span className="text-destructive">{testState.error}</span>
+                )}
+              </div>
+            </div>
+          </Row>
+        </>
+      )}
+    </>
   );
 }
 

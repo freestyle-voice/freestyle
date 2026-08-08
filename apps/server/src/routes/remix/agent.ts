@@ -8,6 +8,11 @@ import {
 } from "../../lib/freestyle-cloud.js";
 import { getDefaultModels } from "../../lib/providers.js";
 import { runRemixAgentLocally } from "../../lib/remix-agent.js";
+import {
+  ClaudeAgentAuthError,
+  getRemixEngine,
+  runRemixClaudeAgent,
+} from "../../lib/remix-agent-claude.js";
 import { getSessionToken, invalidateSession } from "../../lib/sessions.js";
 import { isCleanupModelSupported } from "../models.js";
 
@@ -24,6 +29,31 @@ const agentRoute = new Hono().post(
   zValidator("json", remixAgentRequestSchema),
   async (c) => {
     const body = c.req.valid("json");
+
+    if (getRemixEngine() === "claude-agent") {
+      try {
+        return await runRemixClaudeAgent(body, c.req.raw.signal);
+      } catch (err) {
+        if (err instanceof ClaudeAgentAuthError) {
+          if (err.reason === "cloud_auth_required") {
+            return c.json({ error: "cloud_auth_required" }, 401);
+          }
+          return c.json(
+            { error: "claude_auth_required", detail: err.message },
+            400,
+          );
+        }
+        log.error(`Remix agent (claude-agent) failed: ${err}`);
+        return c.json(
+          {
+            error: "failed",
+            detail: err instanceof Error ? err.message : "Remix failed.",
+          },
+          502,
+        );
+      }
+    }
+
     const llm = getDefaultModels().llm;
     if (!llm) {
       return c.json(

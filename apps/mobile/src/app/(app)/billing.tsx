@@ -5,6 +5,7 @@ import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { ThemedView } from "@/components/themed-view";
 import { useTheme } from "@/hooks/use-theme";
+import { fetchCloudUsage } from "@/lib/cloud/usage";
 
 /**
  * Deep-link landing route for `freestyle://billing` — the return URL used by
@@ -20,7 +21,15 @@ export default function BillingScreen() {
   const theme = useTheme();
 
   useEffect(() => {
-    void queryClient.invalidateQueries({ queryKey: ["cloud-usage"] });
+    // Fetch fresh (bypass the cloud plan cache) since we just returned from a
+    // checkout/portal — the plan may have just changed. Best-effort: a failed
+    // refresh shouldn't block the bounce back to Profile.
+    void queryClient
+      .fetchQuery({
+        queryKey: ["cloud-usage"],
+        queryFn: () => fetchCloudUsage({ fresh: true }),
+      })
+      .catch(() => {});
     router.replace("/(app)/profile");
   }, [queryClient, router]);
 

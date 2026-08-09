@@ -452,14 +452,24 @@ export async function postProcessWithFreestyleCloud(opts: {
 /**
  * Fetch the current usage balance from Freestyle Cloud.
  * Returns remaining credits, limit, total consumed, and window reset time.
+ *
+ * Pass `fresh` to bypass the cloud's region-local plan cache — the desktop app
+ * sets it while polling right after Stripe Checkout so a plan upgrade shows up
+ * on the next poll instead of after the cache TTL. Regular reads omit it and
+ * get the cached (fast) path.
  */
 export async function fetchCloudUsage(
   token: string,
+  opts: { fresh?: boolean } = {},
 ): Promise<CloudUsageBalance> {
-  return cloudJson<CloudUsageBalance>("/usage", token, {
-    method: "GET",
-    signal: AbortSignal.timeout(10_000),
-  });
+  return cloudJson<CloudUsageBalance>(
+    opts.fresh ? "/usage?fresh=1" : "/usage",
+    token,
+    {
+      method: "GET",
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------

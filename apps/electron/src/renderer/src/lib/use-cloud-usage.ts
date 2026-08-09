@@ -115,7 +115,12 @@ export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
   const query = useQuery({
     queryKey: queryKeys.cloud.usage,
     queryFn: async () => {
-      const res = await getClient().api.usage.$get();
+      // While a checkout is pending, ask the cloud to bypass its plan cache
+      // (`?fresh=1`) so the upgrade is detected on the next poll instead of
+      // after the cache TTL. Regular reads omit it and use the cached path.
+      const res = await getClient().api.usage.$get({
+        query: checkoutStatus === "pending" ? { fresh: "1" } : {},
+      });
       if (!res.ok) throw new Error(`Failed to fetch usage (${res.status})`);
       return (await res.json()) as CloudUsageBalance;
     },

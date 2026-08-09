@@ -56,20 +56,35 @@ export default function ProfileScreen() {
 
   const { data: usage, isLoading: usageLoading } = useQuery({
     queryKey: ["cloud-usage"],
-    queryFn: fetchCloudUsage,
+    queryFn: () => fetchCloudUsage(),
     enabled: signedIn,
     retry: 1,
   });
 
-  const refreshUsage = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ["cloud-usage"] });
-  }, [queryClient]);
+  // Refresh the cached usage/plan. Pass `fresh` after a checkout so the cloud
+  // bypasses its plan cache and the upgrade is reflected immediately; a plain
+  // refresh (e.g. on org switch) uses the cached path.
+  const refreshUsage = useCallback(
+    (opts: { fresh?: boolean } = {}) => {
+      if (opts.fresh) {
+        void queryClient
+          .fetchQuery({
+            queryKey: ["cloud-usage"],
+            queryFn: () => fetchCloudUsage({ fresh: true }),
+          })
+          .catch(() => {});
+        return;
+      }
+      void queryClient.invalidateQueries({ queryKey: ["cloud-usage"] });
+    },
+    [queryClient],
+  );
 
   const onUpgrade = useCallback(async () => {
     setBusy(true);
     try {
       await startProCheckout(false); // monthly for beta; annual toggle optional later
-      refreshUsage();
+      refreshUsage({ fresh: true });
     } catch (e) {
       Alert.alert(
         "Checkout unavailable",
@@ -84,7 +99,7 @@ export default function ProfileScreen() {
     setBusy(true);
     try {
       await openBillingPortal();
-      refreshUsage();
+      refreshUsage({ fresh: true });
     } catch (e) {
       Alert.alert(
         "Portal unavailable",

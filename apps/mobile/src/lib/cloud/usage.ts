@@ -16,10 +16,17 @@ export interface CloudUsageBalance {
   unlimited: boolean;
 }
 
-export async function fetchCloudUsage(): Promise<CloudUsageBalance> {
+export async function fetchCloudUsage(
+  opts: { fresh?: boolean } = {},
+): Promise<CloudUsageBalance> {
   // Auth + 401 handling live in the shared client; usage keeps the 10s budget.
-  return cloud.json<CloudUsageBalance>("/usage", {
-    method: "GET",
-    timeoutMs: 10_000,
-  });
+  // `fresh` bypasses the cloud's plan cache — set it on the post-checkout
+  // refresh so an upgrade shows up right away instead of after the cache TTL.
+  return cloud.json<CloudUsageBalance>(
+    opts.fresh ? "/usage?fresh=1" : "/usage",
+    {
+      method: "GET",
+      timeoutMs: 10_000,
+    },
+  );
 }

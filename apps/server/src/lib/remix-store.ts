@@ -196,6 +196,8 @@ export function listThreads(
               (SELECT em.ui_message
                  FROM remix_messages em
                 WHERE em.thread_id = t.id
+                  AND json_valid(em.ui_message)
+                  AND json_extract(em.ui_message, '$.role') = 'user'
                 ORDER BY em.id ASC
                 LIMIT 1) AS first_message
          FROM remix_threads t

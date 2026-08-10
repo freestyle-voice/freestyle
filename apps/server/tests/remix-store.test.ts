@@ -134,13 +134,14 @@ describe("listThreads", () => {
   it("derives the preview from the first user message only", () => {
     const thread = startNewThread();
     saveThreadMessages(thread.id, [
-      userMessage("a", "The instruction"),
-      assistantToolMessage("b", "paste"),
+      assistantToolMessage("a", "get_context"),
+      userMessage("b", "The instruction"),
+      assistantToolMessage("c", "paste"),
     ]);
 
     const [summary] = listThreads(50, 0);
     expect(summary.preview).toBe("The instruction");
-    expect(summary.messageCount).toBe(2);
+    expect(summary.messageCount).toBe(3);
   });
 
   it("paginates with limit and offset", () => {

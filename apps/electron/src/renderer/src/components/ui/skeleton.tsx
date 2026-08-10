@@ -1,5 +1,6 @@
 import { cn } from "@renderer/lib/utils";
 import type * as React from "react";
+import { useInsertionEffect } from "react";
 
 /**
  * Keyframes for the shimmer sweep. Injected once (deduped by id) the first time
@@ -31,7 +32,9 @@ function Skeleton({
   className,
   ...props
 }: React.ComponentProps<"div">): React.JSX.Element {
-  ensureShimmerStyle();
+  useInsertionEffect(() => {
+    ensureShimmerStyle();
+  }, []);
   return (
     <div
       data-slot="skeleton"

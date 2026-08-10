@@ -11,7 +11,9 @@ import { z } from "zod/v3";
  *
  * This file is mirrored byte-for-byte (below the header) into the cloud
  * repo's `packages/validations/src/remix.ts` — the same parity rule as
- * `cleanup-presets.ts`. Change both or change neither.
+ * `cleanup-presets.ts`. The sole host-specific difference is `get_tones`:
+ * Cloud executes it server-side against `member_preferences`; the desktop
+ * registers the same descriptor as a local tool for BYOK runs.
  */
 
 export interface RemixPreset {
@@ -120,6 +122,18 @@ export type RemixAgentRequest = z.infer<typeof remixAgentRequestSchema>;
 /** Caps re-checked by the desktop before anything touches the document. */
 export const REMIX_WRITE_LIMIT = 20_000;
 export const REMIX_CLIPBOARD_LIMIT = 100_000;
+
+/**
+ * Read the user's stored writing preferences. The execution host owns the
+ * source: Cloud reads the authenticated member's row, while a local BYOK run
+ * reads the desktop settings store. Keep this descriptor identical in both
+ * hosts so the agent sees one stable wire contract.
+ */
+export const REMIX_TONES_TOOL = {
+  description:
+    "Read the user's saved writing preferences. Returns { ok, intensity, customPrompt, personalTone, workTone, emailTone, overallTone, appAssignments }: intensity is the cleanup strength ('low' | 'medium' | 'high' | 'custom'); customPrompt is the user's own instruction and is meaningful only when intensity is 'custom'; personalTone/workTone/emailTone/overallTone are the destination styles (each an enum value or 'off'); appAssignments contains the user's named app/site-to-destination rules. Call this once when the user asks you to write or rewrite in 'their tone/style/voice', or when honouring their preferences would change the wording. Use a matching appAssignment for the current app/url; otherwise use overallTone. A destination set to 'off' means no preference for that surface. Failure: { ok: false, reason } means the preferences could not be read — proceed with your default judgement and don't retry.",
+  inputSchema: z.object({}),
+} as const;
 
 /**
  * Client-side tools: deliberately primitive. Each is one dumb action against
@@ -258,6 +272,7 @@ export const REMIX_CLIENT_TOOLS = {
       "Read the full text currently on the user's clipboard. Returns { ok, text, truncated }. The context snapshot and get_context already show a capped preview — call this when the clipboard is the subject of the task and you need all of it. When nothing is highlighted and the user says 'edit this' / 'fix it' with no visible target, what they copied is usually what they mean.",
     inputSchema: z.object({}),
   },
+  get_tones: REMIX_TONES_TOOL,
 } as const;
 
 export type RemixClientToolName = keyof typeof REMIX_CLIENT_TOOLS;

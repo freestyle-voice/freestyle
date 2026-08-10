@@ -1,7 +1,6 @@
 import { useChat } from "@ai-sdk/react";
 import {
-  type CleanupAppAssignment,
-  type CleanupToneDestination,
+  DEFAULT_CLEANUP_ROUTING,
   parseCleanupAppAssignments,
   parseCleanupEmailTone,
   parseCleanupIntensity,
@@ -9,6 +8,7 @@ import {
   parseCleanupPersonalTone,
   parseCleanupWorkTone,
   REMIX_PRESETS,
+  resolveCleanupToneDestination,
   type RemixPreset,
 } from "@freestyle-voice/validations";
 import { AgentActivity } from "@renderer/components/agents/agent-activity";
@@ -53,134 +53,6 @@ const INK = "rgba(245, 241, 228, 0.92)";
 const INK_DIM = "rgba(245, 241, 228, 0.70)";
 const INK_FAINT = "rgba(245, 241, 228, 0.52)";
 const OLIVE = "#8AB62A";
-
-const EMAIL_APP_NAMES = new Set([
-  "mail",
-  "outlook",
-  "microsoft outlook",
-  "mimestream",
-  "superhuman",
-  "spark",
-  "spark desktop",
-  "canary mail",
-  "thunderbird",
-  "airmail",
-  "em client",
-  "postbox",
-  "hey",
-]);
-const WORK_APP_NAMES = new Set([
-  "slack",
-  "linkedin",
-  "teams",
-  "microsoft teams",
-]);
-const PERSONAL_APP_NAMES = new Set([
-  "messages",
-  "imessage",
-  "whatsapp",
-  "telegram",
-  "discord",
-]);
-const EMAIL_PATTERNS = [
-  "mail.google.com",
-  "workspace.google.com/mail",
-  "gmail",
-  "outlook.office.com",
-  "outlook.live.com",
-  "outlook.office365.com",
-  "outlook.office",
-  "outlook",
-  "mail.yahoo.com",
-  "mail.yahoo",
-  "yahoo mail",
-  "mail.proton.me",
-  "proton.me/mail",
-  "protonmail.com",
-  "proton mail",
-  "superhuman",
-  "spark mail",
-  "mimestream",
-  "app.fastmail.com",
-  "fastmail",
-  "hey.com",
-  "hey email",
-  "icloud.com/mail",
-  "mail.app",
-  "apple mail",
-  "canary mail",
-];
-const WORK_PATTERNS = [
-  "slack.com",
-  "slack",
-  "linkedin.com",
-  "linkedin",
-  "teams.microsoft.com",
-  "microsoft teams",
-  "teams",
-];
-const PERSONAL_PATTERNS = [
-  "messages",
-  "imessage",
-  "whatsapp",
-  "telegram",
-  "discord.com",
-  "discord",
-];
-
-function resolveToneDestination(
-  context: {
-    appName: string | null;
-    windowTitle: string | null;
-    url: string | null;
-  },
-  assignments: readonly CleanupAppAssignment[],
-): CleanupToneDestination {
-  const appName = context.appName?.trim().toLowerCase() ?? "";
-  const matchText = [context.url, context.windowTitle, context.appName]
-    .filter((part): part is string => Boolean(part))
-    .join(" ")
-    .toLowerCase();
-
-  for (let index = assignments.length - 1; index >= 0; index -= 1) {
-    const assignment = assignments[index]!;
-    if (
-      assignment.kind === "app" &&
-      appName === assignment.match.trim().toLowerCase()
-    ) {
-      return assignment.destination;
-    }
-  }
-  for (let index = assignments.length - 1; index >= 0; index -= 1) {
-    const assignment = assignments[index]!;
-    if (
-      assignment.kind === "site" &&
-      matchText.includes(assignment.match.trim().toLowerCase())
-    ) {
-      return assignment.destination;
-    }
-  }
-
-  if (
-    EMAIL_APP_NAMES.has(appName) ||
-    EMAIL_PATTERNS.some((pattern) => matchText.includes(pattern))
-  ) {
-    return "email";
-  }
-  if (
-    WORK_APP_NAMES.has(appName) ||
-    WORK_PATTERNS.some((pattern) => matchText.includes(pattern))
-  ) {
-    return "work";
-  }
-  if (
-    PERSONAL_APP_NAMES.has(appName) ||
-    PERSONAL_PATTERNS.some((pattern) => matchText.includes(pattern))
-  ) {
-    return "personal";
-  }
-  return "overall";
-}
 
 export {
   REMIX_CHAT_STRIP,
@@ -539,7 +411,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
               const appAssignments = parseCleanupAppAssignments(
                 settings.cleanup_app_assignments,
               );
-              const destination = resolveToneDestination(
+              const destination = resolveCleanupToneDestination(
                 {
                   appName:
                     typeof input.appName === "string"
@@ -555,6 +427,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                       : (contextRef.current.url ?? null),
                 },
                 appAssignments,
+                DEFAULT_CLEANUP_ROUTING,
               );
               const tones = {
                 personal: personalTone,

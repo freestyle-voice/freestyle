@@ -24,13 +24,16 @@
 
 import { createAppLogger } from "@freestyle-voice/utils";
 import {
+  DEFAULT_CLEANUP_ROUTING as CLEANUP_ROUTING,
   CLEANUP_PRESET_PROMPTS,
+  type CleanupRoutingConfig,
   type CleanupEmailTone,
   type CleanupOverallTone,
   type CleanupPersonalTone,
   type CleanupToneDestination,
   type CleanupWorkTone,
 } from "@freestyle-voice/validations";
+export { CLEANUP_ROUTING, type CleanupRoutingConfig } from "@freestyle-voice/validations";
 import { freestyleCloudUrl } from "../freestyle-cloud.js";
 
 const log = createAppLogger("prompt-config");
@@ -86,83 +89,6 @@ export const LANGUAGE_LABELS: Record<string, string> = {
   "zh-sg": "Simplified Chinese",
   "zh-tw": "Traditional Chinese",
   "zh-hant": "Traditional Chinese",
-};
-
-/** Destination routing tables (app names + URL/window substrings). */
-export interface CleanupRoutingConfig {
-  emailAppNames: string[];
-  workAppNames: string[];
-  personalAppNames: string[];
-  emailPatterns: string[];
-  workPatterns: string[];
-  personalPatterns: string[];
-  discordPatterns: string[];
-}
-
-export const CLEANUP_ROUTING: CleanupRoutingConfig = {
-  emailAppNames: [
-    "mail",
-    "outlook",
-    "microsoft outlook",
-    "mimestream",
-    "superhuman",
-    "spark",
-    "spark desktop",
-    "canary mail",
-    "thunderbird",
-    "airmail",
-    "em client",
-    "postbox",
-    "hey",
-  ],
-  workAppNames: ["slack", "linkedin", "teams", "microsoft teams"],
-  personalAppNames: ["messages", "imessage", "whatsapp", "telegram", "discord"],
-  emailPatterns: [
-    "mail.google.com",
-    "workspace.google.com/mail",
-    "gmail",
-    "outlook.office.com",
-    "outlook.live.com",
-    "outlook.office365.com",
-    "outlook.office",
-    "outlook",
-    "mail.yahoo.com",
-    "mail.yahoo",
-    "yahoo mail",
-    "mail.proton.me",
-    "proton.me/mail",
-    "protonmail.com",
-    "proton mail",
-    "superhuman",
-    "spark mail",
-    "mimestream",
-    "app.fastmail.com",
-    "fastmail",
-    "hey.com",
-    "hey email",
-    "icloud.com/mail",
-    "mail.app",
-    "apple mail",
-    "canary mail",
-  ],
-  workPatterns: [
-    "slack.com",
-    "slack",
-    "linkedin.com",
-    "linkedin",
-    "teams.microsoft.com",
-    "microsoft teams",
-    "teams",
-  ],
-  personalPatterns: [
-    "messages",
-    "imessage",
-    "whatsapp",
-    "telegram",
-    "discord.com",
-    "discord",
-  ],
-  discordPatterns: ["discord.com", "discord"],
 };
 
 /** The transcript-editing user-prompt preamble (prompt-injection guard). */

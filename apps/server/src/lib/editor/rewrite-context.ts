@@ -56,5 +56,8 @@ export function getRewritePromptContext(
     assignments,
     routing,
   );
-  return { destination, personalSurface: destination === "personal" ? personalSurface : null };
+  return {
+    destination,
+    personalSurface: destination === "personal" ? personalSurface : null,
+  };
 }

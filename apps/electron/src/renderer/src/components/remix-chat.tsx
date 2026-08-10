@@ -8,8 +8,8 @@ import {
   parseCleanupPersonalTone,
   parseCleanupWorkTone,
   REMIX_PRESETS,
-  resolveCleanupToneDestination,
   type RemixPreset,
+  resolveCleanupToneDestination,
 } from "@freestyle-voice/validations";
 import { AgentActivity } from "@renderer/components/agents/agent-activity";
 import type { AgentActivityItem } from "@renderer/components/agents/agent-activity/types";

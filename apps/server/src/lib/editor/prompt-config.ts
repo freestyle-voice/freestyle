@@ -24,16 +24,21 @@
 
 import { createAppLogger } from "@freestyle-voice/utils";
 import {
-  DEFAULT_CLEANUP_ROUTING as CLEANUP_ROUTING,
   CLEANUP_PRESET_PROMPTS,
-  type CleanupRoutingConfig,
+  DEFAULT_CLEANUP_ROUTING as CLEANUP_ROUTING,
   type CleanupEmailTone,
   type CleanupOverallTone,
   type CleanupPersonalTone,
+  type CleanupRoutingConfig,
   type CleanupToneDestination,
   type CleanupWorkTone,
 } from "@freestyle-voice/validations";
-export { CLEANUP_ROUTING, type CleanupRoutingConfig } from "@freestyle-voice/validations";
+
+export {
+  type CleanupRoutingConfig,
+  DEFAULT_CLEANUP_ROUTING as CLEANUP_ROUTING,
+} from "@freestyle-voice/validations";
+
 import { freestyleCloudUrl } from "../freestyle-cloud.js";
 
 const log = createAppLogger("prompt-config");

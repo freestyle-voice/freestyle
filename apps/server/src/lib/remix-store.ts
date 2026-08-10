@@ -139,6 +139,101 @@ export function saveThreadMessages(
   return true;
 }
 
+export interface RemixThreadSummary {
+  id: number;
+  createdAt: string;
+  lastActiveAt: string;
+  /** First user message text, truncated — a human-readable title. */
+  preview: string;
+  messageCount: number;
+}
+
+const PREVIEW_MAX = 120;
+
+/** The first user message's plain text from a stored UIMessage row, or "". */
+function previewFromUiMessage(uiMessage: string): string {
+  try {
+    const message = JSON.parse(uiMessage) as {
+      role?: string;
+      parts?: { type?: string; text?: string }[];
+    };
+    if (message.role !== "user") return "";
+    const text = (message.parts ?? [])
+      .filter((part) => part.type === "text" && typeof part.text === "string")
+      .map((part) => part.text as string)
+      .join(" ")
+      .trim();
+    if (!text) return "";
+    return text.length > PREVIEW_MAX
+      ? `${text.slice(0, PREVIEW_MAX).trimEnd()}…`
+      : text;
+  } catch {
+    // A corrupt row yields no preview, not an error.
+    return "";
+  }
+}
+
+/**
+ * List past conversations, newest first. Threads with no stored messages are
+ * omitted — they carry no title and nothing to resume. Each summary carries a
+ * preview (the first user message) so the pill can render a readable title
+ * without shipping every message.
+ *
+ * The preview is resolved in a single batched query (a correlated
+ * earliest-message lookup per listed thread) rather than a per-thread read,
+ * so listing N threads costs one query, not N+1.
+ */
+export function listThreads(
+  limit: number,
+  offset: number,
+): RemixThreadSummary[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT t.id,
+              t.created_at,
+              t.last_active_at,
+              COUNT(m.id) AS message_count,
+              (SELECT em.ui_message
+                 FROM remix_messages em
+                WHERE em.thread_id = t.id
+                  AND json_valid(em.ui_message)
+                  AND json_extract(em.ui_message, '$.role') = 'user'
+                ORDER BY em.id ASC
+                LIMIT 1) AS first_message
+         FROM remix_threads t
+         JOIN remix_messages m ON m.thread_id = t.id
+        GROUP BY t.id
+       HAVING message_count > 0
+        ORDER BY t.last_active_at DESC, t.id DESC
+        LIMIT ? OFFSET ?`,
+    )
+    .all(limit, offset) as {
+    id: number;
+    created_at: string;
+    last_active_at: string;
+    message_count: number;
+    first_message: string | null;
+  }[];
+  return rows.map((row) => ({
+    id: row.id,
+    createdAt: row.created_at,
+    lastActiveAt: row.last_active_at,
+    preview: row.first_message ? previewFromUiMessage(row.first_message) : "",
+    messageCount: row.message_count,
+  }));
+}
+
+/** A single past thread with its messages, or null when it doesn't exist. */
+export function getThread(
+  threadId: number,
+): { thread: RemixThread; messages: StoredUiMessage[] } | null {
+  const row = getDb()
+    .prepare("SELECT * FROM remix_threads WHERE id = ?")
+    .get(threadId) as ThreadRow | undefined;
+  if (!row) return null;
+  return { thread: rowToThread(row), messages: getThreadMessages(threadId) };
+}
+
 export interface RemixRunInput {
   threadId?: number | null;
   lane: "transform" | "agent";

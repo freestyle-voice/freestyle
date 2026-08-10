@@ -133,3 +133,134 @@ export function parseCleanupAppAssignments(
     return [];
   }
 }
+
+/** App and site patterns used to choose a cleanup-tone destination. */
+export interface CleanupRoutingConfig {
+  emailAppNames: readonly string[];
+  workAppNames: readonly string[];
+  personalAppNames: readonly string[];
+  emailPatterns: readonly string[];
+  workPatterns: readonly string[];
+  personalPatterns: readonly string[];
+  discordPatterns: readonly string[];
+}
+
+/** Bundled routing fallback. Cloud may supply a newer config at runtime. */
+export const DEFAULT_CLEANUP_ROUTING: CleanupRoutingConfig = {
+  emailAppNames: [
+    "mail",
+    "outlook",
+    "microsoft outlook",
+    "mimestream",
+    "superhuman",
+    "spark",
+    "spark desktop",
+    "canary mail",
+    "thunderbird",
+    "airmail",
+    "em client",
+    "postbox",
+    "hey",
+  ],
+  workAppNames: ["slack", "linkedin", "teams", "microsoft teams"],
+  personalAppNames: ["messages", "imessage", "whatsapp", "telegram", "discord"],
+  emailPatterns: [
+    "mail.google.com",
+    "workspace.google.com/mail",
+    "gmail",
+    "outlook.office.com",
+    "outlook.live.com",
+    "outlook.office365.com",
+    "outlook.office",
+    "outlook",
+    "mail.yahoo.com",
+    "mail.yahoo",
+    "yahoo mail",
+    "mail.proton.me",
+    "proton.me/mail",
+    "protonmail.com",
+    "proton mail",
+    "superhuman",
+    "spark mail",
+    "mimestream",
+    "app.fastmail.com",
+    "fastmail",
+    "hey.com",
+    "hey email",
+    "icloud.com/mail",
+    "mail.app",
+    "apple mail",
+    "canary mail",
+  ],
+  workPatterns: [
+    "slack.com",
+    "slack",
+    "linkedin.com",
+    "linkedin",
+    "teams.microsoft.com",
+    "microsoft teams",
+    "teams",
+  ],
+  personalPatterns: [
+    "messages",
+    "imessage",
+    "whatsapp",
+    "telegram",
+    "discord.com",
+    "discord",
+  ],
+  discordPatterns: ["discord.com", "discord"],
+};
+
+export interface CleanupToneRoutingContext {
+  appName?: string | null;
+  title?: string | null;
+  windowTitle?: string | null;
+  url?: string | null;
+}
+
+/** Resolve user overrides first, followed by the configured built-in rules. */
+export function resolveCleanupToneDestination(
+  context: CleanupToneRoutingContext,
+  assignments: readonly CleanupAppAssignment[] = [],
+  routing: CleanupRoutingConfig = DEFAULT_CLEANUP_ROUTING,
+): CleanupToneDestination {
+  const appName = context.appName?.trim().toLowerCase() ?? "";
+  const matchText = [
+    context.url,
+    context.title,
+    context.windowTitle,
+    context.appName,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" ")
+    .toLowerCase();
+
+  for (let index = assignments.length - 1; index >= 0; index -= 1) {
+    const assignment = assignments[index]!;
+    if (assignment.kind === "app" && appName === assignment.match)
+      return assignment.destination;
+  }
+  for (let index = assignments.length - 1; index >= 0; index -= 1) {
+    const assignment = assignments[index]!;
+    if (assignment.kind === "site" && matchText.includes(assignment.match))
+      return assignment.destination;
+  }
+
+  if (
+    routing.emailAppNames.includes(appName) ||
+    routing.emailPatterns.some((pattern) => matchText.includes(pattern))
+  )
+    return "email";
+  if (
+    routing.workAppNames.includes(appName) ||
+    routing.workPatterns.some((pattern) => matchText.includes(pattern))
+  )
+    return "work";
+  if (
+    routing.personalAppNames.includes(appName) ||
+    routing.personalPatterns.some((pattern) => matchText.includes(pattern))
+  )
+    return "personal";
+  return "overall";
+}

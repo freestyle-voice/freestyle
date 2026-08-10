@@ -1,5 +1,7 @@
 import { useChat } from "@ai-sdk/react";
 import {
+  type CleanupAppAssignment,
+  type CleanupToneDestination,
   parseCleanupAppAssignments,
   parseCleanupEmailTone,
   parseCleanupIntensity,
@@ -51,6 +53,134 @@ const INK = "rgba(245, 241, 228, 0.92)";
 const INK_DIM = "rgba(245, 241, 228, 0.70)";
 const INK_FAINT = "rgba(245, 241, 228, 0.52)";
 const OLIVE = "#8AB62A";
+
+const EMAIL_APP_NAMES = new Set([
+  "mail",
+  "outlook",
+  "microsoft outlook",
+  "mimestream",
+  "superhuman",
+  "spark",
+  "spark desktop",
+  "canary mail",
+  "thunderbird",
+  "airmail",
+  "em client",
+  "postbox",
+  "hey",
+]);
+const WORK_APP_NAMES = new Set([
+  "slack",
+  "linkedin",
+  "teams",
+  "microsoft teams",
+]);
+const PERSONAL_APP_NAMES = new Set([
+  "messages",
+  "imessage",
+  "whatsapp",
+  "telegram",
+  "discord",
+]);
+const EMAIL_PATTERNS = [
+  "mail.google.com",
+  "workspace.google.com/mail",
+  "gmail",
+  "outlook.office.com",
+  "outlook.live.com",
+  "outlook.office365.com",
+  "outlook.office",
+  "outlook",
+  "mail.yahoo.com",
+  "mail.yahoo",
+  "yahoo mail",
+  "mail.proton.me",
+  "proton.me/mail",
+  "protonmail.com",
+  "proton mail",
+  "superhuman",
+  "spark mail",
+  "mimestream",
+  "app.fastmail.com",
+  "fastmail",
+  "hey.com",
+  "hey email",
+  "icloud.com/mail",
+  "mail.app",
+  "apple mail",
+  "canary mail",
+];
+const WORK_PATTERNS = [
+  "slack.com",
+  "slack",
+  "linkedin.com",
+  "linkedin",
+  "teams.microsoft.com",
+  "microsoft teams",
+  "teams",
+];
+const PERSONAL_PATTERNS = [
+  "messages",
+  "imessage",
+  "whatsapp",
+  "telegram",
+  "discord.com",
+  "discord",
+];
+
+function resolveToneDestination(
+  context: {
+    appName: string | null;
+    windowTitle: string | null;
+    url: string | null;
+  },
+  assignments: readonly CleanupAppAssignment[],
+): CleanupToneDestination {
+  const appName = context.appName?.trim().toLowerCase() ?? "";
+  const matchText = [context.url, context.windowTitle, context.appName]
+    .filter((part): part is string => Boolean(part))
+    .join(" ")
+    .toLowerCase();
+
+  for (let index = assignments.length - 1; index >= 0; index -= 1) {
+    const assignment = assignments[index]!;
+    if (
+      assignment.kind === "app" &&
+      appName === assignment.match.trim().toLowerCase()
+    ) {
+      return assignment.destination;
+    }
+  }
+  for (let index = assignments.length - 1; index >= 0; index -= 1) {
+    const assignment = assignments[index]!;
+    if (
+      assignment.kind === "site" &&
+      matchText.includes(assignment.match.trim().toLowerCase())
+    ) {
+      return assignment.destination;
+    }
+  }
+
+  if (
+    EMAIL_APP_NAMES.has(appName) ||
+    EMAIL_PATTERNS.some((pattern) => matchText.includes(pattern))
+  ) {
+    return "email";
+  }
+  if (
+    WORK_APP_NAMES.has(appName) ||
+    WORK_PATTERNS.some((pattern) => matchText.includes(pattern))
+  ) {
+    return "work";
+  }
+  if (
+    PERSONAL_APP_NAMES.has(appName) ||
+    PERSONAL_PATTERNS.some((pattern) => matchText.includes(pattern))
+  ) {
+    return "personal";
+  }
+  return "overall";
+}
 
 export {
   REMIX_CHAT_STRIP,
@@ -396,6 +526,42 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
               const intensity = parseCleanupIntensity(
                 settings.cleanup_intensity,
               );
+              const personalTone = parseCleanupPersonalTone(
+                settings.cleanup_personal_tone,
+              );
+              const workTone = parseCleanupWorkTone(settings.cleanup_work_tone);
+              const emailTone = parseCleanupEmailTone(
+                settings.cleanup_email_tone,
+              );
+              const overallTone = parseCleanupOverallTone(
+                settings.cleanup_overall_tone,
+              );
+              const appAssignments = parseCleanupAppAssignments(
+                settings.cleanup_app_assignments,
+              );
+              const destination = resolveToneDestination(
+                {
+                  appName:
+                    typeof input.appName === "string"
+                      ? input.appName
+                      : contextRef.current.appName,
+                  windowTitle:
+                    typeof input.windowTitle === "string"
+                      ? input.windowTitle
+                      : contextRef.current.windowTitle,
+                  url:
+                    typeof input.url === "string"
+                      ? input.url
+                      : (contextRef.current.url ?? null),
+                },
+                appAssignments,
+              );
+              const tones = {
+                personal: personalTone,
+                work: workTone,
+                email: emailTone,
+                overall: overallTone,
+              };
               return {
                 ok: true,
                 intensity,
@@ -403,17 +569,13 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                   intensity === "custom"
                     ? (settings.cleanup_custom_prompt ?? "")
                     : "",
-                personalTone: parseCleanupPersonalTone(
-                  settings.cleanup_personal_tone,
-                ),
-                workTone: parseCleanupWorkTone(settings.cleanup_work_tone),
-                emailTone: parseCleanupEmailTone(settings.cleanup_email_tone),
-                overallTone: parseCleanupOverallTone(
-                  settings.cleanup_overall_tone,
-                ),
-                appAssignments: parseCleanupAppAssignments(
-                  settings.cleanup_app_assignments,
-                ),
+                destination,
+                tone: tones[destination],
+                personalTone,
+                workTone,
+                emailTone,
+                overallTone,
+                appAssignments,
               };
             } catch {
               return { ok: false, reason: "settings-unavailable" };

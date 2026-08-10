@@ -129,10 +129,18 @@ export const REMIX_CLIPBOARD_LIMIT = 100_000;
  * reads the desktop settings store. Keep this descriptor identical in both
  * hosts so the agent sees one stable wire contract.
  */
+export const remixToneContextSchema = z.object({
+  appName: z.string().max(200).nullable().optional(),
+  windowTitle: z.string().max(500).nullable().optional(),
+  url: z.string().max(2_000).nullable().optional(),
+});
+
+export type RemixToneContext = z.infer<typeof remixToneContextSchema>;
+
 export const REMIX_TONES_TOOL = {
   description:
-    "Read the user's saved writing preferences. Returns { ok, intensity, customPrompt, personalTone, workTone, emailTone, overallTone, appAssignments }: intensity is the cleanup strength ('low' | 'medium' | 'high' | 'custom'); customPrompt is the user's own instruction and is meaningful only when intensity is 'custom'; personalTone/workTone/emailTone/overallTone are the destination styles (each an enum value or 'off'); appAssignments contains the user's named app/site-to-destination rules. Call this once when the user asks you to write or rewrite in 'their tone/style/voice', or when honouring their preferences would change the wording. Use a matching appAssignment for the current app/url; otherwise use overallTone. A destination set to 'off' means no preference for that surface. Failure: { ok: false, reason } means the preferences could not be read — proceed with your default judgement and don't retry.",
-  inputSchema: z.object({}),
+    "Read the user's saved writing preferences for the current writing surface. Pass the appName, windowTitle, and url from get_context when available. Returns { ok, intensity, customPrompt, destination, tone, personalTone, workTone, emailTone, overallTone, appAssignments }: intensity is the cleanup strength ('low' | 'medium' | 'high' | 'custom'); customPrompt is the user's own instruction and is meaningful only when intensity is 'custom'; destination is the matching personal/work/email/overall surface and tone is its already-resolved style (or 'off'). Use tone directly — do not choose a different destination yourself. personalTone/workTone/emailTone/overallTone and appAssignments are included for transparency. Failure: { ok: false, reason } means the preferences could not be read — proceed with your default judgement and don't retry.",
+  inputSchema: remixToneContextSchema,
 } as const;
 
 /**

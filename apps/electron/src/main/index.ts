@@ -95,6 +95,7 @@ import {
   resolveCompanionDisplay,
 } from "../shared/companion-position";
 import {
+  findFocusedSwayNode,
   getSwayFocusedWindowBounds,
   parseWindowBounds,
   type SwayNode,
@@ -860,15 +861,6 @@ async function getLinuxFrontmostApp(): Promise<string | null> {
     );
   }
   return getLinuxX11FrontmostApp();
-}
-
-function findFocusedSwayNode(node: SwayNode): SwayNode | null {
-  if (node.focused) return node;
-  for (const child of [...(node.nodes ?? []), ...(node.floating_nodes ?? [])]) {
-    const hit = findFocusedSwayNode(child);
-    if (hit) return hit;
-  }
-  return null;
 }
 
 async function getSwayFrontmostApp(): Promise<string | null> {

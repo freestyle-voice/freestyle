@@ -17,6 +17,16 @@ export interface SwayNode {
   floating_nodes?: SwayNode[];
 }
 
+/** Find Sway's currently focused node in a `swaymsg -t get_tree` response. */
+export function findFocusedSwayNode(node: SwayNode): SwayNode | null {
+  if (node.focused) return node;
+  for (const child of [...(node.nodes ?? []), ...(node.floating_nodes ?? [])]) {
+    const focused = findFocusedSwayNode(child);
+    if (focused) return focused;
+  }
+  return null;
+}
+
 function normalizeWindowBounds(
   value: Partial<WindowBounds>,
 ): WindowBounds | null {
@@ -59,15 +69,11 @@ export function getSwayFocusedWindowBounds(
   node: SwayNode,
   ownPid: number,
 ): WindowBounds | null {
-  if (node.focused) {
-    if (node.pid === undefined || node.pid === ownPid || !node.rect) {
-      return null;
-    }
-    return normalizeWindowBounds({ ...node.rect, pid: node.pid });
+  const focused = findFocusedSwayNode(node);
+  if (!focused || focused.pid === undefined || focused.pid === ownPid) {
+    return null;
   }
-  for (const child of [...(node.nodes ?? []), ...(node.floating_nodes ?? [])]) {
-    const bounds = getSwayFocusedWindowBounds(child, ownPid);
-    if (bounds) return bounds;
-  }
-  return null;
+  return focused.rect
+    ? normalizeWindowBounds({ ...focused.rect, pid: focused.pid })
+    : null;
 }

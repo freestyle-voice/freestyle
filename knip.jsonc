@@ -8,28 +8,14 @@
     "enumMembers": "off",
     "namespaceMembers": "off"
   },
-  "ignoreBinaries": [
-    "cmake",
-    "install_name_tool",
-    "objdump",
-    "pactl",
-    "pkg-config",
-    "powershell",
-    "powershell.exe"
-  ],
+  "ignoreBinaries": ["pactl", "pkg-config", "powershell.exe", "python3"],
   "ignoreFiles": [
     "apps/electron/src/preload/*.d.ts",
-    // Existing unused shadcn-style components kept as design-system inventory.
-    "apps/electron/src/renderer/src/components/ui/bar-visualizer.tsx",
-    "apps/electron/src/renderer/src/components/ui/card.tsx",
     "apps/electron/src/renderer/src/env.d.ts",
     "plugins/*/ui/vite-env.d.ts",
-    "plugins/audio-transcription/ui/src/styles.css",
     // Templates are standalone starter projects downloaded by create-freestyle-plugin,
     // not workspace code. They are never imported or built within the monorepo.
-    "templates/**",
-    // Docs site is a standalone Mintlify project, not a pnpm workspace member.
-    "apps/docs/**"
+    "templates/**"
   ],
   "workspaces": {
     "apps/electron": {
@@ -37,10 +23,8 @@
         "electron.vite.config.ts",
         "src/main/index.ts",
         "src/preload/index.ts",
-        "src/preload/plugin-bridge.ts",
-        "src/renderer/src/dashboard.tsx",
-        "src/renderer/src/components/pill.tsx",
-        "src/renderer/src/components/remix-bar.tsx",
+        "src/renderer/src/components/panel.tsx",
+        "src/renderer/src/components/companion.tsx",
         "tests/**/*.ts",
         "scripts/**/*.{js,mjs}"
       ],
@@ -60,21 +44,10 @@
           "../../packages/validations/src/index.ts"
         ]
       },
-      "ignoreDependencies": [
-        "@hono/node-server",
-        "@types/ws",
-        "playwright",
-        "react-hotkeys-hook",
-        "ws"
-      ]
+      "ignoreDependencies": ["playwright"]
     },
     "apps/server": {
-      "entry": [
-        "src/startup.ts",
-        "scripts/benchmark-post-process.ts",
-        "scripts/tone-benchmark.ts",
-        "tests/**/*.test.ts"
-      ],
+      "entry": ["src/startup.ts", "tests/**/*.test.ts"],
       "project": [
         "src/**/*.{ts,tsx}",
         "scripts/**/*.ts",
@@ -92,7 +65,7 @@
       "vitest": {
         "entry": ["tests/**/*.test.ts", "tests/setup.ts"]
       },
-      "ignoreDependencies": ["@types/json-schema", "node:sqlite"]
+      "ignoreDependencies": ["@types/json-schema"]
     },
     "apps/mobile": {
       // expo-router uses file-based routing under src/app plus the config

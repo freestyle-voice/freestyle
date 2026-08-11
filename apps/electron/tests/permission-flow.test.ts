@@ -41,7 +41,7 @@ interface LaunchOptions {
 
 interface LaunchedApp {
   app: ElectronApplication;
-  dashboard: Page;
+  companion: Page;
   eventsPath: string;
 }
 
@@ -65,15 +65,17 @@ async function closePermissionApp(app: ElectronApplication): Promise<void> {
   ]);
 }
 
-async function waitForDashboard(app: ElectronApplication): Promise<Page> {
+async function waitForCompanion(app: ElectronApplication): Promise<Page> {
   await app.firstWindow();
   await expect
-    .poll(() => app.windows().find((page) => !page.url().includes("pill")))
+    .poll(() => app.windows().find((page) => page.url().includes("companion")))
     .toBeTruthy();
-  const dashboard = app.windows().find((page) => !page.url().includes("pill"));
-  if (!dashboard) throw new Error("Dashboard window did not open");
-  await dashboard.waitForLoadState("domcontentloaded");
-  return dashboard;
+  const companion = app
+    .windows()
+    .find((page) => page.url().includes("companion"));
+  if (!companion) throw new Error("Companion window did not open");
+  await companion.waitForLoadState("domcontentloaded");
+  return companion;
 }
 
 function readEvents(eventsPath: string): RecordedEvent[] {
@@ -117,7 +119,7 @@ async function launchPermissionApp(
     timeout: 30_000,
   });
 
-  return { app, dashboard: await waitForDashboard(app), eventsPath };
+  return { app, companion: await waitForCompanion(app), eventsPath };
 }
 
 async function waitForStartupPermissionChecks(
@@ -147,9 +149,11 @@ async function triggerHotkeyDown(page: Page): Promise<void> {
 async function instrumentMicrophoneRequest(
   app: ElectronApplication,
 ): Promise<void> {
-  const pill = app.windows().find((page) => page.url().includes("pill"));
-  if (!pill) throw new Error("Pill window did not open");
-  await pill.evaluate(() => {
+  const companion = app
+    .windows()
+    .find((page) => page.url().includes("companion"));
+  if (!companion) throw new Error("Companion window did not open");
+  await companion.evaluate(() => {
     const original = navigator.mediaDevices.getUserMedia.bind(
       navigator.mediaDevices,
     );
@@ -213,16 +217,15 @@ test("startup does not warn when Accessibility permission is granted", async () 
   }
 });
 
-test("onboarding does not receive a duplicate startup warning", async () => {
+test("first run warns exactly once, same as any other run", async () => {
   const launched = await launchPermissionApp({
     accessibility: "denied",
     microphone: "denied",
     onboardingComplete: false,
   });
   try {
-    await expect.poll(() => launched.dashboard.url()).toContain("/onboarding");
     await waitForStartupPermissionChecks(launched.eventsPath);
-    expect(permissionDialogs(launched.eventsPath)).toHaveLength(0);
+    expect(permissionDialogs(launched.eventsPath)).toHaveLength(1);
   } finally {
     await closePermissionApp(launched.app);
   }
@@ -344,7 +347,7 @@ test("denied Accessibility blocks dictation before RecordingStarted", async () =
     const dialogsBefore = readEvents(launched.eventsPath).filter(
       (event) => event.type === "dialog",
     ).length;
-    await triggerHotkeyDown(launched.dashboard);
+    await triggerHotkeyDown(launched.companion);
     await expect
       .poll(
         () =>
@@ -366,7 +369,7 @@ test("denied Accessibility blocks dictation before RecordingStarted", async () =
     expect(
       await launched.app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()
-          .filter((window) => window.webContents.getURL().includes("pill"))
+          .filter((window) => window.webContents.getURL().includes("panel"))
           .some((window) => window.isVisible()),
       ),
     ).toBe(false);
@@ -385,7 +388,7 @@ test("denied Microphone blocks dictation before RecordingStarted", async () => {
     await waitForStartupPermissionChecks(launched.eventsPath);
     await instrumentMicrophoneRequest(launched.app);
     const dialogsBefore = permissionDialogs(launched.eventsPath).length;
-    await triggerHotkeyDown(launched.dashboard);
+    await triggerHotkeyDown(launched.companion);
     await expect
       .poll(() => permissionDialogs(launched.eventsPath).length)
       .toBe(dialogsBefore + 1);
@@ -416,7 +419,7 @@ test("granted permissions allow the existing dictation flow", async () => {
   try {
     await waitForStartupPermissionChecks(launched.eventsPath);
     await instrumentMicrophoneRequest(launched.app);
-    await triggerHotkeyDown(launched.dashboard);
+    await triggerHotkeyDown(launched.companion);
     await expect
       .poll(() =>
         readEvents(launched.eventsPath).some(
@@ -437,7 +440,9 @@ test("granted permissions allow the existing dictation flow", async () => {
       .poll(() =>
         launched.app.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows()
-            .filter((window) => window.webContents.getURL().includes("pill"))
+            .filter((window) =>
+              window.webContents.getURL().includes("companion"),
+            )
             .some((window) => window.isVisible()),
         ),
       )

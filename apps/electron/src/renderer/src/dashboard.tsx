@@ -45,6 +45,12 @@ const ProfilePage = lazy(() => import("@renderer/pages/profile"));
 const RemixPage = lazy(() => import("@renderer/pages/remix"));
 const SettingsPage = lazy(() => import("@renderer/pages/settings"));
 const TonePage = lazy(() => import("@renderer/pages/tone"));
+const ToneDestinationPage = lazy(
+  () => import("@renderer/pages/tone/destination"),
+);
+const ToneCustomPromptPage = lazy(
+  () => import("@renderer/pages/tone/custom-prompt"),
+);
 const VocabularyPage = lazy(() => import("@renderer/pages/vocabulary"));
 
 const queryClient = createQueryClient();
@@ -156,6 +162,14 @@ function mount(): void {
                               <Route
                                 path="/settings/tone"
                                 element={<TonePage />}
+                              />
+                              <Route
+                                path="/settings/tone/custom-prompt"
+                                element={<ToneCustomPromptPage />}
+                              />
+                              <Route
+                                path="/settings/tone/:destination"
+                                element={<ToneDestinationPage />}
                               />
                               <Route
                                 path="/settings/history"

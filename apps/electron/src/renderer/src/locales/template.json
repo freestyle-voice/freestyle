@@ -413,7 +413,7 @@
   },
   "tone": {
     "title": "Tone",
-    "subtitle": "How much Freestyle cleans up — and how it sounds in each app.",
+    "subtitle": "How much Freestyle fixes, and how it sounds where you type.",
     "loading": "Loading tone…",
     "disabledBanner": {
       "title": "Cleanup is off.",
@@ -526,7 +526,10 @@
           "desc": "No styling — just clean text.",
           "sample": "Hey, I'm running about 10 minutes late. I'll be there soon."
         }
-      }
+      },
+      "rowTitle": "Personal",
+      "pageSubtitle": "How Freestyle sounds in your personal chats.",
+      "resultLabel": "What lands"
     },
     "work": {
       "eyebrow": "Work correspondence",
@@ -558,7 +561,10 @@
           "desc": "No styling — just clean text.",
           "sample": "I reviewed the doc. A couple changes are still needed: tighten the intro and update the footer links."
         }
-      }
+      },
+      "rowTitle": "Work",
+      "pageSubtitle": "How Freestyle sounds in your work chats.",
+      "resultLabel": "What lands"
     },
     "email": {
       "eyebrow": "Emails",
@@ -590,7 +596,10 @@
           "desc": "No email formatting — just clean text.",
           "sample": "Hi Sam, just confirming we're still on for Thursday at 2. I'll send the revised plan tomorrow morning. Let me know if you want anything else added. Thanks."
         }
-      }
+      },
+      "rowTitle": "Email",
+      "pageSubtitle": "How Freestyle sounds when you write email.",
+      "resultLabel": "What lands"
     },
     "everythingElse": {
       "eyebrow": "Everything else",
@@ -620,7 +629,27 @@
           "desc": "No styling — just clean text.",
           "sample": "Just pushed the fix. Should be good to test now."
         }
-      }
+      },
+      "rowTitle": "Everywhere else",
+      "pageSubtitle": "Used in every app that isn’t listed under Personal, Work, or Email.",
+      "resultLabel": "What lands"
+    },
+    "sections": {
+      "howMuchToFix": "How much to fix",
+      "howYouSound": "How you sound across apps",
+      "voice": "Voice",
+      "whereUsed": "Where it’s used"
+    },
+    "strength": {
+      "desc": "Applies everywhere, in every app."
+    },
+    "customPrompt": {
+      "title": "Custom prompt",
+      "subtitle": "Your own cleanup instructions, used instead of Low, Medium, or High.",
+      "backToTone": "Tone",
+      "placeholder": "e.g. Fix grammar and punctuation. Keep my own wording wherever it reads clearly. Never add anything I didn’t say.",
+      "startFrom": "Start from a preset",
+      "rowEmpty": "Not written yet"
     }
   },
   "models": {

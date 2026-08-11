@@ -36,6 +36,8 @@ export function SpriteStage({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const performerRef = useRef<Performer | null>(null);
   const [say, setSay] = useState<string | null>(null);
+  const [shout, setShout] = useState<string | null>(null);
+  const shoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -45,6 +47,13 @@ export function SpriteStage({
       engine,
       def,
       window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      {
+        onShout: (text) => {
+          setShout(text);
+          if (shoutTimer.current) clearTimeout(shoutTimer.current);
+          shoutTimer.current = setTimeout(() => setShout(null), 1_500);
+        },
+      },
     );
     performerRef.current = performer;
     (window as unknown as Record<string, unknown>).__spriteTest = {
@@ -67,6 +76,7 @@ export function SpriteStage({
       offEvents();
       offHot();
       hitbox?.removeEventListener("mouseenter", onEnter);
+      if (shoutTimer.current) clearTimeout(shoutTimer.current);
     };
   }, [def]);
 
@@ -85,37 +95,61 @@ export function SpriteStage({
         html, body, #root { margin: 0; height: 100%; background: transparent; overflow: hidden; }
         .sprite-stage { position: relative; width: ${def.windowSize}px; height: ${def.windowSize}px; -webkit-user-select: none; user-select: none; }
         canvas { image-rendering: pixelated; }
-        /* Manga bubble: ink on white, hard shadow, notched corners. */
+        /* Manga speech balloon (listening): tail pinned to the mouth. */
         .sprite-bubble {
           position: absolute;
           left: ${def.bubble.x}px;
           bottom: ${def.bubble.y}px;
-          max-width: ${def.windowSize - def.bubble.x - 12}px;
-          padding: 6px 9px;
-          background: #ffffff;
-          border: 2.5px solid #141210;
-          color: #141210;
-          font: 700 11px/1.4 "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
-          letter-spacing: 0.04em;
-          text-align: center;
+          max-width: ${def.windowSize - def.bubble.x - 14}px;
+          padding: 8px 12px;
+          background: #fbf5e4;
+          border: 3px solid #2a2114;
+          border-radius: 16px;
+          color: #8e7f5f;
+          font: 500 11px/1.45 "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+          text-align: left;
           pointer-events: none;
           white-space: pre-wrap;
-          box-shadow: 3px 3px 0 rgba(20, 18, 16, 0.3);
-          clip-path: polygon(
-            0 6px, 6px 6px, 6px 0,
-            calc(100% - 6px) 0, calc(100% - 6px) 6px, 100% 6px,
-            100% calc(100% - 6px), calc(100% - 6px) calc(100% - 6px),
-            calc(100% - 6px) 100%, 6px 100%, 6px calc(100% - 6px), 0 calc(100% - 6px)
-          );
+          box-shadow: 4px 4px 0 rgba(42, 33, 20, 0.8);
+        }
+        .sprite-bubble::before {
+          content: "";
+          position: absolute;
+          left: 12px;
+          bottom: -17px;
+          border-style: solid;
+          border-width: 18px 16px 0 5px;
+          border-color: #2a2114 transparent transparent transparent;
+          transform: rotate(14deg);
         }
         .sprite-bubble::after {
           content: "";
           position: absolute;
-          left: 12px;
-          bottom: -5px;
-          border-left: 5px solid transparent;
-          border-right: 5px solid transparent;
-          border-top: 5px solid #141210;
+          left: 16px;
+          bottom: -11px;
+          border-style: solid;
+          border-width: 13px 12px 0 3px;
+          border-color: #fbf5e4 transparent transparent transparent;
+          transform: rotate(14deg);
+        }
+        /* Shout burst (paste lands): jagged flash. */
+        .sprite-shout {
+          position: absolute;
+          left: ${def.bubble.x}px;
+          bottom: ${def.bubble.y + 16}px;
+          background: #fbf5e4;
+          border: 3px solid #2a2114;
+          padding: 10px 18px;
+          font-family: "Pixelify Sans", monospace;
+          font-size: 16px;
+          color: #2a2114;
+          box-shadow: 5px 5px 0 #d98e2b;
+          pointer-events: none;
+          clip-path: polygon(
+            3% 12%, 12% 0, 30% 7%, 50% 0, 68% 8%, 88% 0, 97% 14%, 100% 40%,
+            94% 60%, 100% 86%, 86% 100%, 64% 92%, 44% 100%, 24% 93%, 8% 100%,
+            0 78%, 5% 52%, 0 30%
+          );
         }
       `}</style>
       <canvas ref={canvasRef} width={def.windowSize} height={def.windowSize} />
@@ -129,7 +163,11 @@ export function SpriteStage({
           height: def.hotRect.height,
         }}
       />
-      {say ? <div className="sprite-bubble">{say}</div> : null}
+      {shout ? (
+        <div className="sprite-shout">{shout}</div>
+      ) : say ? (
+        <div className="sprite-bubble">{say}</div>
+      ) : null}
     </div>
   );
 }

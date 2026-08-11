@@ -21,6 +21,7 @@ import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
 import { SpriteBadge } from "@renderer/sprites/badge";
 import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
 import { PANEL_TABS, type PanelTab } from "@shared/panel";
+import { SPRITES_INFO } from "@shared/sprites";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
   DefaultChatTransport,
@@ -101,7 +102,8 @@ function ToolChip({
         className="tavern-msg-tool tavern-tool-toggle"
         onClick={() => setOpen((v) => !v)}
       >
-        ✦ {toolLabel(partType)} {open ? "▾" : "▸"}
+        <i className="tavern-tool-spark">◆</i> {toolLabel(partType)}{" "}
+        {open ? "▾" : "▸"}
       </button>
       {open ? (
         <div className="tavern-tool-detail">
@@ -192,10 +194,6 @@ function newThread(): ThreadState {
   return { id: crypto.randomUUID(), messages: [] };
 }
 
-// The signature waveform from the cloud sign-in page's brand lockup.
-const GATE_WAVE =
-  "8.00,50.00 9.40,49.85 10.80,49.42 12.20,48.76 13.60,47.98 15.00,47.18 16.40,46.50 17.80,46.06 19.20,45.96 20.60,46.29 22.00,47.08 23.40,48.34 24.80,50.00 26.20,51.96 27.60,54.08 29.00,56.19 30.40,58.08 31.80,59.58 33.20,60.50 34.60,60.71 36.00,60.10 37.40,58.66 38.80,56.42 40.20,53.47 41.60,50.00 43.00,46.23 44.40,42.42 45.80,38.86 47.20,35.85 48.60,33.66 50.00,32.50 51.40,32.53 52.80,33.83 54.20,36.39 55.60,40.08 57.00,44.72 58.40,50.00 59.80,55.59 61.20,61.08 62.60,66.09 64.00,70.21 65.40,73.10 66.80,74.50 68.20,74.23 69.60,72.23 71.00,68.56 72.40,63.42 73.80,57.10 75.20,50.00 76.60,42.60 78.00,35.42 79.40,28.96 80.80,23.73 82.20,20.14 83.60,18.50 85.00,19.01 86.40,21.71 87.80,26.49 89.20,33.08 90.60,41.09 92.00,50.00";
-
 function SignInGate(): React.JSX.Element {
   const auth = useCloudAuth();
   return (
@@ -210,22 +208,13 @@ function SignInGate(): React.JSX.Element {
       </button>
       <div className="tavern-gate-body">
         <div className="tavern-gate-lockup">
-          <svg viewBox="0 0 100 100" width="26" height="26" aria-hidden="true">
-            <polyline
-              points={GATE_WAVE}
-              fill="none"
-              stroke="var(--tavern-lantern)"
-              strokeWidth="9"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <span className="tavern-gate-spark" />
           <span className="tavern-gate-wordmark">
             freestyle<span className="tavern-gate-accent">.</span>
           </span>
         </div>
         <h1 className="tavern-gate-heading">
-          <span className="tavern-gate-accent">Welcome</span> back.
+          welcome <span className="tavern-gate-accent">back.</span>
         </h1>
         <p className="tavern-gate-sub">Sign in to your Freestyle account</p>
         {auth.signingIn ? (
@@ -572,154 +561,167 @@ function PanelInner({
   // flashing the gate at signed-in users.
   if (!auth.user) {
     return (
-      <div className="tavern tavern-panel">
-        {auth.loading ? null : <SignInGate />}
+      <div className="tavern-shell">
+        <div className="tavern tavern-panel">
+          {auth.loading ? null : <SignInGate />}
+        </div>
+        <span className="tavern-tail-o" />
+        <span className="tavern-tail-f" />
       </div>
     );
   }
 
   return (
-    <div className="tavern tavern-panel">
-      <div className="tavern-head">
-        <SpriteBadge form={spriteForm} working={busy} size={20} />
-        <span className="tavern-head-name">Freestyle</span>
-        <span className="tavern-head-spacer" />
-        <button
-          type="button"
-          className="tavern-head-new"
-          title="New conversation"
-          disabled={pinned}
-          onClick={() => onSwitchThread(newThread())}
-        >
-          ＋ New
-        </button>
-        <button
-          type="button"
-          className="tavern-close"
-          aria-label="Close"
-          onClick={() => window.api.panelClose()}
-        >
-          ×
-        </button>
-      </div>
-
-      <div className="tavern-tabs" role="tablist">
-        {PANEL_TABS.map((id) => (
+    <div className="tavern-shell">
+      <div className="tavern tavern-panel">
+        <div className="tavern-head">
+          <SpriteBadge form={spriteForm} working={busy} size={22} />
+          <span className="tavern-head-name">
+            freestyle<i>.</i>
+          </span>
+          <span className="tavern-head-spacer" />
           <button
-            key={id}
             type="button"
-            role="tab"
-            aria-selected={!settingsOpen && tab === id}
-            className="tavern-tab"
-            onClick={() => {
-              setSettingsOpen(false);
-              setTab(id);
-            }}
+            className="tavern-head-new"
+            title="New conversation"
+            disabled={pinned}
+            onClick={() => onSwitchThread(newThread())}
           >
-            {TAB_LABELS[id]}
+            ＋ New
           </button>
-        ))}
-        <span className="tavern-head-spacer" />
-        <button
-          type="button"
-          role="tab"
-          aria-selected={settingsOpen}
-          aria-label="Settings"
-          title="Settings"
-          className="tavern-tab tavern-tab-gear"
-          onClick={() => setSettingsOpen((v) => !v)}
-        >
-          ⚙
-        </button>
-      </div>
-
-      <div className="tavern-body" role="tabpanel" ref={bodyRef}>
-        {settingsOpen ? (
-          <SettingsView
-            onClose={() => setSettingsOpen(false)}
-            onThreadsCleared={() => onSwitchThread(newThread())}
-          />
-        ) : tab === "history" ? (
-          <ThreadHistory
-            currentId={thread.id}
-            onPick={(picked) => {
-              if (picked.id === thread.id) setTab("chat");
-              else onSwitchThread(picked);
-            }}
-          />
-        ) : showChat ? (
-          <>
-            {messages.map((m) => (
-              <ChatMessage key={m.id} message={m} />
-            ))}
-            {approvals.map((call) => (
-              <div key={call.toolCallId} className="tavern-approve">
-                <div className="tavern-approve-text">
-                  {describeAgentAction(call)}
-                </div>
-                <div className="tavern-approve-actions">
-                  <button
-                    type="button"
-                    className="tavern-approve-btn tavern-approve-allow"
-                    onClick={() => resolveApproval(call, true)}
-                  >
-                    Allow
-                  </button>
-                  <button
-                    type="button"
-                    className="tavern-approve-btn"
-                    onClick={() => resolveApproval(call, false)}
-                  >
-                    Don't allow
-                  </button>
-                </div>
-              </div>
-            ))}
-            {status === "submitted" ? (
-              <div className="tavern-thinking">…</div>
-            ) : null}
-          </>
-        ) : tab === "todos" ? (
-          <TodosTab />
-        ) : tab === "notes" ? (
-          <NotesTab />
-        ) : (
-          <div className="tavern-empty">{TAB_PLACEHOLDER[tab]}</div>
-        )}
-        {notice ? <p className="tavern-notice">{notice}</p> : null}
-      </div>
-
-      {chatActive && !settingsOpen ? (
-        <div className="tavern-composer">
-          <textarea
-            id="panel-composer"
-            className="tavern-input"
-            value={draft}
-            rows={1}
-            placeholder="Ask anything"
-            onMouseDown={() => window.api.panelRequestFocus()}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (
-                e.key === "Enter" &&
-                !e.shiftKey &&
-                !e.nativeEvent.isComposing
-              ) {
-                e.preventDefault();
-                send();
-              }
-            }}
-          />
           <button
             type="button"
-            className="tavern-btn tavern-btn-send"
-            aria-label="Send"
-            onClick={send}
+            className="tavern-close"
+            aria-label="Close"
+            onClick={() => window.api.panelClose()}
           >
-            ↑
+            ×
           </button>
         </div>
-      ) : null}
+
+        <div className="tavern-tabs" role="tablist">
+          {PANEL_TABS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={!settingsOpen && tab === id}
+              className="tavern-tab"
+              onClick={() => {
+                setSettingsOpen(false);
+                setTab(id);
+              }}
+            >
+              {TAB_LABELS[id]}
+            </button>
+          ))}
+          <span className="tavern-head-spacer" />
+          <button
+            type="button"
+            role="tab"
+            aria-selected={settingsOpen}
+            aria-label="Settings"
+            title="Settings"
+            className="tavern-tab tavern-tab-gear"
+            onClick={() => setSettingsOpen((v) => !v)}
+          >
+            ⚙
+          </button>
+        </div>
+
+        <div className="tavern-body" role="tabpanel" ref={bodyRef}>
+          {settingsOpen ? (
+            <SettingsView
+              onClose={() => setSettingsOpen(false)}
+              onThreadsCleared={() => onSwitchThread(newThread())}
+            />
+          ) : tab === "history" ? (
+            <ThreadHistory
+              currentId={thread.id}
+              onPick={(picked) => {
+                if (picked.id === thread.id) setTab("chat");
+                else onSwitchThread(picked);
+              }}
+            />
+          ) : showChat ? (
+            <>
+              {messages.map((m) => (
+                <ChatMessage key={m.id} message={m} />
+              ))}
+              {approvals.map((call) => (
+                <div key={call.toolCallId} className="tavern-approve">
+                  <span className="tavern-approve-title">
+                    {SPRITES_INFO[spriteForm].label.toLowerCase()} wants to act
+                  </span>
+                  <div className="tavern-approve-text">
+                    {describeAgentAction(call)}
+                  </div>
+                  <div className="tavern-approve-actions">
+                    <button
+                      type="button"
+                      className="tavern-approve-btn tavern-approve-allow"
+                      onClick={() => resolveApproval(call, true)}
+                    >
+                      Allow
+                    </button>
+                    <button
+                      type="button"
+                      className="tavern-approve-btn"
+                      onClick={() => resolveApproval(call, false)}
+                    >
+                      Don't allow
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {status === "submitted" ? (
+                <div className="tavern-thinking">…</div>
+              ) : null}
+            </>
+          ) : tab === "todos" ? (
+            <TodosTab mascot={SPRITES_INFO[spriteForm].label} />
+          ) : tab === "notes" ? (
+            <NotesTab />
+          ) : (
+            <div className="tavern-empty">{TAB_PLACEHOLDER[tab]}</div>
+          )}
+          {notice ? <p className="tavern-notice">{notice}</p> : null}
+        </div>
+
+        {chatActive && !settingsOpen ? (
+          <div className="tavern-composer">
+            <textarea
+              id="panel-composer"
+              className="tavern-input"
+              value={draft}
+              rows={1}
+              placeholder="Ask anything"
+              onMouseDown={() => window.api.panelRequestFocus()}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  !e.nativeEvent.isComposing
+                ) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="tavern-btn tavern-btn-send"
+              aria-label="Send"
+              onClick={send}
+            >
+              ↑
+            </button>
+          </div>
+        ) : null}
+      </div>
+      <span className="tavern-tail-o" />
+      <span className="tavern-tail-f" />
     </div>
   );
 }

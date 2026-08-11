@@ -34,6 +34,10 @@ export class Performer {
     private readonly engine: SheetEngine,
     private readonly def: SheetSpriteDefinition,
     private readonly reducedMotion: boolean,
+    private readonly hooks: {
+      onSleepChange?: (asleep: boolean) => void;
+      onShout?: (text: string) => void;
+    } = {},
   ) {
     this.sleepTimer = setInterval(() => {
       if (Date.now() - this.lastActivity > def.timings.sleepAfterMs) {
@@ -126,7 +130,11 @@ export class Performer {
           c.tool.byName[ev.name] ??
           c.tool.byClass[ev.toolClass] ??
           c.tool.default;
-        const impact = (): void => window.api.spriteImpact(ev.nonce);
+        const impact = (): void => {
+          window.api.spriteImpact(ev.nonce);
+          // The manga shout burst — the flash when a paste lands.
+          if (ev.toolClass === "deliver") this.hooks.onShout?.("PASTED!");
+        };
         const done = (): void => window.api.spritePerformDone(ev.nonce);
         // Never stall the OS action waiting on theater that can't happen.
         if (!perf || perf.length === 0 || this.reducedMotion) {
@@ -153,6 +161,7 @@ export class Performer {
     this.lastActivity = Date.now();
     if (!this.asleep) return;
     this.asleep = false;
+    this.hooks.onSleepChange?.(false);
     this.refreshAmbient();
     const wakePerf = this.def.choreography.wake;
     if (wakePerf) this.play(wakePerf);
@@ -173,6 +182,7 @@ export class Performer {
       return;
     }
     this.asleep = true;
+    this.hooks.onSleepChange?.(true);
     this.play(sleep.enter);
     this.engine.ambient = sleep.ambient;
     capture("sprite_slept", { sprite: this.def.id });

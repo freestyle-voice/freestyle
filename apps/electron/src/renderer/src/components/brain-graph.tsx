@@ -144,8 +144,10 @@ export function BrainGraph({
             transparent: true,
             opacity: 1,
           });
+          // Pixel cubes, per the gamified Tavern sheet.
+          const size = radiusFor(n) * 1.7;
           const sphere = new THREE.Mesh(
-            new THREE.SphereGeometry(radiusFor(n), 24, 24),
+            new THREE.BoxGeometry(size, size, size),
             material,
           );
           materials.set(n.id, material);

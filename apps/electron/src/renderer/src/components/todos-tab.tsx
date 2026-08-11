@@ -21,7 +21,7 @@ function parseItems(lines: string[]): TodoItem[] {
   return items;
 }
 
-export function TodosTab(): React.JSX.Element {
+export function TodosTab({ mascot }: { mascot: string }): React.JSX.Element {
   const [lines, setLines] = useState<string[] | null>(null);
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<{ line: number; text: string } | null>(
@@ -144,6 +144,16 @@ export function TodosTab(): React.JSX.Element {
           if (e.key === "Enter") add();
         }}
       />
+      {items.some((i) => i.done) ? (
+        <div className="tavern-todo-streak">
+          <span className="tavern-todo-streak-line">
+            ◆ {items.filter((i) => i.done).length} cleared
+          </span>
+          <div className="tavern-todo-streak-sub">
+            {mascot} keeps count. Quietly.
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

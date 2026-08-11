@@ -139,6 +139,11 @@ function compileWindows() {
       src: "windows-output-volume.c",
       libs: ["ole32.lib"],
     },
+    {
+      name: "windows-window-bounds.exe",
+      src: "windows-window-bounds.c",
+      libs: ["user32.lib"],
+    },
   ];
 
   for (const bin of binaries) {
@@ -246,6 +251,21 @@ function compileLinux() {
     } else {
       failures.push("linux-key-listener");
       console.warn("  WARNING: Failed to compile linux-key-listener.");
+    }
+  }
+
+  // linux-window-bounds (X11 active window geometry)
+  console.log("  Compiling linux-window-bounds...");
+  {
+    const src = join(NATIVE_DIR, "linux-window-bounds.c");
+    const out = join(outputDir, "linux-window-bounds");
+    const ok = runShell(`gcc -O2 ${src} -o ${out} -lX11`);
+    if (ok) {
+      chmodSync(out, 0o755);
+      console.log(`  -> ${out}`);
+    } else {
+      failures.push("linux-window-bounds");
+      console.warn("  WARNING: Failed to compile linux-window-bounds.");
     }
   }
 }

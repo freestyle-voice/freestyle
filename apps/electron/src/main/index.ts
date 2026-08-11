@@ -90,7 +90,16 @@ import {
   parseCompanionForm,
   parseDictationDestination,
 } from "../shared/companion";
-import { resolveCompanionDisplay } from "../shared/companion-position";
+import {
+  createDictationDisplayRequestTracker,
+  resolveCompanionDisplay,
+} from "../shared/companion-position";
+import {
+  getSwayFocusedWindowBounds,
+  parseWindowBounds,
+  type SwayNode,
+  type WindowBounds,
+} from "../shared/focused-window";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { OpenAppCandidate } from "../shared/open-apps";
 import {
@@ -851,15 +860,6 @@ async function getLinuxFrontmostApp(): Promise<string | null> {
     );
   }
   return getLinuxX11FrontmostApp();
-}
-
-interface SwayNode {
-  focused?: boolean;
-  name?: string;
-  app_id?: string | null;
-  window_properties?: { class?: string };
-  nodes?: SwayNode[];
-  floating_nodes?: SwayNode[];
 }
 
 function findFocusedSwayNode(node: SwayNode): SwayNode | null {
@@ -2882,30 +2882,79 @@ function companionPosition(display?: Display): { x: number; y: number } {
   };
 }
 
-type ExternalWindowBounds = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
-async function getFocusedExternalDisplay(): Promise<Display | null> {
-  if (process.platform !== "darwin") return null;
-  const binary = getNativeBinaryPath("macos-ax");
+async function getNativeFocusedWindowBounds(
+  binaryName: string,
+  args: string[] = [String(process.pid)],
+): Promise<WindowBounds | null> {
+  const binary = getNativeBinaryPath(binaryName);
   if (!binary) return null;
   try {
-    // A focusable Freestyle panel is not the user's dictation target. The
-    // helper rejects it by PID so this path retains the cursor fallback.
-    const out = await execAsync(binary, ["window", String(process.pid)], 800);
-    const bounds = JSON.parse(out) as ExternalWindowBounds;
-    if (bounds.width <= 0 || bounds.height <= 0) return null;
-    return screen.getDisplayMatching(bounds);
+    const out = await execAsync(binary, args, 800);
+    const bounds = parseWindowBounds(out);
+    return bounds?.pid === process.pid ? null : bounds;
   } catch {
     return null;
   }
 }
 
-let dictationDisplayRequest = 0;
+async function getSwayExternalWindowBounds(): Promise<WindowBounds | null> {
+  try {
+    const out = await execAsync("swaymsg", ["-t", "get_tree"], 800);
+    return getSwayFocusedWindowBounds(JSON.parse(out) as SwayNode, process.pid);
+  } catch {
+    return null;
+  }
+}
+
+function focusedWindowBoundsToDip(bounds: WindowBounds): WindowBounds {
+  if (process.platform === "win32") {
+    const rect = screen.screenToDipRect(null, bounds);
+    return {
+      ...rect,
+      ...(bounds.pid === undefined ? {} : { pid: bounds.pid }),
+    };
+  }
+  if (process.platform === "linux" && !isWaylandSession()) {
+    const topLeft = screen.screenToDipPoint(bounds);
+    const bottomRight = screen.screenToDipPoint({
+      x: bounds.x + bounds.width,
+      y: bounds.y + bounds.height,
+    });
+    return {
+      x: topLeft.x,
+      y: topLeft.y,
+      width: bottomRight.x - topLeft.x,
+      height: bottomRight.y - topLeft.y,
+      ...(bounds.pid === undefined ? {} : { pid: bounds.pid }),
+    };
+  }
+  return bounds;
+}
+
+async function getFocusedExternalDisplay(): Promise<Display | null> {
+  const bounds = await (() => {
+    switch (process.platform) {
+      case "darwin":
+        return getNativeFocusedWindowBounds("macos-ax", [
+          "window",
+          String(process.pid),
+        ]);
+      case "win32":
+        return getNativeFocusedWindowBounds("windows-window-bounds");
+      case "linux":
+        return isWaylandSession()
+          ? getSwayExternalWindowBounds()
+          : getNativeFocusedWindowBounds("linux-window-bounds");
+      default:
+        return Promise.resolve(null);
+    }
+  })();
+  return bounds
+    ? screen.getDisplayMatching(focusedWindowBoundsToDip(bounds))
+    : null;
+}
+
+const dictationDisplayRequests = createDictationDisplayRequestTracker();
 
 /**
  * Associate the visible companion with the target captured for this dictation
@@ -2916,14 +2965,14 @@ function anchorCompanionForDictation(): void {
   const win = companionWindow;
   if (!win || win.isDestroyed()) return;
 
-  const request = ++dictationDisplayRequest;
+  const request = dictationDisplayRequests.begin();
   const cursorDisplay = screen.getDisplayNearestPoint(
     screen.getCursorScreenPoint(),
   );
   positionCompanionOnDisplay(resolveCompanionDisplay(null, cursorDisplay));
 
   void getFocusedExternalDisplay().then((focusedDisplay) => {
-    if (request !== dictationDisplayRequest) return;
+    if (!dictationDisplayRequests.isCurrent(request)) return;
     if (!companionWindow || companionWindow.isDestroyed()) return;
     positionCompanionOnDisplay(
       resolveCompanionDisplay(focusedDisplay, cursorDisplay),

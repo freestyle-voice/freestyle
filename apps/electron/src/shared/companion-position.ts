@@ -15,3 +15,15 @@ export function resolveCompanionDisplay<T extends CompanionDisplay>(
 ): T {
   return focusedDisplay ?? cursorDisplay;
 }
+
+/** Tracks the dictation session allowed to update the companion's display. */
+export function createDictationDisplayRequestTracker(): {
+  begin: () => number;
+  isCurrent: (request: number) => boolean;
+} {
+  let current = 0;
+  return {
+    begin: () => ++current,
+    isCurrent: (request) => request === current,
+  };
+}

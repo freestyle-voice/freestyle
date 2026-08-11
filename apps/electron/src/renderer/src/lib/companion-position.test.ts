@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { resolveCompanionDisplay } from "../../../shared/companion-position";
+import {
+  createDictationDisplayRequestTracker,
+  resolveCompanionDisplay,
+} from "../../../shared/companion-position";
 
 const focusedDisplay = {
   id: 2,
@@ -20,4 +23,13 @@ describe("resolveCompanionDisplay", () => {
   test("uses the cursor display only when no focused-app display is available", () => {
     expect(resolveCompanionDisplay(null, cursorDisplay)).toBe(cursorDisplay);
   });
+});
+
+test("ignores a focused-display result from an earlier dictation session", () => {
+  const tracker = createDictationDisplayRequestTracker();
+  const firstSession = tracker.begin();
+  const secondSession = tracker.begin();
+
+  expect(tracker.isCurrent(firstSession)).toBe(false);
+  expect(tracker.isCurrent(secondSession)).toBe(true);
 });

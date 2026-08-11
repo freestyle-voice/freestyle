@@ -62,6 +62,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  type Display,
   dialog,
   globalShortcut,
   ipcMain,
@@ -89,6 +90,7 @@ import {
   parseCompanionForm,
   parseDictationDestination,
 } from "../shared/companion";
+import { resolveCompanionDisplay } from "../shared/companion-position";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { OpenAppCandidate } from "../shared/open-apps";
 import {
@@ -2856,9 +2858,10 @@ let companionHotRect: PillHotRect | null = null;
 let companionLastRect: PillHotRect | null = null;
 let companionHotPollTimer: NodeJS.Timeout | null = null;
 
-function companionPosition(): { x: number; y: number } {
-  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  const { x: waX, y: waY, height } = display.workArea;
+function companionPosition(display?: Display): { x: number; y: number } {
+  const targetDisplay =
+    display ?? screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const { x: waX, y: waY, height } = targetDisplay.workArea;
   const info = SPRITES_INFO[companionFormSetting()];
   // Sheet sprites have transparent margin around the drawn body; the anchor
   // hangs the window off the work area so the BODY touches the corner.
@@ -2877,6 +2880,63 @@ function companionPosition(): { x: number; y: number } {
     x: waX,
     y: waY + height - info.windowSize,
   };
+}
+
+type ExternalWindowBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+async function getFocusedExternalDisplay(): Promise<Display | null> {
+  if (process.platform !== "darwin") return null;
+  const binary = getNativeBinaryPath("macos-ax");
+  if (!binary) return null;
+  try {
+    // A focusable Freestyle panel is not the user's dictation target. The
+    // helper rejects it by PID so this path retains the cursor fallback.
+    const out = await execAsync(binary, ["window", String(process.pid)], 800);
+    const bounds = JSON.parse(out) as ExternalWindowBounds;
+    if (bounds.width <= 0 || bounds.height <= 0) return null;
+    return screen.getDisplayMatching(bounds);
+  } catch {
+    return null;
+  }
+}
+
+let dictationDisplayRequest = 0;
+
+/**
+ * Associate the visible companion with the target captured for this dictation
+ * session. Cursor is only an immediate fallback; an Accessibility lookup moves
+ * it to the external app's display without following later mouse movement.
+ */
+function anchorCompanionForDictation(): void {
+  const win = companionWindow;
+  if (!win || win.isDestroyed()) return;
+
+  const request = ++dictationDisplayRequest;
+  const cursorDisplay = screen.getDisplayNearestPoint(
+    screen.getCursorScreenPoint(),
+  );
+  positionCompanionOnDisplay(resolveCompanionDisplay(null, cursorDisplay));
+
+  void getFocusedExternalDisplay().then((focusedDisplay) => {
+    if (request !== dictationDisplayRequest) return;
+    if (!companionWindow || companionWindow.isDestroyed()) return;
+    positionCompanionOnDisplay(
+      resolveCompanionDisplay(focusedDisplay, cursorDisplay),
+    );
+  });
+}
+
+function positionCompanionOnDisplay(display: Display): void {
+  const win = companionWindow;
+  if (!win || win.isDestroyed()) return;
+  const size = SPRITES_INFO[companionFormSetting()].windowSize;
+  const { x, y } = companionPosition(display);
+  win.setBounds({ x, y, width: size, height: size });
 }
 
 function stopCompanionHotPoll(): void {
@@ -3404,6 +3464,7 @@ function sendHotkeyDown(): void {
     void showRequiredPermissionDialog(missingPermission);
     return;
   }
+  anchorCompanionForDictation();
   relayServerEvent({ type: FreestyleEventType.RecordingStarted });
   for (const win of dictationTargets()) {
     win.webContents.send("hotkey:down");

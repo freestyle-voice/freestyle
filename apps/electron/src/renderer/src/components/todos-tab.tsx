@@ -1,4 +1,8 @@
-import { readBrainFile, writeBrainFile } from "@renderer/lib/brain-fs";
+import {
+  peekBrainFile,
+  readBrainFile,
+  writeBrainFile,
+} from "@renderer/lib/brain-fs";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -9,6 +13,10 @@ interface TodoItem {
   line: number;
   done: boolean;
   text: string;
+}
+
+function linesFromText(text: string | null): string[] {
+  return text === null ? [] : text.split("\n");
 }
 
 function parseItems(lines: string[]): TodoItem[] {
@@ -22,7 +30,10 @@ function parseItems(lines: string[]): TodoItem[] {
 }
 
 export function TodosTab({ mascot }: { mascot: string }): React.JSX.Element {
-  const [lines, setLines] = useState<string[] | null>(null);
+  const [lines, setLines] = useState<string[] | null>(() => {
+    const cached = peekBrainFile(TODOS_PATH);
+    return cached === undefined ? null : linesFromText(cached);
+  });
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<{ line: number; text: string } | null>(
     null,
@@ -30,7 +41,7 @@ export function TodosTab({ mascot }: { mascot: string }): React.JSX.Element {
 
   const load = useCallback((): void => {
     void readBrainFile(TODOS_PATH).then((text) => {
-      setLines(text === null ? [] : text.split("\n"));
+      setLines(linesFromText(text));
     });
   }, []);
 

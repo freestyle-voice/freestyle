@@ -1,7 +1,9 @@
 import { Markdown } from "@renderer/components/markdown";
 import {
-  fsCall,
+  deleteBrainFile,
   listBrainFiles,
+  peekBrainFile,
+  peekBrainFiles,
   readBrainFile,
   writeBrainFile,
 } from "@renderer/lib/brain-fs";
@@ -26,6 +28,21 @@ function noteLines(text: string): { title: string; snippet: string } {
     title: lines[0] ?? "New note",
     snippet: lines[1] ?? "",
   };
+}
+
+/** Build note summaries from cache only — null if any piece is missing. */
+function summariesFromCache(): NoteSummary[] | null {
+  const files = peekBrainFiles("notes");
+  if (files === undefined) return null;
+  const summaries: NoteSummary[] = [];
+  for (const f of files) {
+    const path = f.path.replace(/\\/g, "/");
+    const text = peekBrainFile(path);
+    if (text === undefined) return null;
+    summaries.push({ path, ...noteLines(text), modified: f.modified });
+  }
+  summaries.sort((a, b) => b.modified - a.modified);
+  return summaries;
 }
 
 function slugForTitle(title: string): string {
@@ -59,7 +76,9 @@ type NoteView =
   | { kind: "note"; path: string | null; draft: string; editing: boolean };
 
 export function NotesTab(): React.JSX.Element {
-  const [notes, setNotes] = useState<NoteSummary[] | null>(null);
+  const [notes, setNotes] = useState<NoteSummary[] | null>(() =>
+    summariesFromCache(),
+  );
   const [view, setView] = useState<NoteView>({ kind: "list" });
   const saveTimer = useRef<NodeJS.Timeout | null>(null);
   const viewRef = useRef(view);
@@ -143,13 +162,16 @@ export function NotesTab(): React.JSX.Element {
               className="tavern-note-delete"
               aria-label="Delete note"
               onClick={() => {
+                const target = view.path;
+                if (!target) return;
                 if (saveTimer.current) {
                   clearTimeout(saveTimer.current);
                   saveTimer.current = null;
                 }
-                const target = view.path;
                 setView({ kind: "list" });
-                void fsCall("delete", { path: target }).then(load);
+                void deleteBrainFile(target).then((ok) => {
+                  if (ok) load();
+                });
               }}
             >
               Delete

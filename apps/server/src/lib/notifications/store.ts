@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { createAppLogger } from "@freestyle-voice/utils";
-import { syncThread } from "../agent-threads.js";
 import { getDb } from "../db.js";
 
 const log = createAppLogger("notifications");
@@ -10,6 +9,7 @@ export type NotificationKind = "thread" | "info";
 export type NotificationAction = "dismiss" | "open";
 
 export interface NotificationPayload {
+  threadId?: string;
   messages?: unknown[];
   url?: string;
 }
@@ -227,16 +227,11 @@ export function open(id: string): OpenResult {
   const record = getNotification(id);
   if (!record) return { ok: false };
 
-  let threadId = record.threadId;
-  if (record.kind === "thread" && !threadId) {
-    const messages = record.payload?.messages;
-    if (Array.isArray(messages) && messages.length > 0) {
-      threadId = randomUUID();
-      syncThread(threadId, messages);
-      getDb()
-        .prepare("UPDATE notifications SET thread_id = ? WHERE id = ?")
-        .run(threadId, id);
-    }
+  const threadId = record.threadId ?? record.payload?.threadId ?? null;
+  if (threadId && !record.threadId) {
+    getDb()
+      .prepare("UPDATE notifications SET thread_id = ? WHERE id = ?")
+      .run(threadId, id);
   }
 
   getDb()

@@ -440,13 +440,14 @@ function PanelInner({
     () =>
       new DefaultChatTransport({
         api: "/api/agent",
+        body: { threadId: thread.id },
         fetch: ((input: string | URL | Request, init?: RequestInit) =>
           apiFetch(
             typeof input === "string" ? input : "/api/agent",
             init ?? {},
           )) as typeof fetch,
       }),
-    [],
+    [thread.id],
   );
 
   const { messages, sendMessage, status, addToolOutput } = useChat({
@@ -456,26 +457,18 @@ function PanelInner({
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
     onFinish: ({ messages: finished }) => {
       if (finished.length === 0) return;
-      void apiFetch("/api/agent/thread/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threadId: thread.id, messages: finished }),
-      })
-        .catch(() => {})
-        .then(() => {
-          const last = finished[finished.length - 1];
-          if (last?.role !== "assistant") return;
-          const text = last.parts
-            .filter((p) => p.type === "text")
-            .map((p) => (p as { text: string }).text)
-            .join(" ")
-            .trim();
-          if (!text) return;
-          window.api.agentTurnFinished({
-            threadId: thread.id,
-            excerpt: text.slice(0, 140),
-          });
-        });
+      const last = finished[finished.length - 1];
+      if (last?.role !== "assistant") return;
+      const text = last.parts
+        .filter((p) => p.type === "text")
+        .map((p) => (p as { text: string }).text)
+        .join(" ")
+        .trim();
+      if (!text) return;
+      window.api.agentTurnFinished({
+        threadId: thread.id,
+        excerpt: text.slice(0, 140),
+      });
     },
     onToolCall: async ({ toolCall }) => {
       const call: AgentToolCall = {

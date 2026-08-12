@@ -7,7 +7,7 @@ import { countFixes } from "./fixes.js";
 // and would otherwise perturb test module-mock ordering.
 const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 
-const SCHEMA_VERSION = 25;
+const SCHEMA_VERSION = 26;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -730,6 +730,10 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         last_error      TEXT
       )
     `);
+  }
+
+  if (currentVersion < 26) {
+    db.exec("DROP TABLE IF EXISTS agent_threads");
   }
 
   // Upsert schema version

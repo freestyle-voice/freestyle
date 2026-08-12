@@ -25,6 +25,7 @@
         "src/preload/index.ts",
         "src/renderer/src/components/panel.tsx",
         "src/renderer/src/components/companion.tsx",
+        "src/renderer/src/components/notification.tsx",
         "tests/**/*.ts",
         "scripts/**/*.{js,mjs}"
       ],

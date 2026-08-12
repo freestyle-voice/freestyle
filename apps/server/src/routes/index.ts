@@ -18,6 +18,7 @@ import dismissedNotifications from "./dismissed-notifications.js";
 import eventsRoute from "./events.js";
 import history from "./history.js";
 import models from "./models.js";
+import notificationsRoute from "./notifications.js";
 import org from "./org.js";
 import outputRoute from "./output.js";
 import pluginsRoute from "./plugins.js";
@@ -77,6 +78,7 @@ const apiRouter = new Hono()
   .route("/agent/thread", agentThreadsRoute)
   .route("/agent-os", agentOsRoute)
   .route("/brain", brainRoute)
+  .route("/notifications", notificationsRoute)
   .route("/output", outputRoute)
   .route("/events", eventsRoute)
   .route("/usage", usage)

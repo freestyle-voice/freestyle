@@ -308,6 +308,24 @@ function PanelRoot(): React.JSX.Element {
   const [thread, setThread] = useState<ThreadState | null>(null);
 
   useEffect(() => {
+    const off = window.api.onPanelOpenThread((threadId) => {
+      void apiFetch(`/api/agent/thread/${threadId}`)
+        .then(async (res) => {
+          if (!res.ok) return null;
+          const data = (await res.json()) as {
+            thread: { id: string; messages: UIMessage[] } | null;
+          };
+          return data.thread;
+        })
+        .catch(() => null)
+        .then((picked) => {
+          if (picked) setThread({ id: picked.id, messages: picked.messages });
+        });
+    });
+    return () => off?.();
+  }, []);
+
+  useEffect(() => {
     void apiFetch("/api/agent/thread/latest")
       .then(async (res) => {
         if (!res.ok) return null;
@@ -442,7 +460,22 @@ function PanelInner({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ threadId: thread.id, messages: finished }),
-      }).catch(() => {});
+      })
+        .catch(() => {})
+        .then(() => {
+          const last = finished[finished.length - 1];
+          if (last?.role !== "assistant") return;
+          const text = last.parts
+            .filter((p) => p.type === "text")
+            .map((p) => (p as { text: string }).text)
+            .join(" ")
+            .trim();
+          if (!text) return;
+          window.api.agentTurnFinished({
+            threadId: thread.id,
+            excerpt: text.slice(0, 140),
+          });
+        });
     },
     onToolCall: async ({ toolCall }) => {
       const call: AgentToolCall = {

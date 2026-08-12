@@ -8,6 +8,7 @@ import {
   resolveLanguageOptions,
 } from "@freestyle-voice/validations";
 import { BrainFiles } from "@renderer/components/brain-files";
+import { NotificationsHistory } from "@renderer/components/notifications-history";
 import {
   acceleratorsEqual,
   formatAcceleratorKeys,
@@ -47,6 +48,7 @@ type SettingsPage =
   | "profile"
   | "billing"
   | "brain"
+  | "notifications"
   | "dictation"
   | "talk"
   | "application"
@@ -57,6 +59,7 @@ const PAGE_TITLES: Record<Exclude<SettingsPage, "root">, string> = {
   profile: "Profile",
   billing: "Billing & Usage",
   brain: "Brain",
+  notifications: "Notifications",
   dictation: "Dictation",
   talk: "Talk & Summon",
   application: "Application",
@@ -1472,6 +1475,8 @@ export function SettingsView({
             newLabel="New file"
             graphable
           />
+        ) : page === "notifications" ? (
+          <NotificationsHistory />
         ) : page === "dictation" ? (
           <DictationPage value={value} setSetting={setSetting} />
         ) : page === "talk" ? (
@@ -1523,6 +1528,7 @@ export function SettingsView({
         onClick={() => setPage("billing")}
       />
       <NavRow label="Brain" onClick={() => setPage("brain")} />
+      <NavRow label="Notifications" onClick={() => setPage("notifications")} />
       <NavRow
         label="Dictation"
         detail={value(SETTINGS_KEYS.hotkey) || getDefaultHotkey()}

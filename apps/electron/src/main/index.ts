@@ -114,6 +114,14 @@ import { checkLinuxSetup } from "./linux-setup";
 import { MicListener } from "./mic-listener";
 import { getNativeBinaryPath } from "./native-binary";
 import {
+  hideNotifications,
+  initNotificationWindow,
+  notifyRendererChanged,
+  setNotificationHeight,
+  setTravelling,
+  showNotifications,
+} from "./notification-window";
+import {
   copySelectionFromFocusedApp,
   isWaylandSession,
   pasteClipboardIntoFocusedApp,
@@ -1927,6 +1935,15 @@ app.whenReady().then(async () => {
   if (readSettings().companionEnabled !== false) {
     createCompanionWindow();
     registerSummonShortcut();
+    initNotificationWindow({
+      spriteForm: () => companionFormSetting(),
+      companionBounds: () => {
+        if (!companionWindow || companionWindow.isDestroyed()) return null;
+        const b = companionWindow.getBounds();
+        return { x: b.x, y: b.y, width: b.width };
+      },
+    });
+    startNotificationPoll();
   }
 
   // A signed-out launch surfaces the panel unprompted: the sign-in gate is
@@ -2995,6 +3012,146 @@ ipcMain.on("companion:set-form", (_event, form: string) => {
 ipcMain.on("sprite:event", (event, ev: unknown) => {
   if (event.sender !== panelWindow?.webContents) return;
   companionWindow?.webContents.send("companion:sprite-event", ev);
+  const travel = ev as { kind?: string; phase?: string };
+  if (travel?.kind === "travel") {
+    setTravelling(travel.phase === "start");
+  }
+});
+
+const NOTIFICATION_POLL_MS = 20_000;
+let notificationPollTimer: NodeJS.Timeout | null = null;
+const notifiedIds = new Set<string>();
+
+interface DesktopNotification {
+  id: string;
+  origin: "cloud" | "local";
+  kind: "thread" | "info";
+  title: string;
+  body: string;
+  createdAt: number;
+  seenAt: number | null;
+}
+
+async function fetchNotifications(): Promise<DesktopNotification[]> {
+  try {
+    const res = await fetch(`${getServerBaseUrl()}/api/notifications`, {
+      headers: getServerAuthHeaders(),
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      notifications?: DesktopNotification[];
+    };
+    return data.notifications ?? [];
+  } catch {
+    return [];
+  }
+}
+
+async function postNotification(
+  path: string,
+  body?: unknown,
+): Promise<unknown> {
+  try {
+    const res = await fetch(`${getServerBaseUrl()}/api/notifications${path}`, {
+      method: "POST",
+      headers: {
+        ...getServerAuthHeaders(),
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function refreshNotifications(): Promise<void> {
+  const items = await fetchNotifications();
+  if (items.length === 0) {
+    hideNotifications();
+    notifyRendererChanged();
+    return;
+  }
+
+  showNotifications();
+  notifyRendererChanged();
+
+  const fresh = items.filter(
+    (n) => n.seenAt === null && !notifiedIds.has(n.id),
+  );
+  if (fresh.length === 0) return;
+  for (const item of fresh) {
+    notifiedIds.add(item.id);
+    if (!Notification.isSupported()) continue;
+    const note = new Notification({ title: item.title, body: item.body });
+    note.on("click", () => void openNotification(item.id));
+    note.show();
+  }
+  await postNotification("/seen", { ids: fresh.map((n) => n.id) });
+}
+
+async function openNotification(id: string): Promise<void> {
+  const result = (await postNotification(
+    `/${encodeURIComponent(id)}/open`,
+  )) as {
+    ok?: boolean;
+    threadId?: string;
+    url?: string;
+  } | null;
+  await refreshNotifications();
+  if (result?.threadId) {
+    openPanel({ focusComposer: false });
+    panelWindow?.webContents.send("panel:open-thread", result.threadId);
+    return;
+  }
+  if (result?.url) void shell.openExternal(result.url);
+}
+
+function startNotificationPoll(): void {
+  if (notificationPollTimer) return;
+  void refreshNotifications();
+  notificationPollTimer = setInterval(
+    () => void refreshNotifications(),
+    NOTIFICATION_POLL_MS,
+  );
+  notificationPollTimer.unref();
+}
+
+ipcMain.handle("notifications:list", async () => await fetchNotifications());
+
+ipcMain.on("notifications:dismiss", (_event, id: unknown) => {
+  if (typeof id !== "string") return;
+  void postNotification(`/${encodeURIComponent(id)}/dismiss`).then(() =>
+    refreshNotifications(),
+  );
+});
+
+ipcMain.on("notifications:open", (_event, id: unknown) => {
+  if (typeof id !== "string") return;
+  void openNotification(id);
+});
+
+ipcMain.on("notifications:set-height", (_event, height: unknown) => {
+  if (typeof height !== "number") return;
+  setNotificationHeight(height);
+});
+
+ipcMain.on("agent:turn-finished", (_event, payload: unknown) => {
+  const turn = payload as { threadId?: unknown; excerpt?: unknown };
+  if (typeof turn?.threadId !== "string" || typeof turn?.excerpt !== "string") {
+    return;
+  }
+  void postNotification("/refresh");
+  if (panelWindow && !panelWindow.isDestroyed() && panelWindow.isVisible()) {
+    return;
+  }
+  void postNotification("", {
+    kind: "thread",
+    title: `${SPRITES_INFO[companionFormSetting()].label} finished`,
+    body: turn.excerpt.slice(0, 140),
+    threadId: turn.threadId,
+  }).then(() => refreshNotifications());
 });
 
 initSpriteTravel({

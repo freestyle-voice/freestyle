@@ -11,6 +11,10 @@ export interface SpriteAnchor {
   bodyBottom: number;
   /** Breathing room between the body and the screen corner, px. */
   margin: number;
+  /** Where the drawn body's top edge sits inside the window, px. */
+  bodyTop: number;
+  /** Drawn body width, px. */
+  bodyWidth: number;
 }
 
 export interface SpriteInfo {
@@ -43,7 +47,13 @@ export const SPRITES_INFO = {
     label: "Jeb",
     kind: "sheet",
     windowSize: 256,
-    anchor: { bodyLeft: 100, bodyBottom: 38, margin: 4 },
+    anchor: {
+      bodyLeft: 100,
+      bodyBottom: 38,
+      margin: 4,
+      bodyTop: 150,
+      bodyWidth: 44,
+    },
     travel: true,
   },
 } as const satisfies Record<string, SpriteInfo>;

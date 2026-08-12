@@ -70,6 +70,16 @@ declare global {
       panelPointerLeft: () => void;
       panelPointerEntered: () => void;
       onPanelFocusComposer: (callback: () => void) => () => void;
+      notificationsList: () => Promise<unknown[]>;
+      notificationDismiss: (id: string) => void;
+      notificationOpen: (id: string) => void;
+      notificationSetHeight: (height: number) => void;
+      onNotificationsChanged: (callback: () => void) => () => void;
+      agentTurnFinished: (payload: {
+        threadId: string;
+        excerpt: string;
+      }) => void;
+      onPanelOpenThread: (callback: (threadId: string) => void) => () => void;
       onPanelShowSettings: (callback: () => void) => () => void;
       onCompanionForm: (callback: (form: CompanionForm) => void) => () => void;
       onCompanionState: (

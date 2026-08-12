@@ -129,6 +129,26 @@ const api = {
     ipcRenderer.on("panel:focus-composer", handler);
     return () => ipcRenderer.removeListener("panel:focus-composer", handler);
   },
+  notificationsList: (): Promise<unknown[]> =>
+    ipcRenderer.invoke("notifications:list"),
+  notificationDismiss: (id: string): void =>
+    ipcRenderer.send("notifications:dismiss", id),
+  notificationOpen: (id: string): void =>
+    ipcRenderer.send("notifications:open", id),
+  notificationSetHeight: (height: number): void =>
+    ipcRenderer.send("notifications:set-height", height),
+  onNotificationsChanged: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("notifications:changed", handler);
+    return () => ipcRenderer.removeListener("notifications:changed", handler);
+  },
+  agentTurnFinished: (payload: { threadId: string; excerpt: string }): void =>
+    ipcRenderer.send("agent:turn-finished", payload),
+  onPanelOpenThread: (callback: (threadId: string) => void): (() => void) => {
+    const handler = (_e: unknown, threadId: string): void => callback(threadId);
+    ipcRenderer.on("panel:open-thread", handler);
+    return () => ipcRenderer.removeListener("panel:open-thread", handler);
+  },
   onPanelShowSettings: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("panel:show-settings", handler);

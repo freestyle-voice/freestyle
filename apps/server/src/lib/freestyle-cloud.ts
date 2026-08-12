@@ -458,6 +458,65 @@ export async function postProcessWithFreestyleCloud(opts: {
  * on the next poll instead of after the cache TTL. Regular reads omit it and
  * get the cached (fast) path.
  */
+export interface CloudNotificationDto {
+  id: string;
+  kind: "thread" | "info";
+  title: string;
+  body: string;
+  payload: { messages?: unknown[]; url?: string } | null;
+  createdAt: number;
+  expiresAt: number | null;
+}
+
+export interface CloudNotificationsResult {
+  changed: boolean;
+  etag: string | null;
+  notifications: CloudNotificationDto[];
+}
+
+export async function fetchCloudNotifications(
+  token: string,
+  etag: string | null,
+): Promise<CloudNotificationsResult> {
+  const res = await fetch(`${freestyleCloudUrl()}/v2/notifications`, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      ...(etag ? { "if-none-match": etag } : {}),
+    },
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  if (res.status === 304) return { changed: false, etag, notifications: [] };
+  if (res.status === 401) {
+    throw new FreestyleCloudAuthError("Freestyle Cloud session expired");
+  }
+  if (!res.ok) {
+    throw new FreestyleCloudRequestError(
+      res.status,
+      "notification fetch failed",
+    );
+  }
+
+  const data = (await res.json()) as { notifications?: CloudNotificationDto[] };
+  return {
+    changed: true,
+    etag: res.headers.get("etag"),
+    notifications: data.notifications ?? [],
+  };
+}
+
+export async function postCloudNotificationAction(
+  token: string,
+  id: string,
+  action: "dismiss" | "open",
+): Promise<void> {
+  await cloudJson<{ ok: boolean }>(
+    `/v2/notifications/${encodeURIComponent(id)}/${action}`,
+    token,
+    { method: "POST" },
+  );
+}
+
 export async function fetchCloudUsage(
   token: string,
   opts: { fresh?: boolean } = {},

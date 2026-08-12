@@ -10,6 +10,7 @@ const GET_ROUTES = new Set(["list", "graph", "export"]);
 
 /** In-memory TTL so tab remounts don't flash "Loading…" while Cloudflare refetches. */
 const CACHE_TTL_MS = 60_000;
+const MAX_READ_CACHE_ENTRIES = 100;
 
 type CacheEntry<T> = { value: T; at: number };
 
@@ -20,7 +21,20 @@ function isFresh(at: number): boolean {
   return Date.now() - at < CACHE_TTL_MS;
 }
 
+function pruneReadCache(): void {
+  for (const [path, entry] of readCache) {
+    if (!isFresh(entry.at)) readCache.delete(path);
+  }
+  while (readCache.size >= MAX_READ_CACHE_ENTRIES) {
+    const oldestPath = readCache.keys().next().value;
+    if (oldestPath === undefined) return;
+    readCache.delete(oldestPath);
+  }
+}
+
 function putRead(path: string, text: string): void {
+  readCache.delete(path);
+  pruneReadCache();
   readCache.set(path, { value: text, at: Date.now() });
 }
 
@@ -35,7 +49,11 @@ function dropRead(path: string): void {
 /** Sync cache peek — `undefined` means miss (not yet fetched / expired). */
 export function peekBrainFile(path: string): string | undefined {
   const hit = readCache.get(path);
-  if (!hit || !isFresh(hit.at)) return undefined;
+  if (!hit) return undefined;
+  if (!isFresh(hit.at)) {
+    readCache.delete(path);
+    return undefined;
+  }
   return hit.value;
 }
 
@@ -63,7 +81,23 @@ export async function fsCall(
           }),
     });
     if (!res.ok) return null;
-    return (await res.json()) as Record<string, unknown>;
+    const payload = (await res.json()) as Record<string, unknown>;
+    if (payload.ok === true && route === "write") {
+      const path = body.path;
+      const text = body.text;
+      if (typeof path === "string" && typeof text === "string") {
+        putRead(path, text);
+        invalidateList();
+      }
+    }
+    if (payload.ok === true && route === "delete") {
+      const path = body.path;
+      if (typeof path === "string") {
+        dropRead(path);
+        invalidateList();
+      }
+    }
+    return payload;
   } catch {
     return null;
   }
@@ -85,22 +119,12 @@ export async function writeBrainFile(
   text: string,
 ): Promise<boolean> {
   const res = await fsCall("write", { path, text });
-  const ok = res?.ok === true;
-  if (ok) {
-    putRead(path, text);
-    invalidateList();
-  }
-  return ok;
+  return res?.ok === true;
 }
 
 export async function deleteBrainFile(path: string): Promise<boolean> {
   const res = await fsCall("delete", { path });
-  const ok = res?.ok === true;
-  if (ok) {
-    dropRead(path);
-    invalidateList();
-  }
-  return ok;
+  return res?.ok === true;
 }
 
 export async function listBrainFiles(prefix?: string): Promise<BrainFile[]> {

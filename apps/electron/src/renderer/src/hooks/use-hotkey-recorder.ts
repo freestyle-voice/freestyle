@@ -221,12 +221,56 @@ export function acceleratorToCombo(accel: string): HotkeyCombo {
   };
 }
 
-export function keyDisplayLabel(key: string): string {
+/**
+ * macOS modifier legends paired with their names, for the places that teach a
+ * shortcut rather than just recall it.
+ *
+ * A symbol only helps if it matches what's printed on the key in front of you.
+ * The globe is on Apple keyboards; the same key on a Logitech reads "fn", and
+ * anyone on a Mac mini, Mac Studio or Mac Pro brings their own keyboard. The
+ * app can't tell which you have: an Fn press arrives as
+ * `CGEventFlags.maskSecondaryFn` from either.
+ *
+ * macOS-only and modifiers-only, deliberately. Windows and Linux already
+ * resolve modifiers to words, so there is nothing to add. Keys like Space and
+ * Escape keep their bare symbol: those glyphs *are* the convention, and their
+ * names are ordinary English that would need translating, unlike a modifier
+ * legend stamped on the hardware.
+ *
+ * Written out in full rather than composed from symbol + word. Composing them
+ * needs a rule for the "Right " prefix, and the obvious rule produces
+ * "Right ⌘ Right Command".
+ */
+const MAC_VERBOSE_MODIFIERS: Record<string, string> = {
+  Control: "⌃ Control",
+  Command: "⌘ Command",
+  Alt: "⌥ Option",
+  Shift: "⇧ Shift",
+  Fn: "🌐 Fn",
+  RightControl: "⌃ Right Control",
+  RightCommand: "⌘ Right Command",
+  RightAlt: "⌥ Right Option",
+  RightOption: "⌥ Right Option",
+  RightShift: "⇧ Right Shift",
+};
+
+function keySymbolLabel(key: string): string {
   if (IS_MAC && MAC_MOD_SYMBOLS[key]) return MAC_MOD_SYMBOLS[key];
   if (IS_MAC && MAC_RIGHT_MOD_SYMBOLS[key]) return MAC_RIGHT_MOD_SYMBOLS[key];
   if (!IS_MAC && OTHER_MOD_LABELS[key]) return OTHER_MOD_LABELS[key];
   if (KEY_SYMBOLS[key]) return KEY_SYMBOLS[key];
   return key;
+}
+
+export function keyDisplayLabel(
+  key: string,
+  options?: { verbose?: boolean },
+): string {
+  if (options?.verbose && IS_MAC) {
+    const named = MAC_VERBOSE_MODIFIERS[key];
+    if (named) return named;
+  }
+  return keySymbolLabel(key);
 }
 
 // ---------------------------------------------------------------------------
@@ -305,14 +349,22 @@ export function nextRightModifierLatch(
   return null;
 }
 
-export function comboDisplayKeys(combo: HotkeyCombo): string[] {
-  const keys = combo.modifiers.map(keyDisplayLabel);
-  if (combo.key) keys.push(keyDisplayLabel(combo.key));
+export function comboDisplayKeys(
+  combo: HotkeyCombo,
+  options?: { verbose?: boolean },
+): string[] {
+  // Explicit arrow, not a bare reference: `.map` passes the index as the
+  // second argument, which would land in `options`.
+  const keys = combo.modifiers.map((m) => keyDisplayLabel(m, options));
+  if (combo.key) keys.push(keyDisplayLabel(combo.key, options));
   return keys;
 }
 
-export function formatAcceleratorKeys(accel: string): string[] {
-  return comboDisplayKeys(acceleratorToCombo(accel));
+export function formatAcceleratorKeys(
+  accel: string,
+  options?: { verbose?: boolean },
+): string[] {
+  return comboDisplayKeys(acceleratorToCombo(accel), options);
 }
 
 export function formatAccelerator(accel: string): string {

@@ -285,7 +285,7 @@ function HotkeyRow({
           className="tavern-set-keys"
           onClick={() => recorder.startRecording()}
         >
-          {formatAcceleratorKeys(accel).map((k) => (
+          {formatAcceleratorKeys(accel, { verbose: true }).map((k) => (
             <kbd key={k} className="tavern-kbd">
               {k}
             </kbd>

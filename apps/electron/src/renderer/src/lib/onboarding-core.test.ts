@@ -4,6 +4,7 @@ import {
   beatLines,
   DEFAULT_QUEST,
   handoffCta,
+  jobPlaceholder,
   jobReaction,
   nameReaction,
   parseSaved,
@@ -134,31 +135,16 @@ describe("beat script", () => {
     expect(beatLines("job", ctx).lines[0]).toContain("smith");
   });
 
-  it("tunes the job hint to the picked trade", () => {
-    expect(beatLines("job", ctx).hint).toContain("login bug");
-    expect(beatLines("job", { ...ctx, trade: "Teacher" }).hint).toContain(
-      "Grade the essays",
-    );
-    expect(beatLines("job", { ...ctx, trade: "Beekeeper" }).hint).toContain(
-      "Figure out my taxes",
-    );
-    expect(beatLines("job", { ...ctx, trade: "" }).hint).toContain(
-      "Figure out my taxes",
-    );
-  });
-
-  it("ties the screen beat back to the task", () => {
-    expect(beatLines("blade", ctx).lines.join(" ")).toContain(
-      "Finish the deck",
-    );
+  it("tunes the job placeholder to the picked trade", () => {
+    expect(jobPlaceholder("Engineer")).toContain("login bug");
+    expect(jobPlaceholder("Teacher")).toContain("Grade the essays");
+    expect(jobPlaceholder("Beekeeper")).toContain("Figure out my taxes");
+    expect(jobPlaceholder("")).toContain("Figure out my taxes");
   });
 
   it("swaps to no-task fallbacks when the job was skipped", () => {
     const empty = { ...ctx, task: "" };
     expect(beatLines("list", empty).lines.join(" ")).toContain("empty for now");
-    expect(beatLines("blade", empty).lines.join(" ")).toContain(
-      "Put it on screen",
-    );
     expect(beatLines("handoff", empty).lines.join(" ")).toContain("sharpening");
   });
 });

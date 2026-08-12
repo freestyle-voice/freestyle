@@ -86,45 +86,57 @@ const TRADE_REACTIONS: Record<string, string> = {
     "Between things. So was I, for eleven years. It ends. Sit down.",
 };
 
-/** The Job's hint, tuned to the trade they just picked. */
-const JOB_HINTS: Record<string, string> = {
-  Engineer:
-    'Anything. "Fix the login bug." "Review Sam\'s PR." "Write the deploy script."',
-  Designer:
-    'Anything. "Finish the mockups." "Polish the onboarding flow." "Pick a font already."',
-  Founder:
-    'Anything. "Draft the investor update." "Chase the pilot customer." "Hire someone."',
-  Product:
-    'Anything. "Write the spec." "Groom the backlog." "Say no to something."',
-  Writer: 'Anything. "Finish the draft." "Cut it by half." "Pitch the editor."',
-  Student:
-    'Anything. "Finish the problem set." "Start the essay." "Study for Thursday."',
-  Researcher:
-    'Anything. "Finish the lit review." "Clean the data." "Answer reviewer two."',
-  Marketer:
-    'Anything. "Ship the campaign." "Write the launch post." "Fix the landing page."',
-  Consultant:
-    'Anything. "Finish the deck." "Write up the findings." "Bill the hours."',
-  Operations:
-    'Anything. "Untangle the schedule." "Chase the vendor." "Fix the process doc."',
-  Sales:
-    'Anything. "Follow up with the lead." "Prep the demo." "Update the pipeline."',
-  Teacher:
-    'Anything. "Grade the essays." "Plan tomorrow\'s lesson." "Email the parents."',
-  Finance:
-    'Anything. "Close the month." "Fix the forecast." "Chase the invoices."',
-  Healthcare:
-    'Anything. "Finish the charting." "Prep for rounds." "Clear the inbox."',
-  Law: 'Anything. "Review the contract." "Draft the memo." "Log the billables."',
-  "Between things":
-    'Anything. "Update the résumé." "Reply to the recruiter." "Figure out what\'s next."',
+/** The Job's placeholder examples, tuned to the trade they just picked. */
+const JOB_EXAMPLES: Record<string, [string, string, string]> = {
+  Engineer: ["Fix the login bug", "Review Sam's PR", "Write the deploy script"],
+  Designer: [
+    "Finish the mockups",
+    "Polish the onboarding flow",
+    "Pick a font already",
+  ],
+  Founder: [
+    "Draft the investor update",
+    "Chase the pilot customer",
+    "Hire someone",
+  ],
+  Product: ["Write the spec", "Groom the backlog", "Say no to something"],
+  Writer: ["Finish the draft", "Cut it by half", "Pitch the editor"],
+  Student: ["Finish the problem set", "Start the essay", "Study for Thursday"],
+  Researcher: [
+    "Finish the lit review",
+    "Clean the data",
+    "Answer reviewer two",
+  ],
+  Marketer: [
+    "Ship the campaign",
+    "Write the launch post",
+    "Fix the landing page",
+  ],
+  Consultant: ["Finish the deck", "Write up the findings", "Bill the hours"],
+  Operations: [
+    "Untangle the schedule",
+    "Chase the vendor",
+    "Fix the process doc",
+  ],
+  Sales: ["Follow up with the lead", "Prep the demo", "Update the pipeline"],
+  Teacher: ["Grade the essays", "Plan tomorrow's lesson", "Email the parents"],
+  Finance: ["Close the month", "Fix the forecast", "Chase the invoices"],
+  Healthcare: ["Finish the charting", "Prep for rounds", "Clear the inbox"],
+  Law: ["Review the contract", "Draft the memo", "Log the billables"],
+  "Between things": [
+    "Update the résumé",
+    "Reply to the recruiter",
+    "Figure out what's next",
+  ],
 };
 
-export function jobHint(trade: string): string {
-  return (
-    JOB_HINTS[trade.trim()] ??
-    'Anything. "Finish the deck." "Reply to Sam." "Figure out my taxes."'
-  );
+export function jobPlaceholder(trade: string): string {
+  const examples = JOB_EXAMPLES[trade.trim()] ?? [
+    "Finish the deck",
+    "Reply to Sam",
+    "Figure out my taxes",
+  ];
+  return examples.join(" · ");
 }
 
 export interface OnboardingSaved {
@@ -235,7 +247,6 @@ export function beatLines(beat: BeatId, ctx: BeatContext): BeatScene {
     case "welcome":
       return {
         lines: [
-          "Ah. Someone's at the door.",
           "I'm Jeb. Wandering samurai, retired. Sixty-one duels, two regrets, and now this corner of your screen.",
         ],
       };
@@ -249,43 +260,35 @@ export function beatLines(beat: BeatId, ctx: BeatContext): BeatScene {
     case "trade":
       return {
         lines: [
-          nameReaction(ctx.name, ctx.accountName),
-          "And your trade? Every warrior has one. Mine was swords and dramatic staring. Yours probably pays better.",
+          `${nameReaction(ctx.name, ctx.accountName)} And your trade? Mine was swords and dramatic staring.`,
         ],
       };
     case "job":
       return {
         lines: [
           tradeReaction(ctx.trade),
-          "Now the useful part. What are you actually trying to get done today? One thing. The one that'll still be bothering you at supper.",
+          "What are you actually trying to get done today? One thing. The one that'll still be bothering you at supper.",
         ],
-        hint: jobHint(ctx.trade),
       };
     case "list":
       return {
-        lines: task
-          ? [
-              jobReaction(task),
-              "First thing I did was put it on your todo list. I manage that list for you: I add things, break the big ones into steps, and check them off when they're done. And I read it before everything I say, so you'll never explain it twice.",
-            ]
-          : [
-              jobReaction(task),
-              "Here's your todo list, empty for now. I manage it for you: I add things, break the big ones into steps, and check them off when they're done. And I read it before everything I say, so you'll never explain it twice.",
-            ],
+        lines: [
+          jobReaction(task),
+          task
+            ? "Put it on your list already. I add things, break the big ones into steps, and check them off. And I read this before everything I say, so you'll never explain it twice."
+            : "Your list is empty for now. I add things, break the big ones into steps, and check them off. And I read this before everything I say, so you'll never explain it twice.",
+        ],
       };
     case "ledger":
       return {
         lines: [
-          `I also keep a brain, ${first}. Memories of who you are and what you're working on, so you never repeat yourself. Notes, for anything worth keeping. And skills: teach me how you do something once, and I'll do it your way every time. All yours to read, edit, or erase.`,
+          "I keep a brain: memories, notes, skills. All yours to read, edit, or erase.",
         ],
       };
     case "blade":
       return {
         lines: [
-          "Stuck on something? Highlight it and just ask. A homework question, a gnarly email, whatever. I can read what's on your screen.",
-          task
-            ? `I can even type the answer right at your cursor, with your go-ahead. So when "${questFor(task)}" is on your screen, don't describe it. Just ask.`
-            : "I can even type the answer right at your cursor, with your go-ahead. Don't describe your work to me. Put it on screen and ask.",
+          "Highlight anything and just ask. I read your screen, and with your go-ahead I type the answer right at your cursor.",
         ],
       };
     case "road":
@@ -298,19 +301,14 @@ export function beatLines(beat: BeatId, ctx: BeatContext): BeatScene {
     case "corner":
       return {
         lines: [
-          "Last thing: I don't live in this window. Watch.",
-          "That's home. I'll be down there while you work. Hover me whenever you need me. Ignore me until you don't.",
+          "I don't live in this window. That's home. Hover me whenever you need me. Ignore me until you don't.",
         ],
       };
     case "handoff":
       return {
         lines: task
-          ? [
-              "That's everything. No bowing, thank the gods.",
-              `I've already opened a thread on "${questFor(task)}". Let's get it off your list.`,
-            ]
+          ? ["I've already opened a thread on it. Let's get it off your list."]
           : [
-              "That's everything. No bowing, thank the gods.",
               `I've been sharpening this thing for a week with nothing to cut, ${first}.`,
             ],
       };

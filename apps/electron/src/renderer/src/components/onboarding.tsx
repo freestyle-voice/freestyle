@@ -7,6 +7,7 @@ import {
   EASTER_EGGS,
   firstNameOf,
   handoffCta,
+  jobPlaceholder,
   ONBOARDING_KEY,
   type OnboardingSaved,
   PROFILE_INDEX_LINE,
@@ -113,7 +114,7 @@ export function useOnboarding(enabled: boolean): {
   return { status, saved, markDone, replay };
 }
 
-/** Beat 5's real write: the user's own sentence onto their own list. */
+/** The list beat's real write: the user's own sentence onto their own list. */
 async function seedTodo(quest: string): Promise<void> {
   const todos = await readBrainFile("todos.md");
   if (todos?.includes(quest)) return;
@@ -121,7 +122,7 @@ async function seedTodo(quest: string): Promise<void> {
   await writeBrainFile("todos.md", `${base}- [ ] ${quest}\n`);
 }
 
-/** Beat 6's real write: the ledger page plus its index line. */
+/** The brain beat's real write: the profile page plus its index line. */
 async function seedProfile(name: string, trade: string): Promise<void> {
   await writeBrainFile(PROFILE_PATH, profileMarkdown(name, trade));
   const index = await readBrainFile("BRAIN.md");
@@ -175,7 +176,25 @@ function useTypewriter(text: string): {
   return { shown: text.slice(0, count), typing: count < text.length, finish };
 }
 
-function TodoCard({
+/* Pixel-accurate miniatures of the real tabs — onboarding doubles as a map
+   of the product, so these echo the panel's own patterns, not new ones. */
+
+function MiniTabs({ active }: { active: string }): React.JSX.Element {
+  return (
+    <div className="tavern-onb-mtabs">
+      {["Chat", "History", "Todos", "Notes"].map((tab) => (
+        <span
+          key={tab}
+          className={`tavern-onb-mtab${tab === active ? " is-on" : ""}`}
+        >
+          {tab}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function MiniTodos({
   quest,
   seeded,
 }: {
@@ -183,21 +202,27 @@ function TodoCard({
   seeded: boolean;
 }): React.JSX.Element {
   return (
-    <div className="tavern-onb-card">
-      <span className="tavern-onb-card-title">Your todos</span>
-      {seeded ? (
-        <span className="tavern-onb-todo-row">
-          <i className="tavern-onb-todo-box" />
-          {quest}
-        </span>
-      ) : (
-        <span className="tavern-onb-card-writing">writing…</span>
-      )}
+    <div className="tavern-onb-mini">
+      <MiniTabs active="Todos" />
+      <div className="tavern-onb-mbody">
+        {seeded ? (
+          <div className="tavern-onb-mtodo">
+            <span className="tavern-onb-mcheck" />
+            <span className="tavern-onb-mtodo-main">{quest}</span>
+          </div>
+        ) : (
+          <span className="tavern-onb-writing">writing…</span>
+        )}
+        <div className="tavern-onb-mtodo is-done">
+          <span className="tavern-onb-mcheck is-on" />
+          <span>Meet Jeb</span>
+        </div>
+      </div>
     </div>
   );
 }
 
-function BrainCard({
+function MiniNotes({
   name,
   trade,
   seeded,
@@ -207,49 +232,90 @@ function BrainCard({
   seeded: boolean;
 }): React.JSX.Element {
   return (
-    <div className="tavern-onb-card">
-      <span className="tavern-onb-card-title">Jeb's brain</span>
-      <span className="tavern-onb-brain-row">
-        <b>Memories</b>
-        {seeded ? ` — ${name}${trade ? `, ${trade.toLowerCase()}` : ""}` : ""}
-        {seeded ? null : <i className="tavern-onb-card-writing"> — writing…</i>}
-      </span>
-      <span className="tavern-onb-brain-row">
-        <b>Notes</b> — anything worth keeping
-      </span>
-      <span className="tavern-onb-brain-row">
-        <b>Skills</b> — how you like things done
-      </span>
+    <div className="tavern-onb-mini">
+      <MiniTabs active="Notes" />
+      <div className="tavern-onb-mbody">
+        <div className="tavern-onb-mnote">
+          <b>Profile</b>
+          {seeded ? (
+            <i>
+              {name}
+              {trade ? ` — ${trade.toLowerCase()}` : ""}. Captured during
+              onboarding.
+            </i>
+          ) : (
+            <i className="tavern-onb-writing">writing…</i>
+          )}
+        </div>
+        <div className="tavern-onb-mnote is-dim">
+          <b>Notes</b>
+          <i>anything worth keeping lands here</i>
+        </div>
+        <div className="tavern-onb-mnote is-dim">
+          <b>Skills</b>
+          <i>teach me once, I do it your way every time</i>
+        </div>
+      </div>
     </div>
   );
 }
 
-function BladeCard(): React.JSX.Element {
+function MiniApproval(): React.JSX.Element {
   return (
-    <div className="tavern-onb-card">
-      <span className="tavern-onb-card-title">history homework</span>
-      <span className="tavern-onb-demo-line">
-        Q3: <mark className="tavern-onb-mark">What ended the Edo period?</mark>
-      </span>
-      <span className="tavern-onb-demo-answer">
-        ✎ The Meiji Restoration — 1868.
-        <i className="tavern-onb-cursor">▮</i>
-        <b className="tavern-onb-card-badge is-ok">✓ approved</b>
-      </span>
+    <div className="tavern-onb-mini">
+      <MiniTabs active="Chat" />
+      <div className="tavern-onb-mbody">
+        <div className="tavern-onb-muser">What ended the Edo period?</div>
+        <div className="tavern-onb-mtool">
+          <i>◆</i> read your screen ▸
+        </div>
+        <div className="tavern-onb-mappr">
+          <span className="tavern-onb-mappr-t">
+            jeb wants to type at your cursor
+          </span>
+          <span>“The Meiji Restoration — 1868.”</span>
+          <span className="tavern-onb-mabtn">
+            <span className="is-go">Allow</span>
+            <span>Don't allow</span>
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
 
-function RoadCard(): React.JSX.Element {
+function MiniSearch(): React.JSX.Element {
   return (
-    <div className="tavern-onb-card">
-      <span className="tavern-onb-card-title">⌕ latest news in Austin</span>
-      <span className="tavern-onb-demo-line">
-        “City breaks ground on new transit line”
-      </span>
-      <span className="tavern-onb-demo-source">
-        Austin Chronicle — this morning
-      </span>
+    <div className="tavern-onb-mini">
+      <MiniTabs active="Chat" />
+      <div className="tavern-onb-mbody">
+        <div className="tavern-onb-muser">Latest news in Austin?</div>
+        <div className="tavern-onb-mtool">
+          <i>◆</i> searched the web ▸
+        </div>
+        <span>
+          “City breaks ground on new transit line.”{" "}
+          <i className="tavern-onb-msrc">Austin Chronicle, this morning.</i>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function DeskMiniature({
+  spriteForm,
+}: {
+  spriteForm: SpriteId;
+}): React.JSX.Element {
+  return (
+    <div className="tavern-onb-desk">
+      <div className="tavern-onb-deskwin">
+        <i />
+      </div>
+      <div className="tavern-onb-deskjeb">
+        <SpriteBadge form={spriteForm} size={64} />
+      </div>
+      <span className="tavern-onb-deskhome">← home</span>
     </div>
   );
 }
@@ -342,16 +408,16 @@ export function OnboardingGate({
     if (beatDone && beat !== "handoff") advanceBeat();
   }, [skipping, typing, finish, atLastLine, beatDone, beat, advanceBeat]);
 
-  // Welcome flourish, as before.
+  // Welcome flourish from the real corner sprite.
   useEffect(() => {
     if (beat === "welcome") {
       window.api.spriteEvent({ kind: "emote", emotion: "proud" });
     }
   }, [beat]);
 
-  // Beat 5: the user's sentence lands on their real list while Jeb types.
-  // Reads the entry render's closure and keys on the beat alone — re-running
-  // on render identities would clear the timer behind the ref guard.
+  // The list beat: the user's sentence lands on their real list while Jeb
+  // types. Reads the entry render's closure and keys on the beat alone —
+  // re-running on render identities would clear the timer behind the guard.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see above
   useEffect(() => {
     if (beat !== "list" || todoStarted.current) return;
@@ -370,8 +436,8 @@ export function OnboardingGate({
     return () => window.clearTimeout(t);
   }, [beat]);
 
-  // Beat 6: the ledger page is written for real, plus the profile prefill.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: same contract as beat 5
+  // The brain beat: the profile page is written for real, plus the prefill.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: same contract as the list beat
   useEffect(() => {
     if (beat !== "ledger" || profileStarted.current) return;
     profileStarted.current = true;
@@ -386,8 +452,8 @@ export function OnboardingGate({
       });
   }, [beat]);
 
-  // Beat 9 opens on "…Watch." — Jeb genuinely crosses the screen, timed to
-  // land as the line finishes typing.
+  // The corner beat: the real sprite makes the trip home while the stage
+  // shows the desktop miniature.
   useEffect(() => {
     if (beat !== "corner" || traveled.current) return;
     traveled.current = true;
@@ -400,7 +466,7 @@ export function OnboardingGate({
         travelKind: "dash",
         direction: "left",
       });
-    }, 550);
+    }, 400);
     window.setTimeout(() => {
       window.api.spriteEvent({
         kind: "travel",
@@ -409,7 +475,7 @@ export function OnboardingGate({
         direction: "left",
       });
       window.api.spriteEvent({ kind: "emote", emotion: "proud" });
-    }, 1450);
+    }, 1300);
   }, [beat]);
 
   useEffect(() => {
@@ -418,7 +484,7 @@ export function OnboardingGate({
     };
   }, []);
 
-  const pokePortrait = (): void => {
+  const pokeNameplate = (): void => {
     const next = EASTER_EGGS[eggIdx.current % EASTER_EGGS.length];
     eggIdx.current += 1;
     setEgg(next);
@@ -440,92 +506,91 @@ export function OnboardingGate({
     window.setTimeout(() => onDone(task.trim()), 1400);
   };
 
-  const complete = (): void => {
+  const complete = useCallback((): void => {
     window.api.spriteEvent({ kind: "turn", phase: "done" });
     onDone(task.trim());
-  };
+  }, [onDone, task]);
 
-  const inputBeat = atLastLine && !typing && !skipping;
-
-  const submitOnEnter = (e: React.KeyboardEvent): void => {
-    if (e.key === "Enter" && beatDone) {
+  // Enter anywhere is Next: finishes the typing line, steps the scene, and
+  // advances the beat — including the handoff CTA. Buttons keep their native
+  // Enter activation (handling it here too would double-fire), and the
+  // gating lives in advance()/beatDone, so a blocked beat just holds.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Enter" || e.isComposing || skipping) return;
+      if ((e.target as HTMLElement | null)?.tagName === "BUTTON") return;
       e.preventDefault();
+      if (beat === "handoff" && atLastLine && !typing) {
+        complete();
+        return;
+      }
       advance();
-    }
-  };
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [skipping, beat, atLastLine, typing, complete, advance]);
+
+  const inputReady = atLastLine && !typing && !skipping;
 
   return (
     <div className="tavern-onb" data-beat={beat} data-line={lineIdx}>
-      <div className="tavern-onb-top">
+      <div className="tavern-onb-head">
+        <span className="tavern-head-name">
+          freestyle<i>.</i>
+        </span>
         <button type="button" className="tavern-onb-skip" onClick={skip}>
           skip intro ↦
         </button>
       </div>
 
-      <div className="tavern-onb-portrait">
-        <button
-          type="button"
-          className="tavern-onb-poke"
-          aria-label="Jeb"
-          onClick={pokePortrait}
-        >
-          <SpriteBadge
-            form={spriteForm}
-            size={72}
-            working={beat === "list" && !todoSeeded}
+      <div className="tavern-onb-prog" aria-hidden="true">
+        {BEATS.map((b) => (
+          <span
+            key={b}
+            className={`tavern-onb-dot${
+              BEATS.indexOf(b) <= BEATS.indexOf(beat) ? " is-lit" : ""
+            }`}
           />
-        </button>
-        <span className="tavern-onb-nameplate">JEB</span>
-        {egg ? <span className="tavern-onb-egg">{egg}</span> : null}
+        ))}
       </div>
 
-      {/* Clicking the bubble finishes the line, then steps through the
-          scene, then advances dialogue-only beats — the RPG contract. */}
-      <button
-        type="button"
-        className="tavern-onb-bubble"
-        onClick={() => {
-          if (
-            !skipping &&
-            (typing ||
-              !atLastLine ||
-              !["name", "trade", "job", "handoff"].includes(beat))
-          )
-            advance();
-        }}
-      >
-        {shown}
-        {typing ? <span className="tavern-onb-caret">▮</span> : null}
-        {!typing && hint ? (
-          <span className="tavern-onb-hint">{hint}</span>
+      <div className="tavern-onb-stage">
+        {beat === "welcome" ? (
+          <>
+            <div className="tavern-onb-bigq">
+              Someone's at
+              <br />
+              the <i>door.</i>
+            </div>
+            <p className="tavern-onb-sub">
+              A ronin has moved into the corner of your screen. He'd like a word
+              before you put him to work.
+            </p>
+          </>
         ) : null}
-      </button>
 
-      <div className="tavern-onb-zone">
-        {beat === "name" && inputBeat ? (
+        {beat === "name" && inputReady ? (
           <input
-            className="tavern-set-input tavern-onb-input"
+            className="tavern-onb-in"
             value={name}
             maxLength={80}
             placeholder="Your name"
             // biome-ignore lint/a11y/noAutofocus: the input is the beat's whole point
             autoFocus
             onChange={(e) => setName(e.target.value)}
-            onKeyDown={submitOnEnter}
           />
         ) : null}
 
-        {beat === "trade" && inputBeat ? (
+        {beat === "trade" && inputReady ? (
           <>
             <input
-              className="tavern-set-input tavern-onb-input"
+              className="tavern-onb-in"
               value={trade}
               maxLength={120}
               placeholder="Anything. I've heard stranger."
               // biome-ignore lint/a11y/noAutofocus: the input is the beat's whole point
               autoFocus
               onChange={(e) => setTrade(e.target.value)}
-              onKeyDown={submitOnEnter}
             />
             <div className="tavern-onb-chips">
               {TRADE_CHIPS.map((chip) => (
@@ -542,51 +607,108 @@ export function OnboardingGate({
           </>
         ) : null}
 
-        {beat === "job" && inputBeat ? (
-          <input
-            className="tavern-set-input tavern-onb-input is-wide"
-            value={task}
-            maxLength={200}
-            placeholder="Finish doing laundry in the evening"
-            // biome-ignore lint/a11y/noAutofocus: the input is the beat's whole point
-            autoFocus
-            onChange={(e) => setTask(e.target.value)}
-            onKeyDown={submitOnEnter}
-          />
+        {beat === "job" && inputReady ? (
+          <>
+            <div className="tavern-onb-bigq">
+              One thing you
+              <br />
+              need <i>done.</i>
+            </div>
+            <input
+              className="tavern-onb-in"
+              value={task}
+              maxLength={200}
+              placeholder={jobPlaceholder(trade)}
+              // biome-ignore lint/a11y/noAutofocus: the input is the beat's whole point
+              autoFocus
+              onChange={(e) => setTask(e.target.value)}
+            />
+          </>
         ) : null}
 
-        {beat === "list" && lineIdx >= 1 && !skipping ? (
-          <TodoCard quest={questFor(task)} seeded={todoSeeded} />
+        {beat === "list" && !skipping ? (
+          <MiniTodos quest={questFor(task)} seeded={todoSeeded} />
         ) : null}
 
         {beat === "ledger" && !skipping ? (
-          <BrainCard
-            name={firstNameOf(name) ? firstNameOf(name) : "friend"}
+          <MiniNotes
+            name={firstNameOf(name) || "friend"}
             trade={trade.trim()}
             seeded={profileSeeded}
           />
         ) : null}
 
-        {beat === "blade" && !skipping ? <BladeCard /> : null}
+        {beat === "blade" && !skipping ? <MiniApproval /> : null}
 
-        {beat === "road" && lineIdx >= 1 && !skipping ? <RoadCard /> : null}
+        {beat === "road" && !skipping ? <MiniSearch /> : null}
+
+        {beat === "corner" && !skipping ? (
+          <DeskMiniature spriteForm={spriteForm} />
+        ) : null}
+
+        {beat === "handoff" && !skipping ? (
+          <>
+            <div className="tavern-onb-bigq">
+              No bowing,
+              <br />
+              thank the <i>gods.</i>
+            </div>
+            {task.trim() ? (
+              <div className="tavern-onb-mini">
+                <div className="tavern-onb-mbody">
+                  <div className="tavern-onb-mtodo">
+                    <span className="tavern-onb-mcheck" />
+                    <span className="tavern-onb-mtodo-main">
+                      {questFor(task)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
       </div>
 
-      <div className="tavern-onb-foot">
-        <div className="tavern-onb-dots" aria-hidden="true">
-          {BEATS.map((b) => (
-            <span
-              key={b}
-              className={`tavern-onb-dot${
-                BEATS.indexOf(b) <= BEATS.indexOf(beat) ? " is-lit" : ""
-              }`}
-            />
-          ))}
-        </div>
+      {/* Jeb speaks from the bottom; the tail points down-left at the real
+          companion sprite on the desktop. One Jeb on screen, ever. */}
+      <div className="tavern-onb-say">
+        <button
+          type="button"
+          className="tavern-onb-who"
+          onClick={pokeNameplate}
+        >
+          JEB
+        </button>
+        {egg ? <span className="tavern-onb-egg">{egg}</span> : null}
+        <span className="tavern-onb-tail-o" />
+        <span className="tavern-onb-tail-f" />
+        <button
+          type="button"
+          className="tavern-onb-saytext"
+          onClick={() => {
+            if (
+              !skipping &&
+              (typing ||
+                !atLastLine ||
+                !["name", "trade", "job", "handoff"].includes(beat))
+            )
+              advance();
+          }}
+        >
+          {shown}
+          {typing ? <span className="tavern-onb-caret">▮</span> : null}
+          {!typing && hint ? (
+            <span className="tavern-onb-hint">{hint}</span>
+          ) : null}
+        </button>
+      </div>
+
+      <div className="tavern-onb-foot2">
+        <span />
         {beat === "handoff" && atLastLine ? (
           <button
             type="button"
-            className="tavern-gate-btn tavern-onb-cta"
+            className="tavern-onb-cta"
             disabled={typing || skipping}
             onClick={complete}
           >

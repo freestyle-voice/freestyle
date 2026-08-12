@@ -18,14 +18,16 @@ const EXPECTED = {
     "macos-mic-listener",
     "macos-output-volume",
     "macos-media-control",
+    "macos-ax",
   ],
   win32: [
     "windows-key-listener.exe",
     "windows-fast-paste.exe",
     "windows-mic-listener.exe",
     "windows-output-volume.exe",
+    "windows-window-bounds.exe",
   ],
-  linux: ["linux-key-listener", "linux-fast-paste"],
+  linux: ["linux-key-listener", "linux-fast-paste", "linux-window-bounds"],
 };
 
 const expected = EXPECTED[platform];

@@ -62,7 +62,7 @@ export type SpriteId = keyof typeof SPRITES_INFO;
 
 export const SPRITE_IDS = Object.keys(SPRITES_INFO) as SpriteId[];
 
-export const DEFAULT_SPRITE: SpriteId = "spark";
+export const DEFAULT_SPRITE: SpriteId = "jeb";
 
 export function parseSpriteId(value: string | null | undefined): SpriteId {
   return value && value in SPRITES_INFO ? (value as SpriteId) : DEFAULT_SPRITE;

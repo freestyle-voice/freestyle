@@ -66,6 +66,7 @@
 }
 
 .tavern-panel {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   height: calc(100% - 38px);
@@ -78,30 +79,16 @@
   background-size: 7px 7px;
 }
 
-/* The manga tail: two stacked triangles (outline + fill), pinned toward the
-   sprite waiting below-left of the panel. */
-.tavern-tail-o,
-.tavern-tail-f {
+/* The manga tail: an SVG swoosh growing out of the bubble's bottom border.
+   Its top overlaps the 3px border only; the composer's content is never
+   touched. */
+.tavern-tail {
   position: absolute;
-  width: 0;
-  height: 0;
-  border-style: solid;
-  transform: rotate(14deg);
+  left: 30px;
+  bottom: 0;
+  width: 56px;
+  height: 46px;
   pointer-events: none;
-}
-
-.tavern-tail-o {
-  bottom: 8px;
-  left: 38px;
-  border-width: 32px 30px 0 8px;
-  border-color: var(--tavern-ink) transparent transparent transparent;
-}
-
-.tavern-tail-f {
-  bottom: 16px;
-  left: 43px;
-  border-width: 25px 23px 0 6px;
-  border-color: var(--tavern-card) transparent transparent transparent;
 }
 
 .tavern-head {
@@ -1848,4 +1835,325 @@
 .tavern-todo-streak-sub {
   font-size: 11.5px;
   color: var(--tavern-mute);
+}
+
+/* --- Onboarding: Jeb's scripted intro ---------------------------------- */
+
+.tavern-onb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  padding: 10px 22px 18px;
+}
+
+.tavern-onb-top {
+  align-self: stretch;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.tavern-onb-skip {
+  font: inherit;
+  font-size: 11.5px;
+  border: none;
+  background: none;
+  color: var(--tavern-mute);
+  cursor: pointer;
+  padding: 4px;
+}
+
+.tavern-onb-skip:hover {
+  color: var(--tavern-ink);
+}
+
+.tavern-onb-portrait {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 14px;
+}
+
+.tavern-onb-nameplate {
+  font-family: var(--tavern-px);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: var(--tavern-rust);
+}
+
+.tavern-onb-bubble {
+  font: inherit;
+  text-align: left;
+  width: 100%;
+  border: 2px solid var(--tavern-ink);
+  border-radius: 12px;
+  background: var(--tavern-parchment);
+  box-shadow: 3px 3px 0 rgba(42, 33, 20, 0.35);
+  padding: 12px 14px;
+  line-height: 1.6;
+  min-height: 88px;
+  cursor: pointer;
+  color: var(--tavern-ink);
+}
+
+.tavern-onb-caret {
+  color: var(--tavern-lantern);
+  animation: tavern-onb-blink 1s steps(1) infinite;
+}
+
+@keyframes tavern-onb-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.tavern-onb-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--tavern-mute);
+}
+
+.tavern-onb-zone {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  flex: 1;
+  min-height: 0;
+}
+
+.tavern-onb-input {
+  /* .tavern-set-input's flex: 1 would grow this to fill the whole zone
+     inside the column layout — the giant-square-input bug. */
+  flex: none;
+  width: 100%;
+  max-width: 216px;
+  align-self: flex-start;
+  padding: 6px 10px;
+  border: 2px solid var(--tavern-ink);
+  border-radius: 9px;
+  box-shadow: 2px 2px 0 rgba(42, 33, 20, 0.2);
+}
+
+.tavern-onb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.tavern-onb-chip {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border: 2px solid var(--tavern-rule);
+  border-radius: 9px;
+  background: var(--tavern-card);
+  color: var(--tavern-mute);
+  cursor: pointer;
+}
+
+.tavern-onb-chip:hover {
+  color: var(--tavern-ink);
+}
+
+.tavern-onb-chip.is-on {
+  border-color: var(--tavern-ink);
+  color: var(--tavern-ink);
+  background: var(--tavern-wash);
+  box-shadow: 2px 2px 0 var(--tavern-lantern);
+}
+
+.tavern-onb-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  border: 2px solid var(--tavern-ink);
+  border-radius: 10px;
+  background: var(--tavern-card);
+  padding: 10px 13px;
+  box-shadow: 3px 3px 0 var(--tavern-lantern);
+}
+
+.tavern-onb-card-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tavern-mute);
+  border-bottom: 1px solid var(--tavern-rule);
+  padding-bottom: 5px;
+  margin-bottom: 2px;
+}
+
+.tavern-onb-card-writing {
+  font-style: normal;
+  color: var(--tavern-mute);
+  animation: tavern-onb-blink 1s steps(1) infinite;
+}
+
+.tavern-onb-todo-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.tavern-onb-todo-box {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--tavern-ink);
+  border-radius: 3px;
+  background: var(--tavern-parchment);
+  flex-shrink: 0;
+}
+
+.tavern-onb-brain-row b {
+  color: var(--tavern-rust);
+}
+
+.tavern-onb-mark {
+  background: #d98e2b55;
+  color: inherit;
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+
+.tavern-onb-demo-answer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tavern-onb-demo-source {
+  font-size: 11.5px;
+  color: var(--tavern-mute);
+}
+
+.tavern-onb-card-badge {
+  font-weight: 700;
+  font-size: 10px;
+  padding: 2px 7px;
+  border: 1px solid var(--tavern-ink);
+  border-radius: 6px;
+  background: var(--tavern-card);
+  white-space: nowrap;
+}
+
+.tavern-onb-card-badge.is-ok {
+  border-color: var(--tavern-lantern);
+  color: var(--tavern-lantern);
+}
+
+.tavern-onb-cursor {
+  font-style: normal;
+  color: var(--tavern-lantern);
+  animation: tavern-onb-blink 1s steps(1) infinite;
+}
+
+.tavern-onb-poke {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.tavern-onb-egg {
+  font-size: 11.5px;
+  color: var(--tavern-mute);
+  border: 1px solid var(--tavern-rule);
+  border-radius: 9px;
+  background: var(--tavern-parchment);
+  padding: 3px 10px;
+}
+
+.tavern-onb-input.is-wide {
+  max-width: 300px;
+}
+
+.tavern-onb-foot {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.tavern-onb-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.tavern-onb-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--tavern-rule);
+  transform: rotate(45deg);
+}
+
+.tavern-onb-dot.is-lit {
+  background: var(--tavern-lantern);
+}
+
+.tavern-onb-next {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  border: 2px solid var(--tavern-ink);
+  border-radius: 10px;
+  background: var(--tavern-card);
+  color: var(--tavern-ink);
+  padding: 7px 16px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 var(--tavern-ink);
+}
+
+.tavern-onb-next:disabled {
+  opacity: 0.4;
+  cursor: default;
+  box-shadow: none;
+}
+
+.tavern-onb-cta {
+  max-width: 200px;
+  height: 40px;
+  font-size: 13.5px;
+}
+
+.tavern-starters {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 12px;
+  align-items: center;
+}
+
+.tavern-starter {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 7px 13px;
+  border: 1px solid var(--tavern-rule);
+  border-radius: 10px;
+  background: var(--tavern-card);
+  color: var(--tavern-ink);
+  cursor: pointer;
+}
+
+.tavern-starter:hover:not(:disabled) {
+  border-color: var(--tavern-ink);
+  box-shadow: 2px 2px 0 var(--tavern-lantern);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tavern-onb-caret,
+  .tavern-onb-card-writing,
+  .tavern-onb-cursor {
+    animation: none;
+  }
 }

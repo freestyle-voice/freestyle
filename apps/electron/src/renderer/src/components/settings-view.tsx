@@ -1098,7 +1098,11 @@ function DictationPage({
   );
 }
 
-function ApplicationPage(): React.JSX.Element {
+function ApplicationPage({
+  onReplayIntro,
+}: {
+  onReplayIntro: () => void;
+}): React.JSX.Element {
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [companionForm, setCompanionForm] = useState<CompanionForm>(
@@ -1178,6 +1182,10 @@ function ApplicationPage(): React.JSX.Element {
       </div>
       <p className="tavern-set-hint">
         The little companion that lives in the corner of your screen.
+      </p>
+      <ActionRow label="Intro" action="Replay" onClick={onReplayIntro} />
+      <p className="tavern-set-hint">
+        Meet Jeb again — the guided intro from your first launch.
       </p>
       <SectionLabel>App</SectionLabel>
       <ToggleRow
@@ -1418,9 +1426,11 @@ function DataPage({
 export function SettingsView({
   onClose,
   onThreadsCleared,
+  onReplayIntro,
 }: {
   onClose: () => void;
   onThreadsCleared: () => void;
+  onReplayIntro: () => void;
 }): React.JSX.Element {
   const [page, setPage] = useState<SettingsPage>("root");
   const { settings, setSetting } = useServerSettings();
@@ -1491,7 +1501,7 @@ export function SettingsView({
             <InfoRow label="Summon the panel" value="⌥ Space" />
           </>
         ) : page === "application" ? (
-          <ApplicationPage />
+          <ApplicationPage onReplayIntro={onReplayIntro} />
         ) : page === "permissions" ? (
           <PermissionsPage />
         ) : (

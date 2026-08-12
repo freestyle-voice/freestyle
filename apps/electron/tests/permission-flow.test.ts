@@ -344,6 +344,43 @@ test("denied Accessibility blocks dictation before RecordingStarted", async () =
   try {
     await waitForStartupPermissionChecks(launched.eventsPath);
     await instrumentMicrophoneRequest(launched.app);
+
+    // A signed-out launch auto-opens the panel (sign-in gate). Wait for the
+    // startup decision to land — panel visible (signed out), or an
+    // authenticated session on the default port (a dev machine running the
+    // real app, where no panel will open) — then hide any panel so the
+    // blocked-hotkey assertion below observes only what the hotkey itself
+    // surfaces.
+    await expect
+      .poll(
+        async () => {
+          const visible = await launched.app.evaluate(({ BrowserWindow }) =>
+            BrowserWindow.getAllWindows()
+              .filter((window) => window.webContents.getURL().includes("panel"))
+              .some((window) => window.isVisible()),
+          );
+          if (visible) return true;
+          return await fetch("http://127.0.0.1:4649/api/auth/status")
+            .then(async (res) =>
+              res.ok
+                ? (
+                    (await res.json()) as {
+                      authenticated?: boolean;
+                    }
+                  ).authenticated === true
+                : false,
+            )
+            .catch(() => false);
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(true);
+    await launched.app.evaluate(({ BrowserWindow }) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (window.webContents.getURL().includes("panel")) window.hide();
+      }
+    });
+
     const dialogsBefore = readEvents(launched.eventsPath).filter(
       (event) => event.type === "dialog",
     ).length;

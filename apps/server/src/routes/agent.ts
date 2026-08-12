@@ -9,6 +9,9 @@ const log = createAppLogger("agent");
 
 const agentRequestSchema = z.object({
   messages: z.array(z.record(z.string(), z.unknown())).min(1),
+  // The seeded turn right after onboarding — forwarded so the cloud can
+  // append its one-turn system-prompt addendum.
+  firstTurn: z.boolean().optional(),
 });
 
 /**
@@ -20,7 +23,7 @@ const agentRoute = new Hono().post(
   "/",
   zValidator("json", agentRequestSchema),
   async (c) => {
-    const { messages } = c.req.valid("json");
+    const { messages, firstTurn } = c.req.valid("json");
 
     const token = getSessionToken();
     if (!token) return c.json({ error: "cloud_auth_required" }, 401);
@@ -33,7 +36,10 @@ const agentRoute = new Hono().post(
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({
+          messages,
+          ...(firstTurn ? { firstTurn: true } : {}),
+        }),
         signal: c.req.raw.signal,
       });
     } catch (err) {

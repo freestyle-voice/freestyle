@@ -1929,6 +1929,21 @@ app.whenReady().then(async () => {
     registerSummonShortcut();
   }
 
+  // A signed-out launch surfaces the panel unprompted: the sign-in gate is
+  // the whole product until there's a session, and a first-time user doesn't
+  // know the corner hover exists yet.
+  void (async () => {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      if (await probeServerHealth(getServerBaseUrl(), 1000)) break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    const user = await serverClient()
+      .api.auth.status.$get()
+      .then(async (res) => (res.ok ? ((await res.json()).user ?? null) : null))
+      .catch(() => null);
+    if (!user) openPanel();
+  })();
+
   createTray();
 
   // The pill window is retired: it hosted the legacy dictation pipeline

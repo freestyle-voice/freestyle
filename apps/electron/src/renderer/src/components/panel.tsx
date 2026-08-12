@@ -4,6 +4,7 @@ import "../tavern.css";
 import { useChat } from "@ai-sdk/react";
 import { Markdown } from "@renderer/components/markdown";
 import { NotesTab } from "@renderer/components/notes-tab";
+import { OnboardingGate, useOnboarding } from "@renderer/components/onboarding";
 import { SettingsView } from "@renderer/components/settings-view";
 import { TodosTab } from "@renderer/components/todos-tab";
 import {
@@ -15,6 +16,7 @@ import {
 } from "@renderer/lib/agent-tools";
 import { apiFetch, initApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider, useCloudAuth } from "@renderer/lib/auth-context";
+import { seedMessageFor, starterPrompts } from "@renderer/lib/onboarding-core";
 import { createQueryClient } from "@renderer/lib/query";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
@@ -194,6 +196,33 @@ function newThread(): ThreadState {
   return { id: crypto.randomUUID(), messages: [] };
 }
 
+function PanelTail(): React.JSX.Element {
+  // A manga balloon tail. The card fill reaches up through the panel's border
+  // and hard shadow so the bubble opens into the tail; the ink stroke draws
+  // only the two side curves, meeting the border's cut ends with round caps.
+  return (
+    <svg
+      className="tavern-tail"
+      viewBox="0 0 56 46"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M12 3 L12 5.5 C15.5 15 17.5 28 17 41 C27 27 37 15 44 5.5 L44 3 Z"
+        fill="var(--tavern-card)"
+      />
+      <path
+        d="M12 5.5 C15.5 15 17.5 28 17 41 C27 27 37 15 44 5.5"
+        fill="none"
+        stroke="var(--tavern-ink)"
+        strokeWidth="3"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function SignInGate(): React.JSX.Element {
   const auth = useCloudAuth();
   return (
@@ -368,6 +397,7 @@ function PanelInner({
 }): React.JSX.Element {
   const [tab, setTab] = useState<PanelTab>("chat");
   const auth = useCloudAuth();
+  const onboarding = useOnboarding(!!auth.user);
   const [spriteForm, setSpriteForm] = useState<CompanionForm>(
     DEFAULT_COMPANION_FORM,
   );
@@ -565,8 +595,41 @@ function PanelInner({
         <div className="tavern tavern-panel">
           {auth.loading ? null : <SignInGate />}
         </div>
-        <span className="tavern-tail-o" />
-        <span className="tavern-tail-f" />
+        <PanelTail />
+      </div>
+    );
+  }
+
+  // First meeting: Jeb runs his intro as a takeover, same contract as the
+  // sign-in gate. While the flag loads, show nothing rather than flashing
+  // the intro at users who've already been through it.
+  if (onboarding.status !== "done") {
+    return (
+      <div className="tavern-shell">
+        <div className="tavern tavern-panel">
+          {onboarding.status === "show" ? (
+            <OnboardingGate
+              user={auth.user}
+              spriteForm={spriteForm}
+              saved={onboarding.saved}
+              onDone={(task) => {
+                // The landing: the panel opens on a thread that is already
+                // about the task. Replays never seed a second thread.
+                const replayed = onboarding.saved?.replayed === true;
+                onboarding.markDone(task);
+                setTab("chat");
+                if (task && !replayed) {
+                  setNotice(null);
+                  void sendMessage(
+                    { text: seedMessageFor(task) },
+                    { body: { firstTurn: true } },
+                  );
+                }
+              }}
+            />
+          ) : null}
+        </div>
+        <PanelTail />
       </div>
     );
   }
@@ -634,6 +697,10 @@ function PanelInner({
             <SettingsView
               onClose={() => setSettingsOpen(false)}
               onThreadsCleared={() => onSwitchThread(newThread())}
+              onReplayIntro={() => {
+                setSettingsOpen(false);
+                onboarding.replay();
+              }}
             />
           ) : tab === "history" ? (
             <ThreadHistory
@@ -682,6 +749,26 @@ function PanelInner({
             <TodosTab mascot={SPRITES_INFO[spriteForm].label} />
           ) : tab === "notes" ? (
             <NotesTab />
+          ) : chatActive ? (
+            <div className="tavern-empty">
+              {TAB_PLACEHOLDER.chat}
+              <div className="tavern-starters">
+                {starterPrompts().map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    className="tavern-starter"
+                    disabled={busy}
+                    onClick={() => {
+                      setNotice(null);
+                      void sendMessage({ text: prompt });
+                    }}
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
           ) : (
             <div className="tavern-empty">{TAB_PLACEHOLDER[tab]}</div>
           )}
@@ -720,8 +807,7 @@ function PanelInner({
           </div>
         ) : null}
       </div>
-      <span className="tavern-tail-o" />
-      <span className="tavern-tail-f" />
+      <PanelTail />
     </div>
   );
 }

@@ -41,6 +41,7 @@ import {
   setSession,
 } from "../lib/sessions.js";
 import { clearOutbox, drainOutbox } from "../lib/sync-outbox.js";
+import { syncTimezoneToCloud } from "../lib/timezone-sync.js";
 import { isTrustedRendererOrigin } from "../lib/trusted-origin.js";
 
 /**
@@ -92,6 +93,9 @@ const auth = new Hono()
       // Seed local cleanup preferences from the cloud snapshot (cross-device
       // sync). Fire-and-forget — sign-in must not block on it.
       void pullCloudPreferences();
+      // Let the cloud know this machine's timezone so scheduled tasks fire on
+      // the user's clock. Fire-and-forget.
+      void syncTimezoneToCloud();
       // Flush any preference syncs queued while signed out / offline now that a
       // valid session exists. Fire-and-forget.
       void drainOutbox();

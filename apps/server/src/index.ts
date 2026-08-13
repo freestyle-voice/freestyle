@@ -39,6 +39,7 @@ import {
   startOutboxDrain,
   stopOutboxDrain,
 } from "./lib/sync-outbox.js";
+import { syncTimezoneToCloud } from "./lib/timezone-sync.js";
 import { trustedOriginMiddleware } from "./lib/trusted-origin.js";
 import routes from "./routes";
 
@@ -232,6 +233,10 @@ export async function startServer(
   // Seed local cleanup preferences from the cloud on launch when already signed
   // in (cross-device sync). No-op when signed out; never throws.
   void pullCloudPreferences();
+
+  // Keep the cloud profile's timezone current so scheduled tasks fire on this
+  // machine's clock. No-op when signed out or unchanged; never throws.
+  void syncTimezoneToCloud();
 
   // Flush any preference syncs that were queued while offline in a previous
   // run. No-op when signed out / nothing pending; never throws.

@@ -702,6 +702,23 @@ export async function unlinkCloudAccount(
   });
 }
 
+/**
+ * Shallow-merge fields into the user-level `users.metadata` blob (org-agnostic,
+ * served by the cloud's root `/profile` route — distinct from the org-scoped
+ * member profile below).
+ */
+export async function putCloudUserProfile(
+  token: string,
+  data: { timezone: string },
+): Promise<void> {
+  await cloudJson<{ success?: boolean }>("/profile", token, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(data),
+    signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Profile fields (industry / job title / company)
 // ---------------------------------------------------------------------------

@@ -1565,10 +1565,12 @@
 }
 
 .tavern-set-input {
+  box-sizing: border-box;
   font: inherit;
   font-size: 12.5px;
   flex: 1;
   min-width: 0;
+  max-width: 100%;
   width: 100%;
   padding: 6px 9px;
   border-radius: 8px;
@@ -1580,6 +1582,363 @@
 .tavern-set-input:focus {
   outline: none;
   border-color: var(--tavern-lantern);
+}
+
+.connected-apps {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.connected-apps-intro {
+  display: grid;
+  gap: 4px;
+}
+
+.connected-apps-intro > span {
+  font-family: var(--tavern-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tavern-lantern);
+}
+
+.connected-apps-intro p {
+  margin: 0;
+  color: var(--tavern-mute);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.connector-search {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--tavern-rule);
+  border-radius: 9px;
+  padding: 0 9px;
+  background: color-mix(in srgb, var(--tavern-card) 88%, white);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.connector-search:focus-within {
+  border-color: var(--tavern-lantern);
+  box-shadow: 0 0 0 2px #d98e2b24;
+}
+
+.connector-search > span {
+  color: var(--tavern-mute);
+  font-family: var(--tavern-mono);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.connector-search input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--tavern-ink);
+  font: inherit;
+  font-size: 12px;
+  padding: 9px 0;
+}
+
+.connector-search input::placeholder {
+  color: var(--tavern-mute);
+}
+
+.connector-search button {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  background: var(--tavern-wash);
+  color: var(--tavern-mute);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+
+.connector-group {
+  display: grid;
+  gap: 7px;
+}
+
+.connector-group-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--tavern-mute);
+  font-family: var(--tavern-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.connector-group-label em {
+  border-radius: 999px;
+  padding: 1px 6px;
+  background: var(--tavern-wash);
+  color: var(--tavern-mute);
+  font-style: normal;
+  letter-spacing: 0;
+}
+
+.connector-card {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--tavern-rule);
+  border-radius: 10px;
+  padding: 9px;
+  background: color-mix(in srgb, var(--tavern-parchment) 74%, var(--tavern-card));
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.connector-card:hover {
+  border-color: color-mix(in srgb, var(--tavern-lantern) 55%, var(--tavern-rule));
+  background: var(--tavern-parchment);
+  transform: translateY(-1px);
+}
+
+.connector-card.is-connected {
+  border-color: #9daa7b;
+}
+
+.connector-card.needs-reconnect {
+  border-color: color-mix(in srgb, var(--tavern-lantern) 70%, var(--tavern-rule));
+}
+
+.connector-mark {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid var(--tavern-rule);
+  border-radius: 8px;
+  background: var(--tavern-card);
+  color: var(--tavern-robe);
+  font-family: var(--tavern-px);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.is-connected .connector-mark {
+  border-color: #9daa7b;
+  color: #4a7c46;
+}
+
+.connector-card-copy {
+  min-width: 0;
+}
+
+.connector-card-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.connector-card-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.connector-state {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 1px 5px;
+  background: #dce5cd;
+  color: #4a7c46;
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.is-pending .connector-state {
+  background: var(--tavern-wash);
+  color: var(--tavern-mute);
+}
+
+.needs-reconnect .connector-state {
+  background: #f4d9ae;
+  color: #9d6016;
+}
+
+.connector-card-copy p {
+  overflow: hidden;
+  margin: 2px 0 0;
+  color: var(--tavern-mute);
+  font-size: 10.5px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connector-card-copy .connector-reason {
+  color: #9d6016;
+}
+
+.connector-action {
+  flex: 0 0 auto;
+  border: 1px solid var(--tavern-lantern);
+  border-radius: 7px;
+  padding: 5px 8px;
+  background: var(--tavern-lantern);
+  color: var(--tavern-card);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.connector-action:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+.connector-action.is-secondary {
+  border-color: var(--tavern-rule);
+  background: var(--tavern-card);
+  color: var(--tavern-mute);
+}
+
+.connector-action:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.connector-error {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #d8ae83;
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: #f8e6cb;
+  color: #89521c;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.connector-error button,
+.connector-empty button {
+  flex: 0 0 auto;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.connector-loading-copy {
+  margin: 0;
+  color: var(--tavern-mute);
+  font-size: 11px;
+}
+
+.connector-skeleton {
+  display: grid;
+  gap: 7px;
+}
+
+.connector-skeleton-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 56px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--tavern-rule);
+  border-radius: 10px;
+  padding: 9px;
+  background: var(--tavern-parchment);
+}
+
+.connector-skeleton-mark,
+.connector-skeleton-copy i,
+.connector-skeleton-action {
+  display: block;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--tavern-wash) 25%, #f8efd9 50%, var(--tavern-wash) 75%);
+  background-size: 200% 100%;
+  animation: connector-shimmer 1.35s ease-in-out infinite;
+}
+
+.connector-skeleton-mark {
+  width: 32px;
+  height: 32px;
+}
+
+.connector-skeleton-copy {
+  display: grid;
+  gap: 5px;
+}
+
+.connector-skeleton-copy i:first-child {
+  width: 68%;
+  height: 9px;
+}
+
+.connector-skeleton-copy i:last-child {
+  width: 92%;
+  height: 7px;
+}
+
+.connector-skeleton-action {
+  width: 56px;
+  height: 24px;
+}
+
+@keyframes connector-shimmer {
+  to { background-position: -200% 0; }
+}
+
+.connector-empty {
+  display: grid;
+  justify-items: start;
+  gap: 3px;
+  border: 1px dashed var(--tavern-rule);
+  border-radius: 10px;
+  padding: 13px;
+  color: var(--tavern-mute);
+}
+
+.connector-empty strong {
+  color: var(--tavern-ink);
+  font-size: 12px;
+}
+
+.connector-empty p {
+  margin: 0;
+  font-size: 11px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connector-card { transition: none; }
+  .connector-card:hover { transform: none; }
+  .connector-skeleton-mark,
+  .connector-skeleton-copy i,
+  .connector-skeleton-action { animation: none; }
 }
 
 .tavern-set-saved {

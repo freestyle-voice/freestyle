@@ -11,6 +11,30 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 5 * 60_000;
 
+function connectionCopy(connector: ConnectorCatalogItem): string {
+  const connection = connector.connection;
+  if (connection?.status === "active")
+    return `${connection.accountLabel ?? "Connected"} · ${connection.toolCount} ${connection.toolCount === 1 ? "tool" : "tools"}`;
+  if (connection?.status === "pending")
+    return "Finish connecting in your browser";
+  if (connection?.status === "needs_reconnect")
+    return "Reconnect to keep using this app";
+  return "Available to Remix";
+}
+
+function connectionBadge(connector: ConnectorCatalogItem): string | null {
+  switch (connector.connection?.status) {
+    case "active":
+      return "Connected";
+    case "pending":
+      return "In progress";
+    case "needs_reconnect":
+      return "Needs attention";
+    default:
+      return null;
+  }
+}
+
 function ConnectorCard({
   connector,
   busy,
@@ -26,48 +50,59 @@ function ConnectorCard({
   const connected = connection?.status === "active";
   const pending = connection?.status === "pending";
   const reconnect = connection?.status === "needs_reconnect";
+  const badge = connectionBadge(connector);
+  const action = connected
+    ? "Disconnect"
+    : busy
+      ? "Opening…"
+      : pending
+        ? "Open browser"
+        : reconnect
+          ? "Reconnect"
+          : "Connect";
+
   return (
-    <div className="tavern-set-card">
-      <div className="tavern-set-card-title">{connector.name}</div>
-      <div className="tavern-set-card-sub">
-        {connected
-          ? `${connection.accountLabel ?? "Connected"} · ${connection.toolCount} tools`
-          : pending
-            ? "Waiting for approval in your browser…"
-            : reconnect
-              ? "Connection needs to be renewed"
-              : "Available to Remix"}
+    <article
+      className={`connector-card${connected ? " is-connected" : ""}${pending ? " is-pending" : ""}${reconnect ? " needs-reconnect" : ""}`}
+    >
+      <div className="connector-mark" aria-hidden="true">
+        {connector.name.slice(0, 1)}
       </div>
-      {connection?.statusReason ? (
-        <p className="tavern-set-hint">{connection.statusReason}</p>
-      ) : null}
-      <div className="tavern-set-seg">
-        {connected ? (
-          <button
-            type="button"
-            className="tavern-set-seg-btn"
-            disabled={busy}
-            onClick={onDisconnect}
-          >
-            Disconnect
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="tavern-set-seg-btn is-on"
-            disabled={busy}
-            onClick={onConnect}
-          >
-            {busy
-              ? "Opening…"
-              : pending
-                ? "Open browser again"
-                : reconnect
-                  ? "Reconnect"
-                  : "Connect"}
-          </button>
-        )}
+      <div className="connector-card-copy">
+        <div className="connector-card-heading">
+          <strong>{connector.name}</strong>
+          {badge ? <span className="connector-state">{badge}</span> : null}
+        </div>
+        <p>{connectionCopy(connector)}</p>
+        {connection?.statusReason ? (
+          <p className="connector-reason">{connection.statusReason}</p>
+        ) : null}
       </div>
+      <button
+        type="button"
+        className={`connector-action${connected ? " is-secondary" : ""}`}
+        disabled={busy}
+        onClick={connected ? onDisconnect : onConnect}
+      >
+        {action}
+      </button>
+    </article>
+  );
+}
+
+function ConnectedAppsSkeleton(): React.JSX.Element {
+  return (
+    <div className="connector-skeleton" aria-hidden="true">
+      {["first", "second", "third"].map((key) => (
+        <div key={key} className="connector-skeleton-row">
+          <span className="connector-skeleton-mark" />
+          <span className="connector-skeleton-copy">
+            <i />
+            <i />
+          </span>
+          <span className="connector-skeleton-action" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -80,10 +115,13 @@ export function ConnectedApps(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [pollStartedAt, setPollStartedAt] = useState(0);
 
+  // The catalog is deliberately fetched once and searched locally. This keeps
+  // typing instant in the compact panel and avoids replacing the list with a
+  // loading state for every keystroke.
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setCatalog(await listConnectorCatalog(query));
+      setCatalog(await listConnectorCatalog());
       setError(null);
     } catch (cause) {
       setError(
@@ -94,11 +132,10 @@ export function ConnectedApps(): React.JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [query]);
+  }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 150);
-    return () => window.clearTimeout(timer);
+    void load();
   }, [load]);
 
   const pending = useMemo(
@@ -117,7 +154,7 @@ export function ConnectedApps(): React.JSX.Element {
       if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
         window.clearInterval(timer);
         setError(
-          "This connection is still pending. Finish it in your browser, or open the browser again to restart.",
+          "This connection is still pending. Finish it in your browser, or open it again to restart.",
         );
         return;
       }
@@ -181,56 +218,125 @@ export function ConnectedApps(): React.JSX.Element {
     }
   };
 
-  const connected = catalog.filter(
+  const normalizedQuery = query.trim().toLowerCase();
+  const matchingCatalog = useMemo(
+    () =>
+      normalizedQuery
+        ? catalog.filter((item) =>
+            `${item.name} ${item.slug}`.toLowerCase().includes(normalizedQuery),
+          )
+        : catalog,
+    [catalog, normalizedQuery],
+  );
+  const connected = matchingCatalog.filter(
     (item) => item.connection && item.connection.status !== "disconnected",
   );
-  const available = catalog.filter(
+  const available = matchingCatalog.filter(
     (item) => !item.connection || item.connection.status === "disconnected",
   );
+  const initialLoading = loading && catalog.length === 0;
+
   return (
-    <>
-      <p className="tavern-set-hint is-lead">
-        Connect an app once, then Freestyle can use only your account. You
-        approve every action that changes data outside Freestyle.
-      </p>
-      <input
-        className="tavern-set-input"
-        value={query}
-        placeholder="Search connected apps"
-        aria-label="Search connected apps"
-        onChange={(event) => setQuery(event.target.value)}
-      />
-      {error ? <p className="tavern-set-hint">{error}</p> : null}
-      {loading ? (
-        <p className="tavern-set-hint">Loading connected apps…</p>
-      ) : null}
-      {connected.length > 0 ? (
-        <div className="tavern-set-section">Connected</div>
-      ) : null}
-      {connected.map((connector) => (
-        <ConnectorCard
-          key={connector.slug}
-          connector={connector}
-          busy={busyToolkit === connector.slug}
-          onConnect={() => void connect(connector.slug)}
-          onDisconnect={() => void disconnect(connector.slug)}
+    <section className="connected-apps" aria-busy={loading}>
+      <header className="connected-apps-intro">
+        <span>Private by default</span>
+        <p>
+          Connect once. Freestyle can use only your account, and always asks
+          before changing anything outside the app.
+        </p>
+      </header>
+
+      <label className="connector-search" htmlFor="connector-search">
+        <span aria-hidden="true">⌕</span>
+        <input
+          id="connector-search"
+          aria-label="Search connected apps"
+          value={query}
+          placeholder="Search apps"
+          onChange={(event) => setQuery(event.target.value)}
         />
-      ))}
-      {available.length > 0 ? (
-        <div className="tavern-set-section">Available</div>
+        {query ? (
+          <button
+            type="button"
+            aria-label="Clear app search"
+            onClick={() => setQuery("")}
+          >
+            ×
+          </button>
+        ) : null}
+      </label>
+
+      {error ? (
+        <div className="connector-error" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={() => void load()}>
+            Try again
+          </button>
+        </div>
       ) : null}
-      {available.map((connector) => (
-        <ConnectorCard
-          key={connector.slug}
-          connector={connector}
-          busy={busyToolkit === connector.slug}
-          onConnect={() => void connect(connector.slug)}
-          onDisconnect={() => void disconnect(connector.slug)}
-        />
-      ))}
-      {!loading && catalog.length === 0 ? (
-        <p className="tavern-set-hint">No connected apps match that search.</p>
+
+      {initialLoading ? (
+        <>
+          <p className="connector-loading-copy" role="status">
+            Finding your apps…
+          </p>
+          <ConnectedAppsSkeleton />
+        </>
       ) : null}
-    </>
+
+      {!initialLoading && connected.length > 0 ? (
+        <div className="connector-group">
+          <div className="connector-group-label">
+            <span>Connected</span>
+            <em>{connected.length}</em>
+          </div>
+          {connected.map((connector) => (
+            <ConnectorCard
+              key={connector.slug}
+              connector={connector}
+              busy={busyToolkit === connector.slug}
+              onConnect={() => void connect(connector.slug)}
+              onDisconnect={() => void disconnect(connector.slug)}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {!initialLoading && available.length > 0 ? (
+        <div className="connector-group">
+          <div className="connector-group-label">
+            <span>{connected.length > 0 ? "More apps" : "Available apps"}</span>
+            <em>{available.length}</em>
+          </div>
+          {available.map((connector) => (
+            <ConnectorCard
+              key={connector.slug}
+              connector={connector}
+              busy={busyToolkit === connector.slug}
+              onConnect={() => void connect(connector.slug)}
+              onDisconnect={() => void disconnect(connector.slug)}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {!initialLoading && matchingCatalog.length === 0 ? (
+        <div className="connector-empty">
+          <strong>
+            {normalizedQuery ? "No apps found" : "No apps are available"}
+          </strong>
+          <p>
+            {normalizedQuery
+              ? "Try a different app name."
+              : "Try again in a moment."}
+          </p>
+          {normalizedQuery ? (
+            <button type="button" onClick={() => setQuery("")}>
+              Clear search
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }

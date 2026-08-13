@@ -4,6 +4,7 @@ import {
   connectorToolActionName,
   executeConnectorAction,
   isConnectorToolName,
+  isReadOnlyConnectorToolName,
 } from "@renderer/lib/connectors";
 import { parseSpriteEmotion } from "@shared/sprite-events";
 
@@ -47,7 +48,8 @@ export async function agentToolTier(
 ): Promise<AgentToolTier | null> {
   const input = (call.input ?? {}) as Record<string, unknown>;
   void input;
-  if (isConnectorToolName(call.toolName)) return "confirmed";
+  if (isConnectorToolName(call.toolName))
+    return isReadOnlyConnectorToolName(call.toolName) ? "free" : "confirmed";
   switch (call.toolName) {
     case "current_time":
     case "get_context":
@@ -61,10 +63,11 @@ export async function agentToolTier(
     case "Bash":
       return bashIsReadOnly(str(input, "command")) ? "free" : "confirmed";
     case "Read":
-    case "Write":
-    case "Edit":
     case "Glob":
     case "Grep":
+      return "free";
+    case "Write":
+    case "Edit":
       return "confirmed";
     default:
       return null;

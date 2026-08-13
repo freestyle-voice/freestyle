@@ -30,12 +30,17 @@ export type ConnectorCatalogPage = {
 };
 
 export function isConnectorToolName(name: string): boolean {
-  return /^connector__[a-zA-Z0-9_-]+__[a-zA-Z0-9_]+$/.test(name);
+  return /^connector__[a-zA-Z0-9_-]+__(?:ro_)?[a-zA-Z0-9_]+$/.test(name);
+}
+
+/** A read-only marker is added server-side from Composio's tool metadata. */
+export function isReadOnlyConnectorToolName(name: string): boolean {
+  return /^connector__[a-zA-Z0-9_-]+__ro_[a-zA-Z0-9_]+$/.test(name);
 }
 
 /** Decode the collision-safe Cloud tool suffix for human approval copy. */
 export function connectorToolActionName(toolName: string): string {
-  const encoded = toolName.split("__").at(-1) ?? "";
+  const encoded = (toolName.split("__").at(-1) ?? "").replace(/^ro_/, "");
   if (/^(?:[0-9a-f]{2})+$/i.test(encoded)) {
     try {
       return new TextDecoder().decode(

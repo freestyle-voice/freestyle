@@ -8,6 +8,7 @@ import {
   resolveLanguageOptions,
 } from "@freestyle-voice/validations";
 import { BrainFiles } from "@renderer/components/brain-files";
+import { ConnectedApps } from "@renderer/components/connected-apps";
 import { NotificationsHistory } from "@renderer/components/notifications-history";
 import { ScheduledTasks } from "@renderer/components/scheduled-tasks";
 import {
@@ -49,6 +50,7 @@ type SettingsPage =
   | "profile"
   | "billing"
   | "brain"
+  | "connectedApps"
   | "notifications"
   | "scheduled"
   | "dictation"
@@ -61,6 +63,7 @@ const PAGE_TITLES: Record<Exclude<SettingsPage, "root">, string> = {
   profile: "Profile",
   billing: "Billing & Usage",
   brain: "Brain",
+  connectedApps: "Connected apps",
   notifications: "Notifications",
   scheduled: "Scheduled",
   dictation: "Dictation",
@@ -1478,6 +1481,8 @@ export function SettingsView({
             newLabel="New file"
             graphable
           />
+        ) : page === "connectedApps" ? (
+          <ConnectedApps />
         ) : page === "scheduled" ? (
           <ScheduledTasks />
         ) : page === "notifications" ? (
@@ -1533,6 +1538,7 @@ export function SettingsView({
         onClick={() => setPage("billing")}
       />
       <NavRow label="Brain" onClick={() => setPage("brain")} />
+      <NavRow label="Connected apps" detail="Freestyle" onClick={() => setPage("connectedApps")} />
       <NavRow label="Scheduled" onClick={() => setPage("scheduled")} />
       <NavRow label="Notifications" onClick={() => setPage("notifications")} />
       <NavRow

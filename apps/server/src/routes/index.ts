@@ -13,6 +13,7 @@ import auth from "./auth.js";
 import billing from "./billing.js";
 import brainRoute from "./brain.js";
 import configRoute from "./config.js";
+import connectorsRoute from "./connectors.js";
 import dictionary from "./dictionary.js";
 import dismissedNotifications from "./dismissed-notifications.js";
 import eventsRoute from "./events.js";
@@ -65,6 +66,7 @@ const apiRouter = new Hono()
   })
   .route("/settings", settings)
   .route("/config", configRoute)
+  .route("/connectors", connectorsRoute)
   .route("/auth", auth)
   .route("/models", models)
   .route("/transcribe", transcribe)

@@ -483,7 +483,7 @@ function PanelInner({
       }
       const output =
         tier === "free"
-          ? await executeAgentTool(call)
+          ? await executeAgentTool(call, thread.id)
           : { ok: false, reason: `unknown tool: ${call.toolName}` };
       addToolOutput({
         tool: toolCall.toolName,
@@ -518,7 +518,9 @@ function PanelInner({
       prev.filter((a) => a.toolCallId !== call.toolCallId),
     );
     void (async () => {
-      const output = allowed ? await executeAgentTool(call) : DECLINED_OUTPUT;
+      const output = allowed
+        ? await executeAgentTool(call, thread.id)
+        : DECLINED_OUTPUT;
       addToolOutput({
         tool: call.toolName,
         toolCallId: call.toolCallId,

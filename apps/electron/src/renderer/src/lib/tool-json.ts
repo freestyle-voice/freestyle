@@ -1,13 +1,27 @@
-import { createHighlighterCore } from "shiki/core";
-import json from "shiki/dist/langs/json.mjs";
-import vitesseLight from "shiki/dist/themes/vitesse-light.mjs";
-import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
+type JsonHighlighter = {
+  codeToHtml(
+    source: string,
+    options: { lang: "json"; theme: "vitesse-light" },
+  ): string;
+};
 
-const highlighter = createHighlighterCore({
-  engine: createJavaScriptRegexEngine(),
-  langs: [json],
-  themes: [vitesseLight],
-});
+let highlighter: Promise<JsonHighlighter> | undefined;
+
+function getHighlighter(): Promise<JsonHighlighter> {
+  highlighter ??= Promise.all([
+    import("shiki/core"),
+    import("shiki/engine/javascript"),
+    import("shiki/dist/langs/json.mjs"),
+    import("shiki/dist/themes/vitesse-light.mjs"),
+  ]).then(async ([core, engine, language, theme]) =>
+    core.createHighlighterCore({
+      engine: engine.createJavaScriptRegexEngine(),
+      langs: [language.default],
+      themes: [theme.default],
+    }),
+  );
+  return highlighter;
+}
 
 export function toolJson(value: unknown): string {
   try {
@@ -20,7 +34,7 @@ export function toolJson(value: unknown): string {
 
 /** Highlight untrusted tool JSON through Shiki, which HTML-escapes the source. */
 export function highlightToolJson(source: string): Promise<string> {
-  return highlighter.then((instance) =>
+  return getHighlighter().then((instance) =>
     instance.codeToHtml(source, { lang: "json", theme: "vitesse-light" }),
   );
 }

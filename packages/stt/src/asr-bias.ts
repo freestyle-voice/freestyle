@@ -4,7 +4,7 @@
  * background context.
  *
  * This targets providers that accept a short free-text prompt hint (e.g.
- * OpenAI/Groq Whisper, local whisper.cpp, MLX). It does NOT cover structured
+ * OpenAI/Groq Whisper). It does NOT cover structured
  * vocabulary-bias schemes some providers use instead (e.g. Deepgram
  * keyterms/keywords, ElevenLabs keyterms, Soniox context arrays) — those
  * providers expect a list of discrete terms, not a single prompt string, and

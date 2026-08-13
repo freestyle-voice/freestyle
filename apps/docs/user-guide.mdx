@@ -36,35 +36,12 @@ Under **Output mode** you can choose **Paste into app** (text is typed straight 
   On macOS, paste needs **Accessibility** permission. On Linux it uses `xdotool` or `wtype`. If nothing shows up, check **Settings → Permissions**.
 </Note>
 
-## Pick a model
+## Transcription
 
-Freestyle runs local models on your device or connects to cloud providers with your own API key. Manage both under **Settings → Models**.
+Freestyle Transcribe is the built-in transcription service, built by the Freestyle team and tuned for developer dictation. Sign in and it works — there is nothing to configure and no API key to paste.
 
-<Tabs>
-  <Tab title="Freestyle Transcribe">
-    The all in one transcription service built by the Freestyle team. We've tweaked it to work particularly well for developers. Works immediately when you log in. 
-
-    - Great if you have a weaker PC that can't run local models well. 
-    - Transcription and post processing all in one, runs super fast. 
-    - 0 day retention by default. All transcriptions are private and not stored. 
-
-  </Tab>
-  <Tab title="Local (on-device)">
-    Models run locally. Your audio never leaves your computer.
-
-    - **whisper.cpp** runs everywhere. The *Balanced* model is a solid default.
-    - **Qwen3** Great model for MLX Apple Silicon.
-    - **SenseVoice** Also a decent model. 
-    - **Parakeet** Great open source model from NVIDIA.
-  </Tab>
-  <Tab title="Cloud (your own key)">
-    Often faster and more accurate, but needs internet and a key. Supported transcription providers: **OpenAI**, **Groq**, **Deepgram**, and **ElevenLabs**.
-
-    1. Open **Settings → Models** and pick a provider.
-    2. Paste your API key. Keys live in your system keychain, never logged or sent to us.
-    3. Select the model to make it your default.
-  </Tab>
-</Tabs>
+- Transcription and cleanup in one pass, and fast.
+- Zero-day retention by default. Transcriptions are private and not stored.
 
 ## Shape the final text
 

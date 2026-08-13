@@ -8,7 +8,7 @@ import {
   refreshCleanupPromptConfig,
 } from "../src/lib/editor/prompt-config.js";
 
-function cloudPayload(overrides: Record<string, unknown> = {}) {
+function cloudConfig(overrides: Record<string, unknown> = {}) {
   return {
     ...structuredClone(BUNDLED_CLEANUP_PROMPT_CONFIG),
     // Marker so we can tell the cloud copy apart from the bundled one.
@@ -17,6 +17,19 @@ function cloudPayload(overrides: Record<string, unknown> = {}) {
       low: "CLOUD LOW PRESET",
     },
     ...overrides,
+  };
+}
+
+/**
+ * `/v2/config` wraps the cleanup prompt config under `prompts` (alongside
+ * region/industry suggestions the prompt-config fetcher ignores).
+ */
+function cloudPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    prompts: cloudConfig(overrides),
+    suggestedLanguages: [{ code: "en", label: "English" }],
+    industryVocabulary: [],
+    industryToneDefaults: null,
   };
 }
 
@@ -160,21 +173,16 @@ describe("cleanup prompt config fetcher", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("passes the app version in the query string", async () => {
+  it("fetches the cloud config endpoint", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(
         new Response(JSON.stringify(cloudPayload()), { status: 200 }),
       );
-    const prev = process.env.FREESTYLE_APP_VERSION;
-    process.env.FREESTYLE_APP_VERSION = "9.9.9";
 
     await refreshCleanupPromptConfig();
 
     const url = fetchMock.mock.calls[0]?.[0] as string;
-    expect(url).toContain("/v2/prompts/cleanup?v=9.9.9");
-
-    if (prev === undefined) delete process.env.FREESTYLE_APP_VERSION;
-    else process.env.FREESTYLE_APP_VERSION = prev;
+    expect(url).toContain("/v2/config");
   });
 });

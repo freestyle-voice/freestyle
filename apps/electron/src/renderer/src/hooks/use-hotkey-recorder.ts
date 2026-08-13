@@ -248,14 +248,13 @@ export interface RightModifierUpdateEvent {
   explicitLeft?: boolean;
 }
 
-/** Maps DOM `KeyboardEvent.code` to the side-specific token it represents (macOS only). */
+/** Maps DOM `KeyboardEvent.code` to the side-specific token it represents. */
 function domRightModifierToken(e: KeyboardEvent): string | null {
-  if (!IS_MAC) return null;
   switch (e.code) {
     case "MetaRight":
-      return "RightCommand";
+      return IS_MAC ? "RightCommand" : "RightSuper";
     case "AltRight":
-      return "RightOption";
+      return IS_MAC ? "RightOption" : "RightAlt";
     case "ControlRight":
       return "RightControl";
     case "ShiftRight":
@@ -320,6 +319,13 @@ export function formatAccelerator(accel: string): string {
   return formatAcceleratorKeys(accel).join(" ");
 }
 
+/** Compare two accelerators after normalizing aliases and modifier order. */
+export function acceleratorsEqual(a: string, b: string): boolean {
+  const norm = (accel: string): string =>
+    comboToAccelerator(acceleratorToCombo(accel)) ?? accel;
+  return norm(a) === norm(b);
+}
+
 // ---------------------------------------------------------------------------
 // Hook -- uses main process IPC for recording (captures fn/globe key)
 // ---------------------------------------------------------------------------
@@ -334,16 +340,41 @@ interface UseHotkeyRecorderReturn {
   canSaveRecording: boolean;
   needsModifierOrMouseButton: boolean;
   invalidReleaseNotice: boolean;
+  blockedNotice: boolean;
   startRecording: () => void;
   cancelRecording: () => void;
 }
 
+export interface UseHotkeyRecorderOptions {
+  /**
+   * Which hotkey is being recorded. Both use the same native recorder, but
+   * only "dictation" hands the captured accelerator back to
+   * `stopHotkeyRecording`, which is what re-registers the dictation listener.
+   * The remix listener is re-registered from its own setting instead, so
+   * recording one must not overwrite the other.
+   */
+  target?: "dictation" | "remix";
+  /**
+   * Rejects a completed combo (e.g. it's already the other feature's hotkey).
+   * A blocked combo is not handed to `onRecord`; the previously registered
+   * hotkey stays in place and `blockedNotice` flashes.
+   */
+  isBlocked?: (accelerator: string) => boolean;
+}
+
 export function useHotkeyRecorder(
   onRecord: (accelerator: string) => void,
+  options: UseHotkeyRecorderOptions = {},
 ): UseHotkeyRecorderReturn {
+  const target = options.target ?? "dictation";
+  const targetRef = useRef(target);
+  targetRef.current = target;
+  const isBlockedRef = useRef(options.isBlocked);
+  isBlockedRef.current = options.isBlocked;
   const [state, setState] = useState<RecorderState>("idle");
   const [draftCombo, setDraftCombo] = useState<HotkeyCombo>(EMPTY_COMBO);
   const [invalidReleaseNotice, setInvalidReleaseNotice] = useState(false);
+  const [blockedNotice, setBlockedNotice] = useState(false);
   const onRecordRef = useRef(onRecord);
   onRecordRef.current = onRecord;
   const recordingActiveRef = useRef(false);
@@ -378,6 +409,15 @@ export function useHotkeyRecorder(
     }, 1800);
   }, [clearWarningTimer]);
 
+  const showBlockedNotice = useCallback(() => {
+    clearWarningTimer();
+    setBlockedNotice(true);
+    warningTimerRef.current = setTimeout(() => {
+      setBlockedNotice(false);
+      warningTimerRef.current = null;
+    }, 1800);
+  }, [clearWarningTimer]);
+
   const startRecording = useCallback(() => {
     recordingActiveRef.current = true;
     setState("recording");
@@ -385,6 +425,7 @@ export function useHotkeyRecorder(
     setDraftCombo(EMPTY_COMBO);
     rightModifierLatchRef.current = null;
     setInvalidReleaseNotice(false);
+    setBlockedNotice(false);
     window.api?.startHotkeyRecording();
   }, []);
 
@@ -396,6 +437,7 @@ export function useHotkeyRecorder(
     setDraftCombo(EMPTY_COMBO);
     rightModifierLatchRef.current = null;
     setInvalidReleaseNotice(false);
+    setBlockedNotice(false);
     window.api?.stopHotkeyRecording();
   }, [clearWarningTimer]);
 
@@ -425,19 +467,37 @@ export function useHotkeyRecorder(
       return;
     }
 
+    if (isBlockedRef.current?.(accel)) {
+      // Stop without an accelerator: main re-registers the current hotkey,
+      // so the rejected combo never becomes the live listener.
+      showBlockedNotice();
+      window.api?.stopHotkeyRecording();
+      recordingActiveRef.current = false;
+      setState("idle");
+      draftComboRef.current = EMPTY_COMBO;
+      setDraftCombo(EMPTY_COMBO);
+      rightModifierLatchRef.current = null;
+      return;
+    }
+
     clearWarningTimer();
     if (accel) {
       onRecordRef.current(accel);
     }
-    // Re-register the global listener with the new accelerator (single IPC)
-    window.api?.stopHotkeyRecording(accel);
+    // Re-register the global listener with the new accelerator (single IPC).
+    // The remix key only stops the recorder here: main re-reads that one
+    // from settings, so re-registering is `onRecord`'s job — it is the only
+    // caller that knows when the write has actually landed.
+    window.api?.stopHotkeyRecording(
+      targetRef.current === "remix" ? undefined : accel,
+    );
     recordingActiveRef.current = false;
     setState("idle");
     draftComboRef.current = EMPTY_COMBO;
     setDraftCombo(EMPTY_COMBO);
     rightModifierLatchRef.current = null;
     setInvalidReleaseNotice(false);
-  }, [clearWarningTimer, showInvalidReleaseNotice]);
+  }, [clearWarningTimer, showInvalidReleaseNotice, showBlockedNotice]);
 
   const hasDraftCombo = useCallback(() => {
     return (
@@ -593,6 +653,7 @@ export function useHotkeyRecorder(
       draftCombo.key ? draftCombo : null,
     ),
     invalidReleaseNotice,
+    blockedNotice,
     startRecording,
     cancelRecording,
   };

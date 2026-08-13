@@ -253,8 +253,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # `turbo typecheck` builds upstream workspace deps first (`^build`), so the
+      # `@freestyle-voice/validations` type declarations exist before tsc runs.
       - name: Typecheck mobile
-        run: pnpm --filter @freestyle-voice/mobile run typecheck
+        run: pnpm turbo typecheck --filter=@freestyle-voice/mobile
 
       # Validates that config plugins (Sentry, keyboard extension, pod signing)
       # generate valid native projects. --no-install skips CocoaPods/Gradle so
@@ -328,14 +330,6 @@ jobs:
       - name: Install native build dependencies
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev binutils
 
-      - name: Build whisper.cpp binaries
-        working-directory: apps/electron
-        run: node scripts/download-whisper-cpp.mjs --resources
-
-      - name: Verify whisper binaries are portable (no AVX-512)
-        working-directory: apps/electron
-        run: node scripts/verify-whisper-portable.mjs
-
       - name: Build electron (Linux)
         working-directory: apps/electron
         run: pnpm run build:linux
@@ -369,24 +363,10 @@ jobs:
           node-version-file: "package.json"
           cache: "pnpm"
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
       - run: pnpm install --frozen-lockfile
 
       - name: Build server
         run: pnpm turbo build --filter=@freestyle-voice/server
-
-      - name: Build MLX ASR worker archive
-        run: ./scripts/build_mlx_asr_worker.sh
-
-      - name: Verify MLX ASR worker archive exists
-        run: test -f dist/mlx_asr_worker-darwin-arm64.tar.gz
-
-      - name: Build whisper.cpp binaries
-        working-directory: apps/electron
-        run: node scripts/download-whisper-cpp.mjs --resources
 
       - name: Build electron (macOS)
         working-directory: apps/electron
@@ -398,6 +378,11 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
+      - name: Run macOS permission flow E2E tests
+        working-directory: apps/electron
+        timeout-minutes: 5
+        run: pnpm run test:e2e tests/permission-flow.test.ts
+
       - name: Verify native binaries in package
         working-directory: apps/electron
         run: node scripts/verify-native-binaries.mjs
@@ -407,7 +392,6 @@ jobs:
         with:
           name: mac-builds
           path: |
-            dist/mlx_asr_worker-darwin-arm64.tar.gz
             apps/electron/dist/*.dmg
             apps/electron/dist/*.zip
             apps/electron/dist/latest*.yml
@@ -436,10 +420,6 @@ jobs:
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Download whisper.cpp binaries
-        working-directory: apps/electron
-        run: node scripts/download-whisper-cpp.mjs --resources
 
       - name: Build electron (Windows)
         working-directory: apps/electron

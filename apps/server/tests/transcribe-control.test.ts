@@ -17,6 +17,8 @@ vi.mock("../src/lib/streaming/registry.js", () => ({
 
 vi.mock("../src/lib/streaming-stt.js", () => ({
   getApiKeyForProvider: () => "test-key",
+  voiceProviderCategory: (providerId: string) =>
+    providerId === "freestyle-cloud" ? "freestyle_cloud" : "byok",
 }));
 
 // The cleanup call must never run once a hook consumes/aborts — spy on it so we

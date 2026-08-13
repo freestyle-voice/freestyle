@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { FREESTYLE_CLOUD_PROVIDER_ID } from "../src/lib/freestyle-cloud.js";
 import { applyFreestyleCloudDefaults } from "../src/lib/freestyle-cloud-defaults.js";
-import { getLlmProvider } from "../src/lib/llm/registry.js";
 import { buildPluginLlm } from "../src/lib/plugins/llm.js";
 import { createChatModel } from "../src/lib/providers.js";
 import { clearSession, setSession } from "../src/lib/sessions.js";
@@ -19,8 +18,11 @@ describe("Freestyle Cloud LLM provider", () => {
     clearSession();
   });
 
-  it("is registered in the LLM provider registry", () => {
-    expect(getLlmProvider(FREESTYLE_CLOUD_PROVIDER_ID)).not.toBeNull();
+  it("rejects any provider other than Freestyle Cloud", async () => {
+    signIn();
+    await expect(createChatModel("openai", "openai/gpt-4o")).rejects.toThrow(
+      /unsupported provider/i,
+    );
   });
 
   it("resolves an AI SDK model when signed in (no throw)", async () => {
@@ -32,14 +34,14 @@ describe("Freestyle Cloud LLM provider", () => {
     expect(model).toBeDefined();
   });
 
-  it("throws when signed out (no session token → no api key)", async () => {
+  it("throws when signed out (no session token)", async () => {
     clearSession();
     await expect(
       createChatModel(
         FREESTYLE_CLOUD_PROVIDER_ID,
         "freestyle-cloud/post-process",
       ),
-    ).rejects.toThrow(/api key/i);
+    ).rejects.toThrow(/sign in/i);
   });
 
   it("exposes api.llm for a signed-in Freestyle Cloud user", async () => {

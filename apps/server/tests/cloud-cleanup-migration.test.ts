@@ -106,7 +106,7 @@ describe("freestyle cloud cleanup migration (v14)", () => {
     expect(cleanup.value).toBe("false");
   });
 
-  it("drops non-default legacy configs without touching llm_cleanup", () => {
+  it("drops legacy configs without touching llm_cleanup", () => {
     db = createV13Db();
     insertModel(
       db,
@@ -125,8 +125,7 @@ describe("freestyle cloud cleanup migration (v14)", () => {
     const llmRows = db
       .prepare("SELECT provider FROM model_configs WHERE type = 'llm'")
       .all() as { provider: string }[];
-    expect(llmRows).toHaveLength(1);
-    expect(llmRows[0]!.provider).toBe("groq");
+    expect(llmRows).toHaveLength(0);
 
     const cleanup = db
       .prepare("SELECT value FROM settings WHERE key = 'llm_cleanup'")

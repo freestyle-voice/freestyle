@@ -13,10 +13,7 @@ import {
   transcribeWithFreestyleCloud,
 } from "../lib/freestyle-cloud.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
-import { getLanguageSetting } from "../lib/language.js";
-import { MLX_ASR_PROVIDER_ID } from "../lib/mlx-asr/constants.js";
-import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
-import { canRunMlxAsr, startMlxInBackground } from "../lib/mlx-asr/server.js";
+import { getLanguagesSetting } from "../lib/language.js";
 import {
   FreestyleEventType,
   PipelineStage,
@@ -31,7 +28,6 @@ import {
 import {
   applyFinalRewrites,
   getCleanupAppAssignments,
-  getEffectiveCleanupTones,
   postProcess,
   prewarmPostProcess,
   resolveAppContextForCleanup,
@@ -41,27 +37,17 @@ import { getDefaultModels } from "../lib/providers.js";
 import { invalidateSession } from "../lib/sessions.js";
 import { CloudAuthError } from "../lib/streaming/providers/freestyle-cloud.js";
 import { getProvider } from "../lib/streaming/registry.js";
-import { stripProviderPrefix } from "../lib/streaming/types.js";
-import { getApiKeyForProvider } from "../lib/streaming-stt.js";
-import { getCloudVocabularyBias } from "../lib/vocabulary.js";
+import {
+  getApiKeyForProvider,
+  voiceProviderCategory,
+} from "../lib/streaming-stt.js";
 import {
   buildAsrVocabularyBias,
   resolveAsrVocabularyBias,
 } from "../lib/vocabulary-bias.js";
-import { isServerBinaryAvailable } from "../lib/whisper/binary.js";
-import { WHISPER_PROVIDER_ID } from "../lib/whisper/constants.js";
-import { startInBackground } from "../lib/whisper/server.js";
+import { prewarmModelCostRegistry } from "./models.js";
 
 const log = createAppLogger("transcribe");
-
-function routeVoiceProviderCategory(
-  providerId: string,
-): "local" | "byok" | "freestyle_cloud" {
-  if (providerId === "local-whisper" || providerId === "local-mlx")
-    return "local";
-  if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return "freestyle_cloud";
-  return "byok";
-}
 
 /**
  * The client percent-encodes the x-app-context header so non-Latin1
@@ -135,7 +121,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
   let rawText: string;
   let transcribeDurationInSeconds: number | undefined;
-  const language = getLanguageSetting();
+  const languages = getLanguagesSetting();
   const api = await createHookApi();
 
   // Plugin hook: preprocess the recorded audio, or override which provider,
@@ -161,6 +147,12 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   const voiceProvider = beforeTranscribeOutput.providerId;
   const voiceModel = beforeTranscribeOutput.modelId;
   const languageOverride = beforeTranscribeOutput.language;
+  // A plugin may override the language for this one dictation. It's a single
+  // code, so it takes precedence as the sole language; otherwise use the user's
+  // full language list. `languages[0]` is the primary for single-language
+  // providers (batch Whisper, BYOK).
+  const effectiveLanguages = languageOverride ? [languageOverride] : languages;
+  const primaryLanguage = effectiveLanguages[0];
 
   // A plugin consumed/aborted the dictation in a server hook: return blank
   // output so any client suppresses delivery, carry the disposition/reason,
@@ -265,21 +257,32 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     }
 
     try {
-      // A `beforeTranscribe` plugin can override the ASR vocabulary bias; honor
-      // it on the cloud path too (else fall back to the user's DB vocabulary),
-      // so the override behaves the same regardless of provider.
-      const vocabulary = beforeTranscribeOutput.bias
+      // The cloud reads the user's synced cleanup preferences (intensity,
+      // custom prompt, tones, app assignments, languages, vocabulary) from the
+      // member_preferences row — kept in step via preferences-sync. So we no
+      // longer forward those saved defaults here; the cloud resolves them
+      // server-side (`payload ?? stored ?? default`). We only forward values
+      // that are per-request and therefore never synced:
+      //   - `languages` when a `beforeTranscribe` plugin overrode it for this
+      //     one dictation (else omit → cloud uses the synced language list),
+      //   - `vocabulary` when a `beforeTranscribe` plugin overrode the ASR bias
+      //     for this one dictation (else omit → cloud uses the synced terms),
+      //   - `appContext` and `systemFragments`, which are request-scoped.
+      const languageOverrideForCloud = languageOverride
+        ? [languageOverride]
+        : undefined;
+      const vocabularyOverride = beforeTranscribeOutput.bias
         ? { terms: beforeTranscribeOutput.bias }
-        : getCloudVocabularyBias();
+        : undefined;
       const result = await transcribeWithFreestyleCloud({
         token: apiKey,
         audio: audioData,
-        language: languageOverride ?? language,
         appContext,
         mode: useCombined ? "combined" : "raw",
-        vocabulary,
-        ...(useCombined ? getEffectiveCleanupTones() : {}),
-        appAssignments: getCleanupAppAssignments(),
+        ...(languageOverrideForCloud
+          ? { languages: languageOverrideForCloud }
+          : {}),
+        ...(vocabularyOverride ? { vocabulary: vocabularyOverride } : {}),
         ...(useCombined && systemFragments.length > 0
           ? { systemFragments }
           : {}),
@@ -334,7 +337,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
         capture("transcription completed", {
           provider: voiceProvider,
-          provider_category: routeVoiceProviderCategory(voiceProvider),
+          provider_category: voiceProviderCategory(voiceProvider),
           model: voiceModel,
           duration_ms: durationMs,
           audio_duration_ms: audioDurationMs,
@@ -353,7 +356,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
           raw: rawText,
           cleaned,
           model: voiceModel,
-          provider_category: routeVoiceProviderCategory(voiceProvider),
+          provider_category: voiceProviderCategory(voiceProvider),
           durationMs,
           disposition: dispositionFromControl(api.control.state),
         });
@@ -414,9 +417,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         audio: audioData,
         model: voiceModel,
         apiKey,
-        ...((languageOverride ?? language)
-          ? { language: languageOverride ?? language }
-          : {}),
+        ...(primaryLanguage ? { language: primaryLanguage } : {}),
         bias,
         appContext,
       });
@@ -459,7 +460,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       });
       capture("transcription failed", {
         provider: voiceProvider,
-        provider_category: routeVoiceProviderCategory(voiceProvider),
+        provider_category: voiceProviderCategory(voiceProvider),
         model: voiceModel,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -502,7 +503,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
     capture("transcription completed", {
       provider: voiceProvider,
-      provider_category: routeVoiceProviderCategory(voiceProvider),
+      provider_category: voiceProviderCategory(voiceProvider),
       model: voiceModel,
       duration_ms: durationMs,
       audio_duration_ms: audioDurationMs,
@@ -516,7 +517,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       raw: rawText,
       cleaned: rawText,
       model: voiceModel,
-      provider_category: routeVoiceProviderCategory(voiceProvider),
+      provider_category: voiceProviderCategory(voiceProvider),
       durationMs,
     });
   }
@@ -525,7 +526,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   let pp: Awaited<ReturnType<typeof postProcess>>;
   try {
     pp = await postProcess(rawText, appContext, {
-      language,
+      languages: effectiveLanguages,
       source: "batch",
       api,
     });
@@ -570,7 +571,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
   capture("transcription completed", {
     provider: voiceProvider,
-    provider_category: routeVoiceProviderCategory(voiceProvider),
+    provider_category: voiceProviderCategory(voiceProvider),
     model: voiceModel,
     duration_ms: totalDurationMs,
     audio_duration_ms: audioDurationMs,
@@ -595,7 +596,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     raw: suppressed ? "" : rawText,
     cleaned: suppressed ? "" : pp.cleaned,
     model: voiceModel,
-    provider_category: routeVoiceProviderCategory(voiceProvider),
+    provider_category: voiceProviderCategory(voiceProvider),
     durationMs: totalDurationMs,
     audioDurationMs,
     llmModel: pp.llmModel,
@@ -609,14 +610,10 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 export default transcribeRoute;
 
 /**
- * Pre-warm the local ASR server for the currently-selected voice model so it
- * loads while the user is still speaking, instead of stalling at submission.
+ * Pre-warm the cleanup LLM and the Freestyle Cloud TLS connection so they are
+ * hot by the time the user stops speaking, instead of stalling at submission.
  *
- * The client fires this fire-and-forget on recording start. We dispatch on the
- * default voice provider: only local engines (whisper/mlx) need warming, and
- * each has its own availability gate. Cloud/BYOK providers are a cheap no-op.
- * The underlying `startInBackground` helpers are themselves fire-and-forget and
- * no-op when the server is already warm, so repeated calls are safe.
+ * The client fires this fire-and-forget on recording start.
  *
  * Kept as a separate router (mounted alongside `transcribeRoute` at
  * `/transcribe`) so it can be added to the typed RPC surface without reindenting
@@ -629,6 +626,10 @@ export const transcribePreWarmRoute = new Hono().post("/pre-warm", (c) => {
     // provider; a no-op unless cleanup is enabled and the configured provider
     // supports prewarming (e.g. Groq).
     prewarmPostProcess();
+
+    // Warm the models.dev cost registry in the background so the per-dictation
+    // cost lookup hits a warm cache and never blocks the response.
+    prewarmModelCostRegistry();
 
     const defaults = getDefaultModels();
     const provider = defaults.voice?.provider;
@@ -646,25 +647,6 @@ export const transcribePreWarmRoute = new Hono().post("/pre-warm", (c) => {
 
     if (!defaults.voice || !provider) {
       return c.json({ ok: true, warming: null });
-    }
-
-    const modelId = stripProviderPrefix(defaults.voice.model_id);
-
-    if (provider === WHISPER_PROVIDER_ID) {
-      if (!isServerBinaryAvailable()) {
-        return c.json({ ok: true, warming: null });
-      }
-      startInBackground(modelId);
-      return c.json({ ok: true, warming: "whisper" });
-    }
-
-    if (provider === MLX_ASR_PROVIDER_ID) {
-      if (!canRunMlxAsr()) return c.json({ ok: true, warming: null });
-      if (getMlxModelStatus(modelId)?.status !== "ready") {
-        return c.json({ ok: true, warming: null });
-      }
-      startMlxInBackground(modelId);
-      return c.json({ ok: true, warming: "mlx" });
     }
 
     return c.json({ ok: true, warming: null });

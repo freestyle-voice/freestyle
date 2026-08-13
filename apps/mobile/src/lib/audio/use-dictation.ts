@@ -15,15 +15,12 @@ import { Alert } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
 import type { MicState } from "@/components/mic-button";
+import { useChimes } from "@/lib/audio/chimes";
 import { authHeaders } from "@/lib/cloud/session";
 import { CloudStreamSession } from "@/lib/cloud/stream";
-import {
-  applyDictionaryReplacements,
-  useEntries,
-  vocabularyTerms,
-} from "@/lib/entries";
+import { applyDictionaryReplacements, useEntries } from "@/lib/entries";
 import { useHistory } from "@/lib/history";
-import { languageHint, tonesForCloud, useSettings } from "@/lib/settings";
+import { useSettings } from "@/lib/settings";
 import {
   checkMicPermission,
   requestMicPermission,
@@ -65,9 +62,12 @@ export function useDictation({
   onRecordingStart,
   autoStart = false,
 }: UseDictationOptions): Dictation {
-  const { settings } = useSettings();
-  const { vocabulary, dictionary } = useEntries();
-  const { addHistory } = useHistory();
+  const { settings, ready: settingsReady } = useSettings();
+  const { dictionary } = useEntries();
+  const { addHistory, ready: historyReady } = useHistory();
+  const { playStartChime, playSuccessChime } = useChimes(
+    settings.soundFeedback,
+  );
 
   const [micState, setMicState] = useState<MicState>("idle");
   const [partial, setPartial] = useState("");
@@ -84,6 +84,9 @@ export function useDictation({
   // Set synchronously on press-in so a rapid double-tap can't kick off two
   // recordings before the async permission check flips `recordingRef`.
   const startingRef = useRef(false);
+  // A hold can be released while permission/chime work is still pending.
+  // Remember that release so recording does not begin after the user lets go.
+  const releaseDuringStartRef = useRef(false);
   // Timestamp of the last press-in, used to tell a hold (stop on release) from
   // a quick tap (toggle: stop on the next tap).
   const pressInAt = useRef(0);
@@ -102,6 +105,12 @@ export function useDictation({
   useEffect(() => {
     addHistoryRef.current = addHistory;
   });
+  // Keep the latest translate/cleanup flags so opening a session doesn't
+  // rebuild beginRecording on every settings tweak.
+  const settingsRef = useRef(settings);
+  useEffect(() => {
+    settingsRef.current = settings;
+  });
 
   const recorder = useRecorder({
     onFrame: (frame) => sessionRef.current?.sendAudio(frame),
@@ -109,16 +118,39 @@ export function useDictation({
       level.value = v;
     },
   });
+  const recorderRef = useRef(recorder);
+  useEffect(() => {
+    recorderRef.current = recorder;
+  });
 
   const teardownSession = useCallback(() => {
     sessionRef.current?.close();
     sessionRef.current = null;
   }, []);
 
-  useEffect(() => teardownSession, [teardownSession]);
+  useEffect(
+    () => () => {
+      releaseDuringStartRef.current = true;
+      recordingRef.current = false;
+      startingRef.current = false;
+      try {
+        recorderRef.current.stop();
+      } catch {}
+      teardownSession();
+    },
+    [teardownSession],
+  );
 
   const beginRecording = useCallback(async () => {
-    if (recordingRef.current || startingRef.current || !signedIn) return;
+    if (
+      recordingRef.current ||
+      startingRef.current ||
+      sessionRef.current ||
+      !signedIn ||
+      !settingsReady ||
+      !historyReady
+    )
+      return;
     const headers = authHeaders();
     if (!headers) return;
     startingRef.current = true;
@@ -136,23 +168,25 @@ export function useDictation({
       return;
     }
 
-    recordingRef.current = true;
-    startingRef.current = false;
-    startedAt.current = Date.now();
-    setPartial("");
-    onStartRef.current?.();
-    setMicState("recording");
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
+    if (releaseDuringStartRef.current) {
+      startingRef.current = false;
+      return;
+    }
+    // Finish the cue before forwarding microphone frames so the chime itself
+    // is never transcribed. `startingRef` remains set during this short wait,
+    // preventing a second tap from opening another session.
+    await playStartChime();
+    if (releaseDuringStartRef.current) {
+      startingRef.current = false;
+      return;
+    }
+    const s = settingsRef.current;
     sessionRef.current = new CloudStreamSession({
       cookie: headers.Cookie,
-      language: languageHint(settings.language),
-      vocabulary: vocabularyTerms(vocabulary),
+      languages: s.languages,
       cleanup: {
-        skipPostProcess: !settings.cleanup,
-        intensity: settings.intensity,
-        customPrompt: settings.customPrompt || undefined,
-        ...tonesForCloud(settings),
+        skipPostProcess: !s.cleanup,
+        translate: s.translate,
       },
       callbacks: {
         onReady: () => {},
@@ -170,11 +204,16 @@ export function useDictation({
             addHistoryRef.current(text, committedDurationRef.current);
             onFinalRef.current(text);
           }
+          void playSuccessChime();
           void Haptics.notificationAsync(
             Haptics.NotificationFeedbackType.Success,
           );
         },
         onError: (message, code) => {
+          recordingRef.current = false;
+          startingRef.current = false;
+          recorder.stop();
+          level.value = 0;
           setMicState("idle");
           teardownSession();
           if (code === "usage_exceeded") {
@@ -197,15 +236,41 @@ export function useDictation({
           );
         },
         onClose: () => {
-          // If the socket drops while we're still waiting on the final
-          // transcript, don't leave the UI stuck in "finalizing".
-          setMicState((s) => (s === "finalizing" ? "idle" : s));
+          // Explicit closes detach this handler in CloudStreamSession, so this
+          // is an unexpected remote close. Release the mic in every active
+          // phase rather than leaving recording/finalizing stuck.
+          sessionRef.current = null;
+          recordingRef.current = false;
+          startingRef.current = false;
+          recorder.stop();
+          level.value = 0;
+          setMicState("idle");
+          Alert.alert(
+            "Connection lost",
+            "The transcription connection closed. Please try again.",
+          );
         },
       },
     });
 
     try {
       await recorder.start();
+      // A hold may have been released (or the socket may have closed) while
+      // native mic startup was pending. Stop the just-opened stream rather than
+      // allowing an orphaned recording to continue.
+      if (releaseDuringStartRef.current || !sessionRef.current) {
+        recorder.stop();
+        teardownSession();
+        startingRef.current = false;
+        return;
+      }
+      recordingRef.current = true;
+      startingRef.current = false;
+      startedAt.current = Date.now();
+      setPartial("");
+      onStartRef.current?.();
+      setMicState("recording");
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } catch {
       recordingRef.current = false;
       startingRef.current = false;
@@ -213,7 +278,17 @@ export function useDictation({
       teardownSession();
       Alert.alert("Recording failed", "Could not start the microphone.");
     }
-  }, [recorder, settings, vocabulary, dictionary, teardownSession, signedIn]);
+  }, [
+    recorder,
+    dictionary,
+    teardownSession,
+    signedIn,
+    settingsReady,
+    historyReady,
+    playStartChime,
+    playSuccessChime,
+    level,
+  ]);
 
   const finishRecording = useCallback(() => {
     if (!recordingRef.current) return;
@@ -241,12 +316,25 @@ export function useDictation({
       finishRecording();
       return;
     }
+    if (startingRef.current) {
+      releaseDuringStartRef.current = true;
+      return;
+    }
+    releaseDuringStartRef.current = false;
     pressInAt.current = Date.now();
     void beginRecording();
   }, [beginRecording, finishRecording]);
 
   const onPressOut = useCallback(() => {
-    if (!recordingRef.current) return;
+    if (!recordingRef.current) {
+      if (
+        startingRef.current &&
+        Date.now() - pressInAt.current >= HOLD_THRESHOLD_MS
+      ) {
+        releaseDuringStartRef.current = true;
+      }
+      return;
+    }
     // Long enough to count as a hold → finish on release. Otherwise it was a
     // tap: leave recording running until the next tap.
     if (Date.now() - pressInAt.current >= HOLD_THRESHOLD_MS) {

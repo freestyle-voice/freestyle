@@ -1,59 +1,105 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
+import type { ActiveAudioPlaybackMode } from "../shared/audio-playback";
+import type { CompanionForm, CompanionState } from "../shared/companion";
 import type {
-  ActiveAudioPlaybackMode,
-  AudioPlaybackMode,
-} from "../shared/audio-playback";
-import type { OpenAppCandidate } from "../shared/open-apps";
-import type { PillCancelMode } from "../shared/pill-cancel";
-import type { PluginViewBounds } from "../shared/plugins";
+  RemixContextResult,
+  RemixCopyResult,
+  RemixPrimitiveResult,
+  RemixReadDocumentResult,
+} from "../shared/remix";
+import type { SpriteEvent } from "../shared/sprite-events";
 
 declare global {
   interface Window {
     electron: ElectronAPI;
     api: {
       platform: string;
-      isE2E: boolean;
-      defaultHotkey: string;
       pasteText: (text: string, appContext?: string | null) => Promise<void>;
       copyText: (text: string, appContext?: string | null) => Promise<void>;
       prepareSystemAudio: (mode: ActiveAudioPlaybackMode) => Promise<void>;
-      duckSystemAudio: () => Promise<void>;
       restoreSystemAudio: () => Promise<void>;
-      updateHotkey: (hotkey: string) => void;
-      reloadHotkey: () => void;
-      setHotkeyMode: (mode: "hold" | "toggle") => void;
-      hidePill: () => void;
-      setPillExpanded: (expanded: boolean) => void;
-      showErrorDialog: (title: string, message: string) => Promise<void>;
       getServerPort: () => Promise<number>;
       getServerUrl: () => Promise<string>;
-      setServerUrl: (url: string) => Promise<string>;
       getServerToken: () => Promise<string>;
-      setServerToken: (token: string) => Promise<string>;
-      onServerChanged: (callback: () => void) => () => void;
       openLogsFolder: () => Promise<boolean>;
       openExternal: (url: string) => Promise<boolean>;
-      cloudPromptSignIn: () => Promise<boolean>;
-      cloudPromptUpgrade: () => Promise<boolean>;
+      onTalkDown: (cb: () => void) => () => void;
+      onTalkUp: (cb: () => void) => () => void;
       onHotkeyDown: (callback: () => void) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;
-      onPillCancel: (callback: () => void) => () => void;
+      reloadRemixHotkey: () => void;
+      remixGetContext: () => Promise<RemixContextResult>;
+      remixReadDocument: () => Promise<RemixReadDocumentResult>;
+      remixSetClipboard: (text: string) => Promise<RemixPrimitiveResult>;
+      remixPasteClipboard: () => Promise<RemixPrimitiveResult>;
+      remixGetClipboard: () => Promise<RemixCopyResult>;
+      companionForm: () => Promise<CompanionForm>;
+      companionSetHotRect: (
+        rect: { x: number; y: number; width: number; height: number } | null,
+      ) => void;
+      companionHover: () => void;
+      setCompanionForm: (form: CompanionForm) => void;
+      panelOpenForDictation: () => void;
+      panelDictationPartial: (text: string) => void;
+      panelDictationFinal: (text: string) => void;
+      panelDictationError: (message: string) => void;
+      onPanelDictation: (
+        callback: (ev: {
+          kind: "partial" | "final" | "error";
+          text: string;
+        }) => void,
+      ) => () => void;
+      dictationPrefs: () => Promise<{
+        destination: "cursor" | "composer";
+        outputMode: "paste" | "clipboard";
+        soundEnabled: boolean;
+        audioPlaybackMode: "off" | "duck" | "pause";
+      }>;
+      onDictationPrefs: (
+        callback: (prefs: {
+          destination: "cursor" | "composer";
+          outputMode: "paste" | "clipboard";
+          soundEnabled: boolean;
+          audioPlaybackMode: "off" | "duck" | "pause";
+        }) => void,
+      ) => () => void;
+      reloadDictationPrefs: () => void;
+      panelClose: () => void;
+      panelSetBusy: (busy: boolean) => void;
+      panelRequestFocus: () => void;
+      panelPointerLeft: () => void;
+      panelPointerEntered: () => void;
+      onPanelFocusComposer: (callback: () => void) => () => void;
+      notificationsList: () => Promise<unknown[]>;
+      notificationDismiss: (id: string) => void;
+      notificationOpen: (id: string) => void;
+      notificationSetHeight: (height: number) => void;
+      onNotificationsChanged: (callback: () => void) => () => void;
+      agentTurnFinished: (payload: {
+        threadId: string;
+        excerpt: string;
+      }) => void;
+      onPanelOpenThread: (callback: (threadId: string) => void) => () => void;
+      onPanelShowSettings: (callback: () => void) => () => void;
+      onCompanionForm: (callback: (form: CompanionForm) => void) => () => void;
+      onCompanionState: (
+        callback: (state: CompanionState) => void,
+      ) => () => void;
+      onCompanionHotEnter: (callback: () => void) => () => void;
+      spriteEvent: (ev: SpriteEvent) => void;
+      spritePerformSync: (payload: {
+        name: string;
+        toolClass: string;
+      }) => Promise<boolean>;
+      spriteImpact: (nonce: string) => void;
+      spritePerformDone: (nonce: string) => void;
+      onSpriteEvent: (callback: (ev: SpriteEvent) => void) => () => void;
       checkMicPermission: () => Promise<string>;
       requestMicPermission: () => Promise<string>;
       checkAccessibilityPermission: () => Promise<boolean>;
-      checkLinuxSetup: () => Promise<{
-        wayland: boolean;
-        inputAccess: boolean;
-        uinputAccess: boolean;
-        pasteToolRequired: string;
-        pasteTool: string | null;
-      } | null>;
       openAccessibilitySettings: () => void;
       openMicSettings: () => void;
-      getOnboardingComplete: () => Promise<boolean>;
-      setOnboardingComplete: () => void;
       startHotkeyRecording: () => void;
-      pauseHotkeyRecording: () => void;
       stopHotkeyRecording: (hotkey?: string) => void;
       onHotkeyRecordModifiers: (
         callback: (modifiers: string[]) => void,
@@ -63,6 +109,7 @@ declare global {
       ) => () => void;
       onHotkeyRecordReleased: (callback: () => void) => () => void;
       onHotkeyRecordCancel: (callback: () => void) => () => void;
+      getAppVersion: () => Promise<string>;
       // Auto-updater
       checkForUpdate: () => Promise<{
         version: string;
@@ -70,83 +117,18 @@ declare global {
       } | null>;
       downloadUpdate: () => void;
       installUpdate: () => void;
-      onUpdateAvailable: (
-        callback: (info: { version: string }) => void,
-      ) => () => void;
-      onUpdateDownloaded: (
-        callback: (info: { version: string }) => void,
-      ) => () => void;
-      onUpdateDownloading: (callback: () => void) => () => void;
-      onUpdateError: (
-        callback: (info: { message: string }) => void,
-      ) => () => void;
       // Auto-update setting
       getAutoUpdate: () => Promise<boolean>;
       setAutoUpdate: (enabled: boolean) => void;
       // Launch at startup setting
       getLaunchAtStartup: () => Promise<boolean>;
       setLaunchAtStartup: (enabled: boolean) => void;
-      // Show dashboard on launch setting
-      getShowDashboardOnLaunch: () => Promise<boolean>;
-      setShowDashboardOnLaunch: (enabled: boolean) => void;
       // Context-aware dictation
       getFrontmostApp: () => Promise<string | null>;
-      getOpenAppCandidates: () => Promise<OpenAppCandidate[]>;
-      // Pill position
-      getPillPosition: () => Promise<string>;
-      setPillPosition: (position: string) => void;
-      onPillPositionChanged: (
-        callback: (position: string) => void,
-      ) => () => void;
-      // Output mode
-      sendOutputModeChanged: (mode: string) => void;
-      onOutputModeChanged: (callback: (mode: string) => void) => () => void;
-      // Pill cancel button
-      sendPillCancelModeChanged: (mode: PillCancelMode) => void;
-      onPillCancelModeChanged: (
-        callback: (mode: PillCancelMode) => void,
-      ) => () => void;
-      sendAudioDuckingChanged: (enabled: boolean) => void;
-      onAudioDuckingChanged: (
-        callback: (enabled: boolean) => void,
-      ) => () => void;
-      sendAudioPlaybackModeChanged: (mode: AudioPlaybackMode) => void;
-      onAudioPlaybackModeChanged: (
-        callback: (mode: AudioPlaybackMode) => void,
-      ) => () => void;
-      // Hotkey error notifications
-      onHotkeyError: (
-        callback: (error: { message: string }) => void,
-      ) => () => void;
-      // Audio level stream
-      sendAudioLevel: (level: number) => void;
-      onAudioLevel: (callback: (level: number) => void) => () => void;
       // Transcription completion broadcast
       sendTranscriptionDone: () => void;
-      sendRecordingCommitted: () => void;
-      sendRecordingCancelled: () => void;
       onTranscriptionDone: (callback: () => void) => () => void;
-      // Fullscreen state
-      onFullscreenChanged: (
-        callback: (isFullscreen: boolean) => void,
-      ) => () => void;
-      // Microphone activity detection
-      onMicActivityChanged: (
-        callback: (state: "active" | "inactive" | "unknown") => void,
-      ) => () => void;
-      // Plugins — discovery/install/catalog/updates go renderer→server over
-      // the typed client; only the native view overlay stays on IPC.
-      showPluginView: (
-        slug: string,
-        pageId: string,
-        entry: string,
-        bounds: PluginViewBounds,
-        tokens?: Record<string, string>,
-      ) => Promise<boolean>;
-      setPluginViewBounds: (bounds: PluginViewBounds) => void;
-      hidePluginView: () => void;
       invalidatePluginView: () => void;
-      onPluginNavigate: (callback: (to: string) => void) => () => void;
     };
   }
 }

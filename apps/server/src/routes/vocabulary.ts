@@ -4,12 +4,19 @@ import {
   importVocabularySchema,
   querySchema,
   updateVocabularySchema,
+  vocabularyActionSchema,
 } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { capture } from "../lib/posthog.js";
-import type { VocabularyRow } from "../lib/vocabulary.js";
+import { pushVocabularyToCloud } from "../lib/preferences-sync.js";
+import {
+  deleteVocabularyByIds,
+  exportVocabularyEntries,
+  importVocabularyEntries,
+  type VocabularyRow,
+} from "../lib/vocabulary.js";
 
 const ALLOWED_ORDER_COLUMNS = new Set(["created_at", "updated_at", "term"]);
 
@@ -74,17 +81,12 @@ const vocabulary = new Hono()
   })
   .post("/export", zValidator("json", exportSchema), (c) => {
     const { type } = c.req.valid("json");
-    const db = getDb();
-    const rows = db
-      .prepare("SELECT term, notes FROM vocabulary ORDER BY term ASC")
-      .all() as { term: string; notes: string | null }[];
-
-    switch (type) {
-      case "json":
-        return c.json(rows);
-      default:
-        return c.json({ error: `Unsupported export type: ${type}` }, 400);
+    // Only "json" is supported today; the enum guards other values but keep the
+    // explicit branch so adding a format is a compile-time reminder here.
+    if (type !== "json") {
+      return c.json({ error: `Unsupported export type: ${type}` }, 400);
     }
+    return c.json(exportVocabularyEntries());
   })
   .get("/:id", (c) => {
     const db = getDb();
@@ -108,6 +110,9 @@ const vocabulary = new Hono()
         .run(term, notes);
 
       capture("vocabulary term added", { has_notes: notes !== null });
+
+      // Mirror the change up to the cloud (debounced, fire-and-forget).
+      pushVocabularyToCloud();
 
       return c.json(
         {
@@ -143,6 +148,9 @@ const vocabulary = new Hono()
         `UPDATE vocabulary SET term = ?, notes = ?, updated_at = datetime('now') WHERE id = ?`,
       ).run(newTerm, newNotes, id);
 
+      // Mirror the change up to the cloud (debounced, fire-and-forget).
+      pushVocabularyToCloud();
+
       return c.json({ id, term: newTerm, notes: newNotes });
     } catch {
       return c.json(
@@ -156,42 +164,50 @@ const vocabulary = new Hono()
     const id = Number(c.req.param("id"));
     db.prepare("DELETE FROM vocabulary WHERE id = ?").run(id);
     capture("vocabulary term deleted", {});
+
+    // Mirror the delete up to the cloud (debounced, fire-and-forget). The cloud
+    // replaces its term array wholesale, so the delete propagates and won't be
+    // re-seeded on the next pull.
+    pushVocabularyToCloud();
+
     return c.json({ ok: true });
   })
-  .post("/import", zValidator("json", importVocabularySchema), async (c) => {
-    const db = getDb();
-    const body = c.req.valid("json");
-
-    let imported = 0;
-    let skipped = 0;
-    const insertStmt = db.prepare(
-      "INSERT OR IGNORE INTO vocabulary (term, notes) VALUES (?, ?)",
-    );
-
-    db.exec("BEGIN");
-    try {
-      for (const entry of body) {
-        const term = entry.term.trim();
-        if (!term) {
-          skipped++;
-          continue;
-        }
-        const result = insertStmt.run(term, entry.notes?.trim() || null);
-        if (result.changes > 0) {
-          imported++;
-        } else {
-          skipped++;
-        }
-      }
-      db.exec("COMMIT");
-    } catch (err) {
-      db.exec("ROLLBACK");
-      throw err;
-    }
+  .post("/import", zValidator("json", importVocabularySchema), (c) => {
+    const { imported, skipped } = importVocabularyEntries(c.req.valid("json"));
 
     capture("vocabulary terms imported", { imported, skipped });
 
+    // Mirror the imported terms up to the cloud (debounced, fire-and-forget).
+    if (imported > 0) pushVocabularyToCloud();
+
     return c.json({ imported, skipped });
+  })
+  .post("/actions", zValidator("json", vocabularyActionSchema), (c) => {
+    const body = c.req.valid("json");
+
+    switch (body.action) {
+      case "bulk-delete": {
+        const deleted = deleteVocabularyByIds(body.ids);
+        if (deleted > 0) {
+          capture("vocabulary terms deleted", { count: deleted });
+          // One cloud push for the whole batch — the cloud replaces its term
+          // array wholesale, so every delete propagates in a single PUT.
+          pushVocabularyToCloud();
+        }
+        return c.json({ deleted });
+      }
+
+      case "import": {
+        const { imported, skipped } = importVocabularyEntries(body.entries);
+        capture("vocabulary terms imported", { imported, skipped });
+        if (imported > 0) pushVocabularyToCloud();
+        return c.json({ imported, skipped });
+      }
+
+      case "export":
+        // Only "json" is supported today (the schema enum enforces this).
+        return c.json(exportVocabularyEntries());
+    }
   });
 
 export default vocabulary;

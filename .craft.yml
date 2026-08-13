@@ -23,7 +23,7 @@ artifactProvider:
 
 targets:
   - name: github
-    includeNames: /(^|.*\/)(.*\.(dmg|zip|exe|msi|AppImage|deb|snap|blockmap)|latest.*\.yml|mlx_asr_worker-.*\.tar\.gz)$/
+    includeNames: /(^|.*\/)(.*\.(dmg|zip|exe|msi|AppImage|deb|snap|blockmap)|latest.*\.yml)$/
 
   # Re-tag the server container image (built & pushed during CI on the release
   # branch, tagged with the git SHA) to the release version and :latest.

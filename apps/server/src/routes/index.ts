@@ -6,24 +6,30 @@ import {
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { capture, captureException, getDeviceId } from "../lib/posthog.js";
-import apiKeys from "./api-keys.js";
+import agentRoute from "./agent.js";
+import agentOsRoute from "./agent-os.js";
+import agentThreadsRoute from "./agent-threads.js";
 import auth from "./auth.js";
 import billing from "./billing.js";
+import brainRoute from "./brain.js";
 import configRoute from "./config.js";
+import connectorsRoute from "./connectors.js";
 import dictionary from "./dictionary.js";
+import dismissedNotifications from "./dismissed-notifications.js";
 import eventsRoute from "./events.js";
 import history from "./history.js";
-import mlxAsr from "./mlx-asr.js";
 import models from "./models.js";
+import notificationsRoute from "./notifications.js";
+import org from "./org.js";
 import outputRoute from "./output.js";
 import pluginsRoute from "./plugins.js";
 import postProcessRoute from "./post-process-route.js";
+import pricing from "./pricing.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
 import transcribe, { transcribePreWarmRoute } from "./transcribe.js";
 import usage from "./usage.js";
 import vocabulary from "./vocabulary.js";
-import whisper from "./whisper.js";
 
 const clientLog = createAppLogger("renderer");
 
@@ -60,22 +66,28 @@ const apiRouter = new Hono()
   })
   .route("/settings", settings)
   .route("/config", configRoute)
-  .route("/keys", apiKeys)
+  .route("/connectors", connectorsRoute)
   .route("/auth", auth)
   .route("/models", models)
   .route("/transcribe", transcribe)
   .route("/transcribe", transcribePreWarmRoute)
   .route("/history", history)
   .route("/dictionary", dictionary)
+  .route("/dismissed-notifications", dismissedNotifications)
   .route("/vocabulary", vocabulary)
   .route("/post-process", postProcessRoute)
+  .route("/agent", agentRoute)
+  .route("/agent/thread", agentThreadsRoute)
+  .route("/agent-os", agentOsRoute)
+  .route("/brain", brainRoute)
+  .route("/notifications", notificationsRoute)
   .route("/output", outputRoute)
   .route("/events", eventsRoute)
   .route("/usage", usage)
   .route("/billing", billing)
-  .route("/plugins", pluginsRoute)
-  .route("/whisper", whisper)
-  .route("/mlx-asr", mlxAsr);
+  .route("/pricing", pricing)
+  .route("/org", org)
+  .route("/plugins", pluginsRoute);
 
 const router = new Hono()
   .route("/api", apiRouter)

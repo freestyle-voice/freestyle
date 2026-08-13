@@ -8,29 +8,34 @@ import { writeSetting } from "../src/lib/db.js";
 // and the cloud branch's own early-out. Before the fix, only `promptHook.skip`
 // short-circuited, so a consume/abort still spent an LLM round trip.
 
-const createChatModelSpy = vi.fn().mockResolvedValue({});
 const cleanupSpy = vi.fn().mockResolvedValue({
-  model: "test-model",
   cleaned: "CLEANED",
-  inputTokens: 1,
-  outputTokens: 1,
+  usage: { inputTokens: 1, outputTokens: 1 },
 });
 
 vi.mock("../src/lib/providers.js", () => ({
-  createChatModel: createChatModelSpy,
   getDefaultModels: () => ({
-    llm: { provider: "test-llm", model_id: "test-model" },
+    llm: {
+      provider: "freestyle-cloud",
+      model_id: "freestyle-cloud/post-process",
+    },
   }),
 }));
 
-vi.mock("@freestyle-voice/stt", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@freestyle-voice/stt")>();
-  return { ...actual, postProcess: cleanupSpy };
+vi.mock("../src/lib/freestyle-cloud.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../src/lib/freestyle-cloud.js")>();
+  return { ...actual, postProcessWithFreestyleCloud: cleanupSpy };
+});
+
+vi.mock("../src/lib/sessions.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../src/lib/sessions.js")>();
+  return { ...actual, getSessionToken: () => "test-token" };
 });
 
 vi.mock("../src/routes/models.js", () => ({
-  isCleanupModelSupported: () => Promise.resolve(true),
-  getModelCost: () => Promise.resolve(null),
+  getModelCostCached: () => null,
 }));
 
 const registry = { current: new PluginRegistry() };
@@ -46,7 +51,6 @@ const { createHookApi } = await import("../src/lib/plugins/pipeline.js");
 describe("postProcess — beforeCleanup control state", () => {
   beforeEach(() => {
     registry.current = new PluginRegistry();
-    createChatModelSpy.mockClear();
     cleanupSpy.mockClear();
     writeSetting("llm_cleanup", "true");
   });

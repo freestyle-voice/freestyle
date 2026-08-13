@@ -9,7 +9,10 @@ import {
   FreestyleCloudUsageError,
 } from "../lib/freestyle-cloud.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
-import { getLanguageSetting } from "../lib/language.js";
+import {
+  getLanguagesSetting,
+  getTranslateModeSetting,
+} from "../lib/language.js";
 import {
   FreestyleEventType,
   parseAppContext,
@@ -82,25 +85,28 @@ const stream = new Hono().get(
     /** Resolve the settings a session transport depends on, plus a compare key. */
     function resolveStreamConfig(): {
       voice: { provider: string; model_id: string };
-      language: string | undefined;
+      languages: string[];
+      translate: boolean;
       bias: ReturnType<typeof resolveAsrVocabularyBias>;
       key: string;
     } | null {
       const voice = getDefaultModels().voice;
       if (!voice) return null;
-      const language = getLanguageSetting();
+      const languages = getLanguagesSetting();
+      const translate = getTranslateModeSetting();
       const bias = resolveAsrVocabularyBias(
         voice.provider,
         voice.model_id,
         true,
       );
-      // Freestyle Cloud post-processes server-side, so its cleanup preferences
-      // are part of the session transport config: if they change mid-session we
-      // must reconnect (a kept-warm upstream captured the old prefs at connect
-      // time and only re-sends them via `reset()`). Folding them into the
-      // compare key makes `sameConfig` false on any change, forcing a fresh
-      // connection. Non-cloud providers don't send cleanup upstream, so this
-      // stays null for them.
+      // Freestyle Cloud post-processes server-side and reads the user's synced
+      // cleanup preferences from the member_preferences row at connect time. We
+      // no longer send those prefs inline, but a kept-warm upstream captured
+      // them (server-side) when it connected, so a local change still requires a
+      // fresh connection for the cloud to re-read the updated row. Folding the
+      // current preference values into the compare key makes `sameConfig` false
+      // on any change, forcing that reconnect. Non-cloud providers don't
+      // post-process upstream, so this stays null for them.
       const cleanupFingerprint =
         voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
           ? JSON.stringify([
@@ -111,12 +117,14 @@ const stream = new Hono().get(
           : null;
       return {
         voice,
-        language,
+        languages,
+        translate,
         bias,
         key: JSON.stringify([
           voice.provider,
           voice.model_id,
-          language ?? null,
+          languages,
+          translate,
           bias,
           cleanupFingerprint,
         ]),
@@ -245,10 +253,18 @@ const stream = new Hono().get(
       const apiKey = getApiKeyForProvider(voice.provider);
       if (!apiKey) {
         ws.send(
-          JSON.stringify({
-            type: "error",
-            message: `No API key for ${voice.provider}`,
-          }),
+          JSON.stringify(
+            voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
+              ? {
+                  type: "error",
+                  code: "cloud_auth_required",
+                  message: "Sign in to Freestyle Transcribe",
+                }
+              : {
+                  type: "error",
+                  message: `No API key for ${voice.provider}`,
+                },
+          ),
         );
         ws.close();
         return;
@@ -304,12 +320,16 @@ const stream = new Hono().get(
         }
       }
 
+      // The cloud DO reads the user's synced cleanup preferences (intensity,
+      // custom prompt, tones, app assignments) from the member_preferences row
+      // and assembles the prompt server-side, so we no longer forward those
+      // saved defaults. Only request-scoped values travel on the `start`
+      // message: `skipPostProcess` (a per-session control flag) and plugin
+      // `systemFragments` (never synced).
       const cleanup =
         voice.provider === FREESTYLE_CLOUD_PROVIDER_ID
           ? {
               skipPostProcess: !isLlmCleanupEnabled() || pluginSkipsCleanup,
-              ...getEffectiveCleanupTones(),
-              appAssignments: getCleanupAppAssignments(),
               ...(systemFragments ? { systemFragments } : {}),
             }
           : undefined;
@@ -319,7 +339,8 @@ const stream = new Hono().get(
         providerId: voice.provider,
         apiKey,
         model: voice.model_id,
-        language: config.language,
+        languages: config.languages,
+        translate: config.translate,
         bias: config.bias,
         appContext: effectiveAppContext(),
         cleanup,
@@ -529,7 +550,7 @@ const stream = new Hono().get(
               commitTime > 0 ? Date.now() - commitTime : durationMs;
 
             const cleanup = postProcess(rawText, effectiveAppContext(), {
-              language: config.language,
+              languages: config.languages,
               source: useFastHandoff
                 ? "streaming_handoff"
                 : canStream

@@ -25,7 +25,7 @@ Lead: @matteo8p
 
 **Objective:** Build quality, beautiful voice transcription
 
-1️⃣ Simplify the models page. Make it easy for users to configure Freestyle Transcribe in the models page. Log in button to use Freestyle Transcribe if they're logged out. Also provide the option to configure local models at the bottom.
+1️⃣ Simplify the models page. Make it easy for users to configure Freestyle Transcribe in the models page. Log in button to use Freestyle Transcribe if they're logged out.
 
 2️⃣ Modify the onboarding. Enforce sign in / create account in production (skippable on dev) "Sign in via Browser". Remove "Choose a different model" on the onboarding. Have them use Freestyle Transcribe from the start. 
 

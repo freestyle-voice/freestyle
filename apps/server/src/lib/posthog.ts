@@ -13,22 +13,37 @@ function getEnvironment(): string {
     : "development";
 }
 
+// Cached `telemetry_enabled` setting. `isEnabled()` is called on every
+// `capture()`/`captureException()` — multiple times per dictation — so we read
+// the DB once and reuse the value. Invalidated via `invalidateTelemetrySetting`
+// whenever the setting is written or deleted.
+let _telemetryOptedOut: boolean | null = null;
+
+function isTelemetryOptedOut(): boolean {
+  if (_telemetryOptedOut !== null) return _telemetryOptedOut;
+  try {
+    const row = getDb()
+      .prepare("SELECT value FROM settings WHERE key = 'telemetry_enabled'")
+      .get() as { value: string } | undefined;
+    _telemetryOptedOut = row?.value === "false";
+  } catch {
+    // DB not ready yet — treat as opted-in and re-read next time.
+    return false;
+  }
+  return _telemetryOptedOut;
+}
+
+/** Drop the cached `telemetry_enabled` value so the next check re-reads it. */
+export function invalidateTelemetrySetting(): void {
+  _telemetryOptedOut = null;
+}
+
 function isEnabled(): boolean {
   if (process.env.DO_NOT_TRACK === "1") return false;
   const devOptIn = process.env.FREESTYLE_ANALYTICS_DEV === "1";
   if (getEnvironment() !== "production" && !devOptIn) return false;
 
-  try {
-    const db = getDb();
-    const row = db
-      .prepare("SELECT value FROM settings WHERE key = 'telemetry_enabled'")
-      .get() as { value: string } | undefined;
-    if (row?.value === "false") return false;
-  } catch {
-    // DB not ready yet — default to enabled
-  }
-
-  return true;
+  return !isTelemetryOptedOut();
 }
 
 function getClient(): PostHog {

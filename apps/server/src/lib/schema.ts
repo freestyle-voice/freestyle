@@ -1,7 +1,13 @@
 import type { DatabaseSync } from "node:sqlite";
 import { countFixes } from "./fixes.js";
 
-const SCHEMA_VERSION = 16;
+// Kept in sync with DEFAULT_CLOUD_URL in freestyle-cloud.ts. Duplicated here
+// (rather than imported) so this DB-init module — loaded very early via db.ts —
+// stays decoupled from the cloud module, which pulls in heavier dependencies
+// and would otherwise perturb test module-mock ordering.
+const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
+
+const SCHEMA_VERSION = 26;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -168,6 +174,83 @@ export function initSchema(db: DatabaseSync): void {
     db.exec("ROLLBACK");
     throw err;
   }
+}
+
+/**
+ * Main's v17: replace the singleton sessions row with host-keyed rows so dev
+ * and prod sessions coexist. Also invoked as a v19 repair for databases the
+ * Remix prototype stamped v17 before this migration existed.
+ */
+function applyHostKeyedSessions(db: DatabaseSync): void {
+  // Rebuild sessions table: replace singleton id=1 row with host-keyed rows
+  // so dev (localhost:8787) and prod sessions can coexist without clobbering
+  // each other.
+  //
+  // Backward compatibility: older released binaries still query this table by
+  // `WHERE id = 1` and `INSERT ... ON CONFLICT(id)`. Dropping `id` outright
+  // crashed those binaries with "no such column: id" whenever a user
+  // downgraded. So we keep a nullable UNIQUE `id`: the default/prod host row
+  // carries id=1 (what old binaries read/write), while `host` remains the
+  // real key. Other hosts (e.g. dev) get NULL — SQLite treats multiple NULLs
+  // as distinct, so the UNIQUE constraint still allows several host rows.
+  const hasOldSessions = !!(db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sessions'",
+    )
+    .get() as { name: string } | undefined);
+
+  if (hasOldSessions) {
+    db.exec(`
+      CREATE TABLE sessions_new (
+        id INTEGER UNIQUE,
+        host TEXT PRIMARY KEY NOT NULL,
+        token TEXT NOT NULL,
+        refresh_token TEXT,
+        expires_at INTEGER,
+        issued_at INTEGER,
+        user_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        name TEXT,
+        image TEXT,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+    // Preserve the existing session row (if any) under its stored host. The
+    // default/prod host keeps id=1 so old binaries keep finding it.
+    db.prepare(`
+      INSERT OR IGNORE INTO sessions_new
+        (id, host, token, refresh_token, expires_at, issued_at, user_id, email, name, image, updated_at)
+      SELECT
+        CASE WHEN COALESCE(NULLIF(host, ''), ?) = ? THEN 1 ELSE NULL END,
+        COALESCE(NULLIF(host, ''), ?),
+        token, refresh_token, expires_at, issued_at, user_id, email, name, image, updated_at
+      FROM sessions
+    `).run(DEFAULT_CLOUD_URL, DEFAULT_CLOUD_URL, DEFAULT_CLOUD_URL);
+    db.exec("DROP TABLE sessions");
+    db.exec("ALTER TABLE sessions_new RENAME TO sessions");
+  } else {
+    db.exec(`
+      CREATE TABLE sessions (
+        id INTEGER UNIQUE,
+        host TEXT PRIMARY KEY NOT NULL,
+        token TEXT NOT NULL,
+        refresh_token TEXT,
+        expires_at INTEGER,
+        issued_at INTEGER,
+        user_id TEXT NOT NULL,
+        email TEXT NOT NULL,
+        name TEXT,
+        image TEXT,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+  }
+}
+
+function tableExists(db: DatabaseSync, name: string): boolean {
+  return !!(db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(name) as { name: string } | undefined);
 }
 
 function applyMigrations(db: DatabaseSync, currentVersion: number): void {
@@ -459,6 +542,198 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     for (const row of rows) {
       update.run(countFixes(row.raw_text, row.cleaned_text), row.id);
     }
+  }
+
+  if (currentVersion < 17) {
+    applyHostKeyedSessions(db);
+  }
+
+  if (currentVersion < 18) {
+    // Durable outbox for cloud preference syncs. Each cloud field has at most
+    // one pending row (PRIMARY KEY): since the cloud replaces a field wholesale
+    // on PUT, only the newest value per field needs to be sent, so a burst of
+    // offline edits collapses to a single row. `payload` is the JSON partial
+    // PUT patch; `next_attempt_at` gates retry backoff.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS sync_outbox (
+        cloud_field     TEXT PRIMARY KEY,
+        payload         TEXT NOT NULL,
+        updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')),
+        attempts        INTEGER NOT NULL DEFAULT 0,
+        last_error      TEXT
+      )
+    `);
+  }
+
+  if (currentVersion < 20) {
+    const sessionsCols = db.prepare("PRAGMA table_info(sessions)").all() as {
+      name: string;
+      pk: number;
+    }[];
+    if (
+      sessionsCols.length > 0 &&
+      !sessionsCols.some((col) => col.name === "host" && col.pk > 0)
+    ) {
+      applyHostKeyedSessions(db);
+    }
+
+    // Remix: chat threads (UIMessage JSON verbatim — the AI SDK owns the
+    // shape) and one row per write into the user's document, which powers
+    // Revert and the history view. The cloud stores none of this.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS remix_threads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_active_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS remix_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        thread_id INTEGER NOT NULL REFERENCES remix_threads(id) ON DELETE CASCADE,
+        message_id TEXT NOT NULL,
+        ui_message TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(thread_id, message_id)
+      )
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS remix_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        thread_id INTEGER REFERENCES remix_threads(id) ON DELETE SET NULL,
+        lane TEXT NOT NULL CHECK(lane IN ('transform','agent')),
+        instruction TEXT NOT NULL,
+        before_text TEXT,
+        after_text TEXT NOT NULL,
+        app_name TEXT,
+        llm_provider TEXT,
+        llm_model TEXT,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    // The feature shipped briefly under "commands"; carry those settings over
+    // so nobody loses a configured hotkey to the rename.
+    db.exec(`
+      INSERT INTO settings (key, value, updated_at)
+        SELECT 'remix_hotkey', value, datetime('now') FROM settings WHERE key = 'command_hotkey'
+        ON CONFLICT(key) DO NOTHING
+    `);
+    db.exec(`
+      INSERT INTO settings (key, value, updated_at)
+        SELECT 'remix_enabled', value, datetime('now') FROM settings WHERE key = 'commands_enabled'
+        ON CONFLICT(key) DO NOTHING
+    `);
+    db.exec(
+      "DELETE FROM settings WHERE key IN ('command_hotkey', 'commands_enabled')",
+    );
+    // Dismissals for in-app dialogs/banners (changelogs, feature prompts,
+    // profile nudges). Presence of a key means the corresponding UI has been
+    // dismissed and should not be shown again. Not synced to Freestyle Cloud —
+    // stored alongside settings in this server's SQLite DB.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS dismissed_notifications (
+        key          TEXT PRIMARY KEY,
+        dismissed_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+  }
+
+  if (currentVersion < 21) {
+    // Indexes for the transcription hot path and history/stats queries, which
+    // were previously full table scans + filesort:
+    //   - transcription_history(created_at): the list view orders by it, the
+    //     /daily and /stats endpoints range-scan it, and retention deletes
+    //     `WHERE created_at < ?`. Grows unbounded with dictation volume.
+    //   - model_configs(type, is_default): getDefaultModels() looks up the
+    //     default voice + llm model on every transcription.
+    // Guarded on table existence: some databases reach this migration stamped
+    // at an intermediate version without the base tables (e.g. prototype/merge
+    // lineages that skipped v1/v2), and CREATE INDEX on a missing table throws.
+    if (tableExists(db, "transcription_history")) {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_transcription_history_created_at ON transcription_history(created_at)",
+      );
+    }
+    if (tableExists(db, "model_configs")) {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_model_configs_type_default ON model_configs(type, is_default)",
+      );
+    }
+  }
+
+  if (currentVersion < 22) {
+    try {
+      db.exec(
+        "DELETE FROM model_configs WHERE provider IN ('local-whisper', 'local-mlx')",
+      );
+      db.exec(
+        "DELETE FROM settings WHERE key IN ('mlx_asr_keep_alive_minutes', 'whisper_keep_alive_minutes')",
+      );
+    } catch {}
+  }
+
+  if (currentVersion < 23) {
+    try {
+      db.exec("DROP TABLE IF EXISTS api_keys");
+      db.exec("DELETE FROM model_configs WHERE provider != 'freestyle-cloud'");
+      db.exec(
+        "DELETE FROM settings WHERE key IN ('local_llm_url', 'local_llm_api_key', 'openai_stt_api_key', 'openai_stt_base_url')",
+      );
+    } catch {}
+  }
+
+  if (currentVersion < 24) {
+    // Companion agent threads. Whole-thread UIMessage JSON per row: threads
+    // are small, single-user, and read/written whole on each turn, so
+    // per-message rows buy nothing here.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS agent_threads (
+        id         TEXT PRIMARY KEY,
+        title      TEXT,
+        messages   TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+  }
+
+  if (currentVersion < 25) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id           TEXT PRIMARY KEY,
+        origin       TEXT NOT NULL,
+        kind         TEXT NOT NULL,
+        title        TEXT NOT NULL,
+        body         TEXT NOT NULL,
+        payload      TEXT,
+        thread_id    TEXT,
+        user_id      TEXT,
+        created_at   INTEGER NOT NULL,
+        expires_at   INTEGER,
+        dismissed_at INTEGER,
+        seen_at      INTEGER
+      )
+    `);
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_notifications_active ON notifications (dismissed_at, created_at)",
+    );
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS notification_outbox (
+        notification_id TEXT PRIMARY KEY,
+        action          TEXT NOT NULL,
+        next_attempt_at TEXT NOT NULL,
+        attempts        INTEGER NOT NULL DEFAULT 0,
+        last_error      TEXT
+      )
+    `);
+  }
+
+  if (currentVersion < 26) {
+    db.exec("DROP TABLE IF EXISTS agent_threads");
   }
 
   // Upsert schema version

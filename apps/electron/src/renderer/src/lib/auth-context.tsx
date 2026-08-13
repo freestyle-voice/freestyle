@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { CloudUser } from "../../../shared/cloud-user";
 import { getClient } from "./api";
+import { queryKeys } from "./query";
 
 export interface UseCloudAuth {
   user: CloudUser | null;
@@ -17,13 +18,7 @@ export interface UseCloudAuth {
   /** Device user code, surfaced while a sign-in is pending. */
   userCode: string | null;
   error: string | null;
-  /**
-   * True when a previously signed-in session has lapsed (e.g. the token
-   * expired while the app was closed). Drives a re-sign-in prompt. Cleared
-   * once the user signs in again or explicitly dismisses it.
-   */
   sessionExpired: boolean;
-  dismissSessionExpired: () => void;
   refresh: () => Promise<CloudUser | null>;
   signIn: () => Promise<CloudUser | null>;
   /** Abort an in-flight sign-in (driven from the pending modal). */
@@ -46,39 +41,83 @@ function useCloudAuthState(): UseCloudAuth {
   const cancelledRef = useRef(false);
   const signInPromiseRef = useRef<Promise<CloudUser | null> | null>(null);
   const signInAttemptRef = useRef(0);
+  // Collapses concurrent status checks into one in-flight request. On a fresh
+  // window the mount retry-loop and the `focus` listener (fired the moment the
+  // just-shown window focuses) both call refreshInternal within the same tick —
+  // without this they'd hit /api/auth/status twice back-to-back.
+  const refreshInFlightRef = useRef<Promise<{
+    user: CloudUser | null;
+    reached: boolean;
+  }> | null>(null);
 
-  const refresh = useCallback(async (): Promise<CloudUser | null> => {
-    // `reached` distinguishes "server said not-authenticated" from "couldn't
-    // reach the server". A transient network/server blip must NOT be mistaken
-    // for an expired session, or it would spuriously pop the re-sign-in modal.
-    let reached = false;
-    const user = await getClient()
-      .api.auth.status.$get()
-      .then(async (res) => {
-        if (!res.ok) return null;
-        reached = true;
-        const data = await res.json();
-        return data.user ?? null;
-      })
-      .catch(() => null);
-    if (reached) {
-      // Flag only the confirmed transition from signed-in → signed-out (e.g.
-      // the token expired), not a fresh cold start.
-      if (!user && wasSignedInRef.current) setSessionExpired(true);
-      if (user) setSessionExpired(false);
-      wasSignedInRef.current = !!user;
-      setUser(user);
+  const refreshInternal = useCallback(async (): Promise<{
+    user: CloudUser | null;
+    reached: boolean;
+  }> => {
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const run = (async () => {
+      let reached = false;
+      const user = await getClient()
+        .api.auth.status.$get()
+        .then(async (res) => {
+          if (!res.ok) return null;
+          reached = true;
+          const data = await res.json();
+          return data.user ?? null;
+        })
+        .catch(() => null);
+      if (reached) {
+        if (!user && wasSignedInRef.current) {
+          setSessionExpired(true);
+          queryClient.removeQueries({
+            queryKey: queryKeys.connectors.catalog,
+          });
+        }
+        if (user) setSessionExpired(false);
+        wasSignedInRef.current = !!user;
+        setUser(user);
+      }
+      return { user, reached };
+    })();
+    refreshInFlightRef.current = run;
+    try {
+      return await run;
+    } finally {
+      refreshInFlightRef.current = null;
     }
-    return user;
-  }, []);
+  }, [queryClient]);
 
-  const dismissSessionExpired = useCallback((): void => {
-    setSessionExpired(false);
-  }, []);
+  const refresh = useCallback(
+    async (): Promise<CloudUser | null> => (await refreshInternal()).user,
+    [refreshInternal],
+  );
 
   useEffect(() => {
-    refresh().finally(() => setLoading(false));
-  }, [refresh]);
+    let cancelled = false;
+    void (async () => {
+      for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
+        const { reached } = await refreshInternal();
+        if (reached) break;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshInternal]);
+
+  useEffect(() => {
+    const revalidate = (): void => {
+      void refreshInternal();
+    };
+    window.addEventListener("focus", revalidate);
+    const timer = setInterval(revalidate, 5 * 60 * 1000);
+    return () => {
+      window.removeEventListener("focus", revalidate);
+      clearInterval(timer);
+    };
+  }, [refreshInternal]);
 
   const signIn = useCallback(async (): Promise<CloudUser | null> => {
     if (signInPromiseRef.current) return signInPromiseRef.current;
@@ -121,7 +160,8 @@ function useCloudAuthState(): UseCloudAuth {
         }
         const data = await tokenRes.json();
         if (attempt !== signInAttemptRef.current) return null;
-        queryClient.removeQueries({ queryKey: ["cloud-usage"] });
+        queryClient.removeQueries({ queryKey: queryKeys.cloud.usage });
+        queryClient.removeQueries({ queryKey: queryKeys.connectors.catalog });
         wasSignedInRef.current = true;
         setSessionExpired(false);
         setUser(data.user);
@@ -163,7 +203,8 @@ function useCloudAuthState(): UseCloudAuth {
     wasSignedInRef.current = false;
     setSessionExpired(false);
     setUser(null);
-    queryClient.removeQueries({ queryKey: ["cloud-usage"] });
+    queryClient.removeQueries({ queryKey: queryKeys.cloud.usage });
+    queryClient.removeQueries({ queryKey: queryKeys.connectors.catalog });
   }, [queryClient]);
 
   return {
@@ -173,7 +214,6 @@ function useCloudAuthState(): UseCloudAuth {
     userCode,
     error,
     sessionExpired,
-    dismissSessionExpired,
     refresh,
     signIn,
     cancelSignIn,

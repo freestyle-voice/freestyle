@@ -1,10 +1,10 @@
 /**
- * Freestyle Cloud usage balance (credits). Same `/v1/usage` endpoint the
- * desktop reads, authenticated with the stored session cookie.
+ * Freestyle Cloud usage balance (credits). Reads the `/usage` endpoint (same
+ * path the desktop server uses), authenticated with the stored session cookie
+ * via the shared cloud client.
  */
 
-import { cloudUrl } from "./config";
-import { authHeaders, CloudAuthError } from "./session";
+import { cloud } from "./client";
 
 export interface CloudUsageBalance {
   remaining: number;
@@ -16,17 +16,17 @@ export interface CloudUsageBalance {
   unlimited: boolean;
 }
 
-export async function fetchCloudUsage(): Promise<CloudUsageBalance> {
-  const headers = authHeaders();
-  if (!headers) throw new CloudAuthError();
-
-  const res = await fetch(`${cloudUrl()}/v1/usage`, {
-    method: "GET",
-    headers,
-    credentials: "omit",
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (res.status === 401) throw new CloudAuthError();
-  if (!res.ok) throw new Error(`Failed to load usage (${res.status})`);
-  return (await res.json()) as CloudUsageBalance;
+export async function fetchCloudUsage(
+  opts: { fresh?: boolean } = {},
+): Promise<CloudUsageBalance> {
+  // Auth + 401 handling live in the shared client; usage keeps the 10s budget.
+  // `fresh` bypasses the cloud's plan cache — set it on the post-checkout
+  // refresh so an upgrade shows up right away instead of after the cache TTL.
+  return cloud.json<CloudUsageBalance>(
+    opts.fresh ? "/usage?fresh=1" : "/usage",
+    {
+      method: "GET",
+      timeoutMs: 10_000,
+    },
+  );
 }

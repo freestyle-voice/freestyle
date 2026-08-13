@@ -25,25 +25,16 @@ type RNWebSocketCtor = new (
   options: { headers: Record<string, string> },
 ) => WebSocket;
 
-import type {
-  CleanupEmailTone,
-  CleanupOverallTone,
-  CleanupPersonalTone,
-  CleanupWorkTone,
-} from "../cleanup-tones";
-
 export interface StreamCleanupPreferences {
   /** When true the cloud returns the raw transcript with no LLM cleanup. */
   skipPostProcess: boolean;
-  /** Cleanup intensity preset (ignored when `skipPostProcess`). */
-  intensity?: string;
-  /** Custom cleanup prompt (only meaningful when intensity is "custom"). */
-  customPrompt?: string;
-  /** Destination-aware tones the cloud applies during post-processing. */
-  personalTone?: CleanupPersonalTone;
-  workTone?: CleanupWorkTone;
-  emailTone?: CleanupEmailTone;
-  overallTone?: CleanupOverallTone;
+  /**
+   * When true, ask the cloud to translate into the user's single selected
+   * language. The Durable Object guards this against the synced language list
+   * (only applies when exactly one language is set), so it's safe to send
+   * whenever the local toggle is on.
+   */
+  translate?: boolean;
 }
 
 export interface StreamCallbacks {
@@ -57,10 +48,12 @@ export interface StreamCallbacks {
 export interface StreamSessionOptions {
   /** better-auth session cookie header value (from `authClient.getCookie()`). */
   cookie: string;
-  /** Normalized ISO-639-1 hint; omit for auto-detect. */
-  language?: string;
-  /** ASR recognition-bias terms (the user's vocabulary). */
-  vocabulary?: string[];
+  /**
+   * Current normalized language selection. Sent with the per-session start so
+   * translate cannot target a stale cloud preference while its sync is still
+   * in flight.
+   */
+  languages?: string[];
   cleanup: StreamCleanupPreferences;
   callbacks: StreamCallbacks;
 }
@@ -112,26 +105,22 @@ export class CloudStreamSession {
   }
 
   private buildStartMessage() {
-    const { language, vocabulary, cleanup } = this.opts;
+    // The cloud DO reads the user's synced preferences (languages, vocabulary,
+    // intensity, custom prompt, tones) from the member_preferences row at
+    // handshake time and applies them to both the Soniox recognizer and the
+    // cleanup prompt — the mobile app syncs those via `pushCloudPreferences`.
+    // So the `start` message only carries per-session control flags:
+    // `skipPostProcess` (device-only cleanup toggle) and `translate` (device-
+    // only; the DO ignores it unless exactly one language is selected).
     return {
       type: "start" as const,
-      language: language || undefined,
-      // Recognition-bias terms; the cloud passes these to the ASR as context.
-      vocabulary: vocabulary?.length ? { terms: vocabulary } : undefined,
-      skipPostProcess: cleanup.skipPostProcess,
-      // Send the full cleanup/tone payload so streaming post-processing behaves
-      // like the desktop and batch paths. Omitted entirely when the user has
-      // cleanup turned off (skipPostProcess), where the cloud returns raw text.
-      ...(cleanup.skipPostProcess
-        ? {}
-        : {
-            intensity: cleanup.intensity,
-            customPrompt: cleanup.customPrompt,
-            personalTone: cleanup.personalTone,
-            workTone: cleanup.workTone,
-            emailTone: cleanup.emailTone,
-            overallTone: cleanup.overallTone,
-          }),
+      ...(this.opts.languages && this.opts.languages.length > 0
+        ? { languages: this.opts.languages }
+        : {}),
+      skipPostProcess: this.opts.cleanup.skipPostProcess,
+      ...(this.opts.cleanup.translate && this.opts.languages?.length === 1
+        ? { translate: true }
+        : {}),
     };
   }
 
@@ -142,6 +131,7 @@ export class CloudStreamSession {
   }
 
   private handleMessage(raw: unknown): void {
+    if (this.closed) return;
     if (typeof raw !== "string") return;
     let msg: ServerMessage;
     try {
@@ -215,6 +205,10 @@ export class CloudStreamSession {
   /** Tear down the WebSocket, ending the session without a final transcript. */
   close(): void {
     this.closed = true;
+    this.ws.onmessage = null;
+    this.ws.onerror = null;
+    this.ws.onclose = null;
+    this.pending.length = 0;
     if (this.ws.readyState <= WebSocket.OPEN) this.ws.close();
   }
 }

@@ -112,7 +112,6 @@ describe("Streamer reconnects an active capture", () => {
     streamer = new Streamer("http://localhost:3000", "", {
       onConfig: vi.fn(),
       onReady: vi.fn(),
-      onPartial: vi.fn(),
       onFinal: vi.fn(),
       onError: vi.fn(),
       onConnectionState: (state) => connectionStates.push(state),

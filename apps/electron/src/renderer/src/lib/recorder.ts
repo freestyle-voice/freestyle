@@ -2,11 +2,23 @@ import { encodeWavFromFloat32 } from "./wav";
 
 const TARGET_RATE = 16000;
 
+export class RecorderSupersededError extends Error {
+  constructor() {
+    super("Recorder superseded by a newer session");
+    this.name = "RecorderSupersededError";
+  }
+}
+
 export class Recorder {
   private stream: MediaStream | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private chunks: Blob[] = [];
   private mimeType = "";
+  private gen = 0;
+
+  generation(): number {
+    return this.gen;
+  }
 
   private hasLiveStream(): boolean {
     return (
@@ -21,6 +33,14 @@ export class Recorder {
    * avoid the costly getUserMedia() round-trip on repeated calls.
    */
   async acquireStream(deviceId?: string | null): Promise<MediaStream> {
+    const gen = ++this.gen;
+    return this.acquireFor(gen, deviceId);
+  }
+
+  private async acquireFor(
+    gen: number,
+    deviceId?: string | null,
+  ): Promise<MediaStream> {
     this.chunks = [];
     this.mediaRecorder = null;
 
@@ -31,8 +51,9 @@ export class Recorder {
       noiseSuppression: false,
       autoGainControl: false,
     };
+    let acquired: MediaStream;
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
+      acquired = await navigator.mediaDevices.getUserMedia({
         audio: deviceId
           ? { deviceId: { exact: deviceId }, ...processing }
           : processing,
@@ -43,20 +64,28 @@ export class Recorder {
         deviceId &&
         (name === "OverconstrainedError" || name === "NotFoundError")
       ) {
-        this.stream = await navigator.mediaDevices.getUserMedia({
+        acquired = await navigator.mediaDevices.getUserMedia({
           audio: processing,
         });
       } else {
         throw e;
       }
     }
-    return this.stream;
+    if (this.gen !== gen) {
+      if (acquired !== this.stream) {
+        for (const t of acquired.getTracks()) t.stop();
+      }
+      throw new RecorderSupersededError();
+    }
+    this.stream = acquired;
+    return acquired;
   }
 
   /** Acquire the mic AND start a MediaRecorder to capture the recording. */
   async start(deviceId?: string | null): Promise<MediaStream> {
-    this.chunks = [];
-    const stream = await this.acquireStream(deviceId);
+    const gen = ++this.gen;
+    const stream = await this.acquireFor(gen, deviceId);
+    if (this.gen !== gen) throw new RecorderSupersededError();
     this.mimeType = pickSupportedMime();
     this.mediaRecorder = new MediaRecorder(
       stream,
@@ -77,7 +106,8 @@ export class Recorder {
     return this.mediaRecorder?.state === "recording";
   }
 
-  async stop(): Promise<Blob> {
+  async stop(gen?: number): Promise<Blob | null> {
+    if (gen !== undefined && gen !== this.gen) return null;
     const mr = this.mediaRecorder;
     if (!mr) throw new Error("Recorder not started");
 
@@ -97,7 +127,8 @@ export class Recorder {
   }
 
   /** Stop the MediaRecorder but keep the mic stream alive for reuse. */
-  cancel(): void {
+  cancel(gen?: number): void {
+    if (gen !== undefined && gen !== this.gen) return;
     if (this.mediaRecorder?.state === "recording") {
       this.mediaRecorder.stop();
     }
@@ -106,7 +137,8 @@ export class Recorder {
   }
 
   /** Stop all mic tracks so the OS mic indicator turns off. */
-  releaseStream(): void {
+  releaseStream(gen?: number): void {
+    if (gen !== undefined && gen !== this.gen) return;
     for (const t of this.stream?.getTracks() ?? []) t.stop();
     this.stream = null;
   }

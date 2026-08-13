@@ -101,6 +101,18 @@ public class FreestyleSharedStoreModule: Module {
             self.bridge.clearCommand()
         }
 
+        // MARK: Keyboard installation status
+
+        /// The last time the keyboard extension stamped its handshake into the
+        /// App Group, as a Unix epoch (seconds), or 0 if it never has. Because
+        /// only a keyboard with Full Access can write to the shared container,
+        /// any non-zero value is proof the keyboard was enabled AND granted
+        /// Full Access at least once. The JS layer derives the user-facing
+        /// status from this.
+        Function("keyboardLastActive") { () -> Double in
+            self.bridge.keyboardLastActive()
+        }
+
         // MARK: Darwin command notification → JS event
 
         OnStartObserving("onCommand") {

@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { getClient } from "./api";
-import { ONE_HOUR } from "./query";
+import { ONE_HOUR, queryKeys } from "./query";
 
 export interface CloudUsageBalance {
   remaining: number;
@@ -10,8 +10,12 @@ export interface CloudUsageBalance {
   resetsAt: string;
   /** Subscription plan; absent on older cloud versions (treated as "free"). */
   plan?: "free" | "pro";
-  /** True when the plan has no word limit (Pro). */
+  /** True when no run limit applies (Pro, or inside the first-week trial). */
   unlimited?: boolean;
+  /** True while the account is inside its first-week unlimited trial. */
+  trialing?: boolean;
+  /** Epoch ms the trial ends, or null when it can't be resolved. */
+  trialEndsAt?: number | null;
 }
 
 export type BillingPeriod = "monthly" | "annual";
@@ -71,8 +75,12 @@ export interface UseCloudUsageResult {
   balance: CloudUsageBalance | null;
   /** Effective plan — "free" until the cloud says otherwise. */
   plan: "free" | "pro";
-  /** True when the user is on Pro (unlimited dictation). */
+  /** True when the user is on Pro. */
   isPro: boolean;
+  /** True while the first-week unlimited trial is still running. */
+  isTrialing: boolean;
+  /** Whole days left in the trial (0 when not trialing). */
+  trialDaysLeft: number;
   /** Epoch ms of the last successful fetch, or null if never fetched. */
   updatedAt: number | null;
   /** True while a (re)fetch is in flight. */
@@ -96,7 +104,7 @@ export interface UseCloudUsageResult {
   portalOpening: boolean;
 }
 
-/** Percentage of credits consumed (0–100), safe against limit=0. */
+/** Percentage of the weekly run allowance consumed (0–100), safe against limit=0. */
 export function usagePercent(balance: CloudUsageBalance): number {
   if (balance.unlimited || balance.limit === 0) return 0;
   return Math.round(
@@ -113,9 +121,14 @@ export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ["cloud-usage"],
+    queryKey: queryKeys.cloud.usage,
     queryFn: async () => {
-      const res = await getClient().api.usage.$get();
+      // While a checkout is pending, ask the cloud to bypass its plan cache
+      // (`?fresh=1`) so the upgrade is detected on the next poll instead of
+      // after the cache TTL. Regular reads omit it and use the cached path.
+      const res = await getClient().api.usage.$get({
+        query: checkoutStatus === "pending" ? { fresh: "1" } : {},
+      });
       if (!res.ok) throw new Error(`Failed to fetch usage (${res.status})`);
       return (await res.json()) as CloudUsageBalance;
     },
@@ -131,14 +144,22 @@ export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
   useEffect(() => {
     if (!signedIn) return;
     const remove = window.api?.onTranscriptionDone(() => {
-      void queryClient.invalidateQueries({ queryKey: ["cloud-usage"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.cloud.usage });
     });
     return () => remove?.();
   }, [signedIn, queryClient]);
 
   const balance = signedIn ? (query.data ?? null) : null;
   const plan: "free" | "pro" = balance?.plan === "pro" ? "pro" : "free";
-  const isPro = plan === "pro" || balance?.unlimited === true;
+  // Strictly the paid plan: `unlimited` is also true during the first-week
+  // trial, so folding it in here would read a trialing user as a subscriber and
+  // resolve a pending checkout that never happened.
+  const isPro = plan === "pro";
+  const isTrialing = plan !== "pro" && balance?.trialing === true;
+  const trialDaysLeft =
+    isTrialing && balance?.trialEndsAt
+      ? Math.max(0, Math.ceil((balance.trialEndsAt - Date.now()) / 86_400_000))
+      : 0;
 
   useEffect(() => {
     if (!signedIn && checkoutStore.status !== "idle") {
@@ -219,6 +240,8 @@ export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
     balance,
     plan,
     isPro,
+    isTrialing,
+    trialDaysLeft,
     updatedAt: query.dataUpdatedAt || null,
     isFetching: query.isFetching,
     refresh: () => void query.refetch(),

@@ -215,6 +215,104 @@ describe("Settings", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Dismissed notifications CRUD
+// ---------------------------------------------------------------------------
+
+describe("Dismissed notifications", () => {
+  beforeEach(() => {
+    getDb().exec("DELETE FROM dismissed_notifications");
+  });
+
+  it("GET /api/dismissed-notifications returns empty list initially", async () => {
+    const res = await req("/api/dismissed-notifications");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+  });
+
+  it("PUT dismisses a key and GET lists it", async () => {
+    const put = await req("/api/dismissed-notifications/profile_info_prompt", {
+      method: "PUT",
+    });
+    expect(put.status).toBe(200);
+    expect(await put.json()).toEqual({
+      key: "profile_info_prompt",
+      dismissed: true,
+    });
+
+    const get = await req("/api/dismissed-notifications");
+    expect(await get.json()).toEqual(["profile_info_prompt"]);
+  });
+
+  it("PUT is idempotent for an already-dismissed key", async () => {
+    await req("/api/dismissed-notifications/changelog.1.0.0", {
+      method: "PUT",
+    });
+    const put = await req("/api/dismissed-notifications/changelog.1.0.0", {
+      method: "PUT",
+    });
+    expect(put.status).toBe(200);
+
+    const get = await req("/api/dismissed-notifications");
+    expect(await get.json()).toEqual(["changelog.1.0.0"]);
+  });
+
+  it("GET sorts valid keys and ignores corrupt rows", async () => {
+    const db = getDb();
+    const insert = db.prepare(
+      "INSERT INTO dismissed_notifications (key) VALUES (?)",
+    );
+    insert.run("today.tutorial_hero");
+    insert.run("profile_info_prompt");
+    insert.run("INVALID KEY");
+    insert.run(" padded_key ");
+
+    const get = await req("/api/dismissed-notifications");
+    expect(await get.json()).toEqual([
+      "profile_info_prompt",
+      "today.tutorial_hero",
+    ]);
+  });
+
+  it("PUT rejects an invalid key", async () => {
+    const put = await req("/api/dismissed-notifications/BAD KEY!", {
+      method: "PUT",
+    });
+    expect(put.status).toBe(400);
+  });
+
+  it("PUT rejects an empty key", async () => {
+    const put = await req("/api/dismissed-notifications/%20", {
+      method: "PUT",
+    });
+    expect(put.status).toBe(400);
+  });
+
+  it("DELETE rejects an invalid key", async () => {
+    const del = await req("/api/dismissed-notifications/NOT%20VALID", {
+      method: "DELETE",
+    });
+    expect(del.status).toBe(400);
+  });
+
+  it("DELETE resets a dismissal", async () => {
+    await req("/api/dismissed-notifications/profile_info_prompt", {
+      method: "PUT",
+    });
+    const del = await req("/api/dismissed-notifications/profile_info_prompt", {
+      method: "DELETE",
+    });
+    expect(del.status).toBe(200);
+    expect(await del.json()).toEqual({
+      key: "profile_info_prompt",
+      dismissed: false,
+    });
+
+    const get = await req("/api/dismissed-notifications");
+    expect(await get.json()).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Dictionary CRUD
 // ---------------------------------------------------------------------------
 
@@ -425,73 +523,6 @@ describe("Vocabulary", () => {
     expect(Array.isArray(await res.json())).toBe(true);
   });
 });
-
-// ---------------------------------------------------------------------------
-// API Keys CRUD
-// ---------------------------------------------------------------------------
-
-describe("API Keys", () => {
-  it("GET /api/keys returns empty list initially", async () => {
-    const res = await req("/api/keys");
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data).toEqual([]);
-  });
-
-  it("POST stores an API key", async () => {
-    const res = await json("/api/keys", {
-      provider: "openai",
-      key: "sk-test-123",
-    });
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.provider).toBe("openai");
-    expect(data.configured).toBe(true);
-  });
-
-  it("GET /:provider confirms key is configured (key not exposed)", async () => {
-    await json("/api/keys", { provider: "groq", key: "gsk-test" });
-
-    const get = await req("/api/keys/groq");
-    expect(get.status).toBe(200);
-    const data = await get.json();
-    expect(data.provider).toBe("groq");
-    expect(data.configured).toBe(true);
-    // The actual key must NOT be returned
-    expect(data.key).toBeUndefined();
-  });
-
-  it("GET /:provider returns 404 for missing provider", async () => {
-    const res = await req("/api/keys/nonexistent");
-    expect(res.status).toBe(404);
-  });
-
-  it("DELETE removes an API key", async () => {
-    await json("/api/keys", { provider: "anthropic", key: "sk-ant-test" });
-
-    const del = await req("/api/keys/anthropic", { method: "DELETE" });
-    expect(del.status).toBe(200);
-
-    const get = await req("/api/keys/anthropic");
-    expect(get.status).toBe(404);
-  });
-
-  it("POST upserts on conflict", async () => {
-    await json("/api/keys", { provider: "deepgram", key: "old-key" });
-    await json("/api/keys", { provider: "deepgram", key: "new-key" });
-
-    const list = await req("/api/keys");
-    const data = await list.json();
-    const deepgram = data.filter(
-      (k: { provider: string }) => k.provider === "deepgram",
-    );
-    expect(deepgram.length).toBe(1);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// History
-// ---------------------------------------------------------------------------
 
 describe("History", () => {
   beforeEach(() => {

@@ -129,3 +129,13 @@ export function setPendingTranscript(text: string): void {
 export function clearKeyboardSession(): void {
   getBridge()?.clearSharedStore();
 }
+
+/**
+ * Unix epoch (seconds) of the last keyboard-extension handshake, or `null` when
+ * the bridge is unavailable (Android / Expo Go) and `0` when the keyboard has
+ * never run with Full Access. A non-zero value proves the keyboard is enabled
+ * and has Full Access (only such an extension can write to the App Group).
+ */
+export function keyboardLastActive(): number | null {
+  return getBridge()?.keyboardLastActive() ?? null;
+}

@@ -10,6 +10,8 @@ vi.mock("../src/lib/streaming/registry.js", () => ({
 
 vi.mock("../src/lib/streaming-stt.js", () => ({
   getApiKeyForProvider: () => "test-key",
+  voiceProviderCategory: (providerId: string) =>
+    providerId === "freestyle-cloud" ? "freestyle_cloud" : "byok",
 }));
 
 vi.mock("../src/lib/post-process.js", () => ({

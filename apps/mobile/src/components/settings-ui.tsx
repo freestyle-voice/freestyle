@@ -8,9 +8,9 @@
 
 import { useRouter } from "expo-router";
 import type { LucideIcon } from "lucide-react-native";
-import { ChevronLeft } from "lucide-react-native";
+import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import type { ReactNode } from "react";
-import type { ViewStyle } from "react-native";
+import type { AccessibilityRole, ViewStyle } from "react-native";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { HeaderActions } from "@/components/header-actions";
@@ -190,6 +190,49 @@ export function Divider() {
   return <View style={[styles.divider, { backgroundColor: theme.border }]} />;
 }
 
+/** Shared icon + label navigation/link row used across pushed settings pages. */
+export function SettingsNavRow({
+  icon: Icon,
+  label,
+  value,
+  onPress,
+  last = false,
+  accessibilityRole = "button",
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  onPress: () => void;
+  last?: boolean;
+  accessibilityRole?: AccessibilityRole;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={label}
+      style={({ pressed }) => [
+        styles.navRow,
+        !last && {
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: theme.border,
+        },
+        pressed && { opacity: 0.6 },
+      ]}
+    >
+      <Icon color={theme.mutedForeground} size={20} />
+      <View style={styles.navRowContent}>
+        <ThemedText style={styles.navRowLabel}>{label}</ThemedText>
+        <ThemedText themeColor="mutedForeground" style={styles.navRowValue}>
+          {value}
+        </ThemedText>
+      </View>
+      <ChevronRight color={theme.mutedForeground} size={18} />
+    </Pressable>
+  );
+}
+
 /**
  * A radio-style option card with a left-edge active marker — the same pattern
  * the desktop tone page uses. Shows a label + optional hint.
@@ -199,21 +242,28 @@ export function OptionCard({
   hint,
   selected,
   onPress,
+  disabled = false,
 }: {
   label: string;
   hint?: string;
   selected: boolean;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   const theme = useTheme();
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="radio"
+      accessibilityLabel={label}
+      accessibilityState={{ selected, disabled }}
       style={[
         styles.option,
         {
           borderColor: selected ? theme.primary : theme.border,
           backgroundColor: selected ? theme.accent : "transparent",
+          opacity: disabled ? 0.45 : 1,
         },
       ]}
     >
@@ -329,6 +379,16 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     marginHorizontal: -Spacing.three,
   },
+  navRow: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  navRowContent: { flex: 1 },
+  navRowLabel: { fontFamily: Fonts.sansMedium, fontSize: 15 },
+  navRowValue: { fontSize: 13, marginTop: 1 },
 
   option: {
     flexDirection: "row",

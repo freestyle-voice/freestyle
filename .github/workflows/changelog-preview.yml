@@ -15,5 +15,9 @@ permissions:
 jobs:
   changelog-preview:
     name: Preview Changelog
+    # Skip for external fork PRs — checkout@v6 refuses to check out fork code
+    # from pull_request_target (pwn request protection). Safe to skip since this
+    # is just a changelog preview comment for maintainers.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     uses: getsentry/craft/.github/workflows/changelog-preview.yml@v2
     secrets: inherit

@@ -8,6 +8,7 @@ import {
   setFlag,
   updateConfig,
 } from "../lib/config.js";
+import { fetchCloudConfig } from "../lib/freestyle-cloud.js";
 
 const flagValueSchema = z.object({ value: z.boolean() });
 
@@ -15,6 +16,22 @@ const config = new Hono()
   /** Full config — the renderer loads this once on mount. */
   .get("/", (c) => {
     return c.json(getConfig());
+  })
+  /**
+   * Cloud config passthrough: region-based suggested languages from the cloud
+   * `GET /v2/config`. Public + CDN-cacheable upstream; the renderer uses
+   * `suggestedLanguages` to order its language picker. Industry defaults are
+   * now applied server-side at profile-update time and are no longer returned.
+   */
+  .get("/cloud", async (c) => {
+    try {
+      const cloud = await fetchCloudConfig();
+      return c.json({
+        suggestedLanguages: cloud.suggestedLanguages,
+      });
+    } catch {
+      return c.json({ error: "Failed to load cloud config" }, 502);
+    }
   })
   /** Replace the full config in one shot. */
   .put("/", async (c) => {

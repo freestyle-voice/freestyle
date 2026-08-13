@@ -59,6 +59,38 @@ describe("Freestyle Cloud auth sessions", () => {
 
     expect(getSession()).toBeNull();
   });
+
+  it("isolates sessions by host (dev vs prod)", async () => {
+    const cloud = await import("../src/lib/freestyle-cloud.js");
+
+    // Sign in to the default (prod) host.
+    setSession({
+      token: "prod-token",
+      user: { id: "user_1", email: "prod@example.com" },
+      host: "https://service.freestylevoice.com",
+    });
+
+    // Switch to a dev host.
+    vi.mocked(cloud.freestyleCloudUrl).mockReturnValue("http://localhost:8787");
+    setSession({
+      token: "dev-token",
+      user: { id: "user_2", email: "dev@example.com" },
+      host: "http://localhost:8787",
+    });
+
+    // Dev session is active.
+    expect(getSession()?.token).toBe("dev-token");
+
+    // Clearing dev session does not affect prod.
+    clearSession();
+    expect(getSession()).toBeNull();
+
+    // Switch back to prod — session still intact.
+    vi.mocked(cloud.freestyleCloudUrl).mockReturnValue(
+      "https://service.freestylevoice.com",
+    );
+    expect(getSession()?.token).toBe("prod-token");
+  });
 });
 
 describe("/api/auth", () => {
@@ -120,14 +152,14 @@ describe("Freestyle Transcribe default on sign-in", () => {
     });
   }
 
-  function insertLocalVoiceDefault(): void {
+  function insertNonCloudVoiceDefault(): void {
     const db = getDb();
     db.prepare(
       "UPDATE model_configs SET is_default = 0 WHERE type = 'voice'",
     ).run();
     db.prepare(
       `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
-       VALUES ('local-whisper', 'local-whisper/base-q5_1', 'Whisper Base', 'voice', 1)
+       VALUES ('openai', 'openai/whisper-1', 'OpenAI Whisper', 'voice', 1)
        ON CONFLICT(provider, model_id, type) DO UPDATE SET is_default = 1`,
     ).run();
   }
@@ -150,8 +182,8 @@ describe("Freestyle Transcribe default on sign-in", () => {
     expect(readSetting("llm_cleanup")).toBe("true");
   });
 
-  it("overrides an existing local voice default and turns cleanup on", async () => {
-    insertLocalVoiceDefault();
+  it("overrides an existing non-cloud voice default and turns cleanup on", async () => {
+    insertNonCloudVoiceDefault();
     getDb()
       .prepare(
         "INSERT INTO settings (key, value) VALUES ('llm_cleanup', 'false')",
@@ -166,42 +198,42 @@ describe("Freestyle Transcribe default on sign-in", () => {
     expect(readSetting("llm_cleanup")).toBe("true");
   });
 
-  it("persists a local model chosen after sign-in (no re-switch)", async () => {
+  it("persists a non-cloud model chosen after sign-in (no re-switch)", async () => {
     await signIn();
 
     const res = await app.request("/api/models/configured", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        provider: "local-whisper",
-        model_id: "local-whisper/base-q5_1",
-        model_name: "Whisper Base",
+        provider: "openai",
+        model_id: "openai/whisper-1",
+        model_name: "OpenAI Whisper",
         type: "voice",
         is_default: true,
       }),
     });
     expect(res.status).toBe(201);
 
-    expect(getDefaultModels().voice?.provider).toBe("local-whisper");
+    expect(getDefaultModels().voice?.provider).toBe("openai");
   });
 
-  it("reverts to a local model and disables cleanup on sign-out", async () => {
-    insertLocalVoiceDefault();
+  it("reverts to a non-cloud model and disables cleanup on sign-out", async () => {
+    insertNonCloudVoiceDefault();
     await signIn();
     expect(getDefaultModels().voice?.provider).toBe("freestyle-cloud");
 
     const res = await app.request("/api/auth/sign-out", { method: "POST" });
     expect(res.status).toBe(200);
 
-    expect(getDefaultModels().voice?.provider).toBe("local-whisper");
+    expect(getDefaultModels().voice?.provider).toBe("openai");
     expect(readSetting("llm_cleanup")).toBe("false");
   });
 
   it("re-applies the Freestyle bundle when signing in again", async () => {
-    insertLocalVoiceDefault();
+    insertNonCloudVoiceDefault();
     await signIn();
     await app.request("/api/auth/sign-out", { method: "POST" });
-    expect(getDefaultModels().voice?.provider).toBe("local-whisper");
+    expect(getDefaultModels().voice?.provider).toBe("openai");
 
     await signIn();
 
@@ -209,5 +241,16 @@ describe("Freestyle Transcribe default on sign-in", () => {
     expect(defaults.voice?.provider).toBe("freestyle-cloud");
     expect(defaults.llm?.provider).toBe("freestyle-cloud");
     expect(readSetting("llm_cleanup")).toBe("true");
+  });
+
+  it("clears the voice default on sign-out when nothing else is configured", async () => {
+    await signIn();
+    expect(getDefaultModels().voice?.provider).toBe("freestyle-cloud");
+
+    const res = await app.request("/api/auth/sign-out", { method: "POST" });
+    expect(res.status).toBe(200);
+
+    expect(getDefaultModels().voice).toBeNull();
+    expect(readSetting("llm_cleanup")).toBe("false");
   });
 });

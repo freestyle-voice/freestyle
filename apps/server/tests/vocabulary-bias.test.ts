@@ -19,11 +19,10 @@ describe("buildAsrVocabularyBias", () => {
     });
   });
 
-  describe("prompt providers (openai, groq, local-whisper)", () => {
+  describe("prompt providers (openai, groq)", () => {
     it.each([
       "openai",
       "groq",
-      "local-whisper",
     ] as const)("builds prompt bias for %s", (providerId) => {
       const bias = buildAsrVocabularyBias(providerId, "whisper-1", [
         "TypeScript",
@@ -65,11 +64,9 @@ describe("buildAsrVocabularyBias", () => {
     });
 
     it("strips provider prefix from model id", () => {
-      const bias = buildAsrVocabularyBias(
-        "local-whisper",
-        "local-whisper/base",
-        ["Freestyle"],
-      );
+      const bias = buildAsrVocabularyBias("openai", "openai/whisper-1", [
+        "Freestyle",
+      ]);
       expect(bias).toEqual({ kind: "prompt", text: "Terms: Freestyle." });
     });
   });
@@ -191,19 +188,6 @@ describe("buildAsrVocabularyBias", () => {
       expect(bias).toEqual({
         kind: "elevenlabs-keyterms",
         terms: ["a".repeat(50)],
-      });
-    });
-  });
-
-  describe("local-mlx", () => {
-    it("builds mlx prompt with technical terms prefix", () => {
-      const bias = buildAsrVocabularyBias("local-mlx", "qwen", [
-        "TypeScript",
-        "Kubernetes",
-      ]);
-      expect(bias).toEqual({
-        kind: "prompt",
-        text: "Technical terms: TypeScript, Kubernetes",
       });
     });
   });

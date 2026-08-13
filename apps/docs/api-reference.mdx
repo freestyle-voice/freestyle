@@ -26,7 +26,6 @@ The Freestyle server is a [Hono](https://hono.dev) app that runs on `http://127.
 | `GET` | `/api/settings/:key` | Get a single setting by key. |
 | `PUT` | `/api/settings/:key` | Upsert a setting. Per-key validation for `cleanup_intensity`, `cleanup_custom_prompt`, `plugins`, and `disabled_plugins`. |
 | `DELETE` | `/api/settings/:key` | Delete a setting. |
-| `POST` | `/api/settings/local-llm/test` | Test connectivity to a local LLM server. Fetches `/v1/models` and returns the model list. |
 
 ## Models
 
@@ -44,17 +43,6 @@ The Freestyle server is a [Hono](https://hono.dev) app that runs on `http://127.
 | --- | --- | --- |
 | `POST` | `/api/transcribe` | Main transcription endpoint. Accepts audio as multipart form data or raw binary. Transcribes via configured voice provider and optionally runs LLM cleanup. Headers: `x-app-context` (JSON), `x-audio-duration-ms`, `x-skip-post-process`. |
 | `POST` | `/api/post-process` | Run LLM cleanup on text independently. Body: `{ text, appContext?, language? }`. |
-
-## API keys
-
-| Method | Path | Description |
-| --- | --- | --- |
-| `GET` | `/api/keys` | List all stored API keys (provider, last-4 hint, status). |
-| `GET` | `/api/keys/:provider` | Check if a key exists for a provider. |
-| `POST` | `/api/keys` | Store or upsert an API key. Body: `{ provider, key }`. |
-| `POST` | `/api/keys/validate` | Validate a key without storing it. |
-| `POST` | `/api/keys/:provider/revalidate` | Re-validate the stored key for a provider. |
-| `DELETE` | `/api/keys/:provider` | Delete the stored key for a provider. |
 
 ## Dictionary
 

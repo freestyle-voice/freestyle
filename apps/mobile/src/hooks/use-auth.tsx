@@ -16,6 +16,7 @@ import { useCallback } from "react";
 import { Platform } from "react-native";
 
 import { authClient } from "@/lib/cloud/auth-client";
+import { clearCloudScopedLocalCache } from "@/lib/cloud/local-cache";
 import { type CloudUser, signOutCloud } from "@/lib/cloud/session";
 import { clearKeyboardSession } from "@/lib/keyboard-bridge";
 
@@ -53,6 +54,11 @@ export function useAuth(): AuthState {
   const signOut = useCallback(async () => {
     await signOutCloud();
     clearKeyboardSession();
+    // Drop this account's cloud-scoped query cache + locally cached synced
+    // preferences/vocabulary so a different account signing in next doesn't
+    // inherit them (and the backfill can't push them into the new account's
+    // cloud). Awaited so the wipe completes before the next sign-in re-hydrates.
+    await clearCloudScopedLocalCache();
   }, []);
 
   const user = session?.user

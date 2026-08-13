@@ -75,7 +75,7 @@ export function isWaylandSession(): boolean {
 async function pasteMac(): Promise<"native" | "legacy"> {
   const binaryPath = getNativeBinaryPath("macos-fast-paste");
   if (binaryPath) {
-    const exitCode = await execFileAsync(binaryPath);
+    const exitCode = await execFileAsync(binaryPath, ["v"]);
     if (exitCode === 2) {
       log.warn(
         "No accessibility permission (native binary exit 2), falling back to osascript",
@@ -504,13 +504,172 @@ function restoreClipboard(
   }
 }
 
+/**
+ * Ask the focused app to copy its selection, and hand back what landed on the
+ * clipboard — the whole of how commands get at the text they operate on.
+ *
+ * There is no API for "what is selected" that works across arbitrary apps, so
+ * this drives the app's own Copy the way a user would, then reads the result.
+ * The clipboard is put back exactly as it was: the user did not ask us to
+ * overwrite it, and they may well be mid-copy-paste of something else.
+ *
+ * Returns null when nothing was selected. That case is indistinguishable from
+ * "the copy didn't work" from the outside — both leave the clipboard unchanged
+ * — so the wait below is generous, and the caller phrases the failure as the
+ * far more likely of the two ("select some text first").
+ */
+export interface CopySelectionOptions {
+  /**
+   * Per-attempt waits for the injected Copy to land. The default is tuned for
+   * a hand-sized selection; a whole-document copy (Select All in a rich
+   * editor building an HTML payload) deserves a far longer budget.
+   */
+  timeoutsMs?: readonly number[];
+}
+
+export function copySelectionFromFocusedApp(
+  options?: CopySelectionOptions,
+): Promise<string | null> {
+  const run = (): Promise<string | null> => doCopySelection(options);
+  const result = pasteChain.then(run, run);
+  pasteChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+/**
+ * How long to wait for each injected Copy to land, in order.
+ *
+ * The first window is short because the overwhelmingly common answer is
+ * immediate: an app that is going to respond does so within a few tens of
+ * milliseconds. The second is long because the only apps that miss the first
+ * one are the busy ones — mid-render, mid-layout, or holding a large
+ * selection — and those deserve the room.
+ *
+ * The asymmetry is what makes "nothing is selected" a fast answer rather than
+ * a slow one. That verdict costs the entire budget by definition — every
+ * attempt has to come back empty before it can be given — and it is the one
+ * the user is waiting on with a key held down, so the budget is spent where it
+ * buys tolerance and nowhere else.
+ */
+const COPY_ATTEMPT_TIMEOUTS_MS = [140, 300];
+const COPY_POLL_MS = 15;
+const COPY_RETRY_GAP_MS = 60;
+
+async function sendCopyToFocusedApp(): Promise<void> {
+  switch (process.platform) {
+    case "darwin": {
+      const binaryPath = getNativeBinaryPath("macos-fast-paste");
+      if (binaryPath) {
+        const exitCode = await execFileAsync(binaryPath, ["c"]);
+        // Exit 2 is "no Accessibility permission"; anything else non-zero is a
+        // real fault. Both fall through to osascript, which needs Automation
+        // permission instead and so can still work where the tap doesn't.
+        if (exitCode === 0) return;
+        log.warn(`macos-fast-paste copy exited ${exitCode}, using osascript`);
+      }
+      await execAsync(
+        `osascript -e 'tell application "System Events" to keystroke "c" using {command down}'`,
+      );
+      return;
+    }
+    case "win32": {
+      await execAsync(
+        `powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^c')"`,
+      );
+      return;
+    }
+    default: {
+      // The native/uinput/portal paste backends are all hardwired to V, so
+      // copy uses the legacy leg only. Terminals take Ctrl+Shift+C, where a
+      // bare Ctrl+C would send SIGINT to whatever is running.
+      const isTerminal = await isLinuxTerminalFocused();
+      if (isWaylandSession()) {
+        const cmd = isTerminal
+          ? "wtype -M ctrl -M shift -P c -p c -m shift -m ctrl"
+          : "wtype -M ctrl -P c -p c -m ctrl";
+        if (!(await tryExecAsync(cmd, "wtype copy"))) {
+          throw new Error("No supported Wayland copy backend succeeded");
+        }
+        return;
+      }
+      await execAsync(`xdotool key ${isTerminal ? "ctrl+shift+c" : "ctrl+c"}`);
+    }
+  }
+}
+
+/** One injected Copy, plus the wait for the app to answer it. */
+async function attemptCopy(
+  sentinel: string,
+  timeoutMs: number,
+): Promise<string | null> {
+  try {
+    await sendCopyToFocusedApp();
+  } catch (err) {
+    log.warn(`copy injection failed: ${err}`);
+    return null;
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, COPY_POLL_MS));
+    const current = clipboard.readText();
+    if (current !== sentinel) return current;
+  }
+  return null;
+}
+
+async function doCopySelection(
+  options?: CopySelectionOptions,
+): Promise<string | null> {
+  const prior = snapshotClipboard();
+  // A sentinel rather than an empty clipboard: some apps and clipboard
+  // managers repopulate an emptied clipboard, and comparing against the
+  // previous text alone would miss a selection whose text happens to equal
+  // what was already on it.
+  const sentinel = `freestyle-remix-${Date.now()}`;
+  clipboard.writeText(sentinel);
+
+  let selection: string | null = null;
+  const timeouts = options?.timeoutsMs ?? COPY_ATTEMPT_TIMEOUTS_MS;
+  for (const [attempt, timeoutMs] of timeouts.entries()) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, COPY_RETRY_GAP_MS));
+    }
+    selection = await attemptCopy(sentinel, timeoutMs);
+    if (selection !== null) break;
+  }
+
+  restoreClipboard(prior, selection ?? sentinel);
+  log.debug(
+    selection === null
+      ? "no selection copied"
+      : `copied ${selection.length} chars of selection`,
+  );
+  return selection?.trim() ? selection : null;
+}
+
 let pasteChain: Promise<void> = Promise.resolve();
+
+export interface PasteOptions {
+  /**
+   * Append a space after the text. On by default, because a dictation is
+   * appended at a cursor and the next one should not run into it. Commands
+   * turn it off: they replace a selection with its own edited self, and a
+   * space added per run would accumulate on every re-run.
+   */
+  trailingSpace?: boolean;
+}
 
 export function pasteIntoFocusedApp(
   text: string,
   beforePaste?: () => Promise<void> | void,
+  options?: PasteOptions,
 ): Promise<void> {
-  const run = (): Promise<void> => doPasteIntoFocusedApp(text, beforePaste);
+  const run = (): Promise<void> =>
+    doPasteIntoFocusedApp(text, beforePaste, options);
   const result = pasteChain.then(run, run);
   pasteChain = result.then(
     () => undefined,
@@ -522,13 +681,14 @@ export function pasteIntoFocusedApp(
 async function doPasteIntoFocusedApp(
   text: string,
   beforePaste?: () => Promise<void> | void,
+  options?: PasteOptions,
 ): Promise<void> {
   // Never log the transcript itself (it's persisted to the shared log file);
   // length is enough to diagnose paste issues.
   log.debug(`pasting ${text?.length ?? 0} chars`);
   if (!text?.trim()) return;
 
-  text = `${text} `;
+  if (options?.trailingSpace !== false) text = `${text} `;
 
   const prior = snapshotClipboard();
   clipboard.writeText(text);
@@ -564,4 +724,38 @@ async function doPasteIntoFocusedApp(
       restoreClipboard(prior, text);
     }
   }
+}
+
+/**
+ * Paste whatever is on the clipboard right now (text, image, anything) —
+ * injection only, no clipboard writes and no restore. The primitive behind
+ * the agent's `paste` tool: the agent manages clipboard contents itself via
+ * set_clipboard / set_clipboard_image.
+ */
+export function pasteClipboardIntoFocusedApp(): Promise<void> {
+  const run = (): Promise<void> => doPasteClipboard();
+  const result = pasteChain.then(run, run);
+  pasteChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+async function doPasteClipboard(): Promise<void> {
+  let method: PasteMethod = "legacy";
+  switch (process.platform) {
+    case "darwin":
+      method = await pasteMac();
+      break;
+    case "win32":
+      method = await pasteWindows();
+      break;
+    default: {
+      const isTerminal = await isLinuxTerminalFocused();
+      method = await pasteLinux(isTerminal);
+      break;
+    }
+  }
+  await new Promise((r) => setTimeout(r, pasteSettleMs(method)));
 }

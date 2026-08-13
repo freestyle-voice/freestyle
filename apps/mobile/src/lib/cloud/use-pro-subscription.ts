@@ -19,6 +19,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   deepLinkToSubscriptions,
   ErrorCode,
+  getAvailablePurchases as fetchAvailablePurchases,
   type Purchase,
   useIAP,
 } from "expo-iap";
@@ -117,7 +118,6 @@ export function useProSubscription(
     fetchProducts,
     requestPurchase,
     finishTransaction,
-    getAvailablePurchases,
   } = useIAP({
     onPurchaseSuccess: (purchase) => {
       void verifyAndFinish(purchase);
@@ -132,7 +132,11 @@ export function useProSubscription(
       }
       setError(err.message || "The purchase could not be completed.");
     },
-    onError: (err) => setError(err.message),
+    onError: (err) => {
+      activeRef.current = false;
+      setPhase("idle");
+      setError(err.message);
+    },
   });
 
   useEffect(() => {
@@ -178,15 +182,21 @@ export function useProSubscription(
     setError(null);
     setPhase("restoring");
     try {
-      await getAvailablePurchases();
-      // Re-verify the latest Pro entitlement, then let the usage refetch decide.
-      refreshUsage();
+      // The hook helper updates React state and returns void. Use the module
+      // query here so every restored receipt is verified before it is
+      // acknowledged/finished.
+      const purchases = await fetchAvailablePurchases();
+      for (const restoredPurchase of purchases) {
+        if (proProductIds().includes(restoredPurchase.productId)) {
+          await verifyAndFinish(restoredPurchase);
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not restore purchases.");
     } finally {
       setPhase("idle");
     }
-  }, [getAvailablePurchases, refreshUsage]);
+  }, [verifyAndFinish]);
 
   const manage = useCallback(async () => {
     try {

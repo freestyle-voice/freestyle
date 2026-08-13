@@ -125,9 +125,7 @@ export function buildAsrVocabularyBias(
 
   switch (providerId) {
     case "openai":
-    case "groq":
-    // whisper.cpp accepts the same OpenAI-style initial prompt (224-token budget).
-    case "local-whisper": {
+    case "groq": {
       const text = buildPromptText(capped);
       return text ? { kind: "prompt", text } : null;
     }
@@ -174,13 +172,6 @@ export function buildAsrVocabularyBias(
         terms: sonioxTerms,
         ...(noteText ? { text: noteText } : {}),
       };
-    }
-    case "local-mlx": {
-      const text = `Technical terms: ${capped.join(", ")}`.slice(
-        0,
-        PROMPT_CHAR_BUDGET,
-      );
-      return text ? { kind: "prompt", text } : null;
     }
     default:
       return null;

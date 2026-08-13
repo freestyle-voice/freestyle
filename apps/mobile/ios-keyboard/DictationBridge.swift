@@ -78,6 +78,11 @@ struct FreestyleDictationBridge {
     static let stateKey = "com.freestylevoice.dictation.state"
     static let commandKey = "com.freestylevoice.dictation.command"
     static let commandDarwinName = "com.freestylevoice.dictation.command" as CFString
+    /// Timestamp the keyboard extension stamps each time it loads. A value here
+    /// at all proves the keyboard was added to the Keyboards list AND that it
+    /// ran with Full Access — writing to the App Group `UserDefaults` is only
+    /// possible from an extension that has "Allow Full Access" enabled.
+    static let keyboardActiveKey = "com.freestylevoice.keyboard.lastActive"
 
     /// How recently the app must have refreshed its heartbeat for the keyboard
     /// to treat the session as alive. If the app is closed the heartbeat goes
@@ -114,6 +119,21 @@ struct FreestyleDictationBridge {
         if let data = try? JSONEncoder().encode(FreestyleDictationState()) {
             defaults.set(data, forKey: Self.stateKey)
         }
+    }
+
+    // MARK: Keyboard installation handshake
+
+    /// Called by the keyboard extension on load. The write only succeeds when
+    /// the extension has Full Access, so a fresh timestamp here is proof the
+    /// keyboard is both enabled and has Full Access granted.
+    func markKeyboardActive(now: TimeInterval = Date().timeIntervalSince1970) {
+        defaults.set(now, forKey: Self.keyboardActiveKey)
+    }
+
+    /// The last time the keyboard extension stamped its handshake, or 0 if it
+    /// never has (keyboard not added, or added without Full Access).
+    func keyboardLastActive() -> TimeInterval {
+        defaults.double(forKey: Self.keyboardActiveKey)
     }
 
     // MARK: Command channel

@@ -1,4 +1,86 @@
 # Changelog
+## 0.7.1
+
+### New Features ✨
+
+- Change the electron app log in page copy. by @matteo8p in [#552](https://github.com/freestyle-voice/freestyle/pull/552)
+
+### Bug Fixes 🐛
+
+- Resolve hotkey conflicts by @matteo8p in [#553](https://github.com/freestyle-voice/freestyle/pull/553)
+
+### Internal Changes 🔧
+
+#### Server
+
+- Take model-cost lookup off the transcription response path by @MathurAditya724 in [#551](https://github.com/freestyle-voice/freestyle/pull/551)
+- Cache prepared statements, batch settings reads, index hot-path tables by @MathurAditya724 in [#549](https://github.com/freestyle-voice/freestyle/pull/549)
+
+#### Other
+
+- (electron) Bound the plugin WebContentsView cache with an LRU cap by @MathurAditya724 in [#550](https://github.com/freestyle-voice/freestyle/pull/550)
+
+## 0.7.0
+
+### New Features ✨
+
+- (desktop) Show INR pricing for India via cloud geo endpoint by @MathurAditya724 in [#536](https://github.com/freestyle-voice/freestyle/pull/536)
+- (mobile) History stats, privacy controls, translate, help, sound feedback by @MathurAditya724 in [#539](https://github.com/freestyle-voice/freestyle/pull/539)
+- (pill) Give the voice pill an arrival and some better endings by @tigerisaac in [#541](https://github.com/freestyle-voice/freestyle/pull/541)
+- Remix prototype by @matteo8p in [#534](https://github.com/freestyle-voice/freestyle/pull/534)
+- Add local dismissible notifications store and useDismissible hook by @MathurAditya724 in [#538](https://github.com/freestyle-voice/freestyle/pull/538)
+- Show the update banner everywhere by @matteo8p in [#531](https://github.com/freestyle-voice/freestyle/pull/531)
+- Cloud sync of cleanup preferences + profile fields (cloud-canonical) by @MathurAditya724 in [#520](https://github.com/freestyle-voice/freestyle/pull/520)
+- Handle Soniox max pending chunks by @matteo8p in [#532](https://github.com/freestyle-voice/freestyle/pull/532)
+- Modify readme and project roadmap by @matteo8p in [#529](https://github.com/freestyle-voice/freestyle/pull/529)
+- New readme to adjust the identity of the project. by @matteo8p in [#528](https://github.com/freestyle-voice/freestyle/pull/528)
+
+### Bug Fixes 🐛
+
+#### Pill
+
+- Remove per-recording settings fetch and anchor pill to focused display by @MathurAditya724 in [#547](https://github.com/freestyle-voice/freestyle/pull/547)
+- Better handling of short transcriptions by @tigerisaac in [#540](https://github.com/freestyle-voice/freestyle/pull/540)
+
+#### Remix
+
+- Stop advertising web_search on the BYOK path by @MathurAditya724 in [#546](https://github.com/freestyle-voice/freestyle/pull/546)
+- BeUI polishing and strip movement fix by @tigerisaac in [#544](https://github.com/freestyle-voice/freestyle/pull/544)
+
+#### Other
+
+- (electron) Default Windows push-to-talk hotkey to Right Alt by @andstonk in [#527](https://github.com/freestyle-voice/freestyle/pull/527)
+- (mobile) Auto-scroll keyboard live transcript instead of truncating by @MathurAditya724 in [#533](https://github.com/freestyle-voice/freestyle/pull/533)
+- When the user is logged out, show the log in page so they can log back in by @matteo8p in [#530](https://github.com/freestyle-voice/freestyle/pull/530)
+
+### Documentation 📚
+
+- (remix) Restore beUI vendoring notes and flag provider deps by @MathurAditya724 in [#545](https://github.com/freestyle-voice/freestyle/pull/545)
+
+### Internal Changes 🔧
+
+- (changelog) Skip preview for external fork PRs by @MathurAditya724 in [389058fd](https://github.com/freestyle-voice/freestyle/commit/389058fd1fd0796b91f924d99e6c2c37a7208a37)
+- (electron) Stop flaky macOS permission E2E from red-lining CI by @MathurAditya724 in [#537](https://github.com/freestyle-voice/freestyle/pull/537)
+- Stop resending cloud-synced cleanup prefs to Freestyle Cloud by @MathurAditya724 in [#535](https://github.com/freestyle-voice/freestyle/pull/535)
+
+## 0.6.2
+
+### New Features ✨
+
+- (mobile) Live voice-keyboard setup detection by @MathurAditya724 in [#518](https://github.com/freestyle-voice/freestyle/pull/518)
+- Create the ability to translate on the fly by @matteo8p in [#523](https://github.com/freestyle-voice/freestyle/pull/523)
+- More robust language enforcement by @matteo8p in [#522](https://github.com/freestyle-voice/freestyle/pull/522)
+- In-app profile editing (name + connected accounts) by @MathurAditya724 in [#515](https://github.com/freestyle-voice/freestyle/pull/515)
+- Locale-aware number formatting for usage stats by @MathurAditya724 in [#513](https://github.com/freestyle-voice/freestyle/pull/513)
+- Voice pill redesign by @tigerisaac in [#509](https://github.com/freestyle-voice/freestyle/pull/509)
+- Refine sidebar profile tile and add profile shortcut by @MathurAditya724 in [#514](https://github.com/freestyle-voice/freestyle/pull/514)
+
+### Bug Fixes 🐛
+
+- (electron) Improve permission handling for dictation startup by @GatikTulsiani07 in [#516](https://github.com/freestyle-voice/freestyle/pull/516)
+- Fix a widget position going to custom whenever you are switching to a different monitor by @matteo8p in [#521](https://github.com/freestyle-voice/freestyle/pull/521)
+- Preserve right-side modifier-only hotkeys (RightCommand etc.) by @symphonix84 in [#449](https://github.com/freestyle-voice/freestyle/pull/449)
+
 ## 0.6.1
 
 ### New Features ✨

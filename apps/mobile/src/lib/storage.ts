@@ -14,6 +14,12 @@ export async function setPref(key: string, value: string): Promise<void> {
   await AsyncStorage.setItem(`freestyle_pref_${key}`, value);
 }
 
+/** Remove one or more preferences. No-op for keys that aren't set. */
+export async function removePrefs(keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+  await AsyncStorage.multiRemove(keys.map((k) => `freestyle_pref_${k}`));
+}
+
 /** Read and parse a JSON-encoded preference, falling back on any error. */
 export async function getJsonPref<T>(key: string, fallback: T): Promise<T> {
   const raw = await getPref(key);

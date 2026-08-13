@@ -20,6 +20,7 @@ import { seedMessageFor, starterPrompts } from "@renderer/lib/onboarding-core";
 import { createQueryClient } from "@renderer/lib/query";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
+import { highlightToolJson, toolJson } from "@renderer/lib/tool-json";
 import { toolPresentation } from "@renderer/lib/tool-presentation";
 import { SpriteBadge } from "@renderer/sprites/badge";
 import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
@@ -49,13 +50,40 @@ const TAB_PLACEHOLDER: Record<PanelTab, string> = {
   notes: "No notes yet.",
 };
 
-function toolJson(value: unknown): string {
-  try {
-    const dump = JSON.stringify(value, null, 1) ?? "";
-    return dump.length > 2_000 ? `${dump.slice(0, 2_000)}\n…` : dump;
-  } catch {
-    return String(value);
+function ShikiJson({ value }: { value: unknown }): React.JSX.Element {
+  const source = toolJson(value);
+  const [html, setHtml] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setHtml(null);
+    void highlightToolJson(source)
+      .then((highlighted) => {
+        if (active) setHtml(highlighted);
+      })
+      .catch(() => {
+        // A readable, unhighlighted JSON block remains available on failure.
+      });
+    return () => {
+      active = false;
+    };
+  }, [source]);
+
+  if (!html) {
+    return (
+      <pre className="tavern-tool-code">
+        <code>{source}</code>
+      </pre>
+    );
   }
+
+  return (
+    <div
+      className="tavern-tool-code"
+      // Shiki renders escaped source code; tool-json.test.ts guards this contract.
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }
 
 function ToolChip({
@@ -118,13 +146,13 @@ function ToolChip({
           {hasInput ? (
             <>
               <span className="tavern-tool-heading">Request</span>
-              <pre className="tavern-tool-block">{toolJson(input)}</pre>
+              <ShikiJson value={input} />
             </>
           ) : null}
           {hasOutput ? (
             <>
               <span className="tavern-tool-heading">Result</span>
-              <pre className="tavern-tool-block">{toolJson(output)}</pre>
+              <ShikiJson value={output} />
             </>
           ) : null}
         </div>

@@ -41,6 +41,7 @@
     "hono": "^4.12.22",
     "react-markdown": "^9.1.0",
     "remark-gfm": "^4.0.0",
+    "shiki": "^3.23.0",
     "three": "0.185.1",
     "three-spritetext": "^1.10.0"
   },

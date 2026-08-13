@@ -1320,7 +1320,7 @@
   align-self: stretch;
   display: flex;
   flex-direction: column;
-  width: min(100%, 300px);
+  width: 100%;
   overflow: hidden;
   border: 1px solid var(--tavern-rule);
   border-radius: 9px;
@@ -1436,9 +1436,9 @@
   color: var(--tavern-mute);
 }
 
-.tavern-tool-block {
+.tavern-tool-code,
+.tavern-tool-code pre.shiki {
   margin: 0;
-  font: inherit;
   font-size: 11px;
   line-height: 1.5;
   background: var(--tavern-wash);
@@ -1448,6 +1448,17 @@
   overflow-wrap: break-word;
   max-height: 180px;
   overflow-y: auto;
+}
+
+.tavern-tool-code pre.shiki {
+  padding: 0;
+  background: transparent !important;
+  color: inherit !important;
+}
+
+.tavern-tool-code code {
+  font-family: var(--tavern-mono);
+  font-size: inherit;
 }
 
 .tavern-set-row {

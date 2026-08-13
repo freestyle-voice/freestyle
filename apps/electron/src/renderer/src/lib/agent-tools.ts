@@ -1,6 +1,7 @@
 import { apiFetch } from "@renderer/lib/api";
 import {
   approveConnectorAction,
+  connectorToolActionName,
   executeConnectorAction,
   isConnectorToolName,
 } from "@renderer/lib/connectors";
@@ -74,7 +75,7 @@ export function describeAgentAction(call: AgentToolCall): string {
   const input = (call.input ?? {}) as Record<string, unknown>;
   if (isConnectorToolName(call.toolName)) {
     const action =
-      call.toolName.split("__").at(-1)?.replace(/_/g, " ").toLowerCase() ??
+      connectorToolActionName(call.toolName).replace(/_/g, " ").toLowerCase() ||
       "connected-app action";
     return `Use a connected app to ${action}.`;
   }

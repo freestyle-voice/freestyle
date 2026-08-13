@@ -9,6 +9,11 @@ const log = createAppLogger("agent");
 
 const agentRequestSchema = z.object({
   messages: z.array(z.record(z.string(), z.unknown())).min(1),
+  // DefaultChatTransport sends `id`; the renderer also supplies the stable
+  // thread id explicitly. Preserve either form so Cloud can bind approval
+  // grants to the same thread that will execute them.
+  id: z.string().min(1).max(100).optional(),
+  threadId: z.string().min(1).max(100).optional(),
   // The seeded turn right after onboarding — forwarded so the cloud can
   // append its one-turn system-prompt addendum.
   firstTurn: z.boolean().optional(),
@@ -23,7 +28,7 @@ const agentRoute = new Hono().post(
   "/",
   zValidator("json", agentRequestSchema),
   async (c) => {
-    const { messages, firstTurn } = c.req.valid("json");
+    const { messages, firstTurn, id, threadId } = c.req.valid("json");
 
     const token = getSessionToken();
     if (!token) return c.json({ error: "cloud_auth_required" }, 401);
@@ -38,6 +43,7 @@ const agentRoute = new Hono().post(
         },
         body: JSON.stringify({
           messages,
+          ...(threadId || id ? { threadId: threadId ?? id } : {}),
           ...(firstTurn ? { firstTurn: true } : {}),
         }),
         signal: c.req.raw.signal,

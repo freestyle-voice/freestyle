@@ -55,10 +55,16 @@ function ConnectorCard({
           <button
             type="button"
             className="tavern-set-seg-btn is-on"
-            disabled={busy || pending}
+            disabled={busy}
             onClick={onConnect}
           >
-            {busy ? "Opening…" : reconnect ? "Reconnect" : "Connect"}
+            {busy
+              ? "Opening…"
+              : pending
+                ? "Open browser again"
+                : reconnect
+                  ? "Reconnect"
+                  : "Connect"}
           </button>
         )}
       </div>
@@ -72,6 +78,7 @@ export function ConnectedApps(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [busyToolkit, setBusyToolkit] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pollStartedAt, setPollStartedAt] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -101,25 +108,51 @@ export function ConnectedApps(): React.JSX.Element {
         .map((item) => item.slug),
     [catalog],
   );
+  const pendingKey = pending.join(",");
   useEffect(() => {
-    if (pending.length === 0) return;
-    const startedAt = Date.now();
+    if (!pendingKey) return;
+    const startedAt = pollStartedAt || Date.now();
+    const pendingToolkits = pendingKey.split(",");
     const timer = window.setInterval(() => {
       if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
         window.clearInterval(timer);
+        setError(
+          "This connection is still pending. Finish it in your browser, or open the browser again to restart.",
+        );
         return;
       }
-      void Promise.all(pending.map((toolkit) => connectorStatus(toolkit)))
-        .then(() => void load())
+      void Promise.all(
+        pendingToolkits.map((toolkit) => connectorStatus(toolkit)),
+      )
+        .then((statuses) =>
+          setCatalog((current) => {
+            const statusByToolkit = new Map(
+              pendingToolkits.map((toolkit, index) => [
+                toolkit,
+                statuses[index] ?? null,
+              ]),
+            );
+            return current.map((item) =>
+              statusByToolkit.has(item.slug)
+                ? {
+                    ...item,
+                    connection: statusByToolkit.get(item.slug) ?? null,
+                  }
+                : item,
+            );
+          }),
+        )
         .catch(() => {});
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [load, pending]);
+  }, [pendingKey, pollStartedAt]);
 
   const connect = async (toolkit: string) => {
     setBusyToolkit(toolkit);
+    setError(null);
     try {
       await connectToolkit(toolkit);
+      setPollStartedAt(Date.now());
       await load();
     } catch (cause) {
       setError(
@@ -133,6 +166,7 @@ export function ConnectedApps(): React.JSX.Element {
   };
   const disconnect = async (toolkit: string) => {
     setBusyToolkit(toolkit);
+    setError(null);
     try {
       await disconnectToolkit(toolkit);
       await load();
@@ -156,8 +190,8 @@ export function ConnectedApps(): React.JSX.Element {
   return (
     <>
       <p className="tavern-set-hint is-lead">
-        Connect an app once, then Remix can use only your account. You approve
-        every action that changes data outside Freestyle.
+        Connect an app once, then Freestyle can use only your account. You
+        approve every action that changes data outside Freestyle.
       </p>
       <input
         className="tavern-set-input"

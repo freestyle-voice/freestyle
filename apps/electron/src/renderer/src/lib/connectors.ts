@@ -28,16 +28,38 @@ export function isConnectorToolName(name: string): boolean {
   return /^connector__[a-zA-Z0-9_-]+__[a-zA-Z0-9_]+$/.test(name);
 }
 
+/** Decode the collision-safe Cloud tool suffix for human approval copy. */
+export function connectorToolActionName(toolName: string): string {
+  const encoded = toolName.split("__").at(-1) ?? "";
+  if (/^(?:[0-9a-f]{2})+$/i.test(encoded)) {
+    try {
+      return new TextDecoder().decode(
+        Uint8Array.from(encoded.match(/.{2}/g) ?? [], (byte) =>
+          parseInt(byte, 16),
+        ),
+      );
+    } catch {
+      // Fall through to the opaque name below. The server still validates it.
+    }
+  }
+  return encoded;
+}
+
 async function responseJson<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => null)) as
     | { error?: string }
     | T
     | null;
-  if (!response.ok)
-    throw new Error(
-      (payload as { error?: string } | null)?.error ??
-        "Connected apps are unavailable.",
-    );
+  if (!response.ok) {
+    const error = (payload as { error?: string } | null)?.error;
+    const friendlyError =
+      error === "cloud_auth_required"
+        ? "Sign in to Freestyle before connecting an app."
+        : error === "connected_apps_unavailable"
+          ? "Connected apps are temporarily unavailable. Please try again."
+          : error;
+    throw new Error(friendlyError ?? "Connected apps are unavailable.");
+  }
   return payload as T;
 }
 

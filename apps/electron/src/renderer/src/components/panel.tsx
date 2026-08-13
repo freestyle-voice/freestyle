@@ -123,46 +123,196 @@ function ToolChip({
   );
 }
 
-function ChatMessage({ message }: { message: UIMessage }): React.JSX.Element {
+function messageText(message: UIMessage): string {
+  return message.parts
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function MessageActions({
+  role,
+  copied,
+  disabled,
+  onCopy,
+  onEdit,
+  onRegenerate,
+}: {
+  role: UIMessage["role"];
+  copied: boolean;
+  disabled: boolean;
+  onCopy: () => void;
+  onEdit?: () => void;
+  onRegenerate?: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="tavern-msg-actions">
+      <button
+        type="button"
+        className={`tavern-msg-action${copied ? " is-copied" : ""}`}
+        onClick={onCopy}
+        aria-label={copied ? "Message copied" : "Copy message"}
+        title={copied ? "Copied" : "Copy message"}
+      >
+        <span aria-hidden="true">{copied ? "✓" : "⧉"}</span>
+      </button>
+      {role === "user" && onEdit ? (
+        <button
+          type="button"
+          className="tavern-msg-action"
+          disabled={disabled}
+          onClick={onEdit}
+          aria-label="Edit and resend message"
+          title="Edit and resend"
+        >
+          <span aria-hidden="true">✎</span>
+        </button>
+      ) : null}
+      {role === "assistant" && onRegenerate ? (
+        <button
+          type="button"
+          className="tavern-msg-action"
+          disabled={disabled}
+          onClick={onRegenerate}
+          aria-label="Regenerate response"
+          title="Regenerate response"
+        >
+          <span aria-hidden="true">↻</span>
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function ChatMessage({
+  message,
+  copied,
+  disabled,
+  editing,
+  editDraft,
+  onCopy,
+  onEdit,
+  onEditDraftChange,
+  onCancelEdit,
+  onResendEdit,
+  onRegenerate,
+}: {
+  message: UIMessage;
+  copied: boolean;
+  disabled: boolean;
+  editing: boolean;
+  editDraft: string;
+  onCopy: () => void;
+  onEdit: () => void;
+  onEditDraftChange: (text: string) => void;
+  onCancelEdit: () => void;
+  onResendEdit: () => void;
+  onRegenerate: () => void;
+}): React.JSX.Element {
+  const text = messageText(message);
+  const editInputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (editing) editInputRef.current?.focus();
+  }, [editing]);
+
   if (message.role === "user") {
-    const text = message.parts
-      .filter((p) => p.type === "text")
-      .map((p) => p.text)
-      .join("");
-    return <div className="tavern-msg-user">{text}</div>;
+    return (
+      <div className="tavern-msg tavern-msg-user-wrap">
+        {editing ? (
+          <div className="tavern-msg-edit">
+            <textarea
+              className="tavern-msg-edit-input"
+              value={editDraft}
+              rows={2}
+              ref={editInputRef}
+              aria-label="Edit message"
+              onMouseDown={() => window.api.panelRequestFocus()}
+              onChange={(event) => onEditDraftChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  !event.nativeEvent.isComposing
+                ) {
+                  event.preventDefault();
+                  onResendEdit();
+                }
+              }}
+            />
+            <div className="tavern-msg-edit-actions">
+              <button type="button" onClick={onCancelEdit}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="is-primary"
+                disabled={!editDraft.trim() || disabled}
+                onClick={onResendEdit}
+              >
+                Send again
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="tavern-msg-user">{text}</div>
+            <MessageActions
+              role={message.role}
+              copied={copied}
+              disabled={disabled}
+              onCopy={onCopy}
+              onEdit={onEdit}
+            />
+          </>
+        )}
+      </div>
+    );
   }
 
   return (
-    <>
-      {message.parts.map((part, i) => {
-        if (part.type === "text") {
-          if (!part.text) return null;
-          return (
-            <div key={`${message.id}-${i}`} className="tavern-msg-assistant">
-              <Markdown text={part.text} />
-            </div>
-          );
-        }
-        if (part.type.startsWith("tool-")) {
-          const tool = part as {
-            state?: string;
-            input?: unknown;
-            output?: { ok?: boolean; reason?: string };
-          };
-          if (tool.state !== "output-available") return null;
-          if (tool.output?.ok === false) return null;
-          return (
-            <ToolChip
-              key={`${message.id}-${i}`}
-              partType={part.type}
-              input={tool.input}
-              output={tool.output}
-            />
-          );
-        }
-        return null;
-      })}
-    </>
+    <div className="tavern-msg tavern-msg-assistant-wrap">
+      <div className="tavern-msg-assistant-content">
+        {message.parts.map((part, i) => {
+          if (part.type === "text") {
+            if (!part.text) return null;
+            return (
+              <div key={`${message.id}-${i}`} className="tavern-msg-assistant">
+                <Markdown text={part.text} />
+              </div>
+            );
+          }
+          if (part.type.startsWith("tool-")) {
+            const tool = part as {
+              state?: string;
+              input?: unknown;
+              output?: { ok?: boolean; reason?: string };
+            };
+            if (tool.state !== "output-available") return null;
+            if (tool.output?.ok === false) return null;
+            return (
+              <ToolChip
+                key={`${message.id}-${i}`}
+                partType={part.type}
+                input={tool.input}
+                output={tool.output}
+              />
+            );
+          }
+          return null;
+        })}
+      </div>
+      {text ? (
+        <MessageActions
+          role={message.role}
+          copied={copied}
+          disabled={disabled}
+          onCopy={onCopy}
+          onRegenerate={onRegenerate}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -432,6 +582,9 @@ function PanelInner({
 
   const [notice, setNotice] = useState<string | null>(null);
   const [approvals, setApprovals] = useState<AgentToolCall[]>([]);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const dictationBaseRef = useRef<string | null>(null);
@@ -450,7 +603,7 @@ function PanelInner({
     [thread.id],
   );
 
-  const { messages, sendMessage, status, addToolOutput } = useChat({
+  const { messages, sendMessage, regenerate, status, addToolOutput } = useChat({
     id: thread.id,
     messages: thread.messages,
     transport,
@@ -511,6 +664,57 @@ function PanelInner({
     setNotice(null);
     setDraft("");
     void sendMessage({ text });
+  };
+
+  const copyMessage = (message: UIMessage): void => {
+    const text = messageText(message);
+    if (!text) return;
+    void window.api
+      .remixSetClipboard(text)
+      .then((result) => {
+        if (!result.ok) throw new Error("copy-failed");
+        setCopiedMessageId(message.id);
+        window.setTimeout(
+          () =>
+            setCopiedMessageId((current) =>
+              current === message.id ? null : current,
+            ),
+          1_500,
+        );
+      })
+      .catch(() => setNotice("Could not copy that message."));
+  };
+
+  const startEditingMessage = (message: UIMessage): void => {
+    const text = messageText(message);
+    if (message.role !== "user" || !text || busy || approvals.length > 0)
+      return;
+    setEditingMessageId(message.id);
+    setEditDraft(text);
+  };
+
+  const cancelEditingMessage = (): void => {
+    setEditingMessageId(null);
+    setEditDraft("");
+  };
+
+  const resendEditedMessage = (): void => {
+    const text = editDraft.trim();
+    if (!editingMessageId || !text || busy || approvals.length > 0) return;
+    const messageId = editingMessageId;
+    cancelEditingMessage();
+    setNotice(null);
+    void sendMessage({ text, messageId }).catch(() => {
+      setNotice("Could not resend that message.");
+    });
+  };
+
+  const regenerateMessage = (message: UIMessage): void => {
+    if (message.role !== "assistant" || busy || approvals.length > 0) return;
+    setNotice(null);
+    void regenerate({ messageId: message.id }).catch(() => {
+      setNotice("Could not regenerate that response.");
+    });
   };
 
   const resolveApproval = (call: AgentToolCall, allowed: boolean): void => {
@@ -741,7 +945,20 @@ function PanelInner({
           ) : showChat ? (
             <>
               {messages.map((m) => (
-                <ChatMessage key={m.id} message={m} />
+                <ChatMessage
+                  key={m.id}
+                  message={m}
+                  copied={copiedMessageId === m.id}
+                  disabled={pinned}
+                  editing={editingMessageId === m.id}
+                  editDraft={editDraft}
+                  onCopy={() => copyMessage(m)}
+                  onEdit={() => startEditingMessage(m)}
+                  onEditDraftChange={setEditDraft}
+                  onCancelEdit={cancelEditingMessage}
+                  onResendEdit={resendEditedMessage}
+                  onRegenerate={() => regenerateMessage(m)}
+                />
               ))}
               {approvals.map((call) => (
                 <div key={call.toolCallId} className="tavern-approve">

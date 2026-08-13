@@ -390,8 +390,6 @@
 }
 
 .tavern-msg-user {
-  align-self: flex-end;
-  max-width: 85%;
   background: var(--tavern-wash);
   border: 2px solid var(--tavern-ink);
   border-radius: 11px 11px 4px 11px;
@@ -402,8 +400,132 @@
 }
 
 .tavern-msg-assistant {
-  align-self: stretch;
   overflow-wrap: break-word;
+}
+
+.tavern-msg {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.tavern-msg-user-wrap {
+  align-self: flex-end;
+  width: min(85%, 100%);
+  justify-items: end;
+}
+
+.tavern-msg-assistant-wrap {
+  align-self: stretch;
+}
+
+.tavern-msg-assistant-content {
+  display: grid;
+  gap: 8px;
+}
+
+.tavern-msg-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 22px;
+  color: var(--tavern-mute);
+}
+
+.tavern-msg-user-wrap .tavern-msg-actions {
+  justify-content: flex-end;
+}
+
+.tavern-msg-action {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: var(--tavern-mono);
+  font-size: 13px;
+  line-height: 1;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.tavern-msg-action:hover:not(:disabled) {
+  border-color: var(--tavern-rule);
+  background: var(--tavern-wash);
+  color: var(--tavern-ink);
+}
+
+.tavern-msg-action.is-copied {
+  color: #4a7c46;
+}
+
+.tavern-msg-action:disabled {
+  cursor: default;
+  opacity: .42;
+}
+
+.tavern-msg-action:focus-visible,
+.tavern-msg-edit-actions button:focus-visible {
+  outline: 2px solid var(--tavern-lantern);
+  outline-offset: 2px;
+}
+
+.tavern-msg-edit {
+  width: 100%;
+  border: 1px solid var(--tavern-lantern);
+  border-radius: 10px;
+  padding: 7px;
+  background: var(--tavern-card);
+  box-shadow: 2px 2px 0 #d98e2b33;
+}
+
+.tavern-msg-edit-input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 45px;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  padding: 2px 3px 6px;
+  background: transparent;
+  color: var(--tavern-ink);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tavern-msg-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.tavern-msg-edit-actions button {
+  border: 1px solid var(--tavern-rule);
+  border-radius: 6px;
+  padding: 4px 7px;
+  background: var(--tavern-parchment);
+  color: var(--tavern-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.tavern-msg-edit-actions button.is-primary {
+  border-color: var(--tavern-lantern);
+  background: var(--tavern-lantern);
+  color: var(--tavern-card);
+}
+
+.tavern-msg-edit-actions button:disabled {
+  cursor: default;
+  opacity: .5;
 }
 
 .tavern-md {

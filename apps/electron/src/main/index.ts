@@ -1771,7 +1771,7 @@ app.whenReady().then(async () => {
       type: "info",
       message: "Usage limit reached",
       detail:
-        "You've used your free Freestyle Cloud dictation for this week. Upgrade to Pro for unlimited dictation, or switch to a local or bring-your-own-key model in Settings > Models.",
+        "You've used all your agent runs for this week. Upgrade to Pro for unlimited runs, or wait for your weekly allowance to reset.",
       buttons: ["Upgrade to Pro", "Not Now"],
       defaultId: 0,
       cancelId: 1,

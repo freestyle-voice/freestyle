@@ -719,13 +719,29 @@ function BillingPage(): React.JSX.Element {
             Unlimited
             <span className="tavern-set-plan is-pro">Pro</span>
           </div>
+        ) : usage.isTrialing ? (
+          <div className="tavern-set-usage">
+            <div className="tavern-set-card-title">
+              Unlimited
+              <span className="tavern-set-card-sub">
+                {" "}
+                for {usage.trialDaysLeft}{" "}
+                {usage.trialDaysLeft === 1 ? "more day" : "more days"}
+              </span>
+            </div>
+            <span className="tavern-set-card-sub">
+              Your first week is on us. After that it's{" "}
+              {balance ? balance.limit.toLocaleString() : "50"} runs a week on
+              the free plan.
+            </span>
+          </div>
         ) : balance ? (
           <div className="tavern-set-usage">
             <div className="tavern-set-card-title">
               {balance.remaining.toLocaleString()}
               <span className="tavern-set-card-sub">
                 {" "}
-                / {balance.limit.toLocaleString()} words left
+                / {balance.limit.toLocaleString()} runs left
               </span>
             </div>
             <div className="tavern-set-usage-bar">
@@ -744,7 +760,7 @@ function BillingPage(): React.JSX.Element {
 
       <SectionLabel>Plan</SectionLabel>
       {usage.isPro ? (
-        <InfoRow label="Freestyle Pro" value="Unlimited words" />
+        <InfoRow label="Freestyle Pro" value="Unlimited runs" />
       ) : (
         <>
           <div className="tavern-plan-picker">

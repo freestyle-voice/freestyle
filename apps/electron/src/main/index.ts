@@ -92,6 +92,7 @@ import {
 } from "../shared/companion";
 import {
   createDictationDisplayRequestTracker,
+  invalidateDictationDisplayRequest,
   resolveCompanionDisplay,
   resolvePanelCompanionDisplays,
 } from "../shared/companion-position";
@@ -3276,6 +3277,7 @@ function openPanel(opts: { focusComposer?: boolean } = {}): void {
   createPanelWindow();
   const win = panelWindow;
   if (!win || win.isDestroyed()) return;
+  invalidateDictationDisplayRequest(dictationDisplayRequests);
   const cursorDisplay = screen.getDisplayNearestPoint(
     screen.getCursorScreenPoint(),
   );

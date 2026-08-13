@@ -27,13 +27,22 @@ export function resolvePanelCompanionDisplays<T extends CompanionDisplay>(
 }
 
 /** Tracks the dictation session allowed to update the companion's display. */
-export function createDictationDisplayRequestTracker(): {
+export interface DictationDisplayRequestTracker {
   begin: () => number;
   isCurrent: (request: number) => boolean;
-} {
+}
+
+export function createDictationDisplayRequestTracker(): DictationDisplayRequestTracker {
   let current = 0;
   return {
     begin: () => ++current,
     isCurrent: (request) => request === current,
   };
+}
+
+/** Prevent an in-flight focused-window lookup from replacing a newer anchor. */
+export function invalidateDictationDisplayRequest(
+  tracker: DictationDisplayRequestTracker,
+): void {
+  tracker.begin();
 }

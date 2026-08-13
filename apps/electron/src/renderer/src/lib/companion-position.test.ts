@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   createDictationDisplayRequestTracker,
+  invalidateDictationDisplayRequest,
   resolveCompanionDisplay,
   resolvePanelCompanionDisplays,
 } from "../../../shared/companion-position";
@@ -40,4 +41,12 @@ test("ignores a focused-display result from an earlier dictation session", () =>
 
   expect(tracker.isCurrent(firstSession)).toBe(false);
   expect(tracker.isCurrent(secondSession)).toBe(true);
+});
+
+test("rejects a pending focused-display result after the panel takes ownership", () => {
+  const tracker = createDictationDisplayRequestTracker();
+  const request = tracker.begin();
+  invalidateDictationDisplayRequest(tracker);
+
+  expect(tracker.isCurrent(request)).toBe(false);
 });

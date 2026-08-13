@@ -430,10 +430,26 @@
   gap: 3px;
   min-height: 22px;
   color: var(--tavern-mute);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
 }
 
 .tavern-msg-user-wrap .tavern-msg-actions {
   justify-content: flex-end;
+}
+
+.tavern-msg:hover .tavern-msg-actions,
+.tavern-msg:focus-within .tavern-msg-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .tavern-msg-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .tavern-msg-action {

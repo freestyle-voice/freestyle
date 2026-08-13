@@ -1072,6 +1072,12 @@
   border-color: var(--tavern-ink);
 }
 
+.tavern-btn-send.is-stop {
+  background: var(--tavern-rust);
+  border-color: var(--tavern-rust);
+  font-size: 11px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tavern *,
   .tavern {

@@ -16,6 +16,7 @@ import {
 } from "@renderer/lib/agent-tools";
 import { apiFetch, initApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider, useCloudAuth } from "@renderer/lib/auth-context";
+import { composerAction } from "@renderer/lib/composer-action";
 import { seedMessageFor, starterPrompts } from "@renderer/lib/onboarding-core";
 import { createQueryClient } from "@renderer/lib/query";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
@@ -647,54 +648,56 @@ function PanelInner({
     [thread.id],
   );
 
-  const { messages, sendMessage, regenerate, status, addToolOutput } = useChat({
-    id: thread.id,
-    messages: thread.messages,
-    transport,
-    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
-    onFinish: ({ messages: finished }) => {
-      if (finished.length === 0) return;
-      const last = finished[finished.length - 1];
-      if (last?.role !== "assistant") return;
-      const text = messageText(last);
-      if (!text) return;
-      window.api.agentTurnFinished({
-        threadId: thread.id,
-        excerpt: text.slice(0, 140),
-      });
-    },
-    onToolCall: async ({ toolCall }) => {
-      const call: AgentToolCall = {
-        toolName: toolCall.toolName,
-        toolCallId: toolCall.toolCallId,
-        input: toolCall.input,
-      };
-      const tier = await agentToolTier(call);
-      if (tier === "confirmed") {
-        setApprovals((prev) => [...prev, call]);
-        return;
-      }
-      const output =
-        tier === "free"
-          ? await executeAgentTool(call, thread.id)
-          : { ok: false, reason: `unknown tool: ${call.toolName}` };
-      addToolOutput({
-        tool: toolCall.toolName,
-        toolCallId: toolCall.toolCallId,
-        output,
-      });
-    },
-    onError: (err) => {
-      setNotice(
-        err.message.includes("cloud_auth_required") ||
-          err.message.includes("401")
-          ? "Sign in to Freestyle Cloud to chat."
-          : err.message,
-      );
-    },
-  });
+  const { messages, sendMessage, regenerate, stop, status, addToolOutput } =
+    useChat({
+      id: thread.id,
+      messages: thread.messages,
+      transport,
+      sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+      onFinish: ({ messages: finished }) => {
+        if (finished.length === 0) return;
+        const last = finished[finished.length - 1];
+        if (last?.role !== "assistant") return;
+        const text = messageText(last);
+        if (!text) return;
+        window.api.agentTurnFinished({
+          threadId: thread.id,
+          excerpt: text.slice(0, 140),
+        });
+      },
+      onToolCall: async ({ toolCall }) => {
+        const call: AgentToolCall = {
+          toolName: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          input: toolCall.input,
+        };
+        const tier = await agentToolTier(call);
+        if (tier === "confirmed") {
+          setApprovals((prev) => [...prev, call]);
+          return;
+        }
+        const output =
+          tier === "free"
+            ? await executeAgentTool(call, thread.id)
+            : { ok: false, reason: `unknown tool: ${call.toolName}` };
+        addToolOutput({
+          tool: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          output,
+        });
+      },
+      onError: (err) => {
+        setNotice(
+          err.message.includes("cloud_auth_required") ||
+            err.message.includes("401")
+            ? "Sign in to Freestyle Cloud to chat."
+            : err.message,
+        );
+      },
+    });
 
   const busy = status === "submitted" || status === "streaming";
+  const action = composerAction(status);
 
   useSpriteEmitter(messages, approvals.length, busy);
 
@@ -704,6 +707,11 @@ function PanelInner({
     setNotice(null);
     setDraft("");
     void sendMessage({ text });
+  };
+
+  const stopGeneration = (): void => {
+    if (!busy) return;
+    stop();
   };
 
   const copyMessage = (message: UIMessage): void => {
@@ -1083,11 +1091,12 @@ function PanelInner({
             />
             <button
               type="button"
-              className="tavern-btn tavern-btn-send"
-              aria-label="Send"
-              onClick={send}
+              className={`tavern-btn tavern-btn-send${action === "stop" ? " is-stop" : ""}`}
+              aria-label={action === "stop" ? "Stop generating" : "Send"}
+              title={action === "stop" ? "Stop generating" : "Send"}
+              onClick={action === "stop" ? stopGeneration : send}
             >
-              ↑
+              {action === "stop" ? "■" : "↑"}
             </button>
           </div>
         ) : null}

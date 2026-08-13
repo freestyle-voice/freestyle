@@ -3,10 +3,11 @@ import {
   connectorStatus,
   connectToolkit,
   disconnectToolkit,
-  listConnectorCatalog,
 } from "@renderer/lib/connectors";
+import { connectorCatalogQueryOptions, queryKeys } from "@renderer/lib/query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 5 * 60_000;
@@ -109,34 +110,11 @@ function ConnectedAppsSkeleton(): React.JSX.Element {
 
 export function ConnectedApps(): React.JSX.Element {
   const [query, setQuery] = useState("");
-  const [catalog, setCatalog] = useState<ConnectorCatalogItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busyToolkit, setBusyToolkit] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const catalogQuery = useQuery(connectorCatalogQueryOptions());
+  const catalog = catalogQuery.data ?? [];
+  const [actionError, setActionError] = useState<string | null>(null);
   const [pollStartedAt, setPollStartedAt] = useState(0);
-
-  // The catalog is deliberately fetched once and searched locally. This keeps
-  // typing instant in the compact panel and avoids replacing the list with a
-  // loading state for every keystroke.
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setCatalog(await listConnectorCatalog());
-      setError(null);
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Connected apps are unavailable.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const pending = useMemo(
     () =>
@@ -153,7 +131,7 @@ export function ConnectedApps(): React.JSX.Element {
     const timer = window.setInterval(() => {
       if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
         window.clearInterval(timer);
-        setError(
+        setActionError(
           "This connection is still pending. Finish it in your browser, or open it again to restart.",
         );
         return;
@@ -161,61 +139,72 @@ export function ConnectedApps(): React.JSX.Element {
       void Promise.all(
         pendingToolkits.map((toolkit) => connectorStatus(toolkit)),
       )
-        .then((statuses) =>
-          setCatalog((current) => {
-            const statusByToolkit = new Map(
-              pendingToolkits.map((toolkit, index) => [
-                toolkit,
-                statuses[index] ?? null,
-              ]),
-            );
-            return current.map((item) =>
-              statusByToolkit.has(item.slug)
-                ? {
-                    ...item,
-                    connection: statusByToolkit.get(item.slug) ?? null,
-                  }
-                : item,
-            );
-          }),
-        )
+        .then((statuses) => {
+          queryClient.setQueryData<ConnectorCatalogItem[]>(
+            queryKeys.connectors.catalog,
+            (current) => {
+              if (!current) return current;
+              const statusByToolkit = new Map(
+                pendingToolkits.map((toolkit, index) => [
+                  toolkit,
+                  statuses[index] ?? null,
+                ]),
+              );
+              return current.map((item) =>
+                statusByToolkit.has(item.slug)
+                  ? {
+                      ...item,
+                      connection: statusByToolkit.get(item.slug) ?? null,
+                    }
+                  : item,
+              );
+            },
+          );
+        })
         .catch(() => {});
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [pendingKey, pollStartedAt]);
+  }, [pendingKey, pollStartedAt, queryClient]);
 
-  const connect = async (toolkit: string) => {
-    setBusyToolkit(toolkit);
-    setError(null);
-    try {
-      await connectToolkit(toolkit);
+  const connectMutation = useMutation({
+    mutationFn: connectToolkit,
+    onSuccess: async () => {
       setPollStartedAt(Date.now());
-      await load();
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Could not start that connection.",
-      );
-    } finally {
-      setBusyToolkit(null);
-    }
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.connectors.catalog,
+      });
+    },
+  });
+  const disconnectMutation = useMutation({
+    mutationFn: disconnectToolkit,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.connectors.catalog,
+      });
+    },
+  });
+
+  const connect = (toolkit: string) => {
+    setActionError(null);
+    connectMutation.mutate(toolkit, {
+      onError: (cause) =>
+        setActionError(
+          cause instanceof Error
+            ? cause.message
+            : "Could not start that connection.",
+        ),
+    });
   };
-  const disconnect = async (toolkit: string) => {
-    setBusyToolkit(toolkit);
-    setError(null);
-    try {
-      await disconnectToolkit(toolkit);
-      await load();
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Could not disconnect that app.",
-      );
-    } finally {
-      setBusyToolkit(null);
-    }
+  const disconnect = (toolkit: string) => {
+    setActionError(null);
+    disconnectMutation.mutate(toolkit, {
+      onError: (cause) =>
+        setActionError(
+          cause instanceof Error
+            ? cause.message
+            : "Could not disconnect that app.",
+        ),
+    });
   };
 
   const normalizedQuery = query.trim().toLowerCase();
@@ -234,10 +223,22 @@ export function ConnectedApps(): React.JSX.Element {
   const available = matchingCatalog.filter(
     (item) => !item.connection || item.connection.status === "disconnected",
   );
-  const initialLoading = loading && catalog.length === 0;
+  const initialLoading = catalogQuery.isLoading && catalog.length === 0;
+  const error =
+    actionError ??
+    (catalogQuery.error instanceof Error
+      ? catalogQuery.error.message
+      : catalogQuery.isError
+        ? "Connected apps are unavailable."
+        : null);
+  const busyToolkit = connectMutation.isPending
+    ? connectMutation.variables
+    : disconnectMutation.isPending
+      ? disconnectMutation.variables
+      : null;
 
   return (
-    <section className="connected-apps" aria-busy={loading}>
+    <section className="connected-apps" aria-busy={catalogQuery.isFetching}>
       <header className="connected-apps-intro">
         <span>Private by default</span>
         <p>
@@ -269,7 +270,7 @@ export function ConnectedApps(): React.JSX.Element {
       {error ? (
         <div className="connector-error" role="alert">
           <span>{error}</span>
-          <button type="button" onClick={() => void load()}>
+          <button type="button" onClick={() => void catalogQuery.refetch()}>
             Try again
           </button>
         </div>
@@ -295,8 +296,8 @@ export function ConnectedApps(): React.JSX.Element {
               key={connector.slug}
               connector={connector}
               busy={busyToolkit === connector.slug}
-              onConnect={() => void connect(connector.slug)}
-              onDisconnect={() => void disconnect(connector.slug)}
+              onConnect={() => connect(connector.slug)}
+              onDisconnect={() => disconnect(connector.slug)}
             />
           ))}
         </div>
@@ -313,8 +314,8 @@ export function ConnectedApps(): React.JSX.Element {
               key={connector.slug}
               connector={connector}
               busy={busyToolkit === connector.slug}
-              onConnect={() => void connect(connector.slug)}
-              onDisconnect={() => void disconnect(connector.slug)}
+              onConnect={() => connect(connector.slug)}
+              onDisconnect={() => disconnect(connector.slug)}
             />
           ))}
         </div>

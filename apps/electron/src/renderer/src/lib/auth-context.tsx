@@ -67,7 +67,12 @@ function useCloudAuthState(): UseCloudAuth {
         })
         .catch(() => null);
       if (reached) {
-        if (!user && wasSignedInRef.current) setSessionExpired(true);
+        if (!user && wasSignedInRef.current) {
+          setSessionExpired(true);
+          queryClient.removeQueries({
+            queryKey: queryKeys.connectors.catalog,
+          });
+        }
         if (user) setSessionExpired(false);
         wasSignedInRef.current = !!user;
         setUser(user);
@@ -80,7 +85,7 @@ function useCloudAuthState(): UseCloudAuth {
     } finally {
       refreshInFlightRef.current = null;
     }
-  }, []);
+  }, [queryClient]);
 
   const refresh = useCallback(
     async (): Promise<CloudUser | null> => (await refreshInternal()).user,
@@ -156,6 +161,7 @@ function useCloudAuthState(): UseCloudAuth {
         const data = await tokenRes.json();
         if (attempt !== signInAttemptRef.current) return null;
         queryClient.removeQueries({ queryKey: queryKeys.cloud.usage });
+        queryClient.removeQueries({ queryKey: queryKeys.connectors.catalog });
         wasSignedInRef.current = true;
         setSessionExpired(false);
         setUser(data.user);
@@ -198,6 +204,7 @@ function useCloudAuthState(): UseCloudAuth {
     setSessionExpired(false);
     setUser(null);
     queryClient.removeQueries({ queryKey: queryKeys.cloud.usage });
+    queryClient.removeQueries({ queryKey: queryKeys.connectors.catalog });
   }, [queryClient]);
 
   return {

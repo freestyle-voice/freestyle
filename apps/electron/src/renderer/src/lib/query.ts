@@ -1,5 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { getClient } from "./api";
+import { type ConnectorCatalogItem, listConnectorCatalog } from "./connectors";
 import type { AvailableModel } from "./models";
 
 /** Common staleTime for cached queries (1 hour). */
@@ -62,6 +63,10 @@ export const queryKeys = {
     all: ["vocabulary"] as const,
     list: (page: number, search: string) =>
       ["vocabulary", page, search] as const,
+  },
+
+  connectors: {
+    catalog: ["connectors", "catalog"] as const,
   },
 
   /** Remix practice runs. */
@@ -150,6 +155,20 @@ export function dismissedNotificationsQueryOptions() {
       if (!res.ok) throw new Error("Failed to load dismissed notifications");
       return (await res.json()) as string[];
     },
+  };
+}
+
+/**
+ * Connected-app catalog and status snapshot. Keep it warm across Settings
+ * navigation, but refresh after five minutes so lifecycle changes made outside
+ * the desktop app do not remain hidden for the full default cache lifetime.
+ */
+export function connectorCatalogQueryOptions() {
+  return {
+    queryKey: queryKeys.connectors.catalog,
+    queryFn: (): Promise<ConnectorCatalogItem[]> => listConnectorCatalog(),
+    staleTime: 5 * 60 * 1000,
+    gcTime: ONE_HOUR,
   };
 }
 

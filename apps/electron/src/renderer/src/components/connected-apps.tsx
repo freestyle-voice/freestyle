@@ -29,7 +29,7 @@ function connectionCopy(connector: ConnectorCatalogItem): string {
     return "Finish connecting in your browser";
   if (connection?.status === "needs_reconnect")
     return "Reconnect to keep using this app";
-  return "Available to Remix";
+  return "Available to Freestyle";
 }
 
 function connectionBadge(connector: ConnectorCatalogItem): string | null {

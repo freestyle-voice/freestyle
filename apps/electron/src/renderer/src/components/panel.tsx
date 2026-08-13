@@ -20,6 +20,7 @@ import { seedMessageFor, starterPrompts } from "@renderer/lib/onboarding-core";
 import { createQueryClient } from "@renderer/lib/query";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
+import { toolPresentation } from "@renderer/lib/tool-presentation";
 import { SpriteBadge } from "@renderer/sprites/badge";
 import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
 import { PANEL_TABS, type PanelTab } from "@shared/panel";
@@ -48,36 +49,6 @@ const TAB_PLACEHOLDER: Record<PanelTab, string> = {
   notes: "No notes yet.",
 };
 
-const TOOL_LABELS: Record<string, string> = {
-  "tool-current_time": "checked the time",
-  "tool-web_search": "searched the web",
-  "tool-image_search": "searched for images",
-  "tool-get_context": "looked at your screen",
-  "tool-read_document": "read the document",
-  "tool-get_clipboard": "read your clipboard",
-  "tool-set_clipboard": "updated your clipboard",
-  "tool-paste": "pasted at your cursor",
-  "tool-Bash": "ran a command",
-  "tool-Read": "read a file",
-  "tool-Write": "wrote a file",
-  "tool-Edit": "edited a file",
-  "tool-Glob": "listed files",
-  "tool-Grep": "searched files",
-  "tool-brain_read": "recalled from its brain",
-  "tool-brain_write": "wrote to its brain",
-  "tool-brain_edit": "updated its brain",
-  "tool-brain_glob": "browsed its brain",
-  "tool-brain_search": "searched its brain",
-  "tool-brain_delete": "forgot something",
-  "tool-emote": "emoted",
-};
-
-function toolLabel(partType: string): string {
-  return (
-    TOOL_LABELS[partType] ?? partType.replace(/^tool-/, "").replace(/_/g, " ")
-  );
-}
-
 function toolJson(value: unknown): string {
   try {
     const dump = JSON.stringify(value, null, 1) ?? "";
@@ -97,37 +68,82 @@ function ToolChip({
   output: unknown;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
+  const presentation = toolPresentation(partType);
+  const hasInput =
+    input !== undefined &&
+    input !== null &&
+    (typeof input !== "object" || Object.keys(input).length > 0);
+  const hasOutput =
+    output !== undefined &&
+    output !== null &&
+    (typeof output !== "object" ||
+      Object.keys(output).some((key) => key !== "ok"));
+  const canExpand = hasInput || hasOutput;
+  const activity = (
+    <>
+      <span className="tavern-tool-mark" aria-hidden="true">
+        ◆
+      </span>
+      <span className="tavern-tool-copy">
+        <strong>{presentation.title}</strong>
+        {presentation.detail ? <small>{presentation.detail}</small> : null}
+      </span>
+      <span className="tavern-tool-state">
+        <i aria-hidden="true" /> Done
+      </span>
+      {canExpand ? (
+        <span className="tavern-tool-caret" aria-hidden="true">
+          {open ? "▾" : "▸"}
+        </span>
+      ) : null}
+    </>
+  );
+
+  if (!canExpand) {
+    return <div className="tavern-tool tavern-tool-static">{activity}</div>;
+  }
+
   return (
     <div className="tavern-tool">
       <button
         type="button"
-        className="tavern-msg-tool tavern-tool-toggle"
+        className="tavern-tool-toggle"
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
       >
-        <i className="tavern-tool-spark">◆</i> {toolLabel(partType)}{" "}
-        {open ? "▾" : "▸"}
+        {activity}
       </button>
       {open ? (
         <div className="tavern-tool-detail">
-          {input !== undefined && Object.keys(input as object).length > 0 ? (
+          {hasInput ? (
             <>
-              <span className="tavern-tool-heading">Input</span>
+              <span className="tavern-tool-heading">Request</span>
               <pre className="tavern-tool-block">{toolJson(input)}</pre>
             </>
           ) : null}
-          <span className="tavern-tool-heading">Output</span>
-          <pre className="tavern-tool-block">{toolJson(output)}</pre>
+          {hasOutput ? (
+            <>
+              <span className="tavern-tool-heading">Result</span>
+              <pre className="tavern-tool-block">{toolJson(output)}</pre>
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>
   );
 }
 
+function isPlaceholderText(text: string): boolean {
+  return text.trim() === "...";
+}
+
 function messageText(message: UIMessage): string {
   return message.parts
-    .filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .filter(Boolean)
+    .flatMap((part) =>
+      part.type === "text" && !isPlaceholderText(part.text) && part.text
+        ? [part.text]
+        : [],
+    )
     .join("\n\n");
 }
 
@@ -276,7 +292,7 @@ function ChatMessage({
       <div className="tavern-msg-assistant-content">
         {message.parts.map((part, i) => {
           if (part.type === "text") {
-            if (!part.text) return null;
+            if (!part.text || isPlaceholderText(part.text)) return null;
             return (
               <div key={`${message.id}-${i}`} className="tavern-msg-assistant">
                 <Markdown text={part.text} />
@@ -612,11 +628,7 @@ function PanelInner({
       if (finished.length === 0) return;
       const last = finished[finished.length - 1];
       if (last?.role !== "assistant") return;
-      const text = last.parts
-        .filter((p) => p.type === "text")
-        .map((p) => (p as { text: string }).text)
-        .join(" ")
-        .trim();
+      const text = messageText(last);
       if (!text) return;
       window.api.agentTurnFinished({
         threadId: thread.id,

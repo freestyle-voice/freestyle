@@ -1869,14 +1869,53 @@
   text-align: center;
 }
 
-.connector-load-spinner {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 auto;
-  border: 2px solid var(--tavern-rule);
-  border-top-color: var(--tavern-lantern);
+.connector-load-more.is-loading {
+  min-height: 52px;
+  justify-content: flex-start;
+  padding: 8px 12px;
+  border: 1px dashed #d8ba88;
+  border-radius: 10px;
+  background:
+    linear-gradient(90deg, #fff8e9 0%, #f9edd8 48%, #fff8e9 100%);
+  background-size: 180% 100%;
+  animation: connector-load-wash 2.5s ease-in-out infinite;
+}
+
+.connector-load-trail {
+  display: flex;
+  width: 35px;
+  flex: 0 0 35px;
+  align-items: center;
+  gap: 4px;
+}
+
+.connector-load-trail i {
+  display: block;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  animation: connector-spin 700ms linear infinite;
+  background: var(--tavern-lantern);
+  box-shadow: 0 1px 0 #fff6e4 inset;
+  animation: connector-load-step 1.15s ease-in-out infinite;
+}
+
+.connector-load-trail i:nth-child(2) { animation-delay: 120ms; }
+.connector-load-trail i:nth-child(3) { animation-delay: 240ms; }
+
+.connector-load-copy {
+  display: grid;
+  gap: 1px;
+  text-align: left;
+}
+
+.connector-load-copy strong {
+  color: var(--tavern-ink);
+  font-size: 11px;
+}
+
+.connector-load-copy small {
+  color: var(--tavern-mute);
+  font-size: 9.5px;
 }
 
 .connector-skeleton {
@@ -1934,8 +1973,13 @@
   to { background-position: -200% 0; }
 }
 
-@keyframes connector-spin {
-  to { transform: rotate(1turn); }
+@keyframes connector-load-step {
+  0%, 55%, 100% { opacity: .3; transform: translateY(0) scale(.72); }
+  22% { opacity: 1; transform: translateY(-3px) scale(1); }
+}
+
+@keyframes connector-load-wash {
+  50% { background-position: -80% 0; }
 }
 
 .connector-empty {
@@ -1964,7 +2008,8 @@
   .connector-skeleton-mark,
   .connector-skeleton-copy i,
   .connector-skeleton-action,
-  .connector-load-spinner { animation: none; }
+  .connector-load-more.is-loading,
+  .connector-load-trail i { animation: none; }
 }
 
 .tavern-set-saved {

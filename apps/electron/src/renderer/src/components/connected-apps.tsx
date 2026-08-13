@@ -385,11 +385,22 @@ export function ConnectedApps(): React.JSX.Element {
       ) : null}
 
       {!initialLoading && catalog.length > 0 ? (
-        <div ref={loadMoreRef} className="connector-load-more" role="status">
+        <div
+          ref={loadMoreRef}
+          className={`connector-load-more${catalogQuery.isFetchingNextPage ? " is-loading" : ""}`}
+          role="status"
+        >
           {catalogQuery.isFetchingNextPage ? (
             <>
-              <span className="connector-load-spinner" aria-hidden="true" />
-              Loading more apps…
+              <span className="connector-load-trail" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+              <span className="connector-load-copy">
+                <strong>Finding more apps</strong>
+                <small>Keeping your place in the catalog</small>
+              </span>
             </>
           ) : normalizedQuery ? (
             "Filter applies to apps loaded so far."

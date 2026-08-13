@@ -93,6 +93,7 @@ import {
 import {
   createDictationDisplayRequestTracker,
   resolveCompanionDisplay,
+  resolvePanelCompanionDisplays,
 } from "../shared/companion-position";
 import {
   findFocusedSwayNode,
@@ -3203,8 +3204,11 @@ let panelBusy = false;
 const PANEL_HIDE_GRACE_MS = 420;
 const PANEL_HOVER_PAD = 24;
 
-function panelPosition(): { x: number; y: number; height: number } {
-  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+function panelPosition(display: Display): {
+  x: number;
+  y: number;
+  height: number;
+} {
   const { x: waX, y: waY, width, height } = display.workArea;
   const x = Math.min(waX + 16, waX + Math.max(0, width - PANEL_WIDTH - 16));
   const available = height - COMPANION_CLEARANCE - PANEL_GAP;
@@ -3215,7 +3219,8 @@ function panelPosition(): { x: number; y: number; height: number } {
 
 function createPanelWindow(): void {
   if (panelWindow && !panelWindow.isDestroyed()) return;
-  const { x, y, height } = panelPosition();
+  const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const { x, y, height } = panelPosition(display);
 
   panelWindow = new BrowserWindow({
     width: PANEL_WIDTH,
@@ -3271,8 +3276,14 @@ function openPanel(opts: { focusComposer?: boolean } = {}): void {
   createPanelWindow();
   const win = panelWindow;
   if (!win || win.isDestroyed()) return;
-  const { x, y, height } = panelPosition();
+  const cursorDisplay = screen.getDisplayNearestPoint(
+    screen.getCursorScreenPoint(),
+  );
+  const { panelDisplay, companionDisplay } =
+    resolvePanelCompanionDisplays(cursorDisplay);
+  const { x, y, height } = panelPosition(panelDisplay);
   win.setBounds({ x, y, width: PANEL_WIDTH, height });
+  positionCompanionOnDisplay(companionDisplay);
   if (opts.focusComposer) {
     win.show();
     win.focus();

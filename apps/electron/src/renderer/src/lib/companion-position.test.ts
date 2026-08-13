@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   createDictationDisplayRequestTracker,
   resolveCompanionDisplay,
+  resolvePanelCompanionDisplays,
 } from "../../../shared/companion-position";
 
 const focusedDisplay = {
@@ -22,6 +23,13 @@ describe("resolveCompanionDisplay", () => {
 
   test("uses the cursor display only when no focused-app display is available", () => {
     expect(resolveCompanionDisplay(null, cursorDisplay)).toBe(cursorDisplay);
+  });
+});
+
+test("keeps the companion on the display selected when opening the panel", () => {
+  expect(resolvePanelCompanionDisplays(cursorDisplay)).toEqual({
+    panelDisplay: cursorDisplay,
+    companionDisplay: cursorDisplay,
   });
 });
 

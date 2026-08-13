@@ -16,6 +16,16 @@ export function resolveCompanionDisplay<T extends CompanionDisplay>(
   return focusedDisplay ?? cursorDisplay;
 }
 
+/**
+ * Opening the panel establishes the shared display for the panel and its
+ * companion, even if the companion was previously anchored for dictation.
+ */
+export function resolvePanelCompanionDisplays<T extends CompanionDisplay>(
+  panelDisplay: T,
+): { panelDisplay: T; companionDisplay: T } {
+  return { panelDisplay, companionDisplay: panelDisplay };
+}
+
 /** Tracks the dictation session allowed to update the companion's display. */
 export function createDictationDisplayRequestTracker(): {
   begin: () => number;

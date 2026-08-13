@@ -1,13 +1,22 @@
 import {
   type ConnectorCatalogItem,
+  type ConnectorCatalogPage,
   connectorStatus,
   connectToolkit,
   disconnectToolkit,
 } from "@renderer/lib/connectors";
-import { connectorCatalogQueryOptions, queryKeys } from "@renderer/lib/query";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  connectorCatalogInfiniteQueryOptions,
+  queryKeys,
+} from "@renderer/lib/query";
+import {
+  type InfiniteData,
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 5 * 60_000;
@@ -111,10 +120,14 @@ function ConnectedAppsSkeleton(): React.JSX.Element {
 export function ConnectedApps(): React.JSX.Element {
   const [query, setQuery] = useState("");
   const queryClient = useQueryClient();
-  const catalogQuery = useQuery(connectorCatalogQueryOptions());
-  const catalog = catalogQuery.data ?? [];
+  const catalogQuery = useInfiniteQuery(connectorCatalogInfiniteQueryOptions());
+  const catalog = useMemo(
+    () => catalogQuery.data?.pages.flatMap((page) => page.connectors) ?? [],
+    [catalogQuery.data],
+  );
   const [actionError, setActionError] = useState<string | null>(null);
   const [pollStartedAt, setPollStartedAt] = useState(0);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   const pending = useMemo(
     () =>
@@ -140,7 +153,7 @@ export function ConnectedApps(): React.JSX.Element {
         pendingToolkits.map((toolkit) => connectorStatus(toolkit)),
       )
         .then((statuses) => {
-          queryClient.setQueryData<ConnectorCatalogItem[]>(
+          queryClient.setQueryData<InfiniteData<ConnectorCatalogPage>>(
             queryKeys.connectors.catalog,
             (current) => {
               if (!current) return current;
@@ -150,14 +163,20 @@ export function ConnectedApps(): React.JSX.Element {
                   statuses[index] ?? null,
                 ]),
               );
-              return current.map((item) =>
-                statusByToolkit.has(item.slug)
-                  ? {
-                      ...item,
-                      connection: statusByToolkit.get(item.slug) ?? null,
-                    }
-                  : item,
-              );
+              return {
+                ...current,
+                pages: current.pages.map((page) => ({
+                  ...page,
+                  connectors: page.connectors.map((item) =>
+                    statusByToolkit.has(item.slug)
+                      ? {
+                          ...item,
+                          connection: statusByToolkit.get(item.slug) ?? null,
+                        }
+                      : item,
+                  ),
+                })),
+              };
             },
           );
         })
@@ -208,6 +227,32 @@ export function ConnectedApps(): React.JSX.Element {
   };
 
   const normalizedQuery = query.trim().toLowerCase();
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (
+      !target ||
+      normalizedQuery ||
+      !catalogQuery.hasNextPage ||
+      catalogQuery.isFetchingNextPage
+    )
+      return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) void catalogQuery.fetchNextPage();
+      },
+      { rootMargin: "180px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [
+    catalogQuery.fetchNextPage,
+    catalogQuery.hasNextPage,
+    catalogQuery.isFetchingNextPage,
+    normalizedQuery,
+  ]);
+
   const matchingCatalog = useMemo(
     () =>
       normalizedQuery
@@ -251,9 +296,9 @@ export function ConnectedApps(): React.JSX.Element {
         <span aria-hidden="true">⌕</span>
         <input
           id="connector-search"
-          aria-label="Search connected apps"
+          aria-label="Filter loaded connected apps"
           value={query}
-          placeholder="Search apps"
+          placeholder="Filter loaded apps"
           onChange={(event) => setQuery(event.target.value)}
         />
         {query ? (
@@ -336,6 +381,23 @@ export function ConnectedApps(): React.JSX.Element {
               Clear search
             </button>
           ) : null}
+        </div>
+      ) : null}
+
+      {!initialLoading && catalog.length > 0 ? (
+        <div ref={loadMoreRef} className="connector-load-more" role="status">
+          {catalogQuery.isFetchingNextPage ? (
+            <>
+              <span className="connector-load-spinner" aria-hidden="true" />
+              Loading more apps…
+            </>
+          ) : normalizedQuery ? (
+            "Filter applies to apps loaded so far."
+          ) : catalogQuery.hasNextPage ? (
+            "More apps load as you scroll."
+          ) : (
+            "All available apps loaded."
+          )}
         </div>
       ) : null}
     </section>

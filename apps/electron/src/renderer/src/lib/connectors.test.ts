@@ -1,7 +1,18 @@
-import { describe, expect, it } from "vitest";
-import { connectorToolActionName, isConnectorToolName } from "./connectors";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+
+vi.mock("@renderer/lib/api", () => ({ apiFetch }));
+
+import {
+  connectorToolActionName,
+  isConnectorToolName,
+  listConnectorCatalog,
+} from "./connectors";
 
 describe("connected-app tool approvals", () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it("requires confirmation before a connector action can execute", async () => {
     expect(
       isConnectorToolName("connector__connection_1__GMAIL_SEND_EMAIL"),
@@ -16,5 +27,21 @@ describe("connected-app tool approvals", () => {
     expect(
       connectorToolActionName("connector__connection_1__474d41494c5f534554"),
     ).toBe("GMAIL_SET");
+  });
+
+  it("requests a bounded connector catalog page using the opaque cursor", async () => {
+    apiFetch.mockResolvedValue(
+      new Response(JSON.stringify({ connectors: [], nextCursor: "cursor-2" })),
+    );
+
+    await expect(
+      listConnectorCatalog({ cursor: "cursor-1", limit: 24 }),
+    ).resolves.toEqual({
+      connectors: [],
+      nextCursor: "cursor-2",
+    });
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/api/connectors/catalog?limit=24&cursor=cursor-1",
+    );
   });
 });

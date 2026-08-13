@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { getClient } from "./api";
-import { type ConnectorCatalogItem, listConnectorCatalog } from "./connectors";
+import { type ConnectorCatalogPage, listConnectorCatalog } from "./connectors";
 import type { AvailableModel } from "./models";
 
 /** Common staleTime for cached queries (1 hour). */
@@ -163,10 +163,19 @@ export function dismissedNotificationsQueryOptions() {
  * navigation, but refresh after five minutes so lifecycle changes made outside
  * the desktop app do not remain hidden for the full default cache lifetime.
  */
-export function connectorCatalogQueryOptions() {
+export const CONNECTOR_CATALOG_PAGE_SIZE = 24;
+
+export function connectorCatalogInfiniteQueryOptions() {
   return {
     queryKey: queryKeys.connectors.catalog,
-    queryFn: (): Promise<ConnectorCatalogItem[]> => listConnectorCatalog(),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }: { pageParam: string | null }) =>
+      listConnectorCatalog({
+        cursor: pageParam ?? undefined,
+        limit: CONNECTOR_CATALOG_PAGE_SIZE,
+      }),
+    getNextPageParam: (lastPage: ConnectorCatalogPage) =>
+      lastPage.nextCursor ?? undefined,
     staleTime: 5 * 60 * 1000,
     gcTime: ONE_HOUR,
   };

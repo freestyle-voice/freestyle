@@ -1858,6 +1858,27 @@
   font-size: 11px;
 }
 
+.connector-load-more {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--tavern-mute);
+  font-size: 10.5px;
+  text-align: center;
+}
+
+.connector-load-spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 2px solid var(--tavern-rule);
+  border-top-color: var(--tavern-lantern);
+  border-radius: 50%;
+  animation: connector-spin 700ms linear infinite;
+}
+
 .connector-skeleton {
   display: grid;
   gap: 7px;
@@ -1913,6 +1934,10 @@
   to { background-position: -200% 0; }
 }
 
+@keyframes connector-spin {
+  to { transform: rotate(1turn); }
+}
+
 .connector-empty {
   display: grid;
   justify-items: start;
@@ -1938,7 +1963,8 @@
   .connector-card:hover { transform: none; }
   .connector-skeleton-mark,
   .connector-skeleton-copy i,
-  .connector-skeleton-action { animation: none; }
+  .connector-skeleton-action,
+  .connector-load-spinner { animation: none; }
 }
 
 .tavern-set-saved {

@@ -24,6 +24,11 @@ export type ConnectorCatalogItem = {
   connection: ConnectorConnection | null;
 };
 
+export type ConnectorCatalogPage = {
+  connectors: ConnectorCatalogItem[];
+  nextCursor: string | null;
+};
+
 export function isConnectorToolName(name: string): boolean {
   return /^connector__[a-zA-Z0-9_-]+__[a-zA-Z0-9_]+$/.test(name);
 }
@@ -63,13 +68,18 @@ async function responseJson<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
-export async function listConnectorCatalog(
-  query = "",
-): Promise<ConnectorCatalogItem[]> {
-  const data = await responseJson<{ connectors: ConnectorCatalogItem[] }>(
-    await apiFetch(`/api/connectors/catalog?q=${encodeURIComponent(query)}`),
+export async function listConnectorCatalog({
+  cursor,
+  limit = 24,
+}: {
+  cursor?: string;
+  limit?: number;
+} = {}): Promise<ConnectorCatalogPage> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
+  return responseJson<ConnectorCatalogPage>(
+    await apiFetch(`/api/connectors/catalog?${params.toString()}`),
   );
-  return data.connectors;
 }
 
 export async function connectToolkit(toolkit: string): Promise<void> {

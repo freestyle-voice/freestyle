@@ -1538,11 +1538,7 @@ export function SettingsView({
         onClick={() => setPage("billing")}
       />
       <NavRow label="Brain" onClick={() => setPage("brain")} />
-      <NavRow
-        label="Connected apps"
-        detail="Freestyle"
-        onClick={() => setPage("connectedApps")}
-      />
+      <NavRow label="Connected apps" onClick={() => setPage("connectedApps")} />
       <NavRow label="Scheduled" onClick={() => setPage("scheduled")} />
       <NavRow label="Notifications" onClick={() => setPage("notifications")} />
       <NavRow

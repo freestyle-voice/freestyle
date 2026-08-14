@@ -266,7 +266,7 @@ export function beatLines(beat: BeatId, ctx: BeatContext): BeatScene {
     case "inbox":
       return {
         lines: [
-          "Now the real work. Hook up your mail and I'll stand watch: a brief every weekday morning, and a word when something important is about to slip.",
+          "Now the real work. Hook up your mail and I'll stand watch. A daily brief of your inbox every weekday morning, and a reminder when something important is about to slip.",
         ],
         hint: "Your mail stays yours. I read; I never send.",
       };
@@ -275,7 +275,7 @@ export function beatLines(beat: BeatId, ctx: BeatContext): BeatScene {
         lines: [
           ctx.emailConnected
             ? "Good. The inbox is watched. Calendar next: mornings I'll lay your day out, and before meetings I'll hand you what you need walking in."
-            : "Suit yourself; the offer stands. Calendar, then: mornings I'll lay your day out, and before meetings I'll hand you what you need walking in.",
+            : "Suit yourself. Calendar then. Mornings I'll lay your day out, and before meetings I'll hand you what you need walking in.",
         ],
       };
     case "goal":

@@ -151,7 +151,7 @@ describe("beat script", () => {
     ).toContain("watched");
     expect(
       beatLines("compass", { ...ctx, emailConnected: false }).lines[0],
-    ).toContain("offer stands");
+    ).toContain("Suit yourself");
     expect(
       beatLines("goal", { ...ctx, calendarConnected: true }).lines[0],
     ).toContain("watch set");

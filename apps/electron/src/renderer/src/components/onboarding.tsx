@@ -353,7 +353,7 @@ export function OnboardingGate({
   const connectionsQuery = useQuery(connectorConnectionsQueryOptions());
   const suggestedQuery = useQuery(connectorSuggestedQueryOptions());
   const suggested = useMemo(
-    () => suggestedQuery.data ?? [],
+    () => suggestedQuery.data?.connectors ?? [],
     [suggestedQuery.data],
   );
 

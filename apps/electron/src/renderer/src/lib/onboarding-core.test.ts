@@ -13,7 +13,6 @@ import {
   questFor,
   seedMessageFor,
   starterPrompts,
-  tradeReaction,
 } from "./onboarding-core";
 
 describe("parseSaved", () => {
@@ -91,21 +90,6 @@ describe("nameReaction", () => {
   });
 });
 
-describe("tradeReaction", () => {
-  it("has a bespoke line for every chip", () => {
-    expect(tradeReaction("Consultant")).toContain("hired blade");
-    expect(tradeReaction("Between things")).toContain("eleven years");
-  });
-
-  it("quotes custom trades back", () => {
-    expect(tradeReaction("Beekeeper")).toContain('"Beekeeper."');
-  });
-
-  it("handles an empty trade", () => {
-    expect(tradeReaction("  ")).toContain("watching what you ask");
-  });
-});
-
 describe("jobReaction", () => {
   it("calls short tasks blunt", () => {
     expect(jobReaction("Reply to Sam")).toContain("Blunt");
@@ -157,8 +141,8 @@ describe("beat script", () => {
     expect(beatLines("trade", ctx).lines[0]).toContain("Matt");
   });
 
-  it("opens the inbox beat with the trade reaction", () => {
-    expect(beatLines("inbox", ctx).lines[0]).toContain("smith");
+  it("goes straight to the mail pitch after the trade", () => {
+    expect(beatLines("inbox", ctx).lines[0]).toContain("Hook up your mail");
   });
 
   it("acknowledges connections in the compass and goal beats", () => {

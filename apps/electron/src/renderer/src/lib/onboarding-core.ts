@@ -75,35 +75,6 @@ export const TRADE_CHIPS = [
   "Between things",
 ] as const;
 
-const TRADE_REACTIONS: Record<string, string> = {
-  Engineer:
-    "A smith. You build the things everyone else swings around all day.",
-  Designer:
-    "You decide how a thing feels before anyone touches it. Closer to swordwork than you'd think.",
-  Founder: "A daimyo with no army yet. I've served worse odds.",
-  Product: "You pick which hill we take. Fine. I'll carry the map.",
-  Writer:
-    "Words. Careful with those. They cut both directions, and they don't stop when you do.",
-  Student:
-    "Training, then. Everyone's a student. Mine ran forty years and I still lost twice.",
-  Researcher:
-    "You chase the truth for a living. Slow work. Honest work. I like it.",
-  Marketer: "You decide where the eyes go. Half of any battle is exactly that.",
-  Consultant: "A hired blade. Ha. We'll get along.",
-  Operations:
-    "You keep the machine breathing while other people take the bow. Noted.",
-  Sales: "You talk people into things. So did every general worth remembering.",
-  Teacher:
-    "You sharpen other people. Better job than mine. Nobody writes songs about it.",
-  Finance:
-    "You count what's real. Somebody has to, or the camp starves by spring.",
-  Healthcare:
-    "You put people back together. I only ever did the other thing. Respect.",
-  Law: "Rules as weapons. Grim discipline. Still a discipline.",
-  "Between things":
-    "Between things. So was I, for eleven years. It ends. Sit down.",
-};
-
 /** The Job's placeholder examples, tuned to the trade they just picked. */
 const JOB_EXAMPLES: Record<string, [string, string, string]> = {
   Engineer: ["Fix the login bug", "Review Sam's PR", "Write the deploy script"],
@@ -248,17 +219,6 @@ export function nameReaction(
   return `${first}. Good name. Short enough to shout across a room.`;
 }
 
-export function tradeReaction(trade: string): string {
-  const trimmed = trade.trim();
-  if (!trimmed) {
-    return "Nothing? Fine. I'll work out what you do by watching what you ask.";
-  }
-  return (
-    TRADE_REACTIONS[trimmed] ??
-    `"${trimmed}." Never heard of it. You'll teach me.`
-  );
-}
-
 export function jobReaction(task: string): string {
   const trimmed = task.trim();
   if (!trimmed) {
@@ -306,7 +266,6 @@ export function beatLines(beat: BeatId, ctx: BeatContext): BeatScene {
     case "inbox":
       return {
         lines: [
-          tradeReaction(ctx.trade),
           "Now the real work. Hook up your mail and I'll stand watch: a brief every weekday morning, and a word when something important is about to slip.",
         ],
         hint: "Your mail stays yours. I read; I never send.",

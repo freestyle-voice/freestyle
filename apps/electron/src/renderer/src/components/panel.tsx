@@ -10,6 +10,7 @@ import { NotesTab } from "@renderer/components/notes-tab";
 import { OnboardingGate, useOnboarding } from "@renderer/components/onboarding";
 import { OpenerCards } from "@renderer/components/opener-cards";
 import { SettingsView } from "@renderer/components/settings-view";
+import { Spark } from "@renderer/components/spark";
 import { TodosTab } from "@renderer/components/todos-tab";
 import {
   type AgentToolCall,
@@ -22,16 +23,22 @@ import { apiFetch, initApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider, useCloudAuth } from "@renderer/lib/auth-context";
 import { composerAction } from "@renderer/lib/composer-action";
 import { seedMessageFor } from "@renderer/lib/onboarding-core";
-import { createQueryClient } from "@renderer/lib/query";
+import {
+  connectorConnectionsQueryOptions,
+  createQueryClient,
+} from "@renderer/lib/query";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
 import { highlightToolJson, toolJson } from "@renderer/lib/tool-json";
-import { toolPresentation } from "@renderer/lib/tool-presentation";
+import {
+  connectorToolkitSlug,
+  toolPresentation,
+} from "@renderer/lib/tool-presentation";
 import { SpriteBadge } from "@renderer/sprites/badge";
 import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
 import { PANEL_TABS, type PanelTab } from "@shared/panel";
 import { SPRITES_INFO } from "@shared/sprites";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import {
   DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
@@ -96,6 +103,33 @@ function ShikiJson({ value }: { value: unknown }): React.JSX.Element {
   );
 }
 
+function ToolMark({ partType }: { partType: string }): React.JSX.Element {
+  const slug = connectorToolkitSlug(partType);
+  const [failed, setFailed] = useState(false);
+  const connections = useQuery(connectorConnectionsQueryOptions());
+  const logo = slug
+    ? (connections.data?.find((connection) => connection.toolkitSlug === slug)
+        ?.toolkitLogo ?? null)
+    : null;
+
+  if (!logo || failed) {
+    return (
+      <span className="tavern-tool-mark" aria-hidden="true">
+        ✦
+      </span>
+    );
+  }
+  return (
+    <img
+      className="tavern-tool-icon"
+      src={logo}
+      alt=""
+      aria-hidden="true"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function ToolChip({
   partType,
   input,
@@ -119,15 +153,10 @@ function ToolChip({
   const canExpand = hasInput || hasOutput;
   const activity = (
     <>
-      <span className="tavern-tool-mark" aria-hidden="true">
-        ◆
-      </span>
-      <span className="tavern-tool-copy">
-        <strong>{presentation.title}</strong>
-        {presentation.detail ? <small>{presentation.detail}</small> : null}
-      </span>
-      <span className="tavern-tool-state">
-        <i aria-hidden="true" /> Done
+      <ToolMark partType={partType} />
+      <span className="tavern-tool-label">
+        {presentation.title}
+        {presentation.detail ? ` · ${presentation.detail}` : ""}
       </span>
       {canExpand ? (
         <span className="tavern-tool-caret" aria-hidden="true">
@@ -717,6 +746,15 @@ function PanelInner({
 
   const busy = status === "submitted" || status === "streaming";
   const action = composerAction(status);
+  // The spark loader holds the floor until the first response text streams in;
+  // once text is flowing, the growing message itself is the indicator.
+  const lastMessage = messages[messages.length - 1];
+  const awaitingText =
+    status === "submitted" ||
+    (status === "streaming" &&
+      (!lastMessage ||
+        lastMessage.role !== "assistant" ||
+        !messageText(lastMessage)));
 
   useSpriteEmitter(messages, approvals.length, busy);
 
@@ -1061,8 +1099,14 @@ function PanelInner({
                   </div>
                 </div>
               ))}
-              {status === "submitted" ? (
-                <div className="tavern-thinking">…</div>
+              {awaitingText ? (
+                <div
+                  className="tavern-stream-wait"
+                  role="status"
+                  aria-label="Thinking"
+                >
+                  <Spark state="idle" size={11} />
+                </div>
               ) : null}
             </>
           ) : tab === "todos" ? (
@@ -1074,7 +1118,6 @@ function PanelInner({
               root=""
               emptyText={TAB_PLACEHOLDER.brain}
               newLabel="New file"
-              graphable
             />
           ) : chatActive ? (
             <OpenerCards

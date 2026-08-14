@@ -93,6 +93,17 @@ export function useUpdateProfileFields() {
           queryKey: queryKeys.vocabulary.all,
         });
       }
+      // Recommendations (Apps-page Suggested section, opener cards) are
+      // role-aware from these same profile fields; refetch them on change.
+      const roleChanged =
+        industryChanged ||
+        (previous?.jobTitle ?? null) !== (profile.jobTitle ?? null);
+      if (roleChanged) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.connectors.suggested,
+        });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.openers });
+      }
     },
   });
 }

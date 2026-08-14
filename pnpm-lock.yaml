@@ -85,9 +85,6 @@ importers:
       shiki:
         specifier: ^3.23.0
         version: 3.23.0
-      three:
-        specifier: 0.185.1
-        version: 0.185.1
       three-spritetext:
         specifier: ^1.10.0
         version: 1.10.0(three@0.185.1)
@@ -12629,9 +12626,7 @@ snapshots:
       metro-runtime: 0.84.4
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.86.0': {}
 

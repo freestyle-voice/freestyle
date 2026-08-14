@@ -674,8 +674,30 @@
   font-weight: 700;
 }
 
-.tavern-thinking {
-  color: var(--tavern-mute);
+.tavern-stream-wait {
+  display: flex;
+  padding: 2px 0;
+}
+
+/* Spin the whole spark: the diamond core turns in place while the two
+   satellite sparks orbit it. */
+.tavern-stream-wait > div {
+  animation: tavern-spark-orbit 1.5s linear infinite;
+}
+
+@keyframes tavern-spark-orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tavern-stream-wait > div {
+    animation: none;
+  }
 }
 
 .tavern-file-row {
@@ -1186,104 +1208,6 @@
   outline-offset: 2px;
 }
 
-.tavern-brain-graph {
-  flex: 1;
-  min-height: 340px;
-  margin: 0 -16px -16px;
-  overflow: hidden;
-}
-
-.tavern-graph-hint {
-  font-size: 10px;
-  color: var(--tavern-mute);
-  white-space: nowrap;
-}
-
-.tavern-graph-wrap {
-  position: relative;
-  flex: 1;
-  min-height: 340px;
-  margin: 0 -16px -16px;
-  display: flex;
-}
-
-.tavern-graph-wrap .tavern-brain-graph {
-  margin: 0;
-  flex: 1;
-  background-image: radial-gradient(#d98e2b1a 1.2px, transparent 1.2px);
-  background-size: 7px 7px;
-}
-
-.tavern-graph-fit {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  font: inherit;
-  font-size: 14px;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  border: 1px solid var(--tavern-rule);
-  background: var(--tavern-card);
-  color: var(--tavern-mute);
-  cursor: pointer;
-}
-
-.tavern-graph-fit:hover {
-  color: var(--tavern-ink);
-  background: var(--tavern-wash);
-}
-
-.tavern-graph-chip {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px 6px 12px;
-  border: 2px solid var(--tavern-ink);
-  border-radius: 10px;
-  background: var(--tavern-card);
-  box-shadow: 3px 3px 0 var(--tavern-ink);
-  max-width: 90%;
-}
-
-.tavern-graph-chip-name {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--tavern-ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tavern-graph-chip-open {
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 7px;
-  border: 1px solid var(--tavern-lantern);
-  background: var(--tavern-lantern);
-  color: var(--tavern-card);
-  cursor: pointer;
-}
-
-.tavern-graph-chip-clear {
-  font: inherit;
-  color: var(--tavern-mute);
-  background: none;
-  border: none;
-  padding: 0 2px;
-  cursor: pointer;
-}
-
-.tavern-graph-chip-clear:hover {
-  color: var(--tavern-ink);
-}
-
 .tavern-tree {
   display: flex;
   flex-direction: column;
@@ -1326,103 +1250,59 @@
   align-self: stretch;
   display: flex;
   flex-direction: column;
-  width: 100%;
-  overflow: hidden;
-  border: 1px solid var(--tavern-rule);
-  border-radius: 9px;
-  background: color-mix(in srgb, var(--tavern-wash) 60%, var(--tavern-parchment));
-  color: var(--tavern-ink);
+  gap: 4px;
 }
 
-.tavern-tool-static {
-  display: grid;
-  grid-template-columns: 21px minmax(0, 1fr) auto;
+.tavern-tool-static,
+.tavern-tool-toggle {
+  font: inherit;
+  display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 45px;
-  padding: 7px 9px;
+  gap: 6px;
+  min-width: 0;
+  align-self: flex-start;
+  text-align: left;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--tavern-mute);
+  font-size: 11px;
 }
 
 .tavern-tool-toggle {
-  font: inherit;
-  display: grid;
-  grid-template-columns: 21px minmax(0, 1fr) auto 10px;
-  align-items: center;
-  gap: 7px;
-  min-height: 45px;
-  text-align: left;
-  width: 100%;
-  padding: 7px 9px;
-  background: transparent;
-  border: none;
   cursor: pointer;
-  color: var(--tavern-ink);
 }
 
 .tavern-tool-toggle:hover {
-  background: color-mix(in srgb, var(--tavern-lantern) 9%, transparent);
+  color: var(--tavern-ink);
 }
 
 .tavern-tool-toggle:focus-visible {
   outline: 2px solid var(--tavern-lantern);
-  outline-offset: -2px;
+  outline-offset: 2px;
 }
 
 .tavern-tool-mark {
-  display: grid;
-  width: 21px;
-  height: 21px;
-  place-items: center;
-  border: 1px solid var(--tavern-rule);
-  border-radius: 6px;
-  background: var(--tavern-parchment);
   color: var(--tavern-lantern);
-  font-family: var(--tavern-px);
   font-size: 10px;
 }
 
-.tavern-tool-copy {
-  display: grid;
-  min-width: 0;
-  gap: 1px;
+.tavern-tool-icon {
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
-.tavern-tool-copy strong,
-.tavern-tool-copy small {
+.tavern-tool-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.tavern-tool-copy strong {
-  font-size: 11px;
-  line-height: 1.2;
-}
-
-.tavern-tool-copy small {
-  color: var(--tavern-mute);
-  font-size: 10px;
-  line-height: 1.2;
-}
-
-.tavern-tool-state {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--tavern-mute);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.tavern-tool-state i {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #779d5c;
-}
-
 .tavern-tool-caret {
-  color: var(--tavern-mute);
   font-size: 10px;
 }
 
@@ -1430,8 +1310,9 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  border-top: 1px solid var(--tavern-rule);
-  padding: 8px 9px 9px;
+  border-left: 2px solid var(--tavern-rule);
+  padding-left: 9px;
+  margin-left: 2px;
 }
 
 .tavern-tool-heading {

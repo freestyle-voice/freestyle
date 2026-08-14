@@ -1,4 +1,3 @@
-import { BrainGraph } from "@renderer/components/brain-graph";
 import { Markdown } from "@renderer/components/markdown";
 import { fsCall, type BrainFile as HomeFile } from "@renderer/lib/brain-fs";
 import type React from "react";
@@ -6,7 +5,6 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 
 type FileView =
   | { kind: "list" }
-  | { kind: "graph" }
   | { kind: "view"; path: string; text: string }
   | { kind: "edit"; path: string; draft: string }
   | { kind: "create"; name: string; draft: string };
@@ -162,16 +160,13 @@ export function BrainFiles({
   root,
   emptyText,
   newLabel,
-  graphable = false,
 }: {
   root: string;
   emptyText: string;
   newLabel: string;
-  graphable?: boolean;
 }): React.JSX.Element {
   const [files, setFiles] = useState<HomeFile[]>([]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  // List first even when the graph is available — the graph stays a toggle away.
   const [view, setView] = useState<FileView>({ kind: "list" });
 
   const load = useCallback((): void => {
@@ -199,27 +194,6 @@ export function BrainFiles({
       }
     });
   };
-
-  if (view.kind === "graph") {
-    return (
-      <>
-        <div className="tavern-note-bar">
-          <button
-            type="button"
-            className="tavern-file-back"
-            onClick={() => setView({ kind: "list" })}
-          >
-            ☰ List
-          </button>
-          <span className="tavern-head-spacer" />
-          <span className="tavern-graph-hint">
-            drag to orbit · click to focus · double-click to open
-          </span>
-        </div>
-        <BrainGraph onOpen={openFile} />
-      </>
-    );
-  }
 
   if (view.kind === "view") {
     return (
@@ -304,15 +278,6 @@ export function BrainFiles({
 
   return (
     <>
-      {graphable ? (
-        <button
-          type="button"
-          className="tavern-file-back"
-          onClick={() => setView({ kind: "graph" })}
-        >
-          ◉ Graph
-        </button>
-      ) : null}
       {files.length === 0 ? (
         <div className="tavern-empty">{emptyText}</div>
       ) : (

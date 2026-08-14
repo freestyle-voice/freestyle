@@ -59,6 +59,13 @@ function appName(slug: string): string {
   );
 }
 
+/** Toolkit slug for a connected-app tool part, or null for built-in tools. */
+export function connectorToolkitSlug(partType: string): string | null {
+  const name = partType.replace(/^tool-/, "");
+  if (!isConnectorToolName(name)) return null;
+  return name.split("__")[1] ?? null;
+}
+
 /** The short, user-facing label for an AI SDK tool part. */
 export function toolPresentation(partType: string): {
   title: string;

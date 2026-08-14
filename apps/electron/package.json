@@ -26,7 +26,6 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "3d-force-graph": "^1.80.0",
     "@ai-sdk/react": "^3.0.44",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
@@ -34,6 +33,7 @@
     "@freestyle-voice/utils": "workspace:*",
     "@freestyle-voice/validations": "workspace:*",
     "@tanstack/react-query": "^5.101.2",
+    "3d-force-graph": "^1.80.0",
     "ai": "^6.0.191",
     "diff": "^8.0.4",
     "electron-updater": "^6.3.9",
@@ -42,7 +42,6 @@
     "react-markdown": "^9.1.0",
     "remark-gfm": "^4.0.0",
     "shiki": "^3.23.0",
-    "three": "0.185.1",
     "three-spritetext": "^1.10.0"
   },
   "devDependencies": {

@@ -24,18 +24,36 @@ export function starterPrompts(): string[] {
 }
 
 export const BEATS = [
-  "welcome",
   "name",
   "trade",
-  "job",
-  "list",
-  "ledger",
-  "blade",
-  "road",
-  "corner",
-  "handoff",
+  "inbox",
+  "compass",
+  "goal",
+  "receipt",
 ] as const;
 export type BeatId = (typeof BEATS)[number];
+
+/** Connect-beat rosters and the automations each connection unlocks. Slugs
+ * and template ids mirror the cloud's SUGGESTED_TOOLKITS / AUTOMATION_TEMPLATES. */
+export const ONBOARDING_EMAIL_APPS = ["gmail", "outlook"] as const;
+export const ONBOARDING_CALENDAR_APPS = ["googlecalendar", "outlook"] as const;
+export const EMAIL_TEMPLATE_IDS = [
+  "morning-inbox-brief",
+  "inbox-slip-watch",
+  "friday-wrap",
+] as const;
+export const CALENDAR_TEMPLATE_IDS = [
+  "plan-my-day",
+  "meeting-prep-nudge",
+] as const;
+
+export const AUTOMATION_LABELS: Record<string, string> = {
+  "morning-inbox-brief": "Morning inbox brief · weekdays 8am",
+  "inbox-slip-watch": "Slip watch · weekdays 1pm",
+  "friday-wrap": "Friday wrap · 4pm",
+  "plan-my-day": "Plan my day · weekdays 7:30am",
+  "meeting-prep-nudge": "Meeting prep nudges · before meetings",
+};
 
 /** Ordered by likely population — the panel renders as many as fit. */
 export const TRADE_CHIPS = [
@@ -140,12 +158,16 @@ export function jobPlaceholder(trade: string): string {
 }
 
 export interface OnboardingSaved {
-  v: 1;
+  v: 2;
   done: boolean;
   beat?: BeatId;
   name?: string;
   trade?: string;
   task?: string;
+  /** Toolkit slugs connected during the flow. */
+  connected?: string[];
+  /** Automation template ids created during the flow. */
+  automations?: string[];
   /** A settings-triggered rerun — never seed a second thread from it. */
   replayed?: boolean;
 }
@@ -153,8 +175,30 @@ export interface OnboardingSaved {
 export function parseSaved(value: string | undefined): OnboardingSaved | null {
   if (!value) return null;
   try {
-    const parsed = JSON.parse(value) as OnboardingSaved;
-    return parsed && parsed.v === 1 ? parsed : null;
+    const parsed = JSON.parse(value) as {
+      v?: number;
+      done?: boolean;
+      task?: string;
+      replayed?: boolean;
+    };
+    if (!parsed) return null;
+    if (parsed.v === 2) {
+      const saved = parsed as OnboardingSaved;
+      // A saved beat from a different flow version restarts cleanly.
+      if (saved.beat && !BEATS.includes(saved.beat))
+        return { ...saved, beat: undefined };
+      return saved;
+    }
+    // v1 completions stay completed; a v1 mid-flow save restarts the new flow.
+    if (parsed.v === 1 && parsed.done === true) {
+      return {
+        v: 2,
+        done: true,
+        ...(parsed.task ? { task: parsed.task } : {}),
+        ...(parsed.replayed ? { replayed: true } : {}),
+      };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -233,6 +277,8 @@ export interface BeatContext {
   trade: string;
   task: string;
   accountName?: string | null;
+  emailConnected?: boolean;
+  calendarConnected?: boolean;
 }
 
 export interface BeatScene {
@@ -241,19 +287,13 @@ export interface BeatScene {
 }
 
 export function beatLines(beat: BeatId, ctx: BeatContext): BeatScene {
-  const first = firstNameOf(ctx.name) || "friend";
   const task = ctx.task.trim();
   switch (beat) {
-    case "welcome":
-      return {
-        lines: [
-          "I'm Jeb. Wandering samurai, retired. Sixty-one duels, two regrets, and now this corner of your screen.",
-        ],
-      };
     case "name":
       return {
         lines: [
-          "Before anything else, a name. I don't take work from strangers.",
+          "I'm Jeb. Retired samurai, current corner of your screen. My job is simple: nothing important slips past you.",
+          "First, a name. I don't take work from strangers.",
         ],
         hint: "Whatever you'd actually answer to.",
       };
@@ -263,54 +303,37 @@ export function beatLines(beat: BeatId, ctx: BeatContext): BeatScene {
           `${nameReaction(ctx.name, ctx.accountName)} And your trade? Mine was swords and dramatic staring.`,
         ],
       };
-    case "job":
+    case "inbox":
       return {
         lines: [
           tradeReaction(ctx.trade),
-          "What are you actually trying to get done today? One thing. The one that'll still be bothering you at supper.",
+          "Now the real work. Hook up your mail and I'll stand watch: a brief every weekday morning, and a word when something important is about to slip.",
+        ],
+        hint: "Your mail stays yours. I read; I never send.",
+      };
+    case "compass":
+      return {
+        lines: [
+          ctx.emailConnected
+            ? "Good. The inbox is watched. Calendar next: mornings I'll lay your day out, and before meetings I'll hand you what you need walking in."
+            : "Suit yourself; the offer stands. Calendar, then: mornings I'll lay your day out, and before meetings I'll hand you what you need walking in.",
         ],
       };
-    case "list":
+    case "goal":
+      return {
+        lines: [
+          ctx.calendarConnected ? "That's the watch set." : "Fair enough.",
+          "Last thing. What's one thing you want done today or tomorrow? Just one.",
+        ],
+      };
+    case "receipt":
       return {
         lines: [
           jobReaction(task),
           task
-            ? "Put it on your list already. I add things, break the big ones into steps, and check them off. And I read this before everything I say, so you'll never explain it twice."
-            : "Your list is empty for now. I add things, break the big ones into steps, and check them off. And I read this before everything I say, so you'll never explain it twice.",
+            ? "It's on your list and I've opened a thread on it. Here's the watch as it stands."
+            : "Then we improvise. Here's the watch as it stands.",
         ],
-      };
-    case "ledger":
-      return {
-        lines: [
-          "I keep a brain: memories, notes, skills. All yours to read, edit, or erase.",
-        ],
-      };
-    case "blade":
-      return {
-        lines: [
-          "Highlight anything and just ask. I read your screen, and with your go-ahead I type the answer right at your cursor.",
-        ],
-      };
-    case "road":
-      return {
-        lines: [
-          "And I learned how to use a computer. Impressive, I know. I search the web when I don't know something, and I tell you exactly where the answer came from.",
-          "Try me later: ask for the latest news in your city. I'll have it before your tea cools.",
-        ],
-      };
-    case "corner":
-      return {
-        lines: [
-          "I don't live in this window. That's home. Hover me whenever you need me. Ignore me until you don't.",
-        ],
-      };
-    case "handoff":
-      return {
-        lines: task
-          ? ["I've already opened a thread on it. Let's get it off your list."]
-          : [
-              `I've been sharpening this thing for a week with nothing to cut, ${first}.`,
-            ],
       };
   }
 }

@@ -17,16 +17,38 @@ import {
 } from "./onboarding-core";
 
 describe("parseSaved", () => {
-  it("round-trips a valid state", () => {
-    const state = { v: 1, done: false, beat: "job", name: "Matt", task: "" };
+  it("round-trips a valid v2 state", () => {
+    const state = {
+      v: 2,
+      done: false,
+      beat: "goal",
+      name: "Matt",
+      task: "",
+      connected: ["gmail"],
+      automations: ["morning-inbox-brief"],
+    };
     expect(parseSaved(JSON.stringify(state))).toEqual(state);
+  });
+
+  it("drops an unknown saved beat so the flow restarts cleanly", () => {
+    const state = { v: 2, done: false, beat: "blade" };
+    expect(parseSaved(JSON.stringify(state))?.beat).toBeUndefined();
+  });
+
+  it("migrates a completed v1 save and restarts a mid-flow one", () => {
+    expect(
+      parseSaved(JSON.stringify({ v: 1, done: true, task: "old task" })),
+    ).toEqual({ v: 2, done: true, task: "old task" });
+    expect(
+      parseSaved(JSON.stringify({ v: 1, done: false, beat: "job" })),
+    ).toBeNull();
   });
 
   it("rejects garbage, wrong versions, and empty values", () => {
     expect(parseSaved(undefined)).toBeNull();
     expect(parseSaved("")).toBeNull();
     expect(parseSaved("not json")).toBeNull();
-    expect(parseSaved(JSON.stringify({ v: 2, done: true }))).toBeNull();
+    expect(parseSaved(JSON.stringify({ v: 3, done: true }))).toBeNull();
   });
 });
 
@@ -114,9 +136,9 @@ describe("beat script", () => {
     accountName: null,
   };
 
-  it("runs welcome-first, handoff-last", () => {
-    expect(BEATS[0]).toBe("welcome");
-    expect(BEATS[BEATS.length - 1]).toBe("handoff");
+  it("runs name-first, receipt-last", () => {
+    expect(BEATS[0]).toBe("name");
+    expect(BEATS[BEATS.length - 1]).toBe("receipt");
   });
 
   it("has lines for every beat", () => {
@@ -127,25 +149,40 @@ describe("beat script", () => {
     }
   });
 
+  it("leads with the value prop", () => {
+    expect(beatLines("name", ctx).lines[0]).toContain("slips");
+  });
+
   it("opens the trade beat with the name reaction", () => {
     expect(beatLines("trade", ctx).lines[0]).toContain("Matt");
   });
 
-  it("opens the job beat with the trade reaction", () => {
-    expect(beatLines("job", ctx).lines[0]).toContain("smith");
+  it("opens the inbox beat with the trade reaction", () => {
+    expect(beatLines("inbox", ctx).lines[0]).toContain("smith");
   });
 
-  it("tunes the job placeholder to the picked trade", () => {
+  it("acknowledges connections in the compass and goal beats", () => {
+    expect(
+      beatLines("compass", { ...ctx, emailConnected: true }).lines[0],
+    ).toContain("watched");
+    expect(
+      beatLines("compass", { ...ctx, emailConnected: false }).lines[0],
+    ).toContain("offer stands");
+    expect(
+      beatLines("goal", { ...ctx, calendarConnected: true }).lines[0],
+    ).toContain("watch set");
+  });
+
+  it("tunes the goal placeholder to the picked trade", () => {
     expect(jobPlaceholder("Engineer")).toContain("login bug");
     expect(jobPlaceholder("Teacher")).toContain("Grade the essays");
     expect(jobPlaceholder("Beekeeper")).toContain("Figure out my taxes");
     expect(jobPlaceholder("")).toContain("Figure out my taxes");
   });
 
-  it("swaps to no-task fallbacks when the job was skipped", () => {
+  it("swaps to no-task fallbacks when the goal was skipped", () => {
     const empty = { ...ctx, task: "" };
-    expect(beatLines("list", empty).lines.join(" ")).toContain("empty for now");
-    expect(beatLines("handoff", empty).lines.join(" ")).toContain("sharpening");
+    expect(beatLines("receipt", empty).lines.join(" ")).toContain("improvise");
   });
 });
 

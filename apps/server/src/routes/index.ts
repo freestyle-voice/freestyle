@@ -25,6 +25,7 @@ import outputRoute from "./output.js";
 import pluginsRoute from "./plugins.js";
 import postProcessRoute from "./post-process-route.js";
 import pricing from "./pricing.js";
+import scheduledRoute from "./scheduled.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
 import transcribe, { transcribePreWarmRoute } from "./transcribe.js";
@@ -67,6 +68,7 @@ const apiRouter = new Hono()
   .route("/settings", settings)
   .route("/config", configRoute)
   .route("/connectors", connectorsRoute)
+  .route("/scheduled", scheduledRoute)
   .route("/auth", auth)
   .route("/models", models)
   .route("/transcribe", transcribe)

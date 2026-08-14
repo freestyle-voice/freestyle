@@ -1,13 +1,22 @@
+import "../onboarding.css";
+
+import { ConnectorLogo } from "@renderer/components/connected-apps";
 import { apiFetch } from "@renderer/lib/api";
 import { readBrainFile, writeBrainFile } from "@renderer/lib/brain-fs";
+import type { ConnectorCatalogItem } from "@renderer/lib/connectors";
 import {
+  AUTOMATION_LABELS,
   BEATS,
   type BeatId,
   beatLines,
+  CALENDAR_TEMPLATE_IDS,
   EASTER_EGGS,
+  EMAIL_TEMPLATE_IDS,
   firstNameOf,
   handoffCta,
   jobPlaceholder,
+  ONBOARDING_CALENDAR_APPS,
+  ONBOARDING_EMAIL_APPS,
   ONBOARDING_KEY,
   type OnboardingSaved,
   PROFILE_INDEX_LINE,
@@ -18,12 +27,21 @@ import {
   SKIP_LINE,
   TRADE_CHIPS,
 } from "@renderer/lib/onboarding-core";
+import {
+  connectorConnectionsQueryOptions,
+  connectorSuggestedQueryOptions,
+} from "@renderer/lib/query";
+import { applyAutomationTemplates } from "@renderer/lib/scheduled-templates";
+import {
+  type ConnectPhase,
+  useConnectorConnect,
+} from "@renderer/lib/use-connector-connect";
 import { useUpdateProfileFields } from "@renderer/lib/use-profile";
-import { SpriteBadge } from "@renderer/sprites/badge";
 import type { CloudUser } from "@shared/cloud-user";
 import type { SpriteId } from "@shared/sprites";
+import { useQuery } from "@tanstack/react-query";
 import type React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 function persistSaved(state: OnboardingSaved): void {
   void apiFetch(`/api/settings/${ONBOARDING_KEY}`, {
@@ -77,7 +95,7 @@ export function useOnboarding(enabled: boolean): {
       } else if (parsed) {
         setStatus("show");
       } else if (threads.length > 0) {
-        const grandfathered: OnboardingSaved = { v: 1, done: true };
+        const grandfathered: OnboardingSaved = { v: 2, done: true };
         persistSaved(grandfathered);
         setSaved(grandfathered);
         setStatus("done");
@@ -93,9 +111,11 @@ export function useOnboarding(enabled: boolean): {
   const markDone = useCallback((task: string): void => {
     setSaved((prev) => {
       const next: OnboardingSaved = {
-        v: 1,
+        v: 2,
         done: true,
         task: task.trim(),
+        ...(prev?.connected?.length ? { connected: prev.connected } : {}),
+        ...(prev?.automations?.length ? { automations: prev.automations } : {}),
         ...(prev?.replayed ? { replayed: true } : {}),
       };
       persistSaved(next);
@@ -105,7 +125,7 @@ export function useOnboarding(enabled: boolean): {
   }, []);
 
   const replay = useCallback((): void => {
-    const next: OnboardingSaved = { v: 1, done: false, replayed: true };
+    const next: OnboardingSaved = { v: 2, done: false, replayed: true };
     persistSaved(next);
     setSaved(next);
     setStatus("show");
@@ -114,7 +134,7 @@ export function useOnboarding(enabled: boolean): {
   return { status, saved, markDone, replay };
 }
 
-/** The list beat's real write: the user's own sentence onto their own list. */
+/** The goal's real write: the user's own sentence onto their own list. */
 async function seedTodo(quest: string): Promise<void> {
   const todos = await readBrainFile("todos.md");
   if (todos?.includes(quest)) return;
@@ -122,7 +142,7 @@ async function seedTodo(quest: string): Promise<void> {
   await writeBrainFile("todos.md", `${base}- [ ] ${quest}\n`);
 }
 
-/** The brain beat's real write: the profile page plus its index line. */
+/** The profile's real write: the profile page plus its index line. */
 async function seedProfile(name: string, trade: string): Promise<void> {
   await writeBrainFile(PROFILE_PATH, profileMarkdown(name, trade));
   const index = await readBrainFile("BRAIN.md");
@@ -176,146 +196,123 @@ function useTypewriter(text: string): {
   return { shown: text.slice(0, count), typing: count < text.length, finish };
 }
 
-/* Pixel-accurate miniatures of the real tabs — onboarding doubles as a map
-   of the product, so these echo the panel's own patterns, not new ones. */
+const APP_FALLBACK_NAMES: Record<string, string> = {
+  gmail: "Gmail",
+  outlook: "Outlook",
+  googlecalendar: "Google Calendar",
+};
 
-function MiniTabs({ active }: { active: string }): React.JSX.Element {
+function ConnectStage({
+  apps,
+  templates,
+  suggested,
+  activeSlugs,
+  phases,
+  applied,
+  onConnect,
+}: {
+  apps: readonly string[];
+  templates: readonly string[];
+  suggested: ConnectorCatalogItem[];
+  activeSlugs: ReadonlySet<string>;
+  phases: Record<string, ConnectPhase>;
+  applied: ReadonlySet<string>;
+  onConnect: (slug: string) => void;
+}): React.JSX.Element {
+  const anyConnected = apps.some((slug) => activeSlugs.has(slug));
   return (
-    <div className="tavern-onb-mtabs">
-      {["Chat", "History", "Todos", "Notes"].map((tab) => (
-        <span
-          key={tab}
-          className={`tavern-onb-mtab${tab === active ? " is-on" : ""}`}
-        >
-          {tab}
-        </span>
-      ))}
+    <div className="tavern-onb-connect">
+      <div className="tavern-onb-apps">
+        {apps.map((slug) => {
+          const item = suggested.find((entry) => entry.slug === slug);
+          const name = item?.name ?? APP_FALLBACK_NAMES[slug] ?? slug;
+          const connected = activeSlugs.has(slug);
+          const phase = phases[slug];
+          return (
+            <div
+              key={slug}
+              className={`tavern-onb-app${connected ? " is-on" : ""}`}
+            >
+              <ConnectorLogo name={name} logo={item?.logo} />
+              <span className="tavern-onb-app-name">{name}</span>
+              {connected ? (
+                <span className="tavern-onb-app-done">Connected ✓</span>
+              ) : (
+                <button
+                  type="button"
+                  className="tavern-onb-cta is-small"
+                  disabled={phase === "opening" || phase === "pending"}
+                  onClick={() => onConnect(slug)}
+                >
+                  {phase === "opening"
+                    ? "Opening…"
+                    : phase === "pending"
+                      ? "In browser…"
+                      : "Connect"}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <ul className="tavern-onb-autos">
+        {templates.map((id) => (
+          <li key={id} className={applied.has(id) ? "is-set" : ""}>
+            <i>{applied.has(id) ? "✓" : "◇"}</i>
+            {AUTOMATION_LABELS[id] ?? id}
+          </li>
+        ))}
+      </ul>
+      {anyConnected && templates.some((id) => !applied.has(id)) ? (
+        <span className="tavern-onb-writing">setting up…</span>
+      ) : null}
     </div>
   );
 }
 
-function MiniTodos({
+function ReceiptStage({
+  connectedNames,
+  automations,
   quest,
-  seeded,
+  hasTask,
 }: {
+  connectedNames: string[];
+  automations: string[];
   quest: string;
-  seeded: boolean;
+  hasTask: boolean;
 }): React.JSX.Element {
   return (
-    <div className="tavern-onb-mini">
-      <MiniTabs active="Todos" />
-      <div className="tavern-onb-mbody">
-        {seeded ? (
-          <div className="tavern-onb-mtodo">
-            <span className="tavern-onb-mcheck" />
-            <span className="tavern-onb-mtodo-main">{quest}</span>
-          </div>
+    <div className="tavern-onb-receipt">
+      <div className="tavern-onb-bigq">
+        On <i>watch.</i>
+      </div>
+      <ul className="tavern-onb-rlist">
+        {connectedNames.length > 0 ? (
+          <li>
+            <b>Connected</b>
+            <span>{connectedNames.join(" · ")}</span>
+          </li>
         ) : (
-          <span className="tavern-onb-writing">writing…</span>
+          <li className="is-dim">
+            <b>Connected</b>
+            <span>nothing yet — the Apps tab is always there</span>
+          </li>
         )}
-        <div className="tavern-onb-mtodo is-done">
-          <span className="tavern-onb-mcheck is-on" />
-          <span>Meet Jeb</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MiniNotes({
-  name,
-  trade,
-  seeded,
-}: {
-  name: string;
-  trade: string;
-  seeded: boolean;
-}): React.JSX.Element {
-  return (
-    <div className="tavern-onb-mini">
-      <MiniTabs active="Notes" />
-      <div className="tavern-onb-mbody">
-        <div className="tavern-onb-mnote">
-          <b>Profile</b>
-          {seeded ? (
-            <i>
-              {name}
-              {trade ? ` — ${trade.toLowerCase()}` : ""}. Captured during
-              onboarding.
-            </i>
-          ) : (
-            <i className="tavern-onb-writing">writing…</i>
-          )}
-        </div>
-        <div className="tavern-onb-mnote is-dim">
-          <b>Notes</b>
-          <i>anything worth keeping lands here</i>
-        </div>
-        <div className="tavern-onb-mnote is-dim">
-          <b>Skills</b>
-          <i>teach me once, I do it your way every time</i>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MiniApproval(): React.JSX.Element {
-  return (
-    <div className="tavern-onb-mini">
-      <MiniTabs active="Chat" />
-      <div className="tavern-onb-mbody">
-        <div className="tavern-onb-muser">What ended the Edo period?</div>
-        <div className="tavern-onb-mtool">
-          <i>◆</i> read your screen ▸
-        </div>
-        <div className="tavern-onb-mappr">
-          <span className="tavern-onb-mappr-t">
-            jeb wants to type at your cursor
-          </span>
-          <span>“The Meiji Restoration — 1868.”</span>
-          <span className="tavern-onb-mabtn">
-            <span className="is-go">Allow</span>
-            <span>Don't allow</span>
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MiniSearch(): React.JSX.Element {
-  return (
-    <div className="tavern-onb-mini">
-      <MiniTabs active="Chat" />
-      <div className="tavern-onb-mbody">
-        <div className="tavern-onb-muser">Latest news in Austin?</div>
-        <div className="tavern-onb-mtool">
-          <i>◆</i> searched the web ▸
-        </div>
-        <span>
-          “City breaks ground on new transit line.”{" "}
-          <i className="tavern-onb-msrc">Austin Chronicle, this morning.</i>
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function DeskMiniature({
-  spriteForm,
-}: {
-  spriteForm: SpriteId;
-}): React.JSX.Element {
-  return (
-    <div className="tavern-onb-desk">
-      <div className="tavern-onb-deskwin">
-        <i />
-      </div>
-      <div className="tavern-onb-deskjeb">
-        <SpriteBadge form={spriteForm} size={64} />
-      </div>
-      <span className="tavern-onb-deskhome">← home</span>
+        {automations.length > 0 ? (
+          <li>
+            <b>Automations</b>
+            <span>
+              {automations.map((id) => AUTOMATION_LABELS[id] ?? id).join(" · ")}
+            </span>
+          </li>
+        ) : null}
+        {hasTask ? (
+          <li>
+            <b>First job</b>
+            <span>{quest}</span>
+          </li>
+        ) : null}
+      </ul>
     </div>
   );
 }
@@ -331,29 +328,62 @@ export function OnboardingGate({
   saved: OnboardingSaved | null;
   onDone: (task: string) => void;
 }): React.JSX.Element {
+  void spriteForm;
   const [beat, setBeat] = useState<BeatId>(() =>
-    saved?.beat && BEATS.includes(saved.beat) ? saved.beat : "welcome",
+    saved?.beat && BEATS.includes(saved.beat) ? saved.beat : "name",
   );
   const [lineIdx, setLineIdx] = useState(0);
   const [name, setName] = useState(saved?.name ?? user.name ?? "");
   const [trade, setTrade] = useState(saved?.trade ?? "");
   const [task, setTask] = useState(saved?.task ?? "");
-  const [todoSeeded, setTodoSeeded] = useState(false);
-  const [profileSeeded, setProfileSeeded] = useState(false);
+  const [applied, setApplied] = useState<ReadonlySet<string>>(
+    () => new Set(saved?.automations ?? []),
+  );
   const [skipping, setSkipping] = useState(false);
   const [egg, setEgg] = useState<string | null>(null);
   const eggIdx = useRef(0);
   const eggTimer = useRef<number | null>(null);
   const todoStarted = useRef(false);
   const profileStarted = useRef(false);
-  const traveled = useRef(false);
+  const emailApplying = useRef(false);
+  const calendarApplying = useRef(false);
   const updateProfile = useUpdateProfileFields();
+
+  const { connect, phases } = useConnectorConnect();
+  const connectionsQuery = useQuery(connectorConnectionsQueryOptions());
+  const suggestedQuery = useQuery(connectorSuggestedQueryOptions());
+  const suggested = useMemo(
+    () => suggestedQuery.data ?? [],
+    [suggestedQuery.data],
+  );
+
+  const activeSlugs = useMemo(() => {
+    const slugs = new Set(
+      (connectionsQuery.data ?? [])
+        .filter((connection) => connection.status === "active")
+        .map((connection) => connection.toolkitSlug),
+    );
+    for (const [slug, phase] of Object.entries(phases)) {
+      if (phase === "connected") slugs.add(slug);
+    }
+    return slugs;
+  }, [connectionsQuery.data, phases]);
+
+  const beatIndex = BEATS.indexOf(beat);
+  const emailConnected = ONBOARDING_EMAIL_APPS.some((slug) =>
+    activeSlugs.has(slug),
+  );
+  const calendarConnected = ONBOARDING_CALENDAR_APPS.some((slug) =>
+    activeSlugs.has(slug),
+  );
 
   const scene = beatLines(beat, {
     name,
     trade,
     task,
     accountName: user.name,
+    emailConnected,
+    calendarConnected,
   });
   const lastIdx = scene.lines.length - 1;
   const atLastLine = lineIdx >= lastIdx;
@@ -367,24 +397,25 @@ export function OnboardingGate({
   const persist = useCallback(
     (nextBeat: BeatId): void => {
       persistSaved({
-        v: 1,
+        v: 2,
         done: false,
         beat: nextBeat,
         name: name.trim(),
         trade: trade.trim(),
         task: task.trim(),
+        connected: [...activeSlugs].filter((slug) =>
+          [...ONBOARDING_EMAIL_APPS, ...ONBOARDING_CALENDAR_APPS].includes(
+            slug as (typeof ONBOARDING_EMAIL_APPS)[number],
+          ),
+        ),
+        automations: [...applied],
         ...(saved?.replayed ? { replayed: true } : {}),
       });
     },
-    [name, trade, task, saved],
+    [name, trade, task, activeSlugs, applied, saved],
   );
 
-  const beatDone =
-    beat === "name"
-      ? name.trim().length > 0
-      : beat === "list"
-        ? todoSeeded
-        : beat !== "ledger" || profileSeeded;
+  const beatDone = beat !== "name" || name.trim().length > 0;
 
   const advanceBeat = useCallback((): void => {
     const index = BEATS.indexOf(beat);
@@ -405,77 +436,82 @@ export function OnboardingGate({
       setLineIdx((prev) => prev + 1);
       return;
     }
-    if (beatDone && beat !== "handoff") advanceBeat();
+    if (beatDone && beat !== "receipt") advanceBeat();
   }, [skipping, typing, finish, atLastLine, beatDone, beat, advanceBeat]);
 
-  // Welcome flourish from the real corner sprite.
+  // Opening flourish from the real corner sprite.
   useEffect(() => {
-    if (beat === "welcome") {
+    if (beat === "name") {
       window.api.spriteEvent({ kind: "emote", emotion: "proud" });
     }
   }, [beat]);
 
-  // The list beat: the user's sentence lands on their real list while Jeb
-  // types. Reads the entry render's closure and keys on the beat alone —
-  // re-running on render identities would clear the timer behind the guard.
+  // Automations follow connections: once the flow has reached the matching
+  // beat and an app in the group is active, the templates are applied
+  // server-side. Idempotent there, so replays and re-renders are safe.
+  useEffect(() => {
+    if (beatIndex < BEATS.indexOf("inbox")) return;
+    if (!emailConnected || emailApplying.current) return;
+    if (EMAIL_TEMPLATE_IDS.every((id) => applied.has(id))) return;
+    emailApplying.current = true;
+    void applyAutomationTemplates([...EMAIL_TEMPLATE_IDS])
+      .then((result) => {
+        window.api.spriteEvent({ kind: "emote", emotion: "proud" });
+        setApplied((prev) => {
+          const next = new Set(prev);
+          for (const entry of result.applied) next.add(entry.id);
+          for (const entry of result.skipped)
+            if (entry.reason === "exists") next.add(entry.id);
+          return next;
+        });
+      })
+      .catch(() => {
+        emailApplying.current = false;
+      });
+  }, [beatIndex, emailConnected, applied]);
+
+  useEffect(() => {
+    if (beatIndex < BEATS.indexOf("compass")) return;
+    if (!calendarConnected || calendarApplying.current) return;
+    if (CALENDAR_TEMPLATE_IDS.every((id) => applied.has(id))) return;
+    calendarApplying.current = true;
+    void applyAutomationTemplates([...CALENDAR_TEMPLATE_IDS])
+      .then((result) => {
+        window.api.spriteEvent({ kind: "emote", emotion: "proud" });
+        setApplied((prev) => {
+          const next = new Set(prev);
+          for (const entry of result.applied) next.add(entry.id);
+          for (const entry of result.skipped)
+            if (entry.reason === "exists") next.add(entry.id);
+          return next;
+        });
+      })
+      .catch(() => {
+        calendarApplying.current = false;
+      });
+  }, [beatIndex, calendarConnected, applied]);
+
+  // The receipt does the quiet writes: the goal onto the real list, the
+  // profile into the brain. Keys on the beat alone, same contract as v1.
   // biome-ignore lint/correctness/useExhaustiveDependencies: see above
   useEffect(() => {
-    if (beat !== "list" || todoStarted.current) return;
-    todoStarted.current = true;
-    window.api.spriteEvent({ kind: "thinking", on: true });
-    const delay = prefersReducedMotion() ? 0 : 700;
-    const t = window.setTimeout(() => {
-      void seedTodo(questFor(task))
+    if (beat !== "receipt") return;
+    if (!todoStarted.current && task.trim()) {
+      todoStarted.current = true;
+      void seedTodo(questFor(task)).catch(() => {});
+    }
+    if (!profileStarted.current) {
+      profileStarted.current = true;
+      void seedProfile(firstNameOf(name) ? name.trim() : "friend", trade.trim())
         .catch(() => {})
         .then(() => {
-          window.api.spriteEvent({ kind: "thinking", on: false });
-          window.api.spriteEvent({ kind: "emote", emotion: "proud" });
-          setTodoSeeded(true);
+          if (trade.trim()) {
+            updateProfile
+              .mutateAsync({ jobTitle: trade.trim() })
+              .catch(() => {});
+          }
         });
-    }, delay);
-    return () => window.clearTimeout(t);
-  }, [beat]);
-
-  // The brain beat: the profile page is written for real, plus the prefill.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: same contract as the list beat
-  useEffect(() => {
-    if (beat !== "ledger" || profileStarted.current) return;
-    profileStarted.current = true;
-    void seedProfile(firstNameOf(name) ? name.trim() : "friend", trade.trim())
-      .catch(() => {})
-      .then(() => {
-        if (trade.trim()) {
-          updateProfile.mutateAsync({ jobTitle: trade.trim() }).catch(() => {});
-        }
-        window.api.spriteEvent({ kind: "emote", emotion: "proud" });
-        setProfileSeeded(true);
-      });
-  }, [beat]);
-
-  // The corner beat: the real sprite makes the trip home while the stage
-  // shows the desktop miniature.
-  useEffect(() => {
-    if (beat !== "corner" || traveled.current) return;
-    traveled.current = true;
-    // No cleanup on either timer: the end event must land even if the user
-    // advances before the dash finishes, or the sprite is stranded mid-travel.
-    window.setTimeout(() => {
-      window.api.spriteEvent({
-        kind: "travel",
-        phase: "start",
-        travelKind: "dash",
-        direction: "left",
-      });
-    }, 400);
-    window.setTimeout(() => {
-      window.api.spriteEvent({
-        kind: "travel",
-        phase: "end",
-        travelKind: "dash",
-        direction: "left",
-      });
-      window.api.spriteEvent({ kind: "emote", emotion: "proud" });
-    }, 1300);
+    }
   }, [beat]);
 
   useEffect(() => {
@@ -512,7 +548,7 @@ export function OnboardingGate({
   }, [onDone, task]);
 
   // Enter anywhere is Next: finishes the typing line, steps the scene, and
-  // advances the beat — including the handoff CTA. Buttons keep their native
+  // advances the beat — including the receipt CTA. Buttons keep their native
   // Enter activation (handling it here too would double-fire), and the
   // gating lives in advance()/beatDone, so a blocked beat just holds.
   useEffect(() => {
@@ -520,7 +556,7 @@ export function OnboardingGate({
       if (e.key !== "Enter" || e.isComposing || skipping) return;
       if ((e.target as HTMLElement | null)?.tagName === "BUTTON") return;
       e.preventDefault();
-      if (beat === "handoff" && atLastLine && !typing) {
+      if (beat === "receipt" && atLastLine && !typing) {
         complete();
         return;
       }
@@ -531,6 +567,31 @@ export function OnboardingGate({
   }, [skipping, beat, atLastLine, typing, complete, advance]);
 
   const inputReady = atLastLine && !typing && !skipping;
+  const connectedNames = useMemo(() => {
+    const wanted = new Set([
+      ...ONBOARDING_EMAIL_APPS,
+      ...ONBOARDING_CALENDAR_APPS,
+    ]);
+    return [...activeSlugs]
+      .filter((slug) => wanted.has(slug as never))
+      .map(
+        (slug) =>
+          suggested.find((entry) => entry.slug === slug)?.name ??
+          APP_FALLBACK_NAMES[slug] ??
+          slug,
+      );
+  }, [activeSlugs, suggested]);
+
+  const nextLabel =
+    beat === "inbox"
+      ? emailConnected
+        ? "Next ▸"
+        : "Later ▸"
+      : beat === "compass"
+        ? calendarConnected
+          ? "Next ▸"
+          : "Later ▸"
+        : "Next ▸";
 
   return (
     <div className="tavern-onb" data-beat={beat} data-line={lineIdx}>
@@ -555,30 +616,25 @@ export function OnboardingGate({
       </div>
 
       <div className="tavern-onb-stage">
-        {beat === "welcome" ? (
+        {beat === "name" ? (
           <>
             <div className="tavern-onb-bigq">
-              Someone's at
+              Nothing slips
               <br />
-              the <i>door.</i>
+              past <i>Jeb.</i>
             </div>
-            <p className="tavern-onb-sub">
-              A ronin has moved into the corner of your screen. He'd like a word
-              before you put him to work.
-            </p>
+            {inputReady ? (
+              <input
+                className="tavern-onb-in"
+                value={name}
+                maxLength={80}
+                placeholder="Your name"
+                // biome-ignore lint/a11y/noAutofocus: the input is the beat's whole point
+                autoFocus
+                onChange={(e) => setName(e.target.value)}
+              />
+            ) : null}
           </>
-        ) : null}
-
-        {beat === "name" && inputReady ? (
-          <input
-            className="tavern-onb-in"
-            value={name}
-            maxLength={80}
-            placeholder="Your name"
-            // biome-ignore lint/a11y/noAutofocus: the input is the beat's whole point
-            autoFocus
-            onChange={(e) => setName(e.target.value)}
-          />
         ) : null}
 
         {beat === "trade" && inputReady ? (
@@ -607,12 +663,36 @@ export function OnboardingGate({
           </>
         ) : null}
 
-        {beat === "job" && inputReady ? (
+        {beat === "inbox" && !skipping ? (
+          <ConnectStage
+            apps={ONBOARDING_EMAIL_APPS}
+            templates={EMAIL_TEMPLATE_IDS}
+            suggested={suggested}
+            activeSlugs={activeSlugs}
+            phases={phases}
+            applied={applied}
+            onConnect={connect}
+          />
+        ) : null}
+
+        {beat === "compass" && !skipping ? (
+          <ConnectStage
+            apps={ONBOARDING_CALENDAR_APPS}
+            templates={CALENDAR_TEMPLATE_IDS}
+            suggested={suggested}
+            activeSlugs={activeSlugs}
+            phases={phases}
+            applied={applied}
+            onConnect={connect}
+          />
+        ) : null}
+
+        {beat === "goal" && inputReady ? (
           <>
             <div className="tavern-onb-bigq">
-              One thing you
+              One thing,
               <br />
-              need <i>done.</i>
+              today or <i>tomorrow.</i>
             </div>
             <input
               className="tavern-onb-in"
@@ -626,46 +706,13 @@ export function OnboardingGate({
           </>
         ) : null}
 
-        {beat === "list" && !skipping ? (
-          <MiniTodos quest={questFor(task)} seeded={todoSeeded} />
-        ) : null}
-
-        {beat === "ledger" && !skipping ? (
-          <MiniNotes
-            name={firstNameOf(name) || "friend"}
-            trade={trade.trim()}
-            seeded={profileSeeded}
+        {beat === "receipt" && !skipping ? (
+          <ReceiptStage
+            connectedNames={connectedNames}
+            automations={[...applied]}
+            quest={questFor(task)}
+            hasTask={task.trim().length > 0}
           />
-        ) : null}
-
-        {beat === "blade" && !skipping ? <MiniApproval /> : null}
-
-        {beat === "road" && !skipping ? <MiniSearch /> : null}
-
-        {beat === "corner" && !skipping ? (
-          <DeskMiniature spriteForm={spriteForm} />
-        ) : null}
-
-        {beat === "handoff" && !skipping ? (
-          <>
-            <div className="tavern-onb-bigq">
-              No bowing,
-              <br />
-              thank the <i>gods.</i>
-            </div>
-            {task.trim() ? (
-              <div className="tavern-onb-mini">
-                <div className="tavern-onb-mbody">
-                  <div className="tavern-onb-mtodo">
-                    <span className="tavern-onb-mcheck" />
-                    <span className="tavern-onb-mtodo-main">
-                      {questFor(task)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </>
         ) : null}
       </div>
 
@@ -686,13 +733,7 @@ export function OnboardingGate({
           type="button"
           className="tavern-onb-saytext"
           onClick={() => {
-            if (
-              !skipping &&
-              (typing ||
-                !atLastLine ||
-                !["name", "trade", "job", "handoff"].includes(beat))
-            )
-              advance();
+            if (!skipping && (typing || !atLastLine)) advance();
           }}
         >
           {shown}
@@ -705,7 +746,7 @@ export function OnboardingGate({
 
       <div className="tavern-onb-foot2">
         <span />
-        {beat === "handoff" && atLastLine ? (
+        {beat === "receipt" && atLastLine ? (
           <button
             type="button"
             className="tavern-onb-cta"
@@ -721,7 +762,7 @@ export function OnboardingGate({
             disabled={typing || skipping || (atLastLine && !beatDone)}
             onClick={advance}
           >
-            {atLastLine ? "Next ▸" : "▸"}
+            {atLastLine ? nextLabel : "▸"}
           </button>
         )}
       </div>

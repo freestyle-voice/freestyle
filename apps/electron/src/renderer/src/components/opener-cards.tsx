@@ -116,10 +116,15 @@ export function OpenerCards({
     queryClient,
   ]);
 
-  if (query.isError || (query.isSuccess && query.data.cards.length === 0)) {
+  const todos = query.data?.todos ?? [];
+
+  if (
+    query.isError ||
+    (query.isSuccess && query.data.cards.length === 0 && todos.length === 0)
+  ) {
     return <FallbackStarters busy={busy} onPrompt={onPrompt} />;
   }
-  if (!query.data || cards.length === 0) {
+  if (!query.data || (cards.length === 0 && todos.length === 0)) {
     return <div className="tavern-openers" aria-busy="true" />;
   }
 
@@ -138,6 +143,31 @@ export function OpenerCards({
 
   return (
     <div className="tavern-openers">
+      {todos.length > 0 ? (
+        <div className="tavern-opener-todos">
+          <span className="tavern-openers-label">On your list</span>
+          {todos.map((todo) => (
+            <div key={todo} className="tavern-opener-todo">
+              <i aria-hidden="true">◇</i>
+              <span className="tavern-opener-todo-text">{todo}</span>
+              <button
+                type="button"
+                className="tavern-opener-launch"
+                disabled={busy}
+                onClick={() => {
+                  capture("opener_tapped", {
+                    id: "todo:launch",
+                    category: "do_now",
+                  });
+                  onPrompt(`I want you to help me do this: ${todo}`);
+                }}
+              >
+                launch ↗
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {cards.map((card) => {
         if (card.kind === "prompt" && card.action.prompt) {
           const prompt = card.action.prompt;

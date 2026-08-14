@@ -3616,3 +3616,74 @@
   border-top: 1px dashed var(--tavern-rule);
   padding-top: 8px;
 }
+
+/* ── Minimalist openers: todo rows + tighter cards ───────────────────── */
+
+.tavern-openers-label {
+  font-family: var(--tavern-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tavern-mute);
+}
+
+.tavern-opener-todos {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+
+.tavern-opener-todo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 2px 1px;
+}
+
+.tavern-opener-todo i {
+  color: var(--tavern-lantern);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.tavern-opener-todo-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tavern-opener-launch {
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  color: var(--tavern-mute);
+  cursor: pointer;
+  font-family: var(--tavern-mono);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.tavern-opener-launch:hover:not(:disabled) {
+  color: var(--tavern-lantern);
+}
+
+.tavern-opener-launch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tavern-opener {
+  gap: 2px;
+  padding: 7px 10px;
+}
+
+.tavern-opener-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

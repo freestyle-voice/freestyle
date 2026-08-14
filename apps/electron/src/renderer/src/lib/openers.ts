@@ -27,6 +27,8 @@ export type OpenerCard = {
 export type OpenersResponse = {
   greeting: string;
   cards: OpenerCard[];
+  /** First open items from todos.md, list order, already truncated. */
+  todos: string[];
   ttlSeconds: number;
 };
 
@@ -75,6 +77,7 @@ async function fetchOpenersOnce(exclude: string[]): Promise<OpenersResponse> {
   const data = (await res.json()) as {
     greeting?: unknown;
     cards?: unknown;
+    todos?: unknown;
     ttlSeconds?: unknown;
   };
   const cards = Array.isArray(data.cards)
@@ -85,6 +88,9 @@ async function fetchOpenersOnce(exclude: string[]): Promise<OpenersResponse> {
   return {
     greeting: typeof data.greeting === "string" ? data.greeting : "",
     cards,
+    todos: Array.isArray(data.todos)
+      ? data.todos.filter((item): item is string => typeof item === "string")
+      : [],
     ttlSeconds: typeof data.ttlSeconds === "number" ? data.ttlSeconds : 21_600,
   };
 }
@@ -95,7 +101,11 @@ export async function fetchOpeners(): Promise<OpenersResponse> {
   // Dismissing enough cards can exhaust a finite pool (connect/automate
   // rankings). Suggestions must always come back, so a dry result resets the
   // session's dismissals and refetches the full set.
-  if (result.cards.length === 0 && exclude.length > 0) {
+  if (
+    result.cards.length === 0 &&
+    result.todos.length === 0 &&
+    exclude.length > 0
+  ) {
     resetOpenerDismissals();
     return fetchOpenersOnce([]);
   }

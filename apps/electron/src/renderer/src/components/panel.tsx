@@ -736,11 +736,13 @@ function PanelInner({
         });
       },
       onError: (err) => {
+        const message = typeof err.message === "string" ? err.message : "";
         setNotice(
-          err.message.includes("cloud_auth_required") ||
-            err.message.includes("401")
+          message.includes("cloud_auth_required") || message.includes("401")
             ? "Sign in to Freestyle Cloud to chat."
-            : err.message,
+            : message && message !== "[object Object]"
+              ? message
+              : "That didn't go through. Try again.",
         );
       },
     });

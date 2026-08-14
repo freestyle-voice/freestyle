@@ -2,6 +2,7 @@ import "../overlay.css";
 import "../tavern.css";
 
 import { useChat } from "@ai-sdk/react";
+import { BrainFiles } from "@renderer/components/brain-files";
 import { ConnectSuggestions } from "@renderer/components/connect-suggestions";
 import { ConnectedApps } from "@renderer/components/connected-apps";
 import { Markdown } from "@renderer/components/markdown";
@@ -45,6 +46,7 @@ const TAB_LABELS: Record<PanelTab, string> = {
   history: "History",
   todos: "Todos",
   notes: "Notes",
+  brain: "Brain",
   apps: "Apps",
 };
 
@@ -53,6 +55,8 @@ const TAB_PLACEHOLDER: Record<PanelTab, string> = {
   history: "Past conversations land here — pick one to continue it.",
   todos: "Nothing to do yet.",
   notes: "No notes yet.",
+  brain:
+    "Everything Freestyle knows lives here — memories, notes, skills, todos.",
   apps: "Connect the apps you live in, and Freestyle can work them for you.",
 };
 
@@ -1065,6 +1069,13 @@ function PanelInner({
             <TodosTab mascot={SPRITES_INFO[spriteForm].label} />
           ) : tab === "notes" ? (
             <NotesTab />
+          ) : tab === "brain" ? (
+            <BrainFiles
+              root=""
+              emptyText={TAB_PLACEHOLDER.brain}
+              newLabel="New file"
+              graphable
+            />
           ) : chatActive ? (
             <OpenerCards
               busy={busy}

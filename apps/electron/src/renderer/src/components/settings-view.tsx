@@ -7,7 +7,6 @@ import {
   normalizeLanguageList,
   resolveLanguageOptions,
 } from "@freestyle-voice/validations";
-import { BrainFiles } from "@renderer/components/brain-files";
 import { NotificationsHistory } from "@renderer/components/notifications-history";
 import { ScheduledTasks } from "@renderer/components/scheduled-tasks";
 import {
@@ -48,7 +47,6 @@ type SettingsPage =
   | "root"
   | "profile"
   | "billing"
-  | "brain"
   | "notifications"
   | "scheduled"
   | "dictation"
@@ -60,7 +58,6 @@ type SettingsPage =
 const PAGE_TITLES: Record<Exclude<SettingsPage, "root">, string> = {
   profile: "Profile",
   billing: "Billing & Usage",
-  brain: "Brain",
   notifications: "Notifications",
   scheduled: "Scheduled",
   dictation: "Dictation",
@@ -1487,13 +1484,6 @@ export function SettingsView({
           <ProfilePage />
         ) : page === "billing" ? (
           <BillingPage />
-        ) : page === "brain" ? (
-          <BrainFiles
-            root=""
-            emptyText="Everything Freestyle knows lives here — memories, notes, skills, todos."
-            newLabel="New file"
-            graphable
-          />
         ) : page === "scheduled" ? (
           <ScheduledTasks />
         ) : page === "notifications" ? (
@@ -1548,7 +1538,6 @@ export function SettingsView({
         detail={auth.user ? (usage.isPro ? "Pro" : "Free") : undefined}
         onClick={() => setPage("billing")}
       />
-      <NavRow label="Brain" onClick={() => setPage("brain")} />
       <NavRow label="Scheduled" onClick={() => setPage("scheduled")} />
       <NavRow label="Notifications" onClick={() => setPage("notifications")} />
       <NavRow

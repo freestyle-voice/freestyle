@@ -3,6 +3,7 @@ export const PANEL_TABS = [
   "history",
   "todos",
   "notes",
+  "brain",
   "apps",
 ] as const;
 export type PanelTab = (typeof PANEL_TABS)[number];

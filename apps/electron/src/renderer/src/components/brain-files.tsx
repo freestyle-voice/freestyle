@@ -171,9 +171,8 @@ export function BrainFiles({
 }): React.JSX.Element {
   const [files, setFiles] = useState<HomeFile[]>([]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [view, setView] = useState<FileView>(
-    graphable ? { kind: "graph" } : { kind: "list" },
-  );
+  // List first even when the graph is available — the graph stays a toggle away.
+  const [view, setView] = useState<FileView>({ kind: "list" });
 
   const load = useCallback((): void => {
     void fsCall("list", root ? { path: root } : {}).then((res) => {

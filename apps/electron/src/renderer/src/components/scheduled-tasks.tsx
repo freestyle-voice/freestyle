@@ -1,3 +1,4 @@
+import { DataSkeleton } from "@renderer/components/data-skeleton";
 import {
   listBrainFiles,
   readBrainFile,
@@ -105,8 +106,7 @@ export function ScheduledTasks(): React.JSX.Element {
       .finally(() => setBusy(null));
   };
 
-  if (tasks === null)
-    return <div className="tavern-empty">Loading scheduled tasks…</div>;
+  if (tasks === null) return <DataSkeleton label="Loading scheduled tasks" />;
 
   if (tasks.length === 0)
     return (

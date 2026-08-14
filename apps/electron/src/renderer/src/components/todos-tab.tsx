@@ -1,3 +1,4 @@
+import { DataSkeleton } from "@renderer/components/data-skeleton";
 import {
   peekBrainFile,
   readBrainFile,
@@ -54,7 +55,7 @@ export function TodosTab({ mascot }: { mascot: string }): React.JSX.Element {
     void writeBrainFile(TODOS_PATH, next.join("\n"));
   };
 
-  if (lines === null) return <div className="tavern-empty">Loading…</div>;
+  if (lines === null) return <DataSkeleton label="Loading todos" />;
 
   const items = parseItems(lines);
 

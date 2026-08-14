@@ -1,3 +1,4 @@
+import { DataSkeleton } from "@renderer/components/data-skeleton";
 import { Markdown } from "@renderer/components/markdown";
 import {
   deleteBrainFile,
@@ -221,7 +222,7 @@ export function NotesTab(): React.JSX.Element {
     );
   }
 
-  if (notes === null) return <div className="tavern-empty">Loading…</div>;
+  if (notes === null) return <DataSkeleton label="Loading notes" />;
 
   return (
     <>

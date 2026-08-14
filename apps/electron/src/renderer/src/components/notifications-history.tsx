@@ -1,3 +1,4 @@
+import { DataSkeleton } from "@renderer/components/data-skeleton";
 import {
   NotificationHistoryError,
   type NotificationHistoryRow,
@@ -35,8 +36,7 @@ export function NotificationsHistory(): React.JSX.Element {
   const error =
     query.error instanceof NotificationHistoryError ? query.error : null;
 
-  if (query.isLoading)
-    return <div className="tavern-empty">Loading notifications…</div>;
+  if (query.isLoading) return <DataSkeleton label="Loading notifications" />;
   if (error?.kind === "signed-out")
     return (
       <div className="tavern-empty">Sign in to see your notifications.</div>

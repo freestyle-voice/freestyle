@@ -8,7 +8,7 @@ import {
   connectorCatalogInfiniteQueryOptions,
   connectorConnectionsQueryOptions,
   connectorDetailsQueryOptions,
-  connectorSearchQueryOptions,
+  connectorSearchInfiniteQueryOptions,
   connectorSuggestedQueryOptions,
   queryKeys,
 } from "@renderer/lib/query";
@@ -466,7 +466,9 @@ export function ConnectedApps({
   const connectionsQuery = useQuery(connectorConnectionsQueryOptions());
   const suggestedQuery = useQuery(connectorSuggestedQueryOptions());
   const browseQuery = useInfiniteQuery(connectorCatalogInfiniteQueryOptions());
-  const searchQuery = useQuery(connectorSearchQueryOptions(search));
+  const searchQuery = useInfiniteQuery(
+    connectorSearchInfiniteQueryOptions(search),
+  );
 
   const connections = useMemo(
     () =>
@@ -511,7 +513,7 @@ export function ConnectedApps({
     [browseQuery.data, connectedSlugs, suggestedSlugs],
   );
   const searchResults = useMemo(
-    () => searchQuery.data?.connectors ?? [],
+    () => searchQuery.data?.pages.flatMap((page) => page.connectors) ?? [],
     [searchQuery.data],
   );
 
@@ -675,7 +677,21 @@ export function ConnectedApps({
           {searchQuery.isLoading ? (
             <ConnectedAppsSkeleton />
           ) : searchResults.length > 0 ? (
-            renderCards(searchResults)
+            <>
+              {renderCards(searchResults)}
+              {searchQuery.hasNextPage ? (
+                <button
+                  type="button"
+                  className="connector-load-more"
+                  disabled={searchQuery.isFetchingNextPage}
+                  onClick={() => void searchQuery.fetchNextPage()}
+                >
+                  {searchQuery.isFetchingNextPage
+                    ? "Loading more…"
+                    : "Load more"}
+                </button>
+              ) : null}
+            </>
           ) : (
             <div className="connector-empty">
               <strong>No apps found</strong>

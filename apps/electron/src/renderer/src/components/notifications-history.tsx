@@ -1,19 +1,10 @@
-import { apiFetch } from "@renderer/lib/api";
+import {
+  NotificationHistoryError,
+  type NotificationHistoryRow,
+} from "@renderer/lib/notifications";
+import { notificationHistoryQueryOptions } from "@renderer/lib/query";
+import { useQuery } from "@tanstack/react-query";
 import type React from "react";
-import { useEffect, useState } from "react";
-
-interface NotificationHistoryRow {
-  id: string;
-  kind: "thread" | "info";
-  title: string;
-  body: string;
-  createdAt: number;
-  expiresAt: number | null;
-  dismissedAt: number | null;
-  openedAt: number | null;
-}
-
-type Load = "loading" | "ready" | "signed-out" | "unreachable";
 
 function when(ts: number): string {
   const date = new Date(ts);
@@ -40,47 +31,23 @@ function statusOf(row: NotificationHistoryRow): {
 }
 
 export function NotificationsHistory(): React.JSX.Element {
-  const [rows, setRows] = useState<NotificationHistoryRow[]>([]);
-  const [load, setLoad] = useState<Load>("loading");
+  const query = useQuery(notificationHistoryQueryOptions());
+  const error =
+    query.error instanceof NotificationHistoryError ? query.error : null;
 
-  useEffect(() => {
-    let cancelled = false;
-    void apiFetch("/api/notifications/history")
-      .then(async (res) => {
-        if (res.status === 401) return "signed-out" as const;
-        if (!res.ok) return "unreachable" as const;
-        const data = (await res.json()) as {
-          notifications?: NotificationHistoryRow[];
-        };
-        return data.notifications ?? [];
-      })
-      .catch(() => "unreachable" as const)
-      .then((result) => {
-        if (cancelled) return;
-        if (result === "signed-out" || result === "unreachable") {
-          setLoad(result);
-          return;
-        }
-        setRows(result);
-        setLoad("ready");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (load === "loading")
+  if (query.isLoading)
     return <div className="tavern-empty">Loading notifications…</div>;
-  if (load === "signed-out")
+  if (error?.kind === "signed-out")
     return (
       <div className="tavern-empty">Sign in to see your notifications.</div>
     );
-  if (load === "unreachable")
+  if (error?.kind === "unreachable")
     return (
       <div className="tavern-empty">
         Couldn't reach Freestyle Cloud. Try again in a moment.
       </div>
     );
+  const rows = query.data ?? [];
   if (rows.length === 0)
     return (
       <div className="tavern-empty">

@@ -26,9 +26,14 @@ import { seedMessageFor } from "@renderer/lib/onboarding-core";
 import {
   connectorConnectionsQueryOptions,
   createQueryClient,
+  latestThreadQueryOptions,
+  queryKeys,
+  threadHistoryInfiniteQueryOptions,
+  threadQueryOptions,
 } from "@renderer/lib/query";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
+import { getThread, type ThreadState } from "@renderer/lib/threads";
 import { highlightToolJson, toolJson } from "@renderer/lib/tool-json";
 import {
   connectorToolkitSlug,
@@ -38,7 +43,12 @@ import { SpriteBadge } from "@renderer/sprites/badge";
 import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
 import { PANEL_TABS, type PanelTab } from "@shared/panel";
 import { SPRITES_INFO } from "@shared/sprites";
-import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import {
+  QueryClientProvider,
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
@@ -409,17 +419,6 @@ function ChatMessage({
   );
 }
 
-interface ThreadState {
-  id: string;
-  messages: UIMessage[];
-}
-
-interface ThreadSummary {
-  id: string;
-  title: string;
-  updatedAt: number;
-}
-
 function dateGroup(ts: number): string {
   const day = (d: Date): number =>
     new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -549,41 +548,26 @@ function SignInGate(): React.JSX.Element {
 
 function PanelRoot(): React.JSX.Element {
   const [thread, setThread] = useState<ThreadState | null>(null);
+  const queryClient = useQueryClient();
+  const latestQuery = useQuery(latestThreadQueryOptions());
 
   useEffect(() => {
     const off = window.api.onPanelOpenThread((threadId) => {
-      void apiFetch(`/api/agent/thread/${threadId}`)
-        .then(async (res) => {
-          if (!res.ok) return null;
-          const data = (await res.json()) as {
-            thread: { id: string; messages: UIMessage[] } | null;
-          };
-          return data.thread;
-        })
+      void getThread(threadId)
         .catch(() => null)
         .then((picked) => {
-          if (picked) setThread({ id: picked.id, messages: picked.messages });
+          if (!picked) return;
+          queryClient.setQueryData(queryKeys.threads.detail(threadId), picked);
+          setThread(picked);
         });
     });
     return () => off?.();
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
-    void apiFetch("/api/agent/thread/latest")
-      .then(async (res) => {
-        if (!res.ok) return null;
-        const data = (await res.json()) as {
-          thread: { id: string; messages: UIMessage[] } | null;
-        };
-        return data.thread;
-      })
-      .catch(() => null)
-      .then((latest) =>
-        setThread(
-          latest ? { id: latest.id, messages: latest.messages } : newThread(),
-        ),
-      );
-  }, []);
+    if (latestQuery.isPending) return;
+    setThread(latestQuery.data ?? newThread());
+  }, [latestQuery.data, latestQuery.isPending]);
 
   if (!thread) return <div className="tavern tavern-panel" />;
   return (
@@ -598,19 +582,13 @@ function ThreadHistory({
   onPick: (thread: ThreadState) => void;
   currentId: string;
 }): React.JSX.Element {
-  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const queryClient = useQueryClient();
+  const historyQuery = useInfiniteQuery(threadHistoryInfiniteQueryOptions());
+  const threads =
+    historyQuery.data?.pages.flatMap((page) => page.threads) ?? [];
 
-  useEffect(() => {
-    void apiFetch("/api/agent/thread/list")
-      .then(async (res) =>
-        res.ok
-          ? ((await res.json()) as { threads: ThreadSummary[] }).threads
-          : [],
-      )
-      .catch(() => [])
-      .then(setThreads);
-  }, []);
-
+  if (historyQuery.isLoading)
+    return <div className="tavern-empty">Loading conversations…</div>;
   if (threads.length === 0)
     return <div className="tavern-empty">No conversations yet.</div>;
 
@@ -628,16 +606,9 @@ function ThreadHistory({
               type="button"
               className={`tavern-thread-row${t.id === currentId ? " is-current" : ""}`}
               onClick={() => {
-                void apiFetch(`/api/agent/thread/${t.id}`).then(async (res) => {
-                  if (!res.ok) return;
-                  const data = (await res.json()) as {
-                    thread: { id: string; messages: UIMessage[] };
-                  };
-                  onPick({
-                    id: data.thread.id,
-                    messages: data.thread.messages,
-                  });
-                });
+                void queryClient
+                  .fetchQuery(threadQueryOptions(t.id))
+                  .then((picked) => picked && onPick(picked));
               }}
             >
               {t.title}
@@ -645,6 +616,18 @@ function ThreadHistory({
           </Fragment>
         );
       })}
+      {historyQuery.hasNextPage ? (
+        <button
+          type="button"
+          className="tavern-thread-row"
+          disabled={historyQuery.isFetchingNextPage}
+          onClick={() => void historyQuery.fetchNextPage()}
+        >
+          {historyQuery.isFetchingNextPage
+            ? "Loading conversations…"
+            : "Load more conversations"}
+        </button>
+      ) : null}
     </>
   );
 }

@@ -1,4 +1,10 @@
-export const PANEL_TABS = ["chat", "history", "todos", "notes"] as const;
+export const PANEL_TABS = [
+  "chat",
+  "history",
+  "todos",
+  "notes",
+  "apps",
+] as const;
 export type PanelTab = (typeof PANEL_TABS)[number];
 
 // 380px of bubble + 7px of hard shadow.

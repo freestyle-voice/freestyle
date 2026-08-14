@@ -2,6 +2,8 @@ import "../overlay.css";
 import "../tavern.css";
 
 import { useChat } from "@ai-sdk/react";
+import { ConnectSuggestions } from "@renderer/components/connect-suggestions";
+import { ConnectedApps } from "@renderer/components/connected-apps";
 import { Markdown } from "@renderer/components/markdown";
 import { NotesTab } from "@renderer/components/notes-tab";
 import { OnboardingGate, useOnboarding } from "@renderer/components/onboarding";
@@ -42,6 +44,7 @@ const TAB_LABELS: Record<PanelTab, string> = {
   history: "History",
   todos: "Todos",
   notes: "Notes",
+  apps: "Apps",
 };
 
 const TAB_PLACEHOLDER: Record<PanelTab, string> = {
@@ -49,6 +52,7 @@ const TAB_PLACEHOLDER: Record<PanelTab, string> = {
   history: "Past conversations land here — pick one to continue it.",
   todos: "Nothing to do yet.",
   notes: "No notes yet.",
+  apps: "Connect the apps you live in, and Freestyle can work them for you.",
 };
 
 function ShikiJson({ value }: { value: unknown }): React.JSX.Element {
@@ -326,6 +330,16 @@ function ChatMessage({
               <div key={`${message.id}-${i}`} className="tavern-msg-assistant">
                 <Markdown text={part.text} />
               </div>
+            );
+          }
+          if (part.type === "tool-suggest_connections") {
+            const tool = part as { state?: string; output?: unknown };
+            if (tool.state !== "output-available") return null;
+            return (
+              <ConnectSuggestions
+                key={`${message.id}-${i}`}
+                output={tool.output}
+              />
             );
           }
           if (part.type.startsWith("tool-")) {
@@ -988,6 +1002,14 @@ function PanelInner({
               onPick={(picked) => {
                 if (picked.id === thread.id) setTab("chat");
                 else onSwitchThread(picked);
+              }}
+            />
+          ) : tab === "apps" ? (
+            <ConnectedApps
+              onUseWorkflow={(prompt) => {
+                setTab("chat");
+                setNotice(null);
+                void sendMessage({ text: prompt });
               }}
             />
           ) : showChat ? (

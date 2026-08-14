@@ -1,6 +1,12 @@
 import { QueryClient } from "@tanstack/react-query";
 import { getClient } from "./api";
-import { type ConnectorCatalogPage, listConnectorCatalog } from "./connectors";
+import {
+  type ConnectorCatalogPage,
+  getConnectorDetails,
+  listConnectorCatalog,
+  listConnectorConnections,
+  listSuggestedConnectors,
+} from "./connectors";
 import type { AvailableModel } from "./models";
 
 /** Common staleTime for cached queries (1 hour). */
@@ -66,7 +72,12 @@ export const queryKeys = {
   },
 
   connectors: {
+    all: ["connectors"] as const,
     catalog: ["connectors", "catalog"] as const,
+    connections: ["connectors", "connections"] as const,
+    search: (search: string) => ["connectors", "search", search] as const,
+    suggested: ["connectors", "suggested"] as const,
+    details: (slug: string) => ["connectors", "details", slug] as const,
   },
 
   /** Remix practice runs. */
@@ -176,6 +187,46 @@ export function connectorCatalogInfiniteQueryOptions() {
       }),
     getNextPageParam: (lastPage: ConnectorCatalogPage) =>
       lastPage.nextCursor ?? undefined,
+    staleTime: 5 * 60 * 1000,
+    gcTime: ONE_HOUR,
+  };
+}
+
+export function connectorConnectionsQueryOptions() {
+  return {
+    queryKey: queryKeys.connectors.connections,
+    queryFn: listConnectorConnections,
+    staleTime: 5 * 60 * 1000,
+    gcTime: ONE_HOUR,
+  };
+}
+
+export const CONNECTOR_SEARCH_PAGE_SIZE = 50;
+
+export function connectorSearchQueryOptions(search: string) {
+  return {
+    queryKey: queryKeys.connectors.search(search),
+    queryFn: () =>
+      listConnectorCatalog({ search, limit: CONNECTOR_SEARCH_PAGE_SIZE }),
+    staleTime: 5 * 60 * 1000,
+    gcTime: ONE_HOUR,
+    enabled: search.length > 0,
+  };
+}
+
+export function connectorSuggestedQueryOptions() {
+  return {
+    queryKey: queryKeys.connectors.suggested,
+    queryFn: listSuggestedConnectors,
+    staleTime: 5 * 60 * 1000,
+    gcTime: ONE_HOUR,
+  };
+}
+
+export function connectorDetailsQueryOptions(slug: string) {
+  return {
+    queryKey: queryKeys.connectors.details(slug),
+    queryFn: () => getConnectorDetails(slug),
     staleTime: 5 * 60 * 1000,
     gcTime: ONE_HOUR,
   };

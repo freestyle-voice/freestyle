@@ -70,7 +70,7 @@ function useCloudAuthState(): UseCloudAuth {
         if (!user && wasSignedInRef.current) {
           setSessionExpired(true);
           queryClient.removeQueries({
-            queryKey: queryKeys.connectors.catalog,
+            queryKey: queryKeys.connectors.all,
           });
         }
         if (user) setSessionExpired(false);
@@ -161,7 +161,7 @@ function useCloudAuthState(): UseCloudAuth {
         const data = await tokenRes.json();
         if (attempt !== signInAttemptRef.current) return null;
         queryClient.removeQueries({ queryKey: queryKeys.cloud.usage });
-        queryClient.removeQueries({ queryKey: queryKeys.connectors.catalog });
+        queryClient.removeQueries({ queryKey: queryKeys.connectors.all });
         wasSignedInRef.current = true;
         setSessionExpired(false);
         setUser(data.user);
@@ -204,7 +204,7 @@ function useCloudAuthState(): UseCloudAuth {
     setSessionExpired(false);
     setUser(null);
     queryClient.removeQueries({ queryKey: queryKeys.cloud.usage });
-    queryClient.removeQueries({ queryKey: queryKeys.connectors.catalog });
+    queryClient.removeQueries({ queryKey: queryKeys.connectors.all });
   }, [queryClient]);
 
   return {

@@ -61,4 +61,15 @@ describe("connected-app tool approvals", () => {
       "/api/connectors/catalog?limit=24&cursor=cursor-1",
     );
   });
+
+  it("passes a search query through to the catalog endpoint", async () => {
+    apiFetch.mockResolvedValue(
+      new Response(JSON.stringify({ connectors: [], nextCursor: null })),
+    );
+
+    await listConnectorCatalog({ search: "calendar", limit: 50 });
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/api/connectors/catalog?limit=50&search=calendar",
+    );
+  });
 });

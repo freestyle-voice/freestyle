@@ -3229,3 +3229,268 @@
   font-size: 10.5px;
   color: var(--tavern-mute);
 }
+
+/* ── Apps page v2: logos, detail pane, in-chat connect cards ─────────── */
+
+.connector-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.connector-card-open {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.connector-card-open:focus-visible {
+  outline: 2px solid var(--tavern-lantern);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.connector-logo {
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--tavern-rule);
+  border-radius: 8px;
+  padding: 4px;
+  background: #fff;
+  object-fit: contain;
+}
+
+.connector-logo.is-large,
+.connector-mark.is-large {
+  width: 44px;
+  height: 44px;
+}
+
+.connector-mark.is-large {
+  font-size: 24px;
+}
+
+.connector-detail {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.connector-detail-back {
+  align-self: flex-start;
+  margin: 0;
+  padding: 2px 6px 2px 0;
+  border: 0;
+  background: none;
+  font-family: var(--tavern-mono);
+  font-size: 11px;
+  color: var(--tavern-robe);
+  cursor: pointer;
+}
+
+.connector-detail-back:hover {
+  color: var(--tavern-lantern);
+}
+
+.connector-detail-head {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.connector-detail-title p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--tavern-robe);
+}
+
+.connector-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.connector-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--tavern-rule);
+  border-radius: 999px;
+  background: var(--tavern-card);
+  font-family: var(--tavern-mono);
+  font-size: 10px;
+  color: var(--tavern-robe);
+}
+
+.connector-chip.is-muted {
+  opacity: 0.75;
+}
+
+.connector-chip.is-link {
+  cursor: pointer;
+}
+
+.connector-chip.is-link:hover {
+  border-color: var(--tavern-lantern);
+  color: var(--tavern-lantern);
+}
+
+.connector-detail-action {
+  align-self: flex-start;
+}
+
+.connector-detail-status {
+  margin: -6px 0 0;
+  font-size: 11px;
+  color: var(--tavern-robe);
+}
+
+.connector-detail-section {
+  display: grid;
+  gap: 8px;
+}
+
+.connector-workflows {
+  display: grid;
+  gap: 6px;
+}
+
+.connector-workflow {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--tavern-rule);
+  border-radius: 10px;
+  background: var(--tavern-card);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
+
+.connector-workflow:hover:not(:disabled) {
+  border-color: var(--tavern-lantern);
+}
+
+.connector-workflow:disabled {
+  cursor: default;
+}
+
+.connector-workflow strong {
+  font-size: 12px;
+}
+
+.connector-workflow small {
+  font-size: 11px;
+  color: var(--tavern-robe);
+}
+
+.connector-tools {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.connector-tools li {
+  display: grid;
+  gap: 2px;
+  border-bottom: 1px dashed var(--tavern-rule);
+  padding-bottom: 8px;
+}
+
+.connector-tools li:last-child {
+  border-bottom: 0;
+}
+
+.connector-tools strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.connector-tool-ro {
+  padding: 1px 6px;
+  border: 1px solid #9daa7b;
+  border-radius: 999px;
+  font-family: var(--tavern-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4a7c46;
+}
+
+.connector-tools p {
+  margin: 0;
+  font-size: 11px;
+  color: var(--tavern-robe);
+}
+
+.tavern-connect-cards {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.tavern-connect-card {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--tavern-rule);
+  border-radius: 10px;
+  padding: 9px;
+  background: color-mix(in srgb, var(--tavern-parchment) 74%, var(--tavern-card));
+}
+
+.tavern-connect-card.is-connected {
+  border-color: #9daa7b;
+}
+
+.tavern-connect-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tavern-connect-copy strong {
+  font-size: 12px;
+}
+
+.tavern-connect-copy p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  margin: 0;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--tavern-robe);
+}
+
+.tavern-connect-actions {
+  display: grid;
+  gap: 4px;
+}
+
+.tavern-connect-done {
+  color: #4a7c46;
+  font-size: 14px;
+}
+
+.tavern-connect-error {
+  margin: 0;
+  font-size: 11px;
+  color: #a04d3c;
+}

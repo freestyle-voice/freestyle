@@ -1,39 +1,80 @@
 import {
   type ConnectorCatalogItem,
-  type ConnectorCatalogPage,
-  connectorStatus,
-  connectToolkit,
+  type ConnectorConnection,
   disconnectToolkit,
 } from "@renderer/lib/connectors";
 import {
   connectorCatalogInfiniteQueryOptions,
+  connectorConnectionsQueryOptions,
+  connectorDetailsQueryOptions,
+  connectorSearchQueryOptions,
+  connectorSuggestedQueryOptions,
   queryKeys,
 } from "@renderer/lib/query";
 import {
-  type InfiniteData,
+  type ConnectPhase,
+  useConnectorConnect,
+} from "@renderer/lib/use-connector-connect";
+import {
   useInfiniteQuery,
   useMutation,
+  useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const POLL_INTERVAL_MS = 2_000;
-const POLL_TIMEOUT_MS = 5 * 60_000;
-
-function connectionCopy(connector: ConnectorCatalogItem): string {
-  const connection = connector.connection;
-  if (connection?.status === "active")
-    return `${connection.accountLabel ?? "Connected"} · ${connection.toolCount} ${connection.toolCount === 1 ? "tool" : "tools"}`;
-  if (connection?.status === "pending")
-    return "Finish connecting in your browser";
-  if (connection?.status === "needs_reconnect")
-    return "Reconnect to keep using this app";
-  return "Available to Freestyle";
+export function ConnectorLogo({
+  name,
+  logo,
+  large,
+}: {
+  name: string;
+  logo?: string | null;
+  large?: boolean;
+}): React.JSX.Element {
+  const [failed, setFailed] = useState(false);
+  if (!logo || failed)
+    return (
+      <div
+        className={`connector-mark${large ? " is-large" : ""}`}
+        aria-hidden="true"
+      >
+        {name.slice(0, 1)}
+      </div>
+    );
+  return (
+    <img
+      className={`connector-logo${large ? " is-large" : ""}`}
+      src={logo}
+      alt=""
+      draggable={false}
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
-function connectionBadge(connector: ConnectorCatalogItem): string | null {
-  switch (connector.connection?.status) {
+function connectionCopy(
+  connection: ConnectorConnection | null,
+  phase: ConnectPhase | undefined,
+  description?: string,
+): string {
+  if (phase === "opening") return "Opening your browser…";
+  if (phase === "pending" || connection?.status === "pending")
+    return "Finish connecting in your browser";
+  if (connection?.status === "active")
+    return `${connection.accountLabel ?? "Connected"} · ${connection.toolCount} ${connection.toolCount === 1 ? "tool" : "tools"}`;
+  if (connection?.status === "needs_reconnect")
+    return "Reconnect to keep using this app";
+  return description ?? "Available to Freestyle";
+}
+
+function connectionBadge(
+  connection: ConnectorConnection | null,
+  phase: ConnectPhase | undefined,
+): string | null {
+  if (phase === "pending") return "In progress";
+  switch (connection?.status) {
     case "active":
       return "Connected";
     case "pending":
@@ -45,56 +86,71 @@ function connectionBadge(connector: ConnectorCatalogItem): string | null {
   }
 }
 
+function actionLabel(
+  connection: ConnectorConnection | null,
+  phase: ConnectPhase | undefined,
+): string {
+  if (connection?.status === "active") return "Disconnect";
+  if (phase === "opening") return "Opening…";
+  if (phase === "pending" || connection?.status === "pending")
+    return "Open browser";
+  if (connection?.status === "needs_reconnect") return "Reconnect";
+  return "Connect";
+}
+
 function ConnectorCard({
   connector,
+  phase,
   busy,
   onConnect,
   onDisconnect,
+  onOpen,
 }: {
   connector: ConnectorCatalogItem;
+  phase: ConnectPhase | undefined;
   busy: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  onOpen: () => void;
 }): React.JSX.Element {
   const connection = connector.connection;
   const connected = connection?.status === "active";
-  const pending = connection?.status === "pending";
+  const pending = phase === "pending" || connection?.status === "pending";
   const reconnect = connection?.status === "needs_reconnect";
-  const badge = connectionBadge(connector);
-  const action = connected
-    ? "Disconnect"
-    : busy
-      ? "Opening…"
-      : pending
-        ? "Open browser"
-        : reconnect
-          ? "Reconnect"
-          : "Connect";
 
   return (
     <article
       className={`connector-card${connected ? " is-connected" : ""}${pending ? " is-pending" : ""}${reconnect ? " needs-reconnect" : ""}`}
     >
-      <div className="connector-mark" aria-hidden="true">
-        {connector.name.slice(0, 1)}
-      </div>
-      <div className="connector-card-copy">
-        <div className="connector-card-heading">
-          <strong>{connector.name}</strong>
-          {badge ? <span className="connector-state">{badge}</span> : null}
+      <button
+        type="button"
+        className="connector-card-open"
+        aria-label={`About ${connector.name}`}
+        onClick={onOpen}
+      >
+        <ConnectorLogo name={connector.name} logo={connector.logo} />
+        <div className="connector-card-copy">
+          <div className="connector-card-heading">
+            <strong>{connector.name}</strong>
+            {connectionBadge(connection, phase) ? (
+              <span className="connector-state">
+                {connectionBadge(connection, phase)}
+              </span>
+            ) : null}
+          </div>
+          <p>{connectionCopy(connection, phase, connector.description)}</p>
+          {connection?.statusReason ? (
+            <p className="connector-reason">{connection.statusReason}</p>
+          ) : null}
         </div>
-        <p>{connectionCopy(connector)}</p>
-        {connection?.statusReason ? (
-          <p className="connector-reason">{connection.statusReason}</p>
-        ) : null}
-      </div>
+      </button>
       <button
         type="button"
         className={`connector-action${connected ? " is-secondary" : ""}`}
-        disabled={busy}
+        disabled={busy || phase === "opening"}
         onClick={connected ? onDisconnect : onConnect}
       >
-        {action}
+        {busy && !connected ? "Opening…" : actionLabel(connection, phase)}
       </button>
     </article>
   );
@@ -117,103 +173,225 @@ function ConnectedAppsSkeleton(): React.JSX.Element {
   );
 }
 
-export function ConnectedApps(): React.JSX.Element {
-  const [query, setQuery] = useState("");
-  const queryClient = useQueryClient();
-  const catalogQuery = useInfiniteQuery(connectorCatalogInfiniteQueryOptions());
-  const catalog = useMemo(
-    () => catalogQuery.data?.pages.flatMap((page) => page.connectors) ?? [],
-    [catalogQuery.data],
+function ConnectorDetail({
+  slug,
+  phase,
+  busyDisconnect,
+  onBack,
+  onConnect,
+  onDisconnect,
+  onUseWorkflow,
+}: {
+  slug: string;
+  phase: ConnectPhase | undefined;
+  busyDisconnect: boolean;
+  onBack: () => void;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  onUseWorkflow?: (prompt: string) => void;
+}): React.JSX.Element {
+  const detailsQuery = useQuery(connectorDetailsQueryOptions(slug));
+  const details = detailsQuery.data;
+  const connection = details?.connection ?? null;
+  const connected = connection?.status === "active";
+
+  return (
+    <section className="connector-detail">
+      <button type="button" className="connector-detail-back" onClick={onBack}>
+        ‹ Apps
+      </button>
+
+      {detailsQuery.isLoading ? (
+        <ConnectedAppsSkeleton />
+      ) : detailsQuery.isError || !details ? (
+        <div className="connector-error" role="alert">
+          <span>That app's details are unavailable right now.</span>
+          <button type="button" onClick={() => void detailsQuery.refetch()}>
+            Try again
+          </button>
+        </div>
+      ) : (
+        <>
+          <header className="connector-detail-head">
+            <ConnectorLogo name={details.name} logo={details.logo} large />
+            <div className="connector-detail-title">
+              <div className="connector-card-heading">
+                <strong>{details.name}</strong>
+                {connectionBadge(connection, phase) ? (
+                  <span className="connector-state">
+                    {connectionBadge(connection, phase)}
+                  </span>
+                ) : null}
+              </div>
+              {details.description ? <p>{details.description}</p> : null}
+            </div>
+          </header>
+
+          <div className="connector-detail-meta">
+            {details.categories?.map((category) => (
+              <span key={category} className="connector-chip">
+                {category}
+              </span>
+            ))}
+            {details.toolsCount ? (
+              <span className="connector-chip is-muted">
+                {details.toolsCount} tools
+              </span>
+            ) : null}
+            {details.appUrl ? (
+              <button
+                type="button"
+                className="connector-chip is-link"
+                onClick={() => void window.api.openExternal(details.appUrl!)}
+              >
+                Website ↗
+              </button>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            className={`connector-action connector-detail-action${connected ? " is-secondary" : ""}`}
+            disabled={busyDisconnect || phase === "opening"}
+            onClick={connected ? onDisconnect : onConnect}
+          >
+            {actionLabel(connection, phase)}
+          </button>
+          <p className="connector-detail-status">
+            {connectionCopy(connection, phase)}
+          </p>
+
+          {details.workflows.length > 0 ? (
+            <div className="connector-detail-section">
+              <div className="connector-group-label">
+                <span>Things to try</span>
+              </div>
+              <div className="connector-workflows">
+                {details.workflows.map((workflow) => (
+                  <button
+                    key={workflow.name}
+                    type="button"
+                    className="connector-workflow"
+                    disabled={!onUseWorkflow}
+                    title={workflow.prompt}
+                    onClick={() => onUseWorkflow?.(workflow.prompt)}
+                  >
+                    <strong>{workflow.name}</strong>
+                    <small>{workflow.prompt}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {details.tools.length > 0 ? (
+            <div className="connector-detail-section">
+              <div className="connector-group-label">
+                <span>What it can do</span>
+                <em>{details.tools.length}</em>
+              </div>
+              <ul className="connector-tools">
+                {details.tools.map((tool) => (
+                  <li key={tool.name}>
+                    <strong>
+                      {tool.name}
+                      {tool.readOnly ? (
+                        <span className="connector-tool-ro">read-only</span>
+                      ) : null}
+                    </strong>
+                    {tool.description ? <p>{tool.description}</p> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </>
+      )}
+    </section>
   );
+}
+
+export function ConnectedApps({
+  onUseWorkflow,
+}: {
+  onUseWorkflow?: (prompt: string) => void;
+}): React.JSX.Element {
+  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const [detailSlug, setDetailSlug] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const {
+    connect,
+    phases,
+    error: connectError,
+    clearError,
+  } = useConnectorConnect();
   const [actionError, setActionError] = useState<string | null>(null);
-  const [pollStartedAt, setPollStartedAt] = useState(0);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
-  const pending = useMemo(
-    () =>
-      catalog
-        .filter((item) => item.connection?.status === "pending")
-        .map((item) => item.slug),
-    [catalog],
-  );
-  const pendingKey = pending.join(",");
   useEffect(() => {
-    if (!pendingKey) return;
-    const startedAt = pollStartedAt || Date.now();
-    const pendingToolkits = pendingKey.split(",");
-    const timer = window.setInterval(() => {
-      if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
-        window.clearInterval(timer);
-        setActionError(
-          "This connection is still pending. Finish it in your browser, or open it again to restart.",
-        );
-        return;
-      }
-      void Promise.all(
-        pendingToolkits.map((toolkit) => connectorStatus(toolkit)),
-      )
-        .then((statuses) => {
-          queryClient.setQueryData<InfiniteData<ConnectorCatalogPage>>(
-            queryKeys.connectors.catalog,
-            (current) => {
-              if (!current) return current;
-              const statusByToolkit = new Map(
-                pendingToolkits.map((toolkit, index) => [
-                  toolkit,
-                  statuses[index] ?? null,
-                ]),
-              );
-              return {
-                ...current,
-                pages: current.pages.map((page) => ({
-                  ...page,
-                  connectors: page.connectors.map((item) =>
-                    statusByToolkit.has(item.slug)
-                      ? {
-                          ...item,
-                          connection: statusByToolkit.get(item.slug) ?? null,
-                        }
-                      : item,
-                  ),
-                })),
-              };
-            },
-          );
-        })
-        .catch(() => {});
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [pendingKey, pollStartedAt, queryClient]);
+    const timer = window.setTimeout(() => setSearch(query.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
-  const connectMutation = useMutation({
-    mutationFn: connectToolkit,
-    onSuccess: async () => {
-      setPollStartedAt(Date.now());
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.connectors.catalog,
-      });
-    },
-  });
+  const connectionsQuery = useQuery(connectorConnectionsQueryOptions());
+  const suggestedQuery = useQuery(connectorSuggestedQueryOptions());
+  const browseQuery = useInfiniteQuery(connectorCatalogInfiniteQueryOptions());
+  const searchQuery = useQuery(connectorSearchQueryOptions(search));
+
+  const connections = useMemo(
+    () =>
+      (connectionsQuery.data ?? []).filter(
+        (connection) => connection.status !== "disconnected",
+      ),
+    [connectionsQuery.data],
+  );
+  const connectedSlugs = useMemo(
+    () => new Set(connections.map((connection) => connection.toolkitSlug)),
+    [connections],
+  );
+  const connectedItems: ConnectorCatalogItem[] = useMemo(
+    () =>
+      connections.map((connection) => ({
+        slug: connection.toolkitSlug,
+        name: connection.toolkitName,
+        logo: connection.toolkitLogo ?? undefined,
+        connection,
+      })),
+    [connections],
+  );
+  const suggested = useMemo(
+    () =>
+      (suggestedQuery.data ?? []).filter(
+        (item) => !connectedSlugs.has(item.slug),
+      ),
+    [suggestedQuery.data, connectedSlugs],
+  );
+  const suggestedSlugs = useMemo(
+    () => new Set((suggestedQuery.data ?? []).map((item) => item.slug)),
+    [suggestedQuery.data],
+  );
+  const browse = useMemo(
+    () =>
+      (browseQuery.data?.pages.flatMap((page) => page.connectors) ?? []).filter(
+        (item) =>
+          !connectedSlugs.has(item.slug) && !suggestedSlugs.has(item.slug),
+      ),
+    [browseQuery.data, connectedSlugs, suggestedSlugs],
+  );
+  const searchResults = useMemo(
+    () => searchQuery.data?.connectors ?? [],
+    [searchQuery.data],
+  );
+
   const disconnectMutation = useMutation({
     mutationFn: disconnectToolkit,
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.connectors.catalog,
+        queryKey: queryKeys.connectors.all,
       });
     },
   });
-
-  const connect = (toolkit: string) => {
-    setActionError(null);
-    connectMutation.mutate(toolkit, {
-      onError: (cause) =>
-        setActionError(
-          cause instanceof Error
-            ? cause.message
-            : "Could not start that connection.",
-        ),
-    });
-  };
   const disconnect = (toolkit: string) => {
     setActionError(null);
     disconnectMutation.mutate(toolkit, {
@@ -225,65 +403,85 @@ export function ConnectedApps(): React.JSX.Element {
         ),
     });
   };
+  const startConnect = (toolkit: string) => {
+    setActionError(null);
+    connect(toolkit);
+  };
 
-  const normalizedQuery = query.trim().toLowerCase();
+  const searching = search.length > 0;
 
   useEffect(() => {
     const target = loadMoreRef.current;
     if (
       !target ||
-      normalizedQuery ||
-      !catalogQuery.hasNextPage ||
-      catalogQuery.isFetchingNextPage
+      searching ||
+      !browseQuery.hasNextPage ||
+      browseQuery.isFetchingNextPage
     )
       return;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry?.isIntersecting) void catalogQuery.fetchNextPage();
+        if (entry?.isIntersecting) void browseQuery.fetchNextPage();
       },
       { rootMargin: "180px" },
     );
     observer.observe(target);
     return () => observer.disconnect();
   }, [
-    catalogQuery.fetchNextPage,
-    catalogQuery.hasNextPage,
-    catalogQuery.isFetchingNextPage,
-    normalizedQuery,
+    browseQuery.fetchNextPage,
+    browseQuery.hasNextPage,
+    browseQuery.isFetchingNextPage,
+    searching,
   ]);
 
-  const matchingCatalog = useMemo(
-    () =>
-      normalizedQuery
-        ? catalog.filter((item) =>
-            `${item.name} ${item.slug}`.toLowerCase().includes(normalizedQuery),
-          )
-        : catalog,
-    [catalog, normalizedQuery],
-  );
-  const connected = matchingCatalog.filter(
-    (item) => item.connection && item.connection.status !== "disconnected",
-  );
-  const available = matchingCatalog.filter(
-    (item) => !item.connection || item.connection.status === "disconnected",
-  );
-  const initialLoading = catalogQuery.isLoading && catalog.length === 0;
+  const initialLoading =
+    (suggestedQuery.isLoading || connectionsQuery.isLoading) &&
+    connectedItems.length === 0 &&
+    suggested.length === 0;
   const error =
     actionError ??
-    (catalogQuery.error instanceof Error
-      ? catalogQuery.error.message
-      : catalogQuery.isError
+    connectError ??
+    (browseQuery.error instanceof Error
+      ? browseQuery.error.message
+      : browseQuery.isError ||
+          suggestedQuery.isError ||
+          connectionsQuery.isError
         ? "Connected apps are unavailable."
         : null);
-  const busyToolkit = connectMutation.isPending
-    ? connectMutation.variables
-    : disconnectMutation.isPending
-      ? disconnectMutation.variables
-      : null;
+  const busyDisconnect = disconnectMutation.isPending
+    ? disconnectMutation.variables
+    : null;
+
+  if (detailSlug) {
+    return (
+      <ConnectorDetail
+        slug={detailSlug}
+        phase={phases[detailSlug]}
+        busyDisconnect={busyDisconnect === detailSlug}
+        onBack={() => setDetailSlug(null)}
+        onConnect={() => startConnect(detailSlug)}
+        onDisconnect={() => disconnect(detailSlug)}
+        onUseWorkflow={onUseWorkflow}
+      />
+    );
+  }
+
+  const renderCards = (items: ConnectorCatalogItem[]) =>
+    items.map((connector) => (
+      <ConnectorCard
+        key={connector.slug}
+        connector={connector}
+        phase={phases[connector.slug]}
+        busy={busyDisconnect === connector.slug}
+        onConnect={() => startConnect(connector.slug)}
+        onDisconnect={() => disconnect(connector.slug)}
+        onOpen={() => setDetailSlug(connector.slug)}
+      />
+    ));
 
   return (
-    <section className="connected-apps" aria-busy={catalogQuery.isFetching}>
+    <section className="connected-apps" aria-busy={browseQuery.isFetching}>
       <header className="connected-apps-intro">
         <span>Private by default</span>
         <p>
@@ -296,9 +494,9 @@ export function ConnectedApps(): React.JSX.Element {
         <span aria-hidden="true">⌕</span>
         <input
           id="connector-search"
-          aria-label="Filter loaded connected apps"
+          aria-label="Search all apps"
           value={query}
-          placeholder="Filter loaded apps"
+          placeholder="Search 1,000+ apps"
           onChange={(event) => setQuery(event.target.value)}
         />
         {query ? (
@@ -315,7 +513,16 @@ export function ConnectedApps(): React.JSX.Element {
       {error ? (
         <div className="connector-error" role="alert">
           <span>{error}</span>
-          <button type="button" onClick={() => void catalogQuery.refetch()}>
+          <button
+            type="button"
+            onClick={() => {
+              setActionError(null);
+              clearError();
+              void browseQuery.refetch();
+              void suggestedQuery.refetch();
+              void connectionsQuery.refetch();
+            }}
+          >
             Try again
           </button>
         </div>
@@ -330,87 +537,83 @@ export function ConnectedApps(): React.JSX.Element {
         </>
       ) : null}
 
-      {!initialLoading && connected.length > 0 ? (
+      {searching ? (
         <div className="connector-group">
           <div className="connector-group-label">
-            <span>Connected</span>
-            <em>{connected.length}</em>
+            <span>Results</span>
+            <em>{searchResults.length}</em>
           </div>
-          {connected.map((connector) => (
-            <ConnectorCard
-              key={connector.slug}
-              connector={connector}
-              busy={busyToolkit === connector.slug}
-              onConnect={() => connect(connector.slug)}
-              onDisconnect={() => disconnect(connector.slug)}
-            />
-          ))}
-        </div>
-      ) : null}
-
-      {!initialLoading && available.length > 0 ? (
-        <div className="connector-group">
-          <div className="connector-group-label">
-            <span>{connected.length > 0 ? "More apps" : "Available apps"}</span>
-            <em>{available.length}</em>
-          </div>
-          {available.map((connector) => (
-            <ConnectorCard
-              key={connector.slug}
-              connector={connector}
-              busy={busyToolkit === connector.slug}
-              onConnect={() => connect(connector.slug)}
-              onDisconnect={() => disconnect(connector.slug)}
-            />
-          ))}
-        </div>
-      ) : null}
-
-      {!initialLoading && matchingCatalog.length === 0 ? (
-        <div className="connector-empty">
-          <strong>
-            {normalizedQuery ? "No apps found" : "No apps are available"}
-          </strong>
-          <p>
-            {normalizedQuery
-              ? "Try a different app name."
-              : "Try again in a moment."}
-          </p>
-          {normalizedQuery ? (
-            <button type="button" onClick={() => setQuery("")}>
-              Clear search
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-
-      {!initialLoading && catalog.length > 0 ? (
-        <div
-          ref={loadMoreRef}
-          className={`connector-load-more${catalogQuery.isFetchingNextPage ? " is-loading" : ""}`}
-          role="status"
-        >
-          {catalogQuery.isFetchingNextPage ? (
-            <>
-              <span className="connector-load-trail" aria-hidden="true">
-                <i />
-                <i />
-                <i />
-              </span>
-              <span className="connector-load-copy">
-                <strong>Finding more apps</strong>
-                <small>Keeping your place in the catalog</small>
-              </span>
-            </>
-          ) : normalizedQuery ? (
-            "Filter applies to apps loaded so far."
-          ) : catalogQuery.hasNextPage ? (
-            "More apps load as you scroll."
+          {searchQuery.isLoading ? (
+            <ConnectedAppsSkeleton />
+          ) : searchResults.length > 0 ? (
+            renderCards(searchResults)
           ) : (
-            "All available apps loaded."
+            <div className="connector-empty">
+              <strong>No apps found</strong>
+              <p>Try a different app name.</p>
+              <button type="button" onClick={() => setQuery("")}>
+                Clear search
+              </button>
+            </div>
           )}
         </div>
-      ) : null}
+      ) : (
+        <>
+          {!initialLoading && connectedItems.length > 0 ? (
+            <div className="connector-group">
+              <div className="connector-group-label">
+                <span>Connected</span>
+                <em>{connectedItems.length}</em>
+              </div>
+              {renderCards(connectedItems)}
+            </div>
+          ) : null}
+
+          {!initialLoading && suggested.length > 0 ? (
+            <div className="connector-group">
+              <div className="connector-group-label">
+                <span>Suggested</span>
+              </div>
+              {renderCards(suggested)}
+            </div>
+          ) : null}
+
+          {!initialLoading && browse.length > 0 ? (
+            <div className="connector-group">
+              <div className="connector-group-label">
+                <span>All apps</span>
+              </div>
+              {renderCards(browse)}
+            </div>
+          ) : null}
+
+          {!initialLoading && browse.length > 0 ? (
+            <div
+              ref={loadMoreRef}
+              className={`connector-load-more${browseQuery.isFetchingNextPage ? " is-loading" : ""}`}
+              role="status"
+            >
+              {browseQuery.isFetchingNextPage ? (
+                <>
+                  <span className="connector-load-trail" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span className="connector-load-copy">
+                    <strong>Finding more apps</strong>
+                    <small>Keeping your place in the catalog</small>
+                  </span>
+                </>
+              ) : browseQuery.hasNextPage ? (
+                "More apps load as you scroll — or search to jump straight there."
+              ) : (
+                "All available apps loaded."
+              )}
+            </div>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }

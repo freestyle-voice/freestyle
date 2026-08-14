@@ -28,6 +28,7 @@ import pricing from "./pricing.js";
 import scheduledRoute from "./scheduled.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
+import suggestionsRoute from "./suggestions.js";
 import transcribe, { transcribePreWarmRoute } from "./transcribe.js";
 import usage from "./usage.js";
 import vocabulary from "./vocabulary.js";
@@ -69,6 +70,7 @@ const apiRouter = new Hono()
   .route("/config", configRoute)
   .route("/connectors", connectorsRoute)
   .route("/scheduled", scheduledRoute)
+  .route("/suggestions", suggestionsRoute)
   .route("/auth", auth)
   .route("/models", models)
   .route("/transcribe", transcribe)

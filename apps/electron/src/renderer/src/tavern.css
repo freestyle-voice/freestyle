@@ -1901,11 +1901,8 @@
   align-items: center;
   justify-content: space-between;
   color: var(--tavern-mute);
-  font-family: var(--tavern-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
+  font: inherit;
+  font-size: 12px;
 }
 
 .connector-group-label em {
@@ -2998,6 +2995,86 @@
 .tavern-starter:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Sits alone in the flex-column .tavern-body; auto margins center it. */
+.tavern-openers {
+  display: grid;
+  gap: 8px;
+  margin: auto 0;
+  width: 100%;
+  text-align: left;
+}
+
+.tavern-opener-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.tavern-opener-head-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tavern-opener {
+  display: grid;
+  gap: 3px;
+  font: inherit;
+  text-align: left;
+  padding: 9px 11px;
+  border: 1px solid var(--tavern-rule);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tavern-parchment) 74%, var(--tavern-card));
+  color: var(--tavern-ink);
+  cursor: pointer;
+}
+
+.tavern-opener.is-static {
+  cursor: default;
+}
+
+.tavern-opener:not(.is-static):hover:not(:disabled) {
+  border-color: var(--tavern-ink);
+  box-shadow: 2px 2px 0 var(--tavern-lantern);
+}
+
+.tavern-opener:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tavern-opener-title {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.tavern-opener-sub {
+  font-size: 11px;
+  color: var(--tavern-robe);
+}
+
+.tavern-opener-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.tavern-opener-more {
+  font: inherit;
+  font-size: 11px;
+  justify-self: center;
+  padding: 2px 6px;
+  border: 0;
+  background: none;
+  color: var(--tavern-mute);
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.tavern-opener-more:hover {
+  color: var(--tavern-ink);
 }
 
 .tavern-bub-stack {

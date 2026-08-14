@@ -7,6 +7,7 @@ import { ConnectedApps } from "@renderer/components/connected-apps";
 import { Markdown } from "@renderer/components/markdown";
 import { NotesTab } from "@renderer/components/notes-tab";
 import { OnboardingGate, useOnboarding } from "@renderer/components/onboarding";
+import { OpenerCards } from "@renderer/components/opener-cards";
 import { SettingsView } from "@renderer/components/settings-view";
 import { TodosTab } from "@renderer/components/todos-tab";
 import {
@@ -19,7 +20,7 @@ import {
 import { apiFetch, initApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider, useCloudAuth } from "@renderer/lib/auth-context";
 import { composerAction } from "@renderer/lib/composer-action";
-import { seedMessageFor, starterPrompts } from "@renderer/lib/onboarding-core";
+import { seedMessageFor } from "@renderer/lib/onboarding-core";
 import { createQueryClient } from "@renderer/lib/query";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
@@ -1065,25 +1066,13 @@ function PanelInner({
           ) : tab === "notes" ? (
             <NotesTab />
           ) : chatActive ? (
-            <div className="tavern-empty">
-              {TAB_PLACEHOLDER.chat}
-              <div className="tavern-starters">
-                {starterPrompts().map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    className="tavern-starter"
-                    disabled={busy}
-                    onClick={() => {
-                      setNotice(null);
-                      void sendMessage({ text: prompt });
-                    }}
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <OpenerCards
+              busy={busy}
+              onPrompt={(text) => {
+                setNotice(null);
+                void sendMessage({ text });
+              }}
+            />
           ) : (
             <div className="tavern-empty">{TAB_PLACEHOLDER[tab]}</div>
           )}

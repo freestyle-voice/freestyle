@@ -130,13 +130,21 @@ export async function listConnectorConnections(): Promise<
   return data.connections;
 }
 
-export async function listSuggestedConnectors(): Promise<
-  ConnectorCatalogItem[]
-> {
-  const data = await responseJson<{ connectors: ConnectorCatalogItem[] }>(
-    await apiFetch("/api/connectors/suggested"),
-  );
-  return data.connectors;
+export type SuggestedConnectors = {
+  connectors: ConnectorCatalogItem[];
+  /** Section title, e.g. "Recommended for engineers"; role-aware server-side. */
+  heading: string;
+};
+
+export async function listSuggestedConnectors(): Promise<SuggestedConnectors> {
+  const data = await responseJson<{
+    connectors: ConnectorCatalogItem[];
+    heading?: string;
+  }>(await apiFetch("/api/connectors/suggested"));
+  return {
+    connectors: data.connectors,
+    heading: data.heading ?? "Suggested",
+  };
 }
 
 export async function getConnectorDetails(

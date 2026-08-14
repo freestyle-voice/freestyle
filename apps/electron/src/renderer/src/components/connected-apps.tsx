@@ -491,13 +491,15 @@ export function ConnectedApps({
   );
   const suggested = useMemo(
     () =>
-      (suggestedQuery.data ?? []).filter(
+      (suggestedQuery.data?.connectors ?? []).filter(
         (item) => !connectedSlugs.has(item.slug),
       ),
     [suggestedQuery.data, connectedSlugs],
   );
+  const suggestedHeading = suggestedQuery.data?.heading ?? "Suggested";
   const suggestedSlugs = useMemo(
-    () => new Set((suggestedQuery.data ?? []).map((item) => item.slug)),
+    () =>
+      new Set((suggestedQuery.data?.connectors ?? []).map((item) => item.slug)),
     [suggestedQuery.data],
   );
   const browse = useMemo(
@@ -699,7 +701,7 @@ export function ConnectedApps({
           {!initialLoading && suggested.length > 0 ? (
             <div className="connector-group">
               <div className="connector-group-label">
-                <span>Suggested</span>
+                <span>{suggestedHeading}</span>
               </div>
               {renderCards(suggested)}
             </div>

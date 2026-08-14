@@ -80,6 +80,9 @@ export const queryKeys = {
     details: (slug: string) => ["connectors", "details", slug] as const,
   },
 
+  /** Empty-state opener cards (`GET /api/suggestions/home`). */
+  openers: ["openers"] as const,
+
   /** Remix practice runs. */
   remixRuns: ["remix", "runs"] as const,
 

@@ -538,6 +538,11 @@ export function OnboardingGate({
     if (!profileStarted.current && name.trim()) {
       profileStarted.current = true;
       void seedProfile(name.trim(), trade.trim()).catch(() => {});
+      // The profile row is the source of truth for role-aware
+      // recommendations; a skipped intro must still record the trade.
+      if (trade.trim()) {
+        updateProfile.mutateAsync({ jobTitle: trade.trim() }).catch(() => {});
+      }
     }
     window.setTimeout(() => onDone(task.trim()), 1400);
   };

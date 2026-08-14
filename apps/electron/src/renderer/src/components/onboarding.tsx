@@ -26,6 +26,7 @@ import {
   questFor,
   SKIP_LINE,
   TRADE_CHIPS,
+  TRADE_TO_INDUSTRY,
 } from "@renderer/lib/onboarding-core";
 import {
   connectorConnectionsQueryOptions,
@@ -506,8 +507,12 @@ export function OnboardingGate({
         .catch(() => {})
         .then(() => {
           if (trade.trim()) {
+            const industry = TRADE_TO_INDUSTRY[trade.trim()];
             updateProfile
-              .mutateAsync({ jobTitle: trade.trim() })
+              .mutateAsync({
+                jobTitle: trade.trim(),
+                ...(industry ? { industry } : {}),
+              })
               .catch(() => {});
           }
         });
@@ -541,7 +546,13 @@ export function OnboardingGate({
       // The profile row is the source of truth for role-aware
       // recommendations; a skipped intro must still record the trade.
       if (trade.trim()) {
-        updateProfile.mutateAsync({ jobTitle: trade.trim() }).catch(() => {});
+        const industry = TRADE_TO_INDUSTRY[trade.trim()];
+        updateProfile
+          .mutateAsync({
+            jobTitle: trade.trim(),
+            ...(industry ? { industry } : {}),
+          })
+          .catch(() => {});
       }
     }
     window.setTimeout(() => onDone(task.trim()), 1400);

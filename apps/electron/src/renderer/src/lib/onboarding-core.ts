@@ -1,3 +1,5 @@
+import type { Industry } from "@freestyle-voice/validations";
+
 export const ONBOARDING_KEY = "onboarding";
 export const DEFAULT_QUEST = "Ask Jeb to do something for you";
 export const PROFILE_PATH = "memories/profile.md";
@@ -46,6 +48,26 @@ export const CALENDAR_TEMPLATE_IDS = [
   "plan-my-day",
   "meeting-prep-nudge",
 ] as const;
+
+/** Trade chips mapped onto the Settings industry enum, so onboarding fills
+ * the same profile field Settings edits. Chips with no honest industry
+ * (Founder, Operations, "Between things") set none; the jobTitle fallback
+ * covers them. */
+export const TRADE_TO_INDUSTRY: Record<string, Industry> = {
+  Engineer: "software",
+  Designer: "design",
+  Product: "software",
+  Writer: "media",
+  Student: "education",
+  Researcher: "research",
+  Marketer: "marketing",
+  Consultant: "consulting",
+  Sales: "sales",
+  Teacher: "education",
+  Finance: "finance",
+  Healthcare: "healthcare",
+  Law: "legal",
+};
 
 export const AUTOMATION_LABELS: Record<string, string> = {
   "morning-inbox-brief": "Morning inbox brief · weekdays 8am",

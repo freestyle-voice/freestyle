@@ -9,7 +9,7 @@
  * `/v1/usage` to reflect the new plan.
  *
  * ┌──────────── CONTRACT (implemented server-side in the cloud repo) ──────────┐
- * │ POST /v1/iap/verify                                                         │
+ * │ POST /v2/iap/verify                                                         │
  * │   Auth:  better-auth session cookie (same as /v1/usage)                     │
  * │   Body:  {                                                                  │
  * │     platform: "ios" | "android",                                            │
@@ -63,7 +63,7 @@ export async function verifyIapPurchase(
   const headers = authHeaders();
   if (!headers) throw new CloudAuthError();
 
-  const res = await fetch(`${cloudUrl()}/v1/iap/verify`, {
+  const res = await fetch(`${cloudUrl()}/v2/iap/verify`, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -76,7 +76,7 @@ export async function verifyIapPurchase(
   // The verification endpoint isn't deployed yet (separate cloud repo). Treat a
   // missing/unimplemented route as "unavailable" rather than an error so the UI
   // degrades gracefully during the rollout.
-  if (res.status === 404 || res.status === 501) {
+  if (res.status === 404 || res.status === 501 || res.status === 503) {
     return { status: "unavailable" };
   }
 

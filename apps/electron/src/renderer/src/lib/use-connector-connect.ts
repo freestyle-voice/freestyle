@@ -1,4 +1,8 @@
-import { connectorStatus, connectToolkit } from "@renderer/lib/connectors";
+import {
+  connectorStatus,
+  connectToolkit,
+  connectToolkitWithCredentials,
+} from "@renderer/lib/connectors";
 import { queryKeys } from "@renderer/lib/query";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -41,6 +45,14 @@ export function useConnectorConnect() {
       active.clear();
     };
   }, []);
+
+  const cancel = useCallback(
+    (slug: string) => {
+      stopPolling(slug);
+      setPhase(slug, null);
+    },
+    [setPhase, stopPolling],
+  );
 
   const connect = useCallback(
     (slug: string) => {
@@ -96,5 +108,40 @@ export function useConnectorConnect() {
     [queryClient, setPhase, stopPolling],
   );
 
-  return { connect, phases, error, clearError: () => setError(null) };
+  const connectWithCredentials = useCallback(
+    (slug: string, credentials: Record<string, string>) => {
+      setError(null);
+      setPhase(slug, "opening");
+      void connectToolkitWithCredentials(slug, credentials)
+        .then((connection) => {
+          if (connection?.status === "active") {
+            setPhase(slug, "connected");
+          } else {
+            setPhase(slug, null);
+            setError("That API key could not be verified.");
+          }
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.connectors.all,
+          });
+        })
+        .catch((cause) => {
+          setPhase(slug, null);
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : "That API key could not be verified.",
+          );
+        });
+    },
+    [queryClient, setPhase],
+  );
+
+  return {
+    connect,
+    connectWithCredentials,
+    cancel,
+    phases,
+    error,
+    clearError: () => setError(null),
+  };
 }

@@ -3494,3 +3494,167 @@
   font-size: 11px;
   color: #a04d3c;
 }
+
+/* ── Experiment: wider panel, two-column app grid ─────────────────────── */
+
+.connector-group {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.connector-group-label,
+.connector-group .connector-skeleton,
+.connector-group .connector-empty {
+  grid-column: 1 / -1;
+}
+
+.connector-card {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  row-gap: 8px;
+}
+
+.connector-card .connector-action {
+  width: 100%;
+}
+
+/* ── Cancel/remove for stuck connections ─────────────────────────────── */
+
+.connector-card-actions,
+.connector-detail-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.connector-detail-actions {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.connector-cancel {
+  border: 1px solid var(--tavern-rule);
+  border-radius: 7px;
+  padding: 4px 8px;
+  background: none;
+  color: var(--tavern-robe);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.connector-cancel:hover:not(:disabled) {
+  border-color: #a04d3c;
+  color: #a04d3c;
+}
+
+.connector-cancel:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ── Experiment: quieter connect buttons in app cards ────────────────── */
+
+.connector-card .connector-action {
+  border-color: var(--tavern-rule);
+  background: none;
+  color: var(--tavern-robe);
+  font-weight: 600;
+}
+
+.connector-card .connector-action:hover:not(:disabled) {
+  filter: none;
+  border-color: var(--tavern-lantern);
+  color: var(--tavern-lantern);
+  background: color-mix(in srgb, var(--tavern-lantern) 8%, transparent);
+}
+
+.connector-card.is-connected .connector-action {
+  border-color: transparent;
+  color: var(--tavern-mute);
+}
+
+.connector-card.is-connected .connector-action:hover:not(:disabled) {
+  border-color: var(--tavern-rule);
+  color: #a04d3c;
+  background: none;
+}
+
+.connector-card.needs-reconnect .connector-action {
+  border-color: var(--tavern-lantern);
+  color: var(--tavern-lantern);
+}
+
+/* ── Experiment: tighter cards for the narrower two-column grid ──────── */
+
+.connector-card {
+  padding: 8px;
+}
+
+.connector-card-heading strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── API-key connect form ────────────────────────────────────────────── */
+
+.connector-keyform {
+  display: grid;
+  gap: 8px;
+}
+
+.connector-keyfield {
+  display: grid;
+  gap: 3px;
+}
+
+.connector-keyfield span {
+  font-family: var(--tavern-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tavern-mute);
+}
+
+.connector-keyfield input {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--tavern-rule);
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: var(--tavern-card);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+
+.connector-keyfield input:focus-visible {
+  outline: 2px solid var(--tavern-lantern);
+  outline-offset: 1px;
+}
+
+.connector-keyfield small {
+  font-size: 10px;
+  color: var(--tavern-mute);
+}
+
+.connector-keyform .connector-action {
+  justify-self: start;
+}
+
+.connector-detail-keyform {
+  display: grid;
+  gap: 8px;
+}
+
+.tavern-connect-keyform {
+  grid-column: 1 / -1;
+  border-top: 1px dashed var(--tavern-rule);
+  padding-top: 8px;
+}

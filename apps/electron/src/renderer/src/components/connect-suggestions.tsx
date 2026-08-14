@@ -1,4 +1,12 @@
-import { ConnectorLogo } from "@renderer/components/connected-apps";
+import {
+  ApiKeyForm,
+  ConnectorLogo,
+  DEFAULT_AUTH_FIELDS,
+} from "@renderer/components/connected-apps";
+import {
+  type ConnectorAuthField,
+  disconnectToolkit,
+} from "@renderer/lib/connectors";
 import { useConnectorConnect } from "@renderer/lib/use-connector-connect";
 import type React from "react";
 import { useState } from "react";
@@ -9,6 +17,8 @@ type Suggestion = {
   logo?: string;
   description?: string;
   status?: string | null;
+  authMode?: string;
+  authFields?: ConnectorAuthField[];
 };
 
 function parseSuggestions(output: unknown): Suggestion[] {
@@ -33,8 +43,10 @@ export function ConnectSuggestions({
   output: unknown;
 }): React.JSX.Element | null {
   const suggestions = parseSuggestions(output);
-  const { connect, phases, error } = useConnectorConnect();
+  const { connect, connectWithCredentials, cancel, phases, error } =
+    useConnectorConnect();
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
+  const [keyFormSlug, setKeyFormSlug] = useState<string | null>(null);
   const visible = suggestions.filter((item) => !dismissed.has(item.slug));
   if (visible.length === 0) return null;
 
@@ -42,10 +54,11 @@ export function ConnectSuggestions({
     <div className="tavern-connect-cards">
       {visible.map((suggestion) => {
         const phase = phases[suggestion.slug];
+        const apiKey = suggestion.authMode === "api_key";
         return (
           <div
             key={suggestion.slug}
-            className={`tavern-connect-card${phase === "connected" ? " is-connected" : ""}`}
+            className={`tavern-connect-card${phase === "connected" ? " is-connected" : ""}${keyFormSlug === suggestion.slug ? " has-keyform" : ""}`}
           >
             <ConnectorLogo name={suggestion.name} logo={suggestion.logo} />
             <div className="tavern-connect-copy">
@@ -68,27 +81,56 @@ export function ConnectSuggestions({
                   type="button"
                   className="tavern-approve-btn tavern-approve-allow"
                   disabled={phase === "opening" || phase === "pending"}
-                  onClick={() => connect(suggestion.slug)}
+                  onClick={() =>
+                    apiKey
+                      ? setKeyFormSlug((current) =>
+                          current === suggestion.slug ? null : suggestion.slug,
+                        )
+                      : connect(suggestion.slug)
+                  }
                 >
                   {phase === "opening"
-                    ? "Opening…"
+                    ? apiKey
+                      ? "Connecting…"
+                      : "Opening…"
                     : phase === "pending"
                       ? "Waiting…"
                       : suggestion.status === "needs_reconnect"
                         ? "Reconnect"
-                        : "Connect"}
+                        : apiKey
+                          ? "Add API key"
+                          : "Connect"}
                 </button>
                 <button
                   type="button"
                   className="tavern-approve-btn"
-                  onClick={() =>
-                    setDismissed((prev) => new Set(prev).add(suggestion.slug))
-                  }
+                  onClick={() => {
+                    // Backing out of an in-flight connect must also clear the
+                    // pending row, or the app sticks at "In progress".
+                    if (phase === "pending" || phase === "opening") {
+                      cancel(suggestion.slug);
+                      void disconnectToolkit(suggestion.slug).catch(() => {});
+                    }
+                    setDismissed((prev) => new Set(prev).add(suggestion.slug));
+                  }}
                 >
-                  Not now
+                  {phase === "pending" ? "Cancel" : "Not now"}
                 </button>
               </div>
             )}
+            {apiKey &&
+            keyFormSlug === suggestion.slug &&
+            phase !== "connected" ? (
+              <div className="tavern-connect-keyform">
+                <ApiKeyForm
+                  fields={suggestion.authFields ?? DEFAULT_AUTH_FIELDS}
+                  busy={phase === "opening"}
+                  onSubmit={(credentials) =>
+                    connectWithCredentials(suggestion.slug, credentials)
+                  }
+                />
+              </div>
+            ) : null}
           </div>
         );
       })}

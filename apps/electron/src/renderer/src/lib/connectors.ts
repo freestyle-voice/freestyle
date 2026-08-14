@@ -19,6 +19,15 @@ export type ConnectorConnection = {
 
 export type ConnectorWorkflow = { name: string; prompt: string };
 
+export type ConnectorAuthMode = "oauth" | "api_key";
+
+export type ConnectorAuthField = {
+  name: string;
+  displayName: string;
+  description?: string;
+  required: boolean;
+};
+
 export type ConnectorCatalogItem = {
   slug: string;
   name: string;
@@ -28,6 +37,8 @@ export type ConnectorCatalogItem = {
   toolsCount?: number;
   triggersCount?: number;
   appUrl?: string;
+  authMode?: ConnectorAuthMode;
+  authFields?: ConnectorAuthField[];
   workflows?: ConnectorWorkflow[];
   connection: ConnectorConnection | null;
 };
@@ -145,6 +156,22 @@ export async function connectToolkit(toolkit: string): Promise<void> {
   const opened = await window.api.openExternal(data.connectUrl);
   if (!opened)
     throw new Error("Could not open your browser to connect this app.");
+}
+
+/** API-key apps skip the browser: the key goes straight to the cloud, which
+ * verifies it with Composio and returns the now-active connection. */
+export async function connectToolkitWithCredentials(
+  toolkit: string,
+  credentials: Record<string, string>,
+): Promise<ConnectorConnection | null> {
+  const data = await responseJson<{ connection: ConnectorConnection | null }>(
+    await apiFetch(`/api/connectors/${encodeURIComponent(toolkit)}/connect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credentials }),
+    }),
+  );
+  return data.connection;
 }
 
 export async function connectorStatus(

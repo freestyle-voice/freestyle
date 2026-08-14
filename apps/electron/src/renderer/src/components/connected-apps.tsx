@@ -1,4 +1,5 @@
 import {
+  type ConnectorAuthField,
   type ConnectorCatalogItem,
   type ConnectorConnection,
   disconnectToolkit,
@@ -54,12 +55,81 @@ export function ConnectorLogo({
   );
 }
 
+export const DEFAULT_AUTH_FIELDS: ConnectorAuthField[] = [
+  { name: "generic_api_key", displayName: "API Key", required: true },
+];
+
+function isSecretField(name: string): boolean {
+  return /key|token|secret|password/i.test(name);
+}
+
+export function ApiKeyForm({
+  fields,
+  busy,
+  onSubmit,
+}: {
+  fields: ConnectorAuthField[];
+  busy: boolean;
+  onSubmit: (credentials: Record<string, string>) => void;
+}): React.JSX.Element {
+  const [values, setValues] = useState<Record<string, string>>({});
+  const ready = fields
+    .filter((field) => field.required)
+    .every((field) => (values[field.name] ?? "").trim().length > 0);
+
+  return (
+    <form
+      className="connector-keyform"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!ready || busy) return;
+        const credentials: Record<string, string> = {};
+        for (const field of fields) {
+          const value = (values[field.name] ?? "").trim();
+          if (value) credentials[field.name] = value;
+        }
+        onSubmit(credentials);
+      }}
+    >
+      {fields.map((field) => (
+        <label key={field.name} className="connector-keyfield">
+          <span>
+            {field.displayName}
+            {field.required ? "" : " (optional)"}
+          </span>
+          <input
+            type={isSecretField(field.name) ? "password" : "text"}
+            value={values[field.name] ?? ""}
+            autoComplete="off"
+            spellCheck={false}
+            onMouseDown={() => window.api.panelRequestFocus()}
+            onChange={(event) =>
+              setValues((current) => ({
+                ...current,
+                [field.name]: event.target.value,
+              }))
+            }
+          />
+          {field.description ? <small>{field.description}</small> : null}
+        </label>
+      ))}
+      <button
+        type="submit"
+        className="connector-action"
+        disabled={!ready || busy}
+      >
+        {busy ? "Connecting…" : "Connect"}
+      </button>
+    </form>
+  );
+}
+
 function connectionCopy(
   connection: ConnectorConnection | null,
   phase: ConnectPhase | undefined,
   description?: string,
 ): string {
-  if (phase === "opening") return "Opening your browser…";
+  if (phase === "opening") return "Connecting…";
   if (phase === "pending" || connection?.status === "pending")
     return "Finish connecting in your browser";
   if (connection?.status === "active")
@@ -117,6 +187,8 @@ function ConnectorCard({
   const connected = connection?.status === "active";
   const pending = phase === "pending" || connection?.status === "pending";
   const reconnect = connection?.status === "needs_reconnect";
+  // API-key apps collect credentials in the detail pane, so Connect opens it.
+  const opensDetail = connector.authMode === "api_key" && !connected;
 
   return (
     <article
@@ -144,14 +216,26 @@ function ConnectorCard({
           ) : null}
         </div>
       </button>
-      <button
-        type="button"
-        className={`connector-action${connected ? " is-secondary" : ""}`}
-        disabled={busy || phase === "opening"}
-        onClick={connected ? onDisconnect : onConnect}
-      >
-        {busy && !connected ? "Opening…" : actionLabel(connection, phase)}
-      </button>
+      <div className="connector-card-actions">
+        <button
+          type="button"
+          className={`connector-action${connected ? " is-secondary" : ""}`}
+          disabled={busy || phase === "opening"}
+          onClick={connected ? onDisconnect : opensDetail ? onOpen : onConnect}
+        >
+          {busy && !connected ? "Opening…" : actionLabel(connection, phase)}
+        </button>
+        {pending || reconnect ? (
+          <button
+            type="button"
+            className="connector-cancel"
+            disabled={busy}
+            onClick={onDisconnect}
+          >
+            {pending ? "Cancel" : "Remove"}
+          </button>
+        ) : null}
+      </div>
     </article>
   );
 }
@@ -179,16 +263,20 @@ function ConnectorDetail({
   busyDisconnect,
   onBack,
   onConnect,
+  onConnectWithKey,
   onDisconnect,
   onUseWorkflow,
+  actionError,
 }: {
   slug: string;
   phase: ConnectPhase | undefined;
   busyDisconnect: boolean;
   onBack: () => void;
   onConnect: () => void;
+  onConnectWithKey: (credentials: Record<string, string>) => void;
   onDisconnect: () => void;
   onUseWorkflow?: (prompt: string) => void;
+  actionError?: string | null;
 }): React.JSX.Element {
   const detailsQuery = useQuery(connectorDetailsQueryOptions(slug));
   const details = detailsQuery.data;
@@ -200,6 +288,12 @@ function ConnectorDetail({
       <button type="button" className="connector-detail-back" onClick={onBack}>
         ‹ Apps
       </button>
+
+      {actionError ? (
+        <div className="connector-error" role="alert">
+          <span>{actionError}</span>
+        </div>
+      ) : null}
 
       {detailsQuery.isLoading ? (
         <ConnectedAppsSkeleton />
@@ -249,17 +343,50 @@ function ConnectorDetail({
             ) : null}
           </div>
 
-          <button
-            type="button"
-            className={`connector-action connector-detail-action${connected ? " is-secondary" : ""}`}
-            disabled={busyDisconnect || phase === "opening"}
-            onClick={connected ? onDisconnect : onConnect}
-          >
-            {actionLabel(connection, phase)}
-          </button>
-          <p className="connector-detail-status">
-            {connectionCopy(connection, phase)}
-          </p>
+          {details.authMode === "api_key" && !connected ? (
+            <div className="connector-detail-keyform">
+              <p className="connector-detail-status">
+                This app connects with an API key from your account. It goes
+                straight to the cloud and is never stored on this device.
+              </p>
+              <ApiKeyForm
+                fields={details.authFields ?? DEFAULT_AUTH_FIELDS}
+                busy={phase === "opening"}
+                onSubmit={onConnectWithKey}
+              />
+            </div>
+          ) : (
+            <div className="connector-detail-actions">
+              <button
+                type="button"
+                className={`connector-action connector-detail-action${connected ? " is-secondary" : ""}`}
+                disabled={busyDisconnect || phase === "opening"}
+                onClick={connected ? onDisconnect : onConnect}
+              >
+                {actionLabel(connection, phase)}
+              </button>
+              {phase === "pending" ||
+              connection?.status === "pending" ||
+              connection?.status === "needs_reconnect" ? (
+                <button
+                  type="button"
+                  className="connector-cancel"
+                  disabled={busyDisconnect}
+                  onClick={onDisconnect}
+                >
+                  {connection?.status === "needs_reconnect" &&
+                  phase !== "pending"
+                    ? "Remove"
+                    : "Cancel"}
+                </button>
+              ) : null}
+            </div>
+          )}
+          {details.authMode === "api_key" && !connected ? null : (
+            <p className="connector-detail-status">
+              {connectionCopy(connection, phase)}
+            </p>
+          )}
 
           {details.workflows.length > 0 ? (
             <div className="connector-detail-section">
@@ -322,6 +449,8 @@ export function ConnectedApps({
   const queryClient = useQueryClient();
   const {
     connect,
+    connectWithCredentials,
+    cancel: cancelConnect,
     phases,
     error: connectError,
     clearError,
@@ -393,6 +522,7 @@ export function ConnectedApps({
     },
   });
   const disconnect = (toolkit: string) => {
+    cancelConnect(toolkit);
     setActionError(null);
     disconnectMutation.mutate(toolkit, {
       onError: (cause) =>
@@ -461,8 +591,13 @@ export function ConnectedApps({
         busyDisconnect={busyDisconnect === detailSlug}
         onBack={() => setDetailSlug(null)}
         onConnect={() => startConnect(detailSlug)}
+        onConnectWithKey={(credentials) => {
+          setActionError(null);
+          connectWithCredentials(detailSlug, credentials);
+        }}
         onDisconnect={() => disconnect(detailSlug)}
         onUseWorkflow={onUseWorkflow}
+        actionError={actionError ?? connectError}
       />
     );
   }
@@ -482,14 +617,6 @@ export function ConnectedApps({
 
   return (
     <section className="connected-apps" aria-busy={browseQuery.isFetching}>
-      <header className="connected-apps-intro">
-        <span>Private by default</span>
-        <p>
-          Connect once. Freestyle can use only your account, and always asks
-          before changing anything outside the app.
-        </p>
-      </header>
-
       <label className="connector-search" htmlFor="connector-search">
         <span aria-hidden="true">⌕</span>
         <input

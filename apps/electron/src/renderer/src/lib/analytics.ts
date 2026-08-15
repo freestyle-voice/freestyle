@@ -12,11 +12,7 @@ import { apiFetch } from "@renderer/lib/api";
  *
  * Fire-and-forget: failures never interrupt the UI.
  */
-export type SuggestionSurface =
-  | "opener"
-  | "strip"
-  | "chat_connect"
-  | "capability";
+export type SuggestionSurface = "opener" | "chat_connect" | "capability";
 
 export function captureSuggestion(
   phase: "shown" | "accepted" | "dismissed",

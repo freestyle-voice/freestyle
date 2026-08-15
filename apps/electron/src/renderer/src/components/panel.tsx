@@ -486,8 +486,7 @@ function SignInGate(): React.JSX.Element {
           </span>
         </div>
         <h1 className="tavern-gate-heading">
-          never forget{" "}
-          <span className="tavern-gate-accent">important things</span> again.
+          Never forget important things again.
         </h1>
         <p className="tavern-gate-sub">Sign in to your Freestyle account</p>
         {auth.signingIn ? (
@@ -842,10 +841,13 @@ function PanelInner({
   };
 
   useEffect(() => {
+    // Every tab renders into the same .tavern-body scroller, so without this
+    // guard a streaming turn yanks Settings/History/Brain to the bottom.
+    if (tab !== "chat" || settingsOpen) return;
     const el = bodyRef.current;
     if (el && (messages.length > 0 || approvals.length > 0))
       el.scrollTop = el.scrollHeight;
-  }, [messages, approvals]);
+  }, [messages, approvals, tab, settingsOpen]);
 
   const pinned = busy || approvals.length > 0;
   useEffect(() => {
@@ -1054,6 +1056,9 @@ function PanelInner({
             <ConnectedApps
               onUseWorkflow={(prompt) => {
                 setTab("chat");
+                // Sending past a pending approval strands the tool call, which
+                // leaves an unanswerable tool_use in the thread forever.
+                if (pinned) return;
                 setNotice(null);
                 void sendMessage({ text: prompt });
               }}

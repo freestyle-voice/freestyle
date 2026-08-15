@@ -3205,7 +3205,16 @@ async function openNotification(id: string): Promise<void> {
   await refreshNotifications();
   if (result?.threadId) {
     openPanel({ focusComposer: false });
-    panelWindow?.webContents.send("panel:open-thread", result.threadId);
+    const win = panelWindow;
+    if (!win || win.isDestroyed()) return;
+    const threadId = result.threadId;
+    const send = (): void =>
+      win.webContents.send("panel:open-thread", threadId);
+    if (win.webContents.isLoading()) {
+      win.webContents.once("did-finish-load", send);
+    } else {
+      send();
+    }
     return;
   }
   if (result?.url) void shell.openExternal(result.url);
@@ -3991,6 +4000,10 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     hotkeyPressed = false;
     clearHotkeyStuckWatchdog();
     globalShortcut.unregisterAll();
+    // unregisterAll() drops every accelerator this app holds, including the
+    // panel summon claimed at boot — re-claim it or it dies on the first
+    // hotkey registration and never comes back within the session.
+    if (readSettings().companionEnabled !== false) registerSummonShortcut();
 
     if (!hotkey) {
       // Unreachable server yields no map; registration falls back to the

@@ -42,7 +42,7 @@
     "@freestyle-voice/utils": "workspace:*",
     "@freestyle-voice/validations": "workspace:*",
     "@types/json-schema": "^7.0.15",
-    "@types/node": "latest",
+    "@types/node": "^22.19.1",
     "@types/semver": "^7.7.1",
     "@types/ws": "^8.18.1",
     "freestyle-voice": "workspace:*",

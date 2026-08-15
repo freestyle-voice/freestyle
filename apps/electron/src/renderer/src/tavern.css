@@ -257,10 +257,11 @@
 }
 
 .tavern-gate-heading {
-  font-family: var(--tavern-px);
-  font-weight: 400;
-  font-size: 30px;
-  line-height: 1.1;
+  font-family: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 26px;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
   margin: 0;
   color: var(--tavern-robe);
 }

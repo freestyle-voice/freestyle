@@ -40,7 +40,10 @@ import {
   stopOutboxDrain,
 } from "./lib/sync-outbox.js";
 import { syncTimezoneToCloud } from "./lib/timezone-sync.js";
-import { trustedOriginMiddleware } from "./lib/trusted-origin.js";
+import {
+  isTrustedRendererOrigin,
+  trustedOriginMiddleware,
+} from "./lib/trusted-origin.js";
 import routes from "./routes";
 
 const httpLog = createAppLogger("http");
@@ -119,7 +122,14 @@ function createApp() {
     // request with an Authorization header triggers an OPTIONS preflight that
     // carries no token. cors() answers the preflight and short-circuits it, so
     // auth never rejects it; real requests still fall through to auth.
-    .use(cors())
+    // Scoped to renderer origins, never `*`: a wildcard here would let any page
+    // the user has open read loopback responses (history, brain, settings).
+    .use(
+      cors({
+        origin: (origin) =>
+          isTrustedRendererOrigin(origin) ? (origin ?? "*") : null,
+      }),
+    )
     // Bearer-token auth for standalone/remote deployments. A no-op when no
     // token is configured (the default loopback Electron case), so it never
     // affects the in-process server.

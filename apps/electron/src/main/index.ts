@@ -3122,8 +3122,14 @@ ipcMain.on("sprite:event", (event, ev: unknown) => {
 });
 
 const NOTIFICATION_POLL_MS = 20_000;
+/** How long an unread bubble sits open before it collapses to the
+ *  companion's suggestion glow. It stays unread either way. */
+const NOTIFICATION_COLLAPSE_MS = 30_000;
 let notificationPollTimer: NodeJS.Timeout | null = null;
+let notificationCollapseTimer: NodeJS.Timeout | null = null;
+let notificationHovered = false;
 const notifiedIds = new Set<string>();
+const collapsedIds = new Set<string>();
 
 interface DesktopNotification {
   id: string;
@@ -3169,16 +3175,53 @@ async function postNotification(
   }
 }
 
+function clearCollapseTimer(): void {
+  if (!notificationCollapseTimer) return;
+  clearTimeout(notificationCollapseTimer);
+  notificationCollapseTimer = null;
+}
+
+function scheduleCollapse(ids: string[]): void {
+  clearCollapseTimer();
+  if (ids.length === 0) return;
+  notificationCollapseTimer = setTimeout(() => {
+    notificationCollapseTimer = null;
+    if (notificationHovered) {
+      scheduleCollapse(ids);
+      return;
+    }
+    for (const id of ids) collapsedIds.add(id);
+    hideNotifications();
+    setCompanionState("suggestion");
+  }, NOTIFICATION_COLLAPSE_MS);
+  notificationCollapseTimer.unref();
+}
+
 async function refreshNotifications(): Promise<void> {
   const items = await fetchNotifications();
   if (items.length === 0) {
+    clearCollapseTimer();
+    collapsedIds.clear();
     hideNotifications();
     notifyRendererChanged();
+    if (!panelBusy) setCompanionState("idle");
     return;
   }
 
-  showNotifications();
   notifyRendererChanged();
+
+  // A bubble the user neither opened nor dismissed used to float over their
+  // desktop until the 14-day server TTL. It now folds into the companion's
+  // glow, which keeps the item unread without holding the screen.
+  const live = items.filter((n) => !collapsedIds.has(n.id));
+  if (live.length === 0) {
+    hideNotifications();
+    setCompanionState("suggestion");
+  } else {
+    showNotifications();
+    setCompanionState("suggestion");
+    scheduleCollapse(live.map((n) => n.id));
+  }
 
   const fresh = items.filter(
     (n) => n.seenAt === null && !notifiedIds.has(n.id),
@@ -3191,6 +3234,12 @@ async function refreshNotifications(): Promise<void> {
     note.on("click", () => void openNotification(item.id));
     note.show();
   }
+  // The companion reacts to work that finished while the panel was closed;
+  // without this the sprite sleeps through the product's whole point.
+  companionWindow?.webContents.send("companion:sprite-event", {
+    kind: "emote",
+    emotion: "proud",
+  });
   await postNotification("/seen", { ids: fresh.map((n) => n.id) });
 }
 
@@ -3247,6 +3296,10 @@ ipcMain.on("notifications:open", (_event, id: unknown) => {
 ipcMain.on("notifications:set-height", (_event, height: unknown) => {
   if (typeof height !== "number") return;
   setNotificationHeight(height);
+});
+
+ipcMain.on("notifications:hover", (_event, hovering: unknown) => {
+  notificationHovered = hovering === true;
 });
 
 ipcMain.on("agent:turn-finished", (_event, payload: unknown) => {
@@ -3364,7 +3417,12 @@ ipcMain.on("panel:set-busy", (event, busy: unknown) => {
   const next = busy === true;
   // The corner sprite mirrors the agent loop: this is what puts Jeb at his
   // laptop (and Spark into its breathing state) while a turn runs.
-  if (next !== panelBusy) setCompanionState(next ? "working" : "idle");
+  // Falling out of a run must not clear a pending suggestion glow.
+  if (next !== panelBusy) {
+    setCompanionState(
+      next ? "working" : collapsedIds.size > 0 ? "suggestion" : "idle",
+    );
+  }
   panelBusy = next;
   if (panelBusy) cancelPanelHide();
 });

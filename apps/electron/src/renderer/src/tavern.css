@@ -3097,59 +3097,97 @@
   text-align: left;
 }
 
-.tavern-opener-head {
+.tavern-opener-row {
+  display: grid;
+  gap: 4px;
+}
+
+.tavern-opener-line {
   display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.tavern-opener-head-copy {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.tavern-opener {
-  display: grid;
-  gap: 3px;
-  font: inherit;
-  text-align: left;
-  padding: 9px 11px;
+  align-items: stretch;
+  gap: 0;
   border: 1px solid var(--tavern-rule);
   border-radius: 10px;
   background: color-mix(in srgb, var(--tavern-parchment) 74%, var(--tavern-card));
+  overflow: hidden;
+}
+
+.tavern-opener {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: none;
   color: var(--tavern-ink);
   cursor: pointer;
 }
 
-.tavern-opener.is-static {
-  cursor: default;
-}
-
-.tavern-opener:not(.is-static):hover:not(:disabled) {
+.tavern-opener-line:hover:has(.tavern-opener:not(:disabled)) {
   border-color: var(--tavern-ink);
   box-shadow: 2px 2px 0 var(--tavern-lantern);
 }
 
 .tavern-opener:disabled {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: default;
 }
 
+.tavern-opener-mark {
+  color: var(--tavern-lantern);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
 .tavern-opener-title {
+  flex: 1;
+  min-width: 0;
   font-size: 12.5px;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.tavern-opener-sub {
-  font-size: 11px;
-  color: var(--tavern-robe);
+.tavern-opener-go {
+  color: var(--tavern-mute);
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
-.tavern-opener-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 5px;
+.tavern-opener:hover:not(:disabled) .tavern-opener-go {
+  color: var(--tavern-lantern);
+}
+
+.tavern-opener-x {
+  flex-shrink: 0;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  border: none;
+  border-left: 1px solid var(--tavern-rule);
+  background: none;
+  color: var(--tavern-mute);
+  cursor: pointer;
+}
+
+.tavern-opener-x:hover {
+  color: var(--tavern-ink);
+}
+
+.tavern-opener:focus-visible,
+.tavern-opener-x:focus-visible {
+  outline: 2px solid var(--tavern-lantern);
+  outline-offset: -2px;
+}
+
+.tavern-opener-keyform {
+  padding: 0 2px;
 }
 
 .tavern-opener-more {
@@ -3830,11 +3868,7 @@
 /* ── Minimalist openers: todo rows + tighter cards ───────────────────── */
 
 .tavern-openers-label {
-  font-family: var(--tavern-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: 11.5px;
   color: var(--tavern-mute);
 }
 
@@ -3888,12 +3922,6 @@
 }
 
 .tavern-opener {
-  gap: 2px;
   padding: 7px 10px;
 }
 
-.tavern-opener-sub {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}

@@ -1,11 +1,9 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
-import {
-  peekBrainFile,
-  readBrainFile,
-  writeBrainFile,
-} from "@renderer/lib/brain-fs";
+import { readBrainFile, writeBrainFile } from "@renderer/lib/brain-fs";
+import { queryKeys } from "@renderer/lib/query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type React from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 
 const TODOS_PATH = "todos.md";
 const ITEM_RE = /^(\s*)- \[( |x|X)\] (.*)$/;
@@ -31,28 +29,27 @@ function parseItems(lines: string[]): TodoItem[] {
 }
 
 export function TodosTab({ mascot }: { mascot: string }): React.JSX.Element {
-  const [lines, setLines] = useState<string[] | null>(() => {
-    const cached = peekBrainFile(TODOS_PATH);
-    return cached === undefined ? null : linesFromText(cached);
+  const queryClient = useQueryClient();
+  const todosQuery = useQuery({
+    queryKey: queryKeys.brain.files(TODOS_PATH),
+    queryFn: () => readBrainFile(TODOS_PATH),
   });
+  const lines =
+    todosQuery.data === undefined ? null : linesFromText(todosQuery.data);
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<{ line: number; text: string } | null>(
     null,
   );
 
-  const load = useCallback((): void => {
-    void readBrainFile(TODOS_PATH).then((text) => {
-      setLines(linesFromText(text));
-    });
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
   const save = (next: string[]): void => {
-    setLines(next);
-    void writeBrainFile(TODOS_PATH, next.join("\n"));
+    const nextText = next.join("\n");
+    queryClient.setQueryData(queryKeys.brain.files(TODOS_PATH), nextText);
+    void writeBrainFile(TODOS_PATH, nextText).then((ok) => {
+      if (!ok)
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.brain.files(TODOS_PATH),
+        });
+    });
   };
 
   if (lines === null) return <DataSkeleton label="Loading todos" />;

@@ -30,6 +30,8 @@ import {
 import {
   connectorConnectionsQueryOptions,
   connectorSuggestedQueryOptions,
+  settingsQueryOptions,
+  threadHistoryInfiniteQueryOptions,
 } from "@renderer/lib/query";
 import { applyAutomationTemplates } from "@renderer/lib/scheduled-templates";
 import {
@@ -39,7 +41,7 @@ import {
 import { useUpdateProfileFields } from "@renderer/lib/use-profile";
 import type { CloudUser } from "@shared/cloud-user";
 import type { SpriteId } from "@shared/sprites";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -66,47 +68,36 @@ export function useOnboarding(enabled: boolean): {
 } {
   const [status, setStatus] = useState<OnboardingStatus>("loading");
   const [saved, setSaved] = useState<OnboardingSaved | null>(null);
+  const settingsQuery = useQuery({ ...settingsQueryOptions(), enabled });
+  const threadsQuery = useInfiniteQuery({
+    ...threadHistoryInfiniteQueryOptions(),
+    enabled,
+  });
 
   useEffect(() => {
     if (!enabled) return;
-    let cancelled = false;
-    void (async () => {
-      const [settings, threads] = await Promise.all([
-        apiFetch("/api/settings")
-          .then(async (res) =>
-            res.ok
-              ? ((await res.json()) as Record<string, string>)
-              : ({} as Record<string, string>),
-          )
-          .catch(() => ({}) as Record<string, string>),
-        apiFetch("/api/agent/thread/list")
-          .then(async (res) =>
-            res.ok
-              ? ((await res.json()) as { threads: unknown[] }).threads
-              : [],
-          )
-          .catch(() => []),
-      ]);
-      if (cancelled) return;
-      const parsed = parseSaved(settings[ONBOARDING_KEY]);
-      setSaved(parsed);
-      if (parsed?.done) {
-        setStatus("done");
-      } else if (parsed) {
-        setStatus("show");
-      } else if (threads.length > 0) {
-        const grandfathered: OnboardingSaved = { v: 2, done: true };
-        persistSaved(grandfathered);
-        setSaved(grandfathered);
-        setStatus("done");
-      } else {
-        setStatus("show");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled]);
+    if (settingsQuery.isPending || threadsQuery.isPending) return;
+    const parsed = parseSaved(settingsQuery.data?.[ONBOARDING_KEY]);
+    setSaved(parsed);
+    if (parsed?.done) {
+      setStatus("done");
+    } else if (parsed) {
+      setStatus("show");
+    } else if ((threadsQuery.data?.pages[0]?.threads.length ?? 0) > 0) {
+      const grandfathered: OnboardingSaved = { v: 2, done: true };
+      persistSaved(grandfathered);
+      setSaved(grandfathered);
+      setStatus("done");
+    } else {
+      setStatus("show");
+    }
+  }, [
+    enabled,
+    settingsQuery.data,
+    settingsQuery.isPending,
+    threadsQuery.data,
+    threadsQuery.isPending,
+  ]);
 
   const markDone = useCallback((task: string): void => {
     setSaved((prev) => {

@@ -16,12 +16,13 @@ export const EASTER_EGGS = [
   "Keep poking and I'll start a ledger on that too.",
 ] as const;
 
-/** The hero workflows, in showcase order — only shown when no task was given. */
+/** Last-resort starters when the suggestions request fails. Every one must be
+ * something the current tool set can actually do. */
 export function starterPrompts(): string[] {
   return [
-    "Summarize what's on my screen",
-    "Rewrite what I'm looking at",
     "Look this up and keep it short",
+    "Help me draft a message I've been putting off",
+    "Remember something about how I work",
   ];
 }
 

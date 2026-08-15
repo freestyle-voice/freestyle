@@ -184,12 +184,14 @@ describe("the handoff", () => {
 });
 
 describe("after onboarding", () => {
-  it("offers the three hero starters", () => {
-    expect(starterPrompts()).toEqual([
-      "Summarize what's on my screen",
-      "Rewrite what I'm looking at",
-      "Look this up and keep it short",
-    ]);
+  it("offers starters the current tool set can actually run", () => {
+    const prompts = starterPrompts();
+    expect(prompts).toHaveLength(3);
+    // Screen and cursor tools are disabled; a starter that needs them sends
+    // the user straight into a refusal.
+    for (const prompt of prompts) {
+      expect(prompt).not.toMatch(/on my screen|looking at|highlighted/i);
+    }
   });
 
   it("writes a profile without the retired focus field", () => {

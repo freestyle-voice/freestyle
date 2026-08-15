@@ -3,6 +3,7 @@ import "../tavern.css";
 
 import { useChat } from "@ai-sdk/react";
 import { BrainFiles } from "@renderer/components/brain-files";
+import { Capabilities } from "@renderer/components/capabilities";
 import { ConnectSuggestions } from "@renderer/components/connect-suggestions";
 import { ConnectedApps } from "@renderer/components/connected-apps";
 import { Markdown } from "@renderer/components/markdown";
@@ -760,6 +761,7 @@ function PanelInner({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [capabilitiesOpen, setCapabilitiesOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const dictationBaseRef = useRef<string | null>(null);
 
@@ -1097,6 +1099,7 @@ function PanelInner({
               onClick={() => {
                 capture("panel_tab_opened", { tab: id });
                 setSettingsOpen(false);
+                setCapabilitiesOpen(false);
                 setTab(id);
               }}
             >
@@ -1118,7 +1121,28 @@ function PanelInner({
         </div>
 
         <div className="tavern-body" role="tabpanel" ref={bodyRef}>
-          {settingsOpen ? (
+          {capabilitiesOpen ? (
+            <>
+              <button
+                type="button"
+                className="tavern-file-back"
+                onClick={() => setCapabilitiesOpen(false)}
+              >
+                ← What Freestyle can do
+              </button>
+              <Capabilities
+                onPrompt={(text) => {
+                  setCapabilitiesOpen(false);
+                  setNotice(null);
+                  void sendMessage({ text });
+                }}
+                onOpenApps={() => {
+                  setCapabilitiesOpen(false);
+                  setTab("apps");
+                }}
+              />
+            </>
+          ) : settingsOpen ? (
             <SettingsView
               onClose={() => setSettingsOpen(false)}
               onOpenThread={(threadId) => {
@@ -1220,6 +1244,7 @@ function PanelInner({
           ) : chatActive ? (
             <OpenerCards
               busy={busy}
+              onShowAll={() => setCapabilitiesOpen(true)}
               onPrompt={(text) => {
                 setNotice(null);
                 void sendMessage({ text });
@@ -1231,7 +1256,7 @@ function PanelInner({
           {notice ? <p className="tavern-notice">{notice}</p> : null}
         </div>
 
-        {chatActive && !settingsOpen ? (
+        {chatActive && !settingsOpen && !capabilitiesOpen ? (
           <div className="tavern-composer">
             <textarea
               id="panel-composer"

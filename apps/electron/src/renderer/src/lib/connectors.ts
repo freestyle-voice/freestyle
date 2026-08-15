@@ -55,9 +55,23 @@ export type ConnectorToolSummary = {
   readOnly: boolean;
 };
 
+export type ConnectorPlay = {
+  name: string;
+  description: string;
+  prompt: string;
+};
+
+export type ConnectorAutomation = {
+  id: string;
+  name: string;
+  schedule: string;
+};
+
 export type ConnectorDetails = ConnectorCatalogItem & {
   tools: ConnectorToolSummary[];
   workflows: ConnectorWorkflow[];
+  plays?: ConnectorPlay[];
+  automations?: ConnectorAutomation[];
 };
 
 export function isConnectorToolName(name: string): boolean {

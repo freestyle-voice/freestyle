@@ -1,9 +1,12 @@
+import { capture } from "@renderer/lib/analytics";
 import {
   type ConnectorAuthField,
+  type ConnectorAutomation,
   type ConnectorCatalogItem,
   type ConnectorConnection,
   disconnectToolkit,
 } from "@renderer/lib/connectors";
+import { applyOpenerTemplate } from "@renderer/lib/openers";
 import {
   connectorCatalogInfiniteQueryOptions,
   connectorConnectionsQueryOptions,
@@ -257,6 +260,54 @@ function ConnectedAppsSkeleton(): React.JSX.Element {
   );
 }
 
+function AutomationRow({
+  automation,
+  disabled,
+}: {
+  automation: ConnectorAutomation;
+  disabled: boolean;
+}): React.JSX.Element {
+  const [state, setState] = useState<"idle" | "busy" | "on" | "error">("idle");
+
+  const turnOn = (): void => {
+    setState("busy");
+    capture("automation_applied", {
+      surface: "apps",
+      templateId: automation.id,
+    });
+    void applyOpenerTemplate(automation.id)
+      .then((result) => setState(result.applied.length > 0 ? "on" : "error"))
+      .catch(() => setState("error"));
+  };
+
+  return (
+    <div className="connector-workflow is-static">
+      <strong>{automation.name}</strong>
+      <small>
+        {state === "on"
+          ? "On. Manage it in Settings \u2192 Scheduled."
+          : state === "error"
+            ? "Couldn't set that up. Ask in chat instead."
+            : `Runs ${automation.schedule}. Only notifies when it matters.`}
+      </small>
+      {state === "on" ? null : (
+        <button
+          type="button"
+          className="connector-action connector-workflow-action"
+          disabled={disabled || state === "busy"}
+          onClick={turnOn}
+        >
+          {state === "busy"
+            ? "Setting up\u2026"
+            : disabled
+              ? "Connect first"
+              : "Turn on"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ConnectorDetail({
   slug,
   phase,
@@ -388,24 +439,41 @@ function ConnectorDetail({
             </p>
           )}
 
-          {details.workflows.length > 0 ? (
+          {(details.plays ?? []).length > 0 ? (
             <div className="connector-detail-section">
               <div className="connector-group-label">
-                <span>Things to try</span>
+                <span>Try it now</span>
               </div>
               <div className="connector-workflows">
-                {details.workflows.map((workflow) => (
+                {(details.plays ?? []).map((play) => (
                   <button
-                    key={workflow.name}
+                    key={play.name}
                     type="button"
                     className="connector-workflow"
                     disabled={!onUseWorkflow}
-                    title={workflow.prompt}
-                    onClick={() => onUseWorkflow?.(workflow.prompt)}
+                    title={play.prompt}
+                    onClick={() => onUseWorkflow?.(play.prompt)}
                   >
-                    <strong>{workflow.name}</strong>
-                    <small>{workflow.prompt}</small>
+                    <strong>{play.name}</strong>
+                    <small>{play.description}</small>
                   </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {(details.automations ?? []).length > 0 ? (
+            <div className="connector-detail-section">
+              <div className="connector-group-label">
+                <span>Run it on a schedule</span>
+              </div>
+              <div className="connector-workflows">
+                {(details.automations ?? []).map((automation) => (
+                  <AutomationRow
+                    key={automation.id}
+                    automation={automation}
+                    disabled={!connected}
+                  />
                 ))}
               </div>
             </div>

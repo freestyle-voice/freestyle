@@ -1138,6 +1138,85 @@
   cursor: default;
 }
 
+.tavern-opener-foot {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.tavern-cap-group {
+  margin-top: 14px;
+}
+
+.tavern-cap-head {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 6px;
+}
+
+.tavern-cap-title {
+  font-family: var(--tavern-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--tavern-mute);
+}
+
+.tavern-cap-blurb {
+  font-size: 11.5px;
+  color: var(--tavern-mute);
+}
+
+.tavern-cap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  padding: 8px 10px;
+  margin-top: 5px;
+  border: 1px solid var(--tavern-rule);
+  border-radius: 9px;
+  background: var(--tavern-card);
+  cursor: pointer;
+}
+
+.tavern-cap:hover {
+  border-color: var(--tavern-ink);
+}
+
+.tavern-cap:focus-visible {
+  outline: 2px solid var(--tavern-lantern);
+  outline-offset: 2px;
+}
+
+.tavern-cap.is-locked {
+  opacity: 0.68;
+}
+
+.tavern-cap-item-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--tavern-ink);
+}
+
+.tavern-cap-item-sub {
+  font-size: 11.5px;
+  color: var(--tavern-mute);
+}
+
+.connector-workflow.is-static {
+  cursor: default;
+}
+
+.connector-workflow-action {
+  margin-top: 6px;
+  align-self: flex-start;
+}
+
 .tavern-sched-actions {
   display: flex;
   gap: 6px;

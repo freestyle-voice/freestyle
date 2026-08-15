@@ -47,9 +47,11 @@ function FallbackStarters({
 export function OpenerCards({
   busy,
   onPrompt,
+  onShowAll,
 }: {
   busy: boolean;
   onPrompt: (text: string) => void;
+  onShowAll?: () => void;
 }): React.JSX.Element {
   const queryClient = useQueryClient();
   const {
@@ -335,9 +337,20 @@ export function OpenerCards({
           Couldn't set that up. Try again, or ask Freestyle in chat.
         </p>
       ) : null}
-      <button type="button" className="tavern-opener-more" onClick={refresh}>
-        Show me different
-      </button>
+      <div className="tavern-opener-foot">
+        <button type="button" className="tavern-opener-more" onClick={refresh}>
+          Show me different
+        </button>
+        {onShowAll ? (
+          <button
+            type="button"
+            className="tavern-opener-more"
+            onClick={onShowAll}
+          >
+            See everything ↗
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

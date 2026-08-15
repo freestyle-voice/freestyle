@@ -1,3 +1,4 @@
+import { DataSkeleton } from "@renderer/components/data-skeleton";
 import { Markdown } from "@renderer/components/markdown";
 import {
   deleteBrainFile,
@@ -181,6 +182,17 @@ export function BrainFiles({
   const files: HomeFile[] = filesQuery.data ?? [];
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [view, setView] = useState<FileView>({ kind: "list" });
+
+  if (filesQuery.isLoading) return <DataSkeleton label="Loading Brain files" />;
+  if (filesQuery.isError)
+    return (
+      <div className="tavern-empty">
+        <p>Couldn&apos;t load Brain files.</p>
+        <button type="button" onClick={() => void filesQuery.refetch()}>
+          Try again
+        </button>
+      </div>
+    );
 
   const openFile = (path: string): void => {
     void readBrainFile(path).then((text) => {

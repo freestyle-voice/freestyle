@@ -18,7 +18,7 @@ import { apiFetch } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { LANGUAGES } from "@renderer/lib/languages";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
-import { replaceSetting } from "@renderer/lib/settings";
+import { replaceSetting, settingsForView } from "@renderer/lib/settings";
 import { useCloudConfig } from "@renderer/lib/use-cloud-config";
 import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
 import { usePricing } from "@renderer/lib/use-pricing";
@@ -109,7 +109,10 @@ function useServerSettings(): {
     [update],
   );
 
-  return { settings: settingsQuery.data ?? null, setSetting };
+  return {
+    settings: settingsForView(settingsQuery.data, settingsQuery.isError),
+    setSetting,
+  };
 }
 
 function NavRow({

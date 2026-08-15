@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { replaceSetting } from "./settings";
+import { replaceSetting, settingsForView } from "./settings";
 
 describe("replaceSetting", () => {
   it("updates one value without dropping unrelated settings", () => {
@@ -9,5 +9,9 @@ describe("replaceSetting", () => {
       language: "en",
       theme: "light",
     });
+  });
+
+  it("keeps Settings usable when its initial query fails", () => {
+    expect(settingsForView(undefined, true)).toEqual({});
   });
 });

@@ -28,8 +28,12 @@ export async function listNotificationHistory(): Promise<
   }
   if (response.status === 401) throw new NotificationHistoryError("signed-out");
   if (!response.ok) throw new NotificationHistoryError("unreachable");
-  const data = (await response.json()) as {
-    notifications?: NotificationHistoryRow[];
-  };
-  return data.notifications ?? [];
+  try {
+    const data = (await response.json()) as {
+      notifications?: NotificationHistoryRow[];
+    };
+    return data.notifications ?? [];
+  } catch {
+    throw new NotificationHistoryError("unreachable");
+  }
 }

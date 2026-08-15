@@ -37,3 +37,28 @@ export async function listNotificationHistory(): Promise<
     throw new NotificationHistoryError("unreachable");
   }
 }
+
+export type QuietHours = { start: number; end: number } | null;
+
+export const DEFAULT_QUIET_HOURS: QuietHours = { start: 21, end: 7 };
+
+export async function getQuietHours(): Promise<QuietHours> {
+  try {
+    const response = await apiFetch("/api/notifications/preferences");
+    if (!response.ok) return DEFAULT_QUIET_HOURS;
+    const data = (await response.json()) as { quietHours?: QuietHours };
+    return data.quietHours === undefined
+      ? DEFAULT_QUIET_HOURS
+      : data.quietHours;
+  } catch {
+    return DEFAULT_QUIET_HOURS;
+  }
+}
+
+export async function setQuietHours(quietHours: QuietHours): Promise<void> {
+  await apiFetch("/api/notifications/preferences", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quietHours }),
+  });
+}

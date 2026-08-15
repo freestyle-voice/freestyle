@@ -9,7 +9,7 @@ import {
   listSuggestedConnectors,
 } from "./connectors";
 import type { AvailableModel } from "./models";
-import { listNotificationHistory } from "./notifications";
+import { getQuietHours, listNotificationHistory } from "./notifications";
 import {
   getLatestThread,
   getThread,
@@ -94,7 +94,10 @@ export const queryKeys = {
     list: ["threads", "list"] as const,
     detail: (id: string) => ["threads", "detail", id] as const,
   },
-  notifications: { history: ["notifications", "history"] as const },
+  notifications: {
+    history: ["notifications", "history"] as const,
+    quietHours: ["notifications", "quiet-hours"] as const,
+  },
   brain: {
     all: ["brain"] as const,
     files: (root: string) => ["brain", "files", root] as const,
@@ -287,6 +290,14 @@ export function threadHistoryInfiniteQueryOptions() {
     queryFn: ({ pageParam }: { pageParam: number | null }) =>
       listThreads({ cursor: pageParam ?? undefined }),
     getNextPageParam: (page: ThreadPage) => page.nextCursor ?? undefined,
+  };
+}
+
+export function quietHoursQueryOptions() {
+  return {
+    queryKey: queryKeys.notifications.quietHours,
+    queryFn: getQuietHours,
+    staleTime: ONE_HOUR,
   };
 }
 

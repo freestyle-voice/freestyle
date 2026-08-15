@@ -78,8 +78,8 @@ export function ScheduledTasks(): React.JSX.Element {
   return (
     <>
       <p className="tavern-set-hint is-lead">
-        These run on their own, even with this app closed. Every run sends you a
-        notification.
+        These run on their own, even with this app closed. They only notify you
+        when there's something worth knowing — every run is saved either way.
       </p>
       {tasks.map((task) => (
         <div

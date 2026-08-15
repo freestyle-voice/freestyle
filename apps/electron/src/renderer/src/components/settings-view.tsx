@@ -7,7 +7,10 @@ import {
   normalizeLanguageList,
   resolveLanguageOptions,
 } from "@freestyle-voice/validations";
-import { NotificationsHistory } from "@renderer/components/notifications-history";
+import {
+  NotificationsHistory,
+  QuietHoursSettings,
+} from "@renderer/components/notifications-history";
 import { ScheduledTasks } from "@renderer/components/scheduled-tasks";
 import {
   acceleratorsEqual,
@@ -1508,7 +1511,11 @@ export function SettingsView({
         ) : page === "scheduled" ? (
           <ScheduledTasks />
         ) : page === "notifications" ? (
-          <NotificationsHistory />
+          <>
+            <QuietHoursSettings />
+            <SectionLabel>History</SectionLabel>
+            <NotificationsHistory />
+          </>
         ) : page === "dictation" ? (
           <DictationPage value={value} setSetting={setSetting} />
         ) : page === "talk" ? (

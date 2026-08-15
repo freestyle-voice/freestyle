@@ -1,6 +1,7 @@
 import "../onboarding.css";
 
 import { ConnectorLogo } from "@renderer/components/connected-apps";
+import { capture } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 import { readBrainFile, writeBrainFile } from "@renderer/lib/brain-fs";
 import type { ConnectorCatalogItem } from "@renderer/lib/connectors";
@@ -416,6 +417,7 @@ export function OnboardingGate({
     setBeat(next);
     setLineIdx(0);
     persist(next);
+    capture("onboarding_beat", { beat: next, index: index + 1 });
   }, [beat, persist]);
 
   const advance = useCallback((): void => {
@@ -526,6 +528,7 @@ export function OnboardingGate({
 
   const skip = (): void => {
     if (skipping) return;
+    capture("onboarding_skipped", { beat, index: BEATS.indexOf(beat) });
     setSkipping(true);
     if (!todoStarted.current && task.trim()) {
       todoStarted.current = true;
@@ -550,9 +553,15 @@ export function OnboardingGate({
   };
 
   const complete = useCallback((): void => {
+    capture("onboarding_completed", {
+      hasTask: task.trim().length > 0,
+      trade: trade.trim() || null,
+      connected: [...activeSlugs],
+      automations: [...applied],
+    });
     window.api.spriteEvent({ kind: "turn", phase: "done" });
     onDone(task.trim());
-  }, [onDone, task]);
+  }, [onDone, task, trade, activeSlugs, applied]);
 
   // Enter anywhere is Next: finishes the typing line, steps the scene, and
   // advances the beat — including the receipt CTA. Buttons keep their native

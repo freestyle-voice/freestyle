@@ -3,13 +3,14 @@ import {
   ConnectorLogo,
   DEFAULT_AUTH_FIELDS,
 } from "@renderer/components/connected-apps";
+import { captureSuggestion } from "@renderer/lib/analytics";
 import {
   type ConnectorAuthField,
   disconnectToolkit,
 } from "@renderer/lib/connectors";
 import { useConnectorConnect } from "@renderer/lib/use-connector-connect";
 import type React from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Suggestion = {
   slug: string;
@@ -47,7 +48,35 @@ export function ConnectSuggestions({
     useConnectorConnect();
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [keyFormSlug, setKeyFormSlug] = useState<string | null>(null);
+  const shownRef = useRef<string | null>(null);
+  const connectedRef = useRef<ReadonlySet<string>>(new Set());
   const visible = suggestions.filter((item) => !dismissed.has(item.slug));
+
+  useEffect(() => {
+    if (suggestions.length === 0) return;
+    const signature = suggestions.map((item) => item.slug).join(",");
+    if (shownRef.current === signature) return;
+    shownRef.current = signature;
+    captureSuggestion("shown", "chat_connect", {
+      slugs: suggestions.map((item) => item.slug),
+    });
+  }, [suggestions]);
+
+  useEffect(() => {
+    for (const item of suggestions) {
+      if (
+        phases[item.slug] !== "connected" ||
+        connectedRef.current.has(item.slug)
+      )
+        continue;
+      connectedRef.current = new Set(connectedRef.current).add(item.slug);
+      captureSuggestion("accepted", "chat_connect", {
+        slug: item.slug,
+        outcome: "connected",
+      });
+    }
+  }, [phases, suggestions]);
+
   if (visible.length === 0) return null;
 
   return (
@@ -81,13 +110,20 @@ export function ConnectSuggestions({
                   type="button"
                   className="tavern-approve-btn tavern-approve-allow"
                   disabled={phase === "opening" || phase === "pending"}
-                  onClick={() =>
-                    apiKey
-                      ? setKeyFormSlug((current) =>
-                          current === suggestion.slug ? null : suggestion.slug,
-                        )
-                      : connect(suggestion.slug)
-                  }
+                  onClick={() => {
+                    captureSuggestion("accepted", "chat_connect", {
+                      slug: suggestion.slug,
+                      outcome: "started",
+                      authMode: suggestion.authMode ?? "oauth",
+                    });
+                    if (apiKey) {
+                      setKeyFormSlug((current) =>
+                        current === suggestion.slug ? null : suggestion.slug,
+                      );
+                    } else {
+                      connect(suggestion.slug);
+                    }
+                  }}
                 >
                   {phase === "opening"
                     ? apiKey
@@ -111,6 +147,10 @@ export function ConnectSuggestions({
                       cancel(suggestion.slug);
                       void disconnectToolkit(suggestion.slug).catch(() => {});
                     }
+                    captureSuggestion("dismissed", "chat_connect", {
+                      slug: suggestion.slug,
+                      wasPending: phase === "pending" || phase === "opening",
+                    });
                     setDismissed((prev) => new Set(prev).add(suggestion.slug));
                   }}
                 >

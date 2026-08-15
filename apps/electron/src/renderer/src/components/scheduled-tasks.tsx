@@ -1,4 +1,5 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
+import { capture } from "@renderer/lib/analytics";
 import { writeBrainFile } from "@renderer/lib/brain-fs";
 import {
   type ScheduledTaskView,
@@ -26,6 +27,11 @@ export function ScheduledTasks(): React.JSX.Element {
 
   const toggle = (task: ScheduledTaskView): void => {
     const next = !task.enabled;
+    capture("scheduled_task_toggled", {
+      enabled: next,
+      task: task.name,
+      hasRun: task.lastRun !== null,
+    });
     setBusy(task.path);
     queryClient.setQueryData<ScheduledTaskView[]>(
       queryKeys.brain.scheduledTasks,

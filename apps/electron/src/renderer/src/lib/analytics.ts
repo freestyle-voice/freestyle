@@ -12,6 +12,16 @@ import { apiFetch } from "@renderer/lib/api";
  *
  * Fire-and-forget: failures never interrupt the UI.
  */
+export type SuggestionSurface = "opener" | "chat_connect" | "capability";
+
+export function captureSuggestion(
+  phase: "shown" | "accepted" | "dismissed",
+  surface: SuggestionSurface,
+  properties?: Record<string, unknown>,
+): void {
+  capture(`suggestion_${phase}`, { surface, ...properties });
+}
+
 export function capture(
   event: string,
   properties?: Record<string, unknown>,

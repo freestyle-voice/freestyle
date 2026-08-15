@@ -3,7 +3,7 @@ import {
   ConnectorLogo,
   DEFAULT_AUTH_FIELDS,
 } from "@renderer/components/connected-apps";
-import { capture } from "@renderer/lib/analytics";
+import { capture, captureSuggestion } from "@renderer/lib/analytics";
 import { starterPrompts } from "@renderer/lib/onboarding-core";
 import {
   applyOpenerTemplate,
@@ -73,8 +73,14 @@ export function OpenerCards({
 
   const applyTemplate = useMutation({
     mutationFn: applyOpenerTemplate,
-    onSuccess: (_result, templateId) => {
+    onSuccess: (result, templateId) => {
       setApplied((prev) => new Set(prev).add(templateId));
+      capture("automation_applied", {
+        surface: "opener",
+        templateId,
+        applied: result.applied.length,
+        skipped: result.skipped.map((entry) => entry.reason),
+      });
     },
   });
 
@@ -91,8 +97,10 @@ export function OpenerCards({
     const signature = query.data.cards.map((card) => card.id).join(",");
     if (reportedFor.current === signature) return;
     reportedFor.current = signature;
-    capture("opener_rendered", {
+    captureSuggestion("shown", "opener", {
       cards: query.data.cards.map((card) => card.id),
+      categories: query.data.cards.map((card) => card.category),
+      todos: query.data.todos.length,
     });
   }, [query.data, cards.length]);
 
@@ -131,13 +139,20 @@ export function OpenerCards({
   const dismiss = (card: OpenerCard): void => {
     dismissOpener(card.id);
     setDismissTick((tick) => tick + 1);
-    capture("opener_dismissed", { id: card.id, category: card.category });
+    captureSuggestion("dismissed", "opener", {
+      id: card.id,
+      category: card.category,
+      kind: card.kind,
+    });
   };
 
   const refresh = (): void => {
     for (const card of cards) dismissOpener(card.id);
     setDismissTick((tick) => tick + 1);
-    capture("opener_refreshed", { ids: cards.map((card) => card.id) });
+    capture("suggestion_refreshed", {
+      surface: "opener",
+      ids: cards.map((card) => card.id),
+    });
     void queryClient.invalidateQueries({ queryKey: queryKeys.openers });
   };
 
@@ -155,9 +170,10 @@ export function OpenerCards({
                 className="tavern-opener-launch"
                 disabled={busy}
                 onClick={() => {
-                  capture("opener_tapped", {
+                  captureSuggestion("accepted", "opener", {
                     id: "todo:launch",
                     category: "do_now",
+                    kind: "todo",
                   });
                   onPrompt(`I want you to help me do this: ${todo}`);
                 }}
@@ -178,9 +194,10 @@ export function OpenerCards({
               className="tavern-opener"
               disabled={busy}
               onClick={() => {
-                capture("opener_tapped", {
+                captureSuggestion("accepted", "opener", {
                   id: card.id,
                   category: card.category,
+                  kind: card.kind,
                 });
                 onPrompt(prompt);
               }}
@@ -217,9 +234,10 @@ export function OpenerCards({
                     className="tavern-approve-btn tavern-approve-allow"
                     disabled={phase === "opening" || phase === "pending"}
                     onClick={() => {
-                      capture("opener_tapped", {
+                      captureSuggestion("accepted", "opener", {
                         id: card.id,
                         category: card.category,
+                        kind: card.kind,
                       });
                       if (apiKey) {
                         setKeyFormSlug((current) =>
@@ -283,9 +301,10 @@ export function OpenerCards({
                     className="tavern-approve-btn tavern-approve-allow"
                     disabled={isApplying}
                     onClick={() => {
-                      capture("opener_tapped", {
+                      captureSuggestion("accepted", "opener", {
                         id: card.id,
                         category: card.category,
+                        kind: card.kind,
                       });
                       applyTemplate.mutate(templateId);
                     }}

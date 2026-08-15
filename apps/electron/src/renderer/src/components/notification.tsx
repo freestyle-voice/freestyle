@@ -1,6 +1,7 @@
 import "../overlay.css";
 import "../tavern.css";
 
+import { capture } from "@renderer/lib/analytics";
 import { initApiBase } from "@renderer/lib/api";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import type React from "react";
@@ -71,6 +72,7 @@ function NotificationStack(): React.JSX.Element | null {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [expanded, setExpanded] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const seenRef = useRef(new Set<string>());
 
   const load = useCallback((): void => {
     void window.api
@@ -85,18 +87,33 @@ function NotificationStack(): React.JSX.Element | null {
     return () => off?.();
   }, [load]);
 
+  useEffect(() => {
+    for (const item of items) {
+      if (seenRef.current.has(item.id)) continue;
+      seenRef.current.add(item.id);
+      capture("notification_shown", { surface: "bubble", kind: item.kind });
+    }
+  }, [items]);
+
   useLayoutEffect(() => {
     const height = rootRef.current?.offsetHeight ?? 0;
     if (height > 0) window.api.notificationSetHeight(height + 8);
     if (items.length <= 1) setExpanded(false);
   }, [items]);
 
+  const ageOf = (id: string): number | null => {
+    const item = items.find((n) => n.id === id);
+    return item ? Date.now() - item.createdAt : null;
+  };
+
   const dismiss = (id: string): void => {
+    capture("notification_dismissed", { surface: "bubble", ageMs: ageOf(id) });
     setItems((prev) => prev.filter((n) => n.id !== id));
     window.api.notificationDismiss(id);
   };
 
   const open = (id: string): void => {
+    capture("notification_opened", { surface: "bubble", ageMs: ageOf(id) });
     setItems((prev) => prev.filter((n) => n.id !== id));
     window.api.notificationOpen(id);
   };

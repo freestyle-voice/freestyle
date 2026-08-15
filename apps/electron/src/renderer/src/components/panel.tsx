@@ -19,6 +19,7 @@ import {
   describeAgentAction,
   executeAgentTool,
 } from "@renderer/lib/agent-tools";
+import { capture } from "@renderer/lib/analytics";
 import { apiFetch, initApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider, useCloudAuth } from "@renderer/lib/auth-context";
 import { composerAction } from "@renderer/lib/composer-action";
@@ -808,6 +809,7 @@ function PanelInner({
   };
 
   const resolveApproval = (call: AgentToolCall, allowed: boolean): void => {
+    capture("approval_resolved", { tool: call.toolName, allowed });
     setApprovals((prev) =>
       prev.filter((a) => a.toolCallId !== call.toolCallId),
     );
@@ -996,6 +998,7 @@ function PanelInner({
               aria-selected={!settingsOpen && tab === id}
               className="tavern-tab"
               onClick={() => {
+                capture("panel_tab_opened", { tab: id });
                 setSettingsOpen(false);
                 setTab(id);
               }}

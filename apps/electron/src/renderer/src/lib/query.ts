@@ -94,6 +94,10 @@ export const queryKeys = {
     detail: (id: string) => ["threads", "detail", id] as const,
   },
   notifications: { history: ["notifications", "history"] as const },
+  brain: {
+    all: ["brain"] as const,
+    files: (root: string) => ["brain", "files", root] as const,
+  },
 
   /** Empty-state opener cards (`GET /api/suggestions/home`). */
   openers: ["openers"] as const,

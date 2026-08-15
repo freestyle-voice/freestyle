@@ -1,3 +1,4 @@
+import { apiFetch } from "@renderer/lib/api";
 import { listBrainFiles, readBrainFile } from "@renderer/lib/brain-fs";
 
 export type NoteSummary = {
@@ -94,4 +95,26 @@ export function toggleScheduledTaskEnabled(
     return content.replace(/^(\s*)enabled\s*:.*$/im, `$1enabled: ${value}`);
   }
   return content.replace(/^(\s*-{3,}\s*\n)/, `$1enabled: ${value}\n`);
+}
+
+export type ScheduledRunTimes = Record<string, number | null>;
+
+export async function fetchScheduledRunTimes(): Promise<ScheduledRunTimes> {
+  const response = await apiFetch("/api/scheduled/tasks");
+  if (!response.ok) throw new Error("Could not load run times.");
+  const data = (await response.json()) as {
+    tasks?: Array<{ path: string; nextRun: number | null }>;
+  };
+  return Object.fromEntries(
+    (data.tasks ?? []).map((task) => [task.path, task.nextRun]),
+  );
+}
+
+export async function runScheduledTaskNow(path: string): Promise<void> {
+  const response = await apiFetch("/api/scheduled/run-task", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!response.ok) throw new Error("Could not run that task.");
 }

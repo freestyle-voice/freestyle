@@ -487,6 +487,21 @@ function dateGroup(ts: number): string {
   return date.toLocaleDateString(undefined, opts);
 }
 
+async function openThreadById(threadId: string): Promise<ThreadState | null> {
+  try {
+    const res = await apiFetch(`/api/agent/thread/${threadId}`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      thread: { id: string; messages: UIMessage[] } | null;
+    };
+    return data.thread
+      ? { id: data.thread.id, messages: data.thread.messages }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function newThread(): ThreadState {
   return { id: crypto.randomUUID(), messages: [] };
 }
@@ -1106,6 +1121,13 @@ function PanelInner({
           {settingsOpen ? (
             <SettingsView
               onClose={() => setSettingsOpen(false)}
+              onOpenThread={(threadId) => {
+                setSettingsOpen(false);
+                setTab("chat");
+                void openThreadById(threadId).then((picked) => {
+                  if (picked) onSwitchThread(picked);
+                });
+              }}
               onThreadsCleared={() => onSwitchThread(newThread())}
               onReplayIntro={() => {
                 setSettingsOpen(false);

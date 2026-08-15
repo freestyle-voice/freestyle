@@ -1470,22 +1470,33 @@ export function SettingsView({
   onClose,
   onThreadsCleared,
   onReplayIntro,
+  onOpenThread,
 }: {
   onClose: () => void;
   onThreadsCleared: () => void;
   onReplayIntro: () => void;
+  onOpenThread?: (threadId: string) => void;
 }): React.JSX.Element {
   const [page, setPage] = useState<SettingsPage>("root");
   const { settings, setSetting } = useServerSettings();
   const auth = useCloudAuth();
   const usage = useCloudUsage(!!auth.user);
   const [version, setVersion] = useState("");
+  const [spriteForm, setSpriteForm] = useState<CompanionForm>(
+    DEFAULT_COMPANION_FORM,
+  );
 
   useEffect(() => {
     void window.api
       .getAppVersion()
       .then(setVersion)
       .catch(() => {});
+    void window.api
+      .companionForm()
+      .then(setSpriteForm)
+      .catch(() => {});
+    const off = window.api.onCompanionForm(setSpriteForm);
+    return () => off?.();
   }, []);
 
   if (settings === null)
@@ -1509,12 +1520,12 @@ export function SettingsView({
         ) : page === "billing" ? (
           <BillingPage />
         ) : page === "scheduled" ? (
-          <ScheduledTasks />
+          <ScheduledTasks mascot={SPRITES_INFO[spriteForm].label} />
         ) : page === "notifications" ? (
           <>
             <QuietHoursSettings />
             <SectionLabel>History</SectionLabel>
-            <NotificationsHistory />
+            <NotificationsHistory {...(onOpenThread ? { onOpenThread } : {})} />
           </>
         ) : page === "dictation" ? (
           <DictationPage value={value} setSetting={setSetting} />

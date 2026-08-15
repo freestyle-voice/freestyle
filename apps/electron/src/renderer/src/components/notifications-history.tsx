@@ -118,7 +118,11 @@ export function QuietHoursSettings(): React.JSX.Element | null {
   );
 }
 
-export function NotificationsHistory(): React.JSX.Element {
+export function NotificationsHistory({
+  onOpenThread,
+}: {
+  onOpenThread?: (threadId: string) => void;
+}): React.JSX.Element {
   const query = useQuery(notificationHistoryQueryOptions());
   const error =
     query.error instanceof NotificationHistoryError ? query.error : null;
@@ -150,8 +154,9 @@ export function NotificationsHistory(): React.JSX.Element {
       </p>
       {rows.map((row) => {
         const status = statusOf(row);
-        return (
-          <div key={row.id} className="tavern-notif">
+        const threadId = onOpenThread ? row.payload?.threadId : undefined;
+        const body = (
+          <>
             <div className="tavern-notif-head">
               <span className="tavern-notif-title">{row.title}</span>
               <span className={`tavern-notif-chip ${status.tone}`}>
@@ -161,9 +166,28 @@ export function NotificationsHistory(): React.JSX.Element {
             <p className="tavern-notif-body">{row.body}</p>
             <span className="tavern-notif-meta">
               {when(row.createdAt)}
-              {row.kind === "thread" ? " · conversation" : ""}
+              {threadId ? " · open the conversation" : ""}
             </span>
-          </div>
+          </>
+        );
+        // A dismissed brief used to be unreachable from the one screen meant
+        // for finding it again; every row already carries its thread id.
+        if (!threadId) {
+          return (
+            <div key={row.id} className="tavern-notif">
+              {body}
+            </div>
+          );
+        }
+        return (
+          <button
+            key={row.id}
+            type="button"
+            className="tavern-notif is-openable"
+            onClick={() => onOpenThread?.(threadId)}
+          >
+            {body}
+          </button>
         );
       })}
     </>

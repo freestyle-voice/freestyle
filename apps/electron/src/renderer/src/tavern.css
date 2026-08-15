@@ -1138,6 +1138,56 @@
   cursor: default;
 }
 
+.tavern-sched-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tavern-sched-action {
+  font: inherit;
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--tavern-rule);
+  background: none;
+  color: var(--tavern-mute);
+  cursor: pointer;
+}
+
+.tavern-sched-action:hover:not(:disabled) {
+  color: var(--tavern-ink);
+  border-color: var(--tavern-ink);
+}
+
+.tavern-sched-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tavern-sched-action.is-danger {
+  color: var(--tavern-rust);
+  border-color: var(--tavern-rust);
+}
+
+.tavern-sched-action:focus-visible,
+.tavern-notif.is-openable:focus-visible {
+  outline: 2px solid var(--tavern-lantern);
+  outline-offset: 2px;
+}
+
+.tavern-notif.is-openable {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tavern-notif.is-openable:hover {
+  border-color: var(--tavern-ink);
+}
+
 .tavern-thread-filter {
   display: flex;
   gap: 6px;

@@ -1,6 +1,10 @@
 import { QueryClient } from "@tanstack/react-query";
 import { getClient } from "./api";
-import { listNoteSummaries, listScheduledTaskViews } from "./brain-views";
+import {
+  fetchScheduledRunTimes,
+  listNoteSummaries,
+  listScheduledTaskViews,
+} from "./brain-views";
 import {
   type ConnectorCatalogPage,
   getConnectorDetails,
@@ -105,6 +109,7 @@ export const queryKeys = {
     file: (path: string) => ["brain", "file", path] as const,
     notes: ["brain", "notes"] as const,
     scheduledTasks: ["brain", "scheduled-tasks"] as const,
+    scheduledRunTimes: ["brain", "scheduled-run-times"] as const,
   },
 
   /** Empty-state opener cards (`GET /api/suggestions/home`). */
@@ -293,6 +298,14 @@ export function threadHistoryInfiniteQueryOptions(
     queryFn: ({ pageParam }: { pageParam: number | null }) =>
       listThreads({ cursor: pageParam ?? undefined, origin }),
     getNextPageParam: (page: ThreadPage) => page.nextCursor ?? undefined,
+  };
+}
+
+export function scheduledRunTimesQueryOptions() {
+  return {
+    queryKey: queryKeys.brain.scheduledRunTimes,
+    queryFn: fetchScheduledRunTimes,
+    staleTime: 60 * 1000,
   };
 }
 

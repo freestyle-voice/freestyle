@@ -5,6 +5,7 @@ export type NotificationHistoryRow = {
   kind: "thread" | "info";
   title: string;
   body: string;
+  payload: { threadId?: string; url?: string } | null;
   createdAt: number;
   expiresAt: number | null;
   dismissedAt: number | null;

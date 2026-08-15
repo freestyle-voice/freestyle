@@ -123,11 +123,14 @@ function NotificationStack(): React.JSX.Element | null {
   const shown = expanded ? items : items.slice(0, 1);
 
   return (
-    <div
+    <section
       className="tavern tavern-bub-stack"
       ref={rootRef}
+      aria-label="Notifications"
       onMouseEnter={() => window.api.notificationSetHovered(true)}
       onMouseLeave={() => window.api.notificationSetHovered(false)}
+      onFocus={() => window.api.notificationSetHovered(true)}
+      onBlur={() => window.api.notificationSetHovered(false)}
     >
       {shown.map((item, index) => (
         <NotificationCard
@@ -139,7 +142,7 @@ function NotificationStack(): React.JSX.Element | null {
           onExpand={() => setExpanded(true)}
         />
       ))}
-    </div>
+    </section>
   );
 }
 

@@ -3,10 +3,20 @@ import type { UIMessage } from "ai";
 
 export type ThreadState = { id: string; messages: UIMessage[] };
 
+export type ThreadOrigin = "user" | "scheduled";
+
+export const THREAD_ORIGINS: ThreadOrigin[] = ["user", "scheduled"];
+
+export const THREAD_ORIGIN_LABELS: Record<ThreadOrigin, string> = {
+  user: "Conversations",
+  scheduled: "Briefs",
+};
+
 export type ThreadSummary = {
   id: string;
   title: string;
   updatedAt: number;
+  origin?: ThreadOrigin;
 };
 
 export type ThreadPage = {
@@ -22,12 +32,15 @@ async function responseJson<T>(response: Response): Promise<T> {
 export async function listThreads({
   cursor,
   limit = 24,
+  origin,
 }: {
   cursor?: number;
   limit?: number;
+  origin?: ThreadOrigin;
 } = {}): Promise<ThreadPage> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor !== undefined) params.set("cursor", String(cursor));
+  if (origin) params.set("origin", origin);
   return responseJson<ThreadPage>(
     await apiFetch(`/api/agent/thread/list?${params.toString()}`),
   );

@@ -1138,6 +1138,39 @@
   cursor: default;
 }
 
+.tavern-thread-filter {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tavern-thread-filter-tab {
+  font: inherit;
+  font-size: 11.5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--tavern-rule);
+  background: none;
+  color: var(--tavern-mute);
+  cursor: pointer;
+}
+
+.tavern-thread-filter-tab:hover {
+  color: var(--tavern-ink);
+}
+
+.tavern-thread-filter-tab[aria-selected="true"] {
+  background: var(--tavern-wash);
+  border-color: var(--tavern-ink);
+  color: var(--tavern-ink);
+  font-weight: 700;
+}
+
+.tavern-thread-filter-tab:focus-visible {
+  outline: 2px solid var(--tavern-lantern);
+  outline-offset: 2px;
+}
+
 .tavern-thread-divider {
   font-family: var(--tavern-mono);
   font-size: 10px;

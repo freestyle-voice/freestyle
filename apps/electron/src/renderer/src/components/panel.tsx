@@ -34,7 +34,13 @@ import {
 } from "@renderer/lib/query";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
-import { getThread, type ThreadState } from "@renderer/lib/threads";
+import {
+  getThread,
+  THREAD_ORIGIN_LABELS,
+  THREAD_ORIGINS,
+  type ThreadOrigin,
+  type ThreadState,
+} from "@renderer/lib/threads";
 import { highlightToolJson, toolJson } from "@renderer/lib/tool-json";
 import {
   connectorToolkitSlug,
@@ -584,18 +590,48 @@ function ThreadHistory({
   currentId: string;
 }): React.JSX.Element {
   const queryClient = useQueryClient();
-  const historyQuery = useInfiniteQuery(threadHistoryInfiniteQueryOptions());
+  const [origin, setOrigin] = useState<ThreadOrigin>("user");
+  const historyQuery = useInfiniteQuery(
+    threadHistoryInfiniteQueryOptions(origin),
+  );
   const threads =
     historyQuery.data?.pages.flatMap((page) => page.threads) ?? [];
+
+  const filter = (
+    <div className="tavern-thread-filter" role="tablist">
+      {THREAD_ORIGINS.map((id) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={origin === id}
+          className="tavern-thread-filter-tab"
+          onClick={() => setOrigin(id)}
+        >
+          {THREAD_ORIGIN_LABELS[id]}
+        </button>
+      ))}
+    </div>
+  );
 
   if (historyQuery.isLoading)
     return <div className="tavern-empty">Loading conversations…</div>;
   if (threads.length === 0)
-    return <div className="tavern-empty">No conversations yet.</div>;
+    return (
+      <>
+        {filter}
+        <div className="tavern-empty">
+          {origin === "user"
+            ? "No conversations yet."
+            : "No briefs yet. Scheduled tasks write what they find here."}
+        </div>
+      </>
+    );
 
   let lastGroup = "";
   return (
     <>
+      {filter}
       {threads.map((t) => {
         const group = dateGroup(t.updatedAt);
         const divider = group !== lastGroup;

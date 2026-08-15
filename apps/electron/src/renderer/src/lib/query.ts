@@ -14,6 +14,7 @@ import {
   getLatestThread,
   getThread,
   listThreads,
+  type ThreadOrigin,
   type ThreadPage,
 } from "./threads";
 
@@ -91,7 +92,7 @@ export const queryKeys = {
   threads: {
     all: ["threads"] as const,
     latest: ["threads", "latest"] as const,
-    list: ["threads", "list"] as const,
+    list: (origin: ThreadOrigin) => ["threads", "list", origin] as const,
     detail: (id: string) => ["threads", "detail", id] as const,
   },
   notifications: {
@@ -283,12 +284,14 @@ export function threadQueryOptions(id: string) {
   };
 }
 
-export function threadHistoryInfiniteQueryOptions() {
+export function threadHistoryInfiniteQueryOptions(
+  origin: ThreadOrigin = "user",
+) {
   return {
-    queryKey: queryKeys.threads.list,
+    queryKey: queryKeys.threads.list(origin),
     initialPageParam: null as number | null,
     queryFn: ({ pageParam }: { pageParam: number | null }) =>
-      listThreads({ cursor: pageParam ?? undefined }),
+      listThreads({ cursor: pageParam ?? undefined, origin }),
     getNextPageParam: (page: ThreadPage) => page.nextCursor ?? undefined,
   };
 }

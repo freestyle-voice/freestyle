@@ -3020,6 +3020,37 @@ function stopCompanionHotPoll(): void {
   companionHotPollTimer = null;
 }
 
+function pointInHotRect(
+  point: { x: number; y: number },
+  origin: { x: number; y: number },
+  hot: PillHotRect,
+): boolean {
+  return (
+    point.x >= origin.x + hot.x &&
+    point.x <= origin.x + hot.x + hot.width &&
+    point.y >= origin.y + hot.y &&
+    point.y <= origin.y + hot.y + hot.height
+  );
+}
+
+/**
+ * The display whose companion home corner the cursor is resting in.
+ *
+ * The window lives on one display at a time, so testing its live bounds alone
+ * leaves every other monitor with no summon corner at all — the companion can
+ * only be called from the screen it already occupies. Every display's home
+ * corner is hot, and hovering one fetches the companion to that display.
+ */
+function hotCornerDisplay(
+  cursor: { x: number; y: number },
+  hot: PillHotRect,
+): Display | null {
+  for (const display of screen.getAllDisplays()) {
+    if (pointInHotRect(cursor, companionPosition(display), hot)) return display;
+  }
+  return null;
+}
+
 function setCompanionHotRect(rect: PillHotRect | null): void {
   if (process.env.FREESTYLE_E2E === "1") return;
   if (rect) companionLastRect = rect;
@@ -3037,14 +3068,14 @@ function setCompanionHotRect(rect: PillHotRect | null): void {
     const w = companionWindow;
     const hot = companionHotRect;
     if (!w || w.isDestroyed() || !hot || !w.isVisible()) return;
-    const bounds = w.getBounds();
     const cursor = screen.getCursorScreenPoint();
-    const inside =
-      cursor.x >= bounds.x + hot.x &&
-      cursor.x <= bounds.x + hot.x + hot.width &&
-      cursor.y >= bounds.y + hot.y &&
-      cursor.y <= bounds.y + hot.y + hot.height;
-    if (!inside) return;
+    // Live bounds first: travel can park the sprite away from its home corner,
+    // and it stays hoverable wherever it actually is.
+    if (!pointInHotRect(cursor, w.getBounds(), hot)) {
+      const target = hotCornerDisplay(cursor, hot);
+      if (!target) return;
+      positionCompanionOnDisplay(target);
+    }
     companionHotRect = null;
     stopCompanionHotPoll();
     w.setIgnoreMouseEvents(false);
@@ -3476,9 +3507,30 @@ function openPanel(opts: { focusComposer?: boolean } = {}): void {
   }
 }
 
+/**
+ * Send the companion home to the display the cursor is on once the panel is
+ * put away.
+ *
+ * The anchor is otherwise only set at dictation start and panel open, so a
+ * companion left on a monitor the user has walked away from stays there — and
+ * with the panel hidden there is nothing on the current screen to summon it
+ * back. Re-homing on hide means the next summon always starts where the user
+ * is. Skipped mid-dictation, where the anchor deliberately tracks the focused
+ * app rather than the mouse.
+ */
+function reanchorCompanionToCursor(): void {
+  const win = companionWindow;
+  if (!win || win.isDestroyed() || hotkeyPressed) return;
+  invalidateDictationDisplayRequest(dictationDisplayRequests);
+  positionCompanionOnDisplay(
+    screen.getDisplayNearestPoint(screen.getCursorScreenPoint()),
+  );
+}
+
 function closePanel(): void {
   cancelPanelHide();
   if (panelWindow && !panelWindow.isDestroyed()) panelWindow.hide();
+  reanchorCompanionToCursor();
   rearmCompanionHotRect();
 }
 
@@ -3507,6 +3559,7 @@ function schedulePanelHide(): void {
     if (cursorWithin(win, PANEL_HOVER_PAD)) return;
     if (cursorWithin(companionWindow, PANEL_HOVER_PAD)) return;
     win.hide();
+    reanchorCompanionToCursor();
     rearmCompanionHotRect();
   }, PANEL_HIDE_GRACE_MS);
 }

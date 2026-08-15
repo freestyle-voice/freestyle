@@ -82,6 +82,9 @@ export function SpriteStage({
 
   useEffect(() => {
     performerRef.current?.handle({ kind: "thinking", on: state === "working" });
+    if (state === "suggestion") {
+      performerRef.current?.handle({ kind: "emote", emotion: "proud" });
+    }
   }, [state]);
 
   useEffect(() => {

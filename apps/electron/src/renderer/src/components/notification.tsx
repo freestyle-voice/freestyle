@@ -123,7 +123,12 @@ function NotificationStack(): React.JSX.Element | null {
   const shown = expanded ? items : items.slice(0, 1);
 
   return (
-    <div className="tavern tavern-bub-stack" ref={rootRef}>
+    <div
+      className="tavern tavern-bub-stack"
+      ref={rootRef}
+      onMouseEnter={() => window.api.notificationSetHovered(true)}
+      onMouseLeave={() => window.api.notificationSetHovered(false)}
+    >
       {shown.map((item, index) => (
         <NotificationCard
           key={item.id}

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
 import {
   createDictationDisplayRequestTracker,
+  findHotCorner,
   invalidateDictationDisplayRequest,
+  pointInHotRect,
   resolveCompanionDisplay,
   resolvePanelCompanionDisplays,
 } from "../../../shared/companion-position";
@@ -49,4 +51,30 @@ test("rejects a pending focused-display result after the panel takes ownership",
   invalidateDictationDisplayRequest(tracker);
 
   expect(tracker.isCurrent(request)).toBe(false);
+});
+
+describe("hot corner", () => {
+  const hot = { x: 8, y: 200, width: 48, height: 48 };
+  // Two side-by-side displays; the companion's home corner sits at the
+  // bottom-left of each work area.
+  const left = { display: "left", origin: { x: 0, y: 861 } };
+  const right = { display: "right", origin: { x: 1728, y: 861 } };
+  const corners = [left, right];
+
+  test("matches a point inside the rect placed at the origin", () => {
+    expect(pointInHotRect({ x: 20, y: 1080 }, left.origin, hot)).toBe(true);
+  });
+
+  test("rejects a point outside the rect", () => {
+    expect(pointInHotRect({ x: 400, y: 1080 }, left.origin, hot)).toBe(false);
+  });
+
+  test("finds the corner of the display the cursor is actually on", () => {
+    expect(findHotCorner({ x: 1748, y: 1080 }, hot, corners)).toBe("right");
+    expect(findHotCorner({ x: 20, y: 1080 }, hot, corners)).toBe("left");
+  });
+
+  test("returns null when the cursor is in no corner", () => {
+    expect(findHotCorner({ x: 900, y: 400 }, hot, corners)).toBeNull();
+  });
 });

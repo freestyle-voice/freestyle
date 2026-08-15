@@ -26,6 +26,52 @@ export function resolvePanelCompanionDisplays<T extends CompanionDisplay>(
   return { panelDisplay, companionDisplay: panelDisplay };
 }
 
+export interface HotRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/** Whether a screen point falls in a hot rect placed at `origin`. */
+export function pointInHotRect(
+  point: Point,
+  origin: Point,
+  hot: HotRect,
+): boolean {
+  return (
+    point.x >= origin.x + hot.x &&
+    point.x <= origin.x + hot.x + hot.width &&
+    point.y >= origin.y + hot.y &&
+    point.y <= origin.y + hot.y + hot.height
+  );
+}
+
+/**
+ * The candidate whose companion home corner contains the cursor.
+ *
+ * The companion window occupies one display at a time, so a hit test against
+ * its live bounds alone leaves every other monitor with no summon corner — the
+ * companion can only be called from the screen it is already on. Giving every
+ * display's home corner the same hot rect makes the gesture reachable from
+ * whichever screen the user is actually working on.
+ */
+export function findHotCorner<T>(
+  point: Point,
+  hot: HotRect,
+  candidates: Array<{ display: T; origin: Point }>,
+): T | null {
+  for (const candidate of candidates) {
+    if (pointInHotRect(point, candidate.origin, hot)) return candidate.display;
+  }
+  return null;
+}
+
 /** Tracks the dictation session allowed to update the companion's display. */
 export interface DictationDisplayRequestTracker {
   begin: () => number;

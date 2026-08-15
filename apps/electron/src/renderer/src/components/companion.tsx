@@ -235,8 +235,8 @@ function SparkStage({
           gap: 6px;
           padding: 5px 10px 5px 8px;
           border-radius: 14px;
-          background: rgba(251, 245, 228, 0.92);
-          border: 1px solid rgba(219, 204, 166, 0.8);
+          background: var(--tavern-bubble, rgba(251, 245, 228, 0.92));
+          border: 1px solid var(--tavern-bubble-edge, rgba(219, 204, 166, 0.8));
           min-width: 0;
         }
         .bubble-bars {
@@ -251,18 +251,18 @@ function SparkStage({
           width: 2.5px;
           height: 11px;
           border-radius: 1.5px;
-          background: #d98e2b;
+          background: var(--tavern-lantern, #d98e2b);
           transform: scaleY(0.2);
           transform-origin: center;
           transition: transform 70ms linear;
         }
         .bubble-bar.is-paused {
-          background: #8e7f5f;
+          background: var(--tavern-mute, #8e7f5f);
         }
         .bubble-text {
           font-size: 11px;
           line-height: 1.35;
-          color: #8e7f5f;
+          color: var(--tavern-mute, #8e7f5f);
           overflow-wrap: break-word;
           overflow: hidden;
           min-width: 0;

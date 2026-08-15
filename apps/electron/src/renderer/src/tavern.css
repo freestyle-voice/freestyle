@@ -40,6 +40,62 @@
   --tavern-rule: #dbcca6;
   --tavern-mute: #8e7f5f;
   --tavern-wash: #ebdfc0;
+  --tavern-shadow: rgba(42, 33, 20, 0.4);
+  --tavern-bubble: rgba(251, 245, 228, 0.92);
+  --tavern-bubble-edge: rgba(219, 204, 166, 0.8);
+  --tavern-ok: #4a7c46;
+  --tavern-ok-edge: #9daa7b;
+  --tavern-ok-fill: #dce5cd;
+  --tavern-danger: #a33d2e;
+  --tavern-warn: #9d6016;
+  --tavern-warn-fill: #f8e6cb;
+  --tavern-warn-edge: #d8ae83;
+  --tavern-lantern-deep: #c47f24;
+  --tavern-lantern-soft: #d98e2b33;
+  --tavern-dither: #d98e2b12;
+  --tavern-raised: #fdfbf3;
+  --tavern-sprout: linear-gradient(160deg, #8fa07a, #6f8266 70%);
+  --tavern-parchment-fixed: #f3ead3;
+  --tavern-ink-shadow: #2a211466;
+  --tavern-shimmer: #e8dfca;
+  --tavern-shimmer-peak: #f4eddc;
+}
+
+/* The panel floats on the user's wallpaper rather than inside a page, so a
+   parchment rectangle at midnight has no surrounding context to justify it.
+   Ink and parchment swap; the lantern lifts so it still reads as the accent
+   against a dark ground. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --tavern-parchment: #17130e;
+    --tavern-card: #201a13;
+    --tavern-ink: #efe3c7;
+    --tavern-lantern: #e9a745;
+    --tavern-robe: #8b97c4;
+    --tavern-rust: #ce7052;
+    --tavern-rule: #3a3125;
+    --tavern-mute: #9c8c6c;
+    --tavern-wash: #2b2318;
+    --tavern-shadow: rgba(0, 0, 0, 0.55);
+    --tavern-bubble: rgba(32, 26, 19, 0.94);
+    --tavern-bubble-edge: rgba(58, 49, 37, 0.9);
+    --tavern-ok: #86b97f;
+    --tavern-ok-edge: #4e6647;
+    --tavern-ok-fill: #23301f;
+    --tavern-danger: #d97f68;
+    --tavern-warn: #e0b070;
+    --tavern-warn-fill: #33270f;
+    --tavern-warn-edge: #6b5326;
+    --tavern-lantern-deep: #f2b458;
+    --tavern-lantern-soft: #e9a74533;
+    --tavern-dither: #e9a74514;
+    --tavern-raised: #29221a;
+    --tavern-sprout: linear-gradient(160deg, #5d6d4c, #414f3c 70%);
+    --tavern-parchment-fixed: #f3ead3;
+    --tavern-ink-shadow: #00000088;
+    --tavern-shimmer: #2a2318;
+    --tavern-shimmer-peak: #3a3125;
+  }
 }
 
 .tavern {
@@ -75,7 +131,7 @@
   border-radius: 18px;
   overflow: hidden;
   box-shadow: 7px 7px 0 rgba(42, 33, 20, 0.8);
-  background-image: radial-gradient(#d98e2b12 1.2px, transparent 1.2px);
+  background-image: radial-gradient(var(--tavern-dither) 1.2px, transparent 1.2px);
   background-size: 7px 7px;
 }
 
@@ -115,6 +171,14 @@
   padding: 0 16px;
   border-bottom: 2px solid var(--tavern-ink);
   font-size: 12px;
+  /* Six labels plus a gear fit a 390px panel with ~50px to spare; a seventh
+     tab or a longer translation used to overflow silently. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tavern-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tavern-tab {
@@ -477,7 +541,7 @@
 }
 
 .tavern-msg-action.is-copied {
-  color: #4a7c46;
+  color: var(--tavern-ok);
 }
 
 .tavern-msg-action:disabled {
@@ -497,7 +561,7 @@
   border-radius: 10px;
   padding: 7px;
   background: var(--tavern-card);
-  box-shadow: 2px 2px 0 #d98e2b33;
+  box-shadow: 2px 2px 0 var(--tavern-lantern-soft);
 }
 
 .tavern-msg-edit-input {
@@ -1035,7 +1099,7 @@
 }
 
 .tavern-approve-allow:hover {
-  background: #c47f24;
+  background: var(--tavern-lantern-deep);
 }
 
 .tavern-approve-btn:focus-visible {
@@ -1824,7 +1888,7 @@
 }
 
 .tavern-set-action.is-danger {
-  color: #a33d2e;
+  color: var(--tavern-danger);
 }
 
 .tavern-set-select {
@@ -1926,7 +1990,7 @@
 
 .connector-search:focus-within {
   border-color: var(--tavern-lantern);
-  box-shadow: 0 0 0 2px #d98e2b24;
+  box-shadow: 0 0 0 2px var(--tavern-lantern-soft);
 }
 
 .connector-search > span {
@@ -2009,7 +2073,7 @@
 }
 
 .connector-card.is-connected {
-  border-color: #9daa7b;
+  border-color: var(--tavern-ok-edge);
 }
 
 .connector-card.needs-reconnect {
@@ -2031,8 +2095,8 @@
 }
 
 .is-connected .connector-mark {
-  border-color: #9daa7b;
-  color: #4a7c46;
+  border-color: var(--tavern-ok-edge);
+  color: var(--tavern-ok);
 }
 
 .connector-card-copy {
@@ -2058,8 +2122,8 @@
   flex: 0 0 auto;
   border-radius: 999px;
   padding: 1px 5px;
-  background: #dce5cd;
-  color: #4a7c46;
+  background: var(--tavern-ok-fill);
+  color: var(--tavern-ok);
   font-size: 8.5px;
   font-weight: 700;
   line-height: 1.35;
@@ -2071,8 +2135,8 @@
 }
 
 .needs-reconnect .connector-state {
-  background: #f4d9ae;
-  color: #9d6016;
+  background: var(--tavern-warn-fill);
+  color: var(--tavern-warn);
 }
 
 .connector-card-copy p {
@@ -2086,7 +2150,7 @@
 }
 
 .connector-card-copy .connector-reason {
-  color: #9d6016;
+  color: var(--tavern-warn);
 }
 
 .connector-action {
@@ -2124,11 +2188,11 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
-  border: 1px solid #d8ae83;
+  border: 1px solid var(--tavern-warn-edge);
   border-radius: 8px;
   padding: 7px 8px;
-  background: #f8e6cb;
-  color: #89521c;
+  background: var(--tavern-warn-fill);
+  color: var(--tavern-warn);
   font-size: 11px;
   line-height: 1.35;
 }
@@ -2168,10 +2232,10 @@
   min-height: 52px;
   justify-content: flex-start;
   padding: 8px 12px;
-  border: 1px dashed #d8ba88;
+  border: 1px dashed var(--tavern-warn-edge);
   border-radius: 10px;
   background:
-    linear-gradient(90deg, #fff8e9 0%, #f9edd8 48%, #fff8e9 100%);
+    linear-gradient(90deg, var(--tavern-raised) 0%, var(--tavern-wash) 48%, var(--tavern-raised) 100%);
   background-size: 180% 100%;
   animation: connector-load-wash 2.5s ease-in-out infinite;
 }
@@ -2190,7 +2254,7 @@
   height: 7px;
   border-radius: 50%;
   background: var(--tavern-lantern);
-  box-shadow: 0 1px 0 #fff6e4 inset;
+  box-shadow: 0 1px 0 var(--tavern-raised) inset;
   animation: connector-load-step 1.15s ease-in-out infinite;
 }
 
@@ -2228,7 +2292,12 @@
   display: block;
   height: 46px;
   border-radius: 8px;
-  background: linear-gradient(90deg, #e8dfca 20%, #f4eddc 50%, #e8dfca 80%);
+  background: linear-gradient(
+    90deg,
+    var(--tavern-shimmer) 20%,
+    var(--tavern-shimmer-peak) 50%,
+    var(--tavern-shimmer) 80%
+  );
   background-size: 200% 100%;
   animation: connector-shimmer 1.2s ease-in-out infinite;
 }
@@ -2336,11 +2405,11 @@
 }
 
 .tavern-set-check.is-ok {
-  color: #4a7c46;
+  color: var(--tavern-ok);
 }
 
 .tavern-set-check.is-no {
-  color: #a33d2e;
+  color: var(--tavern-danger);
 }
 
 .tavern-set-check.is-wait {
@@ -3014,7 +3083,7 @@
   min-height: 180px;
   border: 2px solid var(--tavern-ink);
   border-radius: 12px;
-  background: linear-gradient(160deg, #8fa07a, #6f8266 70%);
+  background: var(--tavern-sprout);
   overflow: hidden;
   box-shadow: 3px 3px 0 rgba(42, 33, 20, 0.35);
 }
@@ -3025,15 +3094,15 @@
   top: 14%;
   width: 70%;
   height: 56%;
-  background: #fdfbf3;
+  background: var(--tavern-raised);
   border-radius: 6px;
-  border: 1px solid #d9d1bd;
+  border: 1px solid var(--tavern-rule);
 }
 
 .tavern-onb-deskwin i {
   display: block;
   height: 9px;
-  border-bottom: 1px solid #ede6d4;
+  border-bottom: 1px solid var(--tavern-rule);
 }
 
 .tavern-onb-deskjeb {
@@ -3048,8 +3117,8 @@
   bottom: 26px;
   font-family: var(--tavern-px);
   font-size: 11px;
-  color: #f3ead3;
-  text-shadow: 1px 1px 0 #2a211466;
+  color: var(--tavern-parchment-fixed);
+  text-shadow: 1px 1px 0 var(--tavern-ink-shadow);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3433,7 +3502,7 @@
   border: 1px solid var(--tavern-rule);
   border-radius: 8px;
   padding: 4px;
-  background: #fff;
+  background: var(--tavern-raised);
   object-fit: contain;
 }
 
@@ -3591,13 +3660,13 @@
 
 .connector-tool-ro {
   padding: 1px 6px;
-  border: 1px solid #9daa7b;
+  border: 1px solid var(--tavern-ok-edge);
   border-radius: 999px;
   font-family: var(--tavern-mono);
   font-size: 9px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #4a7c46;
+  color: var(--tavern-ok);
 }
 
 .connector-tools p {
@@ -3624,7 +3693,7 @@
 }
 
 .tavern-connect-card.is-connected {
-  border-color: #9daa7b;
+  border-color: var(--tavern-ok-edge);
 }
 
 .tavern-connect-copy {
@@ -3653,14 +3722,14 @@
 }
 
 .tavern-connect-done {
-  color: #4a7c46;
+  color: var(--tavern-ok);
   font-size: 14px;
 }
 
 .tavern-connect-error {
   margin: 0;
   font-size: 11px;
-  color: #a04d3c;
+  color: var(--tavern-danger);
 }
 
 /* ── Experiment: wider panel, two-column app grid ─────────────────────── */
@@ -3716,8 +3785,8 @@
 }
 
 .connector-cancel:hover:not(:disabled) {
-  border-color: #a04d3c;
-  color: #a04d3c;
+  border-color: var(--tavern-danger);
+  color: var(--tavern-danger);
 }
 
 .connector-cancel:disabled {
@@ -3748,7 +3817,7 @@
 
 .connector-card.is-connected .connector-action:hover:not(:disabled) {
   border-color: var(--tavern-rule);
-  color: #a04d3c;
+  color: var(--tavern-danger);
   background: none;
 }
 
@@ -3896,4 +3965,29 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tavern-sched-toggle:focus-visible,
+.tavern-set-switch:focus-visible,
+.tavern-set-select:focus-visible,
+.tavern-approve-btn:focus-visible,
+.tavern-opener:focus-visible,
+.tavern-opener-more:focus-visible,
+.tavern-opener-launch:focus-visible,
+.tavern-starter:focus-visible,
+.tavern-bub-main:focus-visible,
+.tavern-bub-x:focus-visible,
+.tavern-bub-badge:focus-visible,
+.tavern-file-back:focus-visible,
+.tavern-set-row:focus-visible,
+.tavern-thread-row:focus-visible,
+.tavern-msg-action:focus-visible,
+.tavern-head-new:focus-visible,
+.tavern-close:focus-visible,
+.tavern-tool-toggle:focus-visible,
+.connector-workflow:focus-visible,
+.connector-action:focus-visible {
+  outline: 2px solid var(--tavern-lantern);
+  outline-offset: 2px;
+  border-radius: 4px;
 }

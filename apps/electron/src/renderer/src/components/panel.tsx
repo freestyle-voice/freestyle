@@ -1196,7 +1196,13 @@ function PanelInner({
                 />
               ))}
               {approvals.map((call) => (
-                <div key={call.toolCallId} className="tavern-approve">
+                <div
+                  key={call.toolCallId}
+                  className="tavern-approve"
+                  role="alertdialog"
+                  aria-live="assertive"
+                  aria-label={`${SPRITES_INFO[spriteForm].label} wants to act: ${describeAgentAction(call)}`}
+                >
                   <span className="tavern-approve-title">
                     {SPRITES_INFO[spriteForm].label.toLowerCase()} wants to act
                   </span>

@@ -184,6 +184,7 @@ export function NotificationsHistory({
             key={row.id}
             type="button"
             className="tavern-notif is-openable"
+            aria-label={`Open the conversation for ${row.title}`}
             onClick={() => onOpenThread?.(threadId)}
           >
             {body}

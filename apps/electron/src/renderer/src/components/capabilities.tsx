@@ -93,6 +93,7 @@ export function Capabilities({
               key={item.id}
               type="button"
               className={`tavern-cap${item.locked ? " is-locked" : ""}`}
+              aria-label={`${item.title}. ${item.subtitle}`}
               onClick={() => run(item)}
             >
               <span className="tavern-cap-item-title">

@@ -1,3 +1,23 @@
+:root {
+  --tavern-lantern: #d98e2b;
+  --tavern-mute: #8e7f5f;
+  --tavern-lantern-soft: #d98e2b33;
+  --tavern-bubble: rgba(251, 245, 228, 0.92);
+  --tavern-bubble-edge: rgba(219, 204, 166, 0.8);
+}
+
+/* The companion sits directly on the wallpaper, so it follows the OS theme
+   independently of the panel's stylesheet. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --tavern-lantern: #e9a745;
+    --tavern-mute: #9c8c6c;
+    --tavern-lantern-soft: #e9a74533;
+    --tavern-bubble: rgba(32, 26, 19, 0.94);
+    --tavern-bubble-edge: rgba(58, 49, 37, 0.9);
+  }
+}
+
 html,
 body {
   margin: 0;

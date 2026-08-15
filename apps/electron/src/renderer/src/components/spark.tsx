@@ -1,7 +1,7 @@
 import type { CompanionState } from "@shared/companion";
 import type React from "react";
 
-const LANTERN = "#D98E2B";
+const LANTERN = "var(--tavern-lantern, #d98e2b)";
 const CORE = 16;
 const SATELLITE = 5;
 
@@ -75,7 +75,7 @@ export function Spark({
             background: LANTERN,
             borderRadius: working ? Math.max(2, size * 0.18) : 1,
             boxShadow: suggesting
-              ? `0 0 0 6px ${LANTERN}33, 0 0 14px 2px ${LANTERN}55`
+              ? "0 0 0 6px var(--tavern-lantern-soft, #d98e2b33), 0 0 14px 2px var(--tavern-lantern-soft, #d98e2b55)"
               : undefined,
           }}
         />

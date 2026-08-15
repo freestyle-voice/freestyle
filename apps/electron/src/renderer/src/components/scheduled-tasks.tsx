@@ -1,60 +1,13 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
+import { writeBrainFile } from "@renderer/lib/brain-fs";
 import {
-  listBrainFiles,
-  readBrainFile,
-  writeBrainFile,
-} from "@renderer/lib/brain-fs";
+  type ScheduledTaskView,
+  toggleScheduledTaskEnabled,
+} from "@renderer/lib/brain-views";
+import { queryKeys, scheduledTasksQueryOptions } from "@renderer/lib/query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type React from "react";
-import { useCallback, useEffect, useState } from "react";
-
-const PREFIX = "scheduled_tasks";
-
-interface ScheduledTaskView {
-  path: string;
-  name: string;
-  schedule: string;
-  enabled: boolean;
-  lastRun: Date | null;
-  content: string;
-}
-
-function field(frontmatter: string, key: string): string | null {
-  const match = new RegExp(`^\\s*${key}\\s*:\\s*(.*)$`, "im").exec(frontmatter);
-  if (!match) return null;
-  return match[1].trim().replace(/^["']|["']$/g, "") || null;
-}
-
-function parse(path: string, content: string): ScheduledTaskView | null {
-  const normalized = content.replace(/\r\n/g, "\n");
-  const match = /^\s*-{3,}\s*\n([\s\S]*?)\n-{3,}\s*\n?/.exec(normalized);
-  if (!match) return null;
-  const frontmatter = match[1];
-  const schedule = field(frontmatter, "schedule");
-  if (!schedule) return null;
-
-  const enabledRaw = field(frontmatter, "enabled")?.toLowerCase() ?? "true";
-  const lastRunRaw = field(frontmatter, "last_run");
-  const lastRun = lastRunRaw ? new Date(lastRunRaw) : null;
-
-  return {
-    path,
-    name:
-      field(frontmatter, "name") ??
-      (path.split("/").pop() ?? path).replace(/\.md$/i, ""),
-    schedule,
-    enabled: !["false", "no", "off", "0"].includes(enabledRaw),
-    lastRun: lastRun && !Number.isNaN(lastRun.getTime()) ? lastRun : null,
-    content: normalized,
-  };
-}
-
-function toggleEnabled(content: string, next: boolean): string {
-  const value = next ? "true" : "false";
-  if (/^\s*enabled\s*:/im.test(content)) {
-    return content.replace(/^(\s*)enabled\s*:.*$/im, `$1enabled: ${value}`);
-  }
-  return content.replace(/^(\s*-{3,}\s*\n)/, `$1enabled: ${value}\n`);
-}
+import { useState } from "react";
 
 function whenLastRun(date: Date | null): string {
   if (!date) return "never run";
@@ -66,47 +19,47 @@ function whenLastRun(date: Date | null): string {
 }
 
 export function ScheduledTasks(): React.JSX.Element {
-  const [tasks, setTasks] = useState<ScheduledTaskView[] | null>(null);
+  const queryClient = useQueryClient();
+  const tasksQuery = useQuery(scheduledTasksQueryOptions());
+  const tasks = tasksQuery.data ?? [];
   const [busy, setBusy] = useState<string | null>(null);
-
-  const load = useCallback((): void => {
-    void listBrainFiles(PREFIX)
-      .then(async (files) => {
-        const parsed: ScheduledTaskView[] = [];
-        for (const file of files) {
-          const content = await readBrainFile(file.path);
-          if (!content) continue;
-          const task = parse(file.path, content);
-          if (task) parsed.push(task);
-        }
-        return parsed.sort((a, b) => a.name.localeCompare(b.name));
-      })
-      .catch(() => [])
-      .then(setTasks);
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const toggle = (task: ScheduledTaskView): void => {
     const next = !task.enabled;
     setBusy(task.path);
-    setTasks(
-      (prev) =>
-        prev?.map((t) =>
+    queryClient.setQueryData<ScheduledTaskView[]>(
+      queryKeys.brain.scheduledTasks,
+      (previous) =>
+        previous?.map((t) =>
           t.path === task.path ? { ...t, enabled: next } : t,
-        ) ?? prev,
+        ) ?? previous,
     );
-    void writeBrainFile(task.path, toggleEnabled(task.content, next))
+    const nextContent = toggleScheduledTaskEnabled(task.content, next);
+    void writeBrainFile(task.path, nextContent)
       .then((ok) => {
-        if (!ok) load();
+        if (!ok) {
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.brain.scheduledTasks,
+          });
+          return;
+        }
+        queryClient.setQueryData(queryKeys.brain.file(task.path), nextContent);
+        void queryClient.invalidateQueries({ queryKey: queryKeys.brain.all });
       })
-      .catch(() => load())
       .finally(() => setBusy(null));
   };
 
-  if (tasks === null) return <DataSkeleton label="Loading scheduled tasks" />;
+  if (tasksQuery.isLoading)
+    return <DataSkeleton label="Loading scheduled tasks" />;
+  if (tasksQuery.isError)
+    return (
+      <div className="tavern-empty">
+        <p>Couldn&apos;t load scheduled tasks.</p>
+        <button type="button" onClick={() => void tasksQuery.refetch()}>
+          Try again
+        </button>
+      </div>
+    );
 
   if (tasks.length === 0)
     return (

@@ -1,5 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { getClient } from "./api";
+import { listNoteSummaries, listScheduledTaskViews } from "./brain-views";
 import {
   type ConnectorCatalogPage,
   getConnectorDetails,
@@ -97,6 +98,9 @@ export const queryKeys = {
   brain: {
     all: ["brain"] as const,
     files: (root: string) => ["brain", "files", root] as const,
+    file: (path: string) => ["brain", "file", path] as const,
+    notes: ["brain", "notes"] as const,
+    scheduledTasks: ["brain", "scheduled-tasks"] as const,
   },
 
   /** Empty-state opener cards (`GET /api/suggestions/home`). */
@@ -290,6 +294,29 @@ export function notificationHistoryQueryOptions() {
   return {
     queryKey: queryKeys.notifications.history,
     queryFn: listNotificationHistory,
+  };
+}
+
+export function brainFileQueryOptions(path: string) {
+  return {
+    queryKey: queryKeys.brain.file(path),
+    queryFn: () =>
+      import("./brain-fs").then(({ readBrainFile }) => readBrainFile(path)),
+    enabled: path.length > 0,
+  };
+}
+
+export function notesQueryOptions() {
+  return {
+    queryKey: queryKeys.brain.notes,
+    queryFn: listNoteSummaries,
+  };
+}
+
+export function scheduledTasksQueryOptions() {
+  return {
+    queryKey: queryKeys.brain.scheduledTasks,
+    queryFn: listScheduledTaskViews,
   };
 }
 

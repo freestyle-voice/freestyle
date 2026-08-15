@@ -132,7 +132,7 @@ export async function listBrainFiles(prefix?: string): Promise<BrainFile[]> {
   if (cached !== undefined) return cached;
 
   const res = await fsCall("list", {});
-  if (!res?.ok) return [];
+  if (!res?.ok) throw new Error("Could not load Brain files.");
   const files = (res.files as BrainFile[]) ?? [];
   listCache = { value: files, at: Date.now() };
   if (!prefix) return files;

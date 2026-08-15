@@ -31,7 +31,7 @@ function parseItems(lines: string[]): TodoItem[] {
 export function TodosTab({ mascot }: { mascot: string }): React.JSX.Element {
   const queryClient = useQueryClient();
   const todosQuery = useQuery({
-    queryKey: queryKeys.brain.files(TODOS_PATH),
+    queryKey: queryKeys.brain.file(TODOS_PATH),
     queryFn: () => readBrainFile(TODOS_PATH),
   });
   const lines =
@@ -43,11 +43,11 @@ export function TodosTab({ mascot }: { mascot: string }): React.JSX.Element {
 
   const save = (next: string[]): void => {
     const nextText = next.join("\n");
-    queryClient.setQueryData(queryKeys.brain.files(TODOS_PATH), nextText);
+    queryClient.setQueryData(queryKeys.brain.file(TODOS_PATH), nextText);
     void writeBrainFile(TODOS_PATH, nextText).then((ok) => {
       if (!ok)
         void queryClient.invalidateQueries({
-          queryKey: queryKeys.brain.files(TODOS_PATH),
+          queryKey: queryKeys.brain.file(TODOS_PATH),
         });
     });
   };

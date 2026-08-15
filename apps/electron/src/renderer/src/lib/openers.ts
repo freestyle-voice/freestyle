@@ -112,6 +112,20 @@ export async function fetchOpeners(): Promise<OpenersResponse> {
   return result;
 }
 
+/** Server-side counterpart to the session dismissal set: this is what makes a
+ * twice-refused card stop coming back after a restart. Fire-and-forget. */
+export function reportSuggestion(
+  cardId: string,
+  surface: string,
+  action: "accepted" | "dismissed",
+): void {
+  void apiFetch("/api/suggestions/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cardId, surface, action }),
+  }).catch(() => {});
+}
+
 export type ApplyTemplateResult = {
   applied: Array<{ id: string; path: string; name: string }>;
   skipped: Array<{ id: string; reason: string }>;

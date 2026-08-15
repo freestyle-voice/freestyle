@@ -1,4 +1,5 @@
 import { apiFetch } from "@renderer/lib/api";
+import { reportSuggestion } from "@renderer/lib/openers";
 
 /**
  * Capture a PostHog event from the renderer.
@@ -20,6 +21,14 @@ export function captureSuggestion(
   properties?: Record<string, unknown>,
 ): void {
   capture(`suggestion_${phase}`, { surface, ...properties });
+  // Connect cards are the same offer whether they came from the openers or
+  // from chat, so both report under connect:<slug> and retire together.
+  const slug = properties?.slug;
+  const id =
+    typeof slug === "string" ? `connect:${slug}` : (properties?.id ?? null);
+  if (phase !== "shown" && typeof id === "string") {
+    reportSuggestion(id, surface, phase);
+  }
 }
 
 export function capture(

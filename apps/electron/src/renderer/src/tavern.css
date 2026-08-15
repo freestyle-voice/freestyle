@@ -1287,6 +1287,38 @@
   gap: 4px;
 }
 
+.tavern-tool.is-running .tavern-tool-mark {
+  animation: tavern-tool-pulse 1.1s ease-in-out infinite;
+}
+
+.tavern-tool.is-running .tavern-tool-label {
+  color: var(--tavern-ink);
+}
+
+.tavern-tool.is-inert .tavern-tool-label {
+  color: var(--tavern-mute);
+}
+
+.tavern-tool.is-inert .tavern-tool-mark {
+  color: var(--tavern-rust);
+}
+
+@keyframes tavern-tool-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tavern-tool.is-running .tavern-tool-mark {
+    animation: none;
+  }
+}
+
 .tavern-tool-static,
 .tavern-tool-toggle {
   font: inherit;

@@ -4,6 +4,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { formatError } from "../lib/format-error.js";
 import { fetchCloudUsage } from "../lib/freestyle-cloud.js";
+import {
+  registerSuperProperties,
+  setPersonProperties,
+} from "../lib/posthog.js";
 import { getSessionToken } from "../lib/sessions.js";
 
 const log = createAppLogger("usage");
@@ -14,6 +18,17 @@ const log = createAppLogger("usage");
  * is detected on the next poll; all other reads omit it for the cached path.
  */
 const usageQuerySchema = z.object({ fresh: z.literal("1").optional() });
+
+// The plan changes rarely and is wanted on every breakdown, so it rides as a
+// super property rather than being stamped per event by each caller.
+let lastPlan: string | null = null;
+
+function rememberPlan(plan: string): void {
+  if (plan === lastPlan) return;
+  lastPlan = plan;
+  registerSuperProperties({ plan });
+  setPersonProperties({ plan });
+}
 
 const usage = new Hono().get(
   "/",
@@ -28,6 +43,7 @@ const usage = new Hono().get(
       // cloud bypasses its plan cache and reports an upgrade immediately.
       const { fresh } = c.req.valid("query");
       const balance = await fetchCloudUsage(token, { fresh: fresh === "1" });
+      rememberPlan(balance.plan ?? "free");
       return c.json(balance);
     } catch (err) {
       log.warn(`failed to fetch cloud usage: ${formatError(err)}`);

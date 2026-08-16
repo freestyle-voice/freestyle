@@ -17,6 +17,7 @@ import {
   formatAcceleratorKeys,
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
+import { capture } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { LANGUAGES } from "@renderer/lib/languages";
@@ -830,7 +831,10 @@ function BillingPage(): React.JSX.Element {
             type="button"
             className="tavern-approve-btn tavern-approve-allow"
             disabled={usage.checkoutStatus === "pending"}
-            onClick={() => void usage.startCheckout(period)}
+            onClick={() => {
+              capture("upgrade_clicked", { surface: "settings", period });
+              void usage.startCheckout(period);
+            }}
           >
             {usage.checkoutStatus === "pending"
               ? "Finish in browser…"

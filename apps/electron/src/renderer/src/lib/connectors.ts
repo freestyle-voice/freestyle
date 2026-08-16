@@ -1,3 +1,4 @@
+import { capture } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 
 export type ConnectorStatus =
@@ -212,6 +213,7 @@ export async function disconnectToolkit(toolkit: string): Promise<void> {
       { method: "POST" },
     ),
   );
+  capture("connector_disconnected", { toolkit });
 }
 
 export async function approveConnectorAction(input: {

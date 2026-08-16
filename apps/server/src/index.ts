@@ -8,6 +8,7 @@ import { logger } from "hono/logger";
 import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
 import { WebSocketServer } from "ws";
+import { recordAppLaunch } from "./lib/app-lifecycle.js";
 import { authMiddleware, setAuthToken } from "./lib/auth.js";
 import { refreshCleanupPromptConfig } from "./lib/editor/prompt-config.js";
 import { formatError } from "./lib/format-error.js";
@@ -247,6 +248,9 @@ export async function startServer(
   // Keep the cloud profile's timezone current so scheduled tasks fire on this
   // machine's clock. No-op when signed out or unchanged; never throws.
   void syncTimezoneToCloud();
+
+  // Install / update / launch, emitted once per process start.
+  recordAppLaunch();
 
   // Flush any preference syncs that were queued while offline in a previous
   // run. No-op when signed out / nothing pending; never throws.

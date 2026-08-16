@@ -391,6 +391,39 @@ function serverClient() {
   return hc<AppType>(getServerBaseUrl(), { headers: getServerAuthHeaders() });
 }
 
+/**
+ * Emit a product event from the main process.
+ *
+ * Goes through the server's /api/telemetry so it inherits the telemetry
+ * opt-out, DO_NOT_TRACK, production gating and identity that every other
+ * event already honors. Fire-and-forget.
+ */
+function captureMain(
+  event: string,
+  properties?: Record<string, unknown>,
+): void {
+  void fetch(`${getServerBaseUrl()}/api/telemetry`, {
+    method: "POST",
+    headers: {
+      ...getServerAuthHeaders(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ event, ...(properties ? { properties } : {}) }),
+  }).catch(() => {});
+}
+
+/** Durable traits on the person: the sprite in use, launch-at-login. */
+function capturePerson(properties: Record<string, unknown>): void {
+  void fetch(`${getServerBaseUrl()}/api/telemetry/person`, {
+    method: "POST",
+    headers: {
+      ...getServerAuthHeaders(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ properties }),
+  }).catch(() => {});
+}
+
 /** Relay a main-process pipeline event to the current server target with auth. */
 function relayServerEvent(event: Parameters<typeof relayEvent>[1]): void {
   relayEvent(getServerBaseUrl(), event, getServerAuthHeaders());
@@ -1495,7 +1528,7 @@ function createTray(): void {
   }
 
   tray.on("click", () => {
-    openPanel({ focusComposer: true });
+    openPanel({ focusComposer: true, trigger: "tray" });
   });
 }
 
@@ -1586,7 +1619,7 @@ if (!gotTheLock) {
 }
 
 app.on("second-instance", () => {
-  openPanel({ focusComposer: true });
+  openPanel({ focusComposer: true, trigger: "tray" });
 });
 
 // This method will be called when Electron has finished
@@ -1804,6 +1837,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("permissions:request-mic", async () => {
     if (process.platform === "darwin") {
       const granted = await systemPreferences.askForMediaAccess("microphone");
+      captureMain("permission_resolved", { kind: "microphone", granted });
       return granted ? "granted" : "denied";
     }
     if (process.platform === "win32") {
@@ -1819,6 +1853,7 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.on("permissions:open-accessibility", () => {
+    captureMain("permission_prompted", { kind: "accessibility" });
     openAccessibilitySettings();
   });
 
@@ -1931,6 +1966,10 @@ app.whenReady().then(async () => {
   if (readSettings().companionEnabled !== false) {
     createCompanionWindow();
     registerSummonShortcut();
+    capturePerson({
+      companion_form: companionFormSetting(),
+      launch_at_login: app.getLoginItemSettings().openAtLogin,
+    });
     initNotificationWindow({
       spriteForm: () => companionFormSetting(),
       companionBounds: () => {
@@ -3100,6 +3139,11 @@ ipcMain.handle("companion:form", () => companionFormSetting());
 
 ipcMain.on("companion:set-form", (_event, form: string) => {
   const next = parseCompanionForm(form);
+  const previous = companionFormSetting();
+  if (previous !== next) {
+    captureMain("sprite_changed", { from: previous, to: next });
+    capturePerson({ companion_form: next });
+  }
   writeSettings({ companionForm: next });
   const win = companionWindow;
   if (win && !win.isDestroyed()) {
@@ -3253,7 +3297,7 @@ async function openNotification(id: string): Promise<void> {
   } | null;
   await refreshNotifications();
   if (result?.threadId) {
-    openPanel({ focusComposer: false });
+    openPanel({ focusComposer: false, trigger: "notification" });
     const win = panelWindow;
     if (!win || win.isDestroyed()) return;
     const threadId = result.threadId;
@@ -3351,7 +3395,7 @@ ipcMain.on("companion:set-hot-rect", (event, rect: PillHotRect | null) => {
 
 ipcMain.on("companion:hover", (event) => {
   if (event.sender !== companionWindow?.webContents) return;
-  openPanel();
+  openPanel({ trigger: "hover" });
 });
 
 let pendingDictation: { kind: string; text: string } | null = null;
@@ -3376,7 +3420,7 @@ function forwardDictation(
 
 ipcMain.on("panel:open-for-dictation", (event) => {
   if (event.sender !== companionWindow?.webContents) return;
-  openPanel({ focusComposer: true });
+  openPanel({ focusComposer: true, trigger: "dictation" });
 });
 
 ipcMain.on("panel:dictation-partial", (event, text: string) => {
@@ -3511,11 +3555,28 @@ function cancelPanelHide(): void {
   panelHideTimer = null;
 }
 
-function openPanel(opts: { focusComposer?: boolean } = {}): void {
+type PanelTrigger =
+  | "hover"
+  | "hotkey"
+  | "notification"
+  | "dictation"
+  | "tray"
+  | "other";
+
+function openPanel(
+  opts: { focusComposer?: boolean; trigger?: PanelTrigger } = {},
+): void {
   cancelPanelHide();
+  const wasVisible =
+    !!panelWindow && !panelWindow.isDestroyed() && panelWindow.isVisible();
   createPanelWindow();
   const win = panelWindow;
   if (!win || win.isDestroyed()) return;
+  // Only a genuine hidden -> visible transition is an open; re-entry while
+  // already showing (hover re-fires, focus requests) is not.
+  if (!wasVisible) {
+    captureMain("panel_opened", { trigger: opts.trigger ?? "other" });
+  }
   invalidateDictationDisplayRequest(dictationDisplayRequests);
   const cursorDisplay = screen.getDisplayNearestPoint(
     screen.getCursorScreenPoint(),
@@ -3579,7 +3640,7 @@ function registerSummonShortcut(): void {
     const ok = globalShortcut.register(SUMMON_ACCELERATOR, () => {
       const visible = panelWindow?.isVisible() && !panelWindow.isDestroyed();
       if (visible) closePanel();
-      else openPanel({ focusComposer: true });
+      else openPanel({ focusComposer: true, trigger: "hotkey" });
     });
     if (!ok)
       log.warn(`Could not register summon shortcut ${SUMMON_ACCELERATOR}`);

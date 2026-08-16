@@ -5,7 +5,13 @@ import {
 } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { capture, captureException, getDeviceId } from "../lib/posthog.js";
+import { z } from "zod";
+import {
+  capture,
+  captureException,
+  getDeviceId,
+  setPersonProperties,
+} from "../lib/posthog.js";
 import agentRoute from "./agent.js";
 import agentOsRoute from "./agent-os.js";
 import agentThreadsRoute from "./agent-threads.js";
@@ -46,6 +52,19 @@ const apiRouter = new Hono()
     capture(event, properties);
     return c.json({ ok: true });
   })
+  // Durable traits on the person rather than the event: the sprite in use, the
+  // trade picked at onboarding. Same opt-out gate as above.
+  .post(
+    "/telemetry/person",
+    zValidator(
+      "json",
+      z.object({ properties: z.record(z.string(), z.unknown()) }),
+    ),
+    (c) => {
+      setPersonProperties(c.req.valid("json").properties);
+      return c.json({ ok: true });
+    },
+  )
   // Crash/error reports from the renderer (window.onerror, unhandled
   // rejections, React error boundary). Always persisted to the local log file
   // for diagnostics; PostHog reporting is gated by the telemetry opt-out inside

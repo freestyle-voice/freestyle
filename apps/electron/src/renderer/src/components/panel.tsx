@@ -705,6 +705,7 @@ function ThreadHistory({
               type="button"
               className={`tavern-thread-row${t.id === currentId ? " is-current" : ""}`}
               onClick={() => {
+                capture("thread_opened", { origin });
                 void queryClient
                   .fetchQuery(threadQueryOptions(t.id))
                   .then((picked) => picked && onPick(picked));
@@ -764,6 +765,8 @@ function PanelInner({
   const [capabilitiesOpen, setCapabilitiesOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const dictationBaseRef = useRef<string | null>(null);
+  // Whether the current draft arrived by voice, so message_sent can say so.
+  const dictatedRef = useRef(false);
 
   const transport = useMemo(
     () =>
@@ -846,6 +849,12 @@ function PanelInner({
   const send = (): void => {
     const text = draft.trim();
     if (!text || tab !== "chat" || busy || approvals.length > 0) return;
+    capture("message_sent", {
+      source: dictatedRef.current ? "dictated" : "typed",
+      chars: text.length,
+      threadIsNew: messages.length === 0,
+    });
+    dictatedRef.current = false;
     setNotice(null);
     setDraft("");
     void sendMessage({ text });
@@ -965,6 +974,8 @@ function PanelInner({
         return;
       }
       setNotice(null);
+      if (ev.kind === "partial" || ev.kind === "final")
+        dictatedRef.current = true;
       if (ev.kind === "partial") {
         // Snapshot whatever was typed before this utterance once; every
         // partial then re-renders base + live text, replacing the previous

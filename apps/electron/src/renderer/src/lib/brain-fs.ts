@@ -1,3 +1,4 @@
+import { capture } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 
 export interface BrainFile {
@@ -114,17 +115,28 @@ export async function readBrainFile(path: string): Promise<string | null> {
   return text;
 }
 
+/** Top-level brain folder, so we can report where a write landed without
+ *  ever reporting the path or the contents. */
+function brainFolder(path: string): string {
+  const [head] = path.split("/");
+  return head?.endsWith(".md") ? "root" : (head ?? "root");
+}
+
 export async function writeBrainFile(
   path: string,
   text: string,
 ): Promise<boolean> {
   const res = await fsCall("write", { path, text });
-  return res?.ok === true;
+  const ok = res?.ok === true;
+  if (ok) capture("brain_file_edited", { folder: brainFolder(path) });
+  return ok;
 }
 
 export async function deleteBrainFile(path: string): Promise<boolean> {
   const res = await fsCall("delete", { path });
-  return res?.ok === true;
+  const ok = res?.ok === true;
+  if (ok) capture("brain_file_deleted", { folder: brainFolder(path) });
+  return ok;
 }
 
 export async function listBrainFiles(prefix?: string): Promise<BrainFile[]> {

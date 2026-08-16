@@ -1,3 +1,4 @@
+import { capture } from "@renderer/lib/analytics";
 import {
   connectorStatus,
   connectToolkit,
@@ -22,6 +23,26 @@ export function useConnectorConnect() {
   const [phases, setPhases] = useState<Record<string, ConnectPhase>>({});
   const [error, setError] = useState<string | null>(null);
   const timers = useRef<Map<string, number>>(new Map());
+  // Every connect surface funnels through this hook, so instrumenting here
+  // covers the openers, the in-chat cards and the Apps tab at once.
+  const attempts = useRef<Map<string, { at: number; authMode: string }>>(
+    new Map(),
+  );
+
+  const started = useCallback((slug: string, authMode: string) => {
+    attempts.current.set(slug, { at: Date.now(), authMode });
+    capture("connector_connect_started", { toolkit: slug, authMode });
+  }, []);
+
+  const connected = useCallback((slug: string) => {
+    const attempt = attempts.current.get(slug);
+    attempts.current.delete(slug);
+    capture("connector_connected", {
+      toolkit: slug,
+      authMode: attempt?.authMode ?? "oauth",
+      ...(attempt ? { elapsedMs: Date.now() - attempt.at } : {}),
+    });
+  }, []);
 
   const setPhase = useCallback((slug: string, phase: ConnectPhase | null) => {
     setPhases((current) => {
@@ -58,6 +79,7 @@ export function useConnectorConnect() {
     (slug: string) => {
       setError(null);
       setPhase(slug, "opening");
+      started(slug, "oauth");
       void connectToolkit(slug)
         .then(() => {
           setPhase(slug, "pending");
@@ -77,6 +99,7 @@ export function useConnectorConnect() {
                 if (connection?.status === "active") {
                   stopPolling(slug);
                   setPhase(slug, "connected");
+                  connected(slug);
                   void queryClient.invalidateQueries({
                     queryKey: queryKeys.connectors.all,
                   });
@@ -105,17 +128,19 @@ export function useConnectorConnect() {
           );
         });
     },
-    [queryClient, setPhase, stopPolling],
+    [queryClient, setPhase, stopPolling, started, connected],
   );
 
   const connectWithCredentials = useCallback(
     (slug: string, credentials: Record<string, string>) => {
       setError(null);
       setPhase(slug, "opening");
+      started(slug, "api_key");
       void connectToolkitWithCredentials(slug, credentials)
         .then((connection) => {
           if (connection?.status === "active") {
             setPhase(slug, "connected");
+            connected(slug);
           } else {
             setPhase(slug, null);
             setError("That API key could not be verified.");
@@ -133,7 +158,7 @@ export function useConnectorConnect() {
           );
         });
     },
-    [queryClient, setPhase],
+    [queryClient, setPhase, started, connected],
   );
 
   return {

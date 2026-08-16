@@ -117,9 +117,9 @@ export async function readBrainFile(path: string): Promise<string | null> {
 
 /** Top-level brain folder, so we can report where a write landed without
  *  ever reporting the path or the contents. */
-function brainFolder(path: string): string {
-  const [head] = path.split("/");
-  return head?.endsWith(".md") ? "root" : (head ?? "root");
+export function brainFolder(path: string): string {
+  const [head = "root"] = path.split("/");
+  return head.endsWith(".md") ? head.slice(0, -3).toLowerCase() : head;
 }
 
 export async function writeBrainFile(

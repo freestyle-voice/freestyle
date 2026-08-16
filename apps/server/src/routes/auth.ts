@@ -58,8 +58,12 @@ const auth = new Hono()
     }
     return next();
   })
+  // Called on every launch, so this is where a returning user's identity is
+  // re-established. Without it, events after a restart attribute to the device
+  // id while the cloud attributes the same person to their user id.
   .get("/status", async (c) => {
     const { user, verified } = await validateSession();
+    if (user) identifyCloudUser(user);
     return c.json({ authenticated: !!user, user, verified });
   })
   .post("/device/code", async (c) => {

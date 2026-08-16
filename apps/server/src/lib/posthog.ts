@@ -60,11 +60,53 @@ function getClient(): PostHog {
   _client.register({
     app_version: process.env.FREESTYLE_APP_VERSION ?? "unknown",
     environment: getEnvironment(),
+    os: process.platform,
   });
   return _client;
 }
 
 let _deviceId: string | null = null;
+
+const DEVICE_ID_KEY = "posthog_device_id";
+const LINKED_USER_KEY = "posthog_linked_user_id";
+
+function readSetting(key: string): string | null {
+  try {
+    const row = getDb()
+      .prepare("SELECT value FROM settings WHERE key = ?")
+      .get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSetting(key: string, value: string): void {
+  try {
+    getDb()
+      .prepare(
+        `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
+      )
+      .run(key, value);
+  } catch {
+    // Analytics bookkeeping must never break the app.
+  }
+}
+
+/**
+ * Start a fresh anonymous identity for this machine.
+ *
+ * Called when a different account signs in. The device id is the anonymous
+ * handle we link to a user, so reusing it across accounts would weld two
+ * people into one PostHog person.
+ */
+export function rotateDeviceId(): string {
+  const next = crypto.randomUUID();
+  _deviceId = next;
+  writeSetting(DEVICE_ID_KEY, next);
+  return next;
+}
 
 export function getDeviceId(): string {
   if (_deviceId) return _deviceId;
@@ -105,17 +147,70 @@ export interface CloudIdentity {
   name?: string | null;
 }
 
+/**
+ * Bind this process's events to a cloud user.
+ *
+ * Must run on every launch that has a session, not only at sign-in: without it
+ * `activeDistinctId()` falls back to the device id while the Worker attributes
+ * the same person to `user.id`, and the two halves of a retention chart stop
+ * describing the same population.
+ *
+ * The anonymous handle is linked forward exactly once per account. A different
+ * account on the same machine rotates the device id first, so the previous
+ * user's anonymous history is never merged into the new one.
+ */
 export function identifyCloudUser(user: CloudIdentity): void {
   _userDistinctId = user.id;
   try {
+    const linked = readSetting(LINKED_USER_KEY);
+    const isFirstLink = linked === null;
+    const isAccountSwitch = linked !== null && linked !== user.id;
+
+    if (isAccountSwitch) rotateDeviceId();
+    if (linked !== user.id) writeSetting(LINKED_USER_KEY, user.id);
+
     if (!isEnabled()) return;
-    const client = getClient();
-    // Merge the prior anonymous (device) person into the identified user.
-    client.alias({ distinctId: user.id, alias: getDeviceId() });
-    client.identify({
+    getClient().identify({
       distinctId: user.id,
-      properties: { email: user.email, name: user.name ?? undefined },
+      // $anon_distinct_id is the supported replacement for alias(): it merges
+      // the pre-sign-in device person into this user, once.
+      ...(isFirstLink
+        ? { properties: { $anon_distinct_id: getDeviceId() } }
+        : {}),
     });
+    setPersonProperties({
+      email: user.email,
+      ...(user.name ? { name: user.name } : {}),
+    });
+  } catch {
+    // Never let analytics errors affect the app
+  }
+}
+
+/**
+ * Durable traits on the person, not the event. Safe to call repeatedly; only
+ * send values that actually changed.
+ */
+export function setPersonProperties(properties: Record<string, unknown>): void {
+  try {
+    if (!isEnabled()) return;
+    getClient().capture({
+      distinctId: activeDistinctId(),
+      event: "$set",
+      properties: { $set: properties },
+    });
+  } catch {
+    // Never let analytics errors affect the app
+  }
+}
+
+/** Attach a property to every subsequent event from this process. */
+export function registerSuperProperties(
+  properties: Record<string, string | number | boolean>,
+): void {
+  try {
+    if (!isEnabled()) return;
+    getClient().register(properties);
   } catch {
     // Never let analytics errors affect the app
   }

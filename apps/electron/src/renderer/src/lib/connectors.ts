@@ -1,3 +1,4 @@
+import { capture } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 
 export type ConnectorStatus =
@@ -55,9 +56,23 @@ export type ConnectorToolSummary = {
   readOnly: boolean;
 };
 
+export type ConnectorPlay = {
+  name: string;
+  description: string;
+  prompt: string;
+};
+
+export type ConnectorAutomation = {
+  id: string;
+  name: string;
+  schedule: string;
+};
+
 export type ConnectorDetails = ConnectorCatalogItem & {
   tools: ConnectorToolSummary[];
   workflows: ConnectorWorkflow[];
+  plays?: ConnectorPlay[];
+  automations?: ConnectorAutomation[];
 };
 
 export function isConnectorToolName(name: string): boolean {
@@ -198,6 +213,7 @@ export async function disconnectToolkit(toolkit: string): Promise<void> {
       { method: "POST" },
     ),
   );
+  capture("connector_disconnected", { toolkit });
 }
 
 export async function approveConnectorAction(input: {

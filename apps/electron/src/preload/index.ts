@@ -137,6 +137,8 @@ const api = {
     ipcRenderer.send("notifications:open", id),
   notificationSetHeight: (height: number): void =>
     ipcRenderer.send("notifications:set-height", height),
+  notificationSetHovered: (hovering: boolean): void =>
+    ipcRenderer.send("notifications:hover", hovering),
   onNotificationsChanged: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("notifications:changed", handler);

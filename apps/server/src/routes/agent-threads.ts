@@ -45,7 +45,10 @@ const agentThreadsRoute = new Hono()
     return c.json(payload as object, status as 200);
   })
   .get("/list", async (c) => {
-    const { status, payload } = await forward("");
+    const origin = c.req.query("origin");
+    const query =
+      origin === "user" || origin === "scheduled" ? `?origin=${origin}` : "";
+    const { status, payload } = await forward(query);
     return c.json(payload as object, status as 200);
   })
   .get("/latest", async (c) => {

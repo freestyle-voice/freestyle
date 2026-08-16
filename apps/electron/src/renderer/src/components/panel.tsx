@@ -3,6 +3,7 @@ import "../tavern.css";
 
 import { useChat } from "@ai-sdk/react";
 import { BrainFiles } from "@renderer/components/brain-files";
+import { Capabilities } from "@renderer/components/capabilities";
 import { ConnectSuggestions } from "@renderer/components/connect-suggestions";
 import { ConnectedApps } from "@renderer/components/connected-apps";
 import { Markdown } from "@renderer/components/markdown";
@@ -19,6 +20,7 @@ import {
   describeAgentAction,
   executeAgentTool,
 } from "@renderer/lib/agent-tools";
+import { capture } from "@renderer/lib/analytics";
 import { apiFetch, initApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider, useCloudAuth } from "@renderer/lib/auth-context";
 import { composerAction } from "@renderer/lib/composer-action";
@@ -26,19 +28,36 @@ import { seedMessageFor } from "@renderer/lib/onboarding-core";
 import {
   connectorConnectionsQueryOptions,
   createQueryClient,
+  latestThreadQueryOptions,
+  queryKeys,
+  threadHistoryInfiniteQueryOptions,
+  threadQueryOptions,
 } from "@renderer/lib/query";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
+import {
+  getThread,
+  THREAD_ORIGIN_LABELS,
+  THREAD_ORIGINS,
+  type ThreadOrigin,
+  type ThreadState,
+} from "@renderer/lib/threads";
 import { highlightToolJson, toolJson } from "@renderer/lib/tool-json";
 import {
   connectorToolkitSlug,
+  type ToolPhase,
   toolPresentation,
 } from "@renderer/lib/tool-presentation";
 import { SpriteBadge } from "@renderer/sprites/badge";
 import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
 import { PANEL_TABS, type PanelTab } from "@shared/panel";
 import { SPRITES_INFO } from "@shared/sprites";
-import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import {
+  QueryClientProvider,
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
@@ -134,13 +153,15 @@ function ToolChip({
   partType,
   input,
   output,
+  phase = "done",
 }: {
   partType: string;
   input: unknown;
   output: unknown;
+  phase?: ToolPhase;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
-  const presentation = toolPresentation(partType);
+  const presentation = toolPresentation(partType, phase);
   const hasInput =
     input !== undefined &&
     input !== null &&
@@ -150,7 +171,7 @@ function ToolChip({
     output !== null &&
     (typeof output !== "object" ||
       Object.keys(output).some((key) => key !== "ok"));
-  const canExpand = hasInput || hasOutput;
+  const canExpand = (hasInput || hasOutput) && phase !== "running";
   const activity = (
     <>
       <ToolMark partType={partType} />
@@ -166,12 +187,21 @@ function ToolChip({
     </>
   );
 
+  const tone =
+    phase === "running"
+      ? " is-running"
+      : phase === "declined" || phase === "failed"
+        ? " is-inert"
+        : "";
+
   if (!canExpand) {
-    return <div className="tavern-tool tavern-tool-static">{activity}</div>;
+    return (
+      <div className={`tavern-tool tavern-tool-static${tone}`}>{activity}</div>
+    );
   }
 
   return (
-    <div className="tavern-tool">
+    <div className={`tavern-tool${tone}`}>
       <button
         type="button"
         className="tavern-tool-toggle"
@@ -382,14 +412,48 @@ function ChatMessage({
               input?: unknown;
               output?: { ok?: boolean; reason?: string };
             };
+            // Rendering only completed calls left a 16-step run looking like
+            // one pulsing dot, and hid every refusal from the transcript.
+            if (
+              tool.state === "input-streaming" ||
+              tool.state === "input-available"
+            ) {
+              return (
+                <ToolChip
+                  key={`${message.id}-${i}`}
+                  partType={part.type}
+                  input={undefined}
+                  output={undefined}
+                  phase="running"
+                />
+              );
+            }
+            if (tool.state === "output-error") {
+              return (
+                <ToolChip
+                  key={`${message.id}-${i}`}
+                  partType={part.type}
+                  input={tool.input}
+                  output={tool.output}
+                  phase="failed"
+                />
+              );
+            }
             if (tool.state !== "output-available") return null;
-            if (tool.output?.ok === false) return null;
+            const failed = tool.output?.ok === false;
             return (
               <ToolChip
                 key={`${message.id}-${i}`}
                 partType={part.type}
                 input={tool.input}
                 output={tool.output}
+                phase={
+                  failed
+                    ? tool.output?.reason === "user-declined"
+                      ? "declined"
+                      : "failed"
+                    : "done"
+                }
               />
             );
           }
@@ -409,17 +473,6 @@ function ChatMessage({
   );
 }
 
-interface ThreadState {
-  id: string;
-  messages: UIMessage[];
-}
-
-interface ThreadSummary {
-  id: string;
-  title: string;
-  updatedAt: number;
-}
-
 function dateGroup(ts: number): string {
   const day = (d: Date): number =>
     new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -433,6 +486,21 @@ function dateGroup(ts: number): string {
       ? { month: "long", day: "numeric" }
       : { month: "long", day: "numeric", year: "numeric" };
   return date.toLocaleDateString(undefined, opts);
+}
+
+async function openThreadById(threadId: string): Promise<ThreadState | null> {
+  try {
+    const res = await apiFetch(`/api/agent/thread/${threadId}`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      thread: { id: string; messages: UIMessage[] } | null;
+    };
+    return data.thread
+      ? { id: data.thread.id, messages: data.thread.messages }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function newThread(): ThreadState {
@@ -486,7 +554,7 @@ function SignInGate(): React.JSX.Element {
           </span>
         </div>
         <h1 className="tavern-gate-heading">
-          welcome <span className="tavern-gate-accent">back.</span>
+          Never forget important things again.
         </h1>
         <p className="tavern-gate-sub">Sign in to your Freestyle account</p>
         {auth.signingIn ? (
@@ -549,41 +617,26 @@ function SignInGate(): React.JSX.Element {
 
 function PanelRoot(): React.JSX.Element {
   const [thread, setThread] = useState<ThreadState | null>(null);
+  const queryClient = useQueryClient();
+  const latestQuery = useQuery(latestThreadQueryOptions());
 
   useEffect(() => {
     const off = window.api.onPanelOpenThread((threadId) => {
-      void apiFetch(`/api/agent/thread/${threadId}`)
-        .then(async (res) => {
-          if (!res.ok) return null;
-          const data = (await res.json()) as {
-            thread: { id: string; messages: UIMessage[] } | null;
-          };
-          return data.thread;
-        })
+      void getThread(threadId)
         .catch(() => null)
         .then((picked) => {
-          if (picked) setThread({ id: picked.id, messages: picked.messages });
+          if (!picked) return;
+          queryClient.setQueryData(queryKeys.threads.detail(threadId), picked);
+          setThread(picked);
         });
     });
     return () => off?.();
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
-    void apiFetch("/api/agent/thread/latest")
-      .then(async (res) => {
-        if (!res.ok) return null;
-        const data = (await res.json()) as {
-          thread: { id: string; messages: UIMessage[] } | null;
-        };
-        return data.thread;
-      })
-      .catch(() => null)
-      .then((latest) =>
-        setThread(
-          latest ? { id: latest.id, messages: latest.messages } : newThread(),
-        ),
-      );
-  }, []);
+    if (latestQuery.isPending) return;
+    setThread(latestQuery.data ?? newThread());
+  }, [latestQuery.data, latestQuery.isPending]);
 
   if (!thread) return <div className="tavern tavern-panel" />;
   return (
@@ -598,25 +651,49 @@ function ThreadHistory({
   onPick: (thread: ThreadState) => void;
   currentId: string;
 }): React.JSX.Element {
-  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const queryClient = useQueryClient();
+  const [origin, setOrigin] = useState<ThreadOrigin>("user");
+  const historyQuery = useInfiniteQuery(
+    threadHistoryInfiniteQueryOptions(origin),
+  );
+  const threads =
+    historyQuery.data?.pages.flatMap((page) => page.threads) ?? [];
 
-  useEffect(() => {
-    void apiFetch("/api/agent/thread/list")
-      .then(async (res) =>
-        res.ok
-          ? ((await res.json()) as { threads: ThreadSummary[] }).threads
-          : [],
-      )
-      .catch(() => [])
-      .then(setThreads);
-  }, []);
+  const filter = (
+    <div className="tavern-thread-filter" role="tablist">
+      {THREAD_ORIGINS.map((id) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={origin === id}
+          className="tavern-thread-filter-tab"
+          onClick={() => setOrigin(id)}
+        >
+          {THREAD_ORIGIN_LABELS[id]}
+        </button>
+      ))}
+    </div>
+  );
 
+  if (historyQuery.isLoading)
+    return <div className="tavern-empty">Loading conversations…</div>;
   if (threads.length === 0)
-    return <div className="tavern-empty">No conversations yet.</div>;
+    return (
+      <>
+        {filter}
+        <div className="tavern-empty">
+          {origin === "user"
+            ? "No conversations yet."
+            : "No briefs yet. Scheduled tasks write what they find here."}
+        </div>
+      </>
+    );
 
   let lastGroup = "";
   return (
     <>
+      {filter}
       {threads.map((t) => {
         const group = dateGroup(t.updatedAt);
         const divider = group !== lastGroup;
@@ -628,16 +705,10 @@ function ThreadHistory({
               type="button"
               className={`tavern-thread-row${t.id === currentId ? " is-current" : ""}`}
               onClick={() => {
-                void apiFetch(`/api/agent/thread/${t.id}`).then(async (res) => {
-                  if (!res.ok) return;
-                  const data = (await res.json()) as {
-                    thread: { id: string; messages: UIMessage[] };
-                  };
-                  onPick({
-                    id: data.thread.id,
-                    messages: data.thread.messages,
-                  });
-                });
+                capture("thread_opened", { origin });
+                void queryClient
+                  .fetchQuery(threadQueryOptions(t.id))
+                  .then((picked) => picked && onPick(picked));
               }}
             >
               {t.title}
@@ -645,6 +716,18 @@ function ThreadHistory({
           </Fragment>
         );
       })}
+      {historyQuery.hasNextPage ? (
+        <button
+          type="button"
+          className="tavern-thread-row"
+          disabled={historyQuery.isFetchingNextPage}
+          onClick={() => void historyQuery.fetchNextPage()}
+        >
+          {historyQuery.isFetchingNextPage
+            ? "Loading conversations…"
+            : "Load more conversations"}
+        </button>
+      ) : null}
     </>
   );
 }
@@ -679,8 +762,11 @@ function PanelInner({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [capabilitiesOpen, setCapabilitiesOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const dictationBaseRef = useRef<string | null>(null);
+  // Whether the current draft arrived by voice, so message_sent can say so.
+  const dictatedRef = useRef(false);
 
   const transport = useMemo(
     () =>
@@ -735,11 +821,13 @@ function PanelInner({
         });
       },
       onError: (err) => {
+        const message = typeof err.message === "string" ? err.message : "";
         setNotice(
-          err.message.includes("cloud_auth_required") ||
-            err.message.includes("401")
+          message.includes("cloud_auth_required") || message.includes("401")
             ? "Sign in to Freestyle Cloud to chat."
-            : err.message,
+            : message && message !== "[object Object]"
+              ? message
+              : "That didn't go through. Try again.",
         );
       },
     });
@@ -761,6 +849,12 @@ function PanelInner({
   const send = (): void => {
     const text = draft.trim();
     if (!text || tab !== "chat" || busy || approvals.length > 0) return;
+    capture("message_sent", {
+      source: dictatedRef.current ? "dictated" : "typed",
+      chars: text.length,
+      threadIsNew: messages.length === 0,
+    });
+    dictatedRef.current = false;
     setNotice(null);
     setDraft("");
     void sendMessage({ text });
@@ -823,6 +917,7 @@ function PanelInner({
   };
 
   const resolveApproval = (call: AgentToolCall, allowed: boolean): void => {
+    capture("approval_resolved", { tool: call.toolName, allowed });
     setApprovals((prev) =>
       prev.filter((a) => a.toolCallId !== call.toolCallId),
     );
@@ -839,10 +934,13 @@ function PanelInner({
   };
 
   useEffect(() => {
+    // Every tab renders into the same .tavern-body scroller, so without this
+    // guard a streaming turn yanks Settings/History/Brain to the bottom.
+    if (tab !== "chat" || settingsOpen) return;
     const el = bodyRef.current;
     if (el && (messages.length > 0 || approvals.length > 0))
       el.scrollTop = el.scrollHeight;
-  }, [messages, approvals]);
+  }, [messages, approvals, tab, settingsOpen]);
 
   const pinned = busy || approvals.length > 0;
   useEffect(() => {
@@ -876,6 +974,8 @@ function PanelInner({
         return;
       }
       setNotice(null);
+      if (ev.kind === "partial" || ev.kind === "final")
+        dictatedRef.current = true;
       if (ev.kind === "partial") {
         // Snapshot whatever was typed before this utterance once; every
         // partial then re-renders base + live text, replacing the previous
@@ -1008,7 +1108,9 @@ function PanelInner({
               aria-selected={!settingsOpen && tab === id}
               className="tavern-tab"
               onClick={() => {
+                capture("panel_tab_opened", { tab: id });
                 setSettingsOpen(false);
+                setCapabilitiesOpen(false);
                 setTab(id);
               }}
             >
@@ -1030,9 +1132,37 @@ function PanelInner({
         </div>
 
         <div className="tavern-body" role="tabpanel" ref={bodyRef}>
-          {settingsOpen ? (
+          {capabilitiesOpen ? (
+            <>
+              <button
+                type="button"
+                className="tavern-file-back"
+                onClick={() => setCapabilitiesOpen(false)}
+              >
+                ← What Freestyle can do
+              </button>
+              <Capabilities
+                onPrompt={(text) => {
+                  setCapabilitiesOpen(false);
+                  setNotice(null);
+                  void sendMessage({ text });
+                }}
+                onOpenApps={() => {
+                  setCapabilitiesOpen(false);
+                  setTab("apps");
+                }}
+              />
+            </>
+          ) : settingsOpen ? (
             <SettingsView
               onClose={() => setSettingsOpen(false)}
+              onOpenThread={(threadId) => {
+                setSettingsOpen(false);
+                setTab("chat");
+                void openThreadById(threadId).then((picked) => {
+                  if (picked) onSwitchThread(picked);
+                });
+              }}
               onThreadsCleared={() => onSwitchThread(newThread())}
               onReplayIntro={() => {
                 setSettingsOpen(false);
@@ -1051,6 +1181,9 @@ function PanelInner({
             <ConnectedApps
               onUseWorkflow={(prompt) => {
                 setTab("chat");
+                // Sending past a pending approval strands the tool call, which
+                // leaves an unanswerable tool_use in the thread forever.
+                if (pinned) return;
                 setNotice(null);
                 void sendMessage({ text: prompt });
               }}
@@ -1122,6 +1255,7 @@ function PanelInner({
           ) : chatActive ? (
             <OpenerCards
               busy={busy}
+              onShowAll={() => setCapabilitiesOpen(true)}
               onPrompt={(text) => {
                 setNotice(null);
                 void sendMessage({ text });
@@ -1133,7 +1267,7 @@ function PanelInner({
           {notice ? <p className="tavern-notice">{notice}</p> : null}
         </div>
 
-        {chatActive && !settingsOpen ? (
+        {chatActive && !settingsOpen && !capabilitiesOpen ? (
           <div className="tavern-composer">
             <textarea
               id="panel-composer"

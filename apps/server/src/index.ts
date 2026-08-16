@@ -8,6 +8,7 @@ import { logger } from "hono/logger";
 import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
 import { WebSocketServer } from "ws";
+import { recordAppLaunch } from "./lib/app-lifecycle.js";
 import { authMiddleware, setAuthToken } from "./lib/auth.js";
 import { refreshCleanupPromptConfig } from "./lib/editor/prompt-config.js";
 import { formatError } from "./lib/format-error.js";
@@ -40,7 +41,10 @@ import {
   stopOutboxDrain,
 } from "./lib/sync-outbox.js";
 import { syncTimezoneToCloud } from "./lib/timezone-sync.js";
-import { trustedOriginMiddleware } from "./lib/trusted-origin.js";
+import {
+  isTrustedRendererOrigin,
+  trustedOriginMiddleware,
+} from "./lib/trusted-origin.js";
 import routes from "./routes";
 
 const httpLog = createAppLogger("http");
@@ -119,7 +123,14 @@ function createApp() {
     // request with an Authorization header triggers an OPTIONS preflight that
     // carries no token. cors() answers the preflight and short-circuits it, so
     // auth never rejects it; real requests still fall through to auth.
-    .use(cors())
+    // Scoped to renderer origins, never `*`: a wildcard here would let any page
+    // the user has open read loopback responses (history, brain, settings).
+    .use(
+      cors({
+        origin: (origin) =>
+          isTrustedRendererOrigin(origin) ? (origin ?? "*") : null,
+      }),
+    )
     // Bearer-token auth for standalone/remote deployments. A no-op when no
     // token is configured (the default loopback Electron case), so it never
     // affects the in-process server.
@@ -237,6 +248,9 @@ export async function startServer(
   // Keep the cloud profile's timezone current so scheduled tasks fire on this
   // machine's clock. No-op when signed out or unchanged; never throws.
   void syncTimezoneToCloud();
+
+  // Install / update / launch, emitted once per process start.
+  recordAppLaunch();
 
   // Flush any preference syncs that were queued while offline in a previous
   // run. No-op when signed out / nothing pending; never throws.

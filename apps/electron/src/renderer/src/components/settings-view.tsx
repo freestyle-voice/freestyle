@@ -7,16 +7,22 @@ import {
   normalizeLanguageList,
   resolveLanguageOptions,
 } from "@freestyle-voice/validations";
-import { NotificationsHistory } from "@renderer/components/notifications-history";
+import {
+  NotificationsHistory,
+  QuietHoursSettings,
+} from "@renderer/components/notifications-history";
 import { ScheduledTasks } from "@renderer/components/scheduled-tasks";
 import {
   acceleratorsEqual,
   formatAcceleratorKeys,
   useHotkeyRecorder,
 } from "@renderer/hooks/use-hotkey-recorder";
+import { capture } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { LANGUAGES } from "@renderer/lib/languages";
+import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
+import { replaceSetting, settingsForView } from "@renderer/lib/settings";
 import { useCloudConfig } from "@renderer/lib/use-cloud-config";
 import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
 import { usePricing } from "@renderer/lib/use-pricing";
@@ -40,6 +46,7 @@ import { getDefaultHotkey } from "@shared/hotkey-defaults";
 import { getDefaultRemixHotkey } from "@shared/remix";
 import { SETTINGS_KEYS } from "@shared/settings-keys";
 import { SPRITES_INFO } from "@shared/sprites";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -71,27 +78,45 @@ function useServerSettings(): {
   settings: Record<string, string> | null;
   setSetting: (key: string, value: string) => void;
 } {
-  const [settings, setSettings] = useState<Record<string, string> | null>(null);
+  const queryClient = useQueryClient();
+  const settingsQuery = useQuery(settingsQueryOptions());
+  const update = useMutation({
+    mutationFn: async ({ key, value }: { key: string; value: string }) => {
+      const response = await apiFetch(`/api/settings/${key}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value }),
+      });
+      if (!response.ok) throw new Error("Could not save settings.");
+    },
+    onMutate: async ({ key, value }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.settings });
+      const previous = queryClient.getQueryData<Record<string, string>>(
+        queryKeys.settings,
+      );
+      queryClient.setQueryData(
+        queryKeys.settings,
+        replaceSetting(previous ?? {}, key, value),
+      );
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      queryClient.setQueryData(queryKeys.settings, context?.previous);
+    },
+    onSuccess: () => window.api.reloadDictationPrefs(),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.settings }),
+  });
 
-  useEffect(() => {
-    void apiFetch("/api/settings")
-      .then(async (res) => (res.ok ? await res.json() : {}))
-      .catch(() => ({}))
-      .then((data) => setSettings(data as Record<string, string>));
-  }, []);
+  const setSetting = useCallback(
+    (key: string, value: string): void => update.mutate({ key, value }),
+    [update],
+  );
 
-  const setSetting = useCallback((key: string, value: string): void => {
-    setSettings((prev) => ({ ...(prev ?? {}), [key]: value }));
-    void apiFetch(`/api/settings/${key}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value }),
-    })
-      .then(() => window.api.reloadDictationPrefs())
-      .catch(() => {});
-  }, []);
-
-  return { settings, setSetting };
+  return {
+    settings: settingsForView(settingsQuery.data, settingsQuery.isError),
+    setSetting,
+  };
 }
 
 function NavRow({
@@ -806,7 +831,10 @@ function BillingPage(): React.JSX.Element {
             type="button"
             className="tavern-approve-btn tavern-approve-allow"
             disabled={usage.checkoutStatus === "pending"}
-            onClick={() => void usage.startCheckout(period)}
+            onClick={() => {
+              capture("upgrade_clicked", { surface: "settings", period });
+              void usage.startCheckout(period);
+            }}
           >
             {usage.checkoutStatus === "pending"
               ? "Finish in browser…"
@@ -1446,22 +1474,33 @@ export function SettingsView({
   onClose,
   onThreadsCleared,
   onReplayIntro,
+  onOpenThread,
 }: {
   onClose: () => void;
   onThreadsCleared: () => void;
   onReplayIntro: () => void;
+  onOpenThread?: (threadId: string) => void;
 }): React.JSX.Element {
   const [page, setPage] = useState<SettingsPage>("root");
   const { settings, setSetting } = useServerSettings();
   const auth = useCloudAuth();
   const usage = useCloudUsage(!!auth.user);
   const [version, setVersion] = useState("");
+  const [spriteForm, setSpriteForm] = useState<CompanionForm>(
+    DEFAULT_COMPANION_FORM,
+  );
 
   useEffect(() => {
     void window.api
       .getAppVersion()
       .then(setVersion)
       .catch(() => {});
+    void window.api
+      .companionForm()
+      .then(setSpriteForm)
+      .catch(() => {});
+    const off = window.api.onCompanionForm(setSpriteForm);
+    return () => off?.();
   }, []);
 
   if (settings === null)
@@ -1485,9 +1524,13 @@ export function SettingsView({
         ) : page === "billing" ? (
           <BillingPage />
         ) : page === "scheduled" ? (
-          <ScheduledTasks />
+          <ScheduledTasks mascot={SPRITES_INFO[spriteForm].label} />
         ) : page === "notifications" ? (
-          <NotificationsHistory />
+          <>
+            <QuietHoursSettings />
+            <SectionLabel>History</SectionLabel>
+            <NotificationsHistory {...(onOpenThread ? { onOpenThread } : {})} />
+          </>
         ) : page === "dictation" ? (
           <DictationPage value={value} setSetting={setSetting} />
         ) : page === "talk" ? (

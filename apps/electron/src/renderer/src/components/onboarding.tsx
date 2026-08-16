@@ -1,6 +1,7 @@
 import "../onboarding.css";
 
 import { ConnectorLogo } from "@renderer/components/connected-apps";
+import { capture } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 import { readBrainFile, writeBrainFile } from "@renderer/lib/brain-fs";
 import type { ConnectorCatalogItem } from "@renderer/lib/connectors";
@@ -26,10 +27,13 @@ import {
   questFor,
   SKIP_LINE,
   TRADE_CHIPS,
+  TRADE_TO_INDUSTRY,
 } from "@renderer/lib/onboarding-core";
 import {
   connectorConnectionsQueryOptions,
   connectorSuggestedQueryOptions,
+  settingsQueryOptions,
+  threadHistoryInfiniteQueryOptions,
 } from "@renderer/lib/query";
 import { applyAutomationTemplates } from "@renderer/lib/scheduled-templates";
 import {
@@ -39,7 +43,7 @@ import {
 import { useUpdateProfileFields } from "@renderer/lib/use-profile";
 import type { CloudUser } from "@shared/cloud-user";
 import type { SpriteId } from "@shared/sprites";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -66,47 +70,36 @@ export function useOnboarding(enabled: boolean): {
 } {
   const [status, setStatus] = useState<OnboardingStatus>("loading");
   const [saved, setSaved] = useState<OnboardingSaved | null>(null);
+  const settingsQuery = useQuery({ ...settingsQueryOptions(), enabled });
+  const threadsQuery = useInfiniteQuery({
+    ...threadHistoryInfiniteQueryOptions(),
+    enabled,
+  });
 
   useEffect(() => {
     if (!enabled) return;
-    let cancelled = false;
-    void (async () => {
-      const [settings, threads] = await Promise.all([
-        apiFetch("/api/settings")
-          .then(async (res) =>
-            res.ok
-              ? ((await res.json()) as Record<string, string>)
-              : ({} as Record<string, string>),
-          )
-          .catch(() => ({}) as Record<string, string>),
-        apiFetch("/api/agent/thread/list")
-          .then(async (res) =>
-            res.ok
-              ? ((await res.json()) as { threads: unknown[] }).threads
-              : [],
-          )
-          .catch(() => []),
-      ]);
-      if (cancelled) return;
-      const parsed = parseSaved(settings[ONBOARDING_KEY]);
-      setSaved(parsed);
-      if (parsed?.done) {
-        setStatus("done");
-      } else if (parsed) {
-        setStatus("show");
-      } else if (threads.length > 0) {
-        const grandfathered: OnboardingSaved = { v: 2, done: true };
-        persistSaved(grandfathered);
-        setSaved(grandfathered);
-        setStatus("done");
-      } else {
-        setStatus("show");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled]);
+    if (settingsQuery.isPending || threadsQuery.isPending) return;
+    const parsed = parseSaved(settingsQuery.data?.[ONBOARDING_KEY]);
+    setSaved(parsed);
+    if (parsed?.done) {
+      setStatus("done");
+    } else if (parsed) {
+      setStatus("show");
+    } else if ((threadsQuery.data?.pages[0]?.threads.length ?? 0) > 0) {
+      const grandfathered: OnboardingSaved = { v: 2, done: true };
+      persistSaved(grandfathered);
+      setSaved(grandfathered);
+      setStatus("done");
+    } else {
+      setStatus("show");
+    }
+  }, [
+    enabled,
+    settingsQuery.data,
+    settingsQuery.isPending,
+    threadsQuery.data,
+    threadsQuery.isPending,
+  ]);
 
   const markDone = useCallback((task: string): void => {
     setSaved((prev) => {
@@ -424,6 +417,7 @@ export function OnboardingGate({
     setBeat(next);
     setLineIdx(0);
     persist(next);
+    capture("onboarding_beat", { beat: next, index: index + 1 });
   }, [beat, persist]);
 
   const advance = useCallback((): void => {
@@ -506,8 +500,12 @@ export function OnboardingGate({
         .catch(() => {})
         .then(() => {
           if (trade.trim()) {
+            const industry = TRADE_TO_INDUSTRY[trade.trim()];
             updateProfile
-              .mutateAsync({ jobTitle: trade.trim() })
+              .mutateAsync({
+                jobTitle: trade.trim(),
+                ...(industry ? { industry } : {}),
+              })
               .catch(() => {});
           }
         });
@@ -530,6 +528,7 @@ export function OnboardingGate({
 
   const skip = (): void => {
     if (skipping) return;
+    capture("onboarding_skipped", { beat, index: BEATS.indexOf(beat) });
     setSkipping(true);
     if (!todoStarted.current && task.trim()) {
       todoStarted.current = true;
@@ -538,14 +537,31 @@ export function OnboardingGate({
     if (!profileStarted.current && name.trim()) {
       profileStarted.current = true;
       void seedProfile(name.trim(), trade.trim()).catch(() => {});
+      // The profile row is the source of truth for role-aware
+      // recommendations; a skipped intro must still record the trade.
+      if (trade.trim()) {
+        const industry = TRADE_TO_INDUSTRY[trade.trim()];
+        updateProfile
+          .mutateAsync({
+            jobTitle: trade.trim(),
+            ...(industry ? { industry } : {}),
+          })
+          .catch(() => {});
+      }
     }
     window.setTimeout(() => onDone(task.trim()), 1400);
   };
 
   const complete = useCallback((): void => {
+    capture("onboarding_completed", {
+      hasTask: task.trim().length > 0,
+      trade: trade.trim() || null,
+      connected: [...activeSlugs],
+      automations: [...applied],
+    });
     window.api.spriteEvent({ kind: "turn", phase: "done" });
     onDone(task.trim());
-  }, [onDone, task]);
+  }, [onDone, task, trade, activeSlugs, applied]);
 
   // Enter anywhere is Next: finishes the typing line, steps the scene, and
   // advances the beat — including the receipt CTA. Buttons keep their native

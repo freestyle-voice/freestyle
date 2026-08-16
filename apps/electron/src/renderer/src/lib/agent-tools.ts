@@ -52,14 +52,16 @@ export async function agentToolTier(
     return isReadOnlyConnectorToolName(call.toolName) ? "free" : "confirmed";
   switch (call.toolName) {
     case "current_time":
-    case "get_context":
-    case "read_document":
-    case "get_clipboard":
     case "emote":
       return "free";
-    case "set_clipboard":
-    case "paste":
-      return "confirmed";
+    // Cursor/screen/clipboard tools disabled for now — see AGENT_CLIENT_TOOLS.
+    // case "get_context":
+    // case "read_document":
+    // case "get_clipboard":
+    //   return "free";
+    // case "set_clipboard":
+    // case "paste":
+    //   return "confirmed";
     case "Bash":
       return bashIsReadOnly(str(input, "command")) ? "free" : "confirmed";
     case "Read":
@@ -83,13 +85,14 @@ export function describeAgentAction(call: AgentToolCall): string {
     return `Use a connected app to ${action}.`;
   }
   switch (call.toolName) {
-    case "set_clipboard": {
-      const text = str(input, "text");
-      const preview = text.length > 120 ? `${text.slice(0, 120)}…` : text;
-      return `Put this on your clipboard (${text.length} characters):\n“${preview}”`;
-    }
-    case "paste":
-      return "Paste the clipboard into the app you're using, at your cursor.";
+    // Cursor/clipboard tools disabled for now.
+    // case "set_clipboard": {
+    //   const text = str(input, "text");
+    //   const preview = text.length > 120 ? `${text.slice(0, 120)}…` : text;
+    //   return `Put this on your clipboard (${text.length} characters):\n“${preview}”`;
+    // }
+    // case "paste":
+    //   return "Paste the clipboard into the app you're using, at your cursor.";
     case "Bash": {
       const command = str(input, "command");
       const preview =
@@ -169,25 +172,27 @@ export async function executeAgentTool(
         });
         return { ok: true };
       }
-      case "get_context":
-        return { ...(await window.api.remixGetContext()) };
-      case "read_document":
-        return { ...(await window.api.remixReadDocument()) };
-      case "get_clipboard":
-        return { ...(await window.api.remixGetClipboard()) };
-      case "set_clipboard":
-        if (!str(input, "text")) return badArgs("{ text: string }");
-        return {
-          ...(await window.api.remixSetClipboard(str(input, "text"))),
-        };
-      case "paste":
-        // The theater contract: the sprite travels to the caret and swings;
-        // this resolves at the impact frame (or a hard ceiling), so the
-        // paste lands on the hit. A missing sprite resolves immediately.
-        await window.api
-          .spritePerformSync({ name: "paste", toolClass: "deliver" })
-          .catch(() => {});
-        return { ...(await window.api.remixPasteClipboard()) };
+      // Cursor/screen/clipboard tools disabled for now — restore together
+      // with their AGENT_CLIENT_TOOLS entries and the agent-prompt guidance.
+      // case "get_context":
+      //   return { ...(await window.api.remixGetContext()) };
+      // case "read_document":
+      //   return { ...(await window.api.remixReadDocument()) };
+      // case "get_clipboard":
+      //   return { ...(await window.api.remixGetClipboard()) };
+      // case "set_clipboard":
+      //   if (!str(input, "text")) return badArgs("{ text: string }");
+      //   return {
+      //     ...(await window.api.remixSetClipboard(str(input, "text"))),
+      //   };
+      // case "paste":
+      //   // The theater contract: the sprite travels to the caret and swings;
+      //   // this resolves at the impact frame (or a hard ceiling), so the
+      //   // paste lands on the hit. A missing sprite resolves immediately.
+      //   await window.api
+      //     .spritePerformSync({ name: "paste", toolClass: "deliver" })
+      //     .catch(() => {});
+      //   return { ...(await window.api.remixPasteClipboard()) };
       case "Bash":
         if (!str(input, "command")) return badArgs("{ command: string }");
         return runOsTool("bash", { command: str(input, "command") });

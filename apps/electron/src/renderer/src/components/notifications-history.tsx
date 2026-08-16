@@ -1,19 +1,18 @@
-import { apiFetch } from "@renderer/lib/api";
+import { DataSkeleton } from "@renderer/components/data-skeleton";
+import {
+  DEFAULT_QUIET_HOURS,
+  NotificationHistoryError,
+  type NotificationHistoryRow,
+  type QuietHours,
+  setQuietHours,
+} from "@renderer/lib/notifications";
+import {
+  notificationHistoryQueryOptions,
+  queryKeys,
+  quietHoursQueryOptions,
+} from "@renderer/lib/query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type React from "react";
-import { useEffect, useState } from "react";
-
-interface NotificationHistoryRow {
-  id: string;
-  kind: "thread" | "info";
-  title: string;
-  body: string;
-  createdAt: number;
-  expiresAt: number | null;
-  dismissedAt: number | null;
-  openedAt: number | null;
-}
-
-type Load = "loading" | "ready" | "signed-out" | "unreachable";
 
 function when(ts: number): string {
   const date = new Date(ts);
@@ -39,48 +38,107 @@ function statusOf(row: NotificationHistoryRow): {
   return { label: "Unread", tone: "is-unread" };
 }
 
-export function NotificationsHistory(): React.JSX.Element {
-  const [rows, setRows] = useState<NotificationHistoryRow[]>([]);
-  const [load, setLoad] = useState<Load>("loading");
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => ({
+  value: String(hour),
+  label: `${String(hour).padStart(2, "0")}:00`,
+}));
 
-  useEffect(() => {
-    let cancelled = false;
-    void apiFetch("/api/notifications/history")
-      .then(async (res) => {
-        if (res.status === 401) return "signed-out" as const;
-        if (!res.ok) return "unreachable" as const;
-        const data = (await res.json()) as {
-          notifications?: NotificationHistoryRow[];
-        };
-        return data.notifications ?? [];
-      })
-      .catch(() => "unreachable" as const)
-      .then((result) => {
-        if (cancelled) return;
-        if (result === "signed-out" || result === "unreachable") {
-          setLoad(result);
-          return;
-        }
-        setRows(result);
-        setLoad("ready");
+export function QuietHoursSettings(): React.JSX.Element | null {
+  const queryClient = useQueryClient();
+  const quietQuery = useQuery(quietHoursQueryOptions());
+  const quiet = quietQuery.data;
+
+  if (quiet === undefined) return null;
+
+  const save = (next: QuietHours): void => {
+    queryClient.setQueryData(queryKeys.notifications.quietHours, next);
+    void setQuietHours(next).catch(() => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.notifications.quietHours,
       });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    });
+  };
 
-  if (load === "loading")
-    return <div className="tavern-empty">Loading notifications…</div>;
-  if (load === "signed-out")
+  return (
+    <>
+      <div className="tavern-set-row is-static">
+        <span className="tavern-set-label">Quiet hours</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={quiet !== null}
+          className={`tavern-set-switch${quiet !== null ? " is-on" : ""}`}
+          onClick={() => save(quiet === null ? DEFAULT_QUIET_HOURS : null)}
+        >
+          <span className="tavern-set-knob" />
+        </button>
+      </div>
+      {quiet !== null ? (
+        <>
+          <div className="tavern-set-row is-static">
+            <span className="tavern-set-label">From</span>
+            <select
+              className="tavern-set-select"
+              value={String(quiet.start)}
+              aria-label="Quiet hours start"
+              onChange={(e) =>
+                save({ ...quiet, start: Number(e.target.value) })
+              }
+            >
+              {HOUR_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="tavern-set-row is-static">
+            <span className="tavern-set-label">Until</span>
+            <select
+              className="tavern-set-select"
+              value={String(quiet.end)}
+              aria-label="Quiet hours end"
+              onChange={(e) => save({ ...quiet, end: Number(e.target.value) })}
+            >
+              {HOUR_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </>
+      ) : null}
+      <p className="tavern-set-hint">
+        {quiet === null
+          ? "Freestyle can reach you at any hour."
+          : "Scheduled tasks still run and still write to your history — they just won't interrupt you in this window."}
+      </p>
+    </>
+  );
+}
+
+export function NotificationsHistory({
+  onOpenThread,
+}: {
+  onOpenThread?: (threadId: string) => void;
+}): React.JSX.Element {
+  const query = useQuery(notificationHistoryQueryOptions());
+  const error =
+    query.error instanceof NotificationHistoryError ? query.error : null;
+
+  if (query.isLoading) return <DataSkeleton label="Loading notifications" />;
+  if (error?.kind === "signed-out")
     return (
       <div className="tavern-empty">Sign in to see your notifications.</div>
     );
-  if (load === "unreachable")
+  if (error?.kind === "unreachable")
     return (
       <div className="tavern-empty">
         Couldn't reach Freestyle Cloud. Try again in a moment.
       </div>
     );
+  const rows = query.data ?? [];
   if (rows.length === 0)
     return (
       <div className="tavern-empty">
@@ -96,8 +154,9 @@ export function NotificationsHistory(): React.JSX.Element {
       </p>
       {rows.map((row) => {
         const status = statusOf(row);
-        return (
-          <div key={row.id} className="tavern-notif">
+        const threadId = onOpenThread ? row.payload?.threadId : undefined;
+        const body = (
+          <>
             <div className="tavern-notif-head">
               <span className="tavern-notif-title">{row.title}</span>
               <span className={`tavern-notif-chip ${status.tone}`}>
@@ -107,9 +166,28 @@ export function NotificationsHistory(): React.JSX.Element {
             <p className="tavern-notif-body">{row.body}</p>
             <span className="tavern-notif-meta">
               {when(row.createdAt)}
-              {row.kind === "thread" ? " · conversation" : ""}
+              {threadId ? " · open the conversation" : ""}
             </span>
-          </div>
+          </>
+        );
+        // A dismissed brief used to be unreachable from the one screen meant
+        // for finding it again; every row already carries its thread id.
+        if (!threadId) {
+          return (
+            <div key={row.id} className="tavern-notif">
+              {body}
+            </div>
+          );
+        }
+        return (
+          <button
+            key={row.id}
+            type="button"
+            className="tavern-notif is-openable"
+            onClick={() => onOpenThread?.(threadId)}
+          >
+            {body}
+          </button>
         );
       })}
     </>

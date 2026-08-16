@@ -85,4 +85,14 @@ describe("brain file cache", () => {
     expect(peekBrainFile("notes/0.md")).toBeUndefined();
     expect(peekBrainFile("notes/100.md")).toBe("notes/100.md");
   });
+
+  it("surfaces a list failure so query views can offer a retry", async () => {
+    apiFetch.mockResolvedValue(new Response(null, { status: 503 }));
+
+    const { listBrainFiles } = await import("./brain-fs");
+
+    await expect(listBrainFiles("notes")).rejects.toThrow(
+      "Could not load Brain files.",
+    );
+  });
 });

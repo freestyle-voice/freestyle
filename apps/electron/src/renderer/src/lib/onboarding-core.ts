@@ -1,3 +1,5 @@
+import type { Industry } from "@freestyle-voice/validations";
+
 export const ONBOARDING_KEY = "onboarding";
 export const DEFAULT_QUEST = "Ask Jeb to do something for you";
 export const PROFILE_PATH = "memories/profile.md";
@@ -14,12 +16,13 @@ export const EASTER_EGGS = [
   "Keep poking and I'll start a ledger on that too.",
 ] as const;
 
-/** The hero workflows, in showcase order — only shown when no task was given. */
+/** Last-resort starters when the suggestions request fails. Every one must be
+ * something the current tool set can actually do. */
 export function starterPrompts(): string[] {
   return [
-    "Summarize what's on my screen",
-    "Rewrite what I'm looking at",
     "Look this up and keep it short",
+    "Help me draft a message I've been putting off",
+    "Remember something about how I work",
   ];
 }
 
@@ -46,6 +49,26 @@ export const CALENDAR_TEMPLATE_IDS = [
   "plan-my-day",
   "meeting-prep-nudge",
 ] as const;
+
+/** Trade chips mapped onto the Settings industry enum, so onboarding fills
+ * the same profile field Settings edits. Chips with no honest industry
+ * (Founder, Operations, "Between things") set none; the jobTitle fallback
+ * covers them. */
+export const TRADE_TO_INDUSTRY: Record<string, Industry> = {
+  Engineer: "software",
+  Designer: "design",
+  Product: "software",
+  Writer: "media",
+  Student: "education",
+  Researcher: "research",
+  Marketer: "marketing",
+  Consultant: "consulting",
+  Sales: "sales",
+  Teacher: "education",
+  Finance: "finance",
+  Healthcare: "healthcare",
+  Law: "legal",
+};
 
 export const AUTOMATION_LABELS: Record<string, string> = {
   "morning-inbox-brief": "Morning inbox brief · weekdays 8am",
@@ -252,7 +275,7 @@ export function beatLines(beat: BeatId, ctx: BeatContext): BeatScene {
     case "name":
       return {
         lines: [
-          "I'm Jeb. Retired samurai, current corner of your screen. My job is simple: nothing important slips past you.",
+          "I'm Jeb. Retired samurai, currently I live in the corner of your screen. My job is simple, to make sure nothing important slips past you.",
           "First, a name. I don't take work from strangers.",
         ],
         hint: "Whatever you'd actually answer to.",

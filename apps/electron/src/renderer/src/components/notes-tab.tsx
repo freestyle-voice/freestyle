@@ -1,23 +1,17 @@
+import { DataSkeleton } from "@renderer/components/data-skeleton";
 import { Markdown } from "@renderer/components/markdown";
+import { deleteBrainFile, writeBrainFile } from "@renderer/lib/brain-fs";
+import type { NoteSummary } from "@renderer/lib/brain-views";
 import {
-  deleteBrainFile,
-  listBrainFiles,
-  peekBrainFile,
-  peekBrainFiles,
-  readBrainFile,
-  writeBrainFile,
-} from "@renderer/lib/brain-fs";
+  brainFileQueryOptions,
+  notesQueryOptions,
+  queryKeys,
+} from "@renderer/lib/query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const AUTOSAVE_MS = 800;
-
-interface NoteSummary {
-  path: string;
-  title: string;
-  snippet: string;
-  modified: number;
-}
 
 function noteLines(text: string): { title: string; snippet: string } {
   const lines = text
@@ -28,21 +22,6 @@ function noteLines(text: string): { title: string; snippet: string } {
     title: lines[0] ?? "New note",
     snippet: lines[1] ?? "",
   };
-}
-
-/** Build note summaries from cache only — null if any piece is missing. */
-function summariesFromCache(): NoteSummary[] | null {
-  const files = peekBrainFiles("notes");
-  if (files === undefined) return null;
-  const summaries: NoteSummary[] = [];
-  for (const f of files) {
-    const path = f.path.replace(/\\/g, "/");
-    const text = peekBrainFile(path);
-    if (text === undefined) return null;
-    summaries.push({ path, ...noteLines(text), modified: f.modified });
-  }
-  summaries.sort((a, b) => b.modified - a.modified);
-  return summaries;
 }
 
 function slugForTitle(title: string): string {
@@ -76,32 +55,13 @@ type NoteView =
   | { kind: "note"; path: string | null; draft: string; editing: boolean };
 
 export function NotesTab(): React.JSX.Element {
-  const [notes, setNotes] = useState<NoteSummary[] | null>(() =>
-    summariesFromCache(),
-  );
+  const queryClient = useQueryClient();
+  const notesQuery = useQuery(notesQueryOptions());
+  const notes: NoteSummary[] = notesQuery.data ?? [];
   const [view, setView] = useState<NoteView>({ kind: "list" });
   const saveTimer = useRef<NodeJS.Timeout | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
-
-  const load = useCallback((): void => {
-    void (async () => {
-      const files = await listBrainFiles("notes");
-      const summaries = await Promise.all(
-        files.map(async (f) => {
-          const path = f.path.replace(/\\/g, "/");
-          const text = (await readBrainFile(path)) ?? "";
-          return { path, ...noteLines(text), modified: f.modified };
-        }),
-      );
-      summaries.sort((a, b) => b.modified - a.modified);
-      setNotes(summaries);
-    })();
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const persist = useCallback(async (): Promise<void> => {
     const current = viewRef.current;
@@ -114,8 +74,11 @@ export function NotesTab(): React.JSX.Element {
       path = `notes/${slug}.md`;
       setView((v) => (v.kind === "note" ? { ...v, path } : v));
     }
-    await writeBrainFile(path, text);
-  }, []);
+    const ok = await writeBrainFile(path, text);
+    if (!ok) return;
+    queryClient.setQueryData(queryKeys.brain.file(path), text);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.brain.all });
+  }, [queryClient]);
 
   const scheduleSave = useCallback((): void => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -140,7 +103,7 @@ export function NotesTab(): React.JSX.Element {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
-    void persist().then(load);
+    void persist();
     setView({ kind: "list" });
   };
 
@@ -170,7 +133,10 @@ export function NotesTab(): React.JSX.Element {
                 }
                 setView({ kind: "list" });
                 void deleteBrainFile(target).then((ok) => {
-                  if (ok) load();
+                  if (ok)
+                    void queryClient.invalidateQueries({
+                      queryKey: queryKeys.brain.all,
+                    });
                 });
               }}
             >
@@ -221,7 +187,16 @@ export function NotesTab(): React.JSX.Element {
     );
   }
 
-  if (notes === null) return <div className="tavern-empty">Loading…</div>;
+  if (notesQuery.isLoading) return <DataSkeleton label="Loading notes" />;
+  if (notesQuery.isError)
+    return (
+      <div className="tavern-empty">
+        <p>Couldn&apos;t load notes.</p>
+        <button type="button" onClick={() => void notesQuery.refetch()}>
+          Try again
+        </button>
+      </div>
+    );
 
   return (
     <>
@@ -236,14 +211,16 @@ export function NotesTab(): React.JSX.Element {
           type="button"
           className="tavern-note-row"
           onClick={() => {
-            void readBrainFile(n.path).then((text) => {
-              setView({
-                kind: "note",
-                path: n.path,
-                draft: text ?? "",
-                editing: false,
+            void queryClient
+              .fetchQuery(brainFileQueryOptions(n.path))
+              .then((text) => {
+                setView({
+                  kind: "note",
+                  path: n.path,
+                  draft: text ?? "",
+                  editing: false,
+                });
               });
-            });
           }}
         >
           <span className="tavern-note-title">{n.title}</span>

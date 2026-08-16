@@ -29,7 +29,11 @@ async function readTasks(): Promise<ScheduledTaskView[]> {
   return (payload.tasks ?? []).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function ScheduledTasks(): React.JSX.Element {
+export function ScheduledTasks({
+  mascot = "Freestyle",
+}: {
+  mascot?: string;
+}): React.JSX.Element {
   const [tasks, setTasks] = useState<ScheduledTaskView[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -70,8 +74,8 @@ export function ScheduledTasks(): React.JSX.Element {
   if (tasks.length === 0) {
     return (
       <div className="tavern-empty">
-        Nothing scheduled. Ask Jeb to do something regularly — "check the stocks
-        every weekday morning" — and it lands here.
+        Nothing scheduled. Ask {mascot} to do something regularly — "check the
+        stocks every weekday morning" — and it lands here.
       </div>
     );
   }

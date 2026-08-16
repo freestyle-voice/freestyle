@@ -14,18 +14,17 @@ export function isTrustedRendererOrigin(origin: string | undefined): boolean {
   }
 }
 
-const PROTECTED_READ_PREFIXES = ["/api/remix"];
-
+/**
+ * Reads are default-deny for cross-origin browsers, not prefix-listed. This
+ * server binds loopback while the user browses the web, so any page they visit
+ * can reach it; an allowlist of "sensitive" prefixes silently stops protecting
+ * anything the moment a route is renamed. Requests carrying no Origin (the
+ * desktop's own fetches, curl, native clients) still pass — only a browser
+ * sends Origin on a cross-origin request.
+ */
 export const trustedOriginMiddleware: MiddlewareHandler = async (c, next) => {
-  const isMutation = !["GET", "HEAD", "OPTIONS"].includes(c.req.method);
-  const isWebSocket = c.req.header("upgrade")?.toLowerCase() === "websocket";
-  const isProtectedRead =
-    c.req.method !== "OPTIONS" &&
-    PROTECTED_READ_PREFIXES.some(
-      (prefix) => c.req.path === prefix || c.req.path.startsWith(`${prefix}/`),
-    );
   if (
-    (isMutation || isWebSocket || isProtectedRead) &&
+    c.req.method !== "OPTIONS" &&
     !isTrustedRendererOrigin(c.req.header("origin"))
   ) {
     return c.json({ error: "Forbidden" }, 403);

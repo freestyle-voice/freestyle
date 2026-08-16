@@ -257,10 +257,11 @@
 }
 
 .tavern-gate-heading {
-  font-family: var(--tavern-px);
-  font-weight: 400;
-  font-size: 30px;
-  line-height: 1.1;
+  font-family: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 26px;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
   margin: 0;
   color: var(--tavern-robe);
 }
@@ -1137,6 +1138,168 @@
   cursor: default;
 }
 
+.tavern-opener-foot {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.tavern-cap-group {
+  margin-top: 14px;
+}
+
+.tavern-cap-head {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 6px;
+}
+
+.tavern-cap-title {
+  font-family: var(--tavern-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--tavern-mute);
+}
+
+.tavern-cap-blurb {
+  font-size: 11.5px;
+  color: var(--tavern-mute);
+}
+
+.tavern-cap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  padding: 8px 10px;
+  margin-top: 5px;
+  border: 1px solid var(--tavern-rule);
+  border-radius: 9px;
+  background: var(--tavern-card);
+  cursor: pointer;
+}
+
+.tavern-cap:hover {
+  border-color: var(--tavern-ink);
+}
+
+.tavern-cap:focus-visible {
+  outline: 2px solid var(--tavern-lantern);
+  outline-offset: 2px;
+}
+
+.tavern-cap.is-locked {
+  opacity: 0.68;
+}
+
+.tavern-cap-item-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--tavern-ink);
+}
+
+.tavern-cap-item-sub {
+  font-size: 11.5px;
+  color: var(--tavern-mute);
+}
+
+.connector-workflow.is-static {
+  cursor: default;
+}
+
+.connector-workflow-action {
+  margin-top: 6px;
+  align-self: flex-start;
+}
+
+.tavern-sched-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tavern-sched-action {
+  font: inherit;
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--tavern-rule);
+  background: none;
+  color: var(--tavern-mute);
+  cursor: pointer;
+}
+
+.tavern-sched-action:hover:not(:disabled) {
+  color: var(--tavern-ink);
+  border-color: var(--tavern-ink);
+}
+
+.tavern-sched-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tavern-sched-action.is-danger {
+  color: var(--tavern-rust);
+  border-color: var(--tavern-rust);
+}
+
+.tavern-sched-action:focus-visible,
+.tavern-notif.is-openable:focus-visible {
+  outline: 2px solid var(--tavern-lantern);
+  outline-offset: 2px;
+}
+
+.tavern-notif.is-openable {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tavern-notif.is-openable:hover {
+  border-color: var(--tavern-ink);
+}
+
+.tavern-thread-filter {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tavern-thread-filter-tab {
+  font: inherit;
+  font-size: 11.5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--tavern-rule);
+  background: none;
+  color: var(--tavern-mute);
+  cursor: pointer;
+}
+
+.tavern-thread-filter-tab:hover {
+  color: var(--tavern-ink);
+}
+
+.tavern-thread-filter-tab[aria-selected="true"] {
+  background: var(--tavern-wash);
+  border-color: var(--tavern-ink);
+  color: var(--tavern-ink);
+  font-weight: 700;
+}
+
+.tavern-thread-filter-tab:focus-visible {
+  outline: 2px solid var(--tavern-lantern);
+  outline-offset: 2px;
+}
+
 .tavern-thread-divider {
   font-family: var(--tavern-mono);
   font-size: 10px;
@@ -1251,6 +1414,38 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.tavern-tool.is-running .tavern-tool-mark {
+  animation: tavern-tool-pulse 1.1s ease-in-out infinite;
+}
+
+.tavern-tool.is-running .tavern-tool-label {
+  color: var(--tavern-ink);
+}
+
+.tavern-tool.is-inert .tavern-tool-label {
+  color: var(--tavern-mute);
+}
+
+.tavern-tool.is-inert .tavern-tool-mark {
+  color: var(--tavern-rust);
+}
+
+@keyframes tavern-tool-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tavern-tool.is-running .tavern-tool-mark {
+    animation: none;
+  }
 }
 
 .tavern-tool-static,
@@ -2021,6 +2216,21 @@
 .connector-skeleton {
   display: grid;
   gap: 7px;
+}
+
+.tavern-data-skeleton {
+  display: grid;
+  gap: 9px;
+  padding: 8px 0;
+}
+
+.tavern-data-skeleton-row {
+  display: block;
+  height: 46px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #e8dfca 20%, #f4eddc 50%, #e8dfca 80%);
+  background-size: 200% 100%;
+  animation: connector-shimmer 1.2s ease-in-out infinite;
 }
 
 .connector-skeleton-row {
@@ -2887,59 +3097,97 @@
   text-align: left;
 }
 
-.tavern-opener-head {
+.tavern-opener-row {
+  display: grid;
+  gap: 4px;
+}
+
+.tavern-opener-line {
   display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.tavern-opener-head-copy {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.tavern-opener {
-  display: grid;
-  gap: 3px;
-  font: inherit;
-  text-align: left;
-  padding: 9px 11px;
+  align-items: stretch;
+  gap: 0;
   border: 1px solid var(--tavern-rule);
   border-radius: 10px;
   background: color-mix(in srgb, var(--tavern-parchment) 74%, var(--tavern-card));
+  overflow: hidden;
+}
+
+.tavern-opener {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: none;
   color: var(--tavern-ink);
   cursor: pointer;
 }
 
-.tavern-opener.is-static {
-  cursor: default;
-}
-
-.tavern-opener:not(.is-static):hover:not(:disabled) {
+.tavern-opener-line:hover:has(.tavern-opener:not(:disabled)) {
   border-color: var(--tavern-ink);
   box-shadow: 2px 2px 0 var(--tavern-lantern);
 }
 
 .tavern-opener:disabled {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: default;
 }
 
+.tavern-opener-mark {
+  color: var(--tavern-lantern);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
 .tavern-opener-title {
+  flex: 1;
+  min-width: 0;
   font-size: 12.5px;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.tavern-opener-sub {
-  font-size: 11px;
-  color: var(--tavern-robe);
+.tavern-opener-go {
+  color: var(--tavern-mute);
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
-.tavern-opener-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 5px;
+.tavern-opener:hover:not(:disabled) .tavern-opener-go {
+  color: var(--tavern-lantern);
+}
+
+.tavern-opener-x {
+  flex-shrink: 0;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  border: none;
+  border-left: 1px solid var(--tavern-rule);
+  background: none;
+  color: var(--tavern-mute);
+  cursor: pointer;
+}
+
+.tavern-opener-x:hover {
+  color: var(--tavern-ink);
+}
+
+.tavern-opener:focus-visible,
+.tavern-opener-x:focus-visible {
+  outline: 2px solid var(--tavern-lantern);
+  outline-offset: -2px;
+}
+
+.tavern-opener-keyform {
+  padding: 0 2px;
 }
 
 .tavern-opener-more {
@@ -3616,3 +3864,64 @@
   border-top: 1px dashed var(--tavern-rule);
   padding-top: 8px;
 }
+
+/* ── Minimalist openers: todo rows + tighter cards ───────────────────── */
+
+.tavern-openers-label {
+  font-size: 11.5px;
+  color: var(--tavern-mute);
+}
+
+.tavern-opener-todos {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+
+.tavern-opener-todo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 2px 1px;
+}
+
+.tavern-opener-todo i {
+  color: var(--tavern-lantern);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.tavern-opener-todo-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tavern-opener-launch {
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  color: var(--tavern-mute);
+  cursor: pointer;
+  font-family: var(--tavern-mono);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.tavern-opener-launch:hover:not(:disabled) {
+  color: var(--tavern-lantern);
+}
+
+.tavern-opener-launch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tavern-opener {
+  padding: 7px 10px;
+}
+

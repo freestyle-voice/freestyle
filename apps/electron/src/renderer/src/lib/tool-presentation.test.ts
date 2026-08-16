@@ -20,3 +20,38 @@ describe("toolPresentation", () => {
     });
   });
 });
+
+describe("tool phases", () => {
+  it("uses present tense while a tool is running", () => {
+    expect(toolPresentation("tool-web_search", "running").title).toBe(
+      "Searching the web",
+    );
+    expect(toolPresentation("tool-Bash", "running").title).toBe(
+      "Running a command",
+    );
+  });
+
+  it("names the refusal rather than hiding it", () => {
+    expect(toolPresentation("tool-paste", "declined").title).toBe(
+      "Didn't paste — you declined",
+    );
+    expect(toolPresentation("tool-Bash", "failed").title).toContain(
+      "didn't work",
+    );
+  });
+
+  it("carries the phase through connector tools", () => {
+    expect(
+      toolPresentation("tool-connector__gmail__ro_list", "running").title,
+    ).toBe("Using Gmail");
+    expect(
+      toolPresentation("tool-connector__gmail__send", "declined").title,
+    ).toBe("Didn't use Gmail — you declined");
+  });
+
+  it("falls back for an unmapped tool", () => {
+    expect(toolPresentation("tool-some_new_thing", "running").title).toBe(
+      "Some new thing",
+    );
+  });
+});

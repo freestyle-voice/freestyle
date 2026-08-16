@@ -10,6 +10,7 @@ import {
   isReadOnlyConnectorToolName,
   listConnectorCatalog,
 } from "./connectors";
+import { connectorSearchInfiniteQueryOptions } from "./query";
 
 describe("connected-app tool approvals", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -71,5 +72,13 @@ describe("connected-app tool approvals", () => {
     expect(apiFetch).toHaveBeenCalledWith(
       "/api/connectors/catalog?limit=50&search=calendar",
     );
+  });
+
+  it("uses opaque cursors when searching the connector catalog", () => {
+    const options = connectorSearchInfiniteQueryOptions("calendar");
+    expect(options.initialPageParam).toBeNull();
+    expect(
+      options.getNextPageParam({ connectors: [], nextCursor: "more" }),
+    ).toBe("more");
   });
 });

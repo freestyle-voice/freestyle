@@ -1,6 +1,11 @@
 import { QueryClient } from "@tanstack/react-query";
 import { getClient } from "./api";
 import {
+  fetchScheduledRunTimes,
+  listNoteSummaries,
+  listScheduledTaskViews,
+} from "./brain-views";
+import {
   type ConnectorCatalogPage,
   getConnectorDetails,
   listConnectorCatalog,
@@ -8,6 +13,14 @@ import {
   listSuggestedConnectors,
 } from "./connectors";
 import type { AvailableModel } from "./models";
+import { getQuietHours, listNotificationHistory } from "./notifications";
+import {
+  getLatestThread,
+  getThread,
+  listThreads,
+  type ThreadOrigin,
+  type ThreadPage,
+} from "./threads";
 
 /** Common staleTime for cached queries (1 hour). */
 export const ONE_HOUR = 60 * 60 * 1000;
@@ -78,6 +91,25 @@ export const queryKeys = {
     search: (search: string) => ["connectors", "search", search] as const,
     suggested: ["connectors", "suggested"] as const,
     details: (slug: string) => ["connectors", "details", slug] as const,
+  },
+
+  threads: {
+    all: ["threads"] as const,
+    latest: ["threads", "latest"] as const,
+    list: (origin: ThreadOrigin) => ["threads", "list", origin] as const,
+    detail: (id: string) => ["threads", "detail", id] as const,
+  },
+  notifications: {
+    history: ["notifications", "history"] as const,
+    quietHours: ["notifications", "quiet-hours"] as const,
+  },
+  brain: {
+    all: ["brain"] as const,
+    files: (root: string) => ["brain", "files", root] as const,
+    file: (path: string) => ["brain", "file", path] as const,
+    notes: ["brain", "notes"] as const,
+    scheduledTasks: ["brain", "scheduled-tasks"] as const,
+    scheduledRunTimes: ["brain", "scheduled-run-times"] as const,
   },
 
   /** Empty-state opener cards (`GET /api/suggestions/home`). */
@@ -206,11 +238,18 @@ export function connectorConnectionsQueryOptions() {
 
 export const CONNECTOR_SEARCH_PAGE_SIZE = 50;
 
-export function connectorSearchQueryOptions(search: string) {
+export function connectorSearchInfiniteQueryOptions(search: string) {
   return {
     queryKey: queryKeys.connectors.search(search),
-    queryFn: () =>
-      listConnectorCatalog({ search, limit: CONNECTOR_SEARCH_PAGE_SIZE }),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }: { pageParam: string | null }) =>
+      listConnectorCatalog({
+        search,
+        cursor: pageParam ?? undefined,
+        limit: CONNECTOR_SEARCH_PAGE_SIZE,
+      }),
+    getNextPageParam: (lastPage: ConnectorCatalogPage) =>
+      lastPage.nextCursor ?? undefined,
     staleTime: 5 * 60 * 1000,
     gcTime: ONE_HOUR,
     enabled: search.length > 0,
@@ -232,6 +271,79 @@ export function connectorDetailsQueryOptions(slug: string) {
     queryFn: () => getConnectorDetails(slug),
     staleTime: 5 * 60 * 1000,
     gcTime: ONE_HOUR,
+  };
+}
+
+export function latestThreadQueryOptions() {
+  return {
+    queryKey: queryKeys.threads.latest,
+    queryFn: getLatestThread,
+  };
+}
+
+export function threadQueryOptions(id: string) {
+  return {
+    queryKey: queryKeys.threads.detail(id),
+    queryFn: () => getThread(id),
+    enabled: id.length > 0,
+  };
+}
+
+export function threadHistoryInfiniteQueryOptions(
+  origin: ThreadOrigin = "user",
+) {
+  return {
+    queryKey: queryKeys.threads.list(origin),
+    initialPageParam: null as number | null,
+    queryFn: ({ pageParam }: { pageParam: number | null }) =>
+      listThreads({ cursor: pageParam ?? undefined, origin }),
+    getNextPageParam: (page: ThreadPage) => page.nextCursor ?? undefined,
+  };
+}
+
+export function scheduledRunTimesQueryOptions() {
+  return {
+    queryKey: queryKeys.brain.scheduledRunTimes,
+    queryFn: fetchScheduledRunTimes,
+    staleTime: 60 * 1000,
+  };
+}
+
+export function quietHoursQueryOptions() {
+  return {
+    queryKey: queryKeys.notifications.quietHours,
+    queryFn: getQuietHours,
+    staleTime: ONE_HOUR,
+  };
+}
+
+export function notificationHistoryQueryOptions() {
+  return {
+    queryKey: queryKeys.notifications.history,
+    queryFn: listNotificationHistory,
+  };
+}
+
+export function brainFileQueryOptions(path: string) {
+  return {
+    queryKey: queryKeys.brain.file(path),
+    queryFn: () =>
+      import("./brain-fs").then(({ readBrainFile }) => readBrainFile(path)),
+    enabled: path.length > 0,
+  };
+}
+
+export function notesQueryOptions() {
+  return {
+    queryKey: queryKeys.brain.notes,
+    queryFn: listNoteSummaries,
+  };
+}
+
+export function scheduledTasksQueryOptions() {
+  return {
+    queryKey: queryKeys.brain.scheduledTasks,
+    queryFn: listScheduledTaskViews,
   };
 }
 

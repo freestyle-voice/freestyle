@@ -707,14 +707,28 @@ export async function unlinkCloudAccount(
  * served by the cloud's root `/profile` route — distinct from the org-scoped
  * member profile below).
  */
+export interface CloudUserProfile {
+  timezone?: string;
+  quietHours?: { start: number; end: number } | null;
+}
+
 export async function putCloudUserProfile(
   token: string,
-  data: { timezone: string },
+  data: CloudUserProfile,
 ): Promise<void> {
   await cloudJson<{ success?: boolean }>("/profile", token, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(data),
+    signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
+  });
+}
+
+export async function getCloudUserProfile(
+  token: string,
+): Promise<CloudUserProfile> {
+  return cloudJson<CloudUserProfile>("/profile", token, {
+    method: "GET",
     signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
   });
 }

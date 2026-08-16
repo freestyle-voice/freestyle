@@ -3,7 +3,7 @@ import {
   ConnectorLogo,
   DEFAULT_AUTH_FIELDS,
 } from "@renderer/components/connected-apps";
-import { capture } from "@renderer/lib/analytics";
+import { capture, captureSuggestion } from "@renderer/lib/analytics";
 import { starterPrompts } from "@renderer/lib/onboarding-core";
 import {
   applyOpenerTemplate,
@@ -17,6 +17,10 @@ import { useConnectorConnect } from "@renderer/lib/use-connector-connect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
+
+/** Two at a time. Dismissing one reveals the next the server already sent. */
+const VISIBLE_CARDS = 2;
+const VISIBLE_TODOS = 3;
 
 function FallbackStarters({
   busy,
@@ -44,12 +48,66 @@ function FallbackStarters({
   );
 }
 
+function OpenerRow({
+  label,
+  logo,
+  logoName,
+  busy,
+  onRun,
+  onDismiss,
+  children,
+}: {
+  label: string;
+  logo?: string | undefined;
+  logoName?: string | undefined;
+  busy: boolean;
+  onRun: () => void;
+  onDismiss: () => void;
+  children?: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className="tavern-opener-row">
+      <div className="tavern-opener-line">
+        <button
+          type="button"
+          className="tavern-opener"
+          disabled={busy}
+          onClick={onRun}
+        >
+          {logoName ? (
+            <ConnectorLogo name={logoName} logo={logo} />
+          ) : (
+            <span className="tavern-opener-mark" aria-hidden="true">
+              ✦
+            </span>
+          )}
+          <span className="tavern-opener-title">{label}</span>
+          <span className="tavern-opener-go" aria-hidden="true">
+            →
+          </span>
+        </button>
+        <button
+          type="button"
+          className="tavern-opener-x"
+          aria-label={`Dismiss: ${label}`}
+          onClick={onDismiss}
+        >
+          ×
+        </button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function OpenerCards({
   busy,
   onPrompt,
+  onShowAll,
 }: {
   busy: boolean;
   onPrompt: (text: string) => void;
+  onShowAll?: () => void;
 }): React.JSX.Element {
   const queryClient = useQueryClient();
   const {
@@ -73,8 +131,14 @@ export function OpenerCards({
 
   const applyTemplate = useMutation({
     mutationFn: applyOpenerTemplate,
-    onSuccess: (_result, templateId) => {
+    onSuccess: (result, templateId) => {
       setApplied((prev) => new Set(prev).add(templateId));
+      capture("automation_applied", {
+        surface: "opener",
+        templateId,
+        applied: result.applied.length,
+        skipped: result.skipped.map((entry) => entry.reason),
+      });
     },
   });
 
@@ -82,17 +146,19 @@ export function OpenerCards({
   // filtering here keeps a dismissed card hidden even when the cached query
   // data still contains it.
   const dismissed = new Set(dismissedOpenerIds());
-  const cards = (query.data?.cards ?? []).filter(
-    (card) => !dismissed.has(card.id),
-  );
+  const cards = (query.data?.cards ?? [])
+    .filter((card) => !dismissed.has(card.id))
+    .slice(0, VISIBLE_CARDS);
 
   useEffect(() => {
     if (!query.data || cards.length === 0) return;
     const signature = query.data.cards.map((card) => card.id).join(",");
     if (reportedFor.current === signature) return;
     reportedFor.current = signature;
-    capture("opener_rendered", {
+    captureSuggestion("shown", "opener", {
       cards: query.data.cards.map((card) => card.id),
+      categories: query.data.cards.map((card) => card.category),
+      todos: query.data.todos.length,
     });
   }, [query.data, cards.length]);
 
@@ -116,111 +182,115 @@ export function OpenerCards({
     queryClient,
   ]);
 
-  if (query.isError || (query.isSuccess && query.data.cards.length === 0)) {
+  const todos = (query.data?.todos ?? []).slice(0, VISIBLE_TODOS);
+
+  if (
+    query.isError ||
+    (query.isSuccess && query.data.cards.length === 0 && todos.length === 0)
+  ) {
     return <FallbackStarters busy={busy} onPrompt={onPrompt} />;
   }
-  if (!query.data || cards.length === 0) {
+  if (!query.data || (cards.length === 0 && todos.length === 0)) {
     return <div className="tavern-openers" aria-busy="true" />;
   }
 
   const dismiss = (card: OpenerCard): void => {
     dismissOpener(card.id);
     setDismissTick((tick) => tick + 1);
-    capture("opener_dismissed", { id: card.id, category: card.category });
+    captureSuggestion("dismissed", "opener", {
+      id: card.id,
+      category: card.category,
+      kind: card.kind,
+    });
   };
 
-  const refresh = (): void => {
-    for (const card of cards) dismissOpener(card.id);
-    setDismissTick((tick) => tick + 1);
-    capture("opener_refreshed", { ids: cards.map((card) => card.id) });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.openers });
+  const accepted = (card: OpenerCard): void => {
+    captureSuggestion("accepted", "opener", {
+      id: card.id,
+      category: card.category,
+      kind: card.kind,
+    });
   };
 
   return (
     <div className="tavern-openers">
+      {todos.length > 0 ? (
+        <div className="tavern-opener-todos">
+          <span className="tavern-openers-label">Your todos</span>
+          {todos.map((todo) => (
+            <div key={todo} className="tavern-opener-todo">
+              <i aria-hidden="true">◇</i>
+              <span className="tavern-opener-todo-text">{todo}</span>
+              <button
+                type="button"
+                className="tavern-opener-launch"
+                disabled={busy}
+                onClick={() => {
+                  captureSuggestion("accepted", "opener", {
+                    id: "todo:launch",
+                    category: "do_now",
+                    kind: "todo",
+                  });
+                  onPrompt(`I want you to help me do this: ${todo}`);
+                }}
+              >
+                launch ↗
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {cards.map((card) => {
         if (card.kind === "prompt" && card.action.prompt) {
           const prompt = card.action.prompt;
           return (
-            <button
+            <OpenerRow
               key={card.id}
-              type="button"
-              className="tavern-opener"
-              disabled={busy}
-              onClick={() => {
-                capture("opener_tapped", {
-                  id: card.id,
-                  category: card.category,
-                });
+              label={card.title}
+              busy={busy}
+              onRun={() => {
+                accepted(card);
                 onPrompt(prompt);
               }}
-            >
-              <span className="tavern-opener-title">{card.title}</span>
-              <span className="tavern-opener-sub">{card.subtitle}</span>
-            </button>
+              onDismiss={() => dismiss(card)}
+            />
           );
         }
+
         if (card.kind === "connect" && card.action.toolkitSlug) {
           const slug = card.action.toolkitSlug;
           const name = card.action.toolkitName ?? slug;
           const phase = phases[slug];
           const apiKey = card.action.authMode === "api_key";
+          const label =
+            phase === "connected"
+              ? `${name} connected`
+              : phase === "opening"
+                ? "Opening…"
+                : phase === "pending"
+                  ? "Finish in your browser…"
+                  : apiKey
+                    ? `Add your ${name} API key`
+                    : `Connect ${name}`;
           return (
-            <div key={card.id} className="tavern-opener is-static">
-              <span className="tavern-opener-head">
-                <ConnectorLogo name={name} logo={card.action.toolkitLogo} />
-                <span className="tavern-opener-head-copy">
-                  <span className="tavern-opener-title">{card.title}</span>
-                  <span className="tavern-opener-sub">
-                    {phase === "connected"
-                      ? "Connected — ask and Freestyle will use it."
-                      : phase === "pending"
-                        ? "Finish connecting in your browser…"
-                        : card.subtitle}
-                  </span>
-                </span>
-              </span>
-              {phase === "connected" ? null : (
-                <span className="tavern-opener-actions">
-                  <button
-                    type="button"
-                    className="tavern-approve-btn tavern-approve-allow"
-                    disabled={phase === "opening" || phase === "pending"}
-                    onClick={() => {
-                      capture("opener_tapped", {
-                        id: card.id,
-                        category: card.category,
-                      });
-                      if (apiKey) {
-                        setKeyFormSlug((current) =>
-                          current === slug ? null : slug,
-                        );
-                      } else {
-                        connect(slug);
-                      }
-                    }}
-                  >
-                    {phase === "opening"
-                      ? apiKey
-                        ? "Connecting…"
-                        : "Opening…"
-                      : phase === "pending"
-                        ? "Waiting…"
-                        : apiKey
-                          ? "Add API key"
-                          : `Connect ${name}`}
-                  </button>
-                  <button
-                    type="button"
-                    className="tavern-approve-btn"
-                    onClick={() => dismiss(card)}
-                  >
-                    Not now
-                  </button>
-                </span>
-              )}
+            <OpenerRow
+              key={card.id}
+              label={label}
+              logo={card.action.toolkitLogo}
+              logoName={name}
+              busy={phase === "opening" || phase === "pending"}
+              onRun={() => {
+                accepted(card);
+                if (apiKey) {
+                  setKeyFormSlug((current) => (current === slug ? null : slug));
+                } else {
+                  connect(slug);
+                }
+              }}
+              onDismiss={() => dismiss(card)}
+            >
               {apiKey && keyFormSlug === slug && phase !== "connected" ? (
-                <span className="tavern-connect-keyform">
+                <div className="tavern-opener-keyform">
                   <ApiKeyForm
                     fields={card.action.authFields ?? DEFAULT_AUTH_FIELDS}
                     busy={phase === "opening"}
@@ -228,50 +298,34 @@ export function OpenerCards({
                       connectWithCredentials(slug, credentials)
                     }
                   />
-                </span>
+                </div>
               ) : null}
-            </div>
+            </OpenerRow>
           );
         }
+
         if (card.kind === "apply_template" && card.action.templateId) {
           const templateId = card.action.templateId;
           const isOn = applied.has(templateId);
           const isApplying =
             applyTemplate.isPending && applyTemplate.variables === templateId;
           return (
-            <div key={card.id} className="tavern-opener is-static">
-              <span className="tavern-opener-title">{card.title}</span>
-              <span className="tavern-opener-sub">
-                {isOn
-                  ? "On. Manage it any time in your scheduled tasks."
-                  : card.subtitle}
-              </span>
-              {isOn ? null : (
-                <span className="tavern-opener-actions">
-                  <button
-                    type="button"
-                    className="tavern-approve-btn tavern-approve-allow"
-                    disabled={isApplying}
-                    onClick={() => {
-                      capture("opener_tapped", {
-                        id: card.id,
-                        category: card.category,
-                      });
-                      applyTemplate.mutate(templateId);
-                    }}
-                  >
-                    {isApplying ? "Setting up…" : "Turn on"}
-                  </button>
-                  <button
-                    type="button"
-                    className="tavern-approve-btn"
-                    onClick={() => dismiss(card)}
-                  >
-                    Not now
-                  </button>
-                </span>
-              )}
-            </div>
+            <OpenerRow
+              key={card.id}
+              label={
+                isOn
+                  ? `${card.title} is on`
+                  : isApplying
+                    ? "Setting up…"
+                    : `Turn on ${card.title.toLowerCase()}`
+              }
+              busy={isApplying || isOn}
+              onRun={() => {
+                accepted(card);
+                applyTemplate.mutate(templateId);
+              }}
+              onDismiss={() => dismiss(card)}
+            />
           );
         }
         return null;
@@ -286,9 +340,15 @@ export function OpenerCards({
           Couldn't set that up. Try again, or ask Freestyle in chat.
         </p>
       ) : null}
-      <button type="button" className="tavern-opener-more" onClick={refresh}>
-        Show me different
-      </button>
+      {onShowAll ? (
+        <button
+          type="button"
+          className="tavern-opener-more"
+          onClick={onShowAll}
+        >
+          See everything ↗
+        </button>
+      ) : null}
     </div>
   );
 }

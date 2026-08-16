@@ -56,3 +56,6 @@ test-results/
 .env.local
 .env.*.local
 !.env.example
+
+# Local Git worktrees
+.worktrees/

@@ -1,7 +1,16 @@
+import { DataSkeleton } from "@renderer/components/data-skeleton";
 import { Markdown } from "@renderer/components/markdown";
-import { fsCall, type BrainFile as HomeFile } from "@renderer/lib/brain-fs";
+import {
+  deleteBrainFile,
+  type BrainFile as HomeFile,
+  listBrainFiles,
+  readBrainFile,
+  writeBrainFile,
+} from "@renderer/lib/brain-fs";
+import { queryKeys } from "@renderer/lib/query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type React from "react";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useState } from "react";
 
 type FileView =
   | { kind: "list" }
@@ -165,31 +174,36 @@ export function BrainFiles({
   emptyText: string;
   newLabel: string;
 }): React.JSX.Element {
-  const [files, setFiles] = useState<HomeFile[]>([]);
+  const queryClient = useQueryClient();
+  const filesQuery = useQuery({
+    queryKey: queryKeys.brain.files(root),
+    queryFn: () => listBrainFiles(root || undefined),
+  });
+  const files: HomeFile[] = filesQuery.data ?? [];
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [view, setView] = useState<FileView>({ kind: "list" });
 
-  const load = useCallback((): void => {
-    void fsCall("list", root ? { path: root } : {}).then((res) => {
-      if (res?.ok) setFiles((res.files as HomeFile[]) ?? []);
-    });
-  }, [root]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  if (filesQuery.isLoading) return <DataSkeleton label="Loading Brain files" />;
+  if (filesQuery.isError)
+    return (
+      <div className="tavern-empty">
+        <p>Couldn&apos;t load Brain files.</p>
+        <button type="button" onClick={() => void filesQuery.refetch()}>
+          Try again
+        </button>
+      </div>
+    );
 
   const openFile = (path: string): void => {
-    void fsCall("read", { path }).then((res) => {
-      if (res?.ok)
-        setView({ kind: "view", path, text: (res.text as string) ?? "" });
+    void readBrainFile(path).then((text) => {
+      if (text !== null) setView({ kind: "view", path, text });
     });
   };
 
   const saveFile = (path: string, text: string): void => {
-    void fsCall("write", { path, text }).then((res) => {
-      if (res?.ok) {
-        load();
+    void writeBrainFile(path, text).then((ok) => {
+      if (ok) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.brain.all });
         setView({ kind: "view", path, text });
       }
     });
@@ -220,9 +234,11 @@ export function BrainFiles({
             type="button"
             className="tavern-file-delete"
             onClick={() => {
-              void fsCall("delete", { path: view.path }).then(() => {
+              void deleteBrainFile(view.path).then(() => {
                 setView({ kind: "list" });
-                load();
+                void queryClient.invalidateQueries({
+                  queryKey: queryKeys.brain.all,
+                });
               });
             }}
           >

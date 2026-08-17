@@ -1,7 +1,4 @@
 export type DictationPermission = "accessibility" | "microphone";
-export type StartupPermissionWarning =
-  | DictationPermission
-  | "accessibility-and-microphone";
 
 export interface AccessibilityPermissionState {
   granted: boolean;
@@ -41,27 +38,5 @@ export function missingDictationPermission(
   ) {
     return "microphone";
   }
-  return null;
-}
-
-export function startupPermissionWarning(
-  platform: NodeJS.Platform,
-  onboardingActive: boolean,
-  accessibilityGranted: boolean,
-  microphoneStatus: string,
-): StartupPermissionWarning | null {
-  if (onboardingActive || (platform !== "darwin" && platform !== "win32")) {
-    return null;
-  }
-
-  const accessibilityMissing = platform === "darwin" && !accessibilityGranted;
-  const microphoneMissing =
-    microphoneStatus === "denied" || microphoneStatus === "restricted";
-
-  if (accessibilityMissing && microphoneMissing) {
-    return "accessibility-and-microphone";
-  }
-  if (accessibilityMissing) return "accessibility";
-  if (microphoneMissing) return "microphone";
   return null;
 }

@@ -146,6 +146,12 @@ async function triggerHotkeyDown(page: Page): Promise<void> {
   });
 }
 
+async function triggerEscape(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    window.electron.ipcRenderer.send("e2e:trigger-escape");
+  });
+}
+
 async function instrumentMicrophoneRequest(
   app: ElectronApplication,
 ): Promise<void> {
@@ -469,7 +475,9 @@ test("granted permissions allow the existing dictation flow", async () => {
     await expect
       .poll(() =>
         readEvents(launched.eventsPath).some(
-          (event) => event.type === "mic-requested",
+          (event) =>
+            event.type === "dictation-state" &&
+            event.body?.phase === "recording",
         ),
       )
       .toBe(true);
@@ -481,6 +489,41 @@ test("granted permissions allow the existing dictation flow", async () => {
               window.webContents.getURL().includes("companion"),
             )
             .some((window) => window.isVisible()),
+        ),
+      )
+      .toBe(true);
+  } finally {
+    await closePermissionApp(launched.app);
+  }
+});
+
+test("Escape cancels an active dictation session", async () => {
+  const launched = await launchPermissionApp({
+    accessibility: "granted",
+    microphone: "granted",
+    onboardingComplete: true,
+  });
+  try {
+    await waitForStartupPermissionChecks(launched.eventsPath);
+    await instrumentMicrophoneRequest(launched.app);
+    await triggerHotkeyDown(launched.companion);
+    await expect
+      .poll(() =>
+        readEvents(launched.eventsPath).some(
+          (event) =>
+            event.type === "dictation-state" &&
+            event.body?.phase === "recording",
+        ),
+      )
+      .toBe(true);
+
+    await triggerEscape(launched.companion);
+
+    await expect
+      .poll(() =>
+        readEvents(launched.eventsPath).some(
+          (event) =>
+            event.type === "dictation-state" && event.body?.phase === "idle",
         ),
       )
       .toBe(true);

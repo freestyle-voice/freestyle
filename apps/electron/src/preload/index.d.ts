@@ -27,6 +27,8 @@ declare global {
       onTalkUp: (cb: () => void) => () => void;
       onHotkeyDown: (callback: () => void) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;
+      onDictationCancel: (callback: () => void) => () => void;
+      setDictationPhase: (phase: "idle" | "recording" | "transcribing") => void;
       reloadRemixHotkey: () => void;
       remixGetContext: () => Promise<RemixContextResult>;
       remixReadDocument: () => Promise<RemixReadDocumentResult>;

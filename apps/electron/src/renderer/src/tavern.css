@@ -1744,7 +1744,7 @@
 .tavern-set-avatar {
   width: 38px;
   height: 38px;
-  border-radius: 0;
+  border-radius: 6px;
   object-fit: cover;
   border: 2px solid var(--tavern-ink);
   flex-shrink: 0;
@@ -1755,7 +1755,10 @@
   place-items: center;
   background: var(--tavern-wash);
   color: var(--tavern-ink);
+  font-family: "Pixelify Sans", monospace;
   font-weight: 700;
+  font-size: 17px;
+  line-height: 1;
 }
 
 .tavern-set-profile-text {
@@ -3957,4 +3960,3 @@
 .tavern-opener {
   padding: 7px 10px;
 }
-

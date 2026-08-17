@@ -4,6 +4,7 @@ import {
   isTransientCloudError,
 } from "../freestyle-cloud.js";
 import { getSession, getSessionToken } from "../sessions.js";
+import { notificationEvents } from "./events.js";
 import { purgeExpired, upsertFromCloud } from "./store.js";
 
 const log = createAppLogger("notification-transport");
@@ -99,6 +100,7 @@ export class PollingTransport implements NotificationTransport {
         getSession()?.user.id ?? null,
       );
       purgeExpired();
+      notificationEvents.emitChange();
       for (const listener of this.listeners) {
         try {
           listener();

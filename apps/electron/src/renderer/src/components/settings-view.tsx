@@ -74,6 +74,44 @@ const PAGE_TITLES: Record<Exclude<SettingsPage, "root">, string> = {
   data: "Data",
 };
 
+export function profileAvatarInitial(
+  name: string | null | undefined,
+  email: string | null | undefined,
+): string {
+  return (name?.trim() || email?.trim() || "?").slice(0, 1).toUpperCase();
+}
+
+function ProfileAvatar({
+  image,
+  name,
+  email,
+}: {
+  image: string | null | undefined;
+  name: string | null | undefined;
+  email: string | null | undefined;
+}): React.JSX.Element {
+  const [failedImage, setFailedImage] = useState<string | null>(null);
+  const src = image && image !== failedImage ? image : null;
+
+  if (src) {
+    return (
+      <img
+        className="tavern-set-avatar"
+        src={src}
+        alt=""
+        referrerPolicy="no-referrer"
+        onError={() => setFailedImage(src)}
+      />
+    );
+  }
+
+  return (
+    <span className="tavern-set-avatar is-empty" aria-hidden="true">
+      {profileAvatarInitial(name, email)}
+    </span>
+  );
+}
+
 function useServerSettings(): {
   settings: Record<string, string> | null;
   setSetting: (key: string, value: string) => void;
@@ -341,18 +379,11 @@ function AccountCard({
         onClick={onOpenProfile}
       >
         <div className="tavern-set-profile">
-          {auth.user.image ? (
-            <img
-              className="tavern-set-avatar"
-              src={auth.user.image}
-              alt=""
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <span className="tavern-set-avatar is-empty">
-              {(auth.user.name || auth.user.email)[0]?.toUpperCase()}
-            </span>
-          )}
+          <ProfileAvatar
+            image={auth.user.image}
+            name={auth.user.name}
+            email={auth.user.email}
+          />
           <div className="tavern-set-profile-text">
             <div className="tavern-set-card-title">
               {auth.user.name || "Signed in"}
@@ -672,18 +703,11 @@ function ProfilePage(): React.JSX.Element {
   return (
     <>
       <div className="tavern-set-profile">
-        {auth.user.image ? (
-          <img
-            className="tavern-set-avatar"
-            src={auth.user.image}
-            alt=""
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          <span className="tavern-set-avatar is-empty">
-            {(auth.user.name || auth.user.email)[0]?.toUpperCase()}
-          </span>
-        )}
+        <ProfileAvatar
+          image={auth.user.image}
+          name={auth.user.name}
+          email={auth.user.email}
+        />
         <div className="tavern-set-profile-text">
           <div className="tavern-set-card-title">
             {auth.user.name || "Signed in"}

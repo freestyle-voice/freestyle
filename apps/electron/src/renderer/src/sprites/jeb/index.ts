@@ -70,7 +70,7 @@ export const JEB: SheetSpriteDefinition = {
     ambients: { thinking: "typing", listening: "idle" },
     thinkingEnter: [{ state: "typing-start" }],
     thinkingExit: [{ state: "typing-start", reverse: true, fpsScale: 1.6 }],
-    sleep: { enter: [{ state: "death" }], ambient: "death" },
+    sleep: { enter: [{ state: "death-fall" }], ambient: "death" },
     // Getting up: the fall, backwards, fast — then a hop to attention.
     wake: [
       { state: "death", reverse: true, fpsScale: 2 },

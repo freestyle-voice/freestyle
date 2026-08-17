@@ -51,6 +51,13 @@ const api = {
     ipcRenderer.on("hotkey:up", handler);
     return () => ipcRenderer.removeListener("hotkey:up", handler);
   },
+  onDictationCancel: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("dictation:cancel", handler);
+    return () => ipcRenderer.removeListener("dictation:cancel", handler);
+  },
+  setDictationPhase: (phase: "idle" | "recording" | "transcribing"): void =>
+    ipcRenderer.send("dictation:state", phase),
   // --- Remix ---
   reloadRemixHotkey: (): void => ipcRenderer.send("remix-hotkey:reload"),
   // --- Remix primitives (the agent's tools; workflow lives in its prompt) ---

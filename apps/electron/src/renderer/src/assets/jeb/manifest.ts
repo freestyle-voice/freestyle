@@ -5,6 +5,22 @@ export const JEB_MANIFEST: SpriteManifest = {
   frameSize: 96,
   scale: 2,
   states: {
+    death: {
+      fps: 10,
+      loop: false,
+      holdLast: true,
+      sheet: "death.png",
+      start: 0,
+      frames: 9,
+    },
+    "death-fall": {
+      fps: 10,
+      loop: false,
+      holdLast: true,
+      sheet: "death.png",
+      start: 4,
+      frames: 5,
+    },
     "typing-start": {
       fps: 12,
       loop: false,
@@ -58,13 +74,6 @@ export const JEB_MANIFEST: SpriteManifest = {
       frames: 8,
       fps: 16,
       loop: true,
-    },
-    death: {
-      sheet: "death.png",
-      frames: 9,
-      fps: 10,
-      loop: false,
-      holdLast: true,
     },
     defend: {
       sheet: "defend.png",

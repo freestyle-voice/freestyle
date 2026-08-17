@@ -5,11 +5,12 @@ export default defineConfig({
   resolve: {
     alias: {
       "@renderer": resolve(__dirname, "src/renderer/src"),
+      "@shared": resolve(__dirname, "src/shared"),
     },
   },
   test: {
     globals: true,
-    include: ["src/renderer/**/*.test.ts"],
+    include: ["src/renderer/**/*.test.ts", "src/main/**/*.test.ts"],
     environment: "node",
   },
 });

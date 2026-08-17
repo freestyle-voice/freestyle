@@ -127,7 +127,10 @@ import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
 import { MicListener } from "./mic-listener";
 import { getNativeBinaryPath } from "./native-binary";
-import { startNotificationStream } from "./notification-stream";
+import {
+  notificationStreamUrl,
+  startNotificationStream,
+} from "./notification-stream";
 import {
   hideNotifications,
   initNotificationWindow,
@@ -1026,10 +1029,7 @@ function hidePill(): void {
   try {
   } catch {}
   updateRemixBar();
-  // Unregister Escape shortcut when pill is hidden
-  try {
-    globalShortcut.unregister("Escape");
-  } catch {}
+  updateDictationEscape();
 }
 
 function wait(ms: number): Promise<void> {
@@ -3347,7 +3347,7 @@ function startNotificationEvents(): void {
   if (stopNotificationStream) return;
   void refreshNotifications();
   stopNotificationStream = startNotificationStream({
-    url: getServerBaseUrl,
+    url: () => notificationStreamUrl(getServerBaseUrl()),
     headers: getServerAuthHeaders,
     onChange: () => void refreshNotifications(),
     onConnected: stopNotificationFallbackPoll,

@@ -1,3 +1,7 @@
+export function notificationStreamUrl(baseUrl: string): string {
+  return `${baseUrl.replace(/\/$/, "")}/api/notifications/stream`;
+}
+
 export async function consumeNotificationEvents(
   stream: ReadableStream<Uint8Array>,
   onChange: () => void,
@@ -73,7 +77,16 @@ export function startNotificationStream(options: {
         headers,
         signal: requestController.signal,
       });
-      if (!response.ok || !response.body) throw new Error("SSE unavailable");
+      if (
+        !response.ok ||
+        !response.body ||
+        !response.headers
+          .get("content-type")
+          ?.toLowerCase()
+          .startsWith("text/event-stream")
+      ) {
+        throw new Error("SSE unavailable");
+      }
       reconnects = 0;
       options.onConnected?.();
       await consumeNotificationEvents(response.body, options.onChange);

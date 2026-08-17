@@ -1,8 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   consumeNotificationEvents,
+  notificationStreamUrl,
   startNotificationStream,
 } from "./notification-stream";
+
+describe("notificationStreamUrl", () => {
+  it("adds the notifications stream path without a duplicate slash", () => {
+    expect(notificationStreamUrl("http://127.0.0.1:4649/")).toBe(
+      "http://127.0.0.1:4649/api/notifications/stream",
+    );
+  });
+});
 
 describe("consumeNotificationEvents", () => {
   it("refreshes once for a changed SSE event split across chunks", async () => {
@@ -50,7 +59,12 @@ describe("startNotificationStream", () => {
         controller.close();
       },
     });
-    const fetchStream = vi.fn(async () => new Response(stream));
+    const fetchStream = vi.fn(
+      async () =>
+        new Response(stream, {
+          headers: { "content-type": "text/event-stream" },
+        }),
+    );
     const onChange = vi.fn();
     const onConnected = vi.fn();
 
@@ -68,6 +82,23 @@ describe("startNotificationStream", () => {
       "http://127.0.0.1:4649/api/notifications/stream",
       expect.objectContaining({ headers: { Authorization: "Bearer token" } }),
     );
+    stop();
+  });
+
+  it("keeps fallback polling available for a non-SSE response", async () => {
+    const stream = new ReadableStream<Uint8Array>({});
+    const onConnected = vi.fn();
+    const stop = startNotificationStream({
+      url: "http://127.0.0.1:4649/api/notifications/stream",
+      headers: {},
+      fetchStream: async () => new Response(stream),
+      onChange: () => {},
+      onConnected,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onConnected).not.toHaveBeenCalled();
     stop();
   });
 });

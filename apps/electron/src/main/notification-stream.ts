@@ -5,10 +5,15 @@ export function notificationStreamUrl(baseUrl: string): string {
 export async function consumeNotificationEvents(
   stream: ReadableStream<Uint8Array>,
   onChange: () => void,
+  options?: { onActivity?: () => void; signal?: AbortSignal },
 ): Promise<void> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  const abort = (): void => {
+    void reader.cancel();
+  };
+  options?.signal?.addEventListener("abort", abort, { once: true });
 
   try {
     while (true) {
@@ -22,6 +27,7 @@ export async function consumeNotificationEvents(
         buffer = buffer.slice(
           buffer[boundary] === "\r" ? boundary + 4 : boundary + 2,
         );
+        options?.onActivity?.();
         if (frame.split(/\r?\n/).some((line) => line === "event: changed")) {
           onChange();
         }
@@ -29,6 +35,7 @@ export async function consumeNotificationEvents(
       }
     }
   } finally {
+    options?.signal?.removeEventListener("abort", abort);
     reader.releaseLock();
   }
 }
@@ -38,6 +45,8 @@ type NotificationStreamFetch = (
   init: RequestInit,
 ) => Promise<Response>;
 
+const DEFAULT_INACTIVITY_TIMEOUT_MS = 60_000;
+
 export function startNotificationStream(options: {
   url: string | (() => string);
   headers: HeadersInit | (() => HeadersInit);
@@ -45,6 +54,7 @@ export function startNotificationStream(options: {
   fetchStream?: NotificationStreamFetch;
   onConnected?: () => void;
   onDisconnected?: () => void;
+  inactivityTimeoutMs?: number;
 }): () => void {
   const fetchStream = options.fetchStream ?? fetch;
   let stopped = false;
@@ -66,6 +76,15 @@ export function startNotificationStream(options: {
   const connect = async (): Promise<void> => {
     const requestController = new AbortController();
     controller = requestController;
+    let inactivityTimer: NodeJS.Timeout | null = null;
+    const onActivity = (): void => {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(
+        () => requestController.abort(),
+        options.inactivityTimeoutMs ?? DEFAULT_INACTIVITY_TIMEOUT_MS,
+      );
+      inactivityTimer.unref();
+    };
     try {
       const url =
         typeof options.url === "function" ? options.url() : options.url;
@@ -88,11 +107,16 @@ export function startNotificationStream(options: {
         throw new Error("SSE unavailable");
       }
       reconnects = 0;
+      onActivity();
       options.onConnected?.();
-      await consumeNotificationEvents(response.body, options.onChange);
+      await consumeNotificationEvents(response.body, options.onChange, {
+        onActivity,
+        signal: requestController.signal,
+      });
     } catch {
       // The reconnect below handles server restarts and temporary network loss.
     } finally {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
       if (controller === requestController) controller = null;
       if (!stopped) options.onDisconnected?.();
       reconnect();

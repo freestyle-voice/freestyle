@@ -1018,11 +1018,13 @@ function hidePill(): void {
   // The next session starts as a bare capsule, so give the extra room back
   // now — the renderer's own collapse only runs when it animates a card away.
   setPillExpanded(false);
-  // Session ended (cancel, error, or paste complete). Clear latched hotkey
-  // state so the next press starts fresh — e.g. after ESC while still
-  // holding the dictation key.
-  hotkeyPressed = false;
-  clearHotkeyStuckWatchdog();
+  // Remix can hide its pill while a hold-to-dictation session remains active.
+  // Preserve that session's physical key state so its eventual key-up still
+  // stops recording; completed/cancelled sessions can be reset here.
+  if (!dictationInProgress) {
+    hotkeyPressed = false;
+    clearHotkeyStuckWatchdog();
+  }
   clearRemixStuckWatchdog();
   setRemixRouteKeys(false);
   // Chat may have set focusable; clear it when hiding.

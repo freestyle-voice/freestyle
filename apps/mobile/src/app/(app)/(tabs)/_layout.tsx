@@ -1,23 +1,47 @@
-import { Tabs } from "expo-router";
+import { NativeTabs } from "expo-router/unstable-native-tabs";
 
-import { FloatingTabBar } from "@/components/floating-tab-bar";
+import { useTheme } from "@/hooks/use-theme";
 
-/**
- * The five bottom-tab destinations. Pushed pages (settings, profile, keyboard
- * setup) live in the parent Stack so navigating to them preserves the
- * active tab and lets Back return here.
- */
+/** The three primary places in the Remix-first mobile experience. */
 export default function TabsLayout() {
+  const theme = useTheme();
+
   return (
-    <Tabs
-      tabBar={(props) => <FloatingTabBar {...props} />}
-      screenOptions={{ headerShown: false }}
+    <NativeTabs
+      backgroundColor={theme.background}
+      iconColor={{ default: theme.mutedForeground, selected: theme.primary }}
+      labelStyle={{
+        default: { color: theme.mutedForeground, fontSize: 12 },
+        selected: { color: theme.primary, fontSize: 12, fontWeight: "600" },
+      }}
+      disableTransparentOnScrollEdge
     >
-      <Tabs.Screen name="index" options={{ title: "Home" }} />
-      <Tabs.Screen name="history" options={{ title: "History" }} />
-      <Tabs.Screen name="vocabulary" options={{ title: "Vocabulary" }} />
-      <Tabs.Screen name="tone" options={{ title: "Cleanup & Tone" }} />
-      <Tabs.Screen name="dictionary" options={{ title: "Dictionary" }} />
-    </Tabs>
+      <NativeTabs.Trigger name="index">
+        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "house", selected: "house.fill" }}
+          md={{ default: "home", selected: "home" }}
+        />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="activity">
+        <NativeTabs.Trigger.Label>Activity</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "clock", selected: "clock.fill" }}
+          md={{ default: "history", selected: "history" }}
+        />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="account">
+        <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{
+            default: "person.crop.circle",
+            selected: "person.crop.circle.fill",
+          }}
+          md={{ default: "person", selected: "account_circle" }}
+        />
+      </NativeTabs.Trigger>
+    </NativeTabs>
   );
 }

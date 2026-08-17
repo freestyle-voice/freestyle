@@ -40,6 +40,7 @@ import {
   fetchCloudPreferences,
   pushCloudPreferences,
 } from "./cloud/preferences";
+import { DEFAULT_AUTO_LISTEN_AFTER_REMIX_QUESTION } from "./remix/preferences";
 import { getPref, setPref } from "./storage";
 
 /**
@@ -85,6 +86,7 @@ const OVERALL_TONE_KEY = "cleanup_overall_tone";
 // sound feedback is a local UX preference.
 const TRANSLATE_KEY = "translate";
 const SOUND_FEEDBACK_KEY = "sound_feedback";
+const REMIX_AUTO_LISTEN_KEY = "remix_auto_listen_after_question";
 
 export interface DictationSettings {
   /** Preferred spoken languages (ISO codes); `[]` means auto-detect. */
@@ -98,6 +100,8 @@ export interface DictationSettings {
   translate: boolean;
   /** Play start/success chimes alongside haptics. Device-only; not synced. */
   soundFeedback: boolean;
+  /** Resume keyboard capture after Remix asks a clarification. Device-only. */
+  autoListenAfterRemixQuestion: boolean;
   intensity: CleanupIntensity;
   customPrompt: string;
   personalTone: CleanupPersonalTone;
@@ -111,6 +115,7 @@ const DEFAULTS: DictationSettings = {
   cleanup: true,
   translate: false,
   soundFeedback: true,
+  autoListenAfterRemixQuestion: DEFAULT_AUTO_LISTEN_AFTER_REMIX_QUESTION,
   intensity: DEFAULT_INTENSITY,
   customPrompt: "",
   personalTone: DEFAULT_PERSONAL_TONE,
@@ -126,6 +131,7 @@ interface SettingsContextValue {
   setCleanup: (cleanup: boolean) => void;
   setTranslate: (translate: boolean) => void;
   setSoundFeedback: (enabled: boolean) => void;
+  setAutoListenAfterRemixQuestion: (enabled: boolean) => void;
   setIntensity: (intensity: CleanupIntensity) => void;
   setCustomPrompt: (prompt: string) => void;
   setPersonalTone: (tone: CleanupPersonalTone) => void;
@@ -223,6 +229,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         cleanup,
         translate,
         soundFeedback,
+        autoListenAfterRemixQuestion,
         intensity,
         customPrompt,
         personalTone,
@@ -235,6 +242,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         getPref(CLEANUP_KEY),
         getPref(TRANSLATE_KEY),
         getPref(SOUND_FEEDBACK_KEY),
+        getPref(REMIX_AUTO_LISTEN_KEY),
         getPref(INTENSITY_KEY),
         getPref(CUSTOM_PROMPT_KEY),
         getPref(PERSONAL_TONE_KEY),
@@ -251,6 +259,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           soundFeedback == null
             ? DEFAULTS.soundFeedback
             : soundFeedback === "true",
+        autoListenAfterRemixQuestion:
+          autoListenAfterRemixQuestion == null
+            ? DEFAULTS.autoListenAfterRemixQuestion
+            : autoListenAfterRemixQuestion === "true",
         intensity: (intensity as CleanupIntensity) ?? DEFAULTS.intensity,
         customPrompt: customPrompt ?? DEFAULTS.customPrompt,
         personalTone:
@@ -423,6 +435,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         persist(TRANSLATE_KEY, "translate", translate),
       setSoundFeedback: (enabled) =>
         persist(SOUND_FEEDBACK_KEY, "soundFeedback", enabled),
+      setAutoListenAfterRemixQuestion: (enabled) =>
+        persist(REMIX_AUTO_LISTEN_KEY, "autoListenAfterRemixQuestion", enabled),
       setIntensity: (intensity) =>
         persist(INTENSITY_KEY, "intensity", intensity),
       setCustomPrompt: (prompt) =>

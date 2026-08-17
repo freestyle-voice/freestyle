@@ -2,7 +2,11 @@ import { Check } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import { Linking, Pressable, StyleSheet, View } from "react-native";
 
-import { SettingsScreenScaffold } from "@/components/settings-ui";
+import {
+  Card,
+  OptionCard,
+  SettingsScreenScaffold,
+} from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
@@ -12,6 +16,7 @@ import {
   requestMicPermission,
 } from "@/lib/audio/recorder";
 import { useKeyboardStatus } from "@/lib/keyboard/use-keyboard-status";
+import { useSettings } from "@/lib/settings";
 
 const STEPS = [
   "Open Settings › General › Keyboard › Keyboards.",
@@ -24,6 +29,7 @@ export default function KeyboardSetupScreen() {
   const theme = useTheme();
   const [micStatus, setMicStatus] = useState<MicPermission>("undetermined");
   const { status: keyboardStatus, ready: keyboardReady } = useKeyboardStatus();
+  const { settings, setAutoListenAfterRemixQuestion } = useSettings();
 
   useEffect(() => {
     void checkMicPermission().then(setMicStatus);
@@ -106,6 +112,25 @@ export default function KeyboardSetupScreen() {
           </ThemedText>
         )}
       </Pressable>
+
+      <Card>
+        <ThemedText style={styles.rowLabel}>Remix follow-up</ThemedText>
+        <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
+          When Remix asks a short question, start listening again automatically.
+        </ThemedText>
+        <OptionCard
+          label="Resume listening"
+          hint="Recommended for a quick voice-only keyboard flow."
+          selected={settings.autoListenAfterRemixQuestion}
+          onPress={() => setAutoListenAfterRemixQuestion(true)}
+        />
+        <OptionCard
+          label="Wait for my tap"
+          hint="Keep the keyboard quiet until you choose to answer."
+          selected={!settings.autoListenAfterRemixQuestion}
+          onPress={() => setAutoListenAfterRemixQuestion(false)}
+        />
+      </Card>
 
       <View style={styles.steps}>
         {STEPS.map((step, i) => (

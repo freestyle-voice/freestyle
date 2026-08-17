@@ -211,4 +211,46 @@ describe("Streamer reconnects an active capture", () => {
     );
     expect(kinds).toEqual(["start", "audio", "commit"]);
   });
+
+  it("queues a quick commit until a cold session can accept its audio", async () => {
+    streamer = new Streamer("http://localhost:3000", "", {
+      onConfig: vi.fn(),
+      onReady: vi.fn(),
+      onFinal: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    await streamer.startCapture({} as MediaStream);
+
+    const pcm = new Int16Array([12, -24, 48]).buffer;
+    FakeAudioWorkletNode.instances[0].port.onmessage?.({ data: pcm });
+    streamer.commit();
+
+    // A short first recording can finish before the initial config arrives.
+    // The protocol must remain start → audio → commit once it is ready.
+    expect(socket.sent).toEqual([]);
+
+    socket.message({
+      type: "config",
+      streaming: true,
+      sessionTransport: true,
+      providerCategory: "freestyle_cloud",
+    });
+    expect(socket.sent).toEqual([
+      JSON.stringify({ type: "start", context: null }),
+    ]);
+
+    socket.message({ type: "session.ready" });
+    expect(socket.sent).toEqual([
+      JSON.stringify({ type: "start", context: null }),
+      pcm,
+      JSON.stringify({
+        type: "commit",
+        audioDurationMs: 0,
+        context: null,
+      }),
+    ]);
+  });
 });

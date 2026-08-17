@@ -118,6 +118,16 @@ declare global {
       } | null>;
       downloadUpdate: () => void;
       installUpdate: () => void;
+      getUpdateStatus: () => Promise<{
+        version: string | null;
+        downloadState: "idle" | "downloading" | "downloaded";
+      }>;
+      onUpdateStatus: (
+        callback: (status: {
+          version: string | null;
+          downloadState: "idle" | "downloading" | "downloaded";
+        }) => void,
+      ) => () => void;
       // Auto-update setting
       getAutoUpdate: () => Promise<boolean>;
       setAutoUpdate: (enabled: boolean) => void;

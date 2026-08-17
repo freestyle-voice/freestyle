@@ -170,6 +170,39 @@
   cursor: default;
 }
 
+.tavern-head-update {
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  border: 1px solid var(--tavern-lantern);
+  border-radius: 999px;
+  background: none;
+  color: var(--tavern-lantern);
+  cursor: pointer;
+  padding: 2px 9px;
+  margin-right: 6px;
+  white-space: nowrap;
+}
+
+.tavern-head-update:hover:not(:disabled) {
+  background: var(--tavern-lantern);
+  color: var(--tavern-ink);
+}
+
+.tavern-head-update:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.tavern-head-update.is-ready {
+  background: var(--tavern-lantern);
+  color: var(--tavern-ink);
+}
+
+.tavern-head-update.is-ready:hover {
+  filter: brightness(1.1);
+}
+
 /* Spark outside the companion window: that window styles these from its own
    inline sheet; everywhere else (panel head, settings picker) the spans need
    block layout and the diamond rotation or the core collapses to 0x0. */

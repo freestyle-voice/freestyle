@@ -449,6 +449,15 @@ function broadcastServerChanged(): void {
   invalidatePluginViews();
 }
 
+function broadcastUpdateStatus(): void {
+  const status = {
+    version: updateAvailableVersion,
+    downloadState: updateDownloadState,
+  };
+  panelWindow?.webContents.send("updater:status", status);
+  companionWindow?.webContents.send("updater:status", status);
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let httpServer: any = null;
 let serverPort = DEFAULT_PORT;
@@ -1401,6 +1410,7 @@ function restartAndUpdate(): void {
 /** Mark state as downloading, notify the settings window, and kick off the download. */
 function triggerDownloadUpdate(): void {
   updateDownloadState = "downloading";
+  broadcastUpdateStatus();
   autoUpdater.downloadUpdate().catch((err) => {
     log.warn(`downloadUpdate rejected: ${err}`);
   });
@@ -2062,9 +2072,11 @@ app.whenReady().then(async () => {
     autoUpdater.logger = createAppLogger("updater");
 
     autoUpdater.on("update-available", (info) => {
+      updateAvailableVersion = info.version;
       if (autoUpdater.autoDownload) {
         updateDownloadState = "downloading";
       }
+      broadcastUpdateStatus();
       // Only show a native notification once per discovered version
       if (
         Notification.isSupported() &&
@@ -2083,7 +2095,9 @@ app.whenReady().then(async () => {
     });
 
     autoUpdater.on("update-downloaded", (info) => {
+      updateAvailableVersion = info.version;
       updateDownloadState = "downloaded";
+      broadcastUpdateStatus();
       // Only show a native notification once per version
       if (
         Notification.isSupported() &&
@@ -2108,6 +2122,7 @@ app.whenReady().then(async () => {
     autoUpdater.on("error", (err) => {
       if (updateDownloadState === "downloading") {
         updateDownloadState = "idle";
+        broadcastUpdateStatus();
       }
       const msg = err?.message ?? "Update failed";
       if (READ_ONLY_UPDATE_RE.test(msg) && isRunningFromReadOnlyLocation()) {
@@ -2151,11 +2166,18 @@ app.whenReady().then(async () => {
       if (!latest) return null;
       // Only report an update when the remote version is actually newer
       if (latest === app.getVersion()) return null;
+      updateAvailableVersion = latest;
+      broadcastUpdateStatus();
       return { version: latest, downloadState: updateDownloadState };
     } catch {
       return null;
     }
   });
+
+  ipcMain.handle("updater:status", () => ({
+    version: updateAvailableVersion,
+    downloadState: updateDownloadState,
+  }));
 
   // -- Auto-update setting IPC --
   ipcMain.handle("settings:auto-update", () => {
@@ -4267,6 +4289,7 @@ let isUpdaterQuitting = false;
 let isQuitting = false;
 
 let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
+let updateAvailableVersion: string | null = null;
 
 function cleanupBeforeQuit(): void {
   // No app-host plugin registry to dispose anymore — every hook (including

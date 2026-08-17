@@ -238,6 +238,26 @@ const api = {
   } | null> => ipcRenderer.invoke("updater:check"),
   downloadUpdate: (): void => ipcRenderer.send("updater:download"),
   installUpdate: (): void => ipcRenderer.send("updater:install"),
+  getUpdateStatus: (): Promise<{
+    version: string | null;
+    downloadState: "idle" | "downloading" | "downloaded";
+  }> => ipcRenderer.invoke("updater:status"),
+  onUpdateStatus: (
+    callback: (status: {
+      version: string | null;
+      downloadState: "idle" | "downloading" | "downloaded";
+    }) => void,
+  ): (() => void) => {
+    const handler = (
+      _e: unknown,
+      status: {
+        version: string | null;
+        downloadState: "idle" | "downloading" | "downloaded";
+      },
+    ): void => callback(status);
+    ipcRenderer.on("updater:status", handler);
+    return () => ipcRenderer.removeListener("updater:status", handler);
+  },
   // Auto-update setting
   getAutoUpdate: (): Promise<boolean> =>
     ipcRenderer.invoke("settings:auto-update"),

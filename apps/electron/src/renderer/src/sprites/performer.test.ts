@@ -11,7 +11,8 @@ const def = {
   windowSize: 96,
   anchor: null,
   hotRect: { x: 0, y: 0, width: 1, height: 1 },
-  bubble: { x: 0, y: 0, maxChars: 1 },
+  speechAnchor: { x: 0, y: 0 },
+  bubble: { maxChars: 1 },
   manifest: {
     frameSize: 1,
     scale: 1,

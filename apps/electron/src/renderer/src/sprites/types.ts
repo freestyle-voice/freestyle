@@ -74,11 +74,13 @@ export interface ChoreographyTable {
 interface SpriteDefinitionBase extends SpriteInfo {
   /** Cursor hitbox = exactly the drawn body, in window coordinates. */
   hotRect: { x: number; y: number; width: number; height: number };
-  bubble: { x: number; y: number; maxChars: number };
+  bubble: { maxChars: number };
 }
 
 export interface SheetSpriteDefinition extends SpriteDefinitionBase {
   kind: "sheet";
+  /** The point the dialogue-tail should reach on the sprite's face. */
+  speechAnchor: { x: number; y: number };
   manifest: SpriteManifest;
   /** Sheet filename → bundled URL (built with import.meta.glob). */
   sheets: Record<string, string>;

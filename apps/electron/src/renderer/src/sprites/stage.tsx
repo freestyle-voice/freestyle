@@ -4,6 +4,7 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { SheetEngine } from "./engine";
 import { Performer } from "./performer";
+import { speechBubbleLayout } from "./speech-bubble-layout";
 import type { SheetSpriteDefinition } from "./types";
 
 function bubbleText(
@@ -38,6 +39,10 @@ export function SpriteStage({
   const [say, setSay] = useState<string | null>(null);
   const [shout, setShout] = useState<string | null>(null);
   const shoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bubbleLayout = speechBubbleLayout({
+    windowSize: def.windowSize,
+    anchor: def.speechAnchor,
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -101,9 +106,9 @@ export function SpriteStage({
         /* Manga speech balloon (listening): tail pinned to the mouth. */
         .sprite-bubble {
           position: absolute;
-          left: ${def.bubble.x}px;
-          bottom: ${def.bubble.y}px;
-          max-width: ${def.windowSize - def.bubble.x - 14}px;
+          left: ${bubbleLayout.bubble.left}px;
+          bottom: ${bubbleLayout.bubble.bottom}px;
+          max-width: ${def.windowSize - bubbleLayout.bubble.left - 14}px;
           padding: 8px 12px;
           background: #fbf5e4;
           border: 3px solid #2a2114;
@@ -114,32 +119,22 @@ export function SpriteStage({
           pointer-events: none;
           white-space: pre-wrap;
           box-shadow: 4px 4px 0 rgba(42, 33, 20, 0.8);
+          isolation: isolate;
         }
-        .sprite-bubble::before {
-          content: "";
+        .sprite-bubble-tail {
           position: absolute;
-          left: 12px;
-          bottom: -17px;
-          border-style: solid;
-          border-width: 18px 16px 0 5px;
-          border-color: #2a2114 transparent transparent transparent;
-          transform: rotate(14deg);
-        }
-        .sprite-bubble::after {
-          content: "";
-          position: absolute;
-          left: 16px;
-          bottom: -11px;
-          border-style: solid;
-          border-width: 13px 12px 0 3px;
-          border-color: #fbf5e4 transparent transparent transparent;
-          transform: rotate(14deg);
+          left: ${bubbleLayout.tail.left}px;
+          bottom: ${bubbleLayout.tail.bottom}px;
+          width: 18px;
+          height: 14px;
+          overflow: visible;
+          z-index: -1;
         }
         /* Shout burst (paste lands): jagged flash. */
         .sprite-shout {
           position: absolute;
-          left: ${def.bubble.x}px;
-          bottom: ${def.bubble.y + 16}px;
+          left: ${bubbleLayout.bubble.left}px;
+          bottom: ${bubbleLayout.bubble.bottom + 16}px;
           background: #fbf5e4;
           border: 3px solid #2a2114;
           padding: 10px 18px;
@@ -169,7 +164,21 @@ export function SpriteStage({
       {shout ? (
         <div className="sprite-shout">{shout}</div>
       ) : say ? (
-        <div className="sprite-bubble">{say}</div>
+        <div className="sprite-bubble">
+          <svg
+            aria-hidden="true"
+            className="sprite-bubble-tail"
+            viewBox="0 0 18 14"
+          >
+            <path
+              d="M 1 0 C 4 3, 7 8, 9 14 C 12 8, 15 3, 17 0 Z"
+              fill="#fbf5e4"
+              stroke="#2a2114"
+              strokeWidth="3"
+            />
+          </svg>
+          {say}
+        </div>
       ) : null}
     </div>
   );

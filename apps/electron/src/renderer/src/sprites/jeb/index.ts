@@ -26,7 +26,10 @@ export const JEB: SheetSpriteDefinition = {
   sheets,
   // Body measured from the frames' alpha at 2x: x 100–144, y 150–218.
   hotRect: { x: 100, y: 150, width: 44, height: 68 },
-  bubble: { x: 106, y: 116, maxChars: 80 },
+  // Mouth position in the listening/idle pose. The bubble tail, not its box,
+  // is anchored here so it remains connected to Jeb.
+  speechAnchor: { x: 122, y: 154 },
+  bubble: { maxChars: 80 },
   fx: {
     shuriken: {
       sheet: "shuriken.png",

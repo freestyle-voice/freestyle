@@ -14,7 +14,7 @@ export const SPRITES: Record<SpriteId, SpriteDefinition> = {
     ...SPRITES_INFO.spark,
     kind: "custom",
     hotRect: { x: 18, y: 190, width: 52, height: 52 },
-    bubble: { x: 12, y: 68, maxChars: 220 },
+    bubble: { maxChars: 220 },
   },
   jeb: JEB,
 };

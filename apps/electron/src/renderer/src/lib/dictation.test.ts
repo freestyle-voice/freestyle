@@ -146,7 +146,7 @@ describe("DictationController", () => {
   });
 
   it("falls back to REST transcription when no final arrives", async () => {
-    const { controller, phases, composer } = makeController();
+    const { controller, phases, composer, errors } = makeController();
     await flush();
     void controller.start();
     await flush();
@@ -168,8 +168,10 @@ describe("DictationController", () => {
     expect(composer).toEqual(["hello there"]);
     expect(phases.at(-1)).toBe("idle");
     state.streamerCallbacks?.onFinal("late");
+    state.streamerCallbacks?.onError("late transport error");
     await flush();
     expect(composer).toEqual(["hello there"]);
+    expect(errors).toEqual([]);
   });
 
   it("reports a timeout when nothing was recorded", async () => {

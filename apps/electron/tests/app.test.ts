@@ -131,6 +131,34 @@ test("embedded server answers health checks", async () => {
   expect(res.ok).toBe(true);
 });
 
+test("companion is served from the trusted app:// origin", async () => {
+  expect(companionPage.url()).toMatch(/^app:\/\/renderer\//);
+});
+
+test("companion can open the dictation WebSocket", async () => {
+  const outcome = await companionPage.evaluate(
+    (port) =>
+      new Promise<string>((resolve) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${port}/stream`);
+        const timer = setTimeout(() => {
+          ws.close();
+          resolve("timeout");
+        }, 8_000);
+        ws.onmessage = (event) => {
+          clearTimeout(timer);
+          ws.close();
+          resolve(`message:${String(event.data).slice(0, 40)}`);
+        };
+        ws.onclose = (event) => {
+          clearTimeout(timer);
+          resolve(`closed:${event.code}`);
+        };
+      }),
+    serverPort,
+  );
+  expect(outcome).toMatch(/^message:\{"type":"(config|error)"/);
+});
+
 test("no dashboard window exists", async () => {
   const urls = (app?.windows() ?? []).map((w) => w.url());
   for (const url of urls) {

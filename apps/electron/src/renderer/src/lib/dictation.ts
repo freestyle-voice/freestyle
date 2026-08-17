@@ -122,7 +122,11 @@ export class DictationController {
         this.enqueue(text);
       },
       onError: (message) => {
-        this.settleFinal();
+        // A streaming transport can report an error after the watchdog has
+        // already recovered the recording through the REST path. Treat that
+        // as stale just like a late final: the user has their transcript and
+        // should not see a spurious failure card.
+        if (!this.settleFinal()) return;
         this.setPhase("idle");
         this.callbacks.onError(message);
       },

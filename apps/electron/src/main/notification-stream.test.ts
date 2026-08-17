@@ -102,6 +102,31 @@ describe("startNotificationStream", () => {
     stop();
   });
 
+  it("drops a connection that never returns response headers", async () => {
+    const onDisconnected = vi.fn();
+    const fetchStream = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
+    const stop = startNotificationStream({
+      url: "http://127.0.0.1:4649/api/notifications/stream",
+      headers: {},
+      fetchStream,
+      onChange: () => {},
+      onDisconnected,
+      inactivityTimeoutMs: 10,
+    });
+
+    await vi.waitFor(() => expect(onDisconnected).toHaveBeenCalledTimes(1));
+    stop();
+  });
+
   it("drops a silent stream so fallback polling can resume", async () => {
     const stream = new ReadableStream<Uint8Array>({});
     const onDisconnected = vi.fn();

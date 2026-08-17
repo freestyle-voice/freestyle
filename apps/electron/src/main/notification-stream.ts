@@ -86,6 +86,9 @@ export function startNotificationStream(options: {
       inactivityTimer.unref();
     };
     try {
+      // Cover stalled connections as well as quiet established streams. Without
+      // this, a proxy that never sends response headers could suppress polling.
+      onActivity();
       const url =
         typeof options.url === "function" ? options.url() : options.url;
       const headers =

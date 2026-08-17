@@ -6,6 +6,7 @@ import {
   Card,
   OptionCard,
   SettingsScreenScaffold,
+  TabScreenScaffold,
 } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
@@ -25,7 +26,7 @@ const STEPS = [
   "In any app, switch to the Freestyle keyboard and tap the mic to dictate.",
 ];
 
-export default function KeyboardSetupScreen() {
+export function KeyboardSetupScreen({ isTab = false }: { isTab?: boolean }) {
   const theme = useTheme();
   const [micStatus, setMicStatus] = useState<MicPermission>("undetermined");
   const { status: keyboardStatus, ready: keyboardReady } = useKeyboardStatus();
@@ -45,11 +46,8 @@ export default function KeyboardSetupScreen() {
     if (status === "denied") void Linking.openSettings();
   }, []);
 
-  return (
-    <SettingsScreenScaffold
-      title="Voice keyboard"
-      subtitle="Add the Freestyle keyboard once, then use it in any app. Tap the mic and Freestyle opens to capture your voice, then drops the transcript straight back into the field. Full Access lets the keyboard talk to Freestyle and insert your text."
-    >
+  const content = (
+    <>
       {/* Live status — flips to a confirmed state the moment the keyboard runs
           with Full Access (detected via the shared App Group handshake). */}
       {keyboardStatus !== "unsupported" ? (
@@ -170,9 +168,28 @@ export default function KeyboardSetupScreen() {
           </ThemedText>
         </Pressable>
       ) : null}
+    </>
+  );
+
+  const subtitle =
+    "Add the Freestyle keyboard once, then use it in any app. Tap the mic and Freestyle opens to capture your voice, then drops the transcript straight back into the field. Full Access lets the keyboard talk to Freestyle and insert your text.";
+
+  if (isTab) {
+    return (
+      <TabScreenScaffold title="Keyboard" subtitle={subtitle}>
+        {content}
+      </TabScreenScaffold>
+    );
+  }
+
+  return (
+    <SettingsScreenScaffold title="Voice keyboard" subtitle={subtitle}>
+      {content}
     </SettingsScreenScaffold>
   );
 }
+
+export default KeyboardSetupScreen;
 
 const styles = StyleSheet.create({
   statusBanner: {

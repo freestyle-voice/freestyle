@@ -177,7 +177,11 @@ export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
     if (checkoutStatus !== "pending") return;
     const timer = setTimeout(() => {
       if (checkoutStore.status === "pending") {
-        updateCheckout({ status: "idle" });
+        updateCheckout({
+          status: "error",
+          error:
+            "We haven't seen your payment yet. If you completed checkout, wait a moment and refresh — otherwise contact support.",
+        });
       }
     }, CHECKOUT_POLL_WINDOW_MS);
     return () => clearTimeout(timer);

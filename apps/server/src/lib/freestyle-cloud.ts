@@ -303,9 +303,10 @@ export async function fetchCloudUser(token: string): Promise<CloudUser> {
     },
   });
   if (authClientErrorStatus(error) === 401) throw new FreestyleCloudAuthError();
-  if (error || !data?.user) {
+  if (error) {
     throw new Error(authClientErrorMessage(error, "Failed to load profile"));
   }
+  if (!data?.user) throw new FreestyleCloudAuthError();
   const { id, email, name, image } = data.user;
   return { id, email, name, image };
 }
@@ -555,10 +556,26 @@ function assertBillingUrl(url: unknown): asserts url is string {
  * Create a Stripe hosted Checkout session for the Pro plan. Returns the URL
  * the user must open in their browser to pay.
  */
+export class FreestyleCloudOrgError extends Error {
+  constructor() {
+    super("No active organization for this account");
+    this.name = "FreestyleCloudOrgError";
+  }
+}
+
+async function billingReference(
+  token: string,
+): Promise<{ customerType: "organization"; referenceId: string }> {
+  const referenceId = await resolveActiveOrgId(token);
+  if (!referenceId) throw new FreestyleCloudOrgError();
+  return { customerType: "organization", referenceId };
+}
+
 export async function createCheckoutSession(
   token: string,
   opts: { annual: boolean },
 ): Promise<{ url: string }> {
+  const reference = await billingReference(token);
   const { url } = await cloudJson<{ url?: string; redirect?: boolean }>(
     "/auth/subscription/upgrade",
     token,
@@ -570,6 +587,7 @@ export async function createCheckoutSession(
         annual: opts.annual,
         successUrl: CHECKOUT_SUCCESS_URL,
         cancelUrl: CHECKOUT_CANCEL_URL,
+        ...reference,
       }),
       signal: AbortSignal.timeout(BILLING_REQUEST_TIMEOUT_MS),
     },
@@ -589,13 +607,17 @@ export async function createCheckoutSession(
 export async function createBillingPortalSession(
   token: string,
 ): Promise<{ url: string }> {
+  const reference = await billingReference(token);
   const { url } = await cloudJson<{ url?: string; redirect?: boolean }>(
     "/auth/subscription/billing-portal",
     token,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ returnUrl: BILLING_PORTAL_RETURN_URL }),
+      body: JSON.stringify({
+        returnUrl: BILLING_PORTAL_RETURN_URL,
+        ...reference,
+      }),
       signal: AbortSignal.timeout(BILLING_REQUEST_TIMEOUT_MS),
     },
   );
@@ -920,11 +942,27 @@ export async function setCloudActiveOrganization(
  * active org's slug once per session and reuse it. Cleared on sign-out and
  * whenever the active org changes.
  */
-let cachedOrgSlug: { token: string; slug: string } | null = null;
+let cachedOrg: { token: string; id: string; slug: string } | null = null;
 
-/** Drop the cached org slug (call on sign-out or after switching orgs). */
+/** Drop the cached org (call on sign-out or after switching orgs). */
 export function clearCachedOrgSlug(): void {
-  cachedOrgSlug = null;
+  cachedOrg = null;
+}
+
+async function resolveActiveOrg(
+  token: string,
+): Promise<{ id: string; slug: string } | null> {
+  if (cachedOrg && cachedOrg.token === token) return cachedOrg;
+  const org = await getCloudActiveOrganization(token);
+  if (!org?.slug || !org.id) return null;
+  cachedOrg = { token, id: org.id, slug: org.slug };
+  return cachedOrg;
+}
+
+export async function resolveActiveOrgId(
+  token: string,
+): Promise<string | null> {
+  return (await resolveActiveOrg(token))?.id ?? null;
 }
 
 /**
@@ -937,11 +975,7 @@ export function clearCachedOrgSlug(): void {
 export async function resolveActiveOrgSlug(
   token: string,
 ): Promise<string | null> {
-  if (cachedOrgSlug && cachedOrgSlug.token === token) return cachedOrgSlug.slug;
-  const org = await getCloudActiveOrganization(token);
-  const slug = org?.slug ?? null;
-  if (slug) cachedOrgSlug = { token, slug };
-  return slug;
+  return (await resolveActiveOrg(token))?.slug ?? null;
 }
 
 /** Upper bound for the best-effort connection prewarm. */

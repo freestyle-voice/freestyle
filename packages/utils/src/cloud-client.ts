@@ -191,15 +191,16 @@ export function createCloudClient(config: CloudClientConfig): CloudClient {
     const res = await request(path, init);
     if (res.status === 401) throw new CloudAuthError();
     if (res.status === 429) {
-      const resetsAt = await res
-        .json()
-        .then((b) =>
-          b && typeof (b as { resetsAt?: unknown }).resetsAt === "string"
-            ? (b as { resetsAt: string }).resetsAt
-            : null,
-        )
-        .catch(() => null);
-      throw new CloudUsageError(resetsAt);
+      const body = (await res.json().catch(() => null)) as {
+        code?: unknown;
+        resetsAt?: unknown;
+      } | null;
+      if (body?.code === "rate_limited") {
+        throw new CloudRequestError(429, "Too many requests");
+      }
+      throw new CloudUsageError(
+        typeof body?.resetsAt === "string" ? body.resetsAt : null,
+      );
     }
     if (!res.ok) {
       const detail = await res.text().catch(() => "");

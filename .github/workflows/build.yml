@@ -387,6 +387,20 @@ jobs:
         working-directory: apps/electron
         run: node scripts/verify-native-binaries.mjs
 
+      - name: Verify macOS code signature
+        working-directory: apps/electron
+        run: |
+          set -euo pipefail
+          app=$(find dist -maxdepth 3 -name "*.app" -type d | head -n 1)
+          test -n "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl --assess --type execute --verbose=2 "$app"
+          for zip in dist/*.zip; do
+            tmp=$(mktemp -d)
+            ditto -x -k "$zip" "$tmp"
+            codesign --verify --deep --strict "$tmp"/*.app
+          done
+
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:

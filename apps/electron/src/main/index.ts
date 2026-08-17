@@ -94,6 +94,7 @@ import {
   createDictationDisplayRequestTracker,
   invalidateDictationDisplayRequest,
   resolveCompanionDisplay,
+  resolveDictationPanelDisplay,
   resolveDictationWindowDisplays,
   resolvePanelCompanionDisplays,
 } from "../shared/companion-position";
@@ -3038,6 +3039,7 @@ async function getFocusedExternalDisplay(): Promise<Display | null> {
 }
 
 const dictationDisplayRequests = createDictationDisplayRequestTracker();
+let activeDictationDisplay: Display | null = null;
 
 /**
  * Associate the visible companion with the target captured for this dictation
@@ -3064,6 +3066,7 @@ function anchorCompanionForDictation(): void {
 }
 
 function positionDictationWindows(display: Display): void {
+  activeDictationDisplay = display;
   const panelVisible =
     !!panelWindow && !panelWindow.isDestroyed() && panelWindow.isVisible();
   const { panelDisplay, companionDisplay } = resolveDictationWindowDisplays(
@@ -3650,12 +3653,17 @@ function openPanel(
   if (!wasVisible) {
     captureMain("panel_opened", { trigger: opts.trigger ?? "other" });
   }
-  invalidateDictationDisplayRequest(dictationDisplayRequests);
   const cursorDisplay = screen.getDisplayNearestPoint(
     screen.getCursorScreenPoint(),
   );
+  const dictationTriggered = opts.trigger === "dictation";
+  if (!dictationTriggered)
+    invalidateDictationDisplayRequest(dictationDisplayRequests);
+  const targetDisplay = dictationTriggered
+    ? resolveDictationPanelDisplay(activeDictationDisplay, cursorDisplay)
+    : cursorDisplay;
   const { panelDisplay, companionDisplay } =
-    resolvePanelCompanionDisplays(cursorDisplay);
+    resolvePanelCompanionDisplays(targetDisplay);
   positionPanelOnDisplay(panelDisplay);
   positionCompanionOnDisplay(companionDisplay);
   if (opts.focusComposer) {

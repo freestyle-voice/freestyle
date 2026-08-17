@@ -44,7 +44,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.7"
   },
   "scripts": {
     "start": "expo start",
@@ -52,7 +53,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "lint": "biome check src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "private": true
 }

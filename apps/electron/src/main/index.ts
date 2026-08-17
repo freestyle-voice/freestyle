@@ -1507,7 +1507,11 @@ function buildTrayContextMenu(): Menu {
 }
 
 function createTray(): void {
-  const trayImage = nativeImage.createFromPath(trayIconPath);
+  // Give the Freestyle mark enough presence in system trays while staying
+  // within the standard macOS menu-bar icon height.
+  const trayImage = nativeImage
+    .createFromPath(trayIconPath)
+    .resize({ width: 20, height: 20, quality: "best" });
   // Mark as template so macOS adapts to menu bar light/dark
   trayImage.setTemplateImage(true);
 

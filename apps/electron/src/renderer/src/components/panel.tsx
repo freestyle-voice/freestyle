@@ -1011,6 +1011,7 @@ function PanelInner({
         return anchor ? `${anchor} ${ev.text}` : ev.text;
       });
     });
+    window.api.panelRendererReady();
     return () => {
       offFocus?.();
       offShowSettings?.();

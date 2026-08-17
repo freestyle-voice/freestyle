@@ -45,6 +45,7 @@ declare global {
       panelDictationPartial: (text: string) => void;
       panelDictationFinal: (text: string) => void;
       panelDictationError: (message: string) => void;
+      panelRendererReady: () => void;
       onPanelDictation: (
         callback: (ev: {
           kind: "partial" | "final" | "error";

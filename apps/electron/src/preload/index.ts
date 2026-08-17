@@ -87,6 +87,7 @@ const api = {
     ipcRenderer.send("panel:dictation-final", text),
   panelDictationError: (message: string): void =>
     ipcRenderer.send("panel:dictation-error", message),
+  panelRendererReady: (): void => ipcRenderer.send("panel:renderer-ready"),
   onPanelDictation: (
     callback: (ev: {
       kind: "partial" | "final" | "error";

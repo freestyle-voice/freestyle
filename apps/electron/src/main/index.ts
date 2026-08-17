@@ -139,6 +139,7 @@ import {
   setTravelling,
   showNotifications,
 } from "./notification-window";
+import { PanelRendererMessageQueue } from "./panel-renderer-message-queue";
 import {
   copySelectionFromFocusedApp,
   isWaylandSession,
@@ -3443,24 +3444,16 @@ ipcMain.on("companion:hover", (event) => {
   openPanel({ trigger: "hover" });
 });
 
-let pendingDictation: { kind: string; text: string } | null = null;
-
 function forwardDictation(
   kind: "partial" | "final" | "error",
   text: string,
 ): void {
   const win = panelWindow;
   if (!win || win.isDestroyed()) return;
-  if (win.webContents.isLoading()) {
-    pendingDictation = { kind, text };
-    win.webContents.once("did-finish-load", () => {
-      if (!pendingDictation) return;
-      win.webContents.send("panel:dictation", pendingDictation);
-      pendingDictation = null;
-    });
-    return;
-  }
-  win.webContents.send("panel:dictation", { kind, text });
+  panelRendererMessages.send({
+    channel: "panel:dictation",
+    payload: { kind, text },
+  });
 }
 
 ipcMain.on("panel:open-for-dictation", (event) => {
@@ -3481,6 +3474,11 @@ ipcMain.on("panel:dictation-final", (event, text: string) => {
 ipcMain.on("panel:dictation-error", (event, message: string) => {
   if (event.sender !== companionWindow?.webContents) return;
   forwardDictation("error", message);
+});
+
+ipcMain.on("panel:renderer-ready", (event) => {
+  if (event.sender !== panelWindow?.webContents) return;
+  panelRendererMessages.markReady();
 });
 
 ipcMain.on("panel:close", (event) => {
@@ -3530,6 +3528,15 @@ ipcMain.on("panel:request-focus", (event) => {
 let panelWindow: BrowserWindow | null = null;
 let panelHideTimer: NodeJS.Timeout | null = null;
 let panelBusy = false;
+const panelRendererMessages = new PanelRendererMessageQueue((message) => {
+  const win = panelWindow;
+  if (!win || win.isDestroyed()) return;
+  if (message.channel === "panel:dictation") {
+    win.webContents.send(message.channel, message.payload);
+    return;
+  }
+  win.webContents.send(message.channel);
+});
 const PANEL_HIDE_GRACE_MS = 420;
 const PANEL_HOVER_PAD = 24;
 
@@ -3573,11 +3580,13 @@ function createPanelWindow(): void {
       backgroundThrottling: false,
     },
   });
+  panelRendererMessages.reset();
 
   panelWindow.setAlwaysOnTop(true, "screen-saver");
   panelWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   panelWindow.on("closed", () => {
     panelWindow = null;
+    panelRendererMessages.reset();
   });
   // Losing focus is the only signal that "hover off then hide" can rely on
   // once the composer has been clicked: pointer-leave alone is ignored while
@@ -3634,7 +3643,7 @@ function openPanel(
   if (opts.focusComposer) {
     win.show();
     win.focus();
-    win.webContents.send("panel:focus-composer");
+    panelRendererMessages.send({ channel: "panel:focus-composer" });
   } else {
     win.showInactive();
   }

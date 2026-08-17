@@ -6,6 +6,7 @@ import {
   type BrainFile as HomeFile,
   listBrainFiles,
   readBrainFile,
+  uniqueBrainPath,
   writeBrainFile,
 } from "@renderer/lib/brain-fs";
 import { queryKeys } from "@renderer/lib/query";
@@ -183,6 +184,7 @@ export function BrainFiles({
   const files: HomeFile[] = filesQuery.data ?? [];
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [view, setView] = useState<FileView>({ kind: "list" });
+  const [error, setError] = useState<string | null>(null);
 
   if (filesQuery.isLoading) return <DataSkeleton label="Loading Brain files" />;
   if (filesQuery.isError)
@@ -204,17 +206,32 @@ export function BrainFiles({
   };
 
   const saveFile = (path: string, text: string): void => {
+    setError(null);
     void writeBrainFile(path, text).then((ok) => {
-      if (ok) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.brain.all });
-        setView({ kind: "view", path, text });
+      if (!ok) {
+        setError("Couldn't save that file. Try again.");
+        return;
       }
+      void queryClient.invalidateQueries({ queryKey: queryKeys.brain.all });
+      setView({ kind: "view", path, text });
     });
   };
+
+  const createFile = (name: string, text: string): void => {
+    const wanted = `${root ? `${root}/` : ""}${slugify(name)}.md`;
+    void uniqueBrainPath(wanted).then((path) => saveFile(path, text));
+  };
+
+  const notice = error ? (
+    <p className="tavern-notice" role="alert">
+      {error}
+    </p>
+  ) : null;
 
   if (view.kind === "view") {
     return (
       <>
+        {notice}
         <button
           type="button"
           className="tavern-file-back"
@@ -237,7 +254,11 @@ export function BrainFiles({
             type="button"
             className="tavern-file-delete"
             onClick={() => {
-              void deleteBrainFile(view.path).then(() => {
+              void deleteBrainFile(view.path).then((ok) => {
+                if (!ok) {
+                  setError("Couldn't delete that file. Try again.");
+                  return;
+                }
                 setView({ kind: "list" });
                 void queryClient.invalidateQueries({
                   queryKey: queryKeys.brain.all,
@@ -254,19 +275,23 @@ export function BrainFiles({
 
   if (view.kind === "edit") {
     return (
-      <FileEditor
-        label={view.path.replace(/\\/g, "/")}
-        draft={view.draft}
-        onDraft={(draft) => setView({ ...view, draft })}
-        onSave={() => saveFile(view.path, view.draft)}
-        onCancel={() => openFile(view.path)}
-      />
+      <>
+        {notice}
+        <FileEditor
+          label={view.path.replace(/\\/g, "/")}
+          draft={view.draft}
+          onDraft={(draft) => setView({ ...view, draft })}
+          onSave={() => saveFile(view.path, view.draft)}
+          onCancel={() => openFile(view.path)}
+        />
+      </>
     );
   }
 
   if (view.kind === "create") {
     return (
       <>
+        {notice}
         <input
           className="tavern-editor-name"
           value={view.name}
@@ -285,10 +310,7 @@ export function BrainFiles({
           onDraft={(draft) => setView({ ...view, draft })}
           onSave={() => {
             capture("brain_file_created", { folder: root || "root" });
-            saveFile(
-              `${root ? `${root}/` : ""}${slugify(view.name)}.md`,
-              view.draft,
-            );
+            createFile(view.name, view.draft);
           }}
           onCancel={() => setView({ kind: "list" })}
         />

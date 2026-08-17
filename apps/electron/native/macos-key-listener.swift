@@ -448,7 +448,8 @@ if let keyEventTap {
     CFRunLoopAddSource(CFRunLoopGetMain(), keyEventRunLoopSource, .commonModes)
     CGEvent.tapEnable(tap: keyEventTap, enable: true)
 } else {
-    FileHandle.standardError.write("Failed to create keyboard event tap\n".data(using: .utf8)!)
+    FileHandle.standardError.write("accessibility-not-granted\n".data(using: .utf8)!)
+    exit(2)
 }
 
 let signalSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)

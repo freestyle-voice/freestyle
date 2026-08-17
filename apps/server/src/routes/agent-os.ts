@@ -28,14 +28,21 @@ const agentOsRoute = new Hono()
       "json",
       z.object({
         path: anyPath,
-        offset: z.number().int().min(1).optional(),
+        offset: z.number().int().min(0).optional(),
         limit: z.number().int().min(1).max(5_000).optional(),
       }),
     ),
     (c) => {
       try {
         const { path, offset, limit } = c.req.valid("json");
-        return c.json({ ok: true, ...readAgentFile(path, offset, limit) });
+        return c.json({
+          ok: true,
+          ...readAgentFile(
+            path,
+            offset ? Math.max(offset, 1) : undefined,
+            limit,
+          ),
+        });
       } catch (err) {
         return c.json(failure(err));
       }

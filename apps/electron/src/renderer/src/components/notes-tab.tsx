@@ -1,6 +1,10 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
 import { Markdown } from "@renderer/components/markdown";
-import { deleteBrainFile, writeBrainFile } from "@renderer/lib/brain-fs";
+import {
+  deleteBrainFile,
+  uniqueBrainPath,
+  writeBrainFile,
+} from "@renderer/lib/brain-fs";
 import type { NoteSummary } from "@renderer/lib/brain-views";
 import {
   brainFileQueryOptions,
@@ -71,8 +75,9 @@ export function NotesTab(): React.JSX.Element {
     let path = current.path;
     if (!path) {
       const slug = slugForTitle(noteLines(text).title);
-      path = `notes/${slug}.md`;
-      setView((v) => (v.kind === "note" ? { ...v, path } : v));
+      path = await uniqueBrainPath(`notes/${slug}.md`);
+      const chosen = path;
+      setView((v) => (v.kind === "note" ? { ...v, path: chosen } : v));
     }
     const ok = await writeBrainFile(path, text);
     if (!ok) return;

@@ -136,7 +136,6 @@ declare global {
       // Transcription completion broadcast
       sendTranscriptionDone: () => void;
       onTranscriptionDone: (callback: () => void) => () => void;
-      invalidatePluginView: () => void;
     };
   }
 }

@@ -1,16 +1,22 @@
 import { execFile, execFileSync } from "node:child_process";
 import { getNativeBinaryPath } from "../native-binary";
+import { AUDIO_CONTROL_CMD_TIMEOUT_MS } from "./audio-control-constants";
 
 function execFileText(path: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(path, args, { encoding: "utf8" }, (err, stdout, stderr) => {
-      if (err) {
-        const detail = typeof stderr === "string" ? stderr.trim() : "";
-        reject(new Error(detail || err.message));
-        return;
-      }
-      resolve(stdout.trim());
-    });
+    execFile(
+      path,
+      args,
+      { encoding: "utf8", timeout: AUDIO_CONTROL_CMD_TIMEOUT_MS },
+      (err, stdout, stderr) => {
+        if (err) {
+          const detail = typeof stderr === "string" ? stderr.trim() : "";
+          reject(new Error(detail || err.message));
+          return;
+        }
+        resolve(stdout.trim());
+      },
+    );
   });
 }
 

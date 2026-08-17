@@ -26,7 +26,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export function ConnectorLogo({
   name,
@@ -524,7 +524,6 @@ export function ConnectedApps({
     clearError,
   } = useConnectorConnect();
   const [actionError, setActionError] = useState<string | null>(null);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(query.trim()), 300);
@@ -612,10 +611,10 @@ export function ConnectedApps({
 
   const searching = search.length > 0;
 
+  const [loadMoreEl, setLoadMoreEl] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
-    const target = loadMoreRef.current;
     if (
-      !target ||
+      !loadMoreEl ||
       searching ||
       !browseQuery.hasNextPage ||
       browseQuery.isFetchingNextPage
@@ -628,9 +627,10 @@ export function ConnectedApps({
       },
       { rootMargin: "180px" },
     );
-    observer.observe(target);
+    observer.observe(loadMoreEl);
     return () => observer.disconnect();
   }, [
+    loadMoreEl,
     browseQuery.fetchNextPage,
     browseQuery.hasNextPage,
     browseQuery.isFetchingNextPage,
@@ -802,7 +802,7 @@ export function ConnectedApps({
 
           {!initialLoading && browse.length > 0 ? (
             <div
-              ref={loadMoreRef}
+              ref={setLoadMoreEl}
               className={`connector-load-more${browseQuery.isFetchingNextPage ? " is-loading" : ""}`}
               role="status"
             >

@@ -202,7 +202,9 @@ function ConnectStage({
   activeSlugs,
   phases,
   applied,
+  failed,
   onConnect,
+  onRetry,
 }: {
   apps: readonly string[];
   templates: readonly string[];
@@ -210,9 +212,12 @@ function ConnectStage({
   activeSlugs: ReadonlySet<string>;
   phases: Record<string, ConnectPhase>;
   applied: ReadonlySet<string>;
+  failed: ReadonlySet<string>;
   onConnect: (slug: string) => void;
+  onRetry: () => void;
 }): React.JSX.Element {
   const anyConnected = apps.some((slug) => activeSlugs.has(slug));
+  const anyFailed = templates.some((id) => failed.has(id));
   return (
     <div className="tavern-onb-connect">
       <div className="tavern-onb-apps">
@@ -256,7 +261,14 @@ function ConnectStage({
           </li>
         ))}
       </ul>
-      {anyConnected && templates.some((id) => !applied.has(id)) ? (
+      {anyFailed ? (
+        <span className="tavern-onb-writing">
+          couldn&apos;t set up ·{" "}
+          <button type="button" className="tavern-onb-link" onClick={onRetry}>
+            retry
+          </button>
+        </span>
+      ) : anyConnected && templates.some((id) => !applied.has(id)) ? (
         <span className="tavern-onb-writing">setting up…</span>
       ) : null}
     </div>
@@ -340,6 +352,44 @@ export function OnboardingGate({
   const profileStarted = useRef(false);
   const emailApplying = useRef(false);
   const calendarApplying = useRef(false);
+  const [failedTemplates, setFailedTemplates] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+
+  const applyTemplates = (
+    ids: readonly string[],
+    applying: React.RefObject<boolean>,
+  ): void => {
+    applying.current = true;
+    void applyAutomationTemplates([...ids])
+      .then((result) => {
+        window.api.spriteEvent({ kind: "emote", emotion: "proud" });
+        const done = new Set<string>();
+        for (const entry of result.applied) done.add(entry.id);
+        for (const entry of result.skipped)
+          if (entry.reason === "exists") done.add(entry.id);
+        setApplied((prev) => new Set([...prev, ...done]));
+        setFailedTemplates((prev) => {
+          const next = new Set(prev);
+          for (const id of ids) if (!done.has(id)) next.add(id);
+          return next;
+        });
+      })
+      .catch(() => {
+        setFailedTemplates((prev) => new Set([...prev, ...ids]));
+      })
+      .finally(() => {
+        applying.current = false;
+      });
+  };
+
+  const retryTemplates = (ids: readonly string[]): void => {
+    setFailedTemplates((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+  };
   const updateProfile = useUpdateProfileFields();
 
   const { connect, phases } = useConnectorConnect();
@@ -443,47 +493,31 @@ export function OnboardingGate({
   // Automations follow connections: once the flow has reached the matching
   // beat and an app in the group is active, the templates are applied
   // server-side. Idempotent there, so replays and re-renders are safe.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: applyTemplates is stable per render
   useEffect(() => {
     if (beatIndex < BEATS.indexOf("inbox")) return;
     if (!emailConnected || emailApplying.current) return;
-    if (EMAIL_TEMPLATE_IDS.every((id) => applied.has(id))) return;
-    emailApplying.current = true;
-    void applyAutomationTemplates([...EMAIL_TEMPLATE_IDS])
-      .then((result) => {
-        window.api.spriteEvent({ kind: "emote", emotion: "proud" });
-        setApplied((prev) => {
-          const next = new Set(prev);
-          for (const entry of result.applied) next.add(entry.id);
-          for (const entry of result.skipped)
-            if (entry.reason === "exists") next.add(entry.id);
-          return next;
-        });
-      })
-      .catch(() => {
-        emailApplying.current = false;
-      });
-  }, [beatIndex, emailConnected, applied]);
+    if (
+      EMAIL_TEMPLATE_IDS.every(
+        (id) => applied.has(id) || failedTemplates.has(id),
+      )
+    )
+      return;
+    applyTemplates(EMAIL_TEMPLATE_IDS, emailApplying);
+  }, [beatIndex, emailConnected, applied, failedTemplates]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: applyTemplates is stable per render
   useEffect(() => {
     if (beatIndex < BEATS.indexOf("compass")) return;
     if (!calendarConnected || calendarApplying.current) return;
-    if (CALENDAR_TEMPLATE_IDS.every((id) => applied.has(id))) return;
-    calendarApplying.current = true;
-    void applyAutomationTemplates([...CALENDAR_TEMPLATE_IDS])
-      .then((result) => {
-        window.api.spriteEvent({ kind: "emote", emotion: "proud" });
-        setApplied((prev) => {
-          const next = new Set(prev);
-          for (const entry of result.applied) next.add(entry.id);
-          for (const entry of result.skipped)
-            if (entry.reason === "exists") next.add(entry.id);
-          return next;
-        });
-      })
-      .catch(() => {
-        calendarApplying.current = false;
-      });
-  }, [beatIndex, calendarConnected, applied]);
+    if (
+      CALENDAR_TEMPLATE_IDS.every(
+        (id) => applied.has(id) || failedTemplates.has(id),
+      )
+    )
+      return;
+    applyTemplates(CALENDAR_TEMPLATE_IDS, calendarApplying);
+  }, [beatIndex, calendarConnected, applied, failedTemplates]);
 
   // The receipt does the quiet writes: the goal onto the real list, the
   // profile into the brain. Keys on the beat alone, same contract as v1.
@@ -687,7 +721,9 @@ export function OnboardingGate({
             activeSlugs={activeSlugs}
             phases={phases}
             applied={applied}
+            failed={failedTemplates}
             onConnect={connect}
+            onRetry={() => retryTemplates(EMAIL_TEMPLATE_IDS)}
           />
         ) : null}
 
@@ -699,7 +735,9 @@ export function OnboardingGate({
             activeSlugs={activeSlugs}
             phases={phases}
             applied={applied}
+            failed={failedTemplates}
             onConnect={connect}
+            onRetry={() => retryTemplates(CALENDAR_TEMPLATE_IDS)}
           />
         ) : null}
 

@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -9,7 +9,13 @@ import {
 } from "react";
 import type { CloudUser } from "../../../shared/cloud-user";
 import { getClient } from "./api";
+import { resetBrainCache } from "./brain-fs";
 import { queryKeys } from "./query";
+
+function resetAccountCaches(queryClient: QueryClient): void {
+  resetBrainCache();
+  queryClient.clear();
+}
 
 export interface UseCloudAuth {
   user: CloudUser | null;
@@ -160,8 +166,7 @@ function useCloudAuthState(): UseCloudAuth {
         }
         const data = await tokenRes.json();
         if (attempt !== signInAttemptRef.current) return null;
-        queryClient.removeQueries({ queryKey: queryKeys.cloud.usage });
-        queryClient.removeQueries({ queryKey: queryKeys.connectors.all });
+        resetAccountCaches(queryClient);
         wasSignedInRef.current = true;
         setSessionExpired(false);
         setUser(data.user);
@@ -203,8 +208,7 @@ function useCloudAuthState(): UseCloudAuth {
     wasSignedInRef.current = false;
     setSessionExpired(false);
     setUser(null);
-    queryClient.removeQueries({ queryKey: queryKeys.cloud.usage });
-    queryClient.removeQueries({ queryKey: queryKeys.connectors.all });
+    resetAccountCaches(queryClient);
   }, [queryClient]);
 
   return {

@@ -224,6 +224,9 @@ export class NativeKeyListener {
         this.process = null;
         if (!settled) {
           settled = true;
+          log.warn(
+            `Key listener exited before READY (code ${code})${stderrOutput.trim() ? `: ${stderrOutput.trim()}` : ""}`,
+          );
           if (stderrOutput.trim()) {
             this.options.onError?.(stderrOutput.trim());
           }

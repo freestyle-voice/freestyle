@@ -130,9 +130,19 @@ export function OpenerCards({
   });
 
   const applyTemplate = useMutation({
-    mutationFn: applyOpenerTemplate,
+    mutationFn: async (templateId: string) => {
+      const result = await applyOpenerTemplate(templateId);
+      const done =
+        result.applied.length > 0 ||
+        result.skipped.some((entry) => entry.reason === "exists");
+      if (!done) throw new Error("template-not-applied");
+      return result;
+    },
     onSuccess: (result, templateId) => {
       setApplied((prev) => new Set(prev).add(templateId));
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.scheduled.tasks,
+      });
       capture("automation_applied", {
         surface: "opener",
         templateId,

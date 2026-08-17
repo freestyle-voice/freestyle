@@ -191,3 +191,16 @@ export async function listBrainFiles(prefix?: string): Promise<BrainFile[]> {
     f.path.replace(/\\/g, "/").startsWith(`${prefix}/`),
   );
 }
+
+export async function uniqueBrainPath(path: string): Promise<string> {
+  const files = await listBrainFiles().catch(() => [] as BrainFile[]);
+  const taken = new Set(files.map((f) => f.path.replace(/\\/g, "/")));
+  if (!taken.has(path)) return path;
+  const match = /^(.*?)(\.md)?$/.exec(path);
+  const base = match?.[1] ?? path;
+  const ext = match?.[2] ?? "";
+  for (let n = 2; ; n++) {
+    const candidate = `${base}-${n}${ext}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}

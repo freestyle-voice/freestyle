@@ -57,9 +57,10 @@ export async function getQuietHours(): Promise<QuietHours> {
 }
 
 export async function setQuietHours(quietHours: QuietHours): Promise<void> {
-  await apiFetch("/api/notifications/preferences", {
+  const res = await apiFetch("/api/notifications/preferences", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ quietHours }),
   });
+  if (!res.ok) throw new Error("Could not save quiet hours.");
 }

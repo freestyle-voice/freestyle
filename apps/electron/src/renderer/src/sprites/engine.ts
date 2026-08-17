@@ -160,7 +160,7 @@ export class SheetEngine {
   /** Drop any sequence and loop the ambient state. */
   setAmbient(state: string): void {
     this.ambient = state;
-    if (!this.playing || this.playing.meta.loop) {
+    if (!this.playing || this.playing.loopsLeft === Number.POSITIVE_INFINITY) {
       this.playing = null;
       this.queue = [];
     }

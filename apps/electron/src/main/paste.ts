@@ -13,9 +13,13 @@ import { getNativeBinaryPath } from "./native-binary";
 
 const log = createAppLogger("paste");
 
+const NATIVE_HELPER_TIMEOUT_MS = 5000;
+
 function execAsync(cmd: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    exec(cmd, (err) => (err ? reject(err) : resolve()));
+    exec(cmd, { timeout: NATIVE_HELPER_TIMEOUT_MS }, (err) =>
+      err ? reject(err) : resolve(),
+    );
   });
 }
 
@@ -61,7 +65,11 @@ async function execFileAsync(
   path: string,
   args: string[] = [],
 ): Promise<number> {
-  const { code } = await execFileWithOutput(path, args);
+  const { code } = await execFileWithOutput(
+    path,
+    args,
+    NATIVE_HELPER_TIMEOUT_MS,
+  );
   return code;
 }
 

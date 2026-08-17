@@ -141,7 +141,10 @@ function useServerSettings(): {
     onError: (_error, _variables, context) => {
       queryClient.setQueryData(queryKeys.settings, context?.previous);
     },
-    onSuccess: () => window.api.reloadDictationPrefs(),
+    onSuccess: (_data, { key }) => {
+      window.api.reloadDictationPrefs();
+      if (key === SETTINGS_KEYS.remixHotkey) window.api.reloadRemixHotkey();
+    },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.settings }),
   });
@@ -359,6 +362,14 @@ function HotkeyRow({
           <span className="tavern-set-keys-change">Change</span>
         </button>
       )}
+      {!recording && recorder.blockedNotice ? (
+        <span className="tavern-set-hint">
+          That combination is already taken.
+        </span>
+      ) : null}
+      {!recording && recorder.invalidReleaseNotice ? (
+        <span className="tavern-set-hint">Hold a modifier with the key.</span>
+      ) : null}
     </div>
   );
 }
@@ -1193,6 +1204,7 @@ function ApplicationPage({
     | { kind: "idle" }
     | { kind: "checking" }
     | { kind: "none" }
+    | { kind: "failed" }
     | { kind: "available"; version: string; downloaded: boolean }
   >({ kind: "idle" });
 
@@ -1213,6 +1225,7 @@ function ApplicationPage({
       .companionForm()
       .then(setCompanionForm)
       .catch(() => {});
+    return window.api.onCompanionForm(setCompanionForm);
   }, []);
 
   const checkForUpdates = (): void => {
@@ -1230,7 +1243,7 @@ function ApplicationPage({
             : { kind: "none" },
         );
       })
-      .catch(() => setUpdateStatus({ kind: "none" }));
+      .catch(() => setUpdateStatus({ kind: "failed" }));
   };
 
   return (
@@ -1288,9 +1301,11 @@ function ApplicationPage({
         label={
           updateStatus.kind === "none"
             ? "Up to date"
-            : updateStatus.kind === "available"
-              ? `v${updateStatus.version} available`
-              : "Updates"
+            : updateStatus.kind === "failed"
+              ? "Couldn't check for updates"
+              : updateStatus.kind === "available"
+                ? `v${updateStatus.version} available`
+                : "Updates"
         }
         action={updateStatus.kind === "checking" ? "Checking…" : "Check now"}
         pending={updateStatus.kind === "checking"}
@@ -1585,10 +1600,7 @@ export function SettingsView({
                   value(SETTINGS_KEYS.hotkey) || getDefaultHotkey(),
                 )
               }
-              onSaved={(accel) => {
-                setSetting(SETTINGS_KEYS.remixHotkey, accel);
-                window.setTimeout(() => window.api.reloadRemixHotkey(), 300);
-              }}
+              onSaved={(accel) => setSetting(SETTINGS_KEYS.remixHotkey, accel)}
             />
             <InfoRow label="Summon the panel" value="⌥ Space" />
           </>

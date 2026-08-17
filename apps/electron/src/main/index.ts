@@ -49,7 +49,6 @@ import {
   captureException,
   closeDb,
   disposeServerPlugins,
-  readSetting as readServerSetting,
   shutdownPosthog,
   startServer as startFreestyleServer,
 } from "@freestyle-voice/server";
@@ -80,10 +79,7 @@ import { autoUpdater } from "electron-updater";
 import { hc } from "hono/client";
 import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
-import {
-  type AudioPlaybackMode,
-  isActiveAudioPlaybackMode,
-} from "../shared/audio-playback";
+import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
 import {
   type CompanionForm,
   type CompanionState,
@@ -128,7 +124,6 @@ import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
-import { MicListener } from "./mic-listener";
 import { getNativeBinaryPath } from "./native-binary";
 import {
   notificationStreamUrl,
@@ -482,7 +477,6 @@ let hotkeyPressed = false;
 let dictationInProgress = false;
 let currentHotkeyAccel: string | null = null;
 let hotkeyActivationMode: "hold" | "toggle" = "hold";
-let micListener: MicListener | null = null;
 let hotkeyRecorder: HotkeyRecorder | null = null;
 /** Own listener process — native binaries only take one accelerator each. */
 let remixKeyListener: NativeKeyListener | null = null;
@@ -1066,6 +1060,7 @@ async function deliverOutput(
 
   try {
     if (mode === OutputMode.Paste) {
+      await yieldFocusToUserApp();
       await pasteIntoFocusedApp(text);
     } else {
       clipboard.writeText(text);
@@ -1209,10 +1204,6 @@ async function factoryReset(): Promise<void> {
     if (keyListener) {
       keyListener.stop();
       keyListener = null;
-    }
-    if (micListener) {
-      micListener.stop();
-      micListener = null;
     }
     if (process.platform === "win32") {
       globalShortcut.unregisterAll();
@@ -1650,6 +1641,10 @@ app.whenReady().then(async () => {
   // and ignore CommandOrControl + R in production.
   app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window);
+    window.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:/i.test(url)) void shell.openExternal(url);
+      return { action: "deny" };
+    });
   });
 
   // IPC: paste text at cursor. `appContext` is accepted for backward
@@ -2268,13 +2263,6 @@ app.whenReady().then(async () => {
     // Wait for server settings — don't spawn a listener just to tear it down.
     applyRemixSettings(settings);
   });
-
-  // Start microphone activity monitoring
-  micListener = new MicListener({
-    excludePid: process.pid,
-    onStateChange: () => {},
-  });
-  micListener.start();
 
   // Listen for hotkey changes from the settings UI
   ipcMain.on("hotkey:update", (_event, newHotkey: string) => {
@@ -3151,38 +3139,28 @@ function companionFormSetting(): CompanionForm {
   return parseCompanionForm(readSettings().companionForm as string | undefined);
 }
 
-function dictationPrefs(): DictationPrefs {
-  let destination: "cursor" | "composer" = "cursor";
-  let outputMode: "paste" | "clipboard" = "paste";
-  let soundEnabled = true;
-  let audioPlaybackMode: AudioPlaybackMode = "off";
-  let micDeviceId: string | null = null;
-  try {
-    micDeviceId = readServerSetting(SETTINGS_KEYS.micDeviceId) || null;
-    destination = parseDictationDestination(
-      readServerSetting(SETTINGS_KEYS.dictationDestination),
-    );
-    outputMode =
-      readServerSetting(SETTINGS_KEYS.outputMode) === "clipboard"
-        ? "clipboard"
-        : "paste";
-    soundEnabled = readServerSetting(SETTINGS_KEYS.soundEnabled) !== "false";
-    const mode = readServerSetting("audio_playback_mode");
-    if (mode === "duck" || mode === "pause" || mode === "off") {
-      audioPlaybackMode = mode;
-    }
-  } catch {}
+async function dictationPrefs(): Promise<DictationPrefs> {
+  const settings = (await getServerSettings()) ?? {};
+  const mode = settings.audio_playback_mode;
   return {
-    destination,
-    outputMode,
-    soundEnabled,
-    audioPlaybackMode,
-    micDeviceId,
+    destination: parseDictationDestination(
+      settings[SETTINGS_KEYS.dictationDestination],
+    ),
+    outputMode:
+      settings[SETTINGS_KEYS.outputMode] === "clipboard"
+        ? "clipboard"
+        : "paste",
+    soundEnabled: settings[SETTINGS_KEYS.soundEnabled] !== "false",
+    audioPlaybackMode:
+      mode === "duck" || mode === "pause" || mode === "off" ? mode : "off",
+    micDeviceId: settings[SETTINGS_KEYS.micDeviceId] || null,
   };
 }
 
 export function broadcastDictationPrefs(): void {
-  companionWindow?.webContents.send("dictation:prefs", dictationPrefs());
+  void dictationPrefs().then((prefs) => {
+    companionWindow?.webContents.send("dictation:prefs", prefs);
+  });
 }
 
 ipcMain.handle("dictation:prefs", () => dictationPrefs());
@@ -3736,6 +3714,12 @@ function schedulePanelHide(): void {
 
 const SUMMON_ACCELERATOR = "Alt+Space";
 
+function reportSummonConflict(): void {
+  reportHotkeyError(
+    `The panel shortcut ${SUMMON_ACCELERATOR} is taken by another app. Open the panel by hovering the corner or from the menu bar.`,
+  );
+}
+
 function registerSummonShortcut(): void {
   try {
     if (globalShortcut.isRegistered(SUMMON_ACCELERATOR)) {
@@ -3746,10 +3730,10 @@ function registerSummonShortcut(): void {
       if (visible) closePanel();
       else openPanel({ focusComposer: true, trigger: "hotkey" });
     });
-    if (!ok)
-      log.warn(`Could not register summon shortcut ${SUMMON_ACCELERATOR}`);
+    if (!ok) reportSummonConflict();
   } catch (err) {
     log.warn(`Summon shortcut registration failed: ${err}`);
+    reportSummonConflict();
   }
 }
 
@@ -4093,6 +4077,7 @@ async function registerRemixHotkey(hotkey?: string): Promise<void> {
   const started = await listener.start();
   if (!started) {
     hotkeyLog.warn(`Talk key listener did not start for "${accel}"`);
+    listener.stop();
     if (remixKeyListener === listener) remixKeyListener = null;
   }
 }
@@ -4259,6 +4244,22 @@ function scheduleHotkeyRegistration(hotkey?: string): void {
   });
 }
 
+let accessibilityWatch: NodeJS.Timeout | null = null;
+const ACCESSIBILITY_WATCH_MS = 5_000;
+
+function watchForAccessibilityGrant(): void {
+  if (accessibilityWatch || process.platform !== "darwin") return;
+  accessibilityWatch = setInterval(() => {
+    if (!systemPreferences.isTrustedAccessibilityClient(false)) return;
+    clearInterval(accessibilityWatch!);
+    accessibilityWatch = null;
+    hotkeyLog.info("Accessibility granted; re-registering hotkeys.");
+    scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
+    if (remixInitialized) scheduleRemixHotkeyRegistration();
+  }, ACCESSIBILITY_WATCH_MS);
+  accessibilityWatch.unref();
+}
+
 async function registerHotkey(hotkey?: string): Promise<void> {
   try {
     // Tear down previous listener
@@ -4345,6 +4346,9 @@ async function registerHotkey(hotkey?: string): Promise<void> {
       );
       listener.stop();
       keyListener = null;
+      if (nativeError.includes("accessibility-not-granted")) {
+        watchForAccessibilityGrant();
+      }
 
       // Fallback: globalShortcut has no key-up — always use toggle semantics
       const registeredAccel = registerGlobalShortcutToggle(accel);
@@ -4378,24 +4382,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
 
 // Clean up key listener and mic listener on quit
 app.on("will-quit", () => {
-  audioPlaybackController.restoreSync();
-  stopLinuxPasteHelper();
-  stopNotificationEvents();
-  destroyCompanionWindow();
-  destroyPanelWindow();
-  if (keyListener) {
-    keyListener.stop();
-    keyListener = null;
-  }
-  if (remixKeyListener) {
-    remixKeyListener.stop();
-    remixKeyListener = null;
-  }
-  if (micListener) {
-    micListener.stop();
-    micListener = null;
-  }
-  globalShortcut.unregisterAll();
+  cleanupBeforeQuit();
 });
 
 // Keep app running in background when windows are closed (tray stays active)
@@ -4426,13 +4413,15 @@ function cleanupBeforeQuit(): void {
   audioPlaybackController.restoreSync();
   stopLinuxPasteHelper();
   stopNotificationEvents();
+  destroyCompanionWindow();
+  destroyPanelWindow();
   if (keyListener) {
     keyListener.stop();
     keyListener = null;
   }
-  if (micListener) {
-    micListener.stop();
-    micListener = null;
+  if (remixKeyListener) {
+    remixKeyListener.stop();
+    remixKeyListener = null;
   }
   stopHotkeyRecorderProcess();
   globalShortcut.unregisterAll();
@@ -4440,6 +4429,9 @@ function cleanupBeforeQuit(): void {
     httpServer.close();
     httpServer = null;
   }
+  try {
+    closeDb();
+  } catch {}
 }
 
 app.on("before-quit", (event) => {

@@ -30,6 +30,7 @@ export function Capabilities({
 }): React.JSX.Element {
   const [groups, setGroups] = useState<CapabilityGroup[] | null>(null);
   const [applied, setApplied] = useState<ReadonlySet<string>>(new Set());
+  const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -69,9 +70,23 @@ export function Capabilities({
     }
     if (item.templateId) {
       const templateId = item.templateId;
-      setApplied((prev) => new Set(prev).add(templateId));
-      capture("automation_applied", { surface: "capability", templateId });
-      void applyOpenerTemplate(templateId).catch(() => {});
+      setFailed((prev) => {
+        const next = new Set(prev);
+        next.delete(templateId);
+        return next;
+      });
+      void applyOpenerTemplate(templateId)
+        .then((result) => {
+          const done =
+            result.applied.length > 0 ||
+            result.skipped.some((entry) => entry.reason === "exists");
+          if (!done) throw new Error("template-not-applied");
+          setApplied((prev) => new Set(prev).add(templateId));
+          capture("automation_applied", { surface: "capability", templateId });
+        })
+        .catch(() => {
+          setFailed((prev) => new Set(prev).add(templateId));
+        });
       return;
     }
     if (item.prompt) onPrompt(item.prompt);
@@ -98,6 +113,9 @@ export function Capabilities({
               <span className="tavern-cap-item-title">
                 {item.title}
                 {item.templateId && applied.has(item.templateId) ? " ✓" : ""}
+                {item.templateId && failed.has(item.templateId)
+                  ? " · couldn't set up, tap to retry"
+                  : ""}
               </span>
               <span className="tavern-cap-item-sub">{item.subtitle}</span>
             </button>

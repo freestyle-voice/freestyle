@@ -289,8 +289,6 @@ const api = {
     ipcRenderer.on("transcription:done", handler);
     return () => ipcRenderer.removeListener("transcription:done", handler);
   },
-
-  invalidatePluginView: (): void => ipcRenderer.send("plugin-view:invalidate"),
 };
 
 // Use `contextBridge` APIs to expose Electron APIs to

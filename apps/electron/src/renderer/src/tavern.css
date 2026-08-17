@@ -2843,6 +2843,15 @@
   color: var(--tavern-mute);
   animation: tavern-onb-blink 1s steps(1) infinite;
 }
+.tavern-onb-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
 
 .tavern-onb-foot2 {
   display: flex;

@@ -1,10 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { getClient } from "./api";
-import {
-  fetchScheduledRunTimes,
-  listNoteSummaries,
-  listScheduledTaskViews,
-} from "./brain-views";
+import { listNoteSummaries } from "./brain-views";
 import {
   type ConnectorCatalogPage,
   getConnectorDetails,
@@ -14,6 +10,7 @@ import {
 } from "./connectors";
 import type { AvailableModel } from "./models";
 import { getQuietHours, listNotificationHistory } from "./notifications";
+import { listScheduledTasks } from "./scheduled-tasks";
 import {
   getLatestThread,
   getThread,
@@ -108,8 +105,10 @@ export const queryKeys = {
     files: (root: string) => ["brain", "files", root] as const,
     file: (path: string) => ["brain", "file", path] as const,
     notes: ["brain", "notes"] as const,
-    scheduledTasks: ["brain", "scheduled-tasks"] as const,
-    scheduledRunTimes: ["brain", "scheduled-run-times"] as const,
+  },
+
+  scheduled: {
+    tasks: ["scheduled", "tasks"] as const,
   },
 
   /** Empty-state opener cards (`GET /api/suggestions/home`). */
@@ -301,14 +300,6 @@ export function threadHistoryInfiniteQueryOptions(
   };
 }
 
-export function scheduledRunTimesQueryOptions() {
-  return {
-    queryKey: queryKeys.brain.scheduledRunTimes,
-    queryFn: fetchScheduledRunTimes,
-    staleTime: 60 * 1000,
-  };
-}
-
 export function quietHoursQueryOptions() {
   return {
     queryKey: queryKeys.notifications.quietHours,
@@ -342,8 +333,8 @@ export function notesQueryOptions() {
 
 export function scheduledTasksQueryOptions() {
   return {
-    queryKey: queryKeys.brain.scheduledTasks,
-    queryFn: listScheduledTaskViews,
+    queryKey: queryKeys.scheduled.tasks,
+    queryFn: listScheduledTasks,
   };
 }
 

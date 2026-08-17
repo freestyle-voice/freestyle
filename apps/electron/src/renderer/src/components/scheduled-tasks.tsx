@@ -1,15 +1,12 @@
-import { apiFetch } from "@renderer/lib/api";
+import { DataSkeleton } from "@renderer/components/data-skeleton";
+import { queryKeys, scheduledTasksQueryOptions } from "@renderer/lib/query";
+import {
+  type ScheduledTaskView,
+  updateScheduledTask,
+} from "@renderer/lib/scheduled-tasks";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type React from "react";
-import { useCallback, useEffect, useState } from "react";
-
-interface ScheduledTaskView {
-  id: string;
-  name: string;
-  schedule: string;
-  timezone: string;
-  enabled: boolean;
-  lastCompletedAt: string | null;
-}
+import { useState } from "react";
 
 function whenLastRun(value: string | null): string {
   if (!value) return "never run";
@@ -22,54 +19,60 @@ function whenLastRun(value: string | null): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-async function readTasks(): Promise<ScheduledTaskView[]> {
-  const response = await apiFetch("/api/scheduled/tasks");
-  if (!response.ok) throw new Error("Scheduled tasks are unavailable.");
-  const payload = (await response.json()) as { tasks?: ScheduledTaskView[] };
-  return (payload.tasks ?? []).sort((a, b) => a.name.localeCompare(b.name));
-}
-
 export function ScheduledTasks({
   mascot = "Freestyle",
 }: {
   mascot?: string;
 }): React.JSX.Element {
-  const [tasks, setTasks] = useState<ScheduledTaskView[] | null>(null);
+  const queryClient = useQueryClient();
+  const tasksQuery = useQuery(scheduledTasksQueryOptions());
+  const tasks = tasksQuery.data ?? [];
   const [busy, setBusy] = useState<string | null>(null);
-
-  const load = useCallback((): void => {
-    void readTasks()
-      .catch(() => [])
-      .then(setTasks);
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const [error, setError] = useState<string | null>(null);
 
   const toggle = (task: ScheduledTaskView): void => {
     const enabled = !task.enabled;
-    setBusy(task.id);
-    setTasks(
-      (previous) =>
-        previous?.map((entry) =>
-          entry.id === task.id ? { ...entry, enabled } : entry,
-        ) ?? previous,
+    const previous = queryClient.getQueryData<ScheduledTaskView[]>(
+      queryKeys.scheduled.tasks,
     );
-    void apiFetch(`/api/scheduled/tasks/${encodeURIComponent(task.id)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled }),
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error("Could not update task");
+    setBusy(task.id);
+    setError(null);
+    queryClient.setQueryData<ScheduledTaskView[]>(
+      queryKeys.scheduled.tasks,
+      (current) =>
+        current?.map((entry) =>
+          entry.id === task.id ? { ...entry, enabled } : entry,
+        ) ?? current,
+    );
+    void updateScheduledTask(task.id, { enabled })
+      .then((updated) => {
+        queryClient.setQueryData<ScheduledTaskView[]>(
+          queryKeys.scheduled.tasks,
+          (current) =>
+            current?.map((entry) =>
+              entry.id === updated.id ? updated : entry,
+            ) ?? current,
+        );
       })
-      .catch(load)
+      .catch(() => {
+        queryClient.setQueryData(queryKeys.scheduled.tasks, previous);
+        setError("Couldn’t update that task. Try again.");
+      })
       .finally(() => setBusy(null));
   };
 
-  if (tasks === null)
-    return <div className="tavern-empty">Loading scheduled tasks…</div>;
+  if (tasksQuery.isLoading)
+    return <DataSkeleton label="Loading scheduled tasks" />;
+  if (tasksQuery.isError) {
+    return (
+      <div className="tavern-empty">
+        <p>Couldn&apos;t load scheduled tasks.</p>
+        <button type="button" onClick={() => void tasksQuery.refetch()}>
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   if (tasks.length === 0) {
     return (
@@ -83,9 +86,15 @@ export function ScheduledTasks({
   return (
     <>
       <p className="tavern-set-hint is-lead">
-        These run on their own, even with this app closed. Every run sends you a
-        notification.
+        These run on their own, even with this app closed. They only notify you
+        when there&apos;s something worth knowing — every run is saved either
+        way.
       </p>
+      {error ? (
+        <p className="tavern-notice" role="alert">
+          {error}
+        </p>
+      ) : null}
       {tasks.map((task) => (
         <div
           key={task.id}
@@ -96,6 +105,9 @@ export function ScheduledTasks({
             <button
               type="button"
               className={`tavern-sched-toggle${task.enabled ? " is-on" : ""}`}
+              role="switch"
+              aria-checked={task.enabled}
+              aria-label={`${task.name} enabled`}
               disabled={busy === task.id}
               onClick={() => toggle(task)}
             >

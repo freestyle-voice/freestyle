@@ -79,4 +79,38 @@ describe("PanelRendererMessageQueue", () => {
       },
     ]);
   });
+
+  it("waits for readiness again after a renderer navigation", () => {
+    const delivered: PanelRendererMessage[] = [];
+    const queue = new PanelRendererMessageQueue((message) => {
+      delivered.push(message);
+    });
+
+    queue.handleNavigationStart();
+    queue.markReady();
+    queue.send({
+      channel: "panel:dictation",
+      payload: { kind: "final", text: "First transcript" },
+    });
+
+    queue.handleNavigationStart();
+    queue.send({
+      channel: "panel:dictation",
+      payload: { kind: "final", text: "Transcript after reload" },
+    });
+
+    expect(delivered).toEqual([
+      {
+        channel: "panel:dictation",
+        payload: { kind: "final", text: "First transcript" },
+      },
+    ]);
+
+    queue.markReady();
+
+    expect(delivered.at(-1)).toEqual({
+      channel: "panel:dictation",
+      payload: { kind: "final", text: "Transcript after reload" },
+    });
+  });
 });

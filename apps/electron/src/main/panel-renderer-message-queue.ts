@@ -14,6 +14,7 @@ export type PanelRendererMessage =
  */
 export class PanelRendererMessageQueue {
   private ready = false;
+  private initialNavigation = true;
   private focusComposerPending = false;
   private pendingDictation: PanelRendererMessage | null = null;
 
@@ -45,7 +46,20 @@ export class PanelRendererMessageQueue {
     this.pendingDictation = null;
   }
 
+  handleNavigationStart(): void {
+    if (this.initialNavigation) {
+      this.initialNavigation = false;
+      return;
+    }
+    this.clear();
+  }
+
   reset(): void {
+    this.initialNavigation = true;
+    this.clear();
+  }
+
+  private clear(): void {
     this.ready = false;
     this.focusComposerPending = false;
     this.pendingDictation = null;

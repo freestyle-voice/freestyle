@@ -3610,6 +3610,12 @@ function createPanelWindow(): void {
     panelWindow = null;
     panelRendererMessages.reset();
   });
+  panelWindow.webContents.on(
+    "did-start-navigation",
+    (_event, _url, _isInPlace, isMainFrame) => {
+      if (isMainFrame) panelRendererMessages.handleNavigationStart();
+    },
+  );
   // Losing focus is the only signal that "hover off then hide" can rely on
   // once the composer has been clicked: pointer-leave alone is ignored while
   // the panel is focused, so re-check on blur. Agent tool calls blur the

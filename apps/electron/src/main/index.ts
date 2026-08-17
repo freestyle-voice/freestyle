@@ -165,6 +165,7 @@ import {
 } from "./plugins/index";
 import { invalidatePluginViews } from "./plugins/ui-host";
 import { isRemixTargetAllowed } from "./remix-target";
+import { rendererUrl } from "./renderer-url";
 import {
   initSpriteTravel,
   performSyncAction,
@@ -3628,11 +3629,7 @@ function createPanelWindow(): void {
     if (!panelBusy) schedulePanelHide();
   });
 
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
-    void panelWindow.loadURL(`${process.env.ELECTRON_RENDERER_URL}/panel.html`);
-  } else {
-    void panelWindow.loadFile(join(__dirname, "../renderer/panel.html"));
-  }
+  void panelWindow.loadURL(rendererUrl("panel.html"));
 }
 
 function cancelPanelHide(): void {
@@ -3792,15 +3789,7 @@ function createCompanionWindow(): void {
     companionWindow?.showInactive();
   });
 
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
-    void companionWindow.loadURL(
-      `${process.env.ELECTRON_RENDERER_URL}/companion.html`,
-    );
-  } else {
-    void companionWindow.loadFile(
-      join(__dirname, "../renderer/companion.html"),
-    );
-  }
+  void companionWindow.loadURL(rendererUrl("companion.html"));
 }
 
 function destroyCompanionWindow(): void {

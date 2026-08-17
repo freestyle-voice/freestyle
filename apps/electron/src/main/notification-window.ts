@@ -1,8 +1,8 @@
 import { join } from "node:path";
-import { is } from "@electron-toolkit/utils";
 import { BrowserWindow, screen } from "electron";
 import type { SpriteId } from "../shared/sprites";
 import { SPRITES_INFO } from "../shared/sprites";
+import { rendererUrl } from "./renderer-url";
 
 const WIDTH = 300;
 const DEFAULT_HEIGHT = 140;
@@ -89,11 +89,7 @@ export function createNotificationWindow(): void {
     win = null;
   });
 
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
-    void win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/notification.html`);
-  } else {
-    void win.loadFile(join(__dirname, "../renderer/notification.html"));
-  }
+  void win.loadURL(rendererUrl("notification.html"));
 }
 
 export function destroyNotificationWindow(): void {

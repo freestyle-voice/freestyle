@@ -67,6 +67,7 @@ const stream = new Hono().get(
     let pendingAudioChunks: ArrayBuffer[] = [];
     let pendingChunksDropped = false;
     let pendingCommit = false;
+    let sessionStarting = false;
     let reconnectAttempts = 0;
     let readyToken = 0;
     let notifiedReadyToken = 0;
@@ -157,6 +158,7 @@ const stream = new Hono().get(
     ): void {
       if (token !== readyToken || notifiedReadyToken === token) return;
       notifiedReadyToken = token;
+      sessionStarting = false;
       flushPendingAudio();
       if (voiceDefaults?.provider === "soniox") {
         prewarmPostProcess();
@@ -677,6 +679,7 @@ const stream = new Hono().get(
           onError: (message, code) => {
             if (upstream !== session) return;
             sessionTransportUnavailable = true;
+            sessionStarting = false;
             ws.send(
               JSON.stringify({
                 type: "config",
@@ -811,6 +814,7 @@ const stream = new Hono().get(
             pendingAudioChunks = [];
             pendingChunksDropped = false;
             pendingCommit = false;
+            sessionStarting = true;
             reconnectAttempts = 0;
             // A prior upstream error disables session transport only for the
             // rest of that recording; each new recording gets a fresh attempt.
@@ -869,12 +873,15 @@ const stream = new Hono().get(
               (upstream.waitUntilReady || notifiedReadyToken === readyToken)
             ) {
               upstream.commit();
-            } else {
+            } else if (upstream || sessionStarting) {
               pendingCommit = true;
+            } else {
+              ws.send(JSON.stringify({ type: "final", text: "" }));
             }
             break;
           case "cancel":
             pendingCommit = false;
+            sessionStarting = false;
             pendingAudioChunks = [];
             if (
               upstream &&

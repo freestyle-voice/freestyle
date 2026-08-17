@@ -1,4 +1,5 @@
 import {
+  apiFetch,
   getApiBase,
   getClient,
   getServerToken,
@@ -27,6 +28,8 @@ export interface DictationOptions {
 }
 
 type TonePreset = "start" | "stop";
+
+const TRANSCRIBE_TIMEOUT_MS = 15_000;
 
 const TONE_PRESETS: Record<TonePreset, { freq: number; ms: number }> = {
   start: { freq: 347, ms: 125 },
@@ -86,6 +89,10 @@ export class DictationController {
   private duckPromise: Promise<unknown> | undefined;
   private pending: string[] = [];
   private draining = false;
+  private session = 0;
+  private capturing = false;
+  private awaitingFinals = 0;
+  private transcribeTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly callbacks: DictationCallbacks,
@@ -110,12 +117,12 @@ export class DictationController {
     this.streamer = new Streamer(getApiBase(), getServerToken(), {
       onPartial: (text) => this.callbacks.onPartial(text),
       onFinal: (text) => {
+        if (!this.settleFinal()) return;
         this.setPhase("idle");
-        const trimmed = text.trim();
-        if (trimmed) this.pending.push(trimmed);
-        void this.drain();
+        this.enqueue(text);
       },
       onError: (message) => {
+        this.settleFinal();
         this.setPhase("idle");
         this.callbacks.onError(message);
       },
@@ -123,6 +130,76 @@ export class DictationController {
       onConfig: () => {},
     });
     return this.streamer;
+  }
+
+  private settleFinal(): boolean {
+    if (this.awaitingFinals === 0) return false;
+    this.awaitingFinals -= 1;
+    if (this.awaitingFinals === 0) this.clearTranscribeWatchdog();
+    return true;
+  }
+
+  private enqueue(text: string): void {
+    const trimmed = text.trim();
+    if (trimmed) this.pending.push(trimmed);
+    void this.drain();
+  }
+
+  private clearTranscribeWatchdog(): void {
+    if (!this.transcribeTimer) return;
+    clearTimeout(this.transcribeTimer);
+    this.transcribeTimer = null;
+  }
+
+  private armTranscribeWatchdog(): void {
+    this.clearTranscribeWatchdog();
+    const session = this.session;
+    this.transcribeTimer = setTimeout(() => {
+      this.transcribeTimer = null;
+      void this.recoverTranscription(session);
+    }, TRANSCRIBE_TIMEOUT_MS);
+  }
+
+  private async recoverTranscription(session: number): Promise<void> {
+    if (session !== this.session || this.awaitingFinals === 0) return;
+    this.awaitingFinals = 0;
+    const wav = this.streamer?.getWavBlob() ?? null;
+    if (!wav) {
+      this.setPhase("idle");
+      this.callbacks.onError("Transcription timed out");
+      return;
+    }
+    try {
+      const headers: Record<string, string> = { "Content-Type": "audio/wav" };
+      if (this.appContext) {
+        headers["x-app-context"] = encodeURIComponent(this.appContext);
+      }
+      const res = await apiFetch("/api/transcribe", {
+        method: "POST",
+        body: wav,
+        headers,
+      });
+      const data = (await res.json().catch(() => null)) as {
+        cleaned?: string;
+        raw?: string;
+        error?: string;
+        disposition?: string;
+      } | null;
+      if (session !== this.session) return;
+      this.setPhase("idle");
+      if (!res.ok) {
+        this.callbacks.onError(data?.error || "Transcription failed");
+        return;
+      }
+      if (data?.disposition && data.disposition !== "deliver") return;
+      this.enqueue(data?.cleaned || data?.raw || "");
+    } catch (err) {
+      if (session !== this.session) return;
+      this.setPhase("idle");
+      this.callbacks.onError(
+        err instanceof Error ? err.message : "Transcription failed",
+      );
+    }
   }
 
   private async mergeSegments(segments: string[]): Promise<string> {
@@ -227,6 +304,8 @@ export class DictationController {
   async start(): Promise<void> {
     if (this.active) return;
     this.active = true;
+    const session = ++this.session;
+    this.capturing = false;
     this.setPhase("recording");
     try {
       if (this.options.soundEnabled()) void playTone("start");
@@ -239,18 +318,29 @@ export class DictationController {
       const streamer = this.ensureStreamer();
       void this.captureAppContext();
       const stream = await this.recorder.acquireStream();
+      if (session !== this.session) return;
       if (!this.active) {
         this.recorder.releaseStream();
+        this.setPhase("idle");
         return;
       }
       this.attachMeter(stream);
       await streamer.startCapture(stream);
+      if (session !== this.session) return;
+      if (!this.active) {
+        streamer.cancel();
+        this.recorder.releaseStream();
+        this.setPhase("idle");
+        return;
+      }
+      this.capturing = true;
     } catch (err) {
+      if (session !== this.session || err instanceof RecorderSupersededError)
+        return;
       this.active = false;
       this.setPhase("idle");
       this.meter?.detach();
       void this.restoreAudio();
-      if (err instanceof RecorderSupersededError) return;
       this.callbacks.onError(
         err instanceof Error ? err.message : "Could not start recording",
       );
@@ -268,17 +358,28 @@ export class DictationController {
   stop(): void {
     if (!this.active) return;
     this.active = false;
-    this.setPhase("transcribing");
-    if (this.options.soundEnabled()) void playTone("stop");
-    this.streamer?.commit();
     this.meter?.detach();
     this.recorder.releaseStream();
     void this.restoreAudio();
+    if (!this.capturing) {
+      this.streamer?.cancel();
+      this.setPhase("idle");
+      return;
+    }
+    this.capturing = false;
+    this.setPhase("transcribing");
+    if (this.options.soundEnabled()) void playTone("stop");
+    this.awaitingFinals += 1;
+    this.streamer?.commit();
+    this.armTranscribeWatchdog();
     void this.drain();
   }
 
   cancel(): void {
     this.active = false;
+    this.capturing = false;
+    this.awaitingFinals = 0;
+    this.clearTranscribeWatchdog();
     this.setPhase("idle");
     this.pending = [];
     this.streamer?.cancel();

@@ -77,8 +77,6 @@ const auth = new Hono()
       const token = await pollDeviceToken(device_code);
       const user = await fetchCloudUser(token.access_token);
       const now = Date.now();
-      notificationTransport.resetEtag();
-      notificationTransport.refreshNow();
       setSession({
         token: token.access_token,
         refreshToken: token.refresh_token,
@@ -87,6 +85,8 @@ const auth = new Hono()
         user,
         host: freestyleCloudUrl(),
       });
+      notificationTransport.resetEtag();
+      notificationTransport.refreshNow();
       applyFreestyleCloudDefaults();
       identifyCloudUser(user);
       // If a DIFFERENT account previously synced on this device, scrub its

@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createHookApi } from "./hook-api.js";
 import type { Plugin } from "./plugin.js";
-import { PluginRegistry } from "./registry.js";
+import { HOOK_TIMEOUT_MS, PluginRegistry } from "./registry.js";
 
 function plugin(name: string, partial: Partial<Plugin> = {}): Plugin {
   return { name, ...partial };
@@ -46,6 +46,27 @@ describe("PluginRegistry.run", () => {
     expect(order).toEqual(["a", "b"]);
     expect(result.text).toBe("raw-a-b");
     expect(api.control.state).toBe("running");
+  });
+
+  it("moves past a hook that never settles", async () => {
+    vi.useFakeTimers();
+    try {
+      const registry = new PluginRegistry([
+        plugin("stuck", { afterCleanup: () => new Promise<void>(() => {}) }),
+        plugin("b", {
+          afterCleanup: (_input, output) => {
+            output.text += "-b";
+          },
+        }),
+      ]);
+      const api = createHookApi();
+      const pending = registry.run("afterCleanup", {}, { text: "raw" }, api);
+      await vi.advanceTimersByTimeAsync(HOOK_TIMEOUT_MS + 1);
+      const result = await pending;
+      expect(result.text).toBe("raw-b");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("stopPropagation stops later plugins for that hook only", async () => {

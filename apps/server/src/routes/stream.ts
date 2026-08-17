@@ -25,7 +25,6 @@ import {
   getEffectiveCleanupTones,
   isLlmCleanupEnabled,
   postProcess,
-  prewarmPostProcess,
   resolveAppContextForCleanup,
 } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
@@ -161,9 +160,6 @@ const stream = new Hono().get(
       notifiedReadyToken = token;
       sessionStarting = false;
       flushPendingAudio();
-      if (voiceDefaults?.provider === "soniox") {
-        prewarmPostProcess();
-      }
       ws.send(JSON.stringify({ type: "session.ready", model }));
       if (pendingCommit) {
         pendingCommit = false;

@@ -133,13 +133,6 @@ export function resolveAppContextForCleanup(
   return needsAppContextForCleanup() ? appContext : null;
 }
 
-/** Warm the default cleanup model while the user is still speaking. */
-export function prewarmPostProcess(): void {
-  const defaults = getDefaultModels();
-  const llm = defaults.llm;
-  if (!llm || !isLlmCleanupEnabled()) return;
-}
-
 /**
  * Final text-rewrite stage that must run on every dictation regardless of
  * where cleanup happened — local LLM cleanup, Freestyle Cloud's combined

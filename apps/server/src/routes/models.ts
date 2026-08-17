@@ -212,21 +212,22 @@ const models = new Hono()
       );
     }
 
-    const result = db
+    const row = db
       .prepare(
         `INSERT INTO model_configs (provider, model_id, model_name, type, is_default)
          VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(provider, model_id, type) DO UPDATE SET
            model_name = excluded.model_name,
-           is_default = excluded.is_default`,
+           is_default = excluded.is_default
+         RETURNING id`,
       )
-      .run(
+      .get(
         body.provider,
         body.model_id,
         body.model_name,
         body.type,
         body.is_default ? 1 : 0,
-      );
+      ) as { id: number };
 
     capture("model configured", {
       provider: body.provider,
@@ -236,7 +237,7 @@ const models = new Hono()
       is_default: body.is_default ?? false,
     });
 
-    return c.json({ id: result.lastInsertRowid, ...body }, 201);
+    return c.json({ id: row.id, ...body }, 201);
   })
   .put("/configured/:id/default", (c) => {
     const db = getDb();

@@ -29,7 +29,6 @@ import {
   applyFinalRewrites,
   getCleanupAppAssignments,
   postProcess,
-  prewarmPostProcess,
   resolveAppContextForCleanup,
 } from "../lib/post-process.js";
 import { capture, captureException } from "../lib/posthog.js";
@@ -621,12 +620,6 @@ export default transcribeRoute;
  */
 export const transcribePreWarmRoute = new Hono().post("/pre-warm", (c) => {
   try {
-    // Warm the cleanup LLM connection while the user is still speaking, so the
-    // post-transcription handoff reuses a hot socket. Independent of the voice
-    // provider; a no-op unless cleanup is enabled and the configured provider
-    // supports prewarming (e.g. Groq).
-    prewarmPostProcess();
-
     // Warm the models.dev cost registry in the background so the per-dictation
     // cost lookup hits a warm cache and never blocks the response.
     prewarmModelCostRegistry();

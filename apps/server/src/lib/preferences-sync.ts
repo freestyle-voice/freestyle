@@ -37,7 +37,7 @@ import {
   resolveActiveOrgSlug,
 } from "./freestyle-cloud.js";
 import { getSessionToken } from "./sessions.js";
-import { enqueueOutbox } from "./sync-outbox.js";
+import { enqueueOutbox, pendingOutboxFields } from "./sync-outbox.js";
 import {
   clearVocabulary,
   loadVocabularyTerms,
@@ -122,8 +122,10 @@ export async function pullCloudPreferences(): Promise<boolean> {
     return false;
   }
 
+  const pending = pendingOutboxFields();
   let applied = false;
   for (const field of FIELD_MAP) {
+    if (pending.has(field.cloudField)) continue;
     const value = remote[field.cloudField];
     // `undefined` = not present in the cloud snapshot -> leave local as-is.
     // `null` = explicitly cleared upstream -> mirror by removing local override.
@@ -151,7 +153,11 @@ export async function pullCloudPreferences(): Promise<boolean> {
   // all local terms, so we skip it and leave the local table untouched. An
   // explicit empty `terms: []` DOES mirror (the user cleared their list on
   // another device).
-  if (remote.vocabulary && Array.isArray(remote.vocabulary.terms)) {
+  if (
+    !pending.has("vocabulary") &&
+    remote.vocabulary &&
+    Array.isArray(remote.vocabulary.terms)
+  ) {
     const changed = mirrorCloudVocabularyTerms(remote.vocabulary.terms);
     if (changed > 0) applied = true;
   }
@@ -366,10 +372,19 @@ let vocabularyPushTimer: ReturnType<typeof setTimeout> | undefined;
  * snapshot is what makes local deletes and edits propagate up. No-op when signed
  * out. Reads the canonical local list at flush time so the newest snapshot wins.
  */
+const VOCABULARY_SYNC_LIMIT = 1000;
+
 function flushVocabularyToCloud(): void {
   if (!getSessionToken()) return;
   const terms = loadVocabularyTerms();
-  enqueueOutbox("vocabulary", { vocabulary: { terms } });
+  if (terms.length > VOCABULARY_SYNC_LIMIT) {
+    log.warn(
+      `Vocabulary has ${terms.length} terms; only the first ${VOCABULARY_SYNC_LIMIT} sync to the cloud.`,
+    );
+  }
+  enqueueOutbox("vocabulary", {
+    vocabulary: { terms: terms.slice(0, VOCABULARY_SYNC_LIMIT) },
+  });
 }
 
 /**

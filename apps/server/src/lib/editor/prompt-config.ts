@@ -304,6 +304,8 @@ export const BUNDLED_CLEANUP_PROMPT_CONFIG: CleanupPromptConfig = {
 let cloudConfig: CleanupPromptConfig | null = null;
 /** When `cloudConfig` was last fetched (epoch ms). */
 let cloudConfigFetchedAt = 0;
+let lastRefreshAttemptAt = 0;
+const CONFIG_RETRY_MS = 60_000;
 /** In-flight refresh, deduped so concurrent callers share one request. */
 let refreshPromise: Promise<void> | null = null;
 
@@ -442,9 +444,12 @@ export function refreshCleanupPromptConfig(): Promise<void> {
  * dedupes concurrent refreshes.
  */
 export function ensureCleanupPromptConfigFresh(): Promise<void> {
+  const now = Date.now();
   const fresh =
-    cloudConfig !== null && Date.now() - cloudConfigFetchedAt < CONFIG_TTL_MS;
+    cloudConfig !== null && now - cloudConfigFetchedAt < CONFIG_TTL_MS;
   if (fresh) return Promise.resolve();
+  if (now - lastRefreshAttemptAt < CONFIG_RETRY_MS) return Promise.resolve();
+  lastRefreshAttemptAt = now;
   return refreshCleanupPromptConfig();
 }
 
@@ -452,6 +457,7 @@ export function ensureCleanupPromptConfigFresh(): Promise<void> {
 export function __resetCleanupPromptConfigForTests(): void {
   cloudConfig = null;
   cloudConfigFetchedAt = 0;
+  lastRefreshAttemptAt = 0;
   refreshPromise = null;
 }
 

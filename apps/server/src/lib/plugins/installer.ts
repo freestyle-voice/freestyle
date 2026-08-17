@@ -90,6 +90,11 @@ export async function installPackage(
   verifyIntegrity(bytes, resolved);
 
   const slug = pluginSlug(resolved.name);
+  if (!slug || slug.startsWith(".")) {
+    throw new Error(
+      `cannot derive an install directory from "${resolved.name}"`,
+    );
+  }
   const dest = path.join(pluginsDir, slug);
   // Stage inside the plugins dir (not the OS temp dir) so the final rename is
   // an atomic, same-filesystem move — `/tmp` is often a separate mount.

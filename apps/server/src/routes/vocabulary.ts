@@ -9,6 +9,7 @@ import {
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { likePattern } from "../lib/like-pattern.js";
 import { capture } from "../lib/posthog.js";
 import { pushVocabularyToCloud } from "../lib/preferences-sync.js";
 import {
@@ -41,16 +42,16 @@ const vocabulary = new Hono()
     let countRow: { count: number };
 
     if (search) {
-      const pattern = `%${search}%`;
+      const pattern = likePattern(search);
       rows = db
         .prepare(
-          `SELECT * FROM vocabulary WHERE term LIKE ? OR notes LIKE ? ORDER BY ${orderColumn} ${orderDir} LIMIT ? OFFSET ?`,
+          `SELECT * FROM vocabulary WHERE term LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\' ORDER BY ${orderColumn} ${orderDir} LIMIT ? OFFSET ?`,
         )
         .all(pattern, pattern, limit, offset) as unknown as VocabularyRow[];
 
       countRow = db
         .prepare(
-          "SELECT COUNT(*) as count FROM vocabulary WHERE term LIKE ? OR notes LIKE ?",
+          "SELECT COUNT(*) as count FROM vocabulary WHERE term LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\'",
         )
         .get(pattern, pattern) as { count: number };
     } else {

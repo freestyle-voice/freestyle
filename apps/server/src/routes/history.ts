@@ -2,6 +2,7 @@ import { historyQuerySchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { likePattern } from "../lib/like-pattern.js";
 import { capture } from "../lib/posthog.js";
 
 interface HistoryRow {
@@ -69,9 +70,9 @@ const history = new Hono()
     const params: (string | number)[] = [];
 
     if (search) {
-      const pattern = `%${search}%`;
+      const pattern = likePattern(search);
       conditions.push(
-        "(raw_text LIKE ? OR cleaned_text LIKE ? OR voice_model LIKE ?)",
+        "(raw_text LIKE ? ESCAPE '\\' OR cleaned_text LIKE ? ESCAPE '\\' OR voice_model LIKE ? ESCAPE '\\')",
       );
       params.push(pattern, pattern, pattern);
     }

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import tls from "node:tls";
 import { createAppLogger } from "@freestyle-voice/utils";
 import {
   Agent,
@@ -98,7 +99,8 @@ function loadCaCerts(paths: string[]): string[] {
 export function configureNetwork(): NetworkConfig {
   const config = resolveNetworkConfig();
   const ca = loadCaCerts(config.caCertPaths);
-  const connect = ca.length > 0 ? { ca } : undefined;
+  const connect =
+    ca.length > 0 ? { ca: [...tls.rootCertificates, ...ca] } : undefined;
 
   try {
     if (config.proxyUrl) {

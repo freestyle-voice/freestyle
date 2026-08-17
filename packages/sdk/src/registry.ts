@@ -50,6 +50,37 @@ type HookOutput<K extends keyof Hooks> =
  * misbehaving plugin can never crash the host pipeline; failures are routed to
  * the injected `onError` reporter.
  */
+export const HOOK_TIMEOUT_MS = 3_000;
+
+function withHookTimeout(
+  result: unknown,
+  pluginName: string,
+  hook: string,
+): Promise<unknown> {
+  if (!(result instanceof Promise)) return Promise.resolve(result);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `${pluginName}.${hook} timed out after ${HOOK_TIMEOUT_MS}ms`,
+          ),
+        ),
+      HOOK_TIMEOUT_MS,
+    );
+    result.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 export class PluginRegistry {
   private plugins: Plugin[];
   private onError?: (failure: HookFailure) => void;
@@ -132,7 +163,7 @@ export class PluginRegistry {
         | undefined;
       if (!handler) continue;
       try {
-        await handler(input, output, api);
+        await withHookTimeout(handler(input, output, api), plugin.name, name);
       } catch (err) {
         this.report(plugin.name, name, err);
       }
@@ -145,7 +176,7 @@ export class PluginRegistry {
     for (const plugin of this.plugins) {
       if (!plugin.event) continue;
       try {
-        await plugin.event({ event });
+        await withHookTimeout(plugin.event({ event }), plugin.name, "event");
       } catch (err) {
         this.report(plugin.name, "event", err);
       }

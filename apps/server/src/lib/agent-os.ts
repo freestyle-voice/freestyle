@@ -193,7 +193,11 @@ export function runAgentBash(command: string): Promise<{
         shell: process.env.SHELL || "/bin/sh",
       },
       (err, stdout, stderr) => {
-        const timedOut = !!err && (err as { killed?: boolean }).killed === true;
+        const timedOut =
+          !!err &&
+          (err as { killed?: boolean }).killed === true &&
+          (err as { signal?: string }).signal === "SIGTERM" &&
+          !/maxBuffer/i.test(err.message);
         const code =
           err && typeof (err as { code?: number }).code === "number"
             ? ((err as { code?: number }).code as number)

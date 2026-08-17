@@ -28,6 +28,7 @@ export class PollingTransport implements NotificationTransport {
   private failures = 0;
   private lastActivityAt = 0;
   private polling = false;
+  private running = false;
   private readonly listeners = new Set<ChangeListener>();
 
   onChange(listener: ChangeListener): () => void {
@@ -37,12 +38,14 @@ export class PollingTransport implements NotificationTransport {
 
   start(): void {
     if (this.timer) return;
+    this.running = true;
     this.lastActivityAt = Date.now();
     void this.poll();
     this.schedule();
   }
 
   stop(): void {
+    this.running = false;
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -69,6 +72,7 @@ export class PollingTransport implements NotificationTransport {
   }
 
   private schedule(): void {
+    if (!this.running) return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       void this.poll().finally(() => this.schedule());

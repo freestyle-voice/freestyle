@@ -140,6 +140,20 @@ describe("plugin API guard", () => {
     expect(res.status).toBe(200);
   });
 
+  it("denies a same-origin page that hides its referer", async () => {
+    const res = await app.request("/api/settings", {
+      headers: { "sec-fetch-site": "same-origin" },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("lets cross-origin renderers through even with a fetch-site header", async () => {
+    const res = await app.request("/api/health", {
+      headers: { "sec-fetch-site": "cross-site", origin: "app://renderer" },
+    });
+    expect(res.status).toBe(200);
+  });
+
   it("does not affect the first-party renderer", async () => {
     const res = await app.request("/api/health");
     expect(res.status).toBe(200);

@@ -55,7 +55,6 @@ const httpLog = createAppLogger("http");
 const REQUEST_TIMEOUT_MS = 30_000;
 const TIMEOUT_PREFIXES = [
   "/api/settings",
-  "/api/keys",
   "/api/dictionary",
   "/api/dismissed-notifications",
   "/api/vocabulary",
@@ -64,8 +63,7 @@ const TIMEOUT_PREFIXES = [
   "/api/plugins",
   "/api/usage",
   "/api/org",
-  "/api/remix/thread",
-  "/api/remix/runs",
+  "/api/agent/thread",
 ];
 
 async function shutdownServer(): Promise<void> {
@@ -241,9 +239,10 @@ export async function startServer(
   // it never throws and falls back to the bundled copy when offline.
   void refreshCleanupPromptConfig();
 
-  // Seed local cleanup preferences from the cloud on launch when already signed
-  // in (cross-device sync). No-op when signed out; never throws.
-  void pullCloudPreferences();
+  // Push edits queued while offline before pulling the cloud snapshot, so a
+  // pending local change is never overwritten by the copy it was meant to
+  // update. Both are no-ops when signed out and never throw.
+  void drainOutbox().then(() => pullCloudPreferences());
 
   // Keep the cloud profile's timezone current so scheduled tasks fire on this
   // machine's clock. No-op when signed out or unchanged; never throws.
@@ -251,10 +250,6 @@ export async function startServer(
 
   // Install / update / launch, emitted once per process start.
   recordAppLaunch();
-
-  // Flush any preference syncs that were queued while offline in a previous
-  // run. No-op when signed out / nothing pending; never throws.
-  void drainOutbox();
 
   // Load plugins (built-in + user) before serving. The app dispatches plugin
   // middleware from the live registry per request, so later runtime reloads

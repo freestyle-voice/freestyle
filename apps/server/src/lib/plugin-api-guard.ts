@@ -16,12 +16,19 @@ import { callerPluginSlug } from "./plugins/ui-assets.js";
  * Everything else (keys, auth, settings, history, transcribe, …) — the
  * privileged first-party API — is denied.
  *
- * First-party renderer / tooling requests carry no plugin `Referer` and pass
- * through untouched — their trust is handled by `trustedOriginMiddleware`.
+ * The plugin pages are the only documents served from the loopback origin
+ * (first-party renderers load from `app://` or the dev server), so a
+ * `Sec-Fetch-Site: same-origin` request — a header pages cannot forge or drop —
+ * also identifies a plugin page even when it suppresses its `Referer`.
+ *
+ * First-party renderer / tooling requests carry neither and pass through
+ * untouched — their trust is handled by `trustedOriginMiddleware`.
  */
 export const pluginApiGuard: MiddlewareHandler = async (c, next) => {
-  const slug = callerPluginSlug(c.req.header("referer"));
-  if (!slug) return next();
+  const fromPluginPage =
+    callerPluginSlug(c.req.header("referer")) !== null ||
+    c.req.header("sec-fetch-site") === "same-origin";
+  if (!fromPluginPage) return next();
 
   const path = c.req.path;
   if (path.startsWith("/api/plugins/") || path === "/api/health") {

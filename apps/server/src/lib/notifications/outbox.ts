@@ -48,7 +48,7 @@ export async function drainNotificationOutbox(): Promise<void> {
           row.notification_id,
           row.action,
         );
-        dropRow(row.notification_id);
+        dropRow(row.notification_id, row.action);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (isTransientCloudError(err)) {
@@ -73,10 +73,18 @@ export async function drainNotificationOutbox(): Promise<void> {
   }
 }
 
-function dropRow(id: string): void {
+function dropRow(id: string, action?: NotificationAction): void {
+  if (action === undefined) {
+    getDb()
+      .prepare("DELETE FROM notification_outbox WHERE notification_id = ?")
+      .run(id);
+    return;
+  }
   getDb()
-    .prepare("DELETE FROM notification_outbox WHERE notification_id = ?")
-    .run(id);
+    .prepare(
+      "DELETE FROM notification_outbox WHERE notification_id = ? AND action = ?",
+    )
+    .run(id, action);
 }
 
 function deferRow(id: string, attempts: number, error: string): void {

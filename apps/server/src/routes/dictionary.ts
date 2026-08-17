@@ -8,6 +8,7 @@ import {
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
+import { likePattern } from "../lib/like-pattern.js";
 
 interface DictionaryRow {
   id: number;
@@ -19,6 +20,16 @@ interface DictionaryRow {
 }
 
 const ALLOWED_ORDER_COLUMNS = new Set(["created_at", "updated_at", "key"]);
+
+function isUniqueViolation(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  const message = err instanceof Error ? err.message : "";
+  return (
+    code === "SQLITE_CONSTRAINT_UNIQUE" ||
+    code === "SQLITE_CONSTRAINT" ||
+    /UNIQUE constraint failed/i.test(message)
+  );
+}
 
 const dictionary = new Hono()
   .get("/", zValidator("query", querySchema), (c) => {
@@ -41,16 +52,16 @@ const dictionary = new Hono()
     let countRow: { count: number };
 
     if (search) {
-      const pattern = `%${search}%`;
+      const pattern = likePattern(search);
       rows = db
         .prepare(
-          `SELECT * FROM dictionary WHERE key LIKE ? OR value LIKE ? ORDER BY ${orderColumn} ${orderDir} LIMIT ? OFFSET ?`,
+          `SELECT * FROM dictionary WHERE key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\' ORDER BY ${orderColumn} ${orderDir} LIMIT ? OFFSET ?`,
         )
         .all(pattern, pattern, limit, offset) as unknown as DictionaryRow[];
 
       countRow = db
         .prepare(
-          "SELECT COUNT(*) as count FROM dictionary WHERE key LIKE ? OR value LIKE ?",
+          "SELECT COUNT(*) as count FROM dictionary WHERE key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\'",
         )
         .get(pattern, pattern) as { count: number };
     } else {
@@ -106,11 +117,14 @@ const dictionary = new Hono()
         },
         201,
       );
-    } catch {
-      return c.json(
-        { error: "A dictionary entry with this key already exists" },
-        409,
-      );
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        return c.json(
+          { error: "A dictionary entry with this key already exists" },
+          409,
+        );
+      }
+      throw err;
     }
   })
   .put("/:id", zValidator("json", updateDictionarySchema), async (c) => {
@@ -132,11 +146,14 @@ const dictionary = new Hono()
       ).run(newKey, newValue, id);
 
       return c.json({ id, key: newKey, value: newValue });
-    } catch {
-      return c.json(
-        { error: "A dictionary entry with this key already exists" },
-        409,
-      );
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        return c.json(
+          { error: "A dictionary entry with this key already exists" },
+          409,
+        );
+      }
+      throw err;
     }
   })
   .delete("/:id", (c) => {

@@ -133,6 +133,26 @@ describe("drainOutbox", () => {
     expect(rows()).toHaveLength(0);
   });
 
+  it("keeps an edit made while the previous payload was in flight", async () => {
+    signIn();
+    insertDue("languages", { languages: ["en"] });
+    let release: () => void = () => {};
+    putCloudPreferences.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ syncedAt: "now" });
+        }),
+    );
+    const drain = drainOutbox();
+    await settle();
+    enqueueOutbox("languages", { languages: ["en", "fr"] });
+    release();
+    await drain;
+
+    expect(rows()).toHaveLength(1);
+    expect(JSON.parse(rows()[0].payload)).toEqual({ languages: ["en", "fr"] });
+  });
+
   it("keeps and backs off a row on a transient (5xx) error", async () => {
     putCloudPreferences.mockRejectedValueOnce(new CloudRequestError(503));
     insertDue("languages", { languages: ["en"] });

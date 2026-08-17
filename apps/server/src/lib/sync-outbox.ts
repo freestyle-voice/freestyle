@@ -65,10 +65,10 @@ export function enqueueOutbox(
     getDb()
       .prepare(
         `INSERT INTO sync_outbox (cloud_field, payload, updated_at, next_attempt_at, attempts, last_error)
-         VALUES (?, ?, datetime('now'), datetime('now'), 0, NULL)
+         VALUES (?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), datetime('now'), 0, NULL)
          ON CONFLICT(cloud_field) DO UPDATE SET
            payload = excluded.payload,
-           updated_at = datetime('now'),
+           updated_at = excluded.updated_at,
            next_attempt_at = datetime('now'),
            attempts = 0,
            last_error = NULL`,
@@ -95,6 +95,17 @@ let draining = false;
  * signed out, when there's no active org yet, or when a drain is already in
  * flight.
  */
+export function pendingOutboxFields(): Set<string> {
+  try {
+    const rows = getDb()
+      .prepare("SELECT cloud_field FROM sync_outbox")
+      .all() as { cloud_field: string }[];
+    return new Set(rows.map((row) => row.cloud_field));
+  } catch {
+    return new Set();
+  }
+}
+
 export async function drainOutbox(): Promise<void> {
   if (draining) return;
 
@@ -104,11 +115,16 @@ export async function drainOutbox(): Promise<void> {
   const db = getDb();
   const due = db
     .prepare(
-      `SELECT cloud_field, payload, attempts FROM sync_outbox
+      `SELECT cloud_field, payload, attempts, updated_at FROM sync_outbox
        WHERE next_attempt_at <= datetime('now')
        ORDER BY updated_at ASC`,
     )
-    .all() as { cloud_field: string; payload: string; attempts: number }[];
+    .all() as {
+    cloud_field: string;
+    payload: string;
+    attempts: number;
+    updated_at: string;
+  }[];
   if (due.length === 0) return;
 
   draining = true;
@@ -129,7 +145,7 @@ export async function drainOutbox(): Promise<void> {
 
       try {
         await putCloudPreferences(token, orgSlug, patch);
-        dropRow(row.cloud_field);
+        dropRow(row.cloud_field, row.updated_at);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (isTransientCloudError(err)) {
@@ -155,11 +171,17 @@ export async function drainOutbox(): Promise<void> {
   }
 }
 
-/** Remove a delivered/dropped row. */
-function dropRow(cloudField: string): void {
+/** Remove a delivered/dropped row, unless a newer edit replaced it meanwhile. */
+function dropRow(cloudField: string, updatedAt?: string): void {
+  if (updatedAt === undefined) {
+    getDb()
+      .prepare("DELETE FROM sync_outbox WHERE cloud_field = ?")
+      .run(cloudField);
+    return;
+  }
   getDb()
-    .prepare("DELETE FROM sync_outbox WHERE cloud_field = ?")
-    .run(cloudField);
+    .prepare("DELETE FROM sync_outbox WHERE cloud_field = ? AND updated_at = ?")
+    .run(cloudField, updatedAt);
 }
 
 /** Record a transient failure and schedule the next attempt with backoff. */

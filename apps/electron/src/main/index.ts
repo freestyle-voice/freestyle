@@ -150,8 +150,6 @@ import {
   type DictationPermission,
   missingDictationPermission,
   resolveAccessibilityPermission,
-  type StartupPermissionWarning,
-  startupPermissionWarning,
 } from "./permission-checks";
 import {
   FreestyleEventType,
@@ -1301,47 +1299,33 @@ function openMicrophoneSettings(): void {
 let permissionDialogPromise: Promise<void> | null = null;
 
 function showRequiredPermissionDialog(
-  permission: StartupPermissionWarning,
+  permission: DictationPermission,
 ): Promise<void> {
   if (permissionDialogPromise) return permissionDialogPromise;
 
   const accessibility = permission === "accessibility";
-  const both = permission === "accessibility-and-microphone";
   permissionDialogPromise = dialog
     .showMessageBox({
-      type: "error",
-      title: both
-        ? "Permissions Required"
-        : accessibility
-          ? "Accessibility Permission Required"
-          : "Microphone Permission Required",
-      message: both
-        ? "Accessibility and Microphone permissions are required before dictation can work."
-        : accessibility
-          ? "Accessibility permission is required for dictation and text insertion."
-          : "Microphone access is required to record dictation.",
-      detail: both
-        ? "Enable Freestyle in System Settings > Privacy & Security under Accessibility and Microphone."
-        : accessibility
-          ? "Enable Freestyle in System Settings > Privacy & Security > Accessibility."
-          : process.platform === "darwin"
-            ? "Enable Freestyle in System Settings > Privacy & Security > Microphone."
-            : "Enable microphone access for Freestyle in Windows Settings.",
-      buttons: both
-        ? ["Open Accessibility Settings", "Open Microphone Settings", "Not Now"]
-        : ["Open System Settings", "Cancel"],
+      type: "info",
+      title: accessibility
+        ? "Accessibility Permission Required"
+        : "Microphone Permission Required",
+      message: accessibility
+        ? "Accessibility permission is required for dictation and text insertion."
+        : "Microphone access is required to record dictation.",
+      detail: accessibility
+        ? "Enable Freestyle in System Settings > Privacy & Security > Accessibility."
+        : process.platform === "darwin"
+          ? "Enable Freestyle in System Settings > Privacy & Security > Microphone."
+          : "Enable microphone access for Freestyle in Windows Settings.",
+      buttons: ["Open System Settings", "Cancel"],
       defaultId: 0,
-      cancelId: both ? 2 : 1,
+      cancelId: 1,
     })
     .then(({ response }) => {
-      if (both) {
-        if (response === 0) openAccessibilitySettings();
-        if (response === 1) openMicrophoneSettings();
-      } else if (response === 0 && accessibility) {
-        openAccessibilitySettings();
-      } else if (response === 0) {
-        openMicrophoneSettings();
-      }
+      if (response !== 0) return;
+      if (accessibility) openAccessibilitySettings();
+      else openMicrophoneSettings();
     })
     .finally(() => {
       permissionDialogPromise = null;
@@ -2023,20 +2007,6 @@ app.whenReady().then(async () => {
   // (recorder + paste), which double-delivered alongside the companion's.
   // The companion owns dictation; the pill exists only via the showPill()
   // boot-race fallback when no companion window could be created.
-
-  // Onboarding already has dedicated permission cards. Existing users instead
-  // get one actionable warning once a user-facing window can be shown.
-  {
-    const warning = startupPermissionWarning(
-      process.platform,
-      false,
-      hasCurrentAccessibilityPermission(),
-      getCurrentMicrophonePermission(),
-    );
-    if (warning) {
-      void showRequiredPermissionDialog(warning);
-    }
-  }
 
   // -- Auto-update helpers --
   const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes

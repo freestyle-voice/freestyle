@@ -1,4 +1,20 @@
 # Changelog
+## 0.8.4
+
+### Bug Fixes 🐛
+
+#### Desktop
+
+- Stop asking for permissions at launch by @matteo8p in [#629](https://github.com/freestyle-voice/freestyle/pull/629)
+- Sprite, onboarding, settings and lifecycle polish by @matteo8p in [#620](https://github.com/freestyle-voice/freestyle/pull/620)
+
+#### Other
+
+- (agent) Keep threads and brain files truthful by @matteo8p in [#619](https://github.com/freestyle-voice/freestyle/pull/619)
+- (billing) Scope desktop checkout to the org and recognise dead cloud sessions by @matteo8p in [#618](https://github.com/freestyle-voice/freestyle/pull/618)
+- (dictation) Make the recording path fail loudly and recover by @matteo8p in [#617](https://github.com/freestyle-voice/freestyle/pull/617)
+- (server) Lossless preference sync, safer network and plugin boundaries by @matteo8p in [#621](https://github.com/freestyle-voice/freestyle/pull/621)
+
 ## 0.8.3
 
 ### Bug Fixes 🐛

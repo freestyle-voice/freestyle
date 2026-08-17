@@ -94,6 +94,7 @@ import {
   createDictationDisplayRequestTracker,
   invalidateDictationDisplayRequest,
   resolveCompanionDisplay,
+  resolveDictationWindowDisplays,
   resolvePanelCompanionDisplays,
 } from "../shared/companion-position";
 import {
@@ -3051,15 +3052,26 @@ function anchorCompanionForDictation(): void {
   const cursorDisplay = screen.getDisplayNearestPoint(
     screen.getCursorScreenPoint(),
   );
-  positionCompanionOnDisplay(resolveCompanionDisplay(null, cursorDisplay));
+  positionDictationWindows(resolveCompanionDisplay(null, cursorDisplay));
 
   void getFocusedExternalDisplay().then((focusedDisplay) => {
     if (!dictationDisplayRequests.isCurrent(request)) return;
     if (!companionWindow || companionWindow.isDestroyed()) return;
-    positionCompanionOnDisplay(
+    positionDictationWindows(
       resolveCompanionDisplay(focusedDisplay, cursorDisplay),
     );
   });
+}
+
+function positionDictationWindows(display: Display): void {
+  const panelVisible =
+    !!panelWindow && !panelWindow.isDestroyed() && panelWindow.isVisible();
+  const { panelDisplay, companionDisplay } = resolveDictationWindowDisplays(
+    display,
+    panelVisible,
+  );
+  if (panelDisplay) positionPanelOnDisplay(panelDisplay);
+  positionCompanionOnDisplay(companionDisplay);
 }
 
 function positionCompanionOnDisplay(display: Display): void {
@@ -3553,6 +3565,13 @@ function panelPosition(display: Display): {
   return { x, y, height: panelHeight };
 }
 
+function positionPanelOnDisplay(display: Display): void {
+  const win = panelWindow;
+  if (!win || win.isDestroyed()) return;
+  const { x, y, height } = panelPosition(display);
+  win.setBounds({ x, y, width: PANEL_WIDTH, height });
+}
+
 function createPanelWindow(): void {
   if (panelWindow && !panelWindow.isDestroyed()) return;
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
@@ -3637,8 +3656,7 @@ function openPanel(
   );
   const { panelDisplay, companionDisplay } =
     resolvePanelCompanionDisplays(cursorDisplay);
-  const { x, y, height } = panelPosition(panelDisplay);
-  win.setBounds({ x, y, width: PANEL_WIDTH, height });
+  positionPanelOnDisplay(panelDisplay);
   positionCompanionOnDisplay(companionDisplay);
   if (opts.focusComposer) {
     win.show();

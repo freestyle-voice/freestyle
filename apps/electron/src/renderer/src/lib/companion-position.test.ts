@@ -3,6 +3,7 @@ import {
   createDictationDisplayRequestTracker,
   invalidateDictationDisplayRequest,
   resolveCompanionDisplay,
+  resolveDictationWindowDisplays,
   resolvePanelCompanionDisplays,
 } from "../../../shared/companion-position";
 
@@ -31,6 +32,13 @@ test("keeps the companion on the display selected when opening the panel", () =>
   expect(resolvePanelCompanionDisplays(cursorDisplay)).toEqual({
     panelDisplay: cursorDisplay,
     companionDisplay: cursorDisplay,
+  });
+});
+
+test("keeps a visible panel beside the companion during dictation", () => {
+  expect(resolveDictationWindowDisplays(focusedDisplay, true)).toEqual({
+    panelDisplay: focusedDisplay,
+    companionDisplay: focusedDisplay,
   });
 });
 

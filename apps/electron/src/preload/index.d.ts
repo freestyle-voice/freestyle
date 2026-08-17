@@ -27,6 +27,8 @@ declare global {
       onTalkUp: (cb: () => void) => () => void;
       onHotkeyDown: (callback: () => void) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;
+      onDictationCancel: (callback: () => void) => () => void;
+      setDictationPhase: (phase: "idle" | "recording" | "transcribing") => void;
       reloadRemixHotkey: () => void;
       remixGetContext: () => Promise<RemixContextResult>;
       remixReadDocument: () => Promise<RemixReadDocumentResult>;
@@ -118,6 +120,16 @@ declare global {
       } | null>;
       downloadUpdate: () => void;
       installUpdate: () => void;
+      getUpdateStatus: () => Promise<{
+        version: string | null;
+        downloadState: "idle" | "downloading" | "downloaded";
+      }>;
+      onUpdateStatus: (
+        callback: (status: {
+          version: string | null;
+          downloadState: "idle" | "downloading" | "downloaded";
+        }) => void,
+      ) => () => void;
       // Auto-update setting
       getAutoUpdate: () => Promise<boolean>;
       setAutoUpdate: (enabled: boolean) => void;

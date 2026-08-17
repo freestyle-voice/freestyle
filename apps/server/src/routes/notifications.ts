@@ -7,6 +7,7 @@ import {
   getCloudUserProfile,
   putCloudUserProfile,
 } from "../lib/freestyle-cloud.js";
+import { notificationEvents } from "../lib/notifications/events.js";
 import { drainNotificationOutbox } from "../lib/notifications/outbox.js";
 import * as store from "../lib/notifications/store.js";
 import { notificationTransport } from "../lib/notifications/transport.js";
@@ -25,6 +26,59 @@ const createSchema = z.object({
 });
 
 const seenSchema = z.object({ ids: z.array(z.string().min(1)).max(100) });
+
+const NOTIFICATION_STREAM_HEARTBEAT_MS = 25_000;
+
+function notificationStream(request: Request): Response {
+  const encoder = new TextEncoder();
+  let cleanup = (): void => {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      let closed = false;
+      const close = (): void => {
+        if (closed) return;
+        closed = true;
+        cleanup();
+        try {
+          controller.close();
+        } catch {}
+      };
+      const send = (event: "ready" | "changed" | "ping"): void => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: 1\n\n`));
+        } catch {
+          close();
+        }
+      };
+      const unsubscribe = notificationEvents.subscribe(() => send("changed"));
+      const heartbeat = setInterval(
+        () => send("ping"),
+        NOTIFICATION_STREAM_HEARTBEAT_MS,
+      );
+      heartbeat.unref();
+      const onAbort = (): void => close();
+      request.signal.addEventListener("abort", onAbort, { once: true });
+      cleanup = (): void => {
+        clearInterval(heartbeat);
+        unsubscribe();
+        request.signal.removeEventListener("abort", onAbort);
+      };
+      send("ready");
+    },
+    cancel() {
+      cleanup();
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "Content-Type": "text/event-stream",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
 
 async function forwardHistory(): Promise<{ status: number; payload: unknown }> {
   const token = getSessionToken();
@@ -63,6 +117,7 @@ const quietHoursSchema = z.object({
 
 const notificationsRoute = new Hono()
   .get("/", (c) => c.json({ notifications: store.listActive() }))
+  .get("/stream", (c) => notificationStream(c.req.raw))
   .get("/preferences", async (c) => {
     const token = getSessionToken();
     if (!token) return c.json({ quietHours: DEFAULT_QUIET_HOURS });
@@ -133,6 +188,7 @@ const notificationsRoute = new Hono()
       threadId: input.threadId ?? null,
       payload: input.url ? { url: input.url } : null,
     });
+    notificationEvents.emitChange();
     return c.json({ ok: true, notification: record });
   })
   .post("/refresh", (c) => {
@@ -142,15 +198,18 @@ const notificationsRoute = new Hono()
   })
   .post("/seen", zValidator("json", seenSchema), (c) => {
     store.markSeen(c.req.valid("json").ids);
+    notificationEvents.emitChange();
     return c.json({ ok: true });
   })
   .post("/:id/dismiss", (c) => {
     const ok = store.dismiss(c.req.param("id"));
+    if (ok) notificationEvents.emitChange();
     void drainNotificationOutbox();
     return c.json({ ok });
   })
   .post("/:id/open", (c) => {
     const result = store.open(c.req.param("id"));
+    if (result.ok) notificationEvents.emitChange();
     void drainNotificationOutbox();
     return c.json(result);
   });

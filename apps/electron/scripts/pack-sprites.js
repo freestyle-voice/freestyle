@@ -41,7 +41,22 @@ const SPRITES = {
       throw: { fps: 14, loop: false, impactFrame: 5 },
       defend: { fps: 10, loop: false, holdLast: true },
       hurt: { fps: 10, loop: false },
-      death: { fps: 10, loop: false, holdLast: true },
+      death: {
+        fps: 10,
+        loop: false,
+        holdLast: true,
+        sheet: "death.png",
+        start: 0,
+        frames: 9,
+      },
+      "death-fall": {
+        fps: 10,
+        loop: false,
+        holdLast: true,
+        sheet: "death.png",
+        start: 4,
+        frames: 5,
+      },
       healing: { fps: 10, loop: true },
       "healing-no-effect": { fps: 10, loop: true },
       // typing.png hosts two states: the sit-down transition and the loop.

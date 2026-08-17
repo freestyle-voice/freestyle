@@ -56,6 +56,10 @@ electron.ipcMain.on("e2e:mic-requested", () => {
   record({ type: "mic-requested" });
 });
 
+electron.ipcMain.on("dictation:state", (_event, phase) => {
+  record({ type: "dictation-state", body: { phase } });
+});
+
 const originalFetch = global.fetch;
 global.fetch = async (input, init) => {
   const url =

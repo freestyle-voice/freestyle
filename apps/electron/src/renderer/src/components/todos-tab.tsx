@@ -1,4 +1,5 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
+import { capture } from "@renderer/lib/analytics";
 import { readBrainFile, writeBrainFile } from "@renderer/lib/brain-fs";
 import { queryKeys } from "@renderer/lib/query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -62,6 +63,7 @@ export function TodosTab({ mascot }: { mascot: string }): React.JSX.Element {
       item.done ? /- \[[xX]\]/ : /- \[ \]/,
       item.done ? "- [ ]" : "- [x]",
     );
+    if (!item.done) capture("todo_completed", { open: items.length - 1 });
     save(next);
   };
 
@@ -89,6 +91,7 @@ export function TodosTab({ mascot }: { mascot: string }): React.JSX.Element {
     const next = [...lines];
     while (next.length > 0 && next[next.length - 1].trim() === "") next.pop();
     next.push(`- [ ] ${text}`, "");
+    capture("todo_added", { total: items.length + 1 });
     save(next);
   };
 

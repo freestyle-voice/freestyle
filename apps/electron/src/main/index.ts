@@ -128,6 +128,10 @@ import { checkLinuxSetup } from "./linux-setup";
 import { MicListener } from "./mic-listener";
 import { getNativeBinaryPath } from "./native-binary";
 import {
+  notificationStreamUrl,
+  startNotificationStream,
+} from "./notification-stream";
+import {
   hideNotifications,
   initNotificationWindow,
   notifyRendererChanged,
@@ -447,6 +451,16 @@ function broadcastServerChanged(): void {
   panelWindow?.webContents.send("server:changed");
   companionWindow?.webContents.send("server:changed");
   invalidatePluginViews();
+  if (stopNotificationStream) restartNotificationStream();
+}
+
+function broadcastUpdateStatus(): void {
+  const status = {
+    version: updateAvailableVersion,
+    downloadState: updateDownloadState,
+  };
+  panelWindow?.webContents.send("updater:status", status);
+  companionWindow?.webContents.send("updater:status", status);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -460,6 +474,7 @@ let keyListener: NativeKeyListener | null = null;
 // but is never used to override the current macOS Accessibility trust result.
 let accessibilityConfirmed = false;
 let hotkeyPressed = false;
+let dictationInProgress = false;
 let currentHotkeyAccel: string | null = null;
 let hotkeyActivationMode: "hold" | "toggle" = "hold";
 let micListener: MicListener | null = null;
@@ -609,7 +624,6 @@ function setPillExpanded(
   win.setResizable(true);
   win.setBounds(target);
   win.setResizable(false);
-  updatePillEscape();
 }
 
 // Returns the pill alignment token for a custom position, using the actual
@@ -646,24 +660,6 @@ function openPanelSettings(): void {
  * Resolves once a freshly-created pill window has finished loading and is
  * visible.  `null` when no deferred show is in progress.
  */
-
-function updatePillEscape(): void {
-  const chatLike = pillExpansion === "remix-chat";
-  const isExpanded = pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0;
-  if (mainWindow?.isVisible() && !(chatLike && isExpanded)) {
-    if (!globalShortcut.isRegistered("Escape")) {
-      globalShortcut.register("Escape", () => {
-        if (mainWindow?.isVisible()) {
-          mainWindow.webContents.send("pill:cancel");
-        }
-      });
-    }
-  } else {
-    try {
-      globalShortcut.unregister("Escape");
-    } catch {}
-  }
-}
 
 // -- Async helper: run a command without blocking the main thread --
 function execAsync(
@@ -1022,21 +1018,20 @@ function hidePill(): void {
   // The next session starts as a bare capsule, so give the extra room back
   // now — the renderer's own collapse only runs when it animates a card away.
   setPillExpanded(false);
-  // Session ended (cancel, error, or paste complete). Clear latched hotkey
-  // state so the next press starts fresh — e.g. after ESC while still
-  // holding the dictation key.
-  hotkeyPressed = false;
-  clearHotkeyStuckWatchdog();
+  // Remix can hide its pill while a hold-to-dictation session remains active.
+  // Preserve that session's physical key state so its eventual key-up still
+  // stops recording; completed/cancelled sessions can be reset here.
+  if (!dictationInProgress) {
+    hotkeyPressed = false;
+    clearHotkeyStuckWatchdog();
+  }
   clearRemixStuckWatchdog();
   setRemixRouteKeys(false);
   // Chat may have set focusable; clear it when hiding.
   try {
   } catch {}
   updateRemixBar();
-  // Unregister Escape shortcut when pill is hidden
-  try {
-    globalShortcut.unregister("Escape");
-  } catch {}
+  updateDictationEscape();
 }
 
 function wait(ms: number): Promise<void> {
@@ -1401,6 +1396,7 @@ function restartAndUpdate(): void {
 /** Mark state as downloading, notify the settings window, and kick off the download. */
 function triggerDownloadUpdate(): void {
   updateDownloadState = "downloading";
+  broadcastUpdateStatus();
   autoUpdater.downloadUpdate().catch((err) => {
     log.warn(`downloadUpdate rejected: ${err}`);
   });
@@ -1712,6 +1708,13 @@ app.whenReady().then(async () => {
     });
   });
 
+  ipcMain.on("dictation:state", (event, phase: unknown) => {
+    if (event.sender !== companionWindow?.webContents) return;
+    if (phase === "recording" || phase === "transcribing" || phase === "idle") {
+      setDictationPhase(phase);
+    }
+  });
+
   // IPC: expose the server port to the renderer
   ipcMain.handle("server:port", () => serverPort);
 
@@ -1864,6 +1867,7 @@ app.whenReady().then(async () => {
   if (process.env.FREESTYLE_E2E === "1") {
     ipcMain.on("e2e:trigger-hotkey-down", handleNativeHotkeyDown);
     ipcMain.on("e2e:trigger-hotkey-up", handleNativeHotkeyUp);
+    ipcMain.on("e2e:trigger-escape", cancelActiveDictation);
   }
 
   // IPC: Linux system setup (input-group access for the hotkey listener and
@@ -1978,7 +1982,7 @@ app.whenReady().then(async () => {
         return { x: b.x, y: b.y, width: b.width };
       },
     });
-    startNotificationPoll();
+    startNotificationEvents();
   }
 
   // A signed-out launch surfaces the panel unprompted: the sign-in gate is
@@ -2062,9 +2066,11 @@ app.whenReady().then(async () => {
     autoUpdater.logger = createAppLogger("updater");
 
     autoUpdater.on("update-available", (info) => {
+      updateAvailableVersion = info.version;
       if (autoUpdater.autoDownload) {
         updateDownloadState = "downloading";
       }
+      broadcastUpdateStatus();
       // Only show a native notification once per discovered version
       if (
         Notification.isSupported() &&
@@ -2083,7 +2089,9 @@ app.whenReady().then(async () => {
     });
 
     autoUpdater.on("update-downloaded", (info) => {
+      updateAvailableVersion = info.version;
       updateDownloadState = "downloaded";
+      broadcastUpdateStatus();
       // Only show a native notification once per version
       if (
         Notification.isSupported() &&
@@ -2108,6 +2116,7 @@ app.whenReady().then(async () => {
     autoUpdater.on("error", (err) => {
       if (updateDownloadState === "downloading") {
         updateDownloadState = "idle";
+        broadcastUpdateStatus();
       }
       const msg = err?.message ?? "Update failed";
       if (READ_ONLY_UPDATE_RE.test(msg) && isRunningFromReadOnlyLocation()) {
@@ -2151,11 +2160,18 @@ app.whenReady().then(async () => {
       if (!latest) return null;
       // Only report an update when the remote version is actually newer
       if (latest === app.getVersion()) return null;
+      updateAvailableVersion = latest;
+      broadcastUpdateStatus();
       return { version: latest, downloadState: updateDownloadState };
     } catch {
       return null;
     }
   });
+
+  ipcMain.handle("updater:status", () => ({
+    version: updateAvailableVersion,
+    downloadState: updateDownloadState,
+  }));
 
   // -- Auto-update setting IPC --
   ipcMain.handle("settings:auto-update", () => {
@@ -3165,12 +3181,13 @@ ipcMain.on("sprite:event", (event, ev: unknown) => {
   }
 });
 
-const NOTIFICATION_POLL_MS = 20_000;
+const NOTIFICATION_FALLBACK_POLL_MS = 120_000;
 /** How long an unread bubble sits open before it collapses to the
  *  companion's suggestion glow. It stays unread either way. */
 const NOTIFICATION_COLLAPSE_MS = 30_000;
-let notificationPollTimer: NodeJS.Timeout | null = null;
+let notificationFallbackPollTimer: NodeJS.Timeout | null = null;
 let notificationCollapseTimer: NodeJS.Timeout | null = null;
+let stopNotificationStream: (() => void) | null = null;
 let notificationHovered = false;
 const notifiedIds = new Set<string>();
 const collapsedIds = new Set<string>();
@@ -3313,14 +3330,42 @@ async function openNotification(id: string): Promise<void> {
   if (result?.url) void shell.openExternal(result.url);
 }
 
-function startNotificationPoll(): void {
-  if (notificationPollTimer) return;
-  void refreshNotifications();
-  notificationPollTimer = setInterval(
+function startNotificationFallbackPoll(): void {
+  if (notificationFallbackPollTimer) return;
+  notificationFallbackPollTimer = setInterval(
     () => void refreshNotifications(),
-    NOTIFICATION_POLL_MS,
+    NOTIFICATION_FALLBACK_POLL_MS,
   );
-  notificationPollTimer.unref();
+  notificationFallbackPollTimer.unref();
+}
+
+function stopNotificationFallbackPoll(): void {
+  if (!notificationFallbackPollTimer) return;
+  clearInterval(notificationFallbackPollTimer);
+  notificationFallbackPollTimer = null;
+}
+
+function startNotificationEvents(): void {
+  if (stopNotificationStream) return;
+  void refreshNotifications();
+  stopNotificationStream = startNotificationStream({
+    url: () => notificationStreamUrl(getServerBaseUrl()),
+    headers: getServerAuthHeaders,
+    onChange: () => void refreshNotifications(),
+    onConnected: stopNotificationFallbackPoll,
+    onDisconnected: startNotificationFallbackPoll,
+  });
+}
+
+function stopNotificationEvents(): void {
+  stopNotificationStream?.();
+  stopNotificationStream = null;
+  stopNotificationFallbackPoll();
+}
+
+function restartNotificationStream(): void {
+  stopNotificationEvents();
+  startNotificationEvents();
 }
 
 ipcMain.handle("notifications:list", async () => await fetchNotifications());
@@ -3693,6 +3738,8 @@ function createCompanionWindow(): void {
 
   companionWindow.on("closed", () => {
     stopCompanionHotPoll();
+    dictationInProgress = false;
+    updateDictationEscape();
     companionWindow = null;
   });
 
@@ -3808,6 +3855,38 @@ function dictationTargets(): BrowserWindow[] {
   if (companionWindow && !companionWindow.isDestroyed())
     targets.push(companionWindow);
   return targets;
+}
+
+function updateDictationEscape(): void {
+  if (!dictationInProgress) {
+    try {
+      globalShortcut.unregister("Escape");
+    } catch {}
+    return;
+  }
+
+  if (globalShortcut.isRegistered("Escape")) return;
+  try {
+    if (!globalShortcut.register("Escape", cancelActiveDictation)) {
+      hotkeyLog.warn("Could not register Escape to cancel dictation.");
+    }
+  } catch (err) {
+    hotkeyLog.warn(
+      `Could not register Escape to cancel dictation: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+function setDictationPhase(phase: "idle" | "recording" | "transcribing"): void {
+  dictationInProgress = phase !== "idle";
+  updateDictationEscape();
+}
+
+function cancelActiveDictation(): void {
+  if (!dictationInProgress) return;
+  hotkeyPressed = false;
+  clearHotkeyStuckWatchdog();
+  companionWindow?.webContents.send("dictation:cancel");
 }
 
 function sendHotkeyDown(): void {
@@ -4119,6 +4198,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     hotkeyPressed = false;
     clearHotkeyStuckWatchdog();
     globalShortcut.unregisterAll();
+    updateDictationEscape();
     // unregisterAll() drops every accelerator this app holds, including the
     // panel summon claimed at boot — re-claim it or it dies on the first
     // hotkey registration and never comes back within the session.
@@ -4231,6 +4311,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
 app.on("will-quit", () => {
   audioPlaybackController.restoreSync();
   stopLinuxPasteHelper();
+  stopNotificationEvents();
   destroyCompanionWindow();
   destroyPanelWindow();
   if (keyListener) {
@@ -4267,6 +4348,7 @@ let isUpdaterQuitting = false;
 let isQuitting = false;
 
 let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
+let updateAvailableVersion: string | null = null;
 
 function cleanupBeforeQuit(): void {
   // No app-host plugin registry to dispose anymore — every hook (including
@@ -4274,6 +4356,7 @@ function cleanupBeforeQuit(): void {
   void disposeServerPlugins().catch(() => {});
   audioPlaybackController.restoreSync();
   stopLinuxPasteHelper();
+  stopNotificationEvents();
   if (keyListener) {
     keyListener.stop();
     keyListener = null;

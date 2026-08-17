@@ -1,5 +1,6 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
 import { Markdown } from "@renderer/components/markdown";
+import { capture } from "@renderer/lib/analytics";
 import {
   deleteBrainFile,
   type BrainFile as HomeFile,
@@ -280,12 +281,13 @@ export function BrainFiles({
           label={`${root ? `${root}/` : ""}${slugify(view.name)}.md`}
           draft={view.draft}
           onDraft={(draft) => setView({ ...view, draft })}
-          onSave={() =>
+          onSave={() => {
+            capture("brain_file_created", { folder: root || "root" });
             saveFile(
               `${root ? `${root}/` : ""}${slugify(view.name)}.md`,
               view.draft,
-            )
-          }
+            );
+          }}
           onCancel={() => setView({ kind: "list" })}
         />
       </>

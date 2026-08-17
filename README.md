@@ -1,9 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="media/freestyle-logo-full-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="media/freestyle-logo-full-light.png">
-    <img alt="Freestyle" src="media/freestyle-logo-full-light.png" width="420">
-  </picture>
+  <img alt="Freestyle" src="media/freestyle-lockup.png" width="520">
 </p>
 
 <p align="center">
@@ -14,19 +10,21 @@
   <a href="https://discord.gg/Fmgt5yZCDu"><img src="https://img.shields.io/badge/Discord-Join%20Server-5865F2.svg?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
-Freestyle is the AI writing assistant that lives in your cursor. You press a hotkey, speak your mind, and Freestyle transcribes what you say into polished text pasted at your cursor. Write 4X faster than typing. 
+Freestyle is the AI assistant that lives on your desktop and makes sure you never forget an important thing again. Tell it what matters to you, connect the apps where that stuff lives, and it periodically checks on its own. When something needs you, it taps you on the shoulder: the invoice that is three weeks overdue, the pull request nobody has reviewed, the flight credit that expires Friday. Then it offers to do the next step, and waits for you to say yes.
 
-With Remix writing assistant, highlight a paragraph, describe the change you want (ex. "make this sound more formal"), and Freestyle rewrites it in place. It can also write from scratch, researching the web first when it needs facts you don't have.
+It keeps notes and todos for you, remembers what you tell it, and can draft the reply, book the time, or start the task itself. Anything it wants to send, post, or buy is shown to you first and only happens when you press Allow.
 
 ### Features
 
-- **Transcription** — hold the hotkey, speak, release to paste what you said as text in your cursor. Includes AI polish to fix grammar & punctuation, remove filler words. 
-- **Remix** — Highlight text and say what you want changed. "Tighten this," "make it less formal," "turn this into three bullets," "reply to this saying I can't make Thursday." Remix rewrites in place, streaming into your cursor. With nothing highlighted, it writes from scratch and it can search the web and images first, so it brings in facts and sources you don't have yet.
-- **Real-time translation** — Speak one language, get it translated in another, paste it at your cursor. With support for over 20 languages in any direction.
-- **Works everywhere you type** — Google Docs, Slack, VS Code, Gmail, your phone keyboard. No plugins, no extensions, no per-app integrations. Freestyle can write anywhere you can write.
+- **Scheduled tasks** — "Every morning, look at my repo and tell me about open issues." "Tell me when a deal goes quiet for five days." Each one becomes a standing job that runs on a timer you set, and you get one desktop notification when something crosses the line, not a feed to scroll. Quiet hours keep it from pinging you at night.
+- **Connected apps** — Gmail, Google Calendar, Slack, GitHub, Notion, Google Drive and Sheets out of the box, plus around 1,200 more tools through MCP. Connect an app once and Freestyle can read from it to check the things you asked about, and write to it only through an action you approve.
+- **Todos and notes** — Freestyle tracks what you care about in a Todos list and plain-text notes. It reminds you when you are falling behind, verifies whether something actually got done, and checks items off for you when it sees they are finished.
+- **Brain** — a memory of the things you have told it, kept as plain text you can read, edit, and delete. Say something once and it is there for every future conversation.
+- **Approval before action** — sending an email, posting to Slack, booking time, buying something. Every one of these stops at an approval step showing exactly what would happen and where. You hit Allow, or you don't.
+- **Dictation and Remix** — the writing tools are still here. Hold the hotkey, speak, release to paste polished text at your cursor, or highlight a paragraph and describe the change you want. Works in Google Docs, Slack, VS Code, Gmail, and anywhere else you type.
 
 <p align="center">
-  <img src="media/home-page-demo.png" alt="Freestyle" width="800" />
+  <img src="media/freestyle-screenshot.png" alt="Freestyle on the desktop: the companion panel setting up a scheduled task to check a GitHub repo every morning" width="800" />
 </p>
 
 ## Download

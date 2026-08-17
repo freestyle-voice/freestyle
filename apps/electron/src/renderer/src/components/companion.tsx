@@ -43,6 +43,7 @@ function useDictation(
     const controller = new DictationController(
       {
         onPhase: (phase) => {
+          window.api.setDictationPhase(phase);
           setState(phase === "idle" ? "idle" : "working");
           setListening(phase === "recording");
           if (phase === "idle") {
@@ -108,6 +109,10 @@ function useDictation(
       void controller.start();
     });
     const offUp = window.api.onHotkeyUp(() => controller.stop());
+    const offCancel = window.api.onDictationCancel(() => {
+      talkSession = false;
+      controller.cancel();
+    });
     const offTalkDown = window.api.onTalkDown(() => {
       // Fn+Control shares Fn with dictation, so the plain-dictation session
       // often starts first. PROMOTE it to a talk session rather than
@@ -121,6 +126,7 @@ function useDictation(
       offPrefs?.();
       offDown?.();
       offUp?.();
+      offCancel?.();
       offTalkDown?.();
       offTalkUp?.();
       controller.destroy();

@@ -51,6 +51,13 @@ const api = {
     ipcRenderer.on("hotkey:up", handler);
     return () => ipcRenderer.removeListener("hotkey:up", handler);
   },
+  onDictationCancel: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("dictation:cancel", handler);
+    return () => ipcRenderer.removeListener("dictation:cancel", handler);
+  },
+  setDictationPhase: (phase: "idle" | "recording" | "transcribing"): void =>
+    ipcRenderer.send("dictation:state", phase),
   // --- Remix ---
   reloadRemixHotkey: (): void => ipcRenderer.send("remix-hotkey:reload"),
   // --- Remix primitives (the agent's tools; workflow lives in its prompt) ---
@@ -238,6 +245,26 @@ const api = {
   } | null> => ipcRenderer.invoke("updater:check"),
   downloadUpdate: (): void => ipcRenderer.send("updater:download"),
   installUpdate: (): void => ipcRenderer.send("updater:install"),
+  getUpdateStatus: (): Promise<{
+    version: string | null;
+    downloadState: "idle" | "downloading" | "downloaded";
+  }> => ipcRenderer.invoke("updater:status"),
+  onUpdateStatus: (
+    callback: (status: {
+      version: string | null;
+      downloadState: "idle" | "downloading" | "downloaded";
+    }) => void,
+  ): (() => void) => {
+    const handler = (
+      _e: unknown,
+      status: {
+        version: string | null;
+        downloadState: "idle" | "downloading" | "downloaded";
+      },
+    ): void => callback(status);
+    ipcRenderer.on("updater:status", handler);
+    return () => ipcRenderer.removeListener("updater:status", handler);
+  },
   // Auto-update setting
   getAutoUpdate: (): Promise<boolean> =>
     ipcRenderer.invoke("settings:auto-update"),

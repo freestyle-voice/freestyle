@@ -1,4 +1,79 @@
 # Changelog
+## 0.8.1
+
+### New Features ✨
+
+- (analytics) Count todos and notes as they are added by @matteo8p in [#612](https://github.com/freestyle-voice/freestyle/pull/612)
+- Surface product updates when new versions come out by @matteo8p in [#613](https://github.com/freestyle-voice/freestyle/pull/613)
+
+## 0.8.0
+
+### New Features ✨
+
+- (analytics) Instrument the desktop surfaces by @matteo8p in [#608](https://github.com/freestyle-voice/freestyle/pull/608)
+- (electron) Widen update banner to max-w-5xl by @MathurAditya724 in [#555](https://github.com/freestyle-voice/freestyle/pull/555)
+- Simplify the empty-chat openers (desktop) by @matteo8p in [#605](https://github.com/freestyle-voice/freestyle/pull/605)
+- 9/10 Report what gets taken so ranking can learn (desktop) by @matteo8p in [#600](https://github.com/freestyle-voice/freestyle/pull/600)
+- 8/10 One screen answering "what can you do?" (desktop) by @matteo8p in [#599](https://github.com/freestyle-voice/freestyle/pull/599)
+- 7/10 Run now, next run, delete, and reopen a dismissed brief (desktop) by @matteo8p in [#598](https://github.com/freestyle-voice/freestyle/pull/598)
+- 5/10 Show tools while they run, stop hiding refusals (desktop) by @matteo8p in [#596](https://github.com/freestyle-voice/freestyle/pull/596)
+- 4/10 Stop suggesting things the agent can't do (desktop) by @matteo8p in [#595](https://github.com/freestyle-voice/freestyle/pull/595)
+- 3/10 Split briefs out of conversations (desktop) by @matteo8p in [#594](https://github.com/freestyle-voice/freestyle/pull/594)
+- 2/10 Quiet hours, and stop promising a ping per run (desktop) by @matteo8p in [#593](https://github.com/freestyle-voice/freestyle/pull/593)
+- 1/10 Instrument the proposal loop (desktop) by @matteo8p in [#592](https://github.com/freestyle-voice/freestyle/pull/592)
+- Readable fallback for agent stream errors by @matteo8p in [#590](https://github.com/freestyle-voice/freestyle/pull/590)
+- Minimalist openers: real todos with launch, slimmer suggestion rows by @matteo8p in [#589](https://github.com/freestyle-voice/freestyle/pull/589)
+- New brand icons: app icon and menu bar mark by @matteo8p in [#588](https://github.com/freestyle-voice/freestyle/pull/588)
+- Profile-driven recommendations refresh + Google avatar rendering by @matteo8p in [#585](https://github.com/freestyle-voice/freestyle/pull/585)
+- Fix loading indicator and profile picture by @matteo8p in [#586](https://github.com/freestyle-voice/freestyle/pull/586)
+- Bring brain to main page by @matteo8p in [#584](https://github.com/freestyle-voice/freestyle/pull/584)
+- Onboarding v2: six beats, connect-to-automate, receipt handoff by @matteo8p in [#582](https://github.com/freestyle-voice/freestyle/pull/582)
+- Create smart suggestions in that chat prompt by @matteo8p in [#583](https://github.com/freestyle-voice/freestyle/pull/583)
+- Apps page on the panel home screen + in-chat connect cards by @matteo8p in [#581](https://github.com/freestyle-voice/freestyle/pull/581)
+- Add Remix connected apps settings by @MathurAditya724 in [#578](https://github.com/freestyle-voice/freestyle/pull/578)
+- New billing model with free trial by @matteo8p in [#579](https://github.com/freestyle-voice/freestyle/pull/579)
+- Scheduled tasks by @matteo8p in [#577](https://github.com/freestyle-voice/freestyle/pull/577)
+- Threads saved to D1 by @matteo8p in [#576](https://github.com/freestyle-voice/freestyle/pull/576)
+- Notifications system UI by @matteo8p in [#575](https://github.com/freestyle-voice/freestyle/pull/575)
+- New onboarding flow by @matteo8p in [#574](https://github.com/freestyle-voice/freestyle/pull/574)
+- Cleaner UI by @matteo8p in [#570](https://github.com/freestyle-voice/freestyle/pull/570)
+- New freestyle agent by @matteo8p in [#569](https://github.com/freestyle-voice/freestyle/pull/569)
+
+### Bug Fixes 🐛
+
+#### Electron
+
+- Anchor companion across displays by @MathurAditya724 in [#571](https://github.com/freestyle-voice/freestyle/pull/571)
+- Keep brain cache coherent by @MathurAditya724 in [#573](https://github.com/freestyle-voice/freestyle/pull/573)
+- Cache files to stop flashing "Loading" by @tigerisaac in [#572](https://github.com/freestyle-voice/freestyle/pull/572)
+
+#### Other
+
+- (analytics) Bind events to the cloud user on every launch by @matteo8p in [#607](https://github.com/freestyle-voice/freestyle/pull/607)
+- Audit fixes by @matteo8p in [#591](https://github.com/freestyle-voice/freestyle/pull/591)
+- Remove screen aware tools for now by @matteo8p in [#587](https://github.com/freestyle-voice/freestyle/pull/587)
+- Time zone out of sync by @matteo8p in [#580](https://github.com/freestyle-voice/freestyle/pull/580)
+
+### Internal Changes 🔧
+
+- (renderer) Cache desktop data reads by @MathurAditya724 in [#602](https://github.com/freestyle-voice/freestyle/pull/602)
+- (usage) Send ?fresh=1 on post-checkout usage reads by @MathurAditya724 in [#563](https://github.com/freestyle-voice/freestyle/pull/563)
+
+### Other
+
+- New text by @matteo8p in [6bf86438](https://github.com/freestyle-voice/freestyle/commit/6bf86438c522ebf5f6d9e7d75393448878d887cb)
+- Log in by @matteo8p in [595da5ef](https://github.com/freestyle-voice/freestyle/commit/595da5ef21da0e710104929764d77fe6e603229d)
+- looking good by @matteo8p in [8639505c](https://github.com/freestyle-voice/freestyle/commit/8639505c0cd2cc2772aff5be95b07010a6aa424b)
+- animations work great' by @matteo8p in [040b839a](https://github.com/freestyle-voice/freestyle/commit/040b839a0a9607a239764eae4f2b265c42c6252f)
+- new stuff by @matteo8p in [04afe08f](https://github.com/freestyle-voice/freestyle/commit/04afe08f257554009457cd9018cc68eeaf186a97)
+- tools by @matteo8p in [5dd30eb6](https://github.com/freestyle-voice/freestyle/commit/5dd30eb6ed2008b6cffc365bf5706e1e56c4708e)
+- nice by @matteo8p in [d3d0bddd](https://github.com/freestyle-voice/freestyle/commit/d3d0bddd8112e0961ccc88a492c7c283f14ac91d)
+- graph by @matteo8p in [758b472c](https://github.com/freestyle-voice/freestyle/commit/758b472c0643724f271def5b60d6c84cce585a9e)
+- Build by @matteo8p in [7b80db91](https://github.com/freestyle-voice/freestyle/commit/7b80db91d149215821c3fa740ee50fb5978da450)
+- Paste tools work by @matteo8p in [d5fdf666](https://github.com/freestyle-voice/freestyle/commit/d5fdf666c008a80070a1f8472ae650c10f44d19b)
+- Chat working by @matteo8p in [b4996dbf](https://github.com/freestyle-voice/freestyle/commit/b4996dbf330cb94f225917be179f6be2e8b40168)
+- Remove local by @matteo8p in [5f0fe1e8](https://github.com/freestyle-voice/freestyle/commit/5f0fe1e888ff0e6939dabfe6cdc8c04282a72f49)
+
 ## 0.7.1
 
 ### New Features ✨

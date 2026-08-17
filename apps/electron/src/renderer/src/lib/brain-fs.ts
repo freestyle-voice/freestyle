@@ -16,7 +16,15 @@ const MAX_READ_CACHE_ENTRIES = 100;
 type CacheEntry<T> = { value: T; at: number };
 
 const readCache = new Map<string, CacheEntry<string>>();
+const versions = new Map<string, number>();
 let listCache: CacheEntry<BrainFile[]> | null = null;
+
+export class BrainRequestError extends Error {
+  constructor(readonly reason: string) {
+    super("Could not reach your Brain.");
+    this.name = "BrainRequestError";
+  }
+}
 
 function isFresh(at: number): boolean {
   return Date.now() - at < CACHE_TTL_MS;
@@ -45,6 +53,13 @@ function invalidateList(): void {
 
 function dropRead(path: string): void {
   readCache.delete(path);
+  versions.delete(path);
+}
+
+export function resetBrainCache(): void {
+  readCache.clear();
+  versions.clear();
+  listCache = null;
 }
 
 /** Sync cache peek — `undefined` means miss (not yet fetched / expired). */
@@ -81,13 +96,23 @@ export async function fsCall(
             body: JSON.stringify(body),
           }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) throw new BrainRequestError(`http-${res.status}`);
     const payload = (await res.json()) as Record<string, unknown>;
+    if (
+      payload.ok === false &&
+      typeof payload.reason === "string" &&
+      TRANSPORT_FAILURES.has(payload.reason)
+    ) {
+      throw new BrainRequestError(payload.reason);
+    }
     if (payload.ok === true && route === "write") {
       const path = body.path;
       const text = body.text;
       if (typeof path === "string" && typeof text === "string") {
         putRead(path, text);
+        if (typeof payload.version === "number")
+          versions.set(path, payload.version);
+        else versions.delete(path);
         invalidateList();
       }
     }
@@ -99,10 +124,17 @@ export async function fsCall(
       }
     }
     return payload;
-  } catch {
-    return null;
+  } catch (err) {
+    if (err instanceof BrainRequestError) throw err;
+    throw new BrainRequestError("network");
   }
 }
+
+const TRANSPORT_FAILURES = new Set([
+  "cloud_auth_required",
+  "cloud-unreachable",
+  "brain-failed",
+]);
 
 export async function readBrainFile(path: string): Promise<string | null> {
   const cached = peekBrainFile(path);
@@ -112,6 +144,7 @@ export async function readBrainFile(path: string): Promise<string | null> {
   if (!res?.ok) return null;
   const text = (res.text as string) ?? "";
   putRead(path, text);
+  if (typeof res.version === "number") versions.set(path, res.version);
   return text;
 }
 
@@ -126,14 +159,20 @@ export async function writeBrainFile(
   path: string,
   text: string,
 ): Promise<boolean> {
-  const res = await fsCall("write", { path, text });
+  const version = versions.get(path);
+  const res = await fsCall("write", {
+    path,
+    text,
+    ...(version !== undefined ? { ifMatch: version } : {}),
+  }).catch(() => null);
   const ok = res?.ok === true;
   if (ok) capture("brain_file_edited", { folder: brainFolder(path) });
+  else dropRead(path);
   return ok;
 }
 
 export async function deleteBrainFile(path: string): Promise<boolean> {
-  const res = await fsCall("delete", { path });
+  const res = await fsCall("delete", { path }).catch(() => null);
   const ok = res?.ok === true;
   if (ok) capture("brain_file_deleted", { folder: brainFolder(path) });
   return ok;

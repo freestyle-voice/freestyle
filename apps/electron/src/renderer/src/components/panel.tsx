@@ -23,12 +23,15 @@ import {
 import { capture } from "@renderer/lib/analytics";
 import { apiFetch, initApiBase, refreshApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider, useCloudAuth } from "@renderer/lib/auth-context";
+import { resetBrainCache } from "@renderer/lib/brain-fs";
 import { composerAction } from "@renderer/lib/composer-action";
 import { seedMessageFor } from "@renderer/lib/onboarding-core";
 import {
   connectorConnectionsQueryOptions,
   createQueryClient,
+  invalidateThreads,
   latestThreadQueryOptions,
+  prependThreadToHistory,
   queryKeys,
   threadHistoryInfiniteQueryOptions,
   threadQueryOptions,
@@ -507,6 +510,15 @@ function newThread(): ThreadState {
   return { id: crypto.randomUUID(), messages: [] };
 }
 
+function touchesBrain(message: UIMessage): boolean {
+  return message.parts.some(
+    (part) =>
+      part.type === "tool-brain_write" ||
+      part.type === "tool-brain_edit" ||
+      part.type === "tool-brain_delete",
+  );
+}
+
 function PanelTail(): React.JSX.Element {
   // A manga balloon tail. The card fill reaches up through the panel's border
   // and hard shadow so the bubble opens into the tail; the ink stroke draws
@@ -622,6 +634,7 @@ function PanelRoot(): React.JSX.Element {
 
   useEffect(() => {
     const off = window.api.onPanelOpenThread((threadId) => {
+      void invalidateThreads(queryClient);
       void getThread(threadId)
         .catch(() => null)
         .then((picked) => {
@@ -630,7 +643,15 @@ function PanelRoot(): React.JSX.Element {
           setThread(picked);
         });
     });
-    return () => off?.();
+    const offNotifications = window.api.onNotificationsChanged(() => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.threads.list("scheduled"),
+      });
+    });
+    return () => {
+      off?.();
+      offNotifications?.();
+    };
   }, [queryClient]);
 
   useEffect(() => {
@@ -740,6 +761,7 @@ function PanelInner({
   onSwitchThread: (thread: ThreadState) => void;
 }): React.JSX.Element {
   const [tab, setTab] = useState<PanelTab>("chat");
+  const queryClient = useQueryClient();
   const auth = useCloudAuth();
   const onboarding = useOnboarding(!!auth.user);
   const [spriteForm, setSpriteForm] = useState<CompanionForm>(
@@ -803,9 +825,18 @@ function PanelInner({
       transport,
       sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
       onFinish: ({ messages: finished }) => {
+        queryClient.setQueryData(queryKeys.threads.detail(thread.id), {
+          id: thread.id,
+          messages: finished,
+        });
+        void invalidateThreads(queryClient);
         if (finished.length === 0) return;
         const last = finished[finished.length - 1];
         if (last?.role !== "assistant") return;
+        if (touchesBrain(last)) {
+          resetBrainCache();
+          void queryClient.invalidateQueries({ queryKey: queryKeys.brain.all });
+        }
         const text = messageText(last);
         if (!text) return;
         window.api.agentTurnFinished({
@@ -839,12 +870,26 @@ function PanelInner({
         setNotice(
           message.includes("cloud_auth_required") || message.includes("401")
             ? "Sign in to Freestyle Cloud to chat."
-            : message && message !== "[object Object]"
-              ? message
-              : "That didn't go through. Try again.",
+            : message.includes("thread_too_long")
+              ? "This conversation is too long to continue. Start a new one from the menu."
+              : message && message !== "[object Object]"
+                ? message
+                : "That didn't go through. Try again.",
         );
       },
     });
+
+  const startedRef = useRef(thread.messages.length > 0);
+  useEffect(() => {
+    if (startedRef.current || messages.length === 0) return;
+    startedRef.current = true;
+    prependThreadToHistory(queryClient, {
+      id: thread.id,
+      title: "New conversation",
+      updatedAt: Date.now(),
+      origin: "user",
+    });
+  }, [messages.length, queryClient, thread.id]);
 
   const busy = status === "submitted" || status === "streaming";
   const action = composerAction(status);
@@ -1207,7 +1252,10 @@ function PanelInner({
                   if (picked) onSwitchThread(picked);
                 });
               }}
-              onThreadsCleared={() => onSwitchThread(newThread())}
+              onThreadsCleared={() => {
+                void invalidateThreads(queryClient);
+                onSwitchThread(newThread());
+              }}
               onReplayIntro={() => {
                 setSettingsOpen(false);
                 onboarding.replay();

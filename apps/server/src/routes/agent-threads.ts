@@ -45,9 +45,15 @@ const agentThreadsRoute = new Hono()
     return c.json(payload as object, status as 200);
   })
   .get("/list", async (c) => {
+    const params = new URLSearchParams();
     const origin = c.req.query("origin");
-    const query =
-      origin === "user" || origin === "scheduled" ? `?origin=${origin}` : "";
+    if (origin === "user" || origin === "scheduled")
+      params.set("origin", origin);
+    for (const key of ["limit", "cursor"] as const) {
+      const value = Number(c.req.query(key));
+      if (Number.isInteger(value) && value > 0) params.set(key, String(value));
+    }
+    const query = params.size > 0 ? `?${params.toString()}` : "";
     const { status, payload } = await forward(query);
     return c.json(payload as object, status as 200);
   })

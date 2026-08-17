@@ -196,9 +196,11 @@ export function BrainFiles({
     );
 
   const openFile = (path: string): void => {
-    void readBrainFile(path).then((text) => {
-      if (text !== null) setView({ kind: "view", path, text });
-    });
+    void readBrainFile(path)
+      .then((text) => {
+        if (text !== null) setView({ kind: "view", path, text });
+      })
+      .catch(() => {});
   };
 
   const saveFile = (path: string, text: string): void => {

@@ -40,6 +40,8 @@ describe("file ops", () => {
     expect(editAgentFile(target, "hello", "goodbye")).toBe("ok");
     expect(readFileSync(target, "utf8")).toContain("goodbye world");
     expect(editAgentFile(target, "absent", "x")).toBe("not-found");
+    expect(editAgentFile(target, "goodbye", "$$ $& costs $'5")).toBe("ok");
+    expect(readFileSync(target, "utf8")).toContain("$$ $& costs $'5 world");
   });
 
   it("glob and grep under an absolute root", () => {

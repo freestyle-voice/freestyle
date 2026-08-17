@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+import { type InfiniteData, QueryClient } from "@tanstack/react-query";
 import { getClient } from "./api";
 import { listNoteSummaries } from "./brain-views";
 import {
@@ -17,6 +17,7 @@ import {
   listThreads,
   type ThreadOrigin,
   type ThreadPage,
+  type ThreadSummary,
 } from "./threads";
 
 /** Common staleTime for cached queries (1 hour). */
@@ -297,7 +298,31 @@ export function threadHistoryInfiniteQueryOptions(
     queryFn: ({ pageParam }: { pageParam: number | null }) =>
       listThreads({ cursor: pageParam ?? undefined, origin }),
     getNextPageParam: (page: ThreadPage) => page.nextCursor ?? undefined,
+    staleTime: 0,
   };
+}
+
+export function invalidateThreads(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: queryKeys.threads.all });
+}
+
+export function prependThreadToHistory(
+  queryClient: QueryClient,
+  summary: ThreadSummary,
+): void {
+  const key = queryKeys.threads.list(summary.origin ?? "user");
+  queryClient.setQueryData<InfiniteData<ThreadPage, number | null>>(
+    key,
+    (data) => {
+      if (!data || data.pages.length === 0) return data;
+      const [first, ...rest] = data.pages;
+      const threads = [
+        summary,
+        ...first.threads.filter((t) => t.id !== summary.id),
+      ];
+      return { ...data, pages: [{ ...first, threads }, ...rest] };
+    },
+  );
 }
 
 export function quietHoursQueryOptions() {

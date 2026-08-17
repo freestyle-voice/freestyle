@@ -58,7 +58,10 @@ export function editAgentFile(
   const first = raw.indexOf(oldText);
   if (first === -1) return "not-found";
   if (raw.indexOf(oldText, first + 1) !== -1) return "ambiguous";
-  writeFileSync(full, raw.replace(oldText, newText));
+  writeFileSync(
+    full,
+    raw.slice(0, first) + newText + raw.slice(first + oldText.length),
+  );
   return "ok";
 }
 

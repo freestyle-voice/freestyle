@@ -34,10 +34,15 @@ const BASH_ALLOWLIST = new Set([
 
 const BASH_SAFE_SHAPE = /^[a-zA-Z0-9_./\s"'*=:,+-]+$/;
 
-function bashIsReadOnly(command: string): boolean {
+const BASH_MUTATING_FLAGS: Record<string, RegExp> = {
+  find: /(^|\s)-(delete|exec|execdir|ok|okdir|fprint0?|fprintf|fls)(\s|$)/,
+};
+
+export function bashIsReadOnly(command: string): boolean {
   if (!BASH_SAFE_SHAPE.test(command)) return false;
   const first = command.trim().split(/\s+/)[0] ?? "";
-  return BASH_ALLOWLIST.has(first);
+  if (!BASH_ALLOWLIST.has(first)) return false;
+  return !BASH_MUTATING_FLAGS[first]?.test(command);
 }
 
 const str = (input: Record<string, unknown>, key: string): string =>

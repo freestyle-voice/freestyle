@@ -220,7 +220,8 @@ export function NotesTab(): React.JSX.Element {
                   draft: text ?? "",
                   editing: false,
                 });
-              });
+              })
+              .catch(() => {});
           }}
         >
           <span className="tavern-note-title">{n.title}</span>

@@ -74,6 +74,16 @@ const agentRoute = new Hono().post(
       log.error(
         `Agent cloud returned ${upstream.status}: ${detail.slice(0, 200)}`,
       );
+      if (upstream.status === 400 && detail.includes("messages")) {
+        return c.json(
+          {
+            error: "thread_too_long",
+            detail:
+              "This conversation is too long to continue. Start a new conversation.",
+          },
+          413,
+        );
+      }
       return c.json({ error: "failed", detail: "Agent failed upstream." }, 502);
     }
 

@@ -4,7 +4,7 @@ vi.mock("@shared/sprite-events", () => ({
   parseSpriteEmotion: vi.fn(),
 }));
 
-import { agentToolTier } from "./agent-tools";
+import { agentToolTier, bashIsReadOnly } from "./agent-tools";
 
 describe("agent tool approval tiers", () => {
   const call = (toolName: string) => ({
@@ -28,5 +28,14 @@ describe("agent tool approval tiers", () => {
     await expect(
       agentToolTier(call("connector__gmail__474d41494c5f53454")),
     ).resolves.toBe("confirmed");
+  });
+
+  it("keeps mutating find invocations out of the free tier", () => {
+    expect(bashIsReadOnly("find . -name '*.log'")).toBe(true);
+    expect(bashIsReadOnly("find . -name '*.log' -delete")).toBe(false);
+    expect(bashIsReadOnly("find . -fprint /Users/me/.zshrc")).toBe(false);
+    expect(bashIsReadOnly("find . -exec rm {} +")).toBe(false);
+    expect(bashIsReadOnly("ls -la")).toBe(true);
+    expect(bashIsReadOnly("rm -rf ./x")).toBe(false);
   });
 });

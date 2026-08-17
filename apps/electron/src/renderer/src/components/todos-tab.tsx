@@ -53,6 +53,15 @@ export function TodosTab({ mascot }: { mascot: string }): React.JSX.Element {
     });
   };
 
+  if (todosQuery.isError)
+    return (
+      <div className="tavern-empty">
+        <p>Couldn&apos;t load todos.</p>
+        <button type="button" onClick={() => void todosQuery.refetch()}>
+          Try again
+        </button>
+      </div>
+    );
   if (lines === null) return <DataSkeleton label="Loading todos" />;
 
   const items = parseItems(lines);

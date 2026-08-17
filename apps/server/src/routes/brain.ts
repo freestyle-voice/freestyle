@@ -4,6 +4,7 @@ import { freestyleCloudUrl } from "../lib/freestyle-cloud.js";
 import { getSessionToken, invalidateSession } from "../lib/sessions.js";
 
 const log = createAppLogger("brain-proxy");
+const BRAIN_REQUEST_TIMEOUT_MS = 15_000;
 
 async function forward(
   segment: string,
@@ -24,6 +25,7 @@ async function forward(
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(BRAIN_REQUEST_TIMEOUT_MS),
     });
     if (upstream.status === 401) {
       invalidateSession();
